@@ -40,11 +40,11 @@ interface SubtitleStyle {
 }
 
 const DEFAULT_SUB_STYLE: SubtitleStyle = {
-  fontSize: 3.5,
+  fontSize: 5,
   positionBottom: 8,
   color: '#ffffff',
   bgColor: '#000000',
-  bgOpacity: 0.5,
+  bgOpacity: 0,
   fontFamily: 'Arial, sans-serif',
   outline: 'medium',
 };
