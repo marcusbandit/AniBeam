@@ -754,15 +754,6 @@ a { color: inherit; text-decoration: none; }
   background: #000;
 }
 
-/* Native Chromium <video controls>: stretch the volume slider's track only,
-   without touching the surrounding container layout (forcing the container
-   wider makes the slider escape the controls bar). */
-.player-canvas video::-webkit-media-controls-volume-slider {
-  width: 140px !important;
-  min-width: 140px !important;
-  padding-left: 8px !important;
-  padding-right: 8px !important;
-}
 .player-header {
   position: absolute;
   top: 0;
