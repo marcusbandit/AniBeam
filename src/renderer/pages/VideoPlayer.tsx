@@ -313,7 +313,12 @@ function VideoPlayer() {
   // Persist position on a 4s heartbeat + at every pause and on unload. Clear
   // the entry once the user has effectively finished the episode (within the
   // tail window) so the next play starts fresh instead of jumping to credits.
+  // Depend on videoSrc so we (re-)attach AFTER the <video> element actually
+  // mounts — on the first render the player shows a loading shell with no
+  // <video>, so videoRef.current is null and an empty-deps effect would bail
+  // out for the entire lifetime of this mount.
   useEffect(() => {
+    if (!videoSrc) return;
     const video = videoRef.current;
     if (!video) return;
 
@@ -357,7 +362,7 @@ function VideoPlayer() {
       video.removeEventListener('ended', onEnded);
       window.removeEventListener('beforeunload', save);
     };
-  }, []);
+  }, [videoSrc]);
 
   const showChrome = useCallback(() => {
     setChrome(true);
@@ -1007,7 +1012,24 @@ function VideoPlayer() {
           step={0.1}
           value={Math.min(currentTime, duration || 0)}
           onChange={onSeek}
-          style={{ '--progress': `${duration > 0 ? (currentTime / duration) * 100 : 0}%` } as React.CSSProperties}
+          style={{
+            '--progress': `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
+            // Build the track background dynamically: stacked gradients with
+            // intro / outro tints overlaid on the played-vs-unplayed base.
+            // First listed gradient renders on top.
+            background: (() => {
+              if (!duration) return undefined;
+              const pct = (n: number) => `${Math.max(0, Math.min(100, (n / duration) * 100))}%`;
+              const layers: string[] = [];
+              const band = (start: number, end: number, rgba: string) =>
+                `linear-gradient(to right, transparent 0, transparent ${pct(start)}, ${rgba} ${pct(start)}, ${rgba} ${pct(end)}, transparent ${pct(end)}, transparent 100%)`;
+              if (skipTimes.op) layers.push(band(skipTimes.op.start, skipTimes.op.end, 'rgba(224, 192, 137, 0.7)')); // intro: warm amber
+              if (skipTimes.ed) layers.push(band(skipTimes.ed.start, skipTimes.ed.end, 'rgba(96, 144, 208, 0.7)'));  // outro: cool blue
+              const progress = Math.max(0, Math.min(100, (currentTime / duration) * 100));
+              layers.push(`linear-gradient(to right, #d8d8e0 0%, #d8d8e0 ${progress}%, rgba(255,255,255,0.18) ${progress}%, rgba(255,255,255,0.18) 100%)`);
+              return layers.join(', ');
+            })(),
+          } as React.CSSProperties}
         />
         <div className="player-controls-row">
           <button className="player-ctl-btn" onClick={togglePlay} aria-label={isPlaying ? 'Pause' : 'Play'}>
