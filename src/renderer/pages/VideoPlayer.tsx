@@ -334,7 +334,19 @@ function VideoPlayer() {
             modernWasmUrl: wasmUrls.modernWasmUrl,
           });
           jassubRef.current = inst;
-          console.log('[subs] JASSUB initialized for', sub.label);
+          // The canvas can come up at 0×0 if the video isn't laid out yet at
+          // construction; force a resize once the video has dimensions.
+          requestAnimationFrame(() => {
+            try {
+              inst.resize(video.clientWidth, video.clientHeight, 0, 0);
+            } catch { /* ignore */ }
+          });
+          console.log('[subs] JASSUB initialized for', sub.label, video.clientWidth, 'x', video.clientHeight);
+          // Diagnostic: dump the canvases JASSUB injected so we can see them.
+          setTimeout(() => {
+            const canvases = video.parentElement?.querySelectorAll('canvas') ?? [];
+            console.log('[subs] canvases in player-canvas:', canvases.length, Array.from(canvases).map((c) => `${c.width}x${c.height} (display ${c.clientWidth}x${c.clientHeight})`));
+          }, 250);
         } catch (err) {
           console.error('JASSUB init failed:', err);
         }
