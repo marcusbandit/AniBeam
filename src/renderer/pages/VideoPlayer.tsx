@@ -28,7 +28,8 @@ async function srtToVttUrl(srcUrl: string): Promise<string> {
 }
 
 interface SubtitleStyle {
-  fontSize: number;
+  fontSize: number;        // in vh — % of viewport height, scales with fullscreen
+  positionBottom: number;  // distance above the bottom edge in vh
   color: string;
   bgColor: string;
   bgOpacity: number;
@@ -37,7 +38,8 @@ interface SubtitleStyle {
 }
 
 const DEFAULT_SUB_STYLE: SubtitleStyle = {
-  fontSize: 22,
+  fontSize: 3.5,
+  positionBottom: 8,
   color: '#ffffff',
   bgColor: '#000000',
   bgOpacity: 0.5,
@@ -90,8 +92,10 @@ function VideoPlayer() {
   const [subMenuOpen, setSubMenuOpen] = useState(false);
   const [subMenuTab, setSubMenuTab] = useState<'tracks' | 'style'>('tracks');
   const [subStyle, setSubStyle] = useState<SubtitleStyle>(() => {
+    // Storage key bumped to v2 because units changed from px → vh; old saved
+    // values would otherwise interpret as enormous (22vh ≈ 240px on 1080p).
     try {
-      const saved = localStorage.getItem('subtitle-style');
+      const saved = localStorage.getItem('subtitle-style-v2');
       if (saved) return { ...DEFAULT_SUB_STYLE, ...JSON.parse(saved) as Partial<SubtitleStyle> };
     } catch { /* ignore */ }
     return DEFAULT_SUB_STYLE;
@@ -273,7 +277,7 @@ function VideoPlayer() {
 
   // Persist subtitle style to localStorage on change.
   useEffect(() => {
-    try { localStorage.setItem('subtitle-style', JSON.stringify(subStyle)); } catch { /* ignore */ }
+    try { localStorage.setItem('subtitle-style-v2', JSON.stringify(subStyle)); } catch { /* ignore */ }
   }, [subStyle]);
 
   // Close subtitle menu on outside click.
@@ -300,7 +304,7 @@ function VideoPlayer() {
     }
   }, [subMenuOpen, showChrome]);
 
-  // Wire <video> events to local state
+  // Wire <video> events to local state.
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -314,12 +318,23 @@ function VideoPlayer() {
     video.addEventListener('pause', onPause);
     video.addEventListener('timeupdate', onTime);
     video.addEventListener('loadedmetadata', onMeta);
+    video.addEventListener('durationchange', onMeta);
     video.addEventListener('volumechange', onVol);
+
+    // Pick up state right now in case the relevant events already fired
+    // before this effect attached (race that froze the scrub bar).
+    if (video.readyState >= 1 && Number.isFinite(video.duration)) setDuration(video.duration);
+    setCurrentTime(video.currentTime);
+    setIsPlaying(!video.paused);
+    setVolume(video.volume);
+    setMuted(video.muted);
+
     return () => {
       video.removeEventListener('play', onPlay);
       video.removeEventListener('pause', onPause);
       video.removeEventListener('timeupdate', onTime);
       video.removeEventListener('loadedmetadata', onMeta);
+      video.removeEventListener('durationchange', onMeta);
       video.removeEventListener('volumechange', onVol);
     };
   }, [videoSrc]);
@@ -434,9 +449,16 @@ function VideoPlayer() {
     .player-canvas video::cue {
       background-color: rgba(${hexToRgb(subStyle.bgColor)}, ${subStyle.bgOpacity});
       color: ${subStyle.color};
-      font-size: ${subStyle.fontSize}px;
+      font-size: ${subStyle.fontSize}vh;
       font-family: ${subStyle.fontFamily};
       text-shadow: ${OUTLINE_PRESETS[subStyle.outline]};
+    }
+    /* Push the entire cue display container up from the bottom edge. */
+    .player-canvas video::-webkit-media-text-track-container {
+      bottom: ${subStyle.positionBottom}vh !important;
+    }
+    .player-canvas video::-webkit-media-text-track-display {
+      bottom: ${subStyle.positionBottom}vh !important;
     }
   `;
 
@@ -556,11 +578,20 @@ function VideoPlayer() {
                         <label className="sub-style-row">
                           <span>Size</span>
                           <input
-                            type="range" min={12} max={48} step={1}
+                            type="range" min={1} max={15} step={0.25}
                             value={subStyle.fontSize}
                             onChange={(e) => setSubStyle((s) => ({ ...s, fontSize: Number(e.target.value) }))}
                           />
-                          <span className="sub-style-val">{subStyle.fontSize}px</span>
+                          <span className="sub-style-val">{subStyle.fontSize.toFixed(2)}vh</span>
+                        </label>
+                        <label className="sub-style-row">
+                          <span>Position</span>
+                          <input
+                            type="range" min={0} max={40} step={0.5}
+                            value={subStyle.positionBottom}
+                            onChange={(e) => setSubStyle((s) => ({ ...s, positionBottom: Number(e.target.value) }))}
+                          />
+                          <span className="sub-style-val">{subStyle.positionBottom.toFixed(1)}vh</span>
                         </label>
                         <label className="sub-style-row">
                           <span>Text color</span>
