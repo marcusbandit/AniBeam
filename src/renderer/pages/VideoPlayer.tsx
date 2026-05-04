@@ -96,22 +96,6 @@ function hexToRgb(hex: string): string {
 }
 
 /**
- * Pack an #rrggbb hex + opacity (0-1) into the 32-bit number that ASS uses
- * for colour fields. ASS layout is AABBGGRR, alpha INVERTED (0=opaque,
- * 255=transparent).
- */
-function hexToAssColor(hex: string, opacity = 1): number {
-  const m = hex.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
-  if (!m) return 0;
-  const r = parseInt(m[1], 16);
-  const g = parseInt(m[2], 16);
-  const b = parseInt(m[3], 16);
-  const a = Math.round((1 - Math.max(0, Math.min(1, opacity))) * 255);
-  // >>> 0 to coerce to unsigned 32-bit
-  return ((a << 24) | (b << 16) | (g << 8) | r) >>> 0;
-}
-
-/**
  * Heuristic: is this ASS style name most likely a dialogue/spoken-text style
  * (vs a typesetting/sign style)? Conservative — when unsure we say "yes" so
  * the user sees more options to pick from.
