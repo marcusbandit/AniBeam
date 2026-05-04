@@ -11,6 +11,7 @@ import configHandler from './handlers/configHandler';
 import imageCacheHandler from './handlers/imageCacheHandler';
 import thumbnailHandler from './handlers/thumbnailHandler';
 import { initMediaProgress, updateMediaProgress } from './utils/debugUtils';
+import { logger } from './services/logger';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -73,6 +74,10 @@ function createWindow(): void {
       }
     });
   }
+
+  mainWindow.webContents.once('did-finish-load', () => {
+    logger.info('system', 'AniBeam ready');
+  });
 
   // Log renderer errors
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
@@ -225,6 +230,13 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
+});
+
+// ==================== LOGGER IPC ====================
+
+ipcMain.handle('log:get-buffer', () => logger.getBuffer());
+ipcMain.handle('log:clear', () => {
+  logger.clear();
 });
 
 // ==================== CONFIG IPC ====================

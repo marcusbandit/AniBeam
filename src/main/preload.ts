@@ -1,5 +1,16 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+export type LogLevel = 'info' | 'warn' | 'error';
+export type LogStage = 'folder' | 'metadata' | 'image' | 'thumbnail' | 'watch' | 'probe' | 'system';
+export interface LogEvent {
+  id: number;
+  ts: number;
+  level: LogLevel;
+  stage: LogStage;
+  message: string;
+  ctx?: { series?: string; file?: string };
+}
+
 interface ScanResult {
   success: boolean;
   count: number;
@@ -36,6 +47,14 @@ export interface ElectronAPI {
   getImageCacheStats: () => Promise<CacheStats>;
   clearImageCache: () => Promise<boolean>;
   getImageCachePath: () => Promise<string>;
+
+  // Activity log
+  onLogEvent: (handler: (event: LogEvent) => void) => () => void;
+  getLogBuffer: () => Promise<LogEvent[]>;
+  clearLog: () => Promise<void>;
+
+  // Video probe
+  probeRetry: (filePath: string) => Promise<void>;
 }
 
 declare global {
@@ -70,4 +89,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getImageCacheStats: () => ipcRenderer.invoke('get-image-cache-stats'),
   clearImageCache: () => ipcRenderer.invoke('clear-image-cache'),
   getImageCachePath: () => ipcRenderer.invoke('get-image-cache-path'),
+
+  // Activity log
+  onLogEvent: (handler: (event: LogEvent) => void) => {
+    const listener = (_e: unknown, event: LogEvent) => handler(event);
+    ipcRenderer.on('log:event', listener);
+    return () => ipcRenderer.removeListener('log:event', listener);
+  },
+  getLogBuffer: () => ipcRenderer.invoke('log:get-buffer'),
+  clearLog: () => ipcRenderer.invoke('log:clear'),
+
+  // Video probe
+  probeRetry: (filePath: string) => ipcRenderer.invoke('probe:retry', filePath),
 });
