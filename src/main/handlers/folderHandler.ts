@@ -58,8 +58,11 @@ function cleanEpisodeTitle(filename: string): string {
 }
 
 function extractSeasonAndEpisode(filename: string): { season: number | null; episode: number } {
-  // IMPORTANT: Work on base name WITHOUT extension to avoid ".mp4" → "4" bug
-  const baseName = getBaseName(filename);
+  // IMPORTANT: Work on base name WITHOUT extension to avoid ".mp4" → "4" bug.
+  // Also strip [...] tags BEFORE pattern matching — release-group hashes like
+  // [F1E24928] would otherwise match /E(\d{2,})/ and pollute the result, and
+  // the digit fallback would grab huge numbers from CRC32 hashes.
+  const baseName = getBaseName(filename).replace(/\s*\[[^\]]*\]\s*/g, ' ').replace(/\s+/g, ' ').trim();
 
   // First, try to extract season and episode from S01E01 format
   const seasonEpisodeMatch = baseName.match(/\bS(\d+)E(\d+)\b/i);
@@ -70,16 +73,12 @@ function extractSeasonAndEpisode(filename: string): { season: number | null; epi
     };
   }
 
-  // Try to extract season from folder name patterns (Season 1, S01, etc.)
-  // This will be handled separately when processing folders
-
   // Try various patterns to extract episode number
   const decimalEpisodeMatch = baseName.match(/Episode\s*(\d+)\.(\d+)/i);
   if (decimalEpisodeMatch) {
     const whole = parseInt(decimalEpisodeMatch[1], 10);
     const decimal = parseInt(decimalEpisodeMatch[2], 10);
     // Store as actual decimal: 6.5, 7.5, 10.5, etc.
-    // This allows proper sorting (6, 6.5, 7, 7.5) and correct display
     return {
       season: null,
       episode: whole + decimal / 10,
@@ -89,9 +88,8 @@ function extractSeasonAndEpisode(filename: string): { season: number | null; epi
   const patterns = [
     /Episode\s*(\d+)/i,           // "Episode 10" or "Episode10"
     /Ep\.?\s*(\d+)/i,             // "Ep 10" or "Ep.10"
-    /E(\d{2,})/i,                 // "E10" (at least 2 digits)
+    /\bE(\d{2,})\b/i,             // "E10" (at least 2 digits)
     /\s-\s*(\d+)(?:\s|$)/,        // " - 10 " or " - 10" at end
-    /\[(\d+)\]/,                  // "[10]"
     /\s(\d{1,3})(?:\s|$)/,        // " 10 " or " 10" at end (1-3 digit episode)
   ];
 
@@ -105,17 +103,20 @@ function extractSeasonAndEpisode(filename: string): { season: number | null; epi
     }
   }
 
-  // Fallback: find numbers in the base name (not extension!)
+  // Fallback: find numbers in the cleaned base name.
   const numbers = baseName.match(/\d+/g);
   if (numbers && numbers.length > 0) {
-    // Filter out year-like numbers (1900-2099)
+    // Filter out year-like numbers (1900-2099) AND implausibly-large episode
+    // numbers (>= 1000) — anything that big in a filename is almost certainly
+    // bitrate, resolution, or a leftover hash chunk, not an episode index.
     const nonYearNumbers = numbers.filter(n => {
       const num = parseInt(n, 10);
-      return num < 1900 || num > 2099;
+      if (num >= 1900 && num <= 2099) return false;
+      if (num >= 1000) return false;
+      return true;
     });
 
     if (nonYearNumbers.length > 0) {
-      // Return the last non-year number
       return {
         season: null,
         episode: parseInt(nonYearNumbers[nonYearNumbers.length - 1], 10),
