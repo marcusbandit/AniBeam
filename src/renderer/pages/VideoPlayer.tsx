@@ -6,6 +6,20 @@ import JASSUB from 'jassub';
 import jassubWorkerUrl from 'jassub/dist/worker/worker.js?url';
 import jassubWasmUrl from 'jassub/dist/wasm/jassub-worker.wasm?url';
 
+// Vite's dev server serves .wasm with application/octet-stream, which makes
+// WebAssembly.instantiateStreaming() in the JASSUB worker reject the response.
+// Fetch the bytes once in the renderer, wrap as a Blob with the correct MIME,
+// and hand JASSUB the resulting blob: URL. Cached so we don't refetch.
+let wasmBlobUrlPromise: Promise<string> | null = null;
+function getJassubWasmBlobUrl(): Promise<string> {
+  if (!wasmBlobUrlPromise) {
+    wasmBlobUrlPromise = fetch(jassubWasmUrl)
+      .then((r) => r.arrayBuffer())
+      .then((buf) => URL.createObjectURL(new Blob([buf], { type: 'application/wasm' })));
+  }
+  return wasmBlobUrlPromise;
+}
+
 interface SubtitleTrack {
   src: string;        // file:// or media:// or blob: URL — used for native VTT or JASSUB
   origPath: string;   // original file path
@@ -296,7 +310,7 @@ function VideoPlayer() {
       // fetch arbitrary URLs reliably from its own context.
       void (async () => {
         try {
-          const resp = await fetch(sub.src);
+          const [resp, wasmBlobUrl] = await Promise.all([fetch(sub.src), getJassubWasmBlobUrl()]);
           if (!resp.ok) throw new Error(`fetch ${sub.src} → ${resp.status}`);
           const subContent = await resp.text();
           // The user may have switched again before this resolves; bail.
@@ -305,7 +319,7 @@ function VideoPlayer() {
             video,
             subContent,
             workerUrl: jassubWorkerUrl,
-            wasmUrl: jassubWasmUrl,
+            wasmUrl: wasmBlobUrl,
           });
           jassubRef.current = inst;
           console.log('[subs] JASSUB initialized for', sub.label);

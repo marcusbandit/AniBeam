@@ -1,30 +1,14 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// JASSUB (libass-WASM) loads its .wasm via WebAssembly.instantiateStreaming(),
-// which requires the response to have Content-Type: application/wasm. Vite's
-// dev server serves .wasm as application/octet-stream by default in some
-// environments, which makes the worker throw. This middleware overrides that.
-const wasmMimeFix = {
-  name: 'wasm-mime-fix',
-  configureServer(server) {
-    server.middlewares.use((req, res, next) => {
-      // Vite appends ?v=... cache-busters, so strip the query before testing.
-      const path = (req.url || '').split('?')[0];
-      if (path.endsWith('.wasm')) {
-        res.setHeader('Content-Type', 'application/wasm');
-      }
-      next();
-    });
-  },
-};
-
 export default defineConfig({
-  plugins: [react(), wasmMimeFix],
+  plugins: [react()],
   base: './',
   resolve: {
     extensions: ['.tsx', '.ts', '.jsx', '.js', '.mjs', '.json'],
   },
-  // .wasm and the JASSUB worker need to be left alone (no transformation).
+  // Treat .wasm as a raw asset; the renderer fetches and re-blobs it with the
+  // correct MIME before passing to JASSUB (Vite's dev static handler serves
+  // .wasm with the wrong Content-Type and overrides any middleware fix).
   assetsInclude: ['**/*.wasm'],
 });
