@@ -280,6 +280,36 @@ function VideoPlayer() {
     try { localStorage.setItem('subtitle-style-v2', JSON.stringify(subStyle)); } catch { /* ignore */ }
   }, [subStyle]);
 
+  // Apply the bottom-offset to every cue on the active subtitle track.
+  // Chromium ignores CSS attempts to move ::-webkit-media-text-track-container,
+  // so we have to use the WebVTT spec's own positioning: set cue.snapToLines
+  // = false and cue.line = "% from top". subStyle.positionBottom is in
+  // percent-of-video-height (0 = sitting on the bottom edge, 50 = mid screen).
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || activeSubIdx < 0) return;
+    const track = video.textTracks[activeSubIdx];
+    if (!track) return;
+
+    const apply = () => {
+      if (!track.cues) return;
+      const linePct = Math.max(0, Math.min(100, 100 - subStyle.positionBottom));
+      for (let i = 0; i < track.cues.length; i++) {
+        const cue = track.cues[i] as VTTCue;
+        if (typeof cue.line !== 'undefined') {
+          cue.snapToLines = false;
+          cue.line = linePct;
+        }
+      }
+    };
+    apply();
+    // Cues for an extracted track may finish loading shortly after the track
+    // becomes active; re-apply on cuechange so newly-arriving cues get
+    // positioned correctly too.
+    track.addEventListener('cuechange', apply);
+    return () => track.removeEventListener('cuechange', apply);
+  }, [activeSubIdx, subStyle.positionBottom, subtitleSrcs]);
+
   // Close subtitle menu on outside click.
   useEffect(() => {
     if (!subMenuOpen) return;
@@ -453,13 +483,6 @@ function VideoPlayer() {
       font-family: ${subStyle.fontFamily};
       text-shadow: ${OUTLINE_PRESETS[subStyle.outline]};
     }
-    /* Push the entire cue display container up from the bottom edge. */
-    .player-canvas video::-webkit-media-text-track-container {
-      bottom: ${subStyle.positionBottom}vh !important;
-    }
-    .player-canvas video::-webkit-media-text-track-display {
-      bottom: ${subStyle.positionBottom}vh !important;
-    }
   `;
 
   return (
@@ -585,13 +608,13 @@ function VideoPlayer() {
                           <span className="sub-style-val">{subStyle.fontSize.toFixed(2)}vh</span>
                         </label>
                         <label className="sub-style-row">
-                          <span>Position</span>
+                          <span>Bottom %</span>
                           <input
-                            type="range" min={0} max={40} step={0.5}
+                            type="range" min={0} max={50} step={1}
                             value={subStyle.positionBottom}
                             onChange={(e) => setSubStyle((s) => ({ ...s, positionBottom: Number(e.target.value) }))}
                           />
-                          <span className="sub-style-val">{subStyle.positionBottom.toFixed(1)}vh</span>
+                          <span className="sub-style-val">{Math.round(subStyle.positionBottom)}%</span>
                         </label>
                         <label className="sub-style-row">
                           <span>Text color</span>
