@@ -2,7 +2,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useMetadata, type FileEpisode } from '../hooks/useMetadata.js';
 import { progressId, readProgress, writeProgress, RESUME_HEAD_SKIP, RESUME_TAIL_SKIP } from '../utils/playbackProgress';
-import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Minimize, Subtitles, SkipBack, SkipForward } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Minimize, Subtitles, SkipBack, SkipForward, CheckCheck } from 'lucide-react';
 import JASSUB from 'jassub';
 import jassubWorkerUrl from 'jassub/dist/worker/worker.js?url';
 import jassubWasmUrl from 'jassub/dist/wasm/jassub-worker.wasm?url';
@@ -782,6 +782,90 @@ function VideoPlayer() {
     video.currentTime = Math.min(video.duration || toTime, toTime + 1);
   };
 
+  // ----- Tracker auto-mark -----
+  // Resolves to the time at which we count the episode as "watched" — outro
+  // start when AniSkip has data, otherwise duration minus 90 s as a coarse
+  // "credits started" fallback. null when we have no signal yet.
+  const epNumForMark = parseInt(episodeNumber ?? '', 10);
+  const series = seriesId ? metadata[seriesId] : undefined;
+  const seriesAnilistId = series?.anilistId;
+  const seriesMalId = (series as { malId?: number } | undefined)?.malId;
+  const seriesTotalEps = series?.totalEpisodes ?? null;
+
+  const autoMarkAt =
+    skipTimes.ed?.start ?? (duration > 90 ? duration - 90 : null);
+
+  const autoMarkedRef = useRef<string>('');
+  const [trackerToast, setTrackerToast] = useState<string | null>(null);
+  const trackerToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showTrackerToast = useCallback((msg: string) => {
+    setTrackerToast(msg);
+    if (trackerToastTimer.current) clearTimeout(trackerToastTimer.current);
+    trackerToastTimer.current = setTimeout(() => setTrackerToast(null), 4000);
+  }, []);
+
+  const triggerMark = useCallback(async (origin: 'auto' | 'manual') => {
+    if (!seriesId || !Number.isFinite(epNumForMark)) return;
+    if (!seriesAnilistId && !seriesMalId) {
+      if (origin === 'manual') showTrackerToast('No AniList/MAL id on this series — nothing to update.');
+      return;
+    }
+    type MarkRes = Awaited<ReturnType<typeof window.electronAPI.trackerMarkEpisode>>;
+    const calls: Promise<MarkRes>[] = [];
+    if (seriesAnilistId) {
+      calls.push(window.electronAPI.trackerMarkEpisode('anilist', seriesAnilistId, epNumForMark, seriesTotalEps));
+    }
+    if (seriesMalId) {
+      calls.push(window.electronAPI.trackerMarkEpisode('mal', seriesMalId, epNumForMark, seriesTotalEps));
+    }
+    const results = await Promise.allSettled(calls);
+    const summary: string[] = [];
+    let anyOk = false;
+    let anyNotConnected = false;
+    for (const r of results) {
+      if (r.status !== 'fulfilled') continue;
+      const v = r.value;
+      if (v.ok) {
+        anyOk = true;
+        summary.push(`${v.provider.toUpperCase()} → ep ${v.newProgress}`);
+      } else if (v.reason === 'no-account') {
+        anyNotConnected = true;
+      } else if (v.reason === 'not-newer') {
+        summary.push(`${v.provider.toUpperCase()} already at ${v.newProgress}`);
+      }
+    }
+    if (anyOk) showTrackerToast(`Tracked · ${summary.join(' · ')}`);
+    else if (origin === 'manual') {
+      if (summary.length) showTrackerToast(summary.join(' · '));
+      else if (anyNotConnected) showTrackerToast('No tracker connected. Open Settings to link AniList or MAL.');
+      else showTrackerToast('Nothing to update.');
+    }
+  }, [seriesId, epNumForMark, seriesAnilistId, seriesMalId, seriesTotalEps, showTrackerToast]);
+
+  // Reset the auto-mark guard whenever the episode changes.
+  useEffect(() => {
+    autoMarkedRef.current = '';
+  }, [seriesId, episodeNumber]);
+
+  // Fire once when playback first crosses into the outro window (or the
+  // duration-90s fallback). Re-checks on every currentTime update — cheap
+  // because a ref short-circuits after the first hit.
+  useEffect(() => {
+    if (!seriesId || !episodeNumber) return;
+    const key = `${seriesId}::${episodeNumber}`;
+    if (autoMarkedRef.current === key) return;
+    if (autoMarkAt == null) return;
+    if (currentTime < autoMarkAt) return;
+    autoMarkedRef.current = key;
+    void triggerMark('auto');
+  }, [currentTime, autoMarkAt, seriesId, episodeNumber, triggerMark]);
+
+  // Clear any pending toast when the player unmounts.
+  useEffect(() => () => {
+    if (trackerToastTimer.current) clearTimeout(trackerToastTimer.current);
+  }, []);
+
   // Wire <video> events to local state.
   useEffect(() => {
     const video = videoRef.current;
@@ -841,6 +925,22 @@ function VideoPlayer() {
         e.preventDefault();
         if (video.paused) void video.play(); else video.pause();
         showChrome();
+      } else if (e.ctrlKey && e.key === 'ArrowRight') {
+        // Ctrl+Right = jump to the end of the current intro/outro if we're
+        // inside one, otherwise +90s. The intro/outro range comes from the
+        // AniSkip skipTimes already in state.
+        e.preventDefault();
+        const t = video.currentTime;
+        let target: number;
+        if (skipTimes.op && t >= skipTimes.op.start && t < skipTimes.op.end) {
+          target = skipTimes.op.end;
+        } else if (skipTimes.ed && t >= skipTimes.ed.start && t < skipTimes.ed.end) {
+          target = skipTimes.ed.end;
+        } else {
+          target = t + 90;
+        }
+        video.currentTime = Math.min(video.duration || Infinity, target);
+        showChrome();
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
         video.currentTime = Math.min(video.duration || Infinity, video.currentTime + 5);
@@ -860,7 +960,7 @@ function VideoPlayer() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [showChrome]);
+  }, [showChrome, skipTimes]);
 
   const togglePlay = () => {
     const video = videoRef.current;
@@ -1000,6 +1100,9 @@ function VideoPlayer() {
           Your browser does not support the video tag.
         </video>
       </div>
+      {trackerToast && (
+        <div className="player-toast" role="status">{trackerToast}</div>
+      )}
       {(inOpWindow || inEdWindow) && (
         <button
           className="player-skip"
@@ -1083,6 +1186,16 @@ function VideoPlayer() {
             />
           </div>
           <div className="player-right-group">
+            {(seriesAnilistId || seriesMalId) && (
+              <button
+                className="player-ctl-btn"
+                onClick={() => void triggerMark('manual')}
+                aria-label="Mark this episode as watched on linked trackers"
+                title="Mark watched"
+              >
+                <CheckCheck size={18} />
+              </button>
+            )}
             {subtitleSrcs.length > 0 && (
               <div className="player-sub-anchor">
                 <button
