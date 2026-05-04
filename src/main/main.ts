@@ -437,7 +437,11 @@ ipcMain.handle('scan-and-fetch-metadata', async (_event, folderPath: string) => 
     // 1. Scan the folder to get all media
     const scannedMedia = await folderHandler.scanFolder(folderPath);
 
-    // 2. Load existing metadata and reconcile against disk
+    // 2. Load existing metadata and reconcile against disk.
+    // The intermediate save here is a crash-recovery checkpoint: if the
+    // per-series fetch loop below throws, the on-disk state is already the
+    // reconciled state (deletions are not reverted). The handler's final save
+    // (after the fetch loop) will overwrite this on the success path.
     const rawMetadata = await metadataHandler.loadMetadata() as Record<string, unknown>;
     const activeRoots = await configHandler.getFolderSources();
     const existingMetadata = await folderHandler.reconcileMetadata(rawMetadata, activeRoots);

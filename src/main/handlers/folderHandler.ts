@@ -545,8 +545,17 @@ interface SeriesEntry {
  * whole series and purge its cached posters/banners and episode thumbnails.
  *
  * @param activeRoots - Optional list of currently-active library root paths.
- *                     If omitted, only the disk-presence check applies.
+ *                     If omitted (`undefined`), the root-reachability check is
+ *                     skipped — only disk presence matters. Pass `[]` explicitly
+ *                     to mean "no roots configured" — current semantics treat
+ *                     that the same as `undefined` (preserve everything that's
+ *                     still on disk). Path comparison is Linux-only by design;
+ *                     no normalization or symlink resolution is performed.
  * @returns the reconciled metadata object (may share references with the input).
+ *
+ * Synchronous `existsSync` is used on purpose — typical libraries have <10k
+ * files and reconcile runs at most once per scan or unlink-burst, so the
+ * sync stat is cheaper than the async overhead.
  */
 async function reconcileMetadata(
   metadata: Record<string, unknown>,
@@ -557,6 +566,7 @@ async function reconcileMetadata(
   let removedSeries = 0;
 
   const isUnderActiveRoot = (filePath: string): boolean => {
+    // No roots configured (or none passed) → skip the reachability check.
     if (!activeRoots || activeRoots.length === 0) return true;
     return activeRoots.some(
       (root) => filePath === root || filePath.startsWith(root.endsWith('/') ? root : root + '/'),
