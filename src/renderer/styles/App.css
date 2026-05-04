@@ -754,6 +754,17 @@ a { color: inherit; text-decoration: none; }
   background: #000;
 }
 
+/* Chromium's volume slider pops out to the left of the speaker icon on
+   hover. Default ~50px = useless; widen the slider track so the pop-out
+   has real travel. The pop-out itself is a native popup and intentionally
+   sits to the left of the speaker — that's not a layout bug. */
+.player-canvas video::-webkit-media-controls-volume-slider {
+  width: 140px !important;
+  min-width: 140px !important;
+  padding-left: 8px !important;
+  padding-right: 8px !important;
+}
+
 .player-header {
   position: absolute;
   top: 0;
