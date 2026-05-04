@@ -339,37 +339,67 @@ function VideoPlayer() {
             availableFonts: { 'liberation sans': jassubDefaultFontUrl },
             defaultFont: 'liberation sans',
             queryFonts: false,
-            // Render at the display's native resolution × DPR, no 1080p cap.
-            // Default prescaleHeightLimit=1080 makes subs look pixelated on
-            // 1440p / 4K screens because the bitmap is upscaled to fit.
+            // Render at 2× the display × DPR, no upper cap. The browser
+            // downsamples 2× → 1× when blitting, which is super-sampling
+            // anti-aliasing (SSAA) — kills the pixelation in font edges
+            // and outline strokes for free.
             prescaleHeightLimit: 0,
-            prescaleFactor: 1.0,
+            prescaleFactor: 2.0,
           } as ConstructorParameters<typeof JASSUB>[0]);
           jassubRef.current = inst;
           await (inst as unknown as { ready?: Promise<unknown> }).ready;
           console.log('[subs] JASSUB ready for', sub.label);
 
-          // Drive JASSUB on the display refresh via requestAnimationFrame so
-          // sub frames stay in lockstep with painted frames. rVFC would be
-          // ideal but didn't fire reliably in this Electron context. rAF
-          // typically runs at the display's full refresh (60/120/144 Hz),
-          // which keeps the sub motion smooth.
-          const pump = () => {
+          // Sync sub frames to actual video frames via requestVideoFrameCallback.
+          // This is the right API for sub timing — each callback delivers the
+          // exact mediaTime + expected display time of a presented frame.
+          // Falls back to rAF if rVFC doesn't tick for 500ms (defensive: in
+          // earlier debugging we saw rVFC sometimes not fire in this Electron
+          // context, but with the corrected font init it should work now).
+          const renderRef = (inst as unknown as { manualRender: (m: { expectedDisplayTime: number; width: number; height: number; mediaTime: number }) => Promise<unknown> });
+          let lastRvfcAt = 0;
+          let usingRaf = false;
+
+          const onFrame = (_now: number, meta: VideoFrameCallbackMetadata) => {
             if (jassubRef.current !== inst) return; // disposed
+            lastRvfcAt = performance.now();
+            try {
+              void renderRef.manualRender({
+                expectedDisplayTime: meta.expectedDisplayTime,
+                width: meta.width,
+                height: meta.height,
+                mediaTime: meta.mediaTime,
+              });
+            } catch { /* ignore */ }
+            videoRef.current?.requestVideoFrameCallback(onFrame);
+          };
+          if ('requestVideoFrameCallback' in video) {
+            video.requestVideoFrameCallback(onFrame);
+          }
+
+          const rafPump = () => {
+            if (jassubRef.current !== inst) return;
+            // Only run rAF fallback if rVFC has gone quiet for >500ms while
+            // the video is playing.
             const v = videoRef.current;
-            if (v && !v.paused && v.readyState >= 2) {
+            const rvfcStale = performance.now() - lastRvfcAt > 500;
+            if (v && !v.paused && v.readyState >= 2 && rvfcStale) {
+              if (!usingRaf) { console.log('[subs] rVFC stalled, falling back to rAF pump'); usingRaf = true; }
               try {
-                void (inst as unknown as { manualRender: (m: { expectedDisplayTime: number; width: number; height: number; mediaTime: number }) => Promise<unknown> }).manualRender({
+                void renderRef.manualRender({
                   expectedDisplayTime: performance.now(),
                   width: v.videoWidth,
                   height: v.videoHeight,
                   mediaTime: v.currentTime,
                 });
               } catch { /* ignore */ }
+            } else if (usingRaf && !rvfcStale) {
+              console.log('[subs] rVFC resumed');
+              usingRaf = false;
             }
-            requestAnimationFrame(pump);
+            requestAnimationFrame(rafPump);
           };
-          requestAnimationFrame(pump);
+          requestAnimationFrame(rafPump);
         } catch (err) {
           console.error('JASSUB init failed:', err);
         }
