@@ -134,6 +134,27 @@ function formatTime(s: number): string {
   return `${m}:${pad(sec)}`;
 }
 
+// Resume-tracking. Keyed by `${seriesId}::${episodeNumber}` so two episodes
+// of the same show don't collide. One localStorage slot for the whole map so
+// reads/writes are O(1) and progress survives a browser/app restart.
+const PROGRESS_KEY = 'video-progress-v1';
+const RESUME_HEAD_SKIP = 5;   // < 5s in: just start from 0, not worth resuming
+const RESUME_TAIL_SKIP = 30;  // within 30s of end: treat as finished
+type ProgressEntry = { t: number; d: number; updated: number };
+type ProgressMap = Record<string, ProgressEntry>;
+function progressId(seriesId: string, episodeNumber: string): string {
+  return `${seriesId}::${episodeNumber}`;
+}
+function readProgress(): ProgressMap {
+  try {
+    const raw = localStorage.getItem(PROGRESS_KEY);
+    return raw ? (JSON.parse(raw) as ProgressMap) : {};
+  } catch { return {}; }
+}
+function writeProgress(map: ProgressMap): void {
+  try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(map)); } catch { /* ignore */ }
+}
+
 function VideoPlayer() {
   const { seriesId, episodeNumber } = useParams<{ seriesId?: string; episodeNumber?: string }>();
   const navigate = useNavigate();
@@ -249,6 +270,92 @@ function VideoPlayer() {
       try { source.disconnect(); } catch { /* ignore */ }
       try { gain.disconnect(); } catch { /* ignore */ }
       void audioCtx.close();
+    };
+  }, []);
+
+  // Resume tracking. The id ref tracks which episode the video element is
+  // currently playing; the persistence effect uses it from a long-lived
+  // listener so we don't have to re-attach handlers on every navigation.
+  // We update the id only after videoSrc has actually changed so timeupdate
+  // events that fire BEFORE the new src is committed still attribute to the
+  // outgoing episode (otherwise we'd briefly write the wrong id).
+  const currentIdRef = useRef<string>('');
+  useEffect(() => {
+    currentIdRef.current = (seriesId && episodeNumber && videoSrc)
+      ? progressId(seriesId, episodeNumber)
+      : '';
+  }, [seriesId, episodeNumber, videoSrc]);
+
+  // Restore saved playback position when an episode loads. Runs once per
+  // episode-change via the loadedmetadata event so we have a real duration
+  // before deciding whether to resume.
+  useEffect(() => {
+    if (!videoSrc || !seriesId || !episodeNumber) return;
+    const video = videoRef.current;
+    if (!video) return;
+    const id = progressId(seriesId, episodeNumber);
+    const seek = () => {
+      const entry = readProgress()[id];
+      if (!entry) return;
+      const dur = video.duration;
+      if (!Number.isFinite(dur) || dur <= 0) return;
+      if (entry.t < RESUME_HEAD_SKIP || entry.t > dur - RESUME_TAIL_SKIP) return;
+      try { video.currentTime = entry.t; } catch { /* ignore */ }
+    };
+    if (video.readyState >= 1 && Number.isFinite(video.duration)) {
+      seek();
+      return;
+    }
+    video.addEventListener('loadedmetadata', seek, { once: true });
+    return () => video.removeEventListener('loadedmetadata', seek);
+  }, [videoSrc, seriesId, episodeNumber]);
+
+  // Persist position on a 4s heartbeat + at every pause and on unload. Clear
+  // the entry once the user has effectively finished the episode (within the
+  // tail window) so the next play starts fresh instead of jumping to credits.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    let lastSave = 0;
+    const save = () => {
+      const id = currentIdRef.current;
+      if (!id) return;
+      const t = video.currentTime;
+      const d = video.duration;
+      if (!Number.isFinite(t) || !Number.isFinite(d) || d <= 0) return;
+      const map = readProgress();
+      if (t >= d - RESUME_TAIL_SKIP) {
+        if (map[id]) { delete map[id]; writeProgress(map); }
+      } else if (t > RESUME_HEAD_SKIP) {
+        map[id] = { t, d, updated: Date.now() };
+        writeProgress(map);
+      }
+    };
+    const onTime = () => {
+      const now = Date.now();
+      if (now - lastSave < 4000) return;
+      lastSave = now;
+      save();
+    };
+    const onEnded = () => {
+      const id = currentIdRef.current;
+      if (!id) return;
+      const map = readProgress();
+      if (map[id]) { delete map[id]; writeProgress(map); }
+    };
+
+    video.addEventListener('timeupdate', onTime);
+    video.addEventListener('pause', save);
+    video.addEventListener('ended', onEnded);
+    window.addEventListener('beforeunload', save);
+
+    return () => {
+      save();
+      video.removeEventListener('timeupdate', onTime);
+      video.removeEventListener('pause', save);
+      video.removeEventListener('ended', onEnded);
+      window.removeEventListener('beforeunload', save);
     };
   }, []);
 
@@ -560,10 +667,13 @@ function VideoPlayer() {
     return () => { cancelled = true; };
   }, [activeSubIdx, subtitleSrcs, jassubReadyTick]);
 
-  // Apply (or restore) every dialogue style based on assStyles overrides.
-  // Always starts from the snapshot — styles without overrides get written
-  // back to their originals so clearing an override actually reverts.
+  // ASS style override application — DISABLED while the feature is W.I.P.
+  // The dropdown still detects and lists dialogue styles for visibility,
+  // but nothing gets written to JASSUB so the file's authored styling is
+  // shown verbatim. Re-enable by removing the `return` below.
   useEffect(() => {
+    return; // W.I.P. — see Style tab banner.
+    // eslint-disable-next-line @typescript-eslint/no-unreachable-code, no-unreachable
     if (activeSubIdx < 0) return;
     const sub = subtitleSrcs[activeSubIdx];
     if (!sub || sub.format !== 'ass') return;
@@ -987,9 +1097,19 @@ function VideoPlayer() {
                           setVttStyle(DEFAULT_SUB_STYLE);
                         }
                       };
-                      const disabled = isAss && !selectedAssStyle;
+                      // ASS styling is disabled for now — libass's layout cache
+                      // makes per-style edits behave inconsistently and the
+                      // current code path was producing more frustration than
+                      // value. Coming back to it later with a different approach.
+                      const disabled = isAss || (isAss && !selectedAssStyle);
                       return (
                         <div className="sub-menu-body sub-menu-style">
+                          {isAss && (
+                            <div className="sub-wip-banner">
+                              <span className="sub-wip-tag">W.I.P.</span>
+                              <span>Style overrides for embedded ASS subs are temporarily disabled. The dropdown still shows the dialogue styles detected in this file.</span>
+                            </div>
+                          )}
                           {isAss && (
                             <label className="sub-style-row">
                               <span>Style</span>
@@ -999,7 +1119,7 @@ function VideoPlayer() {
                                   onChange={(e) => setSelectedAssStyle(e.target.value || null)}
                                 >
                                   {assDialogueStyleNames.map((n) => (
-                                    <option key={n} value={n}>{n}{assStyles[n] ? ' •' : ''}</option>
+                                    <option key={n} value={n}>{n}</option>
                                   ))}
                                 </select>
                               ) : (
