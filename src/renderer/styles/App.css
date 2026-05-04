@@ -1480,8 +1480,18 @@ a { color: inherit; text-decoration: none; }
   padding: 3px 14px;
   align-items: center;
   min-height: 22px;
+  cursor: pointer;
+  user-select: text;
 }
 .activity-log-row:hover { background: #14141a; }
+.activity-log-row.expanded { align-items: start; background: #14141a; }
+.activity-log-row.expanded .activity-log-msg,
+.activity-log-row.expanded .activity-log-ctx {
+  white-space: normal;
+  word-break: break-word;
+  overflow: visible;
+  text-overflow: clip;
+}
 .activity-log-row.level-warn .activity-log-msg { color: #e0c089; }
 .activity-log-row.level-error .activity-log-msg { color: #e08989; }
 .activity-log-ts { color: #6a6a76; }

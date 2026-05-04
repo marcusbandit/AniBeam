@@ -24,6 +24,16 @@ export function ActivityLogDrawer() {
   const [open, setOpen] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const [stickToBottom, setStickToBottom] = useState(true);
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(() => new Set());
+
+  const toggleExpanded = (id: number) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (open && stickToBottom && listRef.current) {
@@ -102,8 +112,15 @@ export function ActivityLogDrawer() {
             {visibleEvents.map((e) => {
               const ctxText = e.ctx?.series ?? e.ctx?.file;
               const fullLine = `${e.message}${ctxText ? ` — ${ctxText}` : ''}`;
+              const expanded = expandedIds.has(e.id);
               return (
-                <div key={e.id} className={`activity-log-row level-${e.level}`} title={fullLine}>
+                <div
+                  key={e.id}
+                  className={`activity-log-row level-${e.level}${expanded ? ' expanded' : ''}`}
+                  title={expanded ? undefined : fullLine}
+                  onClick={() => toggleExpanded(e.id)}
+                  role="button"
+                >
                   <span className="activity-log-ts">{formatTime(e.ts)}</span>
                   <span className={`activity-log-stage stage-${e.stage}`}>{e.stage}</span>
                   <span className="activity-log-msg">{e.message}</span>
