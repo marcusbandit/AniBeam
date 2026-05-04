@@ -339,12 +339,14 @@ function VideoPlayer() {
             availableFonts: { 'liberation sans': jassubDefaultFontUrl },
             defaultFont: 'liberation sans',
             queryFonts: false,
-            // Render at 4× display × DPR for high SSAA quality. Browser
-            // downsamples on blit, killing aliasing in font edges. 4× is
-            // heavier than 2× but font rendering is the visible artifact —
-            // raise/lower this if perf becomes an issue.
-            prescaleHeightLimit: 0,
-            prescaleFactor: 4.0,
+            // SSAA: render at 2× display × DPR, browser downsamples on blit.
+            // prescaleHeightLimit is the CAP under which prescaleFactor is
+            // applied — it is NOT "0 = unlimited" (that branch becomes
+            // `result <= 0` which never fires). Set huge so the upscale
+            // branch always runs; maxRenderHeight: 0 means no upper cap.
+            prescaleHeightLimit: 8640,
+            prescaleFactor: 2.0,
+            maxRenderHeight: 0,
           } as ConstructorParameters<typeof JASSUB>[0]);
           jassubRef.current = inst;
           await (inst as unknown as { ready?: Promise<unknown> }).ready;
