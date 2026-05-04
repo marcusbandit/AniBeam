@@ -9,7 +9,9 @@ const wasmMimeFix = {
   name: 'wasm-mime-fix',
   configureServer(server) {
     server.middlewares.use((req, res, next) => {
-      if (req.url && req.url.endsWith('.wasm')) {
+      // Vite appends ?v=... cache-busters, so strip the query before testing.
+      const path = (req.url || '').split('?')[0];
+      if (path.endsWith('.wasm')) {
         res.setHeader('Content-Type', 'application/wasm');
       }
       next();
