@@ -114,7 +114,6 @@ function VideoPlayer() {
   const subMenuRef = useRef<HTMLDivElement>(null);
   const ccBtnRef = useRef<HTMLButtonElement>(null);
   const jassubRef = useRef<JASSUB | null>(null);
-  const assCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const tearDownJassub = () => {
     if (jassubRef.current) {
@@ -304,7 +303,6 @@ function VideoPlayer() {
           if (jassubRef.current) return;
           const inst = new JASSUB({
             video,
-            canvas: assCanvasRef.current ?? undefined,
             subContent,
             workerUrl: jassubWorkerUrl,
             wasmUrl: jassubWasmUrl,
@@ -645,7 +643,6 @@ function VideoPlayer() {
           ))}
           Your browser does not support the video tag.
         </video>
-        <canvas ref={assCanvasRef} className="player-ass-canvas" />
       </div>
       {(inOpWindow || inEdWindow) && (
         <button
