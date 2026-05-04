@@ -27,13 +27,15 @@ async function srtToVttUrl(srcUrl: string): Promise<string> {
   }
 }
 
+type SubtitleFont = 'Arial, sans-serif' | 'sans-serif' | 'serif' | 'ui-monospace';
+
 interface SubtitleStyle {
   fontSize: number;        // in vh — % of viewport height, scales with fullscreen
   positionBottom: number;  // distance above the bottom edge in vh
   color: string;
   bgColor: string;
   bgOpacity: number;
-  fontFamily: 'sans-serif' | 'serif' | 'ui-monospace';
+  fontFamily: SubtitleFont;
   outline: 'none' | 'light' | 'medium' | 'heavy';
 }
 
@@ -43,7 +45,7 @@ const DEFAULT_SUB_STYLE: SubtitleStyle = {
   color: '#ffffff',
   bgColor: '#000000',
   bgOpacity: 0.5,
-  fontFamily: 'sans-serif',
+  fontFamily: 'Arial, sans-serif',
   outline: 'medium',
 };
 
@@ -647,6 +649,7 @@ function VideoPlayer() {
                             value={subStyle.fontFamily}
                             onChange={(e) => setSubStyle((s) => ({ ...s, fontFamily: e.target.value as SubtitleStyle['fontFamily'] }))}
                           >
+                            <option value="Arial, sans-serif">Arial</option>
                             <option value="sans-serif">Sans</option>
                             <option value="serif">Serif</option>
                             <option value="ui-monospace">Mono</option>
