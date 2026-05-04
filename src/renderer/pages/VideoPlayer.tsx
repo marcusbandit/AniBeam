@@ -85,11 +85,52 @@ const OUTLINE_PRESETS: Record<SubtitleStyle['outline'], string> = {
   medium: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
   heavy: '-2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000, 0 0 4px #000',
 };
+const ASS_OUTLINE_THICKNESS: Record<SubtitleStyle['outline'], number> = {
+  none: 0, light: 1, medium: 2, heavy: 3,
+};
 
 function hexToRgb(hex: string): string {
   const m = hex.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
   if (!m) return '0,0,0';
   return `${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}`;
+}
+
+/**
+ * Pack an #rrggbb hex + opacity (0-1) into the 32-bit number that ASS uses
+ * for colour fields. ASS layout is AABBGGRR, alpha INVERTED (0=opaque,
+ * 255=transparent).
+ */
+function hexToAssColor(hex: string, opacity = 1): number {
+  const m = hex.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  if (!m) return 0;
+  const r = parseInt(m[1], 16);
+  const g = parseInt(m[2], 16);
+  const b = parseInt(m[3], 16);
+  const a = Math.round((1 - Math.max(0, Math.min(1, opacity))) * 255);
+  // >>> 0 to coerce to unsigned 32-bit
+  return ((a << 24) | (b << 16) | (g << 8) | r) >>> 0;
+}
+
+/**
+ * Heuristic: is this ASS style name most likely a dialogue/spoken-text style
+ * (vs a typesetting/sign style)? Conservative — when unsure we say "yes" so
+ * the user sees more options to pick from.
+ */
+function isDialogueStyleName(name: string): boolean {
+  const n = name.toLowerCase().trim();
+  // Hard exclude — these are clearly typesetting / signs.
+  if (/^sign[_\s-]|^_sign|sign_\d|_sign_/i.test(name)) return false;
+  if (/(^|[_\s-])(sign|signs|box|caption|note|disclaimer|credit|next.?episode|preview|circuit|attack|button|menu|overlay|on.?screen|location|placard|title.?card|subtitle.?list|opening|ending|op[_\s-]|ed[_\s-])/i.test(n)) return false;
+  // Hard include — common dialogue style names.
+  if (['main', 'default', 'default style', 'dialogue', 'dialog', 'italics', 'italic', 'narrator', 'narration', 'top', 'alt'].includes(n)) return true;
+  if (n.startsWith('default') || n.startsWith('main') || n.endsWith('italics') || n.endsWith(' alt')) return true;
+  // Otherwise: include (let the user filter visually).
+  return true;
+}
+
+function parsePlayResY(assText: string): number {
+  const m = assText.match(/^\s*PlayResY:\s*(\d+)/im);
+  return m ? parseInt(m[1], 10) : 288;
 }
 
 function pad(n: number): string {
@@ -124,15 +165,28 @@ function VideoPlayer() {
   const [skipTimes, setSkipTimes] = useState<{ op?: { start: number; end: number }; ed?: { start: number; end: number } }>({});
   const [subMenuOpen, setSubMenuOpen] = useState(false);
   const [subMenuTab, setSubMenuTab] = useState<'tracks' | 'style'>('tracks');
-  const [subStyle, setSubStyle] = useState<SubtitleStyle>(() => {
-    // Storage key bumped to v2 because units changed from px → vh; old saved
-    // values would otherwise interpret as enormous (22vh ≈ 240px on 1080p).
+  // VTT styling — applied via ::cue CSS. One global setting for all SRT/VTT.
+  const [vttStyle, setVttStyle] = useState<SubtitleStyle>(() => {
     try {
       const saved = localStorage.getItem('subtitle-style-v2');
       if (saved) return { ...DEFAULT_SUB_STYLE, ...JSON.parse(saved) as Partial<SubtitleStyle> };
     } catch { /* ignore */ }
     return DEFAULT_SUB_STYLE;
   });
+  // ASS styling — keyed by style name so settings follow the style across
+  // shows. Edit "Main" once → applies anywhere "Main" appears.
+  const [assStyles, setAssStyles] = useState<Record<string, SubtitleStyle>>(() => {
+    try {
+      const saved = localStorage.getItem('subtitle-style-ass-v1');
+      if (saved) return JSON.parse(saved) as Record<string, SubtitleStyle>;
+    } catch { /* ignore */ }
+    return {};
+  });
+  // Dialogue style names detected in the current ASS track (populated when
+  // an ASS track is selected). Used to drive the dropdown in the Style tab.
+  const [assDialogueStyleNames, setAssDialogueStyleNames] = useState<string[]>([]);
+  const [selectedAssStyle, setSelectedAssStyle] = useState<string | null>(null);
+  const assPlayResYRef = useRef<number>(288);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -325,6 +379,7 @@ function VideoPlayer() {
           const [resp, wasmUrls] = await Promise.all([fetch(sub.src), getJassubWasmUrls()]);
           if (!resp.ok) throw new Error(`fetch ${sub.src} → ${resp.status}`);
           const subContent = await resp.text();
+          assPlayResYRef.current = parsePlayResY(subContent);
           // The user may have switched again before this resolves; bail.
           if (jassubRef.current) return;
           const inst = new JASSUB({
@@ -414,10 +469,13 @@ function VideoPlayer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subtitleSrcs]);
 
-  // Persist subtitle style to localStorage on change.
+  // Persist VTT and ASS style settings separately.
   useEffect(() => {
-    try { localStorage.setItem('subtitle-style-v2', JSON.stringify(subStyle)); } catch { /* ignore */ }
-  }, [subStyle]);
+    try { localStorage.setItem('subtitle-style-v2', JSON.stringify(vttStyle)); } catch { /* ignore */ }
+  }, [vttStyle]);
+  useEffect(() => {
+    try { localStorage.setItem('subtitle-style-ass-v1', JSON.stringify(assStyles)); } catch { /* ignore */ }
+  }, [assStyles]);
 
   // Bottom-offset for native VTT cues. Doesn't apply to ASS — JASSUB renders
   // those with the file's own positioning, untouched. We only adjust cues
@@ -432,7 +490,7 @@ function VideoPlayer() {
     const autoCues = new WeakSet<VTTCue>();
     const apply = () => {
       if (!track.cues) return;
-      const linePct = Math.max(0, Math.min(100, 100 - subStyle.positionBottom));
+      const linePct = Math.max(0, Math.min(100, 100 - vttStyle.positionBottom));
       for (let i = 0; i < track.cues.length; i++) {
         const cue = track.cues[i] as VTTCue;
         if (!autoCues.has(cue) && cue.line === 'auto') autoCues.add(cue);
@@ -446,7 +504,80 @@ function VideoPlayer() {
     track.addEventListener('cuechange', apply);
     return () => track.removeEventListener('cuechange', apply);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSubIdx, subStyle.positionBottom, subtitleSrcs]);
+  }, [activeSubIdx, vttStyle.positionBottom, subtitleSrcs]);
+
+  // When an ASS track activates, walk JASSUB's styles, list the dialogue
+  // ones for the dropdown, and apply any saved overrides.
+  useEffect(() => {
+    if (activeSubIdx < 0) {
+      setAssDialogueStyleNames([]);
+      setSelectedAssStyle(null);
+      return;
+    }
+    const sub = subtitleSrcs[activeSubIdx];
+    if (!sub || sub.format !== 'ass') {
+      setAssDialogueStyleNames([]);
+      setSelectedAssStyle(null);
+      return;
+    }
+    const inst = jassubRef.current;
+    if (!inst) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        await (inst as unknown as { ready: Promise<void> }).ready;
+        const styles = await (inst as unknown as { renderer: { getStyles: () => Promise<Array<{ Name: string }>> } }).renderer.getStyles();
+        if (cancelled) return;
+        const dialogue = styles.map((s) => s.Name).filter(isDialogueStyleName);
+        setAssDialogueStyleNames(dialogue);
+        // Pick the first dialogue style as the default selection, but keep
+        // a previous selection if it still exists in this file.
+        setSelectedAssStyle((prev) => (prev && dialogue.includes(prev) ? prev : (dialogue[0] ?? null)));
+      } catch (err) {
+        console.warn('[subs] could not list ASS styles', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeSubIdx, subtitleSrcs]);
+
+  // Apply ASS style overrides to JASSUB. Re-runs whenever the saved overrides
+  // change OR a new ASS track activates.
+  useEffect(() => {
+    if (activeSubIdx < 0) return;
+    const sub = subtitleSrcs[activeSubIdx];
+    if (!sub || sub.format !== 'ass') return;
+    const inst = jassubRef.current;
+    if (!inst) return;
+    void (async () => {
+      try {
+        const r = (inst as unknown as { renderer: { getStyles: () => Promise<Array<Record<string, unknown>>>; setStyle: (s: Record<string, unknown>, idx: number) => Promise<unknown> } }).renderer;
+        const styles = await r.getStyles();
+        const playResY = assPlayResYRef.current || 288;
+        for (let i = 0; i < styles.length; i++) {
+          const name = (styles[i].Name as string) || '';
+          const o = assStyles[name];
+          if (!o) continue;
+          // Convert vh-based controls to PlayRes units.
+          const fontSizePx = Math.max(1, Math.round((o.fontSize / 100) * playResY));
+          const marginVPx = Math.max(0, Math.round((o.positionBottom / 100) * playResY));
+          const fontName = o.fontFamily.split(',')[0].trim().replace(/^['"]|['"]$/g, '');
+          const modified = {
+            ...styles[i],
+            FontSize: fontSizePx,
+            FontName: fontName,
+            PrimaryColour: hexToAssColor(o.color, 1),
+            BackColour: hexToAssColor(o.bgColor, o.bgOpacity),
+            BorderStyle: o.bgOpacity > 0 ? 3 : 1,
+            Outline: ASS_OUTLINE_THICKNESS[o.outline],
+            MarginV: marginVPx,
+          };
+          await r.setStyle(modified, i);
+        }
+      } catch (err) {
+        console.warn('[subs] failed to apply ASS overrides', err);
+      }
+    })();
+  }, [activeSubIdx, subtitleSrcs, assStyles]);
 
   // Close subtitle menu on outside click.
   useEffect(() => {
@@ -659,11 +790,11 @@ function VideoPlayer() {
 
   const cueCss = `
     .player-canvas video::cue {
-      background-color: rgba(${hexToRgb(subStyle.bgColor)}, ${subStyle.bgOpacity});
-      color: ${subStyle.color};
-      font-size: ${subStyle.fontSize}vh;
-      font-family: ${subStyle.fontFamily};
-      text-shadow: ${OUTLINE_PRESETS[subStyle.outline]};
+      background-color: rgba(${hexToRgb(vttStyle.bgColor)}, ${vttStyle.bgOpacity});
+      color: ${vttStyle.color};
+      font-size: ${vttStyle.fontSize}vh;
+      font-family: ${vttStyle.fontFamily};
+      text-shadow: ${OUTLINE_PRESETS[vttStyle.outline]};
     }
   `;
 
@@ -794,81 +925,131 @@ function VideoPlayer() {
                           >{s.label}</button>
                         ))}
                       </div>
-                    ) : (
-                      <div className="sub-menu-body sub-menu-style">
-                        <label className="sub-style-row">
-                          <span>Size</span>
-                          <input
-                            type="range" min={1} max={15} step={0.25}
-                            value={subStyle.fontSize}
-                            onChange={(e) => setSubStyle((s) => ({ ...s, fontSize: Number(e.target.value) }))}
-                          />
-                          <span className="sub-style-val">{subStyle.fontSize.toFixed(2)}vh</span>
-                        </label>
-                        <label className="sub-style-row">
-                          <span>Bottom %</span>
-                          <input
-                            type="range" min={0} max={50} step={1}
-                            value={subStyle.positionBottom}
-                            onChange={(e) => setSubStyle((s) => ({ ...s, positionBottom: Number(e.target.value) }))}
-                          />
-                          <span className="sub-style-val">{Math.round(subStyle.positionBottom)}%</span>
-                        </label>
-                        <label className="sub-style-row">
-                          <span>Text color</span>
-                          <input
-                            type="color"
-                            value={subStyle.color}
-                            onChange={(e) => setSubStyle((s) => ({ ...s, color: e.target.value }))}
-                          />
-                        </label>
-                        <label className="sub-style-row">
-                          <span>Background</span>
-                          <input
-                            type="color"
-                            value={subStyle.bgColor}
-                            onChange={(e) => setSubStyle((s) => ({ ...s, bgColor: e.target.value }))}
-                          />
-                        </label>
-                        <label className="sub-style-row">
-                          <span>Bg opacity</span>
-                          <input
-                            type="range" min={0} max={1} step={0.05}
-                            value={subStyle.bgOpacity}
-                            onChange={(e) => setSubStyle((s) => ({ ...s, bgOpacity: Number(e.target.value) }))}
-                          />
-                          <span className="sub-style-val">{Math.round(subStyle.bgOpacity * 100)}%</span>
-                        </label>
-                        <label className="sub-style-row">
-                          <span>Font</span>
-                          <select
-                            value={subStyle.fontFamily}
-                            onChange={(e) => setSubStyle((s) => ({ ...s, fontFamily: e.target.value as SubtitleStyle['fontFamily'] }))}
-                          >
-                            <option value="Arial, sans-serif">Arial</option>
-                            <option value="sans-serif">Sans</option>
-                            <option value="serif">Serif</option>
-                            <option value="ui-monospace">Mono</option>
-                          </select>
-                        </label>
-                        <label className="sub-style-row">
-                          <span>Outline</span>
-                          <select
-                            value={subStyle.outline}
-                            onChange={(e) => setSubStyle((s) => ({ ...s, outline: e.target.value as SubtitleStyle['outline'] }))}
-                          >
-                            <option value="none">None</option>
-                            <option value="light">Light</option>
-                            <option value="medium">Medium</option>
-                            <option value="heavy">Heavy</option>
-                          </select>
-                        </label>
-                        <button
-                          className="sub-style-reset"
-                          onClick={() => setSubStyle(DEFAULT_SUB_STYLE)}
-                        >Reset to defaults</button>
-                      </div>
-                    )}
+                    ) : (() => {
+                      // Decide which style we're editing right now.
+                      const activeFormat = activeSubIdx >= 0 ? subtitleSrcs[activeSubIdx]?.format : 'vtt';
+                      const isAss = activeFormat === 'ass';
+                      const editing: SubtitleStyle = isAss
+                        ? (selectedAssStyle ? assStyles[selectedAssStyle] ?? DEFAULT_SUB_STYLE : DEFAULT_SUB_STYLE)
+                        : vttStyle;
+                      const update = (patch: Partial<SubtitleStyle>) => {
+                        if (isAss) {
+                          if (!selectedAssStyle) return;
+                          setAssStyles((prev) => ({
+                            ...prev,
+                            [selectedAssStyle]: { ...(prev[selectedAssStyle] ?? DEFAULT_SUB_STYLE), ...patch },
+                          }));
+                        } else {
+                          setVttStyle((s) => ({ ...s, ...patch }));
+                        }
+                      };
+                      const reset = () => {
+                        if (isAss) {
+                          if (!selectedAssStyle) return;
+                          setAssStyles((prev) => {
+                            const next = { ...prev };
+                            delete next[selectedAssStyle];
+                            return next;
+                          });
+                        } else {
+                          setVttStyle(DEFAULT_SUB_STYLE);
+                        }
+                      };
+                      const disabled = isAss && !selectedAssStyle;
+                      return (
+                        <div className="sub-menu-body sub-menu-style">
+                          {isAss && (
+                            <label className="sub-style-row">
+                              <span>Style</span>
+                              {assDialogueStyleNames.length > 0 ? (
+                                <select
+                                  value={selectedAssStyle ?? ''}
+                                  onChange={(e) => setSelectedAssStyle(e.target.value || null)}
+                                >
+                                  {assDialogueStyleNames.map((n) => (
+                                    <option key={n} value={n}>{n}{assStyles[n] ? ' •' : ''}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <span className="sub-style-val" style={{ fontStyle: 'italic', color: '#6a6a76' }}>none detected</span>
+                              )}
+                            </label>
+                          )}
+                          <label className="sub-style-row">
+                            <span>Size</span>
+                            <input
+                              type="range" min={1} max={15} step={0.25} disabled={disabled}
+                              value={editing.fontSize}
+                              onChange={(e) => update({ fontSize: Number(e.target.value) })}
+                            />
+                            <span className="sub-style-val">{editing.fontSize.toFixed(2)}vh</span>
+                          </label>
+                          <label className="sub-style-row">
+                            <span>Bottom %</span>
+                            <input
+                              type="range" min={0} max={50} step={1} disabled={disabled}
+                              value={editing.positionBottom}
+                              onChange={(e) => update({ positionBottom: Number(e.target.value) })}
+                            />
+                            <span className="sub-style-val">{Math.round(editing.positionBottom)}%</span>
+                          </label>
+                          <label className="sub-style-row">
+                            <span>Text color</span>
+                            <input
+                              type="color" disabled={disabled}
+                              value={editing.color}
+                              onChange={(e) => update({ color: e.target.value })}
+                            />
+                          </label>
+                          <label className="sub-style-row">
+                            <span>Background</span>
+                            <input
+                              type="color" disabled={disabled}
+                              value={editing.bgColor}
+                              onChange={(e) => update({ bgColor: e.target.value })}
+                            />
+                          </label>
+                          <label className="sub-style-row">
+                            <span>Bg opacity</span>
+                            <input
+                              type="range" min={0} max={1} step={0.05} disabled={disabled}
+                              value={editing.bgOpacity}
+                              onChange={(e) => update({ bgOpacity: Number(e.target.value) })}
+                            />
+                            <span className="sub-style-val">{Math.round(editing.bgOpacity * 100)}%</span>
+                          </label>
+                          <label className="sub-style-row">
+                            <span>Font</span>
+                            <select
+                              value={editing.fontFamily} disabled={disabled}
+                              onChange={(e) => update({ fontFamily: e.target.value as SubtitleStyle['fontFamily'] })}
+                            >
+                              <option value="Arial, sans-serif">Arial</option>
+                              <option value="sans-serif">Sans</option>
+                              <option value="serif">Serif</option>
+                              <option value="ui-monospace">Mono</option>
+                            </select>
+                          </label>
+                          <label className="sub-style-row">
+                            <span>Outline</span>
+                            <select
+                              value={editing.outline} disabled={disabled}
+                              onChange={(e) => update({ outline: e.target.value as SubtitleStyle['outline'] })}
+                            >
+                              <option value="none">None</option>
+                              <option value="light">Light</option>
+                              <option value="medium">Medium</option>
+                              <option value="heavy">Heavy</option>
+                            </select>
+                          </label>
+                          <button
+                            className="sub-style-reset"
+                            disabled={disabled}
+                            onClick={reset}
+                          >{isAss ? 'Clear override for this style' : 'Reset to defaults'}</button>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
