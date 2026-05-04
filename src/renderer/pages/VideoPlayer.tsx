@@ -187,6 +187,10 @@ function VideoPlayer() {
   const [assDialogueStyleNames, setAssDialogueStyleNames] = useState<string[]>([]);
   const [selectedAssStyle, setSelectedAssStyle] = useState<string | null>(null);
   const assPlayResYRef = useRef<number>(288);
+  // Bumps each time a JASSUB instance finishes initializing, so dependent
+  // effects can react after JASSUB is actually ready (selectSubtitle is async
+  // — activeSubIdx changes BEFORE jassubRef.current is set).
+  const [jassubReadyTick, setJassubReadyTick] = useState(0);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -406,6 +410,9 @@ function VideoPlayer() {
           jassubRef.current = inst;
           await (inst as unknown as { ready?: Promise<unknown> }).ready;
           console.log('[subs] JASSUB ready for', sub.label);
+          // Trigger dialogue-style detection / override-application effects
+          // now that the renderer is reachable.
+          setJassubReadyTick((t) => t + 1);
 
           // Render every rAF tick with the current mediaTime. JASSUB's
           // internal _demandRender skips redundant renders (same frame, no
@@ -506,8 +513,8 @@ function VideoPlayer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSubIdx, vttStyle.positionBottom, subtitleSrcs]);
 
-  // When an ASS track activates, walk JASSUB's styles, list the dialogue
-  // ones for the dropdown, and apply any saved overrides.
+  // When an ASS track activates AND JASSUB is ready, walk its styles, list
+  // the dialogue ones for the dropdown, and apply any saved overrides.
   useEffect(() => {
     if (activeSubIdx < 0) {
       setAssDialogueStyleNames([]);
@@ -538,10 +545,10 @@ function VideoPlayer() {
       }
     })();
     return () => { cancelled = true; };
-  }, [activeSubIdx, subtitleSrcs]);
+  }, [activeSubIdx, subtitleSrcs, jassubReadyTick]);
 
   // Apply ASS style overrides to JASSUB. Re-runs whenever the saved overrides
-  // change OR a new ASS track activates.
+  // change OR a new ASS track activates and JASSUB becomes ready.
   useEffect(() => {
     if (activeSubIdx < 0) return;
     const sub = subtitleSrcs[activeSubIdx];
@@ -577,7 +584,7 @@ function VideoPlayer() {
         console.warn('[subs] failed to apply ASS overrides', err);
       }
     })();
-  }, [activeSubIdx, subtitleSrcs, assStyles]);
+  }, [activeSubIdx, subtitleSrcs, assStyles, jassubReadyTick]);
 
   // Close subtitle menu on outside click.
   useEffect(() => {
