@@ -176,6 +176,10 @@ function VideoPlayer() {
   // Without this snapshot, setStyle mutates the wasm's style in place and
   // there's no way back to the file's defaults.
   const assOriginalsRef = useRef<Array<Record<string, unknown>>>([]);
+  // Raw ASS content we sent to JASSUB for the active track. Cached so we can
+  // call setTrack(content) again to force libass to re-lay-out every cue —
+  // mutating a style after cues are already laid out doesn't move them.
+  const assContentRef = useRef<string | null>(null);
   // Bumps each time a JASSUB instance finishes initializing, so dependent
   // effects can react after JASSUB is actually ready (selectSubtitle is async
   // — activeSubIdx changes BEFORE jassubRef.current is set).
@@ -373,6 +377,7 @@ function VideoPlayer() {
           if (!resp.ok) throw new Error(`fetch ${sub.src} → ${resp.status}`);
           const subContent = await resp.text();
           assPlayResYRef.current = parsePlayResY(subContent);
+          assContentRef.current = subContent;
           // The user may have switched again before this resolves; bail.
           if (jassubRef.current) return;
           const inst = new JASSUB({
@@ -553,11 +558,20 @@ function VideoPlayer() {
     void (async () => {
       try {
         const instAny = inst as unknown as {
-          renderer: { setStyle: (s: Record<string, unknown>, idx: number) => Promise<unknown> };
+          renderer: {
+            setStyle: (s: Record<string, unknown>, idx: number) => Promise<unknown>;
+            setTrack: (content: string) => Promise<unknown>;
+          };
           resize: (forceRepaint?: boolean) => Promise<void>;
         };
         const r = instAny.renderer;
         const playResY = assPlayResYRef.current || 288;
+        // Reload the original track so cues haven't been laid out yet.
+        // Without this, mutating a style's MarginV (or similar layout-affecting
+        // properties) won't move existing cues — libass uses the cached layout.
+        if (assContentRef.current) {
+          await r.setTrack(assContentRef.current);
+        }
         for (let i = 0; i < originals.length; i++) {
           const orig = originals[i];
           const name = (orig.Name as string) || '';
