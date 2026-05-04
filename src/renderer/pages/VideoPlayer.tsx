@@ -334,14 +334,17 @@ function VideoPlayer() {
             modernWasmUrl: wasmUrls.modernWasmUrl,
           });
           jassubRef.current = inst;
-          // The canvas can come up at 0×0 if the video isn't laid out yet at
-          // construction; force a resize once the video has dimensions.
-          requestAnimationFrame(() => {
-            try {
-              void inst.resize(true, video.clientWidth, video.clientHeight);
-            } catch { /* ignore */ }
-          });
-          console.log('[subs] JASSUB initialized for', sub.label, video.clientWidth, 'x', video.clientHeight);
+          // Wait for libass + renderer init to complete; until then any method
+          // call (including resize) blows up with "_resizeCanvas undefined".
+          await (inst as unknown as { ready?: Promise<unknown> }).ready;
+          // Force one resize now that we know the renderer exists, in case
+          // ResizeObserver hasn't fired yet for the initial layout.
+          try {
+            await inst.resize(true, video.clientWidth, video.clientHeight);
+          } catch (err) {
+            console.warn('[subs] post-ready resize failed', err);
+          }
+          console.log('[subs] JASSUB ready for', sub.label, '— video', video.clientWidth, 'x', video.clientHeight);
           // Diagnostic: dump the canvases JASSUB injected so we can see them.
           setTimeout(() => {
             const canvases = video.parentElement?.querySelectorAll('canvas') ?? [];
