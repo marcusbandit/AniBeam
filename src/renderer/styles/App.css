@@ -669,6 +669,21 @@ a { color: inherit; text-decoration: none; }
   transition: transform var(--transition-slow);
 }
 .episode-card.has-file:hover .episode-thumb img { transform: scale(1.06); }
+
+/* Watch-progress overlay — sits on top of the thumbnail's bottom edge.
+   The 1px border-bottom on .episode-thumb shows through for the unwatched
+   portion (right of the bar), giving a natural "filled vs not" effect. */
+.episode-progress {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--accent-secondary);
+  pointer-events: none;
+  z-index: 2;
+  transition: width var(--transition-normal);
+}
+
 .episode-thumb-number {
   font-family: var(--font-mono);
   font-weight: 500;
@@ -821,6 +836,8 @@ a { color: inherit; text-decoration: none; }
 }
 .player-ctl-btn:hover { background: rgba(255,255,255,0.1); }
 .player-ctl-btn.active { color: #ffffff; background: rgba(255,255,255,0.14); }
+.player-ctl-btn:disabled { opacity: 0.3; cursor: default; }
+.player-ctl-btn:disabled:hover { background: transparent; }
 .player-right-group { margin-left: auto; display: flex; gap: 4px; align-items: center; }
 
 /* Skip Intro / Skip Outro button — floats above the controls bar, bottom-right.

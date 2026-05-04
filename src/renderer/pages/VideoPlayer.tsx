@@ -1,7 +1,8 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useMetadata, type FileEpisode } from '../hooks/useMetadata.js';
-import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Minimize, Subtitles } from 'lucide-react';
+import { progressId, readProgress, writeProgress, RESUME_HEAD_SKIP, RESUME_TAIL_SKIP } from '../utils/playbackProgress';
+import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Minimize, Subtitles, SkipBack, SkipForward } from 'lucide-react';
 import JASSUB from 'jassub';
 import jassubWorkerUrl from 'jassub/dist/worker/worker.js?url';
 import jassubWasmUrl from 'jassub/dist/wasm/jassub-worker.wasm?url';
@@ -134,30 +135,10 @@ function formatTime(s: number): string {
   return `${m}:${pad(sec)}`;
 }
 
-// Resume-tracking. Keyed by `${seriesId}::${episodeNumber}` so two episodes
-// of the same show don't collide. One localStorage slot for the whole map so
-// reads/writes are O(1) and progress survives a browser/app restart.
-const PROGRESS_KEY = 'video-progress-v1';
-const RESUME_HEAD_SKIP = 5;   // < 5s in: just start from 0, not worth resuming
-const RESUME_TAIL_SKIP = 30;  // within 30s of end: treat as finished
-type ProgressEntry = { t: number; d: number; updated: number };
-type ProgressMap = Record<string, ProgressEntry>;
-function progressId(seriesId: string, episodeNumber: string): string {
-  return `${seriesId}::${episodeNumber}`;
-}
-function readProgress(): ProgressMap {
-  try {
-    const raw = localStorage.getItem(PROGRESS_KEY);
-    return raw ? (JSON.parse(raw) as ProgressMap) : {};
-  } catch { return {}; }
-}
-function writeProgress(map: ProgressMap): void {
-  try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(map)); } catch { /* ignore */ }
-}
-
 function VideoPlayer() {
   const { seriesId, episodeNumber } = useParams<{ seriesId?: string; episodeNumber?: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { metadata } = useMetadata();
   const [videoSrc, setVideoSrc] = useState<string>('');
   const [subtitleSrcs, setSubtitleSrcs] = useState<SubtitleTrack[]>([]);
@@ -294,7 +275,14 @@ function VideoPlayer() {
     const video = videoRef.current;
     if (!video) return;
     const id = progressId(seriesId, episodeNumber);
+    // The Next/Prev episode buttons navigate with state.skipResume = true so
+    // the new episode always starts from 0 regardless of saved position.
+    const skipResume = (location.state as { skipResume?: boolean } | null)?.skipResume === true;
     const seek = () => {
+      if (skipResume) {
+        try { video.currentTime = 0; } catch { /* ignore */ }
+        return;
+      }
       const entry = readProgress()[id];
       if (!entry) return;
       const dur = video.duration;
@@ -880,6 +868,31 @@ function VideoPlayer() {
     if (video.paused) void video.play(); else video.pause();
   };
 
+  // Sorted episode-number list for prev/next nav. Built from the series's
+  // fileEpisodes (only on-disk episodes are navigable). Integer numbers only —
+  // skip decimals like 6.5 since those aren't really sequential.
+  const epNumNumeric = episodeNumber ? parseInt(episodeNumber, 10) : NaN;
+  const seriesEpisodeNumbers: number[] = (() => {
+    if (!seriesId) return [];
+    const series = metadata[seriesId];
+    if (!series?.fileEpisodes) return [];
+    const nums = series.fileEpisodes
+      .map((f) => f.episodeNumber)
+      .filter((n): n is number => typeof n === 'number' && Number.isInteger(n));
+    return Array.from(new Set(nums)).sort((a, b) => a - b);
+  })();
+  const currentEpIdx = Number.isFinite(epNumNumeric) ? seriesEpisodeNumbers.indexOf(epNumNumeric) : -1;
+  const prevEp = currentEpIdx > 0 ? seriesEpisodeNumbers[currentEpIdx - 1] : null;
+  const nextEp = currentEpIdx >= 0 && currentEpIdx < seriesEpisodeNumbers.length - 1
+    ? seriesEpisodeNumbers[currentEpIdx + 1]
+    : null;
+
+  const goToEpisode = (epNum: number) => {
+    if (!seriesId) return;
+    // skipResume = true forces a fresh start regardless of saved position.
+    navigate(`/player/${seriesId}/${epNum}`, { state: { skipResume: true }, replace: false });
+  };
+
   const toggleMute = () => {
     const video = videoRef.current;
     if (!video) return;
@@ -1032,8 +1045,26 @@ function VideoPlayer() {
           } as React.CSSProperties}
         />
         <div className="player-controls-row">
+          <button
+            className="player-ctl-btn"
+            onClick={() => prevEp != null && goToEpisode(prevEp)}
+            disabled={prevEp == null}
+            aria-label="Previous episode"
+            title={prevEp != null ? `Previous: episode ${prevEp}` : 'No previous episode'}
+          >
+            <SkipBack size={18} />
+          </button>
           <button className="player-ctl-btn" onClick={togglePlay} aria-label={isPlaying ? 'Pause' : 'Play'}>
             {isPlaying ? <Pause size={18} /> : <Play size={18} />}
+          </button>
+          <button
+            className="player-ctl-btn"
+            onClick={() => nextEp != null && goToEpisode(nextEp)}
+            disabled={nextEp == null}
+            aria-label="Next episode"
+            title={nextEp != null ? `Next: episode ${nextEp}` : 'No next episode'}
+          >
+            <SkipForward size={18} />
           </button>
           <span className="player-time">{formatTime(currentTime)} / {formatTime(duration)}</span>
           <div className="player-volume">
