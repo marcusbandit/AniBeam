@@ -1,5 +1,5 @@
 {
-  "name": "liam",
+  "name": "anibeam",
   "private": true,
   "version": "0.0.0",
   "main": ".vite/build/main.js",
@@ -9,6 +9,7 @@
     "build": "bun run typecheck && vite build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . && bun run typecheck",
+    "verify:logger": "bun --bun scripts/verify-logger.mjs",
     "preview": "vite preview",
     "start": "bun run typecheck && electron-forge start",
     "package": "bun run typecheck && electron-forge package",

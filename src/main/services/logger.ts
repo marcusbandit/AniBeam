@@ -1,23 +1,7 @@
 import { BrowserWindow } from 'electron';
 
-export type LogLevel = 'info' | 'warn' | 'error';
-export type LogStage =
-  | 'folder'
-  | 'metadata'
-  | 'image'
-  | 'thumbnail'
-  | 'watch'
-  | 'probe'
-  | 'system';
-
-export interface LogEvent {
-  id: number;
-  ts: number;
-  level: LogLevel;
-  stage: LogStage;
-  message: string;
-  ctx?: { series?: string; file?: string };
-}
+export type { LogLevel, LogStage, LogEvent } from '../../shared/logTypes';
+import type { LogLevel, LogStage, LogEvent } from '../../shared/logTypes';
 
 const BUFFER_LIMIT = 5000;
 let nextId = 1;
@@ -54,6 +38,7 @@ export const logger = {
   getBuffer(): LogEvent[] {
     return buffer.slice();
   },
+  /** Empties the buffer. Does NOT reset the id counter — ids remain monotonic across clears. */
   clear(): void {
     buffer.length = 0;
   },
