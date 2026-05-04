@@ -1,13 +1,30 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useMetadata, type FileEpisode } from '../hooks/useMetadata.js';
-import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Minimize } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Minimize, Subtitles } from 'lucide-react';
 
 interface SubtitleTrack {
-  src: string;
+  src: string;        // possibly converted to a blob: URL for SRT
+  origPath: string;   // original file path, used for label/extension lookup
   kind: string;
   label: string;
   default?: boolean;
+}
+
+/**
+ * <track> only natively supports WebVTT. SRT files (very common for anime)
+ * won't display unless converted. Fetch the file, prepend the WEBVTT header,
+ * and swap "," for "." in timestamps. Returns a blob: URL.
+ * Returns the original src if the conversion fails so we at least try.
+ */
+async function srtToVttUrl(srcUrl: string): Promise<string> {
+  try {
+    const text = await (await fetch(srcUrl)).text();
+    const vtt = 'WEBVTT\n\n' + text.replace(/(\d\d:\d\d:\d\d),(\d\d\d)/g, '$1.$2');
+    return URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' }));
+  } catch {
+    return srcUrl;
+  }
 }
 
 function pad(n: number): string {
@@ -38,6 +55,7 @@ function VideoPlayer() {
   const [volume, setVolume] = useState(0.7);
   const [muted, setMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [activeSubIdx, setActiveSubIdx] = useState<number>(-1); // -1 = off
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -117,29 +135,72 @@ function VideoPlayer() {
       setEpisodeData(episode);
       setVideoSrc(`file://${episode.filePath}`);
 
-      const subtitles: SubtitleTrack[] = [];
-      if (episode.subtitlePath) {
-        subtitles.push({
-          src: `file://${episode.subtitlePath}`,
-          kind: 'subtitles',
-          label: 'Subtitle',
-          default: true,
+      // Build the subtitle list. For .srt files we convert to VTT on the fly
+      // (Chromium's <track> only supports WebVTT natively).
+      const buildSubs = async () => {
+        const raw: { path: string; label: string; default: boolean }[] = [];
+        if (episode.subtitlePath) {
+          raw.push({ path: episode.subtitlePath, label: 'Subtitle', default: true });
+        }
+        if (episode.subtitlePaths && episode.subtitlePaths.length > 0) {
+          episode.subtitlePaths.forEach((p: string, i: number) => {
+            if (p !== episode.subtitlePath) {
+              raw.push({ path: p, label: `Subtitle ${i + 2}`, default: false });
+            }
+          });
+        }
+        const out: SubtitleTrack[] = await Promise.all(raw.map(async (r) => {
+          const fileUrl = `file://${r.path}`;
+          const ext = r.path.toLowerCase().split('.').pop();
+          const src = ext === 'srt' ? await srtToVttUrl(fileUrl) : fileUrl;
+          return { src, origPath: r.path, kind: 'subtitles', label: r.label, default: r.default };
+        }));
+        setSubtitleSrcs((prev) => {
+          // Revoke previous blob URLs so they don't leak.
+          prev.forEach((p) => { if (p.src.startsWith('blob:')) URL.revokeObjectURL(p.src); });
+          return out;
         });
-      }
-      if (episode.subtitlePaths && episode.subtitlePaths.length > 0) {
-        episode.subtitlePaths.forEach((subPath: string, index: number) => {
-          if (subPath !== episode.subtitlePath) {
-            subtitles.push({
-              src: `file://${subPath}`,
-              kind: 'subtitles',
-              label: `Subtitle ${index + 2}`,
-            });
-          }
-        });
-      }
-      setSubtitleSrcs(subtitles);
+      };
+      void buildSubs();
     }
   }, [seriesId, episodeNumber, metadata]);
+
+  // Activate the default subtitle track once the video metadata loads.
+  // Re-runs whenever the subtitle list changes (i.e. per episode).
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const apply = () => {
+      const tracks = video.textTracks;
+      let defaultIdx = -1;
+      for (let i = 0; i < tracks.length; i++) {
+        if (subtitleSrcs[i]?.default) { defaultIdx = i; break; }
+      }
+      for (let i = 0; i < tracks.length; i++) {
+        tracks[i].mode = i === defaultIdx ? 'showing' : 'disabled';
+      }
+      setActiveSubIdx(defaultIdx);
+    };
+    video.addEventListener('loadedmetadata', apply);
+    // Also try right now in case metadata is already loaded.
+    if (video.readyState >= 1) apply();
+    return () => video.removeEventListener('loadedmetadata', apply);
+  }, [subtitleSrcs]);
+
+  const cycleSubtitle = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    const tracks = video.textTracks;
+    const total = tracks.length;
+    if (total === 0) return;
+    // -1 (off) → 0 → 1 → ... → total-1 → -1
+    const next = activeSubIdx + 1 >= total ? -1 : activeSubIdx + 1;
+    for (let i = 0; i < total; i++) {
+      tracks[i].mode = i === next ? 'showing' : 'disabled';
+    }
+    setActiveSubIdx(next);
+    showChrome();
+  };
 
   // Wire <video> events to local state
   useEffect(() => {
@@ -343,9 +404,21 @@ function VideoPlayer() {
               style={{ '--progress': `${(muted ? 0 : volume) * 100}%` } as React.CSSProperties}
             />
           </div>
-          <button className="player-ctl-btn player-fs" onClick={toggleFullscreen} aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}>
-            {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
-          </button>
+          <div className="player-right-group">
+            {subtitleSrcs.length > 0 && (
+              <button
+                className={`player-ctl-btn${activeSubIdx >= 0 ? ' active' : ''}`}
+                onClick={cycleSubtitle}
+                aria-label="Toggle subtitles"
+                title={activeSubIdx >= 0 ? subtitleSrcs[activeSubIdx]?.label ?? 'Subtitles' : 'Subtitles off'}
+              >
+                <Subtitles size={18} />
+              </button>
+            )}
+            <button className="player-ctl-btn" onClick={toggleFullscreen} aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}>
+              {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
+            </button>
+          </div>
         </div>
       </div>
     </div>

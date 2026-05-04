@@ -791,7 +791,8 @@ a { color: inherit; text-decoration: none; }
   padding: 0;
 }
 .player-ctl-btn:hover { background: rgba(255,255,255,0.1); }
-.player-fs { margin-left: auto; }
+.player-ctl-btn.active { color: #ffffff; background: rgba(255,255,255,0.14); }
+.player-right-group { margin-left: auto; display: flex; gap: 4px; }
 .player-time {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
