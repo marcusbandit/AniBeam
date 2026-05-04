@@ -13,6 +13,7 @@ import thumbnailHandler from './handlers/thumbnailHandler';
 import { initMediaProgress, updateMediaProgress } from './utils/debugUtils';
 import { logger } from './services/logger';
 import type { FileStatus } from '../shared/fileStatus';
+import type { ScannedMedia } from './handlers/folderHandler';
 import videoProbeHandler from './handlers/videoProbeHandler';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -470,6 +471,352 @@ ipcMain.handle('delete-series', async (_event, seriesId: string) => {
   }
 });
 
+// ==================== PER-SERIES METADATA PROCESSOR ====================
+
+async function processOneMedia(
+  media: ScannedMedia,
+  existingMetadata: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const slice: Record<string, unknown> = {};
+  const mediaId = media.id;
+
+  // Start with existing metadata if available
+  if (existingMetadata[mediaId]) {
+    slice[mediaId] = { ...existingMetadata[mediaId] as Record<string, unknown> };
+  }
+
+  // Check if we already have metadata for this
+  const existing = existingMetadata[mediaId] as Record<string, unknown> | undefined;
+  if (existing?.title && existing?.posterLocal) {
+    // Validate that cached metadata matches the current series name
+    // This prevents using wrong metadata when series ID changes or files change
+    const cachedTitle = (existing.title as string).toLowerCase().trim();
+    const seriesNameLower = media.name.toLowerCase().trim();
+
+    // Normalize titles for comparison (remove season info, special chars)
+    const normalizeForComparison = (title: string): string => {
+      return title
+        .replace(/\s*\(season\s*\d+\)/gi, '')  // Remove (Season 1)
+        .replace(/[^a-z0-9\s]/g, '')             // Remove special chars
+        .replace(/\s+/g, ' ')                    // Normalize spaces
+        .trim();
+    };
+
+    const normalizedCached = normalizeForComparison(cachedTitle);
+    const normalizedSeries = normalizeForComparison(seriesNameLower);
+
+    // Check if titles match (allowing for partial matches if series name is in cached title)
+    // But be strict - if series name is substantial, require a good match
+    const titlesMatch = normalizedCached === normalizedSeries ||
+                       (normalizedSeries.length >= 5 && (
+                         normalizedCached.includes(normalizedSeries) ||
+                         normalizedSeries.includes(normalizedCached)
+                       ));
+
+    if (!titlesMatch && normalizedSeries.length >= 3) {
+      // Titles don't match - metadata is likely wrong, re-fetch it
+      logger.warn('metadata', `Cached metadata title "${cachedTitle}" doesn't match series name "${seriesNameLower}" — re-fetching`, { series: media.name });
+      // Clear the cached metadata and fall through to fetch new metadata
+      delete slice[mediaId];
+      // Fall through to fetch new metadata
+    } else if (titlesMatch) {
+      logger.info('metadata', `Using cached metadata for: ${media.name}`, { series: media.name });
+
+      // Ensure title includes season number if we have season-specific files
+      let finalTitle = existing.title as string;
+      if (media.seasonNumber !== null && media.seasonNumber !== undefined) {
+        const seasonPattern = /\(Season\s*\d+\)/i;
+        if (!seasonPattern.test(finalTitle)) {
+          finalTitle = `${finalTitle} (Season ${media.seasonNumber})`;
+        }
+      }
+
+      // Update file info but keep metadata
+      slice[mediaId] = {
+        ...existing,
+        seriesId: mediaId,
+        title: finalTitle,
+        fileEpisodes: preserveStatus(mediaId, media.files.map(f => ({
+          episodeNumber: f.episodeNumber,
+          seasonNumber: f.seasonNumber,
+          filePath: f.filePath,
+          subtitlePath: f.subtitlePath,
+          subtitlePaths: f.subtitlePaths,
+          filename: f.filename,
+          title: f.title,
+          status: f.status,
+          lastProbedAt: f.lastProbedAt,
+        })), existingMetadata),
+        folderPath: media.folderPath,
+        type: media.type,
+      };
+      return slice;
+    }
+  }
+
+  const seasonInfo = media.seasonNumber !== null ? ` Season ${media.seasonNumber}` : '';
+  const partInfo = media.partNumber !== null ? ` Part ${media.partNumber}` : '';
+  logger.info('metadata', `Processing ${media.name}${seasonInfo}${partInfo}`, { series: media.name });
+
+  // Count only canonical episodes (exclude decimal episodes like 6.5, 7.5, 10.5)
+  // Decimal episodes are stored as actual decimals: 6.5, 7.5, 10.5, etc.
+  const canonicalEpisodes = media.files.filter(f => {
+    // Skip decimal episodes: check if episodeNumber is not an integer
+    return Number.isInteger(f.episodeNumber);
+  });
+  const canonicalEpisodeCount = canonicalEpisodes.length;
+
+  logger.info('folder', `Folder has ${canonicalEpisodeCount} canonical episode${canonicalEpisodeCount !== 1 ? 's' : ''} (${media.files.length} total files including decimal episodes)`, { series: media.name });
+
+  // Fetch new metadata with season/part information
+  // Try multiple sources in order: MAL -> AniList
+  // Pass canonical episode count to validate search results
+  let fetchedMetadata = null;
+
+  try {
+    fetchedMetadata = await malHandler.searchAndFetchMetadata(media.name, media.seasonNumber, media.partNumber, canonicalEpisodeCount);
+    if (fetchedMetadata) {
+      logger.info('metadata', `Found on MAL: ${fetchedMetadata.title} (${fetchedMetadata.totalEpisodes || 'unknown'} episodes)`, { series: fetchedMetadata.title });
+      fetchedMetadata = { ...fetchedMetadata, source: 'mal' };
+    } else {
+      logger.warn('metadata', `MAL returned no results for ${media.name}${seasonInfo}`, { series: media.name });
+    }
+  } catch (err) {
+    if (!isRateLimitError(err)) {
+      logger.error('metadata', `MAL failed for ${media.name}${seasonInfo}`, { series: media.name });
+    }
+  }
+
+  if (!fetchedMetadata) {
+    try {
+      fetchedMetadata = await anilistHandler.searchAndFetchMetadata(media.name, media.seasonNumber, media.partNumber, canonicalEpisodeCount);
+      if (fetchedMetadata) {
+        logger.info('metadata', `Found on AniList (fallback): ${fetchedMetadata.title} (${fetchedMetadata.totalEpisodes || 'unknown'} episodes)`, { series: fetchedMetadata.title });
+        fetchedMetadata = { ...fetchedMetadata, source: 'anilist' };
+      } else {
+        logger.warn('metadata', `AniList returned no results for ${media.name}${seasonInfo}`, { series: media.name });
+      }
+    } catch (err) {
+      if (!isRateLimitError(err)) {
+        logger.error('metadata', `AniList failed for ${media.name}${seasonInfo}`, { series: media.name });
+      }
+    }
+  }
+
+  if (fetchedMetadata) {
+    // Cache images locally
+    logger.info('image', `Caching images for: ${media.name}`, { series: media.name });
+
+    // Collect all image URLs to cache
+    const imagesToCache: (string | null)[] = [
+      fetchedMetadata.poster,
+      fetchedMetadata.banner,
+    ];
+
+    // Add episode thumbnails that exist online
+    if (fetchedMetadata.episodes) {
+      for (const ep of fetchedMetadata.episodes) {
+        if (ep.thumbnail) {
+          imagesToCache.push(ep.thumbnail);
+        }
+      }
+    }
+
+    // Cache all online images in parallel
+    const cachedImages = await imageCacheHandler.cacheImages(imagesToCache);
+
+    // Update metadata with local paths
+    const posterLocal = fetchedMetadata.poster ? cachedImages.get(fetchedMetadata.poster) || null : null;
+    const bannerLocal = fetchedMetadata.banner ? cachedImages.get(fetchedMetadata.banner) || null : null;
+
+    // Create a map of file episodes by season and episode number for thumbnail generation
+    // Use a composite key: "season_episode" or "null_episode" for episodes without season
+    const fileEpisodeMap = new Map<string, string>();
+    for (const f of media.files) {
+      const key = f.seasonNumber !== null
+        ? `${f.seasonNumber}_${f.episodeNumber}`
+        : `null_${f.episodeNumber}`;
+      fileEpisodeMap.set(key, f.filePath);
+    }
+
+    // Update episode thumbnails - use online if available, otherwise generate from video
+    const episodesWithLocalThumbs = [];
+    let firstThumbnailInBatch = true;
+    for (const ep of fetchedMetadata.episodes || []) {
+      let thumbnailLocal: string | null = null;
+
+      if (ep.thumbnail) {
+        // Use cached online thumbnail
+        thumbnailLocal = cachedImages.get(ep.thumbnail) || null;
+      }
+
+      // If no online thumbnail, try to generate from video file
+      // Match by season and episode number if available, otherwise by episode number only
+      if (!thumbnailLocal) {
+        const epSeason = ep.seasonNumber ?? null;
+        const key = epSeason !== null
+          ? `${epSeason}_${ep.episodeNumber}`
+          : `null_${ep.episodeNumber}`;
+
+        // Try exact match first (season + episode)
+        let videoPath = fileEpisodeMap.get(key);
+
+        // If no exact match and we have a season, try matching by episode number only
+        // (in case the file has a different season number)
+        if (!videoPath && epSeason !== null) {
+          videoPath = fileEpisodeMap.get(`null_${ep.episodeNumber}`);
+        }
+
+        // If still no match, try any season with same episode number (including decimals)
+        if (!videoPath) {
+          for (const [mapKey, path] of fileEpisodeMap.entries()) {
+            // Extract episode number from key (format: "season_episode" or "null_episode")
+            const keyParts = mapKey.split('_');
+            const keyEpisodeNum = parseFloat(keyParts[keyParts.length - 1]);
+            // Match exact episode number (works for both integers and decimals)
+            if (keyEpisodeNum === ep.episodeNumber) {
+              videoPath = path;
+              break;
+            }
+          }
+        }
+
+        if (videoPath) {
+          thumbnailLocal = await thumbnailHandler.generateThumbnail(videoPath, 120, firstThumbnailInBatch);
+          firstThumbnailInBatch = false;
+        }
+      }
+
+      episodesWithLocalThumbs.push({
+        ...ep,
+        thumbnailLocal,
+      });
+    }
+
+    // Generate thumbnails for decimal episodes (6.5, 7.5, etc.) that exist in files but not in metadata
+    // These won't be in the metadata episodes list, so we need to handle them separately
+    const processedEpisodeNumbers = new Set(episodesWithLocalThumbs.map(ep => ep.episodeNumber));
+    for (const fileEp of media.files) {
+      // Check if this is a decimal episode (not an integer) and not already processed
+      if (!Number.isInteger(fileEp.episodeNumber) && !processedEpisodeNumbers.has(fileEp.episodeNumber)) {
+        const epSeason = fileEp.seasonNumber ?? null;
+
+        // Generate thumbnail for this decimal episode
+        let thumbnailLocal: string | null = null;
+        try {
+          thumbnailLocal = await thumbnailHandler.generateThumbnail(fileEp.filePath, 120, false);
+        } catch (err) {
+          logger.warn('thumbnail', `Failed to generate thumbnail for decimal episode ${fileEp.episodeNumber}`, { file: fileEp.filePath });
+        }
+
+        // Add to episodes list (these won't have metadata, but will have file info)
+        episodesWithLocalThumbs.push({
+          episodeNumber: fileEp.episodeNumber,
+          seasonNumber: epSeason ?? undefined,
+          title: `Episode ${fileEp.episodeNumber.toFixed(1)}`,
+          description: null,
+          airDate: null,
+          thumbnail: null,
+          thumbnailLocal,
+        });
+      }
+    }
+
+    // Ensure title includes season number if we have season-specific files
+    let finalTitle = fetchedMetadata.title;
+    if (media.seasonNumber !== null && media.seasonNumber !== undefined) {
+      // Check if title already includes season info
+      const seasonPattern = /\(Season\s*\d+\)/i;
+      if (!seasonPattern.test(finalTitle)) {
+        finalTitle = `${finalTitle} (Season ${media.seasonNumber})`;
+      }
+    }
+
+    slice[mediaId] = {
+      ...fetchedMetadata,
+      seriesId: mediaId,
+      title: finalTitle,
+      posterLocal,
+      bannerLocal,
+      episodes: episodesWithLocalThumbs,
+      fileEpisodes: preserveStatus(mediaId, media.files.map(f => ({
+        episodeNumber: f.episodeNumber,
+        seasonNumber: f.seasonNumber,
+        filePath: f.filePath,
+        subtitlePath: f.subtitlePath,
+        subtitlePaths: f.subtitlePaths,
+        filename: f.filename,
+        title: f.title,
+        status: f.status,
+        lastProbedAt: f.lastProbedAt,
+      })), existingMetadata),
+      folderPath: media.folderPath,
+      type: media.type,
+    };
+    logger.info('metadata', `Found: ${finalTitle}`, { series: finalTitle });
+  } else {
+    // No metadata found, use folder/file name
+    logger.warn('metadata', `No online metadata, generating local thumbnails: ${media.name}`, { series: media.name });
+
+    // Generate thumbnails from video files
+    const localEpisodes = [];
+    let firstThumbnail = true;
+    for (const f of media.files) {
+      const thumbnailLocal = await thumbnailHandler.generateThumbnail(f.filePath, 120, firstThumbnail);
+      firstThumbnail = false;
+      localEpisodes.push({
+        episodeNumber: f.episodeNumber,
+        seasonNumber: f.seasonNumber,
+        title: f.title || `Episode ${f.episodeNumber}`,
+        description: null,
+        airDate: null,
+        thumbnail: null,
+        thumbnailLocal,
+      });
+    }
+
+    // Ensure title includes season number if we have season-specific files
+    let localTitle = media.name;
+    if (media.seasonNumber !== null && media.seasonNumber !== undefined) {
+      const seasonPattern = /Season\s*\d+/i;
+      if (!seasonPattern.test(localTitle)) {
+        localTitle = `${localTitle} (Season ${media.seasonNumber})`;
+      }
+    }
+
+    slice[mediaId] = {
+      seriesId: mediaId,
+      title: localTitle,
+      description: '',
+      genres: [],
+      poster: null,
+      posterLocal: null,
+      banner: null,
+      bannerLocal: null,
+      episodes: localEpisodes,
+      fileEpisodes: preserveStatus(mediaId, media.files.map(f => ({
+        episodeNumber: f.episodeNumber,
+        seasonNumber: f.seasonNumber,
+        filePath: f.filePath,
+        subtitlePath: f.subtitlePath,
+        subtitlePaths: f.subtitlePaths,
+        filename: f.filename,
+        title: f.title,
+        status: f.status,
+        lastProbedAt: f.lastProbedAt,
+      })), existingMetadata),
+      folderPath: media.folderPath,
+      type: media.type,
+      source: 'local',
+    };
+  }
+
+  // Small delay to avoid rate limiting
+  await new Promise(resolve => setTimeout(resolve, 500));
+
+  return slice;
+}
+
 // ==================== SCAN AND FETCH COMBINED ====================
 
 ipcMain.handle('scan-and-fetch-metadata', async (_event, folderPath: string) => {
@@ -504,342 +851,9 @@ ipcMain.handle('scan-and-fetch-metadata', async (_event, folderPath: string) => 
         continue;
       }
 
-      const mediaId = media.id;
-      seenSeriesIds.add(mediaId);
-
-      // Start with existing metadata if available
-      if (existingMetadata[mediaId]) {
-        newMetadata[mediaId] = { ...existingMetadata[mediaId] as Record<string, unknown> };
-      }
-
-      // Check if we already have metadata for this
-      const existing = existingMetadata[mediaId] as Record<string, unknown> | undefined;
-      if (existing?.title && existing?.posterLocal) {
-        // Validate that cached metadata matches the current series name
-        // This prevents using wrong metadata when series ID changes or files change
-        const cachedTitle = (existing.title as string).toLowerCase().trim();
-        const seriesNameLower = media.name.toLowerCase().trim();
-        
-        // Normalize titles for comparison (remove season info, special chars)
-        const normalizeForComparison = (title: string): string => {
-          return title
-            .replace(/\s*\(season\s*\d+\)/gi, '')  // Remove (Season 1)
-            .replace(/[^a-z0-9\s]/g, '')             // Remove special chars
-            .replace(/\s+/g, ' ')                    // Normalize spaces
-            .trim();
-        };
-        
-        const normalizedCached = normalizeForComparison(cachedTitle);
-        const normalizedSeries = normalizeForComparison(seriesNameLower);
-        
-        // Check if titles match (allowing for partial matches if series name is in cached title)
-        // But be strict - if series name is substantial, require a good match
-        const titlesMatch = normalizedCached === normalizedSeries || 
-                           (normalizedSeries.length >= 5 && (
-                             normalizedCached.includes(normalizedSeries) ||
-                             normalizedSeries.includes(normalizedCached)
-                           ));
-        
-        if (!titlesMatch && normalizedSeries.length >= 3) {
-          // Titles don't match - metadata is likely wrong, re-fetch it
-          logger.warn('metadata', `Cached metadata title "${cachedTitle}" doesn't match series name "${seriesNameLower}" — re-fetching`, { series: media.name });
-          // Clear the cached metadata and fall through to fetch new metadata
-          delete newMetadata[mediaId];
-          // Fall through to fetch new metadata
-        } else if (titlesMatch) {
-          logger.info('metadata', `Using cached metadata for: ${media.name}`, { series: media.name });
-
-          // Ensure title includes season number if we have season-specific files
-          let finalTitle = existing.title as string;
-          if (media.seasonNumber !== null && media.seasonNumber !== undefined) {
-            const seasonPattern = /\(Season\s*\d+\)/i;
-            if (!seasonPattern.test(finalTitle)) {
-              finalTitle = `${finalTitle} (Season ${media.seasonNumber})`;
-            }
-          }
-
-          // Update file info but keep metadata
-          newMetadata[mediaId] = {
-            ...existing,
-            seriesId: mediaId,
-            title: finalTitle,
-            fileEpisodes: preserveStatus(mediaId, media.files.map(f => ({
-              episodeNumber: f.episodeNumber,
-              seasonNumber: f.seasonNumber,
-              filePath: f.filePath,
-              subtitlePath: f.subtitlePath,
-              subtitlePaths: f.subtitlePaths,
-              filename: f.filename,
-              title: f.title,
-              status: f.status,
-              lastProbedAt: f.lastProbedAt,
-            })), existingMetadata),
-            folderPath: media.folderPath,
-            type: media.type,
-          };
-          continue;
-        }
-      }
-
-      const seasonInfo = media.seasonNumber !== null ? ` Season ${media.seasonNumber}` : '';
-      const partInfo = media.partNumber !== null ? ` Part ${media.partNumber}` : '';
-      logger.info('metadata', `Processing ${media.name}${seasonInfo}${partInfo}`, { series: media.name });
-      
-      // Count only canonical episodes (exclude decimal episodes like 6.5, 7.5, 10.5)
-      // Decimal episodes are stored as actual decimals: 6.5, 7.5, 10.5, etc.
-      const canonicalEpisodes = media.files.filter(f => {
-        // Skip decimal episodes: check if episodeNumber is not an integer
-        return Number.isInteger(f.episodeNumber);
-      });
-      const canonicalEpisodeCount = canonicalEpisodes.length;
-      
-      logger.info('folder', `Folder has ${canonicalEpisodeCount} canonical episode${canonicalEpisodeCount !== 1 ? 's' : ''} (${media.files.length} total files including decimal episodes)`, { series: media.name });
-
-      // Fetch new metadata with season/part information
-      // Try multiple sources in order: MAL -> AniList
-      // Pass canonical episode count to validate search results
-      let fetchedMetadata = null;
-
-      try {
-        fetchedMetadata = await malHandler.searchAndFetchMetadata(media.name, media.seasonNumber, media.partNumber, canonicalEpisodeCount);
-        if (fetchedMetadata) {
-          logger.info('metadata', `Found on MAL: ${fetchedMetadata.title} (${fetchedMetadata.totalEpisodes || 'unknown'} episodes)`, { series: fetchedMetadata.title });
-          fetchedMetadata = { ...fetchedMetadata, source: 'mal' };
-        } else {
-          logger.warn('metadata', `MAL returned no results for ${media.name}${seasonInfo}`, { series: media.name });
-        }
-      } catch (err) {
-        if (!isRateLimitError(err)) {
-          logger.error('metadata', `MAL failed for ${media.name}${seasonInfo}`, { series: media.name });
-        }
-      }
-
-      if (!fetchedMetadata) {
-        try {
-          fetchedMetadata = await anilistHandler.searchAndFetchMetadata(media.name, media.seasonNumber, media.partNumber, canonicalEpisodeCount);
-          if (fetchedMetadata) {
-            logger.info('metadata', `Found on AniList (fallback): ${fetchedMetadata.title} (${fetchedMetadata.totalEpisodes || 'unknown'} episodes)`, { series: fetchedMetadata.title });
-            fetchedMetadata = { ...fetchedMetadata, source: 'anilist' };
-          } else {
-            logger.warn('metadata', `AniList returned no results for ${media.name}${seasonInfo}`, { series: media.name });
-          }
-        } catch (err) {
-          if (!isRateLimitError(err)) {
-            logger.error('metadata', `AniList failed for ${media.name}${seasonInfo}`, { series: media.name });
-          }
-        }
-      }
-
-      if (fetchedMetadata) {
-        // Cache images locally
-        logger.info('image', `Caching images for: ${media.name}`, { series: media.name });
-
-        // Collect all image URLs to cache
-        const imagesToCache: (string | null)[] = [
-          fetchedMetadata.poster,
-          fetchedMetadata.banner,
-        ];
-
-        // Add episode thumbnails that exist online
-        if (fetchedMetadata.episodes) {
-          for (const ep of fetchedMetadata.episodes) {
-            if (ep.thumbnail) {
-              imagesToCache.push(ep.thumbnail);
-            }
-          }
-        }
-
-        // Cache all online images in parallel
-        const cachedImages = await imageCacheHandler.cacheImages(imagesToCache);
-
-        // Update metadata with local paths
-        const posterLocal = fetchedMetadata.poster ? cachedImages.get(fetchedMetadata.poster) || null : null;
-        const bannerLocal = fetchedMetadata.banner ? cachedImages.get(fetchedMetadata.banner) || null : null;
-
-        // Create a map of file episodes by season and episode number for thumbnail generation
-        // Use a composite key: "season_episode" or "null_episode" for episodes without season
-        const fileEpisodeMap = new Map<string, string>();
-        for (const f of media.files) {
-          const key = f.seasonNumber !== null
-            ? `${f.seasonNumber}_${f.episodeNumber}`
-            : `null_${f.episodeNumber}`;
-          fileEpisodeMap.set(key, f.filePath);
-        }
-
-        // Update episode thumbnails - use online if available, otherwise generate from video
-        const episodesWithLocalThumbs = [];
-        let firstThumbnailInBatch = true;
-        for (const ep of fetchedMetadata.episodes || []) {
-          let thumbnailLocal: string | null = null;
-
-          if (ep.thumbnail) {
-            // Use cached online thumbnail
-            thumbnailLocal = cachedImages.get(ep.thumbnail) || null;
-          }
-
-          // If no online thumbnail, try to generate from video file
-          // Match by season and episode number if available, otherwise by episode number only
-          if (!thumbnailLocal) {
-            const epSeason = ep.seasonNumber ?? null;
-            const key = epSeason !== null
-              ? `${epSeason}_${ep.episodeNumber}`
-              : `null_${ep.episodeNumber}`;
-
-            // Try exact match first (season + episode)
-            let videoPath = fileEpisodeMap.get(key);
-
-            // If no exact match and we have a season, try matching by episode number only
-            // (in case the file has a different season number)
-            if (!videoPath && epSeason !== null) {
-              videoPath = fileEpisodeMap.get(`null_${ep.episodeNumber}`);
-            }
-
-            // If still no match, try any season with same episode number (including decimals)
-            if (!videoPath) {
-              for (const [mapKey, path] of fileEpisodeMap.entries()) {
-                // Extract episode number from key (format: "season_episode" or "null_episode")
-                const keyParts = mapKey.split('_');
-                const keyEpisodeNum = parseFloat(keyParts[keyParts.length - 1]);
-                // Match exact episode number (works for both integers and decimals)
-                if (keyEpisodeNum === ep.episodeNumber) {
-                  videoPath = path;
-                  break;
-                }
-              }
-            }
-
-            if (videoPath) {
-              thumbnailLocal = await thumbnailHandler.generateThumbnail(videoPath, 120, firstThumbnailInBatch);
-              firstThumbnailInBatch = false;
-            }
-          }
-
-          episodesWithLocalThumbs.push({
-            ...ep,
-            thumbnailLocal,
-          });
-        }
-
-        // Generate thumbnails for decimal episodes (6.5, 7.5, etc.) that exist in files but not in metadata
-        // These won't be in the metadata episodes list, so we need to handle them separately
-        const processedEpisodeNumbers = new Set(episodesWithLocalThumbs.map(ep => ep.episodeNumber));
-        for (const fileEp of media.files) {
-          // Check if this is a decimal episode (not an integer) and not already processed
-          if (!Number.isInteger(fileEp.episodeNumber) && !processedEpisodeNumbers.has(fileEp.episodeNumber)) {
-            const epSeason = fileEp.seasonNumber ?? null;
-            
-            // Generate thumbnail for this decimal episode
-            let thumbnailLocal: string | null = null;
-            try {
-              thumbnailLocal = await thumbnailHandler.generateThumbnail(fileEp.filePath, 120, false);
-            } catch (err) {
-              logger.warn('thumbnail', `Failed to generate thumbnail for decimal episode ${fileEp.episodeNumber}`, { file: fileEp.filePath });
-            }
-            
-            // Add to episodes list (these won't have metadata, but will have file info)
-            episodesWithLocalThumbs.push({
-              episodeNumber: fileEp.episodeNumber,
-              seasonNumber: epSeason ?? undefined,
-              title: `Episode ${fileEp.episodeNumber.toFixed(1)}`,
-              description: null,
-              airDate: null,
-              thumbnail: null,
-              thumbnailLocal,
-            });
-          }
-        }
-
-        // Ensure title includes season number if we have season-specific files
-        let finalTitle = fetchedMetadata.title;
-        if (media.seasonNumber !== null && media.seasonNumber !== undefined) {
-          // Check if title already includes season info
-          const seasonPattern = /\(Season\s*\d+\)/i;
-          if (!seasonPattern.test(finalTitle)) {
-            finalTitle = `${finalTitle} (Season ${media.seasonNumber})`;
-          }
-        }
-
-        newMetadata[mediaId] = {
-          ...fetchedMetadata,
-          seriesId: mediaId,
-          title: finalTitle,
-          posterLocal,
-          bannerLocal,
-          episodes: episodesWithLocalThumbs,
-          fileEpisodes: preserveStatus(mediaId, media.files.map(f => ({
-            episodeNumber: f.episodeNumber,
-            seasonNumber: f.seasonNumber,
-            filePath: f.filePath,
-            subtitlePath: f.subtitlePath,
-            subtitlePaths: f.subtitlePaths,
-            filename: f.filename,
-            title: f.title,
-            status: f.status,
-            lastProbedAt: f.lastProbedAt,
-          })), existingMetadata),
-          folderPath: media.folderPath,
-          type: media.type,
-        };
-        logger.info('metadata', `Found: ${finalTitle}`, { series: finalTitle });
-      } else {
-        // No metadata found, use folder/file name
-        logger.warn('metadata', `No online metadata, generating local thumbnails: ${media.name}`, { series: media.name });
-
-        // Generate thumbnails from video files
-        const localEpisodes = [];
-        let firstThumbnail = true;
-        for (const f of media.files) {
-          const thumbnailLocal = await thumbnailHandler.generateThumbnail(f.filePath, 120, firstThumbnail);
-          firstThumbnail = false;
-          localEpisodes.push({
-            episodeNumber: f.episodeNumber,
-            seasonNumber: f.seasonNumber,
-            title: f.title || `Episode ${f.episodeNumber}`,
-            description: null,
-            airDate: null,
-            thumbnail: null,
-            thumbnailLocal,
-          });
-        }
-
-        // Ensure title includes season number if we have season-specific files
-        let localTitle = media.name;
-        if (media.seasonNumber !== null && media.seasonNumber !== undefined) {
-          const seasonPattern = /Season\s*\d+/i;
-          if (!seasonPattern.test(localTitle)) {
-            localTitle = `${localTitle} (Season ${media.seasonNumber})`;
-          }
-        }
-
-        newMetadata[mediaId] = {
-          seriesId: mediaId,
-          title: localTitle,
-          description: '',
-          genres: [],
-          poster: null,
-          posterLocal: null,
-          banner: null,
-          bannerLocal: null,
-          episodes: localEpisodes,
-          fileEpisodes: preserveStatus(mediaId, media.files.map(f => ({
-            episodeNumber: f.episodeNumber,
-            seasonNumber: f.seasonNumber,
-            filePath: f.filePath,
-            subtitlePath: f.subtitlePath,
-            subtitlePaths: f.subtitlePaths,
-            filename: f.filename,
-            title: f.title,
-            status: f.status,
-            lastProbedAt: f.lastProbedAt,
-          })), existingMetadata),
-          folderPath: media.folderPath,
-          type: media.type,
-          source: 'local',
-        };
-      }
-
-      // Small delay to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 500));
+      seenSeriesIds.add(media.id);
+      const slice = await processOneMedia(media, existingMetadata);
+      Object.assign(newMetadata, slice);
     }
 
     // 4. Merge with existing metadata (preserve entries not in this scan)
