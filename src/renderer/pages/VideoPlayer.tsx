@@ -581,18 +581,15 @@ function VideoPlayer() {
             const fontSizePx = Math.max(1, Math.round((o.fontSize / 100) * playResY));
             const marginVPx = Math.max(0, Math.round((o.positionBottom / 100) * playResY));
             const fontName = o.fontFamily.split(',')[0].trim().replace(/^['"]|['"]$/g, '');
-            // INCREMENTAL — only the keys we want to change. _applyKeys in
-            // the worker assigns each input key to wasm; everything else
-            // (OutlineColour, SecondaryColour, Bold, Italic, …) stays as
-            // wasm has it. Spreading orig and round-tripping the full style
-            // through Comlink seems to scramble at least OutlineColour,
-            // which manifested as a red outline.
+            // ASS color/background are deliberately NOT touched. The author
+            // hand-typeset every dialogue style's colors to fit the show;
+            // overriding them just made things look wrong (and the wasm
+            // round-trip kept producing weird red outlines anyway). Only
+            // structural properties (size, position, font, outline thickness)
+            // are exposed to the user for ASS.
             patch = {
               FontSize: fontSizePx,
               FontName: fontName,
-              PrimaryColour: hexToAssColor(o.color, 1),
-              BackColour: hexToAssColor(o.bgColor, o.bgOpacity),
-              BorderStyle: o.bgOpacity > 0 ? 3 : 1,
               Outline: ASS_OUTLINE_THICKNESS[o.outline],
               MarginV: marginVPx,
             };
@@ -1023,31 +1020,35 @@ function VideoPlayer() {
                             />
                             <span className="sub-style-val">{Math.round(editing.positionBottom)}%</span>
                           </label>
-                          <label className="sub-style-row">
-                            <span>Text color</span>
-                            <input
-                              type="color" disabled={disabled}
-                              value={editing.color}
-                              onChange={(e) => update({ color: e.target.value })}
-                            />
-                          </label>
-                          <label className="sub-style-row">
-                            <span>Background</span>
-                            <input
-                              type="color" disabled={disabled}
-                              value={editing.bgColor}
-                              onChange={(e) => update({ bgColor: e.target.value })}
-                            />
-                          </label>
-                          <label className="sub-style-row">
-                            <span>Bg opacity</span>
-                            <input
-                              type="range" min={0} max={1} step={0.05} disabled={disabled}
-                              value={editing.bgOpacity}
-                              onChange={(e) => update({ bgOpacity: Number(e.target.value) })}
-                            />
-                            <span className="sub-style-val">{Math.round(editing.bgOpacity * 100)}%</span>
-                          </label>
+                          {!isAss && (
+                            <>
+                              <label className="sub-style-row">
+                                <span>Text color</span>
+                                <input
+                                  type="color"
+                                  value={editing.color}
+                                  onChange={(e) => update({ color: e.target.value })}
+                                />
+                              </label>
+                              <label className="sub-style-row">
+                                <span>Background</span>
+                                <input
+                                  type="color"
+                                  value={editing.bgColor}
+                                  onChange={(e) => update({ bgColor: e.target.value })}
+                                />
+                              </label>
+                              <label className="sub-style-row">
+                                <span>Bg opacity</span>
+                                <input
+                                  type="range" min={0} max={1} step={0.05}
+                                  value={editing.bgOpacity}
+                                  onChange={(e) => update({ bgOpacity: Number(e.target.value) })}
+                                />
+                                <span className="sub-style-val">{Math.round(editing.bgOpacity * 100)}%</span>
+                              </label>
+                            </>
+                          )}
                           <label className="sub-style-row">
                             <span>Font</span>
                             <select
@@ -1072,6 +1073,11 @@ function VideoPlayer() {
                               <option value="heavy">Heavy</option>
                             </select>
                           </label>
+                          {isAss && (
+                            <p style={{ margin: '4px 0 0', color: '#6a6a76', fontSize: 11, fontStyle: 'italic' }}>
+                              Colors come from the file&rsquo;s author-typeset styling — left untouched on purpose.
+                            </p>
+                          )}
                           <button
                             className="sub-style-reset"
                             disabled={disabled}
