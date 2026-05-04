@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 export type { LogLevel, LogStage, LogEvent } from '../shared/logTypes';
 import type { LogEvent } from '../shared/logTypes';
+export type { FileStatus } from '../shared/fileStatus';
+import type { FileStatus } from '../shared/fileStatus';
 
 interface ScanResult {
   success: boolean;
@@ -47,7 +49,7 @@ export interface ElectronAPI {
 
   // Video probe
   probeRetry: (filePath: string) => Promise<void>;
-  onMetadataFileStatusChanged: (handler: (payload: { filePath: string; status: 'ready' | 'verifying' | 'stalled' }) => void) => () => void;
+  onMetadataFileStatusChanged: (handler: (payload: { filePath: string; status: FileStatus }) => void) => () => void;
 }
 
 declare global {
@@ -94,8 +96,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Video probe
   probeRetry: (filePath: string) => ipcRenderer.invoke('probe:retry', filePath),
-  onMetadataFileStatusChanged: (handler: (payload: { filePath: string; status: 'ready' | 'verifying' | 'stalled' }) => void) => {
-    const listener = (_e: unknown, payload: { filePath: string; status: 'ready' | 'verifying' | 'stalled' }) => handler(payload);
+  onMetadataFileStatusChanged: (handler: (payload: { filePath: string; status: FileStatus }) => void) => {
+    const listener = (_e: unknown, payload: { filePath: string; status: FileStatus }) => handler(payload);
     ipcRenderer.on('metadata:file-status-changed', listener);
     return () => ipcRenderer.removeListener('metadata:file-status-changed', listener);
   },

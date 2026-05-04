@@ -4,6 +4,7 @@ import { join, extname, basename } from 'path';
 import { logger } from '../services/logger';
 import imageCacheHandler from './imageCacheHandler';
 import thumbnailHandler from './thumbnailHandler';
+import type { FileStatus } from '../../shared/fileStatus';
 
 const VIDEO_EXTENSIONS = ['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v'];
 const SUBTITLE_EXTENSIONS = ['.srt', '.vtt', '.ass', '.ssa'];
@@ -17,7 +18,7 @@ export interface VideoFile {
   subtitlePath: string | null;
   subtitlePaths: string[];
   parentFolder: string;
-  status: 'ready' | 'verifying' | 'stalled';
+  status: FileStatus;
   lastProbedAt?: number;
 }
 
@@ -529,7 +530,7 @@ interface FileEpisodeEntry {
   subtitlePaths?: string[];
   filename?: string;
   title?: string;
-  status?: 'ready' | 'verifying' | 'stalled';
+  status?: FileStatus;
   lastProbedAt?: number;
 }
 

@@ -12,6 +12,7 @@ import imageCacheHandler from './handlers/imageCacheHandler';
 import thumbnailHandler from './handlers/thumbnailHandler';
 import { initMediaProgress, updateMediaProgress } from './utils/debugUtils';
 import { logger } from './services/logger';
+import type { FileStatus } from '../shared/fileStatus';
 import videoProbeHandler from './handlers/videoProbeHandler';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -51,7 +52,7 @@ function preserveStatus(
   });
 }
 
-async function updateFileStatus(filePath: string, status: 'ready' | 'verifying' | 'stalled'): Promise<void> {
+async function updateFileStatus(filePath: string, status: FileStatus): Promise<void> {
   const meta = (await metadataHandler.loadMetadata()) as Record<string, unknown>;
   let touched = false;
   for (const series of Object.values(meta)) {

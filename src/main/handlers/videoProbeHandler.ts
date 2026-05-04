@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { stat } from 'node:fs/promises';
 import { logger } from '../services/logger';
+import type { FileStatus } from '../../shared/fileStatus';
 
 export interface ProbeResult {
   ready: boolean;
@@ -25,7 +26,7 @@ const POLL_INTERVAL_MS = 2_000;
 
 const queue = new Map<string, QueuedFile>();
 let pollHandle: NodeJS.Timeout | null = null;
-let onStatusChange: ((path: string, status: 'ready' | 'verifying' | 'stalled') => Promise<void> | void) | null = null;
+let onStatusChange: ((path: string, status: FileStatus) => Promise<void> | void) | null = null;
 
 export function parseFfprobeJson(stdout: string): ProbeResult {
   let parsed: { streams?: Array<{ codec_type?: string }>; format?: { duration?: string | number } };
@@ -45,14 +46,16 @@ export function parseFfprobeJson(stdout: string): ProbeResult {
 function runFfprobe(path: string, timeoutMs = 15_000): Promise<ProbeResult> {
   return new Promise((resolve) => {
     const child = spawn('ffprobe', ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', path], {
-      stdio: ['ignore', 'pipe', 'ignore'],
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
     let stdout = '';
+    let stderr = '';
     const timer = setTimeout(() => {
       child.kill();
       resolve({ ready: false, reason: 'ffprobe timeout' });
     }, timeoutMs);
     child.stdout.on('data', (buf) => { stdout += buf.toString(); });
+    child.stderr.on('data', (buf) => { stderr += buf.toString(); });
     child.on('error', (err) => {
       clearTimeout(timer);
       resolve({ ready: false, reason: `ffprobe spawn error: ${err.message}` });
@@ -60,7 +63,8 @@ function runFfprobe(path: string, timeoutMs = 15_000): Promise<ProbeResult> {
     child.on('close', (code) => {
       clearTimeout(timer);
       if (code !== 0) {
-        resolve({ ready: false, reason: `ffprobe exit ${code}` });
+        const detail = stderr.trim().split('\n').slice(-1)[0]?.slice(0, 200);
+        resolve({ ready: false, reason: detail ? `ffprobe exit ${code}: ${detail}` : `ffprobe exit ${code}` });
         return;
       }
       resolve(parseFfprobeJson(stdout));
@@ -93,7 +97,22 @@ async function probeOne(path: string): Promise<void> {
   entry.nextRunAt = Date.now() + nextDelay(entry.attempts);
 }
 
+// Concurrency guard — `setInterval` doesn't await `tick()`, and a single
+// hung ffprobe (15s timeout) would otherwise let multiple ticks overlap and
+// double-probe the same entry.
+let tickInFlight = false;
+
 async function tick(): Promise<void> {
+  if (tickInFlight) return;
+  tickInFlight = true;
+  try {
+    await tickInner();
+  } finally {
+    tickInFlight = false;
+  }
+}
+
+async function tickInner(): Promise<void> {
   const now = Date.now();
   for (const [path, entry] of queue) {
     // size-stable check
@@ -153,7 +172,7 @@ const videoProbeHandler = {
     this.enqueue(path);
   },
 
-  start(handler: (path: string, status: 'ready' | 'verifying' | 'stalled') => Promise<void> | void): void {
+  start(handler: (path: string, status: FileStatus) => Promise<void> | void): void {
     onStatusChange = handler;
     if (pollHandle) return;
     pollHandle = setInterval(() => { void tick(); }, POLL_INTERVAL_MS);
