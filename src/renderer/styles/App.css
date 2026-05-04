@@ -755,14 +755,10 @@ a { color: inherit; text-decoration: none; }
 }
 
 /* JASSUB injects its own canvas as a sibling of the <video> when active.
-   Style any canvas inside .player-canvas the same way: stretched over
-   the video, below the player chrome (z-index 5) so subs don't cover
-   the controls bar. */
-.player-canvas canvas {
-  position: absolute !important;
-  inset: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
+   It sets position/width/height/top/left inline via getBoundingClientRect
+   on the video, so we let it manage layout — only force pointer-events and
+   a z-index high enough to sit above the video but below the controls bar. */
+.player-canvas canvas.JASSUB {
   pointer-events: none !important;
   z-index: 4 !important;
 }

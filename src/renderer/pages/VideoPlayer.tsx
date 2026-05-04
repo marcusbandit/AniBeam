@@ -355,7 +355,16 @@ function VideoPlayer() {
               console.warn('[subs] manualRender kick failed', err);
             }
           }
-          console.log('[subs] JASSUB ready for', sub.label);
+          console.log('[subs] JASSUB ready for', sub.label, '— video', video.videoWidth, 'x', video.videoHeight, 'paused?', video.paused, 'readyState', video.readyState);
+          // Watch the canvas dimensions over time to confirm rVFC is firing.
+          let ticks = 0;
+          const watch = setInterval(() => {
+            const c = video.parentElement?.querySelector('canvas.JASSUB') as HTMLCanvasElement | null;
+            if (!c) return;
+            console.log(`[subs] canvas tick ${ticks}: bitmap ${c.width}x${c.height}, display ${c.clientWidth}x${c.clientHeight}, video paused=${video.paused} t=${video.currentTime.toFixed(2)}`);
+            ticks++;
+            if (ticks >= 5) clearInterval(watch);
+          }, 1000);
         } catch (err) {
           console.error('JASSUB init failed:', err);
         }
