@@ -552,7 +552,11 @@ function VideoPlayer() {
     if (!originals.length) return;
     void (async () => {
       try {
-        const r = (inst as unknown as { renderer: { setStyle: (s: Record<string, unknown>, idx: number) => Promise<unknown> } }).renderer;
+        const instAny = inst as unknown as {
+          renderer: { setStyle: (s: Record<string, unknown>, idx: number) => Promise<unknown> };
+          resize: (forceRepaint?: boolean) => Promise<void>;
+        };
+        const r = instAny.renderer;
         const playResY = assPlayResYRef.current || 288;
         for (let i = 0; i < originals.length; i++) {
           const orig = originals[i];
@@ -584,6 +588,10 @@ function VideoPlayer() {
           }
           await r.setStyle(patch, i);
         }
+        // libass caches cue positions and won't re-flow on a style mutation
+        // alone (e.g. MarginV won't move the existing cue). Force one full
+        // repaint so the next frame uses the new style values for layout.
+        try { await instAny.resize(true); } catch { /* ignore */ }
       } catch (err) {
         console.warn('[subs] failed to apply ASS overrides', err);
       }
