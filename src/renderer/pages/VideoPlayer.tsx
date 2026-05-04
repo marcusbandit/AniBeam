@@ -332,39 +332,48 @@ function VideoPlayer() {
             workerUrl: jassubWorkerUrl,
             wasmUrl: wasmUrls.wasmUrl,
             modernWasmUrl: wasmUrls.modernWasmUrl,
-            // Skip the navigator.permissions font query (Electron-friendly).
             queryFonts: false,
+            debug: true, // logs frame timing + fontselect to console
           } as ConstructorParameters<typeof JASSUB>[0]);
           jassubRef.current = inst;
-          // Wait for the worker + renderer to be set up. JASSUB drives all
-          // rendering off the video's requestVideoFrameCallback, which only
-          // fires for actually-presented frames. If the video already has a
-          // decoded frame waiting (HAVE_CURRENT_DATA = 2), kick a one-shot
-          // manualRender so the renderer flushes its initial resize and we
-          // get the first sub frame; subsequent rVFCs take over on their own.
           await (inst as unknown as { ready?: Promise<unknown> }).ready;
-          if (video.readyState >= 2 && video.videoWidth > 0) {
-            try {
-              await (inst as unknown as { manualRender: (m: { expectedDisplayTime: number; width: number; height: number; mediaTime: number }) => Promise<void> }).manualRender({
-                expectedDisplayTime: performance.now(),
-                width: video.videoWidth,
-                height: video.videoHeight,
-                mediaTime: video.currentTime,
-              });
-            } catch (err) {
-              console.warn('[subs] manualRender kick failed', err);
-            }
+          console.log('[subs] JASSUB ready for', sub.label);
+
+          // Force at least one render. The constructor already armed rVFC,
+          // but Chromium may not fire it for the very first frame if the
+          // video is already paused/seek. manualRender bridges that gap.
+          try {
+            const result = await (inst as unknown as { manualRender: (m: { expectedDisplayTime: number; width: number; height: number; mediaTime: number }) => Promise<unknown> }).manualRender({
+              expectedDisplayTime: performance.now(),
+              width: video.videoWidth || 1920,
+              height: video.videoHeight || 1080,
+              mediaTime: video.currentTime,
+            });
+            console.log('[subs] manualRender returned', result);
+          } catch (err) {
+            console.warn('[subs] manualRender failed', err);
           }
-          console.log('[subs] JASSUB ready for', sub.label, '— video', video.videoWidth, 'x', video.videoHeight, 'paused?', video.paused, 'readyState', video.readyState);
-          // Watch the canvas dimensions over time to confirm rVFC is firing.
-          let ticks = 0;
-          const watch = setInterval(() => {
-            const c = video.parentElement?.querySelector('canvas.JASSUB') as HTMLCanvasElement | null;
-            if (!c) return;
-            console.log(`[subs] canvas tick ${ticks}: bitmap ${c.width}x${c.height}, display ${c.clientWidth}x${c.clientHeight}, video paused=${video.paused} t=${video.currentTime.toFixed(2)}`);
-            ticks++;
-            if (ticks >= 5) clearInterval(watch);
-          }, 1000);
+
+          // If JASSUB's auto-attached rVFC didn't fire for any reason, drive
+          // it ourselves on a timer so subs stay in sync. Cheap fallback.
+          const pump = () => {
+            if (jassubRef.current !== inst) return; // disposed
+            const v = videoRef.current;
+            if (!v || v.paused || v.readyState < 2) {
+              setTimeout(pump, 100);
+              return;
+            }
+            try {
+              void (inst as unknown as { manualRender: (m: { expectedDisplayTime: number; width: number; height: number; mediaTime: number }) => Promise<unknown> }).manualRender({
+                expectedDisplayTime: performance.now(),
+                width: v.videoWidth,
+                height: v.videoHeight,
+                mediaTime: v.currentTime,
+              });
+            } catch { /* ignore */ }
+            setTimeout(pump, 33); // ~30 fps
+          };
+          pump();
         } catch (err) {
           console.error('JASSUB init failed:', err);
         }
