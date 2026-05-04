@@ -44,6 +44,19 @@ function getBaseName(filename: string): string {
   return basename(filename, extname(filename));
 }
 
+/**
+ * Clean a per-episode display title — strip release-group / quality / hash
+ * tags in [square brackets], collapse separator noise, normalize whitespace.
+ * The unstripped basename stays in `filename` for disambiguation if needed.
+ */
+function cleanEpisodeTitle(filename: string): string {
+  return getBaseName(filename)
+    .replace(/\s*\[[^\]]*\]\s*/g, ' ')   // anything in [square brackets]
+    .replace(/\s*[-_]\s*$/g, '')         // trailing dash/underscore left over
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function extractSeasonAndEpisode(filename: string): { season: number | null; episode: number } {
   // IMPORTANT: Work on base name WITHOUT extension to avoid ".mp4" → "4" bug
   const baseName = getBaseName(filename);
@@ -312,7 +325,7 @@ async function scanFolderForVideos(folderPath: string, folderSeason: number | nu
             videos.push({
               filename: entry,
               filePath: fullPath,
-              title: getBaseName(entry),
+              title: cleanEpisodeTitle(entry),
               episodeNumber: episode,
               seasonNumber: finalSeason,
               subtitlePath: null,
@@ -497,7 +510,7 @@ async function scanDirectory(rootPath: string): Promise<ScannedMedia[]> {
             files: [{
               filename: entry,
               filePath: entryPath,
-              title: getBaseName(entry),
+              title: cleanEpisodeTitle(entry),
               episodeNumber: movieEpisode,
               seasonNumber: null,
               subtitlePath: null,
