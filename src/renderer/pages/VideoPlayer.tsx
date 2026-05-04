@@ -27,6 +27,37 @@ async function srtToVttUrl(srcUrl: string): Promise<string> {
   }
 }
 
+interface SubtitleStyle {
+  fontSize: number;
+  color: string;
+  bgColor: string;
+  bgOpacity: number;
+  fontFamily: 'sans-serif' | 'serif' | 'ui-monospace';
+  outline: 'none' | 'light' | 'medium' | 'heavy';
+}
+
+const DEFAULT_SUB_STYLE: SubtitleStyle = {
+  fontSize: 22,
+  color: '#ffffff',
+  bgColor: '#000000',
+  bgOpacity: 0.5,
+  fontFamily: 'sans-serif',
+  outline: 'medium',
+};
+
+const OUTLINE_PRESETS: Record<SubtitleStyle['outline'], string> = {
+  none: 'none',
+  light: '0 1px 2px rgba(0,0,0,0.7)',
+  medium: '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000',
+  heavy: '-2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000, 0 0 4px #000',
+};
+
+function hexToRgb(hex: string): string {
+  const m = hex.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  if (!m) return '0,0,0';
+  return `${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}`;
+}
+
 function pad(n: number): string {
   return n < 10 ? `0${n}` : `${n}`;
 }
@@ -56,10 +87,21 @@ function VideoPlayer() {
   const [muted, setMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [activeSubIdx, setActiveSubIdx] = useState<number>(-1); // -1 = off
+  const [subMenuOpen, setSubMenuOpen] = useState(false);
+  const [subMenuTab, setSubMenuTab] = useState<'tracks' | 'style'>('tracks');
+  const [subStyle, setSubStyle] = useState<SubtitleStyle>(() => {
+    try {
+      const saved = localStorage.getItem('subtitle-style');
+      if (saved) return { ...DEFAULT_SUB_STYLE, ...JSON.parse(saved) as Partial<SubtitleStyle> };
+    } catch { /* ignore */ }
+    return DEFAULT_SUB_STYLE;
+  });
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const subMenuRef = useRef<HTMLDivElement>(null);
+  const ccBtnRef = useRef<HTMLButtonElement>(null);
 
   // Auto-hide chrome after inactivity
   useEffect(() => {
@@ -219,20 +261,44 @@ function VideoPlayer() {
     return () => video.removeEventListener('loadedmetadata', apply);
   }, [subtitleSrcs]);
 
-  const cycleSubtitle = () => {
+  const selectSubtitle = (idx: number) => {
     const video = videoRef.current;
     if (!video) return;
     const tracks = video.textTracks;
-    const total = tracks.length;
-    if (total === 0) return;
-    // -1 (off) → 0 → 1 → ... → total-1 → -1
-    const next = activeSubIdx + 1 >= total ? -1 : activeSubIdx + 1;
-    for (let i = 0; i < total; i++) {
-      tracks[i].mode = i === next ? 'showing' : 'disabled';
+    for (let i = 0; i < tracks.length; i++) {
+      tracks[i].mode = i === idx ? 'showing' : 'disabled';
     }
-    setActiveSubIdx(next);
-    showChrome();
+    setActiveSubIdx(idx);
   };
+
+  // Persist subtitle style to localStorage on change.
+  useEffect(() => {
+    try { localStorage.setItem('subtitle-style', JSON.stringify(subStyle)); } catch { /* ignore */ }
+  }, [subStyle]);
+
+  // Close subtitle menu on outside click.
+  useEffect(() => {
+    if (!subMenuOpen) return;
+    const onClick = (e: MouseEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (subMenuRef.current?.contains(target)) return;
+      if (ccBtnRef.current?.contains(target)) return;
+      setSubMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [subMenuOpen]);
+
+  // Keep chrome visible while the subtitle menu is open.
+  useEffect(() => {
+    if (subMenuOpen) {
+      setChrome(true);
+      if (hideTimer.current) clearTimeout(hideTimer.current);
+    } else {
+      showChrome();
+    }
+  }, [subMenuOpen, showChrome]);
 
   // Wire <video> events to local state
   useEffect(() => {
@@ -364,8 +430,19 @@ function VideoPlayer() {
     ? `S${pad(seasonNumber)}E${pad(episodeNum)}`
     : `EP ${episodeNum}`;
 
+  const cueCss = `
+    .player-canvas video::cue {
+      background-color: rgba(${hexToRgb(subStyle.bgColor)}, ${subStyle.bgOpacity});
+      color: ${subStyle.color};
+      font-size: ${subStyle.fontSize}px;
+      font-family: ${subStyle.fontFamily};
+      text-shadow: ${OUTLINE_PRESETS[subStyle.outline]};
+    }
+  `;
+
   return (
     <div className="player-wrap" ref={wrapRef} onMouseMove={showChrome}>
+      <style>{cueCss}</style>
       <div className="player-header" style={{ opacity: chrome ? 1 : 0 }}>
         <button
           className="player-back"
@@ -438,14 +515,110 @@ function VideoPlayer() {
           </div>
           <div className="player-right-group">
             {subtitleSrcs.length > 0 && (
-              <button
-                className={`player-ctl-btn${activeSubIdx >= 0 ? ' active' : ''}`}
-                onClick={cycleSubtitle}
-                aria-label="Toggle subtitles"
-                title={activeSubIdx >= 0 ? subtitleSrcs[activeSubIdx]?.label ?? 'Subtitles' : 'Subtitles off'}
-              >
-                <Subtitles size={18} />
-              </button>
+              <div className="player-sub-anchor">
+                <button
+                  ref={ccBtnRef}
+                  className={`player-ctl-btn${activeSubIdx >= 0 ? ' active' : ''}`}
+                  onClick={() => setSubMenuOpen((v) => !v)}
+                  aria-label="Subtitles menu"
+                  title={activeSubIdx >= 0 ? subtitleSrcs[activeSubIdx]?.label ?? 'Subtitles' : 'Subtitles off'}
+                >
+                  <Subtitles size={18} />
+                </button>
+                {subMenuOpen && (
+                  <div className="sub-menu" ref={subMenuRef}>
+                    <div className="sub-menu-tabs">
+                      <button
+                        className={`sub-menu-tab${subMenuTab === 'tracks' ? ' active' : ''}`}
+                        onClick={() => setSubMenuTab('tracks')}
+                      >Tracks</button>
+                      <button
+                        className={`sub-menu-tab${subMenuTab === 'style' ? ' active' : ''}`}
+                        onClick={() => setSubMenuTab('style')}
+                      >Style</button>
+                    </div>
+                    {subMenuTab === 'tracks' ? (
+                      <div className="sub-menu-body">
+                        <button
+                          className={`sub-menu-row${activeSubIdx === -1 ? ' active' : ''}`}
+                          onClick={() => { selectSubtitle(-1); setSubMenuOpen(false); }}
+                        >Off</button>
+                        {subtitleSrcs.map((s, i) => (
+                          <button
+                            key={i}
+                            className={`sub-menu-row${activeSubIdx === i ? ' active' : ''}`}
+                            onClick={() => { selectSubtitle(i); setSubMenuOpen(false); }}
+                          >{s.label}</button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="sub-menu-body sub-menu-style">
+                        <label className="sub-style-row">
+                          <span>Size</span>
+                          <input
+                            type="range" min={12} max={48} step={1}
+                            value={subStyle.fontSize}
+                            onChange={(e) => setSubStyle((s) => ({ ...s, fontSize: Number(e.target.value) }))}
+                          />
+                          <span className="sub-style-val">{subStyle.fontSize}px</span>
+                        </label>
+                        <label className="sub-style-row">
+                          <span>Text color</span>
+                          <input
+                            type="color"
+                            value={subStyle.color}
+                            onChange={(e) => setSubStyle((s) => ({ ...s, color: e.target.value }))}
+                          />
+                        </label>
+                        <label className="sub-style-row">
+                          <span>Background</span>
+                          <input
+                            type="color"
+                            value={subStyle.bgColor}
+                            onChange={(e) => setSubStyle((s) => ({ ...s, bgColor: e.target.value }))}
+                          />
+                        </label>
+                        <label className="sub-style-row">
+                          <span>Bg opacity</span>
+                          <input
+                            type="range" min={0} max={1} step={0.05}
+                            value={subStyle.bgOpacity}
+                            onChange={(e) => setSubStyle((s) => ({ ...s, bgOpacity: Number(e.target.value) }))}
+                          />
+                          <span className="sub-style-val">{Math.round(subStyle.bgOpacity * 100)}%</span>
+                        </label>
+                        <label className="sub-style-row">
+                          <span>Font</span>
+                          <select
+                            value={subStyle.fontFamily}
+                            onChange={(e) => setSubStyle((s) => ({ ...s, fontFamily: e.target.value as SubtitleStyle['fontFamily'] }))}
+                          >
+                            <option value="sans-serif">Sans</option>
+                            <option value="serif">Serif</option>
+                            <option value="ui-monospace">Mono</option>
+                          </select>
+                        </label>
+                        <label className="sub-style-row">
+                          <span>Outline</span>
+                          <select
+                            value={subStyle.outline}
+                            onChange={(e) => setSubStyle((s) => ({ ...s, outline: e.target.value as SubtitleStyle['outline'] }))}
+                          >
+                            <option value="none">None</option>
+                            <option value="light">Light</option>
+                            <option value="medium">Medium</option>
+                            <option value="heavy">Heavy</option>
+                          </select>
+                        </label>
+                        <button
+                          className="sub-style-reset"
+                          onClick={() => setSubStyle(DEFAULT_SUB_STYLE)}
+                        >Reset to defaults</button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
             <button className="player-ctl-btn" onClick={toggleFullscreen} aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}>
               {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
