@@ -134,7 +134,10 @@ async function handleUnlink(filePath: string): Promise<void> {
     return { result: !sameShape, updated: sameShape ? null : reconciled };
   });
   if (changed && mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('metadata:changed', { filePath });
+    // Reuse the file-status-changed channel — renderers treat any payload as
+    // "metadata changed, reload." Status field is a placeholder; the entry
+    // for `filePath` is gone after a reconcile.
+    mainWindow.webContents.send('metadata:file-status-changed', { filePath, status: 'ready' });
   }
 }
 
