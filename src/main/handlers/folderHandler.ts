@@ -1,6 +1,9 @@
 import { readdir, stat } from 'fs/promises';
+import { existsSync } from 'fs';
 import { join, extname, basename } from 'path';
 import { logger } from '../services/logger';
+import imageCacheHandler from './imageCacheHandler';
+import thumbnailHandler from './thumbnailHandler';
 
 const VIDEO_EXTENSIONS = ['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v'];
 const SUBTITLE_EXTENSIONS = ['.srt', '.vtt', '.ass', '.ssa'];
@@ -514,6 +517,99 @@ async function scanDirectory(rootPath: string): Promise<ScannedMedia[]> {
   return results;
 }
 
+interface FileEpisodeEntry {
+  filePath: string;
+  episodeNumber?: number;
+  seasonNumber?: number | null;
+  subtitlePath?: string | null;
+  subtitlePaths?: string[];
+  filename?: string;
+  title?: string;
+  status?: 'ready' | 'verifying' | 'stalled';
+  lastProbedAt?: number;
+}
+
+interface SeriesEntry {
+  fileEpisodes?: FileEpisodeEntry[];
+  poster?: string | null;
+  banner?: string | null;
+  posterLocal?: string | null;
+  bannerLocal?: string | null;
+  episodes?: Array<{ thumbnail?: string | null; thumbnailLocal?: string | null }>;
+  [k: string]: unknown;
+}
+
+/**
+ * Drop file entries whose absolute path is gone from disk OR not under
+ * any active library root. If a series ends up with zero files, drop the
+ * whole series and purge its cached posters/banners and episode thumbnails.
+ *
+ * @param activeRoots - Optional list of currently-active library root paths.
+ *                     If omitted, only the disk-presence check applies.
+ * @returns the reconciled metadata object (may share references with the input).
+ */
+async function reconcileMetadata(
+  metadata: Record<string, unknown>,
+  activeRoots?: string[],
+): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = {};
+  let removedFiles = 0;
+  let removedSeries = 0;
+
+  const isUnderActiveRoot = (filePath: string): boolean => {
+    if (!activeRoots || activeRoots.length === 0) return true;
+    return activeRoots.some(
+      (root) => filePath === root || filePath.startsWith(root.endsWith('/') ? root : root + '/'),
+    );
+  };
+
+  for (const [seriesId, raw] of Object.entries(metadata)) {
+    const series = raw as SeriesEntry;
+    const files = Array.isArray(series.fileEpisodes) ? series.fileEpisodes : [];
+    const kept = files.filter((f) => {
+      if (!f?.filePath) return false;
+      const reachable = isUnderActiveRoot(f.filePath);
+      const present = reachable && existsSync(f.filePath);
+      if (!present) removedFiles++;
+      return present;
+    });
+
+    if (kept.length === 0 && files.length > 0) {
+      removedSeries++;
+      logger.info('folder', `Reconcile: dropping series`, { series: String(series.title ?? seriesId) });
+      try {
+        await imageCacheHandler.deleteSeriesImages({
+          poster: series.poster ?? null,
+          banner: series.banner ?? null,
+          posterLocal: series.posterLocal ?? null,
+          bannerLocal: series.bannerLocal ?? null,
+          episodes: series.episodes ?? [],
+        });
+      } catch (err) {
+        logger.warn('image', `Reconcile: image cleanup failed: ${(err as Error).message}`, { series: String(series.title ?? seriesId) });
+      }
+      try {
+        await thumbnailHandler.deleteSeriesThumbnails(files.map((f) => f.filePath).filter(Boolean) as string[]);
+      } catch (err) {
+        logger.warn('thumbnail', `Reconcile: thumbnail cleanup failed: ${(err as Error).message}`, { series: String(series.title ?? seriesId) });
+      }
+      continue;
+    }
+
+    if (kept.length !== files.length) {
+      logger.info('folder', `Reconcile: dropped ${files.length - kept.length} file(s)`, { series: String(series.title ?? seriesId) });
+      out[seriesId] = { ...series, fileEpisodes: kept };
+    } else {
+      out[seriesId] = series;
+    }
+  }
+
+  if (removedFiles || removedSeries) {
+    logger.info('folder', `Reconcile complete: ${removedFiles} file(s), ${removedSeries} series removed`);
+  }
+  return out;
+}
+
 const folderHandler = {
   async scanFolder(folderPath: string): Promise<ScannedMedia[]> {
     if (!folderPath) {
@@ -550,6 +646,8 @@ const folderHandler = {
 
     return allResults;
   },
+
+  reconcileMetadata,
 };
 
 export default folderHandler;

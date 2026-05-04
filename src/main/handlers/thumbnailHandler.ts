@@ -1,4 +1,4 @@
-import { mkdir, access } from 'fs/promises';
+import { mkdir, access, unlink } from 'fs/promises';
 import { join, basename } from 'path';
 import { app } from 'electron';
 import { spawn } from 'child_process';
@@ -161,6 +161,24 @@ const thumbnailHandler = {
     }
     
     return results;
+  },
+
+  /**
+   * Delete thumbnails for all video paths belonging to a removed series.
+   */
+  async deleteSeriesThumbnails(videoPaths: string[]): Promise<void> {
+    for (const videoPath of videoPaths) {
+      if (!videoPath) continue;
+      const filename = generateThumbnailFilename(videoPath, 120);
+      const fullPath = join(getThumbnailCachePath(), filename);
+      try {
+        await unlink(fullPath);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+          logger.warn('thumbnail', `Failed to delete thumbnail: ${(err as Error).message}`, { file: videoPath });
+        }
+      }
+    }
   },
 
   /**

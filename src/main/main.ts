@@ -261,9 +261,17 @@ ipcMain.handle('add-folder-source', async (_event, folderPath: string) => {
 
 ipcMain.handle('remove-folder-source', async (_event, folderPath: string) => {
   try {
-    return await configHandler.removeFolderSource(folderPath);
+    const ok = await configHandler.removeFolderSource(folderPath);
+    if (ok) {
+      logger.info('folder', `Removed library root: ${folderPath}`);
+      const meta = (await metadataHandler.loadMetadata()) as Record<string, unknown>;
+      const activeRoots = await configHandler.getFolderSources();
+      const reconciled = await folderHandler.reconcileMetadata(meta, activeRoots);
+      if (reconciled !== meta) await metadataHandler.saveMetadata(reconciled);
+    }
+    return ok;
   } catch (error) {
-    logger.error('system', 'Error removing folder source');
+    logger.error('folder', `Error removing folder source: ${(error as Error).message}`);
     throw error;
   }
 });
@@ -429,8 +437,13 @@ ipcMain.handle('scan-and-fetch-metadata', async (_event, folderPath: string) => 
     // 1. Scan the folder to get all media
     const scannedMedia = await folderHandler.scanFolder(folderPath);
 
-    // 2. Load existing metadata
-    const existingMetadata = await metadataHandler.loadMetadata() as Record<string, unknown>;
+    // 2. Load existing metadata and reconcile against disk
+    const rawMetadata = await metadataHandler.loadMetadata() as Record<string, unknown>;
+    const activeRoots = await configHandler.getFolderSources();
+    const existingMetadata = await folderHandler.reconcileMetadata(rawMetadata, activeRoots);
+    if (existingMetadata !== rawMetadata) {
+      await metadataHandler.saveMetadata(existingMetadata);
+    }
     const newMetadata: Record<string, unknown> = {};
 
     // Track which seriesIds we've seen in this scan (to remove ones that no longer exist)
