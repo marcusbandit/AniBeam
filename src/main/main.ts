@@ -55,24 +55,23 @@ function preserveStatus(
 }
 
 async function updateFileStatus(filePath: string, status: FileStatus): Promise<void> {
-  const meta = (await metadataHandler.loadMetadata()) as Record<string, unknown>;
-  let touched = false;
-  for (const series of Object.values(meta)) {
-    const s = series as { fileEpisodes?: Array<{ filePath: string; status?: string; lastProbedAt?: number }> };
-    if (!Array.isArray(s.fileEpisodes)) continue;
-    for (const file of s.fileEpisodes) {
-      if (file.filePath === filePath) {
-        file.status = status;
-        file.lastProbedAt = Date.now();
-        touched = true;
+  const touched = await metadataHandler.transaction<boolean>(async (meta) => {
+    let changed = false;
+    for (const series of Object.values(meta)) {
+      const s = series as { fileEpisodes?: Array<{ filePath: string; status?: string; lastProbedAt?: number }> };
+      if (!Array.isArray(s.fileEpisodes)) continue;
+      for (const file of s.fileEpisodes) {
+        if (file.filePath === filePath) {
+          file.status = status;
+          file.lastProbedAt = Date.now();
+          changed = true;
+        }
       }
     }
-  }
-  if (touched) {
-    await metadataHandler.saveMetadata(meta);
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('metadata:file-status-changed', { filePath, status });
-    }
+    return { result: changed, updated: changed ? meta : null };
+  });
+  if (touched && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('metadata:file-status-changed', { filePath, status });
   }
 }
 
@@ -86,23 +85,27 @@ async function ingestSingleFile(filePath: string): Promise<void> {
     const { media } = result;
     logger.info('metadata', `Fetching for new file`, { series: media.name, file: filePath });
 
-    const existing = (await metadataHandler.loadMetadata()) as Record<string, unknown>;
-    const slice = await processOneMedia(media, existing);
+    // Run network-bound metadata fetch OUTSIDE the lock — it can take seconds.
+    // Read a snapshot now; we'll re-merge with the latest state inside the transaction.
+    const snapshot = await metadataHandler.loadMetadata();
+    const slice = await processOneMedia(media, snapshot);
 
-    // Force this newly-discovered file to 'verifying' in the merged slice.
-    for (const seriesValue of Object.values(slice)) {
-      const s = seriesValue as { fileEpisodes?: Array<{ filePath: string; status?: string; lastProbedAt?: number }> };
-      if (!Array.isArray(s.fileEpisodes)) continue;
-      for (const f of s.fileEpisodes) {
-        if (f.filePath === filePath) {
-          f.status = 'verifying';
-          f.lastProbedAt = Date.now();
+    await metadataHandler.transaction(async (current) => {
+      // Force this newly-discovered file to 'verifying' in the merged slice.
+      for (const seriesValue of Object.values(slice)) {
+        const s = seriesValue as { fileEpisodes?: Array<{ filePath: string; status?: string; lastProbedAt?: number }> };
+        if (!Array.isArray(s.fileEpisodes)) continue;
+        for (const f of s.fileEpisodes) {
+          if (f.filePath === filePath) {
+            f.status = 'verifying';
+            f.lastProbedAt = Date.now();
+          }
         }
       }
-    }
-
-    const merged = { ...existing, ...slice };
-    await metadataHandler.saveMetadata(merged);
+      // Merge slice over the FRESH state (not snapshot) so any concurrent
+      // probe completions or other ingests don't get clobbered.
+      return { updated: { ...current, ...slice } };
+    });
 
     videoProbeHandler.enqueue(filePath);
 
@@ -115,13 +118,23 @@ async function ingestSingleFile(filePath: string): Promise<void> {
 }
 
 async function handleUnlink(filePath: string): Promise<void> {
-  const meta = (await metadataHandler.loadMetadata()) as Record<string, unknown>;
-  const activeRoots = await configHandler.getFolderSources();
-  const reconciled = await folderHandler.reconcileMetadata(meta, activeRoots);
-  if (reconciled !== meta) await metadataHandler.saveMetadata(reconciled);
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    // Notify renderer to refresh — exact status doesn't matter, the entry is gone.
-    mainWindow.webContents.send('metadata:file-status-changed', { filePath, status: 'ready' });
+  const changed = await metadataHandler.transaction<boolean>(async (meta) => {
+    const activeRoots = await configHandler.getFolderSources();
+    const reconciled = await folderHandler.reconcileMetadata(meta, activeRoots);
+    // reconcileMetadata always returns a new outer object, so reference
+    // equality is unreliable. Compare keys + per-series file counts to detect
+    // actual changes and avoid pointless writes.
+    const sameShape =
+      Object.keys(reconciled).length === Object.keys(meta).length &&
+      Object.entries(reconciled).every(([id, value]) => {
+        const before = meta[id] as { fileEpisodes?: unknown[] } | undefined;
+        const after = value as { fileEpisodes?: unknown[] };
+        return before && (before.fileEpisodes?.length ?? 0) === (after.fileEpisodes?.length ?? 0);
+      });
+    return { result: !sameShape, updated: sameShape ? null : reconciled };
+  });
+  if (changed && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('metadata:changed', { filePath });
   }
 }
 
@@ -312,11 +325,35 @@ app.whenReady().then(async () => {
   createWindow();
   videoProbeHandler.start(updateFileStatus);
 
+  // Re-enqueue any files that were 'verifying' when the app last quit —
+  // the in-memory probe queue doesn't survive restarts, and the watcher's
+  // ignoreInitial:true means cold-start won't re-discover existing files.
+  // Without this, a file caught mid-verification stays stuck forever.
+  try {
+    const meta = await metadataHandler.loadMetadata();
+    let resumed = 0;
+    for (const series of Object.values(meta)) {
+      const s = series as { fileEpisodes?: Array<{ filePath: string; status?: string }> };
+      if (!Array.isArray(s.fileEpisodes)) continue;
+      for (const f of s.fileEpisodes) {
+        if (f.status === 'verifying' || f.status === 'stalled') {
+          videoProbeHandler.enqueue(f.filePath);
+          resumed++;
+        }
+      }
+    }
+    if (resumed > 0) logger.info('probe', `Resumed ${resumed} unverified file(s) from prior session`);
+  } catch (err) {
+    logger.warn('probe', `Could not resume unverified files: ${(err as Error).message}`);
+  }
+
   const initialRoots = await configHandler.getFolderSources();
   await fileWatcher.start(initialRoots, {
     onAdd: (path) => { void ingestSingleFile(path); },
     onUnlink: (path) => { void handleUnlink(path); },
-    onUnlinkDir: () => { void handleUnlink('<dir>'); },
+    // unlinkDir: chokidar emits unlink for each contained file too, so the
+    // per-file handler covers actual cleanup. Just log; don't double-reconcile.
+    onUnlinkDir: (dirPath) => { logger.info('watch', `Directory removed`, { file: dirPath }); },
   });
 
   app.on('activate', () => {
@@ -370,10 +407,11 @@ ipcMain.handle('remove-folder-source', async (_event, folderPath: string) => {
     const ok = await configHandler.removeFolderSource(folderPath);
     if (ok) {
       logger.info('folder', `Removed library root: ${folderPath}`);
-      const meta = (await metadataHandler.loadMetadata()) as Record<string, unknown>;
       const activeRoots = await configHandler.getFolderSources();
-      const reconciled = await folderHandler.reconcileMetadata(meta, activeRoots);
-      if (reconciled !== meta) await metadataHandler.saveMetadata(reconciled);
+      await metadataHandler.transaction(async (meta) => {
+        const reconciled = await folderHandler.reconcileMetadata(meta, activeRoots);
+        return { updated: reconciled };
+      });
       await fileWatcher.restart(activeRoots);
     }
     return ok;
@@ -890,61 +928,37 @@ ipcMain.handle('scan-and-fetch-metadata', async (_event, folderPath: string) => 
     // 1. Scan the folder to get all media
     const scannedMedia = await folderHandler.scanFolder(folderPath);
 
-    // 2. Load existing metadata and reconcile against disk.
-    // The intermediate save here is a crash-recovery checkpoint: if the
-    // per-series fetch loop below throws, the on-disk state is already the
-    // reconciled state (deletions are not reverted). The handler's final save
-    // (after the fetch loop) will overwrite this on the success path.
-    const rawMetadata = await metadataHandler.loadMetadata() as Record<string, unknown>;
+    // 2. Reconcile against disk inside a transaction. This is a crash-recovery
+    // checkpoint: if the per-series fetch loop below throws, the on-disk state
+    // is the reconciled state (deletions are not reverted).
     const activeRoots = await configHandler.getFolderSources();
-    const existingMetadata = await folderHandler.reconcileMetadata(rawMetadata, activeRoots);
-    if (existingMetadata !== rawMetadata) {
-      await metadataHandler.saveMetadata(existingMetadata);
-    }
+    const existingMetadata = await metadataHandler.transaction<Record<string, unknown>>(async (raw) => {
+      const reconciled = await folderHandler.reconcileMetadata(raw, activeRoots);
+      return { result: reconciled, updated: reconciled };
+    }) ?? {};
+
+    // 3. For each scanned item, fetch metadata if not already cached. This loop
+    // is network-bound and runs OUTSIDE the lock — must not assume the in-memory
+    // `existingMetadata` matches disk by the time we save.
     const newMetadata: Record<string, unknown> = {};
-
-    // Track which seriesIds we've seen in this scan (to remove ones that no longer exist)
-    const seenSeriesIds = new Set<string>();
-
-    // 3. For each scanned item, fetch metadata if not already cached
-    // Only process items that have at least one file
     for (const media of scannedMedia) {
-      // Skip items with no files - don't save metadata for them
       if (media.files.length === 0) {
         logger.warn('folder', `Skipping ${media.name} - no files found`, { series: media.name });
         continue;
       }
-
-      seenSeriesIds.add(media.id);
       const slice = await processOneMedia(media, existingMetadata);
       Object.assign(newMetadata, slice);
     }
 
-    // 4. Merge with existing metadata (preserve entries not in this scan)
-    // Then clean up entries with 0 fileEpisodes
-    const mergedMetadata: Record<string, unknown> = { ...existingMetadata };
-
-    // Update with new/updated metadata from this scan
-    for (const [seriesId, seriesData] of Object.entries(newMetadata)) {
-      mergedMetadata[seriesId] = seriesData;
-    }
-
-    // 5. Clean up: Remove metadata entries that have 0 fileEpisodes
-    const cleanedMetadata: Record<string, unknown> = {};
-    for (const [seriesId, seriesData] of Object.entries(mergedMetadata)) {
-      const data = seriesData as { fileEpisodes?: unknown[] };
-      const fileEpisodes = data.fileEpisodes || [];
-
-      // Only keep entries that have at least one file episode
-      if (fileEpisodes.length > 0) {
-        cleanedMetadata[seriesId] = seriesData;
-      } else {
-        logger.warn('metadata', `Removing metadata for ${seriesId} - no file episodes`);
+    // 4. Merge into the FRESH on-disk state (not the snapshot we loaded earlier),
+    // so concurrent probe completions or watcher ingests aren't clobbered.
+    await metadataHandler.transaction(async (current) => {
+      const merged: Record<string, unknown> = { ...current };
+      for (const [seriesId, seriesData] of Object.entries(newMetadata)) {
+        merged[seriesId] = seriesData;
       }
-    }
-
-    // 6. Save cleaned metadata (only entries with files)
-    await metadataHandler.saveMetadata(cleanedMetadata);
+      return { updated: merged };
+    });
 
     logger.info('folder', `Scan complete! Found ${scannedMedia.length} items`);
 
