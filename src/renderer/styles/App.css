@@ -770,6 +770,11 @@ a { color: inherit; text-decoration: none; }
   z-index: 3 !important;
   transform: translateZ(0) !important;
   will-change: transform !important;
+  /* Force smooth high-quality interpolation when the SSAA bitmap is
+     downsampled to display pixels. Default 'auto' is usually smooth but
+     in some Chromium configs falls back to nearest-neighbor. */
+  image-rendering: auto !important;
+  image-rendering: high-quality !important;
 }
 
 /* Force a stacking context on the player canvas so its children stack

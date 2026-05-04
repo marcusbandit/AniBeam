@@ -339,12 +339,12 @@ function VideoPlayer() {
             availableFonts: { 'liberation sans': jassubDefaultFontUrl },
             defaultFont: 'liberation sans',
             queryFonts: false,
-            // Render at 2× the display × DPR, no upper cap. The browser
-            // downsamples 2× → 1× when blitting, which is super-sampling
-            // anti-aliasing (SSAA) — kills the pixelation in font edges
-            // and outline strokes for free.
+            // Render at 4× display × DPR for high SSAA quality. Browser
+            // downsamples on blit, killing aliasing in font edges. 4× is
+            // heavier than 2× but font rendering is the visible artifact —
+            // raise/lower this if perf becomes an issue.
             prescaleHeightLimit: 0,
-            prescaleFactor: 2.0,
+            prescaleFactor: 4.0,
           } as ConstructorParameters<typeof JASSUB>[0]);
           jassubRef.current = inst;
           await (inst as unknown as { ready?: Promise<unknown> }).ready;
