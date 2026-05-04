@@ -754,16 +754,14 @@ a { color: inherit; text-decoration: none; }
   background: #000;
 }
 
-/* Native Chromium <video controls>: stretch the volume slider so it has
-   real travel. The default is ~50px which makes fine adjustments impossible
-   even with the exponential curve. */
-.player-canvas video::-webkit-media-controls-volume-slider,
-.player-canvas video::-webkit-media-controls-volume-control-container,
-.player-canvas video::-webkit-media-controls-volume-control-hover-background {
-  width: 220px !important;
-  min-width: 220px !important;
-  max-width: 220px !important;
-  padding: 0 8px !important;
+/* Native Chromium <video controls>: stretch the volume slider's track only,
+   without touching the surrounding container layout (forcing the container
+   wider makes the slider escape the controls bar). */
+.player-canvas video::-webkit-media-controls-volume-slider {
+  width: 140px !important;
+  min-width: 140px !important;
+  padding-left: 8px !important;
+  padding-right: 8px !important;
 }
 .player-header {
   position: absolute;
