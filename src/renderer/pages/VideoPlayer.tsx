@@ -283,32 +283,36 @@ function VideoPlayer() {
     try { localStorage.setItem('subtitle-style-v2', JSON.stringify(subStyle)); } catch { /* ignore */ }
   }, [subStyle]);
 
-  // Apply the bottom-offset to every cue on the active subtitle track.
-  // Chromium ignores CSS attempts to move ::-webkit-media-text-track-container,
-  // so we have to use the WebVTT spec's own positioning: set cue.snapToLines
-  // = false and cue.line = "% from top". subStyle.positionBottom is in
-  // percent-of-video-height (0 = sitting on the bottom edge, 50 = mid screen).
+  // Apply the bottom-offset to subtitle cues — but ONLY to cues that didn't
+  // specify their own position. Many ASS-converted tracks include explicit
+  // line: cue settings for signs / translator notes / on-screen text; we
+  // must not clobber those. Plain SRT cues come through with line === 'auto'
+  // (no setting) and get our user-configured offset. We also remember the
+  // original cue.line so changing the slider doesn't permanently brand a cue
+  // as "user-positioned."
   useEffect(() => {
     const video = videoRef.current;
     if (!video || activeSubIdx < 0) return;
     const track = video.textTracks[activeSubIdx];
     if (!track) return;
 
+    // Map cues by identity so we know which ones started life as 'auto'.
+    const autoCues = new WeakSet<VTTCue>();
+
     const apply = () => {
       if (!track.cues) return;
       const linePct = Math.max(0, Math.min(100, 100 - subStyle.positionBottom));
       for (let i = 0; i < track.cues.length; i++) {
         const cue = track.cues[i] as VTTCue;
-        if (typeof cue.line !== 'undefined') {
+        // First time we see this cue: record whether it was author-positioned.
+        if (!autoCues.has(cue) && cue.line === 'auto') autoCues.add(cue);
+        if (autoCues.has(cue)) {
           cue.snapToLines = false;
           cue.line = linePct;
         }
       }
     };
     apply();
-    // Cues for an extracted track may finish loading shortly after the track
-    // becomes active; re-apply on cuechange so newly-arriving cues get
-    // positioned correctly too.
     track.addEventListener('cuechange', apply);
     return () => track.removeEventListener('cuechange', apply);
   }, [activeSubIdx, subStyle.positionBottom, subtitleSrcs]);
