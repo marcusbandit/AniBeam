@@ -54,6 +54,9 @@ export interface ElectronAPI {
   // Embedded subtitles
   listEmbeddedSubtitles: (videoPath: string) => Promise<Array<{ streamIndex: number; codec: string; language: string | null; title: string | null }>>;
   extractEmbeddedSubtitle: (videoPath: string, streamIndex: number) => Promise<string | null>;
+
+  // AniSkip — intro/outro skip times
+  fetchSkipTimes: (seriesId: string, malId: number, episodeNumber: number, episodeLength: number) => Promise<{ op?: { start: number; end: number }; ed?: { start: number; end: number } }>;
 }
 
 declare global {
@@ -109,4 +112,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Embedded subtitles
   listEmbeddedSubtitles: (videoPath: string) => ipcRenderer.invoke('subtitle:list-embedded', videoPath),
   extractEmbeddedSubtitle: (videoPath: string, streamIndex: number) => ipcRenderer.invoke('subtitle:extract', videoPath, streamIndex),
+
+  // AniSkip
+  fetchSkipTimes: (seriesId: string, malId: number, episodeNumber: number, episodeLength: number) => ipcRenderer.invoke('aniskip:fetch', seriesId, malId, episodeNumber, episodeLength),
 });

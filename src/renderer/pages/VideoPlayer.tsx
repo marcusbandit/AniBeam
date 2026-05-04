@@ -91,6 +91,7 @@ function VideoPlayer() {
   const [muted, setMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [activeSubIdx, setActiveSubIdx] = useState<number>(-1); // -1 = off
+  const [skipTimes, setSkipTimes] = useState<{ op?: { start: number; end: number }; ed?: { start: number; end: number } }>({});
   const [subMenuOpen, setSubMenuOpen] = useState(false);
   const [subMenuTab, setSubMenuTab] = useState<'tracks' | 'style'>('tracks');
   const [subStyle, setSubStyle] = useState<SubtitleStyle>(() => {
@@ -336,6 +337,50 @@ function VideoPlayer() {
     }
   }, [subMenuOpen, showChrome]);
 
+  // Load AniSkip times for this episode. Use cached values from metadata if
+  // already fetched; otherwise fetch (only when MAL ID is available — AniSkip
+  // is keyed on MAL). Wait until we know `duration` so we can pass it to the
+  // API for the better cross-version match.
+  useEffect(() => {
+    if (!seriesId || !episodeNumber || duration <= 0) return;
+    const seriesData = metadata[seriesId];
+    if (!seriesData) return;
+    const epNum = parseInt(episodeNumber, 10);
+    if (isNaN(epNum)) return;
+
+    const epMeta = seriesData.episodes?.find((e) => e.episodeNumber === epNum);
+    if (epMeta?.skipFetched) {
+      setSkipTimes({
+        op: epMeta.opStart != null && epMeta.opEnd != null ? { start: epMeta.opStart, end: epMeta.opEnd } : undefined,
+        ed: epMeta.edStart != null && epMeta.edEnd != null ? { start: epMeta.edStart, end: epMeta.edEnd } : undefined,
+      });
+      return;
+    }
+
+    const malId = (seriesData as { malId?: number }).malId;
+    if (!malId) return;
+    let cancelled = false;
+    void window.electronAPI.fetchSkipTimes(seriesId, malId, epNum, duration).then((res) => {
+      if (!cancelled) setSkipTimes(res);
+    });
+    return () => { cancelled = true; };
+  }, [seriesId, episodeNumber, duration, metadata]);
+
+  // Reset skip times when the episode changes so the previous episode's
+  // window doesn't briefly show on the new one.
+  useEffect(() => {
+    setSkipTimes({});
+  }, [seriesId, episodeNumber]);
+
+  const inOpWindow = skipTimes.op && currentTime >= skipTimes.op.start && currentTime < skipTimes.op.end;
+  const inEdWindow = skipTimes.ed && currentTime >= skipTimes.ed.start && currentTime < skipTimes.ed.end;
+
+  const skipForward = (toTime: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.currentTime = Math.min(video.duration || toTime, toTime + 1);
+  };
+
   // Wire <video> events to local state.
   useEffect(() => {
     const video = videoRef.current;
@@ -525,6 +570,18 @@ function VideoPlayer() {
           Your browser does not support the video tag.
         </video>
       </div>
+      {(inOpWindow || inEdWindow) && (
+        <button
+          className="player-skip"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (inOpWindow && skipTimes.op) skipForward(skipTimes.op.end);
+            else if (inEdWindow && skipTimes.ed) skipForward(skipTimes.ed.end);
+          }}
+        >
+          {inOpWindow ? 'Skip Intro' : 'Skip Outro'}
+        </button>
+      )}
       <div
         className="player-controls"
         style={{ opacity: chrome ? 1 : 0, pointerEvents: chrome ? 'auto' : 'none' }}

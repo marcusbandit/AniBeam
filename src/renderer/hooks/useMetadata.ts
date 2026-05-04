@@ -45,6 +45,12 @@ export interface EpisodeMetadata {
   subtitlePaths?: string[];
   status?: FileStatus;
   lastProbedAt?: number;
+  // AniSkip — populated lazily on first play.
+  opStart?: number;
+  opEnd?: number;
+  edStart?: number;
+  edEnd?: number;
+  skipFetched?: boolean;
 }
 
 export interface FileEpisode {

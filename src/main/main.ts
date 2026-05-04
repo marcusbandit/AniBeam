@@ -16,6 +16,7 @@ import type { FileStatus } from '../shared/fileStatus';
 import type { ScannedMedia } from './handlers/folderHandler';
 import videoProbeHandler from './handlers/videoProbeHandler';
 import subtitleHandler from './handlers/subtitleHandler';
+import aniSkipHandler from './handlers/aniSkipHandler';
 import { fileWatcher } from './services/watcher';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1037,6 +1038,13 @@ ipcMain.handle('subtitle:list-embedded', async (_event, videoPath: string) => {
 ipcMain.handle('subtitle:extract', async (_event, videoPath: string, streamIndex: number) => {
   if (typeof videoPath !== 'string' || !videoPath || typeof streamIndex !== 'number') return null;
   return subtitleHandler.extractEmbedded(videoPath, streamIndex);
+});
+
+ipcMain.handle('aniskip:fetch', async (_event, seriesId: string, malId: number, episodeNumber: number, episodeLength: number) => {
+  if (!seriesId || typeof malId !== 'number' || typeof episodeNumber !== 'number' || typeof episodeLength !== 'number') {
+    return {};
+  }
+  return aniSkipHandler.fetchAndCache(seriesId, malId, episodeNumber, episodeLength);
 });
 
 app.on('before-quit', () => {
