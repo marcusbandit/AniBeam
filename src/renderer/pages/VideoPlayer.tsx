@@ -352,52 +352,58 @@ function VideoPlayer() {
           await (inst as unknown as { ready?: Promise<unknown> }).ready;
           console.log('[subs] JASSUB ready for', sub.label);
 
-          // Sync sub frames to actual video frames via requestVideoFrameCallback.
-          // This is the right API for sub timing — each callback delivers the
-          // exact mediaTime + expected display time of a presented frame.
-          // Falls back to rAF if rVFC doesn't tick for 500ms (defensive: in
-          // earlier debugging we saw rVFC sometimes not fire in this Electron
-          // context, but with the corrected font init it should work now).
+          // Pick ONE clock and stick with it. Try rVFC for 1s; if it fires
+          // at least once, commit to rVFC for the lifetime of this instance
+          // (it gives perfect per-video-frame sync for moving subs). If it
+          // doesn't tick in that window, fall back to rAF permanently so
+          // the two clocks aren't competing and double-rendering with stale
+          // mediaTimes (which is what causes "moving sub" jitter).
           const renderRef = (inst as unknown as { manualRender: (m: { expectedDisplayTime: number; width: number; height: number; mediaTime: number }) => Promise<unknown> });
-          let lastRvfcAt = 0;
-          let usingRaf = false;
+          let mode: 'probing' | 'rvfc' | 'raf' = 'probing';
+
+          const callRender = (m: { expectedDisplayTime: number; width: number; height: number; mediaTime: number }) => {
+            try { void renderRef.manualRender(m); } catch { /* ignore */ }
+          };
 
           const onFrame = (_now: number, meta: VideoFrameCallbackMetadata) => {
-            if (jassubRef.current !== inst) return; // disposed
-            lastRvfcAt = performance.now();
-            try {
-              void renderRef.manualRender({
-                expectedDisplayTime: meta.expectedDisplayTime,
-                width: meta.width,
-                height: meta.height,
-                mediaTime: meta.mediaTime,
-              });
-            } catch { /* ignore */ }
+            if (jassubRef.current !== inst) return;
+            if (mode === 'probing') { mode = 'rvfc'; console.log('[subs] using rVFC for sub-frame sync'); }
+            if (mode !== 'rvfc') return; // committed to rAF, ignore late rVFC
+            callRender({
+              expectedDisplayTime: meta.expectedDisplayTime,
+              width: meta.width,
+              height: meta.height,
+              mediaTime: meta.mediaTime,
+            });
             videoRef.current?.requestVideoFrameCallback(onFrame);
           };
           if ('requestVideoFrameCallback' in video) {
             video.requestVideoFrameCallback(onFrame);
+          } else {
+            mode = 'raf';
           }
+
+          // Probe deadline: if rVFC hasn't promoted us to 'rvfc' within 1s,
+          // commit to rAF and never look back.
+          setTimeout(() => {
+            if (mode === 'probing') {
+              mode = 'raf';
+              console.log('[subs] rVFC never fired, committing to rAF pump (sub motion will be display-refresh-aligned, not video-frame-aligned)');
+            }
+          }, 1000);
 
           const rafPump = () => {
             if (jassubRef.current !== inst) return;
-            // Only run rAF fallback if rVFC has gone quiet for >500ms while
-            // the video is playing.
-            const v = videoRef.current;
-            const rvfcStale = performance.now() - lastRvfcAt > 500;
-            if (v && !v.paused && v.readyState >= 2 && rvfcStale) {
-              if (!usingRaf) { console.log('[subs] rVFC stalled, falling back to rAF pump'); usingRaf = true; }
-              try {
-                void renderRef.manualRender({
+            if (mode === 'raf') {
+              const v = videoRef.current;
+              if (v && !v.paused && v.readyState >= 2) {
+                callRender({
                   expectedDisplayTime: performance.now(),
                   width: v.videoWidth,
                   height: v.videoHeight,
                   mediaTime: v.currentTime,
                 });
-              } catch { /* ignore */ }
-            } else if (usingRaf && !rvfcStale) {
-              console.log('[subs] rVFC resumed');
-              usingRaf = false;
+              }
             }
             requestAnimationFrame(rafPump);
           };
