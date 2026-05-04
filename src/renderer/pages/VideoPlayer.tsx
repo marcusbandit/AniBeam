@@ -63,9 +63,10 @@ function VideoPlayer() {
     }
 
     const updateGain = () => {
-      // Total output = video.volume × gain. We want total = slider^3, so
-      // gain = slider^2.
-      gain.gain.value = video.volume * video.volume;
+      // Total output = video.volume × gain. We want total = slider^2 — gentler
+      // than s^3 (was too quiet at the top): slider 50% ≈ 25% loudness,
+      // slider 85% ≈ 72%, slider 100% = 100%.
+      gain.gain.value = video.volume;
     };
     const resume = () => { if (audioCtx.state === 'suspended') void audioCtx.resume(); };
     updateGain();
