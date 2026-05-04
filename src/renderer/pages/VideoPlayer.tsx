@@ -5,19 +5,30 @@ import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Minimize, Subtitles
 import JASSUB from 'jassub';
 import jassubWorkerUrl from 'jassub/dist/worker/worker.js?url';
 import jassubWasmUrl from 'jassub/dist/wasm/jassub-worker.wasm?url';
+import jassubWasmModernUrl from 'jassub/dist/wasm/jassub-worker-modern.wasm?url';
 
 // Vite's dev server serves .wasm with application/octet-stream, which makes
 // WebAssembly.instantiateStreaming() in the JASSUB worker reject the response.
 // Fetch the bytes once in the renderer, wrap as a Blob with the correct MIME,
-// and hand JASSUB the resulting blob: URL. Cached so we don't refetch.
-let wasmBlobUrlPromise: Promise<string> | null = null;
-function getJassubWasmBlobUrl(): Promise<string> {
-  if (!wasmBlobUrlPromise) {
-    wasmBlobUrlPromise = fetch(jassubWasmUrl)
-      .then((r) => r.arrayBuffer())
-      .then((buf) => URL.createObjectURL(new Blob([buf], { type: 'application/wasm' })));
+// and hand JASSUB the resulting blob: URLs. Cached so we don't refetch.
+//
+// JASSUB has TWO wasm bundles — a legacy one and a "modern" one for browsers
+// that support newer WebAssembly features. Chromium picks the modern one, so
+// we MUST override both or the worker silently falls back to its default URL
+// (which still has the wrong MIME).
+async function fetchAsWasmBlobUrl(url: string): Promise<string> {
+  const buf = await (await fetch(url)).arrayBuffer();
+  return URL.createObjectURL(new Blob([buf], { type: 'application/wasm' }));
+}
+let wasmUrlsPromise: Promise<{ wasmUrl: string; modernWasmUrl: string }> | null = null;
+function getJassubWasmUrls() {
+  if (!wasmUrlsPromise) {
+    wasmUrlsPromise = Promise.all([
+      fetchAsWasmBlobUrl(jassubWasmUrl),
+      fetchAsWasmBlobUrl(jassubWasmModernUrl),
+    ]).then(([wasmUrl, modernWasmUrl]) => ({ wasmUrl, modernWasmUrl }));
   }
-  return wasmBlobUrlPromise;
+  return wasmUrlsPromise;
 }
 
 interface SubtitleTrack {
@@ -310,7 +321,7 @@ function VideoPlayer() {
       // fetch arbitrary URLs reliably from its own context.
       void (async () => {
         try {
-          const [resp, wasmBlobUrl] = await Promise.all([fetch(sub.src), getJassubWasmBlobUrl()]);
+          const [resp, wasmUrls] = await Promise.all([fetch(sub.src), getJassubWasmUrls()]);
           if (!resp.ok) throw new Error(`fetch ${sub.src} → ${resp.status}`);
           const subContent = await resp.text();
           // The user may have switched again before this resolves; bail.
@@ -319,7 +330,8 @@ function VideoPlayer() {
             video,
             subContent,
             workerUrl: jassubWorkerUrl,
-            wasmUrl: wasmBlobUrl,
+            wasmUrl: wasmUrls.wasmUrl,
+            modernWasmUrl: wasmUrls.modernWasmUrl,
           });
           jassubRef.current = inst;
           console.log('[subs] JASSUB initialized for', sub.label);
