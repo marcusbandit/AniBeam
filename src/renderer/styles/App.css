@@ -1410,10 +1410,10 @@ a { color: inherit; text-decoration: none; }
   position: fixed;
   bottom: 64px;
   right: 16px;
-  width: 520px;
+  width: 880px;
   max-width: calc(100vw - 32px);
   height: 60vh;
-  max-height: 600px;
+  max-height: 720px;
   z-index: 9000;
   display: flex;
   flex-direction: column;
@@ -1475,18 +1475,55 @@ a { color: inherit; text-decoration: none; }
 .activity-log-empty { padding: 14px; color: #6a6a76; }
 .activity-log-row {
   display: grid;
-  grid-template-columns: 64px 80px 1fr auto;
-  gap: 8px;
-  padding: 4px 14px;
-  align-items: baseline;
+  grid-template-columns: 60px 56px minmax(0, 1fr) minmax(0, 200px);
+  gap: 10px;
+  padding: 3px 14px;
+  align-items: center;
+  min-height: 22px;
 }
 .activity-log-row:hover { background: #14141a; }
 .activity-log-row.level-warn .activity-log-msg { color: #e0c089; }
 .activity-log-row.level-error .activity-log-msg { color: #e08989; }
 .activity-log-ts { color: #6a6a76; }
-.activity-log-stage { color: #8a8a96; text-transform: uppercase; font-size: 10.5px; letter-spacing: 0.06em; }
-.activity-log-msg { color: #d8d8e0; word-break: break-word; }
-.activity-log-ctx { color: #6a6a76; font-style: italic; }
+.activity-log-stage {
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  text-align: left;
+}
+.activity-log-msg {
+  color: #d8d8e0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.activity-log-ctx {
+  color: #6a6a76;
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+}
+
+/* Stage colors — distinct hues but muted for the dark palette */
+.activity-log-stage.stage-folder    { color: #6dc7d4; }
+.activity-log-stage.stage-metadata  { color: #b59cf5; }
+.activity-log-stage.stage-image     { color: #e0a060; }
+.activity-log-stage.stage-thumbnail { color: #d4c060; }
+.activity-log-stage.stage-watch     { color: #7fc77f; }
+.activity-log-stage.stage-probe     { color: #6090d0; }
+.activity-log-stage.stage-system    { color: #8a8a96; }
+
+/* Filter chips — match active state to the stage colors so the chip ring tints with its stage */
+.activity-log-chip.stage-folder.active    { color: #6dc7d4; border-color: #2c5a64; background: #11252a; }
+.activity-log-chip.stage-metadata.active  { color: #b59cf5; border-color: #4d3f7a; background: #1a1530; }
+.activity-log-chip.stage-image.active     { color: #e0a060; border-color: #6e4a23; background: #2a1d10; }
+.activity-log-chip.stage-thumbnail.active { color: #d4c060; border-color: #6a5a23; background: #25210e; }
+.activity-log-chip.stage-watch.active     { color: #7fc77f; border-color: #355a35; background: #122a14; }
+.activity-log-chip.stage-probe.active     { color: #6090d0; border-color: #2a4063; background: #101a2a; }
+.activity-log-chip.stage-system.active    { color: #b8b8c2; border-color: #4a4a58; background: #1a1a22; }
 
 /* ============ STATUS BADGES ============ */
 .episode-card.not-ready,

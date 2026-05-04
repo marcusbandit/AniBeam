@@ -80,7 +80,7 @@ export function ActivityLogDrawer() {
             {ALL_STAGES.map((stage) => (
               <button
                 key={stage}
-                className={`activity-log-chip${stageFilter.has(stage) ? ' active' : ''}`}
+                className={`activity-log-chip stage-${stage}${stageFilter.has(stage) ? ' active' : ''}`}
                 onClick={() => toggleStage(stage)}
               >
                 {stage}
@@ -99,15 +99,18 @@ export function ActivityLogDrawer() {
           </div>
           <div className="activity-log-list" ref={listRef} onScroll={handleScroll}>
             {visibleEvents.length === 0 && <div className="activity-log-empty">No events.</div>}
-            {visibleEvents.map((e) => (
-              <div key={e.id} className={`activity-log-row level-${e.level}`}>
-                <span className="activity-log-ts">{formatTime(e.ts)}</span>
-                <span className="activity-log-stage">{e.stage}</span>
-                <span className="activity-log-msg">{e.message}</span>
-                {e.ctx?.series && <span className="activity-log-ctx">{e.ctx.series}</span>}
-                {e.ctx?.file && !e.ctx.series && <span className="activity-log-ctx">{e.ctx.file}</span>}
-              </div>
-            ))}
+            {visibleEvents.map((e) => {
+              const ctxText = e.ctx?.series ?? e.ctx?.file;
+              const fullLine = `${e.message}${ctxText ? ` — ${ctxText}` : ''}`;
+              return (
+                <div key={e.id} className={`activity-log-row level-${e.level}`} title={fullLine}>
+                  <span className="activity-log-ts">{formatTime(e.ts)}</span>
+                  <span className={`activity-log-stage stage-${e.stage}`}>{e.stage}</span>
+                  <span className="activity-log-msg">{e.message}</span>
+                  {ctxText && <span className="activity-log-ctx">{ctxText}</span>}
+                </div>
+              );
+            })}
           </div>
         </aside>
       )}
