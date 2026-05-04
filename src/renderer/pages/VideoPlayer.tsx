@@ -352,51 +352,30 @@ function VideoPlayer() {
           await (inst as unknown as { ready?: Promise<unknown> }).ready;
           console.log('[subs] JASSUB ready for', sub.label);
 
-          // Pick ONE clock and stick with it. Try rVFC for 1s; if it fires
-          // at least once, commit to rVFC for the lifetime of this instance
-          // (it gives perfect per-video-frame sync for moving subs). If it
-          // doesn't tick in that window, fall back to rAF permanently so
-          // the two clocks aren't competing and double-rendering with stale
-          // mediaTimes (which is what causes "moving sub" jitter).
+          // Drive sub renders ONLY when a new video frame has actually been
+          // presented. We poll on rAF (cheap) and watch
+          // `getVideoPlaybackQuality().totalVideoFrames` — that counter
+          // advances exactly once per displayed video frame. Each detected
+          // increment → one manualRender with the current mediaTime. This
+          // achieves the same per-frame sync as rVFC but works reliably in
+          // this Electron context (rVFC was firing intermittently).
           const renderRef = (inst as unknown as { manualRender: (m: { expectedDisplayTime: number; width: number; height: number; mediaTime: number }) => Promise<unknown> });
-          let mode: 'probing' | 'rvfc' | 'raf' = 'probing';
+          let lastFrameCount = -1;
 
           const callRender = (m: { expectedDisplayTime: number; width: number; height: number; mediaTime: number }) => {
             try { void renderRef.manualRender(m); } catch { /* ignore */ }
           };
 
-          const onFrame = (_now: number, meta: VideoFrameCallbackMetadata) => {
+          const pump = () => {
             if (jassubRef.current !== inst) return;
-            if (mode === 'probing') { mode = 'rvfc'; console.log('[subs] using rVFC for sub-frame sync'); }
-            if (mode !== 'rvfc') return; // committed to rAF, ignore late rVFC
-            callRender({
-              expectedDisplayTime: meta.expectedDisplayTime,
-              width: meta.width,
-              height: meta.height,
-              mediaTime: meta.mediaTime,
-            });
-            videoRef.current?.requestVideoFrameCallback(onFrame);
-          };
-          if ('requestVideoFrameCallback' in video) {
-            video.requestVideoFrameCallback(onFrame);
-          } else {
-            mode = 'raf';
-          }
-
-          // Probe deadline: if rVFC hasn't promoted us to 'rvfc' within 1s,
-          // commit to rAF and never look back.
-          setTimeout(() => {
-            if (mode === 'probing') {
-              mode = 'raf';
-              console.log('[subs] rVFC never fired, committing to rAF pump (sub motion will be display-refresh-aligned, not video-frame-aligned)');
-            }
-          }, 1000);
-
-          const rafPump = () => {
-            if (jassubRef.current !== inst) return;
-            if (mode === 'raf') {
-              const v = videoRef.current;
-              if (v && !v.paused && v.readyState >= 2) {
+            const v = videoRef.current;
+            if (v && !v.paused && v.readyState >= 2) {
+              const q = v.getVideoPlaybackQuality?.();
+              const frames = q ? q.totalVideoFrames : -1;
+              // First tick after attach OR when the video frame counter has
+              // advanced → one render at the current mediaTime.
+              if (frames !== lastFrameCount) {
+                lastFrameCount = frames;
                 callRender({
                   expectedDisplayTime: performance.now(),
                   width: v.videoWidth,
@@ -405,9 +384,9 @@ function VideoPlayer() {
                 });
               }
             }
-            requestAnimationFrame(rafPump);
+            requestAnimationFrame(pump);
           };
-          requestAnimationFrame(rafPump);
+          requestAnimationFrame(pump);
         } catch (err) {
           console.error('JASSUB init failed:', err);
         }
