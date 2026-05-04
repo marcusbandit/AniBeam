@@ -1035,9 +1035,9 @@ ipcMain.handle('subtitle:list-embedded', async (_event, videoPath: string) => {
   return subtitleHandler.listEmbedded(videoPath);
 });
 
-ipcMain.handle('subtitle:extract', async (_event, videoPath: string, streamIndex: number) => {
+ipcMain.handle('subtitle:extract', async (_event, videoPath: string, streamIndex: number, codec: string) => {
   if (typeof videoPath !== 'string' || !videoPath || typeof streamIndex !== 'number') return null;
-  return subtitleHandler.extractEmbedded(videoPath, streamIndex);
+  return subtitleHandler.extractEmbedded(videoPath, streamIndex, codec ?? '');
 });
 
 ipcMain.handle('aniskip:fetch', async (_event, seriesId: string, malId: number, episodeNumber: number, episodeLength: number) => {

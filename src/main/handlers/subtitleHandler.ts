@@ -13,9 +13,17 @@ export interface EmbeddedSubInfo {
   title: string | null;
 }
 
-// PGS / DVD subtitles are bitmap formats — ffmpeg can't convert them to WebVTT
-// without OCR. We list-but-skip them for now.
-const TEXT_SUB_CODECS = new Set(['subrip', 'ass', 'ssa', 'webvtt', 'mov_text']);
+// PGS / DVD subtitles are bitmap formats — we can't render those without OCR.
+// For text-based codecs we either keep them as ASS (rendered by libass via
+// JASSUB in the renderer) or convert them to WebVTT (browser-native).
+const ASS_FORMAT = new Set(['ass', 'ssa']);
+const VTT_FORMAT = new Set(['subrip', 'webvtt', 'mov_text']);
+function targetFormat(codec: string): 'ass' | 'vtt' | null {
+  const c = codec.toLowerCase();
+  if (ASS_FORMAT.has(c)) return 'ass';
+  if (VTT_FORMAT.has(c)) return 'vtt';
+  return null;
+}
 
 function getCacheDir(): string {
   return join(app.getPath('userData'), 'subtitle-cache');
@@ -27,9 +35,8 @@ async function ensureCacheDir(): Promise<string> {
   return dir;
 }
 
-function cacheKey(videoPath: string, mtimeMs: number, streamIndex: number): string {
-  const h = createHash('md5').update(`${videoPath}:${mtimeMs}:${streamIndex}`).digest('hex');
-  return `${h}.vtt`;
+function cacheKeyHash(videoPath: string, mtimeMs: number, streamIndex: number): string {
+  return createHash('md5').update(`${videoPath}:${mtimeMs}:${streamIndex}`).digest('hex');
 }
 
 function runFfprobe(args: string[]): Promise<string> {
@@ -80,8 +87,8 @@ const subtitleHandler = {
         language: s.tags?.language ?? null,
         title: s.tags?.title ?? null,
       }));
-      // Filter out non-text subtitle codecs (PGS, DVD) — we can't convert them.
-      const text = all.filter((s) => TEXT_SUB_CODECS.has(s.codec.toLowerCase()));
+      // Filter out subtitle codecs we can't render (bitmap PGS/DVD).
+      const text = all.filter((s) => targetFormat(s.codec) !== null);
       if (all.length !== text.length) {
         logger.info('metadata', `Skipping ${all.length - text.length} non-text subtitle stream(s) (bitmap)`, { file: videoPath });
       }
@@ -92,25 +99,34 @@ const subtitleHandler = {
     }
   },
 
-  async extractEmbedded(videoPath: string, streamIndex: number): Promise<string | null> {
+  /**
+   * Extracts an embedded subtitle stream to a cache file. Preserves ASS/SSA
+   * as ASS so libass (JASSUB) in the renderer can render it with full styling.
+   * Other text formats convert to WebVTT for the browser's native track flow.
+   * Returns the cache path and the format so the renderer knows which path
+   * to take.
+   */
+  async extractEmbedded(videoPath: string, streamIndex: number, codec: string): Promise<{ path: string; format: 'ass' | 'vtt' } | null> {
     if (!existsSync(videoPath)) return null;
+    const fmt = targetFormat(codec);
+    if (!fmt) return null;
     try {
       const stats = await stat(videoPath);
       const dir = await ensureCacheDir();
-      const filename = cacheKey(videoPath, stats.mtimeMs, streamIndex);
+      const filename = `${cacheKeyHash(videoPath, stats.mtimeMs, streamIndex)}.${fmt}`;
       const out = join(dir, filename);
-      if (existsSync(out)) return out;
-      // -map 0:<absolute-stream-index> picks that exact stream out of the input.
-      // -c:s webvtt converts SRT/ASS/SSA → WebVTT (loses ASS styling, keeps text).
+      if (existsSync(out)) return { path: out, format: fmt };
+      // ASS extraction: -c:s ass keeps the original styling/positioning.
+      // VTT extraction: -c:s webvtt converts SRT/MOV_TEXT to WebVTT.
       await runFfmpeg([
         '-y',
         '-i', videoPath,
         '-map', `0:${streamIndex}`,
-        '-c:s', 'webvtt',
+        '-c:s', fmt === 'ass' ? 'ass' : 'webvtt',
         out,
       ]);
-      logger.info('metadata', `Extracted embedded subtitle stream ${streamIndex} → cache`, { file: videoPath });
-      return out;
+      logger.info('metadata', `Extracted embedded subtitle stream ${streamIndex} (${fmt}) → cache`, { file: videoPath });
+      return { path: out, format: fmt };
     } catch (err) {
       logger.warn('metadata', `Failed to extract embedded subtitle stream ${streamIndex}: ${(err as Error).message}`, { file: videoPath });
       return null;

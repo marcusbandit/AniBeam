@@ -2,13 +2,17 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useMetadata, type FileEpisode } from '../hooks/useMetadata.js';
 import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Minimize, Subtitles } from 'lucide-react';
+import JASSUB from 'jassub';
+import jassubWorkerUrl from 'jassub/dist/jassub-worker.js?url';
+import jassubWasmUrl from 'jassub/dist/jassub-worker.wasm?url';
 
 interface SubtitleTrack {
-  src: string;        // possibly converted to a blob: URL for SRT
-  origPath: string;   // original file path, used for label/extension lookup
-  kind: string;
+  src: string;        // file:// or media:// or blob: URL — used for native VTT or JASSUB
+  origPath: string;   // original file path
+  kind: string;       // 'subtitles'
   label: string;
   default?: boolean;
+  format: 'vtt' | 'ass';
 }
 
 /**
@@ -109,6 +113,17 @@ function VideoPlayer() {
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const subMenuRef = useRef<HTMLDivElement>(null);
   const ccBtnRef = useRef<HTMLButtonElement>(null);
+  const jassubRef = useRef<JASSUB | null>(null);
+
+  const tearDownJassub = () => {
+    if (jassubRef.current) {
+      try { jassubRef.current.destroy(); } catch { /* ignore */ }
+      jassubRef.current = null;
+    }
+  };
+
+  // Always tear down the libass renderer on unmount to free its worker.
+  useEffect(() => () => tearDownJassub(), []);
 
   // Auto-hide chrome after inactivity
   useEffect(() => {
@@ -204,32 +219,35 @@ function VideoPlayer() {
           });
         }
         for (const r of sidecars) {
-          const fileUrl = `file://${r.path}`;
           const ext = r.path.toLowerCase().split('.').pop();
-          const src = ext === 'srt' ? await srtToVttUrl(fileUrl) : fileUrl;
-          out.push({ src, origPath: r.path, kind: 'subtitles', label: r.label, default: r.default });
+          const fileUrl = `file://${r.path}`;
+          if (ext === 'ass' || ext === 'ssa') {
+            // JASSUB reads the file directly via its URL.
+            out.push({ src: fileUrl, origPath: r.path, kind: 'subtitles', label: r.label, default: r.default, format: 'ass' });
+          } else {
+            const src = ext === 'srt' ? await srtToVttUrl(fileUrl) : fileUrl;
+            out.push({ src, origPath: r.path, kind: 'subtitles', label: r.label, default: r.default, format: 'vtt' });
+          }
         }
 
         // Embedded streams (MKV / MP4 with internal subs)
         try {
           const embedded = await window.electronAPI.listEmbeddedSubtitles(episode.filePath);
           for (const e of embedded) {
-            const cachePath = await window.electronAPI.extractEmbeddedSubtitle(episode.filePath, e.streamIndex);
-            if (!cachePath) continue;
+            const result = await window.electronAPI.extractEmbeddedSubtitle(episode.filePath, e.streamIndex, e.codec);
+            if (!result) continue;
             const lang = e.language ? e.language.toUpperCase() : null;
             const label = e.title && lang
               ? `${lang} — ${e.title}`
               : e.title ?? (lang ?? `Track #${e.streamIndex}`);
-            // Cache files live under userData; media:// protocol allows that
-            // path. Make this the default if there's no external sidecar
-            // already marked default.
             const isDefault = !out.some((s) => s.default) && (lang === 'ENG' || lang === 'EN' || out.length === 0);
             out.push({
-              src: `media://${cachePath}`,
+              src: `media://${result.path}`,
               origPath: episode.filePath,
               kind: 'subtitles',
               label,
               default: isDefault,
+              format: result.format,
             });
           }
         } catch (err) {
@@ -246,65 +264,93 @@ function VideoPlayer() {
     }
   }, [seriesId, episodeNumber, metadata]);
 
-  // Activate the default subtitle track once the video metadata loads.
-  // Re-runs whenever the subtitle list changes (i.e. per episode).
-  useEffect(() => {
+  // Find the native textTrack that matches a given subtitleSrcs entry. Native
+  // <track> elements are only rendered for VTT-format subs; ASS subs go to
+  // JASSUB instead, so subtitleSrcs index ≠ textTracks index. We match by
+  // label which we make unique per track.
+  const findVttTrack = (sub: SubtitleTrack): TextTrack | null => {
     const video = videoRef.current;
-    if (!video) return;
-    const apply = () => {
-      const tracks = video.textTracks;
-      let defaultIdx = -1;
-      for (let i = 0; i < tracks.length; i++) {
-        if (subtitleSrcs[i]?.default) { defaultIdx = i; break; }
-      }
-      for (let i = 0; i < tracks.length; i++) {
-        tracks[i].mode = i === defaultIdx ? 'showing' : 'disabled';
-      }
-      setActiveSubIdx(defaultIdx);
-    };
-    video.addEventListener('loadedmetadata', apply);
-    // Also try right now in case metadata is already loaded.
-    if (video.readyState >= 1) apply();
-    return () => video.removeEventListener('loadedmetadata', apply);
-  }, [subtitleSrcs]);
+    if (!video) return null;
+    for (let i = 0; i < video.textTracks.length; i++) {
+      if (video.textTracks[i].label === sub.label) return video.textTracks[i];
+    }
+    return null;
+  };
 
   const selectSubtitle = (idx: number) => {
     const video = videoRef.current;
     if (!video) return;
-    const tracks = video.textTracks;
-    for (let i = 0; i < tracks.length; i++) {
-      tracks[i].mode = i === idx ? 'showing' : 'disabled';
+
+    // Always tear down JASSUB and disable every native track first; then
+    // turn on whichever the new selection requires.
+    tearDownJassub();
+    for (let i = 0; i < video.textTracks.length; i++) {
+      video.textTracks[i].mode = 'disabled';
+    }
+
+    if (idx >= 0 && idx < subtitleSrcs.length) {
+      const sub = subtitleSrcs[idx];
+      if (sub.format === 'ass') {
+        try {
+          jassubRef.current = new JASSUB({
+            video,
+            subUrl: sub.src,
+            workerUrl: jassubWorkerUrl,
+            wasmUrl: jassubWasmUrl,
+          });
+        } catch (err) {
+          console.error('JASSUB init failed:', err);
+        }
+      } else {
+        const t = findVttTrack(sub);
+        if (t) t.mode = 'showing';
+      }
     }
     setActiveSubIdx(idx);
   };
+
+  // Activate the default subtitle (VTT or ASS) when the list changes.
+  // Re-runs per episode.
+  useEffect(() => {
+    if (subtitleSrcs.length === 0) {
+      tearDownJassub();
+      setActiveSubIdx(-1);
+      return;
+    }
+    const defaultIdx = subtitleSrcs.findIndex((s) => s.default);
+    const target = defaultIdx >= 0 ? defaultIdx : -1;
+    const apply = () => selectSubtitle(target);
+    const video = videoRef.current;
+    if (video?.readyState && video.readyState >= 1) {
+      apply();
+    } else if (video) {
+      video.addEventListener('loadedmetadata', apply, { once: true });
+      return () => video.removeEventListener('loadedmetadata', apply);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subtitleSrcs]);
 
   // Persist subtitle style to localStorage on change.
   useEffect(() => {
     try { localStorage.setItem('subtitle-style-v2', JSON.stringify(subStyle)); } catch { /* ignore */ }
   }, [subStyle]);
 
-  // Apply the bottom-offset to subtitle cues — but ONLY to cues that didn't
-  // specify their own position. Many ASS-converted tracks include explicit
-  // line: cue settings for signs / translator notes / on-screen text; we
-  // must not clobber those. Plain SRT cues come through with line === 'auto'
-  // (no setting) and get our user-configured offset. We also remember the
-  // original cue.line so changing the slider doesn't permanently brand a cue
-  // as "user-positioned."
+  // Bottom-offset for native VTT cues. Doesn't apply to ASS — JASSUB renders
+  // those with the file's own positioning, untouched. We only adjust cues
+  // whose original line === 'auto' so author-positioned signs stay put.
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video || activeSubIdx < 0) return;
-    const track = video.textTracks[activeSubIdx];
+    if (activeSubIdx < 0) return;
+    const sub = subtitleSrcs[activeSubIdx];
+    if (!sub || sub.format !== 'vtt') return;
+    const track = findVttTrack(sub);
     if (!track) return;
 
-    // Map cues by identity so we know which ones started life as 'auto'.
     const autoCues = new WeakSet<VTTCue>();
-
     const apply = () => {
       if (!track.cues) return;
       const linePct = Math.max(0, Math.min(100, 100 - subStyle.positionBottom));
       for (let i = 0; i < track.cues.length; i++) {
         const cue = track.cues[i] as VTTCue;
-        // First time we see this cue: record whether it was author-positioned.
         if (!autoCues.has(cue) && cue.line === 'auto') autoCues.add(cue);
         if (autoCues.has(cue)) {
           cue.snapToLines = false;
@@ -315,6 +361,7 @@ function VideoPlayer() {
     apply();
     track.addEventListener('cuechange', apply);
     return () => track.removeEventListener('cuechange', apply);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSubIdx, subStyle.positionBottom, subtitleSrcs]);
 
   // Close subtitle menu on outside click.
@@ -563,13 +610,16 @@ function VideoPlayer() {
           autoPlay
         >
           {subtitleSrcs.map((subtitle, index) => (
-            <track
-              key={index}
-              src={subtitle.src}
-              kind={subtitle.kind}
-              label={subtitle.label}
-              default={subtitle.default}
-            />
+            // ASS tracks are rendered by JASSUB on a canvas overlay; only VTT
+            // entries become native <track> children of the <video>.
+            subtitle.format === 'vtt' ? (
+              <track
+                key={index}
+                src={subtitle.src}
+                kind={subtitle.kind}
+                label={subtitle.label}
+              />
+            ) : null
           ))}
           Your browser does not support the video tag.
         </video>
