@@ -1487,3 +1487,31 @@ a { color: inherit; text-decoration: none; }
 .activity-log-stage { color: #8a8a96; text-transform: uppercase; font-size: 10.5px; letter-spacing: 0.06em; }
 .activity-log-msg { color: #d8d8e0; word-break: break-word; }
 .activity-log-ctx { color: #6a6a76; font-style: italic; }
+
+/* ============ STATUS BADGES ============ */
+.episode-card.not-ready,
+.show-card.not-ready {
+  opacity: 0.6;
+}
+.episode-card.not-ready { cursor: not-allowed; }
+
+.status-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 4px 8px;
+  background: rgba(20, 20, 26, 0.92);
+  color: #d8d8e0;
+  border: 1px solid #2a2a32;
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.status-badge-verifying { color: #c9c9d0; }
+.status-badge-stalled {
+  color: #e08989;
+  border-color: #b54343;
+  cursor: pointer;
+}

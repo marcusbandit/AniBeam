@@ -1,28 +1,29 @@
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useMetadata, type SeriesMetadata } from "../hooks/useMetadata";
 import ShowCard from "../components/ShowCard";
-// Static import - if this fails, the build will fail, which is fine
-// We handle runtime errors in the useMemo below
+import SearchBar from "../components/SearchBar";
+import LatestUpdatesCarousel from "../components/LatestUpdatesCarousel";
 import Fuse from "fuse.js";
-import { Search, Tv, Film } from "lucide-react";
+import { Search, Tv } from "lucide-react";
 
 interface ShowWithId extends SeriesMetadata {
   seriesId: string;
 }
 
-interface HomePageProps {
-  searchQuery?: string;
-}
+function HomePage() {
+  const { metadata, loading, error, loadMetadata } = useMetadata();
+  const [searchQuery, setSearchQuery] = useState("");
 
-function HomePage({ searchQuery = "" }: HomePageProps) {
-  const { metadata, loading, error } = useMetadata();
+  useEffect(() => {
+    const unsubscribe = window.electronAPI.onMetadataFileStatusChanged?.(() => {
+      void loadMetadata();
+    });
+    return () => unsubscribe?.();
+  }, [loadMetadata]);
 
-  // All hooks must be called before any early returns
-  // Prepare all items for search - filter out shows with 0 downloaded episodes
   const allItems = useMemo(() => {
     const items: ShowWithId[] = [];
     Object.entries(metadata).forEach(([seriesId, seriesData]) => {
-      // Only include shows that have at least one downloaded episode/file
       const fileEpisodes = seriesData.fileEpisodes || [];
       if (fileEpisodes.length > 0) {
         items.push({ ...seriesData, seriesId });
@@ -31,12 +32,9 @@ function HomePage({ searchQuery = "" }: HomePageProps) {
     return items;
   }, [metadata]);
 
-  // Configure Fuse.js for fuzzy search with error handling
   const fuse = useMemo(() => {
     try {
-      if (!Fuse || typeof Fuse !== "function") {
-        return null;
-      }
+      if (!Fuse || typeof Fuse !== "function") return null;
       return new Fuse(allItems, {
         keys: [
           { name: "title", weight: 0.4 },
@@ -56,13 +54,9 @@ function HomePage({ searchQuery = "" }: HomePageProps) {
     }
   }, [allItems]);
 
-  // Filter items based on search query with error handling
   const filteredItems = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return allItems;
-    }
+    if (!searchQuery.trim()) return allItems;
     if (!fuse) {
-      // Fallback to simple string matching if Fuse failed
       const queryLower = searchQuery.toLowerCase();
       return allItems.filter((item) => {
         const title = (item.title || "").toLowerCase();
@@ -83,122 +77,112 @@ function HomePage({ searchQuery = "" }: HomePageProps) {
       return results.map((result: { item: ShowWithId }) => result.item);
     } catch (error) {
       console.error("Fuse.js search failed:", error);
-      // Fallback to simple string matching
-      const queryLower = searchQuery.toLowerCase();
-      return allItems.filter((item) => {
-        const title = (item.title || "").toLowerCase();
-        const titleRomaji = (item.titleRomaji || "").toLowerCase();
-        const titleEnglish = (item.titleEnglish || "").toLowerCase();
-        const titleNative = (item.titleNative || "").toLowerCase();
-        return (
-          title.includes(queryLower) ||
-          titleRomaji.includes(queryLower) ||
-          titleEnglish.includes(queryLower) ||
-          titleNative.includes(queryLower) ||
-          item.genres?.some((g) => g.toLowerCase().includes(queryLower))
-        );
-      });
+      return allItems;
     }
   }, [searchQuery, fuse, allItems]);
 
-  // Early returns are safe now - all hooks have been called
   if (loading) {
-    return <div className="loading">Loading your library...</div>;
-  }
-
-  if (error) {
-    return <div className="error">Error: {error}</div>;
-  }
-
-  // Separate series and movies from filtered results
-  const series: ShowWithId[] = [];
-  const movies: ShowWithId[] = [];
-
-  filteredItems.forEach((item: ShowWithId) => {
-    // Check if it's a movie (single episode or type is 'movie')
-    const isMovie =
-      item.type === "movie" ||
-      (item.fileEpisodes?.length === 1 && !item.totalEpisodes) ||
-      item.format === "MOVIE";
-
-    if (isMovie) {
-      movies.push(item);
-    } else {
-      series.push(item);
-    }
-  });
-
-  if (series.length === 0 && movies.length === 0) {
-    if (searchQuery.trim()) {
-      return (
-        <div className="empty-state">
-          <Search className="empty-state-icon" size={48} />
-          <h2>No results found</h2>
-          <p>No series or movies match "{searchQuery}"</p>
-        </div>
-      );
-    }
     return (
-      <div className="empty-state">
-        <Tv className="empty-state-icon" size={48} />
-        <h2>Your library is empty</h2>
-        <p>
-          Go to <strong>Settings</strong> to select a folder with your anime collection.
-        </p>
+      <div className="page">
+        <div className="loading">Loading your library…</div>
       </div>
     );
   }
 
-  return (
-    <div className="home-page">
-      {searchQuery.trim() && (
-        <div className="search-results-header">
-          <span className="search-results-text">
-            {filteredItems.length === 0
-              ? "No results"
-              : `Found ${filteredItems.length} ${filteredItems.length === 1 ? "result" : "results"}`}
-          </span>
-          {searchQuery.trim() && <span className="search-query">for "{searchQuery}"</span>}
-        </div>
-      )}
-      {series.length > 0 && (
-        <section className="media-section">
-          <h2 className="section-title">
-            <Tv className="section-icon" size={20} />
-            Series
-            <span className="section-count">{series.length}</span>
-          </h2>
-          <div className="media-grid media-grid-large">
-            {series.map((show) => (
-              <ShowCard
-                key={show.seriesId}
-                seriesId={show.seriesId}
-                seriesData={show}
-                size="large"
-              />
-            ))}
-          </div>
-        </section>
-      )}
+  if (error) {
+    return (
+      <div className="page">
+        <div className="error">Error: {error}</div>
+      </div>
+    );
+  }
 
-      {movies.length > 0 && (
-        <section className="media-section">
-          <h2 className="section-title">
-            <Film className="section-icon" size={20} />
-            Movies
-            <span className="section-count">{movies.length}</span>
-          </h2>
-          <div className="media-grid media-grid-large">
-            {movies.map((show) => (
-              <ShowCard
-                key={show.seriesId}
-                seriesId={show.seriesId}
-                seriesData={show}
-                size="large"
-              />
-            ))}
+  const series: ShowWithId[] = [];
+  const movies: ShowWithId[] = [];
+  filteredItems.forEach((item: ShowWithId) => {
+    const isMovie =
+      item.type === "movie" ||
+      (item.fileEpisodes?.length === 1 && !item.totalEpisodes) ||
+      item.format === "MOVIE";
+    if (isMovie) movies.push(item);
+    else series.push(item);
+  });
+
+  const totalShows = allItems.length;
+
+  return (
+    <div className="page">
+      <div className="page-head">
+        <div>
+          <h1 className="page-title">Library</h1>
+          <p className="page-sub">
+            {totalShows === 0
+              ? "Your scanned folders are empty."
+              : `${totalShows} ${totalShows === 1 ? "title" : "titles"} across your scanned folders.`}
+          </p>
+        </div>
+      </div>
+
+      <SearchBar onSearch={setSearchQuery} placeholder="Search titles, genres, studios…" />
+
+      {!searchQuery.trim() && <LatestUpdatesCarousel metadata={metadata} />}
+
+      {totalShows === 0 ? (
+        <div className="empty">
+          <div className="empty-icon"><Tv size={48} /></div>
+          <div className="empty-title">Your library is empty</div>
+          <div className="empty-text">
+            Go to <strong>Settings</strong> to select a folder with your anime collection.
           </div>
-        </section>
+        </div>
+      ) : series.length === 0 && movies.length === 0 ? (
+        <div className="empty">
+          <div className="empty-icon"><Search size={48} /></div>
+          <div className="empty-title">No matches</div>
+          <div className="empty-text">Nothing in your library matches "{searchQuery}".</div>
+        </div>
+      ) : (
+        <>
+          {series.length > 0 && (
+            <>
+              <div className="section-head">
+                <h2 className="section-h2">Series</h2>
+                <span className="section-count">
+                  {series.length} {series.length === 1 ? "title" : "titles"}
+                </span>
+              </div>
+              <div className="show-grid">
+                {series.map((show) => (
+                  <ShowCard
+                    key={show.seriesId}
+                    seriesId={show.seriesId}
+                    seriesData={show}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+
+          {movies.length > 0 && (
+            <>
+              <div className="section-head">
+                <h2 className="section-h2">Movies</h2>
+                <span className="section-count">
+                  {movies.length} {movies.length === 1 ? "title" : "titles"}
+                </span>
+              </div>
+              <div className="show-grid">
+                {movies.map((show) => (
+                  <ShowCard
+                    key={show.seriesId}
+                    seriesId={show.seriesId}
+                    seriesData={show}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </>
       )}
     </div>
   );

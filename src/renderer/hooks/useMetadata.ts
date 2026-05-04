@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import type { FileStatus } from '../../shared/fileStatus';
 
 export interface SeriesMetadata {
   seriesId?: string;
@@ -42,6 +43,8 @@ export interface EpisodeMetadata {
   filePath?: string;
   subtitlePath?: string | null;
   subtitlePaths?: string[];
+  status?: FileStatus;
+  lastProbedAt?: number;
 }
 
 export interface FileEpisode {
@@ -52,6 +55,8 @@ export interface FileEpisode {
   subtitlePaths: string[];
   filename: string;
   title?: string;
+  status?: FileStatus;
+  lastProbedAt?: number;
 }
 
 const hasElectronAPI = typeof window !== 'undefined' && window.electronAPI;
