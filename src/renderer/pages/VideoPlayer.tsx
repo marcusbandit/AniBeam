@@ -6,6 +6,7 @@ import JASSUB from 'jassub';
 import jassubWorkerUrl from 'jassub/dist/worker/worker.js?url';
 import jassubWasmUrl from 'jassub/dist/wasm/jassub-worker.wasm?url';
 import jassubWasmModernUrl from 'jassub/dist/wasm/jassub-worker-modern.wasm?url';
+import jassubDefaultFontUrl from 'jassub/dist/default.woff2?url';
 
 // Vite's dev server serves .wasm with application/octet-stream, which makes
 // WebAssembly.instantiateStreaming() in the JASSUB worker reject the response.
@@ -332,30 +333,20 @@ function VideoPlayer() {
             workerUrl: jassubWorkerUrl,
             wasmUrl: wasmUrls.wasmUrl,
             modernWasmUrl: wasmUrls.modernWasmUrl,
+            // Default font MUST be reachable. JASSUB's internal URL.import.meta
+            // resolution doesn't survive Vite bundling, so we provide the URL
+            // explicitly. Without this, libass has no glyphs and renders nothing.
+            availableFonts: { 'liberation sans': jassubDefaultFontUrl },
+            defaultFont: 'liberation sans',
             queryFonts: false,
-            debug: true, // logs frame timing + fontselect to console
+            debug: true,
           } as ConstructorParameters<typeof JASSUB>[0]);
           jassubRef.current = inst;
           await (inst as unknown as { ready?: Promise<unknown> }).ready;
           console.log('[subs] JASSUB ready for', sub.label);
 
-          // Force at least one render. The constructor already armed rVFC,
-          // but Chromium may not fire it for the very first frame if the
-          // video is already paused/seek. manualRender bridges that gap.
-          try {
-            const result = await (inst as unknown as { manualRender: (m: { expectedDisplayTime: number; width: number; height: number; mediaTime: number }) => Promise<unknown> }).manualRender({
-              expectedDisplayTime: performance.now(),
-              width: video.videoWidth || 1920,
-              height: video.videoHeight || 1080,
-              mediaTime: video.currentTime,
-            });
-            console.log('[subs] manualRender returned', result);
-          } catch (err) {
-            console.warn('[subs] manualRender failed', err);
-          }
-
-          // If JASSUB's auto-attached rVFC didn't fire for any reason, drive
-          // it ourselves on a timer so subs stay in sync. Cheap fallback.
+          // Drive JASSUB at ~30 fps since rVFC didn't seem to fire reliably
+          // in this Electron context. mediaTime is in seconds.
           const pump = () => {
             if (jassubRef.current !== inst) return; // disposed
             const v = videoRef.current;
@@ -371,7 +362,7 @@ function VideoPlayer() {
                 mediaTime: v.currentTime,
               });
             } catch { /* ignore */ }
-            setTimeout(pump, 33); // ~30 fps
+            setTimeout(pump, 33);
           };
           pump();
         } catch (err) {
