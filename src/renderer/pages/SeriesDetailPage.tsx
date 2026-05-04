@@ -159,7 +159,11 @@ function SeriesDetailPage() {
       const allEpisodeNumbers = new Set<number>();
       seasonMetadata.forEach((ep) => allEpisodeNumbers.add(ep.episodeNumber));
       seasonFiles.forEach((ep) => allEpisodeNumbers.add(ep.episodeNumber));
-      for (let i = 1; i <= seasonTotalEpisodes; i++) allEpisodeNumbers.add(i);
+      // Defensive cap: don't render thousands of placeholder rows if a stale
+      // entry slips past the main-process scrub. >1000 episodes is not a real
+      // anime; anything bigger is bad data.
+      const safeTotal = Math.min(seasonTotalEpisodes, 1000);
+      for (let i = 1; i <= safeTotal; i++) allEpisodeNumbers.add(i);
 
       const sortedEpisodeNumbers = Array.from(allEpisodeNumbers).sort((a, b) => a - b);
 

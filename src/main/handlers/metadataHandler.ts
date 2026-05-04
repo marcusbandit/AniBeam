@@ -66,13 +66,38 @@ async function loadMetadataRaw(): Promise<Record<string, unknown>> {
   // Returning empty would let the next writer truncate the library to nothing.
   // Throw and let the caller refuse to write on top of a broken state.
   const parsed = JSON.parse(data) as Record<string, unknown>;
-  // Migration: ensure every file episode has a status.
-  for (const seriesValue of Object.values(parsed)) {
-    const series = seriesValue as { fileEpisodes?: unknown[] };
-    if (!Array.isArray(series.fileEpisodes)) continue;
-    for (const file of series.fileEpisodes) {
-      const f = file as { status?: string };
-      if (!f.status) f.status = 'ready';
+  // Migration + scrub. Runs on every load so corrupted entries from earlier
+  // bugs heal without a rescan.
+  for (const [seriesId, seriesValue] of Object.entries(parsed)) {
+    const series = seriesValue as { fileEpisodes?: unknown[]; episodes?: unknown[] };
+    if (Array.isArray(series.fileEpisodes)) {
+      // 1. Default missing status to 'ready'.
+      // 2. Drop entries with implausible episode numbers (>= 1000) — those are
+      //    leftovers from the pre-fix [hash] bug where regex pattern E\d{2,}
+      //    matched bracket contents like [F1E24928] and produced episode 24928.
+      const cleaned: unknown[] = [];
+      let dropped = 0;
+      for (const file of series.fileEpisodes) {
+        const f = file as { status?: string; episodeNumber?: number };
+        if (typeof f.episodeNumber === 'number' && f.episodeNumber >= 1000) {
+          dropped++;
+          continue;
+        }
+        if (!f.status) f.status = 'ready';
+        cleaned.push(f);
+      }
+      if (dropped > 0) {
+        logger.warn('metadata', `Scrubbed ${dropped} bogus fileEpisode entries from ${seriesId} (episodeNumber >= 1000)`);
+      }
+      series.fileEpisodes = cleaned;
+    }
+    if (Array.isArray(series.episodes)) {
+      // Same scrub on the metadata-fetched episodes array — defensive only,
+      // shouldn't normally happen since this comes from MAL/AniList.
+      series.episodes = series.episodes.filter((ep) => {
+        const e = ep as { episodeNumber?: number };
+        return !(typeof e.episodeNumber === 'number' && e.episodeNumber >= 1000);
+      });
     }
   }
   return parsed;
