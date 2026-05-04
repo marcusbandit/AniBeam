@@ -62,11 +62,16 @@ function VideoPlayer() {
       return; // already-bound element or unsupported
     }
 
+    // Allow the slider to push past unity gain — many anime/video sources
+    // are mastered quietly. At slider 100% the user gets MAX_BOOST× the raw
+    // signal; the curve stays exponential (s²·BOOST) so the bottom half is
+    // still calm. Watch for clipping on already-loud content if you bump
+    // this further than ~3.
+    const MAX_BOOST = 2.5;
     const updateGain = () => {
-      // Total output = video.volume × gain. We want total = slider^2 — gentler
-      // than s^3 (was too quiet at the top): slider 50% ≈ 25% loudness,
-      // slider 85% ≈ 72%, slider 100% = 100%.
-      gain.gain.value = video.volume;
+      // Total output = video.volume × gain = slider² × MAX_BOOST.
+      // slider 25% → 16% · 50% → 62% · 75% → 141% · 100% → 250%.
+      gain.gain.value = video.volume * MAX_BOOST;
     };
     const resume = () => { if (audioCtx.state === 'suspended') void audioCtx.resume(); };
     updateGain();
