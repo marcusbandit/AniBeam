@@ -12,6 +12,7 @@ import imageCacheHandler from './handlers/imageCacheHandler';
 import thumbnailHandler from './handlers/thumbnailHandler';
 import { initMediaProgress, updateMediaProgress } from './utils/debugUtils';
 import { logger } from './services/logger';
+import videoProbeHandler from './handlers/videoProbeHandler';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -48,6 +49,28 @@ function preserveStatus(
     if (!old) return f;
     return { ...f, status: old.status ?? f.status, lastProbedAt: old.lastProbedAt ?? f.lastProbedAt };
   });
+}
+
+async function updateFileStatus(filePath: string, status: 'ready' | 'verifying' | 'stalled'): Promise<void> {
+  const meta = (await metadataHandler.loadMetadata()) as Record<string, unknown>;
+  let touched = false;
+  for (const series of Object.values(meta)) {
+    const s = series as { fileEpisodes?: Array<{ filePath: string; status?: string; lastProbedAt?: number }> };
+    if (!Array.isArray(s.fileEpisodes)) continue;
+    for (const file of s.fileEpisodes) {
+      if (file.filePath === filePath) {
+        file.status = status;
+        file.lastProbedAt = Date.now();
+        touched = true;
+      }
+    }
+  }
+  if (touched) {
+    await metadataHandler.saveMetadata(meta);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('metadata:file-status-changed', { filePath, status });
+    }
+  }
 }
 
 // Vite env variables (injected by @electron-forge/plugin-vite at build time)
@@ -235,6 +258,7 @@ app.whenReady().then(() => {
   });
 
   createWindow();
+  videoProbeHandler.start(updateFileStatus);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -886,4 +910,16 @@ ipcMain.handle('clear-image-cache', async () => {
 
 ipcMain.handle('get-image-cache-path', () => {
   return imageCacheHandler.getCachePath();
+});
+
+// ==================== VIDEO PROBE IPC ====================
+
+ipcMain.handle('probe:retry', (_event, filePath: string) => {
+  if (typeof filePath === 'string' && filePath.length > 0) {
+    videoProbeHandler.retry(filePath);
+  }
+});
+
+app.on('before-quit', () => {
+  videoProbeHandler.stop();
 });

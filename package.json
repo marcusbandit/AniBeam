@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . && bun run typecheck",
     "verify:logger": "bun --bun scripts/verify-logger.mjs",
+    "verify:probe": "bun --bun scripts/verify-probe-parser.mjs",
     "preview": "vite preview",
     "start": "bun run typecheck && electron-forge start",
     "package": "bun run typecheck && electron-forge package",
