@@ -1,4 +1,14 @@
 import cliProgress from 'cli-progress';
+import { logger } from '../services/logger';
+import type { LogStage } from '../../shared/logTypes';
+
+function stageFor(header: string): LogStage {
+  const h = header.toLowerCase();
+  if (h.includes('thumb')) return 'thumbnail';
+  if (h.includes('image') || h.includes('cache')) return 'image';
+  if (h.includes('metadata') || h.includes('media')) return 'metadata';
+  return 'system';
+}
 
 const BAR_SIZE = 35;
 
@@ -85,6 +95,7 @@ export function updateProgress(header: string, filename?: string): void {
         newInstance.total = Math.max(newInstance.total, newInstance.current);
         newInstance.bar.setTotal(newInstance.total);
         newInstance.bar.update(newInstance.current, { header, filename });
+        logger.info(stageFor(header), filename ? `${header}: ${filename}` : header);
         return;
     }
 
@@ -97,6 +108,7 @@ export function updateProgress(header: string, filename?: string): void {
     }
 
     instance.bar.update(instance.current, { header, filename });
+    logger.info(stageFor(header), filename ? `${header}: ${filename}` : header);
 }
 
 /**

@@ -1,5 +1,6 @@
 import { readdir, stat } from 'fs/promises';
 import { join, extname, basename } from 'path';
+import { logger } from '../services/logger';
 
 const VIDEO_EXTENSIONS = ['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v'];
 const SUBTITLE_EXTENSIONS = ['.srt', '.vtt', '.ass', '.ssa'];
@@ -155,17 +156,15 @@ function extractSeriesNameFromFilenames(videoFiles: VideoFile[]): string {
 
     // Remove common patterns that indicate episode/season numbers
     let cleaned = baseName
+      .replace(/\s*\[[^\]]*\]\s*/g, ' ')                          // Strip anything in [square brackets] (release groups, quality, hashes, etc.)
       .replace(/\s*\bS\d+E\d+(\.\d+)?\b.*$/i, '')                 // Remove S01E01, S1E1, S01E10.5, etc.
       .replace(/\s*\bE\d+(\.\d+)?\b.*$/i, '')                     // Remove E01, E1, E10.5 patterns (keep everything before)
       .replace(/\s*\bPart\s*\d+\b.*$/i, '')                       // Remove 'Part 1', 'Part 2', etc.
       .replace(/\s*\bSeason\s*\d+\b.*$/i, '')                     // Remove 'Season 1', 'Season 2', etc. NOT removing 'season' only if it has a number after it.
       .replace(/\s*Episode\s*\d+(\.\d+)?[ab]?\s*.*$/i, '')        // Remove 'Episode 10', 'Episode 10.5', 'Episode 12a', etc.
       .replace(/\s*Ep\.?\s*\d+(\.\d+)?[ab]?\s*.*$/i, '')          // Remove 'Ep 12', 'Ep. 10.5', etc.
-      .replace(/\s*\[\d+(\.\d+)?[ab]?\].*$/, '')                  // Remove [10], [10.5], [12a] episode number patterns
       .replace(/\s*-\s*\d{1,4}(?:\.\d+)?[ab]?(?:\s|$).*$/, '')    // Remove episode at end like '- 01', '- 10.5', '- 12a' but not years
       .replace(/\s+\d{1,3}(?!\d)(?:\s|$)/g, '')                   // Remove standalone numbers (1-3 digits) unless part of larger numbers
-      .replace(/\s*\[(?:1080|720|480|360)p?\]\s*/gi, ' ')         // Remove quality/resolution tags [1080p] etc
-      .replace(/\s*\[(?:HD|SD|FHD|UHD)\]?\s*/gi, ' ')             // Remove other quality tags [HD] etc
       .replace(/\s*\(\d{4}\)\s*$/, '')                            // Remove trailing years (2020), (2021), etc
       .replace(/\s*\([^)]*\)\s*/g, ' ')                           // Remove other parentheses content
       .replace(/\./g, ' ')                                        // Replace dots with spaces
@@ -323,7 +322,7 @@ async function scanFolderForVideos(folderPath: string, folderSeason: number | nu
         }
       } catch (err) {
         // Skip files we can't stat
-        console.warn(`Could not stat: ${fullPath}`);
+        logger.warn('folder', `Could not stat: ${fullPath}`, { file: fullPath });
       }
     }
 
@@ -341,7 +340,7 @@ async function scanFolderForVideos(folderPath: string, folderSeason: number | nu
     const seenPaths = new Set<string>();
     const uniqueVideos = videos.filter(video => {
       if (seenPaths.has(video.filePath)) {
-        console.warn(`Duplicate video file detected: ${video.filePath}`);
+        logger.warn('folder', `Duplicate video file detected: ${video.filePath}`, { file: video.filePath });
         return false;
       }
       seenPaths.add(video.filePath);
@@ -350,7 +349,7 @@ async function scanFolderForVideos(folderPath: string, folderSeason: number | nu
 
     return { videos: uniqueVideos, subtitles };
   } catch (error) {
-    console.error(`Error scanning folder ${folderPath}:`, error);
+    logger.error('folder', `Error scanning folder ${folderPath}`, { file: folderPath });
   }
 
   return { videos: [], subtitles };
@@ -359,7 +358,7 @@ async function scanFolderForVideos(folderPath: string, folderSeason: number | nu
 async function scanDirectory(rootPath: string): Promise<ScannedMedia[]> {
   const results: ScannedMedia[] = [];
 
-  console.log(`\n=== Scanning: ${rootPath} ===`);
+  logger.info('folder', `Scanning: ${rootPath}`, { file: rootPath });
 
   try {
     const entries = await readdir(rootPath);
@@ -392,7 +391,7 @@ async function scanDirectory(rootPath: string): Promise<ScannedMedia[]> {
 
           if (subDirs.length > 0 && subVideos.length === 0) {
             // This is a CATEGORY folder (like "Series") containing series subfolders
-            console.log(`  📁 Category folder: ${entry}`);
+            logger.info('folder', `Category folder: ${entry}`);
 
             for (const subDir of subDirs) {
               const seriesPath = join(entryPath, subDir);
@@ -406,7 +405,7 @@ async function scanDirectory(rootPath: string): Promise<ScannedMedia[]> {
 
                 const partInfo = partFromFolder ? `, Part ${partFromFolder}` : '';
                 const seasonInfo = seasonFromFolder ? `, Season ${seasonFromFolder}` : '';
-                console.log(`    📺 Series: ${subDir} (${videos.length} episodes${seasonInfo}${partInfo}) → search: "${seriesName}" → ID: "${seriesId}"`);
+                logger.info('folder', `Series: ${subDir} (${videos.length} episodes${seasonInfo}${partInfo}) → search: "${seriesName}" → ID: "${seriesId}"`, { series: seriesName });
 
                 results.push({
                   id: seriesId,
@@ -428,13 +427,13 @@ async function scanDirectory(rootPath: string): Promise<ScannedMedia[]> {
 
             // Also check for loose video files in category (like Movies/movie.mp4)
             if (subVideos.length > 0) {
-              console.log(`    🎬 Loose videos in ${entry}: ${subVideos.length}`);
+              logger.info('folder', `Loose videos in ${entry}: ${subVideos.length}`);
 
               for (const video of subVideos) {
                 const movieTitle = cleanMovieTitle(video.filename);
                 const movieId = movieTitle.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
 
-                console.log(`      🎬 Movie: ${video.filename} → search: "${movieTitle}"`);
+                logger.info('folder', `Movie: ${video.filename} → search: "${movieTitle}"`, { series: movieTitle });
 
                 results.push({
                   id: `movie_${movieId}`,
@@ -457,7 +456,7 @@ async function scanDirectory(rootPath: string): Promise<ScannedMedia[]> {
 
             const partInfo = partFromFolder ? `, Part ${partFromFolder}` : '';
             const seasonInfo = seasonFromFolder ? `, Season ${seasonFromFolder}` : '';
-            console.log(`  📺 Series: ${entry} (${subVideos.length} episode${subVideos.length > 1 ? 's' : ''}${seasonInfo}${partInfo}) → search: "${seriesName}" → ID: "${seriesId}"`);
+            logger.info('folder', `Series: ${entry} (${subVideos.length} episode${subVideos.length > 1 ? 's' : ''}${seasonInfo}${partInfo}) → search: "${seriesName}" → ID: "${seriesId}"`, { series: seriesName });
 
             results.push({
               id: seriesId,
@@ -480,7 +479,7 @@ async function scanDirectory(rootPath: string): Promise<ScannedMedia[]> {
           const movieTitle = cleanMovieTitle(entry);
           const movieId = movieTitle.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
 
-          console.log(`  🎬 Movie (root): ${entry} → search: "${movieTitle}"`);
+          logger.info('folder', `Movie (root): ${entry} → search: "${movieTitle}"`, { series: movieTitle });
 
           const { episode: movieEpisode } = extractSeasonAndEpisode(entry);
           results.push({
@@ -503,15 +502,15 @@ async function scanDirectory(rootPath: string): Promise<ScannedMedia[]> {
           });
         }
       } catch (err) {
-        console.warn(`Could not process ${entryPath}:`, err);
+        logger.warn('folder', `Could not process ${entryPath}`, { file: entryPath });
       }
     }
   } catch (error) {
-    console.error(`Error scanning root directory ${rootPath}:`, error);
+    logger.error('folder', `Error scanning root directory ${rootPath}`, { file: rootPath });
     throw error;
   }
 
-  console.log(`=== Found ${results.length} media items ===\n`);
+  logger.info('folder', `Found ${results.length} media items in ${rootPath}`, { file: rootPath });
   return results;
 }
 
@@ -545,7 +544,7 @@ const folderHandler = {
         const results = await scanDirectory(folderPath);
         allResults.push(...results);
       } catch (error) {
-        console.error(`Error scanning ${folderPath}:`, error);
+        logger.error('folder', `Error scanning ${folderPath}`, { file: folderPath });
       }
     }
 

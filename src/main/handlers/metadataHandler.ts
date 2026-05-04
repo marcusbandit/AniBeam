@@ -1,6 +1,7 @@
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { app } from 'electron';
+import { logger } from '../services/logger';
 
 function getMetadataPath(): string {
   const userDataPath = app.getPath('userData');
@@ -29,7 +30,7 @@ const metadataHandler = {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         return {};
       }
-      console.error('Error loading metadata:', error);
+      logger.error('metadata', 'Error loading metadata');
       return {};
     }
   },
@@ -54,7 +55,7 @@ const metadataHandler = {
       await writeFile(metadataPath, JSON.stringify(cleanedMetadata, null, 2), 'utf-8');
       return true;
     } catch (error) {
-      console.error('Error saving metadata:', error);
+      logger.error('metadata', 'Error saving metadata');
       throw error;
     }
   },
@@ -71,7 +72,7 @@ const metadataHandler = {
       await writeFile(metadataPath, JSON.stringify(metadata, null, 2), 'utf-8');
       return true;
     } catch (error) {
-      console.error('Error updating series metadata:', error);
+      logger.error('metadata', 'Error updating series metadata');
       throw error;
     }
   },
@@ -81,7 +82,7 @@ const metadataHandler = {
       const metadata = await this.loadMetadata();
       return (metadata[seriesId] as Record<string, unknown>) || null;
     } catch (error) {
-      console.error('Error getting series metadata:', error);
+      logger.error('metadata', 'Error getting series metadata');
       return null;
     }
   },
@@ -94,7 +95,7 @@ const metadataHandler = {
       await writeFile(metadataPath, JSON.stringify(metadata, null, 2), 'utf-8');
       return true;
     } catch (error) {
-      console.error('Error deleting series metadata:', error);
+      logger.error('metadata', 'Error deleting series metadata');
       throw error;
     }
   },

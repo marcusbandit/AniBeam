@@ -4,6 +4,7 @@ import { app } from 'electron';
 import { spawn } from 'child_process';
 import { createHash } from 'crypto';
 import { initProgress, updateProgress } from '../utils/debugUtils';
+import { logger } from '../services/logger';
 
 function getThumbnailCachePath(): string {
   const userDataPath = app.getPath('userData');
@@ -115,7 +116,7 @@ async function extractFrame(videoPath: string, timestamp: number = 120, resetPro
 
     ffmpeg.on('error', (err) => {
       if (resolved) return; // Already resolved
-      console.error(`  ⚠️ ffmpeg error: ${err.message}`);
+      logger.error('thumbnail', `ffmpeg error: ${err.message}`, { file: videoPath });
       safeResolve(null);
     });
 
@@ -141,7 +142,7 @@ const thumbnailHandler = {
     try {
       return await extractFrame(videoPath, timestamp, resetProgressBar);
     } catch (error) {
-      console.error(`Error generating thumbnail for ${videoPath}:`, error);
+      logger.error('thumbnail', `Error generating thumbnail`, { file: videoPath });
       return null;
     }
   },

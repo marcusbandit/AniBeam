@@ -3,6 +3,7 @@ import { join, extname } from 'path';
 import { app } from 'electron';
 import { createHash } from 'crypto';
 import { initProgress, updateProgress } from '../utils/debugUtils';
+import { logger } from '../services/logger';
 
 interface CacheEntry {
   originalUrl: string;
@@ -43,7 +44,7 @@ async function loadCacheIndex(): Promise<CacheIndex> {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       return {};
     }
-    console.error('Error loading cache index:', error);
+    logger.error('image', 'Error loading cache index');
     return {};
   }
 }
@@ -53,7 +54,7 @@ async function saveCacheIndex(index: CacheIndex): Promise<void> {
     const indexPath = getCacheIndexPath();
     await writeFile(indexPath, JSON.stringify(index, null, 2), 'utf-8');
   } catch (error) {
-    console.error('Error saving cache index:', error);
+    logger.error('image', 'Error saving cache index');
   }
 }
 
@@ -112,13 +113,13 @@ const imageCacheHandler = {
       // Download the image
       const response = await fetch(imageUrl, {
         headers: {
-          'User-Agent': 'Liam Media Server/1.0',
+          'User-Agent': 'AniBeam Media Server/1.0',
           'Accept': 'image/*',
         },
       });
 
       if (!response.ok) {
-        console.error(`Failed to download image: ${imageUrl} (${response.status})`);
+        logger.error('image', `Failed to download image (${response.status})`, { file: imageUrl });
         return null;
       }
 
@@ -140,7 +141,7 @@ const imageCacheHandler = {
       updateProgress('📷 Image caching', filename);
       return localPath;
     } catch (error) {
-      console.error(`Error caching image ${imageUrl}:`, error);
+      logger.error('image', `Error caching image`, { file: imageUrl });
       return null;
     }
   },
@@ -196,7 +197,7 @@ const imageCacheHandler = {
 
       return null;
     } catch (error) {
-      console.error('Error getting cached path:', error);
+      logger.error('image', 'Error getting cached path');
       return null;
     }
   },
@@ -238,9 +239,9 @@ const imageCacheHandler = {
       await rm(cachePath, { recursive: true, force: true });
       await ensureCacheDirectory();
       await saveCacheIndex({});
-      console.log('Image cache cleared');
+      logger.info('image', 'Image cache cleared');
     } catch (error) {
-      console.error('Error clearing image cache:', error);
+      logger.error('image', 'Error clearing image cache');
       throw error;
     }
   },
@@ -319,7 +320,7 @@ const imageCacheHandler = {
             // Remove from index
             delete cacheIndex[url];
           } catch (error) {
-            console.error(`Error deleting cached image ${entry.localPath}:`, error);
+            logger.error('image', `Error deleting cached image`, { file: entry.localPath });
           }
         }
       }
@@ -352,7 +353,7 @@ const imageCacheHandler = {
             deletedCount++;
           }
         } catch (error) {
-          console.error(`Error deleting local image ${actualPath}:`, error);
+          logger.error('image', `Error deleting local image`, { file: actualPath });
         }
 
         // Remove from cache index if found
@@ -366,9 +367,9 @@ const imageCacheHandler = {
 
       // Save updated cache index
       await saveCacheIndex(cacheIndex);
-      console.log(`Deleted ${deletedCount} cached images for series`);
+      logger.info('image', `Deleted ${deletedCount} cached images for series`);
     } catch (error) {
-      console.error('Error deleting series images:', error);
+      logger.error('image', 'Error deleting series images');
       throw error;
     }
   },

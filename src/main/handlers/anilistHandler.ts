@@ -1,12 +1,7 @@
 import { request, gql } from 'graphql-request';
+import { logger } from '../services/logger';
 
 const ANILIST_API_URL = 'https://graphql.anilist.co';
-
-// ANSI color codes for terminal output
-const colors = {
-  yellow: '\x1b[33m',
-  reset: '\x1b[0m',
-};
 
 function isRateLimitError(error: unknown): boolean {
   // Check for GraphQL rate limit errors
@@ -25,7 +20,7 @@ function isRateLimitError(error: unknown): boolean {
 }
 
 function logRateLimitWarning(source: string): void {
-  console.log(`${colors.yellow}  ⚠️  Rate limited by ${source}. Please wait before trying again.${colors.reset}`);
+  logger.warn('metadata', `Rate limited by ${source}. Please wait before trying again.`);
 }
 
 interface AniListMedia {
@@ -231,7 +226,7 @@ const anilistHandler = {
         logRateLimitWarning('AniList');
         throw error;
       }
-      console.error('Error searching AniList:', error);
+      logger.error('metadata', 'Error searching AniList');
       throw error;
     }
   },
@@ -250,13 +245,13 @@ const anilistHandler = {
         if (isRateLimitError(error) && retries < maxRetries) {
           retries++;
           const delaySeconds = retries * 2; // 2, 4, 6 seconds
-          console.log(`  \x1b[33m⏳ Rate limited while searching AniList. Waiting ${delaySeconds}s before retry ${retries}/${maxRetries}...\x1b[0m`);
+          logger.warn('metadata', `Rate limited while searching AniList. Waiting ${delaySeconds}s before retry ${retries}/${maxRetries}...`);
           await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));
         } else {
           if (isRateLimitError(error)) {
             logRateLimitWarning('AniList');
           } else {
-            console.error('Error searching AniList (multiple):', error);
+            logger.error('metadata', 'Error searching AniList (multiple)');
           }
           throw error;
         }
@@ -320,7 +315,7 @@ const anilistHandler = {
         logRateLimitWarning('AniList');
         throw error;
       }
-      console.error('Error fetching AniList episodes:', error);
+      logger.error('metadata', 'Error fetching AniList episodes');
       // If fetching fails but we know totalEpisodes, generate basic entries
       if (totalEpisodes) {
         return Array.from({ length: totalEpisodes }, (_, i) => ({
@@ -349,19 +344,19 @@ const anilistHandler = {
       
       // Search for multiple results (up to 10) to find one with enough episodes
       const searchResults = await this.searchAnimeMultiple(searchQuery, 10);
-      console.log(`AniList search: "${searchQuery}" => ${searchResults.length} result(s).`);
+      logger.info('metadata', `AniList search: "${searchQuery}" => ${searchResults.length} result(s).`);
       
       // If no results, try without season/part (only if we were searching with season/part > 1)
       if (searchResults.length === 0 && ((partNumber && partNumber > 1) || (seasonNumber && seasonNumber > 1))) {
         const resultsWithoutSeason = await this.searchAnimeMultiple(seriesName, 10);
-        console.log(`AniList search (no season): "${seriesName}" => ${resultsWithoutSeason.length} result(s).`);
+        logger.info('metadata', `AniList search (no season): "${seriesName}" => ${resultsWithoutSeason.length} result(s).`, { series: seriesName });
         if (resultsWithoutSeason.length > 0) {
           // Try each result until we find one with enough episodes
           let foundValidResult = false;
           for (let i = 0; i < resultsWithoutSeason.length; i++) {
             const media = resultsWithoutSeason[i];
             const title = media.title.romaji || media.title.english || media.title.native;
-            console.log(`  [${i + 1}/${resultsWithoutSeason.length}] Checking "\x1b[36m${title}\x1b[0m" - episodes: ${media.episodes ?? 'unknown'}, status: ${media.status}`);
+            logger.info('metadata', `[${i + 1}/${resultsWithoutSeason.length}] Checking "${title}" - episodes: ${media.episodes ?? 'unknown'}, status: ${media.status}`, { series: title });
 
             // Skip if not yet released or doesn't have required episodes
             if (!isReleased(media)) continue;
@@ -369,9 +364,9 @@ const anilistHandler = {
               if (media.episodes === null || media.episodes < folderEpisodeCount) continue;
             }
             
-            console.log(`  \x1b[32m✓\x1b[0m Accepting "\x1b[36m${title}\x1b[0m" - has ${media.episodes} episodes, folder has ${folderEpisodeCount ?? 'unknown'}`);
+            logger.info('metadata', `Accepting "${title}" - has ${media.episodes} episodes, folder has ${folderEpisodeCount ?? 'unknown'}`, { series: title });
             foundValidResult = true;
-            
+
             // Retry with delay if we get rate limited after confirming a match
             let episodes: EpisodeMetadata[];
             let retries = 0;
@@ -384,14 +379,14 @@ const anilistHandler = {
                 if (isRateLimitError(error) && retries < maxRetries) {
                   retries++;
                   const delaySeconds = retries * 2; // 2, 4, 6 seconds
-                  console.log(`  \x1b[33m⏳ Rate limited while fetching episodes. Waiting ${delaySeconds}s before retry ${retries}/${maxRetries}...\x1b[0m`);
+                  logger.warn('metadata', `Rate limited while fetching episodes. Waiting ${delaySeconds}s before retry ${retries}/${maxRetries}...`);
                   await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));
                 } else {
                   throw error;
                 }
               }
             }
-            
+
             return this.formatMetadata(media, episodes!, seasonNumber);
           }
 
@@ -401,8 +396,8 @@ const anilistHandler = {
               const media = resultsWithoutSeason[i];
               const title = media.title.romaji || media.title.english || media.title.native;
               if (media.episodes === null) {
-                console.log(`  \x1b[33m⚠️\x1b[0m  Fallback: Accepting "\x1b[36m${title}\x1b[0m" with unknown episode count`);
-                
+                logger.warn('metadata', `Fallback: Accepting "${title}" with unknown episode count`, { series: title });
+
                 // Retry with delay if we get rate limited
                 let episodes: EpisodeMetadata[];
                 let retries = 0;
@@ -415,18 +410,18 @@ const anilistHandler = {
                     if (isRateLimitError(error) && retries < maxRetries) {
                       retries++;
                       const delaySeconds = retries * 2; // 2, 4, 6 seconds
-                      console.log(`  \x1b[33m⏳ Rate limited while fetching episodes. Waiting ${delaySeconds}s before retry ${retries}/${maxRetries}...\x1b[0m`);
+                      logger.warn('metadata', `Rate limited while fetching episodes. Waiting ${delaySeconds}s before retry ${retries}/${maxRetries}...`);
                       await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));
                     } else {
                       throw error;
                     }
                   }
                 }
-                
+
                 return this.formatMetadata(media, episodes!, seasonNumber);
               }
             }
-            console.log(`AniList: No suitable results found for "${searchQuery}" or "${seriesName}".`);
+            logger.warn('metadata', `AniList: No suitable results found for "${searchQuery}" or "${seriesName}".`, { series: seriesName });
           }
         }
         return null;
@@ -437,7 +432,7 @@ const anilistHandler = {
       for (let i = 0; i < searchResults.length; i++) {
         const media = searchResults[i];
         const title = media.title.romaji || media.title.english || media.title.native;
-        console.log(`  [${i + 1}/${searchResults.length}] Checking "\x1b[36m${title}\x1b[0m" - episodes: ${media.episodes ?? 'unknown'}, status: ${media.status}`);
+        logger.info('metadata', `[${i + 1}/${searchResults.length}] Checking "${title}" - episodes: ${media.episodes ?? 'unknown'}, status: ${media.status}`, { series: title });
 
         // Skip if not yet released or doesn't have required episodes
         if (!isReleased(media)) continue;
@@ -445,9 +440,9 @@ const anilistHandler = {
           if (media.episodes === null || media.episodes < folderEpisodeCount) continue;
         }
 
-        console.log(`  \x1b[32m✓\x1b[0m Accepting "\x1b[36m${title}\x1b[0m" - has ${media.episodes} episodes, folder has ${folderEpisodeCount ?? 'unknown'}`);
+        logger.info('metadata', `Accepting "${title}" - has ${media.episodes} episodes, folder has ${folderEpisodeCount ?? 'unknown'}`, { series: title });
         foundValidResult = true;
-        
+
         // Retry with delay if we get rate limited after confirming a match
         let episodes: EpisodeMetadata[];
         let retries = 0;
@@ -460,14 +455,14 @@ const anilistHandler = {
             if (isRateLimitError(error) && retries < maxRetries) {
               retries++;
               const delaySeconds = retries * 2; // 2, 4, 6 seconds
-              console.log(`  \x1b[33m⏳ Rate limited while fetching episodes. Waiting ${delaySeconds}s before retry ${retries}/${maxRetries}...\x1b[0m`);
+              logger.warn('metadata', `Rate limited while fetching episodes. Waiting ${delaySeconds}s before retry ${retries}/${maxRetries}...`);
               await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));
             } else {
               throw error;
             }
           }
         }
-        
+
         return this.formatMetadata(media, episodes!, seasonNumber);
       }
 
@@ -477,8 +472,8 @@ const anilistHandler = {
           const media = searchResults[i];
           const title = media.title.romaji || media.title.english || media.title.native;
           if (media.episodes === null) {
-            console.log(`  \x1b[33m⚠️\x1b[0m  Fallback: Accepting "\x1b[36m${title}\x1b[0m" with unknown episode count`);
-            
+            logger.warn('metadata', `Fallback: Accepting "${title}" with unknown episode count`, { series: title });
+
             // Retry with delay if we get rate limited
             let episodes: EpisodeMetadata[];
             let retries = 0;
@@ -491,18 +486,18 @@ const anilistHandler = {
                 if (isRateLimitError(error) && retries < maxRetries) {
                   retries++;
                   const delaySeconds = retries * 2; // 2, 4, 6 seconds
-                  console.log(`  \x1b[33m⏳ Rate limited while fetching episodes. Waiting ${delaySeconds}s before retry ${retries}/${maxRetries}...\x1b[0m`);
+                  logger.warn('metadata', `Rate limited while fetching episodes. Waiting ${delaySeconds}s before retry ${retries}/${maxRetries}...`);
                   await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));
                 } else {
                   throw error;
                 }
               }
             }
-            
+
             return this.formatMetadata(media, episodes!, seasonNumber);
           }
         }
-        console.log(`  \x1b[33m⚠️\x1b[0m  No results with enough episodes found, or only found series with unknown episode counts.`);
+        logger.warn('metadata', `No results with enough episodes found, or only found series with unknown episode counts.`);
       }
 
       return null;
@@ -512,7 +507,7 @@ const anilistHandler = {
       if (isRateLimitError(error)) {
         return null;
       }
-      console.error('Error fetching AniList metadata:', error);
+      logger.error('metadata', 'Error fetching AniList metadata');
       return null;
     }
   },

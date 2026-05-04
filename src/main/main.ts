@@ -113,7 +113,7 @@ app.whenReady().then(() => {
         filePath = '/' + filePath;
       } else {
         // On Windows, reject relative paths for security
-        console.error('Rejected relative path:', filePath);
+        logger.error('system', `Rejected relative path: ${filePath}`, { file: filePath });
         return new Response('Invalid path: relative paths not allowed', { status: 403 });
       }
     }
@@ -140,14 +140,14 @@ app.whenReady().then(() => {
 
       if (!isInUserData && !isInAllowedSource) {
         if (allowedSources.length === 0 && !isInUserData) {
-          console.error('Access denied: path not in userData and no folder sources configured');
+          logger.error('system', 'Access denied: path not in userData and no folder sources configured');
           return new Response('Access denied: path not in allowed directories', { status: 403 });
         }
-        console.error('Access denied for path:', filePath);
+        logger.error('system', `Access denied for path: ${filePath}`, { file: filePath });
         return new Response('Access denied: path not in allowed directories', { status: 403 });
       }
     } catch (error) {
-      console.error('Error validating path:', error);
+      logger.error('system', 'Error validating path');
       return new Response('Error validating path', { status: 500 });
     }
 
@@ -155,7 +155,7 @@ app.whenReady().then(() => {
 
     // Check if file exists
     if (!existsSync(filePath)) {
-      console.error('File not found:', filePath);
+      logger.error('system', `File not found: ${filePath}`, { file: filePath });
       return new Response('File not found', { status: 404 });
     }
 
@@ -212,7 +212,7 @@ app.whenReady().then(() => {
         headers: newHeaders,
       });
     } catch (error) {
-      console.error('Error fetching file:', error);
+      logger.error('system', 'Error fetching file');
       return new Response('Error loading file', { status: 500 });
     }
   });
@@ -245,7 +245,7 @@ ipcMain.handle('get-folder-sources', async () => {
   try {
     return await configHandler.getFolderSources();
   } catch (error) {
-    console.error('Error getting folder sources:', error);
+    logger.error('system', 'Error getting folder sources');
     return [];
   }
 });
@@ -254,7 +254,7 @@ ipcMain.handle('add-folder-source', async (_event, folderPath: string) => {
   try {
     return await configHandler.addFolderSource(folderPath);
   } catch (error) {
-    console.error('Error adding folder source:', error);
+    logger.error('system', 'Error adding folder source');
     throw error;
   }
 });
@@ -263,7 +263,7 @@ ipcMain.handle('remove-folder-source', async (_event, folderPath: string) => {
   try {
     return await configHandler.removeFolderSource(folderPath);
   } catch (error) {
-    console.error('Error removing folder source:', error);
+    logger.error('system', 'Error removing folder source');
     throw error;
   }
 });
@@ -288,7 +288,7 @@ ipcMain.handle('scan-folder', async (_event, folderPath: string) => {
   try {
     return await folderHandler.scanFolder(folderPath);
   } catch (error) {
-    console.error('Error scanning folder:', error);
+    logger.error('folder', 'Error scanning folder');
     throw error;
   }
 });
@@ -301,7 +301,7 @@ ipcMain.handle('scan-all-folders', async () => {
     }
     return await folderHandler.scanMultipleFolders(folderSources);
   } catch (error) {
-    console.error('Error scanning all folders:', error);
+    logger.error('folder', 'Error scanning all folders');
     throw error;
   }
 });
@@ -311,37 +311,37 @@ ipcMain.handle('scan-all-folders', async () => {
 ipcMain.handle('fetch-metadata', async (_event, searchName: string, seasonNumber?: number | null) => {
   // Try sources in priority order: MAL -> AniList
   const seasonInfo = seasonNumber !== null && seasonNumber !== undefined ? ` Season ${seasonNumber}` : '';
-  console.log(`Fetching metadata for: "${searchName}"${seasonInfo}`);
+  logger.info('metadata', `Fetching metadata for: "${searchName}"${seasonInfo}`);
 
   try {
     const malData = await malHandler.searchAndFetchMetadata(searchName, seasonNumber);
     if (malData) {
-      console.log(`  \x1b[32m✓\x1b[0m Found on MAL: \x1b[36m${malData.title}\x1b[0m`);
+      logger.info('metadata', `Found on MAL: ${malData.title}`, { series: malData.title });
       return { ...malData, source: 'mal' };
     } else {
-      console.log(`  \x1b[31m✗\x1b[0m MAL returned no results for "${searchName}"${seasonInfo}`);
+      logger.warn('metadata', `MAL returned no results for "${searchName}"${seasonInfo}`);
     }
   } catch (error) {
     if (!isRateLimitError(error)) {
-      console.log(`  \x1b[31m✗\x1b[0m MAL failed:`, error);
+      logger.error('metadata', `MAL failed`);
     }
   }
 
   try {
     const anilistData = await anilistHandler.searchAndFetchMetadata(searchName, seasonNumber);
     if (anilistData) {
-      console.log(`  \x1b[32m✓\x1b[0m Found on AniList (fallback): \x1b[36m${anilistData.title}\x1b[0m`);
+      logger.info('metadata', `Found on AniList (fallback): ${anilistData.title}`, { series: anilistData.title });
       return { ...anilistData, source: 'anilist' };
     } else {
-      console.log(`  \x1b[31m✗\x1b[0m AniList returned no results for "${searchName}"${seasonInfo}`);
+      logger.warn('metadata', `AniList returned no results for "${searchName}"${seasonInfo}`);
     }
   } catch (error) {
     if (!isRateLimitError(error)) {
-      console.log(`  \x1b[31m✗\x1b[0m AniList failed:`, error);
+      logger.error('metadata', `AniList failed`);
     }
   }
 
-  console.log(`  \x1b[31m✗\x1b[0m No metadata found for: "\x1b[36m${searchName}\x1b[0m"${seasonInfo}`);
+  logger.warn('metadata', `No metadata found for: "${searchName}"${seasonInfo}`);
   return null;
 });
 
@@ -349,7 +349,7 @@ ipcMain.handle('fetch-mal-metadata', async (_event, seriesName: string, seasonNu
   try {
     return await malHandler.searchAndFetchMetadata(seriesName, seasonNumber);
   } catch (error) {
-    console.error('Error fetching MAL metadata:', error);
+    logger.error('metadata', 'Error fetching MAL metadata');
     throw error;
   }
 });
@@ -358,7 +358,7 @@ ipcMain.handle('fetch-anilist-metadata', async (_event, seriesName: string, seas
   try {
     return await anilistHandler.searchAndFetchMetadata(seriesName, seasonNumber);
   } catch (error) {
-    console.error('Error fetching AniList metadata:', error);
+    logger.error('metadata', 'Error fetching AniList metadata');
     throw error;
   }
 });
@@ -367,7 +367,7 @@ ipcMain.handle('save-metadata', async (_event, metadata: Record<string, unknown>
   try {
     return await metadataHandler.saveMetadata(metadata);
   } catch (error) {
-    console.error('Error saving metadata:', error);
+    logger.error('metadata', 'Error saving metadata');
     throw error;
   }
 });
@@ -376,7 +376,7 @@ ipcMain.handle('load-metadata', async () => {
   try {
     return await metadataHandler.loadMetadata();
   } catch (error) {
-    console.error('Error loading metadata:', error);
+    logger.error('metadata', 'Error loading metadata');
     return {};
   }
 });
@@ -385,7 +385,7 @@ ipcMain.handle('clear-metadata', async () => {
   try {
     return await metadataHandler.saveMetadata({});
   } catch (error) {
-    console.error('Error clearing metadata:', error);
+    logger.error('metadata', 'Error clearing metadata');
     throw error;
   }
 });
@@ -412,10 +412,10 @@ ipcMain.handle('delete-series', async (_event, seriesId: string) => {
     // Delete metadata entry
     await metadataHandler.deleteSeriesMetadata(seriesId);
 
-    console.log(`Deleted series: ${seriesId}`);
+    logger.info('metadata', `Deleted series: ${seriesId}`);
     return true;
   } catch (error) {
-    console.error('Error deleting series:', error);
+    logger.error('metadata', 'Error deleting series');
     throw error;
   }
 });
@@ -424,9 +424,7 @@ ipcMain.handle('delete-series', async (_event, seriesId: string) => {
 
 ipcMain.handle('scan-and-fetch-metadata', async (_event, folderPath: string) => {
   try {
-    console.log(`\n========================================`);
-    console.log(`Starting scan and metadata fetch for: ${folderPath}`);
-    console.log(`========================================\n`);
+    logger.info('folder', `Starting scan and metadata fetch for: ${folderPath}`, { file: folderPath });
 
     // 1. Scan the folder to get all media
     const scannedMedia = await folderHandler.scanFolder(folderPath);
@@ -443,7 +441,7 @@ ipcMain.handle('scan-and-fetch-metadata', async (_event, folderPath: string) => 
     for (const media of scannedMedia) {
       // Skip items with no files - don't save metadata for them
       if (media.files.length === 0) {
-        console.log(`Skipping ${media.name} - no files found`);
+        logger.warn('folder', `Skipping ${media.name} - no files found`, { series: media.name });
         continue;
       }
 
@@ -485,13 +483,12 @@ ipcMain.handle('scan-and-fetch-metadata', async (_event, folderPath: string) => 
         
         if (!titlesMatch && normalizedSeries.length >= 3) {
           // Titles don't match - metadata is likely wrong, re-fetch it
-          console.log(`  ⚠️  Cached metadata title "${cachedTitle}" doesn't match series name "${seriesNameLower}"`);
-          console.log(`  🔄 Re-fetching metadata for: ${media.name}`);
+          logger.warn('metadata', `Cached metadata title "${cachedTitle}" doesn't match series name "${seriesNameLower}" — re-fetching`, { series: media.name });
           // Clear the cached metadata and fall through to fetch new metadata
           delete newMetadata[mediaId];
           // Fall through to fetch new metadata
         } else if (titlesMatch) {
-          console.log(`Using cached metadata for: ${media.name}`);
+          logger.info('metadata', `Using cached metadata for: ${media.name}`, { series: media.name });
 
           // Ensure title includes season number if we have season-specific files
           let finalTitle = existing.title as string;
@@ -525,7 +522,7 @@ ipcMain.handle('scan-and-fetch-metadata', async (_event, folderPath: string) => 
 
       const seasonInfo = media.seasonNumber !== null ? ` Season ${media.seasonNumber}` : '';
       const partInfo = media.partNumber !== null ? ` Part ${media.partNumber}` : '';
-      console.log(`Fetching metadata for: ${media.name}${seasonInfo}${partInfo} (${media.type})`);
+      logger.info('metadata', `Processing ${media.name}${seasonInfo}${partInfo}`, { series: media.name });
       
       // Count only canonical episodes (exclude decimal episodes like 6.5, 7.5, 10.5)
       // Decimal episodes are stored as actual decimals: 6.5, 7.5, 10.5, etc.
@@ -535,7 +532,7 @@ ipcMain.handle('scan-and-fetch-metadata', async (_event, folderPath: string) => 
       });
       const canonicalEpisodeCount = canonicalEpisodes.length;
       
-      console.log(`  📁 Folder has ${canonicalEpisodeCount} canonical episode${canonicalEpisodeCount !== 1 ? 's' : ''} (${media.files.length} total files including decimal episodes)`);
+      logger.info('folder', `Folder has ${canonicalEpisodeCount} canonical episode${canonicalEpisodeCount !== 1 ? 's' : ''} (${media.files.length} total files including decimal episodes)`, { series: media.name });
 
       // Fetch new metadata with season/part information
       // Try multiple sources in order: MAL -> AniList
@@ -545,14 +542,14 @@ ipcMain.handle('scan-and-fetch-metadata', async (_event, folderPath: string) => 
       try {
         fetchedMetadata = await malHandler.searchAndFetchMetadata(media.name, media.seasonNumber, media.partNumber, canonicalEpisodeCount);
         if (fetchedMetadata) {
-          console.log(`  \x1b[32m✓\x1b[0m Found on MAL: \x1b[36m${fetchedMetadata.title}\x1b[0m (${fetchedMetadata.totalEpisodes || 'unknown'} episodes)`);
+          logger.info('metadata', `Found on MAL: ${fetchedMetadata.title} (${fetchedMetadata.totalEpisodes || 'unknown'} episodes)`, { series: fetchedMetadata.title });
           fetchedMetadata = { ...fetchedMetadata, source: 'mal' };
         } else {
-          console.log(`  \x1b[31m✗\x1b[0m MAL returned no results for ${media.name}${seasonInfo}`);
+          logger.warn('metadata', `MAL returned no results for ${media.name}${seasonInfo}`, { series: media.name });
         }
       } catch (err) {
         if (!isRateLimitError(err)) {
-          console.log(`  \x1b[31m✗\x1b[0m MAL failed for ${media.name}${seasonInfo}:`, err);
+          logger.error('metadata', `MAL failed for ${media.name}${seasonInfo}`, { series: media.name });
         }
       }
 
@@ -560,21 +557,21 @@ ipcMain.handle('scan-and-fetch-metadata', async (_event, folderPath: string) => 
         try {
           fetchedMetadata = await anilistHandler.searchAndFetchMetadata(media.name, media.seasonNumber, media.partNumber, canonicalEpisodeCount);
           if (fetchedMetadata) {
-            console.log(`  \x1b[32m✓\x1b[0m Found on AniList (fallback): \x1b[36m${fetchedMetadata.title}\x1b[0m (${fetchedMetadata.totalEpisodes || 'unknown'} episodes)`);
+            logger.info('metadata', `Found on AniList (fallback): ${fetchedMetadata.title} (${fetchedMetadata.totalEpisodes || 'unknown'} episodes)`, { series: fetchedMetadata.title });
             fetchedMetadata = { ...fetchedMetadata, source: 'anilist' };
           } else {
-            console.log(`  \x1b[31m✗\x1b[0m AniList returned no results for ${media.name}${seasonInfo}`);
+            logger.warn('metadata', `AniList returned no results for ${media.name}${seasonInfo}`, { series: media.name });
           }
         } catch (err) {
           if (!isRateLimitError(err)) {
-            console.log(`  \x1b[31m✗\x1b[0m AniList failed for ${media.name}${seasonInfo}:`, err);
+            logger.error('metadata', `AniList failed for ${media.name}${seasonInfo}`, { series: media.name });
           }
         }
       }
 
       if (fetchedMetadata) {
         // Cache images locally
-        console.log(`  📥 Caching images...`);
+        logger.info('image', `Caching images for: ${media.name}`, { series: media.name });
 
         // Collect all image URLs to cache
         const imagesToCache: (string | null)[] = [
@@ -675,7 +672,7 @@ ipcMain.handle('scan-and-fetch-metadata', async (_event, folderPath: string) => 
             try {
               thumbnailLocal = await thumbnailHandler.generateThumbnail(fileEp.filePath, 120, false);
             } catch (err) {
-              console.warn(`Failed to generate thumbnail for decimal episode ${fileEp.episodeNumber}:`, err);
+              logger.warn('thumbnail', `Failed to generate thumbnail for decimal episode ${fileEp.episodeNumber}`, { file: fileEp.filePath });
             }
             
             // Add to episodes list (these won't have metadata, but will have file info)
@@ -720,10 +717,10 @@ ipcMain.handle('scan-and-fetch-metadata', async (_event, folderPath: string) => 
           folderPath: media.folderPath,
           type: media.type,
         };
-        console.log(`  \x1b[32m✓\x1b[0m Found: \x1b[36m${finalTitle}\x1b[0m`);
+        logger.info('metadata', `Found: ${finalTitle}`, { series: finalTitle });
       } else {
         // No metadata found, use folder/file name
-        console.log(`  \x1b[31m✗\x1b[0m No online metadata, generating local thumbnails: \x1b[36m${media.name}\x1b[0m`);
+        logger.warn('metadata', `No online metadata, generating local thumbnails: ${media.name}`, { series: media.name });
 
         // Generate thumbnails from video files
         const localEpisodes = [];
@@ -799,20 +796,18 @@ ipcMain.handle('scan-and-fetch-metadata', async (_event, folderPath: string) => 
       if (fileEpisodes.length > 0) {
         cleanedMetadata[seriesId] = seriesData;
       } else {
-        console.log(`Removing metadata for ${seriesId} - no file episodes`);
+        logger.warn('metadata', `Removing metadata for ${seriesId} - no file episodes`);
       }
     }
 
     // 6. Save cleaned metadata (only entries with files)
     await metadataHandler.saveMetadata(cleanedMetadata);
 
-    console.log(`\n========================================`);
-    console.log(`Scan complete! Found ${scannedMedia.length} items`);
-    console.log(`========================================\n`);
+    logger.info('folder', `Scan complete! Found ${scannedMedia.length} items`);
 
     return { success: true, count: scannedMedia.length };
   } catch (error) {
-    console.error('Error in scan-and-fetch-metadata:', error);
+    logger.error('folder', 'Error in scan-and-fetch-metadata');
     throw error;
   }
 });
@@ -823,7 +818,7 @@ ipcMain.handle('get-series-episodes', async (_event, seriesId: string) => {
     const series = metadata[seriesId] as { episodes?: unknown[] } | undefined;
     return series?.episodes || [];
   } catch (error) {
-    console.error('Error getting series episodes:', error);
+    logger.error('metadata', 'Error getting series episodes');
     return [];
   }
 });
@@ -834,7 +829,7 @@ ipcMain.handle('get-image-cache-stats', async () => {
   try {
     return await imageCacheHandler.getCacheStats();
   } catch (error) {
-    console.error('Error getting image cache stats:', error);
+    logger.error('image', 'Error getting image cache stats');
     return { count: 0, sizeBytes: 0 };
   }
 });
@@ -844,7 +839,7 @@ ipcMain.handle('clear-image-cache', async () => {
     await imageCacheHandler.clearCache();
     return true;
   } catch (error) {
-    console.error('Error clearing image cache:', error);
+    logger.error('image', 'Error clearing image cache');
     throw error;
   }
 });
