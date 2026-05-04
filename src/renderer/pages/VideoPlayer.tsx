@@ -102,12 +102,15 @@ function hexToRgb(hex: string): string {
  */
 function isDialogueStyleName(name: string): boolean {
   const n = name.toLowerCase().trim();
+  // "Default" is an ASS placeholder name that's almost never used by actual
+  // dialogue events — exclude it so it doesn't pollute the dropdown.
+  if (n === 'default' || n === 'default style' || n.startsWith('default ')) return false;
   // Hard exclude — these are clearly typesetting / signs.
   if (/^sign[_\s-]|^_sign|sign_\d|_sign_/i.test(name)) return false;
   if (/(^|[_\s-])(sign|signs|box|caption|note|disclaimer|credit|next.?episode|preview|circuit|attack|button|menu|overlay|on.?screen|location|placard|title.?card|subtitle.?list|opening|ending|op[_\s-]|ed[_\s-])/i.test(n)) return false;
   // Hard include — common dialogue style names.
-  if (['main', 'default', 'default style', 'dialogue', 'dialog', 'italics', 'italic', 'narrator', 'narration', 'top', 'alt'].includes(n)) return true;
-  if (n.startsWith('default') || n.startsWith('main') || n.endsWith('italics') || n.endsWith(' alt')) return true;
+  if (['main', 'dialogue', 'dialog', 'italics', 'italic', 'narrator', 'narration', 'top', 'alt'].includes(n)) return true;
+  if (n.startsWith('main') || n.endsWith('italics') || n.endsWith(' alt')) return true;
   // Otherwise: include (let the user filter visually).
   return true;
 }
@@ -524,14 +527,32 @@ function VideoPlayer() {
     void (async () => {
       try {
         await (inst as unknown as { ready: Promise<void> }).ready;
-        const styles = await (inst as unknown as { renderer: { getStyles: () => Promise<Array<Record<string, unknown>>> } }).renderer.getStyles();
+        const r = (inst as unknown as { renderer: {
+          getStyles: () => Promise<Array<Record<string, unknown>>>;
+          getEvents: () => Promise<Array<Record<string, unknown>>>;
+        } }).renderer;
+        const [styles, events] = await Promise.all([r.getStyles(), r.getEvents()]);
         if (cancelled) return;
-        // Snapshot ORIGINALS once (before any overrides have mutated them).
-        // Every subsequent apply rebuilds modified styles from this snapshot.
         assOriginalsRef.current = styles.map((s) => ({ ...s }));
-        const dialogue = styles.map((s) => s.Name as string).filter(isDialogueStyleName);
-        setAssDialogueStyleNames(dialogue);
-        setSelectedAssStyle((prev) => (prev && dialogue.includes(prev) ? prev : (dialogue[0] ?? null)));
+
+        // Count how many events use each style index, then surface dialogue
+        // styles ordered by usage. Styles with 0 uses (e.g. an unused
+        // "Default" placeholder) drop out entirely.
+        const usageByIdx = new Map<number, number>();
+        for (const ev of events) {
+          const idx = ev.Style as number;
+          usageByIdx.set(idx, (usageByIdx.get(idx) ?? 0) + 1);
+        }
+        const ranked = styles
+          .map((s, i) => ({ name: s.Name as string, count: usageByIdx.get(i) ?? 0 }))
+          .filter((s) => isDialogueStyleName(s.name) && s.count > 0)
+          .sort((a, b) => b.count - a.count)
+          .map((s) => s.name);
+
+        setAssDialogueStyleNames(ranked);
+        // Default selection = most-used dialogue style. Keep prior selection
+        // if it still exists in the new list.
+        setSelectedAssStyle((prev) => (prev && ranked.includes(prev) ? prev : (ranked[0] ?? null)));
       } catch (err) {
         console.warn('[subs] could not list ASS styles', err);
       }
