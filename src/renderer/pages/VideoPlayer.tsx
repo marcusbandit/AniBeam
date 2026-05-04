@@ -560,51 +560,66 @@ function VideoPlayer() {
         const instAny = inst as unknown as {
           renderer: {
             setStyle: (s: Record<string, unknown>, idx: number) => Promise<unknown>;
-            setTrack: (content: string) => Promise<unknown>;
+            getEvents: () => Promise<Array<Record<string, unknown>>>;
+            setEvent: (e: Record<string, unknown>, idx: number) => Promise<unknown>;
           };
           resize: (forceRepaint?: boolean) => Promise<void>;
         };
         const r = instAny.renderer;
         const playResY = assPlayResYRef.current || 288;
-        // Reload the original track so cues haven't been laid out yet.
-        // Without this, mutating a style's MarginV (or similar layout-affecting
-        // properties) won't move existing cues — libass uses the cached layout.
-        if (assContentRef.current) {
-          await r.setTrack(assContentRef.current);
+
+        // Build a per-style-INDEX map of overrides for quick event matching.
+        const dialogueIndexByName = new Map<string, number>();
+        for (let i = 0; i < originals.length; i++) {
+          const name = (originals[i].Name as string) || '';
+          if (isDialogueStyleName(name)) dialogueIndexByName.set(name, i);
         }
+
+        // STYLE-LEVEL: Font, FontSize, Outline (these don't suffer from the
+        // layout-cache problem). MarginV at the style level DOES suffer —
+        // libass caches each cue's layout once, so changing the style's
+        // MarginV after the fact doesn't move existing cues. We set MarginV
+        // per-event below, which forces the cue to re-flow.
         for (let i = 0; i < originals.length; i++) {
           const orig = originals[i];
           const name = (orig.Name as string) || '';
-          // Only touch dialogue styles; signs / typesetting are off-limits.
           if (!isDialogueStyleName(name)) continue;
           const o = assStyles[name];
           let patch: Record<string, unknown>;
           if (o) {
             const fontSizePx = Math.max(1, Math.round((o.fontSize / 100) * playResY));
-            const marginVPx = Math.max(0, Math.round((o.positionBottom / 100) * playResY));
             const fontName = o.fontFamily.split(',')[0].trim().replace(/^['"]|['"]$/g, '');
-            // ASS color/background are deliberately NOT touched. The author
-            // hand-typeset every dialogue style's colors to fit the show;
-            // overriding them just made things look wrong (and the wasm
-            // round-trip kept producing weird red outlines anyway). Only
-            // structural properties (size, position, font, outline thickness)
-            // are exposed to the user for ASS.
             patch = {
               FontSize: fontSizePx,
               FontName: fontName,
               Outline: ASS_OUTLINE_THICKNESS[o.outline],
-              MarginV: marginVPx,
             };
           } else {
-            // No override → restore EVERY original field so a previous
-            // override is fully wiped from wasm.
             patch = { ...orig };
           }
           await r.setStyle(patch, i);
         }
-        // libass caches cue positions and won't re-flow on a style mutation
-        // alone (e.g. MarginV won't move the existing cue). Force one full
-        // repaint so the next frame uses the new style values for layout.
+
+        // EVENT-LEVEL: per-cue MarginV override. Each event's MarginV
+        // overrides its style's MarginV. Touching the event itself
+        // re-invalidates that cue's layout cache.
+        const events = await r.getEvents();
+        for (let i = 0; i < events.length; i++) {
+          const ev = events[i];
+          const styleIdx = ev.Style as number;
+          const styleOrig = originals[styleIdx];
+          if (!styleOrig) continue;
+          const styleName = (styleOrig.Name as string) || '';
+          if (!isDialogueStyleName(styleName)) continue;
+          const o = assStyles[styleName];
+          // 0 = inherit style's MarginV (fall back to original); a non-zero
+          // value overrides per-event.
+          const marginVPx = o
+            ? Math.max(1, Math.round((o.positionBottom / 100) * playResY))
+            : 0;
+          await r.setEvent({ MarginV: marginVPx }, i);
+        }
+
         try { await instAny.resize(true); } catch { /* ignore */ }
       } catch (err) {
         console.warn('[subs] failed to apply ASS overrides', err);
