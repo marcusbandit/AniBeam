@@ -61,8 +61,16 @@ function AppContent() {
         </Routes>
       )}
       {!isPlayerRoute && <ContextMenu />}
+      <ActivityLogMount />
     </div>
   );
+}
+
+function ActivityLogMount() {
+  const { pathname } = useLocation();
+  const visible = pathname === "/settings" || pathname === "/metadata";
+  if (!visible) return null;
+  return <ActivityLogDrawer />;
 }
 
 function App() {
@@ -70,7 +78,6 @@ function App() {
     <HashRouter>
       <ActivityLogProvider>
         <AppContent />
-        <ActivityLogDrawer />
       </ActivityLogProvider>
     </HashRouter>
   );
