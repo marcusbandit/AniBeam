@@ -1,6 +1,6 @@
 import { readdir, stat } from 'fs/promises';
 import { existsSync } from 'fs';
-import { join, extname, basename } from 'path';
+import { join, extname, basename, dirname } from 'path';
 import { logger } from '../services/logger';
 import imageCacheHandler from './imageCacheHandler';
 import thumbnailHandler from './thumbnailHandler';
@@ -660,6 +660,20 @@ const folderHandler = {
     }
 
     return allResults;
+  },
+
+  async scanSingleFile(filePath: string): Promise<{ media: ScannedMedia; file: VideoFile } | null> {
+    if (!existsSync(filePath)) return null;
+    const parentDir = dirname(filePath);
+    const directoryResults = await scanDirectory(parentDir);
+    for (const media of directoryResults) {
+      const file = media.files.find((f) => f.filePath === filePath);
+      if (file) {
+        file.status = 'verifying';
+        return { media, file };
+      }
+    }
+    return null;
   },
 
   reconcileMetadata,

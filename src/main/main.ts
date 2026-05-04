@@ -15,6 +15,7 @@ import { logger } from './services/logger';
 import type { FileStatus } from '../shared/fileStatus';
 import type { ScannedMedia } from './handlers/folderHandler';
 import videoProbeHandler from './handlers/videoProbeHandler';
+import { fileWatcher } from './services/watcher';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -72,6 +73,55 @@ async function updateFileStatus(filePath: string, status: FileStatus): Promise<v
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('metadata:file-status-changed', { filePath, status });
     }
+  }
+}
+
+async function ingestSingleFile(filePath: string): Promise<void> {
+  try {
+    const result = await folderHandler.scanSingleFile(filePath);
+    if (!result) {
+      logger.warn('watch', `scanSingleFile returned null`, { file: filePath });
+      return;
+    }
+    const { media } = result;
+    logger.info('metadata', `Fetching for new file`, { series: media.name, file: filePath });
+
+    const existing = (await metadataHandler.loadMetadata()) as Record<string, unknown>;
+    const slice = await processOneMedia(media, existing);
+
+    // Force this newly-discovered file to 'verifying' in the merged slice.
+    for (const seriesValue of Object.values(slice)) {
+      const s = seriesValue as { fileEpisodes?: Array<{ filePath: string; status?: string; lastProbedAt?: number }> };
+      if (!Array.isArray(s.fileEpisodes)) continue;
+      for (const f of s.fileEpisodes) {
+        if (f.filePath === filePath) {
+          f.status = 'verifying';
+          f.lastProbedAt = Date.now();
+        }
+      }
+    }
+
+    const merged = { ...existing, ...slice };
+    await metadataHandler.saveMetadata(merged);
+
+    videoProbeHandler.enqueue(filePath);
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('metadata:file-status-changed', { filePath, status: 'verifying' });
+    }
+  } catch (err) {
+    logger.error('watch', `Failed to ingest new file: ${(err as Error).message}`, { file: filePath });
+  }
+}
+
+async function handleUnlink(filePath: string): Promise<void> {
+  const meta = (await metadataHandler.loadMetadata()) as Record<string, unknown>;
+  const activeRoots = await configHandler.getFolderSources();
+  const reconciled = await folderHandler.reconcileMetadata(meta, activeRoots);
+  if (reconciled !== meta) await metadataHandler.saveMetadata(reconciled);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    // Notify renderer to refresh — exact status doesn't matter, the entry is gone.
+    mainWindow.webContents.send('metadata:file-status-changed', { filePath, status: 'ready' });
   }
 }
 
@@ -140,7 +190,7 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   initMediaProgress(); // Debug progress bar initialization
   // Handle media:// protocol using net.fetch for proper streaming
   protocol.handle('media', async (request) => {
@@ -262,6 +312,13 @@ app.whenReady().then(() => {
   createWindow();
   videoProbeHandler.start(updateFileStatus);
 
+  const initialRoots = await configHandler.getFolderSources();
+  await fileWatcher.start(initialRoots, {
+    onAdd: (path) => { void ingestSingleFile(path); },
+    onUnlink: (path) => { void handleUnlink(path); },
+    onUnlinkDir: () => { void handleUnlink('<dir>'); },
+  });
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
@@ -295,9 +352,15 @@ ipcMain.handle('get-folder-sources', async () => {
 
 ipcMain.handle('add-folder-source', async (_event, folderPath: string) => {
   try {
-    return await configHandler.addFolderSource(folderPath);
+    const ok = await configHandler.addFolderSource(folderPath);
+    if (ok) {
+      const roots = await configHandler.getFolderSources();
+      await fileWatcher.restart(roots);
+      logger.info('folder', `Added library root: ${folderPath}`);
+    }
+    return ok;
   } catch (error) {
-    logger.error('system', 'Error adding folder source');
+    logger.error('folder', `Error adding folder source: ${(error as Error).message}`);
     throw error;
   }
 });
@@ -311,6 +374,7 @@ ipcMain.handle('remove-folder-source', async (_event, folderPath: string) => {
       const activeRoots = await configHandler.getFolderSources();
       const reconciled = await folderHandler.reconcileMetadata(meta, activeRoots);
       if (reconciled !== meta) await metadataHandler.saveMetadata(reconciled);
+      await fileWatcher.restart(activeRoots);
     }
     return ok;
   } catch (error) {
@@ -937,4 +1001,5 @@ ipcMain.handle('probe:retry', (_event, filePath: string) => {
 
 app.on('before-quit', () => {
   videoProbeHandler.stop();
+  void fileWatcher.stop();
 });
