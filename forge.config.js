@@ -4,8 +4,8 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses';
 export default {
   packagerConfig: {
     asar: true,
-    name: 'Liam',
-    executableName: 'liam',
+    name: 'AniBeam',
+    executableName: 'anibeam',
     icon: './assets/icon',
   },
   rebuildConfig: {},
@@ -17,7 +17,7 @@ export default {
     {
       name: '@electron-forge/maker-squirrel',
       config: {
-        name: 'Liam',
+        name: 'AniBeam',
       },
     },
   ],

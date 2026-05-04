@@ -6,18 +6,23 @@ interface SearchBarProps {
   placeholder?: string;
 }
 
-function SearchBar({ onSearch, placeholder = 'Search...' }: SearchBarProps) {
+function SearchBar({ onSearch, placeholder = 'Search…' }: SearchBarProps) {
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Focus search on Ctrl+K or Cmd+K
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      const target = e.target as HTMLElement | null;
+      const isTyping = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         inputRef.current?.focus();
       }
-      // Escape to clear and blur
+      if (e.key === '/' && !isTyping) {
+        e.preventDefault();
+        inputRef.current?.focus();
+      }
       if (e.key === 'Escape' && document.activeElement === inputRef.current) {
         setQuery('');
         onSearch('');
@@ -42,28 +47,27 @@ function SearchBar({ onSearch, placeholder = 'Search...' }: SearchBarProps) {
   };
 
   return (
-    <div className="search-bar-wrapper">
-      <Search className="search-bar-icon" size={18} />
+    <div className="library-search">
+      <span className="library-search-icon"><Search size={16} /></span>
       <input
         ref={inputRef}
         type="text"
-        className="search-bar-input"
+        className="library-search-input"
         placeholder={placeholder}
         value={query}
         onChange={handleChange}
       />
-      {query && (
+      {query ? (
         <button
-          className="search-bar-clear"
+          className="library-search-clear"
           onClick={handleClear}
           aria-label="Clear search"
         >
-          <X size={18} />
+          <X size={14} />
         </button>
+      ) : (
+        <span className="library-search-hint">/</span>
       )}
-      <div className="search-bar-hint">
-        <kbd>Ctrl</kbd>+<kbd>K</kbd>
-      </div>
     </div>
   );
 }

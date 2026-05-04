@@ -76,6 +76,7 @@ function SettingsTab() {
   const [autoScan, setAutoScan] = useState(true);
   const [subtitles, setSubtitles] = useState<SubtitlePref>('auto');
 
+
   useEffect(() => {
     loadFolderSources();
     loadCacheStats();

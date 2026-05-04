@@ -4,6 +4,9 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   base: './',
+  // Allow ANIBEAM_* env vars (alongside Vite's default VITE_*) so the same
+  // .env.local feeds both main and renderer.
+  envPrefix: ['VITE_', 'ANIBEAM_'],
   resolve: {
     extensions: ['.tsx', '.ts', '.jsx', '.js', '.mjs', '.json'],
   },

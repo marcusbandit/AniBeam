@@ -2,6 +2,10 @@ import { defineConfig } from 'vite';
 import { builtinModules } from 'module';
 
 export default defineConfig({
+  // Build-time env vars prefixed ANIBEAM_ (from .env.local etc.) are inlined
+  // into the main bundle. Public client IDs / secrets bundled this way ship
+  // with the binary; nothing reads process.env at runtime.
+  envPrefix: 'ANIBEAM_',
   build: {
     lib: {
       entry: 'src/main/main.ts',

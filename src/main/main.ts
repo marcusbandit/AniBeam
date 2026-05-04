@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu, protocol, net } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu, protocol, net, shell } from 'electron';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join, isAbsolute, resolve, relative } from 'path';
 import { existsSync } from 'fs';
@@ -17,6 +17,8 @@ import type { ScannedMedia } from './handlers/folderHandler';
 import videoProbeHandler from './handlers/videoProbeHandler';
 import subtitleHandler from './handlers/subtitleHandler';
 import aniSkipHandler from './handlers/aniSkipHandler';
+import trackerHandler from './handlers/trackerHandler';
+import type { TrackerProvider } from './services/trackerStore';
 import { fileWatcher } from './services/watcher';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1045,6 +1047,75 @@ ipcMain.handle('aniskip:fetch', async (_event, seriesId: string, malId: number, 
     return {};
   }
   return aniSkipHandler.fetchAndCache(seriesId, malId, episodeNumber, episodeLength);
+});
+
+// ----- Tracker (MAL + AniList progress sync) -----
+function isProvider(v: unknown): v is TrackerProvider {
+  return v === 'anilist' || v === 'mal';
+}
+
+ipcMain.handle('tracker:status', async (_event, provider: unknown) => {
+  if (!isProvider(provider)) throw new Error('invalid provider');
+  return trackerHandler.status(provider);
+});
+
+ipcMain.handle('tracker:set-client-id', async (_event, provider: unknown, clientId: unknown) => {
+  if (!isProvider(provider)) throw new Error('invalid provider');
+  if (typeof clientId !== 'string') throw new Error('clientId must be a string');
+  await trackerHandler.setClientId(provider, clientId);
+  return trackerHandler.status(provider);
+});
+
+ipcMain.handle('tracker:get-client-id', async (_event, provider: unknown) => {
+  if (!isProvider(provider)) throw new Error('invalid provider');
+  return trackerHandler.getClientId(provider);
+});
+
+ipcMain.handle('tracker:connect', async (_event, provider: unknown, clientId: unknown, clientSecret: unknown) => {
+  if (!isProvider(provider)) throw new Error('invalid provider');
+  if (typeof clientId !== 'string' || !clientId.trim()) throw new Error('clientId required');
+  const secret = typeof clientSecret === 'string' ? clientSecret.trim() : '';
+  return trackerHandler.startConnect(provider, clientId.trim(), secret);
+});
+
+ipcMain.handle('tracker:cancel-connect', async () => {
+  trackerHandler.cancelConnect();
+  return true;
+});
+
+ipcMain.handle('tracker:disconnect', async (_event, provider: unknown) => {
+  if (!isProvider(provider)) throw new Error('invalid provider');
+  return trackerHandler.disconnect(provider);
+});
+
+ipcMain.handle('tracker:mark-episode', async (
+  _event,
+  provider: unknown,
+  mediaId: unknown,
+  episodeNumber: unknown,
+  totalEpisodes: unknown,
+) => {
+  if (!isProvider(provider)) throw new Error('invalid provider');
+  if (typeof mediaId !== 'number' || typeof episodeNumber !== 'number') {
+    throw new Error('mediaId and episodeNumber must be numbers');
+  }
+  return trackerHandler.markEpisode({
+    provider,
+    mediaId,
+    episodeNumber,
+    totalEpisodes: typeof totalEpisodes === 'number' ? totalEpisodes : null,
+  });
+});
+
+// Open a URL in the user's default browser. window.open() inside the
+// renderer would otherwise spawn a child Electron BrowserWindow, which is
+// not what users expect for things like "Open API config".
+ipcMain.handle('shell:open-external', async (_event, url: unknown) => {
+  if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+    throw new Error('only http(s) URLs may be opened externally');
+  }
+  await shell.openExternal(url);
+  return true;
 });
 
 app.on('before-quit', () => {

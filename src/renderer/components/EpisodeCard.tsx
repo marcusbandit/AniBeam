@@ -3,6 +3,7 @@ import type { MouseEvent } from "react";
 import type { EpisodeMetadata } from "../hooks/useMetadata";
 import type { FileStatus } from "../../shared/fileStatus";
 import { Play } from "lucide-react";
+import { getProgressFraction, readProgress } from "../utils/playbackProgress";
 
 function getImageUrl(localPath?: string | null, remotePath?: string | null): string | null {
   if (localPath) return `media://${encodeURIComponent(localPath)}`;
@@ -46,6 +47,14 @@ function EpisodeCard({ seriesId, episode, hasFile }: EpisodeCardProps) {
     ? `S${pad(episode.seasonNumber)}E${formatEpisodeNumber(episode.episodeNumber).padStart(2, "0")}`
     : `EP ${formatEpisodeNumber(episode.episodeNumber)}`;
 
+  // Pull progress every render. localStorage parse is microseconds, and the
+  // SeriesDetailPage remounts when returning from the player so the value
+  // refreshes naturally without needing a context or storage event.
+  const progress = hasFile && isReady
+    ? getProgressFraction(readProgress(), seriesId, episode.episodeNumber)
+    : 0;
+  const progressPct = Math.round(progress * 100);
+
   return (
     <button
       className={`episode-card ${hasFile ? "has-file" : "no-file"}${isReady ? "" : " not-ready"} status-${status}`}
@@ -83,6 +92,13 @@ function EpisodeCard({ seriesId, episode, hasFile }: EpisodeCardProps) {
           >
             {status === "verifying" ? "VERIFYING" : "STALLED · RETRY"}
           </span>
+        )}
+        {progress > 0 && (
+          <div
+            className="episode-progress"
+            style={{ width: `${progressPct}%` }}
+            aria-label={`${progressPct}% watched`}
+          />
         )}
       </div>
       <div className="episode-info">

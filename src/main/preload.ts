@@ -57,6 +57,41 @@ export interface ElectronAPI {
 
   // AniSkip — intro/outro skip times
   fetchSkipTimes: (seriesId: string, malId: number, episodeNumber: number, episodeLength: number) => Promise<{ op?: { start: number; end: number }; ed?: { start: number; end: number } }>;
+
+  // Shell — open a URL in the user's default browser, not an Electron window.
+  openExternal: (url: string) => Promise<boolean>;
+
+  // Trackers (MAL + AniList progress sync)
+  trackerStatus: (provider: TrackerProvider) => Promise<TrackerStatus>;
+  trackerSetClientId: (provider: TrackerProvider, clientId: string) => Promise<TrackerStatus>;
+  trackerGetClientId: (provider: TrackerProvider) => Promise<string>;
+  trackerConnect: (provider: TrackerProvider, clientId: string, clientSecret?: string) => Promise<TrackerStatus>;
+  trackerCancelConnect: () => Promise<boolean>;
+  trackerDisconnect: (provider: TrackerProvider) => Promise<TrackerStatus>;
+  trackerMarkEpisode: (
+    provider: TrackerProvider,
+    mediaId: number,
+    episodeNumber: number,
+    totalEpisodes: number | null,
+  ) => Promise<TrackerMarkResult>;
+}
+
+export type TrackerProvider = 'anilist' | 'mal';
+export interface TrackerStatus {
+  connected: boolean;
+  username: string | null;
+  expiresAt: number | null;
+  lastSync: number | null;
+  clientId: string;
+  cipherEncrypted: boolean;
+}
+export interface TrackerMarkResult {
+  ok: boolean;
+  provider: TrackerProvider;
+  newProgress: number | null;
+  previousProgress: number | null;
+  reason?: 'no-account' | 'no-id' | 'not-newer' | 'error';
+  message?: string;
 }
 
 declare global {
@@ -115,4 +150,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // AniSkip
   fetchSkipTimes: (seriesId: string, malId: number, episodeNumber: number, episodeLength: number) => ipcRenderer.invoke('aniskip:fetch', seriesId, malId, episodeNumber, episodeLength),
+
+  // Shell
+  openExternal: (url: string) => ipcRenderer.invoke('shell:open-external', url),
+
+  // Trackers
+  trackerStatus: (provider: TrackerProvider) => ipcRenderer.invoke('tracker:status', provider),
+  trackerSetClientId: (provider: TrackerProvider, clientId: string) => ipcRenderer.invoke('tracker:set-client-id', provider, clientId),
+  trackerGetClientId: (provider: TrackerProvider) => ipcRenderer.invoke('tracker:get-client-id', provider),
+  trackerConnect: (provider: TrackerProvider, clientId: string, clientSecret?: string) => ipcRenderer.invoke('tracker:connect', provider, clientId, clientSecret ?? ''),
+  trackerCancelConnect: () => ipcRenderer.invoke('tracker:cancel-connect'),
+  trackerDisconnect: (provider: TrackerProvider) => ipcRenderer.invoke('tracker:disconnect', provider),
+  trackerMarkEpisode: (provider: TrackerProvider, mediaId: number, episodeNumber: number, totalEpisodes: number | null) =>
+    ipcRenderer.invoke('tracker:mark-episode', provider, mediaId, episodeNumber, totalEpisodes),
 });

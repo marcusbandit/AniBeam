@@ -1,74 +1,48 @@
 import { useState, useMemo } from 'react';
-import { useMetadata, type SeriesMetadata, type FileEpisode } from '../hooks/useMetadata';
-import Button from '../components/Button';
-import { BookOpen, Tv, Film, Star, Search, X, Folder, Calendar, Building, ChevronDown, RefreshCw, Check, AlertCircle, Trash2 } from 'lucide-react';
-import { normalizeRating, getDisplayRating } from '../utils/ratingUtils';
+import { useMetadata, type SeriesMetadata } from '../hooks/useMetadata';
+import { BookOpen, Tv, Film, Search, RefreshCw, Trash2, MoreHorizontal } from 'lucide-react';
 
-type SortOption = 'title' | 'episodes' | 'score';
+type FilterOption = 'all' | 'series' | 'movies' | 'missing';
+
+function isMovie(data: SeriesMetadata): boolean {
+  return data.type === 'movie' || data.format === 'MOVIE';
+}
+
+function getImageUrl(localPath?: string | null, remotePath?: string | null): string | null {
+  if (localPath) return `media://${encodeURIComponent(localPath)}`;
+  return remotePath || null;
+}
 
 function MetadataTab() {
   const { metadata, loading, updateSeriesMetadata, loadMetadata } = useMetadata();
   const [refreshing, setRefreshing] = useState<Record<string, boolean>>({});
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<SortOption>('title');
-  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+  const [filter, setFilter] = useState<FilterOption>('all');
   const [bulkRefreshing, setBulkRefreshing] = useState(false);
 
   const seriesList = useMemo(() => Object.entries(metadata), [metadata]);
 
-  // Get stats
-  const stats = useMemo(() => {
-    let totalEpisodes = 0;
-    let avgScore = 0;
-    let scoreCount = 0;
+  const filterCounts = useMemo(() => ({
+    all: seriesList.length,
+    series: seriesList.filter(([, d]) => !isMovie(d)).length,
+    movies: seriesList.filter(([, d]) => isMovie(d)).length,
+    missing: seriesList.filter(([, d]) => !(d.fileEpisodes?.length)).length,
+  }), [seriesList]);
 
-    seriesList.forEach(([, data]) => {
-      totalEpisodes += data.episodes?.length || 0;
-      if (data.averageScore) {
-        const normalized = normalizeRating(data.averageScore, data.source) || 0;
-        avgScore += normalized;
-        scoreCount++;
-      }
-    });
-
-    return {
-      totalSeries: seriesList.length,
-      totalEpisodes,
-      avgScore: scoreCount > 0 ? Math.round(avgScore / scoreCount) : 0
-    };
-  }, [seriesList]);
-
-  // Filter and sort series
   const filteredSeries = useMemo(() => {
-    let filtered = seriesList.filter(([id, data]) => {
-      const title = data.title || id;
-      const matchesSearch = title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        data.titleRomaji?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        data.titleEnglish?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        id.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesSearch;
-    });
+    return seriesList.filter(([id, data]) => {
+      if (filter === 'series' && isMovie(data)) return false;
+      if (filter === 'movies' && !isMovie(data)) return false;
+      if (filter === 'missing' && (data.fileEpisodes?.length ?? 0) > 0) return false;
 
-    filtered.sort(([idA, dataA], [idB, dataB]) => {
-      let comparison = 0;
-      switch (sortBy) {
-        case 'title':
-          comparison = (dataA.title || idA).localeCompare(dataB.title || idB);
-          break;
-        case 'episodes':
-          comparison = (dataA.episodes?.length || 0) - (dataB.episodes?.length || 0);
-          break;
-        case 'score':
-          const scoreA = normalizeRating(dataA.averageScore, dataA.source) || 0;
-          const scoreB = normalizeRating(dataB.averageScore, dataB.source) || 0;
-          comparison = scoreA - scoreB;
-          break;
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        const hay = `${data.title || id} ${data.titleRomaji || ''} ${data.titleEnglish || ''}`.toLowerCase();
+        if (!hay.includes(q)) return false;
       }
-      return comparison;
+      return true;
     });
-
-    return filtered;
-  }, [seriesList, searchQuery, sortBy]);
+  }, [seriesList, searchQuery, filter]);
 
   const handleRefresh = async (seriesId: string, seriesName: string) => {
     setRefreshing(prev => ({ ...prev, [seriesId]: true }));
@@ -79,7 +53,6 @@ function MetadataTab() {
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      console.error('Error refreshing metadata:', err);
       alert('Error refreshing metadata: ' + errorMessage);
     } finally {
       setRefreshing(prev => ({ ...prev, [seriesId]: false }));
@@ -87,8 +60,8 @@ function MetadataTab() {
   };
 
   const handleBulkRefresh = async () => {
-    if (!confirm(`Refresh metadata for all ${filteredSeries.length} series? This may take a while.`)) return;
-    
+    if (!confirm(`Refresh metadata for all ${filteredSeries.length} items? This may take a while.`)) return;
+
     setBulkRefreshing(true);
     let successCount = 0;
     let errorCount = 0;
@@ -107,325 +80,185 @@ function MetadataTab() {
       } finally {
         setRefreshing(prev => ({ ...prev, [seriesId]: false }));
       }
-      // Small delay to avoid rate limiting
       await new Promise(resolve => setTimeout(resolve, 500));
     }
 
     setBulkRefreshing(false);
-    alert(`Refresh complete!\n✅ ${successCount} successful\n❌ ${errorCount} failed`);
+    alert(`Refresh complete\nSuccessful: ${successCount}\nFailed: ${errorCount}`);
     await loadMetadata();
   };
 
-  const toggleCardExpanded = (seriesId: string) => {
-    setExpandedCards(prev => {
-      const next = new Set(prev);
-      if (next.has(seriesId)) {
-        next.delete(seriesId);
-      } else {
-        next.add(seriesId);
-      }
-      return next;
-    });
-  };
-
-  const handleManualSearch = (seriesId: string) => {
-    // Placeholder for future manual search functionality
-    console.log('Manual search clicked for:', seriesId);
-    alert(`Manual search for "${seriesId}" - Coming soon!`);
-  };
-
   const handleDelete = async (seriesId: string, seriesName: string) => {
-    if (!confirm(`Delete "${seriesName}"?\n\nThis will remove all cached images and metadata for this series.`)) {
-      return;
-    }
-
+    if (!confirm(`Delete "${seriesName}"?\n\nThis will remove all cached images and metadata for this series.`)) return;
     try {
       await window.electronAPI.deleteSeries(seriesId);
       await loadMetadata();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      console.error('Error deleting series:', err);
       alert('Error deleting series: ' + errorMessage);
     }
   };
 
   if (loading) {
     return (
-      <div className="metadata-loading">
-        <div className="loading-spinner"></div>
-        <p>Loading metadata...</p>
+      <div className="page">
+        <div className="loading">Loading metadata…</div>
       </div>
     );
   }
 
   if (seriesList.length === 0) {
     return (
-      <div className="metadata-empty">
-        <BookOpen className="empty-icon" size={48} />
-        <h2>No Metadata Found</h2>
-        <p>Your library is empty. Add some anime folders in Settings and scan them to get started.</p>
-        <Button as="link" to="/settings">Go to Settings</Button>
+      <div className="page">
+        <div className="empty">
+          <div className="empty-icon"><BookOpen size={48} /></div>
+          <div className="empty-title">No metadata yet</div>
+          <div className="empty-text">
+            Your library is empty. Add a folder in <strong>Settings</strong> and scan it to get started.
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="metadata-container compact">
-      {/* Compact Header */}
-      <div className="metadata-header-compact">
-        <div className="metadata-stats-inline">
-          <span className="stat-inline"><Tv size={16} /> {stats.totalSeries} Series</span>
-          <span className="stat-inline"><Film size={16} /> {stats.totalEpisodes} Episodes</span>
-          {stats.avgScore > 0 && <span className="stat-inline"><Star size={16} /> {stats.avgScore} Avg</span>}
+    <div className="page metadata-page">
+      <div className="page-head">
+        <div>
+          <h1 className="page-title">Metadata</h1>
+          <p className="page-sub">All matched titles in your library, the source they came from, and the files on disk.</p>
         </div>
-        
-        <div className="metadata-controls-compact">
-          <div className="search-wrapper compact">
-            <Search className="search-icon" size={16} />
-            <input
-              type="text"
-              className="search-input"
-              placeholder="Search..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            {searchQuery && (
-              <Button className="search-clear" onClick={() => setSearchQuery('')}>
-                <X size={14} />
-              </Button>
-            )}
-          </div>
-          
-          <select
-            className="sort-select compact"
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as SortOption)}
-          >
-            <option value="title">Title</option>
-            <option value="episodes">Episodes</option>
-            <option value="score">Score</option>
-          </select>
+        <button
+          className="btn btn-secondary"
+          onClick={handleBulkRefresh}
+          disabled={bulkRefreshing || filteredSeries.length === 0}
+        >
+          <RefreshCw size={14} className={bulkRefreshing ? 'spin' : ''} />
+          <span>{bulkRefreshing ? 'Refreshing…' : 'Refresh all'}</span>
+        </button>
+      </div>
 
-          <Button
-            className="refresh-all-btn"
-            onClick={handleBulkRefresh}
-            disabled={bulkRefreshing || filteredSeries.length === 0}
-            variant="primary"
-            size="small"
-          >
-            <RefreshCw size={14} className={bulkRefreshing ? 'spin' : ''} />
-            {bulkRefreshing ? 'Refreshing...' : 'Refresh All'}
-          </Button>
+      <div className="meta-toolbar">
+        <div className="filter-pills">
+          {([
+            { id: 'all', label: 'All' },
+            { id: 'series', label: 'Series' },
+            { id: 'movies', label: 'Movies' },
+            { id: 'missing', label: 'Missing files' },
+          ] as Array<{ id: FilterOption; label: string }>).map((f) => (
+            <button
+              key={f.id}
+              className={`filter-pill${filter === f.id ? ' on' : ''}`}
+              onClick={() => setFilter(f.id)}
+            >
+              <span>{f.label}</span>
+              <span className="filter-count">{filterCounts[f.id]}</span>
+            </button>
+          ))}
+        </div>
+        <div className="meta-search">
+          <Search size={14} />
+          <input
+            placeholder="Filter titles…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
         </div>
       </div>
 
-      {/* Results count */}
-      <div className="results-info compact">
-        {filteredSeries.length} of {seriesList.length} items
-        {searchQuery && ` matching "${searchQuery}"`}
-      </div>
-
-      {/* Series List */}
       {filteredSeries.length === 0 ? (
-        <div className="no-results">
-          <Search className="no-results-icon" size={48} />
-          <p>No series match your search</p>
-          <Button variant="secondary" onClick={() => setSearchQuery('')}>
-            Clear Search
-          </Button>
+        <div className="empty">
+          <div className="empty-icon"><Search size={48} /></div>
+          <div className="empty-title">No matches</div>
+          <div className="empty-text">No series match your filters.</div>
         </div>
       ) : (
-        <div className="metadata-list-compact">
-          {filteredSeries.map(([seriesId, seriesData]) => {
-            const hasMetadata = seriesData.title && seriesData.poster;
-            const isExpanded = expandedCards.has(seriesId);
-            const fileCount = seriesData.fileEpisodes?.length || 0;
-            
-            // Create a map of episode numbers to files
-            const fileMap = new Map<number, FileEpisode>();
-            seriesData.fileEpisodes?.forEach(file => {
-              fileMap.set(file.episodeNumber, file);
-            });
-            
-            // Create merged list: files + missing episodes
-            const allEpisodes: Array<{
-              episodeNumber: number;
-              isFile: boolean;
-              filename?: string;
-              title?: string;
-            }> = [];
-            
-            // Add all metadata episodes (for missing ones)
-            if (seriesData.episodes) {
-              seriesData.episodes.forEach(ep => {
-                const file = fileMap.get(ep.episodeNumber);
-                if (file) {
-                  // File exists - use actual filename
-                  allEpisodes.push({
-                    episodeNumber: ep.episodeNumber,
-                    isFile: true,
-                    filename: file.filename,
-                    title: ep.title
-                  });
-                } else {
-                  // Missing episode - show from metadata
-                  allEpisodes.push({
-                    episodeNumber: ep.episodeNumber,
-                    isFile: false,
-                    title: ep.title
-                  });
-                }
-              });
-            } else if (seriesData.fileEpisodes) {
-              // No metadata episodes, just show files
-              seriesData.fileEpisodes.forEach(file => {
-                allEpisodes.push({
-                  episodeNumber: file.episodeNumber,
-                  isFile: true,
-                  filename: file.filename
-                });
-              });
-            }
-            
+        <div className="meta-table">
+          <div className="meta-row meta-row-head">
+            <div className="col-thumb"></div>
+            <div className="col-title">Title</div>
+            <div className="col-type">Type</div>
+            <div className="col-source">Source</div>
+            <div className="col-files">Files</div>
+            <div className="col-updated">Updated</div>
+            <div className="col-actions"></div>
+          </div>
+          {filteredSeries.map(([seriesId, data]) => {
+            const movie = isMovie(data);
+            const have = data.fileEpisodes?.length || 0;
+            const total = data.totalEpisodes || data.episodes?.length || (movie ? 1 : 0);
+            const pct = total ? Math.round((have / total) * 100) : 0;
+            const sourceClass = data.source ? data.source.toLowerCase() : 'none';
+            const posterUrl = getImageUrl(data.posterLocal, data.poster);
+            const isRefreshing = refreshing[seriesId];
+
             return (
-              <div 
-                key={seriesId} 
-                className={`metadata-card-v2 ${hasMetadata ? 'matched' : 'unmatched'} ${isExpanded ? 'expanded' : ''}`}
-              >
-                {/* Main Card Content */}
-                <div className="card-main" onClick={() => toggleCardExpanded(seriesId)}>
-                  {/* Left: Folder Info */}
-                  <div className="card-folder">
-                    <Folder size={18} className="folder-icon" />
-                    <div className="folder-info">
-                      <span className="folder-name">{seriesId}</span>
-                      <span className="folder-files">{fileCount} video files</span>
-                    </div>
-                  </div>
-
-                  {/* Center: Arrow */}
-                  <div className="card-arrow">
-                    <span className="arrow-icon">→</span>
-                  </div>
-
-                  {/* Right: Matched Metadata */}
-                  <div className="card-metadata">
-                    {hasMetadata ? (
-                      <>
-                        <div className="meta-poster-lg">
-                          <img src={seriesData.poster || undefined} alt={seriesData.title} />
-                        </div>
-                        <div className="meta-info">
-                          <div className="meta-title-row">
-                            <span className={`meta-title ${isExpanded ? 'expanded' : ''}`}>{seriesData.title}</span>
-                            <Check size={16} className="match-icon" />
-                          </div>
-                          <div className="meta-details">
-                            <span className="detail-item detail-year">
-                              <Calendar size={13} />
-                              {seriesData.startDate ? seriesData.startDate.split('-')[0] : '—'}
-                            </span>
-                            <span className="detail-item detail-eps">
-                              <Film size={13} />
-                              {seriesData.totalEpisodes || '?'} eps
-                            </span>
-                            <span className="detail-item detail-score">
-                              <Star size={13} />
-                              {seriesData.averageScore ? getDisplayRating(seriesData.averageScore, seriesData.source) : '—'}
-                            </span>
-                            {seriesData.studios && seriesData.studios.length > 0 && (
-                              <span className="detail-item detail-studio">
-                                <Building size={13} />
-                                {seriesData.studios[0]}
-                              </span>
-                            )}
-                          </div>
-                          <div className="meta-source">
-                            <span className={`source-tag source-${seriesData.source?.toLowerCase()}`}>
-                              {seriesData.source}
-                            </span>
-                          </div>
-                        </div>
-                      </>
+              <div key={seriesId} className="meta-row">
+                <div className="col-thumb">
+                  <div className="meta-thumb">
+                    {posterUrl ? (
+                      <img
+                        src={posterUrl}
+                        alt={data.title || seriesId}
+                        onError={(e) => {
+                          const t = e.target as HTMLImageElement;
+                          t.style.display = 'none';
+                        }}
+                      />
                     ) : (
-                      <div className="meta-empty">
-                        <AlertCircle size={20} className="warning-icon" />
-                        <span>No metadata found</span>
-                      </div>
+                      movie ? <Film size={16} /> : <Tv size={16} />
                     )}
                   </div>
-
-                  {/* Expand Indicator */}
-                  <div className="card-expand">
-                    <ChevronDown size={18} className={`expand-chevron ${isExpanded ? 'rotated' : ''}`} />
+                </div>
+                <div className="col-title">
+                  <div className="meta-title-main">{data.title || seriesId}</div>
+                  {data.titleRomaji && data.titleRomaji !== data.title && (
+                    <div className="meta-title-alt">{data.titleRomaji}</div>
+                  )}
+                </div>
+                <div className="col-type">
+                  <span className="type-tag">{movie ? 'Movie' : 'Series'}</span>
+                </div>
+                <div className="col-source">
+                  <span className={`source-pill source-${sourceClass}`}>
+                    {data.source || '—'}
+                  </span>
+                </div>
+                <div className="col-files">
+                  <div className="files-bar">
+                    <div className="files-bar-track">
+                      <div className="files-bar-fill" style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className="files-bar-text">
+                      {have}<span className="muted">/{total}</span>
+                    </span>
                   </div>
                 </div>
-
-                {/* Expanded Content - Always rendered, CSS controls visibility */}
-                <div className={`card-expanded-wrapper ${isExpanded ? 'open' : ''}`}>
-                  <div className="card-expanded-inner">
-                    {/* Files List */}
-                    <div className="expanded-section">
-                      <div className="section-header">
-                        <Film size={14} />
-                        <span>Video Files ({fileCount} / {seriesData.totalEpisodes || allEpisodes.length})</span>
-                      </div>
-                      <div className="files-list">
-                        {allEpisodes.length > 0 ? (
-                          allEpisodes.map((ep, idx) => (
-                            <div key={idx} className={`file-row ${ep.isFile ? '' : 'missing'}`}>
-                              <span className="file-number">#{ep.episodeNumber}</span>
-                              <span className="file-name">
-                                {ep.isFile ? ep.filename : (ep.title || `Episode ${ep.episodeNumber}`)}
-                              </span>
-                              {!ep.isFile && <span className="missing-badge">Missing</span>}
-                            </div>
-                          ))
-                        ) : (
-                          <div className="no-files">No video files found</div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="expanded-actions">
-                      <Button
-                        variant="secondary"
-                        size="small"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleManualSearch(seriesId);
-                        }}
-                      >
-                        <Search size={14} />
-                        Manual Search
-                      </Button>
-                      <Button
-                        variant="primary"
-                        size="small"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleRefresh(seriesId, seriesData.title || seriesId);
-                        }}
-                        disabled={refreshing[seriesId] || bulkRefreshing}
-                      >
-                        <RefreshCw size={14} className={refreshing[seriesId] ? 'spin' : ''} />
-                        {refreshing[seriesId] ? 'Refreshing...' : 'Refresh'}
-                      </Button>
-                      <Button
-                        variant="danger"
-                        size="small"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDelete(seriesId, seriesData.title || seriesId);
-                        }}
-                        disabled={refreshing[seriesId] || bulkRefreshing}
-                      >
-                        <Trash2 size={14} />
-                        Delete
-                      </Button>
-                    </div>
-                  </div>
+                <div className="col-updated muted">—</div>
+                <div className="col-actions">
+                  <button
+                    className="icon-btn"
+                    title="Refresh"
+                    onClick={() => handleRefresh(seriesId, data.title || seriesId)}
+                    disabled={isRefreshing || bulkRefreshing}
+                  >
+                    <RefreshCw size={14} className={isRefreshing ? 'spin' : ''} />
+                  </button>
+                  <button
+                    className="icon-btn icon-btn-danger"
+                    title="Delete"
+                    onClick={() => handleDelete(seriesId, data.title || seriesId)}
+                    disabled={isRefreshing || bulkRefreshing}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                  <button
+                    className="icon-btn"
+                    title="More"
+                    disabled
+                  >
+                    <MoreHorizontal size={14} />
+                  </button>
                 </div>
               </div>
             );
