@@ -1,6 +1,6 @@
 import { readdir, stat } from 'fs/promises';
 import { existsSync } from 'fs';
-import { join, extname, basename, dirname } from 'path';
+import { join, extname, basename } from 'path';
 import { logger } from '../services/logger';
 import imageCacheHandler from './imageCacheHandler';
 import thumbnailHandler from './thumbnailHandler';
@@ -662,10 +662,27 @@ const folderHandler = {
     return allResults;
   },
 
-  async scanSingleFile(filePath: string): Promise<{ media: ScannedMedia; file: VideoFile } | null> {
+  /**
+   * Scan just enough of the library to classify a single file the same way a
+   * full scan would. Must be passed the active library roots — without them,
+   * we'd treat the file's parent as a library root and misclassify every file
+   * directly inside a series folder as a "movie at root".
+   */
+  async scanSingleFile(
+    filePath: string,
+    activeRoots: string[],
+  ): Promise<{ media: ScannedMedia; file: VideoFile } | null> {
     if (!existsSync(filePath)) return null;
-    const parentDir = dirname(filePath);
-    const directoryResults = await scanDirectory(parentDir);
+    // Find the library root that contains this file (longest matching prefix
+    // wins, in case roots are nested).
+    const matchingRoot = activeRoots
+      .filter((root) => filePath === root || filePath.startsWith(root.endsWith('/') ? root : root + '/'))
+      .sort((a, b) => b.length - a.length)[0];
+    if (!matchingRoot) {
+      logger.warn('folder', `File is not under any active library root`, { file: filePath });
+      return null;
+    }
+    const directoryResults = await scanDirectory(matchingRoot);
     for (const media of directoryResults) {
       const file = media.files.find((f) => f.filePath === filePath);
       if (file) {

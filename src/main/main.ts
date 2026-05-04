@@ -77,7 +77,8 @@ async function updateFileStatus(filePath: string, status: FileStatus): Promise<v
 
 async function ingestSingleFile(filePath: string): Promise<void> {
   try {
-    const result = await folderHandler.scanSingleFile(filePath);
+    const activeRoots = await configHandler.getFolderSources();
+    const result = await folderHandler.scanSingleFile(filePath, activeRoots);
     if (!result) {
       logger.warn('watch', `scanSingleFile returned null`, { file: filePath });
       return;
