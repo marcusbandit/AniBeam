@@ -332,24 +332,30 @@ function VideoPlayer() {
             workerUrl: jassubWorkerUrl,
             wasmUrl: wasmUrls.wasmUrl,
             modernWasmUrl: wasmUrls.modernWasmUrl,
-          });
+            // Skip the navigator.permissions font query (Electron-friendly).
+            queryFonts: false,
+          } as ConstructorParameters<typeof JASSUB>[0]);
           jassubRef.current = inst;
-          // Wait for libass + renderer init to complete; until then any method
-          // call (including resize) blows up with "_resizeCanvas undefined".
+          // Wait for the worker + renderer to be set up. JASSUB drives all
+          // rendering off the video's requestVideoFrameCallback, which only
+          // fires for actually-presented frames. If the video already has a
+          // decoded frame waiting (HAVE_CURRENT_DATA = 2), kick a one-shot
+          // manualRender so the renderer flushes its initial resize and we
+          // get the first sub frame; subsequent rVFCs take over on their own.
           await (inst as unknown as { ready?: Promise<unknown> }).ready;
-          // Force one resize now that we know the renderer exists, in case
-          // ResizeObserver hasn't fired yet for the initial layout.
-          try {
-            await inst.resize(true, video.clientWidth, video.clientHeight);
-          } catch (err) {
-            console.warn('[subs] post-ready resize failed', err);
+          if (video.readyState >= 2 && video.videoWidth > 0) {
+            try {
+              await (inst as unknown as { manualRender: (m: { expectedDisplayTime: number; width: number; height: number; mediaTime: number }) => Promise<void> }).manualRender({
+                expectedDisplayTime: performance.now(),
+                width: video.videoWidth,
+                height: video.videoHeight,
+                mediaTime: video.currentTime,
+              });
+            } catch (err) {
+              console.warn('[subs] manualRender kick failed', err);
+            }
           }
-          console.log('[subs] JASSUB ready for', sub.label, '— video', video.clientWidth, 'x', video.clientHeight);
-          // Diagnostic: dump the canvases JASSUB injected so we can see them.
-          setTimeout(() => {
-            const canvases = video.parentElement?.querySelectorAll('canvas') ?? [];
-            console.log('[subs] canvases in player-canvas:', canvases.length, Array.from(canvases).map((c) => `${c.width}x${c.height} (display ${c.clientWidth}x${c.clientHeight})`));
-          }, 250);
+          console.log('[subs] JASSUB ready for', sub.label);
         } catch (err) {
           console.error('JASSUB init failed:', err);
         }
