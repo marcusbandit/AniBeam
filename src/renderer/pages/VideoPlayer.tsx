@@ -576,13 +576,18 @@ function VideoPlayer() {
           // Only touch dialogue styles; signs / typesetting are off-limits.
           if (!isDialogueStyleName(name)) continue;
           const o = assStyles[name];
-          let modified: Record<string, unknown>;
+          let patch: Record<string, unknown>;
           if (o) {
             const fontSizePx = Math.max(1, Math.round((o.fontSize / 100) * playResY));
             const marginVPx = Math.max(0, Math.round((o.positionBottom / 100) * playResY));
             const fontName = o.fontFamily.split(',')[0].trim().replace(/^['"]|['"]$/g, '');
-            modified = {
-              ...orig,
+            // INCREMENTAL — only the keys we want to change. _applyKeys in
+            // the worker assigns each input key to wasm; everything else
+            // (OutlineColour, SecondaryColour, Bold, Italic, …) stays as
+            // wasm has it. Spreading orig and round-tripping the full style
+            // through Comlink seems to scramble at least OutlineColour,
+            // which manifested as a red outline.
+            patch = {
               FontSize: fontSizePx,
               FontName: fontName,
               PrimaryColour: hexToAssColor(o.color, 1),
@@ -592,10 +597,11 @@ function VideoPlayer() {
               MarginV: marginVPx,
             };
           } else {
-            // No override → restore the file's original verbatim.
-            modified = { ...orig };
+            // No override → restore EVERY original field so a previous
+            // override is fully wiped from wasm.
+            patch = { ...orig };
           }
-          await r.setStyle(modified, i);
+          await r.setStyle(patch, i);
         }
       } catch (err) {
         console.warn('[subs] failed to apply ASS overrides', err);
