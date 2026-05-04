@@ -15,6 +15,7 @@ import { logger } from './services/logger';
 import type { FileStatus } from '../shared/fileStatus';
 import type { ScannedMedia } from './handlers/folderHandler';
 import videoProbeHandler from './handlers/videoProbeHandler';
+import subtitleHandler from './handlers/subtitleHandler';
 import { fileWatcher } from './services/watcher';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1026,6 +1027,16 @@ ipcMain.handle('probe:retry', (_event, filePath: string) => {
   if (typeof filePath === 'string' && filePath.length > 0) {
     videoProbeHandler.retry(filePath);
   }
+});
+
+ipcMain.handle('subtitle:list-embedded', async (_event, videoPath: string) => {
+  if (typeof videoPath !== 'string' || !videoPath) return [];
+  return subtitleHandler.listEmbedded(videoPath);
+});
+
+ipcMain.handle('subtitle:extract', async (_event, videoPath: string, streamIndex: number) => {
+  if (typeof videoPath !== 'string' || !videoPath || typeof streamIndex !== 'number') return null;
+  return subtitleHandler.extractEmbedded(videoPath, streamIndex);
 });
 
 app.on('before-quit', () => {

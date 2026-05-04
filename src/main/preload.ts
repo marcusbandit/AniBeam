@@ -50,6 +50,10 @@ export interface ElectronAPI {
   // Video probe
   probeRetry: (filePath: string) => Promise<void>;
   onMetadataFileStatusChanged: (handler: (payload: { filePath: string; status: FileStatus }) => void) => () => void;
+
+  // Embedded subtitles
+  listEmbeddedSubtitles: (videoPath: string) => Promise<Array<{ streamIndex: number; codec: string; language: string | null; title: string | null }>>;
+  extractEmbeddedSubtitle: (videoPath: string, streamIndex: number) => Promise<string | null>;
 }
 
 declare global {
@@ -101,4 +105,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('metadata:file-status-changed', listener);
     return () => ipcRenderer.removeListener('metadata:file-status-changed', listener);
   },
+
+  // Embedded subtitles
+  listEmbeddedSubtitles: (videoPath: string) => ipcRenderer.invoke('subtitle:list-embedded', videoPath),
+  extractEmbeddedSubtitle: (videoPath: string, streamIndex: number) => ipcRenderer.invoke('subtitle:extract', videoPath, streamIndex),
 });

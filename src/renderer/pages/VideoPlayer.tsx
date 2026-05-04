@@ -135,26 +135,58 @@ function VideoPlayer() {
       setEpisodeData(episode);
       setVideoSrc(`file://${episode.filePath}`);
 
-      // Build the subtitle list. For .srt files we convert to VTT on the fly
-      // (Chromium's <track> only supports WebVTT natively).
+      // Build the subtitle list:
+      //  1. External .srt/.vtt sidecar files (convert .srt → VTT blob)
+      //  2. Embedded text-based subtitle streams in the MKV (extract via
+      //     ffmpeg in main, served from the on-disk cache via media://)
       const buildSubs = async () => {
-        const raw: { path: string; label: string; default: boolean }[] = [];
+        const out: SubtitleTrack[] = [];
+
+        // External sidecars
+        const sidecars: { path: string; label: string; default: boolean }[] = [];
         if (episode.subtitlePath) {
-          raw.push({ path: episode.subtitlePath, label: 'Subtitle', default: true });
+          sidecars.push({ path: episode.subtitlePath, label: 'External', default: true });
         }
         if (episode.subtitlePaths && episode.subtitlePaths.length > 0) {
           episode.subtitlePaths.forEach((p: string, i: number) => {
             if (p !== episode.subtitlePath) {
-              raw.push({ path: p, label: `Subtitle ${i + 2}`, default: false });
+              sidecars.push({ path: p, label: `External ${i + 2}`, default: false });
             }
           });
         }
-        const out: SubtitleTrack[] = await Promise.all(raw.map(async (r) => {
+        for (const r of sidecars) {
           const fileUrl = `file://${r.path}`;
           const ext = r.path.toLowerCase().split('.').pop();
           const src = ext === 'srt' ? await srtToVttUrl(fileUrl) : fileUrl;
-          return { src, origPath: r.path, kind: 'subtitles', label: r.label, default: r.default };
-        }));
+          out.push({ src, origPath: r.path, kind: 'subtitles', label: r.label, default: r.default });
+        }
+
+        // Embedded streams (MKV / MP4 with internal subs)
+        try {
+          const embedded = await window.electronAPI.listEmbeddedSubtitles(episode.filePath);
+          for (const e of embedded) {
+            const cachePath = await window.electronAPI.extractEmbeddedSubtitle(episode.filePath, e.streamIndex);
+            if (!cachePath) continue;
+            const lang = e.language ? e.language.toUpperCase() : null;
+            const label = e.title && lang
+              ? `${lang} — ${e.title}`
+              : e.title ?? (lang ?? `Track #${e.streamIndex}`);
+            // Cache files live under userData; media:// protocol allows that
+            // path. Make this the default if there's no external sidecar
+            // already marked default.
+            const isDefault = !out.some((s) => s.default) && (lang === 'ENG' || lang === 'EN' || out.length === 0);
+            out.push({
+              src: `media://${cachePath}`,
+              origPath: episode.filePath,
+              kind: 'subtitles',
+              label,
+              default: isDefault,
+            });
+          }
+        } catch (err) {
+          console.warn('Embedded subtitle extraction failed:', err);
+        }
+
         setSubtitleSrcs((prev) => {
           // Revoke previous blob URLs so they don't leak.
           prev.forEach((p) => { if (p.src.startsWith('blob:')) URL.revokeObjectURL(p.src); });
