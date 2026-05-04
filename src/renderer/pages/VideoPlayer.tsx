@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useMetadata, type FileEpisode } from '../hooks/useMetadata.js';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Minimize } from 'lucide-react';
 
 interface SubtitleTrack {
   src: string;
@@ -14,6 +14,16 @@ function pad(n: number): string {
   return n < 10 ? `0${n}` : `${n}`;
 }
 
+function formatTime(s: number): string {
+  if (!Number.isFinite(s) || s < 0) return '0:00';
+  const total = Math.floor(s);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const sec = total % 60;
+  if (h > 0) return `${h}:${pad(m)}:${pad(sec)}`;
+  return `${m}:${pad(sec)}`;
+}
+
 function VideoPlayer() {
   const { seriesId, episodeNumber } = useParams<{ seriesId?: string; episodeNumber?: string }>();
   const navigate = useNavigate();
@@ -22,7 +32,15 @@ function VideoPlayer() {
   const [subtitleSrcs, setSubtitleSrcs] = useState<SubtitleTrack[]>([]);
   const [episodeData, setEpisodeData] = useState<FileEpisode | null>(null);
   const [chrome, setChrome] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [volume, setVolume] = useState(0.7);
+  const [muted, setMuted] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
   const videoRef = useRef<HTMLVideoElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Auto-hide chrome after inactivity
@@ -37,13 +55,8 @@ function VideoPlayer() {
     };
   }, []);
 
-  // Exponential volume curve.
-  // The native <video controls> slider drives `video.volume` linearly, but
-  // perceived loudness is roughly logarithmic — a linear slider feels useless
-  // in the bottom half. We apply an extra gain stage so the actual output
-  // follows `slider^3`: at 50% the user hears ~12.5%, at 70% ~34%, at 100% 100%.
-  // Uses Web Audio (createMediaElementSource), which can only be called once
-  // per <video> element — must run mount-only.
+  // Web Audio gain stage — exponential volume curve with boost past unity.
+  // Curve: total output = slider² × MAX_BOOST. Slider 100% = 250%.
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -59,18 +72,11 @@ function VideoPlayer() {
       gain = audioCtx.createGain();
       source.connect(gain).connect(audioCtx.destination);
     } catch {
-      return; // already-bound element or unsupported
+      return;
     }
 
-    // Allow the slider to push past unity gain — many anime/video sources
-    // are mastered quietly. At slider 100% the user gets MAX_BOOST× the raw
-    // signal; the curve stays exponential (s²·BOOST) so the bottom half is
-    // still calm. Watch for clipping on already-loud content if you bump
-    // this further than ~3.
     const MAX_BOOST = 2.5;
     const updateGain = () => {
-      // Total output = video.volume × gain = slider² × MAX_BOOST.
-      // slider 25% → 16% · 50% → 62% · 75% → 141% · 100% → 250%.
       gain.gain.value = video.volume * MAX_BOOST;
     };
     const resume = () => { if (audioCtx.state === 'suspended') void audioCtx.resume(); };
@@ -88,12 +94,13 @@ function VideoPlayer() {
     };
   }, []);
 
-  const handleMouseMove = () => {
+  const showChrome = useCallback(() => {
     setChrome(true);
     if (hideTimer.current) clearTimeout(hideTimer.current);
     hideTimer.current = setTimeout(() => setChrome(false), 2500);
-  };
+  }, []);
 
+  // Load episode
   useEffect(() => {
     if (!seriesId || !episodeNumber || !metadata[seriesId]) return;
 
@@ -134,6 +141,111 @@ function VideoPlayer() {
     }
   }, [seriesId, episodeNumber, metadata]);
 
+  // Wire <video> events to local state
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => setIsPlaying(false);
+    const onTime = () => setCurrentTime(video.currentTime);
+    const onMeta = () => setDuration(video.duration);
+    const onVol = () => { setVolume(video.volume); setMuted(video.muted); };
+
+    video.addEventListener('play', onPlay);
+    video.addEventListener('pause', onPause);
+    video.addEventListener('timeupdate', onTime);
+    video.addEventListener('loadedmetadata', onMeta);
+    video.addEventListener('volumechange', onVol);
+    return () => {
+      video.removeEventListener('play', onPlay);
+      video.removeEventListener('pause', onPause);
+      video.removeEventListener('timeupdate', onTime);
+      video.removeEventListener('loadedmetadata', onMeta);
+      video.removeEventListener('volumechange', onVol);
+    };
+  }, [videoSrc]);
+
+  // Set initial volume on mount
+  useEffect(() => {
+    const video = videoRef.current;
+    if (video) video.volume = 0.7;
+  }, []);
+
+  // Fullscreen state sync
+  useEffect(() => {
+    const onFs = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onFs);
+    return () => document.removeEventListener('fullscreenchange', onFs);
+  }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const video = videoRef.current;
+      if (!video) return;
+      const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea') return;
+      if (e.key === ' ' || e.key === 'k') {
+        e.preventDefault();
+        if (video.paused) void video.play(); else video.pause();
+        showChrome();
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        video.currentTime = Math.min(video.duration || Infinity, video.currentTime + 5);
+        showChrome();
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        video.currentTime = Math.max(0, video.currentTime - 5);
+        showChrome();
+      } else if (e.key === 'm') {
+        e.preventDefault();
+        video.muted = !video.muted;
+        showChrome();
+      } else if (e.key === 'f') {
+        e.preventDefault();
+        toggleFullscreen();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showChrome]);
+
+  const togglePlay = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) void video.play(); else video.pause();
+  };
+
+  const toggleMute = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = !video.muted;
+  };
+
+  const toggleFullscreen = () => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    if (!document.fullscreenElement) {
+      void wrap.requestFullscreen();
+    } else {
+      void document.exitFullscreen();
+    }
+  };
+
+  const onSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.currentTime = Number(e.target.value);
+  };
+
+  const onVolume = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const video = videoRef.current;
+    if (!video) return;
+    const v = Number(e.target.value);
+    video.volume = v;
+    if (v > 0) video.muted = false;
+  };
+
   if (!episodeData || !seriesId || !episodeNumber) {
     return (
       <div className="player-wrap">
@@ -160,7 +272,7 @@ function VideoPlayer() {
     : `EP ${episodeNum}`;
 
   return (
-    <div className="player-wrap" onMouseMove={handleMouseMove}>
+    <div className="player-wrap" ref={wrapRef} onMouseMove={showChrome}>
       <div className="player-header" style={{ opacity: chrome ? 1 : 0 }}>
         <button
           className="player-back"
@@ -178,11 +290,10 @@ function VideoPlayer() {
           <div className="player-meta">{code}</div>
         </div>
       </div>
-      <div className="player-canvas">
+      <div className="player-canvas" onClick={togglePlay}>
         <video
           ref={videoRef}
           src={videoSrc}
-          controls
           autoPlay
         >
           {subtitleSrcs.map((subtitle, index) => (
@@ -196,6 +307,46 @@ function VideoPlayer() {
           ))}
           Your browser does not support the video tag.
         </video>
+      </div>
+      <div
+        className="player-controls"
+        style={{ opacity: chrome ? 1 : 0, pointerEvents: chrome ? 'auto' : 'none' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <input
+          className="player-scrub"
+          type="range"
+          min={0}
+          max={duration || 0}
+          step={0.1}
+          value={Math.min(currentTime, duration || 0)}
+          onChange={onSeek}
+          style={{ '--progress': `${duration > 0 ? (currentTime / duration) * 100 : 0}%` } as React.CSSProperties}
+        />
+        <div className="player-controls-row">
+          <button className="player-ctl-btn" onClick={togglePlay} aria-label={isPlaying ? 'Pause' : 'Play'}>
+            {isPlaying ? <Pause size={18} /> : <Play size={18} />}
+          </button>
+          <span className="player-time">{formatTime(currentTime)} / {formatTime(duration)}</span>
+          <div className="player-volume">
+            <button className="player-ctl-btn" onClick={toggleMute} aria-label={muted ? 'Unmute' : 'Mute'}>
+              {muted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
+            </button>
+            <input
+              className="player-vol-slider"
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={muted ? 0 : volume}
+              onChange={onVolume}
+              style={{ '--progress': `${(muted ? 0 : volume) * 100}%` } as React.CSSProperties}
+            />
+          </div>
+          <button className="player-ctl-btn player-fs" onClick={toggleFullscreen} aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}>
+            {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
+          </button>
+        </div>
       </div>
     </div>
   );

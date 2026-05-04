@@ -754,12 +754,94 @@ a { color: inherit; text-decoration: none; }
   background: #000;
 }
 
-.player-canvas video::-webkit-media-controls-volume-slider {
-  width: 140px !important;
-  min-width: 140px !important;
-  padding-left: 8px !important;
-  padding-right: 8px !important;
+/* Custom player controls — replaces native <video controls>. No Chromium
+   pseudo-elements involved; we render a regular bar with regular range
+   inputs we can size and style cleanly. */
+.player-controls {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  padding: 16px 24px 18px;
+  background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0) 100%);
+  transition: opacity 200ms ease;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #d8d8e0;
 }
+.player-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.player-ctl-btn {
+  background: transparent;
+  border: none;
+  color: #d8d8e0;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 0;
+}
+.player-ctl-btn:hover { background: rgba(255,255,255,0.1); }
+.player-fs { margin-left: auto; }
+.player-time {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: #c0c0c8;
+  min-width: 110px;
+}
+.player-volume {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.player-vol-slider {
+  width: 160px;
+}
+
+/* Range inputs: matching mono-forward, dark style. The --progress var is
+   set inline per-slider to drive the filled-portion gradient. */
+.player-scrub,
+.player-vol-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    #d8d8e0 0%,
+    #d8d8e0 var(--progress, 0%),
+    rgba(255,255,255,0.18) var(--progress, 0%),
+    rgba(255,255,255,0.18) 100%
+  );
+  outline: none;
+  cursor: pointer;
+  margin: 0;
+}
+.player-scrub { width: 100%; }
+.player-scrub::-webkit-slider-thumb,
+.player-vol-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.4);
+}
+.player-scrub::-webkit-slider-thumb:hover,
+.player-vol-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
 
 .player-header {
   position: absolute;
