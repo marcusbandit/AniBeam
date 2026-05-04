@@ -187,6 +187,11 @@ function VideoPlayer() {
   const [assDialogueStyleNames, setAssDialogueStyleNames] = useState<string[]>([]);
   const [selectedAssStyle, setSelectedAssStyle] = useState<string | null>(null);
   const assPlayResYRef = useRef<number>(288);
+  // Captured once when JASSUB initializes — every override is applied on top
+  // of these originals, and clearing an override restores the original.
+  // Without this snapshot, setStyle mutates the wasm's style in place and
+  // there's no way back to the file's defaults.
+  const assOriginalsRef = useRef<Array<Record<string, unknown>>>([]);
   // Bumps each time a JASSUB instance finishes initializing, so dependent
   // effects can react after JASSUB is actually ready (selectSubtitle is async
   // — activeSubIdx changes BEFORE jassubRef.current is set).
@@ -513,18 +518,20 @@ function VideoPlayer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSubIdx, vttStyle.positionBottom, subtitleSrcs]);
 
-  // When an ASS track activates AND JASSUB is ready, walk its styles, list
-  // the dialogue ones for the dropdown, and apply any saved overrides.
+  // When an ASS track activates AND JASSUB is ready: snapshot the file's
+  // original styles, list the dialogue-named ones for the dropdown.
   useEffect(() => {
     if (activeSubIdx < 0) {
       setAssDialogueStyleNames([]);
       setSelectedAssStyle(null);
+      assOriginalsRef.current = [];
       return;
     }
     const sub = subtitleSrcs[activeSubIdx];
     if (!sub || sub.format !== 'ass') {
       setAssDialogueStyleNames([]);
       setSelectedAssStyle(null);
+      assOriginalsRef.current = [];
       return;
     }
     const inst = jassubRef.current;
@@ -533,12 +540,13 @@ function VideoPlayer() {
     void (async () => {
       try {
         await (inst as unknown as { ready: Promise<void> }).ready;
-        const styles = await (inst as unknown as { renderer: { getStyles: () => Promise<Array<{ Name: string }>> } }).renderer.getStyles();
+        const styles = await (inst as unknown as { renderer: { getStyles: () => Promise<Array<Record<string, unknown>>> } }).renderer.getStyles();
         if (cancelled) return;
-        const dialogue = styles.map((s) => s.Name).filter(isDialogueStyleName);
+        // Snapshot ORIGINALS once (before any overrides have mutated them).
+        // Every subsequent apply rebuilds modified styles from this snapshot.
+        assOriginalsRef.current = styles.map((s) => ({ ...s }));
+        const dialogue = styles.map((s) => s.Name as string).filter(isDialogueStyleName);
         setAssDialogueStyleNames(dialogue);
-        // Pick the first dialogue style as the default selection, but keep
-        // a previous selection if it still exists in this file.
         setSelectedAssStyle((prev) => (prev && dialogue.includes(prev) ? prev : (dialogue[0] ?? null)));
       } catch (err) {
         console.warn('[subs] could not list ASS styles', err);
@@ -547,37 +555,46 @@ function VideoPlayer() {
     return () => { cancelled = true; };
   }, [activeSubIdx, subtitleSrcs, jassubReadyTick]);
 
-  // Apply ASS style overrides to JASSUB. Re-runs whenever the saved overrides
-  // change OR a new ASS track activates and JASSUB becomes ready.
+  // Apply (or restore) every dialogue style based on assStyles overrides.
+  // Always starts from the snapshot — styles without overrides get written
+  // back to their originals so clearing an override actually reverts.
   useEffect(() => {
     if (activeSubIdx < 0) return;
     const sub = subtitleSrcs[activeSubIdx];
     if (!sub || sub.format !== 'ass') return;
     const inst = jassubRef.current;
     if (!inst) return;
+    const originals = assOriginalsRef.current;
+    if (!originals.length) return;
     void (async () => {
       try {
-        const r = (inst as unknown as { renderer: { getStyles: () => Promise<Array<Record<string, unknown>>>; setStyle: (s: Record<string, unknown>, idx: number) => Promise<unknown> } }).renderer;
-        const styles = await r.getStyles();
+        const r = (inst as unknown as { renderer: { setStyle: (s: Record<string, unknown>, idx: number) => Promise<unknown> } }).renderer;
         const playResY = assPlayResYRef.current || 288;
-        for (let i = 0; i < styles.length; i++) {
-          const name = (styles[i].Name as string) || '';
+        for (let i = 0; i < originals.length; i++) {
+          const orig = originals[i];
+          const name = (orig.Name as string) || '';
+          // Only touch dialogue styles; signs / typesetting are off-limits.
+          if (!isDialogueStyleName(name)) continue;
           const o = assStyles[name];
-          if (!o) continue;
-          // Convert vh-based controls to PlayRes units.
-          const fontSizePx = Math.max(1, Math.round((o.fontSize / 100) * playResY));
-          const marginVPx = Math.max(0, Math.round((o.positionBottom / 100) * playResY));
-          const fontName = o.fontFamily.split(',')[0].trim().replace(/^['"]|['"]$/g, '');
-          const modified = {
-            ...styles[i],
-            FontSize: fontSizePx,
-            FontName: fontName,
-            PrimaryColour: hexToAssColor(o.color, 1),
-            BackColour: hexToAssColor(o.bgColor, o.bgOpacity),
-            BorderStyle: o.bgOpacity > 0 ? 3 : 1,
-            Outline: ASS_OUTLINE_THICKNESS[o.outline],
-            MarginV: marginVPx,
-          };
+          let modified: Record<string, unknown>;
+          if (o) {
+            const fontSizePx = Math.max(1, Math.round((o.fontSize / 100) * playResY));
+            const marginVPx = Math.max(0, Math.round((o.positionBottom / 100) * playResY));
+            const fontName = o.fontFamily.split(',')[0].trim().replace(/^['"]|['"]$/g, '');
+            modified = {
+              ...orig,
+              FontSize: fontSizePx,
+              FontName: fontName,
+              PrimaryColour: hexToAssColor(o.color, 1),
+              BackColour: hexToAssColor(o.bgColor, o.bgOpacity),
+              BorderStyle: o.bgOpacity > 0 ? 3 : 1,
+              Outline: ASS_OUTLINE_THICKNESS[o.outline],
+              MarginV: marginVPx,
+            };
+          } else {
+            // No override → restore the file's original verbatim.
+            modified = { ...orig };
+          }
           await r.setStyle(modified, i);
         }
       } catch (err) {
