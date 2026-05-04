@@ -45,24 +45,29 @@ function getBaseName(filename: string): string {
 }
 
 /**
- * Clean a per-episode display title — strip release-group / quality / hash
- * tags in [square brackets], collapse separator noise, normalize whitespace.
- * The unstripped basename stays in `filename` for disambiguation if needed.
+ * Single source of truth for filename cleaning. EVERY function that parses
+ * episode/season numbers, series names, or display titles MUST run a filename
+ * through this first. Strips:
+ *   - the file extension
+ *   - anything inside [square brackets] — release groups, quality, CRC32 hashes
+ *     like [F1E24928] that would otherwise match /E(\d{2,})/
+ *   - leftover separator noise and collapsed whitespace
  */
-function cleanEpisodeTitle(filename: string): string {
-  return getBaseName(filename)
-    .replace(/\s*\[[^\]]*\]\s*/g, ' ')   // anything in [square brackets]
-    .replace(/\s*[-_]\s*$/g, '')         // trailing dash/underscore left over
+function stripFilename(filename: string): string {
+  return basename(filename, extname(filename))
+    .replace(/\s*\[[^\]]*\]\s*/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
+function cleanEpisodeTitle(filename: string): string {
+  return stripFilename(filename).replace(/\s*[-_]\s*$/g, '').trim();
+}
+
 function extractSeasonAndEpisode(filename: string): { season: number | null; episode: number } {
-  // IMPORTANT: Work on base name WITHOUT extension to avoid ".mp4" → "4" bug.
-  // Also strip [...] tags BEFORE pattern matching — release-group hashes like
-  // [F1E24928] would otherwise match /E(\d{2,})/ and pollute the result, and
-  // the digit fallback would grab huge numbers from CRC32 hashes.
-  const baseName = getBaseName(filename).replace(/\s*\[[^\]]*\]\s*/g, ' ').replace(/\s+/g, ' ').trim();
+  // Brackets are stripped FIRST by stripFilename — patterns never see hash
+  // contents like [F1E24928] that would falsely match /E(\d{2,})/.
+  const baseName = stripFilename(filename);
 
   // First, try to extract season and episode from S01E01 format
   const seasonEpisodeMatch = baseName.match(/\bS(\d+)E(\d+)\b/i);
@@ -170,13 +175,10 @@ function extractSeriesNameFromFilenames(videoFiles: VideoFile[]): string {
     return '';
   }
 
-  // Extract base names (without extension) and clean them
+  // Extract base names (extension + brackets stripped via stripFilename) and
+  // strip episode/season patterns to find the series name.
   const cleanedNames = videoFiles.map(video => {
-    const baseName = getBaseName(video.filename);
-
-    // Remove common patterns that indicate episode/season numbers
-    let cleaned = baseName
-      .replace(/\s*\[[^\]]*\]\s*/g, ' ')                          // Strip anything in [square brackets] (release groups, quality, hashes, etc.)
+    let cleaned = stripFilename(video.filename)
       .replace(/\s*\bS\d+E\d+(\.\d+)?\b.*$/i, '')                 // Remove S01E01, S1E1, S01E10.5, etc.
       .replace(/\s*\bE\d+(\.\d+)?\b.*$/i, '')                     // Remove E01, E1, E10.5 patterns (keep everything before)
       .replace(/\s*\bPart\s*\d+\b.*$/i, '')                       // Remove 'Part 1', 'Part 2', etc.
@@ -288,11 +290,9 @@ function generateSeriesId(seriesName: string, folderName: string, seasonNumber: 
 }
 
 function cleanMovieTitle(filename: string): string {
-  // Clean movie filename for metadata search
-  const baseName = getBaseName(filename);
-  return baseName
+  // Brackets are already stripped by stripFilename — handle parens and dots here.
+  return stripFilename(filename)
     .replace(/\s*\(.*?\)\s*/g, '')     // Remove (2020), etc
-    .replace(/\s*\[.*?\]\s*/g, '')     // Remove [1080p], etc
     .replace(/\.\d{4}\./g, ' ')        // Remove .2018.
     .replace(/\./g, ' ')               // Replace dots with spaces
     .replace(/_/g, ' ')                // Replace underscores with spaces
