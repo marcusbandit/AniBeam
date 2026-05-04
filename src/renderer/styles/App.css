@@ -752,15 +752,31 @@ a { color: inherit; text-decoration: none; }
   height: 100%;
   object-fit: contain;
   background: #000;
+  /* Give the video its own stacking context AT THE BASE so that positioned
+     siblings (the JASSUB canvas) can sit above it via z-index. Without
+     this, Chromium's video compositor layer can render on top of normal
+     positioned elements. */
+  position: relative;
+  z-index: 0;
 }
 
 /* JASSUB injects its own canvas as a sibling of the <video> when active.
    It sets position/width/height/top/left inline via getBoundingClientRect
-   on the video, so we let it manage layout — only force pointer-events and
-   a z-index high enough to sit above the video but below the controls bar. */
+   on the video, so we let it manage layout — but we MUST force a high-enough
+   z-index AND a transform to push it onto its own GPU compositor layer
+   above the video's layer. */
 .player-canvas canvas.JASSUB {
   pointer-events: none !important;
-  z-index: 4 !important;
+  display: block !important;
+  z-index: 3 !important;
+  transform: translateZ(0) !important;
+  will-change: transform !important;
+}
+
+/* Force a stacking context on the player canvas so its children stack
+   independently of anything else on the page. */
+.player-canvas {
+  isolation: isolate;
 }
 
 /* Custom player controls — replaces native <video controls>. No Chromium
