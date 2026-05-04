@@ -339,32 +339,37 @@ function VideoPlayer() {
             availableFonts: { 'liberation sans': jassubDefaultFontUrl },
             defaultFont: 'liberation sans',
             queryFonts: false,
-            debug: true,
+            // Render at the display's native resolution × DPR, no 1080p cap.
+            // Default prescaleHeightLimit=1080 makes subs look pixelated on
+            // 1440p / 4K screens because the bitmap is upscaled to fit.
+            prescaleHeightLimit: 0,
+            prescaleFactor: 1.0,
           } as ConstructorParameters<typeof JASSUB>[0]);
           jassubRef.current = inst;
           await (inst as unknown as { ready?: Promise<unknown> }).ready;
           console.log('[subs] JASSUB ready for', sub.label);
 
-          // Drive JASSUB at ~30 fps since rVFC didn't seem to fire reliably
-          // in this Electron context. mediaTime is in seconds.
+          // Drive JASSUB on the display refresh via requestAnimationFrame so
+          // sub frames stay in lockstep with painted frames. rVFC would be
+          // ideal but didn't fire reliably in this Electron context. rAF
+          // typically runs at the display's full refresh (60/120/144 Hz),
+          // which keeps the sub motion smooth.
           const pump = () => {
             if (jassubRef.current !== inst) return; // disposed
             const v = videoRef.current;
-            if (!v || v.paused || v.readyState < 2) {
-              setTimeout(pump, 100);
-              return;
+            if (v && !v.paused && v.readyState >= 2) {
+              try {
+                void (inst as unknown as { manualRender: (m: { expectedDisplayTime: number; width: number; height: number; mediaTime: number }) => Promise<unknown> }).manualRender({
+                  expectedDisplayTime: performance.now(),
+                  width: v.videoWidth,
+                  height: v.videoHeight,
+                  mediaTime: v.currentTime,
+                });
+              } catch { /* ignore */ }
             }
-            try {
-              void (inst as unknown as { manualRender: (m: { expectedDisplayTime: number; width: number; height: number; mediaTime: number }) => Promise<unknown> }).manualRender({
-                expectedDisplayTime: performance.now(),
-                width: v.videoWidth,
-                height: v.videoHeight,
-                mediaTime: v.currentTime,
-              });
-            } catch { /* ignore */ }
-            setTimeout(pump, 33);
+            requestAnimationFrame(pump);
           };
-          pump();
+          requestAnimationFrame(pump);
         } catch (err) {
           console.error('JASSUB init failed:', err);
         }
