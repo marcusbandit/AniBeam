@@ -17,6 +17,8 @@ export interface VideoFile {
   subtitlePath: string | null;
   subtitlePaths: string[];
   parentFolder: string;
+  status: 'ready' | 'verifying' | 'stalled';
+  lastProbedAt?: number;
 }
 
 export interface ScannedMedia {
@@ -315,6 +317,7 @@ async function scanFolderForVideos(folderPath: string, folderSeason: number | nu
               subtitlePath: null,
               subtitlePaths: [],
               parentFolder: folderName,
+              status: 'ready',
             });
           } else if (isSubtitleFile(entry)) {
             const baseName = getBaseName(entry);
@@ -499,6 +502,7 @@ async function scanDirectory(rootPath: string): Promise<ScannedMedia[]> {
               subtitlePath: null,
               subtitlePaths: [],
               parentFolder: basename(rootPath),
+              status: 'ready',
             }],
             seasonNumber: null,
             partNumber: null,

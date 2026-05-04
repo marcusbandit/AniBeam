@@ -25,7 +25,17 @@ const metadataHandler = {
       await ensureDataDirectory();
       const metadataPath = getMetadataPath();
       const data = await readFile(metadataPath, 'utf-8');
-      return JSON.parse(data) as Record<string, unknown>;
+      const parsed = JSON.parse(data) as Record<string, unknown>;
+      // Migration: ensure every file episode has a status.
+      for (const seriesValue of Object.values(parsed)) {
+        const series = seriesValue as { fileEpisodes?: unknown[] };
+        if (!Array.isArray(series.fileEpisodes)) continue;
+        for (const file of series.fileEpisodes) {
+          const f = file as { status?: string };
+          if (!f.status) f.status = 'ready';
+        }
+      }
+      return parsed;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         return {};

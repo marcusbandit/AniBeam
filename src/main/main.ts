@@ -33,6 +33,23 @@ function isRateLimitError(error: unknown): boolean {
   return false;
 }
 
+function preserveStatus(
+  seriesId: string,
+  files: Array<{ filePath: string; status?: string; lastProbedAt?: number }>,
+  existingMetadata: Record<string, unknown>,
+): typeof files {
+  const prior = existingMetadata[seriesId] as
+    | { fileEpisodes?: Array<{ filePath: string; status?: string; lastProbedAt?: number }> }
+    | undefined;
+  if (!prior?.fileEpisodes) return files;
+  const byPath = new Map(prior.fileEpisodes.map((f) => [f.filePath, f]));
+  return files.map((f) => {
+    const old = byPath.get(f.filePath);
+    if (!old) return f;
+    return { ...f, status: old.status ?? f.status, lastProbedAt: old.lastProbedAt ?? f.lastProbedAt };
+  });
+}
+
 // Vite env variables (injected by @electron-forge/plugin-vite at build time)
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
@@ -521,7 +538,7 @@ ipcMain.handle('scan-and-fetch-metadata', async (_event, folderPath: string) => 
             ...existing,
             seriesId: mediaId,
             title: finalTitle,
-            fileEpisodes: media.files.map(f => ({
+            fileEpisodes: preserveStatus(mediaId, media.files.map(f => ({
               episodeNumber: f.episodeNumber,
               seasonNumber: f.seasonNumber,
               filePath: f.filePath,
@@ -529,7 +546,9 @@ ipcMain.handle('scan-and-fetch-metadata', async (_event, folderPath: string) => 
               subtitlePaths: f.subtitlePaths,
               filename: f.filename,
               title: f.title,
-            })),
+              status: f.status,
+              lastProbedAt: f.lastProbedAt,
+            })), existingMetadata),
             folderPath: media.folderPath,
             type: media.type,
           };
@@ -722,7 +741,7 @@ ipcMain.handle('scan-and-fetch-metadata', async (_event, folderPath: string) => 
           posterLocal,
           bannerLocal,
           episodes: episodesWithLocalThumbs,
-          fileEpisodes: media.files.map(f => ({
+          fileEpisodes: preserveStatus(mediaId, media.files.map(f => ({
             episodeNumber: f.episodeNumber,
             seasonNumber: f.seasonNumber,
             filePath: f.filePath,
@@ -730,7 +749,9 @@ ipcMain.handle('scan-and-fetch-metadata', async (_event, folderPath: string) => 
             subtitlePaths: f.subtitlePaths,
             filename: f.filename,
             title: f.title,
-          })),
+            status: f.status,
+            lastProbedAt: f.lastProbedAt,
+          })), existingMetadata),
           folderPath: media.folderPath,
           type: media.type,
         };
@@ -775,7 +796,7 @@ ipcMain.handle('scan-and-fetch-metadata', async (_event, folderPath: string) => 
           banner: null,
           bannerLocal: null,
           episodes: localEpisodes,
-          fileEpisodes: media.files.map(f => ({
+          fileEpisodes: preserveStatus(mediaId, media.files.map(f => ({
             episodeNumber: f.episodeNumber,
             seasonNumber: f.seasonNumber,
             filePath: f.filePath,
@@ -783,7 +804,9 @@ ipcMain.handle('scan-and-fetch-metadata', async (_event, folderPath: string) => 
             subtitlePaths: f.subtitlePaths,
             filename: f.filename,
             title: f.title,
-          })),
+            status: f.status,
+            lastProbedAt: f.lastProbedAt,
+          })), existingMetadata),
           folderPath: media.folderPath,
           type: media.type,
           source: 'local',
