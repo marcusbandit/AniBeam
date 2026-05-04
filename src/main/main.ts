@@ -929,21 +929,22 @@ ipcMain.handle('scan-and-fetch-metadata', async (_event, folderPath: string) => 
   try {
     logger.info('folder', `Starting scan and metadata fetch for: ${folderPath}`, { file: folderPath });
 
-    // 1. Scan the folder to get all media
-    const scannedMedia = await folderHandler.scanFolder(folderPath);
-
-    // 2. Reconcile against disk inside a transaction. This is a crash-recovery
-    // checkpoint: if the per-series fetch loop below throws, the on-disk state
-    // is the reconciled state (deletions are not reverted).
     const activeRoots = await configHandler.getFolderSources();
+
+    // 1. Scan. Pass activeRoots so scanFolder treats a sub-folder (rescan-show)
+    // as part of its containing library root, not as a fresh root itself.
+    const scannedMedia = await folderHandler.scanFolder(folderPath, activeRoots);
+
+    // 2. Reconcile against disk inside a transaction. Crash-recovery checkpoint:
+    // if the per-series fetch loop below throws, on-disk state is the
+    // reconciled state (deletions are not reverted).
     const existingMetadata = await metadataHandler.transaction<Record<string, unknown>>(async (raw) => {
       const reconciled = await folderHandler.reconcileMetadata(raw, activeRoots);
       return { result: reconciled, updated: reconciled };
     }) ?? {};
 
-    // 3. For each scanned item, fetch metadata if not already cached. This loop
-    // is network-bound and runs OUTSIDE the lock — must not assume the in-memory
-    // `existingMetadata` matches disk by the time we save.
+    // 3. Fetch metadata for each scanned item. Network-bound; runs outside the
+    // lock — must not assume `existingMetadata` matches disk when we save.
     const newMetadata: Record<string, unknown> = {};
     for (const media of scannedMedia) {
       if (media.files.length === 0) {
@@ -954,10 +955,20 @@ ipcMain.handle('scan-and-fetch-metadata', async (_event, folderPath: string) => 
       Object.assign(newMetadata, slice);
     }
 
-    // 4. Merge into the FRESH on-disk state (not the snapshot we loaded earlier),
-    // so concurrent probe completions or watcher ingests aren't clobbered.
+    // 4. Merge into the FRESH on-disk state. Drop any existing entries whose
+    // folderPath is the scanned folder OR a descendant of it — those are
+    // either replaced by what's in newMetadata, or they're stale (e.g. orphan
+    // movie_* entries from earlier misclassifications) and should not survive.
+    const normalize = (p: string) => (p.endsWith('/') ? p.slice(0, -1) : p);
+    const normalizedScan = normalize(folderPath);
+    const scanPrefix = normalizedScan + '/';
     await metadataHandler.transaction(async (current) => {
-      const merged: Record<string, unknown> = { ...current };
+      const merged: Record<string, unknown> = {};
+      for (const [seriesId, seriesData] of Object.entries(current)) {
+        const fp = (seriesData as { folderPath?: string })?.folderPath;
+        const isUnderScan = fp && (normalize(fp) === normalizedScan || normalize(fp).startsWith(scanPrefix));
+        if (!isUnderScan) merged[seriesId] = seriesData;
+      }
       for (const [seriesId, seriesData] of Object.entries(newMetadata)) {
         merged[seriesId] = seriesData;
       }

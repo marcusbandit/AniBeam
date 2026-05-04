@@ -640,12 +640,19 @@ async function reconcileMetadata(
 }
 
 const folderHandler = {
-  async scanFolder(folderPath: string): Promise<ScannedMedia[]> {
+  /**
+   * Scan a folder for media. `folderPath` may be either a configured library
+   * root (full library scan) or a sub-folder beneath one (rescan a single
+   * show). When called with a sub-folder, `activeRoots` MUST be passed so we
+   * can locate the containing root and scan from there — otherwise scanDirectory
+   * would treat the series folder as a root and misclassify every episode
+   * directly inside it as a "movie at root."
+   */
+  async scanFolder(folderPath: string, activeRoots?: string[]): Promise<ScannedMedia[]> {
     if (!folderPath) {
       throw new Error('Folder path is required');
     }
 
-    // Validate path exists and is accessible
     try {
       const stats = await stat(folderPath);
       if (!stats.isDirectory()) {
@@ -658,7 +665,33 @@ const folderHandler = {
       throw error;
     }
 
-    return await scanDirectory(folderPath);
+    const normalize = (p: string) => (p.endsWith('/') ? p.slice(0, -1) : p);
+    const normalizedFolder = normalize(folderPath);
+
+    // No roots provided, or the path itself is one of the roots → scan directly.
+    const isItselfARoot = activeRoots?.some((r) => normalize(r) === normalizedFolder);
+    if (!activeRoots || activeRoots.length === 0 || isItselfARoot) {
+      return await scanDirectory(folderPath);
+    }
+
+    // Sub-folder of a library root → scan from the root and filter to results
+    // whose folderPath is the requested folder OR a descendant of it.
+    const matchingRoot = activeRoots
+      .filter((root) => {
+        const nr = normalize(root);
+        return normalizedFolder === nr || normalizedFolder.startsWith(nr + '/');
+      })
+      .sort((a, b) => b.length - a.length)[0];
+    if (!matchingRoot) {
+      logger.warn('folder', `${folderPath} is not under any active library root — falling back to direct scan`);
+      return await scanDirectory(folderPath);
+    }
+    const all = await scanDirectory(matchingRoot);
+    const prefix = normalizedFolder + '/';
+    return all.filter((media) => {
+      const mp = normalize(media.folderPath);
+      return mp === normalizedFolder || mp.startsWith(prefix);
+    });
   },
 
   async scanMultipleFolders(folderPaths: string[]): Promise<ScannedMedia[]> {
