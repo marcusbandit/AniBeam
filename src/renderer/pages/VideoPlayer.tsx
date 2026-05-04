@@ -3,8 +3,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useMetadata, type FileEpisode } from '../hooks/useMetadata.js';
 import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Minimize, Subtitles } from 'lucide-react';
 import JASSUB from 'jassub';
-import jassubWorkerUrl from 'jassub/dist/jassub-worker.js?url';
-import jassubWasmUrl from 'jassub/dist/jassub-worker.wasm?url';
+import jassubWorkerUrl from 'jassub/dist/worker/worker.js?url';
+import jassubWasmUrl from 'jassub/dist/wasm/jassub-worker.wasm?url';
 
 interface SubtitleTrack {
   src: string;        // file:// or media:// or blob: URL — used for native VTT or JASSUB
