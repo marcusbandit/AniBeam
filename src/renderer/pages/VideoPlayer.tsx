@@ -281,32 +281,50 @@ function VideoPlayer() {
     const video = videoRef.current;
     if (!video) return;
 
-    // Always tear down JASSUB and disable every native track first; then
-    // turn on whichever the new selection requires.
     tearDownJassub();
     for (let i = 0; i < video.textTracks.length; i++) {
       video.textTracks[i].mode = 'disabled';
     }
+    setActiveSubIdx(idx);
+    if (idx < 0 || idx >= subtitleSrcs.length) return;
 
-    if (idx >= 0 && idx < subtitleSrcs.length) {
-      const sub = subtitleSrcs[idx];
-      if (sub.format === 'ass') {
+    const sub = subtitleSrcs[idx];
+
+    if (sub.format === 'ass') {
+      // Fetch the ASS file in the renderer (where the media:// protocol IS
+      // registered) and hand the content to JASSUB. The JASSUB worker can't
+      // fetch arbitrary URLs reliably from its own context.
+      void (async () => {
         try {
-          jassubRef.current = new JASSUB({
+          const resp = await fetch(sub.src);
+          if (!resp.ok) throw new Error(`fetch ${sub.src} → ${resp.status}`);
+          const subContent = await resp.text();
+          // The user may have switched again before this resolves; bail.
+          if (jassubRef.current) return;
+          const inst = new JASSUB({
             video,
-            subUrl: sub.src,
+            subContent,
             workerUrl: jassubWorkerUrl,
             wasmUrl: jassubWasmUrl,
           });
+          jassubRef.current = inst;
         } catch (err) {
           console.error('JASSUB init failed:', err);
         }
-      } else {
-        const t = findVttTrack(sub);
-        if (t) t.mode = 'showing';
-      }
+      })();
+      return;
     }
-    setActiveSubIdx(idx);
+
+    // VTT path. The native <track>'s TextTrack may not have appeared in
+    // video.textTracks yet right after subtitleSrcs changes — give it a
+    // microtask to materialize, then retry.
+    const tryEnable = (attempt = 0) => {
+      const t = findVttTrack(sub);
+      if (t) { t.mode = 'showing'; return; }
+      if (attempt < 10) setTimeout(() => tryEnable(attempt + 1), 50);
+      else console.warn('No matching textTrack for', sub.label);
+    };
+    tryEnable();
   };
 
   // Activate the default subtitle (VTT or ASS) when the list changes.
