@@ -524,6 +524,30 @@ ipcMain.handle('fetch-anilist-metadata', async (_event, seriesName: string, seas
   }
 });
 
+// Match-picker search: returns multiple AniList results for the user to choose
+// from. Lighter than fetch-metadata — no episode fetch, no filtering, no
+// fallback dance. Used by the metadata-override modal.
+ipcMain.handle('anilist:search', async (_event, query: string, limit?: number) => {
+  if (!query || typeof query !== 'string' || query.trim().length === 0) return [];
+  try {
+    return await anilistHandler.searchAnimeMultiple(query.trim(), typeof limit === 'number' ? limit : 12);
+  } catch (error) {
+    if (!isRateLimitError(error)) logger.error('metadata', 'Error searching AniList for picker');
+    return [];
+  }
+});
+
+// Override path: the user picked a specific AniList ID in the modal.
+ipcMain.handle('anilist:fetch-by-id', async (_event, id: number, seasonNumber?: number | null) => {
+  if (typeof id !== 'number' || !Number.isFinite(id)) return null;
+  try {
+    return await anilistHandler.fetchMetadataById(id, seasonNumber ?? null);
+  } catch (error) {
+    if (!isRateLimitError(error)) logger.error('metadata', 'Error fetching AniList metadata by id');
+    return null;
+  }
+});
+
 ipcMain.handle('save-metadata', async (_event, metadata: Record<string, unknown>) => {
   try {
     return await metadataHandler.saveMetadata(metadata);
@@ -823,7 +847,7 @@ async function processOneMedia(
         episodesWithLocalThumbs.push({
           episodeNumber: fileEp.episodeNumber,
           seasonNumber: epSeason ?? undefined,
-          title: `Episode ${fileEp.episodeNumber.toFixed(1)}`,
+          title: fileEp.episodeNumber === 0 ? 'Special' : `Episode ${fileEp.episodeNumber.toFixed(1)}`,
           description: null,
           airDate: null,
           thumbnail: null,
@@ -877,7 +901,7 @@ async function processOneMedia(
       localEpisodes.push({
         episodeNumber: f.episodeNumber,
         seasonNumber: f.seasonNumber,
-        title: f.title || `Episode ${f.episodeNumber}`,
+        title: f.title || (f.episodeNumber === 0 ? 'Special' : `Episode ${f.episodeNumber}`),
         description: null,
         airDate: null,
         thumbnail: null,

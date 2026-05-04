@@ -4,6 +4,7 @@ import type { EpisodeMetadata } from "../hooks/useMetadata";
 import type { FileStatus } from "../../shared/fileStatus";
 import { Play } from "lucide-react";
 import { getProgressFraction, readProgress } from "../utils/playbackProgress";
+import { formatEpisodeCode } from "../utils/airingUtils";
 
 function getImageUrl(localPath?: string | null, remotePath?: string | null): string | null {
   if (localPath) return `media://${encodeURIComponent(localPath)}`;
@@ -15,8 +16,8 @@ function formatEpisodeNumber(episodeNumber: number): string {
   return episodeNumber.toString();
 }
 
-function pad(n: number): string {
-  return n < 10 ? `0${n}` : `${n}`;
+function isSpecial(ep: EpisodeMetadata): boolean {
+  return ep.episodeNumber === 0 || ep.seasonNumber === 0;
 }
 
 interface EpisodeCardProps {
@@ -43,9 +44,8 @@ function EpisodeCard({ seriesId, episode, hasFile }: EpisodeCardProps) {
 
   const thumbnailUrl = getImageUrl(episode.thumbnailLocal, episode.thumbnail);
 
-  const code = episode.seasonNumber !== null && episode.seasonNumber !== undefined
-    ? `S${pad(episode.seasonNumber)}E${formatEpisodeNumber(episode.episodeNumber).padStart(2, "0")}`
-    : `EP ${formatEpisodeNumber(episode.episodeNumber)}`;
+  const code = formatEpisodeCode(episode);
+  const special = isSpecial(episode);
 
   // Pull progress every render. localStorage parse is microseconds, and the
   // SeriesDetailPage remounts when returning from the player so the value
@@ -77,7 +77,7 @@ function EpisodeCard({ seriesId, episode, hasFile }: EpisodeCardProps) {
             }}
           />
         ) : (
-          <span className="episode-thumb-number">{formatEpisodeNumber(episode.episodeNumber).padStart(2, "0")}</span>
+          <span className="episode-thumb-number">{special ? "SP" : formatEpisodeNumber(episode.episodeNumber).padStart(2, "0")}</span>
         )}
         {hasFile && isReady && (
           <div className="episode-play-icon">
@@ -107,7 +107,7 @@ function EpisodeCard({ seriesId, episode, hasFile }: EpisodeCardProps) {
           {!hasFile && <span className="episode-na">Not on disk</span>}
         </div>
         <div className="episode-title">
-          {episode.title || `Episode ${episode.episodeNumber}`}
+          {episode.title || (special ? "Special" : `Episode ${episode.episodeNumber}`)}
         </div>
         {episode.airDate && (
           <div className="episode-date">

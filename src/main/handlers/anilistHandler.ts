@@ -211,6 +211,48 @@ const EPISODES_QUERY = gql`
   }
 `;
 
+const MEDIA_BY_ID_QUERY = gql`
+  query ($id: Int) {
+    Media(id: $id, type: ANIME) {
+      id
+      title {
+        romaji
+        english
+        native
+      }
+      description
+      genres
+      coverImage {
+        large
+        extraLarge
+      }
+      bannerImage
+      episodes
+      duration
+      season
+      seasonYear
+      status
+      format
+      startDate {
+        year
+        month
+        day
+      }
+      endDate {
+        year
+        month
+        day
+      }
+      averageScore
+      studios {
+        nodes {
+          name
+        }
+      }
+    }
+  }
+`;
+
 const anilistHandler = {
   async searchAnime(searchTerm: string): Promise<AniListMedia | null> {
     try {
@@ -508,6 +550,57 @@ const anilistHandler = {
         return null;
       }
       logger.error('metadata', 'Error fetching AniList metadata');
+      return null;
+    }
+  },
+
+  async getMediaById(id: number): Promise<AniListMedia | null> {
+    try {
+      const data = await request<{ Media: AniListMedia | null }>(ANILIST_API_URL, MEDIA_BY_ID_QUERY, { id });
+      return data?.Media ?? null;
+    } catch (error) {
+      if (isRateLimitError(error)) {
+        logRateLimitWarning('AniList');
+        throw error;
+      }
+      logger.error('metadata', 'Error fetching AniList media by ID');
+      throw error;
+    }
+  },
+
+  // Override path: caller has already chosen a specific AniList ID via the
+  // match picker. Skip the search/filter logic — fetch the exact media plus
+  // its episodes and format. seasonNumber is used only for episode tagging
+  // and the seriesId suffix; pass it when overriding inside a season-specific
+  // entry so the seriesId stays stable across re-overrides.
+  async fetchMetadataById(id: number, seasonNumber?: number | null): Promise<SeriesMetadata | null> {
+    try {
+      const media = await this.getMediaById(id);
+      if (!media) return null;
+
+      let episodes: EpisodeMetadata[] = [];
+      let retries = 0;
+      const maxRetries = 3;
+      while (retries < maxRetries) {
+        try {
+          episodes = await this.getEpisodes(media.id, media.episodes, seasonNumber);
+          break;
+        } catch (error) {
+          if (isRateLimitError(error) && retries < maxRetries) {
+            retries++;
+            const delaySeconds = retries * 2;
+            logger.warn('metadata', `Rate limited fetching episodes by id. Waiting ${delaySeconds}s (retry ${retries}/${maxRetries})`);
+            await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));
+          } else {
+            throw error;
+          }
+        }
+      }
+
+      return this.formatMetadata(media, episodes, seasonNumber);
+    } catch (error) {
+      if (isRateLimitError(error)) return null;
+      logger.error('metadata', 'Error fetching AniList metadata by id');
       return null;
     }
   },

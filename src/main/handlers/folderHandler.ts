@@ -69,13 +69,21 @@ function extractSeasonAndEpisode(filename: string): { season: number | null; epi
   // contents like [F1E24928] that would falsely match /E(\d{2,})/.
   const baseName = stripFilename(filename);
 
+  // Episode 0 == Special. Force season to 0 (Plex/Jellyfin "Specials" season
+  // convention) regardless of any S0NE00 hint in the filename, so downstream
+  // sort/display can distinguish specials from real episodes uniformly.
+  const finalize = (season: number | null, episode: number): { season: number | null; episode: number } => {
+    if (episode === 0) return { season: 0, episode: 0 };
+    return { season, episode };
+  };
+
   // First, try to extract season and episode from S01E01 format
   const seasonEpisodeMatch = baseName.match(/\bS(\d+)E(\d+)\b/i);
   if (seasonEpisodeMatch) {
-    return {
-      season: parseInt(seasonEpisodeMatch[1], 10),
-      episode: parseInt(seasonEpisodeMatch[2], 10),
-    };
+    return finalize(
+      parseInt(seasonEpisodeMatch[1], 10),
+      parseInt(seasonEpisodeMatch[2], 10),
+    );
   }
 
   // Try various patterns to extract episode number
@@ -84,10 +92,7 @@ function extractSeasonAndEpisode(filename: string): { season: number | null; epi
     const whole = parseInt(decimalEpisodeMatch[1], 10);
     const decimal = parseInt(decimalEpisodeMatch[2], 10);
     // Store as actual decimal: 6.5, 7.5, 10.5, etc.
-    return {
-      season: null,
-      episode: whole + decimal / 10,
-    };
+    return finalize(null, whole + decimal / 10);
   }
 
   const patterns = [
@@ -101,10 +106,7 @@ function extractSeasonAndEpisode(filename: string): { season: number | null; epi
   for (const pattern of patterns) {
     const match = baseName.match(pattern);
     if (match) {
-      return {
-        season: null,
-        episode: parseInt(match[1], 10),
-      };
+      return finalize(null, parseInt(match[1], 10));
     }
   }
 
@@ -122,10 +124,7 @@ function extractSeasonAndEpisode(filename: string): { season: number | null; epi
     });
 
     if (nonYearNumbers.length > 0) {
-      return {
-        season: null,
-        episode: parseInt(nonYearNumbers[nonYearNumbers.length - 1], 10),
-      };
+      return finalize(null, parseInt(nonYearNumbers[nonYearNumbers.length - 1], 10));
     }
   }
 
@@ -170,98 +169,18 @@ function extractPartNumber(folderName: string): number | null {
   return null;
 }
 
-function extractSeriesNameFromFilenames(videoFiles: VideoFile[]): string {
-  if (videoFiles.length === 0) {
-    return '';
-  }
-
-  // Extract base names (extension + brackets stripped via stripFilename) and
-  // strip episode/season patterns to find the series name.
-  const cleanedNames = videoFiles.map(video => {
-    let cleaned = stripFilename(video.filename)
-      .replace(/\s*\bS\d+E\d+(\.\d+)?\b.*$/i, '')                 // Remove S01E01, S1E1, S01E10.5, etc.
-      .replace(/\s*\bE\d+(\.\d+)?\b.*$/i, '')                     // Remove E01, E1, E10.5 patterns (keep everything before)
-      .replace(/\s*\bPart\s*\d+\b.*$/i, '')                       // Remove 'Part 1', 'Part 2', etc.
-      .replace(/\s*\bSeason\s*\d+\b.*$/i, '')                     // Remove 'Season 1', 'Season 2', etc. NOT removing 'season' only if it has a number after it.
-      .replace(/\s*Episode\s*\d+(\.\d+)?[ab]?\s*.*$/i, '')        // Remove 'Episode 10', 'Episode 10.5', 'Episode 12a', etc.
-      .replace(/\s*Ep\.?\s*\d+(\.\d+)?[ab]?\s*.*$/i, '')          // Remove 'Ep 12', 'Ep. 10.5', etc.
-      .replace(/\s*-\s*\d{1,4}(?:\.\d+)?[ab]?(?:\s|$).*$/, '')    // Remove episode at end like '- 01', '- 10.5', '- 12a' but not years
-      .replace(/\s+\d{1,3}(?!\d)(?:\s|$)/g, '')                   // Remove standalone numbers (1-3 digits) unless part of larger numbers
-      .replace(/\s*\(\d{4}\)\s*$/, '')                            // Remove trailing years (2020), (2021), etc
-      .replace(/\s*\([^)]*\)\s*/g, ' ')                           // Remove other parentheses content
-      .replace(/\./g, ' ')                                        // Replace dots with spaces
-      .replace(/_/g, ' ')                                         // Replace underscores with spaces
-      .replace(/\s+/g, ' ')                                       // Normalize whitespace
-      .trim();
-
-    return cleaned;
-  });
-
-  // Find the longest common prefix
-  if (cleanedNames.length === 1) {
-    return cleanedNames[0];
-  }
-
-  // Sort by length to find common patterns
-  cleanedNames.sort((a, b) => a.length - b.length);
-  const shortest = cleanedNames[0];
-
-  // Find longest common prefix
-  let commonPrefix = '';
-  for (let i = 0; i < shortest.length; i++) {
-    const char = shortest[i];
-    if (cleanedNames.every(name => name[i] === char)) {
-      commonPrefix += char;
-    } else {
-      break;
-    }
-  }
-
-  // Clean up the common prefix (remove trailing dashes, spaces, etc)
-  let result = commonPrefix
-    .replace(/[-_\s]+$/, '')  // Remove trailing dashes, underscores, spaces
+// Series name = folder name with Season/Part markers and trailing release year
+// stripped. The folder is the source of truth — filenames are only used for
+// episode-level data.
+function extractSeriesNameFromFolder(folderName: string): string {
+  return folderName
+    .replace(/\s*\bSeason\s*\d+\b/gi, '')
+    .replace(/\s*\bS\d+\b/g, '')
+    .replace(/\s*\bPart\s*\d+\b/gi, '')
+    .replace(/\s*\bP\d+\b/g, '')
+    .replace(/\s*\(\d{4}\)\s*$/, '')
+    .replace(/\s+/g, ' ')
     .trim();
-
-  // If common prefix is too short or empty, try finding common words
-  if (result.length < 3) {
-    // Extract first few words that appear in all filenames
-    // Don't filter out numeric words - they might be part of the series name (e.g., "86" aka top 10 anime of all time. fight me.)
-    const firstFileWords = cleanedNames[0].split(/\s+/).filter(w => w.length > 0);
-    const commonWords: string[] = [];
-
-    for (let i = 0; i < firstFileWords.length; i++) {
-      const word = firstFileWords[i];
-
-      if (cleanedNames.every(name => {
-        const words = name.split(/\s+/).filter(w => w.length > 0);
-        // Check if word exists at position i before comparing
-        return i < words.length && words[i] === word;
-      })) {
-        commonWords.push(word);
-      } else {
-        break;
-      }
-    }
-
-    result = commonWords.join(' ').trim();
-  }
-
-  // Fallback: if still empty, use the shortest cleaned name
-  if (!result || result.length < 2) {
-    result = cleanedNames[0];
-  }
-
-  // Final cleanup: remove any remaining trailing numbers or dashes
-  result = result
-    .replace(/\s*-\s*$/, '')
-    .replace(/\s+\d+\s*$/, '')
-    .trim();
-
-  if (result.length <= 3 && /^\d+$/.test(result)) {
-    return result;
-  }
-
-  return result;
 }
 
 function generateSeriesId(seriesName: string, folderName: string, seasonNumber: number | null, partNumber: number | null): string {
@@ -376,157 +295,121 @@ async function scanFolderForVideos(folderPath: string, folderSeason: number | nu
   return { videos: [], subtitles };
 }
 
+// Walk a folder tree and emit ScannedMedia. Rule: a folder that contains
+// video files IS a series (its name is the series name). A folder that
+// contains subfolders has its name skipped — recurse instead. The configured
+// library root is special: files directly in it are treated as loose movies
+// regardless. A folder mixing subfolders + loose videos: recurse into the
+// subfolders, treat the loose videos as movies (their folder's name is
+// "skipped" per the rule, so it can't be a series).
+async function collectMediaRecursive(
+  folderPath: string,
+  results: ScannedMedia[],
+  isLibraryRoot: boolean,
+): Promise<void> {
+  const folderName = basename(folderPath);
+
+  let entries: string[];
+  try {
+    entries = await readdir(folderPath);
+  } catch {
+    logger.warn('folder', `Could not read ${folderPath}`, { file: folderPath });
+    return;
+  }
+
+  const subDirs: string[] = [];
+  const videoFilenames: string[] = [];
+
+  for (const entry of entries) {
+    const fullPath = join(folderPath, entry);
+    try {
+      const stats = await stat(fullPath);
+      if (stats.isDirectory()) {
+        subDirs.push(entry);
+      } else if (stats.isFile() && isVideoFile(entry)) {
+        videoFilenames.push(entry);
+      }
+    } catch {
+      logger.warn('folder', `Could not stat ${fullPath}`, { file: fullPath });
+    }
+  }
+
+  const looseVideosAreMovies = isLibraryRoot || subDirs.length > 0;
+
+  if (videoFilenames.length > 0 && looseVideosAreMovies) {
+    for (const entry of videoFilenames) {
+      const filePath = join(folderPath, entry);
+      const movieTitle = cleanMovieTitle(entry);
+      const movieId = movieTitle.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+      const { episode } = extractSeasonAndEpisode(entry);
+
+      logger.info('folder', `Movie: ${entry} → search: "${movieTitle}"`, { series: movieTitle });
+
+      results.push({
+        id: `movie_${movieId}`,
+        name: movieTitle,
+        type: 'movie',
+        folderPath,
+        files: [{
+          filename: entry,
+          filePath,
+          title: cleanEpisodeTitle(entry),
+          episodeNumber: episode,
+          seasonNumber: null,
+          subtitlePath: null,
+          subtitlePaths: [],
+          parentFolder: folderName,
+          status: 'ready',
+        }],
+        seasonNumber: null,
+        partNumber: null,
+      });
+    }
+  } else if (videoFilenames.length > 0) {
+    // Pure series folder (no subfolders): folder name = series name.
+    const seasonFromFolder = extractSeasonNumber(folderName);
+    const partFromFolder = extractPartNumber(folderName);
+    const seriesName = extractSeriesNameFromFolder(folderName);
+    const seriesId = generateSeriesId(seriesName, folderName, seasonFromFolder, partFromFolder);
+
+    // scanFolderForVideos handles subtitle pairing + episode/season parsing.
+    const { videos } = await scanFolderForVideos(folderPath, seasonFromFolder);
+
+    const seasonInfo = seasonFromFolder ? `, Season ${seasonFromFolder}` : '';
+    const partInfo = partFromFolder ? `, Part ${partFromFolder}` : '';
+    logger.info(
+      'folder',
+      `Series: ${folderName} (${videos.length} episode${videos.length > 1 ? 's' : ''}${seasonInfo}${partInfo}) → search: "${seriesName}" → ID: "${seriesId}"`,
+      { series: seriesName },
+    );
+
+    results.push({
+      id: seriesId,
+      name: seriesName,
+      type: 'series',
+      folderPath,
+      files: videos.sort((a, b) => {
+        const seasonA = a.seasonNumber ?? 0;
+        const seasonB = b.seasonNumber ?? 0;
+        if (seasonA !== seasonB) return seasonA - seasonB;
+        return a.episodeNumber - b.episodeNumber;
+      }),
+      seasonNumber: seasonFromFolder,
+      partNumber: partFromFolder,
+    });
+  }
+
+  for (const subDir of subDirs) {
+    await collectMediaRecursive(join(folderPath, subDir), results, false);
+  }
+}
+
 async function scanDirectory(rootPath: string): Promise<ScannedMedia[]> {
   const results: ScannedMedia[] = [];
-
   logger.info('folder', `Scanning: ${rootPath}`, { file: rootPath });
 
   try {
-    const entries = await readdir(rootPath);
-
-    for (const entry of entries) {
-      const entryPath = join(rootPath, entry);
-
-      try {
-        const stats = await stat(entryPath);
-
-        if (stats.isDirectory()) {
-          // This is a subfolder - could be a category (Movies, Series) or a series folder
-          const { videos: subVideos } = await scanFolderForVideos(entryPath);
-
-          // Check for nested subfolders (like Series/ShowName/)
-          const subEntries = await readdir(entryPath);
-          const subDirs: string[] = [];
-
-          for (const subEntry of subEntries) {
-            const subPath = join(entryPath, subEntry);
-            try {
-              const subStats = await stat(subPath);
-              if (subStats.isDirectory()) {
-                subDirs.push(subEntry);
-              }
-            } catch {
-              // Skip
-            }
-          }
-
-          if (subDirs.length > 0 && subVideos.length === 0) {
-            // This is a CATEGORY folder (like "Series") containing series subfolders
-            logger.info('folder', `Category folder: ${entry}`);
-
-            for (const subDir of subDirs) {
-              const seriesPath = join(entryPath, subDir);
-              const seasonFromFolder = extractSeasonNumber(subDir);
-              const partFromFolder = extractPartNumber(subDir);
-              const { videos } = await scanFolderForVideos(seriesPath, seasonFromFolder);
-
-              if (videos.length > 0) {
-                const seriesName = extractSeriesNameFromFilenames(videos);
-                const seriesId = generateSeriesId(seriesName, subDir, seasonFromFolder, partFromFolder);
-
-                const partInfo = partFromFolder ? `, Part ${partFromFolder}` : '';
-                const seasonInfo = seasonFromFolder ? `, Season ${seasonFromFolder}` : '';
-                logger.info('folder', `Series: ${subDir} (${videos.length} episodes${seasonInfo}${partInfo}) → search: "${seriesName}" → ID: "${seriesId}"`, { series: seriesName });
-
-                results.push({
-                  id: seriesId,
-                  name: seriesName,
-                  type: 'series',
-                  folderPath: seriesPath,
-                  files: videos.sort((a, b) => {
-                    // Sort by season first, then episode
-                    const seasonA = a.seasonNumber ?? 0;
-                    const seasonB = b.seasonNumber ?? 0;
-                    if (seasonA !== seasonB) return seasonA - seasonB;
-                    return a.episodeNumber - b.episodeNumber;
-                  }),
-                  seasonNumber: seasonFromFolder,
-                  partNumber: partFromFolder,
-                });
-              }
-            }
-
-            // Also check for loose video files in category (like Movies/movie.mp4)
-            if (subVideos.length > 0) {
-              logger.info('folder', `Loose videos in ${entry}: ${subVideos.length}`);
-
-              for (const video of subVideos) {
-                const movieTitle = cleanMovieTitle(video.filename);
-                const movieId = movieTitle.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
-
-                logger.info('folder', `Movie: ${video.filename} → search: "${movieTitle}"`, { series: movieTitle });
-
-                results.push({
-                  id: `movie_${movieId}`,
-                  name: movieTitle,
-                  type: 'movie',
-                  folderPath: entryPath,
-                  files: [video],
-                  seasonNumber: null,
-                  partNumber: null,
-                });
-              }
-            }
-          } else if (subVideos.length > 0) {
-            // This folder directly contains videos - treat as series (folder name is series name)
-            // Don't assume single video = movie - user may just have 1 episode downloaded
-            const seriesName = extractSeriesNameFromFilenames(subVideos);
-            const seasonFromFolder = extractSeasonNumber(entry);
-            const partFromFolder = extractPartNumber(entry);
-            const seriesId = generateSeriesId(seriesName, entry, seasonFromFolder, partFromFolder);
-
-            const partInfo = partFromFolder ? `, Part ${partFromFolder}` : '';
-            const seasonInfo = seasonFromFolder ? `, Season ${seasonFromFolder}` : '';
-            logger.info('folder', `Series: ${entry} (${subVideos.length} episode${subVideos.length > 1 ? 's' : ''}${seasonInfo}${partInfo}) → search: "${seriesName}" → ID: "${seriesId}"`, { series: seriesName });
-
-            results.push({
-              id: seriesId,
-              name: seriesName,
-              type: 'series',
-              folderPath: entryPath,
-              files: subVideos.sort((a, b) => {
-                // Sort by season first, then episode
-                const seasonA = a.seasonNumber ?? 0;
-                const seasonB = b.seasonNumber ?? 0;
-                if (seasonA !== seasonB) return seasonA - seasonB;
-                return a.episodeNumber - b.episodeNumber;
-              }),
-              seasonNumber: seasonFromFolder,
-              partNumber: partFromFolder,
-            });
-          }
-        } else if (stats.isFile() && isVideoFile(entry)) {
-          // Video file directly in root - treat as standalone movie
-          const movieTitle = cleanMovieTitle(entry);
-          const movieId = movieTitle.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
-
-          logger.info('folder', `Movie (root): ${entry} → search: "${movieTitle}"`, { series: movieTitle });
-
-          const { episode: movieEpisode } = extractSeasonAndEpisode(entry);
-          results.push({
-            id: `movie_${movieId}`,
-            name: movieTitle,
-            type: 'movie',
-            folderPath: rootPath,
-            files: [{
-              filename: entry,
-              filePath: entryPath,
-              title: cleanEpisodeTitle(entry),
-              episodeNumber: movieEpisode,
-              seasonNumber: null,
-              subtitlePath: null,
-              subtitlePaths: [],
-              parentFolder: basename(rootPath),
-              status: 'ready',
-            }],
-            seasonNumber: null,
-            partNumber: null,
-          });
-        }
-      } catch (err) {
-        logger.warn('folder', `Could not process ${entryPath}`, { file: entryPath });
-      }
-    }
+    await collectMediaRecursive(rootPath, results, true);
   } catch (error) {
     logger.error('folder', `Error scanning root directory ${rootPath}`, { file: rootPath });
     throw error;

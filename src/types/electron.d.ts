@@ -8,6 +8,18 @@ interface CacheStats {
   sizeBytes: number;
 }
 
+export interface AnilistSearchResult {
+  id: number;
+  title: { romaji: string; english: string | null; native: string };
+  coverImage: { large: string; extraLarge: string } | null;
+  bannerImage: string | null;
+  format: string;
+  status: string;
+  episodes: number | null;
+  season: string | null;
+  seasonYear: number | null;
+}
+
 export interface ElectronAPI {
   // Config
   getFolderSources: () => Promise<string[]>;
@@ -30,6 +42,10 @@ export interface ElectronAPI {
   clearMetadata: () => Promise<boolean>;
   deleteSeries: (seriesId: string) => Promise<boolean>;
   getSeriesEpisodes: (seriesId: string) => Promise<unknown[]>;
+
+  // Match picker
+  searchAnilist: (query: string, limit?: number) => Promise<AnilistSearchResult[]>;
+  fetchAnilistById: (id: number, seasonNumber?: number | null) => Promise<unknown>;
   
   // Image cache
   getImageCacheStats: () => Promise<CacheStats>;

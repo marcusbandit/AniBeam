@@ -134,10 +134,13 @@ export function formatRelativeDate(date: Date | string | null | undefined): stri
 }
 
 /**
- * Format an episode code: S01E04 when both seasons known, EP 4 otherwise.
+ * Format an episode code: "Special" for episode 0 / season 0 (Specials
+ * convention from the file scanner), S01E04 when seasons are known, EP 4
+ * otherwise.
  */
 export function formatEpisodeCode(ep: EpisodeMetadata | null): string {
   if (!ep) return "";
+  if (ep.episodeNumber === 0 || ep.seasonNumber === 0) return "Special";
   const epNum = Number.isInteger(ep.episodeNumber)
     ? String(ep.episodeNumber).padStart(2, "0")
     : ep.episodeNumber.toFixed(1);
