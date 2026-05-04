@@ -754,6 +754,18 @@ a { color: inherit; text-decoration: none; }
   background: #000;
 }
 
+/* JASSUB renders the active ASS track into this canvas. Stretches over
+   the video; sits below the player chrome (z-index 5) so subs don't
+   cover the controls bar. */
+.player-ass-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 4;
+}
+
 /* Custom player controls — replaces native <video controls>. No Chromium
    pseudo-elements involved; we render a regular bar with regular range
    inputs we can size and style cleanly. */
