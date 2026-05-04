@@ -352,37 +352,24 @@ function VideoPlayer() {
           await (inst as unknown as { ready?: Promise<unknown> }).ready;
           console.log('[subs] JASSUB ready for', sub.label);
 
-          // Drive sub renders ONLY when a new video frame has actually been
-          // presented. We poll on rAF (cheap) and watch
-          // `getVideoPlaybackQuality().totalVideoFrames` — that counter
-          // advances exactly once per displayed video frame. Each detected
-          // increment → one manualRender with the current mediaTime. This
-          // achieves the same per-frame sync as rVFC but works reliably in
-          // this Electron context (rVFC was firing intermittently).
+          // Render every rAF tick with the current mediaTime. JASSUB's
+          // internal _demandRender skips redundant renders (same frame, no
+          // change since last) so this is cheap. Letting it dedupe internally
+          // avoids the trap of trying to be clever with frame counters that
+          // don't update on the same cadence as the compositor.
           const renderRef = (inst as unknown as { manualRender: (m: { expectedDisplayTime: number; width: number; height: number; mediaTime: number }) => Promise<unknown> });
-          let lastFrameCount = -1;
-
-          const callRender = (m: { expectedDisplayTime: number; width: number; height: number; mediaTime: number }) => {
-            try { void renderRef.manualRender(m); } catch { /* ignore */ }
-          };
-
           const pump = () => {
             if (jassubRef.current !== inst) return;
             const v = videoRef.current;
-            if (v && !v.paused && v.readyState >= 2) {
-              const q = v.getVideoPlaybackQuality?.();
-              const frames = q ? q.totalVideoFrames : -1;
-              // First tick after attach OR when the video frame counter has
-              // advanced → one render at the current mediaTime.
-              if (frames !== lastFrameCount) {
-                lastFrameCount = frames;
-                callRender({
+            if (v && v.readyState >= 2) {
+              try {
+                void renderRef.manualRender({
                   expectedDisplayTime: performance.now(),
                   width: v.videoWidth,
                   height: v.videoHeight,
                   mediaTime: v.currentTime,
                 });
-              }
+              } catch { /* ignore */ }
             }
             requestAnimationFrame(pump);
           };
