@@ -338,7 +338,7 @@ function VideoPlayer() {
           // construction; force a resize once the video has dimensions.
           requestAnimationFrame(() => {
             try {
-              inst.resize(video.clientWidth, video.clientHeight, 0, 0);
+              void inst.resize(true, video.clientWidth, video.clientHeight);
             } catch { /* ignore */ }
           });
           console.log('[subs] JASSUB initialized for', sub.label, video.clientWidth, 'x', video.clientHeight);
