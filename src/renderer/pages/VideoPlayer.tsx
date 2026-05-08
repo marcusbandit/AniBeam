@@ -827,9 +827,10 @@ function VideoPlayer() {
     if (!seriesAnilistId && !seriesMalId) {
       // Surface the bail in both auto and manual cases — silent failures
       // here were the cause of "I watched a full episode and nothing
-      // happened". Most common reason: the series metadata wasn't fetched
-      // from AniList (so anilistId is missing). Re-scan that title.
-      showTrackerToast('No AniList/MAL id on this series — re-scan with AniList enabled.');
+      // happened". Most common reason: poster auto-match didn't find a
+      // confident hit, so the series has no anilistId/malId. Match it
+      // manually from the Metadata tab.
+      showTrackerToast('No AniList/MAL id on this series — match it from the Metadata tab.');
       return;
     }
     type MarkRes = Awaited<ReturnType<typeof window.electronAPI.trackerMarkEpisode>>;
@@ -875,7 +876,7 @@ function VideoPlayer() {
       // fire actually happened, just nothing to bump.
       showTrackerToast(summary.join(' · '));
     } else if (anyNotConnected) {
-      showTrackerToast('No tracker connected. Open Trackers tab to link.');
+      showTrackerToast('No tracker connected. Link AniList/MAL in Settings.');
     } else if (origin === 'manual') {
       showTrackerToast('Nothing to update.');
     }

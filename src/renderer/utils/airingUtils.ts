@@ -9,7 +9,7 @@ export interface AiringShow {
 
 /**
  * Normalize a status string from any source (AniList: RELEASING / FINISHED;
- * MAL: "Currently Airing" / "Finished Airing"; TVDB: similar) into one of:
+ * MAL: "Currently Airing" / "Finished Airing") into one of:
  * "releasing" | "finished" | "upcoming" | "cancelled" | "hiatus" | "" (unknown).
  */
 export function normalizeStatus(status?: string | null): string {

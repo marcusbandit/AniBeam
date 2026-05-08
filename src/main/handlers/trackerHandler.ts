@@ -8,6 +8,7 @@ import { logger } from '../services/logger';
 import {
   type TrackerProvider,
   type TrackerStatus,
+  type ProgressSnapshot,
   setAccount,
   clearAccount,
   getAccount,
@@ -18,6 +19,11 @@ import {
   getClientId,
   setClientSecret,
   getClientSecret,
+  getMainProvider,
+  setMainProvider,
+  getProgressSnapshot,
+  replaceProgress,
+  setProgressEntry,
 } from '../services/trackerStore';
 
 import { LOOPBACK_HOST, LOOPBACK_PORT, LOOPBACK_REDIRECT_URI } from '../../shared/trackerConstants';
@@ -387,6 +393,7 @@ async function markAnilist(token: string, mediaId: number, ep: number, total: nu
   );
 
   await markSync('anilist');
+  await setProgressEntry('anilist', mediaId, ep);
   logger.info('tracker', `anilist ${previousProgress} → ${ep} (mediaId ${mediaId})`);
   return { ok: true, provider: 'anilist', newProgress: ep, previousProgress };
 }
@@ -424,8 +431,127 @@ async function markMal(token: string, mediaId: number, ep: number, total: number
   });
 
   await markSync('mal');
+  await setProgressEntry('mal', mediaId, ep);
   logger.info('tracker', `mal ${previousProgress} → ${ep} (mediaId ${mediaId})`);
   return { ok: true, provider: 'mal', newProgress: ep, previousProgress };
+}
+
+// ----- Bulk progress fetch (one call per provider, cached on disk) -----
+
+const PROGRESS_FETCH_TIMEOUT_MS = 15_000;
+
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  // Hand-rolled because graphql-request and axios don't expose the same
+  // signal API. Rejecting after `ms` lets a stuck request bubble up to
+  // refreshProgress's catch instead of holding the IPC open forever.
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (err) => { clearTimeout(t); reject(err); });
+  });
+}
+
+// AniList exposes the user's whole anime list via MediaListCollection. One
+// query → every entry's progress. We key by the AniList media id so the
+// renderer can resolve a series record's `anilistId` directly.
+async function fetchAnilistProgressMap(): Promise<Record<number, number>> {
+  const acct = await getAccount('anilist');
+  const token = await getAccessToken('anilist');
+  if (!acct || !token || !acct.userId) return {};
+  const headers = { Authorization: `Bearer ${token}` };
+  const data = await withTimeout(
+    request<{
+      MediaListCollection: { lists: Array<{ entries: Array<{ progress: number; media: { id: number } }> }> };
+    }>(
+      ANILIST_API,
+      gql`query ($userId: Int) {
+        MediaListCollection(userId: $userId, type: ANIME) {
+          lists { entries { progress media { id } } }
+        }
+      }`,
+      { userId: acct.userId },
+      headers,
+    ),
+    PROGRESS_FETCH_TIMEOUT_MS,
+    'AniList MediaListCollection',
+  );
+  const map: Record<number, number> = {};
+  for (const list of data.MediaListCollection?.lists ?? []) {
+    for (const entry of list.entries ?? []) {
+      if (entry.media?.id != null) {
+        map[entry.media.id] = entry.progress ?? 0;
+      }
+    }
+  }
+  return map;
+}
+
+// MAL paginates at 1000 entries. Most users are well under that; loop just
+// in case. Keys are MAL anime ids so the renderer matches against malId.
+async function fetchMalProgressMap(): Promise<Record<number, number>> {
+  const token = await getAccessToken('mal');
+  if (!token) return {};
+  const headers = { Authorization: `Bearer ${token}` };
+  const map: Record<number, number> = {};
+  let offset = 0;
+  const limit = 1000;
+  // Hard upper bound prevents an infinite loop if MAL returns a malformed
+  // paging cursor; 50k entries is far past the largest real list.
+  for (let i = 0; i < 50; i++) {
+    const resp = await withTimeout(
+      axios.get(`${MAL_API}/users/@me/animelist`, {
+        params: { fields: 'list_status', limit, offset },
+        headers,
+      }),
+      PROGRESS_FETCH_TIMEOUT_MS,
+      `MAL animelist page ${i}`,
+    );
+    const data = resp.data as {
+      data: Array<{ node: { id: number }; list_status?: { num_episodes_watched?: number } }>;
+      paging?: { next?: string };
+    };
+    for (const item of data.data ?? []) {
+      if (item.node?.id != null) {
+        map[item.node.id] = item.list_status?.num_episodes_watched ?? 0;
+      }
+    }
+    if (!data.paging?.next || (data.data?.length ?? 0) < limit) break;
+    offset += limit;
+  }
+  return map;
+}
+
+// 5 minutes is short enough that a watching session keeps fresh data, long
+// enough that opening + closing the app a few times doesn't spam AniList.
+const PROGRESS_FRESHNESS_MS = 5 * 60_000;
+
+export async function refreshProgress(provider: TrackerProvider): Promise<Record<number, number>> {
+  logger.info('tracker', `${provider} progress refresh starting`);
+  try {
+    const map = provider === 'anilist'
+      ? await fetchAnilistProgressMap()
+      : await fetchMalProgressMap();
+    await replaceProgress(provider, map);
+    logger.info('tracker', `${provider} progress cache refreshed (${Object.keys(map).length} entries)`);
+    return map;
+  } catch (err) {
+    logger.warn('tracker', `${provider} progress refresh failed: ${(err as Error).message}`);
+    return (await getProgressSnapshot())[provider];
+  }
+}
+
+export async function refreshAllProgress(opts: { force?: boolean } = {}): Promise<void> {
+  const snap = await getProgressSnapshot();
+  const tasks: Promise<unknown>[] = [];
+  for (const provider of ['anilist', 'mal'] as const) {
+    if (!(await getAccount(provider))) continue;
+    const fetchedAt = snap.fetchedAt[provider];
+    if (!opts.force && fetchedAt != null && Date.now() - fetchedAt < PROGRESS_FRESHNESS_MS) {
+      logger.info('tracker', `${provider} progress is fresh, skipping refresh`);
+      continue;
+    }
+    tasks.push(refreshProgress(provider));
+  }
+  await Promise.allSettled(tasks);
 }
 
 // ----- Public surface for IPC handlers -----
@@ -447,6 +573,18 @@ export const trackerHandler = {
   },
   async getClientId(provider: TrackerProvider): Promise<string> {
     return getClientId(provider);
+  },
+  async getProgress(): Promise<ProgressSnapshot> {
+    return getProgressSnapshot();
+  },
+  refreshProgress,
+  refreshAllProgress,
+  async getMainProvider(): Promise<TrackerProvider> {
+    return getMainProvider();
+  },
+  async setMainProvider(provider: TrackerProvider): Promise<TrackerProvider> {
+    await setMainProvider(provider);
+    return provider;
   },
 };
 

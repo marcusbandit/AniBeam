@@ -4,6 +4,7 @@ import { Tv, ChevronLeft, ChevronRight } from "lucide-react";
 import type { LibraryItem } from "../../types/electron";
 import { normalizeStatus } from "../utils/airingUtils";
 import { useTitleLanguage } from "../contexts/TitleLanguageContext";
+import { useTrackerProgress } from "../contexts/TrackerProgressContext";
 
 const AIRING_PAGE_COLS = 5;
 const AIRING_PAGE_ROWS = 2;
@@ -56,6 +57,7 @@ function getAiringSortInfo(item: LibraryItem): { when: number; episode: number |
 function HomePage() {
   const navigate = useNavigate();
   const { pickTitle } = useTitleLanguage();
+  const { getWatched } = useTrackerProgress();
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [airingPage, setAiringPage] = useState(0);
@@ -123,6 +125,12 @@ function HomePage() {
     return out;
   }, [items]);
 
+  // Split the library into series and movies for the two grids below the
+  // Airing carousel. Movies live in their own section so they don't get
+  // mixed in with episodic series in the "All" grid.
+  const seriesItems = useMemo(() => items.filter((i) => i.type !== "movie"), [items]);
+  const movieItems = useMemo(() => items.filter((i) => i.type === "movie"), [items]);
+
   const airingTotalPages = Math.max(1, Math.ceil(airing.length / AIRING_PAGE_SIZE));
   // Reset page if the airing list shrinks below the current page.
   useEffect(() => {
@@ -154,6 +162,20 @@ function HomePage() {
     const epNum = sub?.episode != null ? String(sub.episode).padStart(2, "0") : null;
     const ago = sub ? fmtRelativeTime(sub.when) : null;
     const fileCount = `${item.files.length} file${item.files.length === 1 ? "" : "s"}`;
+    // Watched count from the user's main tracker, paired with totalEpisodes
+    // when both are known. Hidden if either side is missing.
+    const watched = getWatched({
+      anilistId: item.anilistId ?? undefined,
+      malId: item.malId ?? undefined,
+    });
+    // AniList omits `episodes` for currently-airing shows where the final
+    // count isn't announced yet. Still show the watched number alone in
+    // that case — useful info, just no denominator.
+    const watchedLabel = watched != null
+      ? (item.totalEpisodes != null && item.totalEpisodes > 0
+          ? `${String(watched).padStart(String(item.totalEpisodes).length, "0")}/${item.totalEpisodes}`
+          : String(watched).padStart(2, "0"))
+      : null;
     return (
       <button
         key={item.id}
@@ -162,6 +184,11 @@ function HomePage() {
         onClick={() => navigate(`/series/${encodeURIComponent(item.id)}`)}
       >
         <div className="show-card-poster-wrap">
+          {watchedLabel && (
+            <span className="show-card-watched-badge" aria-label={`Watched ${watchedLabel}`}>
+              {watchedLabel}
+            </span>
+          )}
           {epNum && (
             <span className="show-card-ep-badge" aria-label={`Episode ${epNum}`}>
               EP {epNum}
@@ -244,15 +271,28 @@ function HomePage() {
         </div>
       ) : (
         <>
-          <div className="section-head">
-            <h2 className="section-h2">All</h2>
-            <span className="section-count">
-              {items.length} {items.length === 1 ? "folder" : "folders"}
-            </span>
-          </div>
-          <div className="show-grid">
-            {items.map((item) => renderCard(item))}
-          </div>
+          {seriesItems.length > 0 && (
+            <>
+              <div className="section-head">
+                <h2 className="section-h2">Series</h2>
+                <span className="section-count">{seriesItems.length}</span>
+              </div>
+              <div className="show-grid">
+                {seriesItems.map((item) => renderCard(item))}
+              </div>
+            </>
+          )}
+          {movieItems.length > 0 && (
+            <>
+              <div className="section-head section-head-movies">
+                <h2 className="section-h2">Movies</h2>
+                <span className="section-count">{movieItems.length}</span>
+              </div>
+              <div className="show-grid">
+                {movieItems.map((item) => renderCard(item))}
+              </div>
+            </>
+          )}
         </>
       )}
     </div>

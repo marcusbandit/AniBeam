@@ -43,6 +43,8 @@ export interface LibraryItem {
   status: string | null;
   startDate: string | null;
   totalEpisodes: number | null;
+  anilistId: number | null;
+  malId: number | null;
   episodes: LibraryEpisodeAirDate[];
   files: LibraryFile[];
 }
@@ -64,6 +66,7 @@ export interface ElectronAPI {
   scanAllFolders: () => Promise<unknown>;
   scanAndFetchMetadata: (folderPath: string) => Promise<ScanResult>;
   libraryWalk: () => Promise<LibraryItem[]>;
+  findMovieFolders: (rootPath: string) => Promise<string[]>;
   
   // Metadata
   fetchMetadata: (seriesName: string) => Promise<unknown>;
@@ -121,6 +124,11 @@ export interface ElectronAPI {
     episodeNumber: number,
     totalEpisodes: number | null,
   ) => Promise<TrackerMarkResult>;
+  trackerGetProgress: () => Promise<TrackerProgressSnapshot>;
+  trackerRefreshProgress: (provider?: TrackerProvider) => Promise<TrackerProgressSnapshot>;
+  trackerGetMainProvider: () => Promise<TrackerProvider>;
+  trackerSetMainProvider: (provider: TrackerProvider) => Promise<TrackerProvider>;
+  onTrackerProgressChanged: (handler: () => void) => () => void;
 }
 
 export interface AnilistSearchResult {
@@ -153,6 +161,12 @@ export interface TrackerMarkResult {
   reason?: 'no-account' | 'no-id' | 'not-newer' | 'error';
   message?: string;
 }
+export interface TrackerProgressSnapshot {
+  mainProvider: TrackerProvider;
+  anilist: Record<number, number>;
+  mal: Record<number, number>;
+  fetchedAt: { anilist: number | null; mal: number | null };
+}
 
 declare global {
   interface Window {
@@ -172,6 +186,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   scanAllFolders: () => ipcRenderer.invoke('scan-all-folders'),
   scanAndFetchMetadata: (folderPath: string) => ipcRenderer.invoke('scan-and-fetch-metadata', folderPath),
   libraryWalk: () => ipcRenderer.invoke('library:walk'),
+  findMovieFolders: (rootPath: string) => ipcRenderer.invoke('find-movie-folders', rootPath),
   
   // Metadata
   fetchMetadata: (seriesName: string) => ipcRenderer.invoke('fetch-metadata', seriesName),
@@ -230,4 +245,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   trackerDisconnect: (provider: TrackerProvider) => ipcRenderer.invoke('tracker:disconnect', provider),
   trackerMarkEpisode: (provider: TrackerProvider, mediaId: number, episodeNumber: number, totalEpisodes: number | null) =>
     ipcRenderer.invoke('tracker:mark-episode', provider, mediaId, episodeNumber, totalEpisodes),
+  trackerGetProgress: () => ipcRenderer.invoke('tracker:get-progress'),
+  trackerRefreshProgress: (provider?: TrackerProvider) => ipcRenderer.invoke('tracker:refresh-progress', provider ?? null),
+  trackerGetMainProvider: () => ipcRenderer.invoke('tracker:get-main-provider'),
+  trackerSetMainProvider: (provider: TrackerProvider) => ipcRenderer.invoke('tracker:set-main-provider', provider),
+  onTrackerProgressChanged: (handler: () => void) => {
+    const listener = () => handler();
+    ipcRenderer.on('tracker:progress-changed', listener);
+    return () => ipcRenderer.removeListener('tracker:progress-changed', listener);
+  },
 });

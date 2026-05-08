@@ -137,9 +137,12 @@ async function ingestSingleFile(filePath: string): Promise<void> {
       mainWindow.webContents.send('metadata:file-status-changed', { filePath, status: 'verifying' });
     }
 
-    // First time we see this series → background poster match.
+    // First time we see this series → background poster match. Movies share
+    // the "Movies" parent folder, so the scanner-derived title (media.name)
+    // is the right search input; for series, the folder name is.
     if (isBrandNewSeries) {
-      void matchPosterForSeries(media.id, basename(media.folderPath));
+      const query = media.type === 'movie' ? media.name : basename(media.folderPath);
+      void matchPosterForSeries(media.id, query);
     }
   } catch (err) {
     logger.error('watch', `Failed to ingest new file: ${(err as Error).message}`, { file: filePath });
@@ -221,9 +224,12 @@ async function matchPosterForSeries(seriesId: string, folderName: string): Promi
       });
       return;
     }
+    // findShowMatch guarantees the id matching `source` is set; the other
+    // is best-effort (cross-resolved or absent).
+    const primaryId = match.source === 'anilist' ? match.anilistId! : match.malId!;
     const [cached, episodeDates] = await Promise.all([
       imageCacheHandler.cacheImages([match.posterUrl]),
-      fetchEpisodeAirDates(match.source, match.externalId, match.totalEpisodes),
+      fetchEpisodeAirDates(match.source, primaryId, match.totalEpisodes),
     ]);
     const posterLocal = cached.get(match.posterUrl) ?? null;
     await metadataHandler.transaction(async (current) => {
@@ -232,6 +238,9 @@ async function matchPosterForSeries(seriesId: string, folderName: string): Promi
       // do NOT keep titles/descriptions/thumbnails; metadata enrichment
       // beyond the sort key is still paused.
       const slimEpisodes = episodeDates.map((e) => ({ episodeNumber: e.episodeNumber, airDate: e.airDate }));
+      // Persist BOTH provider ids when we have them. Trackers, AniSkip, and
+      // the rest of the renderer key off `anilistId`/`malId` directly —
+      // matchSource alone isn't enough.
       current[seriesId] = {
         ...existing,
         poster: match.posterUrl,
@@ -239,7 +248,8 @@ async function matchPosterForSeries(seriesId: string, folderName: string): Promi
         posterMatchAttempted: true,
         posterMatched: true,
         matchSource: match.source,
-        matchExternalId: match.externalId,
+        anilistId: match.anilistId ?? undefined,
+        malId: match.malId ?? null,
         matchedTitle: match.matchedTitle,
         titleRomaji: match.titleRomaji,
         titleEnglish: match.titleEnglish,
@@ -275,13 +285,19 @@ async function matchPostersForLibrary(): Promise<void> {
       episodes?: Array<{ episodeNumber?: number; airDate?: string | null }>;
       folderPath?: string;
       title?: string;
+      type?: 'series' | 'movie';
+      anilistId?: number;
+      malId?: number | null;
     };
     // Re-match when:
     //  (a) never attempted, or
     //  (b) matched in an earlier iteration but the episode air dates we now
     //      need for the feed sort aren't there yet, or
     //  (c) matched but missing the explicit titleRomaji/titleEnglish fields
-    //      added with the JP/EN switch.
+    //      added with the JP/EN switch, or
+    //  (d) matched but missing anilistId / malId — older entries written
+    //      before the matcher persisted these. Trackers and AniSkip key
+    //      off these fields, so backfill them on the next scan.
     const needsFirstMatch = !s.posterMatchAttempted;
     const matchedButMissingAirDates =
       !!s.posterMatched &&
@@ -290,9 +306,28 @@ async function matchPostersForLibrary(): Promise<void> {
         !s.episodes.some((e) => !!e.airDate));
     const matchedButMissingTitles =
       !!s.posterMatched && s.titleRomaji === undefined && s.titleEnglish === undefined;
-    if (!needsFirstMatch && !matchedButMissingAirDates && !matchedButMissingTitles) continue;
-    const folderName = s.folderPath ? basename(s.folderPath) : (s.title ?? seriesId);
-    todo.push({ seriesId, folderName });
+    const matchedButMissingProviderIds =
+      !!s.posterMatched && s.anilistId === undefined && (s.malId === undefined || s.malId === null);
+    // Movies whose first attempt failed: keep retrying on subsequent launches.
+    // The first attempt for movies used basename(folderPath) = "Movies", which
+    // never matched anything; the fixed code below uses the title. Cheap to
+    // re-run for the few movies that exist in a library.
+    const failedMovieNeedsRetry = s.type === 'movie' && !s.posterMatched;
+    if (
+      !needsFirstMatch &&
+      !matchedButMissingAirDates &&
+      !matchedButMissingTitles &&
+      !matchedButMissingProviderIds &&
+      !failedMovieNeedsRetry
+    ) continue;
+    // Series live in their own folder, so the folder name is the right
+    // search input. Movies all share the "Movies" parent — searching for
+    // "Movies" never matches anything, so use the cleaned movie title
+    // (which the scanner derived from the file name) instead.
+    const matchQuery = s.type === 'movie'
+      ? (s.title ?? seriesId)
+      : (s.folderPath ? basename(s.folderPath) : (s.title ?? seriesId));
+    todo.push({ seriesId, folderName: matchQuery });
   }
   if (todo.length === 0) return;
   logger.info('metadata', `Matching ${todo.length} series (poster + air dates)`);
@@ -574,6 +609,15 @@ ipcMain.handle('get-folder-sources', async () => {
   }
 });
 
+ipcMain.handle('find-movie-folders', async (_event, rootPath: string) => {
+  try {
+    return await folderHandler.findMovieFolders(rootPath);
+  } catch (error) {
+    logger.error('folder', `Error finding movie folders: ${(error as Error).message}`);
+    return [];
+  }
+});
+
 ipcMain.handle('add-folder-source', async (_event, folderPath: string) => {
   try {
     const ok = await configHandler.addFolderSource(folderPath);
@@ -664,11 +708,17 @@ ipcMain.handle('library:walk', async () => {
       status?: string | null;
       startDate?: string | null;
       totalEpisodes?: number | null;
+      anilistId?: number;
+      malId?: number | null;
       episodes?: Array<{ episodeNumber: number; airDate: string | null }>;
     };
     return {
       id: m.id,
-      folderName: basename(m.folderPath),
+      // Movies share the "Movies" parent folder, so basename(folderPath)
+      // would be "Movies" for every movie. Use the scanner-derived title
+      // (m.name) as the display fallback instead so the card shows
+      // "Kimi no Na Wa" rather than "Movies".
+      folderName: m.type === 'movie' ? m.name : basename(m.folderPath),
       folderPath: m.folderPath,
       type: m.type,
       poster: stored.poster ?? null,
@@ -682,6 +732,8 @@ ipcMain.handle('library:walk', async () => {
       status: stored.status ?? null,
       startDate: stored.startDate ?? null,
       totalEpisodes: stored.totalEpisodes ?? null,
+      anilistId: stored.anilistId ?? null,
+      malId: stored.malId ?? null,
       episodes: (stored.episodes ?? []).map((e) => ({
         episodeNumber: e.episodeNumber,
         airDate: e.airDate ?? null,
@@ -1468,7 +1520,11 @@ ipcMain.handle('tracker:connect', async (_event, provider: unknown, clientId: un
   if (!isProvider(provider)) throw new Error('invalid provider');
   if (typeof clientId !== 'string' || !clientId.trim()) throw new Error('clientId required');
   const secret = typeof clientSecret === 'string' ? clientSecret.trim() : '';
-  return trackerHandler.startConnect(provider, clientId.trim(), secret);
+  const status = await trackerHandler.startConnect(provider, clientId.trim(), secret);
+  // Warm the progress cache so cards render with watched counts immediately.
+  await trackerHandler.refreshProgress(provider);
+  broadcastProgressChanged();
+  return status;
 });
 
 ipcMain.handle('tracker:cancel-connect', async () => {
@@ -1478,8 +1534,16 @@ ipcMain.handle('tracker:cancel-connect', async () => {
 
 ipcMain.handle('tracker:disconnect', async (_event, provider: unknown) => {
   if (!isProvider(provider)) throw new Error('invalid provider');
-  return trackerHandler.disconnect(provider);
+  const status = await trackerHandler.disconnect(provider);
+  broadcastProgressChanged();
+  return status;
 });
+
+function broadcastProgressChanged(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('tracker:progress-changed');
+  }
+}
 
 ipcMain.handle('tracker:mark-episode', async (
   _event,
@@ -1492,12 +1556,45 @@ ipcMain.handle('tracker:mark-episode', async (
   if (typeof mediaId !== 'number' || typeof episodeNumber !== 'number') {
     throw new Error('mediaId and episodeNumber must be numbers');
   }
-  return trackerHandler.markEpisode({
+  const result = await trackerHandler.markEpisode({
     provider,
     mediaId,
     episodeNumber,
     totalEpisodes: typeof totalEpisodes === 'number' ? totalEpisodes : null,
   });
+  if (result.ok) broadcastProgressChanged();
+  return result;
+});
+
+ipcMain.handle('tracker:get-progress', async () => {
+  const snap = await trackerHandler.getProgress();
+  logger.info(
+    'tracker',
+    `get-progress called: main=${snap.mainProvider} anilist=${Object.keys(snap.anilist).length} mal=${Object.keys(snap.mal).length}`,
+  );
+  return snap;
+});
+
+ipcMain.handle('tracker:refresh-progress', async (_event, provider: unknown) => {
+  if (provider === undefined || provider === null) {
+    await trackerHandler.refreshAllProgress();
+  } else {
+    if (!isProvider(provider)) throw new Error('invalid provider');
+    await trackerHandler.refreshProgress(provider);
+  }
+  broadcastProgressChanged();
+  return trackerHandler.getProgress();
+});
+
+ipcMain.handle('tracker:get-main-provider', async () => {
+  return trackerHandler.getMainProvider();
+});
+
+ipcMain.handle('tracker:set-main-provider', async (_event, provider: unknown) => {
+  if (!isProvider(provider)) throw new Error('invalid provider');
+  await trackerHandler.setMainProvider(provider);
+  broadcastProgressChanged();
+  return provider;
 });
 
 // Open a URL in the user's default browser. window.open() inside the

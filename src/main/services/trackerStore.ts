@@ -32,6 +32,15 @@ interface TrackerStore {
   clientSecretCiphers: { anilist: string; mal: string };
   // Did we encrypt those ciphertexts? Same flag semantics as accounts.
   clientSecretsEncrypted: boolean;
+  // Which provider's progress is the source of truth for UI surfaces (e.g.
+  // the watched count on show cards). Falls back to the other provider on
+  // a per-series basis when the main one has no entry for that series.
+  mainProvider: TrackerProvider;
+  // Last-known watched-episode count per provider, keyed by provider's media
+  // id. Persisted so the UI shows numbers immediately on launch; refreshed
+  // in the background after app ready and after every successful mark.
+  progress: { anilist: Record<number, number>; mal: Record<number, number> };
+  progressFetchedAt: { anilist: number | null; mal: number | null };
   version: 1;
 }
 
@@ -41,6 +50,9 @@ const DEFAULT_STORE: TrackerStore = {
   clientIds: { anilist: '', mal: '' },
   clientSecretCiphers: { anilist: '', mal: '' },
   clientSecretsEncrypted: true,
+  mainProvider: 'anilist',
+  progress: { anilist: {}, mal: {} },
+  progressFetchedAt: { anilist: null, mal: null },
   version: 1,
 };
 
@@ -69,6 +81,11 @@ export async function loadStore(): Promise<TrackerStore> {
       ...parsed,
       clientIds: { ...DEFAULT_STORE.clientIds, ...(parsed.clientIds ?? {}) },
       clientSecretCiphers: { ...DEFAULT_STORE.clientSecretCiphers, ...(parsed.clientSecretCiphers ?? {}) },
+      progress: {
+        anilist: { ...DEFAULT_STORE.progress.anilist, ...(parsed.progress?.anilist ?? {}) },
+        mal: { ...DEFAULT_STORE.progress.mal, ...(parsed.progress?.mal ?? {}) },
+      },
+      progressFetchedAt: { ...DEFAULT_STORE.progressFetchedAt, ...(parsed.progressFetchedAt ?? {}) },
     };
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
@@ -135,6 +152,10 @@ export async function setAccount(provider: TrackerProvider, opts: SetTokenOpts):
 export async function clearAccount(provider: TrackerProvider): Promise<void> {
   const store = await loadStore();
   store[provider] = null;
+  // Drop cached progress too — a reconnect to a different account would
+  // otherwise serve numbers from the previous user.
+  store.progress[provider] = {};
+  store.progressFetchedAt[provider] = null;
   await saveStore(store);
 }
 
@@ -211,6 +232,47 @@ export interface TrackerStatus {
   clientId: string;
   hasClientSecret: boolean;     // true if a stored per-user secret exists
   cipherEncrypted: boolean;
+}
+
+export async function getMainProvider(): Promise<TrackerProvider> {
+  const store = await loadStore();
+  return store.mainProvider;
+}
+
+export async function setMainProvider(provider: TrackerProvider): Promise<void> {
+  const store = await loadStore();
+  store.mainProvider = provider;
+  await saveStore(store);
+}
+
+export interface ProgressSnapshot {
+  mainProvider: TrackerProvider;
+  anilist: Record<number, number>;
+  mal: Record<number, number>;
+  fetchedAt: { anilist: number | null; mal: number | null };
+}
+
+export async function getProgressSnapshot(): Promise<ProgressSnapshot> {
+  const store = await loadStore();
+  return {
+    mainProvider: store.mainProvider,
+    anilist: { ...store.progress.anilist },
+    mal: { ...store.progress.mal },
+    fetchedAt: { ...store.progressFetchedAt },
+  };
+}
+
+export async function replaceProgress(provider: TrackerProvider, map: Record<number, number>): Promise<void> {
+  const store = await loadStore();
+  store.progress[provider] = map;
+  store.progressFetchedAt[provider] = Date.now();
+  await saveStore(store);
+}
+
+export async function setProgressEntry(provider: TrackerProvider, mediaId: number, progress: number): Promise<void> {
+  const store = await loadStore();
+  store.progress[provider][mediaId] = progress;
+  await saveStore(store);
 }
 
 export async function getStatus(provider: TrackerProvider): Promise<TrackerStatus> {

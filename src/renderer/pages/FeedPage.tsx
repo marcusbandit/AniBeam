@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Activity, Tv } from "lucide-react";
 import type { LibraryItem } from "../../types/electron";
 import { useTitleLanguage } from "../contexts/TitleLanguageContext";
+import { useTrackerProgress } from "../contexts/TrackerProgressContext";
 
 interface FeedEntry {
   item: LibraryItem;
@@ -84,6 +85,7 @@ function buildEntries(items: LibraryItem[]): FeedEntry[] {
 function FeedPage() {
   const navigate = useNavigate();
   const { pickTitle } = useTitleLanguage();
+  const { getWatched } = useTrackerProgress();
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
 
@@ -148,6 +150,15 @@ function FeedPage() {
             });
             const epNum = episodeNumber !== null ? String(episodeNumber).padStart(2, "0") : null;
             const ago = fmtRelativeTime(when);
+            const watched = getWatched({
+              anilistId: item.anilistId ?? undefined,
+              malId: item.malId ?? undefined,
+            });
+            const watchedLabel = watched != null
+              ? (item.totalEpisodes != null && item.totalEpisodes > 0
+                  ? `${String(watched).padStart(String(item.totalEpisodes).length, "0")}/${item.totalEpisodes}`
+                  : String(watched).padStart(2, "0"))
+              : null;
             return (
               <button
                 key={item.id}
@@ -156,6 +167,11 @@ function FeedPage() {
                 onClick={() => navigate(`/series/${encodeURIComponent(item.id)}`)}
               >
                 <div className="show-card-poster-wrap">
+                  {watchedLabel && (
+                    <span className="show-card-watched-badge" aria-label={`Watched ${watchedLabel}`}>
+                      {watchedLabel}
+                    </span>
+                  )}
                   {epNum && (
                     <span className="show-card-ep-badge" aria-label={`Episode ${epNum}`}>
                       EP {epNum}

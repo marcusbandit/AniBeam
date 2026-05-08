@@ -294,19 +294,110 @@ async function scanFolderForVideos(folderPath: string, folderSeason: number | nu
   return { videos: [], subtitles };
 }
 
-// Walk a folder tree and emit ScannedMedia. Rule: a folder that contains
-// video files IS a series (its name is the series name). A folder that
-// contains subfolders has its name skipped — recurse instead. The configured
-// library root is special: files directly in it are treated as loose movies
-// regardless. A folder mixing subfolders + loose videos: recurse into the
-// subfolders, treat the loose videos as movies (their folder's name is
-// "skipped" per the rule, so it can't be a series).
+// A folder named "Movies" (case-insensitive) is a movie collection — never a
+// series. Its videos are individual movies, and so are its direct subfolders
+// (each subfolder is one movie even if it bundles a single video + subs).
+function isMoviesFolderName(name: string): boolean {
+  return name.toLowerCase() === 'movies';
+}
+
+// Emit one movie ScannedMedia for a single file. Caller decides whether to
+// derive the title from the folder name (cleaner when files are buried under
+// release-tag-laden filenames) or from the filename itself.
+async function emitMovieFile(
+  fileName: string,
+  containingFolder: string,
+  useFolderNameAsTitle: boolean,
+  results: ScannedMedia[],
+): Promise<void> {
+  const filePath = join(containingFolder, fileName);
+  const folderName = basename(containingFolder);
+  const movieTitle = useFolderNameAsTitle ? cleanMovieTitle(folderName) : cleanMovieTitle(fileName);
+  const movieId = movieTitle.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+  const { episode } = extractSeasonAndEpisode(fileName);
+  let mtime = 0;
+  try {
+    mtime = (await stat(filePath)).mtimeMs;
+  } catch { /* best-effort; mtime stays 0 → ignored by feed fallback */ }
+
+  results.push({
+    id: `movie_${movieId}`,
+    name: movieTitle,
+    type: 'movie',
+    folderPath: containingFolder,
+    files: [{
+      filename: fileName,
+      filePath,
+      title: cleanEpisodeTitle(fileName),
+      episodeNumber: episode,
+      seasonNumber: null,
+      subtitlePath: null,
+      subtitlePaths: [],
+      parentFolder: folderName,
+      status: 'ready',
+      mtime,
+    }],
+    seasonNumber: null,
+    partNumber: null,
+  });
+}
+
+// Walk a subtree and gather every video file. Used by series folders that
+// nest their episodes one or more levels deep — e.g.
+// "Series/[release group]/ep01.mkv" or "Series/Season 1/ep01.mkv". The whole
+// subtree is treated as one logical series and the outer folder's name wins.
+// Per-folder season hints (a "Season 2" subfolder) propagate to the videos
+// inside that branch via scanFolderForVideos's `folderSeason`.
+async function collectVideosInSubtree(
+  rootPath: string,
+  inheritedSeason: number | null,
+): Promise<VideoFile[]> {
+  const out: VideoFile[] = [];
+  const visit = async (dir: string, parentSeason: number | null): Promise<void> => {
+    const seasonHere = extractSeasonNumber(basename(dir)) ?? parentSeason;
+    const { videos } = await scanFolderForVideos(dir, seasonHere);
+    out.push(...videos);
+    let entries: string[];
+    try {
+      entries = await readdir(dir);
+    } catch { return; }
+    for (const entry of entries) {
+      const sub = join(dir, entry);
+      try {
+        const s = await stat(sub);
+        if (s.isDirectory()) await visit(sub, seasonHere);
+      } catch { /* skip unreadable */ }
+    }
+  };
+  await visit(rootPath, inheritedSeason);
+  return out;
+}
+
+// Walk a folder tree and emit ScannedMedia.
+//
+// Three contexts produce different shapes:
+//
+//   1. Library root: not a series itself. Loose video files at the root are
+//      treated as individual movies. Subfolders recurse normally.
+//
+//   2. Movies container (a folder named "Movies", or anything beneath one):
+//      every video file is a separate movie entry. Subfolders that hold one
+//      movie inherit their folder name as the title (cleaner than filenames
+//      laden with release tags). No series are ever produced here.
+//
+//   3. Anything else (non-root, non-Movies): the outer folder is the series.
+//      Its entire subtree is collapsed into one series — episodes can sit
+//      directly inside, or be buried under release-group / season subfolders.
+//      Intermediate folder names are ignored except as season-number hints.
 async function collectMediaRecursive(
   folderPath: string,
   results: ScannedMedia[],
   isLibraryRoot: boolean,
+  inMoviesContext: boolean = false,
 ): Promise<void> {
   const folderName = basename(folderPath);
+  const isMoviesContainer = isMoviesFolderName(folderName);
+  const moviesContext = inMoviesContext || isMoviesContainer;
 
   let entries: string[];
   try {
@@ -333,87 +424,64 @@ async function collectMediaRecursive(
     }
   }
 
-  const looseVideosAreMovies = isLibraryRoot || subDirs.length > 0;
-
-  if (videoFilenames.length > 0 && looseVideosAreMovies) {
+  // 1. Library root: loose videos are loose movies; subfolders recurse.
+  if (isLibraryRoot) {
     for (const entry of videoFilenames) {
-      const filePath = join(folderPath, entry);
-      const movieTitle = cleanMovieTitle(entry);
-      const movieId = movieTitle.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
-      const { episode } = extractSeasonAndEpisode(entry);
-      let mtime = 0;
-      try {
-        const s = await stat(filePath);
-        mtime = s.mtimeMs;
-      } catch {
-        // best-effort; mtime stays 0 → ignored by feed fallback
-      }
-
-      logger.info('folder', `Movie: ${entry} → search: "${movieTitle}"`, { series: movieTitle });
-
-      results.push({
-        id: `movie_${movieId}`,
-        name: movieTitle,
-        type: 'movie',
-        folderPath,
-        files: [{
-          filename: entry,
-          filePath,
-          title: cleanEpisodeTitle(entry),
-          episodeNumber: episode,
-          seasonNumber: null,
-          subtitlePath: null,
-          subtitlePaths: [],
-          parentFolder: folderName,
-          status: 'ready',
-          mtime,
-        }],
-        seasonNumber: null,
-        partNumber: null,
-      });
+      await emitMovieFile(entry, folderPath, false, results);
     }
-  } else if (videoFilenames.length > 0) {
-    // Pure series folder (no subfolders): folder name = series name.
-    const seasonFromFolder = extractSeasonNumber(folderName);
-    const partFromFolder = extractPartNumber(folderName);
-    const seriesName = extractSeriesNameFromFolder(folderName);
-    const seriesId = generateSeriesId(seriesName, folderName, seasonFromFolder, partFromFolder);
-
-    // scanFolderForVideos handles subtitle pairing + episode/season parsing.
-    const { videos } = await scanFolderForVideos(folderPath, seasonFromFolder);
-
-    const seasonInfo = seasonFromFolder ? `, Season ${seasonFromFolder}` : '';
-    const partInfo = partFromFolder ? `, Part ${partFromFolder}` : '';
-    logger.info(
-      'folder',
-      `Series: ${folderName} (${videos.length} episode${videos.length > 1 ? 's' : ''}${seasonInfo}${partInfo}) → search: "${seriesName}" → ID: "${seriesId}"`,
-      { series: seriesName },
-    );
-
-    results.push({
-      id: seriesId,
-      name: seriesName,
-      type: 'series',
-      folderPath,
-      files: videos.sort((a, b) => {
-        const seasonA = a.seasonNumber ?? 0;
-        const seasonB = b.seasonNumber ?? 0;
-        if (seasonA !== seasonB) return seasonA - seasonB;
-        return a.episodeNumber - b.episodeNumber;
-      }),
-      seasonNumber: seasonFromFolder,
-      partNumber: partFromFolder,
-    });
+    for (const subDir of subDirs) {
+      await collectMediaRecursive(join(folderPath, subDir), results, false, moviesContext);
+    }
+    return;
   }
 
-  for (const subDir of subDirs) {
-    await collectMediaRecursive(join(folderPath, subDir), results, false);
+  // 2. Movies context: each video → its own movie; each subdir recurses with
+  //    the same context so nested movie folders still produce movies.
+  if (moviesContext) {
+    if (videoFilenames.length > 0) {
+      // Folder name is the cleaner title when the folder holds exactly one
+      // video and isn't the "Movies" container itself.
+      const useFolderTitle =
+        !isMoviesContainer && videoFilenames.length === 1 && subDirs.length === 0;
+      for (const entry of videoFilenames) {
+        await emitMovieFile(entry, folderPath, useFolderTitle, results);
+      }
+    }
+    for (const subDir of subDirs) {
+      await collectMediaRecursive(join(folderPath, subDir), results, false, true);
+    }
+    return;
   }
+
+  // 3. Series context. Walk the whole subtree as one series. Outer folder
+  //    name wins; intermediate folders are transparent except for season
+  //    hints.
+  const seasonFromFolder = extractSeasonNumber(folderName);
+  const partFromFolder = extractPartNumber(folderName);
+  const allVideos = await collectVideosInSubtree(folderPath, seasonFromFolder);
+  if (allVideos.length === 0) return;
+
+  const seriesName = extractSeriesNameFromFolder(folderName);
+  const seriesId = generateSeriesId(seriesName, folderName, seasonFromFolder, partFromFolder);
+
+  results.push({
+    id: seriesId,
+    name: seriesName,
+    type: 'series',
+    folderPath,
+    files: allVideos.sort((a, b) => {
+      const seasonA = a.seasonNumber ?? 0;
+      const seasonB = b.seasonNumber ?? 0;
+      if (seasonA !== seasonB) return seasonA - seasonB;
+      return a.episodeNumber - b.episodeNumber;
+    }),
+    seasonNumber: seasonFromFolder,
+    partNumber: partFromFolder,
+  });
 }
 
 async function scanDirectory(rootPath: string): Promise<ScannedMedia[]> {
   const results: ScannedMedia[] = [];
-  logger.info('folder', `Scanning: ${rootPath}`, { file: rootPath });
 
   try {
     await collectMediaRecursive(rootPath, results, true);
@@ -422,7 +490,6 @@ async function scanDirectory(rootPath: string): Promise<ScannedMedia[]> {
     throw error;
   }
 
-  logger.info('folder', `Found ${results.length} media items in ${rootPath}`, { file: rootPath });
   return results;
 }
 
@@ -582,6 +649,51 @@ const folderHandler = {
       const mp = normalize(media.folderPath);
       return mp === normalizedFolder || mp.startsWith(prefix);
     });
+  },
+
+  /**
+   * Walk a library root and return paths of every folder named "Movies"
+   * (case-insensitive). Used by Settings to list detected movie containers
+   * under each library root. Skips dotfiles.
+   */
+  async findMovieFolders(rootPath: string): Promise<string[]> {
+    const found: string[] = [];
+
+    async function walk(dir: string): Promise<void> {
+      let entries: string[];
+      try {
+        entries = await readdir(dir);
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        if (entry.startsWith('.')) continue;
+        const fullPath = join(dir, entry);
+        let isDir = false;
+        try {
+          isDir = (await stat(fullPath)).isDirectory();
+        } catch {
+          continue;
+        }
+        if (!isDir) continue;
+        if (isMoviesFolderName(entry)) {
+          found.push(fullPath);
+          // Don't recurse into a Movies folder — its subfolders are individual
+          // movies, not nested Movies containers.
+          continue;
+        }
+        await walk(fullPath);
+      }
+    }
+
+    try {
+      const stats = await stat(rootPath);
+      if (!stats.isDirectory()) return [];
+    } catch {
+      return [];
+    }
+    await walk(rootPath);
+    return found;
   },
 
   async scanMultipleFolders(folderPaths: string[]): Promise<ScannedMedia[]> {

@@ -171,6 +171,7 @@ const SEARCH_MULTIPLE_QUERY = gql`
     Page(page: $page, perPage: $perPage) {
       media(search: $search, type: ANIME) {
         id
+        idMal
         title {
           romaji
           english
@@ -206,6 +207,17 @@ const SEARCH_MULTIPLE_QUERY = gql`
           }
         }
       }
+    }
+  }
+`;
+
+// Cheap one-shot to map a MAL id to its AniList id. Used by the poster
+// matcher when MAL is the primary match so we can populate both ids on
+// the series record (trackers + AniSkip read them by name).
+const RESOLVE_ID_BY_MAL_QUERY = gql`
+  query ($idMal: Int) {
+    Media(idMal: $idMal, type: ANIME) {
+      id
     }
   }
 `;
@@ -310,6 +322,24 @@ const anilistHandler = {
       if (isRateLimitError(error)) logRateLimitWarning('AniList');
       else logger.error('metadata', 'Error searching AniList (multiple)');
       throw error;
+    }
+  },
+
+  async resolveAnilistIdByMal(malId: number): Promise<number | null> {
+    if (!Number.isFinite(malId) || malId <= 0) return null;
+    try {
+      const data = await limiter.run(() =>
+        request<{ Media: { id: number } | null }>(
+          ANILIST_API_URL,
+          RESOLVE_ID_BY_MAL_QUERY,
+          { idMal: malId },
+        ),
+      );
+      return data?.Media?.id ?? null;
+    } catch (error) {
+      if (isRateLimitError(error)) logRateLimitWarning('AniList');
+      else logger.warn('metadata', `AniList id-by-MAL lookup failed for ${malId}: ${(error as Error).message}`);
+      return null;
     }
   },
 

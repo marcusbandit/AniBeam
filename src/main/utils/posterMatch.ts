@@ -18,8 +18,9 @@ import { logger } from '../services/logger';
 const THRESHOLD = 0.95;
 
 export interface ShowMatch {
-  source: 'mal' | 'anilist';
-  externalId: number;
+  source: 'mal' | 'anilist';       // which provider scored ≥ THRESHOLD first
+  anilistId: number | null;        // populated for AniList primary matches; cross-resolved for MAL
+  malId: number | null;            // populated for MAL primary matches; cross-referenced via AniList's idMal
   matchedTitle: string;            // primary romaji-ish title (back-compat)
   titleRomaji: string | null;      // explicit romaji form
   titleEnglish: string | null;     // English localization, when available
@@ -52,9 +53,14 @@ export async function findShowMatch(folderName: string): Promise<ShowMatch | nul
         const poster = r.images?.jpg?.large_image_url ?? r.images?.jpg?.image_url ?? null;
         if (poster) {
           logger.info('metadata', `Match (MAL ${score.toFixed(2)}): ${folderName} → ${r.title}`, { series: folderName });
+          // AniList accepts an idMal filter, so we can grab the AniList id
+          // for free with a single extra query. Best-effort — null on
+          // failure means the MAL tracker still works, just not AniList.
+          const anilistId = await anilistHandler.resolveAnilistIdByMal(r.mal_id);
           return {
             source: 'mal',
-            externalId: r.mal_id,
+            anilistId,
+            malId: r.mal_id,
             matchedTitle: r.title,
             titleRomaji: r.title,
             titleEnglish: r.title_english ?? null,
@@ -83,7 +89,10 @@ export async function findShowMatch(folderName: string): Promise<ShowMatch | nul
           logger.info('metadata', `Match (AniList ${score.toFixed(2)}): ${folderName} → ${matchedTitle}`, { series: folderName });
           return {
             source: 'anilist',
-            externalId: r.id,
+            anilistId: r.id,
+            // SEARCH_MULTIPLE_QUERY now includes idMal — null when AniList
+            // has no MAL cross-reference for this entry.
+            malId: r.idMal ?? null,
             matchedTitle,
             titleRomaji: r.title?.romaji ?? null,
             titleEnglish: r.title?.english ?? null,

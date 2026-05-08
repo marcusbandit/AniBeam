@@ -1,16 +1,16 @@
 import { HashRouter, Routes, Route, NavLink, useLocation } from "react-router-dom";
-import { Tv, Home, Activity, Database, Settings as SettingsIcon, Plug } from "lucide-react";
+import { Tv, Home, Activity, Database, Settings as SettingsIcon } from "lucide-react";
 import HomePage from "./pages/HomePage";
 import SeriesDetailPage from "./pages/SeriesDetailPage";
 import SettingsTab from "./components/SettingsTab";
 import MetadataTab from "./pages/MetadataTab";
 import VideoPlayer from "./pages/VideoPlayer";
 import FeedPage from "./pages/FeedPage";
-import TrackersPage from "./pages/TrackersPage";
 import ContextMenu from "./components/ContextMenu";
 import { ActivityLogProvider } from "./contexts/ActivityLogContext";
 import { ActivityLogDrawer } from "./components/ActivityLogDrawer";
 import { TitleLanguageProvider } from "./contexts/TitleLanguageContext";
+import { TrackerProgressProvider } from "./contexts/TrackerProgressContext";
 import LangSwitch from "./components/LangSwitch";
 import pkg from "../../package.json";
 import "./styles/App.css";
@@ -43,10 +43,6 @@ function AppContent() {
               <Database size={15} />
               <span>Metadata</span>
             </NavLink>
-            <NavLink to="/trackers" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
-              <Plug size={15} />
-              <span>Trackers</span>
-            </NavLink>
             <NavLink to="/settings" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
               <SettingsIcon size={15} />
               <span>Settings</span>
@@ -66,7 +62,6 @@ function AppContent() {
             <Route path="/series/:seriesId" element={<SeriesDetailPage />} />
             <Route path="/settings" element={<SettingsTab />} />
             <Route path="/metadata" element={<MetadataTab />} />
-            <Route path="/trackers" element={<TrackersPage />} />
           </Routes>
         </main>
       ) : (
@@ -91,9 +86,11 @@ function App() {
   return (
     <HashRouter>
       <TitleLanguageProvider>
-        <ActivityLogProvider>
-          <AppContent />
-        </ActivityLogProvider>
+        <TrackerProgressProvider>
+          <ActivityLogProvider>
+            <AppContent />
+          </ActivityLogProvider>
+        </TrackerProgressProvider>
       </TitleLanguageProvider>
     </HashRouter>
   );

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link2, Link2Off, ExternalLink, Copy, Check } from 'lucide-react';
 import type { TrackerProvider, TrackerStatus } from '../../main/preload';
 import { LOOPBACK_REDIRECT_URI, DEFAULT_CLIENT_IDS, DEFAULT_CLIENT_SECRETS } from '../../shared/trackerConstants';
+import { useTrackerProgress } from '../contexts/TrackerProgressContext';
 
 interface TrackerRowProps {
   provider: TrackerProvider;
@@ -44,8 +45,6 @@ function TrackerRow({ provider, label, registerUrl, registerHelp, status, onChan
   const requiresSecret = provider === 'mal'; // AniList implicit grant has no secret
   const savedHasSecret = status?.hasClientSecret ?? false;
   const savedHasId = !!status?.clientId;
-  // Treat the row as ready-to-connect when either the build bundles creds, or
-  // the user already pasted them previously (and we've persisted them).
   const credsReady =
     !!bundledId || (savedHasId && (!requiresSecret || (savedHasSecret || !!bundledSecret)));
 
@@ -60,16 +59,11 @@ function TrackerRow({ provider, label, registerUrl, registerHelp, status, onChan
 
   const handleConnect = async () => {
     setError(null);
-    // Resolve effective ID: bundled wins, then typed-in input, then stored
-    // (which the input is pre-populated from).
     const id = (bundledId || clientId).trim();
     if (!id) {
       setError('No Client ID configured.');
       return;
     }
-    // Secret resolution happens server-side: if we don't pass one, main falls
-    // back to whatever's in the encrypted store. Only block here when both
-    // bundled and stored are missing AND the user hasn't typed one.
     if (requiresSecret && !bundledSecret && !savedHasSecret && !clientSecret.trim()) {
       setError('MAL requires a Client Secret. Paste yours below.');
       return;
@@ -78,7 +72,7 @@ function TrackerRow({ provider, label, registerUrl, registerHelp, status, onChan
     try {
       await window.electronAPI.trackerSetClientId(provider, id);
       await window.electronAPI.trackerConnect(provider, id, bundledSecret || clientSecret);
-      setClientSecret(''); // clear the input post-connect — it's persisted now
+      setClientSecret('');
       await onChange();
     } catch (err) {
       setError((err as Error).message || 'Connect failed');
@@ -213,9 +207,10 @@ function TrackerRow({ provider, label, registerUrl, registerHelp, status, onChan
   );
 }
 
-function TrackersPage() {
+function TrackersSection() {
   const [anilistStatus, setAnilistStatus] = useState<TrackerStatus | null>(null);
   const [malStatus, setMalStatus] = useState<TrackerStatus | null>(null);
+  const { snapshot, setMainProvider } = useTrackerProgress();
 
   const refresh = useCallback(async () => {
     try {
@@ -234,43 +229,55 @@ function TrackersPage() {
     void refresh();
   }, [refresh]);
 
+  const main = snapshot?.mainProvider ?? 'anilist';
+
   return (
-    <div className="page">
-      <div className="page-head">
+    <section className="settings-section">
+      <div className="settings-section-head">
         <div>
-          <h1 className="page-title">Trackers</h1>
-          <p className="page-sub">Sync watched-episode count to AniList and MyAnimeList. Updates fire when you reach the outro or hit "Mark watched", and only ever count up.</p>
+          <h2 className="section-h2">Trackers</h2>
+          <p className="section-sub">Sync watched-episode count to AniList and MyAnimeList. Updates fire when you reach the outro or hit "Mark watched", and only ever count up. Each service needs you to register a personal API client once.</p>
         </div>
       </div>
+      <div className="tracker-list">
+        <TrackerRow
+          provider="anilist"
+          label="AniList"
+          registerUrl="https://anilist.co/settings/developer"
+          registerHelp={'Create a new client. Paste the redirect URL below into AniList\'s "Redirect URL" field exactly — port and trailing /callback included.'}
+          status={anilistStatus}
+          onChange={refresh}
+        />
+        <TrackerRow
+          provider="mal"
+          label="MyAnimeList"
+          registerUrl="https://myanimelist.net/apiconfig"
+          registerHelp={'Create an app (App Type: "Web"). Paste the redirect URL below into MAL\'s "App Redirect URL" field. Save the Client ID — there is no client secret used here (PKCE flow).'}
+          status={malStatus}
+          onChange={refresh}
+        />
+      </div>
 
-      <section className="settings-section">
-        <div className="settings-section-head">
-          <div>
-            <h2 className="section-h2">Connections</h2>
-            <p className="section-sub">Each service needs you to register a personal API client once. Paste your Client ID below, hit Connect, and authorize in your browser.</p>
-          </div>
+      <div className="pref-row tracker-main-row">
+        <div>
+          <div className="pref-label">Main tracker</div>
+          <div className="pref-help">Source of truth for the watched count shown on each card. The other tracker still receives updates when both are connected.</div>
         </div>
-        <div className="tracker-list">
-          <TrackerRow
-            provider="anilist"
-            label="AniList"
-            registerUrl="https://anilist.co/settings/developer"
-            registerHelp={'Create a new client. Paste the redirect URL below into AniList\'s "Redirect URL" field exactly — port and trailing /callback included.'}
-            status={anilistStatus}
-            onChange={refresh}
-          />
-          <TrackerRow
-            provider="mal"
-            label="MyAnimeList"
-            registerUrl="https://myanimelist.net/apiconfig"
-            registerHelp={'Create an app (App Type: "Web"). Paste the redirect URL below into MAL\'s "App Redirect URL" field. Save the Client ID — there is no client secret used here (PKCE flow).'}
-            status={malStatus}
-            onChange={refresh}
-          />
+        <div className="segment">
+          {(['anilist', 'mal'] as const).map((p) => (
+            <button
+              key={p}
+              type="button"
+              className={`segment-opt${main === p ? ' on' : ''}`}
+              onClick={() => void setMainProvider(p)}
+            >
+              {p === 'anilist' ? 'AniList' : 'MyAnimeList'}
+            </button>
+          ))}
         </div>
-      </section>
-    </div>
+      </div>
+    </section>
   );
 }
 
-export default TrackersPage;
+export default TrackersSection;

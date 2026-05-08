@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useMetadata } from '../hooks/useMetadata';
-import { Folder, RefreshCw, Plus, Trash2 } from 'lucide-react';
+import { Folder, RefreshCw, Plus, Trash2, Film } from 'lucide-react';
+import TrackersSection from './TrackersSection';
 
 interface CacheStats {
   count: number;
@@ -65,14 +66,14 @@ function SettingsTab() {
   const { metadata, loadMetadata } = useMetadata();
   const [folderSources, setFolderSources] = useState<string[]>([]);
   const [folderTitleCounts, setFolderTitleCounts] = useState<Record<string, number>>({});
+  const [movieFoldersByRoot, setMovieFoldersByRoot] = useState<Record<string, string[]>>({});
   const [scanning, setScanning] = useState(false);
   const [scanningPath, setScanningPath] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [cacheStats, setCacheStats] = useState<CacheStats>({ count: 0, sizeBytes: 0 });
 
   // Design-only state (no persistence wired up yet — flagged in copy)
-  const [sources, setSources] = useState({ anilist: true, mal: true, tvdb: false });
-  const [tvdbKey, setTvdbKey] = useState('');
+  const [sources, setSources] = useState({ anilist: true, mal: true });
   const [autoScan, setAutoScan] = useState(true);
   const [subtitles, setSubtitles] = useState<SubtitlePref>('auto');
 
@@ -112,6 +113,10 @@ function SettingsTab() {
       setLoading(true);
       const list = await window.electronAPI.getFolderSources();
       setFolderSources(list);
+      const detected = await Promise.all(
+        list.map(async (root) => [root, await window.electronAPI.findMovieFolders(root)] as const),
+      );
+      setMovieFoldersByRoot(Object.fromEntries(detected));
     } catch (err) {
       console.error('Error loading folder sources:', err);
     } finally {
@@ -261,33 +266,50 @@ function SettingsTab() {
             {folderSources.map((folderPath) => {
               const isScanningThis = scanningPath === folderPath;
               const count = folderTitleCounts[folderPath] ?? 0;
+              const movieFolders = movieFoldersByRoot[folderPath] ?? [];
               return (
-                <div key={folderPath} className="folder-row">
-                  <div className="folder-icon"><Folder size={16} /></div>
-                  <div className="folder-info">
-                    <div className="folder-path">{folderPath}</div>
-                    <div className="folder-meta">
-                      {isScanningThis
-                        ? <span className="scanning">Scanning…</span>
-                        : <span>{count} {count === 1 ? 'title' : 'titles'}</span>}
+                <div key={folderPath} className="folder-group">
+                  <div className="folder-row">
+                    <div className="folder-icon"><Folder size={16} /></div>
+                    <div className="folder-info">
+                      <div className="folder-path">{folderPath}</div>
+                      <div className="folder-meta">
+                        {isScanningThis
+                          ? <span className="scanning">Scanning…</span>
+                          : <span>{count} {count === 1 ? 'title' : 'titles'}</span>}
+                      </div>
                     </div>
+                    <button
+                      className="icon-btn"
+                      title="Rescan"
+                      onClick={() => handleScanFolder(folderPath)}
+                      disabled={scanning}
+                    >
+                      <RefreshCw size={15} className={isScanningThis ? 'spin' : ''} />
+                    </button>
+                    <button
+                      className="icon-btn icon-btn-danger"
+                      title="Remove"
+                      onClick={() => handleRemoveFolder(folderPath)}
+                      disabled={scanning}
+                    >
+                      <Trash2 size={15} />
+                    </button>
                   </div>
-                  <button
-                    className="icon-btn"
-                    title="Rescan"
-                    onClick={() => handleScanFolder(folderPath)}
-                    disabled={scanning}
-                  >
-                    <RefreshCw size={15} className={isScanningThis ? 'spin' : ''} />
-                  </button>
-                  <button
-                    className="icon-btn icon-btn-danger"
-                    title="Remove"
-                    onClick={() => handleRemoveFolder(folderPath)}
-                    disabled={scanning}
-                  >
-                    <Trash2 size={15} />
-                  </button>
+                  {movieFolders.map((moviePath) => {
+                    const relative = moviePath.startsWith(folderPath)
+                      ? moviePath.slice(folderPath.length).replace(/^\/+/, '')
+                      : moviePath;
+                    return (
+                      <div key={moviePath} className="folder-row folder-row-nested" title={moviePath}>
+                        <div className="folder-icon folder-icon-detected"><Film size={16} /></div>
+                        <div className="folder-info">
+                          <div className="folder-path">{relative}</div>
+                          <div className="folder-meta">Detected · movies</div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}
@@ -305,9 +327,8 @@ function SettingsTab() {
         </div>
         <div className="source-list">
           {([
-            { id: 'anilist' as const, label: 'AniList', desc: 'GraphQL · Public, no key required', priority: 1, needsKey: false },
-            { id: 'mal' as const, label: 'MyAnimeList', desc: 'Jikan API · Public, no key required', priority: 2, needsKey: false },
-            { id: 'tvdb' as const, label: 'TVDB', desc: 'Requires API key', priority: 3, needsKey: true },
+            { id: 'anilist' as const, label: 'AniList', desc: 'GraphQL · Public, no key required', priority: 1 },
+            { id: 'mal' as const, label: 'MyAnimeList', desc: 'Jikan API · Public, no key required', priority: 2 },
           ]).map((s) => (
             <div key={s.id} className="source-row">
               <div className="source-priority">{String(s.priority).padStart(2, '0')}</div>
@@ -315,14 +336,6 @@ function SettingsTab() {
                 <div className="source-name">{s.label}</div>
                 <div className="source-desc">{s.desc}</div>
               </div>
-              {s.needsKey && (
-                <input
-                  className="source-key"
-                  placeholder="API key"
-                  value={tvdbKey}
-                  onChange={(e) => setTvdbKey(e.target.value)}
-                />
-              )}
               <Toggle
                 on={sources[s.id]}
                 onChange={(v) => setSources({ ...sources, [s.id]: v })}
@@ -332,6 +345,8 @@ function SettingsTab() {
           ))}
         </div>
       </section>
+
+      <TrackersSection />
 
       <section className="settings-section">
         <div className="settings-section-head">
