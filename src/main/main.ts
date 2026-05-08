@@ -27,6 +27,16 @@ import { fileWatcher } from './services/watcher';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// When the app is launched from a .desktop entry, stdout/stderr aren't
+// connected to anything — the first write that hits a closed pipe takes
+// down the main process with EPIPE. Swallow EPIPE specifically so any
+// stray console.log can't crash us; surface other errors normally.
+for (const stream of [process.stdout, process.stderr]) {
+  stream.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code !== 'EPIPE') throw err;
+  });
+}
+
 // Helper to check if error is a rate limit (already logged by handlers)
 function isRateLimitError(error: unknown): boolean {
   if (axios.isAxiosError(error)) {

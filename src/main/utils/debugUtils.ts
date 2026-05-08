@@ -10,6 +10,13 @@ function stageFor(header: string): LogStage {
   return 'system';
 }
 
+// cli-progress writes ANSI escape sequences to stdout. In a packaged
+// Electron app launched from a .desktop entry, stdout is not connected
+// to a terminal and the first write that hits a closed pipe crashes the
+// main process with EPIPE. Skip the visual bar entirely when there's no
+// TTY — the structured `logger` output downstream still goes through.
+const TTY_AVAILABLE = !!process.stdout.isTTY;
+
 const BAR_SIZE = 35;
 
 interface ProgressBarInstance {
@@ -68,6 +75,7 @@ function createProgressBar(header: string, total: number = 0): ProgressBarInstan
  * @param total The total number of items (0 if unknown, will be updated dynamically)
  */
 export function initProgress(header: string, total: number = 0): void {
+    if (!TTY_AVAILABLE) return;
     // Stop and remove existing progress bar if it exists (reset for new operation)
     if (progressBars.has(header)) {
         const instance = progressBars.get(header)!;
@@ -85,6 +93,12 @@ export function initProgress(header: string, total: number = 0): void {
  * @param filename Optional filename to display
  */
 export function updateProgress(header: string, filename?: string): void {
+    if (!TTY_AVAILABLE) {
+        // No bar without a TTY, but the structured logger should still see
+        // the event so the activity drawer in the renderer stays populated.
+        logger.info(stageFor(header), filename ? `${header}: ${filename}` : header);
+        return;
+    }
     const instance = progressBars.get(header);
 
     if (!instance) {
@@ -117,6 +131,7 @@ export function updateProgress(header: string, filename?: string): void {
  * @param total The total number of items
  */
 export function setProgressTotal(header: string, total: number): void {
+    if (!TTY_AVAILABLE) return;
     const instance = progressBars.get(header);
 
     if (!instance) {
@@ -134,6 +149,7 @@ export function setProgressTotal(header: string, total: number): void {
  * @param header The header/title of the progress bar
  */
 export function resetProgress(header: string): void {
+    if (!TTY_AVAILABLE) return;
     const instance = progressBars.get(header);
 
     if (instance) {
@@ -147,6 +163,7 @@ export function resetProgress(header: string): void {
  * @param header The header/title of the progress bar
  */
 export function stopProgress(header: string): void {
+    if (!TTY_AVAILABLE) return;
     const instance = progressBars.get(header);
 
     if (instance) {
