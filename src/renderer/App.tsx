@@ -10,7 +10,12 @@ import TrackersPage from "./pages/TrackersPage";
 import ContextMenu from "./components/ContextMenu";
 import { ActivityLogProvider } from "./contexts/ActivityLogContext";
 import { ActivityLogDrawer } from "./components/ActivityLogDrawer";
+import { TitleLanguageProvider } from "./contexts/TitleLanguageContext";
+import LangSwitch from "./components/LangSwitch";
+import pkg from "../../package.json";
 import "./styles/App.css";
+
+const VERSION = pkg.version;
 
 function AppContent() {
   const location = useLocation();
@@ -47,7 +52,10 @@ function AppContent() {
               <span>Settings</span>
             </NavLink>
           </div>
-          <span className="navbar-meta">v0.0.0</span>
+          <div className="navbar-tail">
+            <LangSwitch />
+            <span className="navbar-meta">v{VERSION}</span>
+          </div>
         </nav>
       )}
       {!isPlayerRoute ? (
@@ -82,9 +90,11 @@ function ActivityLogMount() {
 function App() {
   return (
     <HashRouter>
-      <ActivityLogProvider>
-        <AppContent />
-      </ActivityLogProvider>
+      <TitleLanguageProvider>
+        <ActivityLogProvider>
+          <AppContent />
+        </ActivityLogProvider>
+      </TitleLanguageProvider>
     </HashRouter>
   );
 }

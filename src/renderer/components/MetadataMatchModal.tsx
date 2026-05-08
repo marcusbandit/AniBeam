@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { Search, X, Loader2 } from 'lucide-react';
-import type { SeriesMetadata } from '../hooks/useMetadata';
 import type { AnilistSearchResult } from '../../types/electron';
 
 interface Props {
@@ -9,12 +8,12 @@ interface Props {
   currentTitle: string;
   seasonNumber: number | null;
   onClose: () => void;
-  onApply: (replacement: SeriesMetadata) => Promise<void> | void;
+  onApplied: () => void | Promise<void>;
 }
 
 const SEARCH_DEBOUNCE_MS = 250;
 
-function MetadataMatchModal({ open, seriesId, currentTitle, seasonNumber, onClose, onApply }: Props) {
+function MetadataMatchModal({ open, seriesId, currentTitle, seasonNumber, onClose, onApplied }: Props) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<AnilistSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -82,13 +81,13 @@ function MetadataMatchModal({ open, seriesId, currentTitle, seasonNumber, onClos
     setApplyingId(result.id);
     setError(null);
     try {
-      const replacement = (await window.electronAPI.fetchAnilistById(result.id, seasonNumber)) as SeriesMetadata | null;
-      if (!replacement) {
-        setError('Could not fetch metadata for that selection');
+      const res = await window.electronAPI.applyAnilistMatch(seriesId, result.id, seasonNumber);
+      if (!res?.ok) {
+        setError(`Could not apply match${res?.reason ? `: ${res.reason}` : ''}`);
         setApplyingId(null);
         return;
       }
-      await onApply(replacement);
+      await onApplied();
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Apply failed');

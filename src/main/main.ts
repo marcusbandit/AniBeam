@@ -1,7 +1,8 @@
 import { app, BrowserWindow, ipcMain, dialog, Menu, protocol, net, shell } from 'electron';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { dirname, join, isAbsolute, resolve, relative } from 'path';
+import { dirname, join, isAbsolute, resolve, relative, basename } from 'path';
 import { existsSync } from 'fs';
+import { spawn } from 'child_process';
 import axios from 'axios';
 import folderHandler from './handlers/folderHandler';
 import anilistHandler from './handlers/anilistHandler';
@@ -11,6 +12,8 @@ import configHandler from './handlers/configHandler';
 import imageCacheHandler from './handlers/imageCacheHandler';
 import thumbnailHandler from './handlers/thumbnailHandler';
 import { initMediaProgress, updateMediaProgress } from './utils/debugUtils';
+import { findBestMatch } from './utils/metadataMatcher';
+import { findShowMatch, fetchEpisodeAirDates } from './utils/posterMatch';
 import { logger } from './services/logger';
 import type { FileStatus } from '../shared/fileStatus';
 import type { ScannedMedia } from './handlers/folderHandler';
@@ -88,34 +91,55 @@ async function ingestSingleFile(filePath: string): Promise<void> {
       return;
     }
     const { media } = result;
-    logger.info('metadata', `Fetching for new file`, { series: media.name, file: filePath });
 
-    // Run network-bound metadata fetch OUTSIDE the lock — it can take seconds.
-    // Read a snapshot now; we'll re-merge with the latest state inside the transaction.
-    const snapshot = await metadataHandler.loadMetadata();
-    const slice = await processOneMedia(media, snapshot);
-
+    // Filesystem-only ingest. Splice the new file into the series's
+    // fileEpisodes (creating a minimal entry if the series is brand new).
+    // No network, no thumbnails, no metadata fetch — metadata is paused.
+    let isBrandNewSeries = false;
     await metadataHandler.transaction(async (current) => {
-      // Force this newly-discovered file to 'verifying' in the merged slice.
-      for (const seriesValue of Object.values(slice)) {
-        const s = seriesValue as { fileEpisodes?: Array<{ filePath: string; status?: string; lastProbedAt?: number }> };
-        if (!Array.isArray(s.fileEpisodes)) continue;
-        for (const f of s.fileEpisodes) {
-          if (f.filePath === filePath) {
-            f.status = 'verifying';
-            f.lastProbedAt = Date.now();
-          }
-        }
-      }
-      // Merge slice over the FRESH state (not snapshot) so any concurrent
-      // probe completions or other ingests don't get clobbered.
-      return { updated: { ...current, ...slice } };
+      const existing = (current[media.id] ?? {}) as {
+        fileEpisodes?: Array<{ filePath: string; status?: string; lastProbedAt?: number }>;
+        title?: string;
+        posterMatchAttempted?: boolean;
+      };
+      isBrandNewSeries = !existing.fileEpisodes || existing.fileEpisodes.length === 0;
+      const byPath = new Map((existing.fileEpisodes ?? []).map((f) => [f.filePath, f]));
+      const newFileEpisodes = media.files.map((f) => {
+        const old = byPath.get(f.filePath);
+        const isThisFile = f.filePath === filePath;
+        return {
+          episodeNumber: f.episodeNumber,
+          seasonNumber: f.seasonNumber,
+          filePath: f.filePath,
+          subtitlePath: f.subtitlePath,
+          subtitlePaths: f.subtitlePaths,
+          filename: f.filename,
+          title: f.title,
+          status: isThisFile ? 'verifying' : (old?.status ?? f.status),
+          lastProbedAt: isThisFile ? Date.now() : (old?.lastProbedAt ?? f.lastProbedAt),
+        };
+      });
+      current[media.id] = {
+        ...existing,
+        seriesId: media.id,
+        title: existing.title ?? media.name,
+        fileEpisodes: newFileEpisodes,
+        folderPath: media.folderPath,
+        type: media.type,
+      };
+      logger.info('watch', `Ingest: ${media.name} (${newFileEpisodes.length} files)`, { series: media.name, file: filePath });
+      return { updated: current };
     });
 
     videoProbeHandler.enqueue(filePath);
 
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('metadata:file-status-changed', { filePath, status: 'verifying' });
+    }
+
+    // First time we see this series → background poster match.
+    if (isBrandNewSeries) {
+      void matchPosterForSeries(media.id, basename(media.folderPath));
     }
   } catch (err) {
     logger.error('watch', `Failed to ingest new file: ${(err as Error).message}`, { file: filePath });
@@ -151,6 +175,155 @@ declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
 
 let mainWindow: BrowserWindow | null = null;
+
+let startupCatchUpInFlight = false;
+
+async function runStartupCatchUp(): Promise<void> {
+  if (startupCatchUpInFlight) return;
+  startupCatchUpInFlight = true;
+  try {
+    const activeRoots = await configHandler.getFolderSources();
+    if (activeRoots.length === 0) return;
+    logger.info('watch', `Startup catch-up: ${activeRoots.length} root(s)`);
+    for (const root of activeRoots) {
+      try {
+        await runScanAndFetch(root, activeRoots);
+      } catch (err) {
+        logger.warn('folder', `Startup catch-up failed for ${root}: ${(err as Error).message}`, { file: root });
+      }
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('metadata:file-status-changed', { filePath: '', status: 'ready' });
+    }
+    // Background: kick off poster matching for series that haven't been
+    // tried yet. Doesn't block startup. Renderer reloads on each match
+    // via the file-status-changed ping inside matchPosterForSeries.
+    void matchPostersForLibrary();
+  } finally {
+    startupCatchUpInFlight = false;
+  }
+}
+
+// Background match for one series: poster + status + per-episode air
+// dates (MAL only — AniList airing-schedule not wired yet). Idempotent:
+// always writes `posterMatchAttempted: true` so we don't re-hammer MAL
+// on every restart. Misses leave the placeholder; future "human in the
+// loop" UI will let the user pick manually.
+async function matchPosterForSeries(seriesId: string, folderName: string): Promise<void> {
+  try {
+    const match = await findShowMatch(folderName);
+    if (!match) {
+      await metadataHandler.transaction(async (current) => {
+        const existing = (current[seriesId] ?? {}) as Record<string, unknown>;
+        if (existing.posterMatchAttempted) return { updated: null };
+        current[seriesId] = { ...existing, posterMatchAttempted: true, posterMatched: false };
+        return { updated: current };
+      });
+      return;
+    }
+    const [cached, episodeDates] = await Promise.all([
+      imageCacheHandler.cacheImages([match.posterUrl]),
+      fetchEpisodeAirDates(match.source, match.externalId, match.totalEpisodes),
+    ]);
+    const posterLocal = cached.get(match.posterUrl) ?? null;
+    await metadataHandler.transaction(async (current) => {
+      const existing = (current[seriesId] ?? {}) as Record<string, unknown>;
+      // Slim episode list — only what the feed needs to sort. We deliberately
+      // do NOT keep titles/descriptions/thumbnails; metadata enrichment
+      // beyond the sort key is still paused.
+      const slimEpisodes = episodeDates.map((e) => ({ episodeNumber: e.episodeNumber, airDate: e.airDate }));
+      current[seriesId] = {
+        ...existing,
+        poster: match.posterUrl,
+        posterLocal,
+        posterMatchAttempted: true,
+        posterMatched: true,
+        matchSource: match.source,
+        matchExternalId: match.externalId,
+        matchedTitle: match.matchedTitle,
+        titleRomaji: match.titleRomaji,
+        titleEnglish: match.titleEnglish,
+        matchScore: match.score,
+        status: match.status,
+        startDate: match.startDate,
+        totalEpisodes: match.totalEpisodes,
+        episodes: slimEpisodes,
+      };
+      return { updated: current };
+    });
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('metadata:file-status-changed', { filePath: '', status: 'ready' });
+    }
+  } catch (err) {
+    logger.warn('metadata', `Match failed for ${folderName}: ${(err as Error).message}`, { series: folderName });
+  }
+}
+
+// Walk every series in metadata.json and match a poster for any that
+// haven't been attempted yet. Sequential so we don't blow through the
+// MAL/AniList rate limiters in bursts. Designed to run in the background
+// — never throw, never block the caller.
+async function matchPostersForLibrary(): Promise<void> {
+  const meta = await metadataHandler.loadMetadata();
+  const todo: Array<{ seriesId: string; folderName: string }> = [];
+  for (const [seriesId, raw] of Object.entries(meta)) {
+    const s = raw as {
+      posterMatchAttempted?: boolean;
+      posterMatched?: boolean;
+      titleRomaji?: string | null;
+      titleEnglish?: string | null;
+      episodes?: Array<{ episodeNumber?: number; airDate?: string | null }>;
+      folderPath?: string;
+      title?: string;
+    };
+    // Re-match when:
+    //  (a) never attempted, or
+    //  (b) matched in an earlier iteration but the episode air dates we now
+    //      need for the feed sort aren't there yet, or
+    //  (c) matched but missing the explicit titleRomaji/titleEnglish fields
+    //      added with the JP/EN switch.
+    const needsFirstMatch = !s.posterMatchAttempted;
+    const matchedButMissingAirDates =
+      !!s.posterMatched &&
+      (!Array.isArray(s.episodes) ||
+        s.episodes.length === 0 ||
+        !s.episodes.some((e) => !!e.airDate));
+    const matchedButMissingTitles =
+      !!s.posterMatched && s.titleRomaji === undefined && s.titleEnglish === undefined;
+    if (!needsFirstMatch && !matchedButMissingAirDates && !matchedButMissingTitles) continue;
+    const folderName = s.folderPath ? basename(s.folderPath) : (s.title ?? seriesId);
+    todo.push({ seriesId, folderName });
+  }
+  if (todo.length === 0) return;
+  logger.info('metadata', `Matching ${todo.length} series (poster + air dates)`);
+  for (const { seriesId, folderName } of todo) {
+    await matchPosterForSeries(seriesId, folderName);
+  }
+}
+
+async function ingestSubtree(dirPath: string): Promise<void> {
+  // chokidar emits `addDir` when a new folder appears, but it does NOT
+  // reliably emit `add` for files that were already inside the folder at
+  // creation time (e.g. a torrent client renaming a temp dir into place).
+  // Walk the new subtree ourselves and ingest every video we find.
+  try {
+    const { readdir, stat } = await import('fs/promises');
+    const entries = await readdir(dirPath);
+    for (const entry of entries) {
+      const full = `${dirPath}/${entry}`;
+      try {
+        const s = await stat(full);
+        if (s.isDirectory()) {
+          await ingestSubtree(full);
+        } else if (s.isFile() && /\.(mkv|mp4|avi|mov|webm|m4v|ts|wmv|flv)$/i.test(entry)) {
+          void ingestSingleFile(full);
+        }
+      } catch { /* skip unreadable */ }
+    }
+  } catch (err) {
+    logger.warn('watch', `ingestSubtree failed for ${dirPath}: ${(err as Error).message}`, { file: dirPath });
+  }
+}
 
 function createWindow(): void {
   // Remove the application menu (File, Edit, View, etc.)
@@ -358,11 +531,17 @@ app.whenReady().then(async () => {
   const initialRoots = await configHandler.getFolderSources();
   await fileWatcher.start(initialRoots, {
     onAdd: (path) => { void ingestSingleFile(path); },
+    onAddDir: (dirPath) => { void ingestSubtree(dirPath); },
     onUnlink: (path) => { void handleUnlink(path); },
     // unlinkDir: chokidar emits unlink for each contained file too, so the
     // per-file handler covers actual cleanup. Just log; don't double-reconcile.
     onUnlinkDir: (dirPath) => { logger.info('watch', `Directory removed`, { file: dirPath }); },
   });
+
+  // One-shot catch-up for files that landed while the app was closed
+  // (chokidar's ignoreInitial:true skips them). NOT a periodic safety net —
+  // ongoing detection is the watcher's job, period.
+  void runStartupCatchUp();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -454,6 +633,73 @@ ipcMain.handle('scan-folder', async (_event, folderPath: string) => {
   }
 });
 
+// Pure filesystem walk of every configured library root, joined with
+// just the bits of metadata.json the renderer actually displays right
+// now (poster URL/local path + match state). No episode-level metadata,
+// no banners, no online thumbnails. The renderer renders directly off
+// this — folder names verbatim, posters when matched, placeholder when
+// not.
+ipcMain.handle('library:walk', async () => {
+  const roots = await configHandler.getFolderSources();
+  const all: ScannedMedia[] = [];
+  for (const root of roots) {
+    try {
+      const items = await folderHandler.scanFolder(root, [root]);
+      all.push(...items);
+    } catch (err) {
+      logger.warn('folder', `library:walk failed for ${root}: ${(err as Error).message}`, { file: root });
+    }
+  }
+  const meta = await metadataHandler.loadMetadata();
+  return all.map((m) => {
+    const stored = (meta[m.id] ?? {}) as {
+      poster?: string | null;
+      posterLocal?: string | null;
+      posterMatched?: boolean;
+      posterMatchAttempted?: boolean;
+      matchSource?: 'mal' | 'anilist';
+      matchedTitle?: string | null;
+      titleRomaji?: string | null;
+      titleEnglish?: string | null;
+      status?: string | null;
+      startDate?: string | null;
+      totalEpisodes?: number | null;
+      episodes?: Array<{ episodeNumber: number; airDate: string | null }>;
+    };
+    return {
+      id: m.id,
+      folderName: basename(m.folderPath),
+      folderPath: m.folderPath,
+      type: m.type,
+      poster: stored.poster ?? null,
+      posterLocal: stored.posterLocal ?? null,
+      posterMatched: stored.posterMatched ?? false,
+      posterMatchAttempted: stored.posterMatchAttempted ?? false,
+      matchSource: stored.matchSource ?? null,
+      matchedTitle: stored.matchedTitle ?? null,
+      titleRomaji: stored.titleRomaji ?? stored.matchedTitle ?? null,
+      titleEnglish: stored.titleEnglish ?? null,
+      status: stored.status ?? null,
+      startDate: stored.startDate ?? null,
+      totalEpisodes: stored.totalEpisodes ?? null,
+      episodes: (stored.episodes ?? []).map((e) => ({
+        episodeNumber: e.episodeNumber,
+        airDate: e.airDate ?? null,
+      })),
+      files: m.files.map((f) => ({
+        filename: f.filename,
+        filePath: f.filePath,
+        title: f.title,
+        episodeNumber: f.episodeNumber,
+        seasonNumber: f.seasonNumber,
+        subtitlePath: f.subtitlePath,
+        subtitlePaths: f.subtitlePaths,
+        mtime: f.mtime,
+      })),
+    };
+  });
+});
+
 ipcMain.handle('scan-all-folders', async () => {
   try {
     const folderSources = await configHandler.getFolderSources();
@@ -470,38 +716,21 @@ ipcMain.handle('scan-all-folders', async () => {
 // ==================== METADATA IPC ====================
 
 ipcMain.handle('fetch-metadata', async (_event, searchName: string, seasonNumber?: number | null) => {
-  // Try sources in priority order: MAL -> AniList
+  // Best-match across MAL + AniList. No folderEpisodeCount on this path
+  // (renderer-side refresh doesn't know it), so the strict-tier ep-count
+  // filter is disabled — title similarity does the heavy lifting.
   const seasonInfo = seasonNumber !== null && seasonNumber !== undefined ? ` Season ${seasonNumber}` : '';
   logger.info('metadata', `Fetching metadata for: "${searchName}"${seasonInfo}`);
 
-  try {
-    const malData = await malHandler.searchAndFetchMetadata(searchName, seasonNumber);
-    if (malData) {
-      logger.info('metadata', `Found on MAL: ${malData.title}`, { series: malData.title });
-      return { ...malData, source: 'mal' };
-    } else {
-      logger.warn('metadata', `MAL returned no results for "${searchName}"${seasonInfo}`);
-    }
-  } catch (error) {
-    if (!isRateLimitError(error)) {
-      logger.error('metadata', `MAL failed`);
-    }
+  const result = await findBestMatch(searchName, seasonNumber ?? null, null, undefined);
+  if (result) {
+    const meta = result.metadata as { title?: string };
+    logger.info(
+      'metadata',
+      `Refresh match: ${result.source.toUpperCase()} "${meta.title ?? '?'}" (score ${result.score.toFixed(2)})`,
+    );
+    return result.metadata;
   }
-
-  try {
-    const anilistData = await anilistHandler.searchAndFetchMetadata(searchName, seasonNumber);
-    if (anilistData) {
-      logger.info('metadata', `Found on AniList (fallback): ${anilistData.title}`, { series: anilistData.title });
-      return { ...anilistData, source: 'anilist' };
-    } else {
-      logger.warn('metadata', `AniList returned no results for "${searchName}"${seasonInfo}`);
-    }
-  } catch (error) {
-    if (!isRateLimitError(error)) {
-      logger.error('metadata', `AniList failed`);
-    }
-  }
-
   logger.warn('metadata', `No metadata found for: "${searchName}"${seasonInfo}`);
   return null;
 });
@@ -537,15 +766,107 @@ ipcMain.handle('anilist:search', async (_event, query: string, limit?: number) =
   }
 });
 
-// Override path: the user picked a specific AniList ID in the modal.
-ipcMain.handle('anilist:fetch-by-id', async (_event, id: number, seasonNumber?: number | null) => {
-  if (typeof id !== 'number' || !Number.isFinite(id)) return null;
-  try {
-    return await anilistHandler.fetchMetadataById(id, seasonNumber ?? null);
-  } catch (error) {
-    if (!isRateLimitError(error)) logger.error('metadata', 'Error fetching AniList metadata by id');
-    return null;
+// Override path: the user picked a specific AniList ID in the match modal.
+// Run the same image-caching + local-thumbnail generation pipeline that
+// scan-and-fetch uses, so episode thumbnails actually populate (raw AniList
+// data has only a sparse `streamingEpisodes` set; everything else needs an
+// ffmpeg fallback against the on-disk video files).
+ipcMain.handle('metadata:apply-anilist-match', async (
+  _event,
+  seriesId: string,
+  anilistId: number,
+  seasonNumber: number | null = null,
+) => {
+  if (!seriesId || typeof anilistId !== 'number' || !Number.isFinite(anilistId)) {
+    return { ok: false, reason: 'bad-args' };
   }
+
+  // 1. Fetch the chosen media from AniList.
+  const fetched = await anilistHandler.fetchMetadataById(anilistId, seasonNumber);
+  if (!fetched) return { ok: false, reason: 'fetch-failed' };
+
+  // 2. Pull the existing entry for fileEpisodes / folderPath / type — those
+  //    describe local state and must be preserved across the override.
+  const allMeta = await metadataHandler.loadMetadata();
+  const existing = allMeta[seriesId] as {
+    fileEpisodes?: Array<{ episodeNumber: number; seasonNumber?: number | null; filePath: string }>;
+    folderPath?: string;
+    type?: 'series' | 'movie';
+  } | undefined;
+
+  const fileEpisodes = existing?.fileEpisodes ?? [];
+
+  // 3. Build a season+episode → filePath lookup so we can pick the right
+  //    video for each AniList-listed episode that lacks an online thumbnail.
+  const fileEpisodeMap = new Map<string, string>();
+  for (const f of fileEpisodes) {
+    const key = f.seasonNumber !== null && f.seasonNumber !== undefined
+      ? `${f.seasonNumber}_${f.episodeNumber}`
+      : `null_${f.episodeNumber}`;
+    fileEpisodeMap.set(key, f.filePath);
+  }
+
+  // 4. Cache poster + banner + every online episode thumbnail in one pass.
+  const imagesToCache: (string | null)[] = [fetched.poster, fetched.banner];
+  for (const ep of fetched.episodes || []) {
+    if (ep.thumbnail) imagesToCache.push(ep.thumbnail);
+  }
+  const cachedImages = await imageCacheHandler.cacheImages(imagesToCache);
+
+  const posterLocal = fetched.poster ? cachedImages.get(fetched.poster) ?? null : null;
+  const bannerLocal = fetched.banner ? cachedImages.get(fetched.banner) ?? null : null;
+
+  // 5. For each AniList episode, prefer the cached online thumbnail; if there
+  //    isn't one, generate a frame from the matching local video. Match by
+  //    season+episode first, then any-season fallback (handles both libraries
+  //    that flag seasons in folder names and ones that don't).
+  const episodesWithLocalThumbs = [];
+  let firstThumbnailInBatch = true;
+  for (const ep of fetched.episodes || []) {
+    let thumbnailLocal: string | null = null;
+    if (ep.thumbnail) thumbnailLocal = cachedImages.get(ep.thumbnail) ?? null;
+
+    if (!thumbnailLocal) {
+      const epSeason = ep.seasonNumber ?? null;
+      const exactKey = epSeason !== null ? `${epSeason}_${ep.episodeNumber}` : `null_${ep.episodeNumber}`;
+      let videoPath = fileEpisodeMap.get(exactKey);
+      if (!videoPath && epSeason !== null) videoPath = fileEpisodeMap.get(`null_${ep.episodeNumber}`);
+      if (!videoPath) {
+        for (const [mapKey, path] of fileEpisodeMap.entries()) {
+          const parts = mapKey.split('_');
+          const keyEpNum = parseFloat(parts[parts.length - 1]);
+          if (keyEpNum === ep.episodeNumber) { videoPath = path; break; }
+        }
+      }
+      if (videoPath) {
+        try {
+          thumbnailLocal = await thumbnailHandler.generateThumbnail(videoPath, 120, firstThumbnailInBatch);
+          firstThumbnailInBatch = false;
+        } catch (err) {
+          logger.warn('thumbnail', `apply-match: failed to generate thumbnail for ep ${ep.episodeNumber}`, { file: videoPath });
+        }
+      }
+    }
+    episodesWithLocalThumbs.push({ ...ep, thumbnailLocal });
+  }
+
+  // 6. Merge into existing entry. Keep the original seriesId KEY in
+  //    metadata.json (caller still uses it); also write the AniList one
+  //    inside the entry so future code can resolve the chosen ID.
+  const merged: Record<string, unknown> = {
+    ...fetched,
+    posterLocal,
+    bannerLocal,
+    episodes: episodesWithLocalThumbs,
+    fileEpisodes,
+    folderPath: existing?.folderPath,
+    type: existing?.type,
+    source: 'anilist',
+  };
+
+  await metadataHandler.updateSeriesMetadata(seriesId, merged);
+  logger.info('metadata', `Override applied: ${seriesId} → AniList ${anilistId}`);
+  return { ok: true };
 });
 
 ipcMain.handle('save-metadata', async (_event, metadata: Record<string, unknown>) => {
@@ -606,6 +927,14 @@ ipcMain.handle('delete-series', async (_event, seriesId: string) => {
 });
 
 // ==================== PER-SERIES METADATA PROCESSOR ====================
+// PAUSED: metadata enrichment (network fetch, image cache, thumbnails) is
+// currently disabled — the renderer reads directly from library:walk for
+// display, and runScanAndFetch only does a filesystem-only fileEpisodes
+// sync. processOneMedia is kept here to make re-enabling enrichment a
+// one-liner (call it again from runScanAndFetch's slow pass) without
+// rewriting the hundreds of lines of online-thumbnail / image-cache /
+// MAL+AniList logic. Don't delete it.
+void processOneMedia;
 
 async function processOneMedia(
   media: ScannedMedia,
@@ -702,39 +1031,28 @@ async function processOneMedia(
 
   logger.info('folder', `Folder has ${canonicalEpisodeCount} canonical episode${canonicalEpisodeCount !== 1 ? 's' : ''} (${media.files.length} total files including decimal episodes)`, { series: media.name });
 
-  // Fetch new metadata with season/part information
-  // Try multiple sources in order: MAL -> AniList
-  // Pass canonical episode count to validate search results
-  let fetchedMetadata = null;
-
-  try {
-    fetchedMetadata = await malHandler.searchAndFetchMetadata(media.name, media.seasonNumber, media.partNumber, canonicalEpisodeCount);
-    if (fetchedMetadata) {
-      logger.info('metadata', `Found on MAL: ${fetchedMetadata.title} (${fetchedMetadata.totalEpisodes || 'unknown'} episodes)`, { series: fetchedMetadata.title });
-      fetchedMetadata = { ...fetchedMetadata, source: 'mal' };
-    } else {
-      logger.warn('metadata', `MAL returned no results for ${media.name}${seasonInfo}`, { series: media.name });
-    }
-  } catch (err) {
-    if (!isRateLimitError(err)) {
-      logger.error('metadata', `MAL failed for ${media.name}${seasonInfo}`, { series: media.name });
-    }
-  }
-
-  if (!fetchedMetadata) {
-    try {
-      fetchedMetadata = await anilistHandler.searchAndFetchMetadata(media.name, media.seasonNumber, media.partNumber, canonicalEpisodeCount);
-      if (fetchedMetadata) {
-        logger.info('metadata', `Found on AniList (fallback): ${fetchedMetadata.title} (${fetchedMetadata.totalEpisodes || 'unknown'} episodes)`, { series: fetchedMetadata.title });
-        fetchedMetadata = { ...fetchedMetadata, source: 'anilist' };
-      } else {
-        logger.warn('metadata', `AniList returned no results for ${media.name}${seasonInfo}`, { series: media.name });
-      }
-    } catch (err) {
-      if (!isRateLimitError(err)) {
-        logger.error('metadata', `AniList failed for ${media.name}${seasonInfo}`, { series: media.name });
-      }
-    }
+  // Fetch new metadata. findBestMatch searches MAL + AniList in parallel,
+  // scores every candidate against the folder name, and picks the best
+  // (refusing if nothing clears the title-similarity threshold). Replaces
+  // the old MAL-first AniList-fallback that mismatched fuzzy-similar shows.
+  type FetchedShape = Record<string, unknown> & {
+    title: string;
+    poster?: string | null;
+    banner?: string | null;
+    episodes?: Array<{ episodeNumber: number; seasonNumber?: number | null; thumbnail?: string | null }>;
+    totalEpisodes?: number | null;
+  };
+  const matchResult = await findBestMatch(media.name, media.seasonNumber, media.partNumber, canonicalEpisodeCount);
+  let fetchedMetadata: FetchedShape | null = null;
+  if (matchResult) {
+    fetchedMetadata = matchResult.metadata as FetchedShape;
+    logger.info(
+      'metadata',
+      `Found on ${matchResult.source.toUpperCase()}: ${fetchedMetadata.title} (${fetchedMetadata.totalEpisodes ?? 'unknown'} episodes, score ${matchResult.score.toFixed(2)})`,
+      { series: fetchedMetadata.title },
+    );
+  } else {
+    logger.warn('metadata', `No good match for ${media.name}${seasonInfo}`, { series: media.name });
   }
 
   if (fetchedMetadata) {
@@ -743,8 +1061,8 @@ async function processOneMedia(
 
     // Collect all image URLs to cache
     const imagesToCache: (string | null)[] = [
-      fetchedMetadata.poster,
-      fetchedMetadata.banner,
+      fetchedMetadata.poster ?? null,
+      fetchedMetadata.banner ?? null,
     ];
 
     // Add episode thumbnails that exist online
@@ -953,59 +1271,110 @@ async function processOneMedia(
 
 // ==================== SCAN AND FETCH COMBINED ====================
 
+async function runScanAndFetch(folderPath: string, activeRoots: string[]): Promise<{ success: boolean; count: number }> {
+  logger.info('folder', `Starting scan and metadata fetch for: ${folderPath}`, { file: folderPath });
+
+  // 1. Scan. Pass activeRoots so scanFolder treats a sub-folder (rescan-show)
+  // as part of its containing library root, not as a fresh root itself.
+  const scannedMedia = await folderHandler.scanFolder(folderPath, activeRoots);
+
+  // 2. Reconcile against disk: drop fileEpisodes pointing at files that are
+  // gone. Keeps metadata.json honest about what's on disk.
+  await metadataHandler.transaction(async (raw) => {
+    const reconciled = await folderHandler.reconcileMetadata(raw, activeRoots);
+    return { updated: reconciled };
+  });
+
+  // 3. Filesystem-only pass: build/refresh fileEpisodes from disk for every
+  // series. NO network, NO ffmpeg, NO thumbnails, NO posters. The renderer
+  // doesn't need them — it walks the filesystem directly via library:walk
+  // for display. metadata.json is kept in sync only because the player still
+  // resolves files by seriesId. Metadata enrichment is paused.
+  const scannedIds = new Set<string>();
+  await metadataHandler.transaction(async (current) => {
+    let touched = 0;
+    for (const media of scannedMedia) {
+      if (media.files.length === 0) continue;
+      scannedIds.add(media.id);
+      const existing = (current[media.id] ?? {}) as {
+        fileEpisodes?: Array<{ filePath: string; status?: string; lastProbedAt?: number }>;
+        title?: string;
+        folderPath?: string;
+      };
+
+      const oldByPath = new Map(
+        (existing.fileEpisodes ?? []).map((f) => [f.filePath, f]),
+      );
+      const newFileEpisodes = media.files.map((f) => {
+        const old = oldByPath.get(f.filePath);
+        return {
+          episodeNumber: f.episodeNumber,
+          seasonNumber: f.seasonNumber,
+          filePath: f.filePath,
+          subtitlePath: f.subtitlePath,
+          subtitlePaths: f.subtitlePaths,
+          filename: f.filename,
+          title: f.title,
+          status: old?.status ?? f.status,
+          lastProbedAt: old?.lastProbedAt ?? f.lastProbedAt,
+        };
+      });
+
+      const oldPaths = new Set(oldByPath.keys());
+      const newPaths = new Set(newFileEpisodes.map((f) => f.filePath));
+      const sameLength = oldPaths.size === newPaths.size;
+      const sameContents = sameLength && [...newPaths].every((p) => oldPaths.has(p));
+      if (sameContents && existing.folderPath === media.folderPath) continue;
+
+      current[media.id] = {
+        ...existing,
+        seriesId: media.id,
+        title: existing.title ?? media.name,
+        fileEpisodes: newFileEpisodes,
+        folderPath: media.folderPath,
+        type: media.type,
+      };
+      touched++;
+      logger.info('folder', `Sync: ${media.name} → ${newFileEpisodes.length} file(s)`, { series: media.name });
+    }
+    if (touched === 0) return { updated: null };
+    return { updated: current };
+  });
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('metadata:file-status-changed', { filePath: '', status: 'ready' });
+  }
+
+  // 4. Cleanup: drop any pre-existing entries whose folderPath is under the
+  // scanned folder but didn't show up in this scan — they're stale (deleted
+  // series, orphan movie_* entries from earlier misclassifications, etc.).
+  // Entries already replaced via the per-series writes above stay intact.
+  const normalize = (p: string) => (p.endsWith('/') ? p.slice(0, -1) : p);
+  const normalizedScan = normalize(folderPath);
+  const scanPrefix = normalizedScan + '/';
+  await metadataHandler.transaction(async (current) => {
+    const merged: Record<string, unknown> = {};
+    let dropped = 0;
+    for (const [seriesId, seriesData] of Object.entries(current)) {
+      const fp = (seriesData as { folderPath?: string })?.folderPath;
+      const isUnderScan = fp && (normalize(fp) === normalizedScan || normalize(fp).startsWith(scanPrefix));
+      if (!isUnderScan || scannedIds.has(seriesId)) {
+        merged[seriesId] = seriesData;
+      } else {
+        dropped++;
+      }
+    }
+    if (dropped === 0) return { updated: null };
+    return { updated: merged };
+  });
+
+  logger.info('folder', `Scan complete! Found ${scannedMedia.length} items`);
+  return { success: true, count: scannedMedia.length };
+}
+
 ipcMain.handle('scan-and-fetch-metadata', async (_event, folderPath: string) => {
   try {
-    logger.info('folder', `Starting scan and metadata fetch for: ${folderPath}`, { file: folderPath });
-
     const activeRoots = await configHandler.getFolderSources();
-
-    // 1. Scan. Pass activeRoots so scanFolder treats a sub-folder (rescan-show)
-    // as part of its containing library root, not as a fresh root itself.
-    const scannedMedia = await folderHandler.scanFolder(folderPath, activeRoots);
-
-    // 2. Reconcile against disk inside a transaction. Crash-recovery checkpoint:
-    // if the per-series fetch loop below throws, on-disk state is the
-    // reconciled state (deletions are not reverted).
-    const existingMetadata = await metadataHandler.transaction<Record<string, unknown>>(async (raw) => {
-      const reconciled = await folderHandler.reconcileMetadata(raw, activeRoots);
-      return { result: reconciled, updated: reconciled };
-    }) ?? {};
-
-    // 3. Fetch metadata for each scanned item. Network-bound; runs outside the
-    // lock — must not assume `existingMetadata` matches disk when we save.
-    const newMetadata: Record<string, unknown> = {};
-    for (const media of scannedMedia) {
-      if (media.files.length === 0) {
-        logger.warn('folder', `Skipping ${media.name} - no files found`, { series: media.name });
-        continue;
-      }
-      const slice = await processOneMedia(media, existingMetadata);
-      Object.assign(newMetadata, slice);
-    }
-
-    // 4. Merge into the FRESH on-disk state. Drop any existing entries whose
-    // folderPath is the scanned folder OR a descendant of it — those are
-    // either replaced by what's in newMetadata, or they're stale (e.g. orphan
-    // movie_* entries from earlier misclassifications) and should not survive.
-    const normalize = (p: string) => (p.endsWith('/') ? p.slice(0, -1) : p);
-    const normalizedScan = normalize(folderPath);
-    const scanPrefix = normalizedScan + '/';
-    await metadataHandler.transaction(async (current) => {
-      const merged: Record<string, unknown> = {};
-      for (const [seriesId, seriesData] of Object.entries(current)) {
-        const fp = (seriesData as { folderPath?: string })?.folderPath;
-        const isUnderScan = fp && (normalize(fp) === normalizedScan || normalize(fp).startsWith(scanPrefix));
-        if (!isUnderScan) merged[seriesId] = seriesData;
-      }
-      for (const [seriesId, seriesData] of Object.entries(newMetadata)) {
-        merged[seriesId] = seriesData;
-      }
-      return { updated: merged };
-    });
-
-    logger.info('folder', `Scan complete! Found ${scannedMedia.length} items`);
-
-    return { success: true, count: scannedMedia.length };
+    return await runScanAndFetch(folderPath, activeRoots);
   } catch (error) {
     logger.error('folder', 'Error in scan-and-fetch-metadata');
     throw error;
@@ -1140,6 +1509,44 @@ ipcMain.handle('shell:open-external', async (_event, url: unknown) => {
   }
   await shell.openExternal(url);
   return true;
+});
+
+// Launch mpv on a local video file in a detached window. Validated against
+// configured library roots so the renderer can't request arbitrary paths.
+ipcMain.handle('shell:open-with-mpv', async (_event, filePath: unknown) => {
+  if (typeof filePath !== 'string' || !filePath) {
+    throw new Error('filePath required');
+  }
+  const normalizedPath = resolve(filePath);
+  const allowedSources = await configHandler.getFolderSources();
+  const isAllowed = allowedSources.some((source) => {
+    try {
+      const normalizedSource = resolve(source);
+      const rel = relative(normalizedSource, normalizedPath);
+      return !rel.startsWith('..') && !rel.startsWith('/');
+    } catch {
+      return false;
+    }
+  });
+  if (!isAllowed) {
+    logger.error('system', `mpv: rejected path outside library roots`, { file: filePath });
+    throw new Error('path not in any configured library root');
+  }
+  if (!existsSync(normalizedPath)) {
+    throw new Error('file not found');
+  }
+  try {
+    const child = spawn('mpv', [normalizedPath], { detached: true, stdio: 'ignore' });
+    child.on('error', (err) => {
+      logger.error('system', `mpv launch failed: ${(err as Error).message}`, { file: normalizedPath });
+    });
+    child.unref();
+    logger.info('system', `Launched mpv`, { file: normalizedPath });
+    return true;
+  } catch (err) {
+    logger.error('system', `mpv spawn threw: ${(err as Error).message}`, { file: normalizedPath });
+    throw err;
+  }
 });
 
 app.on('before-quit', () => {

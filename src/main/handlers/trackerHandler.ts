@@ -203,7 +203,7 @@ export async function startConnect(provider: TrackerProvider, clientId: string, 
       // Respond to browser before doing the network exchange — feels snappier.
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(SUCCESS_PAGE('MyAnimeList'));
-      void exchangeMalCode(code, verifier, clientId, clientSecret, pending!.redirectUri).then(resolve).catch(reject);
+      void exchangeMalCode(code, verifier, clientId, effectiveSecret, pending!.redirectUri).then(resolve).catch(reject);
     };
 
     void bindLoopback(handler).then(({ server }) => {
@@ -214,7 +214,7 @@ export async function startConnect(provider: TrackerProvider, clientId: string, 
           closeFlow();
         }
       }, FLOW_TIMEOUT_MS);
-      pending = { provider, state, codeVerifier: verifier, redirectUri: LOOPBACK_REDIRECT_URI, clientId, clientSecret, server, resolve, reject, timeoutHandle };
+      pending = { provider, state, codeVerifier: verifier, redirectUri: LOOPBACK_REDIRECT_URI, clientId, clientSecret: effectiveSecret, server, resolve, reject, timeoutHandle };
       const authUrl = buildAuthUrl(provider, clientId, state, verifier, LOOPBACK_REDIRECT_URI);
       logger.info('tracker', `${provider} OAuth started, redirect uri = ${LOOPBACK_REDIRECT_URI}`);
       void shell.openExternal(authUrl);

@@ -1,7 +1,17 @@
 import { request, gql } from 'graphql-request';
 import { logger } from '../services/logger';
+import { RateLimiter } from '../utils/rateLimiter';
 
 const ANILIST_API_URL = 'https://graphql.anilist.co';
+
+// AniList allows ~90 req/min normalized. 800ms between requests = 75/min,
+// safely under the cap. The limiter handles 429 backoff on top of this.
+const limiter = new RateLimiter({
+  source: 'AniList',
+  minIntervalMs: 800,
+  maxRetries: 6,
+  isRateLimitError,
+});
 
 function isRateLimitError(error: unknown): boolean {
   // Check for GraphQL rate limit errors
@@ -25,6 +35,7 @@ function logRateLimitWarning(source: string): void {
 
 interface AniListMedia {
   id: number;
+  idMal: number | null;
   title: {
     romaji: string;
     english: string | null;
@@ -88,6 +99,7 @@ export interface SeriesMetadata {
   startDate: string | null;
   endDate: string | null;
   anilistId: number;
+  malId: number | null;
 }
 
 export interface EpisodeMetadata {
@@ -115,6 +127,7 @@ const SEARCH_QUERY = gql`
   query ($search: String) {
     Media(search: $search, type: ANIME) {
       id
+      idMal
       title {
         romaji
         english
@@ -197,6 +210,25 @@ const SEARCH_MULTIPLE_QUERY = gql`
   }
 `;
 
+// Per-episode air dates. AniList exposes them on Media.airingSchedule with
+// `notYetAired:false` to filter to already-broadcast episodes only. Fetch
+// by AniList id OR by MAL id — AniList's Media query accepts either as a
+// filter, so we can resolve air dates for MAL-matched series without doing
+// a second title search.
+const AIRING_SCHEDULE_QUERY = gql`
+  query ($id: Int, $idMal: Int) {
+    Media(id: $id, idMal: $idMal, type: ANIME) {
+      id
+      airingSchedule(notYetAired: false) {
+        nodes {
+          episode
+          airingAt
+        }
+      }
+    }
+  }
+`;
+
 const EPISODES_QUERY = gql`
   query ($id: Int) {
     Media(id: $id) {
@@ -215,6 +247,7 @@ const MEDIA_BY_ID_QUERY = gql`
   query ($id: Int) {
     Media(id: $id, type: ANIME) {
       id
+      idMal
       title {
         romaji
         english
@@ -257,60 +290,56 @@ const anilistHandler = {
   async searchAnime(searchTerm: string): Promise<AniListMedia | null> {
     try {
       const variables = { search: searchTerm };
-      const data = await request<{ Media: AniListMedia }>(ANILIST_API_URL, SEARCH_QUERY, variables);
-      
-      if (data?.Media) {
-        return data.Media;
-      }
-      return null;
+      const data = await limiter.run(() => request<{ Media: AniListMedia }>(ANILIST_API_URL, SEARCH_QUERY, variables));
+      return data?.Media ?? null;
     } catch (error) {
-      if (isRateLimitError(error)) {
-        logRateLimitWarning('AniList');
-        throw error;
-      }
-      logger.error('metadata', 'Error searching AniList');
+      if (isRateLimitError(error)) logRateLimitWarning('AniList');
+      else logger.error('metadata', 'Error searching AniList');
       throw error;
     }
   },
 
   async searchAnimeMultiple(searchTerm: string, limit: number = 10): Promise<AniListMedia[]> {
-    let retries = 0;
-    const maxRetries = 3;
-    
-    while (retries < maxRetries) {
-      try {
-        const variables = { search: searchTerm, page: 1, perPage: limit };
-        const data = await request<{ Page: { media: AniListMedia[] } }>(ANILIST_API_URL, SEARCH_MULTIPLE_QUERY, variables);
-        
-        return data?.Page?.media || [];
-      } catch (error) {
-        if (isRateLimitError(error) && retries < maxRetries) {
-          retries++;
-          const delaySeconds = retries * 2; // 2, 4, 6 seconds
-          logger.warn('metadata', `Rate limited while searching AniList. Waiting ${delaySeconds}s before retry ${retries}/${maxRetries}...`);
-          await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));
-        } else {
-          if (isRateLimitError(error)) {
-            logRateLimitWarning('AniList');
-          } else {
-            logger.error('metadata', 'Error searching AniList (multiple)');
-          }
-          throw error;
-        }
-      }
+    try {
+      const variables = { search: searchTerm, page: 1, perPage: limit };
+      const data = await limiter.run(() =>
+        request<{ Page: { media: AniListMedia[] } }>(ANILIST_API_URL, SEARCH_MULTIPLE_QUERY, variables),
+      );
+      return data?.Page?.media || [];
+    } catch (error) {
+      if (isRateLimitError(error)) logRateLimitWarning('AniList');
+      else logger.error('metadata', 'Error searching AniList (multiple)');
+      throw error;
     }
-    
-    return [];
+  },
+
+  async getAiringSchedule(opts: { anilistId?: number; malId?: number }): Promise<Array<{ episode: number; airingAt: number }>> {
+    const variables: { id?: number; idMal?: number } = {};
+    if (opts.anilistId) variables.id = opts.anilistId;
+    if (opts.malId) variables.idMal = opts.malId;
+    if (variables.id === undefined && variables.idMal === undefined) return [];
+    try {
+      const data = await limiter.run(() =>
+        request<{ Media: { airingSchedule: { nodes: Array<{ episode: number; airingAt: number }> } } | null }>(
+          ANILIST_API_URL,
+          AIRING_SCHEDULE_QUERY,
+          variables,
+        ),
+      );
+      return data?.Media?.airingSchedule?.nodes ?? [];
+    } catch (error) {
+      if (isRateLimitError(error)) logRateLimitWarning('AniList');
+      else logger.warn('metadata', `AniList airingSchedule failed: ${(error as Error).message}`);
+      return [];
+    }
   },
 
   async getEpisodes(animeId: number, totalEpisodes: number | null, seasonNumber?: number | null): Promise<EpisodeMetadata[]> {
     try {
       // Fetch streaming episodes for thumbnails
       const variables = { id: animeId };
-      const data = await request<{ Media: { streamingEpisodes: StreamingEpisode[] } }>(
-        ANILIST_API_URL, 
-        EPISODES_QUERY, 
-        variables
+      const data = await limiter.run(() =>
+        request<{ Media: { streamingEpisodes: StreamingEpisode[] } }>(ANILIST_API_URL, EPISODES_QUERY, variables),
       );
       
       // Create a map of streaming episode data by parsing title for episode number
@@ -556,14 +585,13 @@ const anilistHandler = {
 
   async getMediaById(id: number): Promise<AniListMedia | null> {
     try {
-      const data = await request<{ Media: AniListMedia | null }>(ANILIST_API_URL, MEDIA_BY_ID_QUERY, { id });
+      const data = await limiter.run(() =>
+        request<{ Media: AniListMedia | null }>(ANILIST_API_URL, MEDIA_BY_ID_QUERY, { id }),
+      );
       return data?.Media ?? null;
     } catch (error) {
-      if (isRateLimitError(error)) {
-        logRateLimitWarning('AniList');
-        throw error;
-      }
-      logger.error('metadata', 'Error fetching AniList media by ID');
+      if (isRateLimitError(error)) logRateLimitWarning('AniList');
+      else logger.error('metadata', 'Error fetching AniList media by ID');
       throw error;
     }
   },
@@ -642,6 +670,7 @@ const anilistHandler = {
       startDate: formatDate(media.startDate),
       endDate: formatDate(media.endDate),
       anilistId: media.id,
+      malId: media.idMal ?? null,
     };
   },
 };

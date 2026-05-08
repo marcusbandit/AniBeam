@@ -6,7 +6,7 @@ import imageCacheHandler from './imageCacheHandler';
 import thumbnailHandler from './thumbnailHandler';
 import type { FileStatus } from '../../shared/fileStatus';
 
-const VIDEO_EXTENSIONS = ['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v'];
+const VIDEO_EXTENSIONS = ['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.ts'];
 const SUBTITLE_EXTENSIONS = ['.srt', '.vtt', '.ass', '.ssa'];
 
 export interface VideoFile {
@@ -20,6 +20,9 @@ export interface VideoFile {
   parentFolder: string;
   status: FileStatus;
   lastProbedAt?: number;
+  // Filesystem mtime in ms since epoch. Used by the feed as a fallback
+  // "downloaded X ago" when API air dates aren't available.
+  mtime: number;
 }
 
 export interface ScannedMedia {
@@ -169,18 +172,13 @@ function extractPartNumber(folderName: string): number | null {
   return null;
 }
 
-// Series name = folder name with Season/Part markers and trailing release year
-// stripped. The folder is the source of truth — filenames are only used for
-// episode-level data.
+// Series name = folder name, verbatim. We deliberately do NOT strip
+// "Season N" / "Part N" / trailing year — folder strings go to MAL and
+// AniList unchanged. extractSeasonNumber / extractPartNumber pull season
+// info out separately when present. Cleaning still happens at the file
+// level (stripFilename, cleanEpisodeTitle).
 function extractSeriesNameFromFolder(folderName: string): string {
-  return folderName
-    .replace(/\s*\bSeason\s*\d+\b/gi, '')
-    .replace(/\s*\bS\d+\b/g, '')
-    .replace(/\s*\bPart\s*\d+\b/gi, '')
-    .replace(/\s*\bP\d+\b/g, '')
-    .replace(/\s*\(\d{4}\)\s*$/, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  return folderName.trim();
 }
 
 function generateSeriesId(seriesName: string, folderName: string, seasonNumber: number | null, partNumber: number | null): string {
@@ -252,6 +250,7 @@ async function scanFolderForVideos(folderPath: string, folderSeason: number | nu
               subtitlePaths: [],
               parentFolder: folderName,
               status: 'ready',
+              mtime: stats.mtimeMs,
             });
           } else if (isSubtitleFile(entry)) {
             const baseName = getBaseName(entry);
@@ -342,6 +341,13 @@ async function collectMediaRecursive(
       const movieTitle = cleanMovieTitle(entry);
       const movieId = movieTitle.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
       const { episode } = extractSeasonAndEpisode(entry);
+      let mtime = 0;
+      try {
+        const s = await stat(filePath);
+        mtime = s.mtimeMs;
+      } catch {
+        // best-effort; mtime stays 0 → ignored by feed fallback
+      }
 
       logger.info('folder', `Movie: ${entry} → search: "${movieTitle}"`, { series: movieTitle });
 
@@ -360,6 +366,7 @@ async function collectMediaRecursive(
           subtitlePaths: [],
           parentFolder: folderName,
           status: 'ready',
+          mtime,
         }],
         seasonNumber: null,
         partNumber: null,

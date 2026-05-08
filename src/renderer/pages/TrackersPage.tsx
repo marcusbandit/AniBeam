@@ -42,9 +42,15 @@ function TrackerRow({ provider, label, registerUrl, registerHelp, status, onChan
   const bundledId = DEFAULT_CLIENT_IDS[provider].trim();
   const bundledSecret = DEFAULT_CLIENT_SECRETS[provider].trim();
   const requiresSecret = provider === 'mal'; // AniList implicit grant has no secret
-  const fullyBundled = !!bundledId && (!requiresSecret || !!bundledSecret);
+  const savedHasSecret = status?.hasClientSecret ?? false;
+  const savedHasId = !!status?.clientId;
+  // Treat the row as ready-to-connect when either the build bundles creds, or
+  // the user already pasted them previously (and we've persisted them).
+  const credsReady =
+    !!bundledId || (savedHasId && (!requiresSecret || (savedHasSecret || !!bundledSecret)));
 
   const [clientId, setClientId] = useState(status?.clientId ?? bundledId);
+  const [clientSecret, setClientSecret] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,19 +60,25 @@ function TrackerRow({ provider, label, registerUrl, registerHelp, status, onChan
 
   const handleConnect = async () => {
     setError(null);
+    // Resolve effective ID: bundled wins, then typed-in input, then stored
+    // (which the input is pre-populated from).
     const id = (bundledId || clientId).trim();
     if (!id) {
-      setError('No Client ID configured. Paste yours below or fill DEFAULT_CLIENT_IDS in src/shared/trackerConstants.ts.');
+      setError('No Client ID configured.');
       return;
     }
-    if (requiresSecret && !bundledSecret) {
-      setError('MAL requires a client secret. Paste it into DEFAULT_CLIENT_SECRETS.mal in src/shared/trackerConstants.ts and restart.');
+    // Secret resolution happens server-side: if we don't pass one, main falls
+    // back to whatever's in the encrypted store. Only block here when both
+    // bundled and stored are missing AND the user hasn't typed one.
+    if (requiresSecret && !bundledSecret && !savedHasSecret && !clientSecret.trim()) {
+      setError('MAL requires a Client Secret. Paste yours below.');
       return;
     }
     setConnecting(true);
     try {
       await window.electronAPI.trackerSetClientId(provider, id);
-      await window.electronAPI.trackerConnect(provider, id, bundledSecret);
+      await window.electronAPI.trackerConnect(provider, id, bundledSecret || clientSecret);
+      setClientSecret(''); // clear the input post-connect — it's persisted now
       await onChange();
     } catch (err) {
       setError((err as Error).message || 'Connect failed');
@@ -105,7 +117,7 @@ function TrackerRow({ provider, label, registerUrl, registerHelp, status, onChan
         </div>
       </div>
 
-      {!connected && fullyBundled && (
+      {!connected && credsReady && (
         <div className="tracker-input-row">
           {connecting ? (
             <>
@@ -123,7 +135,7 @@ function TrackerRow({ provider, label, registerUrl, registerHelp, status, onChan
         </div>
       )}
 
-      {!connected && !fullyBundled && (
+      {!connected && !credsReady && (
         <>
           <div className="tracker-help">{registerHelp}</div>
           <div className="tracker-uri-row">
@@ -141,12 +153,27 @@ function TrackerRow({ provider, label, registerUrl, registerHelp, status, onChan
             <input
               type="text"
               className="tracker-input"
-              placeholder="Client ID (or set DEFAULT_CLIENT_IDS in shared/trackerConstants.ts)"
+              placeholder="Client ID"
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
               spellCheck={false}
               autoComplete="off"
             />
+          </div>
+          {requiresSecret && !bundledSecret && (
+            <div className="tracker-input-row">
+              <input
+                type="password"
+                className="tracker-input"
+                placeholder={savedHasSecret ? 'Client Secret (saved — leave empty to reuse)' : 'Client Secret'}
+                value={clientSecret}
+                onChange={(e) => setClientSecret(e.target.value)}
+                spellCheck={false}
+                autoComplete="off"
+              />
+            </div>
+          )}
+          <div className="tracker-input-row">
             {connecting ? (
               <button type="button" className="btn btn-secondary" onClick={() => void handleCancel()}>
                 <span>Cancel</span>

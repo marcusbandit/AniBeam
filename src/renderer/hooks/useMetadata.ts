@@ -29,6 +29,7 @@ export interface SeriesMetadata {
   startDate?: string | null;
   endDate?: string | null;
   anilistId?: number;
+  malId?: number | null;
   [key: string]: unknown;
 }
 

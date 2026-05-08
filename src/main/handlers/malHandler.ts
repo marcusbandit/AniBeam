@@ -1,8 +1,19 @@
 import axios from 'axios';
 import { logger } from '../services/logger';
+import { RateLimiter } from '../utils/rateLimiter';
 
 const JIKAN_API_URL = 'https://api.jikan.moe/v4';
 const MAL_SEARCH_LIMIT = 10;
+
+// Jikan published limits: 60 req/min sustained. 1100ms between starts =
+// ~54/min with safety margin. 429s on top get exponential backoff via
+// the limiter — no per-call retry loops needed downstream.
+const limiter = new RateLimiter({
+  source: 'Jikan',
+  minIntervalMs: 1100,
+  maxRetries: 6,
+  isRateLimitError,
+});
 
 function isRateLimitError(error: unknown): boolean {
   if (axios.isAxiosError(error)) {
@@ -95,42 +106,25 @@ function isReleased(anime: JikanAnime): boolean {
 
 const malHandler = {
   async searchAnime(searchTerm: string, limit: number = MAL_SEARCH_LIMIT): Promise<JikanAnime[]> {
-    let retries = 0;
-    const maxRetries = 3;
-    
-    while (retries < maxRetries) {
-      try {
-        const response = await axios.get<{ data: JikanAnime[] }>(`${JIKAN_API_URL}/anime`, {
-          params: {
-            q: searchTerm,
-            limit: limit,
-          },
-        });
-
-        return response.data?.data || [];
-      } catch (error) {
-        if (isRateLimitError(error) && retries < maxRetries) {
-          retries++;
-          const delaySeconds = retries * 2; // 2, 4, 6 seconds
-          logger.warn('metadata', `Rate limited while searching MAL. Waiting ${delaySeconds}s before retry ${retries}/${maxRetries}...`);
-          await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));
-        } else {
-          if (isRateLimitError(error)) {
-            logRateLimitWarning('MAL');
-          } else {
-            logger.error('metadata', 'Error searching MyAnimeList');
-          }
-          throw error;
-        }
-      }
+    try {
+      const response = await limiter.run(() =>
+        axios.get<{ data: JikanAnime[] }>(`${JIKAN_API_URL}/anime`, {
+          params: { q: searchTerm, limit },
+        }),
+      );
+      return response.data?.data || [];
+    } catch (error) {
+      if (isRateLimitError(error)) logRateLimitWarning('MAL');
+      else logger.error('metadata', 'Error searching MyAnimeList');
+      throw error;
     }
-    
-    return [];
   },
 
   async getEpisodes(animeId: number, totalEpisodes: number | null, seasonNumber?: number | null): Promise<EpisodeMetadata[]> {
     try {
-      const response = await axios.get<{ data: JikanEpisode[] }>(`${JIKAN_API_URL}/anime/${animeId}/episodes`);
+      const response = await limiter.run(() =>
+        axios.get<{ data: JikanEpisode[] }>(`${JIKAN_API_URL}/anime/${animeId}/episodes`),
+      );
       
       // Create a map of fetched episodes
       // Use episode number, not mal_id (mal_id is the database ID, not episode number)

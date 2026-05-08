@@ -3,18 +3,17 @@ import { logger } from './logger';
 
 export interface WatcherCallbacks {
   onAdd: (filePath: string) => void;
+  onAddDir: (dirPath: string) => void;
   onUnlink: (filePath: string) => void;
   onUnlinkDir: (dirPath: string) => void;
 }
 
-const VIDEO_EXTS = new Set(['.mkv', '.mp4', '.avi', '.mov', '.webm', '.m4v', '.ts']);
+const VIDEO_EXTS = new Set(['.mkv', '.mp4', '.avi', '.mov', '.webm', '.m4v', '.ts', '.wmv', '.flv']);
 const IGNORED_PATTERNS = [/(^|[\/\\])\../, /\.part$/i, /\.crdownload$/i, /\.tmp$/i];
 
 let watcher: FSWatcher | null = null;
 let activeRoots: string[] = [];
 let callbacks: WatcherCallbacks | null = null;
-const debounceMap = new Map<string, NodeJS.Timeout>();
-const DEBOUNCE_MS = 1000;
 
 function isVideo(path: string): boolean {
   const dot = path.lastIndexOf('.');
@@ -22,35 +21,33 @@ function isVideo(path: string): boolean {
   return VIDEO_EXTS.has(path.slice(dot).toLowerCase());
 }
 
-function debounce(key: string, fn: () => void): void {
-  const existing = debounceMap.get(key);
-  if (existing) clearTimeout(existing);
-  debounceMap.set(key, setTimeout(() => {
-    debounceMap.delete(key);
-    fn();
-  }, DEBOUNCE_MS));
-}
-
 function attach(w: FSWatcher): void {
+  // No debounce: fire as soon as inotify reports. awaitWriteFinish below
+  // already collapses the rapid-fire events during a download into a single
+  // add at write-completion, which is the only coalescing we actually need.
   w.on('add', (path) => {
     if (!isVideo(path)) return;
-    debounce(`add:${path}`, () => {
-      logger.info('watch', `New file`, { file: path });
-      callbacks?.onAdd(path);
-    });
+    logger.info('watch', `New file`, { file: path });
+    callbacks?.onAdd(path);
+  });
+  w.on('addDir', (path) => {
+    // Always notify on new dirs — files already present at dir-creation time
+    // do NOT reliably get their own `add` event from chokidar, so the consumer
+    // walks the subtree explicitly. Skip the roots themselves (chokidar emits
+    // addDir for every watched root once at startup; ignoreInitial:true should
+    // prevent it but be defensive).
+    if (activeRoots.includes(path)) return;
+    logger.info('watch', `New directory`, { file: path });
+    callbacks?.onAddDir(path);
   });
   w.on('unlink', (path) => {
     if (!isVideo(path)) return;
-    debounce(`unlink:${path}`, () => {
-      logger.info('watch', `Removed file`, { file: path });
-      callbacks?.onUnlink(path);
-    });
+    logger.info('watch', `Removed file`, { file: path });
+    callbacks?.onUnlink(path);
   });
   w.on('unlinkDir', (path) => {
-    debounce(`unlinkDir:${path}`, () => {
-      logger.info('watch', `Removed directory`, { file: path });
-      callbacks?.onUnlinkDir(path);
-    });
+    logger.info('watch', `Removed directory`, { file: path });
+    callbacks?.onUnlinkDir(path);
   });
   w.on('error', (err) => {
     logger.error('watch', `Watcher error: ${(err as Error).message}`);
@@ -72,7 +69,11 @@ export const fileWatcher = {
       ignored: IGNORED_PATTERNS,
       ignoreInitial: true,
       persistent: true,
-      awaitWriteFinish: { stabilityThreshold: 2000, pollInterval: 500 },
+      // 500ms / 100ms: just enough to ensure the file is fully written before
+      // we ingest it. Old setting (2000/500) was the source of the "watcher
+      // feels laggy" symptom — every new episode took 2s+ to appear even
+      // when the file landed atomically (mv on same FS).
+      awaitWriteFinish: { stabilityThreshold: 500, pollInterval: 100 },
     });
     attach(watcher);
   },
@@ -83,8 +84,6 @@ export const fileWatcher = {
   },
 
   async stop(): Promise<void> {
-    for (const t of debounceMap.values()) clearTimeout(t);
-    debounceMap.clear();
     if (watcher) {
       await watcher.close();
       watcher = null;

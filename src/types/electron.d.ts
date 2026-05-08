@@ -3,6 +3,43 @@ interface ScanResult {
   count: number;
 }
 
+export interface LibraryFile {
+  filename: string;
+  filePath: string;
+  title: string;
+  episodeNumber: number;
+  seasonNumber: number | null;
+  subtitlePath: string | null;
+  subtitlePaths: string[];
+  /** Filesystem mtime in ms since epoch. */
+  mtime: number;
+}
+
+export interface LibraryEpisodeAirDate {
+  episodeNumber: number;
+  airDate: string | null;
+}
+
+export interface LibraryItem {
+  id: string;
+  folderName: string;
+  folderPath: string;
+  type: 'series' | 'movie';
+  poster: string | null;
+  posterLocal: string | null;
+  posterMatched: boolean;
+  posterMatchAttempted: boolean;
+  matchSource: 'mal' | 'anilist' | null;
+  matchedTitle: string | null;
+  titleRomaji: string | null;
+  titleEnglish: string | null;
+  status: string | null;
+  startDate: string | null;
+  totalEpisodes: number | null;
+  episodes: LibraryEpisodeAirDate[];
+  files: LibraryFile[];
+}
+
 interface CacheStats {
   count: number;
   sizeBytes: number;
@@ -31,6 +68,7 @@ export interface ElectronAPI {
   scanFolder: (folderPath: string) => Promise<unknown>;
   scanAllFolders: () => Promise<unknown>;
   scanAndFetchMetadata: (folderPath: string) => Promise<ScanResult>;
+  libraryWalk: () => Promise<LibraryItem[]>;
   
   // Metadata
   fetchMetadata: (seriesName: string) => Promise<unknown>;
@@ -45,7 +83,11 @@ export interface ElectronAPI {
 
   // Match picker
   searchAnilist: (query: string, limit?: number) => Promise<AnilistSearchResult[]>;
-  fetchAnilistById: (id: number, seasonNumber?: number | null) => Promise<unknown>;
+  applyAnilistMatch: (
+    seriesId: string,
+    anilistId: number,
+    seasonNumber?: number | null,
+  ) => Promise<{ ok: boolean; reason?: string }>;
   
   // Image cache
   getImageCacheStats: () => Promise<CacheStats>;

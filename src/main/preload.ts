@@ -10,6 +10,43 @@ interface ScanResult {
   count: number;
 }
 
+export interface LibraryFile {
+  filename: string;
+  filePath: string;
+  title: string;
+  episodeNumber: number;
+  seasonNumber: number | null;
+  subtitlePath: string | null;
+  subtitlePaths: string[];
+  /** Filesystem mtime in ms since epoch. */
+  mtime: number;
+}
+
+export interface LibraryEpisodeAirDate {
+  episodeNumber: number;
+  airDate: string | null;
+}
+
+export interface LibraryItem {
+  id: string;
+  folderName: string;
+  folderPath: string;
+  type: 'series' | 'movie';
+  poster: string | null;
+  posterLocal: string | null;
+  posterMatched: boolean;
+  posterMatchAttempted: boolean;
+  matchSource: 'mal' | 'anilist' | null;
+  matchedTitle: string | null;
+  titleRomaji: string | null;
+  titleEnglish: string | null;
+  status: string | null;
+  startDate: string | null;
+  totalEpisodes: number | null;
+  episodes: LibraryEpisodeAirDate[];
+  files: LibraryFile[];
+}
+
 interface CacheStats {
   count: number;
   sizeBytes: number;
@@ -26,6 +63,7 @@ export interface ElectronAPI {
   scanFolder: (folderPath: string) => Promise<unknown>;
   scanAllFolders: () => Promise<unknown>;
   scanAndFetchMetadata: (folderPath: string) => Promise<ScanResult>;
+  libraryWalk: () => Promise<LibraryItem[]>;
   
   // Metadata
   fetchMetadata: (seriesName: string) => Promise<unknown>;
@@ -39,7 +77,11 @@ export interface ElectronAPI {
 
   // Match picker (override metadata for a series)
   searchAnilist: (query: string, limit?: number) => Promise<AnilistSearchResult[]>;
-  fetchAnilistById: (id: number, seasonNumber?: number | null) => Promise<unknown>;
+  applyAnilistMatch: (
+    seriesId: string,
+    anilistId: number,
+    seasonNumber?: number | null,
+  ) => Promise<{ ok: boolean; reason?: string }>;
   
   // Image cache
   getImageCacheStats: () => Promise<CacheStats>;
@@ -64,6 +106,7 @@ export interface ElectronAPI {
 
   // Shell — open a URL in the user's default browser, not an Electron window.
   openExternal: (url: string) => Promise<boolean>;
+  openWithMpv: (filePath: string) => Promise<boolean>;
 
   // Trackers (MAL + AniList progress sync)
   trackerStatus: (provider: TrackerProvider) => Promise<TrackerStatus>;
@@ -128,6 +171,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   scanFolder: (folderPath: string) => ipcRenderer.invoke('scan-folder', folderPath),
   scanAllFolders: () => ipcRenderer.invoke('scan-all-folders'),
   scanAndFetchMetadata: (folderPath: string) => ipcRenderer.invoke('scan-and-fetch-metadata', folderPath),
+  libraryWalk: () => ipcRenderer.invoke('library:walk'),
   
   // Metadata
   fetchMetadata: (seriesName: string) => ipcRenderer.invoke('fetch-metadata', seriesName),
@@ -141,7 +185,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Match picker
   searchAnilist: (query: string, limit?: number) => ipcRenderer.invoke('anilist:search', query, limit),
-  fetchAnilistById: (id: number, seasonNumber?: number | null) => ipcRenderer.invoke('anilist:fetch-by-id', id, seasonNumber ?? null),
+  applyAnilistMatch: (seriesId: string, anilistId: number, seasonNumber?: number | null) =>
+    ipcRenderer.invoke('metadata:apply-anilist-match', seriesId, anilistId, seasonNumber ?? null),
   
   // Image cache
   getImageCacheStats: () => ipcRenderer.invoke('get-image-cache-stats'),
@@ -174,6 +219,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Shell
   openExternal: (url: string) => ipcRenderer.invoke('shell:open-external', url),
+  openWithMpv: (filePath: string) => ipcRenderer.invoke('shell:open-with-mpv', filePath),
 
   // Trackers
   trackerStatus: (provider: TrackerProvider) => ipcRenderer.invoke('tracker:status', provider),

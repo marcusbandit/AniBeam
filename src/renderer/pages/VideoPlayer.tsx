@@ -4,7 +4,12 @@ import { useMetadata, type FileEpisode } from '../hooks/useMetadata.js';
 import { progressId, readProgress, writeProgress, RESUME_HEAD_SKIP, RESUME_TAIL_SKIP } from '../utils/playbackProgress';
 import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Minimize, Subtitles, SkipBack, SkipForward, CheckCheck } from 'lucide-react';
 import JASSUB from 'jassub';
-import jassubWorkerUrl from 'jassub/dist/worker/worker.js?url';
+// `?worker&url` (not `?url`) so Vite bundles the worker as a self-contained
+// ES module with its bare-import dependencies (abslink, lfa-ponyfill, etc.)
+// resolved. With plain `?url` Vite copies the worker file raw — fine in dev
+// because the dev server resolves bare imports on the fly, but in a packaged
+// build the worker fetches the static file and chokes on `import 'abslink'`.
+import jassubWorkerUrl from 'jassub/dist/worker/worker.js?worker&url';
 import jassubWasmUrl from 'jassub/dist/wasm/jassub-worker.wasm?url';
 import jassubWasmModernUrl from 'jassub/dist/wasm/jassub-worker-modern.wasm?url';
 import jassubDefaultFontUrl from 'jassub/dist/default.woff2?url';
@@ -792,8 +797,16 @@ function VideoPlayer() {
   const seriesMalId = (series as { malId?: number } | undefined)?.malId;
   const seriesTotalEps = series?.totalEpisodes ?? null;
 
-  const autoMarkAt =
-    skipTimes.ed?.start ?? (duration > 90 ? duration - 90 : null);
+  // Fire the moment the user crosses whichever comes first: AniSkip's outro
+  // start, or 85% through. The percentage cutoff matches AniList/MAL's own
+  // "watched" heuristic and ensures the toast appears even when AniSkip has
+  // no data, or when the outro is unusually short.
+  const autoMarkAt = (() => {
+    const candidates: number[] = [];
+    if (skipTimes.ed?.start != null) candidates.push(skipTimes.ed.start);
+    if (duration > 0) candidates.push(duration * 0.85);
+    return candidates.length ? Math.min(...candidates) : null;
+  })();
 
   const autoMarkedRef = useRef<string>('');
   const [trackerToast, setTrackerToast] = useState<string | null>(null);
@@ -806,9 +819,17 @@ function VideoPlayer() {
   }, []);
 
   const triggerMark = useCallback(async (origin: 'auto' | 'manual') => {
-    if (!seriesId || !Number.isFinite(epNumForMark)) return;
+    console.log('[tracker]', origin, 'fire requested', { seriesId, epNumForMark, seriesAnilistId, seriesMalId });
+    if (!seriesId || !Number.isFinite(epNumForMark)) {
+      console.warn('[tracker] bail: missing seriesId or episode number');
+      return;
+    }
     if (!seriesAnilistId && !seriesMalId) {
-      if (origin === 'manual') showTrackerToast('No AniList/MAL id on this series — nothing to update.');
+      // Surface the bail in both auto and manual cases — silent failures
+      // here were the cause of "I watched a full episode and nothing
+      // happened". Most common reason: the series metadata wasn't fetched
+      // from AniList (so anilistId is missing). Re-scan that title.
+      showTrackerToast('No AniList/MAL id on this series — re-scan with AniList enabled.');
       return;
     }
     type MarkRes = Awaited<ReturnType<typeof window.electronAPI.trackerMarkEpisode>>;
@@ -820,11 +841,18 @@ function VideoPlayer() {
       calls.push(window.electronAPI.trackerMarkEpisode('mal', seriesMalId, epNumForMark, seriesTotalEps));
     }
     const results = await Promise.allSettled(calls);
+    console.log('[tracker]', origin, 'results', results);
     const summary: string[] = [];
     let anyOk = false;
     let anyNotConnected = false;
+    let anyError = false;
+    let lastErrorMsg: string | null = null;
     for (const r of results) {
-      if (r.status !== 'fulfilled') continue;
+      if (r.status === 'rejected') {
+        anyError = true;
+        lastErrorMsg = (r.reason as Error)?.message ?? 'unknown error';
+        continue;
+      }
       const v = r.value;
       if (v.ok) {
         anyOk = true;
@@ -833,13 +861,23 @@ function VideoPlayer() {
         anyNotConnected = true;
       } else if (v.reason === 'not-newer') {
         summary.push(`${v.provider.toUpperCase()} already at ${v.newProgress}`);
+      } else if (v.reason === 'error') {
+        anyError = true;
+        lastErrorMsg = v.message ?? null;
       }
     }
-    if (anyOk) showTrackerToast(`Tracked · ${summary.join(' · ')}`);
-    else if (origin === 'manual') {
-      if (summary.length) showTrackerToast(summary.join(' · '));
-      else if (anyNotConnected) showTrackerToast('No tracker connected. Open Settings to link AniList or MAL.');
-      else showTrackerToast('Nothing to update.');
+    if (anyOk) {
+      showTrackerToast(`Tracked · ${summary.join(' · ')}`);
+    } else if (anyError) {
+      showTrackerToast(`Tracker error${lastErrorMsg ? ': ' + lastErrorMsg : ''}`);
+    } else if (summary.length) {
+      // Always show "already at N" — for the auto case this confirms the
+      // fire actually happened, just nothing to bump.
+      showTrackerToast(summary.join(' · '));
+    } else if (anyNotConnected) {
+      showTrackerToast('No tracker connected. Open Trackers tab to link.');
+    } else if (origin === 'manual') {
+      showTrackerToast('Nothing to update.');
     }
   }, [seriesId, epNumForMark, seriesAnilistId, seriesMalId, seriesTotalEps, showTrackerToast]);
 
@@ -848,18 +886,22 @@ function VideoPlayer() {
     autoMarkedRef.current = '';
   }, [seriesId, episodeNumber]);
 
-  // Fire once when playback first crosses into the outro window (or the
-  // duration-90s fallback). Re-checks on every currentTime update — cheap
-  // because a ref short-circuits after the first hit.
+  // Fire once when playback first crosses the auto-mark threshold (the
+  // earlier of AniSkip's outro start and 85% of duration). Re-checks on every
+  // currentTime update — cheap because a ref short-circuits after the first
+  // hit. The console.log helps debug "why didn't it fire" reports.
   useEffect(() => {
     if (!seriesId || !episodeNumber) return;
     const key = `${seriesId}::${episodeNumber}`;
     if (autoMarkedRef.current === key) return;
     if (autoMarkAt == null) return;
     if (currentTime < autoMarkAt) return;
+    console.log('[tracker] auto-mark threshold reached', {
+      key, currentTime, autoMarkAt, duration, edStart: skipTimes.ed?.start,
+    });
     autoMarkedRef.current = key;
     void triggerMark('auto');
-  }, [currentTime, autoMarkAt, seriesId, episodeNumber, triggerMark]);
+  }, [currentTime, autoMarkAt, seriesId, episodeNumber, triggerMark, duration, skipTimes.ed?.start]);
 
   // Clear any pending toast when the player unmounts.
   useEffect(() => () => {

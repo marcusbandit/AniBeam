@@ -1,21 +1,30 @@
-import { app, protocol, net, BrowserWindow, ipcMain, Menu, dialog } from "electron";
+import { BrowserWindow, app, safeStorage, shell, protocol, net, ipcMain, Menu, dialog } from "electron";
 import require$$0$1, { fileURLToPath, pathToFileURL } from "url";
-import require$$1$1, { join as join$1, basename, extname, dirname, isAbsolute, resolve, relative } from "path";
+import require$$1$1, { join as join$1, extname, basename, dirname, isAbsolute, resolve as resolve$1, relative as relative$1 } from "path";
 import require$$6, { existsSync } from "fs";
+import { spawn } from "child_process";
 import require$$1 from "util";
 import stream, { Readable } from "stream";
-import require$$3 from "http";
+import require$$3, { createServer } from "http";
 import require$$4 from "https";
-import require$$8, { createHash } from "crypto";
+import require$$8, { createHash, randomBytes } from "crypto";
 import http2 from "http2";
 import require$$4$1 from "assert";
 import require$$1$2 from "tty";
 import require$$0$2 from "os";
 import zlib from "zlib";
 import require$$4$2, { EventEmitter } from "events";
-import { stat, readdir, writeFile, readFile, mkdir, rm, access } from "fs/promises";
+import { rm, readdir, stat, writeFile, readFile, access, mkdir, unlink, rename } from "fs/promises";
 import require$$0$3 from "readline";
-import { spawn } from "child_process";
+import { spawn as spawn$1 } from "node:child_process";
+import { stat as stat$1, mkdir as mkdir$1, lstat, readdir as readdir$1, realpath, open } from "node:fs/promises";
+import { existsSync as existsSync$1, unwatchFile, watchFile, watch as watch$1, stat as stat$2 } from "node:fs";
+import * as sp from "node:path";
+import { join as join$2, resolve, relative, sep } from "node:path";
+import { createHash as createHash$1 } from "node:crypto";
+import { EventEmitter as EventEmitter$1 } from "node:events";
+import { Readable as Readable$1 } from "node:stream";
+import { type as type$1 } from "node:os";
 function bind(fn, thisArg) {
   return function wrap2() {
     return fn.apply(thisArg, arguments);
@@ -24,9 +33,9 @@ function bind(fn, thisArg) {
 const { toString } = Object.prototype;
 const { getPrototypeOf } = Object;
 const { iterator, toStringTag } = Symbol;
-const kindOf = /* @__PURE__ */ ((cache) => (thing) => {
+const kindOf = /* @__PURE__ */ ((cache2) => (thing) => {
   const str = toString.call(thing);
-  return cache[str] || (cache[str] = str.slice(8, -1).toLowerCase());
+  return cache2[str] || (cache2[str] = str.slice(8, -1).toLowerCase());
 })(/* @__PURE__ */ Object.create(null));
 const kindOfTest = (type2) => {
   type2 = type2.toLowerCase();
@@ -327,14 +336,14 @@ const _setImmediate = ((setImmediateSupported, postMessageSupported) => {
   if (setImmediateSupported) {
     return setImmediate;
   }
-  return postMessageSupported ? ((token, callbacks) => {
+  return postMessageSupported ? ((token, callbacks2) => {
     _global.addEventListener("message", ({ source, data }) => {
       if (source === _global && data === token) {
-        callbacks.length && callbacks.shift()();
+        callbacks2.length && callbacks2.shift()();
       }
     }, false);
     return (cb) => {
-      callbacks.push(cb);
+      callbacks2.push(cb);
       _global.postMessage(token, "*");
     };
   })(`axios@${Math.random()}`, []) : (cb) => setTimeout(cb);
@@ -6438,9 +6447,9 @@ function requireFollowRedirects() {
           if (error) {
             self2.emit("error", error);
           } else if (i < buffers.length) {
-            var buffer = buffers[i++];
+            var buffer2 = buffers[i++];
             if (!request2.finished) {
-              request2.write(buffer.data, buffer.encoding, writeNext);
+              request2.write(buffer2.data, buffer2.encoding, writeNext);
             }
           } else if (self2._ended) {
             request2.end();
@@ -6686,14 +6695,14 @@ function fromDataURI(uri2, asBlob, options2) {
     const mime = match[1];
     const isBase64 = match[2];
     const body = match[3];
-    const buffer = Buffer.from(decodeURIComponent(body), isBase64 ? "base64" : "utf8");
+    const buffer2 = Buffer.from(decodeURIComponent(body), isBase64 ? "base64" : "utf8");
     if (asBlob) {
       if (!_Blob) {
         throw new AxiosError$1("Blob is not supported", AxiosError$1.ERR_NOT_SUPPORT);
       }
-      return new _Blob([buffer], { type: mime });
+      return new _Blob([buffer2], { type: mime });
     }
-    return buffer;
+    return buffer2;
   }
   throw new AxiosError$1("Unsupported protocol " + protocol2, AxiosError$1.ERR_NOT_SUPPORT);
 }
@@ -8882,7 +8891,1457 @@ const {
   getAdapter,
   mergeConfig
 } = axios;
-const VIDEO_EXTENSIONS = [".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v"];
+const BUFFER_LIMIT = 5e3;
+let nextId = 1;
+const buffer = [];
+function broadcast(event) {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send("log:event", event);
+    }
+  }
+}
+function record(level, stage, message, ctx) {
+  const event = { id: nextId++, ts: Date.now(), level, stage, message, ctx };
+  buffer.push(event);
+  if (buffer.length > BUFFER_LIMIT) buffer.shift();
+  const consoleMethod = level === "error" ? console.error : level === "warn" ? console.warn : console.log;
+  const ctxBit = ctx?.series ? ` [${ctx.series}]` : ctx?.file ? ` [${ctx.file}]` : "";
+  consoleMethod(`[${stage}]${ctxBit} ${message}`);
+  broadcast(event);
+}
+const logger = {
+  info(stage, message, ctx) {
+    record("info", stage, message, ctx);
+  },
+  warn(stage, message, ctx) {
+    record("warn", stage, message, ctx);
+  },
+  error(stage, message, ctx) {
+    record("error", stage, message, ctx);
+  },
+  getBuffer() {
+    return buffer.slice();
+  },
+  /** Empties the buffer. Does NOT reset the id counter — ids remain monotonic across clears. */
+  clear() {
+    buffer.length = 0;
+  }
+};
+var eta;
+var hasRequiredEta;
+function requireEta() {
+  if (hasRequiredEta) return eta;
+  hasRequiredEta = 1;
+  class ETA {
+    constructor(length, initTime, initValue) {
+      this.etaBufferLength = length || 100;
+      this.valueBuffer = [initValue];
+      this.timeBuffer = [initTime];
+      this.eta = "0";
+    }
+    // add new values to calculation buffer
+    update(time, value, total) {
+      this.valueBuffer.push(value);
+      this.timeBuffer.push(time);
+      this.calculate(total - value);
+    }
+    // fetch estimated time
+    getTime() {
+      return this.eta;
+    }
+    // eta calculation - request number of remaining events
+    calculate(remaining) {
+      const currentBufferSize = this.valueBuffer.length;
+      const buffer2 = Math.min(this.etaBufferLength, currentBufferSize);
+      const v_diff = this.valueBuffer[currentBufferSize - 1] - this.valueBuffer[currentBufferSize - buffer2];
+      const t_diff = this.timeBuffer[currentBufferSize - 1] - this.timeBuffer[currentBufferSize - buffer2];
+      const vt_rate = v_diff / t_diff;
+      this.valueBuffer = this.valueBuffer.slice(-this.etaBufferLength);
+      this.timeBuffer = this.timeBuffer.slice(-this.etaBufferLength);
+      const eta2 = Math.ceil(remaining / vt_rate / 1e3);
+      if (isNaN(eta2)) {
+        this.eta = "NULL";
+      } else if (!isFinite(eta2)) {
+        this.eta = "INF";
+      } else if (eta2 > 1e7) {
+        this.eta = "INF";
+      } else if (eta2 < 0) {
+        this.eta = 0;
+      } else {
+        this.eta = eta2;
+      }
+    }
+  }
+  eta = ETA;
+  return eta;
+}
+var terminal;
+var hasRequiredTerminal;
+function requireTerminal() {
+  if (hasRequiredTerminal) return terminal;
+  hasRequiredTerminal = 1;
+  const _readline = require$$0$3;
+  class Terminal {
+    constructor(outputStream) {
+      this.stream = outputStream;
+      this.linewrap = true;
+      this.dy = 0;
+    }
+    // save cursor position + settings
+    cursorSave() {
+      if (!this.stream.isTTY) {
+        return;
+      }
+      this.stream.write("\x1B7");
+    }
+    // restore last cursor position + settings
+    cursorRestore() {
+      if (!this.stream.isTTY) {
+        return;
+      }
+      this.stream.write("\x1B8");
+    }
+    // show/hide cursor
+    cursor(enabled) {
+      if (!this.stream.isTTY) {
+        return;
+      }
+      if (enabled) {
+        this.stream.write("\x1B[?25h");
+      } else {
+        this.stream.write("\x1B[?25l");
+      }
+    }
+    // change cursor positionn
+    cursorTo(x = null, y = null) {
+      if (!this.stream.isTTY) {
+        return;
+      }
+      _readline.cursorTo(this.stream, x, y);
+    }
+    // change relative cursor position
+    cursorRelative(dx = null, dy = null) {
+      if (!this.stream.isTTY) {
+        return;
+      }
+      this.dy = this.dy + dy;
+      _readline.moveCursor(this.stream, dx, dy);
+    }
+    // relative reset
+    cursorRelativeReset() {
+      if (!this.stream.isTTY) {
+        return;
+      }
+      _readline.moveCursor(this.stream, 0, -this.dy);
+      _readline.cursorTo(this.stream, 0, null);
+      this.dy = 0;
+    }
+    // clear to the right from cursor
+    clearRight() {
+      if (!this.stream.isTTY) {
+        return;
+      }
+      _readline.clearLine(this.stream, 1);
+    }
+    // clear the full line
+    clearLine() {
+      if (!this.stream.isTTY) {
+        return;
+      }
+      _readline.clearLine(this.stream, 0);
+    }
+    // clear everyting beyond the current line
+    clearBottom() {
+      if (!this.stream.isTTY) {
+        return;
+      }
+      _readline.clearScreenDown(this.stream);
+    }
+    // add new line; increment counter
+    newline() {
+      this.stream.write("\n");
+      this.dy++;
+    }
+    // write content to output stream
+    // @TODO use string-width to strip length
+    write(s, rawWrite = false) {
+      if (this.linewrap === true && rawWrite === false) {
+        this.stream.write(s.substr(0, this.getWidth()));
+      } else {
+        this.stream.write(s);
+      }
+    }
+    // control line wrapping
+    lineWrapping(enabled) {
+      if (!this.stream.isTTY) {
+        return;
+      }
+      this.linewrap = enabled;
+      if (enabled) {
+        this.stream.write("\x1B[?7h");
+      } else {
+        this.stream.write("\x1B[?7l");
+      }
+    }
+    // tty environment ?
+    isTTY() {
+      return this.stream.isTTY === true;
+    }
+    // get terminal width
+    getWidth() {
+      return this.stream.columns || (this.stream.isTTY ? 80 : 200);
+    }
+  }
+  terminal = Terminal;
+  return terminal;
+}
+var stringWidth = { exports: {} };
+var ansiRegex;
+var hasRequiredAnsiRegex;
+function requireAnsiRegex() {
+  if (hasRequiredAnsiRegex) return ansiRegex;
+  hasRequiredAnsiRegex = 1;
+  ansiRegex = ({ onlyFirst = false } = {}) => {
+    const pattern = [
+      "[\\u001B\\u009B][[\\]()#;?]*(?:(?:(?:(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]+)*|[a-zA-Z\\d]+(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)",
+      "(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))"
+    ].join("|");
+    return new RegExp(pattern, onlyFirst ? void 0 : "g");
+  };
+  return ansiRegex;
+}
+var stripAnsi;
+var hasRequiredStripAnsi;
+function requireStripAnsi() {
+  if (hasRequiredStripAnsi) return stripAnsi;
+  hasRequiredStripAnsi = 1;
+  const ansiRegex2 = requireAnsiRegex();
+  stripAnsi = (string) => typeof string === "string" ? string.replace(ansiRegex2(), "") : string;
+  return stripAnsi;
+}
+var isFullwidthCodePoint = { exports: {} };
+var hasRequiredIsFullwidthCodePoint;
+function requireIsFullwidthCodePoint() {
+  if (hasRequiredIsFullwidthCodePoint) return isFullwidthCodePoint.exports;
+  hasRequiredIsFullwidthCodePoint = 1;
+  const isFullwidthCodePoint$1 = (codePoint) => {
+    if (Number.isNaN(codePoint)) {
+      return false;
+    }
+    if (codePoint >= 4352 && (codePoint <= 4447 || // Hangul Jamo
+    codePoint === 9001 || // LEFT-POINTING ANGLE BRACKET
+    codePoint === 9002 || // RIGHT-POINTING ANGLE BRACKET
+    // CJK Radicals Supplement .. Enclosed CJK Letters and Months
+    11904 <= codePoint && codePoint <= 12871 && codePoint !== 12351 || // Enclosed CJK Letters and Months .. CJK Unified Ideographs Extension A
+    12880 <= codePoint && codePoint <= 19903 || // CJK Unified Ideographs .. Yi Radicals
+    19968 <= codePoint && codePoint <= 42182 || // Hangul Jamo Extended-A
+    43360 <= codePoint && codePoint <= 43388 || // Hangul Syllables
+    44032 <= codePoint && codePoint <= 55203 || // CJK Compatibility Ideographs
+    63744 <= codePoint && codePoint <= 64255 || // Vertical Forms
+    65040 <= codePoint && codePoint <= 65049 || // CJK Compatibility Forms .. Small Form Variants
+    65072 <= codePoint && codePoint <= 65131 || // Halfwidth and Fullwidth Forms
+    65281 <= codePoint && codePoint <= 65376 || 65504 <= codePoint && codePoint <= 65510 || // Kana Supplement
+    110592 <= codePoint && codePoint <= 110593 || // Enclosed Ideographic Supplement
+    127488 <= codePoint && codePoint <= 127569 || // CJK Unified Ideographs Extension B .. Tertiary Ideographic Plane
+    131072 <= codePoint && codePoint <= 262141)) {
+      return true;
+    }
+    return false;
+  };
+  isFullwidthCodePoint.exports = isFullwidthCodePoint$1;
+  isFullwidthCodePoint.exports.default = isFullwidthCodePoint$1;
+  return isFullwidthCodePoint.exports;
+}
+var emojiRegex;
+var hasRequiredEmojiRegex;
+function requireEmojiRegex() {
+  if (hasRequiredEmojiRegex) return emojiRegex;
+  hasRequiredEmojiRegex = 1;
+  emojiRegex = function() {
+    return /\uD83C\uDFF4\uDB40\uDC67\uDB40\uDC62(?:\uDB40\uDC65\uDB40\uDC6E\uDB40\uDC67|\uDB40\uDC73\uDB40\uDC63\uDB40\uDC74|\uDB40\uDC77\uDB40\uDC6C\uDB40\uDC73)\uDB40\uDC7F|\uD83D\uDC68(?:\uD83C\uDFFC\u200D(?:\uD83E\uDD1D\u200D\uD83D\uDC68\uD83C\uDFFB|\uD83C[\uDF3E\uDF73\uDF93\uDFA4\uDFA8\uDFEB\uDFED]|\uD83D[\uDCBB\uDCBC\uDD27\uDD2C\uDE80\uDE92]|\uD83E[\uDDAF-\uDDB3\uDDBC\uDDBD])|\uD83C\uDFFF\u200D(?:\uD83E\uDD1D\u200D\uD83D\uDC68(?:\uD83C[\uDFFB-\uDFFE])|\uD83C[\uDF3E\uDF73\uDF93\uDFA4\uDFA8\uDFEB\uDFED]|\uD83D[\uDCBB\uDCBC\uDD27\uDD2C\uDE80\uDE92]|\uD83E[\uDDAF-\uDDB3\uDDBC\uDDBD])|\uD83C\uDFFE\u200D(?:\uD83E\uDD1D\u200D\uD83D\uDC68(?:\uD83C[\uDFFB-\uDFFD])|\uD83C[\uDF3E\uDF73\uDF93\uDFA4\uDFA8\uDFEB\uDFED]|\uD83D[\uDCBB\uDCBC\uDD27\uDD2C\uDE80\uDE92]|\uD83E[\uDDAF-\uDDB3\uDDBC\uDDBD])|\uD83C\uDFFD\u200D(?:\uD83E\uDD1D\u200D\uD83D\uDC68(?:\uD83C[\uDFFB\uDFFC])|\uD83C[\uDF3E\uDF73\uDF93\uDFA4\uDFA8\uDFEB\uDFED]|\uD83D[\uDCBB\uDCBC\uDD27\uDD2C\uDE80\uDE92]|\uD83E[\uDDAF-\uDDB3\uDDBC\uDDBD])|\u200D(?:\u2764\uFE0F\u200D(?:\uD83D\uDC8B\u200D)?\uD83D\uDC68|(?:\uD83D[\uDC68\uDC69])\u200D(?:\uD83D\uDC66\u200D\uD83D\uDC66|\uD83D\uDC67\u200D(?:\uD83D[\uDC66\uDC67]))|\uD83D\uDC66\u200D\uD83D\uDC66|\uD83D\uDC67\u200D(?:\uD83D[\uDC66\uDC67])|(?:\uD83D[\uDC68\uDC69])\u200D(?:\uD83D[\uDC66\uDC67])|[\u2695\u2696\u2708]\uFE0F|\uD83D[\uDC66\uDC67]|\uD83C[\uDF3E\uDF73\uDF93\uDFA4\uDFA8\uDFEB\uDFED]|\uD83D[\uDCBB\uDCBC\uDD27\uDD2C\uDE80\uDE92]|\uD83E[\uDDAF-\uDDB3\uDDBC\uDDBD])|(?:\uD83C\uDFFB\u200D[\u2695\u2696\u2708]|\uD83C\uDFFF\u200D[\u2695\u2696\u2708]|\uD83C\uDFFE\u200D[\u2695\u2696\u2708]|\uD83C\uDFFD\u200D[\u2695\u2696\u2708]|\uD83C\uDFFC\u200D[\u2695\u2696\u2708])\uFE0F|\uD83C\uDFFB\u200D(?:\uD83C[\uDF3E\uDF73\uDF93\uDFA4\uDFA8\uDFEB\uDFED]|\uD83D[\uDCBB\uDCBC\uDD27\uDD2C\uDE80\uDE92]|\uD83E[\uDDAF-\uDDB3\uDDBC\uDDBD])|\uD83C[\uDFFB-\uDFFF])|(?:\uD83E\uDDD1\uD83C\uDFFB\u200D\uD83E\uDD1D\u200D\uD83E\uDDD1|\uD83D\uDC69\uD83C\uDFFC\u200D\uD83E\uDD1D\u200D\uD83D\uDC69)\uD83C\uDFFB|\uD83E\uDDD1(?:\uD83C\uDFFF\u200D\uD83E\uDD1D\u200D\uD83E\uDDD1(?:\uD83C[\uDFFB-\uDFFF])|\u200D\uD83E\uDD1D\u200D\uD83E\uDDD1)|(?:\uD83E\uDDD1\uD83C\uDFFE\u200D\uD83E\uDD1D\u200D\uD83E\uDDD1|\uD83D\uDC69\uD83C\uDFFF\u200D\uD83E\uDD1D\u200D(?:\uD83D[\uDC68\uDC69]))(?:\uD83C[\uDFFB-\uDFFE])|(?:\uD83E\uDDD1\uD83C\uDFFC\u200D\uD83E\uDD1D\u200D\uD83E\uDDD1|\uD83D\uDC69\uD83C\uDFFD\u200D\uD83E\uDD1D\u200D\uD83D\uDC69)(?:\uD83C[\uDFFB\uDFFC])|\uD83D\uDC69(?:\uD83C\uDFFE\u200D(?:\uD83E\uDD1D\u200D\uD83D\uDC68(?:\uD83C[\uDFFB-\uDFFD\uDFFF])|\uD83C[\uDF3E\uDF73\uDF93\uDFA4\uDFA8\uDFEB\uDFED]|\uD83D[\uDCBB\uDCBC\uDD27\uDD2C\uDE80\uDE92]|\uD83E[\uDDAF-\uDDB3\uDDBC\uDDBD])|\uD83C\uDFFC\u200D(?:\uD83E\uDD1D\u200D\uD83D\uDC68(?:\uD83C[\uDFFB\uDFFD-\uDFFF])|\uD83C[\uDF3E\uDF73\uDF93\uDFA4\uDFA8\uDFEB\uDFED]|\uD83D[\uDCBB\uDCBC\uDD27\uDD2C\uDE80\uDE92]|\uD83E[\uDDAF-\uDDB3\uDDBC\uDDBD])|\uD83C\uDFFB\u200D(?:\uD83E\uDD1D\u200D\uD83D\uDC68(?:\uD83C[\uDFFC-\uDFFF])|\uD83C[\uDF3E\uDF73\uDF93\uDFA4\uDFA8\uDFEB\uDFED]|\uD83D[\uDCBB\uDCBC\uDD27\uDD2C\uDE80\uDE92]|\uD83E[\uDDAF-\uDDB3\uDDBC\uDDBD])|\uD83C\uDFFD\u200D(?:\uD83E\uDD1D\u200D\uD83D\uDC68(?:\uD83C[\uDFFB\uDFFC\uDFFE\uDFFF])|\uD83C[\uDF3E\uDF73\uDF93\uDFA4\uDFA8\uDFEB\uDFED]|\uD83D[\uDCBB\uDCBC\uDD27\uDD2C\uDE80\uDE92]|\uD83E[\uDDAF-\uDDB3\uDDBC\uDDBD])|\u200D(?:\u2764\uFE0F\u200D(?:\uD83D\uDC8B\u200D(?:\uD83D[\uDC68\uDC69])|\uD83D[\uDC68\uDC69])|\uD83C[\uDF3E\uDF73\uDF93\uDFA4\uDFA8\uDFEB\uDFED]|\uD83D[\uDCBB\uDCBC\uDD27\uDD2C\uDE80\uDE92]|\uD83E[\uDDAF-\uDDB3\uDDBC\uDDBD])|\uD83C\uDFFF\u200D(?:\uD83C[\uDF3E\uDF73\uDF93\uDFA4\uDFA8\uDFEB\uDFED]|\uD83D[\uDCBB\uDCBC\uDD27\uDD2C\uDE80\uDE92]|\uD83E[\uDDAF-\uDDB3\uDDBC\uDDBD]))|\uD83D\uDC69\u200D\uD83D\uDC69\u200D(?:\uD83D\uDC66\u200D\uD83D\uDC66|\uD83D\uDC67\u200D(?:\uD83D[\uDC66\uDC67]))|(?:\uD83E\uDDD1\uD83C\uDFFD\u200D\uD83E\uDD1D\u200D\uD83E\uDDD1|\uD83D\uDC69\uD83C\uDFFE\u200D\uD83E\uDD1D\u200D\uD83D\uDC69)(?:\uD83C[\uDFFB-\uDFFD])|\uD83D\uDC69\u200D\uD83D\uDC66\u200D\uD83D\uDC66|\uD83D\uDC69\u200D\uD83D\uDC69\u200D(?:\uD83D[\uDC66\uDC67])|(?:\uD83D\uDC41\uFE0F\u200D\uD83D\uDDE8|\uD83D\uDC69(?:\uD83C\uDFFF\u200D[\u2695\u2696\u2708]|\uD83C\uDFFE\u200D[\u2695\u2696\u2708]|\uD83C\uDFFC\u200D[\u2695\u2696\u2708]|\uD83C\uDFFB\u200D[\u2695\u2696\u2708]|\uD83C\uDFFD\u200D[\u2695\u2696\u2708]|\u200D[\u2695\u2696\u2708])|(?:(?:\u26F9|\uD83C[\uDFCB\uDFCC]|\uD83D\uDD75)\uFE0F|\uD83D\uDC6F|\uD83E[\uDD3C\uDDDE\uDDDF])\u200D[\u2640\u2642]|(?:\u26F9|\uD83C[\uDFCB\uDFCC]|\uD83D\uDD75)(?:\uD83C[\uDFFB-\uDFFF])\u200D[\u2640\u2642]|(?:\uD83C[\uDFC3\uDFC4\uDFCA]|\uD83D[\uDC6E\uDC71\uDC73\uDC77\uDC81\uDC82\uDC86\uDC87\uDE45-\uDE47\uDE4B\uDE4D\uDE4E\uDEA3\uDEB4-\uDEB6]|\uD83E[\uDD26\uDD37-\uDD39\uDD3D\uDD3E\uDDB8\uDDB9\uDDCD-\uDDCF\uDDD6-\uDDDD])(?:(?:\uD83C[\uDFFB-\uDFFF])\u200D[\u2640\u2642]|\u200D[\u2640\u2642])|\uD83C\uDFF4\u200D\u2620)\uFE0F|\uD83D\uDC69\u200D\uD83D\uDC67\u200D(?:\uD83D[\uDC66\uDC67])|\uD83C\uDFF3\uFE0F\u200D\uD83C\uDF08|\uD83D\uDC15\u200D\uD83E\uDDBA|\uD83D\uDC69\u200D\uD83D\uDC66|\uD83D\uDC69\u200D\uD83D\uDC67|\uD83C\uDDFD\uD83C\uDDF0|\uD83C\uDDF4\uD83C\uDDF2|\uD83C\uDDF6\uD83C\uDDE6|[#\*0-9]\uFE0F\u20E3|\uD83C\uDDE7(?:\uD83C[\uDDE6\uDDE7\uDDE9-\uDDEF\uDDF1-\uDDF4\uDDF6-\uDDF9\uDDFB\uDDFC\uDDFE\uDDFF])|\uD83C\uDDF9(?:\uD83C[\uDDE6\uDDE8\uDDE9\uDDEB-\uDDED\uDDEF-\uDDF4\uDDF7\uDDF9\uDDFB\uDDFC\uDDFF])|\uD83C\uDDEA(?:\uD83C[\uDDE6\uDDE8\uDDEA\uDDEC\uDDED\uDDF7-\uDDFA])|\uD83E\uDDD1(?:\uD83C[\uDFFB-\uDFFF])|\uD83C\uDDF7(?:\uD83C[\uDDEA\uDDF4\uDDF8\uDDFA\uDDFC])|\uD83D\uDC69(?:\uD83C[\uDFFB-\uDFFF])|\uD83C\uDDF2(?:\uD83C[\uDDE6\uDDE8-\uDDED\uDDF0-\uDDFF])|\uD83C\uDDE6(?:\uD83C[\uDDE8-\uDDEC\uDDEE\uDDF1\uDDF2\uDDF4\uDDF6-\uDDFA\uDDFC\uDDFD\uDDFF])|\uD83C\uDDF0(?:\uD83C[\uDDEA\uDDEC-\uDDEE\uDDF2\uDDF3\uDDF5\uDDF7\uDDFC\uDDFE\uDDFF])|\uD83C\uDDED(?:\uD83C[\uDDF0\uDDF2\uDDF3\uDDF7\uDDF9\uDDFA])|\uD83C\uDDE9(?:\uD83C[\uDDEA\uDDEC\uDDEF\uDDF0\uDDF2\uDDF4\uDDFF])|\uD83C\uDDFE(?:\uD83C[\uDDEA\uDDF9])|\uD83C\uDDEC(?:\uD83C[\uDDE6\uDDE7\uDDE9-\uDDEE\uDDF1-\uDDF3\uDDF5-\uDDFA\uDDFC\uDDFE])|\uD83C\uDDF8(?:\uD83C[\uDDE6-\uDDEA\uDDEC-\uDDF4\uDDF7-\uDDF9\uDDFB\uDDFD-\uDDFF])|\uD83C\uDDEB(?:\uD83C[\uDDEE-\uDDF0\uDDF2\uDDF4\uDDF7])|\uD83C\uDDF5(?:\uD83C[\uDDE6\uDDEA-\uDDED\uDDF0-\uDDF3\uDDF7-\uDDF9\uDDFC\uDDFE])|\uD83C\uDDFB(?:\uD83C[\uDDE6\uDDE8\uDDEA\uDDEC\uDDEE\uDDF3\uDDFA])|\uD83C\uDDF3(?:\uD83C[\uDDE6\uDDE8\uDDEA-\uDDEC\uDDEE\uDDF1\uDDF4\uDDF5\uDDF7\uDDFA\uDDFF])|\uD83C\uDDE8(?:\uD83C[\uDDE6\uDDE8\uDDE9\uDDEB-\uDDEE\uDDF0-\uDDF5\uDDF7\uDDFA-\uDDFF])|\uD83C\uDDF1(?:\uD83C[\uDDE6-\uDDE8\uDDEE\uDDF0\uDDF7-\uDDFB\uDDFE])|\uD83C\uDDFF(?:\uD83C[\uDDE6\uDDF2\uDDFC])|\uD83C\uDDFC(?:\uD83C[\uDDEB\uDDF8])|\uD83C\uDDFA(?:\uD83C[\uDDE6\uDDEC\uDDF2\uDDF3\uDDF8\uDDFE\uDDFF])|\uD83C\uDDEE(?:\uD83C[\uDDE8-\uDDEA\uDDF1-\uDDF4\uDDF6-\uDDF9])|\uD83C\uDDEF(?:\uD83C[\uDDEA\uDDF2\uDDF4\uDDF5])|(?:\uD83C[\uDFC3\uDFC4\uDFCA]|\uD83D[\uDC6E\uDC71\uDC73\uDC77\uDC81\uDC82\uDC86\uDC87\uDE45-\uDE47\uDE4B\uDE4D\uDE4E\uDEA3\uDEB4-\uDEB6]|\uD83E[\uDD26\uDD37-\uDD39\uDD3D\uDD3E\uDDB8\uDDB9\uDDCD-\uDDCF\uDDD6-\uDDDD])(?:\uD83C[\uDFFB-\uDFFF])|(?:\u26F9|\uD83C[\uDFCB\uDFCC]|\uD83D\uDD75)(?:\uD83C[\uDFFB-\uDFFF])|(?:[\u261D\u270A-\u270D]|\uD83C[\uDF85\uDFC2\uDFC7]|\uD83D[\uDC42\uDC43\uDC46-\uDC50\uDC66\uDC67\uDC6B-\uDC6D\uDC70\uDC72\uDC74-\uDC76\uDC78\uDC7C\uDC83\uDC85\uDCAA\uDD74\uDD7A\uDD90\uDD95\uDD96\uDE4C\uDE4F\uDEC0\uDECC]|\uD83E[\uDD0F\uDD18-\uDD1C\uDD1E\uDD1F\uDD30-\uDD36\uDDB5\uDDB6\uDDBB\uDDD2-\uDDD5])(?:\uD83C[\uDFFB-\uDFFF])|(?:[\u231A\u231B\u23E9-\u23EC\u23F0\u23F3\u25FD\u25FE\u2614\u2615\u2648-\u2653\u267F\u2693\u26A1\u26AA\u26AB\u26BD\u26BE\u26C4\u26C5\u26CE\u26D4\u26EA\u26F2\u26F3\u26F5\u26FA\u26FD\u2705\u270A\u270B\u2728\u274C\u274E\u2753-\u2755\u2757\u2795-\u2797\u27B0\u27BF\u2B1B\u2B1C\u2B50\u2B55]|\uD83C[\uDC04\uDCCF\uDD8E\uDD91-\uDD9A\uDDE6-\uDDFF\uDE01\uDE1A\uDE2F\uDE32-\uDE36\uDE38-\uDE3A\uDE50\uDE51\uDF00-\uDF20\uDF2D-\uDF35\uDF37-\uDF7C\uDF7E-\uDF93\uDFA0-\uDFCA\uDFCF-\uDFD3\uDFE0-\uDFF0\uDFF4\uDFF8-\uDFFF]|\uD83D[\uDC00-\uDC3E\uDC40\uDC42-\uDCFC\uDCFF-\uDD3D\uDD4B-\uDD4E\uDD50-\uDD67\uDD7A\uDD95\uDD96\uDDA4\uDDFB-\uDE4F\uDE80-\uDEC5\uDECC\uDED0-\uDED2\uDED5\uDEEB\uDEEC\uDEF4-\uDEFA\uDFE0-\uDFEB]|\uD83E[\uDD0D-\uDD3A\uDD3C-\uDD45\uDD47-\uDD71\uDD73-\uDD76\uDD7A-\uDDA2\uDDA5-\uDDAA\uDDAE-\uDDCA\uDDCD-\uDDFF\uDE70-\uDE73\uDE78-\uDE7A\uDE80-\uDE82\uDE90-\uDE95])|(?:[#\*0-9\xA9\xAE\u203C\u2049\u2122\u2139\u2194-\u2199\u21A9\u21AA\u231A\u231B\u2328\u23CF\u23E9-\u23F3\u23F8-\u23FA\u24C2\u25AA\u25AB\u25B6\u25C0\u25FB-\u25FE\u2600-\u2604\u260E\u2611\u2614\u2615\u2618\u261D\u2620\u2622\u2623\u2626\u262A\u262E\u262F\u2638-\u263A\u2640\u2642\u2648-\u2653\u265F\u2660\u2663\u2665\u2666\u2668\u267B\u267E\u267F\u2692-\u2697\u2699\u269B\u269C\u26A0\u26A1\u26AA\u26AB\u26B0\u26B1\u26BD\u26BE\u26C4\u26C5\u26C8\u26CE\u26CF\u26D1\u26D3\u26D4\u26E9\u26EA\u26F0-\u26F5\u26F7-\u26FA\u26FD\u2702\u2705\u2708-\u270D\u270F\u2712\u2714\u2716\u271D\u2721\u2728\u2733\u2734\u2744\u2747\u274C\u274E\u2753-\u2755\u2757\u2763\u2764\u2795-\u2797\u27A1\u27B0\u27BF\u2934\u2935\u2B05-\u2B07\u2B1B\u2B1C\u2B50\u2B55\u3030\u303D\u3297\u3299]|\uD83C[\uDC04\uDCCF\uDD70\uDD71\uDD7E\uDD7F\uDD8E\uDD91-\uDD9A\uDDE6-\uDDFF\uDE01\uDE02\uDE1A\uDE2F\uDE32-\uDE3A\uDE50\uDE51\uDF00-\uDF21\uDF24-\uDF93\uDF96\uDF97\uDF99-\uDF9B\uDF9E-\uDFF0\uDFF3-\uDFF5\uDFF7-\uDFFF]|\uD83D[\uDC00-\uDCFD\uDCFF-\uDD3D\uDD49-\uDD4E\uDD50-\uDD67\uDD6F\uDD70\uDD73-\uDD7A\uDD87\uDD8A-\uDD8D\uDD90\uDD95\uDD96\uDDA4\uDDA5\uDDA8\uDDB1\uDDB2\uDDBC\uDDC2-\uDDC4\uDDD1-\uDDD3\uDDDC-\uDDDE\uDDE1\uDDE3\uDDE8\uDDEF\uDDF3\uDDFA-\uDE4F\uDE80-\uDEC5\uDECB-\uDED2\uDED5\uDEE0-\uDEE5\uDEE9\uDEEB\uDEEC\uDEF0\uDEF3-\uDEFA\uDFE0-\uDFEB]|\uD83E[\uDD0D-\uDD3A\uDD3C-\uDD45\uDD47-\uDD71\uDD73-\uDD76\uDD7A-\uDDA2\uDDA5-\uDDAA\uDDAE-\uDDCA\uDDCD-\uDDFF\uDE70-\uDE73\uDE78-\uDE7A\uDE80-\uDE82\uDE90-\uDE95])\uFE0F|(?:[\u261D\u26F9\u270A-\u270D]|\uD83C[\uDF85\uDFC2-\uDFC4\uDFC7\uDFCA-\uDFCC]|\uD83D[\uDC42\uDC43\uDC46-\uDC50\uDC66-\uDC78\uDC7C\uDC81-\uDC83\uDC85-\uDC87\uDC8F\uDC91\uDCAA\uDD74\uDD75\uDD7A\uDD90\uDD95\uDD96\uDE45-\uDE47\uDE4B-\uDE4F\uDEA3\uDEB4-\uDEB6\uDEC0\uDECC]|\uD83E[\uDD0F\uDD18-\uDD1F\uDD26\uDD30-\uDD39\uDD3C-\uDD3E\uDDB5\uDDB6\uDDB8\uDDB9\uDDBB\uDDCD-\uDDCF\uDDD1-\uDDDD])/g;
+  };
+  return emojiRegex;
+}
+var hasRequiredStringWidth;
+function requireStringWidth() {
+  if (hasRequiredStringWidth) return stringWidth.exports;
+  hasRequiredStringWidth = 1;
+  const stripAnsi2 = requireStripAnsi();
+  const isFullwidthCodePoint2 = requireIsFullwidthCodePoint();
+  const emojiRegex2 = requireEmojiRegex();
+  const stringWidth$1 = (string) => {
+    if (typeof string !== "string" || string.length === 0) {
+      return 0;
+    }
+    string = stripAnsi2(string);
+    if (string.length === 0) {
+      return 0;
+    }
+    string = string.replace(emojiRegex2(), "  ");
+    let width = 0;
+    for (let i = 0; i < string.length; i++) {
+      const code = string.codePointAt(i);
+      if (code <= 31 || code >= 127 && code <= 159) {
+        continue;
+      }
+      if (code >= 768 && code <= 879) {
+        continue;
+      }
+      if (code > 65535) {
+        i++;
+      }
+      width += isFullwidthCodePoint2(code) ? 2 : 1;
+    }
+    return width;
+  };
+  stringWidth.exports = stringWidth$1;
+  stringWidth.exports.default = stringWidth$1;
+  return stringWidth.exports;
+}
+var formatValue$1;
+var hasRequiredFormatValue;
+function requireFormatValue() {
+  if (hasRequiredFormatValue) return formatValue$1;
+  hasRequiredFormatValue = 1;
+  formatValue$1 = function formatValue2(v, options2, type2) {
+    if (options2.autopadding !== true) {
+      return v;
+    }
+    function autopadding(value, length) {
+      return (options2.autopaddingChar + value).slice(-3);
+    }
+    switch (type2) {
+      case "percentage":
+        return autopadding(v);
+      default:
+        return v;
+    }
+  };
+  return formatValue$1;
+}
+var formatBar;
+var hasRequiredFormatBar;
+function requireFormatBar() {
+  if (hasRequiredFormatBar) return formatBar;
+  hasRequiredFormatBar = 1;
+  formatBar = function formatBar2(progress, options2) {
+    const completeSize = Math.round(progress * options2.barsize);
+    const incompleteSize = options2.barsize - completeSize;
+    return options2.barCompleteString.substr(0, completeSize) + options2.barGlue + options2.barIncompleteString.substr(0, incompleteSize);
+  };
+  return formatBar;
+}
+var formatTime;
+var hasRequiredFormatTime;
+function requireFormatTime() {
+  if (hasRequiredFormatTime) return formatTime;
+  hasRequiredFormatTime = 1;
+  formatTime = function formatTime2(t, options2, roundToMultipleOf) {
+    function round2(input) {
+      if (roundToMultipleOf) {
+        return roundToMultipleOf * Math.round(input / roundToMultipleOf);
+      } else {
+        return input;
+      }
+    }
+    function autopadding(v) {
+      return (options2.autopaddingChar + v).slice(-2);
+    }
+    if (t > 3600) {
+      return autopadding(Math.floor(t / 3600)) + "h" + autopadding(round2(t % 3600 / 60)) + "m";
+    } else if (t > 60) {
+      return autopadding(Math.floor(t / 60)) + "m" + autopadding(round2(t % 60)) + "s";
+    } else if (t > 10) {
+      return autopadding(round2(t)) + "s";
+    } else {
+      return autopadding(t) + "s";
+    }
+  };
+  return formatTime;
+}
+var formatter;
+var hasRequiredFormatter;
+function requireFormatter() {
+  if (hasRequiredFormatter) return formatter;
+  hasRequiredFormatter = 1;
+  const _stringWidth = requireStringWidth();
+  const _defaultFormatValue = requireFormatValue();
+  const _defaultFormatBar = requireFormatBar();
+  const _defaultFormatTime = requireFormatTime();
+  formatter = function defaultFormatter(options2, params, payload) {
+    let s = options2.format;
+    const formatTime2 = options2.formatTime || _defaultFormatTime;
+    const formatValue2 = options2.formatValue || _defaultFormatValue;
+    const formatBar2 = options2.formatBar || _defaultFormatBar;
+    const percentage = Math.floor(params.progress * 100) + "";
+    const stopTime = params.stopTime || Date.now();
+    const elapsedTime = Math.round((stopTime - params.startTime) / 1e3);
+    const context = Object.assign({}, payload, {
+      bar: formatBar2(params.progress, options2),
+      percentage: formatValue2(percentage, options2, "percentage"),
+      total: formatValue2(params.total, options2, "total"),
+      value: formatValue2(params.value, options2, "value"),
+      eta: formatValue2(params.eta, options2, "eta"),
+      eta_formatted: formatTime2(params.eta, options2, 5),
+      duration: formatValue2(elapsedTime, options2, "duration"),
+      duration_formatted: formatTime2(elapsedTime, options2, 1)
+    });
+    s = s.replace(/\{(\w+)\}/g, function(match, key) {
+      if (typeof context[key] !== "undefined") {
+        return context[key];
+      }
+      return match;
+    });
+    const fullMargin = Math.max(0, params.maxWidth - _stringWidth(s) - 2);
+    const halfMargin = Math.floor(fullMargin / 2);
+    switch (options2.align) {
+      // fill start-of-line with whitespaces
+      case "right":
+        s = fullMargin > 0 ? " ".repeat(fullMargin) + s : s;
+        break;
+      // distribute whitespaces to left+right
+      case "center":
+        s = halfMargin > 0 ? " ".repeat(halfMargin) + s : s;
+        break;
+    }
+    return s;
+  };
+  return formatter;
+}
+var options;
+var hasRequiredOptions;
+function requireOptions() {
+  if (hasRequiredOptions) return options;
+  hasRequiredOptions = 1;
+  function mergeOption(v, defaultValue) {
+    if (typeof v === "undefined" || v === null) {
+      return defaultValue;
+    } else {
+      return v;
+    }
+  }
+  options = {
+    // set global options
+    parse: function parse2(rawOptions, preset) {
+      const options2 = {};
+      const opt = Object.assign({}, preset, rawOptions);
+      options2.throttleTime = 1e3 / mergeOption(opt.fps, 10);
+      options2.stream = mergeOption(opt.stream, process.stderr);
+      options2.terminal = mergeOption(opt.terminal, null);
+      options2.clearOnComplete = mergeOption(opt.clearOnComplete, false);
+      options2.stopOnComplete = mergeOption(opt.stopOnComplete, false);
+      options2.barsize = mergeOption(opt.barsize, 40);
+      options2.align = mergeOption(opt.align, "left");
+      options2.hideCursor = mergeOption(opt.hideCursor, false);
+      options2.linewrap = mergeOption(opt.linewrap, false);
+      options2.barGlue = mergeOption(opt.barGlue, "");
+      options2.barCompleteChar = mergeOption(opt.barCompleteChar, "=");
+      options2.barIncompleteChar = mergeOption(opt.barIncompleteChar, "-");
+      options2.format = mergeOption(opt.format, "progress [{bar}] {percentage}% | ETA: {eta}s | {value}/{total}");
+      options2.formatTime = mergeOption(opt.formatTime, null);
+      options2.formatValue = mergeOption(opt.formatValue, null);
+      options2.formatBar = mergeOption(opt.formatBar, null);
+      options2.etaBufferLength = mergeOption(opt.etaBuffer, 10);
+      options2.etaAsynchronousUpdate = mergeOption(opt.etaAsynchronousUpdate, false);
+      options2.progressCalculationRelative = mergeOption(opt.progressCalculationRelative, false);
+      options2.synchronousUpdate = mergeOption(opt.synchronousUpdate, true);
+      options2.noTTYOutput = mergeOption(opt.noTTYOutput, false);
+      options2.notTTYSchedule = mergeOption(opt.notTTYSchedule, 2e3);
+      options2.emptyOnZero = mergeOption(opt.emptyOnZero, false);
+      options2.forceRedraw = mergeOption(opt.forceRedraw, false);
+      options2.autopadding = mergeOption(opt.autopadding, false);
+      options2.gracefulExit = mergeOption(opt.gracefulExit, false);
+      return options2;
+    },
+    // derived options: instance specific, has to be created for every bar element
+    assignDerivedOptions: function assignDerivedOptions(options2) {
+      options2.barCompleteString = options2.barCompleteChar.repeat(options2.barsize + 1);
+      options2.barIncompleteString = options2.barIncompleteChar.repeat(options2.barsize + 1);
+      options2.autopaddingChar = options2.autopadding ? mergeOption(options2.autopaddingChar, "   ") : "";
+      return options2;
+    }
+  };
+  return options;
+}
+var genericBar;
+var hasRequiredGenericBar;
+function requireGenericBar() {
+  if (hasRequiredGenericBar) return genericBar;
+  hasRequiredGenericBar = 1;
+  const _ETA = requireEta();
+  const _Terminal = requireTerminal();
+  const _formatter = requireFormatter();
+  const _options = requireOptions();
+  const _EventEmitter = require$$4$2;
+  genericBar = class GenericBar extends _EventEmitter {
+    constructor(options2) {
+      super();
+      this.options = _options.assignDerivedOptions(options2);
+      this.terminal = this.options.terminal ? this.options.terminal : new _Terminal(this.options.stream);
+      this.value = 0;
+      this.startValue = 0;
+      this.total = 100;
+      this.lastDrawnString = null;
+      this.startTime = null;
+      this.stopTime = null;
+      this.lastRedraw = Date.now();
+      this.eta = new _ETA(this.options.etaBufferLength, 0, 0);
+      this.payload = {};
+      this.isActive = false;
+      this.formatter = typeof this.options.format === "function" ? this.options.format : _formatter;
+    }
+    // internal render function
+    render(forceRendering = false) {
+      const params = {
+        progress: this.getProgress(),
+        eta: this.eta.getTime(),
+        startTime: this.startTime,
+        stopTime: this.stopTime,
+        total: this.total,
+        value: this.value,
+        maxWidth: this.terminal.getWidth()
+      };
+      if (this.options.etaAsynchronousUpdate) {
+        this.updateETA();
+      }
+      const s = this.formatter(this.options, params, this.payload);
+      const forceRedraw = forceRendering || this.options.forceRedraw || this.options.noTTYOutput && !this.terminal.isTTY();
+      if (forceRedraw || this.lastDrawnString != s) {
+        this.emit("redraw-pre");
+        this.terminal.cursorTo(0, null);
+        this.terminal.write(s);
+        this.terminal.clearRight();
+        this.lastDrawnString = s;
+        this.lastRedraw = Date.now();
+        this.emit("redraw-post");
+      }
+    }
+    // start the progress bar
+    start(total, startValue, payload) {
+      this.value = startValue || 0;
+      this.total = typeof total !== "undefined" && total >= 0 ? total : 100;
+      this.startValue = startValue || 0;
+      this.payload = payload || {};
+      this.startTime = Date.now();
+      this.stopTime = null;
+      this.lastDrawnString = "";
+      this.eta = new _ETA(this.options.etaBufferLength, this.startTime, this.value);
+      this.isActive = true;
+      this.emit("start", total, startValue);
+    }
+    // stop the bar
+    stop() {
+      this.isActive = false;
+      this.stopTime = Date.now();
+      this.emit("stop", this.total, this.value);
+    }
+    // update the bar value
+    // update(value, payload)
+    // update(payload)
+    update(arg0, arg1 = {}) {
+      if (typeof arg0 === "number") {
+        this.value = arg0;
+        this.eta.update(Date.now(), arg0, this.total);
+      }
+      const payloadData = (typeof arg0 === "object" ? arg0 : arg1) || {};
+      this.emit("update", this.total, this.value);
+      for (const key in payloadData) {
+        this.payload[key] = payloadData[key];
+      }
+      if (this.value >= this.getTotal() && this.options.stopOnComplete) {
+        this.stop();
+      }
+    }
+    // calculate the actual progress value
+    getProgress() {
+      let progress = this.value / this.total;
+      if (this.options.progressCalculationRelative) {
+        progress = (this.value - this.startValue) / (this.total - this.startValue);
+      }
+      if (isNaN(progress)) {
+        progress = this.options && this.options.emptyOnZero ? 0 : 1;
+      }
+      progress = Math.min(Math.max(progress, 0), 1);
+      return progress;
+    }
+    // update the bar value
+    // increment(delta, payload)
+    // increment(payload)
+    increment(arg0 = 1, arg1 = {}) {
+      if (typeof arg0 === "object") {
+        this.update(this.value + 1, arg0);
+      } else {
+        this.update(this.value + arg0, arg1);
+      }
+    }
+    // get the total (limit) value
+    getTotal() {
+      return this.total;
+    }
+    // set the total (limit) value
+    setTotal(total) {
+      if (typeof total !== "undefined" && total >= 0) {
+        this.total = total;
+      }
+    }
+    // force eta calculation update (long running processes)
+    updateETA() {
+      this.eta.update(Date.now(), this.value, this.total);
+    }
+  };
+  return genericBar;
+}
+var singleBar;
+var hasRequiredSingleBar;
+function requireSingleBar() {
+  if (hasRequiredSingleBar) return singleBar;
+  hasRequiredSingleBar = 1;
+  const _GenericBar = requireGenericBar();
+  const _options = requireOptions();
+  singleBar = class SingleBar extends _GenericBar {
+    constructor(options2, preset) {
+      super(_options.parse(options2, preset));
+      this.timer = null;
+      if (this.options.noTTYOutput && this.terminal.isTTY() === false) {
+        this.options.synchronousUpdate = false;
+      }
+      this.schedulingRate = this.terminal.isTTY() ? this.options.throttleTime : this.options.notTTYSchedule;
+      this.sigintCallback = null;
+    }
+    // internal render function
+    render() {
+      if (this.timer) {
+        clearTimeout(this.timer);
+        this.timer = null;
+      }
+      super.render();
+      if (this.options.noTTYOutput && this.terminal.isTTY() === false) {
+        this.terminal.newline();
+      }
+      this.timer = setTimeout(this.render.bind(this), this.schedulingRate);
+    }
+    update(current, payload) {
+      if (!this.timer) {
+        return;
+      }
+      super.update(current, payload);
+      if (this.options.synchronousUpdate && this.lastRedraw + this.options.throttleTime * 2 < Date.now()) {
+        this.render();
+      }
+    }
+    // start the progress bar
+    start(total, startValue, payload) {
+      if (this.options.noTTYOutput === false && this.terminal.isTTY() === false) {
+        return;
+      }
+      if (this.sigintCallback === null && this.options.gracefulExit) {
+        this.sigintCallback = this.stop.bind(this);
+        process.once("SIGINT", this.sigintCallback);
+        process.once("SIGTERM", this.sigintCallback);
+      }
+      this.terminal.cursorSave();
+      if (this.options.hideCursor === true) {
+        this.terminal.cursor(false);
+      }
+      if (this.options.linewrap === false) {
+        this.terminal.lineWrapping(false);
+      }
+      super.start(total, startValue, payload);
+      this.render();
+    }
+    // stop the bar
+    stop() {
+      if (!this.timer) {
+        return;
+      }
+      if (this.sigintCallback) {
+        process.removeListener("SIGINT", this.sigintCallback);
+        process.removeListener("SIGTERM", this.sigintCallback);
+        this.sigintCallback = null;
+      }
+      this.render();
+      super.stop();
+      clearTimeout(this.timer);
+      this.timer = null;
+      if (this.options.hideCursor === true) {
+        this.terminal.cursor(true);
+      }
+      if (this.options.linewrap === false) {
+        this.terminal.lineWrapping(true);
+      }
+      this.terminal.cursorRestore();
+      if (this.options.clearOnComplete) {
+        this.terminal.cursorTo(0, null);
+        this.terminal.clearLine();
+      } else {
+        this.terminal.newline();
+      }
+    }
+  };
+  return singleBar;
+}
+var multiBar;
+var hasRequiredMultiBar;
+function requireMultiBar() {
+  if (hasRequiredMultiBar) return multiBar;
+  hasRequiredMultiBar = 1;
+  const _Terminal = requireTerminal();
+  const _BarElement = requireGenericBar();
+  const _options = requireOptions();
+  const _EventEmitter = require$$4$2;
+  multiBar = class MultiBar extends _EventEmitter {
+    constructor(options2, preset) {
+      super();
+      this.bars = [];
+      this.options = _options.parse(options2, preset);
+      this.options.synchronousUpdate = false;
+      this.terminal = this.options.terminal ? this.options.terminal : new _Terminal(this.options.stream);
+      this.timer = null;
+      this.isActive = false;
+      this.schedulingRate = this.terminal.isTTY() ? this.options.throttleTime : this.options.notTTYSchedule;
+      this.loggingBuffer = [];
+      this.sigintCallback = null;
+    }
+    // add a new bar to the stack
+    create(total, startValue, payload, barOptions = {}) {
+      const bar = new _BarElement(Object.assign(
+        {},
+        // global options
+        this.options,
+        // terminal instance
+        {
+          terminal: this.terminal
+        },
+        // overrides
+        barOptions
+      ));
+      this.bars.push(bar);
+      if (this.options.noTTYOutput === false && this.terminal.isTTY() === false) {
+        return bar;
+      }
+      if (this.sigintCallback === null && this.options.gracefulExit) {
+        this.sigintCallback = this.stop.bind(this);
+        process.once("SIGINT", this.sigintCallback);
+        process.once("SIGTERM", this.sigintCallback);
+      }
+      if (!this.isActive) {
+        if (this.options.hideCursor === true) {
+          this.terminal.cursor(false);
+        }
+        if (this.options.linewrap === false) {
+          this.terminal.lineWrapping(false);
+        }
+        this.timer = setTimeout(this.update.bind(this), this.schedulingRate);
+      }
+      this.isActive = true;
+      bar.start(total, startValue, payload);
+      this.emit("start");
+      return bar;
+    }
+    // remove a bar from the stack
+    remove(bar) {
+      const index = this.bars.indexOf(bar);
+      if (index < 0) {
+        return false;
+      }
+      this.bars.splice(index, 1);
+      this.update();
+      this.terminal.newline();
+      this.terminal.clearBottom();
+      return true;
+    }
+    // internal update routine
+    update() {
+      if (this.timer) {
+        clearTimeout(this.timer);
+        this.timer = null;
+      }
+      this.emit("update-pre");
+      this.terminal.cursorRelativeReset();
+      this.emit("redraw-pre");
+      if (this.loggingBuffer.length > 0) {
+        this.terminal.clearLine();
+        while (this.loggingBuffer.length > 0) {
+          this.terminal.write(this.loggingBuffer.shift(), true);
+        }
+      }
+      for (let i = 0; i < this.bars.length; i++) {
+        if (i > 0) {
+          this.terminal.newline();
+        }
+        this.bars[i].render();
+      }
+      this.emit("redraw-post");
+      if (this.options.noTTYOutput && this.terminal.isTTY() === false) {
+        this.terminal.newline();
+        this.terminal.newline();
+      }
+      this.timer = setTimeout(this.update.bind(this), this.schedulingRate);
+      this.emit("update-post");
+      if (this.options.stopOnComplete && !this.bars.find((bar) => bar.isActive)) {
+        this.stop();
+      }
+    }
+    stop() {
+      clearTimeout(this.timer);
+      this.timer = null;
+      if (this.sigintCallback) {
+        process.removeListener("SIGINT", this.sigintCallback);
+        process.removeListener("SIGTERM", this.sigintCallback);
+        this.sigintCallback = null;
+      }
+      this.isActive = false;
+      if (this.options.hideCursor === true) {
+        this.terminal.cursor(true);
+      }
+      if (this.options.linewrap === false) {
+        this.terminal.lineWrapping(true);
+      }
+      this.terminal.cursorRelativeReset();
+      this.emit("stop-pre-clear");
+      if (this.options.clearOnComplete) {
+        this.terminal.clearBottom();
+      } else {
+        for (let i = 0; i < this.bars.length; i++) {
+          if (i > 0) {
+            this.terminal.newline();
+          }
+          this.bars[i].render();
+          this.bars[i].stop();
+        }
+        this.terminal.newline();
+      }
+      this.emit("stop");
+    }
+    log(s) {
+      this.loggingBuffer.push(s);
+    }
+  };
+  return multiBar;
+}
+var legacy;
+var hasRequiredLegacy;
+function requireLegacy() {
+  if (hasRequiredLegacy) return legacy;
+  hasRequiredLegacy = 1;
+  legacy = {
+    format: "progress [{bar}] {percentage}% | ETA: {eta}s | {value}/{total}",
+    barCompleteChar: "=",
+    barIncompleteChar: "-"
+  };
+  return legacy;
+}
+var shadesClassic;
+var hasRequiredShadesClassic;
+function requireShadesClassic() {
+  if (hasRequiredShadesClassic) return shadesClassic;
+  hasRequiredShadesClassic = 1;
+  shadesClassic = {
+    format: " {bar} {percentage}% | ETA: {eta}s | {value}/{total}",
+    barCompleteChar: "█",
+    barIncompleteChar: "░"
+  };
+  return shadesClassic;
+}
+var shadesGrey;
+var hasRequiredShadesGrey;
+function requireShadesGrey() {
+  if (hasRequiredShadesGrey) return shadesGrey;
+  hasRequiredShadesGrey = 1;
+  shadesGrey = {
+    format: " \x1B[90m{bar}\x1B[0m {percentage}% | ETA: {eta}s | {value}/{total}",
+    barCompleteChar: "█",
+    barIncompleteChar: "░"
+  };
+  return shadesGrey;
+}
+var rect;
+var hasRequiredRect;
+function requireRect() {
+  if (hasRequiredRect) return rect;
+  hasRequiredRect = 1;
+  rect = {
+    format: " {bar}■ {percentage}% | ETA: {eta}s | {value}/{total}",
+    barCompleteChar: "■",
+    barIncompleteChar: " "
+  };
+  return rect;
+}
+var presets;
+var hasRequiredPresets;
+function requirePresets() {
+  if (hasRequiredPresets) return presets;
+  hasRequiredPresets = 1;
+  const _legacy = requireLegacy();
+  const _shades_classic = requireShadesClassic();
+  const _shades_grey = requireShadesGrey();
+  const _rect = requireRect();
+  presets = {
+    legacy: _legacy,
+    shades_classic: _shades_classic,
+    shades_grey: _shades_grey,
+    rect: _rect
+  };
+  return presets;
+}
+var cliProgress$1;
+var hasRequiredCliProgress;
+function requireCliProgress() {
+  if (hasRequiredCliProgress) return cliProgress$1;
+  hasRequiredCliProgress = 1;
+  const _SingleBar = requireSingleBar();
+  const _MultiBar = requireMultiBar();
+  const _Presets = requirePresets();
+  const _Formatter = requireFormatter();
+  const _defaultFormatValue = requireFormatValue();
+  const _defaultFormatBar = requireFormatBar();
+  const _defaultFormatTime = requireFormatTime();
+  cliProgress$1 = {
+    Bar: _SingleBar,
+    SingleBar: _SingleBar,
+    MultiBar: _MultiBar,
+    Presets: _Presets,
+    Format: {
+      Formatter: _Formatter,
+      BarFormat: _defaultFormatBar,
+      ValueFormat: _defaultFormatValue,
+      TimeFormat: _defaultFormatTime
+    }
+  };
+  return cliProgress$1;
+}
+var cliProgressExports = requireCliProgress();
+const cliProgress = /* @__PURE__ */ getDefaultExportFromCjs(cliProgressExports);
+function stageFor(header) {
+  const h = header.toLowerCase();
+  if (h.includes("thumb")) return "thumbnail";
+  if (h.includes("image") || h.includes("cache")) return "image";
+  if (h.includes("metadata") || h.includes("media")) return "metadata";
+  return "system";
+}
+const BAR_SIZE = 35;
+const progressBars = /* @__PURE__ */ new Map();
+function createProgressBar(header, total = 0) {
+  const bar = new cliProgress.SingleBar({
+    format: (_options, params, payload) => {
+      const barSize = BAR_SIZE;
+      const progress = params.progress !== void 0 ? params.progress : params.total > 0 ? params.value / params.total : params.value > 0 ? 1 : 0;
+      const filled = Math.min(Math.max(0, Math.round(progress * barSize)), barSize);
+      const barComplete = "#".repeat(barSize);
+      const barIncomplete = "-".repeat(barSize);
+      const barDisplay = "\x1B[32m" + barComplete.substring(0, filled) + "\x1B[0m\x1B[90m" + barIncomplete.substring(0, barSize - filled) + "\x1B[0m";
+      const headerText = payload.header || header;
+      const displayTotal = params.total > 0 ? params.total : params.value;
+      return `\x1B[36m${headerText}\x1B[0m: [${barDisplay}] \x1B[35m${params.value}\x1B[0m/\x1B[35m${displayTotal}\x1B[0m
+`;
+    },
+    hideCursor: true,
+    clearOnComplete: false,
+    stopOnComplete: false,
+    barsize: BAR_SIZE
+  });
+  bar.start(total > 0 ? total : 1, 0, { header });
+  return {
+    bar,
+    current: 0,
+    total: total > 0 ? total : 1,
+    header
+  };
+}
+function initProgress(header, total = 0) {
+  if (progressBars.has(header)) {
+    const instance2 = progressBars.get(header);
+    instance2.bar.stop();
+    progressBars.delete(header);
+  }
+  const instance = createProgressBar(header, total);
+  progressBars.set(header, instance);
+}
+function updateProgress(header, filename) {
+  const instance = progressBars.get(header);
+  if (!instance) {
+    initProgress(header, 0);
+    const newInstance = progressBars.get(header);
+    newInstance.current++;
+    newInstance.total = Math.max(newInstance.total, newInstance.current);
+    newInstance.bar.setTotal(newInstance.total);
+    newInstance.bar.update(newInstance.current, { header, filename });
+    logger.info(stageFor(header), filename ? `${header}: ${filename}` : header);
+    return;
+  }
+  instance.current++;
+  if (instance.total === 0 || instance.current > instance.total) {
+    instance.total = instance.current;
+    instance.bar.setTotal(instance.total);
+  }
+  instance.bar.update(instance.current, { header, filename });
+  logger.info(stageFor(header), filename ? `${header}: ${filename}` : header);
+}
+function initMediaProgress() {
+  initProgress("Media requests", 0);
+}
+function updateMediaProgress(filePath) {
+  const filename = filePath ? filePath.split("/").pop() || filePath : void 0;
+  updateProgress("Media requests", filename);
+}
+function getImageCachePath() {
+  const userDataPath = app.getPath("userData");
+  return join$1(userDataPath, "image-cache");
+}
+function getCacheIndexPath() {
+  return join$1(getImageCachePath(), "cache-index.json");
+}
+async function ensureCacheDirectory() {
+  const cachePath = getImageCachePath();
+  try {
+    await mkdir(cachePath, { recursive: true });
+  } catch (error) {
+    if (error.code !== "EEXIST") {
+      throw error;
+    }
+  }
+}
+async function loadCacheIndex() {
+  try {
+    const indexPath = getCacheIndexPath();
+    const data = await readFile(indexPath, "utf-8");
+    return JSON.parse(data);
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return {};
+    }
+    logger.error("image", "Error loading cache index");
+    return {};
+  }
+}
+async function saveCacheIndex(index) {
+  try {
+    const indexPath = getCacheIndexPath();
+    await writeFile(indexPath, JSON.stringify(index, null, 2), "utf-8");
+  } catch (error) {
+    logger.error("image", "Error saving cache index");
+  }
+}
+function generateCacheFilename(url) {
+  const hash = createHash("md5").update(url).digest("hex");
+  let ext = ".jpg";
+  try {
+    const urlObj = new URL(url);
+    const pathExt = extname(urlObj.pathname);
+    if (pathExt && [".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif"].includes(pathExt.toLowerCase())) {
+      ext = pathExt.toLowerCase();
+    }
+  } catch {
+  }
+  return `${hash}${ext}`;
+}
+async function fileExists$1(path) {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+const imageCacheHandler = {
+  /**
+   * Download and cache an image from a URL
+   * Returns the local file path or null if download fails
+   */
+  async cacheImage(imageUrl) {
+    if (!imageUrl) return null;
+    try {
+      await ensureCacheDirectory();
+      const cacheIndex = await loadCacheIndex();
+      if (cacheIndex[imageUrl]) {
+        const localPath2 = cacheIndex[imageUrl].localPath;
+        if (await fileExists$1(localPath2)) {
+          const filename2 = generateCacheFilename(imageUrl);
+          updateProgress("📷 Image caching", filename2);
+          return localPath2;
+        }
+        delete cacheIndex[imageUrl];
+      }
+      const response = await fetch(imageUrl, {
+        headers: {
+          "User-Agent": "AniBeam Media Server/1.0",
+          "Accept": "image/*"
+        }
+      });
+      if (!response.ok) {
+        logger.error("image", `Failed to download image (${response.status})`, { file: imageUrl });
+        return null;
+      }
+      const filename = generateCacheFilename(imageUrl);
+      const localPath = join$1(getImageCachePath(), filename);
+      const arrayBuffer = await response.arrayBuffer();
+      await writeFile(localPath, Buffer.from(arrayBuffer));
+      cacheIndex[imageUrl] = {
+        originalUrl: imageUrl,
+        localPath,
+        cachedAt: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      await saveCacheIndex(cacheIndex);
+      updateProgress("📷 Image caching", filename);
+      return localPath;
+    } catch (error) {
+      logger.error("image", `Error caching image`, { file: imageUrl });
+      return null;
+    }
+  },
+  /**
+   * Cache multiple images in parallel with rate limiting
+   */
+  async cacheImages(urls) {
+    const results = /* @__PURE__ */ new Map();
+    const validUrls = urls.filter((url) => !!url);
+    if (validUrls.length > 0) {
+      initProgress("📷 Image caching", validUrls.length);
+    }
+    const batchSize = 5;
+    for (let i = 0; i < validUrls.length; i += batchSize) {
+      const batch = validUrls.slice(i, i + batchSize);
+      const batchResults = await Promise.all(
+        batch.map(async (url) => {
+          const localPath = await this.cacheImage(url);
+          return { url, localPath };
+        })
+      );
+      for (const { url, localPath } of batchResults) {
+        results.set(url, localPath);
+      }
+      if (i + batchSize < validUrls.length) {
+        await new Promise((resolve2) => setTimeout(resolve2, 100));
+      }
+    }
+    return results;
+  },
+  /**
+   * Get the local path for a cached image URL
+   * Returns null if not cached
+   */
+  async getCachedPath(imageUrl) {
+    if (!imageUrl) return null;
+    try {
+      const cacheIndex = await loadCacheIndex();
+      const entry = cacheIndex[imageUrl];
+      if (entry && await fileExists$1(entry.localPath)) {
+        return entry.localPath;
+      }
+      return null;
+    } catch (error) {
+      logger.error("image", "Error getting cached path");
+      return null;
+    }
+  },
+  /**
+   * Check if an image URL is cached
+   */
+  async isCached(imageUrl) {
+    return await this.getCachedPath(imageUrl) !== null;
+  },
+  /**
+   * Convert a URL to a local path, caching if necessary
+   * Returns the media:// URL for local files
+   */
+  async getLocalUrl(imageUrl) {
+    if (!imageUrl) return null;
+    if (imageUrl.startsWith("/") || imageUrl.startsWith("media://")) {
+      return imageUrl;
+    }
+    const localPath = await this.cacheImage(imageUrl);
+    if (localPath) {
+      return `media://${encodeURIComponent(localPath)}`;
+    }
+    return imageUrl;
+  },
+  /**
+   * Clear all cached images
+   */
+  async clearCache() {
+    try {
+      const cachePath = getImageCachePath();
+      await rm(cachePath, { recursive: true, force: true });
+      await ensureCacheDirectory();
+      await saveCacheIndex({});
+      logger.info("image", "Image cache cleared");
+    } catch (error) {
+      logger.error("image", "Error clearing image cache");
+      throw error;
+    }
+  },
+  /**
+   * Get cache statistics
+   */
+  async getCacheStats() {
+    try {
+      const cachePath = getImageCachePath();
+      const files = await readdir(cachePath);
+      let totalSize = 0;
+      let count = 0;
+      for (const file of files) {
+        if (file === "cache-index.json") continue;
+        try {
+          const filePath = join$1(cachePath, file);
+          const stats = await stat(filePath);
+          totalSize += stats.size;
+          count++;
+        } catch {
+        }
+      }
+      return { count, sizeBytes: totalSize };
+    } catch {
+      return { count: 0, sizeBytes: 0 };
+    }
+  },
+  /**
+   * Delete cached images for a specific series
+   */
+  async deleteSeriesImages(seriesData) {
+    try {
+      const cacheIndex = await loadCacheIndex();
+      const imageUrls = [
+        seriesData.poster,
+        seriesData.banner
+      ];
+      if (seriesData.episodes) {
+        for (const ep of seriesData.episodes) {
+          if (ep.thumbnail) {
+            imageUrls.push(ep.thumbnail);
+          }
+        }
+      }
+      let deletedCount = 0;
+      for (const url of imageUrls) {
+        if (!url) continue;
+        const entry = cacheIndex[url];
+        if (entry) {
+          try {
+            if (await fileExists$1(entry.localPath)) {
+              await rm(entry.localPath, { force: true });
+              deletedCount++;
+            }
+            delete cacheIndex[url];
+          } catch (error) {
+            logger.error("image", `Error deleting cached image`, { file: entry.localPath });
+          }
+        }
+      }
+      const localPaths = [
+        seriesData.posterLocal,
+        seriesData.bannerLocal
+      ];
+      if (seriesData.episodes) {
+        for (const ep of seriesData.episodes) {
+          if (ep.thumbnailLocal) {
+            localPaths.push(ep.thumbnailLocal);
+          }
+        }
+      }
+      for (const localPath of localPaths) {
+        if (!localPath) continue;
+        const actualPath = localPath.startsWith("media://") ? decodeURIComponent(localPath.replace("media://", "")) : localPath;
+        try {
+          if (await fileExists$1(actualPath)) {
+            await rm(actualPath, { force: true });
+            deletedCount++;
+          }
+        } catch (error) {
+          logger.error("image", `Error deleting local image`, { file: actualPath });
+        }
+        for (const [url, entry] of Object.entries(cacheIndex)) {
+          if (entry.localPath === actualPath) {
+            delete cacheIndex[url];
+            break;
+          }
+        }
+      }
+      await saveCacheIndex(cacheIndex);
+      logger.info("image", `Deleted ${deletedCount} cached images for series`);
+    } catch (error) {
+      logger.error("image", "Error deleting series images");
+      throw error;
+    }
+  },
+  /**
+   * Get the base cache directory path
+   */
+  getCachePath() {
+    return getImageCachePath();
+  }
+};
+function getThumbnailCachePath() {
+  const userDataPath = app.getPath("userData");
+  return join$1(userDataPath, "thumbnails");
+}
+async function ensureThumbnailDirectory() {
+  const cachePath = getThumbnailCachePath();
+  try {
+    await mkdir(cachePath, { recursive: true });
+  } catch (error) {
+    if (error.code !== "EEXIST") {
+      throw error;
+    }
+  }
+}
+async function fileExists(path) {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function generateThumbnailFilename(videoPath, timestamp) {
+  const hash = createHash("md5").update(`${videoPath}_${timestamp}`).digest("hex");
+  return `${hash}.jpg`;
+}
+async function extractFrame(videoPath, timestamp = 120, resetProgress = false) {
+  await ensureThumbnailDirectory();
+  const thumbnailFilename = generateThumbnailFilename(videoPath, timestamp);
+  const thumbnailPath = join$1(getThumbnailCachePath(), thumbnailFilename);
+  if (resetProgress) {
+    initProgress("🎬 Generating thumbnails", 0);
+  }
+  if (await fileExists(thumbnailPath)) {
+    const filename = basename(videoPath);
+    updateProgress("🎬 Generating thumbnails", filename);
+    return thumbnailPath;
+  }
+  return new Promise((resolve2) => {
+    let resolved = false;
+    let timeoutId = null;
+    const safeResolve = (value) => {
+      if (!resolved) {
+        resolved = true;
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+        resolve2(value);
+      }
+    };
+    const ffmpeg = spawn("ffmpeg", [
+      "-ss",
+      String(timestamp),
+      "-i",
+      videoPath,
+      "-vframes",
+      "1",
+      "-q:v",
+      "2",
+      "-vf",
+      "scale=480:-1",
+      "-y",
+      // Overwrite output file
+      thumbnailPath
+    ], {
+      stdio: ["ignore", "ignore", "ignore"]
+      // Suppress ffmpeg output
+    });
+    ffmpeg.on("close", async (code) => {
+      if (resolved) return;
+      if (code === 0 && await fileExists(thumbnailPath)) {
+        const filename = basename(videoPath);
+        updateProgress("🎬 Generating thumbnails", filename);
+        safeResolve(thumbnailPath);
+      } else {
+        if (timestamp > 10) {
+          const retryResult = await extractFrame(videoPath, 10, false);
+          safeResolve(retryResult);
+        } else {
+          const filename = basename(videoPath);
+          updateProgress("🎬 Generating thumbnails", filename);
+          safeResolve(null);
+        }
+      }
+    });
+    ffmpeg.on("error", (err) => {
+      if (resolved) return;
+      logger.error("thumbnail", `ffmpeg error: ${err.message}`, { file: videoPath });
+      safeResolve(null);
+    });
+    timeoutId = setTimeout(() => {
+      if (resolved) return;
+      ffmpeg.kill();
+      safeResolve(null);
+    }, 3e4);
+  });
+}
+const thumbnailHandler = {
+  /**
+   * Generate a thumbnail for an episode from the video file
+   * @param videoPath Path to the video file
+   * @param timestamp Timestamp in seconds (default: 120 = 2 minutes)
+   * @param resetProgressBar Reset the progress bar (use true for first thumbnail in a batch)
+   */
+  async generateThumbnail(videoPath, timestamp = 120, resetProgressBar = true) {
+    if (!videoPath) return null;
+    try {
+      return await extractFrame(videoPath, timestamp, resetProgressBar);
+    } catch (error) {
+      logger.error("thumbnail", `Error generating thumbnail`, { file: videoPath });
+      return null;
+    }
+  },
+  /**
+   * Generate thumbnails for multiple video files
+   * Processes sequentially to avoid overwhelming the system
+   */
+  async generateThumbnails(videoPaths) {
+    const results = /* @__PURE__ */ new Map();
+    for (const videoPath of videoPaths) {
+      const thumbnail = await this.generateThumbnail(videoPath);
+      results.set(videoPath, thumbnail);
+    }
+    return results;
+  },
+  /**
+   * Delete thumbnails for all video paths belonging to a removed series.
+   */
+  async deleteSeriesThumbnails(videoPaths) {
+    for (const videoPath of videoPaths) {
+      if (!videoPath) continue;
+      const filename = generateThumbnailFilename(videoPath, 120);
+      const fullPath = join$1(getThumbnailCachePath(), filename);
+      try {
+        await unlink(fullPath);
+      } catch (err) {
+        if (err.code !== "ENOENT") {
+          logger.warn("thumbnail", `Failed to delete thumbnail: ${err.message}`, { file: videoPath });
+        }
+      }
+    }
+  },
+  /**
+   * Get the thumbnail cache directory path
+   */
+  getCachePath() {
+    return getThumbnailCachePath();
+  },
+  /**
+   * Check if ffmpeg is available
+   */
+  async isFFmpegAvailable() {
+    return new Promise((resolve2) => {
+      const ffmpeg = spawn("ffmpeg", ["-version"], {
+        stdio: ["ignore", "ignore", "ignore"]
+      });
+      ffmpeg.on("close", (code) => {
+        resolve2(code === 0);
+      });
+      ffmpeg.on("error", () => {
+        resolve2(false);
+      });
+      setTimeout(() => {
+        ffmpeg.kill();
+        resolve2(false);
+      }, 5e3);
+    });
+  }
+};
+const VIDEO_EXTENSIONS = [".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".ts"];
 const SUBTITLE_EXTENSIONS = [".srt", ".vtt", ".ass", ".ssa"];
 function isVideoFile(filename) {
   return VIDEO_EXTENSIONS.includes(extname(filename).toLowerCase());
@@ -8893,58 +10352,59 @@ function isSubtitleFile(filename) {
 function getBaseName(filename) {
   return basename(filename, extname(filename));
 }
+function stripFilename(filename) {
+  return basename(filename, extname(filename)).replace(/\s*\[[^\]]*\]\s*/g, " ").replace(/\s+/g, " ").trim();
+}
+function cleanEpisodeTitle(filename) {
+  return stripFilename(filename).replace(/\s*[-_]\s*$/g, "").trim();
+}
 function extractSeasonAndEpisode(filename) {
-  const baseName = getBaseName(filename);
+  const baseName = stripFilename(filename);
+  const finalize = (season, episode) => {
+    if (episode === 0) return { season: 0, episode: 0 };
+    return { season, episode };
+  };
   const seasonEpisodeMatch = baseName.match(/\bS(\d+)E(\d+)\b/i);
   if (seasonEpisodeMatch) {
-    return {
-      season: parseInt(seasonEpisodeMatch[1], 10),
-      episode: parseInt(seasonEpisodeMatch[2], 10)
-    };
+    return finalize(
+      parseInt(seasonEpisodeMatch[1], 10),
+      parseInt(seasonEpisodeMatch[2], 10)
+    );
   }
   const decimalEpisodeMatch = baseName.match(/Episode\s*(\d+)\.(\d+)/i);
   if (decimalEpisodeMatch) {
     const whole = parseInt(decimalEpisodeMatch[1], 10);
     const decimal = parseInt(decimalEpisodeMatch[2], 10);
-    return {
-      season: null,
-      episode: whole + decimal / 10
-    };
+    return finalize(null, whole + decimal / 10);
   }
   const patterns = [
     /Episode\s*(\d+)/i,
     // "Episode 10" or "Episode10"
     /Ep\.?\s*(\d+)/i,
     // "Ep 10" or "Ep.10"
-    /E(\d{2,})/i,
+    /\bE(\d{2,})\b/i,
     // "E10" (at least 2 digits)
     /\s-\s*(\d+)(?:\s|$)/,
     // " - 10 " or " - 10" at end
-    /\[(\d+)\]/,
-    // "[10]"
     /\s(\d{1,3})(?:\s|$)/
     // " 10 " or " 10" at end (1-3 digit episode)
   ];
   for (const pattern of patterns) {
     const match = baseName.match(pattern);
     if (match) {
-      return {
-        season: null,
-        episode: parseInt(match[1], 10)
-      };
+      return finalize(null, parseInt(match[1], 10));
     }
   }
   const numbers = baseName.match(/\d+/g);
   if (numbers && numbers.length > 0) {
     const nonYearNumbers = numbers.filter((n) => {
       const num = parseInt(n, 10);
-      return num < 1900 || num > 2099;
+      if (num >= 1900 && num <= 2099) return false;
+      if (num >= 1e3) return false;
+      return true;
     });
     if (nonYearNumbers.length > 0) {
-      return {
-        season: null,
-        episode: parseInt(nonYearNumbers[nonYearNumbers.length - 1], 10)
-      };
+      return finalize(null, parseInt(nonYearNumbers[nonYearNumbers.length - 1], 10));
     }
   }
   return { season: null, episode: 1 };
@@ -8981,54 +10441,8 @@ function extractPartNumber(folderName) {
   }
   return null;
 }
-function extractSeriesNameFromFilenames(videoFiles) {
-  if (videoFiles.length === 0) {
-    return "";
-  }
-  const cleanedNames = videoFiles.map((video) => {
-    const baseName = getBaseName(video.filename);
-    let cleaned = baseName.replace(/\s*\bS\d+E\d+(\.\d+)?\b.*$/i, "").replace(/\s*\bE\d+(\.\d+)?\b.*$/i, "").replace(/\s*\bPart\s*\d+\b.*$/i, "").replace(/\s*\bSeason\s*\d+\b.*$/i, "").replace(/\s*Episode\s*\d+(\.\d+)?[ab]?\s*.*$/i, "").replace(/\s*Ep\.?\s*\d+(\.\d+)?[ab]?\s*.*$/i, "").replace(/\s*\[\d+(\.\d+)?[ab]?\].*$/, "").replace(/\s*-\s*\d{1,4}(?:\.\d+)?[ab]?(?:\s|$).*$/, "").replace(/\s+\d{1,3}(?!\d)(?:\s|$)/g, "").replace(/\s*\[(?:1080|720|480|360)p?\]\s*/gi, " ").replace(/\s*\[(?:HD|SD|FHD|UHD)\]?\s*/gi, " ").replace(/\s*\(\d{4}\)\s*$/, "").replace(/\s*\([^)]*\)\s*/g, " ").replace(/\./g, " ").replace(/_/g, " ").replace(/\s+/g, " ").trim();
-    return cleaned;
-  });
-  if (cleanedNames.length === 1) {
-    return cleanedNames[0];
-  }
-  cleanedNames.sort((a, b) => a.length - b.length);
-  const shortest = cleanedNames[0];
-  let commonPrefix = "";
-  for (let i = 0; i < shortest.length; i++) {
-    const char = shortest[i];
-    if (cleanedNames.every((name) => name[i] === char)) {
-      commonPrefix += char;
-    } else {
-      break;
-    }
-  }
-  let result = commonPrefix.replace(/[-_\s]+$/, "").trim();
-  if (result.length < 3) {
-    const firstFileWords = cleanedNames[0].split(/\s+/).filter((w) => w.length > 0);
-    const commonWords = [];
-    for (let i = 0; i < firstFileWords.length; i++) {
-      const word = firstFileWords[i];
-      if (cleanedNames.every((name) => {
-        const words = name.split(/\s+/).filter((w) => w.length > 0);
-        return i < words.length && words[i] === word;
-      })) {
-        commonWords.push(word);
-      } else {
-        break;
-      }
-    }
-    result = commonWords.join(" ").trim();
-  }
-  if (!result || result.length < 2) {
-    result = cleanedNames[0];
-  }
-  result = result.replace(/\s*-\s*$/, "").replace(/\s+\d+\s*$/, "").trim();
-  if (result.length <= 3 && /^\d+$/.test(result)) {
-    return result;
-  }
-  return result;
+function extractSeriesNameFromFolder(folderName) {
+  return folderName.trim();
 }
 function generateSeriesId(seriesName, folderName, seasonNumber, partNumber) {
   let baseId;
@@ -9046,8 +10460,7 @@ function generateSeriesId(seriesName, folderName, seasonNumber, partNumber) {
   return baseId;
 }
 function cleanMovieTitle(filename) {
-  const baseName = getBaseName(filename);
-  return baseName.replace(/\s*\(.*?\)\s*/g, "").replace(/\s*\[.*?\]\s*/g, "").replace(/\.\d{4}\./g, " ").replace(/\./g, " ").replace(/_/g, " ").replace(/\s+/g, " ").trim();
+  return stripFilename(filename).replace(/\s*\(.*?\)\s*/g, "").replace(/\.\d{4}\./g, " ").replace(/\./g, " ").replace(/_/g, " ").replace(/\s+/g, " ").trim();
 }
 async function scanFolderForVideos(folderPath, folderSeason = null) {
   const videos = [];
@@ -9067,12 +10480,14 @@ async function scanFolderForVideos(folderPath, folderSeason = null) {
             videos.push({
               filename: entry,
               filePath: fullPath,
-              title: getBaseName(entry),
+              title: cleanEpisodeTitle(entry),
               episodeNumber: episode,
               seasonNumber: finalSeason,
               subtitlePath: null,
               subtitlePaths: [],
-              parentFolder: folderName
+              parentFolder: folderName,
+              status: "ready",
+              mtime: stats.mtimeMs
             });
           } else if (isSubtitleFile(entry)) {
             const baseName = getBaseName(entry);
@@ -9082,7 +10497,7 @@ async function scanFolderForVideos(folderPath, folderSeason = null) {
           }
         }
       } catch (err) {
-        console.warn(`Could not stat: ${fullPath}`);
+        logger.warn("folder", `Could not stat: ${fullPath}`, { file: fullPath });
       }
     }
     for (const video of videos) {
@@ -9096,7 +10511,7 @@ async function scanFolderForVideos(folderPath, folderSeason = null) {
     const seenPaths = /* @__PURE__ */ new Set();
     const uniqueVideos = videos.filter((video) => {
       if (seenPaths.has(video.filePath)) {
-        console.warn(`Duplicate video file detected: ${video.filePath}`);
+        logger.warn("folder", `Duplicate video file detected: ${video.filePath}`, { file: video.filePath });
         return false;
       }
       seenPaths.add(video.filePath);
@@ -9104,141 +10519,176 @@ async function scanFolderForVideos(folderPath, folderSeason = null) {
     });
     return { videos: uniqueVideos, subtitles };
   } catch (error) {
-    console.error(`Error scanning folder ${folderPath}:`, error);
+    logger.error("folder", `Error scanning folder ${folderPath}`, { file: folderPath });
   }
   return { videos: [], subtitles };
 }
+async function collectMediaRecursive(folderPath, results, isLibraryRoot) {
+  const folderName = basename(folderPath);
+  let entries;
+  try {
+    entries = await readdir(folderPath);
+  } catch {
+    logger.warn("folder", `Could not read ${folderPath}`, { file: folderPath });
+    return;
+  }
+  const subDirs = [];
+  const videoFilenames = [];
+  for (const entry of entries) {
+    const fullPath = join$1(folderPath, entry);
+    try {
+      const stats = await stat(fullPath);
+      if (stats.isDirectory()) {
+        subDirs.push(entry);
+      } else if (stats.isFile() && isVideoFile(entry)) {
+        videoFilenames.push(entry);
+      }
+    } catch {
+      logger.warn("folder", `Could not stat ${fullPath}`, { file: fullPath });
+    }
+  }
+  const looseVideosAreMovies = isLibraryRoot || subDirs.length > 0;
+  if (videoFilenames.length > 0 && looseVideosAreMovies) {
+    for (const entry of videoFilenames) {
+      const filePath = join$1(folderPath, entry);
+      const movieTitle = cleanMovieTitle(entry);
+      const movieId = movieTitle.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase();
+      const { episode } = extractSeasonAndEpisode(entry);
+      let mtime = 0;
+      try {
+        const s = await stat(filePath);
+        mtime = s.mtimeMs;
+      } catch {
+      }
+      logger.info("folder", `Movie: ${entry} → search: "${movieTitle}"`, { series: movieTitle });
+      results.push({
+        id: `movie_${movieId}`,
+        name: movieTitle,
+        type: "movie",
+        folderPath,
+        files: [{
+          filename: entry,
+          filePath,
+          title: cleanEpisodeTitle(entry),
+          episodeNumber: episode,
+          seasonNumber: null,
+          subtitlePath: null,
+          subtitlePaths: [],
+          parentFolder: folderName,
+          status: "ready",
+          mtime
+        }],
+        seasonNumber: null,
+        partNumber: null
+      });
+    }
+  } else if (videoFilenames.length > 0) {
+    const seasonFromFolder = extractSeasonNumber(folderName);
+    const partFromFolder = extractPartNumber(folderName);
+    const seriesName = extractSeriesNameFromFolder(folderName);
+    const seriesId = generateSeriesId(seriesName, folderName, seasonFromFolder, partFromFolder);
+    const { videos } = await scanFolderForVideos(folderPath, seasonFromFolder);
+    const seasonInfo = seasonFromFolder ? `, Season ${seasonFromFolder}` : "";
+    const partInfo = partFromFolder ? `, Part ${partFromFolder}` : "";
+    logger.info(
+      "folder",
+      `Series: ${folderName} (${videos.length} episode${videos.length > 1 ? "s" : ""}${seasonInfo}${partInfo}) → search: "${seriesName}" → ID: "${seriesId}"`,
+      { series: seriesName }
+    );
+    results.push({
+      id: seriesId,
+      name: seriesName,
+      type: "series",
+      folderPath,
+      files: videos.sort((a, b) => {
+        const seasonA = a.seasonNumber ?? 0;
+        const seasonB = b.seasonNumber ?? 0;
+        if (seasonA !== seasonB) return seasonA - seasonB;
+        return a.episodeNumber - b.episodeNumber;
+      }),
+      seasonNumber: seasonFromFolder,
+      partNumber: partFromFolder
+    });
+  }
+  for (const subDir of subDirs) {
+    await collectMediaRecursive(join$1(folderPath, subDir), results, false);
+  }
+}
 async function scanDirectory(rootPath) {
   const results = [];
-  console.log(`
-=== Scanning: ${rootPath} ===`);
+  logger.info("folder", `Scanning: ${rootPath}`, { file: rootPath });
   try {
-    const entries = await readdir(rootPath);
-    for (const entry of entries) {
-      const entryPath = join$1(rootPath, entry);
-      try {
-        const stats = await stat(entryPath);
-        if (stats.isDirectory()) {
-          const { videos: subVideos } = await scanFolderForVideos(entryPath);
-          const subEntries = await readdir(entryPath);
-          const subDirs = [];
-          for (const subEntry of subEntries) {
-            const subPath = join$1(entryPath, subEntry);
-            try {
-              const subStats = await stat(subPath);
-              if (subStats.isDirectory()) {
-                subDirs.push(subEntry);
-              }
-            } catch {
-            }
-          }
-          if (subDirs.length > 0 && subVideos.length === 0) {
-            console.log(`  📁 Category folder: ${entry}`);
-            for (const subDir of subDirs) {
-              const seriesPath = join$1(entryPath, subDir);
-              const seasonFromFolder = extractSeasonNumber(subDir);
-              const partFromFolder = extractPartNumber(subDir);
-              const { videos } = await scanFolderForVideos(seriesPath, seasonFromFolder);
-              if (videos.length > 0) {
-                const seriesName = extractSeriesNameFromFilenames(videos);
-                const seriesId = generateSeriesId(seriesName, subDir, seasonFromFolder, partFromFolder);
-                const partInfo = partFromFolder ? `, Part ${partFromFolder}` : "";
-                const seasonInfo = seasonFromFolder ? `, Season ${seasonFromFolder}` : "";
-                console.log(`    📺 Series: ${subDir} (${videos.length} episodes${seasonInfo}${partInfo}) → search: "${seriesName}" → ID: "${seriesId}"`);
-                results.push({
-                  id: seriesId,
-                  name: seriesName,
-                  type: "series",
-                  folderPath: seriesPath,
-                  files: videos.sort((a, b) => {
-                    const seasonA = a.seasonNumber ?? 0;
-                    const seasonB = b.seasonNumber ?? 0;
-                    if (seasonA !== seasonB) return seasonA - seasonB;
-                    return a.episodeNumber - b.episodeNumber;
-                  }),
-                  seasonNumber: seasonFromFolder,
-                  partNumber: partFromFolder
-                });
-              }
-            }
-            if (subVideos.length > 0) {
-              console.log(`    🎬 Loose videos in ${entry}: ${subVideos.length}`);
-              for (const video of subVideos) {
-                const movieTitle = cleanMovieTitle(video.filename);
-                const movieId = movieTitle.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase();
-                console.log(`      🎬 Movie: ${video.filename} → search: "${movieTitle}"`);
-                results.push({
-                  id: `movie_${movieId}`,
-                  name: movieTitle,
-                  type: "movie",
-                  folderPath: entryPath,
-                  files: [video],
-                  seasonNumber: null,
-                  partNumber: null
-                });
-              }
-            }
-          } else if (subVideos.length > 0) {
-            const seriesName = extractSeriesNameFromFilenames(subVideos);
-            const seasonFromFolder = extractSeasonNumber(entry);
-            const partFromFolder = extractPartNumber(entry);
-            const seriesId = generateSeriesId(seriesName, entry, seasonFromFolder, partFromFolder);
-            const partInfo = partFromFolder ? `, Part ${partFromFolder}` : "";
-            const seasonInfo = seasonFromFolder ? `, Season ${seasonFromFolder}` : "";
-            console.log(`  📺 Series: ${entry} (${subVideos.length} episode${subVideos.length > 1 ? "s" : ""}${seasonInfo}${partInfo}) → search: "${seriesName}" → ID: "${seriesId}"`);
-            results.push({
-              id: seriesId,
-              name: seriesName,
-              type: "series",
-              folderPath: entryPath,
-              files: subVideos.sort((a, b) => {
-                const seasonA = a.seasonNumber ?? 0;
-                const seasonB = b.seasonNumber ?? 0;
-                if (seasonA !== seasonB) return seasonA - seasonB;
-                return a.episodeNumber - b.episodeNumber;
-              }),
-              seasonNumber: seasonFromFolder,
-              partNumber: partFromFolder
-            });
-          }
-        } else if (stats.isFile() && isVideoFile(entry)) {
-          const movieTitle = cleanMovieTitle(entry);
-          const movieId = movieTitle.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase();
-          console.log(`  🎬 Movie (root): ${entry} → search: "${movieTitle}"`);
-          const { episode: movieEpisode } = extractSeasonAndEpisode(entry);
-          results.push({
-            id: `movie_${movieId}`,
-            name: movieTitle,
-            type: "movie",
-            folderPath: rootPath,
-            files: [{
-              filename: entry,
-              filePath: entryPath,
-              title: getBaseName(entry),
-              episodeNumber: movieEpisode,
-              seasonNumber: null,
-              subtitlePath: null,
-              subtitlePaths: [],
-              parentFolder: basename(rootPath)
-            }],
-            seasonNumber: null,
-            partNumber: null
-          });
-        }
-      } catch (err) {
-        console.warn(`Could not process ${entryPath}:`, err);
-      }
-    }
+    await collectMediaRecursive(rootPath, results, true);
   } catch (error) {
-    console.error(`Error scanning root directory ${rootPath}:`, error);
+    logger.error("folder", `Error scanning root directory ${rootPath}`, { file: rootPath });
     throw error;
   }
-  console.log(`=== Found ${results.length} media items ===
-`);
+  logger.info("folder", `Found ${results.length} media items in ${rootPath}`, { file: rootPath });
   return results;
 }
+async function reconcileMetadata(metadata, activeRoots2) {
+  const out = {};
+  let removedFiles = 0;
+  let removedSeries = 0;
+  const isUnderActiveRoot = (filePath) => {
+    if (!activeRoots2 || activeRoots2.length === 0) return true;
+    return activeRoots2.some(
+      (root) => filePath === root || filePath.startsWith(root.endsWith("/") ? root : root + "/")
+    );
+  };
+  for (const [seriesId, raw] of Object.entries(metadata)) {
+    const series = raw;
+    const files = Array.isArray(series.fileEpisodes) ? series.fileEpisodes : [];
+    const kept = files.filter((f) => {
+      if (!f?.filePath) return false;
+      const reachable = isUnderActiveRoot(f.filePath);
+      const present = reachable && existsSync(f.filePath);
+      if (!present) removedFiles++;
+      return present;
+    });
+    if (kept.length === 0 && files.length > 0) {
+      removedSeries++;
+      logger.info("folder", `Reconcile: dropping series`, { series: String(series.title ?? seriesId) });
+      try {
+        await imageCacheHandler.deleteSeriesImages({
+          poster: series.poster ?? null,
+          banner: series.banner ?? null,
+          posterLocal: series.posterLocal ?? null,
+          bannerLocal: series.bannerLocal ?? null,
+          episodes: series.episodes ?? []
+        });
+      } catch (err) {
+        logger.warn("image", `Reconcile: image cleanup failed: ${err.message}`, { series: String(series.title ?? seriesId) });
+      }
+      try {
+        await thumbnailHandler.deleteSeriesThumbnails(files.map((f) => f.filePath).filter(Boolean));
+      } catch (err) {
+        logger.warn("thumbnail", `Reconcile: thumbnail cleanup failed: ${err.message}`, { series: String(series.title ?? seriesId) });
+      }
+      continue;
+    }
+    if (kept.length !== files.length) {
+      logger.info("folder", `Reconcile: dropped ${files.length - kept.length} file(s)`, { series: String(series.title ?? seriesId) });
+      out[seriesId] = { ...series, fileEpisodes: kept };
+    } else {
+      out[seriesId] = series;
+    }
+  }
+  if (removedFiles || removedSeries) {
+    logger.info("folder", `Reconcile complete: ${removedFiles} file(s), ${removedSeries} series removed`);
+  }
+  return out;
+}
 const folderHandler = {
-  async scanFolder(folderPath) {
+  /**
+   * Scan a folder for media. `folderPath` may be either a configured library
+   * root (full library scan) or a sub-folder beneath one (rescan a single
+   * show). When called with a sub-folder, `activeRoots` MUST be passed so we
+   * can locate the containing root and scan from there — otherwise scanDirectory
+   * would treat the series folder as a root and misclassify every episode
+   * directly inside it as a "movie at root."
+   */
+  async scanFolder(folderPath, activeRoots2) {
     if (!folderPath) {
       throw new Error("Folder path is required");
     }
@@ -9253,7 +10703,26 @@ const folderHandler = {
       }
       throw error;
     }
-    return await scanDirectory(folderPath);
+    const normalize = (p) => p.endsWith("/") ? p.slice(0, -1) : p;
+    const normalizedFolder = normalize(folderPath);
+    const isItselfARoot = activeRoots2?.some((r) => normalize(r) === normalizedFolder);
+    if (!activeRoots2 || activeRoots2.length === 0 || isItselfARoot) {
+      return await scanDirectory(folderPath);
+    }
+    const matchingRoot = activeRoots2.filter((root) => {
+      const nr = normalize(root);
+      return normalizedFolder === nr || normalizedFolder.startsWith(nr + "/");
+    }).sort((a, b) => b.length - a.length)[0];
+    if (!matchingRoot) {
+      logger.warn("folder", `${folderPath} is not under any active library root — falling back to direct scan`);
+      return await scanDirectory(folderPath);
+    }
+    const all3 = await scanDirectory(matchingRoot);
+    const prefix = normalizedFolder + "/";
+    return all3.filter((media) => {
+      const mp = normalize(media.folderPath);
+      return mp === normalizedFolder || mp.startsWith(prefix);
+    });
   },
   async scanMultipleFolders(folderPaths) {
     const allResults = [];
@@ -9262,11 +10731,35 @@ const folderHandler = {
         const results = await scanDirectory(folderPath);
         allResults.push(...results);
       } catch (error) {
-        console.error(`Error scanning ${folderPath}:`, error);
+        logger.error("folder", `Error scanning ${folderPath}`, { file: folderPath });
       }
     }
     return allResults;
-  }
+  },
+  /**
+   * Scan just enough of the library to classify a single file the same way a
+   * full scan would. Must be passed the active library roots — without them,
+   * we'd treat the file's parent as a library root and misclassify every file
+   * directly inside a series folder as a "movie at root".
+   */
+  async scanSingleFile(filePath, activeRoots2) {
+    if (!existsSync(filePath)) return null;
+    const matchingRoot = activeRoots2.filter((root) => filePath === root || filePath.startsWith(root.endsWith("/") ? root : root + "/")).sort((a, b) => b.length - a.length)[0];
+    if (!matchingRoot) {
+      logger.warn("folder", `File is not under any active library root`, { file: filePath });
+      return null;
+    }
+    const directoryResults = await scanDirectory(matchingRoot);
+    for (const media of directoryResults) {
+      const file = media.files.find((f) => f.filePath === filePath);
+      if (file) {
+        file.status = "verifying";
+        return { media, file };
+      }
+    }
+    return null;
+  },
+  reconcileMetadata
 };
 class ClientError extends Error {
   response;
@@ -10472,9 +11965,9 @@ function readName(lexer, start) {
 const MAX_ARRAY_LENGTH = 10;
 const MAX_RECURSIVE_DEPTH = 2;
 function inspect(value) {
-  return formatValue$1(value, []);
+  return formatValue(value, []);
 }
-function formatValue$1(value, seenValues) {
+function formatValue(value, seenValues) {
   switch (typeof value) {
     case "string":
       return JSON.stringify(value);
@@ -10497,7 +11990,7 @@ function formatObjectValue(value, previouslySeenValues) {
   if (isJSONable(value)) {
     const jsonValue = value.toJSON();
     if (jsonValue !== value) {
-      return typeof jsonValue === "string" ? jsonValue : formatValue$1(jsonValue, seenValues);
+      return typeof jsonValue === "string" ? jsonValue : formatValue(jsonValue, seenValues);
     }
   } else if (Array.isArray(value)) {
     return formatArray(value, seenValues);
@@ -10516,7 +12009,7 @@ function formatObject(object, seenValues) {
     return "[" + getObjectTag(object) + "]";
   }
   const properties = entries.map(
-    ([key, value]) => key + ": " + formatValue$1(value, seenValues)
+    ([key, value]) => key + ": " + formatValue(value, seenValues)
   );
   return "{ " + properties.join(", ") + " }";
 }
@@ -10531,7 +12024,7 @@ function formatArray(array, seenValues) {
   const remaining = array.length - len;
   const items = [];
   for (let i = 0; i < len; ++i) {
-    items.push(formatValue$1(array[i], seenValues));
+    items.push(formatValue(array[i], seenValues));
   }
   if (remaining === 1) {
     items.push("... 1 more item");
@@ -12943,11 +14436,64 @@ const parseRequestExtendedArgs = (urlOrOptions, document2, ...variablesAndReques
 const gql = (chunks, ...variables) => {
   return chunks.reduce((acc, chunk, index) => `${acc}${chunk}${index in variables ? String(variables[index]) : ``}`, ``);
 };
+const sleep = (ms2) => new Promise((r) => setTimeout(r, ms2));
+class RateLimiter {
+  constructor(opts) {
+    this.opts = opts;
+  }
+  queue = [];
+  draining = false;
+  run(fn) {
+    return new Promise((resolve2, reject) => {
+      this.queue.push(async () => {
+        try {
+          resolve2(await this.attempt(fn, 0));
+        } catch (err) {
+          reject(err);
+        }
+      });
+      void this.drain();
+    });
+  }
+  async drain() {
+    if (this.draining) return;
+    this.draining = true;
+    try {
+      while (this.queue.length > 0) {
+        const task = this.queue.shift();
+        await task();
+        if (this.queue.length > 0) {
+          await sleep(this.opts.minIntervalMs);
+        }
+      }
+    } finally {
+      this.draining = false;
+    }
+  }
+  async attempt(fn, retries) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (this.opts.isRateLimitError(err) && retries < this.opts.maxRetries) {
+        const delay = Math.min(6e4, 1e3 * 2 ** retries);
+        logger.warn(
+          "metadata",
+          `${this.opts.source} 429 — backoff ${delay}ms (retry ${retries + 1}/${this.opts.maxRetries})`
+        );
+        await sleep(delay);
+        return this.attempt(fn, retries + 1);
+      }
+      throw err;
+    }
+  }
+}
 const ANILIST_API_URL = "https://graphql.anilist.co";
-const colors$1 = {
-  yellow: "\x1B[33m",
-  reset: "\x1B[0m"
-};
+const limiter$1 = new RateLimiter({
+  source: "AniList",
+  minIntervalMs: 800,
+  maxRetries: 6,
+  isRateLimitError: isRateLimitError$2
+});
 function isRateLimitError$2(error) {
   if (error && typeof error === "object") {
     const err = error;
@@ -12961,7 +14507,7 @@ function isRateLimitError$2(error) {
   return false;
 }
 function logRateLimitWarning$1(source) {
-  console.log(`${colors$1.yellow}  ⚠️  Rate limited by ${source}. Please wait before trying again.${colors$1.reset}`);
+  logger.warn("metadata", `Rate limited by ${source}. Please wait before trying again.`);
 }
 function isReleased$1(media) {
   const status = media.status?.toUpperCase() || "";
@@ -12974,6 +14520,7 @@ const SEARCH_QUERY = gql`
   query ($search: String) {
     Media(search: $search, type: ANIME) {
       id
+      idMal
       title {
         romaji
         english
@@ -13054,6 +14601,19 @@ const SEARCH_MULTIPLE_QUERY = gql`
     }
   }
 `;
+const AIRING_SCHEDULE_QUERY = gql`
+  query ($id: Int, $idMal: Int) {
+    Media(id: $id, idMal: $idMal, type: ANIME) {
+      id
+      airingSchedule(notYetAired: false) {
+        nodes {
+          episode
+          airingAt
+        }
+      }
+    }
+  }
+`;
 const EPISODES_QUERY = gql`
   query ($id: Int) {
     Media(id: $id) {
@@ -13067,57 +14627,98 @@ const EPISODES_QUERY = gql`
     }
   }
 `;
+const MEDIA_BY_ID_QUERY = gql`
+  query ($id: Int) {
+    Media(id: $id, type: ANIME) {
+      id
+      idMal
+      title {
+        romaji
+        english
+        native
+      }
+      description
+      genres
+      coverImage {
+        large
+        extraLarge
+      }
+      bannerImage
+      episodes
+      duration
+      season
+      seasonYear
+      status
+      format
+      startDate {
+        year
+        month
+        day
+      }
+      endDate {
+        year
+        month
+        day
+      }
+      averageScore
+      studios {
+        nodes {
+          name
+        }
+      }
+    }
+  }
+`;
 const anilistHandler = {
   async searchAnime(searchTerm) {
     try {
       const variables = { search: searchTerm };
-      const data = await request(ANILIST_API_URL, SEARCH_QUERY, variables);
-      if (data?.Media) {
-        return data.Media;
-      }
-      return null;
+      const data = await limiter$1.run(() => request(ANILIST_API_URL, SEARCH_QUERY, variables));
+      return data?.Media ?? null;
     } catch (error) {
-      if (isRateLimitError$2(error)) {
-        logRateLimitWarning$1("AniList");
-        throw error;
-      }
-      console.error("Error searching AniList:", error);
+      if (isRateLimitError$2(error)) logRateLimitWarning$1("AniList");
+      else logger.error("metadata", "Error searching AniList");
       throw error;
     }
   },
   async searchAnimeMultiple(searchTerm, limit = 10) {
-    let retries = 0;
-    const maxRetries = 3;
-    while (retries < maxRetries) {
-      try {
-        const variables = { search: searchTerm, page: 1, perPage: limit };
-        const data = await request(ANILIST_API_URL, SEARCH_MULTIPLE_QUERY, variables);
-        return data?.Page?.media || [];
-      } catch (error) {
-        if (isRateLimitError$2(error) && retries < maxRetries) {
-          retries++;
-          const delaySeconds = retries * 2;
-          console.log(`  \x1B[33m⏳ Rate limited while searching AniList. Waiting ${delaySeconds}s before retry ${retries}/${maxRetries}...\x1B[0m`);
-          await new Promise((resolve2) => setTimeout(resolve2, delaySeconds * 1e3));
-        } else {
-          if (isRateLimitError$2(error)) {
-            logRateLimitWarning$1("AniList");
-          } else {
-            console.error("Error searching AniList (multiple):", error);
-          }
-          throw error;
-        }
-      }
+    try {
+      const variables = { search: searchTerm, page: 1, perPage: limit };
+      const data = await limiter$1.run(
+        () => request(ANILIST_API_URL, SEARCH_MULTIPLE_QUERY, variables)
+      );
+      return data?.Page?.media || [];
+    } catch (error) {
+      if (isRateLimitError$2(error)) logRateLimitWarning$1("AniList");
+      else logger.error("metadata", "Error searching AniList (multiple)");
+      throw error;
     }
-    return [];
+  },
+  async getAiringSchedule(opts) {
+    const variables = {};
+    if (opts.anilistId) variables.id = opts.anilistId;
+    if (opts.malId) variables.idMal = opts.malId;
+    if (variables.id === void 0 && variables.idMal === void 0) return [];
+    try {
+      const data = await limiter$1.run(
+        () => request(
+          ANILIST_API_URL,
+          AIRING_SCHEDULE_QUERY,
+          variables
+        )
+      );
+      return data?.Media?.airingSchedule?.nodes ?? [];
+    } catch (error) {
+      if (isRateLimitError$2(error)) logRateLimitWarning$1("AniList");
+      else logger.warn("metadata", `AniList airingSchedule failed: ${error.message}`);
+      return [];
+    }
   },
   async getEpisodes(animeId, totalEpisodes, seasonNumber) {
     try {
       const variables = { id: animeId };
-      const data = await request(
-        ANILIST_API_URL,
-        EPISODES_QUERY,
-        variables
+      const data = await limiter$1.run(
+        () => request(ANILIST_API_URL, EPISODES_QUERY, variables)
       );
       const streamingMap = /* @__PURE__ */ new Map();
       if (data?.Media?.streamingEpisodes) {
@@ -13155,7 +14756,7 @@ const anilistHandler = {
         logRateLimitWarning$1("AniList");
         throw error;
       }
-      console.error("Error fetching AniList episodes:", error);
+      logger.error("metadata", "Error fetching AniList episodes");
       if (totalEpisodes) {
         return Array.from({ length: totalEpisodes }, (_, i) => ({
           episodeNumber: i + 1,
@@ -13178,21 +14779,21 @@ const anilistHandler = {
         searchQuery = `${seriesName} Season ${seasonNumber}`;
       }
       const searchResults = await this.searchAnimeMultiple(searchQuery, 10);
-      console.log(`AniList search: "${searchQuery}" => ${searchResults.length} result(s).`);
+      logger.info("metadata", `AniList search: "${searchQuery}" => ${searchResults.length} result(s).`);
       if (searchResults.length === 0 && (partNumber && partNumber > 1 || seasonNumber && seasonNumber > 1)) {
         const resultsWithoutSeason = await this.searchAnimeMultiple(seriesName, 10);
-        console.log(`AniList search (no season): "${seriesName}" => ${resultsWithoutSeason.length} result(s).`);
+        logger.info("metadata", `AniList search (no season): "${seriesName}" => ${resultsWithoutSeason.length} result(s).`, { series: seriesName });
         if (resultsWithoutSeason.length > 0) {
           let foundValidResult2 = false;
           for (let i = 0; i < resultsWithoutSeason.length; i++) {
             const media = resultsWithoutSeason[i];
             const title = media.title.romaji || media.title.english || media.title.native;
-            console.log(`  [${i + 1}/${resultsWithoutSeason.length}] Checking "\x1B[36m${title}\x1B[0m" - episodes: ${media.episodes ?? "unknown"}, status: ${media.status}`);
+            logger.info("metadata", `[${i + 1}/${resultsWithoutSeason.length}] Checking "${title}" - episodes: ${media.episodes ?? "unknown"}, status: ${media.status}`, { series: title });
             if (!isReleased$1(media)) continue;
             if (folderEpisodeCount !== void 0) {
               if (media.episodes === null || media.episodes < folderEpisodeCount) continue;
             }
-            console.log(`  \x1B[32m✓\x1B[0m Accepting "\x1B[36m${title}\x1B[0m" - has ${media.episodes} episodes, folder has ${folderEpisodeCount ?? "unknown"}`);
+            logger.info("metadata", `Accepting "${title}" - has ${media.episodes} episodes, folder has ${folderEpisodeCount ?? "unknown"}`, { series: title });
             foundValidResult2 = true;
             let episodes;
             let retries = 0;
@@ -13205,7 +14806,7 @@ const anilistHandler = {
                 if (isRateLimitError$2(error) && retries < maxRetries) {
                   retries++;
                   const delaySeconds = retries * 2;
-                  console.log(`  \x1B[33m⏳ Rate limited while fetching episodes. Waiting ${delaySeconds}s before retry ${retries}/${maxRetries}...\x1B[0m`);
+                  logger.warn("metadata", `Rate limited while fetching episodes. Waiting ${delaySeconds}s before retry ${retries}/${maxRetries}...`);
                   await new Promise((resolve2) => setTimeout(resolve2, delaySeconds * 1e3));
                 } else {
                   throw error;
@@ -13219,7 +14820,7 @@ const anilistHandler = {
               const media = resultsWithoutSeason[i];
               const title = media.title.romaji || media.title.english || media.title.native;
               if (media.episodes === null) {
-                console.log(`  \x1B[33m⚠️\x1B[0m  Fallback: Accepting "\x1B[36m${title}\x1B[0m" with unknown episode count`);
+                logger.warn("metadata", `Fallback: Accepting "${title}" with unknown episode count`, { series: title });
                 let episodes;
                 let retries = 0;
                 const maxRetries = 3;
@@ -13231,7 +14832,7 @@ const anilistHandler = {
                     if (isRateLimitError$2(error) && retries < maxRetries) {
                       retries++;
                       const delaySeconds = retries * 2;
-                      console.log(`  \x1B[33m⏳ Rate limited while fetching episodes. Waiting ${delaySeconds}s before retry ${retries}/${maxRetries}...\x1B[0m`);
+                      logger.warn("metadata", `Rate limited while fetching episodes. Waiting ${delaySeconds}s before retry ${retries}/${maxRetries}...`);
                       await new Promise((resolve2) => setTimeout(resolve2, delaySeconds * 1e3));
                     } else {
                       throw error;
@@ -13241,7 +14842,7 @@ const anilistHandler = {
                 return this.formatMetadata(media, episodes, seasonNumber);
               }
             }
-            console.log(`AniList: No suitable results found for "${searchQuery}" or "${seriesName}".`);
+            logger.warn("metadata", `AniList: No suitable results found for "${searchQuery}" or "${seriesName}".`, { series: seriesName });
           }
         }
         return null;
@@ -13250,12 +14851,12 @@ const anilistHandler = {
       for (let i = 0; i < searchResults.length; i++) {
         const media = searchResults[i];
         const title = media.title.romaji || media.title.english || media.title.native;
-        console.log(`  [${i + 1}/${searchResults.length}] Checking "\x1B[36m${title}\x1B[0m" - episodes: ${media.episodes ?? "unknown"}, status: ${media.status}`);
+        logger.info("metadata", `[${i + 1}/${searchResults.length}] Checking "${title}" - episodes: ${media.episodes ?? "unknown"}, status: ${media.status}`, { series: title });
         if (!isReleased$1(media)) continue;
         if (folderEpisodeCount !== void 0) {
           if (media.episodes === null || media.episodes < folderEpisodeCount) continue;
         }
-        console.log(`  \x1B[32m✓\x1B[0m Accepting "\x1B[36m${title}\x1B[0m" - has ${media.episodes} episodes, folder has ${folderEpisodeCount ?? "unknown"}`);
+        logger.info("metadata", `Accepting "${title}" - has ${media.episodes} episodes, folder has ${folderEpisodeCount ?? "unknown"}`, { series: title });
         foundValidResult = true;
         let episodes;
         let retries = 0;
@@ -13268,7 +14869,7 @@ const anilistHandler = {
             if (isRateLimitError$2(error) && retries < maxRetries) {
               retries++;
               const delaySeconds = retries * 2;
-              console.log(`  \x1B[33m⏳ Rate limited while fetching episodes. Waiting ${delaySeconds}s before retry ${retries}/${maxRetries}...\x1B[0m`);
+              logger.warn("metadata", `Rate limited while fetching episodes. Waiting ${delaySeconds}s before retry ${retries}/${maxRetries}...`);
               await new Promise((resolve2) => setTimeout(resolve2, delaySeconds * 1e3));
             } else {
               throw error;
@@ -13282,7 +14883,7 @@ const anilistHandler = {
           const media = searchResults[i];
           const title = media.title.romaji || media.title.english || media.title.native;
           if (media.episodes === null) {
-            console.log(`  \x1B[33m⚠️\x1B[0m  Fallback: Accepting "\x1B[36m${title}\x1B[0m" with unknown episode count`);
+            logger.warn("metadata", `Fallback: Accepting "${title}" with unknown episode count`, { series: title });
             let episodes;
             let retries = 0;
             const maxRetries = 3;
@@ -13294,7 +14895,7 @@ const anilistHandler = {
                 if (isRateLimitError$2(error) && retries < maxRetries) {
                   retries++;
                   const delaySeconds = retries * 2;
-                  console.log(`  \x1B[33m⏳ Rate limited while fetching episodes. Waiting ${delaySeconds}s before retry ${retries}/${maxRetries}...\x1B[0m`);
+                  logger.warn("metadata", `Rate limited while fetching episodes. Waiting ${delaySeconds}s before retry ${retries}/${maxRetries}...`);
                   await new Promise((resolve2) => setTimeout(resolve2, delaySeconds * 1e3));
                 } else {
                   throw error;
@@ -13304,14 +14905,60 @@ const anilistHandler = {
             return this.formatMetadata(media, episodes, seasonNumber);
           }
         }
-        console.log(`  \x1B[33m⚠️\x1B[0m  No results with enough episodes found, or only found series with unknown episode counts.`);
+        logger.warn("metadata", `No results with enough episodes found, or only found series with unknown episode counts.`);
       }
       return null;
     } catch (error) {
       if (isRateLimitError$2(error)) {
         return null;
       }
-      console.error("Error fetching AniList metadata:", error);
+      logger.error("metadata", "Error fetching AniList metadata");
+      return null;
+    }
+  },
+  async getMediaById(id) {
+    try {
+      const data = await limiter$1.run(
+        () => request(ANILIST_API_URL, MEDIA_BY_ID_QUERY, { id })
+      );
+      return data?.Media ?? null;
+    } catch (error) {
+      if (isRateLimitError$2(error)) logRateLimitWarning$1("AniList");
+      else logger.error("metadata", "Error fetching AniList media by ID");
+      throw error;
+    }
+  },
+  // Override path: caller has already chosen a specific AniList ID via the
+  // match picker. Skip the search/filter logic — fetch the exact media plus
+  // its episodes and format. seasonNumber is used only for episode tagging
+  // and the seriesId suffix; pass it when overriding inside a season-specific
+  // entry so the seriesId stays stable across re-overrides.
+  async fetchMetadataById(id, seasonNumber) {
+    try {
+      const media = await this.getMediaById(id);
+      if (!media) return null;
+      let episodes = [];
+      let retries = 0;
+      const maxRetries = 3;
+      while (retries < maxRetries) {
+        try {
+          episodes = await this.getEpisodes(media.id, media.episodes, seasonNumber);
+          break;
+        } catch (error) {
+          if (isRateLimitError$2(error) && retries < maxRetries) {
+            retries++;
+            const delaySeconds = retries * 2;
+            logger.warn("metadata", `Rate limited fetching episodes by id. Waiting ${delaySeconds}s (retry ${retries}/${maxRetries})`);
+            await new Promise((resolve2) => setTimeout(resolve2, delaySeconds * 1e3));
+          } else {
+            throw error;
+          }
+        }
+      }
+      return this.formatMetadata(media, episodes, seasonNumber);
+    } catch (error) {
+      if (isRateLimitError$2(error)) return null;
+      logger.error("metadata", "Error fetching AniList metadata by id");
       return null;
     }
   },
@@ -13348,16 +14995,19 @@ const anilistHandler = {
       studios: media.studios?.nodes?.map((s) => s.name) || [],
       startDate: formatDate(media.startDate),
       endDate: formatDate(media.endDate),
-      anilistId: media.id
+      anilistId: media.id,
+      malId: media.idMal ?? null
     };
   }
 };
 const JIKAN_API_URL = "https://api.jikan.moe/v4";
 const MAL_SEARCH_LIMIT = 10;
-const colors = {
-  yellow: "\x1B[33m",
-  reset: "\x1B[0m"
-};
+const limiter = new RateLimiter({
+  source: "Jikan",
+  minIntervalMs: 1100,
+  maxRetries: 6,
+  isRateLimitError: isRateLimitError$1
+});
 function isRateLimitError$1(error) {
   if (axios.isAxiosError(error)) {
     return error.response?.status === 429;
@@ -13365,7 +15015,7 @@ function isRateLimitError$1(error) {
   return false;
 }
 function logRateLimitWarning(source) {
-  console.log(`${colors.yellow}  ⚠️  Rate limited by ${source}. Please wait before trying again.${colors.reset}`);
+  logger.warn("metadata", `Rate limited by ${source}. Please wait before trying again.`);
 }
 function isReleased(anime) {
   const status = anime.status?.toLowerCase() || "";
@@ -13376,38 +15026,24 @@ function isReleased(anime) {
 }
 const malHandler = {
   async searchAnime(searchTerm, limit = MAL_SEARCH_LIMIT) {
-    let retries = 0;
-    const maxRetries = 3;
-    while (retries < maxRetries) {
-      try {
-        const response = await axios.get(`${JIKAN_API_URL}/anime`, {
-          params: {
-            q: searchTerm,
-            limit
-          }
-        });
-        return response.data?.data || [];
-      } catch (error) {
-        if (isRateLimitError$1(error) && retries < maxRetries) {
-          retries++;
-          const delaySeconds = retries * 2;
-          console.log(`  \x1B[33m⏳ Rate limited while searching MAL. Waiting ${delaySeconds}s before retry ${retries}/${maxRetries}...\x1B[0m`);
-          await new Promise((resolve2) => setTimeout(resolve2, delaySeconds * 1e3));
-        } else {
-          if (isRateLimitError$1(error)) {
-            logRateLimitWarning("MAL");
-          } else {
-            console.error("Error searching MyAnimeList:", error);
-          }
-          throw error;
-        }
-      }
+    try {
+      const response = await limiter.run(
+        () => axios.get(`${JIKAN_API_URL}/anime`, {
+          params: { q: searchTerm, limit }
+        })
+      );
+      return response.data?.data || [];
+    } catch (error) {
+      if (isRateLimitError$1(error)) logRateLimitWarning("MAL");
+      else logger.error("metadata", "Error searching MyAnimeList");
+      throw error;
     }
-    return [];
   },
   async getEpisodes(animeId, totalEpisodes, seasonNumber) {
     try {
-      const response = await axios.get(`${JIKAN_API_URL}/anime/${animeId}/episodes`);
+      const response = await limiter.run(
+        () => axios.get(`${JIKAN_API_URL}/anime/${animeId}/episodes`)
+      );
       const fetchedEpisodeMap = /* @__PURE__ */ new Map();
       if (response.data?.data) {
         for (const ep of response.data.data) {
@@ -13436,7 +15072,7 @@ const malHandler = {
         logRateLimitWarning("MAL");
         throw error;
       }
-      console.error("Error fetching MAL episodes:", error);
+      logger.error("metadata", "Error fetching MAL episodes");
       if (totalEpisodes) {
         return Array.from({ length: totalEpisodes }, (_, i) => ({
           episodeNumber: i + 1,
@@ -13466,7 +15102,7 @@ const malHandler = {
         searchQuery = `${seriesName} Season ${seasonNumber}`;
       }
       let searchResults = await this.searchAnime(searchQuery, MAL_SEARCH_LIMIT);
-      console.log(`MAL search: "${searchQuery}" => ${searchResults.length} result(s).`);
+      logger.info("metadata", `MAL search: "${searchQuery}" => ${searchResults.length} result(s).`);
       if (searchResults.length === 0 && searchVariations.length > 1) {
         for (const variation of searchVariations.slice(1)) {
           let variationQuery = variation;
@@ -13476,7 +15112,7 @@ const malHandler = {
             variationQuery = `${variation} Season ${seasonNumber}`;
           }
           searchResults = await this.searchAnime(variationQuery, MAL_SEARCH_LIMIT);
-          console.log(`MAL search (variation): "${variationQuery}" => ${searchResults.length} result(s).`);
+          logger.info("metadata", `MAL search (variation): "${variationQuery}" => ${searchResults.length} result(s).`);
           if (searchResults.length > 0) {
             searchQuery = variationQuery;
             break;
@@ -13485,38 +15121,38 @@ const malHandler = {
       }
       if (searchResults.length === 0 && (partNumber && partNumber > 1 || seasonNumber && seasonNumber > 1)) {
         const resultsWithoutSeason = await this.searchAnime(seriesName, MAL_SEARCH_LIMIT);
-        console.log(`MAL search (no season): "${seriesName}" => ${resultsWithoutSeason.length} result(s).`);
+        logger.info("metadata", `MAL search (no season): "${seriesName}" => ${resultsWithoutSeason.length} result(s).`, { series: seriesName });
         if (resultsWithoutSeason.length > 0) {
           let foundValidResult2 = false;
           for (const anime of resultsWithoutSeason) {
             if (!isReleased(anime) || folderEpisodeCount !== void 0 && (anime.episodes === null || anime.episodes < folderEpisodeCount)) continue;
             foundValidResult2 = true;
             const episodes = await this.getEpisodes(anime.mal_id, anime.episodes, seasonNumber);
-            console.log(`MAL accepted: "${anime.title}"`);
+            logger.info("metadata", `MAL accepted: "${anime.title}"`, { series: anime.title });
             return this.formatMetadata(anime, episodes, seasonNumber);
           }
           if (!foundValidResult2 && folderEpisodeCount !== void 0) {
             for (const anime of resultsWithoutSeason) {
               if (anime.episodes === null) {
                 const episodes = await this.getEpisodes(anime.mal_id, anime.episodes, seasonNumber);
-                console.log(`MAL fallback accepted: "${anime.title}" (unknown episode count)`);
+                logger.info("metadata", `MAL fallback accepted: "${anime.title}" (unknown episode count)`, { series: anime.title });
                 return this.formatMetadata(anime, episodes, seasonNumber);
               }
             }
           }
         }
-        console.log(`MAL: No suitable results found for "${searchQuery}" or "${seriesName}".`);
+        logger.warn("metadata", `MAL: No suitable results found for "${searchQuery}" or "${seriesName}".`, { series: seriesName });
         return null;
       }
       let foundValidResult = false;
       for (let i = 0; i < searchResults.length; i++) {
         const anime = searchResults[i];
-        console.log(`  [${i + 1}/${searchResults.length}] Checking "\x1B[36m${anime.title}\x1B[0m" - episodes: ${anime.episodes ?? "unknown"}, status: ${anime.status}`);
+        logger.info("metadata", `[${i + 1}/${searchResults.length}] Checking "${anime.title}" - episodes: ${anime.episodes ?? "unknown"}, status: ${anime.status}`, { series: anime.title });
         if (!isReleased(anime)) continue;
         if (folderEpisodeCount !== void 0) {
           if (anime.episodes === null || anime.episodes < folderEpisodeCount) continue;
         }
-        console.log(`  \x1B[32m✓\x1B[0m Accepting "${anime.title}" - has ${anime.episodes} episodes, folder has ${folderEpisodeCount ?? "unknown"}`);
+        logger.info("metadata", `Accepting "${anime.title}" - has ${anime.episodes} episodes, folder has ${folderEpisodeCount ?? "unknown"}`, { series: anime.title });
         foundValidResult = true;
         let episodes;
         let retries = 0;
@@ -13529,7 +15165,7 @@ const malHandler = {
             if (isRateLimitError$1(error) && retries < maxRetries) {
               retries++;
               const delaySeconds = retries * 2;
-              console.log(`  \x1B[33m⏳ Rate limited while fetching episodes. Waiting ${delaySeconds}s before retry ${retries}/${maxRetries}...\x1B[0m`);
+              logger.warn("metadata", `Rate limited while fetching episodes. Waiting ${delaySeconds}s before retry ${retries}/${maxRetries}...`);
               await new Promise((resolve2) => setTimeout(resolve2, delaySeconds * 1e3));
             } else {
               throw error;
@@ -13542,7 +15178,7 @@ const malHandler = {
         for (let i = 0; i < searchResults.length; i++) {
           const anime = searchResults[i];
           if (anime.episodes === null) {
-            console.log(`  \x1B[33m⚠️\x1B[0m  Fallback: Accepting "${anime.title}" with unknown episode count`);
+            logger.warn("metadata", `Fallback: Accepting "${anime.title}" with unknown episode count`, { series: anime.title });
             let episodes;
             let retries = 0;
             const maxRetries = 3;
@@ -13554,7 +15190,7 @@ const malHandler = {
                 if (isRateLimitError$1(error) && retries < maxRetries) {
                   retries++;
                   const delaySeconds = retries * 2;
-                  console.log(`  \x1B[33m⏳ Rate limited while fetching episodes. Waiting ${delaySeconds}s before retry ${retries}/${maxRetries}...\x1B[0m`);
+                  logger.warn("metadata", `Rate limited while fetching episodes. Waiting ${delaySeconds}s before retry ${retries}/${maxRetries}...`);
                   await new Promise((resolve2) => setTimeout(resolve2, delaySeconds * 1e3));
                 } else {
                   throw error;
@@ -13564,14 +15200,14 @@ const malHandler = {
             return this.formatMetadata(anime, episodes, seasonNumber);
           }
         }
-        console.log(`  \x1B[33m⚠️\x1B[0m  No results with enough episodes found, or only found series with unknown episode counts.`);
+        logger.warn("metadata", `No results with enough episodes found, or only found series with unknown episode counts.`);
       }
       return null;
     } catch (error) {
       if (isRateLimitError$1(error)) {
         return null;
       }
-      console.error("Error fetching MAL metadata:", error);
+      logger.error("metadata", "Error fetching MAL metadata");
       return null;
     }
   },
@@ -13615,53 +15251,115 @@ async function ensureDataDirectory$1() {
     }
   }
 }
+let writeChain = Promise.resolve();
+function runLocked(fn) {
+  const next = writeChain.then(() => fn(), () => fn());
+  writeChain = next.catch(() => {
+  });
+  return next;
+}
+async function atomicWriteJson(filePath, data) {
+  const tmp = `${filePath}.tmp`;
+  await writeFile(tmp, JSON.stringify(data, null, 2), "utf-8");
+  await rename(tmp, filePath);
+}
+function cleanForSave(metadata) {
+  const cleaned = {};
+  for (const [seriesId, seriesData] of Object.entries(metadata)) {
+    const data = seriesData;
+    const fileEpisodes = data.fileEpisodes || [];
+    if (fileEpisodes.length > 0) {
+      cleaned[seriesId] = seriesData;
+    }
+  }
+  return cleaned;
+}
+async function loadMetadataRaw() {
+  await ensureDataDirectory$1();
+  const metadataPath = getMetadataPath();
+  let data;
+  try {
+    data = await readFile(metadataPath, "utf-8");
+  } catch (error) {
+    if (error.code === "ENOENT") return {};
+    throw error;
+  }
+  const parsed = JSON.parse(data);
+  for (const [seriesId, seriesValue] of Object.entries(parsed)) {
+    const series = seriesValue;
+    if (Array.isArray(series.fileEpisodes)) {
+      const cleaned = [];
+      let dropped = 0;
+      for (const file of series.fileEpisodes) {
+        const f = file;
+        if (typeof f.episodeNumber === "number" && f.episodeNumber >= 1e3) {
+          dropped++;
+          continue;
+        }
+        if (!f.status) f.status = "ready";
+        cleaned.push(f);
+      }
+      if (dropped > 0) {
+        logger.warn("metadata", `Scrubbed ${dropped} bogus fileEpisode entries from ${seriesId} (episodeNumber >= 1000)`);
+      }
+      series.fileEpisodes = cleaned;
+    }
+    if (Array.isArray(series.episodes)) {
+      series.episodes = series.episodes.filter((ep) => {
+        const e = ep;
+        return !(typeof e.episodeNumber === "number" && e.episodeNumber >= 1e3);
+      });
+    }
+  }
+  return parsed;
+}
 const metadataHandler = {
   async loadMetadata() {
     try {
-      await ensureDataDirectory$1();
-      const metadataPath = getMetadataPath();
-      const data = await readFile(metadataPath, "utf-8");
-      return JSON.parse(data);
+      return await loadMetadataRaw();
     } catch (error) {
-      if (error.code === "ENOENT") {
-        return {};
-      }
-      console.error("Error loading metadata:", error);
-      return {};
+      logger.error("metadata", `Error loading metadata: ${error.message}`);
+      throw error;
     }
   },
   async saveMetadata(metadata) {
     try {
       await ensureDataDirectory$1();
-      const metadataPath = getMetadataPath();
-      const cleanedMetadata = {};
-      for (const [seriesId, seriesData] of Object.entries(metadata)) {
-        const data = seriesData;
-        const fileEpisodes = data.fileEpisodes || [];
-        if (fileEpisodes.length > 0) {
-          cleanedMetadata[seriesId] = seriesData;
-        }
-      }
-      await writeFile(metadataPath, JSON.stringify(cleanedMetadata, null, 2), "utf-8");
+      await atomicWriteJson(getMetadataPath(), cleanForSave(metadata));
       return true;
     } catch (error) {
-      console.error("Error saving metadata:", error);
+      logger.error("metadata", `Error saving metadata: ${error.message}`);
       throw error;
     }
   },
+  /**
+   * Run a read-modify-write transaction with exclusive access to metadata.json.
+   * The callback receives the freshly-loaded metadata and returns the mutated
+   * object to persist (or `null` to skip the write). Used by every code path
+   * that reads, edits in-memory, and saves — prevents lost updates between
+   * watcher events, probe completions, and manual scans.
+   */
+  transaction(fn) {
+    return runLocked(async () => {
+      const meta = await loadMetadataRaw();
+      const { result, updated } = await fn(meta);
+      if (updated !== null && updated !== void 0) {
+        await ensureDataDirectory$1();
+        await atomicWriteJson(getMetadataPath(), cleanForSave(updated));
+      }
+      return result;
+    });
+  },
   async updateSeriesMetadata(seriesId, seriesData) {
     try {
-      const metadata = await this.loadMetadata();
-      const existingSeries = metadata[seriesId];
-      metadata[seriesId] = {
-        ...existingSeries,
-        ...seriesData
-      };
-      const metadataPath = getMetadataPath();
-      await writeFile(metadataPath, JSON.stringify(metadata, null, 2), "utf-8");
+      await this.transaction(async (metadata) => {
+        const existingSeries = metadata[seriesId];
+        metadata[seriesId] = { ...existingSeries, ...seriesData };
+        return { updated: metadata };
+      });
       return true;
     } catch (error) {
-      console.error("Error updating series metadata:", error);
+      logger.error("metadata", `Error updating series metadata: ${error.message}`);
       throw error;
     }
   },
@@ -13670,19 +15368,19 @@ const metadataHandler = {
       const metadata = await this.loadMetadata();
       return metadata[seriesId] || null;
     } catch (error) {
-      console.error("Error getting series metadata:", error);
+      logger.error("metadata", `Error getting series metadata: ${error.message}`);
       return null;
     }
   },
   async deleteSeriesMetadata(seriesId) {
     try {
-      const metadata = await this.loadMetadata();
-      delete metadata[seriesId];
-      const metadataPath = getMetadataPath();
-      await writeFile(metadataPath, JSON.stringify(metadata, null, 2), "utf-8");
+      await this.transaction(async (metadata) => {
+        delete metadata[seriesId];
+        return { updated: metadata };
+      });
       return true;
     } catch (error) {
-      console.error("Error deleting series metadata:", error);
+      logger.error("metadata", `Error deleting series metadata: ${error.message}`);
       throw error;
     }
   }
@@ -13777,1391 +15475,2819 @@ const configHandler = {
     return config.folderSources;
   }
 };
-var eta;
-var hasRequiredEta;
-function requireEta() {
-  if (hasRequiredEta) return eta;
-  hasRequiredEta = 1;
-  class ETA {
-    constructor(length, initTime, initValue) {
-      this.etaBufferLength = length || 100;
-      this.valueBuffer = [initValue];
-      this.timeBuffer = [initTime];
-      this.eta = "0";
-    }
-    // add new values to calculation buffer
-    update(time, value, total) {
-      this.valueBuffer.push(value);
-      this.timeBuffer.push(time);
-      this.calculate(total - value);
-    }
-    // fetch estimated time
-    getTime() {
-      return this.eta;
-    }
-    // eta calculation - request number of remaining events
-    calculate(remaining) {
-      const currentBufferSize = this.valueBuffer.length;
-      const buffer = Math.min(this.etaBufferLength, currentBufferSize);
-      const v_diff = this.valueBuffer[currentBufferSize - 1] - this.valueBuffer[currentBufferSize - buffer];
-      const t_diff = this.timeBuffer[currentBufferSize - 1] - this.timeBuffer[currentBufferSize - buffer];
-      const vt_rate = v_diff / t_diff;
-      this.valueBuffer = this.valueBuffer.slice(-this.etaBufferLength);
-      this.timeBuffer = this.timeBuffer.slice(-this.etaBufferLength);
-      const eta2 = Math.ceil(remaining / vt_rate / 1e3);
-      if (isNaN(eta2)) {
-        this.eta = "NULL";
-      } else if (!isFinite(eta2)) {
-        this.eta = "INF";
-      } else if (eta2 > 1e7) {
-        this.eta = "INF";
-      } else if (eta2 < 0) {
-        this.eta = 0;
-      } else {
-        this.eta = eta2;
-      }
-    }
+function tokenize(s) {
+  return s.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter((t) => t.length > 0);
+}
+function dice(a, b) {
+  if (a.length === 0 || b.length === 0) return 0;
+  const A = new Set(a);
+  const B = new Set(b);
+  let inter = 0;
+  for (const t of A) if (B.has(t)) inter++;
+  const denom = A.size + B.size;
+  return denom === 0 ? 0 : 2 * inter / denom;
+}
+function bestTitleScore(query, candidateTitles) {
+  const q = tokenize(query);
+  if (q.length === 0) return 0;
+  let best = 0;
+  for (const t of candidateTitles) {
+    if (!t) continue;
+    const score = dice(q, tokenize(t));
+    if (score > best) best = score;
   }
-  eta = ETA;
-  return eta;
+  return best;
 }
-var terminal;
-var hasRequiredTerminal;
-function requireTerminal() {
-  if (hasRequiredTerminal) return terminal;
-  hasRequiredTerminal = 1;
-  const _readline = require$$0$3;
-  class Terminal {
-    constructor(outputStream) {
-      this.stream = outputStream;
-      this.linewrap = true;
-      this.dy = 0;
-    }
-    // save cursor position + settings
-    cursorSave() {
-      if (!this.stream.isTTY) {
-        return;
-      }
-      this.stream.write("\x1B7");
-    }
-    // restore last cursor position + settings
-    cursorRestore() {
-      if (!this.stream.isTTY) {
-        return;
-      }
-      this.stream.write("\x1B8");
-    }
-    // show/hide cursor
-    cursor(enabled) {
-      if (!this.stream.isTTY) {
-        return;
-      }
-      if (enabled) {
-        this.stream.write("\x1B[?25h");
-      } else {
-        this.stream.write("\x1B[?25l");
-      }
-    }
-    // change cursor positionn
-    cursorTo(x = null, y = null) {
-      if (!this.stream.isTTY) {
-        return;
-      }
-      _readline.cursorTo(this.stream, x, y);
-    }
-    // change relative cursor position
-    cursorRelative(dx = null, dy = null) {
-      if (!this.stream.isTTY) {
-        return;
-      }
-      this.dy = this.dy + dy;
-      _readline.moveCursor(this.stream, dx, dy);
-    }
-    // relative reset
-    cursorRelativeReset() {
-      if (!this.stream.isTTY) {
-        return;
-      }
-      _readline.moveCursor(this.stream, 0, -this.dy);
-      _readline.cursorTo(this.stream, 0, null);
-      this.dy = 0;
-    }
-    // clear to the right from cursor
-    clearRight() {
-      if (!this.stream.isTTY) {
-        return;
-      }
-      _readline.clearLine(this.stream, 1);
-    }
-    // clear the full line
-    clearLine() {
-      if (!this.stream.isTTY) {
-        return;
-      }
-      _readline.clearLine(this.stream, 0);
-    }
-    // clear everyting beyond the current line
-    clearBottom() {
-      if (!this.stream.isTTY) {
-        return;
-      }
-      _readline.clearScreenDown(this.stream);
-    }
-    // add new line; increment counter
-    newline() {
-      this.stream.write("\n");
-      this.dy++;
-    }
-    // write content to output stream
-    // @TODO use string-width to strip length
-    write(s, rawWrite = false) {
-      if (this.linewrap === true && rawWrite === false) {
-        this.stream.write(s.substr(0, this.getWidth()));
-      } else {
-        this.stream.write(s);
-      }
-    }
-    // control line wrapping
-    lineWrapping(enabled) {
-      if (!this.stream.isTTY) {
-        return;
-      }
-      this.linewrap = enabled;
-      if (enabled) {
-        this.stream.write("\x1B[?7h");
-      } else {
-        this.stream.write("\x1B[?7l");
-      }
-    }
-    // tty environment ?
-    isTTY() {
-      return this.stream.isTTY === true;
-    }
-    // get terminal width
-    getWidth() {
-      return this.stream.columns || (this.stream.isTTY ? 80 : 200);
-    }
+const MIN_TITLE_SCORE = 0.4;
+const SEARCH_LIMIT = 10;
+function malReleased(status) {
+  const s = (status || "").toLowerCase();
+  return !(s.includes("not yet") || s.includes("not aired"));
+}
+function anilistReleased(status) {
+  const s = (status || "").toUpperCase();
+  return !["NOT_YET_RELEASED", "CANCELLED", "HIATUS"].includes(s);
+}
+function candidateTitle(c) {
+  if (c.source === "mal") {
+    return c.result.title || c.result.title_english || c.result.title_japanese || "?";
   }
-  terminal = Terminal;
-  return terminal;
+  return c.result.title.english || c.result.title.romaji || c.result.title.native || "?";
 }
-var stringWidth = { exports: {} };
-var ansiRegex;
-var hasRequiredAnsiRegex;
-function requireAnsiRegex() {
-  if (hasRequiredAnsiRegex) return ansiRegex;
-  hasRequiredAnsiRegex = 1;
-  ansiRegex = ({ onlyFirst = false } = {}) => {
-    const pattern = [
-      "[\\u001B\\u009B][[\\]()#;?]*(?:(?:(?:(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]+)*|[a-zA-Z\\d]+(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)",
-      "(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))"
-    ].join("|");
-    return new RegExp(pattern, onlyFirst ? void 0 : "g");
-  };
-  return ansiRegex;
+async function searchBoth(query) {
+  const [malResults, anilistResults] = await Promise.all([
+    malHandler.searchAnime(query, SEARCH_LIMIT).catch((err) => {
+      logger.warn("metadata", `MAL search failed for "${query}": ${err.message}`);
+      return [];
+    }),
+    anilistHandler.searchAnimeMultiple(query, SEARCH_LIMIT).catch((err) => {
+      logger.warn("metadata", `AniList search failed for "${query}": ${err.message}`);
+      return [];
+    })
+  ]);
+  return { mal: malResults, anilist: anilistResults };
 }
-var stripAnsi;
-var hasRequiredStripAnsi;
-function requireStripAnsi() {
-  if (hasRequiredStripAnsi) return stripAnsi;
-  hasRequiredStripAnsi = 1;
-  const ansiRegex2 = requireAnsiRegex();
-  stripAnsi = (string) => typeof string === "string" ? string.replace(ansiRegex2(), "") : string;
-  return stripAnsi;
-}
-var isFullwidthCodePoint = { exports: {} };
-var hasRequiredIsFullwidthCodePoint;
-function requireIsFullwidthCodePoint() {
-  if (hasRequiredIsFullwidthCodePoint) return isFullwidthCodePoint.exports;
-  hasRequiredIsFullwidthCodePoint = 1;
-  const isFullwidthCodePoint$1 = (codePoint) => {
-    if (Number.isNaN(codePoint)) {
-      return false;
-    }
-    if (codePoint >= 4352 && (codePoint <= 4447 || // Hangul Jamo
-    codePoint === 9001 || // LEFT-POINTING ANGLE BRACKET
-    codePoint === 9002 || // RIGHT-POINTING ANGLE BRACKET
-    // CJK Radicals Supplement .. Enclosed CJK Letters and Months
-    11904 <= codePoint && codePoint <= 12871 && codePoint !== 12351 || // Enclosed CJK Letters and Months .. CJK Unified Ideographs Extension A
-    12880 <= codePoint && codePoint <= 19903 || // CJK Unified Ideographs .. Yi Radicals
-    19968 <= codePoint && codePoint <= 42182 || // Hangul Jamo Extended-A
-    43360 <= codePoint && codePoint <= 43388 || // Hangul Syllables
-    44032 <= codePoint && codePoint <= 55203 || // CJK Compatibility Ideographs
-    63744 <= codePoint && codePoint <= 64255 || // Vertical Forms
-    65040 <= codePoint && codePoint <= 65049 || // CJK Compatibility Forms .. Small Form Variants
-    65072 <= codePoint && codePoint <= 65131 || // Halfwidth and Fullwidth Forms
-    65281 <= codePoint && codePoint <= 65376 || 65504 <= codePoint && codePoint <= 65510 || // Kana Supplement
-    110592 <= codePoint && codePoint <= 110593 || // Enclosed Ideographic Supplement
-    127488 <= codePoint && codePoint <= 127569 || // CJK Unified Ideographs Extension B .. Tertiary Ideographic Plane
-    131072 <= codePoint && codePoint <= 262141)) {
-      return true;
-    }
-    return false;
-  };
-  isFullwidthCodePoint.exports = isFullwidthCodePoint$1;
-  isFullwidthCodePoint.exports.default = isFullwidthCodePoint$1;
-  return isFullwidthCodePoint.exports;
-}
-var emojiRegex;
-var hasRequiredEmojiRegex;
-function requireEmojiRegex() {
-  if (hasRequiredEmojiRegex) return emojiRegex;
-  hasRequiredEmojiRegex = 1;
-  emojiRegex = function() {
-    return /\uD83C\uDFF4\uDB40\uDC67\uDB40\uDC62(?:\uDB40\uDC65\uDB40\uDC6E\uDB40\uDC67|\uDB40\uDC73\uDB40\uDC63\uDB40\uDC74|\uDB40\uDC77\uDB40\uDC6C\uDB40\uDC73)\uDB40\uDC7F|\uD83D\uDC68(?:\uD83C\uDFFC\u200D(?:\uD83E\uDD1D\u200D\uD83D\uDC68\uD83C\uDFFB|\uD83C[\uDF3E\uDF73\uDF93\uDFA4\uDFA8\uDFEB\uDFED]|\uD83D[\uDCBB\uDCBC\uDD27\uDD2C\uDE80\uDE92]|\uD83E[\uDDAF-\uDDB3\uDDBC\uDDBD])|\uD83C\uDFFF\u200D(?:\uD83E\uDD1D\u200D\uD83D\uDC68(?:\uD83C[\uDFFB-\uDFFE])|\uD83C[\uDF3E\uDF73\uDF93\uDFA4\uDFA8\uDFEB\uDFED]|\uD83D[\uDCBB\uDCBC\uDD27\uDD2C\uDE80\uDE92]|\uD83E[\uDDAF-\uDDB3\uDDBC\uDDBD])|\uD83C\uDFFE\u200D(?:\uD83E\uDD1D\u200D\uD83D\uDC68(?:\uD83C[\uDFFB-\uDFFD])|\uD83C[\uDF3E\uDF73\uDF93\uDFA4\uDFA8\uDFEB\uDFED]|\uD83D[\uDCBB\uDCBC\uDD27\uDD2C\uDE80\uDE92]|\uD83E[\uDDAF-\uDDB3\uDDBC\uDDBD])|\uD83C\uDFFD\u200D(?:\uD83E\uDD1D\u200D\uD83D\uDC68(?:\uD83C[\uDFFB\uDFFC])|\uD83C[\uDF3E\uDF73\uDF93\uDFA4\uDFA8\uDFEB\uDFED]|\uD83D[\uDCBB\uDCBC\uDD27\uDD2C\uDE80\uDE92]|\uD83E[\uDDAF-\uDDB3\uDDBC\uDDBD])|\u200D(?:\u2764\uFE0F\u200D(?:\uD83D\uDC8B\u200D)?\uD83D\uDC68|(?:\uD83D[\uDC68\uDC69])\u200D(?:\uD83D\uDC66\u200D\uD83D\uDC66|\uD83D\uDC67\u200D(?:\uD83D[\uDC66\uDC67]))|\uD83D\uDC66\u200D\uD83D\uDC66|\uD83D\uDC67\u200D(?:\uD83D[\uDC66\uDC67])|(?:\uD83D[\uDC68\uDC69])\u200D(?:\uD83D[\uDC66\uDC67])|[\u2695\u2696\u2708]\uFE0F|\uD83D[\uDC66\uDC67]|\uD83C[\uDF3E\uDF73\uDF93\uDFA4\uDFA8\uDFEB\uDFED]|\uD83D[\uDCBB\uDCBC\uDD27\uDD2C\uDE80\uDE92]|\uD83E[\uDDAF-\uDDB3\uDDBC\uDDBD])|(?:\uD83C\uDFFB\u200D[\u2695\u2696\u2708]|\uD83C\uDFFF\u200D[\u2695\u2696\u2708]|\uD83C\uDFFE\u200D[\u2695\u2696\u2708]|\uD83C\uDFFD\u200D[\u2695\u2696\u2708]|\uD83C\uDFFC\u200D[\u2695\u2696\u2708])\uFE0F|\uD83C\uDFFB\u200D(?:\uD83C[\uDF3E\uDF73\uDF93\uDFA4\uDFA8\uDFEB\uDFED]|\uD83D[\uDCBB\uDCBC\uDD27\uDD2C\uDE80\uDE92]|\uD83E[\uDDAF-\uDDB3\uDDBC\uDDBD])|\uD83C[\uDFFB-\uDFFF])|(?:\uD83E\uDDD1\uD83C\uDFFB\u200D\uD83E\uDD1D\u200D\uD83E\uDDD1|\uD83D\uDC69\uD83C\uDFFC\u200D\uD83E\uDD1D\u200D\uD83D\uDC69)\uD83C\uDFFB|\uD83E\uDDD1(?:\uD83C\uDFFF\u200D\uD83E\uDD1D\u200D\uD83E\uDDD1(?:\uD83C[\uDFFB-\uDFFF])|\u200D\uD83E\uDD1D\u200D\uD83E\uDDD1)|(?:\uD83E\uDDD1\uD83C\uDFFE\u200D\uD83E\uDD1D\u200D\uD83E\uDDD1|\uD83D\uDC69\uD83C\uDFFF\u200D\uD83E\uDD1D\u200D(?:\uD83D[\uDC68\uDC69]))(?:\uD83C[\uDFFB-\uDFFE])|(?:\uD83E\uDDD1\uD83C\uDFFC\u200D\uD83E\uDD1D\u200D\uD83E\uDDD1|\uD83D\uDC69\uD83C\uDFFD\u200D\uD83E\uDD1D\u200D\uD83D\uDC69)(?:\uD83C[\uDFFB\uDFFC])|\uD83D\uDC69(?:\uD83C\uDFFE\u200D(?:\uD83E\uDD1D\u200D\uD83D\uDC68(?:\uD83C[\uDFFB-\uDFFD\uDFFF])|\uD83C[\uDF3E\uDF73\uDF93\uDFA4\uDFA8\uDFEB\uDFED]|\uD83D[\uDCBB\uDCBC\uDD27\uDD2C\uDE80\uDE92]|\uD83E[\uDDAF-\uDDB3\uDDBC\uDDBD])|\uD83C\uDFFC\u200D(?:\uD83E\uDD1D\u200D\uD83D\uDC68(?:\uD83C[\uDFFB\uDFFD-\uDFFF])|\uD83C[\uDF3E\uDF73\uDF93\uDFA4\uDFA8\uDFEB\uDFED]|\uD83D[\uDCBB\uDCBC\uDD27\uDD2C\uDE80\uDE92]|\uD83E[\uDDAF-\uDDB3\uDDBC\uDDBD])|\uD83C\uDFFB\u200D(?:\uD83E\uDD1D\u200D\uD83D\uDC68(?:\uD83C[\uDFFC-\uDFFF])|\uD83C[\uDF3E\uDF73\uDF93\uDFA4\uDFA8\uDFEB\uDFED]|\uD83D[\uDCBB\uDCBC\uDD27\uDD2C\uDE80\uDE92]|\uD83E[\uDDAF-\uDDB3\uDDBC\uDDBD])|\uD83C\uDFFD\u200D(?:\uD83E\uDD1D\u200D\uD83D\uDC68(?:\uD83C[\uDFFB\uDFFC\uDFFE\uDFFF])|\uD83C[\uDF3E\uDF73\uDF93\uDFA4\uDFA8\uDFEB\uDFED]|\uD83D[\uDCBB\uDCBC\uDD27\uDD2C\uDE80\uDE92]|\uD83E[\uDDAF-\uDDB3\uDDBC\uDDBD])|\u200D(?:\u2764\uFE0F\u200D(?:\uD83D\uDC8B\u200D(?:\uD83D[\uDC68\uDC69])|\uD83D[\uDC68\uDC69])|\uD83C[\uDF3E\uDF73\uDF93\uDFA4\uDFA8\uDFEB\uDFED]|\uD83D[\uDCBB\uDCBC\uDD27\uDD2C\uDE80\uDE92]|\uD83E[\uDDAF-\uDDB3\uDDBC\uDDBD])|\uD83C\uDFFF\u200D(?:\uD83C[\uDF3E\uDF73\uDF93\uDFA4\uDFA8\uDFEB\uDFED]|\uD83D[\uDCBB\uDCBC\uDD27\uDD2C\uDE80\uDE92]|\uD83E[\uDDAF-\uDDB3\uDDBC\uDDBD]))|\uD83D\uDC69\u200D\uD83D\uDC69\u200D(?:\uD83D\uDC66\u200D\uD83D\uDC66|\uD83D\uDC67\u200D(?:\uD83D[\uDC66\uDC67]))|(?:\uD83E\uDDD1\uD83C\uDFFD\u200D\uD83E\uDD1D\u200D\uD83E\uDDD1|\uD83D\uDC69\uD83C\uDFFE\u200D\uD83E\uDD1D\u200D\uD83D\uDC69)(?:\uD83C[\uDFFB-\uDFFD])|\uD83D\uDC69\u200D\uD83D\uDC66\u200D\uD83D\uDC66|\uD83D\uDC69\u200D\uD83D\uDC69\u200D(?:\uD83D[\uDC66\uDC67])|(?:\uD83D\uDC41\uFE0F\u200D\uD83D\uDDE8|\uD83D\uDC69(?:\uD83C\uDFFF\u200D[\u2695\u2696\u2708]|\uD83C\uDFFE\u200D[\u2695\u2696\u2708]|\uD83C\uDFFC\u200D[\u2695\u2696\u2708]|\uD83C\uDFFB\u200D[\u2695\u2696\u2708]|\uD83C\uDFFD\u200D[\u2695\u2696\u2708]|\u200D[\u2695\u2696\u2708])|(?:(?:\u26F9|\uD83C[\uDFCB\uDFCC]|\uD83D\uDD75)\uFE0F|\uD83D\uDC6F|\uD83E[\uDD3C\uDDDE\uDDDF])\u200D[\u2640\u2642]|(?:\u26F9|\uD83C[\uDFCB\uDFCC]|\uD83D\uDD75)(?:\uD83C[\uDFFB-\uDFFF])\u200D[\u2640\u2642]|(?:\uD83C[\uDFC3\uDFC4\uDFCA]|\uD83D[\uDC6E\uDC71\uDC73\uDC77\uDC81\uDC82\uDC86\uDC87\uDE45-\uDE47\uDE4B\uDE4D\uDE4E\uDEA3\uDEB4-\uDEB6]|\uD83E[\uDD26\uDD37-\uDD39\uDD3D\uDD3E\uDDB8\uDDB9\uDDCD-\uDDCF\uDDD6-\uDDDD])(?:(?:\uD83C[\uDFFB-\uDFFF])\u200D[\u2640\u2642]|\u200D[\u2640\u2642])|\uD83C\uDFF4\u200D\u2620)\uFE0F|\uD83D\uDC69\u200D\uD83D\uDC67\u200D(?:\uD83D[\uDC66\uDC67])|\uD83C\uDFF3\uFE0F\u200D\uD83C\uDF08|\uD83D\uDC15\u200D\uD83E\uDDBA|\uD83D\uDC69\u200D\uD83D\uDC66|\uD83D\uDC69\u200D\uD83D\uDC67|\uD83C\uDDFD\uD83C\uDDF0|\uD83C\uDDF4\uD83C\uDDF2|\uD83C\uDDF6\uD83C\uDDE6|[#\*0-9]\uFE0F\u20E3|\uD83C\uDDE7(?:\uD83C[\uDDE6\uDDE7\uDDE9-\uDDEF\uDDF1-\uDDF4\uDDF6-\uDDF9\uDDFB\uDDFC\uDDFE\uDDFF])|\uD83C\uDDF9(?:\uD83C[\uDDE6\uDDE8\uDDE9\uDDEB-\uDDED\uDDEF-\uDDF4\uDDF7\uDDF9\uDDFB\uDDFC\uDDFF])|\uD83C\uDDEA(?:\uD83C[\uDDE6\uDDE8\uDDEA\uDDEC\uDDED\uDDF7-\uDDFA])|\uD83E\uDDD1(?:\uD83C[\uDFFB-\uDFFF])|\uD83C\uDDF7(?:\uD83C[\uDDEA\uDDF4\uDDF8\uDDFA\uDDFC])|\uD83D\uDC69(?:\uD83C[\uDFFB-\uDFFF])|\uD83C\uDDF2(?:\uD83C[\uDDE6\uDDE8-\uDDED\uDDF0-\uDDFF])|\uD83C\uDDE6(?:\uD83C[\uDDE8-\uDDEC\uDDEE\uDDF1\uDDF2\uDDF4\uDDF6-\uDDFA\uDDFC\uDDFD\uDDFF])|\uD83C\uDDF0(?:\uD83C[\uDDEA\uDDEC-\uDDEE\uDDF2\uDDF3\uDDF5\uDDF7\uDDFC\uDDFE\uDDFF])|\uD83C\uDDED(?:\uD83C[\uDDF0\uDDF2\uDDF3\uDDF7\uDDF9\uDDFA])|\uD83C\uDDE9(?:\uD83C[\uDDEA\uDDEC\uDDEF\uDDF0\uDDF2\uDDF4\uDDFF])|\uD83C\uDDFE(?:\uD83C[\uDDEA\uDDF9])|\uD83C\uDDEC(?:\uD83C[\uDDE6\uDDE7\uDDE9-\uDDEE\uDDF1-\uDDF3\uDDF5-\uDDFA\uDDFC\uDDFE])|\uD83C\uDDF8(?:\uD83C[\uDDE6-\uDDEA\uDDEC-\uDDF4\uDDF7-\uDDF9\uDDFB\uDDFD-\uDDFF])|\uD83C\uDDEB(?:\uD83C[\uDDEE-\uDDF0\uDDF2\uDDF4\uDDF7])|\uD83C\uDDF5(?:\uD83C[\uDDE6\uDDEA-\uDDED\uDDF0-\uDDF3\uDDF7-\uDDF9\uDDFC\uDDFE])|\uD83C\uDDFB(?:\uD83C[\uDDE6\uDDE8\uDDEA\uDDEC\uDDEE\uDDF3\uDDFA])|\uD83C\uDDF3(?:\uD83C[\uDDE6\uDDE8\uDDEA-\uDDEC\uDDEE\uDDF1\uDDF4\uDDF5\uDDF7\uDDFA\uDDFF])|\uD83C\uDDE8(?:\uD83C[\uDDE6\uDDE8\uDDE9\uDDEB-\uDDEE\uDDF0-\uDDF5\uDDF7\uDDFA-\uDDFF])|\uD83C\uDDF1(?:\uD83C[\uDDE6-\uDDE8\uDDEE\uDDF0\uDDF7-\uDDFB\uDDFE])|\uD83C\uDDFF(?:\uD83C[\uDDE6\uDDF2\uDDFC])|\uD83C\uDDFC(?:\uD83C[\uDDEB\uDDF8])|\uD83C\uDDFA(?:\uD83C[\uDDE6\uDDEC\uDDF2\uDDF3\uDDF8\uDDFE\uDDFF])|\uD83C\uDDEE(?:\uD83C[\uDDE8-\uDDEA\uDDF1-\uDDF4\uDDF6-\uDDF9])|\uD83C\uDDEF(?:\uD83C[\uDDEA\uDDF2\uDDF4\uDDF5])|(?:\uD83C[\uDFC3\uDFC4\uDFCA]|\uD83D[\uDC6E\uDC71\uDC73\uDC77\uDC81\uDC82\uDC86\uDC87\uDE45-\uDE47\uDE4B\uDE4D\uDE4E\uDEA3\uDEB4-\uDEB6]|\uD83E[\uDD26\uDD37-\uDD39\uDD3D\uDD3E\uDDB8\uDDB9\uDDCD-\uDDCF\uDDD6-\uDDDD])(?:\uD83C[\uDFFB-\uDFFF])|(?:\u26F9|\uD83C[\uDFCB\uDFCC]|\uD83D\uDD75)(?:\uD83C[\uDFFB-\uDFFF])|(?:[\u261D\u270A-\u270D]|\uD83C[\uDF85\uDFC2\uDFC7]|\uD83D[\uDC42\uDC43\uDC46-\uDC50\uDC66\uDC67\uDC6B-\uDC6D\uDC70\uDC72\uDC74-\uDC76\uDC78\uDC7C\uDC83\uDC85\uDCAA\uDD74\uDD7A\uDD90\uDD95\uDD96\uDE4C\uDE4F\uDEC0\uDECC]|\uD83E[\uDD0F\uDD18-\uDD1C\uDD1E\uDD1F\uDD30-\uDD36\uDDB5\uDDB6\uDDBB\uDDD2-\uDDD5])(?:\uD83C[\uDFFB-\uDFFF])|(?:[\u231A\u231B\u23E9-\u23EC\u23F0\u23F3\u25FD\u25FE\u2614\u2615\u2648-\u2653\u267F\u2693\u26A1\u26AA\u26AB\u26BD\u26BE\u26C4\u26C5\u26CE\u26D4\u26EA\u26F2\u26F3\u26F5\u26FA\u26FD\u2705\u270A\u270B\u2728\u274C\u274E\u2753-\u2755\u2757\u2795-\u2797\u27B0\u27BF\u2B1B\u2B1C\u2B50\u2B55]|\uD83C[\uDC04\uDCCF\uDD8E\uDD91-\uDD9A\uDDE6-\uDDFF\uDE01\uDE1A\uDE2F\uDE32-\uDE36\uDE38-\uDE3A\uDE50\uDE51\uDF00-\uDF20\uDF2D-\uDF35\uDF37-\uDF7C\uDF7E-\uDF93\uDFA0-\uDFCA\uDFCF-\uDFD3\uDFE0-\uDFF0\uDFF4\uDFF8-\uDFFF]|\uD83D[\uDC00-\uDC3E\uDC40\uDC42-\uDCFC\uDCFF-\uDD3D\uDD4B-\uDD4E\uDD50-\uDD67\uDD7A\uDD95\uDD96\uDDA4\uDDFB-\uDE4F\uDE80-\uDEC5\uDECC\uDED0-\uDED2\uDED5\uDEEB\uDEEC\uDEF4-\uDEFA\uDFE0-\uDFEB]|\uD83E[\uDD0D-\uDD3A\uDD3C-\uDD45\uDD47-\uDD71\uDD73-\uDD76\uDD7A-\uDDA2\uDDA5-\uDDAA\uDDAE-\uDDCA\uDDCD-\uDDFF\uDE70-\uDE73\uDE78-\uDE7A\uDE80-\uDE82\uDE90-\uDE95])|(?:[#\*0-9\xA9\xAE\u203C\u2049\u2122\u2139\u2194-\u2199\u21A9\u21AA\u231A\u231B\u2328\u23CF\u23E9-\u23F3\u23F8-\u23FA\u24C2\u25AA\u25AB\u25B6\u25C0\u25FB-\u25FE\u2600-\u2604\u260E\u2611\u2614\u2615\u2618\u261D\u2620\u2622\u2623\u2626\u262A\u262E\u262F\u2638-\u263A\u2640\u2642\u2648-\u2653\u265F\u2660\u2663\u2665\u2666\u2668\u267B\u267E\u267F\u2692-\u2697\u2699\u269B\u269C\u26A0\u26A1\u26AA\u26AB\u26B0\u26B1\u26BD\u26BE\u26C4\u26C5\u26C8\u26CE\u26CF\u26D1\u26D3\u26D4\u26E9\u26EA\u26F0-\u26F5\u26F7-\u26FA\u26FD\u2702\u2705\u2708-\u270D\u270F\u2712\u2714\u2716\u271D\u2721\u2728\u2733\u2734\u2744\u2747\u274C\u274E\u2753-\u2755\u2757\u2763\u2764\u2795-\u2797\u27A1\u27B0\u27BF\u2934\u2935\u2B05-\u2B07\u2B1B\u2B1C\u2B50\u2B55\u3030\u303D\u3297\u3299]|\uD83C[\uDC04\uDCCF\uDD70\uDD71\uDD7E\uDD7F\uDD8E\uDD91-\uDD9A\uDDE6-\uDDFF\uDE01\uDE02\uDE1A\uDE2F\uDE32-\uDE3A\uDE50\uDE51\uDF00-\uDF21\uDF24-\uDF93\uDF96\uDF97\uDF99-\uDF9B\uDF9E-\uDFF0\uDFF3-\uDFF5\uDFF7-\uDFFF]|\uD83D[\uDC00-\uDCFD\uDCFF-\uDD3D\uDD49-\uDD4E\uDD50-\uDD67\uDD6F\uDD70\uDD73-\uDD7A\uDD87\uDD8A-\uDD8D\uDD90\uDD95\uDD96\uDDA4\uDDA5\uDDA8\uDDB1\uDDB2\uDDBC\uDDC2-\uDDC4\uDDD1-\uDDD3\uDDDC-\uDDDE\uDDE1\uDDE3\uDDE8\uDDEF\uDDF3\uDDFA-\uDE4F\uDE80-\uDEC5\uDECB-\uDED2\uDED5\uDEE0-\uDEE5\uDEE9\uDEEB\uDEEC\uDEF0\uDEF3-\uDEFA\uDFE0-\uDFEB]|\uD83E[\uDD0D-\uDD3A\uDD3C-\uDD45\uDD47-\uDD71\uDD73-\uDD76\uDD7A-\uDDA2\uDDA5-\uDDAA\uDDAE-\uDDCA\uDDCD-\uDDFF\uDE70-\uDE73\uDE78-\uDE7A\uDE80-\uDE82\uDE90-\uDE95])\uFE0F|(?:[\u261D\u26F9\u270A-\u270D]|\uD83C[\uDF85\uDFC2-\uDFC4\uDFC7\uDFCA-\uDFCC]|\uD83D[\uDC42\uDC43\uDC46-\uDC50\uDC66-\uDC78\uDC7C\uDC81-\uDC83\uDC85-\uDC87\uDC8F\uDC91\uDCAA\uDD74\uDD75\uDD7A\uDD90\uDD95\uDD96\uDE45-\uDE47\uDE4B-\uDE4F\uDEA3\uDEB4-\uDEB6\uDEC0\uDECC]|\uD83E[\uDD0F\uDD18-\uDD1F\uDD26\uDD30-\uDD39\uDD3C-\uDD3E\uDDB5\uDDB6\uDDB8\uDDB9\uDDBB\uDDCD-\uDDCF\uDDD1-\uDDDD])/g;
-  };
-  return emojiRegex;
-}
-var hasRequiredStringWidth;
-function requireStringWidth() {
-  if (hasRequiredStringWidth) return stringWidth.exports;
-  hasRequiredStringWidth = 1;
-  const stripAnsi2 = requireStripAnsi();
-  const isFullwidthCodePoint2 = requireIsFullwidthCodePoint();
-  const emojiRegex2 = requireEmojiRegex();
-  const stringWidth$1 = (string) => {
-    if (typeof string !== "string" || string.length === 0) {
-      return 0;
-    }
-    string = stripAnsi2(string);
-    if (string.length === 0) {
-      return 0;
-    }
-    string = string.replace(emojiRegex2(), "  ");
-    let width = 0;
-    for (let i = 0; i < string.length; i++) {
-      const code = string.codePointAt(i);
-      if (code <= 31 || code >= 127 && code <= 159) {
-        continue;
-      }
-      if (code >= 768 && code <= 879) {
-        continue;
-      }
-      if (code > 65535) {
-        i++;
-      }
-      width += isFullwidthCodePoint2(code) ? 2 : 1;
-    }
-    return width;
-  };
-  stringWidth.exports = stringWidth$1;
-  stringWidth.exports.default = stringWidth$1;
-  return stringWidth.exports;
-}
-var formatValue;
-var hasRequiredFormatValue;
-function requireFormatValue() {
-  if (hasRequiredFormatValue) return formatValue;
-  hasRequiredFormatValue = 1;
-  formatValue = function formatValue2(v, options2, type2) {
-    if (options2.autopadding !== true) {
-      return v;
-    }
-    function autopadding(value, length) {
-      return (options2.autopaddingChar + value).slice(-3);
-    }
-    switch (type2) {
-      case "percentage":
-        return autopadding(v);
-      default:
-        return v;
-    }
-  };
-  return formatValue;
-}
-var formatBar;
-var hasRequiredFormatBar;
-function requireFormatBar() {
-  if (hasRequiredFormatBar) return formatBar;
-  hasRequiredFormatBar = 1;
-  formatBar = function formatBar2(progress, options2) {
-    const completeSize = Math.round(progress * options2.barsize);
-    const incompleteSize = options2.barsize - completeSize;
-    return options2.barCompleteString.substr(0, completeSize) + options2.barGlue + options2.barIncompleteString.substr(0, incompleteSize);
-  };
-  return formatBar;
-}
-var formatTime;
-var hasRequiredFormatTime;
-function requireFormatTime() {
-  if (hasRequiredFormatTime) return formatTime;
-  hasRequiredFormatTime = 1;
-  formatTime = function formatTime2(t, options2, roundToMultipleOf) {
-    function round2(input) {
-      if (roundToMultipleOf) {
-        return roundToMultipleOf * Math.round(input / roundToMultipleOf);
-      } else {
-        return input;
-      }
-    }
-    function autopadding(v) {
-      return (options2.autopaddingChar + v).slice(-2);
-    }
-    if (t > 3600) {
-      return autopadding(Math.floor(t / 3600)) + "h" + autopadding(round2(t % 3600 / 60)) + "m";
-    } else if (t > 60) {
-      return autopadding(Math.floor(t / 60)) + "m" + autopadding(round2(t % 60)) + "s";
-    } else if (t > 10) {
-      return autopadding(round2(t)) + "s";
-    } else {
-      return autopadding(t) + "s";
-    }
-  };
-  return formatTime;
-}
-var formatter;
-var hasRequiredFormatter;
-function requireFormatter() {
-  if (hasRequiredFormatter) return formatter;
-  hasRequiredFormatter = 1;
-  const _stringWidth = requireStringWidth();
-  const _defaultFormatValue = requireFormatValue();
-  const _defaultFormatBar = requireFormatBar();
-  const _defaultFormatTime = requireFormatTime();
-  formatter = function defaultFormatter(options2, params, payload) {
-    let s = options2.format;
-    const formatTime2 = options2.formatTime || _defaultFormatTime;
-    const formatValue2 = options2.formatValue || _defaultFormatValue;
-    const formatBar2 = options2.formatBar || _defaultFormatBar;
-    const percentage = Math.floor(params.progress * 100) + "";
-    const stopTime = params.stopTime || Date.now();
-    const elapsedTime = Math.round((stopTime - params.startTime) / 1e3);
-    const context = Object.assign({}, payload, {
-      bar: formatBar2(params.progress, options2),
-      percentage: formatValue2(percentage, options2, "percentage"),
-      total: formatValue2(params.total, options2, "total"),
-      value: formatValue2(params.value, options2, "value"),
-      eta: formatValue2(params.eta, options2, "eta"),
-      eta_formatted: formatTime2(params.eta, options2, 5),
-      duration: formatValue2(elapsedTime, options2, "duration"),
-      duration_formatted: formatTime2(elapsedTime, options2, 1)
+function buildCandidates(seriesName, malResults, anilistResults) {
+  const out = [];
+  for (const r of malResults) {
+    out.push({
+      source: "mal",
+      result: r,
+      score: bestTitleScore(seriesName, [r.title, r.title_english, r.title_japanese]),
+      episodes: r.episodes,
+      released: malReleased(r.status)
     });
-    s = s.replace(/\{(\w+)\}/g, function(match, key) {
-      if (typeof context[key] !== "undefined") {
-        return context[key];
-      }
-      return match;
-    });
-    const fullMargin = Math.max(0, params.maxWidth - _stringWidth(s) - 2);
-    const halfMargin = Math.floor(fullMargin / 2);
-    switch (options2.align) {
-      // fill start-of-line with whitespaces
-      case "right":
-        s = fullMargin > 0 ? " ".repeat(fullMargin) + s : s;
-        break;
-      // distribute whitespaces to left+right
-      case "center":
-        s = halfMargin > 0 ? " ".repeat(halfMargin) + s : s;
-        break;
-    }
-    return s;
-  };
-  return formatter;
-}
-var options;
-var hasRequiredOptions;
-function requireOptions() {
-  if (hasRequiredOptions) return options;
-  hasRequiredOptions = 1;
-  function mergeOption(v, defaultValue) {
-    if (typeof v === "undefined" || v === null) {
-      return defaultValue;
-    } else {
-      return v;
-    }
   }
-  options = {
-    // set global options
-    parse: function parse2(rawOptions, preset) {
-      const options2 = {};
-      const opt = Object.assign({}, preset, rawOptions);
-      options2.throttleTime = 1e3 / mergeOption(opt.fps, 10);
-      options2.stream = mergeOption(opt.stream, process.stderr);
-      options2.terminal = mergeOption(opt.terminal, null);
-      options2.clearOnComplete = mergeOption(opt.clearOnComplete, false);
-      options2.stopOnComplete = mergeOption(opt.stopOnComplete, false);
-      options2.barsize = mergeOption(opt.barsize, 40);
-      options2.align = mergeOption(opt.align, "left");
-      options2.hideCursor = mergeOption(opt.hideCursor, false);
-      options2.linewrap = mergeOption(opt.linewrap, false);
-      options2.barGlue = mergeOption(opt.barGlue, "");
-      options2.barCompleteChar = mergeOption(opt.barCompleteChar, "=");
-      options2.barIncompleteChar = mergeOption(opt.barIncompleteChar, "-");
-      options2.format = mergeOption(opt.format, "progress [{bar}] {percentage}% | ETA: {eta}s | {value}/{total}");
-      options2.formatTime = mergeOption(opt.formatTime, null);
-      options2.formatValue = mergeOption(opt.formatValue, null);
-      options2.formatBar = mergeOption(opt.formatBar, null);
-      options2.etaBufferLength = mergeOption(opt.etaBuffer, 10);
-      options2.etaAsynchronousUpdate = mergeOption(opt.etaAsynchronousUpdate, false);
-      options2.progressCalculationRelative = mergeOption(opt.progressCalculationRelative, false);
-      options2.synchronousUpdate = mergeOption(opt.synchronousUpdate, true);
-      options2.noTTYOutput = mergeOption(opt.noTTYOutput, false);
-      options2.notTTYSchedule = mergeOption(opt.notTTYSchedule, 2e3);
-      options2.emptyOnZero = mergeOption(opt.emptyOnZero, false);
-      options2.forceRedraw = mergeOption(opt.forceRedraw, false);
-      options2.autopadding = mergeOption(opt.autopadding, false);
-      options2.gracefulExit = mergeOption(opt.gracefulExit, false);
-      return options2;
-    },
-    // derived options: instance specific, has to be created for every bar element
-    assignDerivedOptions: function assignDerivedOptions(options2) {
-      options2.barCompleteString = options2.barCompleteChar.repeat(options2.barsize + 1);
-      options2.barIncompleteString = options2.barIncompleteChar.repeat(options2.barsize + 1);
-      options2.autopaddingChar = options2.autopadding ? mergeOption(options2.autopaddingChar, "   ") : "";
-      return options2;
-    }
-  };
-  return options;
+  for (const r of anilistResults) {
+    out.push({
+      source: "anilist",
+      result: r,
+      score: bestTitleScore(seriesName, [r.title.romaji, r.title.english, r.title.native]),
+      episodes: r.episodes,
+      released: anilistReleased(r.status)
+    });
+  }
+  return out;
 }
-var genericBar;
-var hasRequiredGenericBar;
-function requireGenericBar() {
-  if (hasRequiredGenericBar) return genericBar;
-  hasRequiredGenericBar = 1;
-  const _ETA = requireEta();
-  const _Terminal = requireTerminal();
-  const _formatter = requireFormatter();
-  const _options = requireOptions();
-  const _EventEmitter = require$$4$2;
-  genericBar = class GenericBar extends _EventEmitter {
-    constructor(options2) {
-      super();
-      this.options = _options.assignDerivedOptions(options2);
-      this.terminal = this.options.terminal ? this.options.terminal : new _Terminal(this.options.stream);
-      this.value = 0;
-      this.startValue = 0;
-      this.total = 100;
-      this.lastDrawnString = null;
-      this.startTime = null;
-      this.stopTime = null;
-      this.lastRedraw = Date.now();
-      this.eta = new _ETA(this.options.etaBufferLength, 0, 0);
-      this.payload = {};
-      this.isActive = false;
-      this.formatter = typeof this.options.format === "function" ? this.options.format : _formatter;
-    }
-    // internal render function
-    render(forceRendering = false) {
-      const params = {
-        progress: this.getProgress(),
-        eta: this.eta.getTime(),
-        startTime: this.startTime,
-        stopTime: this.stopTime,
-        total: this.total,
-        value: this.value,
-        maxWidth: this.terminal.getWidth()
-      };
-      if (this.options.etaAsynchronousUpdate) {
-        this.updateETA();
-      }
-      const s = this.formatter(this.options, params, this.payload);
-      const forceRedraw = forceRendering || this.options.forceRedraw || this.options.noTTYOutput && !this.terminal.isTTY();
-      if (forceRedraw || this.lastDrawnString != s) {
-        this.emit("redraw-pre");
-        this.terminal.cursorTo(0, null);
-        this.terminal.write(s);
-        this.terminal.clearRight();
-        this.lastDrawnString = s;
-        this.lastRedraw = Date.now();
-        this.emit("redraw-post");
-      }
-    }
-    // start the progress bar
-    start(total, startValue, payload) {
-      this.value = startValue || 0;
-      this.total = typeof total !== "undefined" && total >= 0 ? total : 100;
-      this.startValue = startValue || 0;
-      this.payload = payload || {};
-      this.startTime = Date.now();
-      this.stopTime = null;
-      this.lastDrawnString = "";
-      this.eta = new _ETA(this.options.etaBufferLength, this.startTime, this.value);
-      this.isActive = true;
-      this.emit("start", total, startValue);
-    }
-    // stop the bar
-    stop() {
-      this.isActive = false;
-      this.stopTime = Date.now();
-      this.emit("stop", this.total, this.value);
-    }
-    // update the bar value
-    // update(value, payload)
-    // update(payload)
-    update(arg0, arg1 = {}) {
-      if (typeof arg0 === "number") {
-        this.value = arg0;
-        this.eta.update(Date.now(), arg0, this.total);
-      }
-      const payloadData = (typeof arg0 === "object" ? arg0 : arg1) || {};
-      this.emit("update", this.total, this.value);
-      for (const key in payloadData) {
-        this.payload[key] = payloadData[key];
-      }
-      if (this.value >= this.getTotal() && this.options.stopOnComplete) {
-        this.stop();
-      }
-    }
-    // calculate the actual progress value
-    getProgress() {
-      let progress = this.value / this.total;
-      if (this.options.progressCalculationRelative) {
-        progress = (this.value - this.startValue) / (this.total - this.startValue);
-      }
-      if (isNaN(progress)) {
-        progress = this.options && this.options.emptyOnZero ? 0 : 1;
-      }
-      progress = Math.min(Math.max(progress, 0), 1);
-      return progress;
-    }
-    // update the bar value
-    // increment(delta, payload)
-    // increment(payload)
-    increment(arg0 = 1, arg1 = {}) {
-      if (typeof arg0 === "object") {
-        this.update(this.value + 1, arg0);
-      } else {
-        this.update(this.value + arg0, arg1);
-      }
-    }
-    // get the total (limit) value
-    getTotal() {
-      return this.total;
-    }
-    // set the total (limit) value
-    setTotal(total) {
-      if (typeof total !== "undefined" && total >= 0) {
-        this.total = total;
-      }
-    }
-    // force eta calculation update (long running processes)
-    updateETA() {
-      this.eta.update(Date.now(), this.value, this.total);
-    }
-  };
-  return genericBar;
-}
-var singleBar;
-var hasRequiredSingleBar;
-function requireSingleBar() {
-  if (hasRequiredSingleBar) return singleBar;
-  hasRequiredSingleBar = 1;
-  const _GenericBar = requireGenericBar();
-  const _options = requireOptions();
-  singleBar = class SingleBar extends _GenericBar {
-    constructor(options2, preset) {
-      super(_options.parse(options2, preset));
-      this.timer = null;
-      if (this.options.noTTYOutput && this.terminal.isTTY() === false) {
-        this.options.synchronousUpdate = false;
-      }
-      this.schedulingRate = this.terminal.isTTY() ? this.options.throttleTime : this.options.notTTYSchedule;
-      this.sigintCallback = null;
-    }
-    // internal render function
-    render() {
-      if (this.timer) {
-        clearTimeout(this.timer);
-        this.timer = null;
-      }
-      super.render();
-      if (this.options.noTTYOutput && this.terminal.isTTY() === false) {
-        this.terminal.newline();
-      }
-      this.timer = setTimeout(this.render.bind(this), this.schedulingRate);
-    }
-    update(current, payload) {
-      if (!this.timer) {
-        return;
-      }
-      super.update(current, payload);
-      if (this.options.synchronousUpdate && this.lastRedraw + this.options.throttleTime * 2 < Date.now()) {
-        this.render();
-      }
-    }
-    // start the progress bar
-    start(total, startValue, payload) {
-      if (this.options.noTTYOutput === false && this.terminal.isTTY() === false) {
-        return;
-      }
-      if (this.sigintCallback === null && this.options.gracefulExit) {
-        this.sigintCallback = this.stop.bind(this);
-        process.once("SIGINT", this.sigintCallback);
-        process.once("SIGTERM", this.sigintCallback);
-      }
-      this.terminal.cursorSave();
-      if (this.options.hideCursor === true) {
-        this.terminal.cursor(false);
-      }
-      if (this.options.linewrap === false) {
-        this.terminal.lineWrapping(false);
-      }
-      super.start(total, startValue, payload);
-      this.render();
-    }
-    // stop the bar
-    stop() {
-      if (!this.timer) {
-        return;
-      }
-      if (this.sigintCallback) {
-        process.removeListener("SIGINT", this.sigintCallback);
-        process.removeListener("SIGTERM", this.sigintCallback);
-        this.sigintCallback = null;
-      }
-      this.render();
-      super.stop();
-      clearTimeout(this.timer);
-      this.timer = null;
-      if (this.options.hideCursor === true) {
-        this.terminal.cursor(true);
-      }
-      if (this.options.linewrap === false) {
-        this.terminal.lineWrapping(true);
-      }
-      this.terminal.cursorRestore();
-      if (this.options.clearOnComplete) {
-        this.terminal.cursorTo(0, null);
-        this.terminal.clearLine();
-      } else {
-        this.terminal.newline();
-      }
-    }
-  };
-  return singleBar;
-}
-var multiBar;
-var hasRequiredMultiBar;
-function requireMultiBar() {
-  if (hasRequiredMultiBar) return multiBar;
-  hasRequiredMultiBar = 1;
-  const _Terminal = requireTerminal();
-  const _BarElement = requireGenericBar();
-  const _options = requireOptions();
-  const _EventEmitter = require$$4$2;
-  multiBar = class MultiBar extends _EventEmitter {
-    constructor(options2, preset) {
-      super();
-      this.bars = [];
-      this.options = _options.parse(options2, preset);
-      this.options.synchronousUpdate = false;
-      this.terminal = this.options.terminal ? this.options.terminal : new _Terminal(this.options.stream);
-      this.timer = null;
-      this.isActive = false;
-      this.schedulingRate = this.terminal.isTTY() ? this.options.throttleTime : this.options.notTTYSchedule;
-      this.loggingBuffer = [];
-      this.sigintCallback = null;
-    }
-    // add a new bar to the stack
-    create(total, startValue, payload, barOptions = {}) {
-      const bar = new _BarElement(Object.assign(
-        {},
-        // global options
-        this.options,
-        // terminal instance
-        {
-          terminal: this.terminal
-        },
-        // overrides
-        barOptions
-      ));
-      this.bars.push(bar);
-      if (this.options.noTTYOutput === false && this.terminal.isTTY() === false) {
-        return bar;
-      }
-      if (this.sigintCallback === null && this.options.gracefulExit) {
-        this.sigintCallback = this.stop.bind(this);
-        process.once("SIGINT", this.sigintCallback);
-        process.once("SIGTERM", this.sigintCallback);
-      }
-      if (!this.isActive) {
-        if (this.options.hideCursor === true) {
-          this.terminal.cursor(false);
-        }
-        if (this.options.linewrap === false) {
-          this.terminal.lineWrapping(false);
-        }
-        this.timer = setTimeout(this.update.bind(this), this.schedulingRate);
-      }
-      this.isActive = true;
-      bar.start(total, startValue, payload);
-      this.emit("start");
-      return bar;
-    }
-    // remove a bar from the stack
-    remove(bar) {
-      const index = this.bars.indexOf(bar);
-      if (index < 0) {
-        return false;
-      }
-      this.bars.splice(index, 1);
-      this.update();
-      this.terminal.newline();
-      this.terminal.clearBottom();
-      return true;
-    }
-    // internal update routine
-    update() {
-      if (this.timer) {
-        clearTimeout(this.timer);
-        this.timer = null;
-      }
-      this.emit("update-pre");
-      this.terminal.cursorRelativeReset();
-      this.emit("redraw-pre");
-      if (this.loggingBuffer.length > 0) {
-        this.terminal.clearLine();
-        while (this.loggingBuffer.length > 0) {
-          this.terminal.write(this.loggingBuffer.shift(), true);
-        }
-      }
-      for (let i = 0; i < this.bars.length; i++) {
-        if (i > 0) {
-          this.terminal.newline();
-        }
-        this.bars[i].render();
-      }
-      this.emit("redraw-post");
-      if (this.options.noTTYOutput && this.terminal.isTTY() === false) {
-        this.terminal.newline();
-        this.terminal.newline();
-      }
-      this.timer = setTimeout(this.update.bind(this), this.schedulingRate);
-      this.emit("update-post");
-      if (this.options.stopOnComplete && !this.bars.find((bar) => bar.isActive)) {
-        this.stop();
-      }
-    }
-    stop() {
-      clearTimeout(this.timer);
-      this.timer = null;
-      if (this.sigintCallback) {
-        process.removeListener("SIGINT", this.sigintCallback);
-        process.removeListener("SIGTERM", this.sigintCallback);
-        this.sigintCallback = null;
-      }
-      this.isActive = false;
-      if (this.options.hideCursor === true) {
-        this.terminal.cursor(true);
-      }
-      if (this.options.linewrap === false) {
-        this.terminal.lineWrapping(true);
-      }
-      this.terminal.cursorRelativeReset();
-      this.emit("stop-pre-clear");
-      if (this.options.clearOnComplete) {
-        this.terminal.clearBottom();
-      } else {
-        for (let i = 0; i < this.bars.length; i++) {
-          if (i > 0) {
-            this.terminal.newline();
-          }
-          this.bars[i].render();
-          this.bars[i].stop();
-        }
-        this.terminal.newline();
-      }
-      this.emit("stop");
-    }
-    log(s) {
-      this.loggingBuffer.push(s);
-    }
-  };
-  return multiBar;
-}
-var legacy;
-var hasRequiredLegacy;
-function requireLegacy() {
-  if (hasRequiredLegacy) return legacy;
-  hasRequiredLegacy = 1;
-  legacy = {
-    format: "progress [{bar}] {percentage}% | ETA: {eta}s | {value}/{total}",
-    barCompleteChar: "=",
-    barIncompleteChar: "-"
-  };
-  return legacy;
-}
-var shadesClassic;
-var hasRequiredShadesClassic;
-function requireShadesClassic() {
-  if (hasRequiredShadesClassic) return shadesClassic;
-  hasRequiredShadesClassic = 1;
-  shadesClassic = {
-    format: " {bar} {percentage}% | ETA: {eta}s | {value}/{total}",
-    barCompleteChar: "█",
-    barIncompleteChar: "░"
-  };
-  return shadesClassic;
-}
-var shadesGrey;
-var hasRequiredShadesGrey;
-function requireShadesGrey() {
-  if (hasRequiredShadesGrey) return shadesGrey;
-  hasRequiredShadesGrey = 1;
-  shadesGrey = {
-    format: " \x1B[90m{bar}\x1B[0m {percentage}% | ETA: {eta}s | {value}/{total}",
-    barCompleteChar: "█",
-    barIncompleteChar: "░"
-  };
-  return shadesGrey;
-}
-var rect;
-var hasRequiredRect;
-function requireRect() {
-  if (hasRequiredRect) return rect;
-  hasRequiredRect = 1;
-  rect = {
-    format: " {bar}■ {percentage}% | ETA: {eta}s | {value}/{total}",
-    barCompleteChar: "■",
-    barIncompleteChar: " "
-  };
-  return rect;
-}
-var presets;
-var hasRequiredPresets;
-function requirePresets() {
-  if (hasRequiredPresets) return presets;
-  hasRequiredPresets = 1;
-  const _legacy = requireLegacy();
-  const _shades_classic = requireShadesClassic();
-  const _shades_grey = requireShadesGrey();
-  const _rect = requireRect();
-  presets = {
-    legacy: _legacy,
-    shades_classic: _shades_classic,
-    shades_grey: _shades_grey,
-    rect: _rect
-  };
-  return presets;
-}
-var cliProgress$1;
-var hasRequiredCliProgress;
-function requireCliProgress() {
-  if (hasRequiredCliProgress) return cliProgress$1;
-  hasRequiredCliProgress = 1;
-  const _SingleBar = requireSingleBar();
-  const _MultiBar = requireMultiBar();
-  const _Presets = requirePresets();
-  const _Formatter = requireFormatter();
-  const _defaultFormatValue = requireFormatValue();
-  const _defaultFormatBar = requireFormatBar();
-  const _defaultFormatTime = requireFormatTime();
-  cliProgress$1 = {
-    Bar: _SingleBar,
-    SingleBar: _SingleBar,
-    MultiBar: _MultiBar,
-    Presets: _Presets,
-    Format: {
-      Formatter: _Formatter,
-      BarFormat: _defaultFormatBar,
-      ValueFormat: _defaultFormatValue,
-      TimeFormat: _defaultFormatTime
-    }
-  };
-  return cliProgress$1;
-}
-var cliProgressExports = requireCliProgress();
-const cliProgress = /* @__PURE__ */ getDefaultExportFromCjs(cliProgressExports);
-const BAR_SIZE = 35;
-const progressBars = /* @__PURE__ */ new Map();
-function createProgressBar(header, total = 0) {
-  const bar = new cliProgress.SingleBar({
-    format: (_options, params, payload) => {
-      const barSize = BAR_SIZE;
-      const progress = params.progress !== void 0 ? params.progress : params.total > 0 ? params.value / params.total : params.value > 0 ? 1 : 0;
-      const filled = Math.min(Math.max(0, Math.round(progress * barSize)), barSize);
-      const barComplete = "#".repeat(barSize);
-      const barIncomplete = "-".repeat(barSize);
-      const barDisplay = "\x1B[32m" + barComplete.substring(0, filled) + "\x1B[0m\x1B[90m" + barIncomplete.substring(0, barSize - filled) + "\x1B[0m";
-      const headerText = payload.header || header;
-      const displayTotal = params.total > 0 ? params.total : params.value;
-      return `\x1B[36m${headerText}\x1B[0m: [${barDisplay}] \x1B[35m${params.value}\x1B[0m/\x1B[35m${displayTotal}\x1B[0m
-`;
-    },
-    hideCursor: true,
-    clearOnComplete: false,
-    stopOnComplete: false,
-    barsize: BAR_SIZE
+function pickWinner(candidates, folderEpisodeCount) {
+  const strict = candidates.filter((c) => c.released && folderEpisodeCount === 0).sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return a.source === "anilist" ? -1 : 1;
   });
-  bar.start(total > 0 ? total : 1, 0, { header });
-  return {
-    bar,
-    current: 0,
-    total: total > 0 ? total : 1,
-    header
-  };
+  if (strict.length > 0) return strict[0];
+  const loose = candidates.filter((c) => c.released && c.episodes === null).sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return a.source === "anilist" ? -1 : 1;
+  });
+  return loose[0] ?? null;
 }
-function initProgress(header, total = 0) {
-  if (progressBars.has(header)) {
-    const instance2 = progressBars.get(header);
-    instance2.bar.stop();
-    progressBars.delete(header);
+async function fetchFullMetadata(winner, seasonNumber) {
+  if (winner.source === "mal") {
+    const a = winner.result;
+    try {
+      const episodes = await malHandler.getEpisodes(a.mal_id, a.episodes, seasonNumber);
+      const formatted = malHandler.formatMetadata(a, episodes, seasonNumber);
+      return {
+        source: "mal",
+        score: winner.score,
+        metadata: { ...formatted, source: "mal" }
+      };
+    } catch (err) {
+      logger.error("metadata", `MAL fetch failed for id ${a.mal_id}: ${err.message}`);
+      return null;
+    }
   }
-  const instance = createProgressBar(header, total);
-  progressBars.set(header, instance);
+  const m = winner.result;
+  try {
+    const episodes = await anilistHandler.getEpisodes(m.id, m.episodes, seasonNumber);
+    const formatted = anilistHandler.formatMetadata(
+      m,
+      episodes,
+      seasonNumber
+    );
+    return {
+      source: "anilist",
+      score: winner.score,
+      metadata: { ...formatted, source: "anilist" }
+    };
+  } catch (err) {
+    logger.error("metadata", `AniList fetch failed for id ${m.id}: ${err.message}`);
+    return null;
+  }
 }
-function updateProgress(header, filename) {
-  const instance = progressBars.get(header);
-  if (!instance) {
-    initProgress(header, 0);
-    const newInstance = progressBars.get(header);
-    newInstance.current++;
-    newInstance.total = Math.max(newInstance.total, newInstance.current);
-    newInstance.bar.setTotal(newInstance.total);
-    newInstance.bar.update(newInstance.current, { header, filename });
+async function findBestMatch(seriesName, seasonNumber, partNumber, folderEpisodeCount) {
+  const searchQuery = seriesName;
+  const wantEpCount = 0;
+  const { mal, anilist } = await searchBoth(searchQuery);
+  const candidates = buildCandidates(seriesName, mal, anilist);
+  if (candidates.length === 0) {
+    logger.warn("metadata", `No candidates for "${searchQuery}"`);
+    return null;
+  }
+  const winner = pickWinner(candidates, wantEpCount);
+  if (!winner) {
+    logger.warn("metadata", `No eligible candidates for "${searchQuery}" (released + ep ≥ ${wantEpCount})`);
+    return null;
+  }
+  if (winner.score < MIN_TITLE_SCORE) {
+    logger.warn(
+      "metadata",
+      `Best candidate "${candidateTitle(winner)}" scored ${winner.score.toFixed(2)} (< ${MIN_TITLE_SCORE}); refusing to match "${seriesName}"`
+    );
+    return null;
+  }
+  logger.info(
+    "metadata",
+    `Best match for "${seriesName}": ${winner.source.toUpperCase()} "${candidateTitle(winner)}" (${winner.score.toFixed(2)}, ${winner.episodes ?? "?"} ep)`
+  );
+  return fetchFullMetadata(winner, seasonNumber);
+}
+const THRESHOLD = 0.95;
+function aniListDate(d) {
+  if (!d?.year) return null;
+  const m = String(d.month ?? 1).padStart(2, "0");
+  const day = String(d.day ?? 1).padStart(2, "0");
+  return `${d.year}-${m}-${day}`;
+}
+async function findShowMatch(folderName) {
+  try {
+    const malResults = await malHandler.searchAnime(folderName, 10);
+    for (const r of malResults) {
+      const score = bestTitleScore(folderName, [r.title, r.title_english]);
+      if (score >= THRESHOLD) {
+        const poster = r.images?.jpg?.large_image_url ?? r.images?.jpg?.image_url ?? null;
+        if (poster) {
+          logger.info("metadata", `Match (MAL ${score.toFixed(2)}): ${folderName} → ${r.title}`, { series: folderName });
+          return {
+            source: "mal",
+            externalId: r.mal_id,
+            matchedTitle: r.title,
+            titleRomaji: r.title,
+            titleEnglish: r.title_english ?? null,
+            posterUrl: poster,
+            score,
+            status: r.status ?? null,
+            startDate: r.aired?.from ? new Date(r.aired.from).toISOString().split("T")[0] : null,
+            totalEpisodes: r.episodes ?? null
+          };
+        }
+      }
+    }
+  } catch (err) {
+    logger.warn("metadata", `MAL search failed for ${folderName}: ${err.message}`, { series: folderName });
+  }
+  try {
+    const aniResults = await anilistHandler.searchAnimeMultiple(folderName, 10);
+    for (const r of aniResults) {
+      const score = bestTitleScore(folderName, [r.title?.romaji, r.title?.english]);
+      if (score >= THRESHOLD) {
+        const poster = r.coverImage?.extraLarge ?? r.coverImage?.large ?? null;
+        if (poster) {
+          const matchedTitle = r.title?.romaji ?? r.title?.english ?? "?";
+          logger.info("metadata", `Match (AniList ${score.toFixed(2)}): ${folderName} → ${matchedTitle}`, { series: folderName });
+          return {
+            source: "anilist",
+            externalId: r.id,
+            matchedTitle,
+            titleRomaji: r.title?.romaji ?? null,
+            titleEnglish: r.title?.english ?? null,
+            posterUrl: poster,
+            score,
+            status: r.status ?? null,
+            startDate: aniListDate(r.startDate),
+            totalEpisodes: r.episodes ?? null
+          };
+        }
+      }
+    }
+  } catch (err) {
+    logger.warn("metadata", `AniList search failed for ${folderName}: ${err.message}`, { series: folderName });
+  }
+  logger.info("metadata", `No match for ${folderName} (threshold ${THRESHOLD})`, { series: folderName });
+  return null;
+}
+async function fetchEpisodeAirDates(source, externalId, totalEpisodes) {
+  try {
+    const nodes = await anilistHandler.getAiringSchedule(
+      source === "anilist" ? { anilistId: externalId } : { malId: externalId }
+    );
+    if (nodes.length > 0) {
+      return nodes.filter((n) => Number.isFinite(n.airingAt) && n.airingAt > 0).map((n) => ({
+        episodeNumber: n.episode,
+        airDate: new Date(n.airingAt * 1e3).toISOString()
+      }));
+    }
+  } catch (err) {
+    logger.warn("metadata", `AniList airingSchedule failed: ${err.message}`);
+  }
+  if (source === "mal") {
+    try {
+      const eps = await malHandler.getEpisodes(externalId, totalEpisodes);
+      return eps.map((e) => ({ episodeNumber: e.episodeNumber, airDate: e.airDate }));
+    } catch (err) {
+      logger.warn("metadata", `MAL episodes fetch failed for ${externalId}: ${err.message}`);
+    }
+  }
+  return [];
+}
+const BACKOFFS_MS = [5e3, 15e3, 3e4];
+const STEADY_BACKOFF_MS = 6e4;
+const MAX_LIFETIME_MS = 30 * 6e4;
+const SIZE_STABLE_THRESHOLD_MS = 1e4;
+const POLL_INTERVAL_MS = 2e3;
+const queue = /* @__PURE__ */ new Map();
+let pollHandle = null;
+let onStatusChange = null;
+function parseFfprobeJson(stdout) {
+  let parsed;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return { ready: false, reason: "invalid ffprobe output" };
+  }
+  const hasVideoStream = Array.isArray(parsed.streams) && parsed.streams.some((s) => s.codec_type === "video");
+  if (!hasVideoStream) return { ready: false, reason: "no video stream" };
+  const dur = parsed.format?.duration;
+  const durNum = typeof dur === "string" ? Number(dur) : dur ?? 0;
+  if (!Number.isFinite(durNum) || durNum <= 0) return { ready: false, reason: "no duration" };
+  return { ready: true };
+}
+function runFfprobe$1(path, timeoutMs = 15e3) {
+  return new Promise((resolve2) => {
+    const child = spawn$1("ffprobe", ["-v", "error", "-show_streams", "-show_format", "-of", "json", path], {
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => {
+      child.kill();
+      resolve2({ ready: false, reason: "ffprobe timeout" });
+    }, timeoutMs);
+    child.stdout.on("data", (buf) => {
+      stdout += buf.toString();
+    });
+    child.stderr.on("data", (buf) => {
+      stderr += buf.toString();
+    });
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      resolve2({ ready: false, reason: `ffprobe spawn error: ${err.message}` });
+    });
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (code !== 0) {
+        const detail = stderr.trim().split("\n").slice(-1)[0]?.slice(0, 200);
+        resolve2({ ready: false, reason: detail ? `ffprobe exit ${code}: ${detail}` : `ffprobe exit ${code}` });
+        return;
+      }
+      resolve2(parseFfprobeJson(stdout));
+    });
+  });
+}
+function nextDelay(attempts) {
+  if (attempts < BACKOFFS_MS.length) return BACKOFFS_MS[attempts];
+  return STEADY_BACKOFF_MS;
+}
+async function probeOne(path) {
+  const entry = queue.get(path);
+  if (!entry) return;
+  entry.attempts++;
+  const result = await runFfprobe$1(path);
+  if (result.ready) {
+    queue.delete(path);
+    logger.info("probe", `Ready`, { file: path });
+    if (onStatusChange) await onStatusChange(path, "ready");
     return;
   }
-  instance.current++;
-  if (instance.total === 0 || instance.current > instance.total) {
-    instance.total = instance.current;
-    instance.bar.setTotal(instance.total);
+  if (Date.now() - entry.enqueuedAt > MAX_LIFETIME_MS) {
+    queue.delete(path);
+    logger.warn("probe", `Stalled (${result.reason ?? "unknown"})`, { file: path });
+    if (onStatusChange) await onStatusChange(path, "stalled");
+    return;
   }
-  instance.bar.update(instance.current, { header, filename });
+  entry.nextRunAt = Date.now() + nextDelay(entry.attempts);
 }
-function initMediaProgress() {
-  initProgress("Media requests", 0);
-}
-function updateMediaProgress(filePath) {
-  const filename = filePath ? filePath.split("/").pop() || filePath : void 0;
-  updateProgress("Media requests", filename);
-}
-function getImageCachePath() {
-  const userDataPath = app.getPath("userData");
-  return join$1(userDataPath, "image-cache");
-}
-function getCacheIndexPath() {
-  return join$1(getImageCachePath(), "cache-index.json");
-}
-async function ensureCacheDirectory() {
-  const cachePath = getImageCachePath();
+let tickInFlight = false;
+async function tick() {
+  if (tickInFlight) return;
+  tickInFlight = true;
   try {
-    await mkdir(cachePath, { recursive: true });
-  } catch (error) {
-    if (error.code !== "EEXIST") {
-      throw error;
-    }
+    await tickInner();
+  } finally {
+    tickInFlight = false;
   }
 }
-async function loadCacheIndex() {
-  try {
-    const indexPath = getCacheIndexPath();
-    const data = await readFile(indexPath, "utf-8");
-    return JSON.parse(data);
-  } catch (error) {
-    if (error.code === "ENOENT") {
-      return {};
-    }
-    console.error("Error loading cache index:", error);
-    return {};
-  }
-}
-async function saveCacheIndex(index) {
-  try {
-    const indexPath = getCacheIndexPath();
-    await writeFile(indexPath, JSON.stringify(index, null, 2), "utf-8");
-  } catch (error) {
-    console.error("Error saving cache index:", error);
-  }
-}
-function generateCacheFilename(url) {
-  const hash = createHash("md5").update(url).digest("hex");
-  let ext = ".jpg";
-  try {
-    const urlObj = new URL(url);
-    const pathExt = extname(urlObj.pathname);
-    if (pathExt && [".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif"].includes(pathExt.toLowerCase())) {
-      ext = pathExt.toLowerCase();
-    }
-  } catch {
-  }
-  return `${hash}${ext}`;
-}
-async function fileExists$1(path) {
-  try {
-    await access(path);
-    return true;
-  } catch {
-    return false;
-  }
-}
-const imageCacheHandler = {
-  /**
-   * Download and cache an image from a URL
-   * Returns the local file path or null if download fails
-   */
-  async cacheImage(imageUrl) {
-    if (!imageUrl) return null;
+async function tickInner() {
+  const now = Date.now();
+  for (const [path, entry] of queue) {
     try {
-      await ensureCacheDirectory();
-      const cacheIndex = await loadCacheIndex();
-      if (cacheIndex[imageUrl]) {
-        const localPath2 = cacheIndex[imageUrl].localPath;
-        if (await fileExists$1(localPath2)) {
-          const filename2 = generateCacheFilename(imageUrl);
-          updateProgress("📷 Image caching", filename2);
-          return localPath2;
-        }
-        delete cacheIndex[imageUrl];
+      const s = await stat$1(path);
+      const sizeChanged = s.size !== entry.lastSize;
+      const mtimeChanged = s.mtimeMs !== entry.lastMtimeMs;
+      if (sizeChanged || mtimeChanged) {
+        entry.lastSize = s.size;
+        entry.lastMtimeMs = s.mtimeMs;
+        entry.stableSinceMs = now;
+      } else if (now - entry.stableSinceMs >= SIZE_STABLE_THRESHOLD_MS) {
+        await probeOne(path);
+        continue;
       }
-      const response = await fetch(imageUrl, {
-        headers: {
-          "User-Agent": "Liam Media Server/1.0",
-          "Accept": "image/*"
-        }
-      });
-      if (!response.ok) {
-        console.error(`Failed to download image: ${imageUrl} (${response.status})`);
-        return null;
-      }
-      const filename = generateCacheFilename(imageUrl);
-      const localPath = join$1(getImageCachePath(), filename);
-      const arrayBuffer = await response.arrayBuffer();
-      await writeFile(localPath, Buffer.from(arrayBuffer));
-      cacheIndex[imageUrl] = {
-        originalUrl: imageUrl,
-        localPath,
-        cachedAt: (/* @__PURE__ */ new Date()).toISOString()
-      };
-      await saveCacheIndex(cacheIndex);
-      updateProgress("📷 Image caching", filename);
-      return localPath;
-    } catch (error) {
-      console.error(`Error caching image ${imageUrl}:`, error);
-      return null;
-    }
-  },
-  /**
-   * Cache multiple images in parallel with rate limiting
-   */
-  async cacheImages(urls) {
-    const results = /* @__PURE__ */ new Map();
-    const validUrls = urls.filter((url) => !!url);
-    if (validUrls.length > 0) {
-      initProgress("📷 Image caching", validUrls.length);
-    }
-    const batchSize = 5;
-    for (let i = 0; i < validUrls.length; i += batchSize) {
-      const batch = validUrls.slice(i, i + batchSize);
-      const batchResults = await Promise.all(
-        batch.map(async (url) => {
-          const localPath = await this.cacheImage(url);
-          return { url, localPath };
-        })
-      );
-      for (const { url, localPath } of batchResults) {
-        results.set(url, localPath);
-      }
-      if (i + batchSize < validUrls.length) {
-        await new Promise((resolve2) => setTimeout(resolve2, 100));
-      }
-    }
-    return results;
-  },
-  /**
-   * Get the local path for a cached image URL
-   * Returns null if not cached
-   */
-  async getCachedPath(imageUrl) {
-    if (!imageUrl) return null;
-    try {
-      const cacheIndex = await loadCacheIndex();
-      const entry = cacheIndex[imageUrl];
-      if (entry && await fileExists$1(entry.localPath)) {
-        return entry.localPath;
-      }
-      return null;
-    } catch (error) {
-      console.error("Error getting cached path:", error);
-      return null;
-    }
-  },
-  /**
-   * Check if an image URL is cached
-   */
-  async isCached(imageUrl) {
-    return await this.getCachedPath(imageUrl) !== null;
-  },
-  /**
-   * Convert a URL to a local path, caching if necessary
-   * Returns the media:// URL for local files
-   */
-  async getLocalUrl(imageUrl) {
-    if (!imageUrl) return null;
-    if (imageUrl.startsWith("/") || imageUrl.startsWith("media://")) {
-      return imageUrl;
-    }
-    const localPath = await this.cacheImage(imageUrl);
-    if (localPath) {
-      return `media://${encodeURIComponent(localPath)}`;
-    }
-    return imageUrl;
-  },
-  /**
-   * Clear all cached images
-   */
-  async clearCache() {
-    try {
-      const cachePath = getImageCachePath();
-      await rm(cachePath, { recursive: true, force: true });
-      await ensureCacheDirectory();
-      await saveCacheIndex({});
-      console.log("Image cache cleared");
-    } catch (error) {
-      console.error("Error clearing image cache:", error);
-      throw error;
-    }
-  },
-  /**
-   * Get cache statistics
-   */
-  async getCacheStats() {
-    try {
-      const cachePath = getImageCachePath();
-      const files = await readdir(cachePath);
-      let totalSize = 0;
-      let count = 0;
-      for (const file of files) {
-        if (file === "cache-index.json") continue;
-        try {
-          const filePath = join$1(cachePath, file);
-          const stats = await stat(filePath);
-          totalSize += stats.size;
-          count++;
-        } catch {
-        }
-      }
-      return { count, sizeBytes: totalSize };
     } catch {
-      return { count: 0, sizeBytes: 0 };
     }
+    if (now >= entry.nextRunAt) {
+      await probeOne(path);
+    }
+  }
+}
+const videoProbeHandler = {
+  /**
+   * Single-shot probe. Used by the queue and by manual callers.
+   */
+  probe(path) {
+    return runFfprobe$1(path);
   },
   /**
-   * Delete cached images for a specific series
+   * Enqueue a file for verification with backoff.
    */
-  async deleteSeriesImages(seriesData) {
-    try {
-      const cacheIndex = await loadCacheIndex();
-      const imageUrls = [
-        seriesData.poster,
-        seriesData.banner
-      ];
-      if (seriesData.episodes) {
-        for (const ep of seriesData.episodes) {
-          if (ep.thumbnail) {
-            imageUrls.push(ep.thumbnail);
-          }
-        }
-      }
-      let deletedCount = 0;
-      for (const url of imageUrls) {
-        if (!url) continue;
-        const entry = cacheIndex[url];
-        if (entry) {
-          try {
-            if (await fileExists$1(entry.localPath)) {
-              await rm(entry.localPath, { force: true });
-              deletedCount++;
-            }
-            delete cacheIndex[url];
-          } catch (error) {
-            console.error(`Error deleting cached image ${entry.localPath}:`, error);
-          }
-        }
-      }
-      const localPaths = [
-        seriesData.posterLocal,
-        seriesData.bannerLocal
-      ];
-      if (seriesData.episodes) {
-        for (const ep of seriesData.episodes) {
-          if (ep.thumbnailLocal) {
-            localPaths.push(ep.thumbnailLocal);
-          }
-        }
-      }
-      for (const localPath of localPaths) {
-        if (!localPath) continue;
-        const actualPath = localPath.startsWith("media://") ? decodeURIComponent(localPath.replace("media://", "")) : localPath;
-        try {
-          if (await fileExists$1(actualPath)) {
-            await rm(actualPath, { force: true });
-            deletedCount++;
-          }
-        } catch (error) {
-          console.error(`Error deleting local image ${actualPath}:`, error);
-        }
-        for (const [url, entry] of Object.entries(cacheIndex)) {
-          if (entry.localPath === actualPath) {
-            delete cacheIndex[url];
-            break;
-          }
-        }
-      }
-      await saveCacheIndex(cacheIndex);
-      console.log(`Deleted ${deletedCount} cached images for series`);
-    } catch (error) {
-      console.error("Error deleting series images:", error);
-      throw error;
-    }
+  enqueue(path) {
+    if (queue.has(path)) return;
+    const now = Date.now();
+    queue.set(path, {
+      path,
+      attempts: 0,
+      enqueuedAt: now,
+      nextRunAt: now,
+      lastSize: -1,
+      lastMtimeMs: -1,
+      stableSinceMs: now
+    });
+    logger.info("probe", `Verifying`, { file: path });
   },
   /**
-   * Get the base cache directory path
+   * Re-enqueue a file (clears prior history).
    */
-  getCachePath() {
-    return getImageCachePath();
+  retry(path) {
+    queue.delete(path);
+    this.enqueue(path);
+  },
+  start(handler) {
+    onStatusChange = handler;
+    if (pollHandle) return;
+    pollHandle = setInterval(() => {
+      void tick();
+    }, POLL_INTERVAL_MS);
+  },
+  stop() {
+    if (pollHandle) {
+      clearInterval(pollHandle);
+      pollHandle = null;
+    }
+    queue.clear();
   }
 };
-function getThumbnailCachePath() {
-  const userDataPath = app.getPath("userData");
-  return join$1(userDataPath, "thumbnails");
+const ASS_FORMAT = /* @__PURE__ */ new Set(["ass", "ssa"]);
+const VTT_FORMAT = /* @__PURE__ */ new Set(["subrip", "webvtt", "mov_text"]);
+function targetFormat(codec) {
+  const c = codec.toLowerCase();
+  if (ASS_FORMAT.has(c)) return "ass";
+  if (VTT_FORMAT.has(c)) return "vtt";
+  return null;
 }
-async function ensureThumbnailDirectory() {
-  const cachePath = getThumbnailCachePath();
-  try {
-    await mkdir(cachePath, { recursive: true });
-  } catch (error) {
-    if (error.code !== "EEXIST") {
-      throw error;
-    }
-  }
+function getCacheDir() {
+  return join$2(app.getPath("userData"), "subtitle-cache");
 }
-async function fileExists(path) {
-  try {
-    await access(path);
-    return true;
-  } catch {
-    return false;
-  }
+async function ensureCacheDir() {
+  const dir = getCacheDir();
+  await mkdir$1(dir, { recursive: true });
+  return dir;
 }
-function generateThumbnailFilename(videoPath, timestamp) {
-  const hash = createHash("md5").update(`${videoPath}_${timestamp}`).digest("hex");
-  return `${hash}.jpg`;
+function cacheKeyHash(videoPath, mtimeMs, streamIndex) {
+  return createHash$1("md5").update(`${videoPath}:${mtimeMs}:${streamIndex}`).digest("hex");
 }
-async function extractFrame(videoPath, timestamp = 120, resetProgress = false) {
-  await ensureThumbnailDirectory();
-  const thumbnailFilename = generateThumbnailFilename(videoPath, timestamp);
-  const thumbnailPath = join$1(getThumbnailCachePath(), thumbnailFilename);
-  if (resetProgress) {
-    initProgress("🎬 Generating thumbnails", 0);
-  }
-  if (await fileExists(thumbnailPath)) {
-    const filename = basename(videoPath);
-    updateProgress("🎬 Generating thumbnails", filename);
-    return thumbnailPath;
-  }
-  return new Promise((resolve2) => {
-    let resolved = false;
-    let timeoutId = null;
-    const safeResolve = (value) => {
-      if (!resolved) {
-        resolved = true;
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          timeoutId = null;
-        }
-        resolve2(value);
-      }
-    };
-    const ffmpeg = spawn("ffmpeg", [
-      "-ss",
-      String(timestamp),
-      "-i",
-      videoPath,
-      "-vframes",
-      "1",
-      "-q:v",
-      "2",
-      "-vf",
-      "scale=480:-1",
-      "-y",
-      // Overwrite output file
-      thumbnailPath
-    ], {
-      stdio: ["ignore", "ignore", "ignore"]
-      // Suppress ffmpeg output
+function runFfprobe(args) {
+  return new Promise((resolve2, reject) => {
+    const p = spawn$1("ffprobe", args, { stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    let err = "";
+    p.stdout.on("data", (d) => {
+      out += d.toString();
     });
-    ffmpeg.on("close", async (code) => {
-      if (resolved) return;
-      if (code === 0 && await fileExists(thumbnailPath)) {
-        const filename = basename(videoPath);
-        updateProgress("🎬 Generating thumbnails", filename);
-        safeResolve(thumbnailPath);
-      } else {
-        if (timestamp > 10) {
-          const retryResult = await extractFrame(videoPath, 10, false);
-          safeResolve(retryResult);
-        } else {
-          const filename = basename(videoPath);
-          updateProgress("🎬 Generating thumbnails", filename);
-          safeResolve(null);
-        }
-      }
+    p.stderr.on("data", (d) => {
+      err += d.toString();
     });
-    ffmpeg.on("error", (err) => {
-      if (resolved) return;
-      console.error(`  ⚠️ ffmpeg error: ${err.message}`);
-      safeResolve(null);
+    p.on("close", (code) => {
+      if (code === 0) resolve2(out);
+      else reject(new Error(`ffprobe exit ${code}: ${err.slice(-300)}`));
     });
-    timeoutId = setTimeout(() => {
-      if (resolved) return;
-      ffmpeg.kill();
-      safeResolve(null);
-    }, 3e4);
+    p.on("error", reject);
   });
 }
-const thumbnailHandler = {
-  /**
-   * Generate a thumbnail for an episode from the video file
-   * @param videoPath Path to the video file
-   * @param timestamp Timestamp in seconds (default: 120 = 2 minutes)
-   * @param resetProgressBar Reset the progress bar (use true for first thumbnail in a batch)
-   */
-  async generateThumbnail(videoPath, timestamp = 120, resetProgressBar = true) {
-    if (!videoPath) return null;
+function runFfmpeg(args) {
+  return new Promise((resolve2, reject) => {
+    const p = spawn$1("ffmpeg", args, { stdio: ["ignore", "ignore", "pipe"] });
+    let err = "";
+    p.stderr.on("data", (d) => {
+      err += d.toString();
+    });
+    p.on("close", (code) => {
+      if (code === 0) resolve2();
+      else reject(new Error(`ffmpeg exit ${code}: ${err.slice(-300)}`));
+    });
+    p.on("error", reject);
+  });
+}
+const subtitleHandler = {
+  async listEmbedded(videoPath) {
+    if (!existsSync$1(videoPath)) return [];
     try {
-      return await extractFrame(videoPath, timestamp, resetProgressBar);
-    } catch (error) {
-      console.error(`Error generating thumbnail for ${videoPath}:`, error);
+      const json = await runFfprobe([
+        "-v",
+        "error",
+        "-select_streams",
+        "s",
+        "-show_entries",
+        "stream=index,codec_name:stream_tags=language,title",
+        "-of",
+        "json",
+        videoPath
+      ]);
+      const parsed = JSON.parse(json);
+      const all3 = (parsed.streams || []).map((s) => ({
+        streamIndex: s.index,
+        codec: s.codec_name ?? "",
+        language: s.tags?.language ?? null,
+        title: s.tags?.title ?? null
+      }));
+      const text = all3.filter((s) => targetFormat(s.codec) !== null);
+      if (all3.length !== text.length) {
+        logger.info("metadata", `Skipping ${all3.length - text.length} non-text subtitle stream(s) (bitmap)`, { file: videoPath });
+      }
+      return text;
+    } catch (err) {
+      logger.warn("metadata", `Failed to list embedded subtitles: ${err.message}`, { file: videoPath });
+      return [];
+    }
+  },
+  /**
+   * Extracts an embedded subtitle stream to a cache file. Preserves ASS/SSA
+   * as ASS so libass (JASSUB) in the renderer can render it with full styling.
+   * Other text formats convert to WebVTT for the browser's native track flow.
+   * Returns the cache path and the format so the renderer knows which path
+   * to take.
+   */
+  async extractEmbedded(videoPath, streamIndex, codec) {
+    if (!existsSync$1(videoPath)) return null;
+    const fmt = targetFormat(codec);
+    if (!fmt) return null;
+    try {
+      const stats = await stat$1(videoPath);
+      const dir = await ensureCacheDir();
+      const filename = `${cacheKeyHash(videoPath, stats.mtimeMs, streamIndex)}.${fmt}`;
+      const out = join$2(dir, filename);
+      if (existsSync$1(out)) return { path: out, format: fmt };
+      await runFfmpeg([
+        "-y",
+        "-i",
+        videoPath,
+        "-map",
+        `0:${streamIndex}`,
+        "-c:s",
+        fmt === "ass" ? "ass" : "webvtt",
+        out
+      ]);
+      logger.info("metadata", `Extracted embedded subtitle stream ${streamIndex} (${fmt}) → cache`, { file: videoPath });
+      return { path: out, format: fmt };
+    } catch (err) {
+      logger.warn("metadata", `Failed to extract embedded subtitle stream ${streamIndex}: ${err.message}`, { file: videoPath });
       return null;
     }
-  },
+  }
+};
+const aniSkipHandler = {
   /**
-   * Generate thumbnails for multiple video files
-   * Processes sequentially to avoid overwhelming the system
+   * Fetch intro/outro skip times for one episode from the AniSkip community
+   * database, then write them onto the matching entry in metadata.json. Marks
+   * the episode as `skipFetched` so we don't refetch on every play (a miss is
+   * a stable answer for that episode/length combination).
    */
-  async generateThumbnails(videoPaths) {
-    const results = /* @__PURE__ */ new Map();
-    for (const videoPath of videoPaths) {
-      const thumbnail = await this.generateThumbnail(videoPath);
-      results.set(videoPath, thumbnail);
+  async fetchAndCache(seriesId, malId, episodeNumber, episodeLength) {
+    if (!malId || !episodeNumber || !episodeLength || episodeLength <= 0) {
+      return {};
     }
-    return results;
-  },
-  /**
-   * Get the thumbnail cache directory path
-   */
-  getCachePath() {
-    return getThumbnailCachePath();
-  },
-  /**
-   * Check if ffmpeg is available
-   */
-  async isFFmpegAvailable() {
-    return new Promise((resolve2) => {
-      const ffmpeg = spawn("ffmpeg", ["-version"], {
-        stdio: ["ignore", "ignore", "ignore"]
+    const url = `https://api.aniskip.com/v2/skip-times/${malId}/${episodeNumber}?types[]=op&types[]=ed&episodeLength=${Math.round(episodeLength)}`;
+    let times = {};
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        if (resp.status !== 404) {
+          logger.warn("metadata", `AniSkip ${resp.status} for malId=${malId} ep=${episodeNumber}`);
+        }
+      } else {
+        const data = await resp.json();
+        for (const r of data.results ?? []) {
+          if (r.skipType === "op" || r.skipType === "mixed-op") {
+            times.op = { start: r.interval.startTime, end: r.interval.endTime };
+          } else if (r.skipType === "ed" || r.skipType === "mixed-ed") {
+            times.ed = { start: r.interval.startTime, end: r.interval.endTime };
+          }
+        }
+        const summary = [
+          times.op ? `op=[${times.op.start.toFixed(0)},${times.op.end.toFixed(0)}]` : null,
+          times.ed ? `ed=[${times.ed.start.toFixed(0)},${times.ed.end.toFixed(0)}]` : null
+        ].filter(Boolean).join(" ");
+        logger.info("metadata", `AniSkip ${data.found ? "hit" : "miss"} mal=${malId} ep=${episodeNumber}${summary ? " " + summary : ""}`);
+      }
+    } catch (err) {
+      logger.warn("metadata", `AniSkip request failed: ${err.message}`);
+      return times;
+    }
+    try {
+      await metadataHandler.transaction(async (meta) => {
+        const series = meta[seriesId];
+        if (!series?.episodes) return { result: void 0, updated: null };
+        const ep = series.episodes.find((e) => e.episodeNumber === episodeNumber);
+        if (!ep) return { result: void 0, updated: null };
+        ep.opStart = times.op?.start;
+        ep.opEnd = times.op?.end;
+        ep.edStart = times.ed?.start;
+        ep.edEnd = times.ed?.end;
+        ep.skipFetched = true;
+        return { result: void 0, updated: meta };
       });
-      ffmpeg.on("close", (code) => {
-        resolve2(code === 0);
-      });
-      ffmpeg.on("error", () => {
-        resolve2(false);
-      });
-      setTimeout(() => {
-        ffmpeg.kill();
-        resolve2(false);
-      }, 5e3);
+    } catch (err) {
+      logger.warn("metadata", `AniSkip cache write failed: ${err.message}`);
+    }
+    return times;
+  }
+};
+const DEFAULT_STORE = {
+  anilist: null,
+  mal: null,
+  clientIds: { anilist: "", mal: "" },
+  clientSecretCiphers: { anilist: "", mal: "" },
+  clientSecretsEncrypted: true,
+  version: 1
+};
+function storePath() {
+  return join$1(app.getPath("userData"), "trackers.json");
+}
+async function ensureDir() {
+  try {
+    await mkdir(app.getPath("userData"), { recursive: true });
+  } catch (err) {
+    if (err.code !== "EEXIST") throw err;
+  }
+}
+let cache = null;
+async function loadStore() {
+  if (cache) return cache;
+  try {
+    await ensureDir();
+    const raw = await readFile(storePath(), "utf-8");
+    const parsed = JSON.parse(raw);
+    cache = {
+      ...DEFAULT_STORE,
+      ...parsed,
+      clientIds: { ...DEFAULT_STORE.clientIds, ...parsed.clientIds ?? {} },
+      clientSecretCiphers: { ...DEFAULT_STORE.clientSecretCiphers, ...parsed.clientSecretCiphers ?? {} }
+    };
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      cache = { ...DEFAULT_STORE };
+    } else {
+      logger.error("tracker", `failed to load tracker store: ${err.message}`);
+      cache = { ...DEFAULT_STORE };
+    }
+  }
+  return cache;
+}
+async function saveStore(store) {
+  await ensureDir();
+  await writeFile(storePath(), JSON.stringify(store, null, 2), "utf-8");
+  cache = store;
+}
+function encrypt(plain) {
+  if (!plain) return { cipher: "", encrypted: false };
+  if (safeStorage.isEncryptionAvailable()) {
+    return { cipher: safeStorage.encryptString(plain).toString("base64"), encrypted: true };
+  }
+  logger.warn("tracker", "safeStorage unavailable — token persisted as plaintext");
+  return { cipher: Buffer.from(plain, "utf-8").toString("base64"), encrypted: false };
+}
+function decrypt(cipher, encrypted) {
+  if (!cipher) return "";
+  const buf = Buffer.from(cipher, "base64");
+  if (encrypted) return safeStorage.decryptString(buf);
+  return buf.toString("utf-8");
+}
+async function setAccount(provider, opts) {
+  const store = await loadStore();
+  const access2 = encrypt(opts.accessToken);
+  const refresh = opts.refreshToken ? encrypt(opts.refreshToken) : null;
+  const account = {
+    username: opts.username,
+    userId: opts.userId,
+    expiresAt: opts.expiresAt ?? null,
+    lastSync: null,
+    clientId: opts.clientId,
+    accessTokenCipher: access2.cipher,
+    refreshTokenCipher: refresh?.cipher ?? null,
+    cipherEncrypted: access2.encrypted
+  };
+  store[provider] = account;
+  store.clientIds[provider] = opts.clientId;
+  await saveStore(store);
+  return account;
+}
+async function clearAccount(provider) {
+  const store = await loadStore();
+  store[provider] = null;
+  await saveStore(store);
+}
+async function getAccount(provider) {
+  const store = await loadStore();
+  return store[provider];
+}
+async function getAccessToken(provider) {
+  const acct = await getAccount(provider);
+  if (!acct) return null;
+  try {
+    return decrypt(acct.accessTokenCipher, acct.cipherEncrypted);
+  } catch (err) {
+    logger.error("tracker", `failed to decrypt ${provider} token: ${err.message}`);
+    return null;
+  }
+}
+async function setClientId(provider, clientId) {
+  const store = await loadStore();
+  store.clientIds[provider] = clientId.trim();
+  await saveStore(store);
+}
+async function getClientId(provider) {
+  const store = await loadStore();
+  return store.clientIds[provider] ?? "";
+}
+async function setClientSecret(provider, plain) {
+  const store = await loadStore();
+  if (!plain.trim()) {
+    store.clientSecretCiphers[provider] = "";
+  } else {
+    const enc = encrypt(plain.trim());
+    store.clientSecretCiphers[provider] = enc.cipher;
+    store.clientSecretsEncrypted = enc.encrypted;
+  }
+  await saveStore(store);
+}
+async function getClientSecret(provider) {
+  const store = await loadStore();
+  const cipher = store.clientSecretCiphers[provider];
+  if (!cipher) return "";
+  try {
+    return decrypt(cipher, store.clientSecretsEncrypted);
+  } catch (err) {
+    logger.error("tracker", `failed to decrypt ${provider} secret: ${err.message}`);
+    return "";
+  }
+}
+async function markSync(provider) {
+  const store = await loadStore();
+  const acct = store[provider];
+  if (!acct) return;
+  acct.lastSync = Date.now();
+  await saveStore(store);
+}
+async function getStatus(provider) {
+  const store = await loadStore();
+  const acct = store[provider];
+  return {
+    connected: !!acct,
+    username: acct?.username ?? null,
+    expiresAt: acct?.expiresAt ?? null,
+    lastSync: acct?.lastSync ?? null,
+    clientId: acct?.clientId ?? store.clientIds[provider] ?? "",
+    hasClientSecret: !!store.clientSecretCiphers[provider],
+    cipherEncrypted: acct?.cipherEncrypted ?? true
+  };
+}
+const LOOPBACK_HOST = "127.0.0.1";
+const LOOPBACK_PORT = 53682;
+const LOOPBACK_REDIRECT_URI = `http://${LOOPBACK_HOST}:${LOOPBACK_PORT}/callback`;
+let pending = null;
+const FLOW_TIMEOUT_MS = 5 * 60 * 1e3;
+const ANILIST_API = "https://graphql.anilist.co";
+const MAL_OAUTH = "https://myanimelist.net/v1/oauth2";
+const MAL_API = "https://api.myanimelist.net/v2";
+const SUCCESS_PAGE = (provider) => `<!doctype html><html><head><meta charset="utf-8">
+<title>AniBeam — connected</title>
+<style>html,body{margin:0;height:100%;background:#0b0b10;color:#f1f5f9;font-family:'JetBrains Mono',ui-monospace,monospace;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:0.5rem}h1{font-weight:500;font-size:1rem}p{color:#94a3b8;font-size:0.85rem}</style></head>
+<body><h1>${provider} connected</h1><p>You can close this tab and return to AniBeam.</p></body></html>`;
+const ERROR_PAGE = (msg) => `<!doctype html><html><head><meta charset="utf-8">
+<title>AniBeam — auth failed</title>
+<style>html,body{margin:0;height:100%;background:#0b0b10;color:#f1f5f9;font-family:'JetBrains Mono',ui-monospace,monospace;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:0.5rem}h1{font-weight:500;font-size:1rem;color:#f43f5e}p{color:#94a3b8;font-size:0.85rem}</style></head>
+<body><h1>Authentication failed</h1><p>${msg}</p></body></html>`;
+const FRAGMENT_FORWARDER = `<!doctype html><html><head><meta charset="utf-8"><title>Connecting…</title>
+<style>html,body{margin:0;height:100%;background:#0b0b10;color:#94a3b8;font-family:'JetBrains Mono',ui-monospace,monospace;display:flex;align-items:center;justify-content:center}</style></head>
+<body>Connecting…<script>
+(function(){
+  var h=window.location.hash;
+  if(!h){document.body.textContent='No token in URL.';return;}
+  // Replace # with ? and reload so the params land in the query string.
+  window.location.replace(window.location.pathname+'?'+h.slice(1));
+})();
+<\/script></body></html>`;
+function randomToken(bytes = 32) {
+  return randomBytes(bytes).toString("base64url");
+}
+function pkceVerifier() {
+  return randomBytes(32).toString("base64url");
+}
+function pkceChallenge(verifier) {
+  return { challenge: verifier, method: "plain" };
+}
+function bindLoopback(handler) {
+  return new Promise((resolve2, reject) => {
+    const server = createServer(handler);
+    server.once("error", (err) => {
+      if (err.code === "EADDRINUSE") {
+        reject(new Error(`Port ${LOOPBACK_PORT} is in use — close any other AniBeam instance and try again.`));
+      } else {
+        reject(err);
+      }
     });
+    server.listen(LOOPBACK_PORT, LOOPBACK_HOST, () => {
+      const addr = server.address();
+      resolve2({ server, port: addr.port });
+    });
+  });
+}
+function closeFlow() {
+  if (!pending) return;
+  try {
+    clearTimeout(pending.timeoutHandle);
+  } catch {
+  }
+  try {
+    pending.server.close();
+  } catch {
+  }
+  pending = null;
+}
+async function startConnect(provider, clientId, clientSecret) {
+  if (pending) {
+    logger.info("tracker", `cancelling stale ${pending.provider} flow before starting ${provider}`);
+    pending.reject(new Error("superseded by a new connect"));
+    closeFlow();
+  }
+  if (!clientId.trim()) throw new Error(`No client ID set for ${provider}.`);
+  await setClientId(provider, clientId.trim());
+  if (clientSecret.trim()) {
+    await setClientSecret(provider, clientSecret.trim());
+  }
+  const effectiveSecret = clientSecret.trim() || await getClientSecret(provider);
+  if (provider === "mal" && !effectiveSecret) {
+    throw new Error("MAL requires a client secret. Paste it in the Trackers tab, or set ANIBEAM_MAL_CLIENT_SECRET in .env.local for build-time bundling.");
+  }
+  const state = randomToken(16);
+  const verifier = pkceVerifier();
+  const tokens = await new Promise((resolve2, reject) => {
+    const handler = (req, res) => {
+      const url = new URL(req.url ?? "/", `http://${LOOPBACK_HOST}:0`);
+      if (url.pathname !== "/callback") {
+        res.writeHead(404).end("not found");
+        return;
+      }
+      if (provider === "anilist" && !url.searchParams.has("access_token") && !url.searchParams.has("error")) {
+        res.writeHead(200, { "Content-Type": "text/html" });
+        res.end(FRAGMENT_FORWARDER);
+        return;
+      }
+      const error = url.searchParams.get("error");
+      if (error) {
+        res.writeHead(400, { "Content-Type": "text/html" });
+        res.end(ERROR_PAGE(error));
+        reject(new Error(`Provider returned error: ${error}`));
+        return;
+      }
+      if (provider !== "anilist") {
+        const returnedState = url.searchParams.get("state");
+        if (returnedState !== state) {
+          res.writeHead(400, { "Content-Type": "text/html" });
+          res.end(ERROR_PAGE("state mismatch — possible CSRF, aborted."));
+          reject(new Error("OAuth state mismatch"));
+          return;
+        }
+      }
+      if (provider === "anilist") {
+        const accessToken = url.searchParams.get("access_token");
+        const expiresIn = url.searchParams.get("expires_in");
+        if (!accessToken) {
+          res.writeHead(400, { "Content-Type": "text/html" });
+          res.end(ERROR_PAGE("no access_token in callback"));
+          reject(new Error("AniList returned no access_token"));
+          return;
+        }
+        res.writeHead(200, { "Content-Type": "text/html" });
+        res.end(SUCCESS_PAGE("AniList"));
+        const expiresAt = expiresIn ? Date.now() + parseInt(expiresIn, 10) * 1e3 : null;
+        resolve2({ accessToken, expiresAt, refreshToken: null });
+        return;
+      }
+      const code = url.searchParams.get("code");
+      if (!code) {
+        res.writeHead(400, { "Content-Type": "text/html" });
+        res.end(ERROR_PAGE("no code in callback"));
+        reject(new Error("MAL returned no code"));
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(SUCCESS_PAGE("MyAnimeList"));
+      void exchangeMalCode(code, verifier, clientId, effectiveSecret, pending.redirectUri).then(resolve2).catch(reject);
+    };
+    void bindLoopback(handler).then(({ server }) => {
+      const timeoutHandle = setTimeout(() => {
+        if (pending?.server === server) {
+          logger.warn("tracker", `${provider} OAuth flow timed out after ${FLOW_TIMEOUT_MS / 1e3}s`);
+          reject(new Error("Authorization timed out — try again."));
+          closeFlow();
+        }
+      }, FLOW_TIMEOUT_MS);
+      pending = { provider, state, codeVerifier: verifier, redirectUri: LOOPBACK_REDIRECT_URI, clientId, clientSecret: effectiveSecret, server, resolve: resolve2, reject, timeoutHandle };
+      const authUrl = buildAuthUrl(provider, clientId, state, verifier, LOOPBACK_REDIRECT_URI);
+      logger.info("tracker", `${provider} OAuth started, redirect uri = ${LOOPBACK_REDIRECT_URI}`);
+      void shell.openExternal(authUrl);
+    }).catch(reject);
+  }).finally(() => {
+    closeFlow();
+  });
+  const profile = await fetchProfile(provider, tokens.accessToken);
+  const account = await setAccount(provider, {
+    username: profile.username,
+    userId: profile.userId,
+    accessToken: tokens.accessToken,
+    refreshToken: tokens.refreshToken,
+    expiresAt: tokens.expiresAt,
+    clientId
+  });
+  logger.info("tracker", `${provider} connected as ${account.username ?? "?"}`);
+  return getStatus(provider);
+}
+function cancelConnect() {
+  if (!pending) return;
+  pending.reject(new Error("cancelled"));
+  closeFlow();
+}
+function buildAuthUrl(provider, clientId, state, verifier, redirectUri) {
+  if (provider === "anilist") {
+    const u2 = new URL("https://anilist.co/api/v2/oauth/authorize");
+    u2.searchParams.set("client_id", clientId);
+    u2.searchParams.set("response_type", "token");
+    return u2.toString();
+  }
+  const ch = pkceChallenge(verifier);
+  const u = new URL(`${MAL_OAUTH}/authorize`);
+  u.searchParams.set("response_type", "code");
+  u.searchParams.set("client_id", clientId);
+  u.searchParams.set("redirect_uri", redirectUri);
+  u.searchParams.set("state", state);
+  u.searchParams.set("code_challenge", ch.challenge);
+  u.searchParams.set("code_challenge_method", ch.method);
+  return u.toString();
+}
+async function exchangeMalCode(code, verifier, clientId, clientSecret, redirectUri) {
+  const body = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    code,
+    code_verifier: verifier,
+    grant_type: "authorization_code",
+    redirect_uri: redirectUri
+  });
+  const resp = await axios.post(`${MAL_OAUTH}/token`, body.toString(), {
+    headers: { "Content-Type": "application/x-www-form-urlencoded" }
+  });
+  const data = resp.data;
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
+    expiresAt: Date.now() + data.expires_in * 1e3
+  };
+}
+async function fetchProfile(provider, accessToken) {
+  if (provider === "anilist") {
+    const data2 = await request(
+      ANILIST_API,
+      gql`query { Viewer { id name } }`,
+      {},
+      { Authorization: `Bearer ${accessToken}` }
+    );
+    return { username: data2.Viewer.name, userId: data2.Viewer.id };
+  }
+  const resp = await axios.get(`${MAL_API}/users/@me`, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  const data = resp.data;
+  return { username: data.name, userId: data.id };
+}
+async function markEpisode(args) {
+  const acct = await getAccount(args.provider);
+  const token = await getAccessToken(args.provider);
+  if (!acct || !token) {
+    return { ok: false, provider: args.provider, newProgress: null, previousProgress: null, reason: "no-account" };
+  }
+  if (!args.mediaId) {
+    return { ok: false, provider: args.provider, newProgress: null, previousProgress: null, reason: "no-id" };
+  }
+  const ep = Math.floor(args.episodeNumber);
+  if (!Number.isFinite(ep) || ep <= 0) {
+    return { ok: false, provider: args.provider, newProgress: null, previousProgress: null, reason: "no-id", message: "invalid episode" };
+  }
+  try {
+    if (args.provider === "anilist") {
+      return await markAnilist(token, args.mediaId, ep, args.totalEpisodes ?? null);
+    }
+    return await markMal(token, args.mediaId, ep, args.totalEpisodes ?? null);
+  } catch (err) {
+    const message = err.message;
+    logger.error("tracker", `${args.provider} mark failed: ${message}`);
+    return { ok: false, provider: args.provider, newProgress: null, previousProgress: null, reason: "error", message };
+  }
+}
+async function markAnilist(token, mediaId, ep, total) {
+  const headers = { Authorization: `Bearer ${token}` };
+  const current = await request(
+    ANILIST_API,
+    gql`query ($mediaId: Int) { MediaList(mediaId: $mediaId) { progress status } }`,
+    { mediaId },
+    headers
+  ).catch(() => ({ MediaList: null }));
+  const previousProgress = current.MediaList?.progress ?? 0;
+  if (previousProgress >= ep) {
+    return { ok: false, provider: "anilist", newProgress: previousProgress, previousProgress, reason: "not-newer" };
+  }
+  const isComplete = total != null && ep >= total;
+  const newStatus = isComplete ? "COMPLETED" : "CURRENT";
+  await request(
+    ANILIST_API,
+    gql`mutation ($mediaId: Int, $progress: Int, $status: MediaListStatus) {
+      SaveMediaListEntry(mediaId: $mediaId, progress: $progress, status: $status) {
+        id progress status
+      }
+    }`,
+    { mediaId, progress: ep, status: newStatus },
+    headers
+  );
+  await markSync("anilist");
+  logger.info("tracker", `anilist ${previousProgress} → ${ep} (mediaId ${mediaId})`);
+  return { ok: true, provider: "anilist", newProgress: ep, previousProgress };
+}
+async function markMal(token, mediaId, ep, total) {
+  const headers = { Authorization: `Bearer ${token}` };
+  let previousProgress = 0;
+  try {
+    const resp = await axios.get(`${MAL_API}/anime/${mediaId}`, {
+      params: { fields: "my_list_status" },
+      headers
+    });
+    const status = resp.data?.my_list_status;
+    previousProgress = status?.num_episodes_watched ?? 0;
+  } catch (err) {
+    if (axios.isAxiosError(err) && err.response?.status === 404) {
+      previousProgress = 0;
+    } else {
+      throw err;
+    }
+  }
+  if (previousProgress >= ep) {
+    return { ok: false, provider: "mal", newProgress: previousProgress, previousProgress, reason: "not-newer" };
+  }
+  const isComplete = total != null && ep >= total;
+  const body = new URLSearchParams();
+  body.set("num_watched_episodes", String(ep));
+  body.set("status", isComplete ? "completed" : "watching");
+  await axios.patch(`${MAL_API}/anime/${mediaId}/my_list_status`, body.toString(), {
+    headers: { ...headers, "Content-Type": "application/x-www-form-urlencoded" }
+  });
+  await markSync("mal");
+  logger.info("tracker", `mal ${previousProgress} → ${ep} (mediaId ${mediaId})`);
+  return { ok: true, provider: "mal", newProgress: ep, previousProgress };
+}
+const trackerHandler = {
+  startConnect: (provider, clientId, clientSecret) => startConnect(provider, clientId, clientSecret),
+  cancelConnect,
+  markEpisode,
+  async disconnect(provider) {
+    await clearAccount(provider);
+    return getStatus(provider);
+  },
+  async status(provider) {
+    return getStatus(provider);
+  },
+  async setClientId(provider, clientId) {
+    await setClientId(provider, clientId);
+  },
+  async getClientId(provider) {
+    return getClientId(provider);
+  }
+};
+const EntryTypes = {
+  FILE_TYPE: "files",
+  DIR_TYPE: "directories",
+  FILE_DIR_TYPE: "files_directories",
+  EVERYTHING_TYPE: "all"
+};
+const defaultOptions = {
+  root: ".",
+  fileFilter: (_entryInfo) => true,
+  directoryFilter: (_entryInfo) => true,
+  type: EntryTypes.FILE_TYPE,
+  lstat: false,
+  depth: 2147483648,
+  alwaysStat: false,
+  highWaterMark: 4096
+};
+Object.freeze(defaultOptions);
+const RECURSIVE_ERROR_CODE = "READDIRP_RECURSIVE_ERROR";
+const NORMAL_FLOW_ERRORS = /* @__PURE__ */ new Set(["ENOENT", "EPERM", "EACCES", "ELOOP", RECURSIVE_ERROR_CODE]);
+const ALL_TYPES = [
+  EntryTypes.DIR_TYPE,
+  EntryTypes.EVERYTHING_TYPE,
+  EntryTypes.FILE_DIR_TYPE,
+  EntryTypes.FILE_TYPE
+];
+const DIR_TYPES = /* @__PURE__ */ new Set([
+  EntryTypes.DIR_TYPE,
+  EntryTypes.EVERYTHING_TYPE,
+  EntryTypes.FILE_DIR_TYPE
+]);
+const FILE_TYPES = /* @__PURE__ */ new Set([
+  EntryTypes.EVERYTHING_TYPE,
+  EntryTypes.FILE_DIR_TYPE,
+  EntryTypes.FILE_TYPE
+]);
+const isNormalFlowError = (error) => NORMAL_FLOW_ERRORS.has(error.code);
+const wantBigintFsStats = process.platform === "win32";
+const emptyFn = (_entryInfo) => true;
+const normalizeFilter = (filter2) => {
+  if (filter2 === void 0)
+    return emptyFn;
+  if (typeof filter2 === "function")
+    return filter2;
+  if (typeof filter2 === "string") {
+    const fl = filter2.trim();
+    return (entry) => entry.basename === fl;
+  }
+  if (Array.isArray(filter2)) {
+    const trItems = filter2.map((item) => item.trim());
+    return (entry) => trItems.some((f) => entry.basename === f);
+  }
+  return emptyFn;
+};
+class ReaddirpStream extends Readable$1 {
+  parents;
+  reading;
+  parent;
+  _stat;
+  _maxDepth;
+  _wantsDir;
+  _wantsFile;
+  _wantsEverything;
+  _root;
+  _isDirent;
+  _statsProp;
+  _rdOptions;
+  _fileFilter;
+  _directoryFilter;
+  constructor(options2 = {}) {
+    super({
+      objectMode: true,
+      autoDestroy: true,
+      highWaterMark: options2.highWaterMark
+    });
+    const opts = { ...defaultOptions, ...options2 };
+    const { root, type: type2 } = opts;
+    this._fileFilter = normalizeFilter(opts.fileFilter);
+    this._directoryFilter = normalizeFilter(opts.directoryFilter);
+    const statMethod = opts.lstat ? lstat : stat$1;
+    if (wantBigintFsStats) {
+      this._stat = (path) => statMethod(path, { bigint: true });
+    } else {
+      this._stat = statMethod;
+    }
+    this._maxDepth = opts.depth != null && Number.isSafeInteger(opts.depth) ? opts.depth : defaultOptions.depth;
+    this._wantsDir = type2 ? DIR_TYPES.has(type2) : false;
+    this._wantsFile = type2 ? FILE_TYPES.has(type2) : false;
+    this._wantsEverything = type2 === EntryTypes.EVERYTHING_TYPE;
+    this._root = resolve(root);
+    this._isDirent = !opts.alwaysStat;
+    this._statsProp = this._isDirent ? "dirent" : "stats";
+    this._rdOptions = { encoding: "utf8", withFileTypes: this._isDirent };
+    this.parents = [this._exploreDir(root, 1)];
+    this.reading = false;
+    this.parent = void 0;
+  }
+  async _read(batch) {
+    if (this.reading)
+      return;
+    this.reading = true;
+    try {
+      while (!this.destroyed && batch > 0) {
+        const par = this.parent;
+        const fil = par && par.files;
+        if (fil && fil.length > 0) {
+          const { path, depth } = par;
+          const slice = fil.splice(0, batch).map((dirent) => this._formatEntry(dirent, path));
+          const awaited = await Promise.all(slice);
+          for (const entry of awaited) {
+            if (!entry)
+              continue;
+            if (this.destroyed)
+              return;
+            const entryType = await this._getEntryType(entry);
+            if (entryType === "directory" && this._directoryFilter(entry)) {
+              if (depth <= this._maxDepth) {
+                this.parents.push(this._exploreDir(entry.fullPath, depth + 1));
+              }
+              if (this._wantsDir) {
+                this.push(entry);
+                batch--;
+              }
+            } else if ((entryType === "file" || this._includeAsFile(entry)) && this._fileFilter(entry)) {
+              if (this._wantsFile) {
+                this.push(entry);
+                batch--;
+              }
+            }
+          }
+        } else {
+          const parent = this.parents.pop();
+          if (!parent) {
+            this.push(null);
+            break;
+          }
+          this.parent = await parent;
+          if (this.destroyed)
+            return;
+        }
+      }
+    } catch (error) {
+      this.destroy(error);
+    } finally {
+      this.reading = false;
+    }
+  }
+  async _exploreDir(path, depth) {
+    let files;
+    try {
+      files = await readdir$1(path, this._rdOptions);
+    } catch (error) {
+      this._onError(error);
+    }
+    return { files, depth, path };
+  }
+  async _formatEntry(dirent, path) {
+    let entry;
+    const basename2 = this._isDirent ? dirent.name : dirent;
+    try {
+      const fullPath = resolve(join$2(path, basename2));
+      entry = { path: relative(this._root, fullPath), fullPath, basename: basename2 };
+      entry[this._statsProp] = this._isDirent ? dirent : await this._stat(fullPath);
+    } catch (err) {
+      this._onError(err);
+      return;
+    }
+    return entry;
+  }
+  _onError(err) {
+    if (isNormalFlowError(err) && !this.destroyed) {
+      this.emit("warn", err);
+    } else {
+      this.destroy(err);
+    }
+  }
+  async _getEntryType(entry) {
+    if (!entry && this._statsProp in entry) {
+      return "";
+    }
+    const stats = entry[this._statsProp];
+    if (stats.isFile())
+      return "file";
+    if (stats.isDirectory())
+      return "directory";
+    if (stats && stats.isSymbolicLink()) {
+      const full = entry.fullPath;
+      try {
+        const entryRealPath = await realpath(full);
+        const entryRealPathStats = await lstat(entryRealPath);
+        if (entryRealPathStats.isFile()) {
+          return "file";
+        }
+        if (entryRealPathStats.isDirectory()) {
+          const len = entryRealPath.length;
+          if (full.startsWith(entryRealPath) && full.substr(len, 1) === sep) {
+            const recursiveError = new Error(`Circular symlink detected: "${full}" points to "${entryRealPath}"`);
+            recursiveError.code = RECURSIVE_ERROR_CODE;
+            return this._onError(recursiveError);
+          }
+          return "directory";
+        }
+      } catch (error) {
+        this._onError(error);
+        return "";
+      }
+    }
+  }
+  _includeAsFile(entry) {
+    const stats = entry && entry[this._statsProp];
+    return stats && this._wantsEverything && !stats.isDirectory();
+  }
+}
+function readdirp(root, options2 = {}) {
+  let type2 = options2.entryType || options2.type;
+  if (type2 === "both")
+    type2 = EntryTypes.FILE_DIR_TYPE;
+  if (type2)
+    options2.type = type2;
+  if (!root) {
+    throw new Error("readdirp: root argument is required. Usage: readdirp(root, options)");
+  } else if (typeof root !== "string") {
+    throw new TypeError("readdirp: root argument must be a string. Usage: readdirp(root, options)");
+  } else if (type2 && !ALL_TYPES.includes(type2)) {
+    throw new Error(`readdirp: Invalid type passed. Use one of ${ALL_TYPES.join(", ")}`);
+  }
+  options2.root = root;
+  return new ReaddirpStream(options2);
+}
+const STR_DATA = "data";
+const STR_END = "end";
+const STR_CLOSE = "close";
+const EMPTY_FN = () => {
+};
+const pl = process.platform;
+const isWindows = pl === "win32";
+const isMacos = pl === "darwin";
+const isLinux = pl === "linux";
+const isFreeBSD = pl === "freebsd";
+const isIBMi = type$1() === "OS400";
+const EVENTS = {
+  ALL: "all",
+  READY: "ready",
+  ADD: "add",
+  CHANGE: "change",
+  ADD_DIR: "addDir",
+  UNLINK: "unlink",
+  UNLINK_DIR: "unlinkDir",
+  RAW: "raw",
+  ERROR: "error"
+};
+const EV = EVENTS;
+const THROTTLE_MODE_WATCH = "watch";
+const statMethods = { lstat, stat: stat$1 };
+const KEY_LISTENERS = "listeners";
+const KEY_ERR = "errHandlers";
+const KEY_RAW = "rawEmitters";
+const HANDLER_KEYS = [KEY_LISTENERS, KEY_ERR, KEY_RAW];
+const binaryExtensions = /* @__PURE__ */ new Set([
+  "3dm",
+  "3ds",
+  "3g2",
+  "3gp",
+  "7z",
+  "a",
+  "aac",
+  "adp",
+  "afdesign",
+  "afphoto",
+  "afpub",
+  "ai",
+  "aif",
+  "aiff",
+  "alz",
+  "ape",
+  "apk",
+  "appimage",
+  "ar",
+  "arj",
+  "asf",
+  "au",
+  "avi",
+  "bak",
+  "baml",
+  "bh",
+  "bin",
+  "bk",
+  "bmp",
+  "btif",
+  "bz2",
+  "bzip2",
+  "cab",
+  "caf",
+  "cgm",
+  "class",
+  "cmx",
+  "cpio",
+  "cr2",
+  "cur",
+  "dat",
+  "dcm",
+  "deb",
+  "dex",
+  "djvu",
+  "dll",
+  "dmg",
+  "dng",
+  "doc",
+  "docm",
+  "docx",
+  "dot",
+  "dotm",
+  "dra",
+  "DS_Store",
+  "dsk",
+  "dts",
+  "dtshd",
+  "dvb",
+  "dwg",
+  "dxf",
+  "ecelp4800",
+  "ecelp7470",
+  "ecelp9600",
+  "egg",
+  "eol",
+  "eot",
+  "epub",
+  "exe",
+  "f4v",
+  "fbs",
+  "fh",
+  "fla",
+  "flac",
+  "flatpak",
+  "fli",
+  "flv",
+  "fpx",
+  "fst",
+  "fvt",
+  "g3",
+  "gh",
+  "gif",
+  "graffle",
+  "gz",
+  "gzip",
+  "h261",
+  "h263",
+  "h264",
+  "icns",
+  "ico",
+  "ief",
+  "img",
+  "ipa",
+  "iso",
+  "jar",
+  "jpeg",
+  "jpg",
+  "jpgv",
+  "jpm",
+  "jxr",
+  "key",
+  "ktx",
+  "lha",
+  "lib",
+  "lvp",
+  "lz",
+  "lzh",
+  "lzma",
+  "lzo",
+  "m3u",
+  "m4a",
+  "m4v",
+  "mar",
+  "mdi",
+  "mht",
+  "mid",
+  "midi",
+  "mj2",
+  "mka",
+  "mkv",
+  "mmr",
+  "mng",
+  "mobi",
+  "mov",
+  "movie",
+  "mp3",
+  "mp4",
+  "mp4a",
+  "mpeg",
+  "mpg",
+  "mpga",
+  "mxu",
+  "nef",
+  "npx",
+  "numbers",
+  "nupkg",
+  "o",
+  "odp",
+  "ods",
+  "odt",
+  "oga",
+  "ogg",
+  "ogv",
+  "otf",
+  "ott",
+  "pages",
+  "pbm",
+  "pcx",
+  "pdb",
+  "pdf",
+  "pea",
+  "pgm",
+  "pic",
+  "png",
+  "pnm",
+  "pot",
+  "potm",
+  "potx",
+  "ppa",
+  "ppam",
+  "ppm",
+  "pps",
+  "ppsm",
+  "ppsx",
+  "ppt",
+  "pptm",
+  "pptx",
+  "psd",
+  "pya",
+  "pyc",
+  "pyo",
+  "pyv",
+  "qt",
+  "rar",
+  "ras",
+  "raw",
+  "resources",
+  "rgb",
+  "rip",
+  "rlc",
+  "rmf",
+  "rmvb",
+  "rpm",
+  "rtf",
+  "rz",
+  "s3m",
+  "s7z",
+  "scpt",
+  "sgi",
+  "shar",
+  "snap",
+  "sil",
+  "sketch",
+  "slk",
+  "smv",
+  "snk",
+  "so",
+  "stl",
+  "suo",
+  "sub",
+  "swf",
+  "tar",
+  "tbz",
+  "tbz2",
+  "tga",
+  "tgz",
+  "thmx",
+  "tif",
+  "tiff",
+  "tlz",
+  "ttc",
+  "ttf",
+  "txz",
+  "udf",
+  "uvh",
+  "uvi",
+  "uvm",
+  "uvp",
+  "uvs",
+  "uvu",
+  "viv",
+  "vob",
+  "war",
+  "wav",
+  "wax",
+  "wbmp",
+  "wdp",
+  "weba",
+  "webm",
+  "webp",
+  "whl",
+  "wim",
+  "wm",
+  "wma",
+  "wmv",
+  "wmx",
+  "woff",
+  "woff2",
+  "wrm",
+  "wvx",
+  "xbm",
+  "xif",
+  "xla",
+  "xlam",
+  "xls",
+  "xlsb",
+  "xlsm",
+  "xlsx",
+  "xlt",
+  "xltm",
+  "xltx",
+  "xm",
+  "xmind",
+  "xpi",
+  "xpm",
+  "xwd",
+  "xz",
+  "z",
+  "zip",
+  "zipx"
+]);
+const isBinaryPath = (filePath) => binaryExtensions.has(sp.extname(filePath).slice(1).toLowerCase());
+const foreach = (val, fn) => {
+  if (val instanceof Set) {
+    val.forEach(fn);
+  } else {
+    fn(val);
+  }
+};
+const addAndConvert = (main, prop, item) => {
+  let container = main[prop];
+  if (!(container instanceof Set)) {
+    main[prop] = container = /* @__PURE__ */ new Set([container]);
+  }
+  container.add(item);
+};
+const clearItem = (cont) => (key) => {
+  const set = cont[key];
+  if (set instanceof Set) {
+    set.clear();
+  } else {
+    delete cont[key];
+  }
+};
+const delFromSet = (main, prop, item) => {
+  const container = main[prop];
+  if (container instanceof Set) {
+    container.delete(item);
+  } else if (container === item) {
+    delete main[prop];
+  }
+};
+const isEmptySet = (val) => val instanceof Set ? val.size === 0 : !val;
+const FsWatchInstances = /* @__PURE__ */ new Map();
+function createFsWatchInstance(path, options2, listener, errHandler, emitRaw) {
+  const handleEvent = (rawEvent, evPath) => {
+    listener(path);
+    emitRaw(rawEvent, evPath, { watchedPath: path });
+    if (evPath && path !== evPath) {
+      fsWatchBroadcast(sp.resolve(path, evPath), KEY_LISTENERS, sp.join(path, evPath));
+    }
+  };
+  try {
+    return watch$1(path, {
+      persistent: options2.persistent
+    }, handleEvent);
+  } catch (error) {
+    errHandler(error);
+    return void 0;
+  }
+}
+const fsWatchBroadcast = (fullPath, listenerType, val1, val2, val3) => {
+  const cont = FsWatchInstances.get(fullPath);
+  if (!cont)
+    return;
+  foreach(cont[listenerType], (listener) => {
+    listener(val1, val2, val3);
+  });
+};
+const setFsWatchListener = (path, fullPath, options2, handlers) => {
+  const { listener, errHandler, rawEmitter } = handlers;
+  let cont = FsWatchInstances.get(fullPath);
+  let watcher2;
+  if (!options2.persistent) {
+    watcher2 = createFsWatchInstance(path, options2, listener, errHandler, rawEmitter);
+    if (!watcher2)
+      return;
+    return watcher2.close.bind(watcher2);
+  }
+  if (cont) {
+    addAndConvert(cont, KEY_LISTENERS, listener);
+    addAndConvert(cont, KEY_ERR, errHandler);
+    addAndConvert(cont, KEY_RAW, rawEmitter);
+  } else {
+    watcher2 = createFsWatchInstance(
+      path,
+      options2,
+      fsWatchBroadcast.bind(null, fullPath, KEY_LISTENERS),
+      errHandler,
+      // no need to use broadcast here
+      fsWatchBroadcast.bind(null, fullPath, KEY_RAW)
+    );
+    if (!watcher2)
+      return;
+    watcher2.on(EV.ERROR, async (error) => {
+      const broadcastErr = fsWatchBroadcast.bind(null, fullPath, KEY_ERR);
+      if (cont)
+        cont.watcherUnusable = true;
+      if (isWindows && error.code === "EPERM") {
+        try {
+          const fd = await open(path, "r");
+          await fd.close();
+          broadcastErr(error);
+        } catch (err) {
+        }
+      } else {
+        broadcastErr(error);
+      }
+    });
+    cont = {
+      listeners: listener,
+      errHandlers: errHandler,
+      rawEmitters: rawEmitter,
+      watcher: watcher2
+    };
+    FsWatchInstances.set(fullPath, cont);
+  }
+  return () => {
+    delFromSet(cont, KEY_LISTENERS, listener);
+    delFromSet(cont, KEY_ERR, errHandler);
+    delFromSet(cont, KEY_RAW, rawEmitter);
+    if (isEmptySet(cont.listeners)) {
+      cont.watcher.close();
+      FsWatchInstances.delete(fullPath);
+      HANDLER_KEYS.forEach(clearItem(cont));
+      cont.watcher = void 0;
+      Object.freeze(cont);
+    }
+  };
+};
+const FsWatchFileInstances = /* @__PURE__ */ new Map();
+const setFsWatchFileListener = (path, fullPath, options2, handlers) => {
+  const { listener, rawEmitter } = handlers;
+  let cont = FsWatchFileInstances.get(fullPath);
+  const copts = cont && cont.options;
+  if (copts && (copts.persistent < options2.persistent || copts.interval > options2.interval)) {
+    unwatchFile(fullPath);
+    cont = void 0;
+  }
+  if (cont) {
+    addAndConvert(cont, KEY_LISTENERS, listener);
+    addAndConvert(cont, KEY_RAW, rawEmitter);
+  } else {
+    cont = {
+      listeners: listener,
+      rawEmitters: rawEmitter,
+      options: options2,
+      watcher: watchFile(fullPath, options2, (curr, prev) => {
+        foreach(cont.rawEmitters, (rawEmitter2) => {
+          rawEmitter2(EV.CHANGE, fullPath, { curr, prev });
+        });
+        const currmtime = curr.mtimeMs;
+        if (curr.size !== prev.size || currmtime > prev.mtimeMs || currmtime === 0) {
+          foreach(cont.listeners, (listener2) => listener2(path, curr));
+        }
+      })
+    };
+    FsWatchFileInstances.set(fullPath, cont);
+  }
+  return () => {
+    delFromSet(cont, KEY_LISTENERS, listener);
+    delFromSet(cont, KEY_RAW, rawEmitter);
+    if (isEmptySet(cont.listeners)) {
+      FsWatchFileInstances.delete(fullPath);
+      unwatchFile(fullPath);
+      cont.options = cont.watcher = void 0;
+      Object.freeze(cont);
+    }
+  };
+};
+class NodeFsHandler {
+  fsw;
+  _boundHandleError;
+  constructor(fsW) {
+    this.fsw = fsW;
+    this._boundHandleError = (error) => fsW._handleError(error);
+  }
+  /**
+   * Watch file for changes with fs_watchFile or fs_watch.
+   * @param path to file or dir
+   * @param listener on fs change
+   * @returns closer for the watcher instance
+   */
+  _watchWithNodeFs(path, listener) {
+    const opts = this.fsw.options;
+    const directory = sp.dirname(path);
+    const basename2 = sp.basename(path);
+    const parent = this.fsw._getWatchedDir(directory);
+    parent.add(basename2);
+    const absolutePath = sp.resolve(path);
+    const options2 = {
+      persistent: opts.persistent
+    };
+    if (!listener)
+      listener = EMPTY_FN;
+    let closer;
+    if (opts.usePolling) {
+      const enableBin = opts.interval !== opts.binaryInterval;
+      options2.interval = enableBin && isBinaryPath(basename2) ? opts.binaryInterval : opts.interval;
+      closer = setFsWatchFileListener(path, absolutePath, options2, {
+        listener,
+        rawEmitter: this.fsw._emitRaw
+      });
+    } else {
+      closer = setFsWatchListener(path, absolutePath, options2, {
+        listener,
+        errHandler: this._boundHandleError,
+        rawEmitter: this.fsw._emitRaw
+      });
+    }
+    return closer;
+  }
+  /**
+   * Watch a file and emit add event if warranted.
+   * @returns closer for the watcher instance
+   */
+  _handleFile(file, stats, initialAdd) {
+    if (this.fsw.closed) {
+      return;
+    }
+    const dirname2 = sp.dirname(file);
+    const basename2 = sp.basename(file);
+    const parent = this.fsw._getWatchedDir(dirname2);
+    let prevStats = stats;
+    if (parent.has(basename2))
+      return;
+    const listener = async (path, newStats) => {
+      if (!this.fsw._throttle(THROTTLE_MODE_WATCH, file, 5))
+        return;
+      if (!newStats || newStats.mtimeMs === 0) {
+        try {
+          const newStats2 = await stat$1(file);
+          if (this.fsw.closed)
+            return;
+          const at = newStats2.atimeMs;
+          const mt = newStats2.mtimeMs;
+          if (!at || at <= mt || mt !== prevStats.mtimeMs) {
+            this.fsw._emit(EV.CHANGE, file, newStats2);
+          }
+          if ((isMacos || isLinux || isFreeBSD) && prevStats.ino !== newStats2.ino) {
+            this.fsw._closeFile(path);
+            prevStats = newStats2;
+            const closer2 = this._watchWithNodeFs(file, listener);
+            if (closer2)
+              this.fsw._addPathCloser(path, closer2);
+          } else {
+            prevStats = newStats2;
+          }
+        } catch (error) {
+          this.fsw._remove(dirname2, basename2);
+        }
+      } else if (parent.has(basename2)) {
+        const at = newStats.atimeMs;
+        const mt = newStats.mtimeMs;
+        if (!at || at <= mt || mt !== prevStats.mtimeMs) {
+          this.fsw._emit(EV.CHANGE, file, newStats);
+        }
+        prevStats = newStats;
+      }
+    };
+    const closer = this._watchWithNodeFs(file, listener);
+    if (!(initialAdd && this.fsw.options.ignoreInitial) && this.fsw._isntIgnored(file)) {
+      if (!this.fsw._throttle(EV.ADD, file, 0))
+        return;
+      this.fsw._emit(EV.ADD, file, stats);
+    }
+    return closer;
+  }
+  /**
+   * Handle symlinks encountered while reading a dir.
+   * @param entry returned by readdirp
+   * @param directory path of dir being read
+   * @param path of this item
+   * @param item basename of this item
+   * @returns true if no more processing is needed for this entry.
+   */
+  async _handleSymlink(entry, directory, path, item) {
+    if (this.fsw.closed) {
+      return;
+    }
+    const full = entry.fullPath;
+    const dir = this.fsw._getWatchedDir(directory);
+    if (!this.fsw.options.followSymlinks) {
+      this.fsw._incrReadyCount();
+      let linkPath;
+      try {
+        linkPath = await realpath(path);
+      } catch (e) {
+        this.fsw._emitReady();
+        return true;
+      }
+      if (this.fsw.closed)
+        return;
+      if (dir.has(item)) {
+        if (this.fsw._symlinkPaths.get(full) !== linkPath) {
+          this.fsw._symlinkPaths.set(full, linkPath);
+          this.fsw._emit(EV.CHANGE, path, entry.stats);
+        }
+      } else {
+        dir.add(item);
+        this.fsw._symlinkPaths.set(full, linkPath);
+        this.fsw._emit(EV.ADD, path, entry.stats);
+      }
+      this.fsw._emitReady();
+      return true;
+    }
+    if (this.fsw._symlinkPaths.has(full)) {
+      return true;
+    }
+    this.fsw._symlinkPaths.set(full, true);
+  }
+  _handleRead(directory, initialAdd, wh, target, dir, depth, throttler) {
+    directory = sp.join(directory, "");
+    const throttleKey = target ? `${directory}:${target}` : directory;
+    throttler = this.fsw._throttle("readdir", throttleKey, 1e3);
+    if (!throttler)
+      return;
+    const previous = this.fsw._getWatchedDir(wh.path);
+    const current = /* @__PURE__ */ new Set();
+    let stream2 = this.fsw._readdirp(directory, {
+      fileFilter: (entry) => wh.filterPath(entry),
+      directoryFilter: (entry) => wh.filterDir(entry)
+    });
+    if (!stream2)
+      return;
+    stream2.on(STR_DATA, async (entry) => {
+      if (this.fsw.closed) {
+        stream2 = void 0;
+        return;
+      }
+      const item = entry.path;
+      let path = sp.join(directory, item);
+      current.add(item);
+      if (entry.stats.isSymbolicLink() && await this._handleSymlink(entry, directory, path, item)) {
+        return;
+      }
+      if (this.fsw.closed) {
+        stream2 = void 0;
+        return;
+      }
+      if (item === target || !target && !previous.has(item)) {
+        this.fsw._incrReadyCount();
+        path = sp.join(dir, sp.relative(dir, path));
+        this._addToNodeFs(path, initialAdd, wh, depth + 1);
+      }
+    }).on(EV.ERROR, this._boundHandleError);
+    return new Promise((resolve2, reject) => {
+      if (!stream2)
+        return reject();
+      stream2.once(STR_END, () => {
+        if (this.fsw.closed) {
+          stream2 = void 0;
+          return;
+        }
+        const wasThrottled = throttler ? throttler.clear() : false;
+        resolve2(void 0);
+        previous.getChildren().filter((item) => {
+          return item !== directory && !current.has(item);
+        }).forEach((item) => {
+          this.fsw._remove(directory, item);
+        });
+        stream2 = void 0;
+        if (wasThrottled)
+          this._handleRead(directory, false, wh, target, dir, depth, throttler);
+      });
+    });
+  }
+  /**
+   * Read directory to add / remove files from `@watched` list and re-read it on change.
+   * @param dir fs path
+   * @param stats
+   * @param initialAdd
+   * @param depth relative to user-supplied path
+   * @param target child path targeted for watch
+   * @param wh Common watch helpers for this path
+   * @param realpath
+   * @returns closer for the watcher instance.
+   */
+  async _handleDir(dir, stats, initialAdd, depth, target, wh, realpath2) {
+    const parentDir = this.fsw._getWatchedDir(sp.dirname(dir));
+    const tracked = parentDir.has(sp.basename(dir));
+    if (!(initialAdd && this.fsw.options.ignoreInitial) && !target && !tracked) {
+      this.fsw._emit(EV.ADD_DIR, dir, stats);
+    }
+    parentDir.add(sp.basename(dir));
+    this.fsw._getWatchedDir(dir);
+    let throttler;
+    let closer;
+    const oDepth = this.fsw.options.depth;
+    if ((oDepth == null || depth <= oDepth) && !this.fsw._symlinkPaths.has(realpath2)) {
+      if (!target) {
+        await this._handleRead(dir, initialAdd, wh, target, dir, depth, throttler);
+        if (this.fsw.closed)
+          return;
+      }
+      closer = this._watchWithNodeFs(dir, (dirPath, stats2) => {
+        if (stats2 && stats2.mtimeMs === 0)
+          return;
+        this._handleRead(dirPath, false, wh, target, dir, depth, throttler);
+      });
+    }
+    return closer;
+  }
+  /**
+   * Handle added file, directory, or glob pattern.
+   * Delegates call to _handleFile / _handleDir after checks.
+   * @param path to file or ir
+   * @param initialAdd was the file added at watch instantiation?
+   * @param priorWh depth relative to user-supplied path
+   * @param depth Child path actually targeted for watch
+   * @param target Child path actually targeted for watch
+   */
+  async _addToNodeFs(path, initialAdd, priorWh, depth, target) {
+    const ready = this.fsw._emitReady;
+    if (this.fsw._isIgnored(path) || this.fsw.closed) {
+      ready();
+      return false;
+    }
+    const wh = this.fsw._getWatchHelpers(path);
+    if (priorWh) {
+      wh.filterPath = (entry) => priorWh.filterPath(entry);
+      wh.filterDir = (entry) => priorWh.filterDir(entry);
+    }
+    try {
+      const stats = await statMethods[wh.statMethod](wh.watchPath);
+      if (this.fsw.closed)
+        return;
+      if (this.fsw._isIgnored(wh.watchPath, stats)) {
+        ready();
+        return false;
+      }
+      const follow = this.fsw.options.followSymlinks;
+      let closer;
+      if (stats.isDirectory()) {
+        const absPath = sp.resolve(path);
+        const targetPath = follow ? await realpath(path) : path;
+        if (this.fsw.closed)
+          return;
+        closer = await this._handleDir(wh.watchPath, stats, initialAdd, depth, target, wh, targetPath);
+        if (this.fsw.closed)
+          return;
+        if (absPath !== targetPath && targetPath !== void 0) {
+          this.fsw._symlinkPaths.set(absPath, targetPath);
+        }
+      } else if (stats.isSymbolicLink()) {
+        const targetPath = follow ? await realpath(path) : path;
+        if (this.fsw.closed)
+          return;
+        const parent = sp.dirname(wh.watchPath);
+        this.fsw._getWatchedDir(parent).add(wh.watchPath);
+        this.fsw._emit(EV.ADD, wh.watchPath, stats);
+        closer = await this._handleDir(parent, stats, initialAdd, depth, path, wh, targetPath);
+        if (this.fsw.closed)
+          return;
+        if (targetPath !== void 0) {
+          this.fsw._symlinkPaths.set(sp.resolve(path), targetPath);
+        }
+      } else {
+        closer = this._handleFile(wh.watchPath, stats, initialAdd);
+      }
+      ready();
+      if (closer)
+        this.fsw._addPathCloser(path, closer);
+      return false;
+    } catch (error) {
+      if (this.fsw._handleError(error)) {
+        ready();
+        return path;
+      }
+    }
+  }
+}
+const SLASH = "/";
+const SLASH_SLASH = "//";
+const ONE_DOT = ".";
+const TWO_DOTS = "..";
+const STRING_TYPE = "string";
+const BACK_SLASH_RE = /\\/g;
+const DOUBLE_SLASH_RE = /\/\//g;
+const DOT_RE = /\..*\.(sw[px])$|~$|\.subl.*\.tmp/;
+const REPLACER_RE = /^\.[/\\]/;
+function arrify(item) {
+  return Array.isArray(item) ? item : [item];
+}
+const isMatcherObject = (matcher) => typeof matcher === "object" && matcher !== null && !(matcher instanceof RegExp);
+function createPattern(matcher) {
+  if (typeof matcher === "function")
+    return matcher;
+  if (typeof matcher === "string")
+    return (string) => matcher === string;
+  if (matcher instanceof RegExp)
+    return (string) => matcher.test(string);
+  if (typeof matcher === "object" && matcher !== null) {
+    return (string) => {
+      if (matcher.path === string)
+        return true;
+      if (matcher.recursive) {
+        const relative2 = sp.relative(matcher.path, string);
+        if (!relative2) {
+          return false;
+        }
+        return !relative2.startsWith("..") && !sp.isAbsolute(relative2);
+      }
+      return false;
+    };
+  }
+  return () => false;
+}
+function normalizePath(path) {
+  if (typeof path !== "string")
+    throw new Error("string expected");
+  path = sp.normalize(path);
+  path = path.replace(/\\/g, "/");
+  let prepend = false;
+  if (path.startsWith("//"))
+    prepend = true;
+  path = path.replace(DOUBLE_SLASH_RE, "/");
+  if (prepend)
+    path = "/" + path;
+  return path;
+}
+function matchPatterns(patterns, testString, stats) {
+  const path = normalizePath(testString);
+  for (let index = 0; index < patterns.length; index++) {
+    const pattern = patterns[index];
+    if (pattern(path, stats)) {
+      return true;
+    }
+  }
+  return false;
+}
+function anymatch(matchers, testString) {
+  if (matchers == null) {
+    throw new TypeError("anymatch: specify first argument");
+  }
+  const matchersArray = arrify(matchers);
+  const patterns = matchersArray.map((matcher) => createPattern(matcher));
+  {
+    return (testString2, stats) => {
+      return matchPatterns(patterns, testString2, stats);
+    };
+  }
+}
+const unifyPaths = (paths_) => {
+  const paths = arrify(paths_).flat();
+  if (!paths.every((p) => typeof p === STRING_TYPE)) {
+    throw new TypeError(`Non-string provided as watch path: ${paths}`);
+  }
+  return paths.map(normalizePathToUnix);
+};
+const toUnix = (string) => {
+  let str = string.replace(BACK_SLASH_RE, SLASH);
+  let prepend = false;
+  if (str.startsWith(SLASH_SLASH)) {
+    prepend = true;
+  }
+  str = str.replace(DOUBLE_SLASH_RE, SLASH);
+  if (prepend) {
+    str = SLASH + str;
+  }
+  return str;
+};
+const normalizePathToUnix = (path) => toUnix(sp.normalize(toUnix(path)));
+const normalizeIgnored = (cwd = "") => (path) => {
+  if (typeof path === "string") {
+    return normalizePathToUnix(sp.isAbsolute(path) ? path : sp.join(cwd, path));
+  } else {
+    return path;
+  }
+};
+const getAbsolutePath = (path, cwd) => {
+  if (sp.isAbsolute(path)) {
+    return path;
+  }
+  return sp.join(cwd, path);
+};
+const EMPTY_SET = Object.freeze(/* @__PURE__ */ new Set());
+class DirEntry {
+  path;
+  _removeWatcher;
+  items;
+  constructor(dir, removeWatcher) {
+    this.path = dir;
+    this._removeWatcher = removeWatcher;
+    this.items = /* @__PURE__ */ new Set();
+  }
+  add(item) {
+    const { items } = this;
+    if (!items)
+      return;
+    if (item !== ONE_DOT && item !== TWO_DOTS)
+      items.add(item);
+  }
+  async remove(item) {
+    const { items } = this;
+    if (!items)
+      return;
+    items.delete(item);
+    if (items.size > 0)
+      return;
+    const dir = this.path;
+    try {
+      await readdir$1(dir);
+    } catch (err) {
+      if (this._removeWatcher) {
+        this._removeWatcher(sp.dirname(dir), sp.basename(dir));
+      }
+    }
+  }
+  has(item) {
+    const { items } = this;
+    if (!items)
+      return;
+    return items.has(item);
+  }
+  getChildren() {
+    const { items } = this;
+    if (!items)
+      return [];
+    return [...items.values()];
+  }
+  dispose() {
+    this.items.clear();
+    this.path = "";
+    this._removeWatcher = EMPTY_FN;
+    this.items = EMPTY_SET;
+    Object.freeze(this);
+  }
+}
+const STAT_METHOD_F = "stat";
+const STAT_METHOD_L = "lstat";
+class WatchHelper {
+  fsw;
+  path;
+  watchPath;
+  fullWatchPath;
+  dirParts;
+  followSymlinks;
+  statMethod;
+  constructor(path, follow, fsw) {
+    this.fsw = fsw;
+    const watchPath = path;
+    this.path = path = path.replace(REPLACER_RE, "");
+    this.watchPath = watchPath;
+    this.fullWatchPath = sp.resolve(watchPath);
+    this.dirParts = [];
+    this.dirParts.forEach((parts) => {
+      if (parts.length > 1)
+        parts.pop();
+    });
+    this.followSymlinks = follow;
+    this.statMethod = follow ? STAT_METHOD_F : STAT_METHOD_L;
+  }
+  entryPath(entry) {
+    return sp.join(this.watchPath, sp.relative(this.watchPath, entry.fullPath));
+  }
+  filterPath(entry) {
+    const { stats } = entry;
+    if (stats && stats.isSymbolicLink())
+      return this.filterDir(entry);
+    const resolvedPath = this.entryPath(entry);
+    return this.fsw._isntIgnored(resolvedPath, stats) && this.fsw._hasReadPermissions(stats);
+  }
+  filterDir(entry) {
+    return this.fsw._isntIgnored(this.entryPath(entry), entry.stats);
+  }
+}
+class FSWatcher extends EventEmitter$1 {
+  closed;
+  options;
+  _closers;
+  _ignoredPaths;
+  _throttled;
+  _streams;
+  _symlinkPaths;
+  _watched;
+  _pendingWrites;
+  _pendingUnlinks;
+  _readyCount;
+  _emitReady;
+  _closePromise;
+  _userIgnored;
+  _readyEmitted;
+  _emitRaw;
+  _boundRemove;
+  _nodeFsHandler;
+  // Not indenting methods for history sake; for now.
+  constructor(_opts = {}) {
+    super();
+    this.closed = false;
+    this._closers = /* @__PURE__ */ new Map();
+    this._ignoredPaths = /* @__PURE__ */ new Set();
+    this._throttled = /* @__PURE__ */ new Map();
+    this._streams = /* @__PURE__ */ new Set();
+    this._symlinkPaths = /* @__PURE__ */ new Map();
+    this._watched = /* @__PURE__ */ new Map();
+    this._pendingWrites = /* @__PURE__ */ new Map();
+    this._pendingUnlinks = /* @__PURE__ */ new Map();
+    this._readyCount = 0;
+    this._readyEmitted = false;
+    const awf = _opts.awaitWriteFinish;
+    const DEF_AWF = { stabilityThreshold: 2e3, pollInterval: 100 };
+    const opts = {
+      // Defaults
+      persistent: true,
+      ignoreInitial: false,
+      ignorePermissionErrors: false,
+      interval: 100,
+      binaryInterval: 300,
+      followSymlinks: true,
+      usePolling: false,
+      // useAsync: false,
+      atomic: true,
+      // NOTE: overwritten later (depends on usePolling)
+      ..._opts,
+      // Change format
+      ignored: _opts.ignored ? arrify(_opts.ignored) : arrify([]),
+      awaitWriteFinish: awf === true ? DEF_AWF : typeof awf === "object" ? { ...DEF_AWF, ...awf } : false
+    };
+    if (isIBMi)
+      opts.usePolling = true;
+    if (opts.atomic === void 0)
+      opts.atomic = !opts.usePolling;
+    const envPoll = process.env.CHOKIDAR_USEPOLLING;
+    if (envPoll !== void 0) {
+      const envLower = envPoll.toLowerCase();
+      if (envLower === "false" || envLower === "0")
+        opts.usePolling = false;
+      else if (envLower === "true" || envLower === "1")
+        opts.usePolling = true;
+      else
+        opts.usePolling = !!envLower;
+    }
+    const envInterval = process.env.CHOKIDAR_INTERVAL;
+    if (envInterval)
+      opts.interval = Number.parseInt(envInterval, 10);
+    let readyCalls = 0;
+    this._emitReady = () => {
+      readyCalls++;
+      if (readyCalls >= this._readyCount) {
+        this._emitReady = EMPTY_FN;
+        this._readyEmitted = true;
+        process.nextTick(() => this.emit(EVENTS.READY));
+      }
+    };
+    this._emitRaw = (...args) => this.emit(EVENTS.RAW, ...args);
+    this._boundRemove = this._remove.bind(this);
+    this.options = opts;
+    this._nodeFsHandler = new NodeFsHandler(this);
+    Object.freeze(opts);
+  }
+  _addIgnoredPath(matcher) {
+    if (isMatcherObject(matcher)) {
+      for (const ignored of this._ignoredPaths) {
+        if (isMatcherObject(ignored) && ignored.path === matcher.path && ignored.recursive === matcher.recursive) {
+          return;
+        }
+      }
+    }
+    this._ignoredPaths.add(matcher);
+  }
+  _removeIgnoredPath(matcher) {
+    this._ignoredPaths.delete(matcher);
+    if (typeof matcher === "string") {
+      for (const ignored of this._ignoredPaths) {
+        if (isMatcherObject(ignored) && ignored.path === matcher) {
+          this._ignoredPaths.delete(ignored);
+        }
+      }
+    }
+  }
+  // Public methods
+  /**
+   * Adds paths to be watched on an existing FSWatcher instance.
+   * @param paths_ file or file list. Other arguments are unused
+   */
+  add(paths_, _origAdd, _internal) {
+    const { cwd } = this.options;
+    this.closed = false;
+    this._closePromise = void 0;
+    let paths = unifyPaths(paths_);
+    if (cwd) {
+      paths = paths.map((path) => {
+        const absPath = getAbsolutePath(path, cwd);
+        return absPath;
+      });
+    }
+    paths.forEach((path) => {
+      this._removeIgnoredPath(path);
+    });
+    this._userIgnored = void 0;
+    if (!this._readyCount)
+      this._readyCount = 0;
+    this._readyCount += paths.length;
+    Promise.all(paths.map(async (path) => {
+      const res = await this._nodeFsHandler._addToNodeFs(path, !_internal, void 0, 0, _origAdd);
+      if (res)
+        this._emitReady();
+      return res;
+    })).then((results) => {
+      if (this.closed)
+        return;
+      results.forEach((item) => {
+        if (item)
+          this.add(sp.dirname(item), sp.basename(_origAdd || item));
+      });
+    });
+    return this;
+  }
+  /**
+   * Close watchers or start ignoring events from specified paths.
+   */
+  unwatch(paths_) {
+    if (this.closed)
+      return this;
+    const paths = unifyPaths(paths_);
+    const { cwd } = this.options;
+    paths.forEach((path) => {
+      if (!sp.isAbsolute(path) && !this._closers.has(path)) {
+        if (cwd)
+          path = sp.join(cwd, path);
+        path = sp.resolve(path);
+      }
+      this._closePath(path);
+      this._addIgnoredPath(path);
+      if (this._watched.has(path)) {
+        this._addIgnoredPath({
+          path,
+          recursive: true
+        });
+      }
+      this._userIgnored = void 0;
+    });
+    return this;
+  }
+  /**
+   * Close watchers and remove all listeners from watched paths.
+   */
+  close() {
+    if (this._closePromise) {
+      return this._closePromise;
+    }
+    this.closed = true;
+    this.removeAllListeners();
+    const closers = [];
+    this._closers.forEach((closerList) => closerList.forEach((closer) => {
+      const promise = closer();
+      if (promise instanceof Promise)
+        closers.push(promise);
+    }));
+    this._streams.forEach((stream2) => stream2.destroy());
+    this._userIgnored = void 0;
+    this._readyCount = 0;
+    this._readyEmitted = false;
+    this._watched.forEach((dirent) => dirent.dispose());
+    this._closers.clear();
+    this._watched.clear();
+    this._streams.clear();
+    this._symlinkPaths.clear();
+    this._throttled.clear();
+    this._closePromise = closers.length ? Promise.all(closers).then(() => void 0) : Promise.resolve();
+    return this._closePromise;
+  }
+  /**
+   * Expose list of watched paths
+   * @returns for chaining
+   */
+  getWatched() {
+    const watchList = {};
+    this._watched.forEach((entry, dir) => {
+      const key = this.options.cwd ? sp.relative(this.options.cwd, dir) : dir;
+      const index = key || ONE_DOT;
+      watchList[index] = entry.getChildren().sort();
+    });
+    return watchList;
+  }
+  emitWithAll(event, args) {
+    this.emit(event, ...args);
+    if (event !== EVENTS.ERROR)
+      this.emit(EVENTS.ALL, event, ...args);
+  }
+  // Common helpers
+  // --------------
+  /**
+   * Normalize and emit events.
+   * Calling _emit DOES NOT MEAN emit() would be called!
+   * @param event Type of event
+   * @param path File or directory path
+   * @param stats arguments to be passed with event
+   * @returns the error if defined, otherwise the value of the FSWatcher instance's `closed` flag
+   */
+  async _emit(event, path, stats) {
+    if (this.closed)
+      return;
+    const opts = this.options;
+    if (isWindows)
+      path = sp.normalize(path);
+    if (opts.cwd)
+      path = sp.relative(opts.cwd, path);
+    const args = [path];
+    if (stats != null)
+      args.push(stats);
+    const awf = opts.awaitWriteFinish;
+    let pw;
+    if (awf && (pw = this._pendingWrites.get(path))) {
+      pw.lastChange = /* @__PURE__ */ new Date();
+      return this;
+    }
+    if (opts.atomic) {
+      if (event === EVENTS.UNLINK) {
+        this._pendingUnlinks.set(path, [event, ...args]);
+        setTimeout(() => {
+          this._pendingUnlinks.forEach((entry, path2) => {
+            this.emit(...entry);
+            this.emit(EVENTS.ALL, ...entry);
+            this._pendingUnlinks.delete(path2);
+          });
+        }, typeof opts.atomic === "number" ? opts.atomic : 100);
+        return this;
+      }
+      if (event === EVENTS.ADD && this._pendingUnlinks.has(path)) {
+        event = EVENTS.CHANGE;
+        this._pendingUnlinks.delete(path);
+      }
+    }
+    if (awf && (event === EVENTS.ADD || event === EVENTS.CHANGE) && this._readyEmitted) {
+      const awfEmit = (err, stats2) => {
+        if (err) {
+          event = EVENTS.ERROR;
+          args[0] = err;
+          this.emitWithAll(event, args);
+        } else if (stats2) {
+          if (args.length > 1) {
+            args[1] = stats2;
+          } else {
+            args.push(stats2);
+          }
+          this.emitWithAll(event, args);
+        }
+      };
+      this._awaitWriteFinish(path, awf.stabilityThreshold, event, awfEmit);
+      return this;
+    }
+    if (event === EVENTS.CHANGE) {
+      const isThrottled = !this._throttle(EVENTS.CHANGE, path, 50);
+      if (isThrottled)
+        return this;
+    }
+    if (opts.alwaysStat && stats === void 0 && (event === EVENTS.ADD || event === EVENTS.ADD_DIR || event === EVENTS.CHANGE)) {
+      const fullPath = opts.cwd ? sp.join(opts.cwd, path) : path;
+      let stats2;
+      try {
+        stats2 = await stat$1(fullPath);
+      } catch (err) {
+      }
+      if (!stats2 || this.closed)
+        return;
+      args.push(stats2);
+    }
+    this.emitWithAll(event, args);
+    return this;
+  }
+  /**
+   * Common handler for errors
+   * @returns The error if defined, otherwise the value of the FSWatcher instance's `closed` flag
+   */
+  _handleError(error) {
+    const code = error && error.code;
+    if (error && code !== "ENOENT" && code !== "ENOTDIR" && (!this.options.ignorePermissionErrors || code !== "EPERM" && code !== "EACCES")) {
+      this.emit(EVENTS.ERROR, error);
+    }
+    return error || this.closed;
+  }
+  /**
+   * Helper utility for throttling
+   * @param actionType type being throttled
+   * @param path being acted upon
+   * @param timeout duration of time to suppress duplicate actions
+   * @returns tracking object or false if action should be suppressed
+   */
+  _throttle(actionType, path, timeout) {
+    if (!this._throttled.has(actionType)) {
+      this._throttled.set(actionType, /* @__PURE__ */ new Map());
+    }
+    const action = this._throttled.get(actionType);
+    if (!action)
+      throw new Error("invalid throttle");
+    const actionPath = action.get(path);
+    if (actionPath) {
+      actionPath.count++;
+      return false;
+    }
+    let timeoutObject;
+    const clear = () => {
+      const item = action.get(path);
+      const count = item ? item.count : 0;
+      action.delete(path);
+      clearTimeout(timeoutObject);
+      if (item)
+        clearTimeout(item.timeoutObject);
+      return count;
+    };
+    timeoutObject = setTimeout(clear, timeout);
+    const thr = { timeoutObject, clear, count: 0 };
+    action.set(path, thr);
+    return thr;
+  }
+  _incrReadyCount() {
+    return this._readyCount++;
+  }
+  /**
+   * Awaits write operation to finish.
+   * Polls a newly created file for size variations. When files size does not change for 'threshold' milliseconds calls callback.
+   * @param path being acted upon
+   * @param threshold Time in milliseconds a file size must be fixed before acknowledging write OP is finished
+   * @param event
+   * @param awfEmit Callback to be called when ready for event to be emitted.
+   */
+  _awaitWriteFinish(path, threshold, event, awfEmit) {
+    const awf = this.options.awaitWriteFinish;
+    if (typeof awf !== "object")
+      return;
+    const pollInterval = awf.pollInterval;
+    let timeoutHandler;
+    let fullPath = path;
+    if (this.options.cwd && !sp.isAbsolute(path)) {
+      fullPath = sp.join(this.options.cwd, path);
+    }
+    const now = /* @__PURE__ */ new Date();
+    const writes = this._pendingWrites;
+    function awaitWriteFinishFn(prevStat) {
+      stat$2(fullPath, (err, curStat) => {
+        if (err || !writes.has(path)) {
+          if (err && err.code !== "ENOENT")
+            awfEmit(err);
+          return;
+        }
+        const now2 = Number(/* @__PURE__ */ new Date());
+        if (prevStat && curStat.size !== prevStat.size) {
+          writes.get(path).lastChange = now2;
+        }
+        const pw = writes.get(path);
+        const df = now2 - pw.lastChange;
+        if (df >= threshold) {
+          writes.delete(path);
+          awfEmit(void 0, curStat);
+        } else {
+          timeoutHandler = setTimeout(awaitWriteFinishFn, pollInterval, curStat);
+        }
+      });
+    }
+    if (!writes.has(path)) {
+      writes.set(path, {
+        lastChange: now,
+        cancelWait: () => {
+          writes.delete(path);
+          clearTimeout(timeoutHandler);
+          return event;
+        }
+      });
+      timeoutHandler = setTimeout(awaitWriteFinishFn, pollInterval);
+    }
+  }
+  /**
+   * Determines whether user has asked to ignore this path.
+   */
+  _isIgnored(path, stats) {
+    if (this.options.atomic && DOT_RE.test(path))
+      return true;
+    if (!this._userIgnored) {
+      const { cwd } = this.options;
+      const ign = this.options.ignored;
+      const ignored = (ign || []).map(normalizeIgnored(cwd));
+      const ignoredPaths = [...this._ignoredPaths];
+      const list = [...ignoredPaths.map(normalizeIgnored(cwd)), ...ignored];
+      this._userIgnored = anymatch(list);
+    }
+    return this._userIgnored(path, stats);
+  }
+  _isntIgnored(path, stat2) {
+    return !this._isIgnored(path, stat2);
+  }
+  /**
+   * Provides a set of common helpers and properties relating to symlink handling.
+   * @param path file or directory pattern being watched
+   */
+  _getWatchHelpers(path) {
+    return new WatchHelper(path, this.options.followSymlinks, this);
+  }
+  // Directory helpers
+  // -----------------
+  /**
+   * Provides directory tracking objects
+   * @param directory path of the directory
+   */
+  _getWatchedDir(directory) {
+    const dir = sp.resolve(directory);
+    if (!this._watched.has(dir))
+      this._watched.set(dir, new DirEntry(dir, this._boundRemove));
+    return this._watched.get(dir);
+  }
+  // File helpers
+  // ------------
+  /**
+   * Check for read permissions: https://stackoverflow.com/a/11781404/1358405
+   */
+  _hasReadPermissions(stats) {
+    if (this.options.ignorePermissionErrors)
+      return true;
+    return Boolean(Number(stats.mode) & 256);
+  }
+  /**
+   * Handles emitting unlink events for
+   * files and directories, and via recursion, for
+   * files and directories within directories that are unlinked
+   * @param directory within which the following item is located
+   * @param item      base path of item/directory
+   */
+  _remove(directory, item, isDirectory) {
+    const path = sp.join(directory, item);
+    const fullPath = sp.resolve(path);
+    isDirectory = isDirectory != null ? isDirectory : this._watched.has(path) || this._watched.has(fullPath);
+    if (!this._throttle("remove", path, 100))
+      return;
+    if (!isDirectory && this._watched.size === 1) {
+      this.add(directory, item, true);
+    }
+    const wp = this._getWatchedDir(path);
+    const nestedDirectoryChildren = wp.getChildren();
+    nestedDirectoryChildren.forEach((nested) => this._remove(path, nested));
+    const parent = this._getWatchedDir(directory);
+    const wasTracked = parent.has(item);
+    parent.remove(item);
+    if (this._symlinkPaths.has(fullPath)) {
+      this._symlinkPaths.delete(fullPath);
+    }
+    let relPath = path;
+    if (this.options.cwd)
+      relPath = sp.relative(this.options.cwd, path);
+    if (this.options.awaitWriteFinish && this._pendingWrites.has(relPath)) {
+      const event = this._pendingWrites.get(relPath).cancelWait();
+      if (event === EVENTS.ADD)
+        return;
+    }
+    this._watched.delete(path);
+    this._watched.delete(fullPath);
+    const eventName = isDirectory ? EVENTS.UNLINK_DIR : EVENTS.UNLINK;
+    if (wasTracked && !this._isIgnored(path))
+      this._emit(eventName, path);
+    this._closePath(path);
+  }
+  /**
+   * Closes all watchers for a path
+   */
+  _closePath(path) {
+    this._closeFile(path);
+    const dir = sp.dirname(path);
+    this._getWatchedDir(dir).remove(sp.basename(path));
+  }
+  /**
+   * Closes only file-specific watchers
+   */
+  _closeFile(path) {
+    const closers = this._closers.get(path);
+    if (!closers)
+      return;
+    closers.forEach((closer) => closer());
+    this._closers.delete(path);
+  }
+  _addPathCloser(path, closer) {
+    if (!closer)
+      return;
+    let list = this._closers.get(path);
+    if (!list) {
+      list = [];
+      this._closers.set(path, list);
+    }
+    list.push(closer);
+  }
+  _readdirp(root, opts) {
+    if (this.closed)
+      return;
+    const options2 = { type: EVENTS.ALL, alwaysStat: true, lstat: true, ...opts, depth: 0 };
+    let stream2 = readdirp(root, options2);
+    this._streams.add(stream2);
+    stream2.once(STR_CLOSE, () => {
+      stream2 = void 0;
+    });
+    stream2.once(STR_END, () => {
+      if (stream2) {
+        this._streams.delete(stream2);
+        stream2 = void 0;
+      }
+    });
+    return stream2;
+  }
+}
+function watch(paths, options2 = {}) {
+  const watcher2 = new FSWatcher(options2);
+  watcher2.add(paths);
+  return watcher2;
+}
+const chokidar = { watch, FSWatcher };
+const VIDEO_EXTS = /* @__PURE__ */ new Set([".mkv", ".mp4", ".avi", ".mov", ".webm", ".m4v", ".ts", ".wmv", ".flv"]);
+const IGNORED_PATTERNS = [/(^|[\/\\])\../, /\.part$/i, /\.crdownload$/i, /\.tmp$/i];
+let watcher = null;
+let activeRoots = [];
+let callbacks = null;
+function isVideo(path) {
+  const dot = path.lastIndexOf(".");
+  if (dot < 0) return false;
+  return VIDEO_EXTS.has(path.slice(dot).toLowerCase());
+}
+function attach(w) {
+  w.on("add", (path) => {
+    if (!isVideo(path)) return;
+    logger.info("watch", `New file`, { file: path });
+    callbacks?.onAdd(path);
+  });
+  w.on("addDir", (path) => {
+    if (activeRoots.includes(path)) return;
+    logger.info("watch", `New directory`, { file: path });
+    callbacks?.onAddDir(path);
+  });
+  w.on("unlink", (path) => {
+    if (!isVideo(path)) return;
+    logger.info("watch", `Removed file`, { file: path });
+    callbacks?.onUnlink(path);
+  });
+  w.on("unlinkDir", (path) => {
+    logger.info("watch", `Removed directory`, { file: path });
+    callbacks?.onUnlinkDir(path);
+  });
+  w.on("error", (err) => {
+    logger.error("watch", `Watcher error: ${err.message}`);
+  });
+  w.on("ready", () => {
+    logger.info("watch", `Watching ${activeRoots.length} root(s)`);
+  });
+}
+const fileWatcher = {
+  async start(roots, cb) {
+    callbacks = cb;
+    activeRoots = roots.slice();
+    if (roots.length === 0) {
+      logger.info("watch", "No library roots — watcher idle");
+      return;
+    }
+    watcher = chokidar.watch(roots, {
+      ignored: IGNORED_PATTERNS,
+      ignoreInitial: true,
+      persistent: true,
+      // 500ms / 100ms: just enough to ensure the file is fully written before
+      // we ingest it. Old setting (2000/500) was the source of the "watcher
+      // feels laggy" symptom — every new episode took 2s+ to appear even
+      // when the file landed atomically (mv on same FS).
+      awaitWriteFinish: { stabilityThreshold: 500, pollInterval: 100 }
+    });
+    attach(watcher);
+  },
+  async restart(roots) {
+    await this.stop();
+    if (callbacks) await this.start(roots, callbacks);
+  },
+  async stop() {
+    if (watcher) {
+      await watcher.close();
+      watcher = null;
+    }
+    activeRoots = [];
   }
 };
 const __filename$1 = fileURLToPath(import.meta.url);
@@ -15181,7 +18307,200 @@ function isRateLimitError(error) {
   }
   return false;
 }
+async function updateFileStatus(filePath, status) {
+  const touched = await metadataHandler.transaction(async (meta) => {
+    let changed = false;
+    for (const series of Object.values(meta)) {
+      const s = series;
+      if (!Array.isArray(s.fileEpisodes)) continue;
+      for (const file of s.fileEpisodes) {
+        if (file.filePath === filePath) {
+          file.status = status;
+          file.lastProbedAt = Date.now();
+          changed = true;
+        }
+      }
+    }
+    return { result: changed, updated: changed ? meta : null };
+  });
+  if (touched && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("metadata:file-status-changed", { filePath, status });
+  }
+}
+async function ingestSingleFile(filePath) {
+  try {
+    const activeRoots2 = await configHandler.getFolderSources();
+    const result = await folderHandler.scanSingleFile(filePath, activeRoots2);
+    if (!result) {
+      logger.warn("watch", `scanSingleFile returned null`, { file: filePath });
+      return;
+    }
+    const { media } = result;
+    let isBrandNewSeries = false;
+    await metadataHandler.transaction(async (current) => {
+      const existing = current[media.id] ?? {};
+      isBrandNewSeries = !existing.fileEpisodes || existing.fileEpisodes.length === 0;
+      const byPath = new Map((existing.fileEpisodes ?? []).map((f) => [f.filePath, f]));
+      const newFileEpisodes = media.files.map((f) => {
+        const old = byPath.get(f.filePath);
+        const isThisFile = f.filePath === filePath;
+        return {
+          episodeNumber: f.episodeNumber,
+          seasonNumber: f.seasonNumber,
+          filePath: f.filePath,
+          subtitlePath: f.subtitlePath,
+          subtitlePaths: f.subtitlePaths,
+          filename: f.filename,
+          title: f.title,
+          status: isThisFile ? "verifying" : old?.status ?? f.status,
+          lastProbedAt: isThisFile ? Date.now() : old?.lastProbedAt ?? f.lastProbedAt
+        };
+      });
+      current[media.id] = {
+        ...existing,
+        seriesId: media.id,
+        title: existing.title ?? media.name,
+        fileEpisodes: newFileEpisodes,
+        folderPath: media.folderPath,
+        type: media.type
+      };
+      logger.info("watch", `Ingest: ${media.name} (${newFileEpisodes.length} files)`, { series: media.name, file: filePath });
+      return { updated: current };
+    });
+    videoProbeHandler.enqueue(filePath);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("metadata:file-status-changed", { filePath, status: "verifying" });
+    }
+    if (isBrandNewSeries) {
+      void matchPosterForSeries(media.id, basename(media.folderPath));
+    }
+  } catch (err) {
+    logger.error("watch", `Failed to ingest new file: ${err.message}`, { file: filePath });
+  }
+}
+async function handleUnlink(filePath) {
+  const changed = await metadataHandler.transaction(async (meta) => {
+    const activeRoots2 = await configHandler.getFolderSources();
+    const reconciled = await folderHandler.reconcileMetadata(meta, activeRoots2);
+    const sameShape = Object.keys(reconciled).length === Object.keys(meta).length && Object.entries(reconciled).every(([id, value]) => {
+      const before = meta[id];
+      const after = value;
+      return before && (before.fileEpisodes?.length ?? 0) === (after.fileEpisodes?.length ?? 0);
+    });
+    return { result: !sameShape, updated: sameShape ? null : reconciled };
+  });
+  if (changed && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("metadata:file-status-changed", { filePath, status: "ready" });
+  }
+}
 let mainWindow = null;
+let startupCatchUpInFlight = false;
+async function runStartupCatchUp() {
+  if (startupCatchUpInFlight) return;
+  startupCatchUpInFlight = true;
+  try {
+    const activeRoots2 = await configHandler.getFolderSources();
+    if (activeRoots2.length === 0) return;
+    logger.info("watch", `Startup catch-up: ${activeRoots2.length} root(s)`);
+    for (const root of activeRoots2) {
+      try {
+        await runScanAndFetch(root, activeRoots2);
+      } catch (err) {
+        logger.warn("folder", `Startup catch-up failed for ${root}: ${err.message}`, { file: root });
+      }
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("metadata:file-status-changed", { filePath: "", status: "ready" });
+    }
+    void matchPostersForLibrary();
+  } finally {
+    startupCatchUpInFlight = false;
+  }
+}
+async function matchPosterForSeries(seriesId, folderName) {
+  try {
+    const match = await findShowMatch(folderName);
+    if (!match) {
+      await metadataHandler.transaction(async (current) => {
+        const existing = current[seriesId] ?? {};
+        if (existing.posterMatchAttempted) return { updated: null };
+        current[seriesId] = { ...existing, posterMatchAttempted: true, posterMatched: false };
+        return { updated: current };
+      });
+      return;
+    }
+    const [cached, episodeDates] = await Promise.all([
+      imageCacheHandler.cacheImages([match.posterUrl]),
+      fetchEpisodeAirDates(match.source, match.externalId, match.totalEpisodes)
+    ]);
+    const posterLocal = cached.get(match.posterUrl) ?? null;
+    await metadataHandler.transaction(async (current) => {
+      const existing = current[seriesId] ?? {};
+      const slimEpisodes = episodeDates.map((e) => ({ episodeNumber: e.episodeNumber, airDate: e.airDate }));
+      current[seriesId] = {
+        ...existing,
+        poster: match.posterUrl,
+        posterLocal,
+        posterMatchAttempted: true,
+        posterMatched: true,
+        matchSource: match.source,
+        matchExternalId: match.externalId,
+        matchedTitle: match.matchedTitle,
+        titleRomaji: match.titleRomaji,
+        titleEnglish: match.titleEnglish,
+        matchScore: match.score,
+        status: match.status,
+        startDate: match.startDate,
+        totalEpisodes: match.totalEpisodes,
+        episodes: slimEpisodes
+      };
+      return { updated: current };
+    });
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("metadata:file-status-changed", { filePath: "", status: "ready" });
+    }
+  } catch (err) {
+    logger.warn("metadata", `Match failed for ${folderName}: ${err.message}`, { series: folderName });
+  }
+}
+async function matchPostersForLibrary() {
+  const meta = await metadataHandler.loadMetadata();
+  const todo = [];
+  for (const [seriesId, raw] of Object.entries(meta)) {
+    const s = raw;
+    const needsFirstMatch = !s.posterMatchAttempted;
+    const matchedButMissingAirDates = !!s.posterMatched && (!Array.isArray(s.episodes) || s.episodes.length === 0 || !s.episodes.some((e) => !!e.airDate));
+    const matchedButMissingTitles = !!s.posterMatched && s.titleRomaji === void 0 && s.titleEnglish === void 0;
+    if (!needsFirstMatch && !matchedButMissingAirDates && !matchedButMissingTitles) continue;
+    const folderName = s.folderPath ? basename(s.folderPath) : s.title ?? seriesId;
+    todo.push({ seriesId, folderName });
+  }
+  if (todo.length === 0) return;
+  logger.info("metadata", `Matching ${todo.length} series (poster + air dates)`);
+  for (const { seriesId, folderName } of todo) {
+    await matchPosterForSeries(seriesId, folderName);
+  }
+}
+async function ingestSubtree(dirPath) {
+  try {
+    const { readdir: readdir2, stat: stat2 } = await import("fs/promises");
+    const entries = await readdir2(dirPath);
+    for (const entry of entries) {
+      const full = `${dirPath}/${entry}`;
+      try {
+        const s = await stat2(full);
+        if (s.isDirectory()) {
+          await ingestSubtree(full);
+        } else if (s.isFile() && /\.(mkv|mp4|avi|mov|webm|m4v|ts|wmv|flv)$/i.test(entry)) {
+          void ingestSingleFile(full);
+        }
+      } catch {
+      }
+    }
+  } catch (err) {
+    logger.warn("watch", `ingestSubtree failed for ${dirPath}: ${err.message}`, { file: dirPath });
+  }
+}
 function createWindow() {
   Menu.setApplicationMenu(null);
   mainWindow = new BrowserWindow({
@@ -15210,6 +18529,9 @@ function createWindow() {
       }
     });
   }
+  mainWindow.webContents.once("did-finish-load", () => {
+    logger.info("system", "AniBeam ready");
+  });
   mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription) => {
     console.error("Renderer failed to load:", errorCode, errorDescription);
   });
@@ -15225,7 +18547,7 @@ protocol.registerSchemesAsPrivileged([
     }
   }
 ]);
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   initMediaProgress();
   protocol.handle("media", async (request2) => {
     let filePath = request2.url.replace(/^media:\/\//, "");
@@ -15234,21 +18556,21 @@ app.whenReady().then(() => {
       if (process.platform !== "win32") {
         filePath = "/" + filePath;
       } else {
-        console.error("Rejected relative path:", filePath);
+        logger.error("system", `Rejected relative path: ${filePath}`, { file: filePath });
         return new Response("Invalid path: relative paths not allowed", { status: 403 });
       }
     }
     try {
-      const normalizedPath = resolve(filePath);
+      const normalizedPath = resolve$1(filePath);
       const userDataPath = app.getPath("userData");
-      const normalizedUserData = resolve(userDataPath);
-      const userDataRelative = relative(normalizedUserData, normalizedPath);
+      const normalizedUserData = resolve$1(userDataPath);
+      const userDataRelative = relative$1(normalizedUserData, normalizedPath);
       const isInUserData = !userDataRelative.startsWith("..") && !userDataRelative.startsWith("/");
       const allowedSources = await configHandler.getFolderSources();
       const isInAllowedSource = allowedSources.some((source) => {
         try {
-          const normalizedSource = resolve(source);
-          const relativePath = relative(normalizedSource, normalizedPath);
+          const normalizedSource = resolve$1(source);
+          const relativePath = relative$1(normalizedSource, normalizedPath);
           return !relativePath.startsWith("..") && !relativePath.startsWith("/");
         } catch {
           return false;
@@ -15256,19 +18578,19 @@ app.whenReady().then(() => {
       });
       if (!isInUserData && !isInAllowedSource) {
         if (allowedSources.length === 0 && !isInUserData) {
-          console.error("Access denied: path not in userData and no folder sources configured");
+          logger.error("system", "Access denied: path not in userData and no folder sources configured");
           return new Response("Access denied: path not in allowed directories", { status: 403 });
         }
-        console.error("Access denied for path:", filePath);
+        logger.error("system", `Access denied for path: ${filePath}`, { file: filePath });
         return new Response("Access denied: path not in allowed directories", { status: 403 });
       }
     } catch (error) {
-      console.error("Error validating path:", error);
+      logger.error("system", "Error validating path");
       return new Response("Error validating path", { status: 500 });
     }
     updateMediaProgress(filePath);
     if (!existsSync(filePath)) {
-      console.error("File not found:", filePath);
+      logger.error("system", `File not found: ${filePath}`, { file: filePath });
       return new Response("File not found", { status: 404 });
     }
     const fileUrl = pathToFileURL(filePath).toString();
@@ -15315,11 +18637,47 @@ app.whenReady().then(() => {
         headers: newHeaders
       });
     } catch (error) {
-      console.error("Error fetching file:", error);
+      logger.error("system", "Error fetching file");
       return new Response("Error loading file", { status: 500 });
     }
   });
   createWindow();
+  videoProbeHandler.start(updateFileStatus);
+  try {
+    const meta = await metadataHandler.loadMetadata();
+    let resumed = 0;
+    for (const series of Object.values(meta)) {
+      const s = series;
+      if (!Array.isArray(s.fileEpisodes)) continue;
+      for (const f of s.fileEpisodes) {
+        if (f.status === "verifying" || f.status === "stalled") {
+          videoProbeHandler.enqueue(f.filePath);
+          resumed++;
+        }
+      }
+    }
+    if (resumed > 0) logger.info("probe", `Resumed ${resumed} unverified file(s) from prior session`);
+  } catch (err) {
+    logger.warn("probe", `Could not resume unverified files: ${err.message}`);
+  }
+  const initialRoots = await configHandler.getFolderSources();
+  await fileWatcher.start(initialRoots, {
+    onAdd: (path) => {
+      void ingestSingleFile(path);
+    },
+    onAddDir: (dirPath) => {
+      void ingestSubtree(dirPath);
+    },
+    onUnlink: (path) => {
+      void handleUnlink(path);
+    },
+    // unlinkDir: chokidar emits unlink for each contained file too, so the
+    // per-file handler covers actual cleanup. Just log; don't double-reconcile.
+    onUnlinkDir: (dirPath) => {
+      logger.info("watch", `Directory removed`, { file: dirPath });
+    }
+  });
+  void runStartupCatchUp();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
@@ -15331,27 +18689,47 @@ app.on("window-all-closed", () => {
     app.quit();
   }
 });
+ipcMain.handle("log:get-buffer", () => logger.getBuffer());
+ipcMain.handle("log:clear", () => {
+  logger.clear();
+});
 ipcMain.handle("get-folder-sources", async () => {
   try {
     return await configHandler.getFolderSources();
   } catch (error) {
-    console.error("Error getting folder sources:", error);
+    logger.error("system", "Error getting folder sources");
     return [];
   }
 });
 ipcMain.handle("add-folder-source", async (_event, folderPath) => {
   try {
-    return await configHandler.addFolderSource(folderPath);
+    const ok = await configHandler.addFolderSource(folderPath);
+    if (ok) {
+      const roots = await configHandler.getFolderSources();
+      await fileWatcher.restart(roots);
+      logger.info("folder", `Added library root: ${folderPath}`);
+    }
+    return ok;
   } catch (error) {
-    console.error("Error adding folder source:", error);
+    logger.error("folder", `Error adding folder source: ${error.message}`);
     throw error;
   }
 });
 ipcMain.handle("remove-folder-source", async (_event, folderPath) => {
   try {
-    return await configHandler.removeFolderSource(folderPath);
+    const ok = await configHandler.removeFolderSource(folderPath);
+    if (ok) {
+      logger.info("folder", `Removed library root: ${folderPath}`);
+      const activeRoots2 = await configHandler.getFolderSources();
+      await metadataHandler.transaction(async (meta) => {
+        const reconciled = await folderHandler.reconcileMetadata(meta, activeRoots2);
+        return { updated: reconciled };
+      });
+      await fileWatcher.restart(activeRoots2);
+    }
+    return ok;
   } catch (error) {
-    console.error("Error removing folder source:", error);
+    logger.error("folder", `Error removing folder source: ${error.message}`);
     throw error;
   }
 });
@@ -15370,9 +18748,56 @@ ipcMain.handle("scan-folder", async (_event, folderPath) => {
   try {
     return await folderHandler.scanFolder(folderPath);
   } catch (error) {
-    console.error("Error scanning folder:", error);
+    logger.error("folder", "Error scanning folder");
     throw error;
   }
+});
+ipcMain.handle("library:walk", async () => {
+  const roots = await configHandler.getFolderSources();
+  const all3 = [];
+  for (const root of roots) {
+    try {
+      const items = await folderHandler.scanFolder(root, [root]);
+      all3.push(...items);
+    } catch (err) {
+      logger.warn("folder", `library:walk failed for ${root}: ${err.message}`, { file: root });
+    }
+  }
+  const meta = await metadataHandler.loadMetadata();
+  return all3.map((m) => {
+    const stored = meta[m.id] ?? {};
+    return {
+      id: m.id,
+      folderName: basename(m.folderPath),
+      folderPath: m.folderPath,
+      type: m.type,
+      poster: stored.poster ?? null,
+      posterLocal: stored.posterLocal ?? null,
+      posterMatched: stored.posterMatched ?? false,
+      posterMatchAttempted: stored.posterMatchAttempted ?? false,
+      matchSource: stored.matchSource ?? null,
+      matchedTitle: stored.matchedTitle ?? null,
+      titleRomaji: stored.titleRomaji ?? stored.matchedTitle ?? null,
+      titleEnglish: stored.titleEnglish ?? null,
+      status: stored.status ?? null,
+      startDate: stored.startDate ?? null,
+      totalEpisodes: stored.totalEpisodes ?? null,
+      episodes: (stored.episodes ?? []).map((e) => ({
+        episodeNumber: e.episodeNumber,
+        airDate: e.airDate ?? null
+      })),
+      files: m.files.map((f) => ({
+        filename: f.filename,
+        filePath: f.filePath,
+        title: f.title,
+        episodeNumber: f.episodeNumber,
+        seasonNumber: f.seasonNumber,
+        subtitlePath: f.subtitlePath,
+        subtitlePaths: f.subtitlePaths,
+        mtime: f.mtime
+      }))
+    };
+  });
 });
 ipcMain.handle("scan-all-folders", async () => {
   try {
@@ -15382,47 +18807,30 @@ ipcMain.handle("scan-all-folders", async () => {
     }
     return await folderHandler.scanMultipleFolders(folderSources);
   } catch (error) {
-    console.error("Error scanning all folders:", error);
+    logger.error("folder", "Error scanning all folders");
     throw error;
   }
 });
 ipcMain.handle("fetch-metadata", async (_event, searchName, seasonNumber) => {
   const seasonInfo = seasonNumber !== null && seasonNumber !== void 0 ? ` Season ${seasonNumber}` : "";
-  console.log(`Fetching metadata for: "${searchName}"${seasonInfo}`);
-  try {
-    const malData = await malHandler.searchAndFetchMetadata(searchName, seasonNumber);
-    if (malData) {
-      console.log(`  \x1B[32m✓\x1B[0m Found on MAL: \x1B[36m${malData.title}\x1B[0m`);
-      return { ...malData, source: "mal" };
-    } else {
-      console.log(`  \x1B[31m✗\x1B[0m MAL returned no results for "${searchName}"${seasonInfo}`);
-    }
-  } catch (error) {
-    if (!isRateLimitError(error)) {
-      console.log(`  \x1B[31m✗\x1B[0m MAL failed:`, error);
-    }
+  logger.info("metadata", `Fetching metadata for: "${searchName}"${seasonInfo}`);
+  const result = await findBestMatch(searchName, seasonNumber ?? null);
+  if (result) {
+    const meta = result.metadata;
+    logger.info(
+      "metadata",
+      `Refresh match: ${result.source.toUpperCase()} "${meta.title ?? "?"}" (score ${result.score.toFixed(2)})`
+    );
+    return result.metadata;
   }
-  try {
-    const anilistData = await anilistHandler.searchAndFetchMetadata(searchName, seasonNumber);
-    if (anilistData) {
-      console.log(`  \x1B[32m✓\x1B[0m Found on AniList (fallback): \x1B[36m${anilistData.title}\x1B[0m`);
-      return { ...anilistData, source: "anilist" };
-    } else {
-      console.log(`  \x1B[31m✗\x1B[0m AniList returned no results for "${searchName}"${seasonInfo}`);
-    }
-  } catch (error) {
-    if (!isRateLimitError(error)) {
-      console.log(`  \x1B[31m✗\x1B[0m AniList failed:`, error);
-    }
-  }
-  console.log(`  \x1B[31m✗\x1B[0m No metadata found for: "\x1B[36m${searchName}\x1B[0m"${seasonInfo}`);
+  logger.warn("metadata", `No metadata found for: "${searchName}"${seasonInfo}`);
   return null;
 });
 ipcMain.handle("fetch-mal-metadata", async (_event, seriesName, seasonNumber) => {
   try {
     return await malHandler.searchAndFetchMetadata(seriesName, seasonNumber);
   } catch (error) {
-    console.error("Error fetching MAL metadata:", error);
+    logger.error("metadata", "Error fetching MAL metadata");
     throw error;
   }
 });
@@ -15430,15 +18838,90 @@ ipcMain.handle("fetch-anilist-metadata", async (_event, seriesName, seasonNumber
   try {
     return await anilistHandler.searchAndFetchMetadata(seriesName, seasonNumber);
   } catch (error) {
-    console.error("Error fetching AniList metadata:", error);
+    logger.error("metadata", "Error fetching AniList metadata");
     throw error;
   }
+});
+ipcMain.handle("anilist:search", async (_event, query, limit) => {
+  if (!query || typeof query !== "string" || query.trim().length === 0) return [];
+  try {
+    return await anilistHandler.searchAnimeMultiple(query.trim(), typeof limit === "number" ? limit : 12);
+  } catch (error) {
+    if (!isRateLimitError(error)) logger.error("metadata", "Error searching AniList for picker");
+    return [];
+  }
+});
+ipcMain.handle("metadata:apply-anilist-match", async (_event, seriesId, anilistId, seasonNumber = null) => {
+  if (!seriesId || typeof anilistId !== "number" || !Number.isFinite(anilistId)) {
+    return { ok: false, reason: "bad-args" };
+  }
+  const fetched = await anilistHandler.fetchMetadataById(anilistId, seasonNumber);
+  if (!fetched) return { ok: false, reason: "fetch-failed" };
+  const allMeta = await metadataHandler.loadMetadata();
+  const existing = allMeta[seriesId];
+  const fileEpisodes = existing?.fileEpisodes ?? [];
+  const fileEpisodeMap = /* @__PURE__ */ new Map();
+  for (const f of fileEpisodes) {
+    const key = f.seasonNumber !== null && f.seasonNumber !== void 0 ? `${f.seasonNumber}_${f.episodeNumber}` : `null_${f.episodeNumber}`;
+    fileEpisodeMap.set(key, f.filePath);
+  }
+  const imagesToCache = [fetched.poster, fetched.banner];
+  for (const ep of fetched.episodes || []) {
+    if (ep.thumbnail) imagesToCache.push(ep.thumbnail);
+  }
+  const cachedImages = await imageCacheHandler.cacheImages(imagesToCache);
+  const posterLocal = fetched.poster ? cachedImages.get(fetched.poster) ?? null : null;
+  const bannerLocal = fetched.banner ? cachedImages.get(fetched.banner) ?? null : null;
+  const episodesWithLocalThumbs = [];
+  let firstThumbnailInBatch = true;
+  for (const ep of fetched.episodes || []) {
+    let thumbnailLocal = null;
+    if (ep.thumbnail) thumbnailLocal = cachedImages.get(ep.thumbnail) ?? null;
+    if (!thumbnailLocal) {
+      const epSeason = ep.seasonNumber ?? null;
+      const exactKey = epSeason !== null ? `${epSeason}_${ep.episodeNumber}` : `null_${ep.episodeNumber}`;
+      let videoPath = fileEpisodeMap.get(exactKey);
+      if (!videoPath && epSeason !== null) videoPath = fileEpisodeMap.get(`null_${ep.episodeNumber}`);
+      if (!videoPath) {
+        for (const [mapKey, path] of fileEpisodeMap.entries()) {
+          const parts = mapKey.split("_");
+          const keyEpNum = parseFloat(parts[parts.length - 1]);
+          if (keyEpNum === ep.episodeNumber) {
+            videoPath = path;
+            break;
+          }
+        }
+      }
+      if (videoPath) {
+        try {
+          thumbnailLocal = await thumbnailHandler.generateThumbnail(videoPath, 120, firstThumbnailInBatch);
+          firstThumbnailInBatch = false;
+        } catch (err) {
+          logger.warn("thumbnail", `apply-match: failed to generate thumbnail for ep ${ep.episodeNumber}`, { file: videoPath });
+        }
+      }
+    }
+    episodesWithLocalThumbs.push({ ...ep, thumbnailLocal });
+  }
+  const merged = {
+    ...fetched,
+    posterLocal,
+    bannerLocal,
+    episodes: episodesWithLocalThumbs,
+    fileEpisodes,
+    folderPath: existing?.folderPath,
+    type: existing?.type,
+    source: "anilist"
+  };
+  await metadataHandler.updateSeriesMetadata(seriesId, merged);
+  logger.info("metadata", `Override applied: ${seriesId} → AniList ${anilistId}`);
+  return { ok: true };
 });
 ipcMain.handle("save-metadata", async (_event, metadata) => {
   try {
     return await metadataHandler.saveMetadata(metadata);
   } catch (error) {
-    console.error("Error saving metadata:", error);
+    logger.error("metadata", "Error saving metadata");
     throw error;
   }
 });
@@ -15446,7 +18929,7 @@ ipcMain.handle("load-metadata", async () => {
   try {
     return await metadataHandler.loadMetadata();
   } catch (error) {
-    console.error("Error loading metadata:", error);
+    logger.error("metadata", "Error loading metadata");
     return {};
   }
 });
@@ -15454,7 +18937,7 @@ ipcMain.handle("clear-metadata", async () => {
   try {
     return await metadataHandler.saveMetadata({});
   } catch (error) {
-    console.error("Error clearing metadata:", error);
+    logger.error("metadata", "Error clearing metadata");
     throw error;
   }
 });
@@ -15465,289 +18948,93 @@ ipcMain.handle("delete-series", async (_event, seriesId) => {
       await imageCacheHandler.deleteSeriesImages(seriesData);
     }
     await metadataHandler.deleteSeriesMetadata(seriesId);
-    console.log(`Deleted series: ${seriesId}`);
+    logger.info("metadata", `Deleted series: ${seriesId}`);
     return true;
   } catch (error) {
-    console.error("Error deleting series:", error);
+    logger.error("metadata", "Error deleting series");
     throw error;
   }
 });
+async function runScanAndFetch(folderPath, activeRoots2) {
+  logger.info("folder", `Starting scan and metadata fetch for: ${folderPath}`, { file: folderPath });
+  const scannedMedia = await folderHandler.scanFolder(folderPath, activeRoots2);
+  await metadataHandler.transaction(async (raw) => {
+    const reconciled = await folderHandler.reconcileMetadata(raw, activeRoots2);
+    return { updated: reconciled };
+  });
+  const scannedIds = /* @__PURE__ */ new Set();
+  await metadataHandler.transaction(async (current) => {
+    let touched = 0;
+    for (const media of scannedMedia) {
+      if (media.files.length === 0) continue;
+      scannedIds.add(media.id);
+      const existing = current[media.id] ?? {};
+      const oldByPath = new Map(
+        (existing.fileEpisodes ?? []).map((f) => [f.filePath, f])
+      );
+      const newFileEpisodes = media.files.map((f) => {
+        const old = oldByPath.get(f.filePath);
+        return {
+          episodeNumber: f.episodeNumber,
+          seasonNumber: f.seasonNumber,
+          filePath: f.filePath,
+          subtitlePath: f.subtitlePath,
+          subtitlePaths: f.subtitlePaths,
+          filename: f.filename,
+          title: f.title,
+          status: old?.status ?? f.status,
+          lastProbedAt: old?.lastProbedAt ?? f.lastProbedAt
+        };
+      });
+      const oldPaths = new Set(oldByPath.keys());
+      const newPaths = new Set(newFileEpisodes.map((f) => f.filePath));
+      const sameLength = oldPaths.size === newPaths.size;
+      const sameContents = sameLength && [...newPaths].every((p) => oldPaths.has(p));
+      if (sameContents && existing.folderPath === media.folderPath) continue;
+      current[media.id] = {
+        ...existing,
+        seriesId: media.id,
+        title: existing.title ?? media.name,
+        fileEpisodes: newFileEpisodes,
+        folderPath: media.folderPath,
+        type: media.type
+      };
+      touched++;
+      logger.info("folder", `Sync: ${media.name} → ${newFileEpisodes.length} file(s)`, { series: media.name });
+    }
+    if (touched === 0) return { updated: null };
+    return { updated: current };
+  });
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("metadata:file-status-changed", { filePath: "", status: "ready" });
+  }
+  const normalize = (p) => p.endsWith("/") ? p.slice(0, -1) : p;
+  const normalizedScan = normalize(folderPath);
+  const scanPrefix = normalizedScan + "/";
+  await metadataHandler.transaction(async (current) => {
+    const merged = {};
+    let dropped = 0;
+    for (const [seriesId, seriesData] of Object.entries(current)) {
+      const fp = seriesData?.folderPath;
+      const isUnderScan = fp && (normalize(fp) === normalizedScan || normalize(fp).startsWith(scanPrefix));
+      if (!isUnderScan || scannedIds.has(seriesId)) {
+        merged[seriesId] = seriesData;
+      } else {
+        dropped++;
+      }
+    }
+    if (dropped === 0) return { updated: null };
+    return { updated: merged };
+  });
+  logger.info("folder", `Scan complete! Found ${scannedMedia.length} items`);
+  return { success: true, count: scannedMedia.length };
+}
 ipcMain.handle("scan-and-fetch-metadata", async (_event, folderPath) => {
   try {
-    console.log(`
-========================================`);
-    console.log(`Starting scan and metadata fetch for: ${folderPath}`);
-    console.log(`========================================
-`);
-    const scannedMedia = await folderHandler.scanFolder(folderPath);
-    const existingMetadata = await metadataHandler.loadMetadata();
-    const newMetadata = {};
-    const seenSeriesIds = /* @__PURE__ */ new Set();
-    for (const media of scannedMedia) {
-      if (media.files.length === 0) {
-        console.log(`Skipping ${media.name} - no files found`);
-        continue;
-      }
-      const mediaId = media.id;
-      seenSeriesIds.add(mediaId);
-      if (existingMetadata[mediaId]) {
-        newMetadata[mediaId] = { ...existingMetadata[mediaId] };
-      }
-      const existing = existingMetadata[mediaId];
-      if (existing?.title && existing?.posterLocal) {
-        const cachedTitle = existing.title.toLowerCase().trim();
-        const seriesNameLower = media.name.toLowerCase().trim();
-        const normalizeForComparison = (title) => {
-          return title.replace(/\s*\(season\s*\d+\)/gi, "").replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
-        };
-        const normalizedCached = normalizeForComparison(cachedTitle);
-        const normalizedSeries = normalizeForComparison(seriesNameLower);
-        const titlesMatch = normalizedCached === normalizedSeries || normalizedSeries.length >= 5 && (normalizedCached.includes(normalizedSeries) || normalizedSeries.includes(normalizedCached));
-        if (!titlesMatch && normalizedSeries.length >= 3) {
-          console.log(`  ⚠️  Cached metadata title "${cachedTitle}" doesn't match series name "${seriesNameLower}"`);
-          console.log(`  🔄 Re-fetching metadata for: ${media.name}`);
-          delete newMetadata[mediaId];
-        } else if (titlesMatch) {
-          console.log(`Using cached metadata for: ${media.name}`);
-          let finalTitle = existing.title;
-          if (media.seasonNumber !== null && media.seasonNumber !== void 0) {
-            const seasonPattern = /\(Season\s*\d+\)/i;
-            if (!seasonPattern.test(finalTitle)) {
-              finalTitle = `${finalTitle} (Season ${media.seasonNumber})`;
-            }
-          }
-          newMetadata[mediaId] = {
-            ...existing,
-            seriesId: mediaId,
-            title: finalTitle,
-            fileEpisodes: media.files.map((f) => ({
-              episodeNumber: f.episodeNumber,
-              seasonNumber: f.seasonNumber,
-              filePath: f.filePath,
-              subtitlePath: f.subtitlePath,
-              subtitlePaths: f.subtitlePaths,
-              filename: f.filename,
-              title: f.title
-            })),
-            folderPath: media.folderPath,
-            type: media.type
-          };
-          continue;
-        }
-      }
-      const seasonInfo = media.seasonNumber !== null ? ` Season ${media.seasonNumber}` : "";
-      const partInfo = media.partNumber !== null ? ` Part ${media.partNumber}` : "";
-      console.log(`Fetching metadata for: ${media.name}${seasonInfo}${partInfo} (${media.type})`);
-      const canonicalEpisodes = media.files.filter((f) => {
-        return Number.isInteger(f.episodeNumber);
-      });
-      const canonicalEpisodeCount = canonicalEpisodes.length;
-      console.log(`  📁 Folder has ${canonicalEpisodeCount} canonical episode${canonicalEpisodeCount !== 1 ? "s" : ""} (${media.files.length} total files including decimal episodes)`);
-      let fetchedMetadata = null;
-      try {
-        fetchedMetadata = await malHandler.searchAndFetchMetadata(media.name, media.seasonNumber, media.partNumber, canonicalEpisodeCount);
-        if (fetchedMetadata) {
-          console.log(`  \x1B[32m✓\x1B[0m Found on MAL: \x1B[36m${fetchedMetadata.title}\x1B[0m (${fetchedMetadata.totalEpisodes || "unknown"} episodes)`);
-          fetchedMetadata = { ...fetchedMetadata, source: "mal" };
-        } else {
-          console.log(`  \x1B[31m✗\x1B[0m MAL returned no results for ${media.name}${seasonInfo}`);
-        }
-      } catch (err) {
-        if (!isRateLimitError(err)) {
-          console.log(`  \x1B[31m✗\x1B[0m MAL failed for ${media.name}${seasonInfo}:`, err);
-        }
-      }
-      if (!fetchedMetadata) {
-        try {
-          fetchedMetadata = await anilistHandler.searchAndFetchMetadata(media.name, media.seasonNumber, media.partNumber, canonicalEpisodeCount);
-          if (fetchedMetadata) {
-            console.log(`  \x1B[32m✓\x1B[0m Found on AniList (fallback): \x1B[36m${fetchedMetadata.title}\x1B[0m (${fetchedMetadata.totalEpisodes || "unknown"} episodes)`);
-            fetchedMetadata = { ...fetchedMetadata, source: "anilist" };
-          } else {
-            console.log(`  \x1B[31m✗\x1B[0m AniList returned no results for ${media.name}${seasonInfo}`);
-          }
-        } catch (err) {
-          if (!isRateLimitError(err)) {
-            console.log(`  \x1B[31m✗\x1B[0m AniList failed for ${media.name}${seasonInfo}:`, err);
-          }
-        }
-      }
-      if (fetchedMetadata) {
-        console.log(`  📥 Caching images...`);
-        const imagesToCache = [
-          fetchedMetadata.poster,
-          fetchedMetadata.banner
-        ];
-        if (fetchedMetadata.episodes) {
-          for (const ep of fetchedMetadata.episodes) {
-            if (ep.thumbnail) {
-              imagesToCache.push(ep.thumbnail);
-            }
-          }
-        }
-        const cachedImages = await imageCacheHandler.cacheImages(imagesToCache);
-        const posterLocal = fetchedMetadata.poster ? cachedImages.get(fetchedMetadata.poster) || null : null;
-        const bannerLocal = fetchedMetadata.banner ? cachedImages.get(fetchedMetadata.banner) || null : null;
-        const fileEpisodeMap = /* @__PURE__ */ new Map();
-        for (const f of media.files) {
-          const key = f.seasonNumber !== null ? `${f.seasonNumber}_${f.episodeNumber}` : `null_${f.episodeNumber}`;
-          fileEpisodeMap.set(key, f.filePath);
-        }
-        const episodesWithLocalThumbs = [];
-        let firstThumbnailInBatch = true;
-        for (const ep of fetchedMetadata.episodes || []) {
-          let thumbnailLocal = null;
-          if (ep.thumbnail) {
-            thumbnailLocal = cachedImages.get(ep.thumbnail) || null;
-          }
-          if (!thumbnailLocal) {
-            const epSeason = ep.seasonNumber ?? null;
-            const key = epSeason !== null ? `${epSeason}_${ep.episodeNumber}` : `null_${ep.episodeNumber}`;
-            let videoPath = fileEpisodeMap.get(key);
-            if (!videoPath && epSeason !== null) {
-              videoPath = fileEpisodeMap.get(`null_${ep.episodeNumber}`);
-            }
-            if (!videoPath) {
-              for (const [mapKey, path] of fileEpisodeMap.entries()) {
-                const keyParts = mapKey.split("_");
-                const keyEpisodeNum = parseFloat(keyParts[keyParts.length - 1]);
-                if (keyEpisodeNum === ep.episodeNumber) {
-                  videoPath = path;
-                  break;
-                }
-              }
-            }
-            if (videoPath) {
-              thumbnailLocal = await thumbnailHandler.generateThumbnail(videoPath, 120, firstThumbnailInBatch);
-              firstThumbnailInBatch = false;
-            }
-          }
-          episodesWithLocalThumbs.push({
-            ...ep,
-            thumbnailLocal
-          });
-        }
-        const processedEpisodeNumbers = new Set(episodesWithLocalThumbs.map((ep) => ep.episodeNumber));
-        for (const fileEp of media.files) {
-          if (!Number.isInteger(fileEp.episodeNumber) && !processedEpisodeNumbers.has(fileEp.episodeNumber)) {
-            const epSeason = fileEp.seasonNumber ?? null;
-            let thumbnailLocal = null;
-            try {
-              thumbnailLocal = await thumbnailHandler.generateThumbnail(fileEp.filePath, 120, false);
-            } catch (err) {
-              console.warn(`Failed to generate thumbnail for decimal episode ${fileEp.episodeNumber}:`, err);
-            }
-            episodesWithLocalThumbs.push({
-              episodeNumber: fileEp.episodeNumber,
-              seasonNumber: epSeason ?? void 0,
-              title: `Episode ${fileEp.episodeNumber.toFixed(1)}`,
-              description: null,
-              airDate: null,
-              thumbnail: null,
-              thumbnailLocal
-            });
-          }
-        }
-        let finalTitle = fetchedMetadata.title;
-        if (media.seasonNumber !== null && media.seasonNumber !== void 0) {
-          const seasonPattern = /\(Season\s*\d+\)/i;
-          if (!seasonPattern.test(finalTitle)) {
-            finalTitle = `${finalTitle} (Season ${media.seasonNumber})`;
-          }
-        }
-        newMetadata[mediaId] = {
-          ...fetchedMetadata,
-          seriesId: mediaId,
-          title: finalTitle,
-          posterLocal,
-          bannerLocal,
-          episodes: episodesWithLocalThumbs,
-          fileEpisodes: media.files.map((f) => ({
-            episodeNumber: f.episodeNumber,
-            seasonNumber: f.seasonNumber,
-            filePath: f.filePath,
-            subtitlePath: f.subtitlePath,
-            subtitlePaths: f.subtitlePaths,
-            filename: f.filename,
-            title: f.title
-          })),
-          folderPath: media.folderPath,
-          type: media.type
-        };
-        console.log(`  \x1B[32m✓\x1B[0m Found: \x1B[36m${finalTitle}\x1B[0m`);
-      } else {
-        console.log(`  \x1B[31m✗\x1B[0m No online metadata, generating local thumbnails: \x1B[36m${media.name}\x1B[0m`);
-        const localEpisodes = [];
-        let firstThumbnail = true;
-        for (const f of media.files) {
-          const thumbnailLocal = await thumbnailHandler.generateThumbnail(f.filePath, 120, firstThumbnail);
-          firstThumbnail = false;
-          localEpisodes.push({
-            episodeNumber: f.episodeNumber,
-            seasonNumber: f.seasonNumber,
-            title: f.title || `Episode ${f.episodeNumber}`,
-            description: null,
-            airDate: null,
-            thumbnail: null,
-            thumbnailLocal
-          });
-        }
-        let localTitle = media.name;
-        if (media.seasonNumber !== null && media.seasonNumber !== void 0) {
-          const seasonPattern = /Season\s*\d+/i;
-          if (!seasonPattern.test(localTitle)) {
-            localTitle = `${localTitle} (Season ${media.seasonNumber})`;
-          }
-        }
-        newMetadata[mediaId] = {
-          seriesId: mediaId,
-          title: localTitle,
-          description: "",
-          genres: [],
-          poster: null,
-          posterLocal: null,
-          banner: null,
-          bannerLocal: null,
-          episodes: localEpisodes,
-          fileEpisodes: media.files.map((f) => ({
-            episodeNumber: f.episodeNumber,
-            seasonNumber: f.seasonNumber,
-            filePath: f.filePath,
-            subtitlePath: f.subtitlePath,
-            subtitlePaths: f.subtitlePaths,
-            filename: f.filename,
-            title: f.title
-          })),
-          folderPath: media.folderPath,
-          type: media.type,
-          source: "local"
-        };
-      }
-      await new Promise((resolve2) => setTimeout(resolve2, 500));
-    }
-    const mergedMetadata = { ...existingMetadata };
-    for (const [seriesId, seriesData] of Object.entries(newMetadata)) {
-      mergedMetadata[seriesId] = seriesData;
-    }
-    const cleanedMetadata = {};
-    for (const [seriesId, seriesData] of Object.entries(mergedMetadata)) {
-      const data = seriesData;
-      const fileEpisodes = data.fileEpisodes || [];
-      if (fileEpisodes.length > 0) {
-        cleanedMetadata[seriesId] = seriesData;
-      } else {
-        console.log(`Removing metadata for ${seriesId} - no file episodes`);
-      }
-    }
-    await metadataHandler.saveMetadata(cleanedMetadata);
-    console.log(`
-========================================`);
-    console.log(`Scan complete! Found ${scannedMedia.length} items`);
-    console.log(`========================================
-`);
-    return { success: true, count: scannedMedia.length };
+    const activeRoots2 = await configHandler.getFolderSources();
+    return await runScanAndFetch(folderPath, activeRoots2);
   } catch (error) {
-    console.error("Error in scan-and-fetch-metadata:", error);
+    logger.error("folder", "Error in scan-and-fetch-metadata");
     throw error;
   }
 });
@@ -15757,7 +19044,7 @@ ipcMain.handle("get-series-episodes", async (_event, seriesId) => {
     const series = metadata[seriesId];
     return series?.episodes || [];
   } catch (error) {
-    console.error("Error getting series episodes:", error);
+    logger.error("metadata", "Error getting series episodes");
     return [];
   }
 });
@@ -15765,7 +19052,7 @@ ipcMain.handle("get-image-cache-stats", async () => {
   try {
     return await imageCacheHandler.getCacheStats();
   } catch (error) {
-    console.error("Error getting image cache stats:", error);
+    logger.error("image", "Error getting image cache stats");
     return { count: 0, sizeBytes: 0 };
   }
 });
@@ -15774,10 +19061,118 @@ ipcMain.handle("clear-image-cache", async () => {
     await imageCacheHandler.clearCache();
     return true;
   } catch (error) {
-    console.error("Error clearing image cache:", error);
+    logger.error("image", "Error clearing image cache");
     throw error;
   }
 });
 ipcMain.handle("get-image-cache-path", () => {
   return imageCacheHandler.getCachePath();
+});
+ipcMain.handle("probe:retry", (_event, filePath) => {
+  if (typeof filePath === "string" && filePath.length > 0) {
+    videoProbeHandler.retry(filePath);
+  }
+});
+ipcMain.handle("subtitle:list-embedded", async (_event, videoPath) => {
+  if (typeof videoPath !== "string" || !videoPath) return [];
+  return subtitleHandler.listEmbedded(videoPath);
+});
+ipcMain.handle("subtitle:extract", async (_event, videoPath, streamIndex, codec) => {
+  if (typeof videoPath !== "string" || !videoPath || typeof streamIndex !== "number") return null;
+  return subtitleHandler.extractEmbedded(videoPath, streamIndex, codec ?? "");
+});
+ipcMain.handle("aniskip:fetch", async (_event, seriesId, malId, episodeNumber, episodeLength) => {
+  if (!seriesId || typeof malId !== "number" || typeof episodeNumber !== "number" || typeof episodeLength !== "number") {
+    return {};
+  }
+  return aniSkipHandler.fetchAndCache(seriesId, malId, episodeNumber, episodeLength);
+});
+function isProvider(v) {
+  return v === "anilist" || v === "mal";
+}
+ipcMain.handle("tracker:status", async (_event, provider) => {
+  if (!isProvider(provider)) throw new Error("invalid provider");
+  return trackerHandler.status(provider);
+});
+ipcMain.handle("tracker:set-client-id", async (_event, provider, clientId) => {
+  if (!isProvider(provider)) throw new Error("invalid provider");
+  if (typeof clientId !== "string") throw new Error("clientId must be a string");
+  await trackerHandler.setClientId(provider, clientId);
+  return trackerHandler.status(provider);
+});
+ipcMain.handle("tracker:get-client-id", async (_event, provider) => {
+  if (!isProvider(provider)) throw new Error("invalid provider");
+  return trackerHandler.getClientId(provider);
+});
+ipcMain.handle("tracker:connect", async (_event, provider, clientId, clientSecret) => {
+  if (!isProvider(provider)) throw new Error("invalid provider");
+  if (typeof clientId !== "string" || !clientId.trim()) throw new Error("clientId required");
+  const secret = typeof clientSecret === "string" ? clientSecret.trim() : "";
+  return trackerHandler.startConnect(provider, clientId.trim(), secret);
+});
+ipcMain.handle("tracker:cancel-connect", async () => {
+  trackerHandler.cancelConnect();
+  return true;
+});
+ipcMain.handle("tracker:disconnect", async (_event, provider) => {
+  if (!isProvider(provider)) throw new Error("invalid provider");
+  return trackerHandler.disconnect(provider);
+});
+ipcMain.handle("tracker:mark-episode", async (_event, provider, mediaId, episodeNumber, totalEpisodes) => {
+  if (!isProvider(provider)) throw new Error("invalid provider");
+  if (typeof mediaId !== "number" || typeof episodeNumber !== "number") {
+    throw new Error("mediaId and episodeNumber must be numbers");
+  }
+  return trackerHandler.markEpisode({
+    provider,
+    mediaId,
+    episodeNumber,
+    totalEpisodes: typeof totalEpisodes === "number" ? totalEpisodes : null
+  });
+});
+ipcMain.handle("shell:open-external", async (_event, url) => {
+  if (typeof url !== "string" || !/^https?:\/\//i.test(url)) {
+    throw new Error("only http(s) URLs may be opened externally");
+  }
+  await shell.openExternal(url);
+  return true;
+});
+ipcMain.handle("shell:open-with-mpv", async (_event, filePath) => {
+  if (typeof filePath !== "string" || !filePath) {
+    throw new Error("filePath required");
+  }
+  const normalizedPath = resolve$1(filePath);
+  const allowedSources = await configHandler.getFolderSources();
+  const isAllowed = allowedSources.some((source) => {
+    try {
+      const normalizedSource = resolve$1(source);
+      const rel = relative$1(normalizedSource, normalizedPath);
+      return !rel.startsWith("..") && !rel.startsWith("/");
+    } catch {
+      return false;
+    }
+  });
+  if (!isAllowed) {
+    logger.error("system", `mpv: rejected path outside library roots`, { file: filePath });
+    throw new Error("path not in any configured library root");
+  }
+  if (!existsSync(normalizedPath)) {
+    throw new Error("file not found");
+  }
+  try {
+    const child = spawn("mpv", [normalizedPath], { detached: true, stdio: "ignore" });
+    child.on("error", (err) => {
+      logger.error("system", `mpv launch failed: ${err.message}`, { file: normalizedPath });
+    });
+    child.unref();
+    logger.info("system", `Launched mpv`, { file: normalizedPath });
+    return true;
+  } catch (err) {
+    logger.error("system", `mpv spawn threw: ${err.message}`, { file: normalizedPath });
+    throw err;
+  }
+});
+app.on("before-quit", () => {
+  videoProbeHandler.stop();
+  void fileWatcher.stop();
 });

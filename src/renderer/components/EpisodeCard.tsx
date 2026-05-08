@@ -60,6 +60,7 @@ function EpisodeCard({ seriesId, episode, hasFile }: EpisodeCardProps) {
       className={`episode-card ${hasFile ? "has-file" : "no-file"}${isReady ? "" : " not-ready"} status-${status}`}
       onClick={handleClick}
       disabled={!hasFile || !isReady}
+      data-episode-file={hasFile && filePath ? filePath : undefined}
     >
       <div className="episode-thumb">
         {thumbnailUrl ? (

@@ -14,4 +14,8 @@ export default defineConfig({
   // correct MIME before passing to JASSUB (Vite's dev static handler serves
   // .wasm with the wrong Content-Type and overrides any middleware fix).
   assetsInclude: ['**/*.wasm'],
+  // JASSUB's bundle declares its worker as IIFE. That works in dev, but Vite's
+  // production build is code-split and rejects IIFE workers. Force ES-module
+  // workers everywhere — modern Chromium (Electron) supports them natively.
+  worker: { format: 'es' },
 });

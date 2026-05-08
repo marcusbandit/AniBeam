@@ -286,6 +286,12 @@ a { color: inherit; text-decoration: none; }
   -webkit-box-orient: vertical;
   overflow: hidden;
   margin-bottom: 0.35rem;
+  /* Always reserve exactly 2 lines of space so the title row keeps the
+     same height whether a card holds a 1-line or 2-line title — and the
+     poster above + meta line below stay anchored to the same y in every
+     card. Switching JP↔EN changes the text but never reflows the grid.
+     `lh` resolves against this element's own line-height. */
+  min-height: 2lh;
 }
 .show-card-meta {
   display: flex;
@@ -2218,6 +2224,77 @@ a { color: inherit; text-decoration: none; }
 .activity-log-stage.stage-probe     { color: #6090d0; }
 .activity-log-stage.stage-system    { color: #8a8a96; }
 
+/* Grouped (tree) rows — collapse runs of repeated message-prefix events */
+.activity-log-group {
+  display: flex;
+  flex-direction: column;
+}
+.activity-log-group.expanded {
+  background: #0c0c12;
+  border-top: 1px solid #15151c;
+  border-bottom: 1px solid #15151c;
+}
+.activity-log-group-head {
+  cursor: pointer;
+}
+.activity-log-group-msg {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.activity-log-chev {
+  display: inline-flex;
+  align-items: center;
+  color: #6a6a76;
+  flex-shrink: 0;
+}
+.activity-log-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  padding: 1px 8px;
+  border: 1px solid #2a2a32;
+  border-radius: 999px;
+  color: #9a9aa6;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  justify-self: end;
+}
+.activity-log-group.level-warn .activity-log-count { color: #e0c089; border-color: #6a4f23; }
+.activity-log-group.level-error .activity-log-count { color: #e08989; border-color: #6a3030; }
+.activity-log-group-children {
+  display: flex;
+  flex-direction: column;
+  padding: 2px 14px 6px 84px;
+  border-top: 1px solid #15151c;
+}
+.activity-log-child-row {
+  display: grid;
+  grid-template-columns: 60px minmax(0, 1fr) minmax(0, 200px);
+  gap: 10px;
+  padding: 2px 0;
+  align-items: center;
+  min-height: 20px;
+  user-select: text;
+}
+.activity-log-child-row .activity-log-msg {
+  color: #b5b5c0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.activity-log-child-row.level-warn .activity-log-msg { color: #e0c089; }
+.activity-log-child-row.level-error .activity-log-msg { color: #e08989; }
+.activity-log-child-row .activity-log-ctx {
+  color: #6a6a76;
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+}
+
 /* Filter chips — match active state to the stage colors so the chip ring tints with its stage */
 .activity-log-chip.stage-folder.active    { color: #6dc7d4; border-color: #2c5a64; background: #11252a; }
 .activity-log-chip.stage-metadata.active  { color: #b59cf5; border-color: #4d3f7a; background: #1a1530; }
@@ -2253,4 +2330,246 @@ a { color: inherit; text-decoration: none; }
   color: #e08989;
   border-color: #b54343;
   cursor: pointer;
+}
+
+/* Bare folder-driven detail page (metadata paused). */
+.series-detail-bare { animation: fadeIn 200ms ease-out; }
+.bare-episode-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 1.5rem;
+}
+.bare-episode-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  text-align: left;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 0.75rem 1rem;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.bare-episode-row:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--border-hover);
+}
+.bare-episode-icon { color: var(--text-muted); display: inline-flex; }
+.bare-episode-row:hover .bare-episode-icon { color: var(--accent-secondary); }
+.bare-episode-title { flex: 1; word-break: break-word; }
+
+/* Feed page — one row per on-disk episode, sorted by air date desc. */
+.feed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 1.5rem;
+}
+.feed-row {
+  display: grid;
+  grid-template-columns: 56px 1fr auto auto;
+  align-items: center;
+  gap: 0.85rem;
+  width: 100%;
+  text-align: left;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 0.55rem 0.85rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.feed-row:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--border-hover);
+}
+.feed-row-poster {
+  width: 56px;
+  height: 80px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+.feed-row-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.feed-row-body { min-width: 0; }
+.feed-row-show {
+  font-size: 0.95rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.feed-row-ep {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 0.15rem;
+}
+.feed-row-date {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.feed-row-play {
+  color: var(--text-muted);
+  display: inline-flex;
+}
+.feed-row:hover .feed-row-play { color: var(--accent-secondary); }
+
+/* Airing carousel — 2 rows × 5 cols, paged not scrolled. */
+.airing-section { margin-bottom: 2.5rem; }
+.airing-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+.airing-pager { display: flex; align-items: center; gap: 0.5rem; }
+.airing-pager-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), opacity var(--transition-fast);
+}
+.airing-pager-btn:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  border-color: var(--border-hover);
+}
+.airing-pager-btn:disabled { opacity: 0.4; cursor: default; }
+.airing-pager-count {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  min-width: 3.5rem;
+  text-align: center;
+}
+.airing-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  grid-template-rows: repeat(2, auto);
+  gap: 1.25rem 1rem;
+}
+
+/* Navbar tail — language switch + version. */
+.navbar-tail {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-left: auto;
+}
+/* Two-segment switch (JP / EN) — real role="switch" button with a thumb
+   pseudo-element. JS drives `--thumb-pos` via rAF + exponential smoothing
+   (no CSS transition on the thumb itself), so drag follows the pointer
+   1:1 and taps glide in. `--isLTR` flips the translate sign in RTL
+   contexts so we don't duplicate rules. */
+.lang-switch {
+  appearance: none;
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: stretch;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  padding: 2px;
+  margin: 0;
+  font: inherit;
+  cursor: pointer;
+  user-select: none;
+  touch-action: pan-y;
+  -webkit-tap-highlight-color: transparent;
+  isolation: isolate;
+  --thumb-pos: 0;
+  --isLTR: 1;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.lang-switch:dir(rtl) { --isLTR: -1; }
+.lang-switch:hover { border-color: var(--border-hover); }
+.lang-switch:focus-visible {
+  outline: none;
+  border-color: var(--accent-secondary, #6aa5ff);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-secondary, #6aa5ff) 35%, transparent);
+}
+.lang-switch:active { cursor: grabbing; }
+
+.lang-switch-thumb {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc(50% - 2px);
+  background: var(--bg-tertiary);
+  border-radius: 999px;
+  transform: translateX(calc(var(--thumb-pos) * 100% * var(--isLTR)));
+  z-index: 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+  /* Deliberately no CSS transition: rAF + Math.exp owns the motion. */
+}
+
+.lang-switch-label {
+  position: relative;
+  z-index: 1;
+  padding: 0.22rem 0.7rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  text-align: center;
+  pointer-events: none;
+  transition: color 0.18s ease;
+}
+.lang-switch-label[data-active="true"] { color: var(--text-primary); }
+
+@media (prefers-reduced-motion: reduce) {
+  .lang-switch,
+  .lang-switch-label { transition: none; }
+}
+
+/* Episode badge on the poster — bigger, louder than the meta line so the
+   episode number is the first thing your eye lands on. */
+.show-card-ep-badge {
+  position: absolute;
+  top: 0.6rem;
+  left: 0.6rem;
+  display: inline-flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.78);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 0.28rem 0.55rem;
+  border-radius: var(--radius-md);
+  backdrop-filter: blur(4px);
+  z-index: 1;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
 }

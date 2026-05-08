@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useMetadata, type SeriesMetadata } from '../hooks/useMetadata';
 import { BookOpen, Tv, Film, Search, RefreshCw, Trash2 } from 'lucide-react';
 import MetadataMatchModal from '../components/MetadataMatchModal';
@@ -21,6 +21,13 @@ function MetadataTab() {
   const [filter, setFilter] = useState<FilterOption>('all');
   const [bulkRefreshing, setBulkRefreshing] = useState(false);
   const [matchTarget, setMatchTarget] = useState<{ seriesId: string; data: SeriesMetadata } | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI.onMetadataFileStatusChanged?.(() => {
+      void loadMetadata();
+    });
+    return () => unsubscribe?.();
+  }, [loadMetadata]);
 
   const seriesList = useMemo(() => Object.entries(metadata), [metadata]);
 
@@ -88,25 +95,6 @@ function MetadataTab() {
     setBulkRefreshing(false);
     alert(`Refresh complete\nSuccessful: ${successCount}\nFailed: ${errorCount}`);
     await loadMetadata();
-  };
-
-  // Override a series with metadata picked from the AniList match modal.
-  // Preserve fileEpisodes / *Local image paths / folderPath / type — those
-  // describe local state and the picked metadata doesn't know about them.
-  // The seriesId key in metadata.json stays the same; the inner seriesId
-  // field gets the new AniList one (matches existing refresh behavior).
-  const handleApplyMatch = async (seriesId: string, replacement: SeriesMetadata) => {
-    const existing = metadata[seriesId];
-    const merged: Partial<SeriesMetadata> = {
-      ...replacement,
-      fileEpisodes: existing?.fileEpisodes,
-      folderPath: existing?.folderPath,
-      type: existing?.type,
-      posterLocal: null,
-      bannerLocal: null,
-      source: 'anilist',
-    };
-    await updateSeriesMetadata(seriesId, merged);
   };
 
   const handleDelete = async (seriesId: string, seriesName: string) => {
@@ -294,10 +282,7 @@ function MetadataTab() {
         // a season suffix server-side.
         seasonNumber={null}
         onClose={() => setMatchTarget(null)}
-        onApply={async (replacement) => {
-          if (!matchTarget) return;
-          await handleApplyMatch(matchTarget.seriesId, replacement);
-        }}
+        onApplied={loadMetadata}
       />
     </div>
   );
