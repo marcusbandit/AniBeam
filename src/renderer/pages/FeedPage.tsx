@@ -4,6 +4,7 @@ import { Activity, Tv } from "lucide-react";
 import type { LibraryItem } from "../../types/electron";
 import { useTitleLanguage } from "../contexts/TitleLanguageContext";
 import { useTrackerProgress } from "../contexts/TrackerProgressContext";
+import { classifyWatchProgress, getLatestAiredEpisodeNumber } from "../utils/airingUtils";
 
 interface FeedEntry {
   item: LibraryItem;
@@ -154,10 +155,16 @@ function FeedPage() {
               anilistId: item.anilistId ?? undefined,
               malId: item.malId ?? undefined,
             });
+            const latestAiredNum = getLatestAiredEpisodeNumber(item.episodes);
+            const watchedState = watched != null
+              ? classifyWatchProgress({ watched, totalEpisodes: item.totalEpisodes, latestAiredEpisode: latestAiredNum })
+              : null;
             const watchedLabel = watched != null
-              ? (item.totalEpisodes != null && item.totalEpisodes > 0
-                  ? `${String(watched).padStart(String(item.totalEpisodes).length, "0")}/${item.totalEpisodes}`
-                  : String(watched).padStart(2, "0"))
+              ? (watchedState === "watched"
+                  ? "Watched"
+                  : item.totalEpisodes != null && item.totalEpisodes > 0
+                    ? `${String(watched).padStart(String(item.totalEpisodes).length, "0")}/${item.totalEpisodes}`
+                    : String(watched).padStart(2, "0"))
               : null;
             return (
               <button
@@ -168,7 +175,10 @@ function FeedPage() {
               >
                 <div className="show-card-poster-wrap">
                   {watchedLabel && (
-                    <span className="show-card-watched-badge" aria-label={`Watched ${watchedLabel}`}>
+                    <span
+                      className={`show-card-watched-badge${watchedState ? ` ${watchedState}` : ""}`}
+                      aria-label={`Watched ${watchedLabel}`}
+                    >
                       {watchedLabel}
                     </span>
                   )}

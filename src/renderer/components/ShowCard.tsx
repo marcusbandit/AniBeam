@@ -3,7 +3,7 @@ import type { SeriesMetadata } from "../hooks/useMetadata";
 import type { FileStatus } from "../../shared/fileStatus";
 import { Film, Tv } from "lucide-react";
 import { getDisplayRating } from "../utils/ratingUtils";
-import { formatEpisodeCode, formatRelativeDate, getLatestAiredEpisode } from "../utils/airingUtils";
+import { classifyWatchProgress, formatEpisodeCode, formatRelativeDate, getLatestAiredEpisode } from "../utils/airingUtils";
 import { useTrackerProgress } from "../contexts/TrackerProgressContext";
 
 function getImageUrl(localPath?: string | null, remotePath?: string | null): string | null {
@@ -37,10 +37,18 @@ function ShowCard({ seriesId, seriesData, variant = "library" }: ShowCardProps) 
   const totalEpisodes = seriesData.totalEpisodes || seriesData.episodes?.length || 0;
   const downloadedEpisodes = seriesData.fileEpisodes?.length || 0;
   const watched = getWatched({ anilistId: seriesData.anilistId, malId: seriesData.malId });
-  // Zero-pad watched to match total's digit count so "05/12" reads cleanly.
-  const watchedLabel = watched != null && totalEpisodes > 0
-    ? `${String(watched).padStart(String(totalEpisodes).length, '0')}/${totalEpisodes}`
+  const latestAiredNum = getLatestAiredEpisode(seriesData)?.episodeNumber ?? null;
+  // Classify so the badge can read "Watched" (complete), red (behind), or
+  // blue (caught up to what's released). Zero-pad watched to match total's
+  // digit count so "05/12" reads cleanly.
+  const watchedState = watched != null
+    ? classifyWatchProgress({ watched, totalEpisodes, latestAiredEpisode: latestAiredNum })
     : null;
+  const watchedLabel = watched != null && totalEpisodes > 0
+    ? (watchedState === "watched"
+        ? "Watched"
+        : `${String(watched).padStart(String(totalEpisodes).length, '0')}/${totalEpisodes}`)
+    : (watched != null ? String(watched).padStart(2, '0') : null);
   const posterUrl = getImageUrl(seriesData.posterLocal, seriesData.poster);
 
   const files = (seriesData.fileEpisodes ?? []) as Array<{ status?: FileStatus }>;
@@ -103,14 +111,14 @@ function ShowCard({ seriesId, seriesData, variant = "library" }: ShowCardProps) 
         {variant === "feed" ? (
           <div className="show-card-meta">
             {score && <span className="show-card-score">{score}</span>}
-            {watchedLabel && <span className="show-card-watched">{watchedLabel}</span>}
+            {watchedLabel && <span className={`show-card-watched${watchedState ? ` ${watchedState}` : ''}`}>{watchedLabel}</span>}
             {epCode && <span className="show-card-ep">{epCode}</span>}
             {epRel && <span className="show-card-rel">{epRel}</span>}
           </div>
         ) : (
           <div className="show-card-meta">
             {score && <span className="show-card-score">{score}</span>}
-            {watchedLabel && <span className="show-card-watched">{watchedLabel}</span>}
+            {watchedLabel && <span className={`show-card-watched${watchedState ? ` ${watchedState}` : ''}`}>{watchedLabel}</span>}
             {year && <span className="show-card-year">{year}</span>}
             {firstGenre && <span className="show-card-genre">{firstGenre}</span>}
           </div>

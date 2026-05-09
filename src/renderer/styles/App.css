@@ -379,6 +379,8 @@ a { color: inherit; text-decoration: none; }
   color: var(--accent-primary);
   letter-spacing: 0.04em;
 }
+.show-card-watched.behind { color: var(--accent-rose); }
+.show-card-watched.watched { color: var(--text-muted); }
 
 /* ============ EMPTY STATES ============ */
 .empty {
@@ -2621,3 +2623,5 @@ a { color: inherit; text-decoration: none; }
   z-index: 1;
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
 }
+.show-card-watched-badge.behind { color: var(--accent-rose); }
+.show-card-watched-badge.watched { color: var(--text-muted); }

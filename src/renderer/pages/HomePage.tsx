@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Tv, ChevronLeft, ChevronRight } from "lucide-react";
 import type { LibraryItem } from "../../types/electron";
-import { normalizeStatus } from "../utils/airingUtils";
+import { classifyWatchProgress, getLatestAiredEpisodeNumber, normalizeStatus } from "../utils/airingUtils";
 import { useTitleLanguage } from "../contexts/TitleLanguageContext";
 import { useTrackerProgress } from "../contexts/TrackerProgressContext";
 
@@ -168,13 +168,19 @@ function HomePage() {
       anilistId: item.anilistId ?? undefined,
       malId: item.malId ?? undefined,
     });
+    const latestAiredNum = getLatestAiredEpisodeNumber(item.episodes);
+    const watchedState = watched != null
+      ? classifyWatchProgress({ watched, totalEpisodes: item.totalEpisodes, latestAiredEpisode: latestAiredNum })
+      : null;
     // AniList omits `episodes` for currently-airing shows where the final
     // count isn't announced yet. Still show the watched number alone in
     // that case — useful info, just no denominator.
     const watchedLabel = watched != null
-      ? (item.totalEpisodes != null && item.totalEpisodes > 0
-          ? `${String(watched).padStart(String(item.totalEpisodes).length, "0")}/${item.totalEpisodes}`
-          : String(watched).padStart(2, "0"))
+      ? (watchedState === "watched"
+          ? "Watched"
+          : item.totalEpisodes != null && item.totalEpisodes > 0
+            ? `${String(watched).padStart(String(item.totalEpisodes).length, "0")}/${item.totalEpisodes}`
+            : String(watched).padStart(2, "0"))
       : null;
     return (
       <button
@@ -185,7 +191,10 @@ function HomePage() {
       >
         <div className="show-card-poster-wrap">
           {watchedLabel && (
-            <span className="show-card-watched-badge" aria-label={`Watched ${watchedLabel}`}>
+            <span
+              className={`show-card-watched-badge${watchedState ? ` ${watchedState}` : ""}`}
+              aria-label={`Watched ${watchedLabel}`}
+            >
               {watchedLabel}
             </span>
           )}

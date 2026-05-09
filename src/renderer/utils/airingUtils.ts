@@ -61,6 +61,50 @@ export function getLatestAiredEpisode(series: SeriesMetadata): EpisodeMetadata |
 }
 
 /**
+ * Highest episode number whose airDate is in the past. Works on the lighter
+ * `LibraryEpisodeAirDate` shape used by the main library walk so HomePage
+ * and FeedPage can call it directly. Returns null if nothing has aired yet.
+ */
+export function getLatestAiredEpisodeNumber(
+  episodes: ReadonlyArray<{ episodeNumber: number; airDate: string | null }> | null | undefined,
+): number | null {
+  if (!episodes) return null;
+  const now = Date.now();
+  let best: number | null = null;
+  for (const e of episodes) {
+    if (!e.airDate) continue;
+    const t = Date.parse(e.airDate);
+    if (!Number.isFinite(t) || t > now) continue;
+    if (best == null || e.episodeNumber > best) best = e.episodeNumber;
+  }
+  return best;
+}
+
+export type WatchProgressState = "watched" | "caught-up" | "behind";
+
+/**
+ * Classify watched progress against released/total counts:
+ *  - "watched": user has watched every episode (only when totalEpisodes is known).
+ *  - "behind": at least one already-aired episode is unwatched.
+ *  - "caught-up": fully up-to-date with what's released, but more is still
+ *    coming or total is unknown.
+ */
+export function classifyWatchProgress(args: {
+  watched: number;
+  totalEpisodes: number | null | undefined;
+  latestAiredEpisode: number | null | undefined;
+}): WatchProgressState {
+  const { watched, totalEpisodes, latestAiredEpisode } = args;
+  if (totalEpisodes != null && totalEpisodes > 0 && watched >= totalEpisodes) {
+    return "watched";
+  }
+  if (latestAiredEpisode != null && watched < latestAiredEpisode) {
+    return "behind";
+  }
+  return "caught-up";
+}
+
+/**
  * Returns currently-airing on-disk shows, sorted by most recent aired
  * episode date descending. Falls back to startDate when no past airDate
  * is available so the show still appears.
