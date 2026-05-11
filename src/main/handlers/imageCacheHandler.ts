@@ -15,6 +15,15 @@ interface CacheIndex {
   [url: string]: CacheEntry;
 }
 
+// Cap so the index file (and the cache dir) can't grow unbounded across
+// every poster/banner/thumbnail the user ever browsed. 5000 entries × an
+// average ~150KB per image ≈ 750MB on disk, ~1MB index file.
+const MAX_INDEX_ENTRIES = 5000;
+// 30 days. Posters and banners rarely change; episode thumbnails for the
+// long tail of shows the user opened once and never returned to don't
+// need to live forever.
+const ENTRY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
 function getImageCachePath(): string {
   const userDataPath = app.getPath('userData');
   return join(userDataPath, 'image-cache');
@@ -47,6 +56,39 @@ async function loadCacheIndex(): Promise<CacheIndex> {
     logger.error('image', 'Error loading cache index');
     return {};
   }
+}
+
+// Drop expired entries and trim oldest entries past the cap. Caller is
+// responsible for persisting the result. Returns true if anything changed.
+function pruneIndex(index: CacheIndex): boolean {
+  const now = Date.now();
+  const all = Object.values(index);
+  let mutated = false;
+
+  // Pass 1 — TTL eviction.
+  for (const entry of all) {
+    const age = now - new Date(entry.cachedAt).getTime();
+    if (Number.isFinite(age) && age > ENTRY_TTL_MS) {
+      delete index[entry.originalUrl];
+      mutated = true;
+    }
+  }
+
+  // Pass 2 — cap eviction. Sort survivors by oldest cachedAt and drop
+  // the head until we're under the cap. Files on disk are left for the
+  // next pruneIndex / clearCache pass; the index is the source of truth
+  // for "is this URL cached," so dropping the index entry effectively
+  // evicts even if the file lingers.
+  const survivors = Object.values(index)
+    .map((e) => ({ url: e.originalUrl, t: new Date(e.cachedAt).getTime() || 0 }))
+    .sort((a, b) => a.t - b.t);
+  while (survivors.length > MAX_INDEX_ENTRIES) {
+    const oldest = survivors.shift()!;
+    delete index[oldest.url];
+    mutated = true;
+  }
+
+  return mutated;
 }
 
 async function saveCacheIndex(index: CacheIndex): Promise<void> {
@@ -379,6 +421,25 @@ const imageCacheHandler = {
    */
   getCachePath(): string {
     return getImageCachePath();
+  },
+
+  /**
+   * One-shot: prune the index of expired and over-cap entries. Safe to
+   * call from app startup. Errors are logged but not thrown — pruning is
+   * best-effort.
+   */
+  async pruneIndexNow(): Promise<void> {
+    try {
+      const index = await loadCacheIndex();
+      const before = Object.keys(index).length;
+      const changed = pruneIndex(index);
+      if (changed) {
+        await saveCacheIndex(index);
+        logger.info('image', `Image cache pruned: ${before} → ${Object.keys(index).length} entries`);
+      }
+    } catch (err) {
+      logger.warn('image', `Image cache prune failed: ${(err as Error).message}`);
+    }
   },
 };
 

@@ -64,6 +64,11 @@ export interface FileEpisode {
   title?: string;
   status?: FileStatus;
   lastProbedAt?: number;
+  // Absolute path to a pre-transcoded .mp4 under userData/transcode-cache/,
+  // present once the file has been converted from a Chromium-incompatible
+  // codec (HEVC etc.) so the <video> element can play it natively. Cached
+  // across launches and validated on startup.
+  transcodedPath?: string | null;
 }
 
 const hasElectronAPI = typeof window !== 'undefined' && window.electronAPI;

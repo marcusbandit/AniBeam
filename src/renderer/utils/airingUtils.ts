@@ -105,6 +105,42 @@ export function classifyWatchProgress(args: {
 }
 
 /**
+ * Single source of truth for the watched-count badge label. Use this
+ * everywhere a card renders a watched badge so HomePage / FeedPage /
+ * ShowCard all agree on the format.
+ *
+ * Output shape:
+ *   - null            — no tracker entry for this series; show no badge
+ *   - "Watched"       — series fully watched (only when totalEpisodes known)
+ *   - "XX/YY"         — watched/total, watched zero-padded to total's width
+ *   - "XX/YY+"        — total isn't published yet, but YY episodes have
+ *                       aired so far. The "+" signals "and more coming".
+ *                       Used for currently-airing shows where AniList
+ *                       hasn't committed to a final episode count.
+ *   - "XX/?"          — watched is known but neither total nor aired
+ *                       count are available (rare — usually means we
+ *                       haven't matched metadata yet).
+ */
+export function formatWatchedLabel(args: {
+  watched: number | null;
+  totalEpisodes: number | null | undefined;
+  latestAiredEpisode?: number | null;
+  state: WatchProgressState | null;
+}): string | null {
+  const { watched, totalEpisodes, latestAiredEpisode, state } = args;
+  if (watched == null) return null;
+  if (state === "watched") return "Watched";
+  if (totalEpisodes != null && totalEpisodes > 0) {
+    return `${String(watched).padStart(String(totalEpisodes).length, "0")}/${totalEpisodes}`;
+  }
+  if (latestAiredEpisode != null && latestAiredEpisode > 0) {
+    const denom = Math.max(latestAiredEpisode, watched);
+    return `${String(watched).padStart(String(denom).length, "0")}/${denom}+`;
+  }
+  return `${String(watched).padStart(2, "0")}/?`;
+}
+
+/**
  * Returns currently-airing on-disk shows, sorted by most recent aired
  * episode date descending. Falls back to startDate when no past airDate
  * is available so the show still appears.

@@ -7,6 +7,12 @@ export default {
     name: 'AniBeam',
     executableName: 'anibeam',
     icon: './assets/icon',
+    download: {
+      mirrorOptions: {
+        mirror: 'https://github.com/castlabs/electron-releases/releases/download/',
+        customDir: 'v{{ version }}',
+      },
+    },
   },
   rebuildConfig: {},
   makers: [

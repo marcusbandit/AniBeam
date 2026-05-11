@@ -1,0 +1,7 @@
+{
+  "name": "extract-zip",
+  "version": "2.0.1",
+  "description": "Local shim that delegates to system unzip(1). Works around a Node 26 fd-slicer + zlib backpressure deadlock that hangs the upstream extract-zip mid-decompression.",
+  "main": "index.js",
+  "license": "BSD-2-Clause"
+}

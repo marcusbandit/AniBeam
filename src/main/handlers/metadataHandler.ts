@@ -30,7 +30,12 @@ async function ensureDataDirectory(): Promise<void> {
 let writeChain: Promise<unknown> = Promise.resolve();
 function runLocked<T>(fn: () => Promise<T>): Promise<T> {
   const next = writeChain.then(() => fn(), () => fn());
-  writeChain = next.catch(() => {});
+  // Swallow on the chain pointer (not the returned promise) so one failed
+  // transaction can't poison every subsequent one. Callers still see the
+  // error via `next`. Log here as a safety net for callers that don't await.
+  writeChain = next.catch((err) => {
+    logger.error('metadata', `transaction failed: ${(err as Error).message}`);
+  });
   return next;
 }
 

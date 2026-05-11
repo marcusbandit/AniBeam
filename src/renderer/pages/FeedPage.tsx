@@ -4,7 +4,8 @@ import { Activity, Tv } from "lucide-react";
 import type { LibraryItem } from "../../types/electron";
 import { useTitleLanguage } from "../contexts/TitleLanguageContext";
 import { useTrackerProgress } from "../contexts/TrackerProgressContext";
-import { classifyWatchProgress, getLatestAiredEpisodeNumber } from "../utils/airingUtils";
+import { classifyWatchProgress, formatWatchedLabel, getLatestAiredEpisodeNumber } from "../utils/airingUtils";
+import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
 
 interface FeedEntry {
   item: LibraryItem;
@@ -106,12 +107,15 @@ function FeedPage() {
     void reload();
   }, [reload]);
 
+  // Debounced — see HomePage for the reasoning. New shows fire bursts of
+  // metadata change pings; we want one walk per burst, not 2N+1.
+  const debouncedReload = useDebouncedCallback(() => { void reload(); }, 250);
   useEffect(() => {
     const unsubscribe = window.electronAPI.onMetadataFileStatusChanged?.(() => {
-      void reload();
+      debouncedReload();
     });
     return () => unsubscribe?.();
-  }, [reload]);
+  }, [debouncedReload]);
 
   const entries = useMemo(() => buildEntries(items), [items]);
 
@@ -159,13 +163,12 @@ function FeedPage() {
             const watchedState = watched != null
               ? classifyWatchProgress({ watched, totalEpisodes: item.totalEpisodes, latestAiredEpisode: latestAiredNum })
               : null;
-            const watchedLabel = watched != null
-              ? (watchedState === "watched"
-                  ? "Watched"
-                  : item.totalEpisodes != null && item.totalEpisodes > 0
-                    ? `${String(watched).padStart(String(item.totalEpisodes).length, "0")}/${item.totalEpisodes}`
-                    : String(watched).padStart(2, "0"))
-              : null;
+            const watchedLabel = formatWatchedLabel({
+              watched,
+              totalEpisodes: item.totalEpisodes,
+              latestAiredEpisode: latestAiredNum,
+              state: watchedState,
+            });
             return (
               <button
                 key={item.id}

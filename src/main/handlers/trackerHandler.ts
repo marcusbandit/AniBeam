@@ -9,6 +9,7 @@ import {
   type TrackerProvider,
   type TrackerStatus,
   type ProgressSnapshot,
+  type ProgressEntry,
   setAccount,
   clearAccount,
   getAccount,
@@ -24,6 +25,7 @@ import {
   getProgressSnapshot,
   replaceProgress,
   setProgressEntry,
+  normalizeListStatus,
 } from '../services/trackerStore';
 
 import { LOOPBACK_HOST, LOOPBACK_PORT, LOOPBACK_REDIRECT_URI } from '../../shared/trackerConstants';
@@ -354,7 +356,7 @@ export async function markEpisode(args: MarkArgs): Promise<MarkResult> {
 
   try {
     if (args.provider === 'anilist') {
-      return await markAnilist(token, args.mediaId, ep, args.totalEpisodes ?? null);
+      return await markAnilist(token, acct.userId, args.mediaId, ep, args.totalEpisodes ?? null);
     }
     return await markMal(token, args.mediaId, ep, args.totalEpisodes ?? null);
   } catch (err) {
@@ -364,15 +366,19 @@ export async function markEpisode(args: MarkArgs): Promise<MarkResult> {
   }
 }
 
-async function markAnilist(token: string, mediaId: number, ep: number, total: number | null): Promise<MarkResult> {
+async function markAnilist(token: string, userId: number | null, mediaId: number, ep: number, total: number | null): Promise<MarkResult> {
   const headers = { Authorization: `Bearer ${token}` };
-  // Read current entry so we can apply the monotonic guard.
-  const current = await request<{ MediaList: { progress: number; status: string } | null }>(
-    ANILIST_API,
-    gql`query ($mediaId: Int) { MediaList(mediaId: $mediaId) { progress status } }`,
-    { mediaId },
-    headers,
-  ).catch(() => ({ MediaList: null }));
+  // Read current entry so we can apply the monotonic guard. userId is required:
+  // MediaList(mediaId) without userId ignores the bearer token and returns
+  // some other user's entry, which spuriously trips the monotonic guard.
+  const current = userId != null
+    ? await request<{ MediaList: { progress: number; status: string } | null }>(
+        ANILIST_API,
+        gql`query ($userId: Int, $mediaId: Int) { MediaList(userId: $userId, mediaId: $mediaId) { progress status } }`,
+        { userId, mediaId },
+        headers,
+      ).catch(() => ({ MediaList: null }))
+    : { MediaList: null };
 
   const previousProgress = current.MediaList?.progress ?? 0;
   if (previousProgress >= ep) {
@@ -393,7 +399,7 @@ async function markAnilist(token: string, mediaId: number, ep: number, total: nu
   );
 
   await markSync('anilist');
-  await setProgressEntry('anilist', mediaId, ep);
+  await setProgressEntry('anilist', mediaId, ep, normalizeListStatus('anilist', newStatus));
   logger.info('tracker', `anilist ${previousProgress} → ${ep} (mediaId ${mediaId})`);
   return { ok: true, provider: 'anilist', newProgress: ep, previousProgress };
 }
@@ -431,7 +437,8 @@ async function markMal(token: string, mediaId: number, ep: number, total: number
   });
 
   await markSync('mal');
-  await setProgressEntry('mal', mediaId, ep);
+  const newMalStatus = isComplete ? 'completed' : 'watching';
+  await setProgressEntry('mal', mediaId, ep, normalizeListStatus('mal', newMalStatus));
   logger.info('tracker', `mal ${previousProgress} → ${ep} (mediaId ${mediaId})`);
   return { ok: true, provider: 'mal', newProgress: ep, previousProgress };
 }
@@ -453,19 +460,21 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 // AniList exposes the user's whole anime list via MediaListCollection. One
 // query → every entry's progress. We key by the AniList media id so the
 // renderer can resolve a series record's `anilistId` directly.
-async function fetchAnilistProgressMap(): Promise<Record<number, number>> {
+async function fetchAnilistProgressMap(): Promise<Record<number, ProgressEntry>> {
   const acct = await getAccount('anilist');
   const token = await getAccessToken('anilist');
   if (!acct || !token || !acct.userId) return {};
   const headers = { Authorization: `Bearer ${token}` };
   const data = await withTimeout(
     request<{
-      MediaListCollection: { lists: Array<{ entries: Array<{ progress: number; media: { id: number } }> }> };
+      MediaListCollection: {
+        lists: Array<{ entries: Array<{ progress: number; status: string | null; media: { id: number } }> }>;
+      };
     }>(
       ANILIST_API,
       gql`query ($userId: Int) {
         MediaListCollection(userId: $userId, type: ANIME) {
-          lists { entries { progress media { id } } }
+          lists { entries { progress status media { id } } }
         }
       }`,
       { userId: acct.userId },
@@ -474,11 +483,14 @@ async function fetchAnilistProgressMap(): Promise<Record<number, number>> {
     PROGRESS_FETCH_TIMEOUT_MS,
     'AniList MediaListCollection',
   );
-  const map: Record<number, number> = {};
+  const map: Record<number, ProgressEntry> = {};
   for (const list of data.MediaListCollection?.lists ?? []) {
     for (const entry of list.entries ?? []) {
       if (entry.media?.id != null) {
-        map[entry.media.id] = entry.progress ?? 0;
+        map[entry.media.id] = {
+          progress: entry.progress ?? 0,
+          status: normalizeListStatus('anilist', entry.status),
+        };
       }
     }
   }
@@ -487,11 +499,11 @@ async function fetchAnilistProgressMap(): Promise<Record<number, number>> {
 
 // MAL paginates at 1000 entries. Most users are well under that; loop just
 // in case. Keys are MAL anime ids so the renderer matches against malId.
-async function fetchMalProgressMap(): Promise<Record<number, number>> {
+async function fetchMalProgressMap(): Promise<Record<number, ProgressEntry>> {
   const token = await getAccessToken('mal');
   if (!token) return {};
   const headers = { Authorization: `Bearer ${token}` };
-  const map: Record<number, number> = {};
+  const map: Record<number, ProgressEntry> = {};
   let offset = 0;
   const limit = 1000;
   // Hard upper bound prevents an infinite loop if MAL returns a malformed
@@ -499,19 +511,26 @@ async function fetchMalProgressMap(): Promise<Record<number, number>> {
   for (let i = 0; i < 50; i++) {
     const resp = await withTimeout(
       axios.get(`${MAL_API}/users/@me/animelist`, {
-        params: { fields: 'list_status', limit, offset },
+        params: { fields: 'list_status{status,num_episodes_watched,is_rewatching}', limit, offset },
         headers,
       }),
       PROGRESS_FETCH_TIMEOUT_MS,
       `MAL animelist page ${i}`,
     );
     const data = resp.data as {
-      data: Array<{ node: { id: number }; list_status?: { num_episodes_watched?: number } }>;
+      data: Array<{
+        node: { id: number };
+        list_status?: { num_episodes_watched?: number; status?: string; is_rewatching?: boolean };
+      }>;
       paging?: { next?: string };
     };
     for (const item of data.data ?? []) {
       if (item.node?.id != null) {
-        map[item.node.id] = item.list_status?.num_episodes_watched ?? 0;
+        const ls = item.list_status;
+        map[item.node.id] = {
+          progress: ls?.num_episodes_watched ?? 0,
+          status: normalizeListStatus('mal', ls?.status, ls?.is_rewatching ?? false),
+        };
       }
     }
     if (!data.paging?.next || (data.data?.length ?? 0) < limit) break;
@@ -524,7 +543,7 @@ async function fetchMalProgressMap(): Promise<Record<number, number>> {
 // enough that opening + closing the app a few times doesn't spam AniList.
 const PROGRESS_FRESHNESS_MS = 5 * 60_000;
 
-export async function refreshProgress(provider: TrackerProvider): Promise<Record<number, number>> {
+export async function refreshProgress(provider: TrackerProvider): Promise<Record<number, ProgressEntry>> {
   logger.info('tracker', `${provider} progress refresh starting`);
   try {
     const map = provider === 'anilist'

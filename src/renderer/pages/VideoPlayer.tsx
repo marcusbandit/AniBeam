@@ -1,8 +1,9 @@
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useMetadata, type FileEpisode } from '../hooks/useMetadata.js';
+import { useLocalStorage, useLocalStorageRecord } from '../hooks/useLocalStorage';
 import { progressId, readProgress, writeProgress, RESUME_HEAD_SKIP, RESUME_TAIL_SKIP } from '../utils/playbackProgress';
-import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Minimize, Subtitles, SkipBack, SkipForward, CheckCheck } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Minimize, Subtitles, SkipBack, SkipForward, CheckCheck, AlertTriangle, ExternalLink } from 'lucide-react';
 import JASSUB from 'jassub';
 // `?worker&url` (not `?url`) so Vite bundles the worker as a self-contained
 // ES module with its bare-import dependencies (abslink, lfa-ponyfill, etc.)
@@ -146,6 +147,8 @@ function VideoPlayer() {
   const location = useLocation();
   const { metadata } = useMetadata();
   const [videoSrc, setVideoSrc] = useState<string>('');
+  const [unsupported, setUnsupported] = useState<{ vCodec?: string; aCodec?: string; reason?: string } | null>(null);
+  const [mpvLaunching, setMpvLaunching] = useState(false);
   const [subtitleSrcs, setSubtitleSrcs] = useState<SubtitleTrack[]>([]);
   const [episodeData, setEpisodeData] = useState<FileEpisode | null>(null);
   const [chrome, setChrome] = useState(true);
@@ -160,22 +163,10 @@ function VideoPlayer() {
   const [subMenuOpen, setSubMenuOpen] = useState(false);
   const [subMenuTab, setSubMenuTab] = useState<'tracks' | 'style'>('tracks');
   // VTT styling — applied via ::cue CSS. One global setting for all SRT/VTT.
-  const [vttStyle, setVttStyle] = useState<SubtitleStyle>(() => {
-    try {
-      const saved = localStorage.getItem('subtitle-style-v2');
-      if (saved) return { ...DEFAULT_SUB_STYLE, ...JSON.parse(saved) as Partial<SubtitleStyle> };
-    } catch { /* ignore */ }
-    return DEFAULT_SUB_STYLE;
-  });
+  const [vttStyle, setVttStyle] = useLocalStorage<SubtitleStyle>('subtitle-style-v2', DEFAULT_SUB_STYLE);
   // ASS styling — keyed by style name so settings follow the style across
   // shows. Edit "Main" once → applies anywhere "Main" appears.
-  const [assStyles, setAssStyles] = useState<Record<string, SubtitleStyle>>(() => {
-    try {
-      const saved = localStorage.getItem('subtitle-style-ass-v1');
-      if (saved) return JSON.parse(saved) as Record<string, SubtitleStyle>;
-    } catch { /* ignore */ }
-    return {};
-  });
+  const [assStyles, setAssStyles] = useLocalStorageRecord<SubtitleStyle>('subtitle-style-ass-v1', {});
   // Dialogue style names detected in the current ASS track (populated when
   // an ASS track is selected). Used to drive the dropdown in the Style tab.
   const [assDialogueStyleNames, setAssDialogueStyleNames] = useState<string[]>([]);
@@ -357,6 +348,54 @@ function VideoPlayer() {
     };
   }, [videoSrc]);
 
+  // Derive the active episode's filePath from metadata. The memo only
+  // returns a new value if `seriesId`, `episodeNumber`, or the resolved
+  // filePath actually changes — keeps the open-video effect from re-firing
+  // every time some unrelated metadata field updates mid-playback.
+  const activeFilePath = useMemo<string | null>(() => {
+    if (!seriesId || !episodeNumber || !metadata[seriesId]) return null;
+    const seriesData = metadata[seriesId];
+    const episodeNum = parseInt(episodeNumber, 10);
+    if (isNaN(episodeNum)) return null;
+    const fileEpisodes = seriesData.fileEpisodes || [];
+    const episode = fileEpisodes.find((ep: FileEpisode) => ep.episodeNumber === episodeNum);
+    return episode?.filePath ?? null;
+  }, [seriesId, episodeNumber, metadata]);
+
+  // Open the underlying video through main — main checks for a cached
+  // pre-transcoded copy and returns whichever URL the <video> should use.
+  // The `cancelled` flag guards against strict-mode double-mount races
+  // where a stale openVideo() resolves AFTER the unmount.
+  useEffect(() => {
+    if (!activeFilePath) return;
+    const filePath = activeFilePath;
+    let cancelled = false;
+
+    // Reset on episode change so the popup doesn't linger across switches.
+    setUnsupported(null);
+    setVideoSrc('');
+
+    (async () => {
+      try {
+        const result = await window.electronAPI.openVideo(filePath);
+        if (cancelled) return;
+        if (result.kind === 'unsupported') {
+          setUnsupported({ vCodec: result.vCodec, aCodec: result.aCodec });
+          return;
+        }
+        setVideoSrc(result.url);
+      } catch (err) {
+        if (cancelled) return;
+        console.warn('openVideo failed, falling back to direct:', err);
+        setVideoSrc(`file://${filePath}`);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeFilePath]);
+
   const showChrome = useCallback(() => {
     setChrome(true);
     if (hideTimer.current) clearTimeout(hideTimer.current);
@@ -378,8 +417,6 @@ function VideoPlayer() {
 
     if (episode && episode.filePath) {
       setEpisodeData(episode);
-      setVideoSrc(`file://${episode.filePath}`);
-
       // Build the subtitle list:
       //  1. External .srt/.vtt sidecar files (convert .srt → VTT blob)
       //  2. Embedded text-based subtitle streams in the MKV (extract via
@@ -572,14 +609,6 @@ function VideoPlayer() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subtitleSrcs]);
-
-  // Persist VTT and ASS style settings separately.
-  useEffect(() => {
-    try { localStorage.setItem('subtitle-style-v2', JSON.stringify(vttStyle)); } catch { /* ignore */ }
-  }, [vttStyle]);
-  useEffect(() => {
-    try { localStorage.setItem('subtitle-style-ass-v1', JSON.stringify(assStyles)); } catch { /* ignore */ }
-  }, [assStyles]);
 
   // Bottom-offset for native VTT cues. Doesn't apply to ASS — JASSUB renders
   // those with the file's own positioning, untouched. We only adjust cues
@@ -1066,6 +1095,32 @@ function VideoPlayer() {
     if (v > 0) video.muted = false;
   };
 
+  // <video> decode failure → escalate to the unsupported-codec popup. Some
+  // codec combos slip past our probe (e.g. exotic audio in an MP4 wrapper)
+  // and the only signal is the media element's error event.
+  const onVideoError = useCallback(() => {
+    const video = videoRef.current;
+    const code = video?.error?.code;
+    // MEDIA_ERR_SRC_NOT_SUPPORTED (4) and MEDIA_ERR_DECODE (3) are the
+    // "Chromium can't play this" cases. Aborts (1) and network errors (2)
+    // are noise — let those re-try naturally.
+    if (code !== 3 && code !== 4) return;
+    if (unsupported) return;
+    setUnsupported({ reason: 'decode-failed' });
+  }, [unsupported]);
+
+  const handleOpenInMpv = useCallback(async () => {
+    if (!activeFilePath || mpvLaunching) return;
+    setMpvLaunching(true);
+    try {
+      await window.electronAPI.openWithMpv(activeFilePath);
+    } catch (err) {
+      console.warn('openWithMpv failed:', err);
+    } finally {
+      setMpvLaunching(false);
+    }
+  }, [activeFilePath, mpvLaunching]);
+
   if (!episodeData || !seriesId || !episodeNumber) {
     return (
       <div className="player-wrap">
@@ -1102,7 +1157,11 @@ function VideoPlayer() {
   `;
 
   return (
-    <div className="player-wrap" ref={wrapRef} onMouseMove={showChrome}>
+    <div
+      className={`player-wrap${!chrome && !subMenuOpen && !unsupported ? ' cursor-hidden' : ''}`}
+      ref={wrapRef}
+      onMouseMove={showChrome}
+    >
       <style>{cueCss}</style>
       <div className="player-header" style={{ opacity: chrome ? 1 : 0 }}>
         <button
@@ -1124,8 +1183,11 @@ function VideoPlayer() {
       <div className="player-canvas" onClick={togglePlay}>
         <video
           ref={videoRef}
-          src={videoSrc}
+          // Empty videoSrc has to be undefined (not "") so Chromium doesn't
+          // try to refetch the host page as a media URL.
+          src={videoSrc || undefined}
           autoPlay
+          onError={onVideoError}
         >
           {subtitleSrcs.map((subtitle, index) => (
             // ASS tracks are rendered by JASSUB on a canvas overlay; only VTT
@@ -1145,6 +1207,40 @@ function VideoPlayer() {
       </div>
       {trackerToast && (
         <div className="player-toast" role="status">{trackerToast}</div>
+      )}
+      {unsupported && (
+        <div className="codec-modal-backdrop" role="dialog" aria-modal="true">
+          <div className="codec-modal">
+            <div className="codec-modal-head">
+              <AlertTriangle size={22} className="codec-modal-icon" />
+              <div>
+                <div className="codec-modal-title">Can&rsquo;t play this in-app</div>
+                <div className="codec-modal-sub">
+                  {unsupported.reason === 'decode-failed'
+                    ? 'Chromium failed to decode this file.'
+                    : `Codec not supported by the in-app player${unsupported.vCodec ? ` (video: ${unsupported.vCodec}${unsupported.aCodec ? `, audio: ${unsupported.aCodec}` : ''})` : ''}.`}
+                </div>
+              </div>
+            </div>
+            <div className="codec-modal-body">
+              Launch the file in your system&rsquo;s <code>mpv</code> instead. AniBeam stays running — mpv opens in its own window.
+            </div>
+            <div className="codec-modal-actions">
+              <button
+                className="codec-modal-btn ghost"
+                onClick={() => navigate(`/series/${seriesId}`)}
+              >Back to series</button>
+              <button
+                className="codec-modal-btn primary"
+                onClick={() => void handleOpenInMpv()}
+                disabled={mpvLaunching || !activeFilePath}
+              >
+                <ExternalLink size={15} />
+                {mpvLaunching ? 'Launching mpv…' : 'Open in system mpv'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       {(inOpWindow || inEdWindow) && (
         <button

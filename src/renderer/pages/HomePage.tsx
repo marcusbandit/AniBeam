@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Tv, ChevronLeft, ChevronRight } from "lucide-react";
 import type { LibraryItem } from "../../types/electron";
-import { classifyWatchProgress, getLatestAiredEpisodeNumber, normalizeStatus } from "../utils/airingUtils";
+import { classifyWatchProgress, formatWatchedLabel, getLatestAiredEpisodeNumber, normalizeStatus } from "../utils/airingUtils";
 import { useTitleLanguage } from "../contexts/TitleLanguageContext";
 import { useTrackerProgress } from "../contexts/TrackerProgressContext";
+import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
 
 const AIRING_PAGE_COLS = 5;
 const AIRING_PAGE_ROWS = 2;
@@ -103,12 +104,18 @@ function HomePage() {
     void reload();
   }, [reload]);
 
+  // Debounce the reload — adding a new show fires ~2N+1
+  // metadata:file-status-changed events (per-file ingest, per-file probe
+  // completion, plus the poster-match landing). Without this, each event
+  // triggers a separate library:walk + setItems and the grid flickers
+  // through several intermediate states. 250ms covers the burst comfortably.
+  const debouncedReload = useDebouncedCallback(() => { void reload(); }, 250);
   useEffect(() => {
     const unsubscribe = window.electronAPI.onMetadataFileStatusChanged?.(() => {
-      void reload();
+      debouncedReload();
     });
     return () => unsubscribe?.();
-  }, [reload]);
+  }, [debouncedReload]);
 
   // Currently-airing shows the user has on disk, sorted by latest aired
   // (or downloaded) episode. Empty array if nothing is airing yet.
@@ -172,16 +179,12 @@ function HomePage() {
     const watchedState = watched != null
       ? classifyWatchProgress({ watched, totalEpisodes: item.totalEpisodes, latestAiredEpisode: latestAiredNum })
       : null;
-    // AniList omits `episodes` for currently-airing shows where the final
-    // count isn't announced yet. Still show the watched number alone in
-    // that case — useful info, just no denominator.
-    const watchedLabel = watched != null
-      ? (watchedState === "watched"
-          ? "Watched"
-          : item.totalEpisodes != null && item.totalEpisodes > 0
-            ? `${String(watched).padStart(String(item.totalEpisodes).length, "0")}/${item.totalEpisodes}`
-            : String(watched).padStart(2, "0"))
-      : null;
+    const watchedLabel = formatWatchedLabel({
+      watched,
+      totalEpisodes: item.totalEpisodes,
+      latestAiredEpisode: latestAiredNum,
+      state: watchedState,
+    });
     return (
       <button
         key={item.id}

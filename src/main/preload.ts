@@ -4,6 +4,18 @@ export type { LogLevel, LogStage, LogEvent } from '../shared/logTypes';
 import type { LogEvent } from '../shared/logTypes';
 export type { FileStatus } from '../shared/fileStatus';
 import type { FileStatus } from '../shared/fileStatus';
+// Source-of-truth tracker types live with the store/handler code in main.
+// Re-export from preload so renderer code only has to import from one place.
+export type {
+  TrackerProvider,
+  TrackerStatus,
+  ProgressSnapshot as TrackerProgressSnapshot,
+  ProgressEntry as TrackerProgressEntry,
+  ListStatus as TrackerListStatus,
+} from './services/trackerStore';
+import type { TrackerProvider, TrackerStatus, ProgressSnapshot as TrackerProgressSnapshot } from './services/trackerStore';
+export type { MarkResult as TrackerMarkResult } from './handlers/trackerHandler';
+import type { MarkResult as TrackerMarkResult } from './handlers/trackerHandler';
 
 interface ScanResult {
   success: boolean;
@@ -104,6 +116,10 @@ export interface ElectronAPI {
   listEmbeddedSubtitles: (videoPath: string) => Promise<Array<{ streamIndex: number; codec: string; language: string | null; title: string | null }>>;
   extractEmbeddedSubtitle: (videoPath: string, streamIndex: number, codec: string) => Promise<{ path: string; format: 'ass' | 'vtt' } | null>;
 
+  // Open a video — main checks for a pre-transcoded cache entry, otherwise
+  // returns the original file:// URL. The renderer hands the URL to <video>.
+  openVideo: (filePath: string) => Promise<VideoOpenResult>;
+
   // AniSkip — intro/outro skip times
   fetchSkipTimes: (seriesId: string, malId: number, episodeNumber: number, episodeLength: number) => Promise<{ op?: { start: number; end: number }; ed?: { start: number; end: number } }>;
 
@@ -129,7 +145,25 @@ export interface ElectronAPI {
   trackerGetMainProvider: () => Promise<TrackerProvider>;
   trackerSetMainProvider: (provider: TrackerProvider) => Promise<TrackerProvider>;
   onTrackerProgressChanged: (handler: () => void) => () => void;
+
+  // Subscriptions (anirss feed list)
+  listSubscriptions: () => Promise<SubscriptionsResult>;
 }
+
+export type VideoOpenResult =
+  | { kind: 'direct'; url: string }
+  | { kind: 'unsupported'; vCodec: string; aCodec: string };
+
+export interface SubscriptionFeed {
+  name: string;
+  feedUrl: string;
+  savePath: string;
+  ruleEnabled: boolean;
+  torrentCount: number;
+}
+export type SubscriptionsResult =
+  | { ok: true; items: SubscriptionFeed[] }
+  | { ok: false; error: string; needsAuth?: boolean };
 
 export interface AnilistSearchResult {
   id: number;
@@ -141,31 +175,6 @@ export interface AnilistSearchResult {
   episodes: number | null;
   season: string | null;
   seasonYear: number | null;
-}
-
-export type TrackerProvider = 'anilist' | 'mal';
-export interface TrackerStatus {
-  connected: boolean;
-  username: string | null;
-  expiresAt: number | null;
-  lastSync: number | null;
-  clientId: string;
-  hasClientSecret: boolean;
-  cipherEncrypted: boolean;
-}
-export interface TrackerMarkResult {
-  ok: boolean;
-  provider: TrackerProvider;
-  newProgress: number | null;
-  previousProgress: number | null;
-  reason?: 'no-account' | 'no-id' | 'not-newer' | 'error';
-  message?: string;
-}
-export interface TrackerProgressSnapshot {
-  mainProvider: TrackerProvider;
-  anilist: Record<number, number>;
-  mal: Record<number, number>;
-  fetchedAt: { anilist: number | null; mal: number | null };
 }
 
 declare global {
@@ -229,6 +238,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   listEmbeddedSubtitles: (videoPath: string) => ipcRenderer.invoke('subtitle:list-embedded', videoPath),
   extractEmbeddedSubtitle: (videoPath: string, streamIndex: number, codec: string) => ipcRenderer.invoke('subtitle:extract', videoPath, streamIndex, codec),
 
+  // Video open
+  openVideo: (filePath: string) => ipcRenderer.invoke('video:open', filePath),
+
   // AniSkip
   fetchSkipTimes: (seriesId: string, malId: number, episodeNumber: number, episodeLength: number) => ipcRenderer.invoke('aniskip:fetch', seriesId, malId, episodeNumber, episodeLength),
 
@@ -254,4 +266,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('tracker:progress-changed', listener);
     return () => ipcRenderer.removeListener('tracker:progress-changed', listener);
   },
+
+  // Subscriptions
+  listSubscriptions: () => ipcRenderer.invoke('subscriptions:list'),
 });

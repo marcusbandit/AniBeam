@@ -1,5 +1,10 @@
 import { createContext, useContext, useEffect, useState, useCallback, useMemo, type ReactNode } from "react";
-import type { TrackerProgressSnapshot, TrackerProvider } from "../../main/preload";
+import type {
+  TrackerProgressSnapshot,
+  TrackerProvider,
+  TrackerListStatus,
+  TrackerProgressEntry,
+} from "../../main/preload";
 
 interface SeriesIds {
   anilistId?: number;
@@ -14,6 +19,13 @@ interface Ctx {
    * primary has no entry. Returns null when neither side has progress.
    */
   getWatched: (ids: SeriesIds) => number | null;
+  /**
+   * Same provider-fallback logic as getWatched, but returns the canonical
+   * list status (`watching`/`planning`/`completed`/`paused`/`dropped`/
+   * `repeating`). Returns null when no entry exists for either provider,
+   * or when the entry exists without a status (legacy v1 cache rows).
+   */
+  getListStatus: (ids: SeriesIds) => TrackerListStatus | null;
   setMainProvider: (provider: TrackerProvider) => Promise<void>;
 }
 
@@ -63,8 +75,11 @@ export function TrackerProgressProvider({ children }: { children: ReactNode }) {
     };
   }, [refresh]);
 
-  const getWatched = useCallback<Ctx["getWatched"]>(
-    ({ anilistId, malId }) => {
+  // Look up a tracker entry using the same main-provider-then-fallback
+  // logic both getWatched and getListStatus need. Pulled out so the two
+  // public helpers stay one-liners and can't drift apart.
+  const lookupEntry = useCallback(
+    ({ anilistId, malId }: SeriesIds): TrackerProgressEntry | null => {
       if (!snapshot) return null;
       const main = snapshot.mainProvider;
       const primary = main === "anilist" ? anilistId : malId;
@@ -78,12 +93,25 @@ export function TrackerProgressProvider({ children }: { children: ReactNode }) {
     [snapshot],
   );
 
+  const getWatched = useCallback<Ctx["getWatched"]>(
+    (ids) => lookupEntry(ids)?.progress ?? null,
+    [lookupEntry],
+  );
+
+  const getListStatus = useCallback<Ctx["getListStatus"]>(
+    (ids) => lookupEntry(ids)?.status ?? null,
+    [lookupEntry],
+  );
+
   const setMainProvider = useCallback(async (provider: TrackerProvider) => {
     await window.electronAPI.trackerSetMainProvider(provider);
     await refresh();
   }, [refresh]);
 
-  const value = useMemo<Ctx>(() => ({ snapshot, getWatched, setMainProvider }), [snapshot, getWatched, setMainProvider]);
+  const value = useMemo<Ctx>(
+    () => ({ snapshot, getWatched, getListStatus, setMainProvider }),
+    [snapshot, getWatched, getListStatus, setMainProvider],
+  );
 
   return (
     <TrackerProgressContext.Provider value={value}>

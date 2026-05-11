@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useMetadata, type SeriesMetadata } from '../hooks/useMetadata';
 import { BookOpen, Tv, Film, Search, RefreshCw, Trash2 } from 'lucide-react';
 import MetadataMatchModal from '../components/MetadataMatchModal';
+import { useDebouncedCallback } from '../hooks/useDebouncedCallback';
 
 type FilterOption = 'all' | 'series' | 'movies' | 'missing';
 
@@ -22,12 +23,15 @@ function MetadataTab() {
   const [bulkRefreshing, setBulkRefreshing] = useState(false);
   const [matchTarget, setMatchTarget] = useState<{ seriesId: string; data: SeriesMetadata } | null>(null);
 
+  // Debounced — bursts of metadata pings on new ingests would otherwise
+  // hammer loadMetadata + re-render the entire grid per file.
+  const debouncedLoad = useDebouncedCallback(() => { void loadMetadata(); }, 250);
   useEffect(() => {
     const unsubscribe = window.electronAPI.onMetadataFileStatusChanged?.(() => {
-      void loadMetadata();
+      debouncedLoad();
     });
     return () => unsubscribe?.();
-  }, [loadMetadata]);
+  }, [debouncedLoad]);
 
   const seriesList = useMemo(() => Object.entries(metadata), [metadata]);
 

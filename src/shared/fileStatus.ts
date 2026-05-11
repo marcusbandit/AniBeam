@@ -1,1 +1,1 @@
-export type FileStatus = 'ready' | 'verifying' | 'stalled';
+export type FileStatus = 'ready' | 'verifying' | 'stalled' | 'transcoding';

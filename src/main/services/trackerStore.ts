@@ -5,6 +5,58 @@ import { logger } from './logger';
 
 export type TrackerProvider = 'anilist' | 'mal';
 
+// Canonical list-status value used across the app. Provider-specific values
+// (AniList CURRENT, MAL watching, etc.) are normalized into this set by
+// normalizeListStatus() below so the renderer never has to know about either
+// vocabulary. `null` means the provider doesn't have a list entry for this
+// media id (or returned an unrecognized value).
+export type ListStatus =
+  | 'watching'
+  | 'planning'
+  | 'completed'
+  | 'paused'
+  | 'dropped'
+  | 'repeating';
+
+export interface ProgressEntry {
+  progress: number;
+  status: ListStatus | null;
+}
+
+const ANILIST_TO_CANONICAL: Record<string, ListStatus> = {
+  CURRENT: 'watching',
+  PLANNING: 'planning',
+  COMPLETED: 'completed',
+  PAUSED: 'paused',
+  DROPPED: 'dropped',
+  REPEATING: 'repeating',
+};
+
+const MAL_TO_CANONICAL: Record<string, ListStatus> = {
+  watching: 'watching',
+  plan_to_watch: 'planning',
+  completed: 'completed',
+  on_hold: 'paused',
+  dropped: 'dropped',
+};
+
+export function normalizeListStatus(
+  provider: TrackerProvider,
+  raw: string | null | undefined,
+  // MAL has no separate "rewatching" list status; it uses an is_rewatching
+  // flag while keeping `status` as "watching". Pass the flag in so we can
+  // promote those entries to "repeating" to match AniList's vocabulary.
+  isRewatching: boolean = false,
+): ListStatus | null {
+  if (!raw) return null;
+  if (provider === 'anilist') {
+    return ANILIST_TO_CANONICAL[raw] ?? null;
+  }
+  const mapped = MAL_TO_CANONICAL[raw];
+  if (mapped === 'watching' && isRewatching) return 'repeating';
+  return mapped ?? null;
+}
+
 export interface TrackerAccount {
   // Public bits — safe to send to renderer
   username: string | null;
@@ -36,12 +88,14 @@ interface TrackerStore {
   // the watched count on show cards). Falls back to the other provider on
   // a per-series basis when the main one has no entry for that series.
   mainProvider: TrackerProvider;
-  // Last-known watched-episode count per provider, keyed by provider's media
-  // id. Persisted so the UI shows numbers immediately on launch; refreshed
-  // in the background after app ready and after every successful mark.
-  progress: { anilist: Record<number, number>; mal: Record<number, number> };
+  // Last-known watched-episode count + list status per provider, keyed by
+  // provider's media id. Persisted so the UI shows numbers immediately on
+  // launch; refreshed in the background after app ready and after every
+  // successful mark. Schema v1 stored bare numbers — loadStore() migrates
+  // those to {progress, status: null} on read.
+  progress: { anilist: Record<number, ProgressEntry>; mal: Record<number, ProgressEntry> };
   progressFetchedAt: { anilist: number | null; mal: number | null };
-  version: 1;
+  version: 2;
 }
 
 const DEFAULT_STORE: TrackerStore = {
@@ -53,8 +107,30 @@ const DEFAULT_STORE: TrackerStore = {
   mainProvider: 'anilist',
   progress: { anilist: {}, mal: {} },
   progressFetchedAt: { anilist: null, mal: null },
-  version: 1,
+  version: 2,
 };
+
+// Coerce a stored progress map from v1 (numbers) or v2 ({progress,status})
+// into the canonical v2 shape. Anything we can't recognize becomes a fresh
+// {progress: 0, status: null} so the rest of the codebase never has to
+// branch on the old shape.
+function migrateProgressMap(raw: unknown): Record<number, ProgressEntry> {
+  if (!raw || typeof raw !== 'object') return {};
+  const out: Record<number, ProgressEntry> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    const id = Number(k);
+    if (!Number.isFinite(id)) continue;
+    if (typeof v === 'number') {
+      out[id] = { progress: v, status: null };
+    } else if (v && typeof v === 'object') {
+      const obj = v as { progress?: unknown; status?: unknown };
+      const progress = typeof obj.progress === 'number' ? obj.progress : 0;
+      const status = typeof obj.status === 'string' ? (obj.status as ListStatus) : null;
+      out[id] = { progress, status };
+    }
+  }
+  return out;
+}
 
 function storePath(): string {
   return join(app.getPath('userData'), 'trackers.json');
@@ -75,17 +151,20 @@ export async function loadStore(): Promise<TrackerStore> {
   try {
     await ensureDir();
     const raw = await readFile(storePath(), 'utf-8');
-    const parsed = JSON.parse(raw) as Partial<TrackerStore>;
+    const parsed = JSON.parse(raw) as Partial<TrackerStore> & {
+      progress?: { anilist?: unknown; mal?: unknown };
+    };
     cache = {
       ...DEFAULT_STORE,
       ...parsed,
       clientIds: { ...DEFAULT_STORE.clientIds, ...(parsed.clientIds ?? {}) },
       clientSecretCiphers: { ...DEFAULT_STORE.clientSecretCiphers, ...(parsed.clientSecretCiphers ?? {}) },
       progress: {
-        anilist: { ...DEFAULT_STORE.progress.anilist, ...(parsed.progress?.anilist ?? {}) },
-        mal: { ...DEFAULT_STORE.progress.mal, ...(parsed.progress?.mal ?? {}) },
+        anilist: migrateProgressMap(parsed.progress?.anilist),
+        mal: migrateProgressMap(parsed.progress?.mal),
       },
       progressFetchedAt: { ...DEFAULT_STORE.progressFetchedAt, ...(parsed.progressFetchedAt ?? {}) },
+      version: 2,
     };
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
@@ -247,8 +326,8 @@ export async function setMainProvider(provider: TrackerProvider): Promise<void> 
 
 export interface ProgressSnapshot {
   mainProvider: TrackerProvider;
-  anilist: Record<number, number>;
-  mal: Record<number, number>;
+  anilist: Record<number, ProgressEntry>;
+  mal: Record<number, ProgressEntry>;
   fetchedAt: { anilist: number | null; mal: number | null };
 }
 
@@ -262,16 +341,28 @@ export async function getProgressSnapshot(): Promise<ProgressSnapshot> {
   };
 }
 
-export async function replaceProgress(provider: TrackerProvider, map: Record<number, number>): Promise<void> {
+export async function replaceProgress(provider: TrackerProvider, map: Record<number, ProgressEntry>): Promise<void> {
   const store = await loadStore();
   store.progress[provider] = map;
   store.progressFetchedAt[provider] = Date.now();
   await saveStore(store);
 }
 
-export async function setProgressEntry(provider: TrackerProvider, mediaId: number, progress: number): Promise<void> {
+// Merge a single (mediaId, progress, status) update into the cached map.
+// Status is optional — a mark mutation knows the new progress for sure but
+// may not always know the resulting status. Pass null to leave status as-is.
+export async function setProgressEntry(
+  provider: TrackerProvider,
+  mediaId: number,
+  progress: number,
+  status: ListStatus | null = null,
+): Promise<void> {
   const store = await loadStore();
-  store.progress[provider][mediaId] = progress;
+  const prev = store.progress[provider][mediaId];
+  store.progress[provider][mediaId] = {
+    progress,
+    status: status ?? prev?.status ?? null,
+  };
   await saveStore(store);
 }
 

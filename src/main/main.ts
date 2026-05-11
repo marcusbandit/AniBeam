@@ -1,10 +1,9 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu, protocol, net, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, protocol, net } from 'electron';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join, isAbsolute, resolve, relative, basename } from 'path';
 import { existsSync } from 'fs';
-import { spawn } from 'child_process';
 import axios from 'axios';
-import folderHandler from './handlers/folderHandler';
+import folderHandler, { type ScannedMedia } from './handlers/folderHandler';
 import anilistHandler from './handlers/anilistHandler';
 import malHandler from './handlers/malHandler';
 import metadataHandler from './handlers/metadataHandler';
@@ -16,16 +15,45 @@ import { findBestMatch } from './utils/metadataMatcher';
 import { findShowMatch, fetchEpisodeAirDates } from './utils/posterMatch';
 import { logger } from './services/logger';
 import type { FileStatus } from '../shared/fileStatus';
-import type { ScannedMedia } from './handlers/folderHandler';
+import { findFileEpisode, type FileEpisodeEntry } from '../shared/fileEpisode';
 import videoProbeHandler from './handlers/videoProbeHandler';
-import subtitleHandler from './handlers/subtitleHandler';
-import aniSkipHandler from './handlers/aniSkipHandler';
-import trackerHandler from './handlers/trackerHandler';
-import type { TrackerProvider } from './services/trackerStore';
+import transcodeCacheHandler from './handlers/transcodeCacheHandler';
 import { fileWatcher } from './services/watcher';
+// IPC modules — each registers its own handlers at app-ready time.
+import { registerLogIpc } from './ipc/log';
+import { registerConfigIpc } from './ipc/config';
+import { registerFolderIpc } from './ipc/folder';
+import { registerImageCacheIpc } from './ipc/imageCache';
+import { registerMediaPlaybackIpc } from './ipc/mediaPlayback';
+import { registerTrackerIpc } from './ipc/tracker';
+import { registerShellIpc } from './ipc/shell';
+import { registerSubscriptionsIpc } from './ipc/subscriptions';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+// Castlabs Electron ships Chromium with HEVC compiled in, but actually
+// USING the HEVC decoder is gated on a feature flag (and so is platform
+// HW video decode on Linux). Without these, an HEVC <video> stream
+// reaches the element, decodes audio, but produces no frames — exactly
+// the "audio plays, screen is black" symptom we hit on Steins;Gate.
+// These must be set BEFORE app.whenReady(); Chromium reads them once
+// at GPU process init.
+app.commandLine.appendSwitch(
+  'enable-features',
+  [
+    'PlatformHEVCDecoderSupport',
+    // VAAPI / NVDEC hardware decode on Linux. Harmless on systems where
+    // the platform decoder is unavailable — Chromium just falls back to
+    // software decode (which the codec build above provides for HEVC).
+    'VaapiVideoDecoder',
+    'VaapiVideoDecodeLinuxGL',
+    'VaapiIgnoreDriverChecks',
+  ].join(','),
+);
+// Don't let Chromium's GPU blocklist veto hardware decode on this box
+// — Linux NVIDIA in particular is conservatively blocklisted by default.
+app.commandLine.appendSwitch('ignore-gpu-blocklist');
 
 // When the app is launched from a .desktop entry, stdout/stderr aren't
 // connected to anything — the first write that hits a closed pipe takes
@@ -71,11 +99,31 @@ function preserveStatus(
   });
 }
 
+// Called when the videoProbeHandler finishes verifying a file (or when
+// transcodeCacheHandler completes/changes a transcode). For files that
+// just became 'ready', we additionally check whether the codec is one
+// Chromium can't decode (HEVC etc.) and, if so, enqueue a pre-transcode.
+// The renderer sees 'transcoding' status while the encode runs and
+// 'ready' once a cached .mp4 is published.
+async function maybeEnqueueTranscode(filePath: string): Promise<void> {
+  try {
+    // Skip files we've already cached. Saves a redundant ffprobe.
+    const meta = await metadataHandler.loadMetadata();
+    const hit = findFileEpisode(meta, filePath);
+    if (hit?.transcodedPath && existsSync(hit.transcodedPath)) return;
+    const needs = await transcodeCacheHandler.shouldTranscode(filePath);
+    if (!needs) return;
+    void transcodeCacheHandler.enqueue(filePath);
+  } catch (err) {
+    logger.warn('system', `maybeEnqueueTranscode failed: ${(err as Error).message}`, { file: filePath });
+  }
+}
+
 async function updateFileStatus(filePath: string, status: FileStatus): Promise<void> {
   const touched = await metadataHandler.transaction<boolean>(async (meta) => {
     let changed = false;
     for (const series of Object.values(meta)) {
-      const s = series as { fileEpisodes?: Array<{ filePath: string; status?: string; lastProbedAt?: number }> };
+      const s = series as { fileEpisodes?: FileEpisodeEntry[] };
       if (!Array.isArray(s.fileEpisodes)) continue;
       for (const file of s.fileEpisodes) {
         if (file.filePath === filePath) {
@@ -160,6 +208,16 @@ async function ingestSingleFile(filePath: string): Promise<void> {
 }
 
 async function handleUnlink(filePath: string): Promise<void> {
+  // Capture transcoded-cache path BEFORE the reconcile drops the entry,
+  // so we can delete the cached .mp4 too. Otherwise it stays orphaned
+  // forever (and the next "rip the same episode" would re-transcode to
+  // a fresh hash and leak the old one).
+  let orphanedCachePath: string | null = null;
+  try {
+    const meta = await metadataHandler.loadMetadata();
+    orphanedCachePath = findFileEpisode(meta, filePath)?.transcodedPath ?? null;
+  } catch { /* best-effort */ }
+
   const changed = await metadataHandler.transaction<boolean>(async (meta) => {
     const activeRoots = await configHandler.getFolderSources();
     const reconciled = await folderHandler.reconcileMetadata(meta, activeRoots);
@@ -180,6 +238,16 @@ async function handleUnlink(filePath: string): Promise<void> {
     // "metadata changed, reload." Status field is a placeholder; the entry
     // for `filePath` is gone after a reconcile.
     mainWindow.webContents.send('metadata:file-status-changed', { filePath, status: 'ready' });
+  }
+
+  if (orphanedCachePath && existsSync(orphanedCachePath)) {
+    try {
+      const { unlink: fsUnlink } = await import('node:fs/promises');
+      await fsUnlink(orphanedCachePath);
+      logger.info('system', `Removed cached transcode for deleted file`, { file: orphanedCachePath });
+    } catch (err) {
+      logger.warn('system', `Failed to remove orphaned cache: ${(err as Error).message}`, { file: orphanedCachePath });
+    }
   }
 }
 
@@ -383,7 +451,13 @@ function createWindow(): void {
       preload: join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      webSecurity: false, // Allow loading local files
+      // Dev only: the Vite dev server (http://localhost:5173) needs to
+      // fetch local images via media:// during HMR, and Chromium would
+      // otherwise block the cross-origin request even though media:// has
+      // corsEnabled. In packaged builds the renderer loads from file://
+      // so Chromium's same-origin checks are already a no-op for our
+      // local paths — keep the security on.
+      webSecurity: process.env.DEV_MODE !== 'true',
     },
     autoHideMenuBar: true,
     backgroundColor: '#0a0a0f',
@@ -416,7 +490,9 @@ function createWindow(): void {
   });
 }
 
-// Register custom protocol for serving local media files
+// Register custom protocol for serving local media files. corsEnabled lets
+// the dev-server renderer (http://localhost:5173) fetch through it without
+// tripping Chromium's CORS check.
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'media',
@@ -425,6 +501,7 @@ protocol.registerSchemesAsPrivileged([
       supportFetchAPI: true,
       stream: true,
       bypassCSP: true,
+      corsEnabled: true,
     },
   },
 ]);
@@ -549,7 +626,28 @@ app.whenReady().then(async () => {
   });
 
   createWindow();
-  videoProbeHandler.start(updateFileStatus);
+
+  // Wire IPC modules. Each register() takes a window getter (or nothing
+  // when handlers don't need to send to the renderer) and adds its
+  // handlers to ipcMain. Order doesn't matter — they're independent.
+  const getMainWindow = (): BrowserWindow | null => mainWindow;
+  registerLogIpc();
+  registerConfigIpc();
+  registerFolderIpc(getMainWindow);
+  registerImageCacheIpc();
+  registerMediaPlaybackIpc();
+  registerTrackerIpc(getMainWindow);
+  registerShellIpc();
+  registerSubscriptionsIpc();
+
+  // Probe-ready and transcode events share the same status update plumbing.
+  // The probe callback also tees into maybeEnqueueTranscode whenever a file
+  // becomes 'ready' so we can decide if it needs a follow-up transcode.
+  videoProbeHandler.start(async (filePath, status) => {
+    await updateFileStatus(filePath, status);
+    if (status === 'ready') await maybeEnqueueTranscode(filePath);
+  });
+  transcodeCacheHandler.start(updateFileStatus);
 
   // Re-enqueue any files that were 'verifying' when the app last quit —
   // the in-memory probe queue doesn't survive restarts, and the watcher's
@@ -559,7 +657,7 @@ app.whenReady().then(async () => {
     const meta = await metadataHandler.loadMetadata();
     let resumed = 0;
     for (const series of Object.values(meta)) {
-      const s = series as { fileEpisodes?: Array<{ filePath: string; status?: string }> };
+      const s = series as { fileEpisodes?: FileEpisodeEntry[] };
       if (!Array.isArray(s.fileEpisodes)) continue;
       for (const f of s.fileEpisodes) {
         if (f.status === 'verifying' || f.status === 'stalled') {
@@ -572,6 +670,71 @@ app.whenReady().then(async () => {
   } catch (err) {
     logger.warn('probe', `Could not resume unverified files: ${(err as Error).message}`);
   }
+
+  // Validate the transcode cache and resume any interrupted transcodes.
+  //   - 'transcoding' rows: the previous run was killed before ffmpeg
+  //     finished. Re-enqueue so the encode picks back up.
+  //   - transcodedPath set but file missing: cache was nuked externally
+  //     (rm -rf, disk cleanup, etc.). Drop the field and re-enqueue.
+  //   - transcodedPath set and file present: nothing to do — the player
+  //     will pick it up on first openVideo.
+  try {
+    let resumedT = 0;
+    let invalidated = 0;
+    await metadataHandler.transaction<boolean>(async (meta) => {
+      let changed = false;
+      for (const series of Object.values(meta)) {
+        const s = series as { fileEpisodes?: FileEpisodeEntry[] };
+        if (!Array.isArray(s.fileEpisodes)) continue;
+        for (const f of s.fileEpisodes) {
+          if (f.transcodedPath && !existsSync(f.transcodedPath)) {
+            f.transcodedPath = null;
+            invalidated++;
+            changed = true;
+            if (existsSync(f.filePath)) void transcodeCacheHandler.enqueue(f.filePath);
+          } else if (f.status === 'transcoding' && existsSync(f.filePath)) {
+            if (!f.transcodedPath) {
+              void transcodeCacheHandler.enqueue(f.filePath);
+              resumedT++;
+            }
+          }
+        }
+      }
+      return { result: changed, updated: changed ? meta : null };
+    });
+    if (resumedT > 0) logger.info('system', `Resumed ${resumedT} interrupted transcode(s)`);
+    if (invalidated > 0) logger.info('system', `Re-queued ${invalidated} file(s) with missing cache`);
+  } catch (err) {
+    logger.warn('system', `Transcode cache resume failed: ${(err as Error).message}`);
+  }
+
+  // Catch-up for pre-existing library: files that were 'ready' before
+  // this transcode pipeline existed have no transcodedPath. Probe each
+  // one's codec; if it needs transcoding, enqueue. Runs in the
+  // background (the enqueue method is async) so we don't block startup
+  // — files appear in 'transcoding' status to the renderer as each
+  // probe lands.
+  void (async () => {
+    try {
+      const meta = await metadataHandler.loadMetadata();
+      let scheduled = 0;
+      for (const series of Object.values(meta)) {
+        const s = series as { fileEpisodes?: FileEpisodeEntry[] };
+        if (!Array.isArray(s.fileEpisodes)) continue;
+        for (const f of s.fileEpisodes) {
+          if (f.transcodedPath) continue;
+          if (!existsSync(f.filePath)) continue;
+          if (await transcodeCacheHandler.shouldTranscode(f.filePath)) {
+            void transcodeCacheHandler.enqueue(f.filePath);
+            scheduled++;
+          }
+        }
+      }
+      if (scheduled > 0) logger.info('system', `Scheduled ${scheduled} pre-existing file(s) for transcode`);
+    } catch (err) {
+      logger.warn('system', `Library transcode sweep failed: ${(err as Error).message}`);
+    }
+  })();
 
   const initialRoots = await configHandler.getFolderSources();
   await fileWatcher.start(initialRoots, {
@@ -588,6 +751,11 @@ app.whenReady().then(async () => {
   // ongoing detection is the watcher's job, period.
   void runStartupCatchUp();
 
+  // One-shot maintenance: drop expired image-cache entries and orphaned /
+  // over-quota transcode-cache files. Best-effort, never throws.
+  void imageCacheHandler.pruneIndexNow();
+  void transcodeCacheHandler.pruneCacheNow();
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
@@ -598,180 +766,6 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
-  }
-});
-
-// ==================== LOGGER IPC ====================
-
-ipcMain.handle('log:get-buffer', () => logger.getBuffer());
-ipcMain.handle('log:clear', () => {
-  logger.clear();
-});
-
-// ==================== CONFIG IPC ====================
-
-ipcMain.handle('get-folder-sources', async () => {
-  try {
-    return await configHandler.getFolderSources();
-  } catch (error) {
-    logger.error('system', 'Error getting folder sources');
-    return [];
-  }
-});
-
-ipcMain.handle('find-movie-folders', async (_event, rootPath: string) => {
-  try {
-    return await folderHandler.findMovieFolders(rootPath);
-  } catch (error) {
-    logger.error('folder', `Error finding movie folders: ${(error as Error).message}`);
-    return [];
-  }
-});
-
-ipcMain.handle('add-folder-source', async (_event, folderPath: string) => {
-  try {
-    const ok = await configHandler.addFolderSource(folderPath);
-    if (ok) {
-      const roots = await configHandler.getFolderSources();
-      await fileWatcher.restart(roots);
-      logger.info('folder', `Added library root: ${folderPath}`);
-    }
-    return ok;
-  } catch (error) {
-    logger.error('folder', `Error adding folder source: ${(error as Error).message}`);
-    throw error;
-  }
-});
-
-ipcMain.handle('remove-folder-source', async (_event, folderPath: string) => {
-  try {
-    const ok = await configHandler.removeFolderSource(folderPath);
-    if (ok) {
-      logger.info('folder', `Removed library root: ${folderPath}`);
-      const activeRoots = await configHandler.getFolderSources();
-      await metadataHandler.transaction(async (meta) => {
-        const reconciled = await folderHandler.reconcileMetadata(meta, activeRoots);
-        return { updated: reconciled };
-      });
-      await fileWatcher.restart(activeRoots);
-    }
-    return ok;
-  } catch (error) {
-    logger.error('folder', `Error removing folder source: ${(error as Error).message}`);
-    throw error;
-  }
-});
-
-// ==================== FOLDER IPC ====================
-
-ipcMain.handle('select-folder', async () => {
-  if (!mainWindow) return null;
-
-  const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openDirectory'],
-    title: 'Select Anime Folder',
-  });
-
-  if (!result.canceled && result.filePaths.length > 0) {
-    return result.filePaths[0];
-  }
-  return null;
-});
-
-ipcMain.handle('scan-folder', async (_event, folderPath: string) => {
-  try {
-    return await folderHandler.scanFolder(folderPath);
-  } catch (error) {
-    logger.error('folder', 'Error scanning folder');
-    throw error;
-  }
-});
-
-// Pure filesystem walk of every configured library root, joined with
-// just the bits of metadata.json the renderer actually displays right
-// now (poster URL/local path + match state). No episode-level metadata,
-// no banners, no online thumbnails. The renderer renders directly off
-// this — folder names verbatim, posters when matched, placeholder when
-// not.
-ipcMain.handle('library:walk', async () => {
-  const roots = await configHandler.getFolderSources();
-  const all: ScannedMedia[] = [];
-  for (const root of roots) {
-    try {
-      const items = await folderHandler.scanFolder(root, [root]);
-      all.push(...items);
-    } catch (err) {
-      logger.warn('folder', `library:walk failed for ${root}: ${(err as Error).message}`, { file: root });
-    }
-  }
-  const meta = await metadataHandler.loadMetadata();
-  return all.map((m) => {
-    const stored = (meta[m.id] ?? {}) as {
-      poster?: string | null;
-      posterLocal?: string | null;
-      posterMatched?: boolean;
-      posterMatchAttempted?: boolean;
-      matchSource?: 'mal' | 'anilist';
-      matchedTitle?: string | null;
-      titleRomaji?: string | null;
-      titleEnglish?: string | null;
-      status?: string | null;
-      startDate?: string | null;
-      totalEpisodes?: number | null;
-      anilistId?: number;
-      malId?: number | null;
-      episodes?: Array<{ episodeNumber: number; airDate: string | null }>;
-    };
-    return {
-      id: m.id,
-      // Movies share the "Movies" parent folder, so basename(folderPath)
-      // would be "Movies" for every movie. Use the scanner-derived title
-      // (m.name) as the display fallback instead so the card shows
-      // "Kimi no Na Wa" rather than "Movies".
-      folderName: m.type === 'movie' ? m.name : basename(m.folderPath),
-      folderPath: m.folderPath,
-      type: m.type,
-      poster: stored.poster ?? null,
-      posterLocal: stored.posterLocal ?? null,
-      posterMatched: stored.posterMatched ?? false,
-      posterMatchAttempted: stored.posterMatchAttempted ?? false,
-      matchSource: stored.matchSource ?? null,
-      matchedTitle: stored.matchedTitle ?? null,
-      titleRomaji: stored.titleRomaji ?? stored.matchedTitle ?? null,
-      titleEnglish: stored.titleEnglish ?? null,
-      status: stored.status ?? null,
-      startDate: stored.startDate ?? null,
-      totalEpisodes: stored.totalEpisodes ?? null,
-      anilistId: stored.anilistId ?? null,
-      malId: stored.malId ?? null,
-      episodes: (stored.episodes ?? []).map((e) => ({
-        episodeNumber: e.episodeNumber,
-        airDate: e.airDate ?? null,
-      })),
-      files: m.files.map((f) => ({
-        filename: f.filename,
-        filePath: f.filePath,
-        title: f.title,
-        episodeNumber: f.episodeNumber,
-        seasonNumber: f.seasonNumber,
-        subtitlePath: f.subtitlePath,
-        subtitlePaths: f.subtitlePaths,
-        mtime: f.mtime,
-      })),
-    };
-  });
-});
-
-ipcMain.handle('scan-all-folders', async () => {
-  try {
-    const folderSources = await configHandler.getFolderSources();
-    if (folderSources.length === 0) {
-      return [];
-    }
-    return await folderHandler.scanMultipleFolders(folderSources);
-  } catch (error) {
-    logger.error('folder', 'Error scanning all folders');
-    throw error;
   }
 });
 
@@ -882,35 +876,50 @@ ipcMain.handle('metadata:apply-anilist-match', async (
   //    isn't one, generate a frame from the matching local video. Match by
   //    season+episode first, then any-season fallback (handles both libraries
   //    that flag seasons in folder names and ones that don't).
-  const episodesWithLocalThumbs = [];
-  let firstThumbnailInBatch = true;
-  for (const ep of fetched.episodes || []) {
+  //
+  //    Thumbnails are generated with bounded concurrency — one ffmpeg per
+  //    episode used to run sequentially, which made a 24-ep apply take ~30s.
+  //    THUMBNAIL_CONCURRENCY=4 stays well under typical core counts and
+  //    keeps the user-perceived wait closer to a few seconds.
+  const fetchedEpisodes = fetched.episodes ?? [];
+  const resolveVideoPath = (ep: { episodeNumber: number; seasonNumber?: number | null }): string | undefined => {
+    const epSeason = ep.seasonNumber ?? null;
+    const exactKey = epSeason !== null ? `${epSeason}_${ep.episodeNumber}` : `null_${ep.episodeNumber}`;
+    let videoPath = fileEpisodeMap.get(exactKey);
+    if (!videoPath && epSeason !== null) videoPath = fileEpisodeMap.get(`null_${ep.episodeNumber}`);
+    if (videoPath) return videoPath;
+    for (const [mapKey, path] of fileEpisodeMap.entries()) {
+      const parts = mapKey.split('_');
+      const keyEpNum = parseFloat(parts[parts.length - 1]);
+      if (keyEpNum === ep.episodeNumber) return path;
+    }
+    return undefined;
+  };
+
+  const thumbnailJobs = fetchedEpisodes.map((ep, idx) => {
     let thumbnailLocal: string | null = null;
     if (ep.thumbnail) thumbnailLocal = cachedImages.get(ep.thumbnail) ?? null;
+    const videoPath = thumbnailLocal ? undefined : resolveVideoPath(ep);
+    return { idx, ep, thumbnailLocal, videoPath };
+  });
 
-    if (!thumbnailLocal) {
-      const epSeason = ep.seasonNumber ?? null;
-      const exactKey = epSeason !== null ? `${epSeason}_${ep.episodeNumber}` : `null_${ep.episodeNumber}`;
-      let videoPath = fileEpisodeMap.get(exactKey);
-      if (!videoPath && epSeason !== null) videoPath = fileEpisodeMap.get(`null_${ep.episodeNumber}`);
-      if (!videoPath) {
-        for (const [mapKey, path] of fileEpisodeMap.entries()) {
-          const parts = mapKey.split('_');
-          const keyEpNum = parseFloat(parts[parts.length - 1]);
-          if (keyEpNum === ep.episodeNumber) { videoPath = path; break; }
-        }
+  const THUMBNAIL_CONCURRENCY = 4;
+  const generated = new Array<string | null>(thumbnailJobs.length).fill(null);
+  for (let i = 0; i < thumbnailJobs.length; i += THUMBNAIL_CONCURRENCY) {
+    const batch = thumbnailJobs.slice(i, i + THUMBNAIL_CONCURRENCY);
+    await Promise.allSettled(batch.map(async (job) => {
+      if (job.thumbnailLocal) { generated[job.idx] = job.thumbnailLocal; return; }
+      if (!job.videoPath) return;
+      try {
+        // resetProgressBar=true on the very first job in the apply batch so
+        // the progress bar zeroes out; subsequent jobs append.
+        generated[job.idx] = await thumbnailHandler.generateThumbnail(job.videoPath, 120, i === 0 && job === batch[0]);
+      } catch {
+        logger.warn('thumbnail', `apply-match: failed to generate thumbnail for ep ${job.ep.episodeNumber}`, { file: job.videoPath });
       }
-      if (videoPath) {
-        try {
-          thumbnailLocal = await thumbnailHandler.generateThumbnail(videoPath, 120, firstThumbnailInBatch);
-          firstThumbnailInBatch = false;
-        } catch (err) {
-          logger.warn('thumbnail', `apply-match: failed to generate thumbnail for ep ${ep.episodeNumber}`, { file: videoPath });
-        }
-      }
-    }
-    episodesWithLocalThumbs.push({ ...ep, thumbnailLocal });
+    }));
   }
+  const episodesWithLocalThumbs = thumbnailJobs.map((job) => ({ ...job.ep, thumbnailLocal: generated[job.idx] }));
 
   // 6. Merge into existing entry. Keep the original seriesId KEY in
   //    metadata.json (caller still uses it); also write the AniList one
@@ -1454,209 +1463,8 @@ ipcMain.handle('get-series-episodes', async (_event, seriesId: string) => {
   }
 });
 
-// ==================== IMAGE CACHE IPC ====================
-
-ipcMain.handle('get-image-cache-stats', async () => {
-  try {
-    return await imageCacheHandler.getCacheStats();
-  } catch (error) {
-    logger.error('image', 'Error getting image cache stats');
-    return { count: 0, sizeBytes: 0 };
-  }
-});
-
-ipcMain.handle('clear-image-cache', async () => {
-  try {
-    await imageCacheHandler.clearCache();
-    return true;
-  } catch (error) {
-    logger.error('image', 'Error clearing image cache');
-    throw error;
-  }
-});
-
-ipcMain.handle('get-image-cache-path', () => {
-  return imageCacheHandler.getCachePath();
-});
-
-// ==================== VIDEO PROBE IPC ====================
-
-ipcMain.handle('probe:retry', (_event, filePath: string) => {
-  if (typeof filePath === 'string' && filePath.length > 0) {
-    videoProbeHandler.retry(filePath);
-  }
-});
-
-ipcMain.handle('subtitle:list-embedded', async (_event, videoPath: string) => {
-  if (typeof videoPath !== 'string' || !videoPath) return [];
-  return subtitleHandler.listEmbedded(videoPath);
-});
-
-ipcMain.handle('subtitle:extract', async (_event, videoPath: string, streamIndex: number, codec: string) => {
-  if (typeof videoPath !== 'string' || !videoPath || typeof streamIndex !== 'number') return null;
-  return subtitleHandler.extractEmbedded(videoPath, streamIndex, codec ?? '');
-});
-
-ipcMain.handle('aniskip:fetch', async (_event, seriesId: string, malId: number, episodeNumber: number, episodeLength: number) => {
-  if (!seriesId || typeof malId !== 'number' || typeof episodeNumber !== 'number' || typeof episodeLength !== 'number') {
-    return {};
-  }
-  return aniSkipHandler.fetchAndCache(seriesId, malId, episodeNumber, episodeLength);
-});
-
-// ----- Tracker (MAL + AniList progress sync) -----
-function isProvider(v: unknown): v is TrackerProvider {
-  return v === 'anilist' || v === 'mal';
-}
-
-ipcMain.handle('tracker:status', async (_event, provider: unknown) => {
-  if (!isProvider(provider)) throw new Error('invalid provider');
-  return trackerHandler.status(provider);
-});
-
-ipcMain.handle('tracker:set-client-id', async (_event, provider: unknown, clientId: unknown) => {
-  if (!isProvider(provider)) throw new Error('invalid provider');
-  if (typeof clientId !== 'string') throw new Error('clientId must be a string');
-  await trackerHandler.setClientId(provider, clientId);
-  return trackerHandler.status(provider);
-});
-
-ipcMain.handle('tracker:get-client-id', async (_event, provider: unknown) => {
-  if (!isProvider(provider)) throw new Error('invalid provider');
-  return trackerHandler.getClientId(provider);
-});
-
-ipcMain.handle('tracker:connect', async (_event, provider: unknown, clientId: unknown, clientSecret: unknown) => {
-  if (!isProvider(provider)) throw new Error('invalid provider');
-  if (typeof clientId !== 'string' || !clientId.trim()) throw new Error('clientId required');
-  const secret = typeof clientSecret === 'string' ? clientSecret.trim() : '';
-  const status = await trackerHandler.startConnect(provider, clientId.trim(), secret);
-  // Warm the progress cache so cards render with watched counts immediately.
-  await trackerHandler.refreshProgress(provider);
-  broadcastProgressChanged();
-  return status;
-});
-
-ipcMain.handle('tracker:cancel-connect', async () => {
-  trackerHandler.cancelConnect();
-  return true;
-});
-
-ipcMain.handle('tracker:disconnect', async (_event, provider: unknown) => {
-  if (!isProvider(provider)) throw new Error('invalid provider');
-  const status = await trackerHandler.disconnect(provider);
-  broadcastProgressChanged();
-  return status;
-});
-
-function broadcastProgressChanged(): void {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('tracker:progress-changed');
-  }
-}
-
-ipcMain.handle('tracker:mark-episode', async (
-  _event,
-  provider: unknown,
-  mediaId: unknown,
-  episodeNumber: unknown,
-  totalEpisodes: unknown,
-) => {
-  if (!isProvider(provider)) throw new Error('invalid provider');
-  if (typeof mediaId !== 'number' || typeof episodeNumber !== 'number') {
-    throw new Error('mediaId and episodeNumber must be numbers');
-  }
-  const result = await trackerHandler.markEpisode({
-    provider,
-    mediaId,
-    episodeNumber,
-    totalEpisodes: typeof totalEpisodes === 'number' ? totalEpisodes : null,
-  });
-  if (result.ok) broadcastProgressChanged();
-  return result;
-});
-
-ipcMain.handle('tracker:get-progress', async () => {
-  const snap = await trackerHandler.getProgress();
-  logger.info(
-    'tracker',
-    `get-progress called: main=${snap.mainProvider} anilist=${Object.keys(snap.anilist).length} mal=${Object.keys(snap.mal).length}`,
-  );
-  return snap;
-});
-
-ipcMain.handle('tracker:refresh-progress', async (_event, provider: unknown) => {
-  if (provider === undefined || provider === null) {
-    await trackerHandler.refreshAllProgress();
-  } else {
-    if (!isProvider(provider)) throw new Error('invalid provider');
-    await trackerHandler.refreshProgress(provider);
-  }
-  broadcastProgressChanged();
-  return trackerHandler.getProgress();
-});
-
-ipcMain.handle('tracker:get-main-provider', async () => {
-  return trackerHandler.getMainProvider();
-});
-
-ipcMain.handle('tracker:set-main-provider', async (_event, provider: unknown) => {
-  if (!isProvider(provider)) throw new Error('invalid provider');
-  await trackerHandler.setMainProvider(provider);
-  broadcastProgressChanged();
-  return provider;
-});
-
-// Open a URL in the user's default browser. window.open() inside the
-// renderer would otherwise spawn a child Electron BrowserWindow, which is
-// not what users expect for things like "Open API config".
-ipcMain.handle('shell:open-external', async (_event, url: unknown) => {
-  if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
-    throw new Error('only http(s) URLs may be opened externally');
-  }
-  await shell.openExternal(url);
-  return true;
-});
-
-// Launch mpv on a local video file in a detached window. Validated against
-// configured library roots so the renderer can't request arbitrary paths.
-ipcMain.handle('shell:open-with-mpv', async (_event, filePath: unknown) => {
-  if (typeof filePath !== 'string' || !filePath) {
-    throw new Error('filePath required');
-  }
-  const normalizedPath = resolve(filePath);
-  const allowedSources = await configHandler.getFolderSources();
-  const isAllowed = allowedSources.some((source) => {
-    try {
-      const normalizedSource = resolve(source);
-      const rel = relative(normalizedSource, normalizedPath);
-      return !rel.startsWith('..') && !rel.startsWith('/');
-    } catch {
-      return false;
-    }
-  });
-  if (!isAllowed) {
-    logger.error('system', `mpv: rejected path outside library roots`, { file: filePath });
-    throw new Error('path not in any configured library root');
-  }
-  if (!existsSync(normalizedPath)) {
-    throw new Error('file not found');
-  }
-  try {
-    const child = spawn('mpv', [normalizedPath], { detached: true, stdio: 'ignore' });
-    child.on('error', (err) => {
-      logger.error('system', `mpv launch failed: ${(err as Error).message}`, { file: normalizedPath });
-    });
-    child.unref();
-    logger.info('system', `Launched mpv`, { file: normalizedPath });
-    return true;
-  } catch (err) {
-    logger.error('system', `mpv spawn threw: ${(err as Error).message}`, { file: normalizedPath });
-    throw err;
-  }
-});
-
 app.on('before-quit', () => {
   videoProbeHandler.stop();
   void fileWatcher.stop();
 });
+

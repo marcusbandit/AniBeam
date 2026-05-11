@@ -32,7 +32,8 @@ out/
 src/data/
 *.json
 !package.json
-!package-lock.json
 !tsconfig.json
-.vite/build/main.js
-.vite/build/preload.js
+
+# Stray build/lock cruft (project uses bun.lockb, not npm)
+/main.js
+/package-lock.json
