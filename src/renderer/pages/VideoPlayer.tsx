@@ -148,6 +148,11 @@ function VideoPlayer() {
   const { metadata } = useMetadata();
   const [videoSrc, setVideoSrc] = useState<string>('');
   const [unsupported, setUnsupported] = useState<{ vCodec?: string; aCodec?: string; reason?: string } | null>(null);
+  // Set when the source file isn't browser-playable and main has
+  // enqueued a transcode. We wait for the file's status to flip to
+  // 'ready' (via metadata:file-status-changed) and then re-call
+  // openVideo to get the cached MP4 URL — no popup, no manual mpv.
+  const [transcoding, setTranscoding] = useState<{ vCodec?: string; aCodec?: string } | null>(null);
   const [mpvLaunching, setMpvLaunching] = useState(false);
   const [subtitleSrcs, setSubtitleSrcs] = useState<SubtitleTrack[]>([]);
   const [episodeData, setEpisodeData] = useState<FileEpisode | null>(null);
@@ -371,28 +376,47 @@ function VideoPlayer() {
     const filePath = activeFilePath;
     let cancelled = false;
 
-    // Reset on episode change so the popup doesn't linger across switches.
+    // Reset on episode change so stale state doesn't linger across switches.
     setUnsupported(null);
+    setTranscoding(null);
     setVideoSrc('');
 
-    (async () => {
+    const attemptOpen = async (): Promise<void> => {
       try {
         const result = await window.electronAPI.openVideo(filePath);
         if (cancelled) return;
+        if (result.kind === 'transcoding') {
+          setTranscoding({ vCodec: result.vCodec, aCodec: result.aCodec });
+          // main has already enqueued the transcode. Wait for status to
+          // flip to 'ready' on the file-status-changed listener below.
+          return;
+        }
         if (result.kind === 'unsupported') {
           setUnsupported({ vCodec: result.vCodec, aCodec: result.aCodec });
           return;
         }
+        setTranscoding(null);
         setVideoSrc(result.url);
       } catch (err) {
         if (cancelled) return;
         console.warn('openVideo failed, falling back to direct:', err);
         setVideoSrc(`file://${filePath}`);
       }
-    })();
+    };
+
+    void attemptOpen();
+
+    // When the file becomes 'ready' (after a transcode finishes), retry.
+    const unsub = window.electronAPI.onMetadataFileStatusChanged((payload) => {
+      if (cancelled) return;
+      if (payload.filePath !== filePath) return;
+      if (payload.status !== 'ready') return;
+      void attemptOpen();
+    });
 
     return () => {
       cancelled = true;
+      unsub();
     };
   }, [activeFilePath]);
 
@@ -1208,6 +1232,29 @@ function VideoPlayer() {
       {trackerToast && (
         <div className="player-toast" role="status">{trackerToast}</div>
       )}
+      {/* Transcoding state is hidden once unsupported takes over (e.g. the
+          <video> element reported MEDIA_ERR_DECODE on a cache hit). */}
+      {transcoding && !unsupported && (
+        <div className="codec-modal-backdrop" role="status" aria-live="polite">
+          <div className="codec-modal">
+            <div className="codec-modal-head">
+              <div className="codec-modal-spin" aria-hidden="true" />
+              <div>
+                <div className="codec-modal-title">Preparing this episode…</div>
+                <div className="codec-modal-sub">
+                  Re-encoding {transcoding.vCodec ? `${transcoding.vCodec}${transcoding.aCodec ? ` / ${transcoding.aCodec}` : ''}` : 'source'} to an in-window playable format. Plays here as soon as it&rsquo;s ready — no extra window.
+                </div>
+              </div>
+            </div>
+            <div className="codec-modal-actions">
+              <button
+                className="codec-modal-btn ghost"
+                onClick={() => navigate(`/series/${seriesId}`)}
+              >Back to series</button>
+            </div>
+          </div>
+        </div>
+      )}
       {unsupported && (
         <div className="codec-modal-backdrop" role="dialog" aria-modal="true">
           <div className="codec-modal">
@@ -1223,7 +1270,7 @@ function VideoPlayer() {
               </div>
             </div>
             <div className="codec-modal-body">
-              Launch the file in your system&rsquo;s <code>mpv</code> instead. AniBeam stays running — mpv opens in its own window.
+              Last-resort fallback: launch the file in your system&rsquo;s <code>mpv</code> instead. AniBeam stays running — mpv opens in its own window.
             </div>
             <div className="codec-modal-actions">
               <button

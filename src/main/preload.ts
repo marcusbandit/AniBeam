@@ -152,6 +152,13 @@ export interface ElectronAPI {
 
 export type VideoOpenResult =
   | { kind: 'direct'; url: string }
+  // Source isn't browser-playable; main has just enqueued a transcode.
+  // Renderer shows a "transcoding…" state, listens for
+  // metadata:file-status-changed for this file, and re-calls openVideo
+  // once status flips to 'ready' to get the cached file URL.
+  | { kind: 'transcoding'; vCodec: string; aCodec: string }
+  // Hard-stop case (probe failed, etc.) — kept for back-compat with
+  // existing renderer code that already handles this shape.
   | { kind: 'unsupported'; vCodec: string; aCodec: string };
 
 export interface SubscriptionFeed {

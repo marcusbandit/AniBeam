@@ -4,6 +4,7 @@ import metadataHandler from '../handlers/metadataHandler';
 import videoProbeHandler from '../handlers/videoProbeHandler';
 import subtitleHandler from '../handlers/subtitleHandler';
 import aniSkipHandler from '../handlers/aniSkipHandler';
+import transcodeCacheHandler from '../handlers/transcodeCacheHandler';
 import { findFileEpisode } from '../../shared/fileEpisode';
 import { probeCodecs, needsTranscode } from '../utils/transcodeProbe';
 
@@ -33,12 +34,17 @@ export function registerMediaPlaybackIpc(): void {
       // the open entirely.
     }
     // No transcoded copy on disk. Probe the original — if Chromium can't
-    // decode it (HEVC, etc.) tell the renderer so it can offer system mpv
-    // instead of handing <video> a URL it'll just choke on.
+    // decode it (HEVC, exotic pixel formats, etc.) kick off a background
+    // transcode so the renderer can wait for it to finish, then play
+    // the cached MP4. Returns 'transcoding' so the renderer shows a
+    // progress state and listens for the file's status to flip to
+    // 'ready', at which point it re-invokes this handler and gets a
+    // 'direct' URL.
     const probe = await probeCodecs(filePath);
     if (probe && needsTranscode(probe)) {
+      void transcodeCacheHandler.enqueue(filePath).catch(() => {/* status emit covers errors */});
       return {
-        kind: 'unsupported' as const,
+        kind: 'transcoding' as const,
         vCodec: probe.vCodec,
         aCodec: probe.aCodec,
       };
