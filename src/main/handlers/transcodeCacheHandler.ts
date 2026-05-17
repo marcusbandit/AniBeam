@@ -384,6 +384,51 @@ const transcodeCacheHandler = {
         }
       }
 
+      // Recovery pass: before deleting "orphan" .mp4s, see if any are
+      // actually a valid cache for a source file whose `transcodedPath`
+      // was wiped (the ingestSingleFile bug used to do this). Re-derive
+      // the cache key from each source file; any match → re-bind metadata.
+      // Saves the user a full re-transcode on the next launch.
+      const cacheBasenames = new Set(entries.filter((n) => n.endsWith('.mp4')));
+      const recoveredBindings: Array<{ filePath: string; cachePath: string }> = [];
+      for (const series of Object.values(meta)) {
+        const s = series as { fileEpisodes?: FileEpisodeEntry[] };
+        if (!Array.isArray(s.fileEpisodes)) continue;
+        for (const f of s.fileEpisodes) {
+          if (f.transcodedPath) continue;
+          if (!existsSync(f.filePath)) continue;
+          try {
+            const key = await cacheKeyFor(f.filePath);
+            const candidateName = `${key}.mp4`;
+            if (!cacheBasenames.has(candidateName)) continue;
+            const candidatePath = join(dir, candidateName);
+            recoveredBindings.push({ filePath: f.filePath, cachePath: candidatePath });
+            referenced.add(candidatePath);
+          } catch {
+            // stat/hash failure — let this file be re-transcoded later.
+          }
+        }
+      }
+      if (recoveredBindings.length > 0) {
+        await metadataHandler.transaction<boolean>(async (current) => {
+          let changed = false;
+          const byPath = new Map(recoveredBindings.map((b) => [b.filePath, b.cachePath]));
+          for (const series of Object.values(current)) {
+            const s = series as { fileEpisodes?: FileEpisodeEntry[] };
+            if (!Array.isArray(s.fileEpisodes)) continue;
+            for (const file of s.fileEpisodes) {
+              const cachePath = byPath.get(file.filePath);
+              if (cachePath && !file.transcodedPath) {
+                file.transcodedPath = cachePath;
+                changed = true;
+              }
+            }
+          }
+          return { result: changed, updated: changed ? current : null };
+        });
+        logger.info('system', `Transcode cache: recovered ${recoveredBindings.length} orphan(s) by re-binding to metadata`);
+      }
+
       const survivors: Array<{ path: string; size: number; mtimeMs: number }> = [];
       let totalSize = 0;
       let orphansRemoved = 0;

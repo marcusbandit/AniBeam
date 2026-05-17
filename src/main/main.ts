@@ -156,7 +156,7 @@ async function ingestSingleFile(filePath: string): Promise<void> {
     let isBrandNewSeries = false;
     await metadataHandler.transaction(async (current) => {
       const existing = (current[media.id] ?? {}) as {
-        fileEpisodes?: Array<{ filePath: string; status?: string; lastProbedAt?: number }>;
+        fileEpisodes?: FileEpisodeEntry[];
         title?: string;
         posterMatchAttempted?: boolean;
       };
@@ -165,7 +165,12 @@ async function ingestSingleFile(filePath: string): Promise<void> {
       const newFileEpisodes = media.files.map((f) => {
         const old = byPath.get(f.filePath);
         const isThisFile = f.filePath === filePath;
+        // Spread the old entry FIRST so persistent fields the scanner doesn't
+        // know about (transcodedPath, anything added later) survive an add
+        // event for a sibling file. Then overlay scanner-derived fields and
+        // re-stamp status/lastProbedAt — for the just-added file only.
         return {
+          ...(old ?? {}),
           episodeNumber: f.episodeNumber,
           seasonNumber: f.seasonNumber,
           filePath: f.filePath,
