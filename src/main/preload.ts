@@ -57,6 +57,10 @@ export interface LibraryItem {
   totalEpisodes: number | null;
   anilistId: number | null;
   malId: number | null;
+  /** Raw score from the matched metadata source. AniList is 0-100, MAL is 0-10. */
+  averageScore: number | null;
+  /** Where the metadata was fetched from — controls how `averageScore` is normalised. */
+  source: string | null;
   episodes: LibraryEpisodeAirDate[];
   files: LibraryFile[];
 }
@@ -120,8 +124,8 @@ export interface ElectronAPI {
   // returns the original file:// URL. The renderer hands the URL to <video>.
   openVideo: (filePath: string) => Promise<VideoOpenResult>;
 
-  // AniSkip — intro/outro skip times
-  fetchSkipTimes: (seriesId: string, malId: number, episodeNumber: number, episodeLength: number) => Promise<{ op?: { start: number; end: number }; ed?: { start: number; end: number } }>;
+  // Skip times — chapter markers first, AniSkip community DB as fallback.
+  fetchSkipTimes: (seriesId: string, malId: number, episodeNumber: number, episodeLength: number, filePath?: string) => Promise<{ op?: { start: number; end: number }; ed?: { start: number; end: number }; source?: 'chapters' | 'aniskip' }>;
 
   // Shell — open a URL in the user's default browser, not an Electron window.
   openExternal: (url: string) => Promise<boolean>;
@@ -242,7 +246,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openVideo: (filePath: string) => ipcRenderer.invoke('video:open', filePath),
 
   // AniSkip
-  fetchSkipTimes: (seriesId: string, malId: number, episodeNumber: number, episodeLength: number) => ipcRenderer.invoke('aniskip:fetch', seriesId, malId, episodeNumber, episodeLength),
+  fetchSkipTimes: (seriesId: string, malId: number, episodeNumber: number, episodeLength: number, filePath?: string) => ipcRenderer.invoke('aniskip:fetch', seriesId, malId, episodeNumber, episodeLength, filePath),
 
   // Shell
   openExternal: (url: string) => ipcRenderer.invoke('shell:open-external', url),

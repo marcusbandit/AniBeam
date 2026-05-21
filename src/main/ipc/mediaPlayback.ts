@@ -56,10 +56,13 @@ export function registerMediaPlaybackIpc(): void {
     return subtitleHandler.extractEmbedded(videoPath, streamIndex, codec ?? '');
   });
 
-  ipcMain.handle('aniskip:fetch', async (_event, seriesId: string, malId: number, episodeNumber: number, episodeLength: number) => {
-    if (!seriesId || typeof malId !== 'number' || typeof episodeNumber !== 'number' || typeof episodeLength !== 'number') {
+  ipcMain.handle('aniskip:fetch', async (_event, seriesId: string, malId: number, episodeNumber: number, episodeLength: number, filePath?: string) => {
+    if (!seriesId || typeof episodeNumber !== 'number' || typeof episodeLength !== 'number') {
       return {};
     }
-    return aniSkipHandler.fetchAndCache(seriesId, malId, episodeNumber, episodeLength);
+    // malId is optional now — chapters can resolve skip times without one.
+    const safeMalId = typeof malId === 'number' ? malId : 0;
+    const safeFilePath = typeof filePath === 'string' && filePath ? filePath : undefined;
+    return aniSkipHandler.fetchAndCache(seriesId, safeMalId, episodeNumber, episodeLength, safeFilePath);
   });
 }

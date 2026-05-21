@@ -30,7 +30,30 @@ export interface SeriesMetadata {
   endDate?: string | null;
   anilistId?: number;
   malId?: number | null;
+  relations?: Relation[];
   [key: string]: unknown;
+}
+
+export interface Relation {
+  /** AniList relation type — SEQUEL, PREQUEL, SIDE_STORY, ADAPTATION, … */
+  relationType: string;
+  anilistId: number;
+  malId: number | null;
+  /** AniList media type — drives whether we navigate in-app (ANIME found
+   *  in user's library) or open AniList externally (MANGA, or absent). */
+  type: 'ANIME' | 'MANGA' | null;
+  /** Sub-format — TV, MOVIE, OVA, MANGA, LIGHT_NOVEL, … */
+  format: string | null;
+  status: string | null;
+  seasonYear: number | null;
+  /** Canonical AniList URL for the related entry — used as the click
+   *  target for external-only relations. */
+  siteUrl: string | null;
+  titleRomaji: string | null;
+  titleEnglish: string | null;
+  /** Remote cover image URL. Not locally cached for v1 — relation
+   *  posters are render-on-demand from AniList's CDN. */
+  poster: string | null;
 }
 
 export interface EpisodeMetadata {
@@ -46,12 +69,16 @@ export interface EpisodeMetadata {
   subtitlePaths?: string[];
   status?: FileStatus;
   lastProbedAt?: number;
-  // AniSkip — populated lazily on first play.
+  // Skip times — populated lazily on first play. Source records whether
+  // the values came from the file's embedded chapter markers or the
+  // AniSkip community DB, so we know if a re-probe is worthwhile (only
+  // when source is not yet 'chapters').
   opStart?: number;
   opEnd?: number;
   edStart?: number;
   edEnd?: number;
   skipFetched?: boolean;
+  skipSource?: 'chapters' | 'aniskip';
 }
 
 export interface FileEpisode {

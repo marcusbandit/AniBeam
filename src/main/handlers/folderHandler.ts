@@ -181,6 +181,46 @@ function extractSeriesNameFromFolder(folderName: string): string {
   return folderName.trim();
 }
 
+// Strip release-group brackets and episode-range / END suffixes from a
+// folder NAME (not a filename — no extension). Used when deriving a series
+// name for a wrapper subfolder, where the user wants a clean canonical
+// title rather than the raw release-tagged folder name.
+function cleanFolderTitle(name: string): string {
+  return name
+    .replace(/\s*\[[^\]]*\]\s*/g, ' ')                         // [Erai-raws], [1080p], CRC tags
+    .replace(/\s+-\s+\d+\s*[~–-]\s*\d+(\s+END)?\s*$/i, '') // " - 01 ~ 12" / " - 01-12 END"
+    .replace(/\s+-?\s*END\s*$/i, '')                           // trailing END
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// When recursing into a "franchise wrapper" subfolder, derive a clean series
+// name anchored on the WRAPPER folder name (which the user named themselves
+// and is treated as canonical). The cleaned subfolder name is searched for
+// the wrapper name; whatever follows is kept as a suffix. A pure trailing
+// digit ("Karakai... 2") is also returned as a season hint.
+function deriveSubfolderSeriesName(
+  subfolderName: string,
+  wrapperName: string,
+): { name: string; seasonHint: number | null } {
+  const cleanedSub = cleanFolderTitle(subfolderName);
+  const cleanedWrapper = wrapperName.trim();
+  const idx = cleanedSub.toLowerCase().indexOf(cleanedWrapper.toLowerCase());
+  if (idx >= 0) {
+    const suffix = cleanedSub.slice(idx + cleanedWrapper.length).trim();
+    if (!suffix) return { name: cleanedWrapper, seasonHint: null };
+    const numMatch = suffix.match(/^(\d+)$/);
+    if (numMatch) {
+      const n = parseInt(numMatch[1], 10);
+      return { name: `${cleanedWrapper} ${n}`, seasonHint: n };
+    }
+    return { name: `${cleanedWrapper} ${suffix}`, seasonHint: null };
+  }
+  // Wrapper name not found in cleaned subfolder — fall back to whatever
+  // cleanup produced, or the wrapper name itself if cleanup left nothing.
+  return { name: cleanedSub || cleanedWrapper, seasonHint: null };
+}
+
 function generateSeriesId(seriesName: string, folderName: string, seasonNumber: number | null, partNumber: number | null): string {
   let baseId: string;
   
@@ -373,6 +413,73 @@ async function collectVideosInSubtree(
   return out;
 }
 
+// Shallow video-presence check: true if `dir` contains 1+ video files
+// directly OR has 1+ child subfolders that each contain 1+ video files
+// directly. Used by classifyFolder to detect "franchise wrapper" folders
+// where each subfolder is its own logical series. One level of nesting
+// covers the common `[release-group]/ep01.mkv` wrapping convention without
+// triggering a full subtree walk.
+async function hasVideosShallow(dir: string): Promise<boolean> {
+  let entries: string[];
+  try {
+    entries = await readdir(dir);
+  } catch {
+    return false;
+  }
+  const childDirs: string[] = [];
+  for (const entry of entries) {
+    const fullPath = join(dir, entry);
+    try {
+      const s = await stat(fullPath);
+      if (s.isFile() && isVideoFile(entry)) return true;
+      if (s.isDirectory()) childDirs.push(fullPath);
+    } catch { /* skip unreadable */ }
+  }
+  for (const child of childDirs) {
+    let childEntries: string[];
+    try {
+      childEntries = await readdir(child);
+    } catch { continue; }
+    for (const e of childEntries) {
+      try {
+        const s = await stat(join(child, e));
+        if (s.isFile() && isVideoFile(e)) return true;
+      } catch { /* skip unreadable */ }
+    }
+  }
+  return false;
+}
+
+// Decide whether a non-root, non-Movies folder is a single series ('series')
+// or a "franchise wrapper" ('wrapper') that holds multiple distinct shows
+// (and possibly a loose movie file) — e.g. an "Anime/Show Title/" folder
+// containing "Show S1/", "Show S2/", "Show S3/", "Show - Movie.mkv".
+//
+// Rule (shallow, no full subtree walk):
+//   - 2+ video-bearing subfolders                            → wrapper
+//   - 1+ video-bearing subfolder AND 1+ loose video at top   → wrapper
+//   - otherwise                                              → series
+//
+// Returns the wrapper's video-bearing subfolders so the caller can skip
+// non-video subdirs (`screenshots/`, empty `Extras/`) cleanly.
+async function classifyFolder(
+  looseVideoCount: number,
+  subDirs: string[],
+  folderPath: string,
+): Promise<{ kind: 'series' } | { kind: 'wrapper'; videoBearingSubs: string[] }> {
+  const videoBearing: string[] = [];
+  for (const sub of subDirs) {
+    if (await hasVideosShallow(join(folderPath, sub))) {
+      videoBearing.push(sub);
+    }
+  }
+  if (videoBearing.length >= 2) return { kind: 'wrapper', videoBearingSubs: videoBearing };
+  if (videoBearing.length >= 1 && looseVideoCount >= 1) {
+    return { kind: 'wrapper', videoBearingSubs: videoBearing };
+  }
+  return { kind: 'series' };
+}
+
 // Walk a folder tree and emit ScannedMedia.
 //
 // Three contexts produce different shapes:
@@ -385,15 +492,22 @@ async function collectVideosInSubtree(
 //      movie inherit their folder name as the title (cleaner than filenames
 //      laden with release tags). No series are ever produced here.
 //
-//   3. Anything else (non-root, non-Movies): the outer folder is the series.
-//      Its entire subtree is collapsed into one series — episodes can sit
-//      directly inside, or be buried under release-group / season subfolders.
-//      Intermediate folder names are ignored except as season-number hints.
+//   3. Anything else (non-root, non-Movies): classifyFolder decides whether
+//      this is a single series (whose subtree is collapsed into one entry,
+//      with intermediate folders treated transparently) or a "franchise
+//      wrapper" — multiple distinct shows under one parent folder, where
+//      each subfolder becomes its own series and loose top-level videos
+//      become individual movies.
 async function collectMediaRecursive(
   folderPath: string,
   results: ScannedMedia[],
   isLibraryRoot: boolean,
   inMoviesContext: boolean = false,
+  // Only set when this folder is a video-bearing subdir of a franchise
+  // wrapper. Carries the canonical series name + optional season hint
+  // derived from the wrapper's folder name. Consumed exactly once, in the
+  // single-series branch — never propagated deeper.
+  wrapperContext?: { name: string; seasonHint: number | null },
 ): Promise<void> {
   const folderName = basename(folderPath);
   const isMoviesContainer = isMoviesFolderName(folderName);
@@ -453,15 +567,40 @@ async function collectMediaRecursive(
     return;
   }
 
-  // 3. Series context. Walk the whole subtree as one series. Outer folder
-  //    name wins; intermediate folders are transparent except for season
-  //    hints.
-  const seasonFromFolder = extractSeasonNumber(folderName);
+  // 3. Series or franchise wrapper — see classifyFolder.
+  const classification = await classifyFolder(videoFilenames.length, subDirs, folderPath);
+
+  if (classification.kind === 'wrapper') {
+    // Loose videos at the wrapper level → individual movies. Use the
+    // cleaned filename for the title; the wrapper folder isn't the movie.
+    for (const v of videoFilenames) {
+      await emitMovieFile(v, folderPath, false, results);
+    }
+    // Each video-bearing subdir gets its own series scan, in a fresh
+    // non-Movies series context. Non-video-bearing subdirs are skipped.
+    // Pass a wrapper context so the child series uses the user-canonical
+    // wrapper name (+ trailing digit as season hint) instead of the raw
+    // release-tagged subfolder name.
+    for (const subDir of classification.videoBearingSubs) {
+      const derived = deriveSubfolderSeriesName(subDir, folderName);
+      await collectMediaRecursive(
+        join(folderPath, subDir), results, false, false, derived,
+      );
+    }
+    return;
+  }
+
+  // Single-series case: walk the whole subtree as one series. Outer folder
+  // name wins; intermediate folders are transparent except for season hints.
+  // wrapperContext (set only when this is the immediate child of a franchise
+  // wrapper) overrides the verbatim folder name and contributes a season hint.
+  const seasonFromFolder =
+    extractSeasonNumber(folderName) ?? wrapperContext?.seasonHint ?? null;
   const partFromFolder = extractPartNumber(folderName);
   const allVideos = await collectVideosInSubtree(folderPath, seasonFromFolder);
   if (allVideos.length === 0) return;
 
-  const seriesName = extractSeriesNameFromFolder(folderName);
+  const seriesName = wrapperContext?.name ?? extractSeriesNameFromFolder(folderName);
   const seriesId = generateSeriesId(seriesName, folderName, seasonFromFolder, partFromFolder);
 
   results.push({

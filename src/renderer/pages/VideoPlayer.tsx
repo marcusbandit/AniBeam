@@ -2,7 +2,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useMetadata, type FileEpisode } from '../hooks/useMetadata.js';
 import { useLocalStorage, useLocalStorageRecord } from '../hooks/useLocalStorage';
-import { progressId, readProgress, writeProgress, RESUME_HEAD_SKIP, RESUME_TAIL_SKIP } from '../utils/playbackProgress';
+import { progressId, readProgress, writeProgress, recordEpisodeCompleted, RESUME_HEAD_SKIP, RESUME_TAIL_SKIP } from '../utils/playbackProgress';
 import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Minimize, Subtitles, SkipBack, SkipForward, CheckCheck, AlertTriangle, ExternalLink } from 'lucide-react';
 import JASSUB from 'jassub';
 // `?worker&url` (not `?url`) so Vite bundles the worker as a self-contained
@@ -159,7 +159,7 @@ function VideoPlayer() {
   const [muted, setMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [activeSubIdx, setActiveSubIdx] = useState<number>(-1); // -1 = off
-  const [skipTimes, setSkipTimes] = useState<{ op?: { start: number; end: number }; ed?: { start: number; end: number } }>({});
+  const [skipTimes, setSkipTimes] = useState<{ op?: { start: number; end: number }; ed?: { start: number; end: number }; source?: 'chapters' | 'aniskip' }>({});
   const [subMenuOpen, setSubMenuOpen] = useState(false);
   const [subMenuTab, setSubMenuTab] = useState<'tracks' | 'style'>('tracks');
   // VTT styling — applied via ::cue CSS. One global setting for all SRT/VTT.
@@ -316,6 +316,9 @@ function VideoPlayer() {
       const map = readProgress();
       if (t >= d - RESUME_TAIL_SKIP) {
         if (map[id]) { delete map[id]; writeProgress(map); }
+        if (seriesId && episodeNumber) {
+          recordEpisodeCompleted(seriesId, Number(episodeNumber));
+        }
       } else if (t > RESUME_HEAD_SKIP) {
         map[id] = { t, d, updated: Date.now() };
         writeProgress(map);
@@ -332,6 +335,9 @@ function VideoPlayer() {
       if (!id) return;
       const map = readProgress();
       if (map[id]) { delete map[id]; writeProgress(map); }
+      if (seriesId && episodeNumber) {
+        recordEpisodeCompleted(seriesId, Number(episodeNumber));
+      }
     };
 
     video.addEventListener('timeupdate', onTime);
@@ -346,7 +352,7 @@ function VideoPlayer() {
       video.removeEventListener('ended', onEnded);
       window.removeEventListener('beforeunload', save);
     };
-  }, [videoSrc]);
+  }, [videoSrc, seriesId, episodeNumber]);
 
   // Derive the active episode's filePath from metadata. The memo only
   // returns a new value if `seriesId`, `episodeNumber`, or the resolved
@@ -772,10 +778,13 @@ function VideoPlayer() {
     }
   }, [subMenuOpen, showChrome]);
 
-  // Load AniSkip times for this episode. Use cached values from metadata if
-  // already fetched; otherwise fetch (only when MAL ID is available — AniSkip
-  // is keyed on MAL). Wait until we know `duration` so we can pass it to the
-  // API for the better cross-version match.
+  // Resolve intro/outro skip windows. Two sources, in order:
+  //   1. Embedded chapter markers in the file (Intro/Outro/Credits/etc.).
+  //   2. AniSkip community DB keyed on MAL id.
+  // Main handles the source decision; the renderer just calls and caches
+  // the resolved values on the episode entry in metadata.json. We short-
+  // circuit only when the cached entry was sourced from chapters — older
+  // AniSkip-only caches still get a one-time chapter check next time.
   useEffect(() => {
     if (!seriesId || !episodeNumber || duration <= 0) return;
     const seriesData = metadata[seriesId];
@@ -784,7 +793,7 @@ function VideoPlayer() {
     if (isNaN(epNum)) return;
 
     const epMeta = seriesData.episodes?.find((e) => e.episodeNumber === epNum);
-    if (epMeta?.skipFetched) {
+    if (epMeta?.skipFetched && epMeta.skipSource === 'chapters') {
       setSkipTimes({
         op: epMeta.opStart != null && epMeta.opEnd != null ? { start: epMeta.opStart, end: epMeta.opEnd } : undefined,
         ed: epMeta.edStart != null && epMeta.edEnd != null ? { start: epMeta.edStart, end: epMeta.edEnd } : undefined,
@@ -792,14 +801,32 @@ function VideoPlayer() {
       return;
     }
 
+    // Seed the UI with cached AniSkip values (if any) while we kick off
+    // the IPC — chapters might add or replace them, but in the meantime
+    // the skip bands don't flash empty.
+    if (epMeta?.skipFetched) {
+      setSkipTimes({
+        op: epMeta.opStart != null && epMeta.opEnd != null ? { start: epMeta.opStart, end: epMeta.opEnd } : undefined,
+        ed: epMeta.edStart != null && epMeta.edEnd != null ? { start: epMeta.edStart, end: epMeta.edEnd } : undefined,
+      });
+    }
+
     const malId = (seriesData as { malId?: number }).malId;
-    if (!malId) return;
+    // Without a malId AND no filePath, neither source can resolve — bail.
+    if (!malId && !activeFilePath) return;
+
     let cancelled = false;
-    void window.electronAPI.fetchSkipTimes(seriesId, malId, epNum, duration).then((res) => {
-      if (!cancelled) setSkipTimes(res);
-    });
+    void window.electronAPI
+      .fetchSkipTimes(seriesId, malId ?? 0, epNum, duration, activeFilePath ?? undefined)
+      .then((res) => {
+        if (cancelled) return;
+        // Only overwrite if main actually returned something — a network
+        // failure with no chapters returns {} and we don't want to clear
+        // the cached seed we just set.
+        if (res.op || res.ed) setSkipTimes(res);
+      });
     return () => { cancelled = true; };
-  }, [seriesId, episodeNumber, duration, metadata]);
+  }, [seriesId, episodeNumber, duration, metadata, activeFilePath]);
 
   // Reset skip times when the episode changes so the previous episode's
   // window doesn't briefly show on the new one.

@@ -141,6 +141,63 @@ export function formatWatchedLabel(args: {
 }
 
 /**
+ * Earliest episode with airDate > now. Used by the series detail chip and
+ * the feed-card meta row to render a live countdown. Returns null when
+ * nothing upcoming is known (finished shows, releasing shows whose
+ * schedule isn't cached yet).
+ */
+export function findNextUpcomingEpisode(
+  episodes: ReadonlyArray<{ episodeNumber: number; airDate: string | null }> | null | undefined,
+  nowMs: number,
+): { episodeNumber: number; airDateMs: number } | null {
+  if (!episodes) return null;
+  let best: { episodeNumber: number; airDateMs: number } | null = null;
+  for (const e of episodes) {
+    if (!e.airDate) continue;
+    const t = Date.parse(e.airDate);
+    if (!Number.isFinite(t) || t <= nowMs) continue;
+    if (!best || t < best.airDateMs) best = { episodeNumber: e.episodeNumber, airDateMs: t };
+  }
+  return best;
+}
+
+/**
+ * Compact countdown — minute granularity, no seconds. Use when the
+ * countdown shares a tight row (e.g. the feed card meta line) and a
+ * second-by-second twitch would just add visual noise.
+ */
+export function formatCountdownMinutes(diffMs: number): string {
+  if (diffMs <= 0) return "now";
+  const totalSec = Math.floor(diffMs / 1000);
+  const d = Math.floor(totalSec / 86400);
+  const h = Math.floor((totalSec % 86400) / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  if (d > 0) return `${d}d ${pad(h)}h ${pad(m)}m`;
+  if (h > 0) return `${h}h ${pad(m)}m`;
+  return `${m}m`;
+}
+
+/**
+ * Live-countdown formatter: largest non-zero unit down to seconds. Seconds
+ * are always included — callers using this expect a visible 1Hz tick. Use
+ * a tabular-nums CSS rule on the enclosing element to keep widths stable.
+ */
+export function formatCountdown(diffMs: number): string {
+  if (diffMs <= 0) return "now";
+  const totalSec = Math.floor(diffMs / 1000);
+  const d = Math.floor(totalSec / 86400);
+  const h = Math.floor((totalSec % 86400) / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  if (d > 0) return `${d}d ${pad(h)}h ${pad(m)}m ${pad(s)}s`;
+  if (h > 0) return `${h}h ${pad(m)}m ${pad(s)}s`;
+  if (m > 0) return `${m}m ${pad(s)}s`;
+  return `${s}s`;
+}
+
+/**
  * Returns currently-airing on-disk shows, sorted by most recent aired
  * episode date descending. Falls back to startDate when no past airDate
  * is available so the show still appears.

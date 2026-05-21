@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, Menu, protocol, net } from 'electron';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { dirname, join, isAbsolute, resolve, relative, basename } from 'path';
+import { dirname, join, isAbsolute, resolve, relative } from 'path';
 import { existsSync } from 'fs';
 import axios from 'axios';
 import folderHandler, { type ScannedMedia } from './handlers/folderHandler';
@@ -200,12 +200,15 @@ async function ingestSingleFile(filePath: string): Promise<void> {
       mainWindow.webContents.send('metadata:file-status-changed', { filePath, status: 'verifying' });
     }
 
-    // First time we see this series → background poster match. Movies share
-    // the "Movies" parent folder, so the scanner-derived title (media.name)
-    // is the right search input; for series, the folder name is.
+    // First time we see this series → background poster match. media.name
+    // is the right search input for both movies and series: for movies it's
+    // the cleaned filename-derived title, for series it's the cleaned
+    // wrapper-derived or folder name. The earlier code used
+    // basename(media.folderPath) for series, which broke franchise-wrapper
+    // subfolders whose folder names are release-tagged (e.g.
+    // "[Erai-raws] Karakai... - 01 ~ 12 [1080p]").
     if (isBrandNewSeries) {
-      const query = media.type === 'movie' ? media.name : basename(media.folderPath);
-      void matchPosterForSeries(media.id, query);
+      void matchPosterForSeries(media.id, media.name);
     }
   } catch (err) {
     logger.error('watch', `Failed to ingest new file: ${(err as Error).message}`, { file: filePath });
@@ -285,6 +288,11 @@ async function runStartupCatchUp(): Promise<void> {
     // tried yet. Doesn't block startup. Renderer reloads on each match
     // via the file-status-changed ping inside matchPosterForSeries.
     void matchPostersForLibrary();
+    // Parallel fast-path: backfill franchise relations for already-matched
+    // series that predate the related-strip feature. One AniList query per
+    // series instead of redoing the full search; runs alongside the heavier
+    // poster matcher so users see relations populate within seconds.
+    void backfillRelationsForLibrary();
   } finally {
     startupCatchUpInFlight = false;
   }
@@ -310,9 +318,19 @@ async function matchPosterForSeries(seriesId: string, folderName: string): Promi
     // findShowMatch guarantees the id matching `source` is set; the other
     // is best-effort (cross-resolved or absent).
     const primaryId = match.source === 'anilist' ? match.anilistId! : match.malId!;
-    const [cached, episodeDates] = await Promise.all([
+    // Relations come from AniList only (MAL has related_anime but no
+    // cross-media graph), so we query by anilistId when we have it and
+    // fall back to AniList's idMal filter for MAL-primary matches.
+    const [cached, episodeDates, relations] = await Promise.all([
       imageCacheHandler.cacheImages([match.posterUrl]),
       fetchEpisodeAirDates(match.source, primaryId, match.totalEpisodes),
+      anilistHandler.getRelations(
+        match.anilistId
+          ? { anilistId: match.anilistId }
+          : match.malId
+            ? { malId: match.malId }
+            : {},
+      ),
     ]);
     const posterLocal = cached.get(match.posterUrl) ?? null;
     await metadataHandler.transaction(async (current) => {
@@ -321,6 +339,25 @@ async function matchPosterForSeries(seriesId: string, folderName: string): Promi
       // do NOT keep titles/descriptions/thumbnails; metadata enrichment
       // beyond the sort key is still paused.
       const slimEpisodes = episodeDates.map((e) => ({ episodeNumber: e.episodeNumber, airDate: e.airDate }));
+      // Slim relations — drop CHARACTER (almost never meaningful for the
+      // user's intent) but keep everything else verbatim. The renderer
+      // groups & filters at display time so we don't bake UX decisions
+      // into the persisted shape.
+      const slimRelations = relations
+        .filter((r) => r.relationType !== 'CHARACTER')
+        .map((r) => ({
+          relationType: r.relationType,
+          anilistId: r.anilistId,
+          malId: r.malId,
+          type: r.type,
+          format: r.format,
+          status: r.status,
+          seasonYear: r.seasonYear,
+          siteUrl: r.siteUrl,
+          titleRomaji: r.titleRomaji,
+          titleEnglish: r.titleEnglish,
+          poster: r.poster,
+        }));
       // Persist BOTH provider ids when we have them. Trackers, AniSkip, and
       // the rest of the renderer key off `anilistId`/`malId` directly —
       // matchSource alone isn't enough.
@@ -341,6 +378,7 @@ async function matchPosterForSeries(seriesId: string, folderName: string): Promi
         startDate: match.startDate,
         totalEpisodes: match.totalEpisodes,
         episodes: slimEpisodes,
+        relations: slimRelations,
       };
       return { updated: current };
     });
@@ -371,6 +409,8 @@ async function matchPostersForLibrary(): Promise<void> {
       type?: 'series' | 'movie';
       anilistId?: number;
       malId?: number | null;
+      status?: string | null;
+      relations?: unknown[];
     };
     // Re-match when:
     //  (a) never attempted, or
@@ -391,25 +431,39 @@ async function matchPostersForLibrary(): Promise<void> {
       !!s.posterMatched && s.titleRomaji === undefined && s.titleEnglish === undefined;
     const matchedButMissingProviderIds =
       !!s.posterMatched && s.anilistId === undefined && (s.malId === undefined || s.malId === null);
-    // Movies whose first attempt failed: keep retrying on subsequent launches.
-    // The first attempt for movies used basename(folderPath) = "Movies", which
-    // never matched anything; the fixed code below uses the title. Cheap to
-    // re-run for the few movies that exist in a library.
-    const failedMovieNeedsRetry = s.type === 'movie' && !s.posterMatched;
+    // Currently-releasing shows: refresh schedule each launch so the next-
+    // episode countdown stays accurate as episodes air week to week. Cheap
+    // — bounded by what the user is actually watching live.
+    const normStatus = (s.status ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+    const isCurrentlyReleasing =
+      normStatus === 'releasing' ||
+      normStatus === 'currently_airing' ||
+      normStatus === 'airing' ||
+      normStatus === 'ongoing';
+    const matchedButReleasingNeedsRefresh = !!s.posterMatched && isCurrentlyReleasing;
+    // Entries whose first attempt failed: keep retrying on subsequent launches.
+    // Two flavors:
+    //   - Movies: the first attempt used basename(folderPath) = "Movies" /
+    //     wrapper-folder, which never matched.
+    //   - Wrapper-subfolder series: the first attempt used the raw release-
+    //     tagged subfolder name (e.g. "[Erai-raws] Karakai... - 01 ~ 12 [...]"),
+    //     which never matched on MAL/AniList.
+    // The fixed query below uses s.title, which the scanner now derives from
+    // the wrapper folder name. Cheap to re-run for the few failed entries.
+    const failedNeedsRetry = !s.posterMatched;
     if (
       !needsFirstMatch &&
       !matchedButMissingAirDates &&
       !matchedButMissingTitles &&
       !matchedButMissingProviderIds &&
-      !failedMovieNeedsRetry
+      !matchedButReleasingNeedsRefresh &&
+      !failedNeedsRetry
     ) continue;
-    // Series live in their own folder, so the folder name is the right
-    // search input. Movies all share the "Movies" parent — searching for
-    // "Movies" never matches anything, so use the cleaned movie title
-    // (which the scanner derived from the file name) instead.
-    const matchQuery = s.type === 'movie'
-      ? (s.title ?? seriesId)
-      : (s.folderPath ? basename(s.folderPath) : (s.title ?? seriesId));
+    // Use the cleaned title for the lookup. The scanner sets `title` to the
+    // user-canonical (wrapper-derived for franchise subfolders, folder name
+    // for root-level series, cleaned filename for movies) string — which is
+    // what MAL/AniList actually expects to match against.
+    const matchQuery = s.title ?? seriesId;
     todo.push({ seriesId, folderName: matchQuery });
   }
   if (todo.length === 0) return;
@@ -417,6 +471,75 @@ async function matchPostersForLibrary(): Promise<void> {
   for (const { seriesId, folderName } of todo) {
     await matchPosterForSeries(seriesId, folderName);
   }
+}
+
+// Dedicated fast-path backfill for franchise relations on series that are
+// already matched but predate the related-strip feature. Skips the entire
+// findShowMatch round-trip (which would re-do MAL search + AniList fallback
+// per series), and just calls AniList getRelations with the stored ids.
+// One AniList request per series → completes in seconds for libraries that
+// would otherwise spend minutes redoing search queries they don't need.
+async function backfillRelationsForLibrary(): Promise<void> {
+  const meta = await metadataHandler.loadMetadata();
+  const todo: Array<{ seriesId: string; anilistId?: number; malId?: number; title: string }> = [];
+  for (const [seriesId, raw] of Object.entries(meta)) {
+    const s = raw as {
+      posterMatched?: boolean;
+      anilistId?: number;
+      malId?: number | null;
+      relations?: unknown;
+      title?: string;
+    };
+    // Only matched entries are candidates. Skip anything that already has
+    // a relations array (even empty — AniList just returned nothing).
+    if (!s.posterMatched) continue;
+    if (Array.isArray(s.relations)) continue;
+    if (s.anilistId == null && (s.malId == null)) continue;
+    todo.push({
+      seriesId,
+      anilistId: s.anilistId ?? undefined,
+      malId: s.malId ?? undefined,
+      title: s.title ?? seriesId,
+    });
+  }
+  if (todo.length === 0) return;
+  logger.info('metadata', `Backfilling relations for ${todo.length} series`);
+  for (const { seriesId, anilistId, malId, title } of todo) {
+    try {
+      const relations = await anilistHandler.getRelations(
+        anilistId ? { anilistId } : { malId: malId! },
+      );
+      const slimRelations = relations
+        .filter((r) => r.relationType !== 'CHARACTER')
+        .map((r) => ({
+          relationType: r.relationType,
+          anilistId: r.anilistId,
+          malId: r.malId,
+          type: r.type,
+          format: r.format,
+          status: r.status,
+          seasonYear: r.seasonYear,
+          siteUrl: r.siteUrl,
+          titleRomaji: r.titleRomaji,
+          titleEnglish: r.titleEnglish,
+          poster: r.poster,
+        }));
+      await metadataHandler.transaction(async (current) => {
+        const existing = (current[seriesId] ?? {}) as Record<string, unknown>;
+        current[seriesId] = { ...existing, relations: slimRelations };
+        return { updated: current };
+      });
+      // Ping the renderer so an open series-detail page picks up the new
+      // relations without a manual reload. Single ping per series matches
+      // the existing match flow.
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('metadata:file-status-changed', { filePath: '', status: 'ready' });
+      }
+    } catch (err) {
+      logger.warn('metadata', `Relations backfill failed for ${title}: ${(err as Error).message}`, { series: title });
+    }
+  }
+  logger.info('metadata', `Relations backfill complete`);
 }
 
 async function ingestSubtree(dirPath: string): Promise<void> {

@@ -1,7 +1,7 @@
 {
   "name": "anibeam",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "main": ".vite/build/main.js",
   "type": "module",
   "scripts": {
@@ -11,6 +11,7 @@
     "lint": "eslint . && bun run typecheck",
     "verify:logger": "bun --bun scripts/verify-logger.mjs",
     "verify:probe": "bun --bun scripts/verify-probe-parser.mjs",
+    "verify:folder": "bun --bun scripts/verify-folder-wrapper.mjs",
     "preview": "vite preview",
     "start": "bun run typecheck && electron-forge start",
     "package": "bun run typecheck && electron-forge package",

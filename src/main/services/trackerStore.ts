@@ -21,6 +21,10 @@ export type ListStatus =
 export interface ProgressEntry {
   progress: number;
   status: ListStatus | null;
+  // Normalised to a 0-10 scale (AniList POINT_10_DECIMAL, MAL native 0-10).
+  // Null means "no score" — both providers use 0 to signal unrated and we
+  // collapse that to null here so consumers don't have to special-case it.
+  score: number | null;
 }
 
 const ANILIST_TO_CANONICAL: Record<string, ListStatus> = {
@@ -121,12 +125,13 @@ function migrateProgressMap(raw: unknown): Record<number, ProgressEntry> {
     const id = Number(k);
     if (!Number.isFinite(id)) continue;
     if (typeof v === 'number') {
-      out[id] = { progress: v, status: null };
+      out[id] = { progress: v, status: null, score: null };
     } else if (v && typeof v === 'object') {
-      const obj = v as { progress?: unknown; status?: unknown };
+      const obj = v as { progress?: unknown; status?: unknown; score?: unknown };
       const progress = typeof obj.progress === 'number' ? obj.progress : 0;
       const status = typeof obj.status === 'string' ? (obj.status as ListStatus) : null;
-      out[id] = { progress, status };
+      const score = typeof obj.score === 'number' && obj.score > 0 ? obj.score : null;
+      out[id] = { progress, status, score };
     }
   }
   return out;
@@ -351,6 +356,7 @@ export async function replaceProgress(provider: TrackerProvider, map: Record<num
 // Merge a single (mediaId, progress, status) update into the cached map.
 // Status is optional — a mark mutation knows the new progress for sure but
 // may not always know the resulting status. Pass null to leave status as-is.
+// Score is preserved across episode marks (mark mutations don't touch it).
 export async function setProgressEntry(
   provider: TrackerProvider,
   mediaId: number,
@@ -362,6 +368,7 @@ export async function setProgressEntry(
   store.progress[provider][mediaId] = {
     progress,
     status: status ?? prev?.status ?? null,
+    score: prev?.score ?? null,
   };
   await saveStore(store);
 }

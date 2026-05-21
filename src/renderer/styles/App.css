@@ -297,6 +297,7 @@ a { color: inherit; text-decoration: none; }
 .show-card-meta {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.5rem;
   font-size: 0.78rem;
   color: var(--text-muted);
@@ -314,8 +315,18 @@ a { color: inherit; text-decoration: none; }
 }
 .show-card-year { font-family: var(--font-mono); }
 .show-card-genre { color: var(--text-muted); }
-.show-card-meta > * + * { position: relative; padding-left: 0.5rem; }
-.show-card-meta > * + *::before {
+/* Dot separator used on HomePage / ShowCard where multiple meta items
+   stack horizontally. FeedPage opts out by using split-row classnames
+   (meta-ago / meta-countdown) instead of bare spans. */
+.show-card-meta > .show-card-score + *,
+.show-card-meta > .show-card-year + *,
+.show-card-meta > .show-card-genre + * {
+  position: relative;
+  padding-left: 0.5rem;
+}
+.show-card-meta > .show-card-score + *::before,
+.show-card-meta > .show-card-year + *::before,
+.show-card-meta > .show-card-genre + *::before {
   content: "";
   position: absolute;
   left: 0;
@@ -325,6 +336,21 @@ a { color: inherit; text-decoration: none; }
   height: 2px;
   border-radius: 50%;
   background: var(--text-muted);
+}
+
+/* Feed-card split meta row. Left = "ago"; right = "EP NN in 2d 14h …" with
+   a live-ticking second. tabular-nums keeps the digit positions from
+   shuffling under the cursor as seconds tick. */
+.show-card-meta-ago {
+  color: var(--text-muted);
+}
+.show-card-meta-countdown {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  color: var(--accent-teal);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 /* ============ FEED CAROUSEL ============ */
@@ -2584,11 +2610,60 @@ a { color: inherit; text-decoration: none; }
   background: color-mix(in srgb, var(--accent-amber) 10%, transparent);
 }
 .hero-chip-rating svg { fill: currentColor; }
+
+/* User's own rating — same shape as the average-rating chip but tinted with
+   the secondary accent and tagged "YOU" so the two are unambiguous at a
+   glance. The tag piggybacks on the chip's mono font and reuses the existing
+   border tokens, keeping it flush with the rest of the chip row. */
+.hero-chip-myscore {
+  color: var(--accent-secondary);
+  border-color: color-mix(in srgb, var(--accent-secondary) 35%, var(--border-color));
+  background: color-mix(in srgb, var(--accent-secondary) 10%, transparent);
+  padding-right: 0.45rem;
+}
+.hero-chip-myscore svg { fill: currentColor; }
+.hero-chip-myscore-tag {
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  padding: 0.1rem 0.35rem;
+  margin-left: 0.15rem;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--accent-secondary) 22%, transparent);
+  color: color-mix(in srgb, var(--accent-secondary) 80%, var(--text-primary));
+}
 .hero-chip-status.status-releasing {
   color: var(--accent-teal);
   border-color: color-mix(in srgb, var(--accent-teal) 35%, var(--border-color));
   background: color-mix(in srgb, var(--accent-teal) 10%, transparent);
 }
+/* Next-episode countdown chip. Tinted teal to read as part of the
+   "airing" cluster, with a tabular-nums font feature so the seconds
+   digit doesn't shimmy as it ticks. */
+.hero-chip-next-ep {
+  color: var(--accent-teal);
+  border-color: color-mix(in srgb, var(--accent-teal) 35%, var(--border-color));
+  background: color-mix(in srgb, var(--accent-teal) 10%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+.hero-chip-next-ep svg { color: currentColor; }
+
+/* AniList external-link chip — same shape as the other chips but
+   actually clickable (it's a <button>), so it needs cursor + hover. */
+button.hero-chip-anilist {
+  appearance: none;
+  cursor: pointer;
+  color: var(--accent-secondary);
+  border-color: color-mix(in srgb, var(--accent-secondary) 35%, var(--border-color));
+  background: color-mix(in srgb, var(--accent-secondary) 10%, transparent);
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+button.hero-chip-anilist:hover {
+  color: color-mix(in srgb, var(--accent-secondary) 80%, white);
+  background: color-mix(in srgb, var(--accent-secondary) 20%, transparent);
+  border-color: color-mix(in srgb, var(--accent-secondary) 55%, var(--border-color));
+}
+button.hero-chip-anilist svg { color: currentColor; }
 .hero-chip-status.status-finished {
   color: var(--text-secondary);
 }
@@ -2841,6 +2916,230 @@ a { color: inherit; text-decoration: none; }
   border: 1px solid var(--border-color);
 }
 
+/* Hover-revealed seekbar on each episode row. Sits flush along the row's
+   inner bottom edge so it doesn't disturb the grid layout. Hidden until the
+   user hovers the row, fades in along with a subtle slide so it reads as
+   "extra info on demand" rather than visual noise on the resting state.
+   The track inherits the row's border-radius corners so it hugs the row. */
+.bare-episode-progress {
+  position: absolute;
+  left: 0.6rem;
+  right: 0.6rem;
+  bottom: 0.35rem;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(2px);
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+  pointer-events: none;
+}
+.bare-episode-row:hover .bare-episode-progress {
+  opacity: 1;
+  transform: translateY(0);
+}
+.bare-episode-progress-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+  border-radius: inherit;
+  transition: width 320ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* Episodes with in-progress local data keep a faint resting bar so the user
+   can see at a glance which rows have a resume point — the hover state then
+   brightens it to the full version. The next-up row also opts in so the
+   active row never looks empty. */
+.bare-episode-progress[data-has-progress="true"],
+.bare-episode-row.next-up .bare-episode-progress {
+  opacity: 0.55;
+  transform: translateY(0);
+}
+.bare-episode-row.next-up:hover .bare-episode-progress,
+.bare-episode-row:hover .bare-episode-progress[data-has-progress="true"] {
+  opacity: 1;
+}
+/* Reserve a sliver of bottom padding on every row so the hover bar never
+   overlaps the row's text. Applied here rather than on the base row so the
+   default layout numbers stay unchanged for anyone reading the grid above. */
+.bare-episode-row { padding-bottom: 0.95rem; }
+
+/* ---------- Related (franchise relations) ---------- */
+/* Grid of related entries — sequels, prequels, side stories, manga
+   adaptations. Each card is a button: in-library entries route in-app,
+   everything else opens AniList in the system browser. */
+.relations-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 1rem;
+  margin: 0.4rem 0 2rem;
+}
+.relation-card {
+  position: relative;
+  appearance: none;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  text-align: left;
+  transition:
+    transform var(--transition-fast),
+    border-color var(--transition-fast),
+    box-shadow var(--transition-normal),
+    background var(--transition-fast);
+}
+.relation-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  background: var(--bg-tertiary);
+}
+/* Permanent left-edge stripe — even at rest, you can tell at a glance
+   whether a card opens in-app (teal) or jumps out to AniList (indigo).
+   Sits inside the rounded border so the stripe doesn't fight with the
+   card's corner radius. */
+.relation-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 3px;
+  border-top-left-radius: var(--radius-lg);
+  border-bottom-left-radius: var(--radius-lg);
+  pointer-events: none;
+}
+.relation-card.is-internal {
+  border-color: color-mix(in srgb, var(--accent-teal) 28%, var(--border-color));
+}
+.relation-card.is-internal::before {
+  background: var(--accent-teal);
+}
+.relation-card.is-internal:hover {
+  border-color: color-mix(in srgb, var(--accent-teal) 55%, var(--border-color));
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--accent-teal) 18%, transparent);
+}
+.relation-card.is-external {
+  border-color: color-mix(in srgb, var(--accent-secondary) 22%, var(--border-color));
+}
+.relation-card.is-external::before {
+  background: var(--accent-secondary);
+}
+.relation-card.is-external:hover {
+  border-color: color-mix(in srgb, var(--accent-secondary) 50%, var(--border-color));
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--accent-secondary) 18%, transparent);
+}
+/* Slightly desaturate external posters at rest so the in-library cards
+   visually pop forward. Snaps back to full color on hover so the user
+   gets feedback when they're actively reaching for it. */
+.relation-card.is-external .relation-card-poster img {
+  filter: saturate(0.78);
+  transition: filter var(--transition-fast), transform var(--transition-slow);
+}
+.relation-card.is-external:hover .relation-card-poster img {
+  filter: saturate(1);
+}
+.relation-card-poster {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  background: var(--bg-tertiary);
+  overflow: hidden;
+}
+.relation-card-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform var(--transition-slow);
+}
+.relation-card:hover .relation-card-poster img { transform: scale(1.04); }
+.relation-card-poster-empty {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+/* Corner pill — labels the click destination unambiguously instead of
+   relying on a tiny icon the user has to interpret. Teal = stays in the
+   app; indigo = jumps to AniList. */
+.relation-card-pill {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.18rem 0.45rem;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  backdrop-filter: blur(4px);
+  pointer-events: none;
+  border: 1px solid transparent;
+}
+.relation-card-pill.is-internal {
+  color: color-mix(in srgb, var(--accent-teal) 80%, white);
+  background: color-mix(in srgb, var(--accent-teal) 25%, rgba(0, 0, 0, 0.7));
+  border-color: color-mix(in srgb, var(--accent-teal) 55%, transparent);
+}
+.relation-card-pill.is-external {
+  color: color-mix(in srgb, var(--accent-secondary) 80%, white);
+  background: color-mix(in srgb, var(--accent-secondary) 25%, rgba(0, 0, 0, 0.7));
+  border-color: color-mix(in srgb, var(--accent-secondary) 55%, transparent);
+}
+.relation-card-pill svg { color: currentColor; }
+.relation-card-body {
+  padding: 0.55rem 0.65rem 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.relation-card-type {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.relation-card.is-internal .relation-card-type {
+  color: var(--accent-teal);
+}
+.relation-card.is-external .relation-card-type {
+  color: var(--accent-secondary);
+}
+.relation-card-title {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 2lh;
+}
+.relation-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.15rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
 /* Feed page — one row per on-disk episode, sorted by air date desc. */
 .feed-list {
   display: flex;
@@ -3073,6 +3372,36 @@ a { color: inherit; text-decoration: none; }
 }
 .show-card-watched-badge.behind { color: var(--accent-rose); }
 .show-card-watched-badge.watched { color: var(--text-muted); }
+
+/* Rating badge — bottom-left of the poster. Balances the EP badge (top-
+   left) and watched badge (top-right) and keeps the show's average score
+   visible at a glance without spending a line in the meta row, which is
+   now reserved for "ago" + the live next-episode countdown. */
+.show-card-rating-badge {
+  position: absolute;
+  bottom: 0.6rem;
+  left: 0.6rem;
+  display: inline-flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.78);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 0.24rem 0.5rem;
+  border-radius: var(--radius-md);
+  backdrop-filter: blur(4px);
+  z-index: 1;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+}
+.show-card-rating-badge::before {
+  content: "★";
+  color: var(--accent-amber);
+  margin-right: 0.25rem;
+  font-size: 0.9em;
+  line-height: 1;
+}
 
 /* ============ SUBSCRIPTIONS ============ */
 .subscriptions-refresh {

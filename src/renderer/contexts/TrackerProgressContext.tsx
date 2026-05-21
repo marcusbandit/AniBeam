@@ -26,6 +26,12 @@ interface Ctx {
    * or when the entry exists without a status (legacy v1 cache rows).
    */
   getListStatus: (ids: SeriesIds) => TrackerListStatus | null;
+  /**
+   * The user's own score on a 0–10 scale (AniList normalised via
+   * POINT_10_DECIMAL, MAL native). Returns null when the user hasn't rated
+   * the series on either provider.
+   */
+  getUserScore: (ids: SeriesIds) => number | null;
   setMainProvider: (provider: TrackerProvider) => Promise<void>;
 }
 
@@ -103,14 +109,19 @@ export function TrackerProgressProvider({ children }: { children: ReactNode }) {
     [lookupEntry],
   );
 
+  const getUserScore = useCallback<Ctx["getUserScore"]>(
+    (ids) => lookupEntry(ids)?.score ?? null,
+    [lookupEntry],
+  );
+
   const setMainProvider = useCallback(async (provider: TrackerProvider) => {
     await window.electronAPI.trackerSetMainProvider(provider);
     await refresh();
   }, [refresh]);
 
   const value = useMemo<Ctx>(
-    () => ({ snapshot, getWatched, getListStatus, setMainProvider }),
-    [snapshot, getWatched, getListStatus, setMainProvider],
+    () => ({ snapshot, getWatched, getListStatus, getUserScore, setMainProvider }),
+    [snapshot, getWatched, getListStatus, getUserScore, setMainProvider],
   );
 
   return (

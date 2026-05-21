@@ -465,16 +465,19 @@ async function fetchAnilistProgressMap(): Promise<Record<number, ProgressEntry>>
   const token = await getAccessToken('anilist');
   if (!acct || !token || !acct.userId) return {};
   const headers = { Authorization: `Bearer ${token}` };
+  // `score(format: POINT_10_DECIMAL)` makes AniList normalise the value to a
+  // 0–10 decimal regardless of the user's chosen display format, so we don't
+  // have to branch on POINT_100 / POINT_10 / POINT_5 / POINT_3 on the client.
   const data = await withTimeout(
     request<{
       MediaListCollection: {
-        lists: Array<{ entries: Array<{ progress: number; status: string | null; media: { id: number } }> }>;
+        lists: Array<{ entries: Array<{ progress: number; status: string | null; score: number | null; media: { id: number } }> }>;
       };
     }>(
       ANILIST_API,
       gql`query ($userId: Int) {
         MediaListCollection(userId: $userId, type: ANIME) {
-          lists { entries { progress status media { id } } }
+          lists { entries { progress status score(format: POINT_10_DECIMAL) media { id } } }
         }
       }`,
       { userId: acct.userId },
@@ -490,6 +493,7 @@ async function fetchAnilistProgressMap(): Promise<Record<number, ProgressEntry>>
         map[entry.media.id] = {
           progress: entry.progress ?? 0,
           status: normalizeListStatus('anilist', entry.status),
+          score: typeof entry.score === 'number' && entry.score > 0 ? entry.score : null,
         };
       }
     }
@@ -511,7 +515,7 @@ async function fetchMalProgressMap(): Promise<Record<number, ProgressEntry>> {
   for (let i = 0; i < 50; i++) {
     const resp = await withTimeout(
       axios.get(`${MAL_API}/users/@me/animelist`, {
-        params: { fields: 'list_status{status,num_episodes_watched,is_rewatching}', limit, offset },
+        params: { fields: 'list_status{status,num_episodes_watched,is_rewatching,score}', limit, offset },
         headers,
       }),
       PROGRESS_FETCH_TIMEOUT_MS,
@@ -520,7 +524,7 @@ async function fetchMalProgressMap(): Promise<Record<number, ProgressEntry>> {
     const data = resp.data as {
       data: Array<{
         node: { id: number };
-        list_status?: { num_episodes_watched?: number; status?: string; is_rewatching?: boolean };
+        list_status?: { num_episodes_watched?: number; status?: string; is_rewatching?: boolean; score?: number };
       }>;
       paging?: { next?: string };
     };
@@ -530,6 +534,7 @@ async function fetchMalProgressMap(): Promise<Record<number, ProgressEntry>> {
         map[item.node.id] = {
           progress: ls?.num_episodes_watched ?? 0,
           status: normalizeListStatus('mal', ls?.status, ls?.is_rewatching ?? false),
+          score: typeof ls?.score === 'number' && ls.score > 0 ? ls.score : null,
         };
       }
     }

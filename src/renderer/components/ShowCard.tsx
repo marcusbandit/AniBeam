@@ -1,139 +1,147 @@
 import { useNavigate } from "react-router-dom";
-import type { SeriesMetadata } from "../hooks/useMetadata";
-import type { FileStatus } from "../../shared/fileStatus";
-import { Film, Tv } from "lucide-react";
-import { getDisplayRating } from "../utils/ratingUtils";
-import { classifyWatchProgress, formatEpisodeCode, formatRelativeDate, formatWatchedLabel, getLatestAiredEpisode } from "../utils/airingUtils";
+import { Tv } from "lucide-react";
+import type { LibraryItem } from "../../types/electron";
+import { useTitleLanguage } from "../contexts/TitleLanguageContext";
 import { useTrackerProgress } from "../contexts/TrackerProgressContext";
-
-function getImageUrl(localPath?: string | null, remotePath?: string | null): string | null {
-  if (localPath) return `media://${encodeURIComponent(localPath)}`;
-  return remotePath || null;
-}
-
-function getYear(startDate?: string | null, seasonYear?: number | null): number | null {
-  if (seasonYear) return seasonYear;
-  if (!startDate) return null;
-  const year = parseInt(startDate.split("-")[0], 10);
-  return isNaN(year) ? null : year;
-}
+import {
+  classifyWatchProgress,
+  findNextUpcomingEpisode,
+  formatCountdownMinutes,
+  formatWatchedLabel,
+  getLatestAiredEpisodeNumber,
+} from "../utils/airingUtils";
+import { getDisplayRating } from "../utils/ratingUtils";
 
 interface ShowCardProps {
-  seriesId: string;
-  seriesData: SeriesMetadata;
-  size?: "normal" | "large";
-  variant?: "library" | "feed";
+  item: LibraryItem;
+  /** Render an "EP NN" badge top-left on the poster. */
+  episodeBadgeNumber?: number | null;
+  /** Left text in the meta row (e.g. "2d ago", "5 files"). When unset
+   *  the row falls back to the file count so empty cards never look
+   *  blank. */
+  metaLeftText?: string;
+  /** Native tooltip for the meta-left text. */
+  metaLeftTitle?: string;
+  /** Current ms used for the live next-episode countdown. The parent
+   *  owns the ticker (a single setInterval) so multiple cards stay in
+   *  lockstep without N timers. Omit to disable the countdown entirely
+   *  even when the show has a known upcoming air date. */
+  nowMs?: number;
 }
 
-function ShowCard({ seriesId, seriesData, variant = "library" }: ShowCardProps) {
+/**
+ * Single shared show-card used by every grid in the app (Home → Airing /
+ * Series / Movies, Feed). Owns the poster, the four corner badges, and
+ * the meta row so a visual tweak made here lands in every list at once.
+ */
+function ShowCard({
+  item,
+  episodeBadgeNumber,
+  metaLeftText,
+  metaLeftTitle,
+  nowMs,
+}: ShowCardProps) {
   const navigate = useNavigate();
+  const { pickTitle } = useTitleLanguage();
   const { getWatched } = useTrackerProgress();
-  const isMovie = seriesData.type === "movie" || seriesData.format === "MOVIE";
 
-  const handleClick = () => {
-    navigate(`/series/${seriesId}`);
-  };
+  const posterUrl = item.posterLocal
+    ? `media://${encodeURIComponent(item.posterLocal)}`
+    : item.poster;
+  const displayTitle = pickTitle({
+    titleRomaji: item.titleRomaji ?? item.matchedTitle,
+    titleEnglish: item.titleEnglish,
+    folderName: item.folderName,
+  });
+  const score = item.averageScore != null
+    ? getDisplayRating(item.averageScore, item.source)
+    : null;
 
-  // For the badge denominator we trust seriesData.totalEpisodes only — the
-  // episodes-array length isn't a real total for airing shows (it counts
-  // released-with-metadata episodes). formatWatchedLabel handles the null
-  // case by rendering "XX/?" so the format stays consistent.
-  const totalEpisodes = seriesData.totalEpisodes ?? null;
-  // Used by the !isMovie corner badge below — that one wants the best
-  // denominator we can show, so fall back to episodes.length when total
-  // isn't published yet.
-  const cornerTotal = seriesData.totalEpisodes || seriesData.episodes?.length || 0;
-  const downloadedEpisodes = seriesData.fileEpisodes?.length || 0;
-  const watched = getWatched({ anilistId: seriesData.anilistId, malId: seriesData.malId });
-  const latestAiredNum = getLatestAiredEpisode(seriesData)?.episodeNumber ?? null;
+  const watched = getWatched({
+    anilistId: item.anilistId ?? undefined,
+    malId: item.malId ?? undefined,
+  });
+  const latestAiredNum = getLatestAiredEpisodeNumber(item.episodes);
   const watchedState = watched != null
-    ? classifyWatchProgress({ watched, totalEpisodes, latestAiredEpisode: latestAiredNum })
+    ? classifyWatchProgress({
+        watched,
+        totalEpisodes: item.totalEpisodes,
+        latestAiredEpisode: latestAiredNum,
+      })
     : null;
   const watchedLabel = formatWatchedLabel({
     watched,
-    totalEpisodes,
+    totalEpisodes: item.totalEpisodes,
     latestAiredEpisode: latestAiredNum,
     state: watchedState,
   });
-  const posterUrl = getImageUrl(seriesData.posterLocal, seriesData.poster);
 
-  const files = (seriesData.fileEpisodes ?? []) as Array<{ status?: FileStatus }>;
-  // 'transcoding' ranks above 'verifying' (it's a longer-running and
-  // more user-visible step) but below 'stalled'. The badge below shows
-  // the worst status across all files in the series.
-  const order: Record<FileStatus, number> = { ready: 0, verifying: 1, transcoding: 2, stalled: 3 };
-  const aggregateStatus: FileStatus = files.reduce<FileStatus>((acc, f) => {
-    const s = (f.status ?? 'ready') as FileStatus;
-    return order[s] > order[acc] ? s : acc;
-  }, 'ready');
-  const isReady = aggregateStatus === 'ready';
-
-  const score = seriesData.averageScore
-    ? getDisplayRating(seriesData.averageScore, seriesData.source)
+  const epBadge = episodeBadgeNumber != null
+    ? String(episodeBadgeNumber).padStart(2, "0")
     : null;
-  const year = getYear(seriesData.startDate, seriesData.seasonYear);
-  const firstGenre = seriesData.genres?.[0];
 
-  // Feed variant: latest aired episode + relative date
-  const latestEp = variant === "feed" ? getLatestAiredEpisode(seriesData) : null;
-  const epCode = latestEp ? formatEpisodeCode(latestEp) : "";
-  const epRel = latestEp?.airDate ? formatRelativeDate(latestEp.airDate) : "";
+  // Countdown is opt-in (caller passes nowMs) so non-ticking grids don't
+  // accidentally subscribe to a re-render every tick they don't need.
+  const nextUpcoming = nowMs != null
+    ? findNextUpcomingEpisode(item.episodes, nowMs)
+    : null;
+
+  const leftText = metaLeftText
+    ?? `${item.files.length} file${item.files.length === 1 ? "" : "s"}`;
 
   return (
-    <button className={`show-card${isReady ? "" : " not-ready"} status-${aggregateStatus}`} onClick={handleClick}>
+    <button
+      type="button"
+      className="show-card"
+      onClick={() => navigate(`/series/${encodeURIComponent(item.id)}`)}
+    >
       <div className="show-card-poster-wrap">
+        {watchedLabel && (
+          <span
+            className={`show-card-watched-badge${watchedState ? ` ${watchedState}` : ""}`}
+            aria-label={`Watched ${watchedLabel}`}
+          >
+            {watchedLabel}
+          </span>
+        )}
+        {epBadge && (
+          <span className="show-card-ep-badge" aria-label={`Episode ${epBadge}`}>
+            EP {epBadge}
+          </span>
+        )}
+        {score && (
+          <span className="show-card-rating-badge" aria-label={`Rating ${score}`}>
+            {score}
+          </span>
+        )}
         {posterUrl ? (
           <img
-            src={posterUrl}
-            alt={seriesData.title || "Show poster"}
             className="show-card-poster"
+            src={posterUrl}
+            alt={displayTitle}
             loading="lazy"
-            onError={(e) => {
-              const target = e.target as HTMLImageElement;
-              if (seriesData.poster && target.src !== seriesData.poster) {
-                target.src = seriesData.poster;
-              } else {
-                target.style.display = "none";
-              }
-            }}
           />
         ) : (
-          <div className="show-card-no-image">
-            {isMovie ? <Film size={48} /> : <Tv size={48} />}
-          </div>
-        )}
-        {!isMovie && cornerTotal > 0 && (
-          <div className="show-card-badge">
-            <span className="badge-have">{downloadedEpisodes}</span>
-            <span className="badge-sep">/</span>
-            <span className="badge-total">{cornerTotal}</span>
-          </div>
-        )}
-        {!isReady && (
-          <div className={`status-badge status-badge-${aggregateStatus}`}>
-            {aggregateStatus === "verifying" ? "VERIFYING"
-              : aggregateStatus === "transcoding" ? "TRANSCODING"
-              : "STALLED"}
-          </div>
+          <div className="show-card-no-image"><Tv size={32} /></div>
         )}
       </div>
       <div className="show-card-info">
-        <div className="show-card-title">{seriesData.title}</div>
-        {variant === "feed" ? (
-          <div className="show-card-meta">
-            {score && <span className="show-card-score">{score}</span>}
-            {watchedLabel && <span className={`show-card-watched${watchedState ? ` ${watchedState}` : ''}`}>{watchedLabel}</span>}
-            {epCode && <span className="show-card-ep">{epCode}</span>}
-            {epRel && <span className="show-card-rel">{epRel}</span>}
-          </div>
-        ) : (
-          <div className="show-card-meta">
-            {score && <span className="show-card-score">{score}</span>}
-            {watchedLabel && <span className={`show-card-watched${watchedState ? ` ${watchedState}` : ''}`}>{watchedLabel}</span>}
-            {year && <span className="show-card-year">{year}</span>}
-            {firstGenre && <span className="show-card-genre">{firstGenre}</span>}
-          </div>
-        )}
+        <div className="show-card-title" title={item.folderName}>
+          {displayTitle}
+        </div>
+        <div className="show-card-meta">
+          <span className="show-card-meta-ago" title={metaLeftTitle}>
+            {leftText}
+          </span>
+          {nextUpcoming && nowMs != null && (
+            <span
+              className="show-card-meta-countdown"
+              title={`Episode ${nextUpcoming.episodeNumber} airs ${new Date(nextUpcoming.airDateMs).toLocaleString()}`}
+            >
+              {formatCountdownMinutes(nextUpcoming.airDateMs - nowMs)}
+            </span>
+          )}
+        </div>
       </div>
     </button>
   );

@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Activity, Tv } from "lucide-react";
+import { Activity } from "lucide-react";
 import type { LibraryItem } from "../../types/electron";
-import { useTitleLanguage } from "../contexts/TitleLanguageContext";
-import { useTrackerProgress } from "../contexts/TrackerProgressContext";
-import { classifyWatchProgress, formatWatchedLabel, getLatestAiredEpisodeNumber } from "../utils/airingUtils";
+import { findNextUpcomingEpisode } from "../utils/airingUtils";
 import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
+import ShowCard from "../components/ShowCard";
 
 interface FeedEntry {
   item: LibraryItem;
@@ -15,7 +13,8 @@ interface FeedEntry {
 }
 
 // Mirrors fmt_relative_time from the C version (src/ui.c:862). Buckets:
-// 60s → 1h → 1d → 30d → "months". 30-day "month" is intentional.
+// 60s → 1h → 1d → 30d → "months" → "years". 30-day "month" / 12-month
+// "year" is intentional — keeps the maths cheap and the labels readable.
 function fmtRelativeTime(unixSec: number): string {
   const now = Math.floor(Date.now() / 1000);
   const diff = now - unixSec;
@@ -34,8 +33,13 @@ function fmtRelativeTime(unixSec: number): string {
     const d = Math.floor(abs / 86400);
     return future ? `in ${d}d` : `${d}d ago`;
   }
-  const mo = Math.floor(abs / (86400 * 30));
-  return future ? `in ${mo}mo` : `${mo}mo ago`;
+  const totalMo = Math.floor(abs / (86400 * 30));
+  const y = Math.floor(totalMo / 12);
+  const mo = totalMo % 12;
+  const label = y > 0
+    ? (mo > 0 ? `${y}y ${mo}mo` : `${y}y`)
+    : `${totalMo}mo`;
+  return future ? `in ${label}` : `${label} ago`;
 }
 
 // One entry per show. Same logic as the C reference (src/ui.c:955):
@@ -85,9 +89,6 @@ function buildEntries(items: LibraryItem[]): FeedEntry[] {
 }
 
 function FeedPage() {
-  const navigate = useNavigate();
-  const { pickTitle } = useTitleLanguage();
-  const { getWatched } = useTrackerProgress();
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
 
@@ -119,6 +120,21 @@ function FeedPage() {
 
   const entries = useMemo(() => buildEntries(items), [items]);
 
+  // Shared coarse tick for per-card countdowns. We render minute-
+  // granularity here, so a 30s interval gives at-worst 30s display lag
+  // without spinning a 1Hz timer in the background. Only mounted when at
+  // least one entry actually has an upcoming episode.
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  const hasAnyUpcoming = useMemo(
+    () => entries.some(({ item }) => findNextUpcomingEpisode(item.episodes, Date.now()) != null),
+    [entries],
+  );
+  useEffect(() => {
+    if (!hasAnyUpcoming) return;
+    const id = window.setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, [hasAnyUpcoming]);
+
   if (initialLoading) {
     return (
       <div className="page">
@@ -144,69 +160,16 @@ function FeedPage() {
         </div>
       ) : (
         <div className="show-grid">
-          {entries.map(({ item, when, episodeNumber, source }) => {
-            const posterUrl = item.posterLocal
-              ? `media://${encodeURIComponent(item.posterLocal)}`
-              : item.poster;
-            const displayTitle = pickTitle({
-              titleRomaji: item.titleRomaji ?? item.matchedTitle,
-              titleEnglish: item.titleEnglish,
-              folderName: item.folderName,
-            });
-            const epNum = episodeNumber !== null ? String(episodeNumber).padStart(2, "0") : null;
-            const ago = fmtRelativeTime(when);
-            const watched = getWatched({
-              anilistId: item.anilistId ?? undefined,
-              malId: item.malId ?? undefined,
-            });
-            const latestAiredNum = getLatestAiredEpisodeNumber(item.episodes);
-            const watchedState = watched != null
-              ? classifyWatchProgress({ watched, totalEpisodes: item.totalEpisodes, latestAiredEpisode: latestAiredNum })
-              : null;
-            const watchedLabel = formatWatchedLabel({
-              watched,
-              totalEpisodes: item.totalEpisodes,
-              latestAiredEpisode: latestAiredNum,
-              state: watchedState,
-            });
-            return (
-              <button
-                key={item.id}
-                type="button"
-                className="show-card"
-                onClick={() => navigate(`/series/${encodeURIComponent(item.id)}`)}
-              >
-                <div className="show-card-poster-wrap">
-                  {watchedLabel && (
-                    <span
-                      className={`show-card-watched-badge${watchedState ? ` ${watchedState}` : ""}`}
-                      aria-label={`Watched ${watchedLabel}`}
-                    >
-                      {watchedLabel}
-                    </span>
-                  )}
-                  {epNum && (
-                    <span className="show-card-ep-badge" aria-label={`Episode ${epNum}`}>
-                      EP {epNum}
-                    </span>
-                  )}
-                  {posterUrl ? (
-                    <img className="show-card-poster" src={posterUrl} alt={displayTitle} loading="lazy" />
-                  ) : (
-                    <div className="show-card-no-image"><Tv size={32} /></div>
-                  )}
-                </div>
-                <div className="show-card-info">
-                  <div className="show-card-title" title={item.folderName}>
-                    {displayTitle}
-                  </div>
-                  <div className="show-card-meta">
-                    <span title={source === "aired" ? "Episode aired" : "File downloaded"}>{ago}</span>
-                  </div>
-                </div>
-              </button>
-            );
-          })}
+          {entries.map(({ item, when, episodeNumber, source }) => (
+            <ShowCard
+              key={item.id}
+              item={item}
+              episodeBadgeNumber={episodeNumber}
+              metaLeftText={fmtRelativeTime(when)}
+              metaLeftTitle={source === "aired" ? "Episode aired" : "File downloaded"}
+              nowMs={nowMs}
+            />
+          ))}
         </div>
       )}
     </div>

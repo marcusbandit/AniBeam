@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
 import { Tv, ChevronLeft, ChevronRight } from "lucide-react";
 import type { LibraryItem } from "../../types/electron";
-import { classifyWatchProgress, formatWatchedLabel, getLatestAiredEpisodeNumber, normalizeStatus } from "../utils/airingUtils";
-import { useTitleLanguage } from "../contexts/TitleLanguageContext";
-import { useTrackerProgress } from "../contexts/TrackerProgressContext";
+import { findNextUpcomingEpisode, normalizeStatus } from "../utils/airingUtils";
 import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
+import ShowCard from "../components/ShowCard";
 
 const AIRING_PAGE_COLS = 5;
 const AIRING_PAGE_ROWS = 2;
@@ -56,9 +54,6 @@ function getAiringSortInfo(item: LibraryItem): { when: number; episode: number |
 }
 
 function HomePage() {
-  const navigate = useNavigate();
-  const { pickTitle } = useTitleLanguage();
-  const { getWatched } = useTrackerProgress();
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [airingPage, setAiringPage] = useState(0);
@@ -149,6 +144,20 @@ function HomePage() {
     (airingPage + 1) * AIRING_PAGE_SIZE,
   );
 
+  // Shared 30s tick driving the next-episode countdown on cards that have
+  // a known upcoming air date. Only mounted when at least one item is
+  // actually airing — finished libraries don't keep a timer alive.
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  const hasAnyUpcoming = useMemo(
+    () => items.some((item) => findNextUpcomingEpisode(item.episodes, Date.now()) != null),
+    [items],
+  );
+  useEffect(() => {
+    if (!hasAnyUpcoming) return;
+    const id = window.setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, [hasAnyUpcoming]);
+
   if (initialLoading) {
     return (
       <div className="page">
@@ -157,72 +166,15 @@ function HomePage() {
     );
   }
 
-  const renderCard = (item: LibraryItem, sub?: { episode: number | null; when: number }) => {
-    const posterUrl = item.posterLocal
-      ? `media://${encodeURIComponent(item.posterLocal)}`
-      : item.poster;
-    const displayTitle = pickTitle({
-      titleRomaji: item.titleRomaji ?? item.matchedTitle,
-      titleEnglish: item.titleEnglish,
-      folderName: item.folderName,
-    });
-    const epNum = sub?.episode != null ? String(sub.episode).padStart(2, "0") : null;
-    const ago = sub ? fmtRelativeTime(sub.when) : null;
-    const fileCount = `${item.files.length} file${item.files.length === 1 ? "" : "s"}`;
-    // Watched count from the user's main tracker, paired with totalEpisodes
-    // when both are known. Hidden if either side is missing.
-    const watched = getWatched({
-      anilistId: item.anilistId ?? undefined,
-      malId: item.malId ?? undefined,
-    });
-    const latestAiredNum = getLatestAiredEpisodeNumber(item.episodes);
-    const watchedState = watched != null
-      ? classifyWatchProgress({ watched, totalEpisodes: item.totalEpisodes, latestAiredEpisode: latestAiredNum })
-      : null;
-    const watchedLabel = formatWatchedLabel({
-      watched,
-      totalEpisodes: item.totalEpisodes,
-      latestAiredEpisode: latestAiredNum,
-      state: watchedState,
-    });
-    return (
-      <button
-        key={item.id}
-        type="button"
-        className="show-card"
-        onClick={() => navigate(`/series/${encodeURIComponent(item.id)}`)}
-      >
-        <div className="show-card-poster-wrap">
-          {watchedLabel && (
-            <span
-              className={`show-card-watched-badge${watchedState ? ` ${watchedState}` : ""}`}
-              aria-label={`Watched ${watchedLabel}`}
-            >
-              {watchedLabel}
-            </span>
-          )}
-          {epNum && (
-            <span className="show-card-ep-badge" aria-label={`Episode ${epNum}`}>
-              EP {epNum}
-            </span>
-          )}
-          {posterUrl ? (
-            <img className="show-card-poster" src={posterUrl} alt={displayTitle} loading="lazy" />
-          ) : (
-            <div className="show-card-no-image"><Tv size={32} /></div>
-          )}
-        </div>
-        <div className="show-card-info">
-          <div className="show-card-title" title={item.folderName}>
-            {displayTitle}
-          </div>
-          <div className="show-card-meta">
-            {ago ? <span>{ago}</span> : <span>{fileCount}</span>}
-          </div>
-        </div>
-      </button>
-    );
-  };
+  const renderCard = (item: LibraryItem, sub?: { episode: number | null; when: number }) => (
+    <ShowCard
+      key={item.id}
+      item={item}
+      episodeBadgeNumber={sub?.episode ?? null}
+      metaLeftText={sub ? fmtRelativeTime(sub.when) : undefined}
+      nowMs={nowMs}
+    />
+  );
 
   return (
     <div className="page">

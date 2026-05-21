@@ -222,19 +222,54 @@ const RESOLVE_ID_BY_MAL_QUERY = gql`
   }
 `;
 
-// Per-episode air dates. AniList exposes them on Media.airingSchedule with
-// `notYetAired:false` to filter to already-broadcast episodes only. Fetch
-// by AniList id OR by MAL id — AniList's Media query accepts either as a
-// filter, so we can resolve air dates for MAL-matched series without doing
-// a second title search.
+// Per-episode air dates. AniList exposes them on Media.airingSchedule —
+// fetch the full schedule (both aired and not-yet-aired) so the renderer
+// can show a live countdown to the next upcoming episode in addition to
+// sorting the feed by latest aired. Fetch by AniList id OR by MAL id —
+// AniList's Media query accepts either as a filter, so we can resolve air
+// dates for MAL-matched series without doing a second title search.
 const AIRING_SCHEDULE_QUERY = gql`
   query ($id: Int, $idMal: Int) {
     Media(id: $id, idMal: $idMal, type: ANIME) {
       id
-      airingSchedule(notYetAired: false) {
+      airingSchedule {
         nodes {
           episode
           airingAt
+        }
+      }
+    }
+  }
+`;
+
+// Franchise graph: SEQUEL / PREQUEL / SIDE_STORY / ADAPTATION / etc.
+// Queryable by AniList id OR MAL id so MAL-matched series can still
+// pull their relations without a second title search. The renderer
+// renders these as a "Related" strip on the series detail page and
+// uses `siteUrl` for the open-in-AniList click target.
+const RELATIONS_QUERY = gql`
+  query ($id: Int, $idMal: Int) {
+    Media(id: $id, idMal: $idMal) {
+      id
+      relations {
+        edges {
+          relationType
+          node {
+            id
+            idMal
+            type
+            format
+            status
+            seasonYear
+            siteUrl
+            title {
+              romaji
+              english
+            }
+            coverImage {
+              large
+            }
+          }
         }
       }
     }
@@ -610,6 +645,72 @@ const anilistHandler = {
       }
       logger.error('metadata', 'Error fetching AniList metadata');
       return null;
+    }
+  },
+
+  /**
+   * Fetch related media (franchise + adaptations). Accepts either an
+   * AniList id or a MAL id — MAL-matched series can still pull relations
+   * without a second title-search round-trip.
+   */
+  async getRelations(opts: { anilistId?: number; malId?: number }): Promise<Array<{
+    relationType: string;
+    anilistId: number;
+    malId: number | null;
+    type: 'ANIME' | 'MANGA' | null;
+    format: string | null;
+    status: string | null;
+    seasonYear: number | null;
+    siteUrl: string | null;
+    titleRomaji: string | null;
+    titleEnglish: string | null;
+    poster: string | null;
+  }>> {
+    const variables: { id?: number; idMal?: number } = {};
+    if (opts.anilistId) variables.id = opts.anilistId;
+    if (opts.malId) variables.idMal = opts.malId;
+    if (variables.id === undefined && variables.idMal === undefined) return [];
+    try {
+      const data = await limiter.run(() =>
+        request<{
+          Media: {
+            relations: {
+              edges: Array<{
+                relationType: string;
+                node: {
+                  id: number;
+                  idMal: number | null;
+                  type: 'ANIME' | 'MANGA' | null;
+                  format: string | null;
+                  status: string | null;
+                  seasonYear: number | null;
+                  siteUrl: string | null;
+                  title: { romaji: string | null; english: string | null } | null;
+                  coverImage: { large: string | null } | null;
+                };
+              }>;
+            } | null;
+          } | null;
+        }>(ANILIST_API_URL, RELATIONS_QUERY, variables),
+      );
+      const edges = data?.Media?.relations?.edges ?? [];
+      return edges.map((e) => ({
+        relationType: e.relationType,
+        anilistId: e.node.id,
+        malId: e.node.idMal,
+        type: e.node.type,
+        format: e.node.format,
+        status: e.node.status,
+        seasonYear: e.node.seasonYear,
+        siteUrl: e.node.siteUrl,
+        titleRomaji: e.node.title?.romaji ?? null,
+        titleEnglish: e.node.title?.english ?? null,
+        poster: e.node.coverImage?.large ?? null,
+      }));
+    } catch (error) {
+      if (isRateLimitError(error)) logRateLimitWarning('AniList');
+      else logger.warn('metadata', `AniList relations fetch failed: ${(error as Error).message}`);
+      return [];
     }
   },
 
