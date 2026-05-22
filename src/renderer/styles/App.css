@@ -10,8 +10,38 @@ button {
   background: none;
   color: inherit;
 }
+button:disabled { cursor: not-allowed; opacity: 0.55; }
 input, select, textarea { font-family: inherit; }
 a { color: inherit; text-decoration: none; }
+/* No image drag anywhere in the app — it's a media library, not a clipboard
+   source, and the drag ghost is just noise on hover-heavy grids. */
+img { -webkit-user-drag: none; user-drag: none; }
+
+/* Text selection picks up the app accent instead of OS blue. */
+::selection {
+  background: color-mix(in srgb, var(--accent-primary) 35%, transparent);
+  color: var(--text-primary);
+}
+
+/* Keyboard-only focus ring (mouse clicks don't trigger). The radius
+   inherits so the ring hugs whatever element shape it's wrapping. */
+:focus-visible {
+  outline: 2px solid var(--accent-secondary);
+  outline-offset: 2px;
+  border-radius: inherit;
+}
+
+/* Quiet themed scrollbar — pairs with the scrollbar-gutter: stable rule on
+   .main-content. WebKit / Blink only (Electron is Chromium). */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-muted) 35%, transparent);
+  border-radius: var(--radius-pill);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--text-muted) 60%, transparent);
+}
 
 .app {
   height: 100%;
@@ -22,10 +52,38 @@ a { color: inherit; text-decoration: none; }
   color: var(--text-primary);
 }
 
+/* ============ AMBIENT CURSOR ============ */
+/* Sits at the root, behind everything. All four halo properties (center
+   x/y, radius, intensity) are driven by JS via AmbientCursor.tsx and the
+   shared motion engine — CSS just renders whatever values are set.
+   At rest the radius is wide (SIZE_IDLE) and intensity is low (INTENSITY_IDLE);
+   when a halo target is hovered the radius shrinks and intensity rises,
+   producing a "zoom-in" toward the focused element. */
+.ambient-cursor {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: var(--ambient-intensity, 0);
+  background:
+    radial-gradient(
+      var(--ambient-size, 1200px) circle at var(--ambient-x, 50%) var(--ambient-y, 50%),
+      color-mix(in srgb, var(--accent-primary) 16%, transparent),
+      color-mix(in srgb, var(--accent-teal)    5%, transparent) 35%,
+      transparent 65%
+    );
+}
+
+/* The app shell already establishes a stacking context; nudge real content
+   above the halo. */
+.navbar, .main-content { position: relative; z-index: 1; }
+
 .main-content {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+  scrollbar-gutter: stable;
+  scroll-behavior: smooth;
 }
 
 /* ============ NAVBAR ============ */
@@ -79,6 +137,7 @@ a { color: inherit; text-decoration: none; }
   font-family: var(--font-mono);
   font-size: 0.7rem;
   color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ============ PAGE SHELL ============ */
@@ -87,13 +146,6 @@ a { color: inherit; text-decoration: none; }
   max-width: 1400px;
   margin: 0 auto;
   width: 100%;
-}
-.page-head {
-  margin-bottom: 1.75rem;
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 1.5rem;
 }
 .page-title {
   font-family: var(--font-sans);
@@ -170,27 +222,6 @@ a { color: inherit; text-decoration: none; }
 }
 
 /* ============ SECTION HEADERS ============ */
-.section-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  margin-bottom: 1rem;
-  padding-bottom: 0.75rem;
-  border-bottom: 1px solid var(--border-color);
-}
-.section-h2 {
-  font-family: var(--font-mono);
-  font-weight: 600;
-  font-size: 1.125rem;
-  color: var(--text-primary);
-  letter-spacing: -0.01em;
-}
-.section-count {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  color: var(--text-muted);
-}
-.section-head-movies { margin-top: 2rem; }
 .section-sub {
   font-size: 0.85rem;
   color: var(--text-secondary);
@@ -205,17 +236,28 @@ a { color: inherit; text-decoration: none; }
   gap: 1.5rem 1.25rem;
   margin-bottom: 3rem;
 }
+/* ShowCard intentionally does NOT use the Card primitive. The visible
+   "card" is the poster's own border + radius; the button shell is a
+   transparent reset. Hover-lift is applied to .show-card-poster-wrap only
+   (via the motion engine in ShowCard.tsx) so the title/meta below stays
+   anchored when the cursor enters / leaves. */
 .show-card {
   display: block;
   text-align: left;
   width: 100%;
   background: transparent;
+  border: none;
   padding: 0;
+  color: inherit;
+  font: inherit;
   cursor: pointer;
-  transition: transform var(--transition-normal);
-  animation: fadeIn 0.3s ease-out both;
 }
-.show-card:hover { transform: translateY(-3px); }
+.show-card:hover .show-card-poster-wrap {
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-md);
+}
+.show-card:hover .show-card-poster { transform: scale(1.04); }
+.show-card:hover .show-card-title { color: var(--accent-secondary); }
 
 .show-card-poster-wrap {
   position: relative;
@@ -226,14 +268,11 @@ a { color: inherit; text-decoration: none; }
   border: 1px solid var(--border-color);
   background: var(--bg-tertiary);
   margin-bottom: 0.75rem;
+  /* transform is owned by JS (motion engine) — keep other transitions only. */
   transition: border-color var(--transition-fast), box-shadow var(--transition-normal);
   container-type: inline-size;
+  will-change: transform;
 }
-.show-card:hover .show-card-poster-wrap {
-  border-color: var(--border-hover);
-  box-shadow: var(--shadow-md);
-}
-
 .show-card-poster {
   width: 100%;
   height: 100%;
@@ -241,9 +280,7 @@ a { color: inherit; text-decoration: none; }
   display: block;
   transition: transform var(--transition-slow);
 }
-.show-card:hover .show-card-poster { transform: scale(1.04); }
 .show-card-title { transition: color var(--transition-fast); }
-.show-card:hover .show-card-title { color: var(--accent-secondary); }
 .show-card-no-image {
   width: 100%;
   height: 100%;
@@ -351,42 +388,6 @@ a { color: inherit; text-decoration: none; }
   color: var(--accent-teal);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-
-/* ============ FEED CAROUSEL ============ */
-.feed-section {
-  margin-bottom: 2.5rem;
-}
-.section-head-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-.section-link {
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
-  color: var(--text-secondary);
-  padding: 0.3rem 0.55rem;
-  border-radius: var(--radius-md);
-  transition: color var(--transition-fast), background var(--transition-fast);
-}
-.section-link:hover { color: var(--text-primary); background: var(--bg-secondary); }
-
-.feed-carousel {
-  display: flex;
-  gap: 1rem;
-  overflow-x: auto;
-  overflow-y: visible;
-  scroll-snap-type: x mandatory;
-  scroll-behavior: smooth;
-  padding-bottom: 0.5rem;
-  scrollbar-width: none;
-}
-.feed-carousel::-webkit-scrollbar { display: none; }
-
-.feed-carousel-item {
-  flex: 0 0 180px;
-  scroll-snap-align: start;
 }
 
 .show-card-ep {
@@ -1295,20 +1296,6 @@ a { color: inherit; text-decoration: none; }
 }
 
 /* ============ SETTINGS ============ */
-.settings-section {
-  margin-bottom: 2.5rem;
-  padding-bottom: 2rem;
-  border-bottom: 1px solid var(--border-color);
-}
-.settings-section:last-child { border-bottom: none; }
-.settings-section-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
 .folder-list, .source-list, .pref-list, .tracker-list {
   display: flex;
   flex-direction: column;
@@ -2459,8 +2446,7 @@ a { color: inherit; text-decoration: none; }
 .activity-log-chip.stage-system.active    { color: #b8b8c2; border-color: #4a4a58; background: #1a1a22; }
 
 /* ============ STATUS BADGES ============ */
-.episode-card.not-ready,
-.show-card.not-ready {
+.episode-card.not-ready {
   opacity: 0.6;
 }
 .episode-card.not-ready { cursor: not-allowed; }
@@ -2779,192 +2765,6 @@ button.hero-chip-anilist svg { color: currentColor; }
   background: var(--bg-tertiary);
 }
 
-/* ---------- Episode list ---------- */
-.bare-episode-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  margin-bottom: 0.85rem;
-  padding-bottom: 0.65rem;
-  border-bottom: 1px solid var(--border-color);
-}
-.bare-episode-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-.bare-episode-row {
-  position: relative;
-  display: grid;
-  grid-template-columns: 22px 78px 1fr auto;
-  align-items: center;
-  gap: 0.85rem;
-  width: 100%;
-  text-align: left;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  padding: 0.7rem 1rem 0.7rem 0.95rem;
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-size: 0.875rem;
-  cursor: pointer;
-  transition: background var(--transition-fast), border-color var(--transition-fast),
-              color var(--transition-fast), opacity var(--transition-fast);
-}
-.bare-episode-row::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 8px;
-  bottom: 8px;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
-  background: transparent;
-  transition: background var(--transition-fast);
-}
-.bare-episode-row:hover {
-  background: var(--bg-tertiary);
-  border-color: var(--border-hover);
-}
-.bare-episode-marker {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--border-color);
-  transition: color var(--transition-fast), background var(--transition-fast),
-              border-color var(--transition-fast);
-}
-.bare-episode-row:hover .bare-episode-marker {
-  color: var(--accent-secondary);
-  border-color: color-mix(in srgb, var(--accent-secondary) 45%, var(--border-color));
-}
-.bare-episode-code {
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-.bare-episode-title {
-  min-width: 0;
-  word-break: break-word;
-}
-
-/* Watched: muted text + filled check marker. The whole row dims so the
-   eye gets pulled to whatever's still unwatched. */
-.bare-episode-row.watched {
-  background: transparent;
-  color: var(--text-muted);
-  border-color: rgba(255, 255, 255, 0.04);
-}
-.bare-episode-row.watched .bare-episode-code {
-  color: color-mix(in srgb, var(--text-muted) 75%, transparent);
-}
-.bare-episode-row.watched .bare-episode-marker {
-  color: var(--bg-primary);
-  background: var(--accent-teal);
-  border-color: var(--accent-teal);
-}
-.bare-episode-row.watched:hover {
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
-}
-
-/* Next up: accent left stripe + emphasized title. Wins over the hover
-   stripe because we want it to read as "your next click" at a glance. */
-.bare-episode-row.next-up {
-  border-color: color-mix(in srgb, var(--accent-secondary) 30%, var(--border-color));
-  background: color-mix(in srgb, var(--accent-secondary) 6%, var(--bg-secondary));
-}
-.bare-episode-row.next-up::before {
-  background: var(--accent-secondary);
-}
-.bare-episode-row.next-up .bare-episode-code,
-.bare-episode-row.next-up .bare-episode-title {
-  color: var(--text-primary);
-}
-.bare-episode-row.next-up .bare-episode-marker {
-  color: var(--accent-secondary);
-  border-color: color-mix(in srgb, var(--accent-secondary) 50%, var(--border-color));
-  background: color-mix(in srgb, var(--accent-secondary) 12%, transparent);
-}
-
-.bare-episode-pill,
-.bare-episode-flag {
-  font-family: var(--font-mono);
-  font-size: 0.65rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  padding: 0.2rem 0.55rem;
-  border-radius: var(--radius-pill);
-}
-.bare-episode-pill {
-  color: var(--accent-secondary);
-  background: color-mix(in srgb, var(--accent-secondary) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent-secondary) 35%, var(--border-color));
-}
-.bare-episode-flag {
-  color: var(--text-muted);
-  background: transparent;
-  border: 1px solid var(--border-color);
-}
-
-/* Hover-revealed seekbar on each episode row. Sits flush along the row's
-   inner bottom edge so it doesn't disturb the grid layout. Hidden until the
-   user hovers the row, fades in along with a subtle slide so it reads as
-   "extra info on demand" rather than visual noise on the resting state.
-   The track inherits the row's border-radius corners so it hugs the row. */
-.bare-episode-progress {
-  position: absolute;
-  left: 0.6rem;
-  right: 0.6rem;
-  bottom: 0.35rem;
-  height: 2px;
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: var(--radius-pill);
-  overflow: hidden;
-  opacity: 0;
-  transform: translateY(2px);
-  transition: opacity var(--transition-fast), transform var(--transition-fast);
-  pointer-events: none;
-}
-.bare-episode-row:hover .bare-episode-progress {
-  opacity: 1;
-  transform: translateY(0);
-}
-.bare-episode-progress-fill {
-  display: block;
-  height: 100%;
-  width: 0;
-  background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
-  border-radius: inherit;
-  transition: width 320ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-/* Episodes with in-progress local data keep a faint resting bar so the user
-   can see at a glance which rows have a resume point — the hover state then
-   brightens it to the full version. The next-up row also opts in so the
-   active row never looks empty. */
-.bare-episode-progress[data-has-progress="true"],
-.bare-episode-row.next-up .bare-episode-progress {
-  opacity: 0.55;
-  transform: translateY(0);
-}
-.bare-episode-row.next-up:hover .bare-episode-progress,
-.bare-episode-row:hover .bare-episode-progress[data-has-progress="true"] {
-  opacity: 1;
-}
-/* Reserve a sliver of bottom padding on every row so the hover bar never
-   overlaps the row's text. Applied here rather than on the base row so the
-   default layout numbers stay unchanged for anyone reading the grid above. */
-.bare-episode-row { padding-bottom: 0.95rem; }
-
 /* ---------- Related (franchise relations) ---------- */
 /* Grid of related entries — sequels, prequels, side stories, manga
    adaptations. Each card is a button: in-library entries route in-app,
@@ -2974,74 +2774,6 @@ button.hero-chip-anilist svg { color: currentColor; }
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 1rem;
   margin: 0.4rem 0 2rem;
-}
-.relation-card {
-  position: relative;
-  appearance: none;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
-  padding: 0;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  text-align: left;
-  transition:
-    transform var(--transition-fast),
-    border-color var(--transition-fast),
-    box-shadow var(--transition-normal),
-    background var(--transition-fast);
-}
-.relation-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-  background: var(--bg-tertiary);
-}
-/* Permanent left-edge stripe — even at rest, you can tell at a glance
-   whether a card opens in-app (teal) or jumps out to AniList (indigo).
-   Sits inside the rounded border so the stripe doesn't fight with the
-   card's corner radius. */
-.relation-card::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  width: 3px;
-  border-top-left-radius: var(--radius-lg);
-  border-bottom-left-radius: var(--radius-lg);
-  pointer-events: none;
-}
-.relation-card.is-internal {
-  border-color: color-mix(in srgb, var(--accent-teal) 28%, var(--border-color));
-}
-.relation-card.is-internal::before {
-  background: var(--accent-teal);
-}
-.relation-card.is-internal:hover {
-  border-color: color-mix(in srgb, var(--accent-teal) 55%, var(--border-color));
-  box-shadow: 0 6px 16px color-mix(in srgb, var(--accent-teal) 18%, transparent);
-}
-.relation-card.is-external {
-  border-color: color-mix(in srgb, var(--accent-secondary) 22%, var(--border-color));
-}
-.relation-card.is-external::before {
-  background: var(--accent-secondary);
-}
-.relation-card.is-external:hover {
-  border-color: color-mix(in srgb, var(--accent-secondary) 50%, var(--border-color));
-  box-shadow: 0 6px 16px color-mix(in srgb, var(--accent-secondary) 18%, transparent);
-}
-/* Slightly desaturate external posters at rest so the in-library cards
-   visually pop forward. Snaps back to full color on hover so the user
-   gets feedback when they're actively reaching for it. */
-.relation-card.is-external .relation-card-poster img {
-  filter: saturate(0.78);
-  transition: filter var(--transition-fast), transform var(--transition-slow);
-}
-.relation-card.is-external:hover .relation-card-poster img {
-  filter: saturate(1);
 }
 .relation-card-poster {
   position: relative;
@@ -3057,7 +2789,6 @@ button.hero-chip-anilist svg { color: currentColor; }
   display: block;
   transition: transform var(--transition-slow);
 }
-.relation-card:hover .relation-card-poster img { transform: scale(1.04); }
 .relation-card-poster-empty {
   width: 100%;
   height: 100%;
@@ -3066,38 +2797,6 @@ button.hero-chip-anilist svg { color: currentColor; }
   justify-content: center;
   color: var(--text-muted);
 }
-/* Corner pill — labels the click destination unambiguously instead of
-   relying on a tiny icon the user has to interpret. Teal = stays in the
-   app; indigo = jumps to AniList. */
-.relation-card-pill {
-  position: absolute;
-  top: 0.45rem;
-  right: 0.45rem;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.18rem 0.45rem;
-  border-radius: var(--radius-pill);
-  font-family: var(--font-mono);
-  font-size: 0.6rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  backdrop-filter: blur(4px);
-  pointer-events: none;
-  border: 1px solid transparent;
-}
-.relation-card-pill.is-internal {
-  color: color-mix(in srgb, var(--accent-teal) 80%, white);
-  background: color-mix(in srgb, var(--accent-teal) 25%, rgba(0, 0, 0, 0.7));
-  border-color: color-mix(in srgb, var(--accent-teal) 55%, transparent);
-}
-.relation-card-pill.is-external {
-  color: color-mix(in srgb, var(--accent-secondary) 80%, white);
-  background: color-mix(in srgb, var(--accent-secondary) 25%, rgba(0, 0, 0, 0.7));
-  border-color: color-mix(in srgb, var(--accent-secondary) 55%, transparent);
-}
-.relation-card-pill svg { color: currentColor; }
 .relation-card-body {
   padding: 0.55rem 0.65rem 0.7rem;
   display: flex;
@@ -3111,12 +2810,6 @@ button.hero-chip-anilist svg { color: currentColor; }
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-muted);
-}
-.relation-card.is-internal .relation-card-type {
-  color: var(--accent-teal);
-}
-.relation-card.is-external .relation-card-type {
-  color: var(--accent-secondary);
 }
 .relation-card-title {
   font-family: var(--font-mono);
@@ -3213,13 +2906,6 @@ button.hero-chip-anilist svg { color: currentColor; }
 .feed-row:hover .feed-row-play { color: var(--accent-secondary); }
 
 /* Airing carousel — 2 rows × 5 cols, paged not scrolled. */
-.airing-section { margin-bottom: 2.5rem; }
-.airing-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.75rem;
-}
 .airing-pager { display: flex; align-items: center; gap: 0.5rem; }
 .airing-pager-btn {
   display: inline-flex;
@@ -3343,6 +3029,7 @@ button.hero-chip-anilist svg { color: currentColor; }
   font-size: 0.85rem;
   font-weight: 600;
   letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
   padding: 0.28rem 0.55rem;
   border-radius: var(--radius-md);
   backdrop-filter: blur(4px);
@@ -3364,6 +3051,7 @@ button.hero-chip-anilist svg { color: currentColor; }
   font-size: 0.85rem;
   font-weight: 600;
   letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
   padding: 0.28rem 0.55rem;
   border-radius: var(--radius-md);
   backdrop-filter: blur(4px);
@@ -3467,23 +3155,6 @@ button.hero-chip-anilist svg { color: currentColor; }
   color: var(--text-muted);
   flex-shrink: 0;
 }
-.subscription-state {
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-.subscription-state.on { color: var(--accent-teal); }
-.subscription-state.on::before,
-.subscription-state.off::before {
-  content: "";
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--text-muted);
-  margin-right: 0.35rem;
-  vertical-align: middle;
-}
-.subscription-state.on::before { background: var(--accent-teal); }
 .subscription-count { color: var(--text-secondary); }
 
 .subscription-query {
@@ -3542,3 +3213,216 @@ button.hero-chip-anilist svg { color: currentColor; }
   color: var(--text-secondary);
   font-family: var(--font-mono);
 }
+
+/* Page primitive — used by <Page>. Existing pages still use plain .page;
+   when a page migrates, its component wraps content in <Page> and the
+   .page--primitive rules win via specificity. */
+.page--primitive {
+  padding: var(--s8) var(--s10) var(--s16);
+}
+.page--primitive .page__head {
+  margin-bottom: var(--s6);
+}
+
+/* Section primitive — every <Section> gets s12 top to break from the
+   previous block. The 'first' modifier removes that for the first section
+   inside a <Page>. */
+.section--primitive { margin-top: var(--s12); }
+.section--primitive.section--first { margin-top: 0; }
+.section--primitive .section__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: var(--s4);
+  padding-bottom: var(--s3);
+  border-bottom: 1px solid var(--border-color);
+}
+.section--primitive .section__title-group {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--s2);
+}
+.section--primitive .section__title {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
+  margin: 0;
+  color: var(--text-primary);
+}
+.section--primitive .section__count {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.section--primitive .section__action {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+.section--primitive .section__body { display: block; }
+/* Pill primitive — single shape, mono font, tone via modifier. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-muted);
+}
+.pill--accent {
+  color: var(--accent-secondary);
+  background: color-mix(in srgb, var(--accent-secondary) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent-secondary) 35%, var(--border-color));
+}
+.pill--teal {
+  color: var(--accent-teal);
+  background: color-mix(in srgb, var(--accent-teal) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent-teal) 35%, var(--border-color));
+}
+.pill--rose {
+  color: var(--accent-rose);
+  background: color-mix(in srgb, var(--accent-rose) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent-rose) 35%, var(--border-color));
+}
+.pill--amber {
+  color: var(--accent-amber);
+  background: color-mix(in srgb, var(--accent-amber) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent-amber) 35%, var(--border-color));
+}
+
+/* Card primitive — shared shell. Inner content layout is each page's job. */
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  /* No transition on transform — motion engine writes it directly. */
+  transition: border-color var(--transition-fast), box-shadow var(--transition-normal);
+  /* Button reset for the button-mode of <Card>. */
+  appearance: none;
+  font: inherit;
+  color: inherit;
+}
+.card:hover {
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-md);
+}
+/* Variant: in-library (teal inset glow). Replaces .relation-card.is-internal. */
+.card--internal {
+  box-shadow:
+    inset 0 0 0 1.5px color-mix(in srgb, var(--accent-teal) 55%, transparent),
+    inset 0 0 28px color-mix(in srgb, var(--accent-teal) 18%, transparent);
+}
+.card--internal:hover {
+  box-shadow:
+    inset 0 0 0 1.5px color-mix(in srgb, var(--accent-teal) 75%, transparent),
+    inset 0 0 32px color-mix(in srgb, var(--accent-teal) 28%, transparent),
+    var(--shadow-md);
+}
+/* Variant: external (indigo inset glow). Replaces .relation-card.is-external. */
+.card--external {
+  box-shadow:
+    inset 0 0 0 1.5px color-mix(in srgb, var(--accent-secondary) 55%, transparent),
+    inset 0 0 28px color-mix(in srgb, var(--accent-secondary) 18%, transparent);
+}
+.card--external:hover {
+  box-shadow:
+    inset 0 0 0 1.5px color-mix(in srgb, var(--accent-secondary) 75%, transparent),
+    inset 0 0 32px color-mix(in srgb, var(--accent-secondary) 28%, transparent),
+    var(--shadow-md);
+}
+
+/* EpisodeRow primitive. Single grid row — text is symmetrically padded so
+   it's optically centered. The hover seekbar is positioned absolutely
+   below the text inside the row's bottom padding, so its appearance never
+   shifts layout. */
+.episode-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 22px 78px 1fr auto;
+  column-gap: var(--s3);
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--s3) var(--s4);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    opacity var(--transition-fast);
+}
+.episode-row:hover { background: var(--bg-tertiary); border-color: var(--border-hover); }
+.episode-row[disabled] { opacity: 0.55; cursor: not-allowed; }
+
+.episode-row__marker {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  color: var(--text-muted);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border-color);
+  transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
+}
+.episode-row__code  { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.episode-row__title { min-width: 0; word-break: break-word; }
+.episode-row__trailing { display: inline-flex; align-items: center; gap: var(--s2); }
+
+/* Hover-only seekbar. Lives inside the row's bottom padding so it never
+   collides with the text and never shifts anything when it appears. */
+.episode-row__progress {
+  position: absolute;
+  left: var(--s4);
+  right: var(--s4);
+  bottom: 5px;
+  height: 2px;
+  background: rgba(255,255,255,0.06);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-fast);
+}
+.episode-row:hover .episode-row__progress { opacity: 1; }
+.episode-row__progress-fill {
+  display: block; height: 100%; width: 0;
+  background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+  border-radius: inherit;
+  transition: width var(--transition-slow);
+}
+
+/* States — only color/border/marker. Never reposition the text.
+   Watched rows still wear a faded background so the row reads as a card. */
+.episode-row--watched {
+  background: color-mix(in srgb, var(--bg-secondary) 55%, transparent);
+  color: var(--text-muted);
+  border-color: rgba(255,255,255,0.04);
+}
+.episode-row--watched .episode-row__marker { color: var(--bg-primary); background: var(--accent-teal); border-color: var(--accent-teal); }
+.episode-row:hover.episode-row--watched { background: var(--bg-secondary); color: var(--text-secondary); }
+
+.episode-row--next-up { border-color: color-mix(in srgb, var(--accent-secondary) 30%, var(--border-color)); background: color-mix(in srgb, var(--accent-secondary) 6%, var(--bg-secondary)); }
+.episode-row--next-up .episode-row__marker { color: var(--accent-secondary); border-color: color-mix(in srgb, var(--accent-secondary) 50%, var(--border-color)); background: color-mix(in srgb, var(--accent-secondary) 12%, transparent); }
+
+/* List of EpisodeRow primitives inside a <Section>. */
+.episode-list { display: flex; flex-direction: column; gap: var(--s2); }

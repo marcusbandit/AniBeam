@@ -3,6 +3,7 @@ import { Link2, Link2Off, ExternalLink, Copy, Check } from 'lucide-react';
 import type { TrackerProvider, TrackerStatus } from '../../main/preload';
 import { LOOPBACK_REDIRECT_URI, DEFAULT_CLIENT_IDS, DEFAULT_CLIENT_SECRETS } from '../../shared/trackerConstants';
 import { useTrackerProgress } from '../contexts/TrackerProgressContext';
+import { Section } from './primitives';
 
 interface TrackerRowProps {
   provider: TrackerProvider;
@@ -232,13 +233,8 @@ function TrackersSection() {
   const main = snapshot?.mainProvider ?? 'anilist';
 
   return (
-    <section className="settings-section">
-      <div className="settings-section-head">
-        <div>
-          <h2 className="section-h2">Trackers</h2>
-          <p className="section-sub">Sync watched-episode count to AniList and MyAnimeList. Updates fire when you reach the outro or hit "Mark watched", and only ever count up. Each service needs you to register a personal API client once.</p>
-        </div>
-      </div>
+    <Section title="Trackers">
+      <p className="section-sub">Sync watched-episode count to AniList and MyAnimeList. Updates fire when you reach the outro or hit "Mark watched", and only ever count up. Each service needs you to register a personal API client once.</p>
       <div className="tracker-list">
         <TrackerRow
           provider="anilist"
@@ -276,7 +272,7 @@ function TrackersSection() {
           ))}
         </div>
       </div>
-    </section>
+    </Section>
   );
 }
 

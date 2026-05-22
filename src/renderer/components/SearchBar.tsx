@@ -56,6 +56,8 @@ function SearchBar({ onSearch, placeholder = 'Search…' }: SearchBarProps) {
         placeholder={placeholder}
         value={query}
         onChange={handleChange}
+        spellCheck={false}
+        autoComplete="off"
       />
       {query ? (
         <button

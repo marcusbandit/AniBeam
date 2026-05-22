@@ -4,6 +4,7 @@ import type { LibraryItem } from "../../types/electron";
 import { findNextUpcomingEpisode } from "../utils/airingUtils";
 import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
 import ShowCard from "../components/ShowCard";
+import { Page } from "../components/primitives";
 
 interface FeedEntry {
   item: LibraryItem;
@@ -137,21 +138,21 @@ function FeedPage() {
 
   if (initialLoading) {
     return (
-      <div className="page">
+      <Page>
         <div className="loading">Loading feed…</div>
-      </div>
+      </Page>
     );
   }
 
   return (
-    <div className="page feed-page">
-      <div className="page-head">
+    <Page
+      head={
         <div>
           <h1 className="page-title">Feed</h1>
           <p className="page-sub">Your library, ordered by latest episode release.</p>
         </div>
-      </div>
-
+      }
+    >
       {entries.length === 0 ? (
         <div className="empty">
           <div className="empty-icon"><Activity size={48} /></div>
@@ -159,7 +160,7 @@ function FeedPage() {
           <div className="empty-text">Add a folder in Settings to get started.</div>
         </div>
       ) : (
-        <div className="show-grid">
+        <div className="show-grid" data-halo-cluster>
           {entries.map(({ item, when, episodeNumber, source }) => (
             <ShowCard
               key={item.id}
@@ -172,7 +173,7 @@ function FeedPage() {
           ))}
         </div>
       )}
-    </div>
+    </Page>
   );
 }
 

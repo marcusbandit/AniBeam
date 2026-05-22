@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useMetadata } from '../hooks/useMetadata';
 import { Folder, RefreshCw, Plus, Trash2, Film } from 'lucide-react';
 import TrackersSection from './TrackersSection';
+import { Page, Section, Inline } from './primitives';
 
 interface CacheStats {
   count: number;
@@ -218,9 +219,9 @@ function SettingsTab() {
 
   if (loading) {
     return (
-      <div className="page">
+      <Page>
         <div className="loading">Loading settings…</div>
-      </div>
+      </Page>
     );
   }
 
@@ -228,21 +229,20 @@ function SettingsTab() {
   const metadataRecordCount = Object.keys(metadata).length;
 
   return (
-    <div className="page settings-page">
-      <div className="page-head">
+    <Page
+      head={
         <div>
           <h1 className="page-title">Settings</h1>
           <p className="page-sub">Library folders, metadata sources, and playback preferences.</p>
         </div>
-      </div>
+      }
+    >
 
-      <section className="settings-section">
-        <div className="settings-section-head">
-          <div>
-            <h2 className="section-h2">Library folders</h2>
-            <p className="section-sub">AniBeam scans these folders for video files. Subfolders are matched against series titles.</p>
-          </div>
-          <div style={{ display: 'flex', gap: '0.4rem' }}>
+      <Section
+        first
+        title="Library folders"
+        action={
+          <Inline gap="s2">
             {folderSources.length > 0 && (
               <button className="btn btn-secondary" onClick={handleScanAll} disabled={scanning}>
                 <RefreshCw size={14} className={scanning ? 'spin' : ''} />
@@ -253,8 +253,10 @@ function SettingsTab() {
               <Plus size={14} />
               <span>Add folder</span>
             </button>
-          </div>
-        </div>
+          </Inline>
+        }
+      >
+        <p className="section-sub">AniBeam scans these folders for video files. Subfolders are matched against series titles.</p>
 
         {folderSources.length === 0 ? (
           <div className="empty">
@@ -316,15 +318,10 @@ function SettingsTab() {
           </div>
         )}
 
-      </section>
+      </Section>
 
-      <section className="settings-section">
-        <div className="settings-section-head">
-          <div>
-            <h2 className="section-h2">Metadata sources</h2>
-            <p className="section-sub">AniBeam queries enabled sources in priority order. The first match wins.</p>
-          </div>
-        </div>
+      <Section title="Metadata sources">
+        <p className="section-sub">AniBeam queries enabled sources in priority order. The first match wins.</p>
         <div className="source-list">
           {([
             { id: 'anilist' as const, label: 'AniList', desc: 'GraphQL · Public, no key required', priority: 1 },
@@ -344,16 +341,11 @@ function SettingsTab() {
             </div>
           ))}
         </div>
-      </section>
+      </Section>
 
       <TrackersSection />
 
-      <section className="settings-section">
-        <div className="settings-section-head">
-          <div>
-            <h2 className="section-h2">Playback</h2>
-          </div>
-        </div>
+      <Section title="Playback">
         <div className="pref-list">
           <div className="pref-row">
             <div>
@@ -378,14 +370,9 @@ function SettingsTab() {
             <Toggle on={autoScan} onChange={setAutoScan} ariaLabel="Toggle auto-scan" />
           </div>
         </div>
-      </section>
+      </Section>
 
-      <section className="settings-section">
-        <div className="settings-section-head">
-          <div>
-            <h2 className="section-h2">Cache</h2>
-          </div>
-        </div>
+      <Section title="Cache">
         <div className="cache-stats">
           <div>
             <div className="cache-stat-num">{metadataRecordCount}</div>
@@ -416,8 +403,8 @@ function SettingsTab() {
             </button>
           </div>
         </div>
-      </section>
-    </div>
+      </Section>
+    </Page>
   );
 }
 

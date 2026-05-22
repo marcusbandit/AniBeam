@@ -3,6 +3,7 @@ import { useMetadata, type SeriesMetadata } from '../hooks/useMetadata';
 import { BookOpen, Tv, Film, Search, RefreshCw, Trash2 } from 'lucide-react';
 import MetadataMatchModal from '../components/MetadataMatchModal';
 import { useDebouncedCallback } from '../hooks/useDebouncedCallback';
+import { Page, Inline } from '../components/primitives';
 
 type FilterOption = 'all' | 'series' | 'movies' | 'missing';
 
@@ -114,15 +115,15 @@ function MetadataTab() {
 
   if (loading) {
     return (
-      <div className="page">
+      <Page>
         <div className="loading">Loading metadata…</div>
-      </div>
+      </Page>
     );
   }
 
   if (seriesList.length === 0) {
     return (
-      <div className="page">
+      <Page>
         <div className="empty">
           <div className="empty-icon"><BookOpen size={48} /></div>
           <div className="empty-title">No metadata yet</div>
@@ -130,26 +131,29 @@ function MetadataTab() {
             Your library is empty. Add a folder in <strong>Settings</strong> and scan it to get started.
           </div>
         </div>
-      </div>
+      </Page>
     );
   }
 
   return (
-    <div className="page metadata-page">
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">Metadata</h1>
-          <p className="page-sub">All matched titles in your library, the source they came from, and the files on disk.</p>
-        </div>
-        <button
-          className="btn btn-secondary"
-          onClick={handleBulkRefresh}
-          disabled={bulkRefreshing || filteredSeries.length === 0}
-        >
-          <RefreshCw size={14} className={bulkRefreshing ? 'spin' : ''} />
-          <span>{bulkRefreshing ? 'Refreshing…' : 'Refresh all'}</span>
-        </button>
-      </div>
+    <Page
+      head={
+        <Inline gap="s4" justify="space-between" align="flex-start">
+          <div>
+            <h1 className="page-title">Metadata</h1>
+            <p className="page-sub">All matched titles in your library, the source they came from, and the files on disk.</p>
+          </div>
+          <button
+            className="btn btn-secondary"
+            onClick={handleBulkRefresh}
+            disabled={bulkRefreshing || filteredSeries.length === 0}
+          >
+            <RefreshCw size={14} className={bulkRefreshing ? 'spin' : ''} />
+            <span>{bulkRefreshing ? 'Refreshing…' : 'Refresh all'}</span>
+          </button>
+        </Inline>
+      }
+    >
 
       <div className="meta-toolbar">
         <div className="filter-pills">
@@ -175,6 +179,8 @@ function MetadataTab() {
             placeholder="Filter titles…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            spellCheck={false}
+            autoComplete="off"
           />
         </div>
       </div>
@@ -213,6 +219,8 @@ function MetadataTab() {
                       <img
                         src={posterUrl}
                         alt={data.title || seriesId}
+                        loading="lazy"
+                        decoding="async"
                         onError={(e) => {
                           const t = e.target as HTMLImageElement;
                           t.style.display = 'none';
@@ -288,7 +296,7 @@ function MetadataTab() {
         onClose={() => setMatchTarget(null)}
         onApplied={loadMetadata}
       />
-    </div>
+    </Page>
   );
 }
 

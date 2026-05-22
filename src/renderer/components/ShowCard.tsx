@@ -1,8 +1,10 @@
+import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Tv } from "lucide-react";
 import type { LibraryItem } from "../../types/electron";
 import { useTitleLanguage } from "../contexts/TitleLanguageContext";
 import { useTrackerProgress } from "../contexts/TrackerProgressContext";
+import { smoothScalar, type SmoothHandle } from "../utils/motion";
 import {
   classifyWatchProgress,
   findNextUpcomingEpisode,
@@ -11,6 +13,9 @@ import {
   getLatestAiredEpisodeNumber,
 } from "../utils/airingUtils";
 import { getDisplayRating } from "../utils/ratingUtils";
+
+const LIFT_SPEED = 12;
+const LIFT_AMOUNT_PX = 3;
 
 interface ShowCardProps {
   item: LibraryItem;
@@ -44,6 +49,22 @@ function ShowCard({
   const navigate = useNavigate();
   const { pickTitle } = useTitleLanguage();
   const { getWatched } = useTrackerProgress();
+
+  // Smoothed hover-lift is applied to the poster-wrap only — the info row
+  // below stays anchored so titles don't slide when the cursor enters/leaves.
+  // The button itself is a transparent shell (no background/border); the
+  // visible "card" is the poster's own border + radius.
+  const posterWrapRef = useRef<HTMLDivElement | null>(null);
+  const liftRef = useRef<SmoothHandle | null>(null);
+  useEffect(() => {
+    const el = posterWrapRef.current;
+    if (!el) return;
+    const handle = smoothScalar(0, LIFT_SPEED, (v) => {
+      el.style.transform = Math.abs(v) > 0.05 ? `translateY(${v.toFixed(2)}px)` : "";
+    });
+    liftRef.current = handle;
+    return () => { handle.release(); el.style.transform = ""; };
+  }, []);
 
   const posterUrl = item.posterLocal
     ? `media://${encodeURIComponent(item.posterLocal)}`
@@ -93,9 +114,12 @@ function ShowCard({
     <button
       type="button"
       className="show-card"
+      data-halo-bias
       onClick={() => navigate(`/series/${encodeURIComponent(item.id)}`)}
+      onMouseEnter={() => liftRef.current?.setTarget(-LIFT_AMOUNT_PX)}
+      onMouseLeave={() => liftRef.current?.setTarget(0)}
     >
-      <div className="show-card-poster-wrap">
+      <div ref={posterWrapRef} className="show-card-poster-wrap">
         {watchedLabel && (
           <span
             className={`show-card-watched-badge${watchedState ? ` ${watchedState}` : ""}`}
@@ -120,6 +144,7 @@ function ShowCard({
             src={posterUrl}
             alt={displayTitle}
             loading="lazy"
+            decoding="async"
           />
         ) : (
           <div className="show-card-no-image"><Tv size={32} /></div>

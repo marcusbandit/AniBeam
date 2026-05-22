@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . && bun run typecheck",
     "verify:logger": "bun --bun scripts/verify-logger.mjs",
+    "verify:motion": "bun --bun scripts/verify-motion.mjs",
     "verify:probe": "bun --bun scripts/verify-probe-parser.mjs",
     "verify:folder": "bun --bun scripts/verify-folder-wrapper.mjs",
     "preview": "vite preview",

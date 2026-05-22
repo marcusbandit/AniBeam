@@ -141,6 +141,12 @@ function formatTime(s: number): string {
   return `${m}:${pad(sec)}`;
 }
 
+// Note: VideoPlayer is intentionally NOT migrated to the design-system
+// primitives (Page/Section/Stack/Card/etc.). The fullscreen player is a
+// single-purpose route with bespoke chrome (.player-*) that already reads
+// consistently and has no off-center / pixel-brother gestalt bugs. JASSUB
+// and the mpv-fallback wiring are load-bearing workarounds — don't touch
+// the internals here. See docs/superpowers/specs/2026-05-21-gestalt-overhaul-design.md.
 function VideoPlayer() {
   const { seriesId, episodeNumber } = useParams<{ seriesId?: string; episodeNumber?: string }>();
   const navigate = useNavigate();

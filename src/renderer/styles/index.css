@@ -46,6 +46,25 @@
   --font-sans: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-ui:   'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Spacing scale (4px base). Use these for every padding/margin/gap;
+     gaps inside a unit must be smaller than gaps between units. */
+  --s1:  4px;
+  --s2:  8px;
+  --s3:  12px;
+  --s4:  16px;
+  --s5:  20px;
+  --s6:  24px;
+  --s8:  32px;
+  --s10: 40px;
+  --s12: 48px;
+  --s16: 64px;
+
+  /* Motion engine constants — values here are read directly by motion.ts
+     via getComputedStyle when needed, and by CSS for non-engine fades. */
+  --motion-lift-speed:  12;
+  --motion-halo-speed:  9;
+  --motion-lift-amount: 4px;
 }
 
 * {

@@ -116,6 +116,7 @@ function MetadataMatchModal({ open, seriesId, currentTitle, seasonNumber, onClos
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search AniList…"
             spellCheck={false}
+            autoComplete="off"
             disabled={applyingId !== null}
           />
           {searching && <Loader2 size={14} className="spin" />}
@@ -148,7 +149,7 @@ function MetadataMatchModal({ open, seriesId, currentTitle, seasonNumber, onClos
                 title={primary}
               >
                 <div className="match-result-thumb">
-                  {cover ? <img src={cover} alt="" loading="lazy" /> : <span className="match-result-placeholder">?</span>}
+                  {cover ? <img src={cover} alt="" loading="lazy" decoding="async" /> : <span className="match-result-placeholder">?</span>}
                   {isApplying && <span className="match-result-applying"><Loader2 size={18} className="spin" /></span>}
                 </div>
                 <div className="match-result-text">

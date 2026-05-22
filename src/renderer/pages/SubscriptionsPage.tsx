@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Rss, RefreshCw, ExternalLink, FolderOpen } from "lucide-react";
 import type { SubscriptionFeed, SubscriptionsResult } from "../../main/preload";
+import { Page, Inline, Pill } from "../components/primitives";
 
 function decodeNyaaQuery(feedUrl: string): string | null {
   if (!feedUrl) return null;
@@ -34,24 +35,26 @@ function SubscriptionsPage() {
   }, [reload]);
 
   return (
-    <div className="page subscriptions-page">
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">Subscriptions</h1>
-          <p className="page-sub">RSS feeds anirss is watching for you.</p>
-        </div>
-        <button
-          type="button"
-          className="btn-secondary subscriptions-refresh"
-          onClick={() => void reload()}
-          disabled={loading}
-          aria-label="Refresh subscriptions"
-        >
-          <RefreshCw size={14} className={loading ? "spin" : undefined} />
-          <span>Refresh</span>
-        </button>
-      </div>
-
+    <Page
+      head={
+        <Inline gap="s4" justify="space-between" align="flex-start">
+          <div>
+            <h1 className="page-title">Subscriptions</h1>
+            <p className="page-sub">RSS feeds anirss is watching for you.</p>
+          </div>
+          <button
+            type="button"
+            className="btn-secondary subscriptions-refresh"
+            onClick={() => void reload()}
+            disabled={loading}
+            aria-label="Refresh subscriptions"
+          >
+            <RefreshCw size={14} className={loading ? "spin" : undefined} />
+            <span>Refresh</span>
+          </button>
+        </Inline>
+      }
+    >
       {loading && !result ? (
         <div className="loading">Reading anirss…</div>
       ) : result?.ok ? (
@@ -67,7 +70,7 @@ function SubscriptionsPage() {
       ) : result ? (
         <ErrorState message={result.error} needsAuth={result.needsAuth ?? false} />
       ) : null}
-    </div>
+    </Page>
   );
 }
 
@@ -81,9 +84,9 @@ function SubscriptionRow({ item }: { item: SubscriptionFeed }) {
           <span className="subscription-name" title={item.name}>{item.name}</span>
         </div>
         <div className="subscription-meta">
-          <span className={`subscription-state ${item.ruleEnabled ? "on" : "off"}`}>
+          <Pill tone={item.ruleEnabled ? "teal" : "muted"}>
             {item.ruleEnabled ? "active" : "paused"}
-          </span>
+          </Pill>
           <span className="subscription-count" title="torrents in qBittorrent">
             {item.torrentCount} {item.torrentCount === 1 ? "torrent" : "torrents"}
           </span>

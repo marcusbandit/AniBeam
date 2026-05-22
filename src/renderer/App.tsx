@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { HashRouter, Routes, Route, NavLink, useLocation } from "react-router-dom";
 import { Tv, Home, Activity, Database, Rss, Settings as SettingsIcon } from "lucide-react";
 import HomePage from "./pages/HomePage";
@@ -13,18 +14,38 @@ import { ActivityLogDrawer } from "./components/ActivityLogDrawer";
 import { TitleLanguageProvider } from "./contexts/TitleLanguageContext";
 import { TrackerProgressProvider } from "./contexts/TrackerProgressContext";
 import LangSwitch from "./components/LangSwitch";
+import AmbientCursor from "./components/AmbientCursor";
 import pkg from "../../package.json";
 import "./styles/App.css";
 
 const VERSION = pkg.version;
+
+// Tiny route → window-title map. Series and player paths get a generic
+// label here; deeper pages can override their own title with a useEffect
+// in the page component if they want a per-series taskbar entry.
+function titleForPath(pathname: string): string {
+  if (pathname === "/") return "AniBeam — Library";
+  if (pathname.startsWith("/series/")) return "AniBeam — Series";
+  if (pathname.startsWith("/feed")) return "AniBeam — Feed";
+  if (pathname.startsWith("/subscriptions")) return "AniBeam — Subscriptions";
+  if (pathname.startsWith("/metadata")) return "AniBeam — Metadata";
+  if (pathname.startsWith("/settings")) return "AniBeam — Settings";
+  if (pathname.startsWith("/player/")) return "AniBeam — Player";
+  return "AniBeam";
+}
 
 function AppContent() {
   const location = useLocation();
   const isPlayerRoute = location.pathname.startsWith("/player/");
   const isLib = location.pathname === "/" || location.pathname.startsWith("/series/");
 
+  useEffect(() => {
+    document.title = titleForPath(location.pathname);
+  }, [location.pathname]);
+
   return (
     <div className="app">
+      {!isPlayerRoute && <AmbientCursor />}
       {!isPlayerRoute && (
         <nav className="navbar">
           <div className="navbar-brand">
@@ -32,23 +53,23 @@ function AppContent() {
             <span className="brand-word">AniBeam</span>
           </div>
           <div className="navbar-nav">
-            <NavLink to="/" end className={`nav-link${isLib ? " active" : ""}`}>
+            <NavLink to="/" end className={`nav-link${isLib ? " active" : ""}`} data-halo-snap>
               <Home size={15} />
               <span>Library</span>
             </NavLink>
-            <NavLink to="/feed" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
+            <NavLink to="/feed" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`} data-halo-snap>
               <Activity size={15} />
               <span>Feed</span>
             </NavLink>
-            <NavLink to="/subscriptions" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
+            <NavLink to="/subscriptions" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`} data-halo-snap>
               <Rss size={15} />
               <span>Subscriptions</span>
             </NavLink>
-            <NavLink to="/metadata" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
+            <NavLink to="/metadata" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`} data-halo-snap>
               <Database size={15} />
               <span>Metadata</span>
             </NavLink>
-            <NavLink to="/settings" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
+            <NavLink to="/settings" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`} data-halo-snap>
               <SettingsIcon size={15} />
               <span>Settings</span>
             </NavLink>

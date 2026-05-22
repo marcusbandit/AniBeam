@@ -4,6 +4,7 @@ import type { LibraryItem } from "../../types/electron";
 import { findNextUpcomingEpisode, normalizeStatus } from "../utils/airingUtils";
 import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
 import ShowCard from "../components/ShowCard";
+import { Page, Section } from "../components/primitives";
 
 const AIRING_PAGE_COLS = 5;
 const AIRING_PAGE_ROWS = 2;
@@ -160,9 +161,9 @@ function HomePage() {
 
   if (initialLoading) {
     return (
-      <div className="page">
+      <Page>
         <div className="loading">Reading folders…</div>
-      </div>
+      </Page>
     );
   }
 
@@ -177,8 +178,8 @@ function HomePage() {
   );
 
   return (
-    <div className="page">
-      <div className="page-head">
+    <Page
+      head={
         <div>
           <h1 className="page-title">Library</h1>
           <p className="page-sub">
@@ -187,12 +188,13 @@ function HomePage() {
               : `${items.length} folder${items.length === 1 ? "" : "s"}.`}
           </p>
         </div>
-      </div>
-
+      }
+    >
       {airing.length > 0 && (
-        <section className="airing-section">
-          <div className="airing-head">
-            <h2 className="section-h2">Airing</h2>
+        <Section
+          first
+          title="Airing"
+          action={
             <div className="airing-pager">
               <button
                 type="button"
@@ -216,13 +218,14 @@ function HomePage() {
                 <ChevronRight size={16} />
               </button>
             </div>
-          </div>
-          <div className="airing-grid">
+          }
+        >
+          <div className="airing-grid" data-halo-cluster>
             {airingPageItems.map(({ item, when, episode }) =>
               renderCard(item, { episode, when }),
             )}
           </div>
-        </section>
+        </Section>
       )}
 
       {items.length === 0 ? (
@@ -236,30 +239,26 @@ function HomePage() {
       ) : (
         <>
           {seriesItems.length > 0 && (
-            <>
-              <div className="section-head">
-                <h2 className="section-h2">Series</h2>
-                <span className="section-count">{seriesItems.length}</span>
-              </div>
-              <div className="show-grid">
+            <Section
+              first={airing.length === 0}
+              title="Series"
+              count={seriesItems.length}
+            >
+              <div className="show-grid" data-halo-cluster>
                 {seriesItems.map((item) => renderCard(item))}
               </div>
-            </>
+            </Section>
           )}
           {movieItems.length > 0 && (
-            <>
-              <div className="section-head section-head-movies">
-                <h2 className="section-h2">Movies</h2>
-                <span className="section-count">{movieItems.length}</span>
-              </div>
-              <div className="show-grid">
+            <Section title="Movies" count={movieItems.length}>
+              <div className="show-grid" data-halo-cluster>
                 {movieItems.map((item) => renderCard(item))}
               </div>
-            </>
+            </Section>
           )}
         </>
       )}
-    </div>
+    </Page>
   );
 }
 

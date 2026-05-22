@@ -68,6 +68,7 @@ function EpisodeCard({ seriesId, episode, hasFile }: EpisodeCardProps) {
             src={thumbnailUrl}
             alt={episode.title || `Episode ${episode.episodeNumber}`}
             loading="lazy"
+            decoding="async"
             onError={(e) => {
               const target = e.target as HTMLImageElement;
               if (episode.thumbnail && target.src !== episode.thumbnail) {

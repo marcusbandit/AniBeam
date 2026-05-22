@@ -22,6 +22,7 @@ import {
   type LastEpisodeMap,
 } from "../utils/playbackProgress";
 import type { TrackerListStatus } from "../../main/preload";
+import { Page, Section, Card, EpisodeRow, Pill } from "../components/primitives";
 
 const LIST_STATUS_LABEL: Record<TrackerListStatus, string> = {
   watching: "Watching",
@@ -361,11 +362,12 @@ function SeriesDetailPage() {
     : (trackedKnown ? sorted.find((f) => f.episodeNumber > watchedCount)?.episodeNumber ?? null : null);
 
   return (
-    <div className="page series-detail-bare">
-      <button className="detail-back" onClick={() => navigate("/")}>
-        <ArrowLeft size={14} />
-        <span>Library</span>
-      </button>
+    <Page>
+      <div className="series-detail-bare">
+        <button className="detail-back" onClick={() => navigate("/")}>
+          <ArrowLeft size={14} />
+          <span>Library</span>
+        </button>
 
       <section
         className={`series-hero${bannerUrl ? " has-banner" : ""}`}
@@ -378,6 +380,8 @@ function SeriesDetailPage() {
               <img
                 src={posterUrl}
                 alt={displayTitle}
+                loading="lazy"
+                decoding="async"
                 onError={(e) => {
                   const t = e.target as HTMLImageElement;
                   t.style.display = "none";
@@ -480,65 +484,43 @@ function SeriesDetailPage() {
         </div>
       </section>
 
-      <div className="bare-episode-head">
-        <h2 className="section-h2">Episodes</h2>
-        <span className="section-count">{sorted.length}</span>
-      </div>
-
-      <div className="bare-episode-list">
-        {sorted.map((f) => {
-          const isWatched = trackedKnown && f.episodeNumber <= watchedCount;
-          const isNext = nextEpNumber != null && f.episodeNumber === nextEpNumber;
-          const code = formatEpisodeCode({
-            episodeNumber: f.episodeNumber,
-            seasonNumber: f.seasonNumber,
-          });
-          // Fraction in [0, 1] from localStorage — set by the player every
-          // 4s and on pause. Zero for episodes that were never started OR
-          // that finished (entry is deleted on completion).
-          const fraction = getProgressFraction(localProgress, item.id, f.episodeNumber);
-          const hasResume = fraction > 0;
-          return (
-            <button
-              key={f.filePath}
-              type="button"
-              className={`bare-episode-row${isWatched ? " watched" : ""}${isNext ? " next-up" : ""}${hasResume ? " in-progress" : ""}`}
-              onClick={() =>
-                navigate(`/player/${encodeURIComponent(item.id)}/${f.episodeNumber}`)
-              }
-            >
-              <span className="bare-episode-marker" aria-hidden="true">
-                {isWatched ? <Check size={14} strokeWidth={2.5} /> : <Play size={14} />}
-              </span>
-              <span className="bare-episode-code">{code}</span>
-              <span className="bare-episode-title">{f.title}</span>
-              {isNext && <span className="bare-episode-pill">Next up</span>}
-              {isWatched && !isNext && <span className="bare-episode-flag">Watched</span>}
-              {/* Hover-revealed seekbar showing how far into the episode the
-                  user has watched. The track is always rendered so the fade
-                  has something to grow into, but it's invisible until the
-                  row is hovered (or the episode is the next-up). */}
-              <span
-                className="bare-episode-progress"
-                aria-hidden="true"
-                data-has-progress={hasResume ? "true" : "false"}
-              >
-                <span
-                  className="bare-episode-progress-fill"
-                  style={{ width: `${fraction * 100}%` }}
-                />
-              </span>
-            </button>
-          );
-        })}
-      </div>
+      <Section first title="Episodes" count={sorted.length}>
+        <div className="episode-list">
+          {sorted.map((f) => {
+            const isWatched = trackedKnown && f.episodeNumber <= watchedCount;
+            const isNext = nextEpNumber != null && f.episodeNumber === nextEpNumber;
+            const code = formatEpisodeCode({
+              episodeNumber: f.episodeNumber,
+              seasonNumber: f.seasonNumber,
+            });
+            // Fraction in [0, 1] from localStorage — set by the player every
+            // 4s and on pause. Zero for episodes that were never started OR
+            // that finished (entry is deleted on completion).
+            const fraction = getProgressFraction(localProgress, item.id, f.episodeNumber);
+            return (
+              <EpisodeRow
+                key={f.filePath}
+                marker={isWatched ? <Check size={14} strokeWidth={2.5} /> : <Play size={14} />}
+                code={code}
+                title={f.title}
+                trailing={
+                  isNext ? <Pill tone="accent">Next up</Pill> :
+                  isWatched ? <Pill tone="muted">Watched</Pill> :
+                  null
+                }
+                progress={fraction}
+                state={isNext ? "next-up" : isWatched ? "watched" : "default"}
+                onClick={() =>
+                  navigate(`/player/${encodeURIComponent(item.id)}/${f.episodeNumber}`)
+                }
+              />
+            );
+          })}
+        </div>
+      </Section>
 
       {sortedRelations.length > 0 && (
-        <>
-          <div className="bare-episode-head">
-            <h2 className="section-h2">Related</h2>
-            <span className="section-count">{sortedRelations.length}</span>
-          </div>
+        <Section title="Related" count={sortedRelations.length}>
           <div className="relations-grid">
             {sortedRelations.map((rel) => {
               const ownedId = rel.type === "ANIME"
@@ -566,10 +548,9 @@ function SeriesDetailPage() {
                 if (url) void window.electronAPI.openExternal(url);
               };
               return (
-                <button
+                <Card
                   key={`${rel.type ?? "x"}-${rel.anilistId}-${rel.relationType}`}
-                  type="button"
-                  className={`relation-card${isInternal ? " is-internal" : " is-external"}`}
+                  variant={isInternal ? "internal" : "external"}
                   onClick={handleClick}
                   title={isInternal
                     ? `Open ${relTitle} in your library`
@@ -577,22 +558,22 @@ function SeriesDetailPage() {
                 >
                   <div className="relation-card-poster">
                     {rel.poster ? (
-                      <img src={rel.poster} alt={relTitle} loading="lazy" />
+                      <img src={rel.poster} alt={relTitle} loading="lazy" decoding="async" />
                     ) : (
                       <div className="relation-card-poster-empty">
                         {rel.type === "MANGA" ? <Film size={28} /> : <Tv size={28} />}
                       </div>
                     )}
-                    {isInternal ? (
-                      <span className="relation-card-pill is-internal" aria-hidden="true">
-                        IN LIBRARY
-                      </span>
-                    ) : (
-                      <span className="relation-card-pill is-external" aria-hidden="true">
-                        <ExternalLink size={10} strokeWidth={2.5} />
-                        ANILIST
-                      </span>
-                    )}
+                    <span aria-hidden="true">
+                      <Pill tone={isInternal ? "teal" : "accent"}>
+                        {isInternal ? "In Library" : (
+                          <>
+                            <ExternalLink size={10} strokeWidth={2.5} />
+                            AniList
+                          </>
+                        )}
+                      </Pill>
+                    </span>
                   </div>
                   <div className="relation-card-body">
                     <div className="relation-card-type">{typeLabel}</div>
@@ -602,13 +583,14 @@ function SeriesDetailPage() {
                       {rel.seasonYear && <span>{rel.seasonYear}</span>}
                     </div>
                   </div>
-                </button>
+                </Card>
               );
             })}
           </div>
-        </>
+        </Section>
       )}
-    </div>
+      </div>
+    </Page>
   );
 }
 
