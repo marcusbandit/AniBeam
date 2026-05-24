@@ -25,6 +25,10 @@ export interface ProgressEntry {
   // Null means "no score" — both providers use 0 to signal unrated and we
   // collapse that to null here so consumers don't have to special-case it.
   score: number | null;
+  // Number of times the user has finished a rewatch. AniList: MediaList.repeat,
+  // MAL: list_status.num_times_rewatched. Null when the entry exists but
+  // never carried a rewatch count (legacy cached rows, fresh entries).
+  rewatch: number | null;
 }
 
 const ANILIST_TO_CANONICAL: Record<string, ListStatus> = {
@@ -125,13 +129,14 @@ function migrateProgressMap(raw: unknown): Record<number, ProgressEntry> {
     const id = Number(k);
     if (!Number.isFinite(id)) continue;
     if (typeof v === 'number') {
-      out[id] = { progress: v, status: null, score: null };
+      out[id] = { progress: v, status: null, score: null, rewatch: null };
     } else if (v && typeof v === 'object') {
-      const obj = v as { progress?: unknown; status?: unknown; score?: unknown };
+      const obj = v as { progress?: unknown; status?: unknown; score?: unknown; rewatch?: unknown };
       const progress = typeof obj.progress === 'number' ? obj.progress : 0;
       const status = typeof obj.status === 'string' ? (obj.status as ListStatus) : null;
       const score = typeof obj.score === 'number' && obj.score > 0 ? obj.score : null;
-      out[id] = { progress, status, score };
+      const rewatch = typeof obj.rewatch === 'number' && obj.rewatch > 0 ? obj.rewatch : null;
+      out[id] = { progress, status, score, rewatch };
     }
   }
   return out;
@@ -369,6 +374,28 @@ export async function setProgressEntry(
     progress,
     status: status ?? prev?.status ?? null,
     score: prev?.score ?? null,
+    rewatch: prev?.rewatch ?? null,
+  };
+  await saveStore(store);
+}
+
+// Patch only the score (and optionally status) of an existing entry,
+// preserving the cached progress. Used by the setScore IPC after a
+// successful rating call so the UI updates without waiting for the next
+// bulk refresh.
+export async function setProgressScoreAndStatus(
+  provider: TrackerProvider,
+  mediaId: number,
+  score: number | null,
+  status: ListStatus | null = null,
+): Promise<void> {
+  const store = await loadStore();
+  const prev = store.progress[provider][mediaId];
+  store.progress[provider][mediaId] = {
+    progress: prev?.progress ?? 0,
+    status: status ?? prev?.status ?? null,
+    score,
+    rewatch: prev?.rewatch ?? null,
   };
   await saveStore(store);
 }

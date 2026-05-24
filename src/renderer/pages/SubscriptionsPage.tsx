@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Rss, RefreshCw, ExternalLink, FolderOpen } from "lucide-react";
 import type { SubscriptionFeed, SubscriptionsResult } from "../../main/preload";
-import { Page, Inline, Pill } from "../components/primitives";
+import { Page, Inline, Pill, Tooltip } from "../components/primitives";
 
 function decodeNyaaQuery(feedUrl: string): string | null {
   if (!feedUrl) return null;
@@ -81,28 +81,36 @@ function SubscriptionRow({ item }: { item: SubscriptionFeed }) {
       <div className="subscription-head">
         <div className="subscription-title">
           <Rss size={14} className="subscription-icon" />
-          <span className="subscription-name" title={item.name}>{item.name}</span>
+          <Tooltip label={item.name}>
+            <span className="subscription-name">{item.name}</span>
+          </Tooltip>
         </div>
         <div className="subscription-meta">
           <Pill tone={item.ruleEnabled ? "teal" : "muted"}>
             {item.ruleEnabled ? "active" : "paused"}
           </Pill>
-          <span className="subscription-count" title="torrents in qBittorrent">
-            {item.torrentCount} {item.torrentCount === 1 ? "torrent" : "torrents"}
-          </span>
+          <Tooltip label="torrents in qBittorrent">
+            <span className="subscription-count">
+              {item.torrentCount} {item.torrentCount === 1 ? "torrent" : "torrents"}
+            </span>
+          </Tooltip>
         </div>
       </div>
       {query && (
-        <div className="subscription-query" title={item.feedUrl}>
-          <span className="subscription-label">query</span>
-          <code>{query}</code>
-        </div>
+        <Tooltip label={item.feedUrl}>
+          <div className="subscription-query">
+            <span className="subscription-label">query</span>
+            <code>{query}</code>
+          </div>
+        </Tooltip>
       )}
       {item.savePath && (
-        <div className="subscription-path" title={item.savePath}>
-          <FolderOpen size={12} />
-          <span>{item.savePath}</span>
-        </div>
+        <Tooltip label={item.savePath}>
+          <div className="subscription-path">
+            <FolderOpen size={12} />
+            <span>{item.savePath}</span>
+          </div>
+        </Tooltip>
       )}
       {item.feedUrl && (
         <button

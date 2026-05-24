@@ -2,12 +2,20 @@ import { ipcMain } from 'electron';
 import { existsSync } from 'fs';
 import metadataHandler from '../handlers/metadataHandler';
 import videoProbeHandler from '../handlers/videoProbeHandler';
+import transcodeCacheHandler from '../handlers/transcodeCacheHandler';
 import subtitleHandler from '../handlers/subtitleHandler';
 import aniSkipHandler from '../handlers/aniSkipHandler';
 import { findFileEpisode } from '../../shared/fileEpisode';
 import { probeCodecs, needsTranscode } from '../utils/transcodeProbe';
+import { getViewHistory, markViewed } from '../services/viewHistory';
+import type { WindowGetter } from './types';
 
-export function registerMediaPlaybackIpc(): void {
+export function registerMediaPlaybackIpc(getMainWindow?: WindowGetter): void {
+  const broadcastViewHistoryChanged = (): void => {
+    const win = getMainWindow?.();
+    if (win && !win.isDestroyed()) win.webContents.send('playback:view-history-changed');
+  };
+
   ipcMain.handle('probe:retry', (_event, filePath: string) => {
     if (typeof filePath === 'string' && filePath.length > 0) {
       videoProbeHandler.retry(filePath);
@@ -33,12 +41,15 @@ export function registerMediaPlaybackIpc(): void {
       // the open entirely.
     }
     // No transcoded copy on disk. Probe the original — if Chromium can't
-    // decode it (HEVC, etc.) tell the renderer so it can offer system mpv
-    // instead of handing <video> a URL it'll just choke on.
+    // decode it (HEVC, etc.), kick off (or join) a transcode and tell the
+    // renderer so it can show progress while ffmpeg runs. The renderer
+    // re-calls openVideo when it sees a 'ready' status for this file.
+    // enqueue() is idempotent — duplicates collapse into the same encode.
     const probe = await probeCodecs(filePath);
     if (probe && needsTranscode(probe)) {
+      void transcodeCacheHandler.enqueue(filePath);
       return {
-        kind: 'unsupported' as const,
+        kind: 'transcoding' as const,
         vCodec: probe.vCodec,
         aCodec: probe.aCodec,
       };
@@ -64,5 +75,20 @@ export function registerMediaPlaybackIpc(): void {
     const safeMalId = typeof malId === 'number' ? malId : 0;
     const safeFilePath = typeof filePath === 'string' && filePath ? filePath : undefined;
     return aniSkipHandler.fetchAndCache(seriesId, safeMalId, episodeNumber, episodeLength, safeFilePath);
+  });
+
+  ipcMain.handle('playback:get-view-history', async () => {
+    return getViewHistory();
+  });
+
+  ipcMain.handle('playback:viewed', async (_event, payload: unknown) => {
+    if (!payload || typeof payload !== 'object') return false;
+    const p = payload as { seriesId?: unknown; episodeNumber?: unknown; ts?: unknown };
+    if (typeof p.seriesId !== 'string' || !p.seriesId) return false;
+    if (typeof p.episodeNumber !== 'number') return false;
+    const ts = typeof p.ts === 'number' ? p.ts : Date.now();
+    const changed = await markViewed(p.seriesId, p.episodeNumber, ts);
+    if (changed) broadcastViewHistoryChanged();
+    return changed;
   });
 }

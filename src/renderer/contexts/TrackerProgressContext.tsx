@@ -32,6 +32,12 @@ interface Ctx {
    * the series on either provider.
    */
   getUserScore: (ids: SeriesIds) => number | null;
+  /**
+   * Number of completed rewatches (AniList `repeat`, MAL `num_times_rewatched`).
+   * Returns null when no tracker entry exists or the user has never recorded
+   * a rewatch. The hero only renders the chip when this is > 0.
+   */
+  getRewatchCount: (ids: SeriesIds) => number | null;
   setMainProvider: (provider: TrackerProvider) => Promise<void>;
 }
 
@@ -114,14 +120,19 @@ export function TrackerProgressProvider({ children }: { children: ReactNode }) {
     [lookupEntry],
   );
 
+  const getRewatchCount = useCallback<Ctx["getRewatchCount"]>(
+    (ids) => lookupEntry(ids)?.rewatch ?? null,
+    [lookupEntry],
+  );
+
   const setMainProvider = useCallback(async (provider: TrackerProvider) => {
     await window.electronAPI.trackerSetMainProvider(provider);
     await refresh();
   }, [refresh]);
 
   const value = useMemo<Ctx>(
-    () => ({ snapshot, getWatched, getListStatus, getUserScore, setMainProvider }),
-    [snapshot, getWatched, getListStatus, getUserScore, setMainProvider],
+    () => ({ snapshot, getWatched, getListStatus, getUserScore, getRewatchCount, setMainProvider }),
+    [snapshot, getWatched, getListStatus, getUserScore, getRewatchCount, setMainProvider],
   );
 
   return (

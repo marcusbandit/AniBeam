@@ -75,6 +75,48 @@ export function registerTrackerIpc(getMainWindow: WindowGetter): void {
     return result;
   });
 
+  ipcMain.handle('tracker:set-score', async (
+    _event,
+    provider: unknown,
+    mediaId: unknown,
+    score: unknown,
+    totalEpisodes: unknown,
+  ) => {
+    if (!isProvider(provider)) throw new Error('invalid provider');
+    if (typeof mediaId !== 'number' || typeof score !== 'number') {
+      throw new Error('mediaId and score must be numbers');
+    }
+    const result = await trackerHandler.setScore({
+      provider,
+      mediaId,
+      score,
+      totalEpisodes: typeof totalEpisodes === 'number' ? totalEpisodes : null,
+    });
+    if (result.ok) broadcastProgressChanged();
+    return result;
+  });
+
+  ipcMain.handle('tracker:set-progress', async (
+    _event,
+    provider: unknown,
+    mediaId: unknown,
+    progress: unknown,
+    totalEpisodes: unknown,
+  ) => {
+    if (!isProvider(provider)) throw new Error('invalid provider');
+    if (typeof mediaId !== 'number' || typeof progress !== 'number') {
+      throw new Error('mediaId and progress must be numbers');
+    }
+    const result = await trackerHandler.setEpisodeProgress({
+      provider,
+      mediaId,
+      progress,
+      totalEpisodes: typeof totalEpisodes === 'number' ? totalEpisodes : null,
+    });
+    if (result.ok) broadcastProgressChanged();
+    return result;
+  });
+
   ipcMain.handle('tracker:get-progress', async () => {
     const snap = await trackerHandler.getProgress();
     logger.info(

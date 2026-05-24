@@ -16,6 +16,21 @@
   --accent-teal:      #14b8a6;
   --accent-amber:     #f59e0b;
 
+  /* Per-format hues — used by the Related section to give each AniList
+     MediaFormat a recognisable colour at a glance. Keep these distinct
+     enough that two adjacent cards never look the same, but soft enough
+     that the chip/border tint doesn't fight with the card content. */
+  --format-tv:        #14b8a6;  /* teal — TV series (incl. TV_SHORT) */
+  --format-movie:     #f59e0b;  /* amber */
+  --format-ova:       #a78bfa;  /* violet */
+  --format-ona:       #22d3ee;  /* cyan */
+  --format-special:   #f43f5e;  /* rose */
+  --format-music:     #10b981;  /* emerald */
+  --format-manga:     #fb923c;  /* orange */
+  --format-novel:     #f472b6;  /* pink — NOVEL / LIGHT_NOVEL */
+  --format-oneshot:   #fbbf24;  /* warm yellow */
+  --format-vn:        #e879f9;  /* fuchsia — VISUAL_NOVEL */
+
   /* Text */
   --text-primary:   #f1f5f9;
   --text-secondary: #94a3b8;

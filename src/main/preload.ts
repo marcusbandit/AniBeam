@@ -14,8 +14,8 @@ export type {
   ListStatus as TrackerListStatus,
 } from './services/trackerStore';
 import type { TrackerProvider, TrackerStatus, ProgressSnapshot as TrackerProgressSnapshot } from './services/trackerStore';
-export type { MarkResult as TrackerMarkResult } from './handlers/trackerHandler';
-import type { MarkResult as TrackerMarkResult } from './handlers/trackerHandler';
+export type { MarkResult as TrackerMarkResult, ScoreResult as TrackerScoreResult } from './handlers/trackerHandler';
+import type { MarkResult as TrackerMarkResult, ScoreResult as TrackerScoreResult } from './handlers/trackerHandler';
 
 interface ScanResult {
   success: boolean;
@@ -116,6 +116,10 @@ export interface ElectronAPI {
   probeRetry: (filePath: string) => Promise<void>;
   onMetadataFileStatusChanged: (handler: (payload: { filePath: string; status: FileStatus }) => void) => () => void;
 
+  // Live transcode progress (emitted while ffmpeg is re-encoding a file
+  // to the cached browser-playable MP4).
+  onTranscodeProgress: (handler: (payload: TranscodeProgressPayload) => void) => () => void;
+
   // Embedded subtitles
   listEmbeddedSubtitles: (videoPath: string) => Promise<Array<{ streamIndex: number; codec: string; language: string | null; title: string | null }>>;
   extractEmbeddedSubtitle: (videoPath: string, streamIndex: number, codec: string) => Promise<{ path: string; format: 'ass' | 'vtt' } | null>;
@@ -123,6 +127,13 @@ export interface ElectronAPI {
   // Open a video — main checks for a pre-transcoded cache entry, otherwise
   // returns the original file:// URL. The renderer hands the URL to <video>.
   openVideo: (filePath: string) => Promise<VideoOpenResult>;
+
+  // View history — per-series record of the most recent playback session,
+  // backing the Library "Last viewed" sort. Renderer marks an episode after
+  // it has accumulated ~30s of playtime (one mark per player mount).
+  markEpisodeViewed: (payload: { seriesId: string; episodeNumber: number; ts?: number }) => Promise<boolean>;
+  getViewHistory: () => Promise<Record<string, ViewHistoryEntry>>;
+  onViewHistoryChanged: (handler: () => void) => () => void;
 
   // Skip times — chapter markers first, AniSkip community DB as fallback.
   fetchSkipTimes: (seriesId: string, malId: number, episodeNumber: number, episodeLength: number, filePath?: string) => Promise<{ op?: { start: number; end: number }; ed?: { start: number; end: number }; source?: 'chapters' | 'aniskip' }>;
@@ -144,6 +155,19 @@ export interface ElectronAPI {
     episodeNumber: number,
     totalEpisodes: number | null,
   ) => Promise<TrackerMarkResult>;
+  trackerSetScore: (
+    provider: TrackerProvider,
+    mediaId: number,
+    score: number,
+    totalEpisodes: number | null,
+  ) => Promise<TrackerScoreResult>;
+  /** Set watched progress to an exact value (can decrease — corrects over-counts). */
+  trackerSetProgress: (
+    provider: TrackerProvider,
+    mediaId: number,
+    progress: number,
+    totalEpisodes: number | null,
+  ) => Promise<TrackerMarkResult>;
   trackerGetProgress: () => Promise<TrackerProgressSnapshot>;
   trackerRefreshProgress: (provider?: TrackerProvider) => Promise<TrackerProgressSnapshot>;
   trackerGetMainProvider: () => Promise<TrackerProvider>;
@@ -154,9 +178,26 @@ export interface ElectronAPI {
   listSubscriptions: () => Promise<SubscriptionsResult>;
 }
 
+export interface ViewHistoryEntry {
+  /** ms-since-epoch the user crossed the watched-threshold for the session. */
+  lastViewedAt: number;
+  /** Episode number of that session. */
+  lastEpisode: number;
+}
+
 export type VideoOpenResult =
   | { kind: 'direct'; url: string }
+  | { kind: 'transcoding'; vCodec: string; aCodec: string }
   | { kind: 'unsupported'; vCodec: string; aCodec: string };
+
+export interface TranscodeProgressPayload {
+  filePath: string;
+  currentSec: number;
+  totalSec: number;
+  fraction: number;
+  speed: number | null;
+  etaSec: number | null;
+}
 
 export interface SubscriptionFeed {
   name: string;
@@ -237,6 +278,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('metadata:file-status-changed', listener);
     return () => ipcRenderer.removeListener('metadata:file-status-changed', listener);
   },
+  onTranscodeProgress: (handler: (payload: TranscodeProgressPayload) => void) => {
+    const listener = (_e: unknown, payload: TranscodeProgressPayload) => handler(payload);
+    ipcRenderer.on('metadata:transcode-progress', listener);
+    return () => ipcRenderer.removeListener('metadata:transcode-progress', listener);
+  },
 
   // Embedded subtitles
   listEmbeddedSubtitles: (videoPath: string) => ipcRenderer.invoke('subtitle:list-embedded', videoPath),
@@ -244,6 +290,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Video open
   openVideo: (filePath: string) => ipcRenderer.invoke('video:open', filePath),
+
+  // View history
+  markEpisodeViewed: (payload: { seriesId: string; episodeNumber: number; ts?: number }) =>
+    ipcRenderer.invoke('playback:viewed', payload),
+  getViewHistory: () => ipcRenderer.invoke('playback:get-view-history'),
+  onViewHistoryChanged: (handler: () => void) => {
+    const listener = () => handler();
+    ipcRenderer.on('playback:view-history-changed', listener);
+    return () => ipcRenderer.removeListener('playback:view-history-changed', listener);
+  },
 
   // AniSkip
   fetchSkipTimes: (seriesId: string, malId: number, episodeNumber: number, episodeLength: number, filePath?: string) => ipcRenderer.invoke('aniskip:fetch', seriesId, malId, episodeNumber, episodeLength, filePath),
@@ -261,6 +317,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   trackerDisconnect: (provider: TrackerProvider) => ipcRenderer.invoke('tracker:disconnect', provider),
   trackerMarkEpisode: (provider: TrackerProvider, mediaId: number, episodeNumber: number, totalEpisodes: number | null) =>
     ipcRenderer.invoke('tracker:mark-episode', provider, mediaId, episodeNumber, totalEpisodes),
+  trackerSetScore: (provider: TrackerProvider, mediaId: number, score: number, totalEpisodes: number | null) =>
+    ipcRenderer.invoke('tracker:set-score', provider, mediaId, score, totalEpisodes),
+  trackerSetProgress: (provider: TrackerProvider, mediaId: number, progress: number, totalEpisodes: number | null) =>
+    ipcRenderer.invoke('tracker:set-progress', provider, mediaId, progress, totalEpisodes),
   trackerGetProgress: () => ipcRenderer.invoke('tracker:get-progress'),
   trackerRefreshProgress: (provider?: TrackerProvider) => ipcRenderer.invoke('tracker:refresh-progress', provider ?? null),
   trackerGetMainProvider: () => ipcRenderer.invoke('tracker:get-main-provider'),

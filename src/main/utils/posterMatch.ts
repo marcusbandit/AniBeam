@@ -34,6 +34,10 @@ export interface ShowMatch {
 export interface EpisodeAirDate {
   episodeNumber: number;
   airDate: string | null;
+  /** Per-episode title from MAL/Jikan when available — AniList's
+   *  airingSchedule doesn't carry titles, so we side-fetch from Jikan
+   *  whenever we know a malId. Null when no title source returned one. */
+  title: string | null;
 }
 
 function aniListDate(d: { year: number | null; month: number | null; day: number | null } | null | undefined): string | null {
@@ -114,28 +118,29 @@ export async function findShowMatch(folderName: string): Promise<ShowMatch | nul
 }
 
 /**
- * Pull per-episode air dates for a matched show. AniList airingSchedule
- * is the primary source — it's prompt for current shows and can be
- * queried by AniList id OR by MAL id (so MAL-matched shows still get
- * accurate dates without a second title search).
+ * Pull per-episode metadata for a matched show. AniList airingSchedule is
+ * the primary source for air dates — prompt for current shows and queryable
+ * by AniList id OR by MAL id. Episode titles only come from MAL/Jikan
+ * (AniList's airing schedule doesn't carry them), so when a malId is known
+ * we side-fetch and merge titles in by episodeNumber.
  *
- * MAL `/episodes` is a fallback for older / completed shows where
- * AniList's schedule may be empty.
+ * MAL `/episodes` is also the fallback for shows where AniList's schedule
+ * is empty (older / completed runs).
  */
 export async function fetchEpisodeAirDates(
   source: 'mal' | 'anilist',
   externalId: number,
   totalEpisodes: number | null,
+  malIdForTitles?: number | null,
 ): Promise<EpisodeAirDate[]> {
-  // 1. AniList airingSchedule (preferred).
+  // 1. AniList airingSchedule (preferred for dates).
+  let fromAnilist: Array<{ episodeNumber: number; airDate: string | null }> | null = null;
   try {
     const nodes = await anilistHandler.getAiringSchedule(
       source === 'anilist' ? { anilistId: externalId } : { malId: externalId },
     );
     if (nodes.length > 0) {
-      // airingAt is Unix seconds (UTC). Convert to ISO so the rest of the
-      // app, which already speaks ISO date strings, doesn't have to care.
-      return nodes
+      fromAnilist = nodes
         .filter((n) => Number.isFinite(n.airingAt) && n.airingAt > 0)
         .map((n) => ({
           episodeNumber: n.episode,
@@ -146,15 +151,43 @@ export async function fetchEpisodeAirDates(
     logger.warn('metadata', `AniList airingSchedule failed: ${(err as Error).message}`);
   }
 
-  // 2. MAL /episodes fallback.
-  if (source === 'mal') {
+  // 2. MAL /episodes — used for titles whenever malId is known, and as the
+  // air-date source when AniList didn't return any.
+  const malId = source === 'mal' ? externalId : (malIdForTitles ?? null);
+  let fromMal: Array<{ episodeNumber: number; title: string | null; airDate: string | null }> | null = null;
+  if (malId != null) {
     try {
-      const eps = await malHandler.getEpisodes(externalId, totalEpisodes);
-      return eps.map((e) => ({ episodeNumber: e.episodeNumber, airDate: e.airDate }));
+      const eps = await malHandler.getEpisodes(malId, totalEpisodes);
+      fromMal = eps.map((e) => ({
+        episodeNumber: e.episodeNumber,
+        // Jikan returns placeholder "Episode N" titles when the real title
+        // isn't known — strip those so the renderer falls back to file-derived
+        // titles (which often have the actual name parsed from filenames).
+        title: e.title && !/^Episode\s+\d+$/i.test(e.title) ? e.title : null,
+        airDate: e.airDate,
+      }));
     } catch (err) {
-      logger.warn('metadata', `MAL episodes fetch failed for ${externalId}: ${(err as Error).message}`);
+      logger.warn('metadata', `MAL episodes fetch failed for ${malId}: ${(err as Error).message}`);
     }
   }
 
-  return [];
+  // Merge — prefer AniList dates, MAL titles. Build the union of episode
+  // numbers from whichever sources returned data, in case AniList covers
+  // only the currently airing batch while MAL covers the full run.
+  const byEp = new Map<number, EpisodeAirDate>();
+  for (const a of fromAnilist ?? []) {
+    byEp.set(a.episodeNumber, { episodeNumber: a.episodeNumber, airDate: a.airDate, title: null });
+  }
+  for (const m of fromMal ?? []) {
+    const existing = byEp.get(m.episodeNumber);
+    if (existing) {
+      // Keep AniList airDate (more accurate for currently airing), backfill
+      // title from MAL.
+      existing.title = m.title;
+      if (!existing.airDate) existing.airDate = m.airDate;
+    } else {
+      byEp.set(m.episodeNumber, { episodeNumber: m.episodeNumber, airDate: m.airDate, title: m.title });
+    }
+  }
+  return Array.from(byEp.values()).sort((a, b) => a.episodeNumber - b.episodeNumber);
 }

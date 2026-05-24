@@ -13,6 +13,7 @@ import { ActivityLogProvider } from "./contexts/ActivityLogContext";
 import { ActivityLogDrawer } from "./components/ActivityLogDrawer";
 import { TitleLanguageProvider } from "./contexts/TitleLanguageContext";
 import { TrackerProgressProvider } from "./contexts/TrackerProgressContext";
+import { ViewHistoryProvider } from "./contexts/ViewHistoryContext";
 import LangSwitch from "./components/LangSwitch";
 import AmbientCursor from "./components/AmbientCursor";
 import pkg from "../../package.json";
@@ -114,9 +115,11 @@ function App() {
     <HashRouter>
       <TitleLanguageProvider>
         <TrackerProgressProvider>
-          <ActivityLogProvider>
-            <AppContent />
-          </ActivityLogProvider>
+          <ViewHistoryProvider>
+            <ActivityLogProvider>
+              <AppContent />
+            </ActivityLogProvider>
+          </ViewHistoryProvider>
         </TrackerProgressProvider>
       </TitleLanguageProvider>
     </HashRouter>

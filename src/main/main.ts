@@ -321,29 +321,49 @@ async function matchPosterForSeries(seriesId: string, folderName: string): Promi
     // Relations come from AniList only (MAL has related_anime but no
     // cross-media graph), so we query by anilistId when we have it and
     // fall back to AniList's idMal filter for MAL-primary matches.
-    const [cached, episodeDates, relations] = await Promise.all([
+    const enrichmentOpts = match.anilistId
+      ? { anilistId: match.anilistId }
+      : match.malId
+        ? { malId: match.malId }
+        : {};
+    const [cached, episodeDates, enrichment] = await Promise.all([
       imageCacheHandler.cacheImages([match.posterUrl]),
-      fetchEpisodeAirDates(match.source, primaryId, match.totalEpisodes),
-      anilistHandler.getRelations(
-        match.anilistId
-          ? { anilistId: match.anilistId }
-          : match.malId
-            ? { malId: match.malId }
-            : {},
-      ),
+      fetchEpisodeAirDates(match.source, primaryId, match.totalEpisodes, match.malId),
+      anilistHandler.getEnrichment(enrichmentOpts),
     ]);
     const posterLocal = cached.get(match.posterUrl) ?? null;
     await metadataHandler.transaction(async (current) => {
       const existing = (current[seriesId] ?? {}) as Record<string, unknown>;
-      // Slim episode list — only what the feed needs to sort. We deliberately
-      // do NOT keep titles/descriptions/thumbnails; metadata enrichment
-      // beyond the sort key is still paused.
-      const slimEpisodes = episodeDates.map((e) => ({ episodeNumber: e.episodeNumber, airDate: e.airDate }));
+      // Title priority: AniList streamingEpisodes (the "Watch" tab on
+      // anilist.co) > MAL/Jikan. AniList is the canonical source for episode
+      // names — Jikan often returns generic "Episode N" placeholders. The
+      // enrichment query already pulled streamingEpisodes; we index them by
+      // episode number for an O(1) merge with the air-date list.
+      const anilistTitleByEp = new Map(
+        enrichment.episodeTitles.map((e) => [e.episodeNumber, e.title]),
+      );
+      const slimEpisodes = episodeDates.map((e) => {
+        const title = anilistTitleByEp.get(e.episodeNumber) ?? e.title ?? null;
+        return {
+          episodeNumber: e.episodeNumber,
+          airDate: e.airDate,
+          ...(title ? { title } : {}),
+        };
+      });
+      // AniList sometimes lists episodes in streamingEpisodes that the
+      // airing schedule doesn't (older completed shows). Splice those in
+      // so the UI can render their names too, even with a null airDate.
+      for (const [ep, title] of anilistTitleByEp) {
+        if (!slimEpisodes.some((s) => s.episodeNumber === ep)) {
+          slimEpisodes.push({ episodeNumber: ep, airDate: null, title });
+        }
+      }
+      slimEpisodes.sort((a, b) => a.episodeNumber - b.episodeNumber);
       // Slim relations — drop CHARACTER (almost never meaningful for the
       // user's intent) but keep everything else verbatim. The renderer
       // groups & filters at display time so we don't bake UX decisions
       // into the persisted shape.
-      const slimRelations = relations
+      const slimRelations = enrichment.relations
         .filter((r) => r.relationType !== 'CHARACTER')
         .map((r) => ({
           relationType: r.relationType,
@@ -358,6 +378,32 @@ async function matchPosterForSeries(seriesId: string, folderName: string): Promi
           titleEnglish: r.titleEnglish,
           poster: r.poster,
         }));
+      // AniList tags arrive sorted by their `rank` (community-voted weight).
+      // We persist everything — the renderer filters spoilers/adult and
+      // caps the visible count.
+      const slimTags = enrichment.tags;
+      // Characters — keep MAIN role only by default plus top supporting if
+      // few mains exist. AniList already sorts ROLE → RELEVANCE so the
+      // first N rows are the meaningful ones; cap at 10 for storage.
+      const slimCharacters = enrichment.characters.slice(0, 10);
+      // Recommendations — cap at 8 picks ordered by AniList rating.
+      const slimRecommendations = enrichment.recommendations.slice(0, 8);
+      // Pick the main animation studio: prefer the entry flagged both
+      // isMain + isAnimationStudio. Fall back to the first animation studio,
+      // then to the first studio of any kind. Persist a flat string for
+      // simple consumption; persist the full studio array too so the UI
+      // can show secondary studios later without another fetch.
+      const studiosByPriority = [...enrichment.studios].sort((a, b) => {
+        const score = (s: typeof a) =>
+          (s.isMain && s.isAnimationStudio ? 0 : s.isAnimationStudio ? 1 : s.isMain ? 2 : 3);
+        return score(a) - score(b);
+      });
+      const animationStudio =
+        studiosByPriority.find((s) => s.isMain && s.isAnimationStudio)?.name
+        ?? studiosByPriority.find((s) => s.isAnimationStudio)?.name
+        ?? studiosByPriority[0]?.name
+        ?? null;
+      const studioNames = studiosByPriority.map((s) => s.name);
       // Persist BOTH provider ids when we have them. Trackers, AniSkip, and
       // the rest of the renderer key off `anilistId`/`malId` directly —
       // matchSource alone isn't enough.
@@ -379,6 +425,11 @@ async function matchPosterForSeries(seriesId: string, folderName: string): Promi
         totalEpisodes: match.totalEpisodes,
         episodes: slimEpisodes,
         relations: slimRelations,
+        tags: slimTags,
+        characters: slimCharacters,
+        recommendations: slimRecommendations,
+        studios: studioNames,
+        animationStudio,
       };
       return { updated: current };
     });
@@ -394,71 +445,21 @@ async function matchPosterForSeries(seriesId: string, folderName: string): Promi
 // haven't been attempted yet. Sequential so we don't blow through the
 // MAL/AniList rate limiters in bursts. Designed to run in the background
 // — never throw, never block the caller.
+//
+// Launch-time matching is intentionally narrow: ONLY entries that have
+// never been attempted. After one attempt (success or fail) the entry is
+// left alone — no periodic re-matches for ongoing shows, no legacy
+// field backfills via the matcher, no auto-retries for failures. Manual
+// recovery stays available via the per-row Refresh button and the Match
+// modal in the Metadata tab. (Aligns with the "no periodic rescans"
+// design: the user opts in to expensive work, the app never re-does it
+// behind their back.)
 async function matchPostersForLibrary(): Promise<void> {
   const meta = await metadataHandler.loadMetadata();
   const todo: Array<{ seriesId: string; folderName: string }> = [];
   for (const [seriesId, raw] of Object.entries(meta)) {
-    const s = raw as {
-      posterMatchAttempted?: boolean;
-      posterMatched?: boolean;
-      titleRomaji?: string | null;
-      titleEnglish?: string | null;
-      episodes?: Array<{ episodeNumber?: number; airDate?: string | null }>;
-      folderPath?: string;
-      title?: string;
-      type?: 'series' | 'movie';
-      anilistId?: number;
-      malId?: number | null;
-      status?: string | null;
-      relations?: unknown[];
-    };
-    // Re-match when:
-    //  (a) never attempted, or
-    //  (b) matched in an earlier iteration but the episode air dates we now
-    //      need for the feed sort aren't there yet, or
-    //  (c) matched but missing the explicit titleRomaji/titleEnglish fields
-    //      added with the JP/EN switch, or
-    //  (d) matched but missing anilistId / malId — older entries written
-    //      before the matcher persisted these. Trackers and AniSkip key
-    //      off these fields, so backfill them on the next scan.
-    const needsFirstMatch = !s.posterMatchAttempted;
-    const matchedButMissingAirDates =
-      !!s.posterMatched &&
-      (!Array.isArray(s.episodes) ||
-        s.episodes.length === 0 ||
-        !s.episodes.some((e) => !!e.airDate));
-    const matchedButMissingTitles =
-      !!s.posterMatched && s.titleRomaji === undefined && s.titleEnglish === undefined;
-    const matchedButMissingProviderIds =
-      !!s.posterMatched && s.anilistId === undefined && (s.malId === undefined || s.malId === null);
-    // Currently-releasing shows: refresh schedule each launch so the next-
-    // episode countdown stays accurate as episodes air week to week. Cheap
-    // — bounded by what the user is actually watching live.
-    const normStatus = (s.status ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
-    const isCurrentlyReleasing =
-      normStatus === 'releasing' ||
-      normStatus === 'currently_airing' ||
-      normStatus === 'airing' ||
-      normStatus === 'ongoing';
-    const matchedButReleasingNeedsRefresh = !!s.posterMatched && isCurrentlyReleasing;
-    // Entries whose first attempt failed: keep retrying on subsequent launches.
-    // Two flavors:
-    //   - Movies: the first attempt used basename(folderPath) = "Movies" /
-    //     wrapper-folder, which never matched.
-    //   - Wrapper-subfolder series: the first attempt used the raw release-
-    //     tagged subfolder name (e.g. "[Erai-raws] Karakai... - 01 ~ 12 [...]"),
-    //     which never matched on MAL/AniList.
-    // The fixed query below uses s.title, which the scanner now derives from
-    // the wrapper folder name. Cheap to re-run for the few failed entries.
-    const failedNeedsRetry = !s.posterMatched;
-    if (
-      !needsFirstMatch &&
-      !matchedButMissingAirDates &&
-      !matchedButMissingTitles &&
-      !matchedButMissingProviderIds &&
-      !matchedButReleasingNeedsRefresh &&
-      !failedNeedsRetry
-    ) continue;
+    const s = raw as { posterMatchAttempted?: boolean; title?: string };
+    if (s.posterMatchAttempted) continue;
     // Use the cleaned title for the lookup. The scanner sets `title` to the
     // user-canonical (wrapper-derived for franchise subfolders, folder name
     // for root-level series, cleaned filename for movies) string — which is
@@ -467,79 +468,156 @@ async function matchPostersForLibrary(): Promise<void> {
     todo.push({ seriesId, folderName: matchQuery });
   }
   if (todo.length === 0) return;
-  logger.info('metadata', `Matching ${todo.length} series (poster + air dates)`);
+  logger.info('metadata', `Matching ${todo.length} new series (poster + air dates)`);
   for (const { seriesId, folderName } of todo) {
     await matchPosterForSeries(seriesId, folderName);
   }
 }
 
-// Dedicated fast-path backfill for franchise relations on series that are
-// already matched but predate the related-strip feature. Skips the entire
-// findShowMatch round-trip (which would re-do MAL search + AniList fallback
-// per series), and just calls AniList getRelations with the stored ids.
-// One AniList request per series → completes in seconds for libraries that
-// would otherwise spend minutes redoing search queries they don't need.
+// Dedicated fast-path backfill for the enrichment bundle (relations, tags,
+// characters, recommendations, studio) on series that are already matched
+// but predate one of those fields. Skips the entire findShowMatch round-trip
+// (which would re-do MAL search + AniList fallback per series), and just
+// calls AniList getEnrichment with the stored ids. One AniList request per
+// series → completes in seconds for libraries that would otherwise spend
+// minutes redoing search queries they don't need.
+//
+// Also backfills episode titles via MAL/Jikan when malId is known and the
+// existing episodes array lacks them — feature was added after the slim
+// schedule was already cached for most users.
 async function backfillRelationsForLibrary(): Promise<void> {
   const meta = await metadataHandler.loadMetadata();
-  const todo: Array<{ seriesId: string; anilistId?: number; malId?: number; title: string }> = [];
+  const todo: Array<{
+    seriesId: string;
+    anilistId?: number;
+    malId?: number;
+    title: string;
+    needsEnrichment: boolean;
+    needsEpisodeTitles: boolean;
+  }> = [];
   for (const [seriesId, raw] of Object.entries(meta)) {
     const s = raw as {
       posterMatched?: boolean;
       anilistId?: number;
       malId?: number | null;
       relations?: unknown;
+      tags?: unknown;
+      characters?: unknown;
+      recommendations?: unknown;
+      animationStudio?: unknown;
+      episodes?: Array<{ episodeNumber?: number; title?: string }>;
+      totalEpisodes?: number | null;
       title?: string;
     };
-    // Only matched entries are candidates. Skip anything that already has
-    // a relations array (even empty — AniList just returned nothing).
+    // Only matched entries are candidates.
     if (!s.posterMatched) continue;
-    if (Array.isArray(s.relations)) continue;
     if (s.anilistId == null && (s.malId == null)) continue;
+    const hasRelations = Array.isArray(s.relations);
+    const hasTags = Array.isArray(s.tags);
+    const hasCharacters = Array.isArray(s.characters);
+    const hasRecommendations = Array.isArray(s.recommendations);
+    const hasStudio = typeof s.animationStudio === 'string' || s.animationStudio === null;
+    const needsEnrichment = !hasRelations || !hasTags || !hasCharacters || !hasRecommendations || !hasStudio;
+    const episodes = Array.isArray(s.episodes) ? s.episodes : [];
+    // Backfill episode titles whenever any are missing — we now have two
+    // sources (AniList streamingEpisodes + MAL/Jikan) so a series that
+    // failed one source might succeed on the other.
+    const needsEpisodeTitles = episodes.length > 0 && !episodes.some((e) => typeof e.title === 'string' && e.title.length > 0);
+    if (!needsEnrichment && !needsEpisodeTitles) continue;
     todo.push({
       seriesId,
       anilistId: s.anilistId ?? undefined,
       malId: s.malId ?? undefined,
       title: s.title ?? seriesId,
+      needsEnrichment,
+      needsEpisodeTitles,
     });
   }
   if (todo.length === 0) return;
-  logger.info('metadata', `Backfilling relations for ${todo.length} series`);
-  for (const { seriesId, anilistId, malId, title } of todo) {
+  logger.info('metadata', `Backfilling enrichment for ${todo.length} series`);
+  for (const { seriesId, anilistId, malId, title, needsEnrichment, needsEpisodeTitles } of todo) {
     try {
-      const relations = await anilistHandler.getRelations(
-        anilistId ? { anilistId } : { malId: malId! },
-      );
-      const slimRelations = relations
-        .filter((r) => r.relationType !== 'CHARACTER')
-        .map((r) => ({
-          relationType: r.relationType,
-          anilistId: r.anilistId,
-          malId: r.malId,
-          type: r.type,
-          format: r.format,
-          status: r.status,
-          seasonYear: r.seasonYear,
-          siteUrl: r.siteUrl,
-          titleRomaji: r.titleRomaji,
-          titleEnglish: r.titleEnglish,
-          poster: r.poster,
-        }));
+      // Always pull the enrichment when titles are missing — its
+      // streamingEpisodes are the canonical title source. Otherwise only
+      // when other enrichment fields are missing.
+      const enrichment = (needsEnrichment || needsEpisodeTitles)
+        ? await anilistHandler.getEnrichment(anilistId ? { anilistId } : { malId: malId! })
+        : null;
+      // Build the merged title map: AniList streamingEpisodes first, then
+      // MAL/Jikan fills any gaps. Skip MAL entirely if AniList already
+      // covered every episode we have on disk.
+      const titleMap = new Map<number, string>();
+      if (enrichment) {
+        for (const e of enrichment.episodeTitles) titleMap.set(e.episodeNumber, e.title);
+      }
+      if (needsEpisodeTitles && malId != null) {
+        try {
+          const eps = await malHandler.getEpisodes(malId, null);
+          for (const e of eps) {
+            if (!e.title || /^Episode\s+\d+$/i.test(e.title)) continue;
+            if (!titleMap.has(e.episodeNumber)) titleMap.set(e.episodeNumber, e.title);
+          }
+        } catch (err) {
+          logger.warn('metadata', `MAL episode-title backfill failed for ${title}: ${(err as Error).message}`, { series: title });
+        }
+      }
+      const episodeTitles = titleMap;
       await metadataHandler.transaction(async (current) => {
-        const existing = (current[seriesId] ?? {}) as Record<string, unknown>;
-        current[seriesId] = { ...existing, relations: slimRelations };
+        const existing = (current[seriesId] ?? {}) as Record<string, unknown> & {
+          episodes?: Array<{ episodeNumber: number; airDate?: string | null; title?: string | null }>;
+        };
+        const patch: Record<string, unknown> = {};
+        if (enrichment) {
+          patch.relations = enrichment.relations
+            .filter((r) => r.relationType !== 'CHARACTER')
+            .map((r) => ({
+              relationType: r.relationType,
+              anilistId: r.anilistId,
+              malId: r.malId,
+              type: r.type,
+              format: r.format,
+              status: r.status,
+              seasonYear: r.seasonYear,
+              siteUrl: r.siteUrl,
+              titleRomaji: r.titleRomaji,
+              titleEnglish: r.titleEnglish,
+              poster: r.poster,
+            }));
+          patch.tags = enrichment.tags;
+          patch.characters = enrichment.characters.slice(0, 10);
+          patch.recommendations = enrichment.recommendations.slice(0, 8);
+          const studiosByPriority = [...enrichment.studios].sort((a, b) => {
+            const score = (s: typeof a) =>
+              (s.isMain && s.isAnimationStudio ? 0 : s.isAnimationStudio ? 1 : s.isMain ? 2 : 3);
+            return score(a) - score(b);
+          });
+          patch.animationStudio =
+            studiosByPriority.find((s) => s.isMain && s.isAnimationStudio)?.name
+            ?? studiosByPriority.find((s) => s.isAnimationStudio)?.name
+            ?? studiosByPriority[0]?.name
+            ?? null;
+          patch.studios = studiosByPriority.map((s) => s.name);
+        }
+        if (episodeTitles && Array.isArray(existing.episodes)) {
+          patch.episodes = existing.episodes.map((e) => {
+            const t = episodeTitles.get(e.episodeNumber);
+            return t ? { ...e, title: t } : e;
+          });
+        }
+        current[seriesId] = { ...existing, ...patch };
         return { updated: current };
       });
       // Ping the renderer so an open series-detail page picks up the new
-      // relations without a manual reload. Single ping per series matches
-      // the existing match flow.
+      // data without a manual reload. Single ping per series matches the
+      // existing match flow.
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('metadata:file-status-changed', { filePath: '', status: 'ready' });
       }
     } catch (err) {
-      logger.warn('metadata', `Relations backfill failed for ${title}: ${(err as Error).message}`, { series: title });
+      logger.warn('metadata', `Enrichment backfill failed for ${title}: ${(err as Error).message}`, { series: title });
     }
   }
-  logger.info('metadata', `Relations backfill complete`);
+  logger.info('metadata', `Enrichment backfill complete`);
 }
 
 async function ingestSubtree(dirPath: string): Promise<void> {
@@ -763,7 +841,7 @@ app.whenReady().then(async () => {
   registerConfigIpc();
   registerFolderIpc(getMainWindow);
   registerImageCacheIpc();
-  registerMediaPlaybackIpc();
+  registerMediaPlaybackIpc(getMainWindow);
   registerTrackerIpc(getMainWindow);
   registerShellIpc();
   registerSubscriptionsIpc();
@@ -775,7 +853,11 @@ app.whenReady().then(async () => {
     await updateFileStatus(filePath, status);
     if (status === 'ready') await maybeEnqueueTranscode(filePath);
   });
-  transcodeCacheHandler.start(updateFileStatus);
+  transcodeCacheHandler.start(updateFileStatus, undefined, (progress) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('metadata:transcode-progress', progress);
+    }
+  });
 
   // Re-enqueue any files that were 'verifying' when the app last quit —
   // the in-memory probe queue doesn't survive restarts, and the watcher's

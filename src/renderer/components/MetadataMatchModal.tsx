@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Search, X, Loader2 } from 'lucide-react';
 import type { AnilistSearchResult } from '../../types/electron';
+import { Tooltip } from './primitives';
 
 interface Props {
   open: boolean;
@@ -141,23 +142,23 @@ function MetadataMatchModal({ open, seriesId, currentTitle, seasonNumber, onClos
             const isApplying = applyingId === r.id;
             const otherApplying = applyingId !== null && !isApplying;
             return (
-              <button
-                key={r.id}
-                className={`match-result${isApplying ? ' applying' : ''}`}
-                onClick={() => handlePick(r)}
-                disabled={otherApplying}
-                title={primary}
-              >
-                <div className="match-result-thumb">
-                  {cover ? <img src={cover} alt="" loading="lazy" decoding="async" /> : <span className="match-result-placeholder">?</span>}
-                  {isApplying && <span className="match-result-applying"><Loader2 size={18} className="spin" /></span>}
-                </div>
-                <div className="match-result-text">
-                  <div className="match-result-title">{primary}</div>
-                  {secondary && <div className="match-result-alt">{secondary}</div>}
-                  {meta && <div className="match-result-meta">{meta}</div>}
-                </div>
-              </button>
+              <Tooltip key={r.id} label={primary}>
+                <button
+                  className={`match-result${isApplying ? ' applying' : ''}`}
+                  onClick={() => handlePick(r)}
+                  disabled={otherApplying}
+                >
+                  <div className="match-result-thumb">
+                    {cover ? <img src={cover} alt="" loading="lazy" decoding="async" /> : <span className="match-result-placeholder">?</span>}
+                    {isApplying && <span className="match-result-applying"><Loader2 size={18} className="spin" /></span>}
+                  </div>
+                  <div className="match-result-text">
+                    <div className="match-result-title">{primary}</div>
+                    {secondary && <div className="match-result-alt">{secondary}</div>}
+                    {meta && <div className="match-result-meta">{meta}</div>}
+                  </div>
+                </button>
+              </Tooltip>
             );
           })}
         </div>

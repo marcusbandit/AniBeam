@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, X, Trash2, Copy, ChevronRight, ChevronDown } from 'lucide-react';
 import { useActivityLog, ALL_STAGES, ALL_LEVELS } from '../contexts/ActivityLogContext';
 import type { LogEvent, LogLevel, LogStage } from '../../shared/logTypes';
+import { Tooltip } from './primitives';
 
 function formatTime(ts: number): string {
   const d = new Date(ts);
@@ -179,11 +180,9 @@ export function ActivityLogDrawer() {
                 const ctxText = e.ctx?.series ?? e.ctx?.file;
                 const fullLine = `${e.message}${ctxText ? ` — ${ctxText}` : ''}`;
                 const expanded = expandedIds.has(e.id);
-                return (
+                const rowEl = (
                   <div
-                    key={`s-${e.id}`}
                     className={`activity-log-row level-${e.level}${expanded ? ' expanded' : ''}`}
-                    title={expanded ? undefined : fullLine}
                     onClick={() => toggleExpanded(e.id)}
                     role="button"
                   >
@@ -193,6 +192,9 @@ export function ActivityLogDrawer() {
                     {ctxText && <span className="activity-log-ctx">{ctxText}</span>}
                   </div>
                 );
+                return expanded
+                  ? <div key={`s-${e.id}`}>{rowEl}</div>
+                  : <Tooltip key={`s-${e.id}`} label={fullLine}>{rowEl}</Tooltip>;
               }
 
               const expanded = expandedGroups.has(row.id);
@@ -225,15 +227,13 @@ export function ActivityLogDrawer() {
                         const text = detail ?? e.message;
                         const fullLine = `${text}${ctxText ? ` — ${ctxText}` : ''}`;
                         return (
-                          <div
-                            key={e.id}
-                            className={`activity-log-child-row level-${e.level}`}
-                            title={fullLine}
-                          >
-                            <span className="activity-log-ts">{formatTime(e.ts)}</span>
-                            <span className="activity-log-msg">{text}</span>
-                            {ctxText && <span className="activity-log-ctx">{ctxText}</span>}
-                          </div>
+                          <Tooltip key={e.id} label={fullLine}>
+                            <div className={`activity-log-child-row level-${e.level}`}>
+                              <span className="activity-log-ts">{formatTime(e.ts)}</span>
+                              <span className="activity-log-msg">{text}</span>
+                              {ctxText && <span className="activity-log-ctx">{ctxText}</span>}
+                            </div>
+                          </Tooltip>
                         );
                       })}
                     </div>

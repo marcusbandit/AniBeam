@@ -3,7 +3,7 @@ import { Link2, Link2Off, ExternalLink, Copy, Check } from 'lucide-react';
 import type { TrackerProvider, TrackerStatus } from '../../main/preload';
 import { LOOPBACK_REDIRECT_URI, DEFAULT_CLIENT_IDS, DEFAULT_CLIENT_SECRETS } from '../../shared/trackerConstants';
 import { useTrackerProgress } from '../contexts/TrackerProgressContext';
-import { Section } from './primitives';
+import { Section, Tooltip } from './primitives';
 
 interface TrackerRowProps {
   provider: TrackerProvider;
@@ -33,10 +33,12 @@ function CopyableUri({ value }: { value: string }) {
     } catch { /* ignore */ }
   };
   return (
-    <button type="button" className="tracker-uri" onClick={() => void onCopy()} title="Copy to clipboard">
-      <code>{value}</code>
-      {copied ? <Check size={12} /> : <Copy size={12} />}
-    </button>
+    <Tooltip label="Copy to clipboard">
+      <button type="button" className="tracker-uri" onClick={() => void onCopy()}>
+        <code>{value}</code>
+        {copied ? <Check size={12} /> : <Copy size={12} />}
+      </button>
+    </Tooltip>
   );
 }
 

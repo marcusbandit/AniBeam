@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useMetadata } from '../hooks/useMetadata';
 import { Folder, RefreshCw, Plus, Trash2, Film } from 'lucide-react';
 import TrackersSection from './TrackersSection';
-import { Page, Section, Inline } from './primitives';
+import { Page, Section, Inline, Tooltip } from './primitives';
 
 interface CacheStats {
   count: number;
@@ -281,35 +281,41 @@ function SettingsTab() {
                           : <span>{count} {count === 1 ? 'title' : 'titles'}</span>}
                       </div>
                     </div>
-                    <button
-                      className="icon-btn"
-                      title="Rescan"
-                      onClick={() => handleScanFolder(folderPath)}
-                      disabled={scanning}
-                    >
-                      <RefreshCw size={15} className={isScanningThis ? 'spin' : ''} />
-                    </button>
-                    <button
-                      className="icon-btn icon-btn-danger"
-                      title="Remove"
-                      onClick={() => handleRemoveFolder(folderPath)}
-                      disabled={scanning}
-                    >
-                      <Trash2 size={15} />
-                    </button>
+                    <Tooltip label="Rescan">
+                      <button
+                        className="icon-btn"
+                        aria-label="Rescan"
+                        onClick={() => handleScanFolder(folderPath)}
+                        disabled={scanning}
+                      >
+                        <RefreshCw size={15} className={isScanningThis ? 'spin' : ''} />
+                      </button>
+                    </Tooltip>
+                    <Tooltip label="Remove">
+                      <button
+                        className="icon-btn icon-btn-danger"
+                        aria-label="Remove"
+                        onClick={() => handleRemoveFolder(folderPath)}
+                        disabled={scanning}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </Tooltip>
                   </div>
                   {movieFolders.map((moviePath) => {
                     const relative = moviePath.startsWith(folderPath)
                       ? moviePath.slice(folderPath.length).replace(/^\/+/, '')
                       : moviePath;
                     return (
-                      <div key={moviePath} className="folder-row folder-row-nested" title={moviePath}>
-                        <div className="folder-icon folder-icon-detected"><Film size={16} /></div>
-                        <div className="folder-info">
-                          <div className="folder-path">{relative}</div>
-                          <div className="folder-meta">Detected · movies</div>
+                      <Tooltip key={moviePath} label={moviePath}>
+                        <div className="folder-row folder-row-nested">
+                          <div className="folder-icon folder-icon-detected"><Film size={16} /></div>
+                          <div className="folder-info">
+                            <div className="folder-path">{relative}</div>
+                            <div className="folder-meta">Detected · movies</div>
+                          </div>
                         </div>
-                      </div>
+                      </Tooltip>
                     );
                   })}
                 </div>

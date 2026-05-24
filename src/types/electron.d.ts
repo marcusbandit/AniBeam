@@ -24,6 +24,7 @@ export type {
   LogLevel,
   LogStage,
   FileStatus,
+  ViewHistoryEntry,
 } from '../main/preload';
 
 declare global {

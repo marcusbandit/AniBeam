@@ -13,6 +13,7 @@ import {
   getLatestAiredEpisodeNumber,
 } from "../utils/airingUtils";
 import { getDisplayRating } from "../utils/ratingUtils";
+import { Tooltip } from "./primitives";
 
 const LIFT_SPEED = 12;
 const LIFT_AMOUNT_PX = 3;
@@ -48,7 +49,7 @@ function ShowCard({
 }: ShowCardProps) {
   const navigate = useNavigate();
   const { pickTitle } = useTitleLanguage();
-  const { getWatched } = useTrackerProgress();
+  const { getWatched, getUserScore } = useTrackerProgress();
 
   // Smoothed hover-lift is applied to the poster-wrap only — the info row
   // below stays anchored so titles don't slide when the cursor enters/leaves.
@@ -77,6 +78,16 @@ function ShowCard({
   const score = item.averageScore != null
     ? getDisplayRating(item.averageScore, item.source)
     : null;
+
+  // User's personal score from their tracker (AniList POINT_10_DECIMAL or
+  // MAL native — both already 0–10 thanks to TrackerProgressContext).
+  // Rendered as a sibling badge to the community score, same shape with a
+  // teal star instead of amber so the eye can tell the two apart.
+  const myScoreRaw = getUserScore({
+    anilistId: item.anilistId ?? undefined,
+    malId: item.malId ?? undefined,
+  });
+  const myScore = myScoreRaw != null ? myScoreRaw.toFixed(1) : null;
 
   const watched = getWatched({
     anilistId: item.anilistId ?? undefined,
@@ -115,6 +126,7 @@ function ShowCard({
       type="button"
       className="show-card"
       data-halo-bias
+      data-flip-id={item.id}
       onClick={() => navigate(`/series/${encodeURIComponent(item.id)}`)}
       onMouseEnter={() => liftRef.current?.setTarget(-LIFT_AMOUNT_PX)}
       onMouseLeave={() => liftRef.current?.setTarget(0)}
@@ -133,10 +145,24 @@ function ShowCard({
             EP {epBadge}
           </span>
         )}
-        {score && (
-          <span className="show-card-rating-badge" aria-label={`Rating ${score}`}>
-            {score}
-          </span>
+        {(score || myScore) && (
+          <div className="show-card-ratings">
+            {score && (
+              <span className="show-card-rating-badge" aria-label={`Rating ${score}`}>
+                {score}
+              </span>
+            )}
+            {myScore && (
+              <Tooltip label="Your score">
+                <span
+                  className="show-card-rating-badge show-card-rating-badge--mine"
+                  aria-label={`Your rating ${myScore}`}
+                >
+                  {myScore}
+                </span>
+              </Tooltip>
+            )}
+          </div>
         )}
         {posterUrl ? (
           <img
@@ -151,20 +177,29 @@ function ShowCard({
         )}
       </div>
       <div className="show-card-info">
-        <div className="show-card-title" title={item.folderName}>
-          {displayTitle}
-        </div>
+        <Tooltip label={item.folderName}>
+          <div className="show-card-title">
+            {displayTitle}
+          </div>
+        </Tooltip>
         <div className="show-card-meta">
-          <span className="show-card-meta-ago" title={metaLeftTitle}>
-            {leftText}
-          </span>
-          {nextUpcoming && nowMs != null && (
-            <span
-              className="show-card-meta-countdown"
-              title={`Episode ${nextUpcoming.episodeNumber} airs ${new Date(nextUpcoming.airDateMs).toLocaleString()}`}
-            >
-              {formatCountdownMinutes(nextUpcoming.airDateMs - nowMs)}
+          {metaLeftTitle ? (
+            <Tooltip label={metaLeftTitle}>
+              <span className="show-card-meta-ago">
+                {leftText}
+              </span>
+            </Tooltip>
+          ) : (
+            <span className="show-card-meta-ago">
+              {leftText}
             </span>
+          )}
+          {nextUpcoming && nowMs != null && (
+            <Tooltip label={`Episode ${nextUpcoming.episodeNumber} airs ${new Date(nextUpcoming.airDateMs).toLocaleString()}`}>
+              <span className="show-card-meta-countdown">
+                {formatCountdownMinutes(nextUpcoming.airDateMs - nowMs)}
+              </span>
+            </Tooltip>
           )}
         </div>
       </div>

@@ -1,8 +1,27 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Play, Check, Star, Tv, Film, Clock, ExternalLink } from "lucide-react";
+import { ArrowLeft, Play, Check, Star, Tv, Film, Clock, Users, RotateCw, Eye, EyeOff } from "lucide-react";
+
+// AniList brand mark. Inline rather than fetched so it ships with the
+// renderer bundle and stays available offline. Geometry is the official
+// stylized "A" from anilist.co/img/icons — currentColor so it tints with
+// the surrounding chip styling.
+function AniListIcon({ size = 12 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M6.361 2.943 0 21.056h4.942l1.077-3.133H11.4l1.052 3.133H22.9c.71 0 1.1-.39 1.1-1.1V17.53c0-.71-.39-1.1-1.1-1.1h-6.483V4.045c0-.71-.39-1.1-1.1-1.1h-2.422c-.71 0-1.1.39-1.1 1.1v1.728L11.295 4.04c-.39-.71-.926-1.097-1.55-1.097H6.361zm2.107 6.508 1.541 4.514H6.928l1.54-4.514z" />
+    </svg>
+  );
+}
 import type { LibraryItem } from "../../types/electron";
-import type { Relation, SeriesMetadata } from "../hooks/useMetadata";
+import type { Character, Recommendation, Relation, SeriesMetadata, Tag } from "../hooks/useMetadata";
 import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
 import { useTitleLanguage } from "../contexts/TitleLanguageContext";
 import { useTrackerProgress } from "../contexts/TrackerProgressContext";
@@ -22,7 +41,7 @@ import {
   type LastEpisodeMap,
 } from "../utils/playbackProgress";
 import type { TrackerListStatus } from "../../main/preload";
-import { Page, Section, Card, EpisodeRow, Pill } from "../components/primitives";
+import { Page, Section, Card, EpisodeRow, Pill, ScorePicker, Tooltip } from "../components/primitives";
 
 const LIST_STATUS_LABEL: Record<TrackerListStatus, string> = {
   watching: "Watching",
@@ -78,6 +97,10 @@ const RELATION_LABEL: Record<string, string> = {
 // chronologically left-to-right.
 const RELATION_ORDER: Record<string, number> = {
   PREQUEL: 0,
+  // Synthesized "you are here" entry — slots between PREQUEL (0) and
+  // SEQUEL (1) so a same-year tie still reads chronologically as
+  // prequel → current → sequel instead of falling to the end of the row.
+  __CURRENT__: 0.5,
   SEQUEL: 1,
   PARENT: 2,
   SIDE_STORY: 3,
@@ -88,6 +111,27 @@ const RELATION_ORDER: Record<string, number> = {
   ADAPTATION: 8,
   OTHER: 9,
   CONTAINS: 10,
+};
+
+// Primary sort key for the Related section. Series-type formats first
+// (TV → OVA → Special → Movie), then printed/audio formats (Manga →
+// Novel → One-shot → Visual Novel). Unknown / null formats fall to the
+// end so a missing format never displaces a properly-tagged entry. The
+// synthesized "current" card mirrors its real series format and falls
+// into the same bucket as its peers.
+const FORMAT_ORDER: Record<string, number> = {
+  TV:           0,
+  TV_SHORT:     1,
+  OVA:          2,
+  ONA:          3,
+  SPECIAL:      4,
+  MOVIE:        5,
+  MUSIC:        6,
+  MANGA:        7,
+  NOVEL:        8,
+  LIGHT_NOVEL:  8,
+  ONE_SHOT:     9,
+  VISUAL_NOVEL: 10,
 };
 
 function relationFormatLabel(format: string | null): string | null {
@@ -111,12 +155,20 @@ function relationFormatLabel(format: string | null): string | null {
 
 function sortRelations(relations: ReadonlyArray<Relation>): Relation[] {
   return [...relations].sort((a, b) => {
-    const ai = RELATION_ORDER[a.relationType] ?? 99;
-    const bi = RELATION_ORDER[b.relationType] ?? 99;
-    if (ai !== bi) return ai - bi;
+    // Primary: media format (Series → OVA → Special → Movie → Manga → ...).
+    // Items without a format fall to the end via the `?? 99` fallback.
+    const af = FORMAT_ORDER[a.format ?? ""] ?? 99;
+    const bf = FORMAT_ORDER[b.format ?? ""] ?? 99;
+    if (af !== bf) return af - bf;
+    // Secondary: release year ascending — within a format group the row
+    // reads chronologically (S1 2020, S2 2022, S3 2024, …).
     const ay = a.seasonYear ?? Number.POSITIVE_INFINITY;
     const by = b.seasonYear ?? Number.POSITIVE_INFINITY;
-    return ay - by;
+    if (ay !== by) return ay - by;
+    // Tertiary: AniList relation-type ordering. Keeps PREQUEL before
+    // SEQUEL when both share format + year, and slots the synthesized
+    // "you are here" card between them (RELATION_ORDER.__CURRENT__).
+    return (RELATION_ORDER[a.relationType] ?? 99) - (RELATION_ORDER[b.relationType] ?? 99);
   });
 }
 
@@ -131,7 +183,10 @@ function SeriesDetailPage() {
   const { seriesId } = useParams<{ seriesId: string }>();
   const navigate = useNavigate();
   const { pickTitle } = useTitleLanguage();
-  const { getWatched, getListStatus, getUserScore } = useTrackerProgress();
+  const { getWatched, getListStatus, getUserScore, getRewatchCount } = useTrackerProgress();
+  // Tag-panel spoiler toggle. Default off — opt-in only, per the user's
+  // standing preference to hide plot-spoiler tags until explicitly revealed.
+  const [showSpoilerTags, setShowSpoilerTags] = useState(false);
 
   const [item, setItem] = useState<LibraryItem | null>(null);
   const [meta, setMeta] = useState<SeriesMetadata | null>(null);
@@ -140,6 +195,11 @@ function SeriesDetailPage() {
   // series the user has on disk, the click navigates in-app; otherwise
   // we open AniList in the system browser.
   const [allItems, setAllItems] = useState<LibraryItem[]>([]);
+  // Full metadata map keyed by seriesId. Needed for transitive franchise
+  // expansion — to find S3 reachable from S1 through S2, we have to walk
+  // each in-library series's own `relations` array, not just the current
+  // series's.
+  const [allMeta, setAllMeta] = useState<Record<string, SeriesMetadata>>({});
   const [initialLoading, setInitialLoading] = useState(true);
   // Per-episode resume position + per-series last-finished episode, both
   // sourced from localStorage. Refreshed on mount and on window-focus so a
@@ -151,6 +211,20 @@ function SeriesDetailPage() {
   // air date exists for the active series so an off-air finished show
   // doesn't spin the timer for nothing.
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  // Inline score popover state. Anchored to the score chip in the hero row
+  // and used as the fallback path when the auto-prompt at the end of the
+  // final episode is dismissed (or never fires because the user marked the
+  // series outside the player). Default 8.0 matches the player popup.
+  const [scoreEditing, setScoreEditing] = useState(false);
+  const [scoreDraft, setScoreDraft] = useState<string>('8.0');
+  const [scoreBusy, setScoreBusy] = useState(false);
+  const [scoreError, setScoreError] = useState<string | null>(null);
+  // Tracked-count correction popover — lets the user set watched progress to
+  // any value (including lower) to undo an over-count.
+  const [progressEditing, setProgressEditing] = useState(false);
+  const [progressDraft, setProgressDraft] = useState(0);
+  const [progressBusy, setProgressBusy] = useState(false);
+  const [progressError, setProgressError] = useState<string | null>(null);
 
   useEffect(() => {
     const refresh = () => {
@@ -173,14 +247,19 @@ function SeriesDetailPage() {
       ]);
       const fresh = Array.isArray(all) ? all : [];
       const found = fresh.find((i) => i.id === decodedId) ?? null;
+      const metaMap = (allMeta && typeof allMeta === "object")
+        ? (allMeta as Record<string, SeriesMetadata>)
+        : {};
       setAllItems(fresh);
       setItem(found);
-      setMeta((allMeta && typeof allMeta === "object" ? allMeta[decodedId] : null) ?? null);
+      setAllMeta(metaMap);
+      setMeta(metaMap[decodedId] ?? null);
     } catch (err) {
       console.error("library:walk failed", err);
       setAllItems([]);
       setItem(null);
       setMeta(null);
+      setAllMeta({});
     } finally {
       setInitialLoading(false);
     }
@@ -232,6 +311,131 @@ function SeriesDetailPage() {
     [meta?.relations],
   );
 
+  // Helper: resolve a Relation entry to a library seriesId, if any. Same
+  // lookup as the click handler — kept consistent so the grouping never
+  // disagrees with the in-card "In Library" pill.
+  const resolveOwnedId = useCallback((rel: Relation): string | undefined => {
+    if (rel.type !== "ANIME") return undefined;
+    return (rel.anilistId != null ? ownedByExternalId.byAnilist.get(rel.anilistId) : undefined)
+      ?? (rel.malId != null ? ownedByExternalId.byMal.get(rel.malId) : undefined);
+  }, [ownedByExternalId]);
+
+  // Split relations into two buckets so the page can show "what's already
+  // in your library" before "what isn't".
+  //
+  // The in-library bucket is computed transitively: starting from the
+  // current series, we BFS through each visited series's own `relations`
+  // and surface every owned entry reachable through the franchise graph.
+  // Example: current series is S1, which only directly links to S2; but
+  // S2 links to S3 (also owned). S3 is reachable through S2 and should
+  // appear here even though S1's metadata doesn't mention it. Without
+  // this, sibling seasons of a multi-cour franchise look disconnected
+  // unless every season's AniList metadata happens to list every other.
+  //
+  // External relations stay direct only — going transitive there would
+  // flood the page with every loosely-connected external entry across
+  // the entire franchise's metadata.
+  const { inLibraryRelations, externalRelations } = useMemo(() => {
+    if (!decodedId) {
+      return { inLibraryRelations: [] as Relation[], externalRelations: [] as Relation[] };
+    }
+
+    const external: Relation[] = [];
+    for (const rel of sortedRelations) {
+      if (resolveOwnedId(rel) == null) external.push(rel);
+    }
+
+    // BFS over the franchise graph. visitedOwned tracks series IDs we've
+    // already represented so we never duplicate a card if a series is
+    // reachable through multiple edges (very common — relations are
+    // bidirectional on AniList: S1→S2 sequel and S2→S1 prequel both
+    // exist, so a naive walk would loop forever).
+    const visitedOwned = new Set<string>([decodedId]);
+    const reached: Relation[] = [];
+    type Frame = { relations: Relation[] };
+    const queue: Frame[] = [{ relations: meta?.relations ?? [] }];
+
+    while (queue.length > 0) {
+      const { relations } = queue.shift()!;
+      for (const rel of relations) {
+        const ownedId = resolveOwnedId(rel);
+        if (!ownedId || visitedOwned.has(ownedId)) continue;
+        visitedOwned.add(ownedId);
+        reached.push(rel);
+        const childMeta = allMeta[ownedId];
+        if (childMeta?.relations && childMeta.relations.length > 0) {
+          queue.push({ relations: childMeta.relations });
+        }
+      }
+    }
+
+    return { inLibraryRelations: sortRelations(reached), externalRelations: external };
+  }, [decodedId, meta, allMeta, sortedRelations, resolveOwnedId]);
+
+  // Marker relationType used purely as a sentinel for the synthesized
+  // "current series" entry inside the in-library bucket. Anything that
+  // sees this value should render the Current card instead of a normal
+  // relation card. Kept out of the user-visible RELATION_LABEL map so it
+  // can never leak as a label in a normal Card.
+  const CURRENT_RELATION_TYPE = "__CURRENT__";
+
+  // Synthesize a Relation-shaped entry for the current series so it can
+  // slot into the in-library list at its real chronological position.
+  // Sort all in-library cards (the synthesized one + the BFS-discovered
+  // ones) by seasonYear ascending so a multi-cour franchise reads
+  // left-to-right as season 1, season 2, season 3 — anchored visually
+  // by where the user actually is right now.
+  const inLibraryWithSelf = useMemo<Relation[]>(() => {
+    if (!item) return inLibraryRelations;
+    // Year fallback chain matches the hero's formatYear logic: explicit
+    // seasonYear on meta → parse from startDate on either meta or item.
+    // Without this the current card sometimes had no "2022" chip while
+    // its siblings did, because metadata.seasonYear was null for shows
+    // matched by AniSchedule rather than by AniList's season query.
+    const startDate = item.startDate ?? meta?.startDate ?? null;
+    const parsedYearFromStart = startDate
+      ? (Number.isFinite(parseInt(startDate.split("-")[0], 10))
+          ? parseInt(startDate.split("-")[0], 10)
+          : null)
+      : null;
+    const resolvedYear = meta?.seasonYear ?? parsedYearFromStart;
+    // Format fallback: meta.format → item type → null. Mirrors the hero
+    // chip ("Series" default), but for the relation row we leave it null
+    // when truly unknown so relationFormatLabel returns nothing rather
+    // than showing a placeholder that the siblings don't have.
+    const resolvedFormat = meta?.format
+      ?? (item.type === "movie" ? "MOVIE" : null);
+    const self: Relation = {
+      relationType: CURRENT_RELATION_TYPE,
+      anilistId: item.anilistId ?? -1,
+      malId: item.malId ?? null,
+      type: "ANIME",
+      format: resolvedFormat,
+      status: meta?.status ?? item.status ?? null,
+      seasonYear: resolvedYear,
+      siteUrl: null,
+      titleRomaji: meta?.titleRomaji ?? item.titleRomaji ?? null,
+      titleEnglish: meta?.titleEnglish ?? item.titleEnglish ?? null,
+      poster: item.posterLocal
+        ? `media://${encodeURIComponent(item.posterLocal)}`
+        : (item.poster ?? null),
+    };
+    const merged = [self, ...inLibraryRelations];
+    // Same sort hierarchy as sortRelations() — format bucket → year →
+    // relation-type tiebreaker. Keeps the in-library row consistent with
+    // the not-in-library row so the user sees the same grouping logic on
+    // both sides of the Related section.
+    return merged.slice().sort((a, b) => {
+      const af = FORMAT_ORDER[a.format ?? ""] ?? 99;
+      const bf = FORMAT_ORDER[b.format ?? ""] ?? 99;
+      if (af !== bf) return af - bf;
+      const ay = a.seasonYear ?? Number.POSITIVE_INFINITY;
+      const by = b.seasonYear ?? Number.POSITIVE_INFINITY;
+      if (ay !== by) return ay - by;
+      return (RELATION_ORDER[a.relationType] ?? 99) - (RELATION_ORDER[b.relationType] ?? 99);
+    });
+  }, [item, meta, inLibraryRelations]);
+
   // Stable order: by season then episode number, falling back to filename.
   const sorted = useMemo(() => {
     if (!item) return [];
@@ -243,6 +447,47 @@ function SeriesDetailPage() {
       return a.filename.localeCompare(b.filename);
     });
   }, [item]);
+
+  // filePath → true for any episode that's being served from the on-disk
+  // transcode cache (i.e. the source codec needed conversion before
+  // Chromium could play it). LibraryItem.files doesn't carry this — the
+  // signal only lives on metadata.json's fileEpisodes — so we index it
+  // here and the row look-up stays O(1).
+  const transcodedByPath = useMemo(() => {
+    const set = new Set<string>();
+    for (const fe of meta?.fileEpisodes ?? []) {
+      if (fe.transcodedPath) set.add(fe.filePath);
+    }
+    return set;
+  }, [meta?.fileEpisodes]);
+
+  // Pre-build the episode-title lookup from API metadata so the episode
+  // list can swap file-derived titles for canonical AniList/MAL titles.
+  // Defined here (above the early-return guards) so the hook order stays
+  // stable across the initial-loading → loaded transition.
+  const apiTitleByEp = useMemo(() => {
+    const map = new Map<number, string>();
+    const eps = (meta?.episodes ?? []) as Array<{ episodeNumber: number; title?: string | null }>;
+    for (const e of eps) {
+      if (typeof e.episodeNumber === 'number' && typeof e.title === 'string' && e.title.length > 0) {
+        map.set(e.episodeNumber, e.title);
+      }
+    }
+    return map;
+  }, [meta?.episodes]);
+  // Tags — sort by AniList rank desc, filter spoilers/adult unless the user
+  // has toggled them on. We never cap at a fixed count here; the panel's CSS
+  // clips overflow visually, so "however many fit" is layout-driven.
+  const allTags: Tag[] = (meta?.tags ?? []) as Tag[];
+  const visibleTags = useMemo(() => {
+    return [...allTags]
+      .filter((t) => showSpoilerTags || (!t.isMediaSpoiler && !t.isGeneralSpoiler && !t.isAdult))
+      .sort((a, b) => (b.rank ?? 0) - (a.rank ?? 0));
+  }, [allTags, showSpoilerTags]);
+  const hasHiddenSpoilerTags = useMemo(
+    () => allTags.some((t) => t.isMediaSpoiler || t.isGeneralSpoiler || t.isAdult),
+    [allTags],
+  );
 
   if (initialLoading) {
     return (
@@ -327,6 +572,86 @@ function SeriesDetailPage() {
   };
   const watched = getWatched(trackerIds);
   const listStatus = getListStatus(trackerIds);
+  const rewatchCount = getRewatchCount(trackerIds);
+  const hasTrackerId = item.anilistId != null || item.malId != null;
+  // Animation studio — explicit `animationStudio` (set by the matcher when
+  // AniList flagged it main + isAnimationStudio) wins; otherwise show the
+  // first entry of `studios` so something is still surfaced.
+  const studioName = (meta as unknown as { animationStudio?: string | null })?.animationStudio
+    ?? (meta?.studios && meta.studios.length > 0 ? meta.studios[0] : null);
+  const characters: Character[] = (meta?.characters ?? []) as Character[];
+  // Hard-cap at 7 — the recommendation row's layout falls apart past this
+  // count (any 8th card pushes the grid into a wrap that breaks the visual
+  // rhythm). AniList sorts by RATING_DESC so the top 7 are the strongest.
+  const recommendations: Recommendation[] = ((meta?.recommendations ?? []) as Recommendation[]).slice(0, 7);
+  const submitSeriesScore = async (raw: string) => {
+    const score = parseFloat(raw);
+    if (!Number.isFinite(score)) {
+      setScoreError('invalid score');
+      return;
+    }
+    setScoreBusy(true);
+    setScoreError(null);
+    const total = item.totalEpisodes ?? meta?.totalEpisodes ?? null;
+    type ScoreRes = Awaited<ReturnType<typeof window.electronAPI.trackerSetScore>>;
+    const calls: Promise<ScoreRes>[] = [];
+    if (item.anilistId != null) {
+      calls.push(window.electronAPI.trackerSetScore('anilist', item.anilistId, score, total));
+    }
+    if (item.malId != null) {
+      calls.push(window.electronAPI.trackerSetScore('mal', item.malId, score, total));
+    }
+    const results = await Promise.allSettled(calls);
+    let lastErr: string | null = null;
+    let anyOk = false;
+    for (const r of results) {
+      if (r.status === 'rejected') { lastErr = (r.reason as Error)?.message ?? 'unknown error'; continue; }
+      const v = r.value;
+      if (v.ok) anyOk = true;
+      else if (v.reason === 'error') lastErr = v.message ?? null;
+      else if (v.reason === 'no-account') lastErr = lastErr ?? 'no tracker connected';
+    }
+    setScoreBusy(false);
+    if (anyOk) {
+      setScoreEditing(false);
+    } else {
+      setScoreError(lastErr ?? 'no tracker connected');
+    }
+  };
+  const submitSeriesProgress = async (value: number) => {
+    const target = Math.max(0, Math.floor(value));
+    if (!Number.isFinite(target)) {
+      setProgressError('invalid count');
+      return;
+    }
+    setProgressBusy(true);
+    setProgressError(null);
+    const total = item.totalEpisodes ?? meta?.totalEpisodes ?? null;
+    type ProgRes = Awaited<ReturnType<typeof window.electronAPI.trackerSetProgress>>;
+    const calls: Promise<ProgRes>[] = [];
+    if (item.anilistId != null) {
+      calls.push(window.electronAPI.trackerSetProgress('anilist', item.anilistId, target, total));
+    }
+    if (item.malId != null) {
+      calls.push(window.electronAPI.trackerSetProgress('mal', item.malId, target, total));
+    }
+    const results = await Promise.allSettled(calls);
+    let lastErr: string | null = null;
+    let anyOk = false;
+    for (const r of results) {
+      if (r.status === 'rejected') { lastErr = (r.reason as Error)?.message ?? 'unknown error'; continue; }
+      const v = r.value;
+      if (v.ok) anyOk = true;
+      else if (v.reason === 'error') lastErr = v.message ?? null;
+      else if (v.reason === 'no-account') lastErr = lastErr ?? 'no tracker connected';
+    }
+    setProgressBusy(false);
+    if (anyOk) {
+      setProgressEditing(false);
+    } else {
+      setProgressError(lastErr ?? 'no tracker connected');
+    }
+  };
   const watchedCount = typeof watched === "number" ? watched : 0;
   const trackedKnown = watched != null;
   // Denominator priority: published total → latest aired episode → files
@@ -398,24 +723,93 @@ function SeriesDetailPage() {
             <h1 className="series-hero-title">{displayTitle}</h1>
             {altTitle && <p className="series-hero-alt-title">{altTitle}</p>}
 
-            <div className="series-hero-chips">
+            <div className="series-hero-chips series-hero-chips--ratings">
               {rating && (
-                <span className="hero-chip hero-chip-rating" title="Average rating">
-                  <Star size={12} strokeWidth={2.25} />
-                  {rating}
+                <Tooltip label="Average rating">
+                  <span className="hero-chip hero-chip-rating">
+                    <Star size={12} strokeWidth={2.25} />
+                    {rating}
+                  </span>
+                </Tooltip>
+              )}
+              {hasTrackerId && (
+                <span className="hero-chip-myscore-anchor">
+                  <Tooltip label={userScoreLabel ? "Click to change your rating" : "Click to rate this show"}>
+                    <button
+                      type="button"
+                      className="hero-chip hero-chip-myscore hero-chip-myscore-button"
+                      onClick={() => {
+                        setScoreDraft(userScore != null ? userScore.toFixed(1) : '8.0');
+                        setScoreError(null);
+                        setScoreEditing((v) => !v);
+                      }}
+                    >
+                      <Star size={12} strokeWidth={2.25} />
+                      {userScoreLabel ?? 'Rate'}
+                      <span className="hero-chip-myscore-tag">YOU</span>
+                    </button>
+                  </Tooltip>
+                  {scoreEditing && (
+                    <div className="hero-score-popover" role="dialog">
+                      <ScorePicker
+                        value={scoreDraft}
+                        onChange={setScoreDraft}
+                        disabled={scoreBusy}
+                        ariaLabel="Your rating"
+                      />
+                      <button
+                        type="button"
+                        className="hero-score-submit"
+                        onClick={() => void submitSeriesScore(scoreDraft)}
+                        disabled={scoreBusy}
+                      >
+                        {scoreBusy ? 'Saving…' : 'Save'}
+                      </button>
+                      {userScore != null && (
+                        <Tooltip label="Clear rating">
+                          <button
+                            type="button"
+                            className="hero-score-clear"
+                            onClick={() => void submitSeriesScore('0')}
+                            disabled={scoreBusy}
+                          >
+                            Clear
+                          </button>
+                        </Tooltip>
+                      )}
+                      {scoreError && <span className="hero-score-error">{scoreError}</span>}
+                    </div>
+                  )}
                 </span>
               )}
-              {userScoreLabel && (
-                <span className="hero-chip hero-chip-myscore" title="Your rating">
-                  <Star size={12} strokeWidth={2.25} />
-                  {userScoreLabel}
-                  <span className="hero-chip-myscore-tag">YOU</span>
-                </span>
+              {item.anilistId != null && (
+                <Tooltip label="Open on AniList">
+                  <button
+                    type="button"
+                    className="hero-chip hero-chip-anilist hero-chip-anilist--icon"
+                    aria-label="Open on AniList"
+                    onClick={() => {
+                      void window.electronAPI.openExternal(
+                        `https://anilist.co/anime/${item.anilistId}`,
+                      );
+                    }}
+                  >
+                    <AniListIcon size={14} />
+                  </button>
+                </Tooltip>
               )}
+            </div>
+
+            <div className="series-hero-chips series-hero-chips--info">
               <span className="hero-chip">{formatLabel}</span>
               {year && <span className="hero-chip">{year}</span>}
               {!isMovie && totalEpisodes != null && (
                 <span className="hero-chip">{totalEpisodes} ep</span>
+              )}
+              {studioName && (
+                <Tooltip label="Animation studio">
+                  <span className="hero-chip hero-chip-studio">{studioName}</span>
+                </Tooltip>
               )}
               {statusLabel && (
                 <span className={`hero-chip hero-chip-status status-${normalizeStatus(item.status ?? meta?.status ?? null)}`}>
@@ -423,36 +817,27 @@ function SeriesDetailPage() {
                 </span>
               )}
               {nextUpcoming && (
-                <span
-                  className="hero-chip hero-chip-next-ep"
-                  title={`Episode ${nextUpcoming.episodeNumber} airs ${new Date(nextUpcoming.airDateMs).toLocaleString()}`}
-                >
-                  <Clock size={12} strokeWidth={2.25} />
-                  EP {String(nextUpcoming.episodeNumber).padStart(2, "0")} in {formatCountdown(nextUpcoming.airDateMs - nowMs)}
-                </span>
+                <Tooltip label={`Episode ${nextUpcoming.episodeNumber} airs ${new Date(nextUpcoming.airDateMs).toLocaleString()}`}>
+                  <span className="hero-chip hero-chip-next-ep">
+                    <Clock size={12} strokeWidth={2.25} />
+                    EP {String(nextUpcoming.episodeNumber).padStart(2, "0")} in {formatCountdown(nextUpcoming.airDateMs - nowMs)}
+                  </span>
+                </Tooltip>
               )}
               {listStatus && (
-                <span
-                  className={`hero-chip hero-chip-list list-${listStatus}`}
-                  title={`On your list: ${LIST_STATUS_LABEL[listStatus]}`}
-                >
-                  {LIST_STATUS_LABEL[listStatus]}
-                </span>
+                <Tooltip label={`On your list: ${LIST_STATUS_LABEL[listStatus]}`}>
+                  <span className={`hero-chip hero-chip-list list-${listStatus}`}>
+                    {LIST_STATUS_LABEL[listStatus]}
+                  </span>
+                </Tooltip>
               )}
-              {item.anilistId != null && (
-                <button
-                  type="button"
-                  className="hero-chip hero-chip-anilist"
-                  title="Open on AniList"
-                  onClick={() => {
-                    void window.electronAPI.openExternal(
-                      `https://anilist.co/anime/${item.anilistId}`,
-                    );
-                  }}
-                >
-                  <ExternalLink size={12} strokeWidth={2.25} />
-                  AniList
-                </button>
+              {rewatchCount != null && rewatchCount > 0 && (
+                <Tooltip label={`Rewatched ${rewatchCount}${rewatchCount === 1 ? " time" : " times"}`}>
+                  <span className="hero-chip hero-chip-rewatch">
+                    <RotateCw size={12} strokeWidth={2.25} />
+                    {rewatchCount}× rewatched
+                  </span>
+                </Tooltip>
               )}
             </div>
 
@@ -467,9 +852,57 @@ function SeriesDetailPage() {
                     {trackedKnown ? "Tracked" : "Not tracked"}
                   </span>
                   <span className="series-hero-progress-count">
-                    {trackedKnown
-                      ? `${String(watchedCount).padStart(String(denom || 1).length, "0")} / ${denom > 0 ? denom : "?"}${denomIsAiringEstimate ? "+" : ""}`
-                      : `${sorted.length} on disk`}
+                    {trackedKnown && hasTrackerId ? (
+                      <span className="hero-progress-edit-anchor">
+                        <Tooltip label="Click to correct the tracked count">
+                          <button
+                            type="button"
+                            className="series-hero-progress-count-btn"
+                            onClick={() => {
+                              setProgressDraft(watchedCount);
+                              setProgressError(null);
+                              setProgressEditing((v) => !v);
+                            }}
+                          >
+                            {`${String(watchedCount).padStart(String(denom || 1).length, "0")} / ${denom > 0 ? denom : "?"}${denomIsAiringEstimate ? "+" : ""}`}
+                          </button>
+                        </Tooltip>
+                        {progressEditing && (
+                          <div className="hero-progress-popover" role="dialog">
+                            <div className="hero-progress-stepper">
+                              <button
+                                type="button"
+                                className="hero-progress-step"
+                                onClick={() => setProgressDraft((v) => Math.max(0, v - 1))}
+                                disabled={progressBusy || progressDraft <= 0}
+                                aria-label="Decrease watched count"
+                              >−</button>
+                              <span className="hero-progress-value">{progressDraft}</span>
+                              <button
+                                type="button"
+                                className="hero-progress-step"
+                                onClick={() => setProgressDraft((v) => (denom > 0 ? Math.min(denom, v + 1) : v + 1))}
+                                disabled={progressBusy || (denom > 0 && progressDraft >= denom)}
+                                aria-label="Increase watched count"
+                              >+</button>
+                            </div>
+                            <button
+                              type="button"
+                              className="hero-progress-submit"
+                              onClick={() => void submitSeriesProgress(progressDraft)}
+                              disabled={progressBusy || progressDraft === watchedCount}
+                            >
+                              {progressBusy ? "Saving…" : "Save"}
+                            </button>
+                            {progressError && <span className="hero-progress-error">{progressError}</span>}
+                          </div>
+                        )}
+                      </span>
+                    ) : (
+                      trackedKnown
+                        ? `${String(watchedCount).padStart(String(denom || 1).length, "0")} / ${denom > 0 ? denom : "?"}${denomIsAiringEstimate ? "+" : ""}`
+                        : `${sorted.length} on disk`
+                    )}
                   </span>
                 </div>
                 <div className="series-hero-progress-track" aria-hidden="true">
@@ -481,6 +914,40 @@ function SeriesDetailPage() {
               </div>
             )}
           </div>
+
+          {allTags.length > 0 && (
+            <aside className="series-hero-tags" aria-label="Tags">
+              <div className="series-hero-tags-head">
+                <span className="series-hero-tags-label">Tags</span>
+                {hasHiddenSpoilerTags && (
+                  <Tooltip label={showSpoilerTags ? "Hide spoiler tags" : "Show spoiler tags"}>
+                    <button
+                      type="button"
+                      className={`series-hero-tags-toggle${showSpoilerTags ? " is-active" : ""}`}
+                      aria-pressed={showSpoilerTags}
+                      onClick={() => setShowSpoilerTags((v) => !v)}
+                    >
+                      {showSpoilerTags ? <EyeOff size={12} strokeWidth={2.25} /> : <Eye size={12} strokeWidth={2.25} />}
+                      <span>{showSpoilerTags ? "Hide spoilers" : "Show spoilers"}</span>
+                    </button>
+                  </Tooltip>
+                )}
+              </div>
+              <ul className="series-hero-tags-list">
+                {visibleTags.map((t) => {
+                  const isSpoilery = t.isMediaSpoiler || t.isGeneralSpoiler || t.isAdult;
+                  return (
+                    <li key={t.name} className={`series-hero-tag${isSpoilery ? " is-spoiler" : ""}`}>
+                      <span className="series-hero-tag-name">{t.name}</span>
+                      {typeof t.rank === "number" && (
+                        <span className="series-hero-tag-rank">{t.rank}</span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </aside>
+          )}
         </div>
       </section>
 
@@ -497,16 +964,35 @@ function SeriesDetailPage() {
             // 4s and on pause. Zero for episodes that were never started OR
             // that finished (entry is deleted on completion).
             const fraction = getProgressFraction(localProgress, item.id, f.episodeNumber);
+            const isTranscoded = transcodedByPath.has(f.filePath);
+            const statusPill =
+              isNext ? <Pill tone="accent">Next up</Pill> :
+              isWatched ? <Pill tone="muted">Watched</Pill> :
+              null;
+            // Prefer the API title (canonical name from MAL/AniList) over the
+            // filename-derived one. Filenames are noisy; the API title is the
+            // user-facing canonical name. Fall back to the file's parsed title
+            // when no API title is on hand (legacy data, untitled fillers).
+            const episodeTitle = apiTitleByEp.get(f.episodeNumber) ?? f.title;
             return (
               <EpisodeRow
                 key={f.filePath}
                 marker={isWatched ? <Check size={14} strokeWidth={2.5} /> : <Play size={14} />}
                 code={code}
-                title={f.title}
+                title={episodeTitle}
                 trailing={
-                  isNext ? <Pill tone="accent">Next up</Pill> :
-                  isWatched ? <Pill tone="muted">Watched</Pill> :
-                  null
+                  isTranscoded || statusPill ? (
+                    <>
+                      {isTranscoded && (
+                        <Tooltip label="Source codec wasn't browser-playable — this episode plays from the on-disk h.264 transcode cache">
+                          <span>
+                            <Pill tone="amber">Re-encoded</Pill>
+                          </span>
+                        </Tooltip>
+                      )}
+                      {statusPill}
+                    </>
+                  ) : null
                 }
                 progress={fraction}
                 state={isNext ? "next-up" : isWatched ? "watched" : "default"}
@@ -519,68 +1005,295 @@ function SeriesDetailPage() {
         </div>
       </Section>
 
+      {characters.length > 0 && (
+        <Section title="Characters" count={characters.length}>
+          <div className="character-grid">
+            {characters.map((c) => (
+              <a
+                key={c.anilistId}
+                className="character-card"
+                href={c.siteUrl ?? `https://anilist.co/character/${c.anilistId}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  const url = c.siteUrl ?? `https://anilist.co/character/${c.anilistId}`;
+                  void window.electronAPI.openExternal(url);
+                }}
+              >
+                <div className="character-card-portrait">
+                  {c.image ? (
+                    <img src={c.image} alt={c.name ?? "Character"} loading="lazy" decoding="async" />
+                  ) : (
+                    <div className="character-card-portrait-empty">
+                      <Users size={24} />
+                    </div>
+                  )}
+                </div>
+                <div className="character-card-body">
+                  <div className="character-card-name">{c.name ?? "Unknown"}</div>
+                  {c.role && (
+                    <div className="character-card-role">{c.role.toLowerCase()}</div>
+                  )}
+                </div>
+              </a>
+            ))}
+          </div>
+        </Section>
+      )}
+
       {sortedRelations.length > 0 && (
         <Section title="Related" count={sortedRelations.length}>
+          {/* Gate on actual siblings — not on inLibraryWithSelf — so we don't
+              render a lonely "You are here" card when the user has no other
+              entries from this franchise on disk. The current series is
+              already the page itself; surfacing it alone under "Available"
+              is just visual noise. */}
+          {inLibraryRelations.length > 0 && (
+            <div className="relations-group relations-group--internal">
+              <div className="relations-group__head">
+                <span className="relations-group__dot" aria-hidden="true" />
+                <span className="relations-group__label">Available</span>
+                <span className="relations-group__count">{inLibraryWithSelf.length}</span>
+              </div>
+              {/* Timeline rail — a thin teal line behind the cards visually
+                  anchors the franchise as a single chronological chain. Only
+                  rendered when there are 2+ cards (a rail through one card is
+                  noise). */}
+              <div className="relations-grid relations-grid--timeline">
+                {inLibraryWithSelf.length > 1 && (
+                  <div className="relations-timeline-rail" aria-hidden="true" />
+                )}
+                {inLibraryWithSelf.map((rel) => {
+                  const isCurrent = rel.relationType === CURRENT_RELATION_TYPE;
+                  const ownedId = isCurrent
+                    ? decodedId
+                    : (rel.type === "ANIME"
+                      ? (rel.anilistId != null ? ownedByExternalId.byAnilist.get(rel.anilistId) : undefined)
+                        ?? (rel.malId != null ? ownedByExternalId.byMal.get(rel.malId) : undefined)
+                      : undefined);
+                  const relTitle = pickTitle({
+                    titleRomaji: rel.titleRomaji,
+                    titleEnglish: rel.titleEnglish,
+                    folderName: rel.titleRomaji ?? rel.titleEnglish ?? "Untitled",
+                  });
+                  const typeLabel = isCurrent
+                    ? "Currently viewing"
+                    : (RELATION_LABEL[rel.relationType]
+                      ?? rel.relationType.replace(/_/g, " ").toLowerCase());
+                  const formatLabel = relationFormatLabel(rel.format);
+                  if (isCurrent) {
+                    // Non-clickable marker card. Uses the same shell as the
+                    // sibling cards so it shares the chronological row with
+                    // them, but skips Card's hover-lift (it goes nowhere) and
+                    // swaps the In-Library pill for "Current".
+                    return (
+                      <Card
+                        key="current-self"
+                        variant="internal"
+                        noLift
+                        aria-current="page"
+                        data-format={rel.format ?? ""}
+                      >
+                        <div className="relation-card-poster">
+                          {rel.poster ? (
+                            <img src={rel.poster} alt={relTitle} loading="lazy" decoding="async" />
+                          ) : (
+                            <div className="relation-card-poster-empty">
+                              <Tv size={28} />
+                            </div>
+                          )}
+                          <span aria-hidden="true">
+                            <Pill tone="muted">You are here</Pill>
+                          </span>
+                        </div>
+                        <div className="relation-card-body">
+                          <div className="relation-card-type">{typeLabel}</div>
+                          <div className="relation-card-title">{relTitle}</div>
+                          <div className="relation-card-meta">
+                            {formatLabel && (
+                            <span className="relation-card-format" data-format={rel.format ?? ""}>
+                              {formatLabel}
+                            </span>
+                          )}
+                            {rel.seasonYear && <span>{rel.seasonYear}</span>}
+                          </div>
+                        </div>
+                      </Card>
+                    );
+                  }
+                  const handleClick = () => {
+                    if (ownedId) navigate(`/series/${encodeURIComponent(ownedId)}`);
+                  };
+                  return (
+                    <Card
+                      key={`${rel.type ?? "x"}-${rel.anilistId}-${rel.relationType}`}
+                      variant="internal"
+                      onClick={handleClick}
+                      tooltip={`Open ${relTitle} in your library`}
+                      data-format={rel.format ?? ""}
+                    >
+                      <div className="relation-card-poster">
+                        {rel.poster ? (
+                          <img src={rel.poster} alt={relTitle} loading="lazy" decoding="async" />
+                        ) : (
+                          <div className="relation-card-poster-empty">
+                            {rel.type === "MANGA" ? <Film size={28} /> : <Tv size={28} />}
+                          </div>
+                        )}
+                        <span aria-hidden="true">
+                          <Pill tone="teal">Available</Pill>
+                        </span>
+                      </div>
+                      <div className="relation-card-body">
+                        <div className="relation-card-type">{typeLabel}</div>
+                        <div className="relation-card-title">{relTitle}</div>
+                        <div className="relation-card-meta">
+                          {formatLabel && (
+                            <span className="relation-card-format" data-format={rel.format ?? ""}>
+                              {formatLabel}
+                            </span>
+                          )}
+                          {rel.seasonYear && <span>{rel.seasonYear}</span>}
+                        </div>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {externalRelations.length > 0 && (
+            <div className="relations-group relations-group--external">
+              <div className="relations-group__head">
+                <span className="relations-group__dot" aria-hidden="true" />
+                <span className="relations-group__label">Discover</span>
+                <span className="relations-group__count">{externalRelations.length}</span>
+              </div>
+              <div className="relations-grid">
+                {externalRelations.map((rel) => {
+                  const relTitle = pickTitle({
+                    titleRomaji: rel.titleRomaji,
+                    titleEnglish: rel.titleEnglish,
+                    folderName: rel.titleRomaji ?? rel.titleEnglish ?? "Untitled",
+                  });
+                  const typeLabel = RELATION_LABEL[rel.relationType]
+                    ?? rel.relationType.replace(/_/g, " ").toLowerCase();
+                  const formatLabel = relationFormatLabel(rel.format);
+                  const handleClick = () => {
+                    const url = rel.siteUrl
+                      ?? (rel.type === "MANGA"
+                        ? `https://anilist.co/manga/${rel.anilistId}`
+                        : `https://anilist.co/anime/${rel.anilistId}`);
+                    if (url) void window.electronAPI.openExternal(url);
+                  };
+                  return (
+                    <Card
+                      key={`${rel.type ?? "x"}-${rel.anilistId}-${rel.relationType}`}
+                      variant="external"
+                      onClick={handleClick}
+                      tooltip={`Open ${relTitle} on AniList`}
+                      data-format={rel.format ?? ""}
+                    >
+                      <div className="relation-card-poster">
+                        {rel.poster ? (
+                          <img src={rel.poster} alt={relTitle} loading="lazy" decoding="async" />
+                        ) : (
+                          <div className="relation-card-poster-empty">
+                            {rel.type === "MANGA" ? <Film size={28} /> : <Tv size={28} />}
+                          </div>
+                        )}
+                        <span aria-hidden="true">
+                          <Pill tone="accent">
+                            <AniListIcon size={11} />
+                            AniList
+                          </Pill>
+                        </span>
+                      </div>
+                      <div className="relation-card-body">
+                        <div className="relation-card-type">{typeLabel}</div>
+                        <div className="relation-card-title">{relTitle}</div>
+                        <div className="relation-card-meta">
+                          {formatLabel && (
+                            <span className="relation-card-format" data-format={rel.format ?? ""}>
+                              {formatLabel}
+                            </span>
+                          )}
+                          {rel.seasonYear && <span>{rel.seasonYear}</span>}
+                        </div>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </Section>
+      )}
+
+      {recommendations.length > 0 && (
+        <Section title="Recommendations" count={recommendations.length}>
           <div className="relations-grid">
-            {sortedRelations.map((rel) => {
-              const ownedId = rel.type === "ANIME"
-                ? (rel.anilistId != null ? ownedByExternalId.byAnilist.get(rel.anilistId) : undefined)
-                  ?? (rel.malId != null ? ownedByExternalId.byMal.get(rel.malId) : undefined)
-                : undefined;
-              const relTitle = pickTitle({
-                titleRomaji: rel.titleRomaji,
-                titleEnglish: rel.titleEnglish,
-                folderName: rel.titleRomaji ?? rel.titleEnglish ?? "Untitled",
+            {recommendations.map((r) => {
+              const recTitle = pickTitle({
+                titleRomaji: r.titleRomaji,
+                titleEnglish: r.titleEnglish,
+                folderName: r.titleRomaji ?? r.titleEnglish ?? "Untitled",
               });
-              const typeLabel = RELATION_LABEL[rel.relationType]
-                ?? rel.relationType.replace(/_/g, " ").toLowerCase();
-              const formatLabel = relationFormatLabel(rel.format);
-              const isInternal = ownedId != null;
+              const fmtLabel = relationFormatLabel(r.format);
+              // Same library resolution as the Related strip: if the
+              // recommended entry is an ANIME the user already owns, route
+              // in-app instead of bouncing out to AniList.
+              const ownedId = r.type === "ANIME"
+                ? (r.anilistId != null ? ownedByExternalId.byAnilist.get(r.anilistId) : undefined)
+                  ?? (r.malId != null ? ownedByExternalId.byMal.get(r.malId) : undefined)
+                : undefined;
               const handleClick = () => {
-                if (isInternal && ownedId) {
+                if (ownedId) {
                   navigate(`/series/${encodeURIComponent(ownedId)}`);
                   return;
                 }
-                const url = rel.siteUrl
-                  ?? (rel.type === "MANGA"
-                    ? `https://anilist.co/manga/${rel.anilistId}`
-                    : `https://anilist.co/anime/${rel.anilistId}`);
+                const url = r.siteUrl
+                  ?? (r.type === "MANGA"
+                    ? `https://anilist.co/manga/${r.anilistId}`
+                    : `https://anilist.co/anime/${r.anilistId}`);
                 if (url) void window.electronAPI.openExternal(url);
               };
               return (
                 <Card
-                  key={`${rel.type ?? "x"}-${rel.anilistId}-${rel.relationType}`}
-                  variant={isInternal ? "internal" : "external"}
+                  key={`rec-${r.anilistId}`}
+                  variant={ownedId ? "internal" : "external"}
                   onClick={handleClick}
-                  title={isInternal
-                    ? `Open ${relTitle} in your library`
-                    : `Open ${relTitle} on AniList`}
+                  tooltip={ownedId ? `Open ${recTitle} in your library` : `Open ${recTitle} on AniList`}
+                  data-format={r.format ?? ""}
                 >
                   <div className="relation-card-poster">
-                    {rel.poster ? (
-                      <img src={rel.poster} alt={relTitle} loading="lazy" decoding="async" />
+                    {r.poster ? (
+                      <img src={r.poster} alt={recTitle} loading="lazy" decoding="async" />
                     ) : (
                       <div className="relation-card-poster-empty">
-                        {rel.type === "MANGA" ? <Film size={28} /> : <Tv size={28} />}
+                        {r.type === "MANGA" ? <Film size={28} /> : <Tv size={28} />}
                       </div>
                     )}
                     <span aria-hidden="true">
-                      <Pill tone={isInternal ? "teal" : "accent"}>
-                        {isInternal ? "In Library" : (
-                          <>
-                            <ExternalLink size={10} strokeWidth={2.5} />
-                            AniList
-                          </>
-                        )}
-                      </Pill>
+                      {ownedId ? (
+                        <Pill tone="teal">Available</Pill>
+                      ) : (
+                        <Pill tone="accent">
+                          <AniListIcon size={11} />
+                          AniList
+                        </Pill>
+                      )}
                     </span>
                   </div>
                   <div className="relation-card-body">
-                    <div className="relation-card-type">{typeLabel}</div>
-                    <div className="relation-card-title" title={relTitle}>{relTitle}</div>
+                    <div className="relation-card-type">Recommended</div>
+                    <div className="relation-card-title">{recTitle}</div>
                     <div className="relation-card-meta">
-                      {formatLabel && <span>{formatLabel}</span>}
-                      {rel.seasonYear && <span>{rel.seasonYear}</span>}
+                      {fmtLabel && (
+                        <span className="relation-card-format" data-format={r.format ?? ""}>
+                          {fmtLabel}
+                        </span>
+                      )}
+                      {r.seasonYear && <span>{r.seasonYear}</span>}
                     </div>
                   </div>
                 </Card>

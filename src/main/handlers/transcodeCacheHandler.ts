@@ -37,10 +37,26 @@ interface QueueEntry {
   reject: (err: Error) => void;
 }
 
+export interface TranscodeProgress {
+  filePath: string;
+  // Encoded position in seconds (output media time).
+  currentSec: number;
+  // Source duration in seconds (from ffprobe). 0 if unknown.
+  totalSec: number;
+  // 0..1 fraction. Clamped — ffmpeg can briefly report >100% near EOF.
+  fraction: number;
+  // Encoder speed multiplier ('1.5' = 1.5x realtime). null when ffmpeg
+  // hasn't printed a `speed=` line yet (first ~second of an encode).
+  speed: number | null;
+  // Wall-clock seconds remaining at the current speed. null when unknown.
+  etaSec: number | null;
+}
+
 const queue: QueueEntry[] = [];
 let active: { filePath: string; child: ChildProcess; outTmp: string } | null = null;
 let onStatusChange: ((path: string, status: FileStatus) => Promise<void> | void) | null = null;
 let onTranscodeReady: ((path: string, transcodedPath: string) => Promise<void> | void) | null = null;
+let onProgressChange: ((progress: TranscodeProgress) => void) | null = null;
 
 function cacheDir(): string {
   return join(app.getPath('userData'), 'transcode-cache');
@@ -66,10 +82,14 @@ function cachePathForKey(key: string): string {
 function ffmpegArgsFor(kind: EncoderKind, src: string, dst: string): string[] {
   // Common pieces — keep verbose logging off, drop subs/attachments (we
   // extract those separately from the original .mkv in subtitleHandler).
+  // `-progress pipe:1` streams machine-readable key=value progress lines
+  // to stdout (out_time_us, speed, progress=...) so we can drive the
+  // renderer's progress bar without trying to parse the human stderr.
   const head = [
     '-hide_banner',
     '-loglevel', 'warning',
     '-nostats',
+    '-progress', 'pipe:1',
     '-y',
     '-analyzeduration', '500K', '-probesize', '500K',
   ];
@@ -127,6 +147,15 @@ async function emitStatus(path: string, status: FileStatus): Promise<void> {
     } catch (err) {
       logger.warn('system', `transcodeCache status emit failed: ${(err as Error).message}`);
     }
+  }
+}
+
+function emitProgress(p: TranscodeProgress): void {
+  if (!onProgressChange) return;
+  try {
+    onProgressChange(p);
+  } catch (err) {
+    logger.warn('system', `transcodeCache progress emit failed: ${(err as Error).message}`);
   }
 }
 
@@ -192,10 +221,15 @@ async function runOne(entry: QueueEntry): Promise<void> {
   await emitStatus(filePath, 'transcoding');
   const encoder = await ensureEncoder();
   const args = ffmpegArgsFor(encoder, filePath, tmpPath);
+  const totalSec = Number.isFinite(probe.duration) && probe.duration > 0 ? probe.duration : 0;
+  // Seed the renderer with a 0% frame before ffmpeg's first progress
+  // block lands — otherwise the bar would briefly show empty space
+  // instead of "starting…".
+  emitProgress({ filePath, currentSec: 0, totalSec, fraction: 0, speed: null, etaSec: null });
   logger.info('system', `Transcoding (${probe.vCodec}→h264 via ${encoder})`, { file: filePath });
 
   await new Promise<void>((resolve, reject) => {
-    const child = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    const child = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
     active = { filePath, child, outTmp: tmpPath };
     let stderr = '';
     child.stderr.on('data', (buf: Buffer) => {
@@ -203,6 +237,59 @@ async function runOne(entry: QueueEntry): Promise<void> {
       // Don't let stderr grow unbounded over a long encode. Keep just
       // the tail for diagnostics on failure.
       if (stderr.length > 8192) stderr = stderr.slice(-4096);
+    });
+
+    // `-progress pipe:1` writes blocks of key=value lines followed by
+    // `progress=continue` (or `progress=end`). We accumulate partial
+    // lines and parse out_time_us + speed each time a block finishes,
+    // throttling emissions so we don't spam the renderer.
+    let stdoutBuf = '';
+    let lastEmitMs = 0;
+    let lastCurrentSec = 0;
+    let lastSpeed: number | null = null;
+    child.stdout.on('data', (buf: Buffer) => {
+      stdoutBuf += buf.toString();
+      let nlIdx: number;
+      let blockReady = false;
+      while ((nlIdx = stdoutBuf.indexOf('\n')) >= 0) {
+        const line = stdoutBuf.slice(0, nlIdx).trim();
+        stdoutBuf = stdoutBuf.slice(nlIdx + 1);
+        if (line.startsWith('out_time_us=')) {
+          const us = parseInt(line.slice('out_time_us='.length), 10);
+          if (Number.isFinite(us) && us >= 0) lastCurrentSec = us / 1_000_000;
+        } else if (line.startsWith('out_time_ms=')) {
+          // Older ffmpegs emit out_time_ms which is actually microseconds.
+          // Treat identically — last assignment wins per block.
+          const us = parseInt(line.slice('out_time_ms='.length), 10);
+          if (Number.isFinite(us) && us >= 0) lastCurrentSec = us / 1_000_000;
+        } else if (line.startsWith('speed=')) {
+          const raw = line.slice('speed='.length).replace(/x$/, '').trim();
+          const n = parseFloat(raw);
+          lastSpeed = Number.isFinite(n) && n > 0 ? n : null;
+        } else if (line.startsWith('progress=')) {
+          blockReady = true;
+        }
+      }
+      if (!blockReady) return;
+      // Throttle: ~4 emits/sec is plenty for a progress bar.
+      const now = Date.now();
+      if (now - lastEmitMs < 250) return;
+      lastEmitMs = now;
+      const fraction = totalSec > 0
+        ? Math.max(0, Math.min(1, lastCurrentSec / totalSec))
+        : 0;
+      const remainingSec = totalSec > 0 ? Math.max(0, totalSec - lastCurrentSec) : 0;
+      const etaSec = lastSpeed && lastSpeed > 0 && totalSec > 0
+        ? remainingSec / lastSpeed
+        : null;
+      emitProgress({
+        filePath,
+        currentSec: lastCurrentSec,
+        totalSec,
+        fraction,
+        speed: lastSpeed,
+        etaSec,
+      });
     });
     child.on('error', (err) => {
       active = null;
@@ -257,16 +344,20 @@ const transcodeCacheHandler = {
    * `onReady` fires when a transcode completes so the caller can persist
    * the path to metadata (this module also persists internally, but the
    * caller gets a hook for renderer notification).
+   * `onProgress` fires ~4× per second during an active encode so the
+   * renderer can show a progress bar.
    */
   start(
     onStatus: (path: string, status: FileStatus) => Promise<void> | void,
     onReady?: (path: string, transcodedPath: string) => Promise<void> | void,
+    onProgress?: (progress: TranscodeProgress) => void,
   ): void {
     onStatusChange = onStatus;
     onTranscodeReady = async (path, transcoded) => {
       await persistTranscodedPath(path, transcoded);
       if (onReady) await onReady(path, transcoded);
     };
+    onProgressChange = onProgress ?? null;
   },
 
   /**

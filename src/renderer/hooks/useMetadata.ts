@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { FileStatus } from '../../shared/fileStatus';
 
 export interface SeriesMetadata {
@@ -31,7 +31,51 @@ export interface SeriesMetadata {
   anilistId?: number;
   malId?: number | null;
   relations?: Relation[];
+  tags?: Tag[];
+  characters?: Character[];
+  recommendations?: Recommendation[];
+  /** Main animation studio name when known. Populated alongside `studios`
+   *  from AniList's studios edge (isMain + isAnimationStudio). Falls back
+   *  to the first entry of `studios[]` when AniList doesn't flag one. */
+  animationStudio?: string | null;
   [key: string]: unknown;
+}
+
+export interface Tag {
+  name: string;
+  /** AniList tag rank (0–100). Higher = more characteristic of this show. */
+  rank: number | null;
+  /** Spoils a specific plot point of this show. Hidden unless the user opts in. */
+  isMediaSpoiler: boolean;
+  /** Spoils a general anime trope (still spoilery, treat as spoiler). */
+  isGeneralSpoiler: boolean;
+  /** 18+ tag — hidden alongside spoilers behind the same toggle. */
+  isAdult: boolean;
+  category: string | null;
+}
+
+export interface Character {
+  anilistId: number;
+  name: string | null;
+  /** AniList role: MAIN / SUPPORTING / BACKGROUND. */
+  role: string | null;
+  image: string | null;
+  siteUrl: string | null;
+}
+
+export interface Recommendation {
+  /** Net community recommendation score from AniList. Higher = stronger pick. */
+  rating: number | null;
+  anilistId: number;
+  malId: number | null;
+  type: 'ANIME' | 'MANGA' | null;
+  format: string | null;
+  status: string | null;
+  seasonYear: number | null;
+  siteUrl: string | null;
+  titleRomaji: string | null;
+  titleEnglish: string | null;
+  poster: string | null;
 }
 
 export interface Relation {
@@ -104,10 +148,16 @@ export function useMetadata() {
   const [metadata, setMetadata] = useState<Record<string, SeriesMetadata>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Only the very first load should flip `loading` on — every subsequent
+  // reload (file-status ping, refresh button, match-modal apply, delete)
+  // silently swaps the data so MetadataTab's table stays mounted and the
+  // user's scroll position is preserved.
+  const hasLoadedRef = useRef(false);
 
   const loadMetadata = useCallback(async () => {
+    const isInitial = !hasLoadedRef.current;
     try {
-      setLoading(true);
+      if (isInitial) setLoading(true);
       if (hasElectronAPI) {
         const data = await window.electronAPI.loadMetadata();
         setMetadata((data || {}) as Record<string, SeriesMetadata>);
@@ -116,12 +166,13 @@ export function useMetadata() {
         setMetadata({});
       }
       setError(null);
+      hasLoadedRef.current = true;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       setError(errorMessage);
       console.error('Error loading metadata:', err);
     } finally {
-      setLoading(false);
+      if (isInitial) setLoading(false);
     }
   }, []);
 

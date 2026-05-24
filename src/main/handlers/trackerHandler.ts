@@ -25,6 +25,7 @@ import {
   getProgressSnapshot,
   replaceProgress,
   setProgressEntry,
+  setProgressScoreAndStatus,
   normalizeListStatus,
 } from '../services/trackerStore';
 
@@ -318,6 +319,50 @@ async function fetchProfile(provider: TrackerProvider, accessToken: string): Pro
   return { username: data.name, userId: data.id };
 }
 
+// ----- Error sanitization -----
+//
+// graphql-request's ClientError stringifies the entire response + request
+// payload into `err.message`, so propagating it straight to the renderer
+// dumps a ~600-char JSON blob in the rating popover. Axios behaves the same
+// way for MAL — the user sees raw JSON instead of "Rate limited".
+//
+// Map the common HTTP statuses to short user-readable strings and fall back
+// to a clamped first-GraphQL-error or "Tracker error." for anything else.
+// The full original message is still logged at warn level so we can debug
+// from the activity log, just not surfaced to the UI.
+function providerLabel(p: TrackerProvider): string {
+  return p === 'anilist' ? 'AniList' : 'MAL';
+}
+
+function sanitizeTrackerError(err: unknown, provider: TrackerProvider): string {
+  const label = providerLabel(provider);
+  // graphql-request: { response: { status, errors: [{ message }] } }
+  // axios:           { response: { status, statusText, data } }
+  const e = err as {
+    response?: {
+      status?: number;
+      statusText?: string;
+      errors?: Array<{ message?: string }>;
+      data?: { message?: string };
+    };
+    message?: string;
+  };
+  const status = e.response?.status;
+  if (status === 429) return `${label} rate limited — try again in a minute.`;
+  if (status === 401 || status === 403) return `${label} auth expired — reconnect in Settings.`;
+  if (status === 404) return `${label} entry not found.`;
+  if (typeof status === 'number' && status >= 500) {
+    return `${label} server error (${status}) — try again later.`;
+  }
+  const firstGqlMsg = e.response?.errors?.[0]?.message;
+  if (firstGqlMsg && firstGqlMsg.length < 200) return firstGqlMsg;
+  const malMsg = e.response?.data?.message;
+  if (malMsg && malMsg.length < 200) return malMsg;
+  const raw = e.message;
+  if (raw && raw.length < 200) return raw;
+  return `${label} error — see activity log.`;
+}
+
 // ----- Progress mutations -----
 
 export interface MarkResult {
@@ -360,9 +405,17 @@ export async function markEpisode(args: MarkArgs): Promise<MarkResult> {
     }
     return await markMal(token, args.mediaId, ep, args.totalEpisodes ?? null);
   } catch (err) {
-    const message = (err as Error).message;
-    logger.error('tracker', `${args.provider} mark failed: ${message}`);
-    return { ok: false, provider: args.provider, newProgress: null, previousProgress: null, reason: 'error', message };
+    // Log the raw error for debugging, but return a clean short string to
+    // the renderer so the toast/popover doesn't dump a JSON blob.
+    logger.error('tracker', `${args.provider} mark failed: ${(err as Error).message}`);
+    return {
+      ok: false,
+      provider: args.provider,
+      newProgress: null,
+      previousProgress: null,
+      reason: 'error',
+      message: sanitizeTrackerError(err, args.provider),
+    };
   }
 }
 
@@ -443,6 +496,250 @@ async function markMal(token: string, mediaId: number, ep: number, total: number
   return { ok: true, provider: 'mal', newProgress: ep, previousProgress };
 }
 
+// ----- Set progress to an exact value (no monotonic guard) -----
+//
+// markEpisode() only ever moves progress UP. This is the corrective path: set
+// the watched count to any value, including a lower one, to undo an
+// over-counted episode (e.g. an auto-advance that marked one too many). Status
+// is derived from the target: 0 → planning, >= total → completed, else current.
+
+interface SetProgressArgs {
+  provider: TrackerProvider;
+  mediaId: number;
+  progress: number;
+  totalEpisodes?: number | null;
+}
+
+export async function setEpisodeProgress(args: SetProgressArgs): Promise<MarkResult> {
+  const acct = await getAccount(args.provider);
+  const token = await getAccessToken(args.provider);
+  if (!acct || !token) {
+    return { ok: false, provider: args.provider, newProgress: null, previousProgress: null, reason: 'no-account' };
+  }
+  if (!args.mediaId) {
+    return { ok: false, provider: args.provider, newProgress: null, previousProgress: null, reason: 'no-id' };
+  }
+  const target = Math.floor(args.progress);
+  if (!Number.isFinite(target) || target < 0) {
+    return { ok: false, provider: args.provider, newProgress: null, previousProgress: null, reason: 'no-id', message: 'invalid progress' };
+  }
+
+  try {
+    if (args.provider === 'anilist') {
+      return await setAnilistProgress(token, acct.userId, args.mediaId, target, args.totalEpisodes ?? null);
+    }
+    return await setMalProgress(token, args.mediaId, target, args.totalEpisodes ?? null);
+  } catch (err) {
+    logger.error('tracker', `${args.provider} set-progress failed: ${(err as Error).message}`);
+    return {
+      ok: false,
+      provider: args.provider,
+      newProgress: null,
+      previousProgress: null,
+      reason: 'error',
+      message: sanitizeTrackerError(err, args.provider),
+    };
+  }
+}
+
+async function setAnilistProgress(token: string, userId: number | null, mediaId: number, progress: number, total: number | null): Promise<MarkResult> {
+  const headers = { Authorization: `Bearer ${token}` };
+  const current = userId != null
+    ? await request<{ MediaList: { progress: number; status: string } | null }>(
+        ANILIST_API,
+        gql`query ($userId: Int, $mediaId: Int) { MediaList(userId: $userId, mediaId: $mediaId) { progress status } }`,
+        { userId, mediaId },
+        headers,
+      ).catch(() => ({ MediaList: null }))
+    : { MediaList: null };
+  const previousProgress = current.MediaList?.progress ?? 0;
+
+  const newStatus = progress <= 0 ? 'PLANNING' : (total != null && progress >= total ? 'COMPLETED' : 'CURRENT');
+  await request(
+    ANILIST_API,
+    gql`mutation ($mediaId: Int, $progress: Int, $status: MediaListStatus) {
+      SaveMediaListEntry(mediaId: $mediaId, progress: $progress, status: $status) {
+        id progress status
+      }
+    }`,
+    { mediaId, progress, status: newStatus },
+    headers,
+  );
+
+  await markSync('anilist');
+  await setProgressEntry('anilist', mediaId, progress, normalizeListStatus('anilist', newStatus));
+  logger.info('tracker', `anilist set ${previousProgress} → ${progress} (mediaId ${mediaId})`);
+  return { ok: true, provider: 'anilist', newProgress: progress, previousProgress };
+}
+
+async function setMalProgress(token: string, mediaId: number, progress: number, total: number | null): Promise<MarkResult> {
+  const headers = { Authorization: `Bearer ${token}` };
+  let previousProgress = 0;
+  try {
+    const resp = await axios.get(`${MAL_API}/anime/${mediaId}`, {
+      params: { fields: 'my_list_status' },
+      headers,
+    });
+    const status = resp.data?.my_list_status as { num_episodes_watched?: number } | undefined;
+    previousProgress = status?.num_episodes_watched ?? 0;
+  } catch (err) {
+    if (axios.isAxiosError(err) && err.response?.status === 404) {
+      previousProgress = 0;
+    } else {
+      throw err;
+    }
+  }
+
+  const newMalStatus = progress <= 0 ? 'plan_to_watch' : (total != null && progress >= total ? 'completed' : 'watching');
+  const body = new URLSearchParams();
+  body.set('num_watched_episodes', String(progress));
+  body.set('status', newMalStatus);
+  await axios.patch(`${MAL_API}/anime/${mediaId}/my_list_status`, body.toString(), {
+    headers: { ...headers, 'Content-Type': 'application/x-www-form-urlencoded' },
+  });
+
+  await markSync('mal');
+  await setProgressEntry('mal', mediaId, progress, normalizeListStatus('mal', newMalStatus));
+  logger.info('tracker', `mal set ${previousProgress} → ${progress} (mediaId ${mediaId})`);
+  return { ok: true, provider: 'mal', newProgress: progress, previousProgress };
+}
+
+// ----- Score (user rating) mutations -----
+//
+// 0–10 scale across both providers. Internally we still send AniList a
+// POINT_10_DECIMAL so the value isn't rounded when the user's display format
+// is POINT_100. Score === 0 clears the rating on both sides.
+//
+// If the user already has `progress >= totalEpisodes`, we also flip the list
+// status to "completed" so rating a show on the final episode (or after
+// watching every episode without the auto-mark catching) snaps the list to
+// the right state.
+
+export interface ScoreResult {
+  ok: boolean;
+  provider: TrackerProvider;
+  newScore: number | null;
+  reason?: 'no-account' | 'no-id' | 'error';
+  message?: string;
+  /** Whether the entry was also marked completed by this call. */
+  completedToo?: boolean;
+}
+
+interface ScoreArgs {
+  provider: TrackerProvider;
+  mediaId: number;
+  /** 0–10. 0 clears the rating. Decimals are sent as-is. */
+  score: number;
+  /** When known, used to decide whether to also set status to "completed". */
+  totalEpisodes?: number | null;
+}
+
+export async function setScore(args: ScoreArgs): Promise<ScoreResult> {
+  const acct = await getAccount(args.provider);
+  const token = await getAccessToken(args.provider);
+  if (!acct || !token) {
+    return { ok: false, provider: args.provider, newScore: null, reason: 'no-account' };
+  }
+  if (!args.mediaId) {
+    return { ok: false, provider: args.provider, newScore: null, reason: 'no-id' };
+  }
+  const score = Math.max(0, Math.min(10, Number(args.score)));
+  if (!Number.isFinite(score)) {
+    return { ok: false, provider: args.provider, newScore: null, reason: 'error', message: 'invalid score' };
+  }
+  try {
+    if (args.provider === 'anilist') {
+      return await scoreAnilist(token, acct.userId, args.mediaId, score, args.totalEpisodes ?? null);
+    }
+    return await scoreMal(token, args.mediaId, score, args.totalEpisodes ?? null);
+  } catch (err) {
+    logger.error('tracker', `${args.provider} score failed: ${(err as Error).message}`);
+    return {
+      ok: false,
+      provider: args.provider,
+      newScore: null,
+      reason: 'error',
+      message: sanitizeTrackerError(err, args.provider),
+    };
+  }
+}
+
+async function scoreAnilist(
+  token: string,
+  userId: number | null,
+  mediaId: number,
+  score: number,
+  total: number | null,
+): Promise<ScoreResult> {
+  const headers = { Authorization: `Bearer ${token}` };
+  // Read current progress so we know whether to also complete the entry.
+  const current = userId != null
+    ? await request<{ MediaList: { progress: number; status: string } | null }>(
+        ANILIST_API,
+        gql`query ($userId: Int, $mediaId: Int) { MediaList(userId: $userId, mediaId: $mediaId) { progress status } }`,
+        { userId, mediaId },
+        headers,
+      ).catch(() => ({ MediaList: null }))
+    : { MediaList: null };
+  const currentProgress = current.MediaList?.progress ?? 0;
+  const shouldComplete = total != null && total > 0 && currentProgress >= total;
+  const newStatus = shouldComplete ? 'COMPLETED' : undefined;
+  // scoreRaw is always 0–100 regardless of the user's display format
+  // (POINT_100 / POINT_10 / POINT_10_DECIMAL / POINT_5 / POINT_3), so we
+  // can write a single number without branching per format.
+  const scoreRaw = Math.round(score * 10);
+  await request(
+    ANILIST_API,
+    gql`mutation ($mediaId: Int, $scoreRaw: Int, $status: MediaListStatus) {
+      SaveMediaListEntry(mediaId: $mediaId, scoreRaw: $scoreRaw, status: $status) {
+        id score status
+      }
+    }`,
+    { mediaId, scoreRaw, status: newStatus },
+    headers,
+  );
+  await markSync('anilist');
+  const stored = score > 0 ? score : null;
+  await setProgressScoreAndStatus('anilist', mediaId, stored, shouldComplete ? 'completed' : null);
+  logger.info('tracker', `anilist score → ${score} (mediaId ${mediaId})${shouldComplete ? ' + completed' : ''}`);
+  return { ok: true, provider: 'anilist', newScore: stored, completedToo: shouldComplete };
+}
+
+async function scoreMal(
+  token: string,
+  mediaId: number,
+  score: number,
+  total: number | null,
+): Promise<ScoreResult> {
+  const headers = { Authorization: `Bearer ${token}` };
+  let currentProgress = 0;
+  try {
+    const resp = await axios.get(`${MAL_API}/anime/${mediaId}`, {
+      params: { fields: 'my_list_status' },
+      headers,
+    });
+    const status = resp.data?.my_list_status as { num_episodes_watched?: number } | undefined;
+    currentProgress = status?.num_episodes_watched ?? 0;
+  } catch (err) {
+    if (!(axios.isAxiosError(err) && err.response?.status === 404)) throw err;
+  }
+  const shouldComplete = total != null && total > 0 && currentProgress >= total;
+  // MAL wants an integer 0-10. Round to nearest so 8.7 → 9 (matches the MAL
+  // UI's own rounding when the user types a decimal).
+  const malScore = Math.round(score);
+  const body = new URLSearchParams();
+  body.set('score', String(malScore));
+  if (shouldComplete) body.set('status', 'completed');
+  await axios.patch(`${MAL_API}/anime/${mediaId}/my_list_status`, body.toString(), {
+    headers: { ...headers, 'Content-Type': 'application/x-www-form-urlencoded' },
+  });
+  await markSync('mal');
+  const stored = malScore > 0 ? malScore : null;
+  await setProgressScoreAndStatus('mal', mediaId, stored, shouldComplete ? 'completed' : null);
+  logger.info('tracker', `mal score → ${malScore} (mediaId ${mediaId})${shouldComplete ? ' + completed' : ''}`);
+  return { ok: true, provider: 'mal', newScore: stored, completedToo: shouldComplete };
+}
+
 // ----- Bulk progress fetch (one call per provider, cached on disk) -----
 
 const PROGRESS_FETCH_TIMEOUT_MS = 15_000;
@@ -471,13 +768,13 @@ async function fetchAnilistProgressMap(): Promise<Record<number, ProgressEntry>>
   const data = await withTimeout(
     request<{
       MediaListCollection: {
-        lists: Array<{ entries: Array<{ progress: number; status: string | null; score: number | null; media: { id: number } }> }>;
+        lists: Array<{ entries: Array<{ progress: number; status: string | null; score: number | null; repeat: number | null; media: { id: number } }> }>;
       };
     }>(
       ANILIST_API,
       gql`query ($userId: Int) {
         MediaListCollection(userId: $userId, type: ANIME) {
-          lists { entries { progress status score(format: POINT_10_DECIMAL) media { id } } }
+          lists { entries { progress status score(format: POINT_10_DECIMAL) repeat media { id } } }
         }
       }`,
       { userId: acct.userId },
@@ -494,6 +791,7 @@ async function fetchAnilistProgressMap(): Promise<Record<number, ProgressEntry>>
           progress: entry.progress ?? 0,
           status: normalizeListStatus('anilist', entry.status),
           score: typeof entry.score === 'number' && entry.score > 0 ? entry.score : null,
+          rewatch: typeof entry.repeat === 'number' && entry.repeat > 0 ? entry.repeat : null,
         };
       }
     }
@@ -515,7 +813,7 @@ async function fetchMalProgressMap(): Promise<Record<number, ProgressEntry>> {
   for (let i = 0; i < 50; i++) {
     const resp = await withTimeout(
       axios.get(`${MAL_API}/users/@me/animelist`, {
-        params: { fields: 'list_status{status,num_episodes_watched,is_rewatching,score}', limit, offset },
+        params: { fields: 'list_status{status,num_episodes_watched,is_rewatching,num_times_rewatched,score}', limit, offset },
         headers,
       }),
       PROGRESS_FETCH_TIMEOUT_MS,
@@ -524,7 +822,7 @@ async function fetchMalProgressMap(): Promise<Record<number, ProgressEntry>> {
     const data = resp.data as {
       data: Array<{
         node: { id: number };
-        list_status?: { num_episodes_watched?: number; status?: string; is_rewatching?: boolean; score?: number };
+        list_status?: { num_episodes_watched?: number; status?: string; is_rewatching?: boolean; num_times_rewatched?: number; score?: number };
       }>;
       paging?: { next?: string };
     };
@@ -535,6 +833,7 @@ async function fetchMalProgressMap(): Promise<Record<number, ProgressEntry>> {
           progress: ls?.num_episodes_watched ?? 0,
           status: normalizeListStatus('mal', ls?.status, ls?.is_rewatching ?? false),
           score: typeof ls?.score === 'number' && ls.score > 0 ? ls.score : null,
+          rewatch: typeof ls?.num_times_rewatched === 'number' && ls.num_times_rewatched > 0 ? ls.num_times_rewatched : null,
         };
       }
     }
@@ -585,6 +884,8 @@ export const trackerHandler = {
     startConnect(provider, clientId, clientSecret),
   cancelConnect,
   markEpisode,
+  setEpisodeProgress,
+  setScore,
   async disconnect(provider: TrackerProvider): Promise<TrackerStatus> {
     await clearAccount(provider);
     return getStatus(provider);

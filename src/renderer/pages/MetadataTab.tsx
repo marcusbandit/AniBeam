@@ -3,7 +3,7 @@ import { useMetadata, type SeriesMetadata } from '../hooks/useMetadata';
 import { BookOpen, Tv, Film, Search, RefreshCw, Trash2 } from 'lucide-react';
 import MetadataMatchModal from '../components/MetadataMatchModal';
 import { useDebouncedCallback } from '../hooks/useDebouncedCallback';
-import { Page, Inline } from '../components/primitives';
+import { Page, Inline, Tooltip } from '../components/primitives';
 
 type FilterOption = 'all' | 'series' | 'movies' | 'missing';
 
@@ -231,18 +231,19 @@ function MetadataTab() {
                     )}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  className="col-title col-title-clickable"
-                  onClick={() => setMatchTarget({ seriesId, data })}
-                  disabled={isRefreshing || bulkRefreshing}
-                  title="Match this entry to a different show"
-                >
-                  <div className="meta-title-main">{data.title || seriesId}</div>
-                  {data.titleRomaji && data.titleRomaji !== data.title && (
-                    <div className="meta-title-alt">{data.titleRomaji}</div>
-                  )}
-                </button>
+                <Tooltip label="Match this entry to a different show">
+                  <button
+                    type="button"
+                    className="col-title col-title-clickable"
+                    onClick={() => setMatchTarget({ seriesId, data })}
+                    disabled={isRefreshing || bulkRefreshing}
+                  >
+                    <div className="meta-title-main">{data.title || seriesId}</div>
+                    {data.titleRomaji && data.titleRomaji !== data.title && (
+                      <div className="meta-title-alt">{data.titleRomaji}</div>
+                    )}
+                  </button>
+                </Tooltip>
                 <div className="col-type">
                   <span className="type-tag">{movie ? 'Movie' : 'Series'}</span>
                 </div>
@@ -263,22 +264,26 @@ function MetadataTab() {
                 </div>
                 <div className="col-updated muted">—</div>
                 <div className="col-actions">
-                  <button
-                    className="icon-btn"
-                    title="Refresh"
-                    onClick={() => handleRefresh(seriesId, data.title || seriesId)}
-                    disabled={isRefreshing || bulkRefreshing}
-                  >
-                    <RefreshCw size={14} className={isRefreshing ? 'spin' : ''} />
-                  </button>
-                  <button
-                    className="icon-btn icon-btn-danger"
-                    title="Delete"
-                    onClick={() => handleDelete(seriesId, data.title || seriesId)}
-                    disabled={isRefreshing || bulkRefreshing}
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  <Tooltip label="Refresh">
+                    <button
+                      className="icon-btn"
+                      aria-label="Refresh"
+                      onClick={() => handleRefresh(seriesId, data.title || seriesId)}
+                      disabled={isRefreshing || bulkRefreshing}
+                    >
+                      <RefreshCw size={14} className={isRefreshing ? 'spin' : ''} />
+                    </button>
+                  </Tooltip>
+                  <Tooltip label="Delete">
+                    <button
+                      className="icon-btn icon-btn-danger"
+                      aria-label="Delete"
+                      onClick={() => handleDelete(seriesId, data.title || seriesId)}
+                      disabled={isRefreshing || bulkRefreshing}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </Tooltip>
                 </div>
               </div>
             );

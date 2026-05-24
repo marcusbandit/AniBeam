@@ -3,7 +3,8 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useMetadata, type FileEpisode } from '../hooks/useMetadata.js';
 import { useLocalStorage, useLocalStorageRecord } from '../hooks/useLocalStorage';
 import { progressId, readProgress, writeProgress, recordEpisodeCompleted, RESUME_HEAD_SKIP, RESUME_TAIL_SKIP } from '../utils/playbackProgress';
-import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Minimize, Subtitles, SkipBack, SkipForward, CheckCheck, AlertTriangle, ExternalLink } from 'lucide-react';
+import { ScorePicker, Tooltip } from '../components/primitives';
+import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Minimize, Subtitles, SkipBack, SkipForward, CheckCheck, AlertTriangle, ExternalLink, Loader2, RotateCcw } from 'lucide-react';
 import JASSUB from 'jassub';
 // `?worker&url` (not `?url`) so Vite bundles the worker as a self-contained
 // ES module with its bare-import dependencies (abslink, lfa-ponyfill, etc.)
@@ -153,7 +154,23 @@ function VideoPlayer() {
   const location = useLocation();
   const { metadata } = useMetadata();
   const [videoSrc, setVideoSrc] = useState<string>('');
-  const [unsupported, setUnsupported] = useState<{ vCodec?: string; aCodec?: string; reason?: string } | null>(null);
+  // Playback gate. `null` = direct playback; otherwise an overlay is showing.
+  //  - mode 'transcoding': ffmpeg is producing the cached MP4. Overlay shows
+  //    a progress bar; playback starts automatically when it finishes.
+  //  - mode 'decode-failed': <video> errored out even though we thought the
+  //    codec was OK. No transcode in flight — only mpv fallback.
+  const [unsupported, setUnsupported] = useState<
+    | { mode: 'transcoding'; vCodec?: string; aCodec?: string }
+    | { mode: 'decode-failed' }
+    | null
+  >(null);
+  const [transcodeProgress, setTranscodeProgress] = useState<{
+    currentSec: number;
+    totalSec: number;
+    fraction: number;
+    speed: number | null;
+    etaSec: number | null;
+  } | null>(null);
   const [mpvLaunching, setMpvLaunching] = useState(false);
   const [subtitleSrcs, setSubtitleSrcs] = useState<SubtitleTrack[]>([]);
   const [episodeData, setEpisodeData] = useState<FileEpisode | null>(null);
@@ -187,6 +204,15 @@ function VideoPlayer() {
   // effects can react after JASSUB is actually ready (selectSubtitle is async
   // — activeSubIdx changes BEFORE jassubRef.current is set).
   const [jassubReadyTick, setJassubReadyTick] = useState(0);
+  // Auto-play-next overlay. `nextVisible` shows the idle "Next" pill the moment
+  // the outro begins; `nextCounting` starts the 5s fill + auto-advance timer
+  // (3s before the end, or right when the outro ends if the post-outro tail is
+  // under 20s); `nextDismissed` latches the overlay off for the rest of the
+  // episode once the user picks Stay. `videoEnded` drives the center replay icon.
+  const [nextVisible, setNextVisible] = useState(false);
+  const [nextCounting, setNextCounting] = useState(false);
+  const [nextDismissed, setNextDismissed] = useState(false);
+  const [videoEnded, setVideoEnded] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -194,6 +220,19 @@ function VideoPlayer() {
   const subMenuRef = useRef<HTMLDivElement>(null);
   const ccBtnRef = useRef<HTMLButtonElement>(null);
   const jassubRef = useRef<JASSUB | null>(null);
+  // Last subtitle track the user had on, so the "C" key toggles captions off
+  // and back on to the SAME language rather than cycling through tracks.
+  const lastSubIdxRef = useRef<number | null>(null);
+  // Mirror of the captions-toggle closure so the keydown listener (bound on a
+  // narrow dep set) always invokes the latest state without restaling.
+  const toggleCaptionsRef = useRef<() => void>(() => {});
+  // Gate for the auto-next overlay. Episode navigation reuses this same
+  // component (route param change, no unmount), so the previous episode's
+  // end-of-stream currentTime/duration linger for a frame after we navigate —
+  // long enough to instantly re-trigger the countdown and skip again. We arm
+  // only once the *new* video has loaded, and disarm synchronously on every
+  // episode change, so a stale frame can never fire the auto-advance.
+  const autoNextArmedRef = useRef(false);
 
   const tearDownJassub = () => {
     if (jassubRef.current) {
@@ -360,6 +399,60 @@ function VideoPlayer() {
     };
   }, [videoSrc, seriesId, episodeNumber]);
 
+  // Mark the series as "viewed" once the user has accumulated >= 30s of
+  // forward playback within this mount. Used by the Library "Last viewed"
+  // sort. Accumulating real elapsed time (rather than reading currentTime
+  // directly) means a scrub to ep credits doesn't count as a view, but
+  // pause/resume sessions do — what the user would intuit by "I watched
+  // some of this". Fires once per mount; navigating to a new episode
+  // remounts the effect and re-arms the threshold.
+  useEffect(() => {
+    if (!videoSrc || !seriesId || !episodeNumber) return;
+    const video = videoRef.current;
+    if (!video) return;
+
+    const epNum = Number(episodeNumber);
+    if (!Number.isFinite(epNum)) return;
+
+    let accumulated = 0;        // seconds of forward play observed
+    let lastTime = video.currentTime;
+    let marked = false;
+
+    const VIEW_THRESHOLD_SEC = 30;
+    // Cap per-tick advance — guards against seeks and tab-backgrounding
+    // gaps. timeupdate normally fires ~4×/sec, so 2s is generous headroom
+    // for legitimate playback while still rejecting jumps.
+    const MAX_TICK_DELTA = 2;
+
+    const onTime = () => {
+      if (marked) return;
+      const t = video.currentTime;
+      const dt = t - lastTime;
+      lastTime = t;
+      if (dt > 0 && dt <= MAX_TICK_DELTA && !video.paused && !video.seeking) {
+        accumulated += dt;
+        if (accumulated >= VIEW_THRESHOLD_SEC) {
+          marked = true;
+          window.electronAPI.markEpisodeViewed?.({
+            seriesId,
+            episodeNumber: epNum,
+            ts: Date.now(),
+          }).catch((err: unknown) => {
+            console.warn('[view-history] markEpisodeViewed failed:', err);
+          });
+        }
+      }
+    };
+    const onSeeking = () => { lastTime = video.currentTime; };
+
+    video.addEventListener('timeupdate', onTime);
+    video.addEventListener('seeking', onSeeking);
+    return () => {
+      video.removeEventListener('timeupdate', onTime);
+      video.removeEventListener('seeking', onSeeking);
+    };
+  }, [videoSrc, seriesId, episodeNumber]);
+
   // Derive the active episode's filePath from metadata. The memo only
   // returns a new value if `seriesId`, `episodeNumber`, or the resolved
   // filePath actually changes — keeps the open-video effect from re-firing
@@ -385,14 +478,19 @@ function VideoPlayer() {
 
     // Reset on episode change so the popup doesn't linger across switches.
     setUnsupported(null);
+    setTranscodeProgress(null);
     setVideoSrc('');
 
     (async () => {
       try {
         const result = await window.electronAPI.openVideo(filePath);
         if (cancelled) return;
+        if (result.kind === 'transcoding') {
+          setUnsupported({ mode: 'transcoding', vCodec: result.vCodec, aCodec: result.aCodec });
+          return;
+        }
         if (result.kind === 'unsupported') {
-          setUnsupported({ vCodec: result.vCodec, aCodec: result.aCodec });
+          setUnsupported({ mode: 'decode-failed' });
           return;
         }
         setVideoSrc(result.url);
@@ -405,6 +503,63 @@ function VideoPlayer() {
 
     return () => {
       cancelled = true;
+    };
+  }, [activeFilePath]);
+
+  // While a file is being transcoded, subscribe to status + progress IPC
+  // events. When the file flips to 'ready' (cached MP4 has been published),
+  // re-call openVideo so the renderer picks up the cached URL and playback
+  // begins automatically — the user never has to click anything.
+  useEffect(() => {
+    if (!activeFilePath) return;
+    const filePath = activeFilePath;
+
+    const offStatus = window.electronAPI.onMetadataFileStatusChanged((payload) => {
+      if (payload.filePath !== filePath) return;
+      if (payload.status === 'ready') {
+        setTranscodeProgress(null);
+        // Re-open: the cached MP4 should now exist on disk, so video:open
+        // returns kind='direct'. If for some reason it doesn't, we'll get
+        // 'transcoding' back and the overlay just stays up.
+        (async () => {
+          try {
+            const result = await window.electronAPI.openVideo(filePath);
+            if (result.kind === 'direct') {
+              setUnsupported(null);
+              setVideoSrc(result.url);
+            }
+          } catch (err) {
+            console.warn('post-transcode reopen failed:', err);
+          }
+        })();
+      } else if (payload.status === 'stalled') {
+        // The encode died (driver error, source corruption, ran out of
+        // disk). Fall back to the decode-failed branch so the user gets
+        // the mpv escape hatch instead of an indefinite progress bar.
+        setTranscodeProgress(null);
+        setUnsupported({ mode: 'decode-failed' });
+      } else if (payload.status === 'transcoding') {
+        // Edge case: file just started transcoding while the player was
+        // already mounted (e.g. user opened it before the scanner queued
+        // it). Make sure the overlay is up.
+        setUnsupported((prev) => prev?.mode === 'transcoding' ? prev : { mode: 'transcoding' });
+      }
+    });
+
+    const offProgress = window.electronAPI.onTranscodeProgress((payload) => {
+      if (payload.filePath !== filePath) return;
+      setTranscodeProgress({
+        currentSec: payload.currentSec,
+        totalSec: payload.totalSec,
+        fraction: payload.fraction,
+        speed: payload.speed,
+        etaSec: payload.etaSec,
+      });
+    });
+
+    return () => {
+      offStatus();
+      offProgress();
     };
   }, [activeFilePath]);
 
@@ -873,6 +1028,11 @@ function VideoPlayer() {
   const autoMarkedRef = useRef<string>('');
   const [trackerToast, setTrackerToast] = useState<string | null>(null);
   const trackerToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // When the auto-mark fires on the final episode, we surface a persistent
+  // "Rate this show" prompt above the auto-dismiss toast. Null = not shown.
+  const [ratingPrompt, setRatingPrompt] = useState<null | { seriesKey: string }>(null);
+  const [ratingValue, setRatingValue] = useState<string>('8.0');
+  const [ratingBusy, setRatingBusy] = useState(false);
 
   const showTrackerToast = useCallback((msg: string) => {
     setTrackerToast(msg);
@@ -931,6 +1091,17 @@ function VideoPlayer() {
     }
     if (anyOk) {
       showTrackerToast(`Tracked · ${summary.join(' · ')}`);
+      // Final-episode rating prompt. Only show on the last episode and only
+      // if the user actually had a successful mark this turn (otherwise the
+      // tracker is already complete and we shouldn't re-prompt every replay).
+      if (
+        seriesId
+        && Number.isFinite(epNumForMark)
+        && seriesTotalEps != null
+        && epNumForMark >= seriesTotalEps
+      ) {
+        setRatingPrompt({ seriesKey: `${seriesId}::${epNumForMark}` });
+      }
     } else if (anyError) {
       showTrackerToast(`Tracker error${lastErrorMsg ? ': ' + lastErrorMsg : ''}`);
     } else if (summary.length) {
@@ -947,6 +1118,7 @@ function VideoPlayer() {
   // Reset the auto-mark guard whenever the episode changes.
   useEffect(() => {
     autoMarkedRef.current = '';
+    setRatingPrompt(null);
   }, [seriesId, episodeNumber]);
 
   // Fire once when playback first crosses the auto-mark threshold (the
@@ -970,6 +1142,42 @@ function VideoPlayer() {
   useEffect(() => () => {
     if (trackerToastTimer.current) clearTimeout(trackerToastTimer.current);
   }, []);
+
+  const submitRating = useCallback(async () => {
+    if (!seriesId) return;
+    const score = parseFloat(ratingValue);
+    if (!Number.isFinite(score)) return;
+    setRatingBusy(true);
+    type ScoreRes = Awaited<ReturnType<typeof window.electronAPI.trackerSetScore>>;
+    const calls: Promise<ScoreRes>[] = [];
+    if (seriesAnilistId) {
+      calls.push(window.electronAPI.trackerSetScore('anilist', seriesAnilistId, score, seriesTotalEps));
+    }
+    if (seriesMalId) {
+      calls.push(window.electronAPI.trackerSetScore('mal', seriesMalId, score, seriesTotalEps));
+    }
+    const results = await Promise.allSettled(calls);
+    const successes: string[] = [];
+    let anyCompleted = false;
+    let lastErr: string | null = null;
+    for (const r of results) {
+      if (r.status === 'rejected') { lastErr = (r.reason as Error)?.message ?? 'unknown error'; continue; }
+      const v = r.value;
+      if (v.ok) {
+        successes.push(`${v.provider.toUpperCase()} ${score.toFixed(1)}`);
+        if (v.completedToo) anyCompleted = true;
+      } else if (v.reason === 'error') {
+        lastErr = v.message ?? null;
+      }
+    }
+    setRatingBusy(false);
+    if (successes.length) {
+      showTrackerToast(`Rated · ${successes.join(' · ')}${anyCompleted ? ' · completed' : ''}`);
+      setRatingPrompt(null);
+    } else {
+      showTrackerToast(`Score failed${lastErr ? ': ' + lastErr : ''}`);
+    }
+  }, [seriesId, ratingValue, seriesAnilistId, seriesMalId, seriesTotalEps, showTrackerToast]);
 
   // Wire <video> events to local state.
   useEffect(() => {
@@ -1019,13 +1227,66 @@ function VideoPlayer() {
     return () => document.removeEventListener('fullscreenchange', onFs);
   }, []);
 
+  // Keep the captions-toggle closure fresh (no dep array → re-mirror every
+  // render) so the keydown listener can call it without going stale.
+  useEffect(() => {
+    toggleCaptionsRef.current = () => {
+      if (subtitleSrcs.length === 0) return;
+      if (activeSubIdx >= 0) {
+        // Currently showing a track → remember it and turn captions off.
+        lastSubIdxRef.current = activeSubIdx;
+        selectSubtitle(-1);
+      } else {
+        // Off → restore the last track, falling back to the default or first.
+        let target = lastSubIdxRef.current;
+        if (target == null || target < 0 || target >= subtitleSrcs.length) {
+          const def = subtitleSrcs.findIndex((s) => s.default);
+          target = def >= 0 ? def : 0;
+        }
+        selectSubtitle(target);
+      }
+    };
+  });
+
+  // Track ended-state for the center replay affordance. Cleared on play. Also
+  // arms the auto-next overlay once the new video has actually loaded — never
+  // on the stale frame left over from the previous episode.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const onEnded = () => setVideoEnded(true);
+    const onPlay = () => setVideoEnded(false);
+    const onLoaded = () => { autoNextArmedRef.current = true; };
+    video.addEventListener('ended', onEnded);
+    video.addEventListener('play', onPlay);
+    video.addEventListener('loadeddata', onLoaded);
+    return () => {
+      video.removeEventListener('ended', onEnded);
+      video.removeEventListener('play', onPlay);
+      video.removeEventListener('loadeddata', onLoaded);
+    };
+  }, [videoSrc]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const video = videoRef.current;
       if (!video) return;
-      const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase();
-      if (tag === 'input' || tag === 'textarea') return;
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName?.toLowerCase();
+      // Let our own range sliders (scrubber, volume) fall through to the
+      // shortcuts below — otherwise a focused slider eats Arrow keys as native
+      // 0.1-step increments (feels like "seeking does nothing, just stutters").
+      // The handled branches all preventDefault(), suppressing that native step.
+      const isRange = tag === 'input' && (el as HTMLInputElement).type === 'range';
+      if ((tag === 'input' && !isRange) || tag === 'textarea') return;
+      // Suppress OS key auto-repeat. Every shortcut here is meant to fire
+      // once per press — without this, holding Arrow Right floods <video>
+      // with overlapping currentTime assignments; Chromium cancels the
+      // in-flight seek for each new one and the picture freezes, then
+      // snaps to a compounded target. Feels exactly like "jittery and
+      // doesn't actually work" even though the file itself is fine.
+      if (e.repeat) return;
       if (e.key === ' ' || e.key === 'k') {
         e.preventDefault();
         if (video.paused) void video.play(); else video.pause();
@@ -1061,6 +1322,11 @@ function VideoPlayer() {
       } else if (e.key === 'f') {
         e.preventDefault();
         toggleFullscreen();
+      } else if (e.key === 'c' && !e.ctrlKey && !e.metaKey) {
+        // Toggle captions off / back on to the last-used language. No cycling.
+        e.preventDefault();
+        toggleCaptionsRef.current();
+        showChrome();
       }
     };
     window.addEventListener('keydown', onKey);
@@ -1139,7 +1405,7 @@ function VideoPlayer() {
     // are noise — let those re-try naturally.
     if (code !== 3 && code !== 4) return;
     if (unsupported) return;
-    setUnsupported({ reason: 'decode-failed' });
+    setUnsupported({ mode: 'decode-failed' });
   }, [unsupported]);
 
   const handleOpenInMpv = useCallback(async () => {
@@ -1153,6 +1419,52 @@ function VideoPlayer() {
       setMpvLaunching(false);
     }
   }, [activeFilePath, mpvLaunching]);
+
+  // Reset the auto-next overlay whenever the episode changes. Disarm
+  // synchronously (ref, not state) so the driver effect below — which runs in
+  // this same commit, before the new video has loaded — can't act on the old
+  // episode's lingering end-of-stream currentTime/duration. Also clear those
+  // to 0 so the scrubber and `remaining` math don't read stale values.
+  useEffect(() => {
+    autoNextArmedRef.current = false;
+    setNextVisible(false);
+    setNextCounting(false);
+    setNextDismissed(false);
+    setVideoEnded(false);
+    setCurrentTime(0);
+    setDuration(0);
+  }, [seriesId, episodeNumber]);
+
+  // Drive the auto-next overlay off the playhead. The pill appears the moment
+  // the outro begins (or, with no outro data, 3s before the end). The 5s fill
+  // starts either 3s before the end, or right when the outro ends if the
+  // post-outro tail is under 20s (so short ED/preview tails get skipped while
+  // longer next-episode previews are left to play out).
+  useEffect(() => {
+    if (nextEp == null || nextDismissed || !duration) return;
+    // Bail until the current episode's video has actually loaded — guards
+    // against the stale post-navigation frame re-triggering the countdown.
+    if (!autoNextArmedRef.current) return;
+    const remaining = duration - currentTime;
+    const ed = skipTimes.ed;
+    const hasOutro = ed != null;
+    const tail = hasOutro ? duration - ed.end : Infinity;
+    // With no outro data, show the idle pill a few seconds before the fill
+    // starts so the CSS transition has a prior scaleX(0) frame to animate from.
+    const shouldShow = hasOutro ? currentTime >= ed.start : remaining <= 8;
+    if (shouldShow && !nextVisible) setNextVisible(true);
+    const shouldCount = (hasOutro && tail < 20 && currentTime >= ed.end) || remaining <= 3;
+    if (shouldCount && !nextCounting) setNextCounting(true);
+  }, [currentTime, duration, skipTimes.ed, nextEp, nextDismissed, nextVisible, nextCounting]);
+
+  // Once the fill begins, auto-advance after the fixed 5s timer. The CSS fill
+  // animation runs for the same 5s; "Stay" clears nextCounting → cancels both.
+  useEffect(() => {
+    if (!nextCounting || nextEp == null) return;
+    const id = window.setTimeout(() => goToEpisode(nextEp), 5000);
+    return () => window.clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nextCounting]);
 
   if (!episodeData || !seriesId || !episodeNumber) {
     return (
@@ -1178,6 +1490,15 @@ function VideoPlayer() {
   const code = seasonNumber !== null
     ? `S${pad(seasonNumber)}E${pad(episodeNum)}`
     : `EP ${episodeNum}`;
+  // Prefer the real AniList/MAL episode title (series-level `episodes[]`, keyed
+  // by number) over the scanner's filename-derived `episodeData.title`. Mirrors
+  // SeriesDetailPage's apiTitleByEp lookup.
+  const episodeName = (() => {
+    const eps = metadata[seriesId]?.episodes ?? [];
+    const hit = eps.find((e) => e.episodeNumber === episodeNum);
+    if (hit?.title && hit.title.length > 0) return hit.title;
+    return episodeData.title || `Episode ${episodeNum}`;
+  })();
 
   const cueCss = `
     .player-canvas video::cue {
@@ -1208,7 +1529,7 @@ function VideoPlayer() {
         <div className="player-titles">
           {seriesTitle && <div className="player-eyebrow">{seriesTitle}</div>}
           <h2 className="player-title">
-            {episodeData.title || `Episode ${episodeNum}`}
+            {episodeName}
           </h2>
           <div className="player-meta">{code}</div>
         </div>
@@ -1241,7 +1562,99 @@ function VideoPlayer() {
       {trackerToast && (
         <div className="player-toast" role="status">{trackerToast}</div>
       )}
-      {unsupported && (
+      {ratingPrompt && (
+        <div className="player-rating-prompt" role="dialog" aria-modal="false">
+          <div className="player-rating-prompt-head">
+            <CheckCheck size={14} strokeWidth={2.5} />
+            <span>Tracked · final episode — rate this show?</span>
+          </div>
+          <div className="player-rating-prompt-body">
+            <ScorePicker
+              value={ratingValue}
+              onChange={setRatingValue}
+              disabled={ratingBusy}
+              ariaLabel="Final-episode rating"
+            />
+            <button
+              type="button"
+              className="player-rating-submit"
+              onClick={() => void submitRating()}
+              disabled={ratingBusy}
+            >
+              {ratingBusy ? 'Saving…' : 'Submit'}
+            </button>
+            <button
+              type="button"
+              className="player-rating-dismiss"
+              onClick={() => setRatingPrompt(null)}
+              disabled={ratingBusy}
+            >
+              Skip
+            </button>
+          </div>
+        </div>
+      )}
+      {unsupported && unsupported.mode === 'transcoding' && (
+        <div className="codec-modal-backdrop" role="dialog" aria-modal="true">
+          <div className="codec-modal codec-modal--transcoding">
+            <div className="codec-modal-head">
+              <Loader2 size={20} className="codec-modal-icon codec-modal-icon--spin" />
+              <div>
+                <div className="codec-modal-title">Re-encoding for in-app playback</div>
+                <div className="codec-modal-sub">
+                  {unsupported.vCodec
+                    ? `Converting ${unsupported.vCodec}${unsupported.aCodec ? ` + ${unsupported.aCodec}` : ''} → h264 + aac. Plays automatically when ready.`
+                    : 'Converting to a browser-playable codec. Plays automatically when ready.'}
+                </div>
+              </div>
+            </div>
+            <div className="codec-modal-progress">
+              <div className="codec-modal-progress-track">
+                <div
+                  className="codec-modal-progress-fill"
+                  style={{ width: `${Math.round((transcodeProgress?.fraction ?? 0) * 100)}%` }}
+                />
+              </div>
+              <div className="codec-modal-progress-meta">
+                <span className="codec-modal-progress-pct">
+                  {transcodeProgress
+                    ? `${Math.round(transcodeProgress.fraction * 100)}%`
+                    : 'Starting…'}
+                </span>
+                <span className="codec-modal-progress-time">
+                  {transcodeProgress && transcodeProgress.totalSec > 0
+                    ? `${formatTime(transcodeProgress.currentSec)} / ${formatTime(transcodeProgress.totalSec)}`
+                    : ''}
+                </span>
+                <span className="codec-modal-progress-eta">
+                  {transcodeProgress?.etaSec != null
+                    ? `~${formatTime(transcodeProgress.etaSec)} left${transcodeProgress.speed ? ` · ${transcodeProgress.speed.toFixed(1)}× speed` : ''}`
+                    : transcodeProgress?.speed
+                      ? `${transcodeProgress.speed.toFixed(1)}× speed`
+                      : ''}
+                </span>
+              </div>
+            </div>
+            <div className="codec-modal-actions">
+              <button
+                className="codec-modal-btn ghost"
+                onClick={() => navigate(`/series/${seriesId}`)}
+              >Back to series</button>
+              <Tooltip label="Skip the wait — play the original file in your system mpv">
+                <button
+                  className="codec-modal-btn"
+                  onClick={() => void handleOpenInMpv()}
+                  disabled={mpvLaunching || !activeFilePath}
+                >
+                  <ExternalLink size={14} />
+                  {mpvLaunching ? 'Launching mpv…' : 'Play now in mpv'}
+                </button>
+              </Tooltip>
+            </div>
+          </div>
+        </div>
+      )}
+      {unsupported && unsupported.mode === 'decode-failed' && (
         <div className="codec-modal-backdrop" role="dialog" aria-modal="true">
           <div className="codec-modal">
             <div className="codec-modal-head">
@@ -1249,9 +1662,7 @@ function VideoPlayer() {
               <div>
                 <div className="codec-modal-title">Can&rsquo;t play this in-app</div>
                 <div className="codec-modal-sub">
-                  {unsupported.reason === 'decode-failed'
-                    ? 'Chromium failed to decode this file.'
-                    : `Codec not supported by the in-app player${unsupported.vCodec ? ` (video: ${unsupported.vCodec}${unsupported.aCodec ? `, audio: ${unsupported.aCodec}` : ''})` : ''}.`}
+                  Chromium failed to decode this file.
                 </div>
               </div>
             </div>
@@ -1287,6 +1698,49 @@ function VideoPlayer() {
           {inOpWindow ? 'Skip Intro' : 'Skip Outro'}
         </button>
       )}
+      {nextVisible && nextEp != null && (
+        <div className="player-autonext">
+          <button
+            className="player-autonext-stay"
+            onClick={(e) => {
+              e.stopPropagation();
+              setNextDismissed(true);
+              setNextVisible(false);
+              setNextCounting(false);
+            }}
+          >
+            Stay
+          </button>
+          <button
+            className={`player-autonext-next${nextCounting ? ' counting' : ''}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              goToEpisode(nextEp);
+            }}
+          >
+            <span className="player-autonext-fill" />
+            <span className="player-autonext-label">Next</span>
+          </button>
+        </div>
+      )}
+      {videoEnded && !nextCounting && (
+        <div className="player-replay">
+          <button
+            className="player-replay-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              const video = videoRef.current;
+              if (!video) return;
+              video.currentTime = 0;
+              void video.play();
+              setVideoEnded(false);
+            }}
+            aria-label="Replay episode"
+          >
+            <RotateCcw size={34} />
+          </button>
+        </div>
+      )}
       <div
         className="player-controls"
         style={{ opacity: chrome ? 1 : 0, pointerEvents: chrome ? 'auto' : 'none' }}
@@ -1320,27 +1774,29 @@ function VideoPlayer() {
           } as React.CSSProperties}
         />
         <div className="player-controls-row">
-          <button
-            className="player-ctl-btn"
-            onClick={() => prevEp != null && goToEpisode(prevEp)}
-            disabled={prevEp == null}
-            aria-label="Previous episode"
-            title={prevEp != null ? `Previous: episode ${prevEp}` : 'No previous episode'}
-          >
-            <SkipBack size={18} />
-          </button>
+          <Tooltip label={prevEp != null ? `Previous: episode ${prevEp}` : 'No previous episode'}>
+            <button
+              className="player-ctl-btn"
+              onClick={() => prevEp != null && goToEpisode(prevEp)}
+              disabled={prevEp == null}
+              aria-label="Previous episode"
+            >
+              <SkipBack size={18} />
+            </button>
+          </Tooltip>
           <button className="player-ctl-btn" onClick={togglePlay} aria-label={isPlaying ? 'Pause' : 'Play'}>
             {isPlaying ? <Pause size={18} /> : <Play size={18} />}
           </button>
-          <button
-            className="player-ctl-btn"
-            onClick={() => nextEp != null && goToEpisode(nextEp)}
-            disabled={nextEp == null}
-            aria-label="Next episode"
-            title={nextEp != null ? `Next: episode ${nextEp}` : 'No next episode'}
-          >
-            <SkipForward size={18} />
-          </button>
+          <Tooltip label={nextEp != null ? `Next: episode ${nextEp}` : 'No next episode'}>
+            <button
+              className="player-ctl-btn"
+              onClick={() => nextEp != null && goToEpisode(nextEp)}
+              disabled={nextEp == null}
+              aria-label="Next episode"
+            >
+              <SkipForward size={18} />
+            </button>
+          </Tooltip>
           <span className="player-time">{formatTime(currentTime)} / {formatTime(duration)}</span>
           <div className="player-volume">
             <button className="player-ctl-btn" onClick={toggleMute} aria-label={muted ? 'Unmute' : 'Mute'}>
@@ -1359,26 +1815,28 @@ function VideoPlayer() {
           </div>
           <div className="player-right-group">
             {(seriesAnilistId || seriesMalId) && (
-              <button
-                className="player-ctl-btn"
-                onClick={() => void triggerMark('manual')}
-                aria-label="Mark this episode as watched on linked trackers"
-                title="Mark watched"
-              >
-                <CheckCheck size={18} />
-              </button>
+              <Tooltip label="Mark watched">
+                <button
+                  className="player-ctl-btn"
+                  onClick={() => void triggerMark('manual')}
+                  aria-label="Mark this episode as watched on linked trackers"
+                >
+                  <CheckCheck size={18} />
+                </button>
+              </Tooltip>
             )}
             {subtitleSrcs.length > 0 && (
               <div className="player-sub-anchor">
-                <button
-                  ref={ccBtnRef}
-                  className={`player-ctl-btn${activeSubIdx >= 0 ? ' active' : ''}`}
-                  onClick={() => setSubMenuOpen((v) => !v)}
-                  aria-label="Subtitles menu"
-                  title={activeSubIdx >= 0 ? subtitleSrcs[activeSubIdx]?.label ?? 'Subtitles' : 'Subtitles off'}
-                >
-                  <Subtitles size={18} />
-                </button>
+                <Tooltip label={activeSubIdx >= 0 ? subtitleSrcs[activeSubIdx]?.label ?? 'Subtitles' : 'Subtitles off'}>
+                  <button
+                    ref={ccBtnRef}
+                    className={`player-ctl-btn${activeSubIdx >= 0 ? ' active' : ''}`}
+                    onClick={() => setSubMenuOpen((v) => !v)}
+                    aria-label="Subtitles menu"
+                  >
+                    <Subtitles size={18} />
+                  </button>
+                </Tooltip>
                 {subMenuOpen && (
                   <div className="sub-menu" ref={subMenuRef}>
                     <div className="sub-menu-tabs">

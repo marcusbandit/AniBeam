@@ -111,6 +111,139 @@ export interface EpisodeMetadata {
   thumbnail: string | null;
 }
 
+export interface RelationEntry {
+  relationType: string;
+  anilistId: number;
+  malId: number | null;
+  type: 'ANIME' | 'MANGA' | null;
+  format: string | null;
+  status: string | null;
+  seasonYear: number | null;
+  siteUrl: string | null;
+  titleRomaji: string | null;
+  titleEnglish: string | null;
+  poster: string | null;
+}
+
+export interface TagEntry {
+  name: string;
+  rank: number | null;
+  isMediaSpoiler: boolean;
+  isGeneralSpoiler: boolean;
+  isAdult: boolean;
+  category: string | null;
+}
+
+export interface CharacterEntry {
+  anilistId: number;
+  name: string | null;
+  role: string | null;
+  image: string | null;
+  siteUrl: string | null;
+}
+
+export interface RecommendationEntry {
+  rating: number | null;
+  anilistId: number;
+  malId: number | null;
+  type: 'ANIME' | 'MANGA' | null;
+  format: string | null;
+  status: string | null;
+  seasonYear: number | null;
+  siteUrl: string | null;
+  titleRomaji: string | null;
+  titleEnglish: string | null;
+  poster: string | null;
+}
+
+export interface StudioEntry {
+  anilistId: number;
+  name: string;
+  isMain: boolean;
+  isAnimationStudio: boolean;
+}
+
+export interface EnrichmentBundle {
+  relations: RelationEntry[];
+  tags: TagEntry[];
+  characters: CharacterEntry[];
+  recommendations: RecommendationEntry[];
+  studios: StudioEntry[];
+  /** Per-episode titles + thumbnails pulled from AniList's `streamingEpisodes`
+   *  (the data behind the "Watch" tab on anilist.co). This is the canonical
+   *  source for episode names; MAL/Jikan is a fallback for shows AniList
+   *  doesn't surface. Sparse — only episodes AniList has data for appear here. */
+  episodeTitles: Array<{ episodeNumber: number; title: string; thumbnail: string | null }>;
+}
+
+interface RawEnrichmentMedia {
+  streamingEpisodes?: Array<{
+    title: string | null;
+    thumbnail: string | null;
+    url: string | null;
+    site: string | null;
+  }> | null;
+  tags?: Array<{
+    name: string;
+    rank: number | null;
+    isMediaSpoiler: boolean | null;
+    isGeneralSpoiler: boolean | null;
+    isAdult: boolean | null;
+    category: string | null;
+  }>;
+  studios?: {
+    edges: Array<{
+      isMain: boolean | null;
+      node: { id: number; name: string; isAnimationStudio: boolean | null };
+    }>;
+  } | null;
+  characters?: {
+    edges: Array<{
+      role: string | null;
+      node: {
+        id: number;
+        name: { full: string | null } | null;
+        image: { large: string | null; medium: string | null } | null;
+        siteUrl: string | null;
+      };
+    }>;
+  } | null;
+  recommendations?: {
+    edges: Array<{
+      node: {
+        rating: number | null;
+        mediaRecommendation: {
+          id: number;
+          idMal: number | null;
+          type: 'ANIME' | 'MANGA' | null;
+          format: string | null;
+          status: string | null;
+          seasonYear: number | null;
+          siteUrl: string | null;
+          title: { romaji: string | null; english: string | null } | null;
+          coverImage: { large: string | null } | null;
+        } | null;
+      };
+    }>;
+  } | null;
+  relations?: {
+    edges: Array<{
+      relationType: string;
+      node: {
+        id: number;
+        idMal: number | null;
+        type: 'ANIME' | 'MANGA' | null;
+        format: string | null;
+        status: string | null;
+        seasonYear: number | null;
+        siteUrl: string | null;
+        title: { romaji: string | null; english: string | null } | null;
+        coverImage: { large: string | null } | null;
+      };
+    }>;
+  } | null;
+}
+
 function isReleased(media: AniListMedia): boolean {
   // Skip media that haven't been released yet
   // Allow: RELEASING (currently airing), FINISHED (completed)
@@ -242,15 +375,79 @@ const AIRING_SCHEDULE_QUERY = gql`
   }
 `;
 
-// Franchise graph: SEQUEL / PREQUEL / SIDE_STORY / ADAPTATION / etc.
-// Queryable by AniList id OR MAL id so MAL-matched series can still
-// pull their relations without a second title search. The renderer
-// renders these as a "Related" strip on the series detail page and
-// uses `siteUrl` for the open-in-AniList click target.
-const RELATIONS_QUERY = gql`
+// Enrichment bundle — one query returns the franchise graph plus the
+// extras the series-detail page wants (tags, top characters,
+// recommendations, studios). Queryable by AniList id OR MAL id so
+// MAL-matched series can still pull this data without a second title
+// search. perPage limits keep the response under a few KB even for
+// franchises with hundreds of relations.
+const ENRICHMENT_QUERY = gql`
   query ($id: Int, $idMal: Int) {
     Media(id: $id, idMal: $idMal) {
       id
+      streamingEpisodes {
+        title
+        thumbnail
+        url
+        site
+      }
+      tags {
+        name
+        rank
+        isMediaSpoiler
+        isGeneralSpoiler
+        isAdult
+        category
+      }
+      studios {
+        edges {
+          isMain
+          node {
+            id
+            name
+            isAnimationStudio
+          }
+        }
+      }
+      characters(perPage: 12, sort: [ROLE, RELEVANCE, ID]) {
+        edges {
+          role
+          node {
+            id
+            name {
+              full
+            }
+            image {
+              large
+              medium
+            }
+            siteUrl
+          }
+        }
+      }
+      recommendations(perPage: 12, sort: RATING_DESC) {
+        edges {
+          node {
+            rating
+            mediaRecommendation {
+              id
+              idMal
+              type
+              format
+              status
+              seasonYear
+              siteUrl
+              title {
+                romaji
+                english
+              }
+              coverImage {
+                large
+              }
+            }
+          }
+        }
+      }
       relations {
         edges {
           relationType
@@ -332,6 +529,32 @@ const MEDIA_BY_ID_QUERY = gql`
     }
   }
 `;
+
+// AniList's streamingEpisodes titles arrive in shapes like
+//   "Episode 1 - Ordinary Person"
+//   "1 - Ordinary Person"
+//   "Episode 1"                       (no real name — drop)
+//   "S2 Episode 3 - …"                (multi-season aggregator)
+// Parse out the episode number and strip the leading "EpisodeN - " / "N - "
+// noise so the renderer can display just the actual episode title.
+function parseStreamingEpisodeTitle(raw: string | null | undefined): { episodeNumber: number; title: string } | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  // Capture the first integer; the prefix in front of it is whatever
+  // "Episode " / "S2E" / "" — we only care that we find a number.
+  const numMatch = trimmed.match(/(?:^|[^\d])(\d{1,3})(?:\D|$)/);
+  if (!numMatch) return null;
+  const episodeNumber = parseInt(numMatch[1], 10);
+  if (!Number.isFinite(episodeNumber) || episodeNumber <= 0) return null;
+  // Strip everything up to and including the first " - " separator. If
+  // there's no separator, the title is just "Episode N" with no real name;
+  // skip rather than persist a placeholder.
+  const sepIdx = trimmed.indexOf(' - ');
+  if (sepIdx < 0) return null;
+  const title = trimmed.slice(sepIdx + 3).trim();
+  if (!title || /^Episode\s+\d+$/i.test(title)) return null;
+  return { episodeNumber, title };
+}
 
 const anilistHandler = {
   async searchAnime(searchTerm: string): Promise<AniListMedia | null> {
@@ -649,68 +872,98 @@ const anilistHandler = {
   },
 
   /**
-   * Fetch related media (franchise + adaptations). Accepts either an
-   * AniList id or a MAL id — MAL-matched series can still pull relations
-   * without a second title-search round-trip.
+   * One-shot enrichment query — pulls relations + tags + main characters +
+   * recommendations + studios in a single GraphQL request. Accepts either
+   * an AniList id or a MAL id, so MAL-matched series can still pull this
+   * bundle without a second title-search round-trip. Each section is
+   * returned in a shape ready for the renderer; the main process slims it
+   * further if needed before persisting.
    */
-  async getRelations(opts: { anilistId?: number; malId?: number }): Promise<Array<{
-    relationType: string;
-    anilistId: number;
-    malId: number | null;
-    type: 'ANIME' | 'MANGA' | null;
-    format: string | null;
-    status: string | null;
-    seasonYear: number | null;
-    siteUrl: string | null;
-    titleRomaji: string | null;
-    titleEnglish: string | null;
-    poster: string | null;
-  }>> {
+  async getEnrichment(opts: { anilistId?: number; malId?: number }): Promise<EnrichmentBundle> {
+    const empty: EnrichmentBundle = { relations: [], tags: [], characters: [], recommendations: [], studios: [], episodeTitles: [] };
     const variables: { id?: number; idMal?: number } = {};
     if (opts.anilistId) variables.id = opts.anilistId;
     if (opts.malId) variables.idMal = opts.malId;
-    if (variables.id === undefined && variables.idMal === undefined) return [];
+    if (variables.id === undefined && variables.idMal === undefined) return empty;
     try {
       const data = await limiter.run(() =>
-        request<{
-          Media: {
-            relations: {
-              edges: Array<{
-                relationType: string;
-                node: {
-                  id: number;
-                  idMal: number | null;
-                  type: 'ANIME' | 'MANGA' | null;
-                  format: string | null;
-                  status: string | null;
-                  seasonYear: number | null;
-                  siteUrl: string | null;
-                  title: { romaji: string | null; english: string | null } | null;
-                  coverImage: { large: string | null } | null;
-                };
-              }>;
-            } | null;
-          } | null;
-        }>(ANILIST_API_URL, RELATIONS_QUERY, variables),
+        request<{ Media: RawEnrichmentMedia | null }>(ANILIST_API_URL, ENRICHMENT_QUERY, variables),
       );
-      const edges = data?.Media?.relations?.edges ?? [];
-      return edges.map((e) => ({
-        relationType: e.relationType,
-        anilistId: e.node.id,
-        malId: e.node.idMal,
-        type: e.node.type,
-        format: e.node.format,
-        status: e.node.status,
-        seasonYear: e.node.seasonYear,
-        siteUrl: e.node.siteUrl,
-        titleRomaji: e.node.title?.romaji ?? null,
-        titleEnglish: e.node.title?.english ?? null,
-        poster: e.node.coverImage?.large ?? null,
-      }));
+      const media = data?.Media;
+      if (!media) return empty;
+      return {
+        relations: (media.relations?.edges ?? []).map((e) => ({
+          relationType: e.relationType,
+          anilistId: e.node.id,
+          malId: e.node.idMal,
+          type: e.node.type,
+          format: e.node.format,
+          status: e.node.status,
+          seasonYear: e.node.seasonYear,
+          siteUrl: e.node.siteUrl,
+          titleRomaji: e.node.title?.romaji ?? null,
+          titleEnglish: e.node.title?.english ?? null,
+          poster: e.node.coverImage?.large ?? null,
+        })),
+        tags: (media.tags ?? []).map((t) => ({
+          name: t.name,
+          rank: typeof t.rank === 'number' ? t.rank : null,
+          isMediaSpoiler: !!t.isMediaSpoiler,
+          isGeneralSpoiler: !!t.isGeneralSpoiler,
+          isAdult: !!t.isAdult,
+          category: t.category ?? null,
+        })),
+        characters: (media.characters?.edges ?? []).map((e) => ({
+          anilistId: e.node.id,
+          name: e.node.name?.full ?? null,
+          role: e.role ?? null,
+          image: e.node.image?.large ?? e.node.image?.medium ?? null,
+          siteUrl: e.node.siteUrl ?? null,
+        })),
+        recommendations: (media.recommendations?.edges ?? [])
+          .filter((e) => e.node.mediaRecommendation != null)
+          .map((e) => {
+            const r = e.node.mediaRecommendation!;
+            return {
+              rating: typeof e.node.rating === 'number' ? e.node.rating : null,
+              anilistId: r.id,
+              malId: r.idMal,
+              type: r.type,
+              format: r.format,
+              status: r.status,
+              seasonYear: r.seasonYear,
+              siteUrl: r.siteUrl,
+              titleRomaji: r.title?.romaji ?? null,
+              titleEnglish: r.title?.english ?? null,
+              poster: r.coverImage?.large ?? null,
+            };
+          }),
+        studios: (media.studios?.edges ?? []).map((e) => ({
+          anilistId: e.node.id,
+          name: e.node.name,
+          isMain: !!e.isMain,
+          isAnimationStudio: !!e.node.isAnimationStudio,
+        })),
+        episodeTitles: (() => {
+          const out: Array<{ episodeNumber: number; title: string; thumbnail: string | null }> = [];
+          const seen = new Set<number>();
+          for (const se of media.streamingEpisodes ?? []) {
+            const parsed = parseStreamingEpisodeTitle(se.title);
+            if (!parsed) continue;
+            // First entry wins per episode — streaming aggregators sometimes
+            // list the same episode for multiple providers (Crunchyroll +
+            // HiDive + …) with subtly different formatting.
+            if (seen.has(parsed.episodeNumber)) continue;
+            seen.add(parsed.episodeNumber);
+            out.push({ episodeNumber: parsed.episodeNumber, title: parsed.title, thumbnail: se.thumbnail ?? null });
+          }
+          return out;
+        })(),
+      };
     } catch (error) {
       if (isRateLimitError(error)) logRateLimitWarning('AniList');
-      else logger.warn('metadata', `AniList relations fetch failed: ${(error as Error).message}`);
-      return [];
+      else logger.warn('metadata', `AniList enrichment fetch failed: ${(error as Error).message}`);
+      return empty;
     }
   },
 
