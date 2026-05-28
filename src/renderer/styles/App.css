@@ -5010,15 +5010,18 @@ button.franchise-node:hover {
   opacity: 0.08;
 }
 .franchise-node__status-tag {
-  display: inline-block;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: var(--bg-tertiary, #1a1a22);
-  border: 1px solid var(--accent-amber, #f59e0b);
-  color: var(--accent-amber, #f59e0b);
-  font-size: 11px;
-  font-weight: 500;
-  margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.45rem;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-amber);
+  border: 1px solid color-mix(in srgb, var(--accent-amber) 38%, var(--border-color));
+  background: color-mix(in srgb, var(--accent-amber) 14%, transparent);
   align-self: flex-start;
   white-space: nowrap;
 }
