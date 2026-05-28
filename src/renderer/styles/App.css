@@ -4691,3 +4691,49 @@ button.hero-chip-anilist--icon:hover {
   margin-top: 0.1rem;
   color: var(--accent-amber);
 }
+
+/* ── Franchise Map ───────────────────────────────────────────── */
+.franchise-map {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 8px 4px 16px;
+}
+.franchise-map__inner {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: max-content;
+  align-items: stretch;
+}
+.franchise-lane {
+  display: flex;
+  flex-direction: row;
+  gap: 16px;
+  align-items: flex-start;
+}
+.franchise-lane--spine {
+  position: relative;
+  align-items: center;
+}
+.franchise-rail {
+  position: absolute;
+  left: 0; right: 0;
+  top: 50%;
+  height: 2px;
+  background: var(--accent-teal, #2dd4bf);
+  opacity: 0.35;
+  z-index: 0;
+}
+.franchise-cell { position: relative; z-index: 1; }
+
+/* compact tile: shrink the reused relation-card shell */
+.franchise-node { width: 150px; }
+.franchise-node .relation-card-poster img,
+.franchise-node .relation-card-poster-empty { height: 200px; }
+
+/* current-node highlight ring */
+.franchise-node[data-current="true"] {
+  outline: 2px solid var(--accent-teal, #2dd4bf);
+  outline-offset: 2px;
+  border-radius: var(--radius-lg, 20px);
+}
