@@ -4698,6 +4698,18 @@ button.hero-chip-anilist--icon:hover {
 .franchise-node { width: 180px; }
 .franchise-node .relation-card-poster img,
 .franchise-node .relation-card-poster-empty { height: 200px; }
+/* Override the generic aspect-ratio sizing so the wrapper doesn't
+   over-allocate height beyond the fixed 200px image. line-height: 0
+   kills the inline-baseline descender gap below the <img>. */
+.franchise-node .relation-card-poster {
+  display: block;
+  padding: 0;
+  margin: 0;
+  position: relative;
+  aspect-ratio: unset;
+  height: 200px;
+  line-height: 0;
+}
 
 /* current-node highlight ring */
 .franchise-node[data-current="true"] {
