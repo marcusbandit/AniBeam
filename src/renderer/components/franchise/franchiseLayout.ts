@@ -228,20 +228,73 @@ export function layoutFranchise(graph: FranchiseGraph, currentId: number): Map<n
   // 1. Dedupe reciprocal edges
   const edges = dedupeReciprocalEdges(graph.edges);
 
-  // 2. Build adjacency + spine set
+  // 2. Build adjacency + anime spine set
   const adj = buildAdjacency(edges);
   const nodeById = new Map(graph.nodes.map((n) => [n.anilistId, n]));
-  const spineSet = findSpine(currentId, adj);
-  const spineList = topoSortSpine(spineSet, edges, nodeById);
+  const animeSpineSet = findSpine(currentId, adj);
+  const animeSpineList = topoSortSpine(animeSpineSet, edges, nodeById);
 
-  // 3. Build BFS tree from spine outward
-  const { children: treeChildren } = buildBfsTree(spineSet, adj);
+  // ── Step A: detect direct sources of anime spine nodes ─────────────────────
+  // directSourceOf: animeId → set of sourceNodeIds
+  // animeForSource: sourceId → first animeId it's a source of
+  const directSourceOf = new Map<number, Set<number>>();
+  const animeForSource = new Map<number, number>();
 
-  // 4. Split each spine node's children into top/bottom subtrees
+  const recordSource = (animeId: number, sourceId: number) => {
+    if (!directSourceOf.has(animeId)) directSourceOf.set(animeId, new Set());
+    directSourceOf.get(animeId)!.add(sourceId);
+    if (!animeForSource.has(sourceId)) animeForSource.set(sourceId, animeId);
+  };
+
+  for (const animeId of animeSpineSet) {
+    for (const e of edges) {
+      if (e.from === animeId) {
+        const target = nodeById.get(e.to);
+        if (!target) continue;
+        if (canonicalRelation(e.relationType, target) === 'SOURCE') recordSource(animeId, e.to);
+      } else if (e.to === animeId) {
+        const target = nodeById.get(e.from);
+        if (!target) continue;
+        const reversed = REVERSE_RELATION[e.relationType] ?? e.relationType;
+        if (canonicalRelation(reversed, target) === 'SOURCE') recordSource(animeId, e.from);
+      }
+    }
+  }
+
+  // ── Step B: expand direct sources to a full source spine via PREQUEL/SEQUEL ─
+  const sourceSpineSet = new Set<number>();
+  const allDirectSources = new Set([...directSourceOf.values()].flatMap((s) => [...s]));
+  for (const sourceId of allDirectSources) {
+    const chain = findSpine(sourceId, adj);
+    for (const id of chain) {
+      if (!animeSpineSet.has(id)) sourceSpineSet.add(id);
+    }
+  }
+  const sourceSpineList = topoSortSpine(sourceSpineSet, edges, nodeById);
+
+  // ── Step C: position source spine above anime spine, aligned by adaptation ──
+  const SOURCE_Y = -V_GAP;
+  const sourcePositioned = new Set<number>();
+
+  // First pass: source nodes with a direct anime counterpart get x = anime.x
+  // (anime spine isn't placed yet — we'll pin them after step 6, so we use a
+  // two-stage approach: record the animeId and resolve x after the anime spine
+  // x-positions are computed in step 6).
+
+  // ── Unified spine set for BFS tree roots ───────────────────────────────────
+  const allSpineSet = new Set([...animeSpineSet, ...sourceSpineSet]);
+
+  // 3. Build BFS tree from BOTH spines outward
+  const { children: treeChildren } = buildBfsTree(allSpineSet, adj);
+
+  // 4. Split each anime spine node's children into top/bottom subtrees.
+  //    Source spine nodes' children are split similarly after they're positioned.
   const topChildrenOf = new Map<number, number[]>();   // spineId → top-lane children
   const bottomChildrenOf = new Map<number, number[]>(); // spineId → bottom-lane children
 
-  for (const spineNode of spineList) {
+  // Process both spine lists for child classification.
+  const allSpineNodes = [...animeSpineList, ...sourceSpineList];
+  for (const spineNode of allSpineNodes) {
     const allKids = treeChildren.get(spineNode.anilistId) ?? [];
     const tops: number[] = [];
     const bots: number[] = [];
@@ -255,10 +308,8 @@ export function layoutFranchise(graph: FranchiseGraph, currentId: number): Map<n
     if (bots.length > 0) bottomChildrenOf.set(spineNode.anilistId, bots);
   }
 
-  // 5. Measure half-widths (left side + right side of each spine node's subtree)
-  //    For each spine node, compute the horizontal half-width occupied by its
-  //    top + bottom subtrees combined, so we can space adjacent spine nodes
-  //    without overlap.
+  // 5. Measure half-widths for the anime spine nodes (source spine x is derived
+  //    from anime spine x, so we only need widths for the anime spine here).
   const halfWidthFor = (spineId: number): number => {
     const tops = topChildrenOf.get(spineId) ?? [];
     const bots = bottomChildrenOf.get(spineId) ?? [];
@@ -267,20 +318,67 @@ export function layoutFranchise(graph: FranchiseGraph, currentId: number): Map<n
     return Math.max(NODE_W + H_GAP, topTotal, botTotal) / 2;
   };
 
-  // 6. Place spine nodes left→right with gaps sized by adjacent half-widths.
+  // 6. Place anime spine nodes left→right with gaps sized by adjacent half-widths.
   let x = 0;
-  spineList.forEach((node, i) => {
+  animeSpineList.forEach((node, i) => {
     if (i > 0) {
-      const prev = spineList[i - 1];
+      const prev = animeSpineList[i - 1];
       const gap = Math.max(SPINE_X_MIN, halfWidthFor(prev.anilistId) + halfWidthFor(node.anilistId));
       x += gap;
     }
     positions.set(node.anilistId, { x, y: 0 });
   });
 
-  // 7. Place each spine node's top and bottom subtree.
-  for (const spineNode of spineList) {
-    const spinePos = positions.get(spineNode.anilistId)!;
+  // ── Step C (continued): now that anime spine x-positions are known, place source spine ──
+
+  // First pass: source nodes that have a direct anime counterpart get pinned x = anime.x
+  for (const node of sourceSpineList) {
+    const animeId = animeForSource.get(node.anilistId);
+    if (animeId != null) {
+      const animePos = positions.get(animeId);
+      if (animePos) {
+        positions.set(node.anilistId, { x: animePos.x, y: SOURCE_Y });
+        sourcePositioned.add(node.anilistId);
+      }
+    }
+  }
+
+  // Second pass: source nodes WITHOUT a direct adaptation get interpolated x
+  // from their nearest topo-positioned neighbors in sourceSpineList.
+  for (let i = 0; i < sourceSpineList.length; i++) {
+    const node = sourceSpineList[i];
+    if (sourcePositioned.has(node.anilistId)) continue;
+
+    // Find nearest positioned neighbor before and after in topo order.
+    let prevX: number | null = null;
+    for (let j = i - 1; j >= 0; j--) {
+      const p = positions.get(sourceSpineList[j].anilistId);
+      if (p && sourcePositioned.has(sourceSpineList[j].anilistId)) { prevX = p.x; break; }
+    }
+    let nextX: number | null = null;
+    for (let j = i + 1; j < sourceSpineList.length; j++) {
+      const p = positions.get(sourceSpineList[j].anilistId);
+      if (p && sourcePositioned.has(sourceSpineList[j].anilistId)) { nextX = p.x; break; }
+    }
+    let xPos: number;
+    if (prevX != null && nextX != null) xPos = (prevX + nextX) / 2;
+    else if (prevX != null) xPos = prevX + SPINE_X_MIN;
+    else if (nextX != null) xPos = nextX - SPINE_X_MIN;
+    else {
+      // No anchored siblings — lay out sequentially based on topo index.
+      xPos = i * SPINE_X_MIN;
+    }
+    positions.set(node.anilistId, { x: xPos, y: SOURCE_Y });
+    sourcePositioned.add(node.anilistId);
+  }
+
+  // 7. Place each spine node's top and bottom subtrees.
+  //    Anime spine: placed at y=0; top subtrees go up (dir=-1), bottom go down (dir=+1).
+  //    Source spine: placed at y=SOURCE_Y; top subtrees go further up, bottom go
+  //    between source spine and anime spine.
+  for (const spineNode of allSpineNodes) {
+    const spinePos = positions.get(spineNode.anilistId);
+    if (!spinePos) continue; // defensive — all spine nodes should be placed
     for (const dir of [-1, 1] as const) {
       const kids = (dir === -1 ? topChildrenOf : bottomChildrenOf).get(spineNode.anilistId) ?? [];
       if (kids.length === 0) continue;
