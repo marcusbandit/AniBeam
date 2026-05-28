@@ -15,12 +15,12 @@ import {
   type Edge as RFEdge,
   type NodeProps,
 } from '@xyflow/react';
-import * as dagre from 'dagre';
 import { Tv, Film, ZoomIn, ZoomOut, Maximize2, Maximize, Minimize, Library } from 'lucide-react';
 
 import type { FranchiseGraph, FranchiseNode as FranchiseNodeData } from '../../../shared/franchise';
 import { relationLabel } from './laneAssignment';
 import { categoryFor, type FranchiseCategory, FranchiseFilters } from './FranchiseFilters';
+import { layoutFranchise, pickHandles } from './franchiseLayout';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -51,8 +51,8 @@ interface FranchiseNodeFlowData extends Record<string, unknown> {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const NODE_WIDTH = 180;
-const NODE_HEIGHT = 240;
+const NODE_W = 180; // matches the .franchise-node CSS width
+const NODE_H = 340; // poster 200 + body ~140
 
 // ─── Layout ──────────────────────────────────────────────────────────────────
 
@@ -61,16 +61,6 @@ function layoutGraph(
   currentId: number,
   hiddenCategories: ReadonlySet<FranchiseCategory>,
 ): { nodes: RFNode<FranchiseNodeFlowData>[]; edges: RFEdge[] } {
-  const g = new dagre.graphlib.Graph();
-  g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({
-    rankdir: 'LR',
-    nodesep: 40,
-    ranksep: 90,
-    marginx: 24,
-    marginy: 24,
-  });
-
   // Build incoming-relation map to get the label per node
   const incoming = new Map<number, string>();
   for (const e of graph.edges) {
@@ -93,31 +83,23 @@ function layoutGraph(
 
   const visibleNodes = graph.nodes.filter((n) => connectedNodeIds.has(n.anilistId));
 
-  for (const node of visibleNodes) {
-    g.setNode(String(node.anilistId), { width: NODE_WIDTH, height: NODE_HEIGHT });
-  }
-
-  for (const edge of visibleEdges) {
-    // Only add edges where both endpoints are still visible
-    if (connectedNodeIds.has(edge.from) && connectedNodeIds.has(edge.to)) {
-      g.setEdge(String(edge.from), String(edge.to), { relationType: edge.relationType });
-    }
-  }
-
-  dagre.layout(g);
+  // Compute spine-centric positions for all nodes in the full graph, then
+  // apply them to the visible subset. The full-graph positions ensure the
+  // layout is stable regardless of which categories are currently hidden.
+  const positions = layoutFranchise(graph, currentId);
 
   const rfNodes: RFNode<FranchiseNodeFlowData>[] = visibleNodes.map((node) => {
-    const dagreNode = g.node(String(node.anilistId));
     const isCurrent = node.anilistId === currentId;
     const rt = incoming.get(node.anilistId);
     const relLabel = isCurrent ? 'Currently viewing' : (rt ? relationLabel(rt) : null);
+    const p = positions.get(node.anilistId) ?? { x: 0, y: 0 };
 
     return {
       id: String(node.anilistId),
       type: 'franchise',
       position: {
-        x: dagreNode.x - NODE_WIDTH / 2,
-        y: dagreNode.y - NODE_HEIGHT / 2,
+        x: p.x - NODE_W / 2,
+        y: p.y - NODE_H / 2,
       },
       data: {
         node,
@@ -135,14 +117,22 @@ function layoutGraph(
 
   const rfEdges: RFEdge[] = visibleEdges
     .filter((edge) => connectedNodeIds.has(edge.from) && connectedNodeIds.has(edge.to))
-    .map((edge) => ({
-      id: `${edge.from}->${edge.to}:${edge.relationType}`,
-      source: String(edge.from),
-      target: String(edge.to),
-      type: 'default',
-      className: `franchise-edge franchise-edge--${edge.relationType.toLowerCase()}`,
-      data: { relationType: edge.relationType },
-    }));
+    .map((edge) => {
+      const { sourceHandle, targetHandle } = pickHandles(
+        positions.get(edge.from) ?? { x: 0, y: 0 },
+        positions.get(edge.to)   ?? { x: 0, y: 0 },
+      );
+      return {
+        id: `${edge.from}->${edge.to}:${edge.relationType}`,
+        source: String(edge.from),
+        target: String(edge.to),
+        sourceHandle,
+        targetHandle,
+        type: 'default',
+        className: `franchise-edge franchise-edge--${edge.relationType.toLowerCase()}`,
+        data: { relationType: edge.relationType },
+      };
+    });
 
   return { nodes: rfNodes, edges: rfEdges };
 }
@@ -169,8 +159,14 @@ function FranchiseFlowNode({ data }: NodeProps<RFNode<FranchiseNodeFlowData>>) {
 
   const inner = (
     <>
-      <Handle type="target" position={Position.Left} />
-      <Handle type="source" position={Position.Right} />
+      <Handle id="top-s"    type="source" position={Position.Top}    />
+      <Handle id="top-t"    type="target" position={Position.Top}    />
+      <Handle id="right-s"  type="source" position={Position.Right}  />
+      <Handle id="right-t"  type="target" position={Position.Right}  />
+      <Handle id="bottom-s" type="source" position={Position.Bottom} />
+      <Handle id="bottom-t" type="target" position={Position.Bottom} />
+      <Handle id="left-s"   type="source" position={Position.Left}   />
+      <Handle id="left-t"   type="target" position={Position.Left}   />
       <div className="relation-card-poster">
         {node.poster ? (
           <img src={node.poster} alt={title} loading="lazy" decoding="async" />
@@ -273,8 +269,8 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
     const cur = nodes.find((n) => n.data.isCurrent);
     if (!cur) return;
     reactFlowInstance.setCenter(
-      cur.position.x + NODE_WIDTH / 2,
-      cur.position.y + NODE_HEIGHT / 2,
+      cur.position.x + NODE_W / 2,
+      cur.position.y + NODE_H / 2,
       { zoom: 1, duration: 300 },
     );
   }, [graph, currentAnilistId]); // intentionally not depending on `nodes` (referentially stable via useMemo on same deps)

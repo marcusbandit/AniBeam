@@ -4952,3 +4952,14 @@ button.franchise-node:hover {
   align-items: center;
   flex-shrink: 0;
 }
+
+/* Hide handle dots — edges still attach but dots are invisible */
+.franchise-graph .react-flow__handle {
+  opacity: 0;
+  pointer-events: none;
+  width: 1px;
+  height: 1px;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+}
