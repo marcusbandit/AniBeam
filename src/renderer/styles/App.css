@@ -4692,39 +4692,7 @@ button.hero-chip-anilist--icon:hover {
   color: var(--accent-amber);
 }
 
-/* ── Franchise Map ───────────────────────────────────────────── */
-.franchise-map {
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 8px 4px 16px;
-}
-.franchise-map__inner {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  min-width: max-content;
-  align-items: stretch;
-}
-.franchise-lane {
-  display: flex;
-  flex-direction: row;
-  gap: 16px;
-  align-items: flex-start;
-}
-.franchise-lane--spine {
-  position: relative;
-  align-items: center;
-}
-.franchise-rail {
-  position: absolute;
-  left: 0; right: 0;
-  top: 50%;
-  height: 2px;
-  background: var(--accent-teal, #2dd4bf);
-  opacity: 0.35;
-  z-index: 0;
-}
-.franchise-cell { position: relative; z-index: 1; }
+/* ── Franchise Graph (React Flow canvas) ───────────────────────────────── */
 
 /* compact tile: shrink the reused relation-card shell */
 .franchise-node { width: 150px; }
@@ -4733,7 +4701,98 @@ button.hero-chip-anilist--icon:hover {
 
 /* current-node highlight ring */
 .franchise-node[data-current="true"] {
-  outline: 2px solid var(--accent-teal, #2dd4bf);
+  outline: 2px solid var(--accent-teal, #14b8a6);
   outline-offset: 2px;
   border-radius: var(--radius-lg, 20px);
 }
+
+.franchise-graph {
+  position: relative;
+  width: 100%;
+  height: 560px;
+  border-radius: var(--radius-lg, 20px);
+  overflow: hidden;
+  background: var(--bg-card, #15151c);
+}
+
+/* React Flow theming overrides — match the app's dark surface */
+.franchise-graph .react-flow {
+  background: transparent;
+}
+.franchise-graph .react-flow__background {
+  /* dots/grid use currentColor on path; this sets a subtle tint */
+  color: var(--border-color, rgba(255,255,255,0.07));
+}
+.franchise-graph .react-flow__controls {
+  background: var(--bg-tertiary, #1a1a22);
+  border: 1px solid var(--border-color, rgba(255,255,255,0.07));
+  border-radius: var(--radius-md, 14px);
+  overflow: hidden;
+}
+.franchise-graph .react-flow__controls button {
+  background: transparent;
+  color: var(--text-secondary, #94a3b8);
+  border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.07));
+}
+.franchise-graph .react-flow__controls button:hover {
+  background: var(--bg-hover, #1d1d26);
+}
+
+/* The custom node wrapper — pointer affordances follow ownership.
+   Current node has its own non-clickable treatment. */
+.franchise-graph .react-flow__node {
+  cursor: default;
+}
+.franchise-graph .react-flow__node[data-id]:not([data-id=""]) .franchise-node:not([data-current="true"]) {
+  cursor: pointer;
+}
+
+/* Edges — base styling, then per-relationType variants. Selectors target
+   React Flow's internal path element via the class we put on the edge group. */
+.franchise-graph .franchise-edge .react-flow__edge-path {
+  stroke: var(--border-hover, rgba(255,255,255,0.14));
+  stroke-width: 1.5;
+  fill: none;
+}
+/* Spine: prequel/sequel — thick, teal */
+.franchise-graph .franchise-edge--prequel .react-flow__edge-path,
+.franchise-graph .franchise-edge--sequel  .react-flow__edge-path {
+  stroke: var(--accent-teal, #14b8a6);
+  stroke-width: 2.5;
+  opacity: 0.85;
+}
+/* Upstream: source/parent/adaptation — solid accent */
+.franchise-graph .franchise-edge--source     .react-flow__edge-path,
+.franchise-graph .franchise-edge--parent     .react-flow__edge-path,
+.franchise-graph .franchise-edge--adaptation .react-flow__edge-path {
+  stroke: var(--accent-secondary, #818cf8);
+  stroke-width: 2;
+  opacity: 0.75;
+}
+/* Alternative: dashed, distinct color */
+.franchise-graph .franchise-edge--alternative .react-flow__edge-path {
+  stroke: var(--accent-amber, #f59e0b);
+  stroke-width: 1.75;
+  stroke-dasharray: 6 4;
+  opacity: 0.8;
+}
+/* Companions: side_story, spin_off, summary, compilation, contains — thin */
+.franchise-graph .franchise-edge--side_story  .react-flow__edge-path,
+.franchise-graph .franchise-edge--spin_off    .react-flow__edge-path,
+.franchise-graph .franchise-edge--summary     .react-flow__edge-path,
+.franchise-graph .franchise-edge--compilation .react-flow__edge-path,
+.franchise-graph .franchise-edge--contains    .react-flow__edge-path {
+  stroke: var(--text-muted, #64748b);
+  stroke-width: 1.25;
+  opacity: 0.7;
+}
+/* Other: thin dashed */
+.franchise-graph .franchise-edge--other .react-flow__edge-path {
+  stroke: var(--border-hover, rgba(255,255,255,0.14));
+  stroke-width: 1.25;
+  stroke-dasharray: 3 4;
+  opacity: 0.6;
+}
+
+/* Smoothstep markers — keep them subtle */
+.franchise-graph .react-flow__edge-textwrapper { display: none; }

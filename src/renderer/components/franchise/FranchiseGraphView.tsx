@@ -115,7 +115,7 @@ function layoutGraph(
     source: String(edge.from),
     target: String(edge.to),
     type: 'smoothstep',
-    className: 'franchise-edge',
+    className: `franchise-edge franchise-edge--${edge.relationType.toLowerCase()}`,
     data: { relationType: edge.relationType },
   }));
 
