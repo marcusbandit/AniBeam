@@ -4,7 +4,7 @@ import { relationLane } from './laneAssignment';
 // ── Visual layout constants ─────────────────────────────────────────────────
 const NODE_W = 180;   // tile width
 const H_GAP  = 240;   // min horizontal slot per leaf
-const V_GAP  = 420;   // vertical distance between tree levels
+const V_GAP  = 500;   // vertical distance between tree levels
 const SPINE_X_MIN = 280; // minimum horizontal gap between adjacent spine nodes
 
 const SPINE_RELATIONS = new Set(['PREQUEL', 'SEQUEL']);

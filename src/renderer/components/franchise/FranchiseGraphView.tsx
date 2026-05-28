@@ -49,12 +49,13 @@ interface FranchiseNodeFlowData extends Record<string, unknown> {
   anilistIcon: ReactNode;
   onOpenInApp: (seriesId: string) => void;
   onOpenExternal: (node: FranchiseNodeData) => void;
+  dimmed: boolean;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const NODE_W = 180; // matches the .franchise-node CSS width
-const NODE_H = 340; // poster 200 + body ~140
+const NODE_H = 420; // poster (180×1.5 = 270) + body ~150
 
 // ─── Layout ──────────────────────────────────────────────────────────────────
 
@@ -63,6 +64,7 @@ function layoutGraph(
   currentId: number,
   hiddenCategories: ReadonlySet<FranchiseCategory>,
   hiddenFormats: ReadonlySet<FranchiseFormat>,
+  hoveredId: number | null,
 ): { nodes: RFNode<FranchiseNodeFlowData>[]; edges: RFEdge[] } {
   // Dedupe reciprocal edges (SOURCE↔ADAPTATION, PARENT↔SIDE_STORY, PREQUEL↔SEQUEL)
   const dedupedEdges = dedupeReciprocalEdges(graph.edges);
@@ -106,6 +108,16 @@ function layoutGraph(
   const filteredGraph: FranchiseGraph = { ...graph, nodes: filteredNodes, edges: filteredEdges };
   const positions = layoutFranchise(filteredGraph, currentId);
 
+  // Compute the hover highlight set: hovered node + its direct neighbors.
+  let highlightSet: Set<number> | null = null;
+  if (hoveredId != null) {
+    highlightSet = new Set<number>([hoveredId]);
+    for (const e of filteredEdges) {
+      if (e.from === hoveredId) highlightSet.add(e.to);
+      if (e.to === hoveredId) highlightSet.add(e.from);
+    }
+  }
+
   const rfNodes: RFNode<FranchiseNodeFlowData>[] = visibleNodes
     .filter((node) => positions.has(node.anilistId))
     .map((node) => {
@@ -131,6 +143,7 @@ function layoutGraph(
         anilistIcon: null,
         onOpenInApp: () => {},
         onOpenExternal: () => {},
+        dimmed: highlightSet != null && !highlightSet.has(node.anilistId),
       },
     };
   });
@@ -142,6 +155,7 @@ function layoutGraph(
         positions.get(edge.from) ?? { x: 0, y: 0 },
         positions.get(edge.to)   ?? { x: 0, y: 0 },
       );
+      const dimmed = hoveredId != null && edge.from !== hoveredId && edge.to !== hoveredId;
       return {
         id: `${edge.from}->${edge.to}:${edge.relationType}`,
         source: String(edge.from),
@@ -149,7 +163,7 @@ function layoutGraph(
         sourceHandle,
         targetHandle,
         type: 'default',
-        className: `franchise-edge franchise-edge--${edge.relationType.toLowerCase()}`,
+        className: `franchise-edge franchise-edge--${edge.relationType.toLowerCase()}${dimmed ? ' franchise-edge--dimmed' : ''}`,
         data: { relationType: edge.relationType },
       };
     });
@@ -160,7 +174,7 @@ function layoutGraph(
 // ─── Custom node component ────────────────────────────────────────────────────
 
 function FranchiseFlowNode({ data }: NodeProps<RFNode<FranchiseNodeFlowData>>) {
-  const { node, title, isCurrent, ownedId, relLabel, statusMarker, anilistIcon, onOpenInApp, onOpenExternal } = data;
+  const { node, title, isCurrent, ownedId, relLabel, statusMarker, anilistIcon, onOpenInApp, onOpenExternal, dimmed } = data;
   const owned = ownedId != null;
   const isManga = node.type === 'MANGA';
 
@@ -169,6 +183,7 @@ function FranchiseFlowNode({ data }: NodeProps<RFNode<FranchiseNodeFlowData>>) {
   const dataAttrs = {
     'data-format': node.format ?? '',
     'data-current': isCurrent ? 'true' : undefined,
+    'data-dimmed': dimmed ? 'true' : undefined,
   };
 
   const handleClick = () => {
@@ -249,6 +264,7 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
 
   const reactFlowInstance = useReactFlow();
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [hoveredId, setHoveredId] = useState<number | null>(null);
 
   const handleZoomIn  = () => reactFlowInstance.zoomIn({ duration: 200 });
   const handleZoomOut = () => reactFlowInstance.zoomOut({ duration: 200 });
@@ -264,7 +280,7 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
   }, [isFullscreen]);
 
   const { nodes, edges } = useMemo(() => {
-    const layout = layoutGraph(graph, currentAnilistId, hiddenCategories, hiddenFormats);
+    const layout = layoutGraph(graph, currentAnilistId, hiddenCategories, hiddenFormats, hoveredId);
 
     // Enrich node data with display fields
     const enrichedNodes = layout.nodes.map((rfNode) => {
@@ -285,7 +301,7 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
     });
 
     return { nodes: enrichedNodes, edges: layout.edges };
-  }, [graph, currentAnilistId, hiddenCategories, hiddenFormats, resolveOwnedId, pickTitle, onOpenInApp, onOpenExternal, statusMarkerFor, anilistIcon]);
+  }, [graph, currentAnilistId, hiddenCategories, hiddenFormats, hoveredId, resolveOwnedId, pickTitle, onOpenInApp, onOpenExternal, statusMarkerFor, anilistIcon]);
 
   useEffect(() => {
     const cur = nodes.find((n) => n.data.isCurrent);
@@ -312,6 +328,8 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
         edges={edges}
         nodeTypes={nodeTypes}
         onNodeClick={handleNodeClick as Parameters<typeof ReactFlow>[0]['onNodeClick']}
+        onNodeMouseEnter={(_, n) => setHoveredId(Number(n.id))}
+        onNodeMouseLeave={() => setHoveredId(null)}
         fitView
         fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
         minZoom={0.05}
