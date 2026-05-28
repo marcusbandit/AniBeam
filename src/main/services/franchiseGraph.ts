@@ -84,6 +84,18 @@ interface SavedSeries {
   relations?: RawRelation[];
 }
 
+const yearFromStartDate = (sd: unknown): number | null => {
+  if (typeof sd === 'string') {
+    const m = sd.match(/^(\d{4})/);
+    if (m) return Number(m[1]);
+  }
+  if (sd && typeof sd === 'object' && 'year' in sd) {
+    const y = (sd as { year?: number | null }).year;
+    return typeof y === 'number' ? y : null;
+  }
+  return null;
+};
+
 /** Build ownedNodes + seedRelations from every owned series that has an anilistId.
  *  The library only contains anime, so every owned node is type ANIME. */
 function buildSeed(meta: Record<string, SavedSeries>): {
@@ -101,7 +113,7 @@ function buildSeed(meta: Record<string, SavedSeries>): {
       format: s.format ?? null,
       status: s.status ?? null,
       seasonYear: s.seasonYear ?? null,
-      startYear: null,
+      startYear: s.seasonYear != null ? null : yearFromStartDate((s as unknown as { startDate?: unknown }).startDate) ?? null,
       siteUrl: null,
       titleRomaji: s.titleRomaji ?? null,
       titleEnglish: s.titleEnglish ?? null,

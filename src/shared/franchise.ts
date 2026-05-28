@@ -139,9 +139,23 @@ export async function closeGraph(opts: CloseGraphOptions): Promise<FranchiseGrap
 
     for (const r of relations) {
       if (r.relationType === 'CHARACTER') continue; // dropped from the map
-      if (!nodes.has(r.anilistId)) {
+      const existing = nodes.get(r.anilistId);
+      if (!existing) {
         if (nodes.size >= nodeCap) { hitCap = true; continue; }
         nodes.set(r.anilistId, nodeFromRelation(r));
+      } else {
+        // Fill in any null/undefined fields on the existing node from this relation entry.
+        // Seed-provided values (non-null) win; only blanks get filled.
+        if (existing.format == null && r.format != null)             existing.format = r.format;
+        if (existing.status == null && r.status != null)             existing.status = r.status;
+        if (existing.seasonYear == null && r.seasonYear != null)     existing.seasonYear = r.seasonYear;
+        if (existing.startYear == null && r.startYear != null)       existing.startYear = r.startYear;
+        if (existing.siteUrl == null && r.siteUrl != null)           existing.siteUrl = r.siteUrl;
+        if (existing.titleEnglish == null && r.titleEnglish != null) existing.titleEnglish = r.titleEnglish;
+        if (existing.titleRomaji == null && r.titleRomaji != null)   existing.titleRomaji = r.titleRomaji;
+        if (existing.poster == null && r.poster != null)             existing.poster = r.poster;
+        if (existing.malId == null && r.malId != null)               existing.malId = r.malId;
+        if (existing.type == null && r.type != null)                 existing.type = r.type;
       }
       const edgeKey = `${id}->${r.anilistId}:${r.relationType}`;
       if (!seenEdges.has(edgeKey)) {

@@ -7,6 +7,18 @@ import {
   type RawRelation,
 } from '../../shared/franchise';
 
+const yearFromStartDate = (sd: unknown): number | null => {
+  if (typeof sd === 'string') {
+    const m = sd.match(/^(\d{4})/);
+    if (m) return Number(m[1]);
+  }
+  if (sd && typeof sd === 'object' && 'year' in sd) {
+    const y = (sd as { year?: number | null }).year;
+    return typeof y === 'number' ? y : null;
+  }
+  return null;
+};
+
 /** Build ownedNodes + seedRelations from the in-memory owned-metadata map. */
 function buildLocalSeed(allMeta: Record<string, SeriesMetadata>): {
   ownedNodes: Map<number, FranchiseNode>;
@@ -16,6 +28,7 @@ function buildLocalSeed(allMeta: Record<string, SeriesMetadata>): {
   const seedRelations = new Map<number, RawRelation[]>();
   for (const s of Object.values(allMeta)) {
     if (typeof s.anilistId !== 'number') continue;
+    const explicitStartYear = (s as unknown as { startYear?: number | null }).startYear ?? null;
     ownedNodes.set(s.anilistId, {
       anilistId: s.anilistId,
       malId: s.malId ?? null,
@@ -23,7 +36,7 @@ function buildLocalSeed(allMeta: Record<string, SeriesMetadata>): {
       format: s.format ?? null,
       status: s.status ?? null,
       seasonYear: s.seasonYear ?? null,
-      startYear: (s as unknown as { startYear?: number | null }).startYear ?? null,
+      startYear: explicitStartYear ?? yearFromStartDate((s as unknown as { startDate?: unknown }).startDate) ?? null,
       siteUrl: null,
       titleRomaji: s.titleRomaji ?? null,
       titleEnglish: s.titleEnglish ?? null,
