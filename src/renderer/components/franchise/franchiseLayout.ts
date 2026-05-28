@@ -2,7 +2,6 @@ import type { FranchiseEdge, FranchiseGraph, FranchiseNode } from '../../../shar
 import { relationLane, relationLabel } from './laneAssignment';
 
 // ── Visual layout constants ─────────────────────────────────────────────────
-const NODE_W     = 180;   // tile width
 const H_GAP      = 240;   // min horizontal slot per leaf
 const V_GAP      = 500;   // vertical distance between chain rows
 const SPINE_X_MIN = 280;  // minimum horizontal gap between adjacent chain nodes
@@ -256,6 +255,7 @@ export function layoutFranchise(graph: FranchiseGraph, currentId: number): Map<n
     positions.set(node.anilistId, { x: (i - currentTopoIdx) * SPINE_X_GAP, y: 0 });
   });
   const positionedChains = new Set<number>([anchorIdx]);
+  const usedChainYs = new Set<number>([0]);
 
   // ── Step 4: BFS over chains by inter-chain connections. ────────────────────
   // Keep processing until no more reachable multi-node chains remain.
@@ -333,7 +333,13 @@ export function layoutFranchise(graph: FranchiseGraph, currentId: number): Map<n
       const baseY = bestConnected >= 0
         ? (positions.get(chains[bestConnected].ordered[0].anilistId)?.y ?? 0)
         : 0;
-      const newY = baseY + dir * V_GAP;
+      // Each chain gets a unique y row. If the natural target is already taken,
+      // step further in the same direction until free.
+      let candidateY = baseY + dir * V_GAP;
+      while (usedChainYs.has(candidateY)) {
+        candidateY += dir * V_GAP;
+      }
+      const newY = candidateY;
 
       // ── Step 7: Position the chain. First pass: pin x for nodes with direct anchors. ──
       const placed = new Set<number>();
@@ -392,6 +398,7 @@ export function layoutFranchise(graph: FranchiseGraph, currentId: number): Map<n
       }
 
       positionedChains.add(ci);
+      usedChainYs.add(newY);
       progress = true;
     }
   }
@@ -420,50 +427,50 @@ export function layoutFranchise(graph: FranchiseGraph, currentId: number): Map<n
     }
   }
 
-  // Split each chain node's BFS-tree children into top/bottom subtrees.
-  const topChildrenOf    = new Map<number, number[]>();
-  const bottomChildrenOf = new Map<number, number[]>();
-
-  for (const chainNode of allChainNodes) {
-    const allKids = treeChildren.get(chainNode.anilistId) ?? [];
-    const tops: number[] = [];
-    const bots: number[] = [];
-    for (const kid of allKids) {
-      const kidNode = nodeById.get(kid);
-      if (!kidNode) continue;
-      const kidDir = laneRelativeToSpine(chainNode.anilistId, kid, kidNode, edges);
-      (kidDir === -1 ? tops : bots).push(kid);
-    }
-    if (tops.length > 0) topChildrenOf.set(chainNode.anilistId, tops);
-    if (bots.length > 0) bottomChildrenOf.set(chainNode.anilistId, bots);
-  }
-
-  // Measure half-widths for chain nodes (used for subtree fan-out centering).
-  const halfWidthFor = (spineId: number): number => {
-    const tops = topChildrenOf.get(spineId) ?? [];
-    const bots = bottomChildrenOf.get(spineId) ?? [];
-    const topTotal = tops.reduce((s, k) => s + measureSubtree(k, treeChildren), 0);
-    const botTotal = bots.reduce((s, k) => s + measureSubtree(k, treeChildren), 0);
-    return Math.max(NODE_W + H_GAP, topTotal, botTotal) / 2;
-  };
-  // halfWidthFor is available for future use (spacing refinement).
-  void halfWidthFor;
-
-  // Place each chain node's top and bottom subtrees.
+  // Place each chain node's BFS-tree children.
+  // Anchor row (y === 0): use top/bottom lane semantics (laneRelativeToSpine).
+  // Non-anchor rows: ALL descendants go further away from the anchor (sign of y).
   for (const chainNode of allChainNodes) {
     const spinePos = positions.get(chainNode.anilistId);
     if (!spinePos) continue;
-    for (const treeDir of [-1, 1] as const) {
-      const kids = (treeDir === -1 ? topChildrenOf : bottomChildrenOf).get(chainNode.anilistId) ?? [];
-      if (kids.length === 0) continue;
-      const widths = kids.map((k) => measureSubtree(k, treeChildren));
+    const allKids = treeChildren.get(chainNode.anilistId) ?? [];
+    if (allKids.length === 0) continue;
+
+    const isAnchorRow = spinePos.y === 0;
+
+    if (isAnchorRow) {
+      // Anchor row: respect top/bottom lane semantics (existing behavior).
+      const tops: number[] = [];
+      const bots: number[] = [];
+      for (const kid of allKids) {
+        const kidNode = nodeById.get(kid);
+        if (!kidNode) continue;
+        const kidDir = laneRelativeToSpine(chainNode.anilistId, kid, kidNode, edges);
+        (kidDir === -1 ? tops : bots).push(kid);
+      }
+      for (const [treeDir, kids] of [[-1, tops], [1, bots]] as const) {
+        if (kids.length === 0) continue;
+        const widths = kids.map((k) => measureSubtree(k, treeChildren));
+        const total = widths.reduce((s, w) => s + w, 0);
+        let left = spinePos.x - total / 2;
+        for (let ki = 0; ki < kids.length; ki++) {
+          const childCx = left + widths[ki] / 2;
+          const childCy = spinePos.y + treeDir * V_GAP;
+          placeSubtree(kids[ki], childCx, childCy, treeDir, treeChildren, positions);
+          left += widths[ki];
+        }
+      }
+    } else {
+      // Non-anchor row: ALL descendants go AWAY from the anchor.
+      const dir: -1 | 1 = spinePos.y < 0 ? -1 : 1;
+      const widths = allKids.map((k) => measureSubtree(k, treeChildren));
       const total = widths.reduce((s, w) => s + w, 0);
       let left = spinePos.x - total / 2;
-      for (let ki = 0; ki < kids.length; ki++) {
-        const childCx = left + widths[ki] / 2;
-        const childCy = spinePos.y + treeDir * V_GAP;
-        placeSubtree(kids[ki], childCx, childCy, treeDir, treeChildren, positions);
-        left += widths[ki];
+      for (let i = 0; i < allKids.length; i++) {
+        const childCx = left + widths[i] / 2;
+        const childCy = spinePos.y + dir * V_GAP;
+        placeSubtree(allKids[i], childCx, childCy, dir, treeChildren, positions);
+        left += widths[i];
       }
     }
   }
