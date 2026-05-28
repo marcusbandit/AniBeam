@@ -14,10 +14,21 @@ import {
 const CACHE_FILE = 'franchiseGraphCache.json';
 const TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
 
+const RELATION_CACHE_FILE = 'franchiseRelationCache.json';
+const RELATION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
 interface CacheEntry { graph: FranchiseGraph; fetchedAt: number; }
 interface CacheShape {
   graphs: Record<string, CacheEntry>;   // rootId → entry
   index: Record<string, number>;        // anilistId → rootId
+}
+
+interface RelationCacheEntry {
+  relations: RawRelation[];
+  fetchedAt: number;
+}
+interface RelationCache {
+  byId: Record<string, RelationCacheEntry>;
 }
 
 function cachePath(): string {
@@ -38,6 +49,26 @@ async function readCache(): Promise<CacheShape> {
 async function writeCache(cache: CacheShape): Promise<void> {
   await mkdir(app.getPath('userData'), { recursive: true });
   await writeFile(cachePath(), JSON.stringify(cache), 'utf-8');
+}
+
+function relationCachePath(): string {
+  return join(app.getPath('userData'), RELATION_CACHE_FILE);
+}
+
+async function readRelationCache(): Promise<RelationCache> {
+  try {
+    const raw = await readFile(relationCachePath(), 'utf-8');
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && parsed.byId && typeof parsed.byId === 'object') {
+      return parsed as RelationCache;
+    }
+  } catch { /* missing/corrupt — empty */ }
+  return { byId: {} };
+}
+
+async function writeRelationCache(cache: RelationCache): Promise<void> {
+  await mkdir(app.getPath('userData'), { recursive: true });
+  await writeFile(relationCachePath(), JSON.stringify(cache), 'utf-8');
 }
 
 // SeriesMetadata-like shape we read from the saved store.
@@ -134,14 +165,50 @@ export async function getFranchiseGraph(anilistId: number): Promise<FranchiseGra
     seasonYear: null, startYear: null, siteUrl: null, titleRomaji: null, titleEnglish: null, poster: null,
   };
 
+  // Load the relation cache (shared across all franchises).
+  const relationCache = await readRelationCache();
+  let relationCacheDirty = false;
+  const now = Date.now();
+
+  // Seed the relation cache from owned metadata so those are never fetched from AniList.
+  for (const [id, rels] of seedRelations) {
+    const key = String(id);
+    if (!relationCache.byId[key]) {
+      relationCache.byId[key] = { relations: rels, fetchedAt: now };
+      relationCacheDirty = true;
+    }
+  }
+
   const graph = await closeGraph({
     seedNodes: [currentNode],
     seedRelations,
     fetch: async (id) => {
-      const r = await anilistHandler.fetchRelations(id);
-      return { relations: r.relations as RawRelation[], ok: r.ok };
+      // 1. Cache hit?
+      const cached = relationCache.byId[String(id)];
+      if (cached && now - cached.fetchedAt < RELATION_TTL_MS) {
+        return { relations: cached.relations as RawRelation[], ok: true };
+      }
+      // 2. Miss or stale — call AniList.
+      const result = await anilistHandler.fetchRelations(id);
+      if (result.ok) {
+        relationCache.byId[String(id)] = {
+          relations: result.relations as RawRelation[],
+          fetchedAt: Date.now(),
+        };
+        relationCacheDirty = true;
+      }
+      return { relations: result.relations as RawRelation[], ok: result.ok };
     },
   });
+
+  // Persist the relation cache if we added any new entries this run.
+  if (relationCacheDirty) {
+    try {
+      await writeRelationCache(relationCache);
+    } catch (e) {
+      logger.warn('metadata', `franchise relation cache write failed: ${(e as Error).message}`);
+    }
+  }
 
   // Cache the result (even partial); index every member id → rootId.
   cache.graphs[String(graph.rootId)] = { graph, fetchedAt: Date.now() };
