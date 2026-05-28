@@ -71,7 +71,7 @@ export function useFranchiseGraph(
     return () => { cancelled = true; };
   }, [currentAnilistId, allMeta]);
 
-  // Background fill from AniList (cached in main).
+  // Background fill from AniList (cached + progressively completed in main).
   useEffect(() => {
     setFilled(null);
     // Also clear the prior franchise's local seed so we never show the old
@@ -81,10 +81,32 @@ export function useFranchiseGraph(
     if (currentAnilistId == null) return;
     const myReq = ++reqIdRef.current;
     setFilling(true);
-    void window.electronAPI
-      .getFranchiseGraph(currentAnilistId)
-      .then((g) => { if (reqIdRef.current === myReq) setFilled(g); })
-      .finally(() => { if (reqIdRef.current === myReq) setFilling(false); });
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let stopped = false;
+    const POLL_MS = 5000;
+
+    const run = () => {
+      void window.electronAPI
+        .getFranchiseGraph(currentAnilistId)
+        .then((g) => {
+          if (stopped || reqIdRef.current !== myReq) return;
+          setFilled(g);
+          if (g && g.complete === false) {
+            timer = setTimeout(run, POLL_MS);
+          } else {
+            setFilling(false);
+          }
+        })
+        .catch(() => { if (!stopped && reqIdRef.current === myReq) setFilling(false); });
+    };
+    run();
+
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      if (reqIdRef.current === myReq) setFilling(false);
+    };
   }, [currentAnilistId]);
 
   // Prefer the filled graph once present; fall back to the local seed.

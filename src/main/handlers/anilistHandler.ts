@@ -967,6 +967,43 @@ const anilistHandler = {
     }
   },
 
+  /**
+   * Crawl-friendly relations fetch. Returns `ok: false` when the AniList
+   * call was exhausted by rate-limiting so callers can defer the node and
+   * retry on a later invocation. Returns `ok: true` (with possibly-empty
+   * relations) on all other outcomes — genuine "no relations" and benign
+   * non-rate-limit failures both look like "we know there's nothing here".
+   */
+  async fetchRelations(anilistId: number): Promise<{ relations: RelationEntry[]; ok: boolean }> {
+    try {
+      const data = await limiter.run(() =>
+        request<{ Media: RawEnrichmentMedia | null }>(ANILIST_API_URL, ENRICHMENT_QUERY, { id: anilistId }),
+      );
+      const media = data?.Media;
+      const relations = (media?.relations?.edges ?? []).map((e) => ({
+        relationType: e.relationType,
+        anilistId: e.node.id,
+        malId: e.node.idMal,
+        type: e.node.type,
+        format: e.node.format,
+        status: e.node.status,
+        seasonYear: e.node.seasonYear,
+        siteUrl: e.node.siteUrl,
+        titleRomaji: e.node.title?.romaji ?? null,
+        titleEnglish: e.node.title?.english ?? null,
+        poster: e.node.coverImage?.large ?? null,
+      }));
+      return { relations, ok: true };
+    } catch (error) {
+      if (isRateLimitError(error)) {
+        logRateLimitWarning('AniList');
+        return { relations: [], ok: false };
+      }
+      logger.warn('metadata', `AniList relations fetch failed: ${(error as Error).message}`);
+      return { relations: [], ok: true };
+    }
+  },
+
   async getMediaById(id: number): Promise<AniListMedia | null> {
     try {
       const data = await limiter.run(() =>

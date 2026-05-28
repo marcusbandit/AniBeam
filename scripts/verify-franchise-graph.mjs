@@ -23,7 +23,7 @@ const fetched = new Map([[2, [mk(1, 'PREQUEL'), mk(3, 'SEQUEL')]]]);
 const g1 = await closeGraph({
   seedNodes: [node(1)],
   seedRelations,
-  fetch: async (id) => fetched.get(id) ?? [],
+  fetch: async (id) => ({ relations: fetched.get(id) ?? [], ok: true }),
 });
 assert.deepEqual(g1.nodes.map((n) => n.anilistId).sort((a, b) => a - b), [1, 2, 3]);
 assert.equal(g1.rootId, 1);
@@ -62,5 +62,65 @@ const g5 = await closeGraph({
 });
 assert.equal(g5.edges.length, 1);
 assert.equal(g5.nodes.length, 2);
+
+// Rate-limited fetch defers the node; graph is incomplete with deferred ids.
+let calls = 0;
+const g6 = await closeGraph({
+  seedNodes: [node(1)],
+  seedRelations: new Map([[1, [mk(2, 'SEQUEL')]]]),
+  fetch: async (id) => { calls++; return { relations: [], ok: false }; },
+});
+assert.equal(g6.complete, false);
+assert.deepEqual(g6.deferred, [2]);
+assert.equal(calls, 1);
+
+// Subsequent call with the same seed but a now-succeeding fetcher closes the gap.
+const g7 = await closeGraph({
+  seedNodes: [node(1)],
+  seedRelations: new Map([[1, [mk(2, 'SEQUEL')]]]),
+  fetch: async (id) => ({ relations: id === 2 ? [mk(3, 'SEQUEL')] : [], ok: true }),
+});
+assert.equal(g7.complete, true);
+assert.deepEqual(g7.deferred, []);
+assert.deepEqual(g7.nodes.map(n => n.anilistId).sort((a,b)=>a-b), [1,2,3]);
+
+// A deferred node that gets retried via a back-edge and succeeds clears deferred.
+let g8Calls = 0;
+const g8 = await closeGraph({
+  seedNodes: [node(1)],
+  // 1 → SEQUEL → 2 ; we'll defer the fetch for 2 once, then succeed and have 2 → PREQUEL → 1 (back-edge already known)
+  seedRelations: new Map([[1, [mk(2, 'SEQUEL')]]]),
+  fetch: async (id) => {
+    g8Calls++;
+    if (id === 2 && g8Calls === 1) return { relations: [], ok: false };
+    // Second attempt for 2 (re-queued through some path) — succeed with no further relations.
+    return { relations: [], ok: true };
+  },
+});
+// Note: with just seedNodes=[1] and seedRelations=[[1,[mk(2,'SEQUEL')]]] the only re-queue path
+// for 2 would be if another node references it. This case is therefore a defer-once-only test:
+assert.equal(g8.complete, false);
+assert.deepEqual(g8.deferred, [2]);
+
+// Now exercise the actual same-pass-retry path: a back-edge re-queues a deferred node.
+let g9Calls = 0;
+const g9 = await closeGraph({
+  seedNodes: [node(1)],
+  // 1 → SEQUEL → 2 ; 1 also "knows" 2 again via another relation (duplicate edges dedup),
+  // but to truly force a re-queue we use a 3-node setup: 1 → 2 (defer), 1 → 3 (ok with 3 → 2)
+  seedRelations: new Map([
+    [1, [mk(2, 'SEQUEL'), mk(3, 'SIDE_STORY')]],
+    [3, [mk(2, 'PARENT')]],
+  ]),
+  fetch: async (id) => {
+    g9Calls++;
+    // Defer the FIRST fetch attempt for node 2; succeed on the second.
+    if (id === 2 && g9Calls === 1) return { relations: [], ok: false };
+    return { relations: [], ok: true };
+  },
+});
+assert.equal(g9.complete, true);            // <-- the bug-fix assertion: deferred cleared on successful retry
+assert.deepEqual(g9.deferred, []);
+assert.ok(g9.nodes.length >= 3);
 
 console.log('OK: franchise graph closure');

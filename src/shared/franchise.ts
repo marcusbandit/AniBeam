@@ -29,8 +29,11 @@ export interface FranchiseGraph {
   rootId: number;
   nodes: FranchiseNode[];
   edges: FranchiseEdge[];
-  /** True when BFS drained without hitting the node cap. */
+  /** True when BFS drained AND no nodes were deferred by the fetcher. */
   complete: boolean;
+  /** AniList ids whose relations we couldn't fetch this pass (rate-limited).
+   *  A future closeGraph call can retry these. Empty when complete. */
+  deferred: number[];
 }
 
 /** A relation edge from a node's perspective, including the target's own info. */
@@ -74,7 +77,10 @@ function nodeFromRelation(r: RawRelation): FranchiseNode {
   };
 }
 
-export type RelationsFetcher = (anilistId: number) => Promise<RawRelation[] | null>;
+/** Fetch result: `ok: false` means the fetch was rate-limited and the caller
+ *  should defer this node for a future retry; the node's relations remain
+ *  unknown. `ok: true` with an empty array means we know there are none. */
+export type RelationsFetcher = (anilistId: number) => Promise<{ relations: RawRelation[]; ok: boolean }>;
 
 export interface CloseGraphOptions {
   /** Known nodes (current series + owned series) with their own info. */
@@ -106,13 +112,24 @@ export async function closeGraph(opts: CloseGraphOptions): Promise<FranchiseGrap
   }
 
   let hitCap = false;
+  const deferred = new Set<number>();
   while (queue.length > 0) {
     const id = queue.shift()!;
     if (expanded.has(id)) continue;
     expanded.add(id);
+    deferred.delete(id); // clear any prior deferral now that we're successfully expanding
 
-    let relations = opts.seedRelations.get(id) ?? null;
-    if (relations == null && opts.fetch) relations = await opts.fetch(id);
+    let relations: RawRelation[] | null = opts.seedRelations.get(id) ?? null;
+    if (relations == null && opts.fetch) {
+      const result = await opts.fetch(id);
+      if (!result.ok) {
+        deferred.add(id);
+        // Roll back the "expanded" mark so a future call can retry this node.
+        expanded.delete(id);
+        continue;
+      }
+      relations = result.relations;
+    }
     if (relations == null) continue;
 
     for (const r of relations) {
@@ -134,5 +151,5 @@ export async function closeGraph(opts: CloseGraphOptions): Promise<FranchiseGrap
 
   const ids = [...nodes.keys()];
   const rootId = ids.length ? Math.min(...ids) : 0;
-  return { rootId, nodes: [...nodes.values()], edges, complete: !hitCap };
+  return { rootId, nodes: [...nodes.values()], edges, complete: !hitCap && deferred.size === 0, deferred: [...deferred] };
 }
