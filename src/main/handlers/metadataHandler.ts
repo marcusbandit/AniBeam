@@ -40,7 +40,14 @@ function runLocked<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 async function atomicWriteJson(filePath: string, data: unknown): Promise<void> {
-  const tmp = `${filePath}.tmp`;
+  // PID-suffixed tmp so two AniBeam processes (e.g. a dev electron in one
+  // worktree and the packaged binary) can both write the same metadata.json
+  // without tearing each other's renames. A fixed `${filePath}.tmp` raced
+  // catastrophically: writeFile-A truncated and refilled the tmp,
+  // writeFile-B truncated it again, and rename-A ended up renaming B's
+  // half-written tmp into place — producing files with a valid JSON prefix
+  // followed by stale trailing bytes from whichever write was longer.
+  const tmp = `${filePath}.tmp.${process.pid}`;
   await writeFile(tmp, JSON.stringify(data, null, 2), 'utf-8');
   await rename(tmp, filePath);
 }
