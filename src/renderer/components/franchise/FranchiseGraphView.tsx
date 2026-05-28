@@ -274,7 +274,7 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [hoveredId, setHoveredId] = useState<number | null>(null);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const HOVER_DELAY_MS = 500;
+  const HOVER_DELAY_MS = 280;
 
   const handleNodeMouseEnter = useCallback((_: React.MouseEvent, n: RFNode) => {
     if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);

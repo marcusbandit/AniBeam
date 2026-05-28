@@ -4981,16 +4981,19 @@ button.franchise-node:hover {
 
 /* ── Hover-dim: non-connected nodes + edges ────────────────────────────── */
 .franchise-node {
-  transition: opacity 150ms ease;
+  transition: opacity 260ms ease-out;
 }
 .franchise-node[data-dimmed="true"] {
   opacity: 0.18;
 }
 .franchise-graph .franchise-edge .react-flow__edge-path {
-  transition: opacity 150ms ease;
+  transition: opacity 260ms ease-out;
 }
 .franchise-graph .franchise-edge.franchise-edge--dimmed .react-flow__edge-path {
   opacity: 0.08 !important;
+}
+.franchise-graph .franchise-edge marker path {
+  transition: opacity 260ms ease-out;
 }
 .franchise-graph .franchise-edge.franchise-edge--dimmed marker path {
   opacity: 0.08;
