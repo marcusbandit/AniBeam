@@ -42,7 +42,7 @@ import {
 } from "../utils/playbackProgress";
 import type { TrackerListStatus } from "../../main/preload";
 import { Page, Section, Card, EpisodeRow, Pill, ScorePicker, Tooltip } from "../components/primitives";
-import { FranchiseGraphView, FranchiseFilters } from "../components/franchise";
+import { FranchiseGraphView } from "../components/franchise";
 import type { FranchiseCategory } from "../components/franchise";
 import { useFranchiseGraph } from "../hooks/useFranchiseGraph";
 import type { FranchiseNode } from "../../shared/franchise";
@@ -978,17 +978,6 @@ function SeriesDetailPage() {
 
       {(franchiseGraph?.nodes.length ?? 0) > 1 && meta?.anilistId != null && (
         <Section title="Related" count={(franchiseGraph?.nodes.length ?? 1) - 1}>
-          <FranchiseFilters
-            hidden={hiddenCategories}
-            onToggle={(cat) =>
-              setHiddenCategories((prev) => {
-                const n = new Set(prev);
-                if (n.has(cat)) n.delete(cat);
-                else n.add(cat);
-                return n;
-              })
-            }
-          />
           <FranchiseGraphView
             graph={franchiseGraph!}
             currentAnilistId={meta.anilistId}
@@ -1003,6 +992,14 @@ function SeriesDetailPage() {
             statusMarkerFor={(n) => listStatusMarker({ anilistId: n.anilistId, malId: n.malId })}
             anilistIcon={<AniListIcon size={11} />}
             hiddenCategories={hiddenCategories}
+            onToggleCategory={(cat) =>
+              setHiddenCategories((prev) => {
+                const n = new Set(prev);
+                if (n.has(cat)) n.delete(cat);
+                else n.add(cat);
+                return n;
+              })
+            }
           />
         </Section>
       )}

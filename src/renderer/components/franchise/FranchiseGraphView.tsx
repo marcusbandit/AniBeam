@@ -20,7 +20,7 @@ import { Tv, Film } from 'lucide-react';
 
 import type { FranchiseGraph, FranchiseNode as FranchiseNodeData } from '../../../shared/franchise';
 import { relationLabel } from './laneAssignment';
-import { categoryFor, type FranchiseCategory } from './FranchiseFilters';
+import { categoryFor, type FranchiseCategory, FranchiseFilters } from './FranchiseFilters';
 import { Pill } from '../primitives';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -35,6 +35,7 @@ export interface FranchiseGraphViewProps {
   statusMarkerFor: (node: FranchiseNodeData) => ReactNode;
   anilistIcon: ReactNode;
   hiddenCategories?: ReadonlySet<FranchiseCategory>;
+  onToggleCategory: (cat: FranchiseCategory) => void;
 }
 
 interface FranchiseNodeFlowData extends Record<string, unknown> {
@@ -229,6 +230,7 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
     statusMarkerFor,
     anilistIcon,
     hiddenCategories = new Set(),
+    onToggleCategory,
   } = props;
 
   const reactFlowInstance = useReactFlow();
@@ -286,34 +288,37 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
 
   return (
     <div className={`franchise-graph${isFullscreen ? ' franchise-graph--fullscreen' : ''}`}>
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        onNodeClick={handleNodeClick as Parameters<typeof ReactFlow>[0]['onNodeClick']}
-        fitView
-        fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
-        minZoom={0.05}
-        maxZoom={2.5}
-        proOptions={{ hideAttribution: true }}
-        nodesDraggable={false}
-        nodesConnectable={false}
-        elementsSelectable={false}
-        panOnDrag
-        zoomOnScroll
-        zoomOnPinch
-      >
-        <Background />
-        <Controls showInteractive={false} />
-        <Panel position="top-right">
-          <button
-            type="button"
-            onClick={() => setIsFullscreen((v) => !v)}
-          >
-            {isFullscreen ? 'Exit' : 'Fullscreen'}
-          </button>
-        </Panel>
-      </ReactFlow>
+      <FranchiseFilters hidden={hiddenCategories} onToggle={onToggleCategory} />
+      <div className="franchise-graph__canvas">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          onNodeClick={handleNodeClick as Parameters<typeof ReactFlow>[0]['onNodeClick']}
+          fitView
+          fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
+          minZoom={0.05}
+          maxZoom={2.5}
+          proOptions={{ hideAttribution: true }}
+          nodesDraggable={false}
+          nodesConnectable={false}
+          elementsSelectable={false}
+          panOnDrag
+          zoomOnScroll
+          zoomOnPinch
+        >
+          <Background />
+          <Controls showInteractive={false} />
+          <Panel position="top-right">
+            <button
+              type="button"
+              onClick={() => setIsFullscreen((v) => !v)}
+            >
+              {isFullscreen ? 'Exit' : 'Fullscreen'}
+            </button>
+          </Panel>
+        </ReactFlow>
+      </div>
     </div>
   );
 }
