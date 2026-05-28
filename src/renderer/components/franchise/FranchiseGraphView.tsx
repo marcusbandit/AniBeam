@@ -1,6 +1,7 @@
 import '@xyflow/react/dist/style.css';
 
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
 import {
   ReactFlow,
@@ -289,8 +290,9 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
     else onOpenExternal(node);
   };
 
-  return (
-    <div className={`franchise-graph${isFullscreen ? ' franchise-graph--fullscreen' : ''}`}>
+  const containerClass = `franchise-graph${isFullscreen ? ' franchise-graph--fullscreen' : ''}`;
+  const content = (
+    <div className={containerClass}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -325,6 +327,9 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
       </ReactFlow>
     </div>
   );
+  return isFullscreen && typeof document !== 'undefined'
+    ? createPortal(content, document.body)
+    : content;
 }
 
 // ─── Public export ────────────────────────────────────────────────────────────
