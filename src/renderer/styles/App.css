@@ -4832,6 +4832,17 @@ button.hero-chip-anilist--icon:hover {
 .franchise-filter-chip:hover {
   background: var(--bg-hover, #1d1d26);
 }
+.franchise-filters__divider {
+  display: inline-block;
+  width: 1px;
+  height: 18px;
+  background: var(--border-color, rgba(255,255,255,0.07));
+  align-self: center;
+  margin: 0 4px;
+}
+.franchise-filter-chip--format::before {
+  background: var(--text-muted, #64748b);
+}
 
 /* ── Franchise graph fullscreen ────────────────────────────── */
 .franchise-graph--fullscreen {

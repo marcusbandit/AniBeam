@@ -19,7 +19,7 @@ import { Tv, Film, ZoomIn, ZoomOut, Maximize2, Maximize, Minimize, Library } fro
 
 import type { FranchiseGraph, FranchiseNode as FranchiseNodeData } from '../../../shared/franchise';
 import { relationLabel } from './laneAssignment';
-import { categoryFor, type FranchiseCategory, FranchiseFilters } from './FranchiseFilters';
+import { categoryFor, formatFor, type FranchiseCategory, type FranchiseFormat, FranchiseFilters } from './FranchiseFilters';
 import { layoutFranchise, pickHandles, dedupeReciprocalEdges } from './franchiseLayout';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -35,6 +35,8 @@ export interface FranchiseGraphViewProps {
   anilistIcon: ReactNode;
   hiddenCategories?: ReadonlySet<FranchiseCategory>;
   onToggleCategory: (cat: FranchiseCategory) => void;
+  hiddenFormats?: ReadonlySet<FranchiseFormat>;
+  onToggleFormat: (fmt: FranchiseFormat) => void;
 }
 
 interface FranchiseNodeFlowData extends Record<string, unknown> {
@@ -60,6 +62,7 @@ function layoutGraph(
   graph: FranchiseGraph,
   currentId: number,
   hiddenCategories: ReadonlySet<FranchiseCategory>,
+  hiddenFormats: ReadonlySet<FranchiseFormat>,
 ): { nodes: RFNode<FranchiseNodeFlowData>[]; edges: RFEdge[] } {
   // Dedupe reciprocal edges (SOURCE↔ADAPTATION, PARENT↔SIDE_STORY, PREQUEL↔SEQUEL)
   const dedupedEdges = dedupeReciprocalEdges(graph.edges);
@@ -70,8 +73,19 @@ function layoutGraph(
     if (!incoming.has(e.to)) incoming.set(e.to, e.relationType);
   }
 
+  // Apply format filter: the current node is always visible; other nodes are
+  // hidden if their format category is in hiddenFormats.
+  const visibleNodeIds = new Set<number>();
+  for (const n of graph.nodes) {
+    if (n.anilistId === currentId || !hiddenFormats.has(formatFor(n.format))) {
+      visibleNodeIds.add(n.anilistId);
+    }
+  }
+  const filteredNodes = graph.nodes.filter((n) => visibleNodeIds.has(n.anilistId));
+  const filteredEdges = dedupedEdges.filter((e) => visibleNodeIds.has(e.from) && visibleNodeIds.has(e.to));
+
   // Filter edges by hidden categories
-  const visibleEdges = dedupedEdges.filter(
+  const visibleEdges = filteredEdges.filter(
     (e) => !hiddenCategories.has(categoryFor(e.relationType)),
   );
 
@@ -84,14 +98,17 @@ function layoutGraph(
     connectedNodeIds.add(e.to);
   }
 
-  const visibleNodes = graph.nodes.filter((n) => connectedNodeIds.has(n.anilistId));
+  const visibleNodes = filteredNodes.filter((n) => connectedNodeIds.has(n.anilistId));
 
-  // Compute tree positions for all nodes in the deduped graph, then apply them
-  // to the visible subset. The full-graph positions ensure the layout is stable
-  // regardless of which categories are currently hidden.
-  const positions = layoutFranchise({ ...graph, edges: dedupedEdges }, currentId);
+  // Compute tree positions for the format-filtered graph so the layout reflects
+  // actual visible nodes. The positions remain stable within a given format
+  // filter setting regardless of which relation categories are hidden.
+  const filteredGraph: FranchiseGraph = { ...graph, nodes: filteredNodes, edges: filteredEdges };
+  const positions = layoutFranchise(filteredGraph, currentId);
 
-  const rfNodes: RFNode<FranchiseNodeFlowData>[] = visibleNodes.map((node) => {
+  const rfNodes: RFNode<FranchiseNodeFlowData>[] = visibleNodes
+    .filter((node) => positions.has(node.anilistId))
+    .map((node) => {
     const isCurrent = node.anilistId === currentId;
     const rt = incoming.get(node.anilistId);
     const relLabel = isCurrent ? 'Currently viewing' : (rt ? relationLabel(rt) : null);
@@ -226,6 +243,8 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
     anilistIcon,
     hiddenCategories = new Set(),
     onToggleCategory,
+    hiddenFormats = new Set(),
+    onToggleFormat,
   } = props;
 
   const reactFlowInstance = useReactFlow();
@@ -245,7 +264,7 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
   }, [isFullscreen]);
 
   const { nodes, edges } = useMemo(() => {
-    const layout = layoutGraph(graph, currentAnilistId, hiddenCategories);
+    const layout = layoutGraph(graph, currentAnilistId, hiddenCategories, hiddenFormats);
 
     // Enrich node data with display fields
     const enrichedNodes = layout.nodes.map((rfNode) => {
@@ -266,7 +285,7 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
     });
 
     return { nodes: enrichedNodes, edges: layout.edges };
-  }, [graph, currentAnilistId, hiddenCategories, resolveOwnedId, pickTitle, onOpenInApp, onOpenExternal, statusMarkerFor, anilistIcon]);
+  }, [graph, currentAnilistId, hiddenCategories, hiddenFormats, resolveOwnedId, pickTitle, onOpenInApp, onOpenExternal, statusMarkerFor, anilistIcon]);
 
   useEffect(() => {
     const cur = nodes.find((n) => n.data.isCurrent);
@@ -307,7 +326,7 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
       >
         <Background />
         <Panel position="top-center" className="franchise-filters-panel">
-          <FranchiseFilters hidden={hiddenCategories} onToggle={onToggleCategory} />
+          <FranchiseFilters hidden={hiddenCategories} onToggle={onToggleCategory} hiddenFormats={hiddenFormats} onToggleFormat={onToggleFormat} />
         </Panel>
         <Panel position="bottom-left" className="franchise-controls">
           <button type="button" onClick={handleZoomIn}  aria-label="Zoom in"  title="Zoom in"><ZoomIn size={14} /></button>

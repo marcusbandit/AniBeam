@@ -2,9 +2,44 @@ import type { ReactElement } from 'react';
 
 export type FranchiseCategory = 'spine' | 'source' | 'side' | 'alternative' | 'other';
 
+export type FranchiseFormat =
+  | 'series' | 'movie' | 'shortform'
+  | 'manga' | 'novel' | 'visualnovel' | 'music' | 'other';
+
+export function formatFor(format: string | null | undefined): FranchiseFormat {
+  switch (format) {
+    case 'TV':
+    case 'TV_SHORT':
+    case 'ONA':           return 'series';
+    case 'MOVIE':         return 'movie';
+    case 'OVA':
+    case 'SPECIAL':       return 'shortform';
+    case 'MANGA':
+    case 'ONE_SHOT':      return 'manga';
+    case 'NOVEL':
+    case 'LIGHT_NOVEL':   return 'novel';
+    case 'VISUAL_NOVEL':  return 'visualnovel';
+    case 'MUSIC':         return 'music';
+    default:              return 'other';
+  }
+}
+
+const FORMAT_LABELS: Record<FranchiseFormat, string> = {
+  series:      'Series',
+  movie:       'Movies',
+  shortform:   'OVA / Specials',
+  manga:       'Manga',
+  novel:       'Novels',
+  visualnovel: 'Visual novels',
+  music:       'Music',
+  other:       'Other',
+};
+
 export interface FranchiseFiltersProps {
   hidden: ReadonlySet<FranchiseCategory>;
   onToggle: (cat: FranchiseCategory) => void;
+  hiddenFormats: ReadonlySet<FranchiseFormat>;
+  onToggleFormat: (fmt: FranchiseFormat) => void;
 }
 
 /**
@@ -33,27 +68,42 @@ export function categoryFor(relationType: string): FranchiseCategory {
   }
 }
 
-const CHIP_LABELS: { cat: FranchiseCategory; label: string }[] = [
-  { cat: 'spine',       label: 'Story chain' },
-  { cat: 'source',      label: 'Sources & parents' },
-  { cat: 'side',        label: 'Side stories & spin-offs' },
-  { cat: 'alternative', label: 'Alternatives' },
-  { cat: 'other',       label: 'Other' },
-];
+export function FranchiseFilters(props: FranchiseFiltersProps): ReactElement {
+  const { hidden, onToggle, hiddenFormats, onToggleFormat } = props;
+  const CATEGORIES: Array<{ cat: FranchiseCategory; label: string }> = [
+    { cat: 'spine',       label: 'Story chain' },
+    { cat: 'source',      label: 'Sources & parents' },
+    { cat: 'side',        label: 'Side stories & spin-offs' },
+    { cat: 'alternative', label: 'Alternatives' },
+    { cat: 'other',       label: 'Other' },
+  ];
+  const FORMATS: FranchiseFormat[] = ['series', 'movie', 'shortform', 'manga', 'novel', 'visualnovel', 'music', 'other'];
 
-export function FranchiseFilters({ hidden, onToggle }: FranchiseFiltersProps): ReactElement {
   return (
     <div className="franchise-filters">
-      {CHIP_LABELS.map(({ cat, label }) => (
+      {CATEGORIES.map(({ cat, label }) => (
         <button
           key={cat}
           type="button"
-          className={`franchise-filter-chip${hidden.has(cat) ? ' franchise-filter-chip--off' : ''}`}
           data-category={cat}
-          onClick={() => onToggle(cat)}
+          className={`franchise-filter-chip${hidden.has(cat) ? ' franchise-filter-chip--off' : ''}`}
           aria-pressed={!hidden.has(cat)}
+          onClick={() => onToggle(cat)}
         >
           {label}
+        </button>
+      ))}
+      <span className="franchise-filters__divider" aria-hidden="true" />
+      {FORMATS.map((fmt) => (
+        <button
+          key={fmt}
+          type="button"
+          data-format={fmt}
+          className={`franchise-filter-chip franchise-filter-chip--format${hiddenFormats.has(fmt) ? ' franchise-filter-chip--off' : ''}`}
+          aria-pressed={!hiddenFormats.has(fmt)}
+          onClick={() => onToggleFormat(fmt)}
+        >
+          {FORMAT_LABELS[fmt]}
         </button>
       ))}
     </div>

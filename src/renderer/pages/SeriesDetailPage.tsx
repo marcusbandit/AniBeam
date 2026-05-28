@@ -43,7 +43,7 @@ import {
 import type { TrackerListStatus } from "../../main/preload";
 import { Page, Section, Card, EpisodeRow, Pill, ScorePicker, Tooltip } from "../components/primitives";
 import { FranchiseGraphView } from "../components/franchise";
-import type { FranchiseCategory } from "../components/franchise";
+import type { FranchiseCategory, FranchiseFormat } from "../components/franchise";
 import { useFranchiseGraph } from "../hooks/useFranchiseGraph";
 import type { FranchiseNode } from "../../shared/franchise";
 
@@ -117,6 +117,14 @@ function SeriesDetailPage() {
   const [hiddenCategories, setHiddenCategories] = useState<ReadonlySet<FranchiseCategory>>(
     () => new Set(),
   );
+  const [hiddenFormats, setHiddenFormats] = useState<ReadonlySet<FranchiseFormat>>(() => new Set());
+  const toggleFormat = useCallback((fmt: FranchiseFormat) => {
+    setHiddenFormats((prev) => {
+      const n = new Set(prev);
+      if (n.has(fmt)) n.delete(fmt); else n.add(fmt);
+      return n;
+    });
+  }, []);
 
   const [item, setItem] = useState<LibraryItem | null>(null);
   const [meta, setMeta] = useState<SeriesMetadata | null>(null);
@@ -1000,6 +1008,8 @@ function SeriesDetailPage() {
                 return n;
               })
             }
+            hiddenFormats={hiddenFormats}
+            onToggleFormat={toggleFormat}
           />
         </Section>
       )}

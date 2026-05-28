@@ -64,17 +64,69 @@ function findSpine(currentId: number, adj: Map<number, AdjEdge[]>): Set<number> 
   return seen;
 }
 
-/** Sort spine nodes left→right by seasonYear (nulls last), then anilistId. */
-function sortSpine(spineSet: Set<number>, nodeById: Map<number, FranchiseNode>): FranchiseNode[] {
-  return [...spineSet]
-    .map((id) => nodeById.get(id))
-    .filter((n): n is FranchiseNode => n != null)
-    .sort((a, b) => {
-      const ay = a.seasonYear ?? Number.POSITIVE_INFINITY;
-      const by = b.seasonYear ?? Number.POSITIVE_INFINITY;
-      if (ay !== by) return ay - by;
-      return a.anilistId - b.anilistId;
-    });
+function topoSortSpine(
+  spineSet: Set<number>,
+  edges: ReadonlyArray<FranchiseEdge>,
+  nodeById: Map<number, FranchiseNode>,
+): FranchiseNode[] {
+  // Edges INSIDE the spine, where relationType === SEQUEL → from must precede to.
+  const internalSequels = edges.filter(
+    (e) => e.relationType === 'SEQUEL' && spineSet.has(e.from) && spineSet.has(e.to),
+  );
+
+  // Build in-degree map and adjacency for Kahn's algorithm.
+  const inDeg = new Map<number, number>();
+  const out = new Map<number, number[]>();
+  for (const id of spineSet) inDeg.set(id, 0);
+  for (const e of internalSequels) {
+    inDeg.set(e.to, (inDeg.get(e.to) ?? 0) + 1);
+    const arr = out.get(e.from);
+    if (arr) arr.push(e.to); else out.set(e.from, [e.to]);
+  }
+
+  // Year-then-id comparator for stable, intuitive ordering within a topo level.
+  const cmp = (a: number, b: number): number => {
+    const na = nodeById.get(a);
+    const nb = nodeById.get(b);
+    const ay = na?.seasonYear ?? Number.POSITIVE_INFINITY;
+    const by = nb?.seasonYear ?? Number.POSITIVE_INFINITY;
+    if (ay !== by) return ay - by;
+    return a - b;
+  };
+
+  // Kahn's with a min-heap-ish ready set (we just sort the ready array each pop,
+  // fine for spine sizes — usually <30 nodes).
+  const ready: number[] = [...spineSet].filter((id) => (inDeg.get(id) ?? 0) === 0);
+  ready.sort(cmp);
+  const ordered: number[] = [];
+  while (ready.length > 0) {
+    // Pop smallest by year (tiebreak id).
+    const next = ready.shift()!;
+    ordered.push(next);
+    for (const succ of out.get(next) ?? []) {
+      const d = (inDeg.get(succ) ?? 0) - 1;
+      inDeg.set(succ, d);
+      if (d === 0) {
+        ready.push(succ);
+        ready.sort(cmp);
+      }
+    }
+  }
+
+  // Map back to nodes; fall back to year-sort if topo couldn't order everyone
+  // (e.g. a cycle from bad data — defensive).
+  if (ordered.length !== spineSet.size) {
+    return [...spineSet]
+      .map((id) => nodeById.get(id))
+      .filter((n): n is FranchiseNode => n != null)
+      .sort((a, b) => {
+        const ay = a.seasonYear ?? Number.POSITIVE_INFINITY;
+        const by = b.seasonYear ?? Number.POSITIVE_INFINITY;
+        if (ay !== by) return ay - by;
+        return a.anilistId - b.anilistId;
+      });
+  }
+  return ordered.map((id) => nodeById.get(id)!).filter(Boolean);
 }
 
 /** BFS tree outward from spine: returns parent + children-of maps. */
@@ -180,7 +232,7 @@ export function layoutFranchise(graph: FranchiseGraph, currentId: number): Map<n
   const adj = buildAdjacency(edges);
   const nodeById = new Map(graph.nodes.map((n) => [n.anilistId, n]));
   const spineSet = findSpine(currentId, adj);
-  const spineList = sortSpine(spineSet, nodeById);
+  const spineList = topoSortSpine(spineSet, edges, nodeById);
 
   // 3. Build BFS tree from spine outward
   const { children: treeChildren } = buildBfsTree(spineSet, adj);

@@ -1,4 +1,4 @@
 export { FranchiseGraphView } from './FranchiseGraphView';
 export type { FranchiseGraphViewProps } from './FranchiseGraphView';
-export { FranchiseFilters, categoryFor } from './FranchiseFilters';
-export type { FranchiseCategory, FranchiseFiltersProps } from './FranchiseFilters';
+export { FranchiseFilters, categoryFor, formatFor } from './FranchiseFilters';
+export type { FranchiseCategory, FranchiseFiltersProps, FranchiseFormat } from './FranchiseFilters';
