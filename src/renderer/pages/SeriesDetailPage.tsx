@@ -42,7 +42,7 @@ import {
 } from "../utils/playbackProgress";
 import type { TrackerListStatus } from "../../main/preload";
 import { Page, Section, Card, EpisodeRow, Pill, ScorePicker, Tooltip } from "../components/primitives";
-import { FranchiseMap } from "../components/franchise";
+import { FranchiseGraphView } from "../components/franchise";
 import { useFranchiseGraph } from "../hooks/useFranchiseGraph";
 import type { FranchiseNode } from "../../shared/franchise";
 
@@ -973,7 +973,7 @@ function SeriesDetailPage() {
 
       {(franchiseGraph?.nodes.length ?? 0) > 1 && meta?.anilistId != null && (
         <Section title="Related" count={(franchiseGraph?.nodes.length ?? 1) - 1}>
-          <FranchiseMap
+          <FranchiseGraphView
             graph={franchiseGraph!}
             currentAnilistId={meta.anilistId}
             resolveOwnedId={resolveOwnedNode}
