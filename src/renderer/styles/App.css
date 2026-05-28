@@ -4730,43 +4730,6 @@ button.hero-chip-anilist--icon:hover {
   /* dots/grid use currentColor on path; this sets a subtle tint */
   color: var(--border-color, rgba(255,255,255,0.07));
 }
-.franchise-graph .react-flow__controls {
-  background: var(--bg-tertiary, #1a1a22);
-  border: 1px solid var(--border-color, rgba(255,255,255,0.07));
-  border-radius: var(--radius-md, 14px);
-  overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-}
-.franchise-graph .react-flow__controls-button {
-  background: var(--bg-tertiary, #1a1a22);
-  color: var(--text-secondary, #94a3b8);
-  border: none;
-  border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.07));
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-.franchise-graph .react-flow__controls-button:last-child {
-  border-bottom: none;
-}
-.franchise-graph .react-flow__controls-button:hover {
-  background: var(--bg-hover, #1d1d26);
-  color: var(--text-primary, #e2e8f0);
-}
-.franchise-graph .react-flow__controls-button svg {
-  fill: currentColor;
-  width: 14px;
-  height: 14px;
-  max-width: none;
-  max-height: none;
-}
-.franchise-graph .react-flow__controls-button svg path {
-  fill: currentColor;
-}
 
 /* The custom node wrapper — pointer affordances follow ownership.
    Current node has its own non-clickable treatment. */
@@ -4835,11 +4798,13 @@ button.hero-chip-anilist--icon:hover {
   margin: 4px 0 12px;
 }
 .franchise-graph .franchise-filters {
+  flex: 0 0 auto;            /* take only its content height in flex */
+  position: relative;        /* establish a stacking context */
+  z-index: 10;               /* sit above any canvas stacking quirks */
   padding: 10px 14px;
   margin: 0;
   border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.07));
   background: var(--bg-card, #15151c);
-  z-index: 1;
 }
 .franchise-filter-chip {
   display: inline-flex;
@@ -4880,6 +4845,8 @@ button.hero-chip-anilist--icon:hover {
   height: 100vh !important;
   border-radius: 0 !important;
   z-index: 9999 !important;
+  display: flex !important;
+  flex-direction: column !important;
 }
 .franchise-graph .react-flow__panel button {
   background: var(--bg-tertiary, #1a1a22);
@@ -4892,6 +4859,46 @@ button.hero-chip-anilist--icon:hover {
 }
 .franchise-graph .react-flow__panel button:hover {
   background: var(--bg-hover, #1d1d26);
+}
+
+/* Custom franchise graph controls — grouped buttons inside React Flow Panels */
+.franchise-graph .react-flow__panel.franchise-controls {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0;
+  background: var(--bg-tertiary, #1a1a22);
+  border: 1px solid var(--border-color, rgba(255,255,255,0.07));
+  border-radius: var(--radius-md, 14px);
+  overflow: hidden;
+}
+.franchise-graph .react-flow__panel.franchise-controls button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--text-secondary, #94a3b8);
+  border: none;
+  border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.07));
+  border-radius: 0;
+  cursor: pointer;
+}
+.franchise-graph .react-flow__panel.franchise-controls button:last-child {
+  border-bottom: none;
+}
+.franchise-graph .react-flow__panel.franchise-controls button:hover {
+  background: var(--bg-hover, #1d1d26);
+  color: var(--text-primary, #e2e8f0);
+}
+.franchise-graph .react-flow__panel.franchise-fullscreen-toggle button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Lean franchise tile (no Card primitive) — match the visual size budget

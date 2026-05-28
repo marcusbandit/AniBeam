@@ -6,7 +6,6 @@ import {
   ReactFlow,
   ReactFlowProvider,
   Background,
-  Controls,
   Handle,
   Panel,
   Position,
@@ -16,7 +15,7 @@ import {
   type NodeProps,
 } from '@xyflow/react';
 import * as dagre from 'dagre';
-import { Tv, Film } from 'lucide-react';
+import { Tv, Film, ZoomIn, ZoomOut, Maximize2, Maximize, Minimize } from 'lucide-react';
 
 import type { FranchiseGraph, FranchiseNode as FranchiseNodeData } from '../../../shared/franchise';
 import { relationLabel } from './laneAssignment';
@@ -236,6 +235,10 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
   const reactFlowInstance = useReactFlow();
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  const handleZoomIn  = () => reactFlowInstance.zoomIn({ duration: 200 });
+  const handleZoomOut = () => reactFlowInstance.zoomOut({ duration: 200 });
+  const handleFitView = () => reactFlowInstance.fitView({ padding: 0.2, duration: 250 });
+
   useEffect(() => {
     if (!isFullscreen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -308,13 +311,14 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
           zoomOnPinch
         >
           <Background />
-          <Controls showInteractive={false} />
-          <Panel position="top-right">
-            <button
-              type="button"
-              onClick={() => setIsFullscreen((v) => !v)}
-            >
-              {isFullscreen ? 'Exit' : 'Fullscreen'}
+          <Panel position="bottom-left" className="franchise-controls">
+            <button type="button" onClick={handleZoomIn}  aria-label="Zoom in"  title="Zoom in"><ZoomIn size={14} /></button>
+            <button type="button" onClick={handleZoomOut} aria-label="Zoom out" title="Zoom out"><ZoomOut size={14} /></button>
+            <button type="button" onClick={handleFitView} aria-label="Fit view" title="Fit view"><Maximize2 size={14} /></button>
+          </Panel>
+          <Panel position="top-right" className="franchise-fullscreen-toggle">
+            <button type="button" onClick={() => setIsFullscreen((v) => !v)} aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}>
+              {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
             </button>
           </Panel>
         </ReactFlow>
