@@ -264,6 +264,10 @@ function FranchiseFlowNode({ data }: NodeProps<RFNode<FranchiseNodeFlowData>>) {
     if (hoverLabel != null) displayLabel = hoverLabel;
   } else if (hoveredId === node.anilistId) {
     displayLabel = 'Viewing';
+  } else if (isRoot && displayLabel == null) {
+    // Root has no parent-relation by definition — surface "Root" so the card isn't
+    // visually empty above the title.
+    displayLabel = 'Root';
   }
   const owned = ownedId != null;
   const isManga = node.type === 'MANGA';
