@@ -7,6 +7,36 @@ import { Page, Inline, Tooltip } from '../components/primitives';
 
 type FilterOption = 'all' | 'series' | 'movies' | 'missing';
 
+function FranchiseCrawlProgress() {
+  const [stats, setStats] = useState<{ total: number; crawled: number } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetch = () => {
+      void window.electronAPI.getFranchiseCrawlProgress?.().then((s) => {
+        if (!cancelled) setStats(s ?? null);
+      });
+    };
+    fetch();
+    const off = window.electronAPI.onFranchiseStoreUpdated?.(() => fetch());
+    return () => { cancelled = true; off?.(); };
+  }, []);
+
+  if (!stats) return null;
+  const pct = stats.total === 0 ? 0 : (stats.crawled / stats.total) * 100;
+  return (
+    <div className="franchise-crawl-progress">
+      <div className="franchise-crawl-progress__header">
+        <span>Franchise crawl</span>
+        <span className="franchise-crawl-progress__count">{stats.crawled} / {stats.total} ({pct.toFixed(1)}%)</span>
+      </div>
+      <div className="franchise-crawl-progress__bar">
+        <div className="franchise-crawl-progress__fill" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
 function isMovie(data: SeriesMetadata): boolean {
   return data.type === 'movie' || data.format === 'MOVIE';
 }
@@ -154,6 +184,8 @@ function MetadataTab() {
         </Inline>
       }
     >
+
+      <FranchiseCrawlProgress />
 
       <div className="meta-toolbar">
         <div className="filter-pills">

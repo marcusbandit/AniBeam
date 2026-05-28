@@ -184,6 +184,7 @@ export interface ElectronAPI {
 
   // Franchise graph
   getFranchiseGraph: (anilistId: number) => Promise<FranchiseGraph | null>;
+  getFranchiseCrawlProgress: () => Promise<{ total: number; crawled: number }>;
   onFranchiseStoreUpdated: (handler: () => void) => () => void;
 }
 
@@ -346,6 +347,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Franchise graph
   getFranchiseGraph: (anilistId: number) => ipcRenderer.invoke('franchise:graph', anilistId),
+  getFranchiseCrawlProgress: () => ipcRenderer.invoke('franchise:crawl-progress'),
   onFranchiseStoreUpdated: (handler: () => void) => {
     const listener = () => handler();
     ipcRenderer.on('franchise:store-updated', listener);

@@ -19,7 +19,7 @@ import { findFileEpisode, type FileEpisodeEntry } from '../shared/fileEpisode';
 import videoProbeHandler from './handlers/videoProbeHandler';
 import transcodeCacheHandler from './handlers/transcodeCacheHandler';
 import { fileWatcher } from './services/watcher';
-import { getFranchiseGraph } from './services/franchiseGraph';
+import { getFranchiseGraph, getFranchiseCrawlProgress } from './services/franchiseGraph';
 // IPC modules — each registers its own handlers at app-ready time.
 import { registerLogIpc } from './ipc/log';
 import { registerConfigIpc } from './ipc/config';
@@ -1071,6 +1071,14 @@ ipcMain.handle('franchise:graph', async (_event, anilistId: number) => {
   } catch (error) {
     logger.error('metadata', `franchise:graph failed: ${(error as Error).message}`);
     return null;
+  }
+});
+
+ipcMain.handle('franchise:crawl-progress', async () => {
+  try { return await getFranchiseCrawlProgress(); }
+  catch (e) {
+    logger.error('metadata', `franchise:crawl-progress failed: ${(e as Error).message}`);
+    return { total: 0, crawled: 0 };
   }
 });
 

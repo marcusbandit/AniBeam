@@ -5046,3 +5046,45 @@ button.franchise-node:hover {
 .franchise-graph .react-flow__panel.franchise-debug > div {
   white-space: nowrap;
 }
+
+/* ── Franchise crawl progress (Metadata tab) ───────────────────────────────── */
+.franchise-crawl-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  margin: 0 0 16px;
+  background: var(--bg-card, #15151c);
+  border: 1px solid var(--border-color, rgba(255,255,255,0.07));
+  border-radius: var(--radius-lg, 20px);
+}
+.franchise-crawl-progress__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.franchise-crawl-progress__count {
+  color: var(--text-primary, #e2e8f0);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+}
+.franchise-crawl-progress__bar {
+  position: relative;
+  height: 8px;
+  background: var(--bg-tertiary, #1a1a22);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.franchise-crawl-progress__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent-teal, #14b8a6);
+  border-radius: 999px;
+  transition: width 200ms ease-out;
+}

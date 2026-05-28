@@ -153,6 +153,21 @@ function buildSeed(meta: Record<string, SavedSeries>): {
   return { ownedNodes, seedRelations };
 }
 
+export async function getFranchiseCrawlProgress(): Promise<{ total: number; crawled: number }> {
+  const meta = (await metadataHandler.loadMetadata()) as Record<string, SavedSeries>;
+  const ownedIds = new Set<number>();
+  for (const s of Object.values(meta)) {
+    if (typeof s.anilistId === 'number') ownedIds.add(s.anilistId);
+  }
+  const store = await readStore();
+  let crawled = 0;
+  for (const id of ownedIds) {
+    const entry = store.byId[String(id)];
+    if (entry && entry.node != null && entry.fetchedAt > 0) crawled++;
+  }
+  return { total: ownedIds.size, crawled };
+}
+
 /**
  * Return the closed, filled franchise graph for the given AniList id.
  * Builds the graph from the per-show store on every call (no separate graph
