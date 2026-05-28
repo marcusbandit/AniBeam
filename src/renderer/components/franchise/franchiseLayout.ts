@@ -318,19 +318,48 @@ export function layoutFranchise(graph: FranchiseGraph, currentId: number): Map<n
 
   const nodeById = new Map(graph.nodes.map((n) => [n.anilistId, n]));
   const edges = dedupeReciprocalEdges(graph.edges, nodeById);
-
-  // 1. Walk upstream (print-only stop) to find the franchise's absolute source.
-  //    Re-uses findFranchiseRoot so the logic stays in one place.
-  const absoluteSource = findFranchiseRoot(graph, currentId) ?? currentId;
-
-  // 2. Pull the absolute source's PREQUEL/SEQUEL connected component.
   const adj = buildAdjacency(edges);
-  const chainSet = findSpine(absoluteSource, adj);
-  const chainOrdered = topoSortSpine(chainSet, edges, nodeById);
 
-  // 3. Position the chain as a single horizontal line at y=0, evenly spaced.
-  chainOrdered.forEach((node, i) => {
-    positions.set(node.anilistId, { x: i * SPINE_X_GAP, y: 0 });
+  // Find ALL PREQUEL/SEQUEL connected components.
+  const SPINE_RELATIONS = new Set(['PREQUEL', 'SEQUEL']);
+  const seen = new Set<number>();
+  const chains: Array<{ members: Set<number>; ordered: FranchiseNode[] }> = [];
+  for (const n of graph.nodes) {
+    if (seen.has(n.anilistId)) continue;
+    const members = new Set<number>([n.anilistId]);
+    seen.add(n.anilistId);
+    const q: number[] = [n.anilistId];
+    while (q.length > 0) {
+      const id = q.shift()!;
+      for (const e of adj.get(id) ?? []) {
+        if (SPINE_RELATIONS.has(e.relationType) && !members.has(e.other)) {
+          members.add(e.other);
+          seen.add(e.other);
+          q.push(e.other);
+        }
+      }
+    }
+    // Only chains of 2+ are shown — singletons skipped entirely.
+    if (members.size >= 2) {
+      chains.push({ members, ordered: topoSortSpine(members, edges, nodeById) });
+    }
+  }
+
+  // Anchor chain (containing currentId) goes first; others retain discovery order.
+  const anchorIdx = chains.findIndex((c) => c.members.has(currentId));
+  if (anchorIdx > 0) {
+    const [anchor] = chains.splice(anchorIdx, 1);
+    chains.unshift(anchor);
+  }
+
+  // Position: each chain at its own y row, evenly spaced from x=0.
+  chains.forEach((chain, rowIdx) => {
+    chain.ordered.forEach((node, colIdx) => {
+      positions.set(node.anilistId, {
+        x: colIdx * SPINE_X_GAP,
+        y: rowIdx * V_GAP,
+      });
+    });
   });
 
   return positions;

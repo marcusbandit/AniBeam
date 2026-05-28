@@ -124,8 +124,13 @@ function layoutGraph(
   const filteredEdges = dedupedEdges.filter((e) => visibleNodeIds.has(e.from) && visibleNodeIds.has(e.to));
 
   // Filter edges by hidden categories
-  const visibleEdges = filteredEdges.filter(
+  const categoryFilteredEdges = filteredEdges.filter(
     (e) => !hiddenCategories.has(categoryFor(e.relationType)),
+  );
+
+  // Restrict to PREQUEL/SEQUEL only — every other relation type is hidden.
+  const visibleEdges = categoryFilteredEdges.filter(
+    (e) => e.relationType === 'SEQUEL' || e.relationType === 'PREQUEL',
   );
 
   // Build incoming-relation map for the tree-parent fallback label.
