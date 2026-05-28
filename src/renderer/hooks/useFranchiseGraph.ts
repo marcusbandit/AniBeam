@@ -74,6 +74,10 @@ export function useFranchiseGraph(
   // Background fill from AniList (cached in main).
   useEffect(() => {
     setFilled(null);
+    // Also clear the prior franchise's local seed so we never show the old
+    // graph against the new current id for a frame (this effect keys on
+    // currentAnilistId only, so metadata-ping re-renders don't flicker).
+    setLocalGraph(null);
     if (currentAnilistId == null) return;
     const myReq = ++reqIdRef.current;
     setFilling(true);
