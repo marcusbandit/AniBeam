@@ -1,6 +1,6 @@
 import '@xyflow/react/dist/style.css';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
 import {
@@ -21,7 +21,7 @@ import { Tv, Film, ZoomIn, ZoomOut, Maximize2, Maximize, Minimize, Library } fro
 import type { FranchiseEdge, FranchiseGraph, FranchiseNode as FranchiseNodeData } from '../../../shared/franchise';
 import { relationLabel } from './laneAssignment';
 import { categoryFor, formatFor, type FranchiseCategory, type FranchiseFormat, FranchiseFilters } from './FranchiseFilters';
-import { layoutFranchise, pickHandles, dedupeReciprocalEdges, spineOrderMap, relationLabelRelativeTo, findFranchiseRoot } from './franchiseLayout';
+import { layoutFranchise, pickHandles, dedupeReciprocalEdges, spineOrderMap, relationLabelRelativeTo, findFranchiseRoot, canonicalRelation } from './franchiseLayout';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -53,6 +53,32 @@ interface FranchiseNodeFlowData extends Record<string, unknown> {
   onOpenExternal: (node: FranchiseNodeData) => void;
   dimmed: boolean;
 }
+
+// ─── Hover context (bypasses React Flow's node-data update path) ─────────────
+//
+// Dim state and hover-relative labels are computed inside FranchiseFlowNode by
+// reading this context directly. This means hover state changes never touch
+// React Flow's node store — only the affected node components re-render, so
+// React Flow never re-applies transforms or recalculates edge paths on hover.
+
+interface HoverCtx {
+  hoveredId: number | null;
+  /** IDs of the hovered node + its direct neighbours (null = no hover). */
+  highlightSet: Set<number> | null;
+  /** Stable refs from the heavy memo, used for hover-relative labeling. */
+  spineSet: Set<number>;
+  spineOrder: Map<number, number>;
+  visibleEdges: readonly FranchiseEdge[];
+  nodeById: ReadonlyMap<number, FranchiseNodeData>;
+}
+const HoverContext = createContext<HoverCtx>({
+  hoveredId: null,
+  highlightSet: null,
+  spineSet: new Set(),
+  spineOrder: new Map(),
+  visibleEdges: [],
+  nodeById: new Map(),
+});
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -86,12 +112,6 @@ function layoutGraph(
   const graphNodeById = new Map<number, FranchiseNodeData>(graph.nodes.map((n) => [n.anilistId, n]));
   const dedupedEdges = dedupeReciprocalEdges(graph.edges, graphNodeById);
 
-  // Build incoming-relation map for the tree-parent fallback label
-  const incoming = new Map<number, string>();
-  for (const e of dedupedEdges) {
-    if (!incoming.has(e.to)) incoming.set(e.to, e.relationType);
-  }
-
   // Apply format filter: the current node is always visible; other nodes are
   // hidden if their format category is in hiddenFormats.
   const visibleNodeIds = new Set<number>();
@@ -107,6 +127,14 @@ function layoutGraph(
   const visibleEdges = filteredEdges.filter(
     (e) => !hiddenCategories.has(categoryFor(e.relationType)),
   );
+
+  // Build incoming-relation map for the tree-parent fallback label.
+  // Uses visibleEdges (chain-filtered) so nodes don't pick up labels from
+  // edges that lead to non-visible nodes (e.g. filtered-out anime adaptations).
+  const incoming = new Map<number, string>();
+  for (const e of visibleEdges) {
+    if (!incoming.has(e.to)) incoming.set(e.to, e.relationType);
+  }
 
   // Determine which nodes remain visible: current node always shows;
   // other nodes are dropped if all their incident edges have been filtered out.
@@ -148,7 +176,9 @@ function layoutGraph(
     const fallbackLabel = incoming.get(node.anilistId);
     const relLabel = isCurrent
       ? 'Currently viewing'
-      : (relativeLabel ?? (fallbackLabel ? relationLabel(fallbackLabel) : null));
+      : (relativeLabel ?? (fallbackLabel
+          ? relationLabel(canonicalRelation(fallbackLabel, node))
+          : null));
 
     return {
       id: String(node.anilistId),
@@ -214,7 +244,20 @@ function layoutGraph(
 // ─── Custom node component ────────────────────────────────────────────────────
 
 function FranchiseFlowNode({ data }: NodeProps<RFNode<FranchiseNodeFlowData>>) {
-  const { node, title, isCurrent, isRoot, ownedId, relLabel, statusMarker, anilistIcon, onOpenInApp, onOpenExternal, dimmed } = data;
+  const { node, title, isCurrent, isRoot, ownedId, relLabel, statusMarker, anilistIcon, onOpenInApp, onOpenExternal } = data;
+  const { hoveredId, highlightSet, spineSet, spineOrder, visibleEdges, nodeById } = useContext(HoverContext);
+  // Compute dim state from context — never from node.data — so this component
+  // re-renders individually via context, not via React Flow's node-store updates.
+  const dimmed = highlightSet != null && !highlightSet.has(node.anilistId);
+  // Overlay the relation label with the hover-relative one when this node is hovered
+  // or is a direct neighbour of the hovered node.
+  let displayLabel = relLabel;
+  if (hoveredId != null && hoveredId !== node.anilistId) {
+    const hoverLabel = relationLabelRelativeTo(hoveredId, node.anilistId, spineSet, spineOrder, visibleEdges, nodeById);
+    if (hoverLabel != null) displayLabel = hoverLabel;
+  } else if (hoveredId === node.anilistId) {
+    displayLabel = 'Viewing';
+  }
   const owned = ownedId != null;
   const isManga = node.type === 'MANGA';
 
@@ -254,7 +297,7 @@ function FranchiseFlowNode({ data }: NodeProps<RFNode<FranchiseNodeFlowData>>) {
       </div>
       <div className="relation-card-body">
         <div className="franchise-node__relation-row">
-          {relLabel && <span className="relation-card-type">{relLabel}</span>}
+          {displayLabel && <span className="relation-card-type">{displayLabel}</span>}
           {!isCurrent && (owned
             ? <Library size={14} className="franchise-node__owned-icon" aria-label="In library" />
             : <span className="franchise-node__anilist-icon" aria-label="On AniList">{anilistIcon}</span>
@@ -387,29 +430,9 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
     };
   }, [graph, currentAnilistId, hiddenCategories, hiddenFormats, resolveOwnedId, pickTitle, onOpenInApp, onOpenExternal, statusMarkerFor, anilistIcon]);
 
-  // Light memo: overlay hover-based labels for the hovered node and its direct neighbors.
-  const labeledRfNodes = useMemo(() => {
-    if (hoveredId == null) return baseRfNodes;
-    const neighbors = new Set<number>();
-    for (const e of visibleEdges) {
-      if (e.from === hoveredId) neighbors.add(e.to);
-      if (e.to === hoveredId) neighbors.add(e.from);
-    }
-    return baseRfNodes.map((n) => {
-      const id = Number(n.id);
-      // The hovered node itself shows "Viewing" as its label.
-      if (id === hoveredId) {
-        if (n.data.relLabel === 'Viewing') return n;
-        return { ...n, data: { ...n.data, relLabel: 'Viewing' } };
-      }
-      if (!neighbors.has(id)) return n;
-      const newLabel = relationLabelRelativeTo(hoveredId, id, spineSet, spineOrder, visibleEdges, nodeById);
-      if (newLabel == null || newLabel === n.data.relLabel) return n;
-      return { ...n, data: { ...n.data, relLabel: newLabel } };
-    });
-  }, [baseRfNodes, hoveredId, visibleEdges, spineSet, spineOrder, nodeById]);
-
-  // Light memo: compute the neighbor highlight set from hovered node + base edges.
+  // Light memo: compute the neighbour highlight set for the hover context.
+  // Only the hover context value changes on hover — React Flow's node store
+  // never receives updated node objects, eliminating the transform-restart flash.
   const highlightSet = useMemo<Set<number> | null>(() => {
     if (hoveredId == null) return null;
     const s = new Set<number>([hoveredId]);
@@ -422,20 +445,19 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
     return s;
   }, [hoveredId, baseRfEdges]);
 
-  // Light memo: apply dim flag to nodes without touching layout.
-  const nodes = useMemo(() => {
-    if (highlightSet == null) {
-      return labeledRfNodes.map((n) => (n.data.dimmed ? { ...n, data: { ...n.data, dimmed: false } } : n));
-    }
-    return labeledRfNodes.map((n) => {
-      const id = Number(n.id);
-      const dimmed = !highlightSet.has(id);
-      if (n.data.dimmed === dimmed) return n;
-      return { ...n, data: { ...n.data, dimmed } };
-    });
-  }, [labeledRfNodes, highlightSet]);
+  // Stable context value — changes only when hoveredId / graph data change.
+  // FranchiseFlowNode reads this to compute dim + hover-relative labels locally,
+  // so React Flow's node store is never touched on hover.
+  const hoverCtx = useMemo<HoverCtx>(() => ({
+    hoveredId,
+    highlightSet,
+    spineSet,
+    spineOrder,
+    visibleEdges,
+    nodeById,
+  }), [hoveredId, highlightSet, spineSet, spineOrder, visibleEdges, nodeById]);
 
-  // Light memo: apply dimmed class to edges without touching layout.
+  // Light memo: apply dimmed class to edges without touching node layout.
   const edges = useMemo(() => {
     if (hoveredId == null) {
       return baseRfEdges.map((e) => {
@@ -454,14 +476,14 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
   }, [baseRfEdges, hoveredId]);
 
   useEffect(() => {
-    const cur = nodes.find((n) => n.data.isCurrent);
+    const cur = baseRfNodes.find((n) => n.data.isCurrent);
     if (!cur) return;
     reactFlowInstance.setCenter(
       cur.position.x + NODE_W / 2,
       cur.position.y + NODE_H / 2,
       { zoom: 1, duration: 300 },
     );
-  }, [graph, currentAnilistId]); // intentionally not depending on `nodes` (referentially stable via useMemo on same deps)
+  }, [graph, currentAnilistId]); // intentionally narrow deps — baseRfNodes is stable when graph/id are stable
 
   const handleNodeClick = (_: React.MouseEvent, rfNode: RFNode<FranchiseNodeFlowData>) => {
     const { isCurrent, ownedId, node } = rfNode.data;
@@ -473,40 +495,46 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
   const containerClass = `franchise-graph${isFullscreen ? ' franchise-graph--fullscreen' : ''}`;
   const content = (
     <div className={containerClass}>
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        onNodeClick={handleNodeClick as Parameters<typeof ReactFlow>[0]['onNodeClick']}
-        onNodeMouseEnter={handleNodeMouseEnter as Parameters<typeof ReactFlow>[0]['onNodeMouseEnter']}
-        onNodeMouseLeave={handleNodeMouseLeave}
-        fitView
-        fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
-        minZoom={0.05}
-        maxZoom={2.5}
-        proOptions={{ hideAttribution: true }}
-        nodesDraggable={false}
-        nodesConnectable={false}
-        elementsSelectable={false}
-        panOnDrag
-        zoomOnScroll
-        zoomOnPinch
-      >
-        <Background />
-        <Panel position="top-center" className="franchise-filters-panel">
-          <FranchiseFilters hidden={hiddenCategories} onToggle={onToggleCategory} hiddenFormats={hiddenFormats} onToggleFormat={onToggleFormat} />
-        </Panel>
-        <Panel position="bottom-left" className="franchise-controls">
-          <button type="button" onClick={handleZoomIn}  aria-label="Zoom in"  title="Zoom in"><ZoomIn size={14} /></button>
-          <button type="button" onClick={handleZoomOut} aria-label="Zoom out" title="Zoom out"><ZoomOut size={14} /></button>
-          <button type="button" onClick={handleFitView} aria-label="Fit view" title="Fit view"><Maximize2 size={14} /></button>
-        </Panel>
-        <Panel position="top-right" className="franchise-fullscreen-toggle">
-          <button type="button" onClick={() => setIsFullscreen((v) => !v)} aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}>
-            {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
-          </button>
-        </Panel>
-      </ReactFlow>
+      {/* HoverContext.Provider wraps ReactFlow so that FranchiseFlowNode can read
+          hoveredId + highlightSet directly. This means React Flow's node store is
+          NEVER updated on hover — only the individual node components re-render via
+          context subscription, eliminating the transform-restart flash. */}
+      <HoverContext.Provider value={hoverCtx}>
+        <ReactFlow
+          nodes={baseRfNodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          onNodeClick={handleNodeClick as Parameters<typeof ReactFlow>[0]['onNodeClick']}
+          onNodeMouseEnter={handleNodeMouseEnter as Parameters<typeof ReactFlow>[0]['onNodeMouseEnter']}
+          onNodeMouseLeave={handleNodeMouseLeave}
+          fitView
+          fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
+          minZoom={0.05}
+          maxZoom={2.5}
+          proOptions={{ hideAttribution: true }}
+          nodesDraggable={false}
+          nodesConnectable={false}
+          elementsSelectable={false}
+          panOnDrag
+          zoomOnScroll
+          zoomOnPinch
+        >
+          <Background />
+          <Panel position="top-center" className="franchise-filters-panel">
+            <FranchiseFilters hidden={hiddenCategories} onToggle={onToggleCategory} hiddenFormats={hiddenFormats} onToggleFormat={onToggleFormat} />
+          </Panel>
+          <Panel position="bottom-left" className="franchise-controls">
+            <button type="button" onClick={handleZoomIn}  aria-label="Zoom in"  title="Zoom in"><ZoomIn size={14} /></button>
+            <button type="button" onClick={handleZoomOut} aria-label="Zoom out" title="Zoom out"><ZoomOut size={14} /></button>
+            <button type="button" onClick={handleFitView} aria-label="Fit view" title="Fit view"><Maximize2 size={14} /></button>
+          </Panel>
+          <Panel position="top-right" className="franchise-fullscreen-toggle">
+            <button type="button" onClick={() => setIsFullscreen((v) => !v)} aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}>
+              {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
+            </button>
+          </Panel>
+        </ReactFlow>
+      </HoverContext.Provider>
     </div>
   );
   return isFullscreen && typeof document !== 'undefined'

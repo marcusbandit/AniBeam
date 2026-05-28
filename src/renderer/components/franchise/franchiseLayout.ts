@@ -188,29 +188,41 @@ function topoSortSpine(
 /**
  * Walk upstream from currentId via ADAPTATION edges to find the franchise's
  * absolute source node, then return its anilistId (or null for empty graphs).
- * Uses the same upstream-walk logic as layoutFranchise so the result is
- * consistent with how the layout picks its spine root.
+ *
+ * Only follows print→screen ADAPTATION edges in the upstream direction.
+ * Once we reach a print node (manga/novel/etc.), the walk stops — that IS
+ * the source. We do NOT continue print→print, because AniList's data contains
+ * sideways sibling ADAPTATION edges between print formats (e.g. manga→novel)
+ * that are not true upstream relationships.
  */
 export function findFranchiseRoot(graph: FranchiseGraph, currentId: number): number | null {
   if (graph.nodes.length === 0) return null;
   const nodeById = new Map(graph.nodes.map((n) => [n.anilistId, n]));
   const edges = dedupeReciprocalEdges(graph.edges, nodeById);
-  const dist = new Map<number, number>([[currentId, 0]]);
-  const queue: number[] = [currentId];
-  let root = currentId;
-  let maxDist = 0;
-  while (queue.length > 0) {
-    const id = queue.shift()!;
-    const d = dist.get(id) ?? 0;
+
+  // Walk upstream: from a screen node, follow ADAPTATION-incoming edges whose
+  // `from` is print. Stop the first time we land on a print node — that's the
+  // source. (We don't follow print → print ADAPTATIONs because they're sideways
+  // sibling relationships in AniList's data, not true upstream.)
+  const visited = new Set<number>([currentId]);
+  let current: number = currentId;
+  let absoluteSource: number = currentId;
+  while (true) {
+    const curNode = nodeById.get(current);
+    if (!curNode || isPrintTarget(curNode)) break;
+    let upstream: number | null = null;
     for (const e of edges) {
-      if (e.to === id && e.relationType === 'ADAPTATION' && !dist.has(e.from)) {
-        dist.set(e.from, d + 1);
-        queue.push(e.from);
-        if (d + 1 > maxDist) { maxDist = d + 1; root = e.from; }
+      if (e.to === current && e.relationType === 'ADAPTATION' && !visited.has(e.from)) {
+        const from = nodeById.get(e.from);
+        if (from && isPrintTarget(from)) { upstream = e.from; break; }
       }
     }
+    if (upstream == null) break;
+    visited.add(upstream);
+    absoluteSource = upstream;
+    current = upstream;
   }
-  return root;
+  return absoluteSource;
 }
 
 /** BFS tree outward from spine: returns parent + children-of maps. */
@@ -307,28 +319,9 @@ export function layoutFranchise(graph: FranchiseGraph, currentId: number): Map<n
   const nodeById = new Map(graph.nodes.map((n) => [n.anilistId, n]));
   const edges = dedupeReciprocalEdges(graph.edges, nodeById);
 
-  // 1. Walk upstream from currentId via ADAPTATION-incoming edges to find the
-  //    franchise's absolute source. After normalization every ADAPTATION edge
-  //    flows source→derivative, so walking the reverse direction climbs toward
-  //    the original work.
-  const dist = new Map<number, number>([[currentId, 0]]);
-  const queue: number[] = [currentId];
-  let absoluteSource = currentId;
-  let maxDist = 0;
-  while (queue.length > 0) {
-    const id = queue.shift()!;
-    const d = dist.get(id) ?? 0;
-    for (const e of edges) {
-      if (e.to === id && e.relationType === 'ADAPTATION' && !dist.has(e.from)) {
-        dist.set(e.from, d + 1);
-        queue.push(e.from);
-        if (d + 1 > maxDist) {
-          maxDist = d + 1;
-          absoluteSource = e.from;
-        }
-      }
-    }
-  }
+  // 1. Walk upstream (print-only stop) to find the franchise's absolute source.
+  //    Re-uses findFranchiseRoot so the logic stays in one place.
+  const absoluteSource = findFranchiseRoot(graph, currentId) ?? currentId;
 
   // 2. Pull the absolute source's PREQUEL/SEQUEL connected component.
   const adj = buildAdjacency(edges);
@@ -396,7 +389,7 @@ function isPrintTarget(target: FranchiseNode | undefined): boolean {
 /** Normalize ADAPTATION/SOURCE direction based on the target's media format.
  *  AniList sometimes returns the wrong direction (e.g. anime→novel tagged as
  *  ADAPTATION when the novel is actually the source). */
-function canonicalRelation(relationType: string, target: FranchiseNode | undefined): string {
+export function canonicalRelation(relationType: string, target: FranchiseNode | undefined): string {
   if (relationType === 'ADAPTATION' && isPrintTarget(target)) return 'SOURCE';
   if (relationType === 'SOURCE'     && !isPrintTarget(target)) return 'ADAPTATION';
   return relationType;
