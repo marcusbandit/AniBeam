@@ -4992,3 +4992,6 @@ button.franchise-node:hover {
 .franchise-graph .franchise-edge.franchise-edge--dimmed .react-flow__edge-path {
   opacity: 0.08 !important;
 }
+.franchise-graph .franchise-edge.franchise-edge--dimmed marker path {
+  opacity: 0.08;
+}

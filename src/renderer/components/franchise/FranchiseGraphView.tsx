@@ -8,6 +8,7 @@ import {
   ReactFlowProvider,
   Background,
   Handle,
+  MarkerType,
   Panel,
   Position,
   useReactFlow,
@@ -56,6 +57,20 @@ interface FranchiseNodeFlowData extends Record<string, unknown> {
 
 const NODE_W = 180; // matches the .franchise-node CSS width
 const NODE_H = 420; // poster (180×1.5 = 270) + body ~150
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function arrowColorFor(relationType: string): string {
+  const cat = categoryFor(relationType);
+  switch (cat) {
+    case 'spine':       return 'var(--accent-teal, #14b8a6)';
+    case 'source':      return 'var(--accent-secondary, #818cf8)';
+    case 'alternative': return 'var(--accent-amber, #f59e0b)';
+    case 'side':        return 'var(--text-muted, #64748b)';
+    case 'other':
+    default:            return 'var(--border-hover, rgba(255,255,255,0.14))';
+  }
+}
 
 // ─── Layout ──────────────────────────────────────────────────────────────────
 
@@ -152,6 +167,12 @@ function layoutGraph(
         type: 'default',
         className: `franchise-edge franchise-edge--${edge.relationType.toLowerCase()}`,
         data: { relationType: edge.relationType },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color: arrowColorFor(edge.relationType),
+          width: 18,
+          height: 18,
+        },
       };
     });
 
