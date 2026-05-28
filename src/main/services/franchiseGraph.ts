@@ -1,5 +1,5 @@
 import { app } from 'electron';
-import { readFile, writeFile, mkdir } from 'fs/promises';
+import { readFile, writeFile, mkdir, unlink } from 'fs/promises';
 import { join } from 'path';
 import anilistHandler from '../handlers/anilistHandler';
 import metadataHandler from '../handlers/metadataHandler';
@@ -11,64 +11,59 @@ import {
   type RawRelation,
 } from '../../shared/franchise';
 
-const CACHE_FILE = 'franchiseGraphCache.json';
-const TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
+const STORE_FILE = 'franchiseStore.json';
+const STORE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
-const RELATION_CACHE_FILE = 'franchiseRelationCache.json';
-const RELATION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-
-interface CacheEntry { graph: FranchiseGraph; fetchedAt: number; }
-interface CacheShape {
-  graphs: Record<string, CacheEntry>;   // rootId → entry
-  index: Record<string, number>;        // anilistId → rootId
-}
-
-interface RelationCacheEntry {
+interface ShowEntry {
+  /** The show's own data. Null until we've directly fetched this id. */
+  node: FranchiseNode | null;
+  /** Show's relations to other shows. */
   relations: RawRelation[];
+  /** Last successful fetch from AniList. 0 means seeded-from-saved-metadata (stale). */
   fetchedAt: number;
 }
-interface RelationCache {
-  byId: Record<string, RelationCacheEntry>;
+
+interface FranchiseStore {
+  byId: Record<string, ShowEntry>;
 }
 
-function cachePath(): string {
-  return join(app.getPath('userData'), CACHE_FILE);
+function storePath(): string {
+  return join(app.getPath('userData'), STORE_FILE);
 }
 
-async function readCache(): Promise<CacheShape> {
+async function readStore(): Promise<FranchiseStore> {
   try {
-    const raw = await readFile(cachePath(), 'utf-8');
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object' && parsed.graphs && parsed.index) {
-      return parsed as CacheShape;
-    }
-  } catch { /* missing/corrupt → empty */ }
-  return { graphs: {}, index: {} };
-}
-
-async function writeCache(cache: CacheShape): Promise<void> {
-  await mkdir(app.getPath('userData'), { recursive: true });
-  await writeFile(cachePath(), JSON.stringify(cache), 'utf-8');
-}
-
-function relationCachePath(): string {
-  return join(app.getPath('userData'), RELATION_CACHE_FILE);
-}
-
-async function readRelationCache(): Promise<RelationCache> {
-  try {
-    const raw = await readFile(relationCachePath(), 'utf-8');
+    const raw = await readFile(storePath(), 'utf-8');
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === 'object' && parsed.byId && typeof parsed.byId === 'object') {
-      return parsed as RelationCache;
+      // Migration: any entry missing `node` key gets node: null (treated as stale)
+      for (const key of Object.keys(parsed.byId)) {
+        const entry = parsed.byId[key];
+        if (entry && !('node' in entry)) {
+          entry.node = null;
+          entry.fetchedAt = 0;
+        }
+      }
+      return parsed as FranchiseStore;
     }
-  } catch { /* missing/corrupt — empty */ }
+  } catch { /* missing/corrupt → empty */ }
   return { byId: {} };
 }
 
-async function writeRelationCache(cache: RelationCache): Promise<void> {
+async function writeStore(store: FranchiseStore): Promise<void> {
   await mkdir(app.getPath('userData'), { recursive: true });
-  await writeFile(relationCachePath(), JSON.stringify(cache), 'utf-8');
+  await writeFile(storePath(), JSON.stringify(store), 'utf-8');
+}
+
+// Guard: clean up legacy caches once per process lifetime.
+let legacyCleaned = false;
+async function cleanupLegacyCaches(): Promise<void> {
+  if (legacyCleaned) return;
+  legacyCleaned = true;
+  const legacy = ['franchiseGraphCache.json', 'franchiseRelationCache.json'];
+  for (const name of legacy) {
+    try { await unlink(join(app.getPath('userData'), name)); } catch { /* missing → fine */ }
+  }
 }
 
 // SeriesMetadata-like shape we read from the saved store.
@@ -126,111 +121,83 @@ function buildSeed(meta: Record<string, SavedSeries>): {
 
 /**
  * Return the closed, filled franchise graph for the given AniList id.
- * Serves a fresh cached graph when one exists and is complete; otherwise seeds
- * from owned metadata (augmented by prior cached edges for non-deferred nodes),
- * crawls AniList for any new/deferred nodes, caches the result (partial or
- * complete), and returns it.
+ * Builds the graph from the per-show store on every call (no separate graph
+ * cache). Store entries are considered fresh within STORE_TTL_MS; stale or
+ * missing entries are fetched from AniList.
  */
 export async function getFranchiseGraph(anilistId: number): Promise<FranchiseGraph> {
-  const cache = await readCache();
-  const cachedRoot = cache.index[String(anilistId)];
-  const priorEntry = cachedRoot != null ? cache.graphs[String(cachedRoot)] : undefined;
-  const prior = priorEntry?.graph;
+  await cleanupLegacyCaches();
 
-  // Fast path: fresh AND fully complete — serve from cache unchanged.
-  if (prior && prior.complete && priorEntry && Date.now() - priorEntry.fetchedAt < TTL_MS) {
-    return prior;
-  }
+  const store = await readStore();
+  let storeDirty = false;
+  const now = Date.now();
 
-  // Build / extend. Start with owned-metadata seed relations…
+  // Build seed from saved metadata; populate any missing store entries with
+  // fetchedAt: 0 (stale but data available as fallback).
   const meta = (await metadataHandler.loadMetadata()) as Record<string, SavedSeries>;
   const { ownedNodes, seedRelations } = buildSeed(meta);
 
-  // …then augment with the prior graph's own edges for every non-deferred node
-  // so we don't re-fetch anything we already learned. Deferred nodes are NOT
-  // augmented — they get a fresh fetch attempt this pass.
-  if (prior) {
-    const deferredSet = new Set(prior.deferred);
-    const nodeById = new Map(prior.nodes.map((n) => [n.anilistId, n]));
-    const edgesByFrom = new Map<number, typeof prior.edges>();
-    for (const e of prior.edges) {
-      const arr = edgesByFrom.get(e.from);
-      if (arr) arr.push(e); else edgesByFrom.set(e.from, [e]);
-    }
-    for (const node of prior.nodes) {
-      if (deferredSet.has(node.anilistId)) continue;
-      if (seedRelations.has(node.anilistId)) continue; // owned data wins
-      const outgoing = edgesByFrom.get(node.anilistId) ?? [];
-      const rels: RawRelation[] = outgoing
-        .map((e) => {
-          const target = nodeById.get(e.to);
-          if (!target) return null;
-          return { relationType: e.relationType, ...target } satisfies RawRelation;
-        })
-        .filter((r): r is RawRelation => r != null);
-      seedRelations.set(node.anilistId, rels);
+  for (const [id, node] of ownedNodes) {
+    if (!store.byId[String(id)]) {
+      store.byId[String(id)] = {
+        node,
+        relations: seedRelations.get(id) ?? [],
+        fetchedAt: 0,
+      };
+      storeDirty = true;
     }
   }
 
-  const currentNode = ownedNodes.get(anilistId) ?? {
+  // Derive current node from store or owned metadata or a bare stub.
+  const storeEntry = store.byId[String(anilistId)];
+  const currentNode: FranchiseNode = storeEntry?.node ?? ownedNodes.get(anilistId) ?? {
     anilistId, malId: null, type: 'ANIME' as const, format: null, status: null,
     seasonYear: null, startYear: null, siteUrl: null, titleRomaji: null, titleEnglish: null, poster: null,
   };
 
-  // Load the relation cache (shared across all franchises).
-  const relationCache = await readRelationCache();
-  let relationCacheDirty = false;
-  const now = Date.now();
-
-  // Auto-invalidate stale bootstrap entries: any entry whose relations predate
-  // the startYear field (the property is entirely absent, not just null) must be
-  // re-fetched so we never serve dateless data from a stale cached entry.
-  for (const [key, entry] of Object.entries(relationCache.byId)) {
-    const sample = entry.relations.find((r) => r != null);
-    if (sample && !('startYear' in sample)) {
-      delete relationCache.byId[key];
-      relationCacheDirty = true;
+  // Build seedRelations map from the store for closeGraph.
+  const storeSeedRelations = new Map<number, RawRelation[]>();
+  for (const [idStr, entry] of Object.entries(store.byId)) {
+    const id = Number(idStr);
+    if (Number.isFinite(id) && entry.fetchedAt > 0 && now - entry.fetchedAt < STORE_TTL_MS) {
+      // Fresh store entry — use its relations as seed so closeGraph doesn't fetch.
+      storeSeedRelations.set(id, entry.relations);
     }
+    // Stale/seeded entries are NOT added to storeSeedRelations — closeGraph will
+    // call the fetch callback, which will update the store.
   }
 
   const graph = await closeGraph({
     seedNodes: [currentNode],
-    seedRelations,
+    seedRelations: storeSeedRelations,
     fetch: async (id) => {
-      // 1. Cache hit?
-      const cached = relationCache.byId[String(id)];
-      if (cached && now - cached.fetchedAt < RELATION_TTL_MS) {
-        return { relations: cached.relations as RawRelation[], ok: true };
+      // Check store again: fresh hit (may have been written this session).
+      const cached = store.byId[String(id)];
+      if (cached && cached.fetchedAt > 0 && now - cached.fetchedAt < STORE_TTL_MS) {
+        return { relations: cached.relations, ok: true };
       }
-      // 2. Miss or stale — call AniList.
+      // Miss or stale — call AniList.
       const result = await anilistHandler.fetchRelations(id);
       if (result.ok) {
-        relationCache.byId[String(id)] = {
+        store.byId[String(id)] = {
+          node: result.self as FranchiseNode | null,
           relations: result.relations as RawRelation[],
           fetchedAt: Date.now(),
         };
-        relationCacheDirty = true;
+        storeDirty = true;
       }
       return { relations: result.relations as RawRelation[], ok: result.ok };
     },
   });
 
-  // Persist the relation cache if we added any new entries this run.
-  if (relationCacheDirty) {
+  // Persist the store if we added or updated any entries this run.
+  if (storeDirty) {
     try {
-      await writeRelationCache(relationCache);
+      await writeStore(store);
     } catch (e) {
-      logger.warn('metadata', `franchise relation cache write failed: ${(e as Error).message}`);
+      logger.warn('metadata', `franchise store write failed: ${(e as Error).message}`);
     }
   }
 
-  // Cache the result (even partial); index every member id → rootId.
-  cache.graphs[String(graph.rootId)] = { graph, fetchedAt: Date.now() };
-  for (const n of graph.nodes) cache.index[String(n.anilistId)] = graph.rootId;
-  try {
-    await writeCache(cache);
-  } catch (e) {
-    logger.warn('metadata', `franchise graph cache write failed: ${(e as Error).message}`);
-  }
   return graph;
 }

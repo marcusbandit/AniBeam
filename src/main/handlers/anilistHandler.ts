@@ -178,6 +178,16 @@ export interface EnrichmentBundle {
 }
 
 interface RawEnrichmentMedia {
+  id?: number;
+  idMal?: number | null;
+  type?: 'ANIME' | 'MANGA' | null;
+  format?: string | null;
+  status?: string | null;
+  seasonYear?: number | null;
+  startDate?: { year: number | null } | null;
+  siteUrl?: string | null;
+  title?: { romaji: string | null; english: string | null } | null;
+  coverImage?: { large: string | null } | null;
   streamingEpisodes?: Array<{
     title: string | null;
     thumbnail: string | null;
@@ -387,6 +397,22 @@ const ENRICHMENT_QUERY = gql`
   query ($id: Int, $idMal: Int) {
     Media(id: $id, idMal: $idMal) {
       id
+      idMal
+      type
+      format
+      status
+      seasonYear
+      startDate {
+        year
+      }
+      siteUrl
+      title {
+        romaji
+        english
+      }
+      coverImage {
+        large
+      }
       streamingEpisodes {
         title
         thumbnail
@@ -979,13 +1005,47 @@ const anilistHandler = {
    * retry on a later invocation. Returns `ok: true` (with possibly-empty
    * relations) on all other outcomes — genuine "no relations" and benign
    * non-rate-limit failures both look like "we know there's nothing here".
+   *
+   * Also returns `self` — the queried media's own data — so callers can
+   * store both the node and its relations in a single IPC round-trip.
    */
-  async fetchRelations(anilistId: number): Promise<{ relations: RelationEntry[]; ok: boolean }> {
+  async fetchRelations(anilistId: number): Promise<{
+    self: {
+      anilistId: number;
+      malId: number | null;
+      type: 'ANIME' | 'MANGA' | null;
+      format: string | null;
+      status: string | null;
+      seasonYear: number | null;
+      startYear: number | null;
+      siteUrl: string | null;
+      titleRomaji: string | null;
+      titleEnglish: string | null;
+      poster: string | null;
+    } | null;
+    relations: RelationEntry[];
+    ok: boolean;
+  }> {
     try {
       const data = await limiter.run(() =>
         request<{ Media: RawEnrichmentMedia | null }>(ANILIST_API_URL, ENRICHMENT_QUERY, { id: anilistId }),
       );
       const media = data?.Media;
+      const self = media?.id != null
+        ? {
+            anilistId: media.id,
+            malId: media.idMal ?? null,
+            type: media.type ?? null,
+            format: media.format ?? null,
+            status: media.status ?? null,
+            seasonYear: media.seasonYear ?? null,
+            startYear: media.startDate?.year ?? null,
+            siteUrl: media.siteUrl ?? null,
+            titleRomaji: media.title?.romaji ?? null,
+            titleEnglish: media.title?.english ?? null,
+            poster: media.coverImage?.large ?? null,
+          }
+        : null;
       const relations = (media?.relations?.edges ?? []).map((e) => ({
         relationType: e.relationType,
         anilistId: e.node.id,
@@ -1000,14 +1060,14 @@ const anilistHandler = {
         titleEnglish: e.node.title?.english ?? null,
         poster: e.node.coverImage?.large ?? null,
       }));
-      return { relations, ok: true };
+      return { self, relations, ok: true };
     } catch (error) {
       if (isRateLimitError(error)) {
         logRateLimitWarning('AniList');
-        return { relations: [], ok: false };
+        return { self: null, relations: [], ok: false };
       }
       logger.warn('metadata', `AniList relations fetch failed: ${(error as Error).message}`);
-      return { relations: [], ok: true };
+      return { self: null, relations: [], ok: true };
     }
   },
 
