@@ -81,31 +81,32 @@ export function FranchiseFilters(props: FranchiseFiltersProps): ReactElement {
 
   return (
     <div className="franchise-filters">
-      {CATEGORIES.map(({ cat, label }) => (
-        <button
-          key={cat}
-          type="button"
-          data-category={cat}
-          className={`franchise-filter-chip${hidden.has(cat) ? ' franchise-filter-chip--off' : ''}`}
-          aria-pressed={!hidden.has(cat)}
-          onClick={() => onToggle(cat)}
-        >
-          {label}
-        </button>
-      ))}
-      <span className="franchise-filters__divider" aria-hidden="true" />
-      {FORMATS.map((fmt) => (
-        <button
-          key={fmt}
-          type="button"
-          data-format={fmt}
-          className={`franchise-filter-chip franchise-filter-chip--format${hiddenFormats.has(fmt) ? ' franchise-filter-chip--off' : ''}`}
-          aria-pressed={!hiddenFormats.has(fmt)}
-          onClick={() => onToggleFormat(fmt)}
-        >
-          {FORMAT_LABELS[fmt]}
-        </button>
-      ))}
+      <div className="franchise-filters__group">
+        {CATEGORIES.map(({ cat, label }) => (
+          <button
+            key={cat}
+            type="button"
+            data-category={cat}
+            className={`franchise-filter-chip${hidden.has(cat) ? ' franchise-filter-chip--off' : ''}`}
+            onClick={() => onToggle(cat)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="franchise-filters__group">
+        {FORMATS.map((fmt) => (
+          <button
+            key={fmt}
+            type="button"
+            data-format={fmt}
+            className={`franchise-filter-chip franchise-filter-chip--format${hiddenFormats.has(fmt) ? ' franchise-filter-chip--off' : ''}`}
+            onClick={() => onToggleFormat(fmt)}
+          >
+            {FORMAT_LABELS[fmt]}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

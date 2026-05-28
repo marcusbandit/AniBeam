@@ -4800,9 +4800,14 @@ button.hero-chip-anilist--icon:hover {
 /* ── Franchise filter chips ────────────────────────────────── */
 .franchise-filters {
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.franchise-filters__group {
+  display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin: 4px 0 12px;
+  align-items: center;
 }
 .franchise-filter-chip {
   display: inline-flex;
@@ -4833,14 +4838,6 @@ button.hero-chip-anilist--icon:hover {
 }
 .franchise-filter-chip:hover {
   background: var(--bg-hover, #1d1d26);
-}
-.franchise-filters__divider {
-  display: inline-block;
-  width: 1px;
-  height: 18px;
-  background: var(--border-color, rgba(255,255,255,0.07));
-  align-self: center;
-  margin: 0 4px;
 }
 .franchise-filter-chip[data-format="series"]::before      { background: var(--format-tv,    #14b8a6); }
 .franchise-filter-chip[data-format="movie"]::before       { background: var(--format-movie, #f59e0b); }
