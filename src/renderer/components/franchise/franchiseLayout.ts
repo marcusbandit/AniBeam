@@ -341,6 +341,23 @@ const REVERSE_RELATION: Record<string, string> = {
   SEQUEL:     'PREQUEL',
 };
 
+const PRINT_FORMATS_FOR_LABEL = new Set(['MANGA', 'NOVEL', 'LIGHT_NOVEL', 'ONE_SHOT', 'VISUAL_NOVEL']);
+
+function isPrintTarget(target: FranchiseNode | undefined): boolean {
+  if (!target) return false;
+  if (target.format && PRINT_FORMATS_FOR_LABEL.has(target.format)) return true;
+  return target.type === 'MANGA';
+}
+
+/** Normalize ADAPTATION/SOURCE direction based on the target's media format.
+ *  AniList sometimes returns the wrong direction (e.g. anime→novel tagged as
+ *  ADAPTATION when the novel is actually the source). */
+function canonicalRelation(relationType: string, target: FranchiseNode | undefined): string {
+  if (relationType === 'ADAPTATION' && isPrintTarget(target)) return 'SOURCE';
+  if (relationType === 'SOURCE'     && !isPrintTarget(target)) return 'ADAPTATION';
+  return relationType;
+}
+
 /**
  * Compute the relation label for `nodeId` relative to `refId`.
  * Returns null when no direct edge or spine ordering applies — caller should
@@ -354,6 +371,7 @@ export function relationLabelRelativeTo(
   spineSet: Set<number>,
   spineOrder: Map<number, number>,
   edges: ReadonlyArray<FranchiseEdge>,
+  nodeById: ReadonlyMap<number, FranchiseNode>,
 ): string | null {
   if (nodeId === refId) return null;
 
@@ -367,15 +385,19 @@ export function relationLabelRelativeTo(
     }
   }
 
-  // Direct edge ref → node
+  const target = nodeById.get(nodeId);
+
+  // Direct edge ref → node — canonicalize against target before labeling.
   for (const e of edges) {
-    if (e.from === refId && e.to === nodeId) return relationLabel(e.relationType);
+    if (e.from === refId && e.to === nodeId) {
+      return relationLabel(canonicalRelation(e.relationType, target));
+    }
   }
-  // Reverse edge node → ref: relabel from ref's perspective
+  // Reverse edge node → ref — first reverse to ref's perspective, then canonicalize.
   for (const e of edges) {
     if (e.from === nodeId && e.to === refId) {
       const rev = REVERSE_RELATION[e.relationType] ?? e.relationType;
-      return relationLabel(rev);
+      return relationLabel(canonicalRelation(rev, target));
     }
   }
   return null;

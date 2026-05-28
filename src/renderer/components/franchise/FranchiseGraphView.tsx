@@ -127,6 +127,9 @@ function layoutGraph(
     currentId,
   );
 
+  // Node lookup map for label canonicalization
+  const layoutNodeById = new Map<number, FranchiseNodeData>(visibleNodes.map((n) => [n.anilistId, n]));
+
   const rfNodes: RFNode<FranchiseNodeFlowData>[] = visibleNodes
     .filter((node) => positions.has(node.anilistId))
     .map((node) => {
@@ -137,7 +140,7 @@ function layoutGraph(
     // tree-parent BFS label for multi-hop nodes.
     const relativeLabel = isCurrent
       ? null
-      : relationLabelRelativeTo(currentId, node.anilistId, spineSet, spineOrder, visibleEdges);
+      : relationLabelRelativeTo(currentId, node.anilistId, spineSet, spineOrder, visibleEdges, layoutNodeById);
     const fallbackLabel = incoming.get(node.anilistId);
     const relLabel = isCurrent
       ? 'Currently viewing'
@@ -325,8 +328,13 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
   }, [isFullscreen]);
 
   // Heavy memo: layout + enrichment. Does NOT depend on hoveredId.
-  const { baseRfNodes, baseRfEdges, visibleEdges, spineSet, spineOrder } = useMemo(() => {
+  const { baseRfNodes, baseRfEdges, visibleEdges, spineSet, spineOrder, nodeById } = useMemo(() => {
     const layout = layoutGraph(graph, currentAnilistId, hiddenCategories, hiddenFormats);
+
+    // Build node lookup map for label canonicalization.
+    const nodeById = new Map<number, FranchiseNodeData>(
+      layout.nodes.map((n) => [n.data.node.anilistId, n.data.node]),
+    );
 
     // Compute spine order for the hover-relabeling memo (same visible graph).
     const { spineSet: sSet, order: sOrder } = spineOrderMap(
@@ -358,6 +366,7 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
       visibleEdges: layout.visibleEdges,
       spineSet: sSet,
       spineOrder: sOrder,
+      nodeById,
     };
   }, [graph, currentAnilistId, hiddenCategories, hiddenFormats, resolveOwnedId, pickTitle, onOpenInApp, onOpenExternal, statusMarkerFor, anilistIcon]);
 
@@ -373,11 +382,11 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
     return baseRfNodes.map((n) => {
       const id = Number(n.id);
       if (!neighbors.has(id)) return n;
-      const newLabel = relationLabelRelativeTo(hoveredId, id, spineSet, spineOrder, visibleEdges);
+      const newLabel = relationLabelRelativeTo(hoveredId, id, spineSet, spineOrder, visibleEdges, nodeById);
       if (newLabel == null || newLabel === n.data.relLabel) return n;
       return { ...n, data: { ...n.data, relLabel: newLabel } };
     });
-  }, [baseRfNodes, hoveredId, visibleEdges, spineSet, spineOrder]);
+  }, [baseRfNodes, hoveredId, visibleEdges, spineSet, spineOrder, nodeById]);
 
   // Light memo: compute the neighbor highlight set from hovered node + base edges.
   const highlightSet = useMemo<Set<number> | null>(() => {
