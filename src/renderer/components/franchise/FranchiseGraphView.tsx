@@ -20,7 +20,7 @@ import { Tv, Film, ZoomIn, ZoomOut, Maximize2, Maximize, Minimize, Library } fro
 import type { FranchiseGraph, FranchiseNode as FranchiseNodeData } from '../../../shared/franchise';
 import { relationLabel } from './laneAssignment';
 import { categoryFor, type FranchiseCategory, FranchiseFilters } from './FranchiseFilters';
-import { layoutFranchise, pickHandles } from './franchiseLayout';
+import { layoutFranchise, pickHandles, dedupeReciprocalEdges } from './franchiseLayout';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -61,14 +61,17 @@ function layoutGraph(
   currentId: number,
   hiddenCategories: ReadonlySet<FranchiseCategory>,
 ): { nodes: RFNode<FranchiseNodeFlowData>[]; edges: RFEdge[] } {
+  // Dedupe reciprocal edges (SOURCE↔ADAPTATION, PARENT↔SIDE_STORY, PREQUEL↔SEQUEL)
+  const dedupedEdges = dedupeReciprocalEdges(graph.edges);
+
   // Build incoming-relation map to get the label per node
   const incoming = new Map<number, string>();
-  for (const e of graph.edges) {
+  for (const e of dedupedEdges) {
     if (!incoming.has(e.to)) incoming.set(e.to, e.relationType);
   }
 
   // Filter edges by hidden categories
-  const visibleEdges = graph.edges.filter(
+  const visibleEdges = dedupedEdges.filter(
     (e) => !hiddenCategories.has(categoryFor(e.relationType)),
   );
 
@@ -83,10 +86,10 @@ function layoutGraph(
 
   const visibleNodes = graph.nodes.filter((n) => connectedNodeIds.has(n.anilistId));
 
-  // Compute spine-centric positions for all nodes in the full graph, then
-  // apply them to the visible subset. The full-graph positions ensure the
-  // layout is stable regardless of which categories are currently hidden.
-  const positions = layoutFranchise(graph, currentId);
+  // Compute tree positions for all nodes in the deduped graph, then apply them
+  // to the visible subset. The full-graph positions ensure the layout is stable
+  // regardless of which categories are currently hidden.
+  const positions = layoutFranchise({ ...graph, edges: dedupedEdges }, currentId);
 
   const rfNodes: RFNode<FranchiseNodeFlowData>[] = visibleNodes.map((node) => {
     const isCurrent = node.anilistId === currentId;

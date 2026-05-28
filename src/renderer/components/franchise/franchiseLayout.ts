@@ -1,15 +1,41 @@
-import type { FranchiseGraph, FranchiseNode } from '../../../shared/franchise';
+import type { FranchiseEdge, FranchiseGraph, FranchiseNode } from '../../../shared/franchise';
 import { relationLane } from './laneAssignment';
 
-/** Layout constants. Tweak these visual knobs in one place. */
-const SPINE_X_GAP = 280;   // horizontal pixels between adjacent spine nodes
-const LANE_Y_GAP  = 420;   // vertical pixels between stacked nodes (one node height + breathing room)
+// ── Visual layout constants ─────────────────────────────────────────────────
+const NODE_W = 180;   // tile width
+const H_GAP  = 240;   // min horizontal slot per leaf
+const V_GAP  = 420;   // vertical distance between tree levels
+const SPINE_X_MIN = 280; // minimum horizontal gap between adjacent spine nodes
 
 const SPINE_RELATIONS = new Set(['PREQUEL', 'SEQUEL']);
 
+/** For each reciprocal pair, the "kept" direction is parent→child. The map's
+ *  key is the relationType to DROP when the reciprocal of the kept type also
+ *  exists in the opposite direction between the same two nodes. */
+const RECIPROCAL_DROPS: Map<string, string> = new Map([
+  ['SOURCE',    'ADAPTATION'],
+  ['PARENT',    'SIDE_STORY'],
+  ['PREQUEL',   'SEQUEL'],
+]);
+
+/**
+ * Drop reciprocal duplicate edges. For each edge whose relationType is in
+ * RECIPROCAL_DROPS, if the reciprocal edge exists in the opposite direction
+ * with the "kept" relationType, drop this one. Asymmetric edges (only one
+ * direction exists in the graph) are kept as-is.
+ */
+export function dedupeReciprocalEdges(edges: ReadonlyArray<FranchiseEdge>): FranchiseEdge[] {
+  const present = new Set<string>(edges.map((e) => `${e.from}|${e.to}|${e.relationType}`));
+  return edges.filter((e) => {
+    const keep = RECIPROCAL_DROPS.get(e.relationType);
+    if (keep == null) return true;
+    return !present.has(`${e.to}|${e.from}|${keep}`);
+  });
+}
+
 interface AdjEdge { other: number; relationType: string; direction: 'out' | 'in'; }
 
-function buildAdjacency(edges: FranchiseGraph['edges']): Map<number, AdjEdge[]> {
+function buildAdjacency(edges: ReadonlyArray<FranchiseEdge>): Map<number, AdjEdge[]> {
   const adj = new Map<number, AdjEdge[]>();
   const push = (k: number, v: AdjEdge) => {
     const a = adj.get(k);
@@ -22,42 +48,25 @@ function buildAdjacency(edges: FranchiseGraph['edges']): Map<number, AdjEdge[]> 
   return adj;
 }
 
-/**
- * Compute (x, y) positions for every node in the franchise graph using a
- * spine-centric compass layout:
- *   1. The spine is the connected component of PREQUEL/SEQUEL edges that
- *      contains the current node. Spine nodes sit on y=0, ordered left→right
- *      by seasonYear (then anilistId for stable tie-breaks).
- *   2. Every non-spine node gets an "anchor" (the closest spine node, found
- *      via BFS through any edges) and a lane (top / bottom / sidebranch)
- *      derived from the relation that connects it to its anchor.
- *   3. Within each (anchor, lane) bucket, nodes stack vertically away from
- *      the spine, in seasonYear order. Top lane stacks upward, bottom lane
- *      (and side-branch for v1) stacks downward.
- */
-export function layoutFranchise(graph: FranchiseGraph, currentId: number): Map<number, { x: number; y: number }> {
-  const positions = new Map<number, { x: number; y: number }>();
-  if (graph.nodes.length === 0) return positions;
-
-  const adj = buildAdjacency(graph.edges);
-  const nodeById = new Map(graph.nodes.map((n) => [n.anilistId, n]));
-
-  // 1. Spine = BFS from currentId through PREQUEL/SEQUEL edges (either direction).
-  const spineSet = new Set<number>();
-  spineSet.add(currentId);
-  const spineQ: number[] = [currentId];
-  while (spineQ.length > 0) {
-    const id = spineQ.shift()!;
+/** spine = BFS from current through PREQUEL/SEQUEL edges (either direction). */
+function findSpine(currentId: number, adj: Map<number, AdjEdge[]>): Set<number> {
+  const seen = new Set<number>([currentId]);
+  const q: number[] = [currentId];
+  while (q.length > 0) {
+    const id = q.shift()!;
     for (const e of adj.get(id) ?? []) {
-      if (SPINE_RELATIONS.has(e.relationType) && !spineSet.has(e.other)) {
-        spineSet.add(e.other);
-        spineQ.push(e.other);
+      if (SPINE_RELATIONS.has(e.relationType) && !seen.has(e.other)) {
+        seen.add(e.other);
+        q.push(e.other);
       }
     }
   }
+  return seen;
+}
 
-  // 2. Order spine by seasonYear (ascending), then anilistId for stability.
-  const spineList = [...spineSet]
+/** Sort spine nodes left→right by seasonYear (nulls last), then anilistId. */
+function sortSpine(spineSet: Set<number>, nodeById: Map<number, FranchiseNode>): FranchiseNode[] {
+  return [...spineSet]
     .map((id) => nodeById.get(id))
     .filter((n): n is FranchiseNode => n != null)
     .sort((a, b) => {
@@ -66,84 +75,180 @@ export function layoutFranchise(graph: FranchiseGraph, currentId: number): Map<n
       if (ay !== by) return ay - by;
       return a.anilistId - b.anilistId;
     });
+}
 
-  // 3. Spine positions on y=0.
-  spineList.forEach((node, i) => {
-    positions.set(node.anilistId, { x: i * SPINE_X_GAP, y: 0 });
-  });
-
-  // 4. For every non-spine node, find anchor + lane.
-  type BucketKey = string; // `${anchorId}:${'top'|'bottom'|'branch'}`
-  const buckets = new Map<BucketKey, FranchiseNode[]>();
-
-  // Helper: BFS from a node through ANY edge to find nearest spine member.
-  const findAnchor = (startId: number): number => {
-    const visited = new Set<number>([startId]);
-    const queue: number[] = [startId];
-    while (queue.length > 0) {
-      const id = queue.shift()!;
-      for (const e of adj.get(id) ?? []) {
-        if (visited.has(e.other)) continue;
-        if (spineSet.has(e.other)) return e.other;
-        visited.add(e.other);
-        queue.push(e.other);
-      }
+/** BFS tree outward from spine: returns parent + children-of maps. */
+function buildBfsTree(
+  spineSet: Set<number>,
+  adj: Map<number, AdjEdge[]>,
+): { parents: Map<number, number>; children: Map<number, number[]> } {
+  const parents = new Map<number, number>();
+  const children = new Map<number, number[]>();
+  const seen = new Set<number>(spineSet);
+  const q: number[] = [...spineSet];
+  while (q.length > 0) {
+    const id = q.shift()!;
+    for (const e of adj.get(id) ?? []) {
+      if (seen.has(e.other)) continue;
+      seen.add(e.other);
+      parents.set(e.other, id);
+      const kids = children.get(id);
+      if (kids) kids.push(e.other); else children.set(id, [e.other]);
+      q.push(e.other);
     }
-    return currentId; // disconnected — fall back to current (defensive)
+  }
+  return { parents, children };
+}
+
+/** Determine the lane (+1 below / -1 above) for a node relative to a spine node
+ *  by inspecting the edge between them in either direction. */
+function laneRelativeToSpine(
+  spineId: number,
+  nodeId: number,
+  node: FranchiseNode,
+  edges: ReadonlyArray<FranchiseEdge>,
+): -1 | 1 {
+  // Forward edge spine → node
+  for (const e of edges) {
+    if (e.from === spineId && e.to === nodeId) {
+      const lane = relationLane(e.relationType, node.type, node.format);
+      return lane === 'top' ? -1 : 1;
+    }
+  }
+  // Reverse edge node → spine: reverse the relation to spine's perspective
+  const REVERSE: Record<string, string> = {
+    SOURCE:     'ADAPTATION',
+    ADAPTATION: 'SOURCE',
+    PARENT:     'SIDE_STORY',
+    SIDE_STORY: 'PARENT',
+    PREQUEL:    'SEQUEL',
+    SEQUEL:     'PREQUEL',
   };
-
-  // Helper: find the relationType "describing" this node — prefer an edge
-  // from anchor → node (most direct, anchor's perspective); else any incoming.
-  const relationFor = (anchor: number, nodeId: number): string => {
-    for (const e of graph.edges) {
-      if (e.from === anchor && e.to === nodeId) return e.relationType;
+  for (const e of edges) {
+    if (e.from === nodeId && e.to === spineId) {
+      const reversed = REVERSE[e.relationType] ?? e.relationType;
+      const lane = relationLane(reversed, node.type, node.format);
+      return lane === 'top' ? -1 : 1;
     }
-    for (const e of graph.edges) {
-      if (e.to === nodeId) return e.relationType;
-    }
-    return 'OTHER';
-  };
+  }
+  return 1; // default to bottom
+}
 
-  for (const node of graph.nodes) {
-    if (spineSet.has(node.anilistId)) continue;
-    const anchor = findAnchor(node.anilistId);
-    const rt = relationFor(anchor, node.anilistId);
-    const lane = relationLane(rt, node.type, node.format);
-    if (lane === 'excluded') continue; // safety; CHARACTER is already filtered upstream
-    const laneKey: 'top' | 'bottom' | 'branch' = lane === 'top' ? 'top' : (lane === 'sidebranch' ? 'branch' : 'bottom');
-    const key = `${anchor}:${laneKey}`;
-    const arr = buckets.get(key);
-    if (arr) arr.push(node); else buckets.set(key, [node]);
+/** Compute the recursive width of the subtree rooted at `nodeId`. Each leaf is
+ *  at least H_GAP wide; internal nodes are at least the sum of their children's
+ *  widths (so siblings don't overlap). */
+function measureSubtree(nodeId: number, children: Map<number, number[]>): number {
+  const kids = children.get(nodeId) ?? [];
+  if (kids.length === 0) return H_GAP;
+  const childTotal = kids.reduce((sum, k) => sum + measureSubtree(k, children), 0);
+  return Math.max(H_GAP, childTotal);
+}
+
+/** Recursively place a subtree. Parent is placed at (cx, cy); each child is
+ *  placed at (cx_child, cy + dir*V_GAP), where children's x positions are
+ *  centered on cx and spaced by their measured subtree widths. */
+function placeSubtree(
+  nodeId: number,
+  cx: number,
+  cy: number,
+  dir: -1 | 1,
+  children: Map<number, number[]>,
+  positions: Map<number, { x: number; y: number }>,
+): void {
+  positions.set(nodeId, { x: cx, y: cy });
+  const kids = children.get(nodeId) ?? [];
+  if (kids.length === 0) return;
+  const widths = kids.map((k) => measureSubtree(k, children));
+  const total = widths.reduce((s, w) => s + w, 0);
+  let left = cx - total / 2;
+  for (let i = 0; i < kids.length; i++) {
+    const childCx = left + widths[i] / 2;
+    const childCy = cy + dir * V_GAP;
+    placeSubtree(kids[i], childCx, childCy, dir, children, positions);
+    left += widths[i];
+  }
+}
+
+export function layoutFranchise(graph: FranchiseGraph, currentId: number): Map<number, { x: number; y: number }> {
+  const positions = new Map<number, { x: number; y: number }>();
+  if (graph.nodes.length === 0) return positions;
+
+  // 1. Dedupe reciprocal edges
+  const edges = dedupeReciprocalEdges(graph.edges);
+
+  // 2. Build adjacency + spine set
+  const adj = buildAdjacency(edges);
+  const nodeById = new Map(graph.nodes.map((n) => [n.anilistId, n]));
+  const spineSet = findSpine(currentId, adj);
+  const spineList = sortSpine(spineSet, nodeById);
+
+  // 3. Build BFS tree from spine outward
+  const { children: treeChildren } = buildBfsTree(spineSet, adj);
+
+  // 4. Split each spine node's children into top/bottom subtrees
+  const topChildrenOf = new Map<number, number[]>();   // spineId → top-lane children
+  const bottomChildrenOf = new Map<number, number[]>(); // spineId → bottom-lane children
+
+  for (const spineNode of spineList) {
+    const allKids = treeChildren.get(spineNode.anilistId) ?? [];
+    const tops: number[] = [];
+    const bots: number[] = [];
+    for (const kid of allKids) {
+      const kidNode = nodeById.get(kid);
+      if (!kidNode) continue;
+      const dir = laneRelativeToSpine(spineNode.anilistId, kid, kidNode, edges);
+      (dir === -1 ? tops : bots).push(kid);
+    }
+    if (tops.length > 0) topChildrenOf.set(spineNode.anilistId, tops);
+    if (bots.length > 0) bottomChildrenOf.set(spineNode.anilistId, bots);
   }
 
-  // 5. Position non-spine nodes within each bucket, stacking away from spine.
-  for (const [key, nodes] of buckets) {
-    const [anchorIdStr, lane] = key.split(':');
-    const anchorId = Number(anchorIdStr);
-    const anchorPos = positions.get(anchorId);
-    if (!anchorPos) continue;
+  // 5. Measure half-widths (left side + right side of each spine node's subtree)
+  //    For each spine node, compute the horizontal half-width occupied by its
+  //    top + bottom subtrees combined, so we can space adjacent spine nodes
+  //    without overlap.
+  const halfWidthFor = (spineId: number): number => {
+    const tops = topChildrenOf.get(spineId) ?? [];
+    const bots = bottomChildrenOf.get(spineId) ?? [];
+    const topTotal = tops.reduce((s, k) => s + measureSubtree(k, treeChildren), 0);
+    const botTotal = bots.reduce((s, k) => s + measureSubtree(k, treeChildren), 0);
+    return Math.max(NODE_W + H_GAP, topTotal, botTotal) / 2;
+  };
 
-    nodes.sort((a, b) => {
-      const ay = a.seasonYear ?? Number.POSITIVE_INFINITY;
-      const by = b.seasonYear ?? Number.POSITIVE_INFINITY;
-      if (ay !== by) return ay - by;
-      return a.anilistId - b.anilistId;
-    });
+  // 6. Place spine nodes left→right with gaps sized by adjacent half-widths.
+  let x = 0;
+  spineList.forEach((node, i) => {
+    if (i > 0) {
+      const prev = spineList[i - 1];
+      const gap = Math.max(SPINE_X_MIN, halfWidthFor(prev.anilistId) + halfWidthFor(node.anilistId));
+      x += gap;
+    }
+    positions.set(node.anilistId, { x, y: 0 });
+  });
 
-    const yDir = lane === 'top' ? -1 : 1; // branch lays out below for v1
-    nodes.forEach((node, i) => {
-      positions.set(node.anilistId, {
-        x: anchorPos.x,
-        y: anchorPos.y + yDir * (i + 1) * LANE_Y_GAP,
-      });
-    });
+  // 7. Place each spine node's top and bottom subtree.
+  for (const spineNode of spineList) {
+    const spinePos = positions.get(spineNode.anilistId)!;
+    for (const dir of [-1, 1] as const) {
+      const kids = (dir === -1 ? topChildrenOf : bottomChildrenOf).get(spineNode.anilistId) ?? [];
+      if (kids.length === 0) continue;
+      const widths = kids.map((k) => measureSubtree(k, treeChildren));
+      const total = widths.reduce((s, w) => s + w, 0);
+      let left = spinePos.x - total / 2;
+      for (let i = 0; i < kids.length; i++) {
+        const childCx = left + widths[i] / 2;
+        const childCy = spinePos.y + dir * V_GAP;
+        placeSubtree(kids[i], childCx, childCy, dir, treeChildren, positions);
+        left += widths[i];
+      }
+    }
   }
 
   return positions;
 }
 
 /** Given source and target positions, pick handle ids that route the edge
- *  along the dominant axis (vertical if |dy| >= |dx|, horizontal otherwise). */
+ *  along the dominant axis. */
 export function pickHandles(
   src: { x: number; y: number },
   tgt: { x: number; y: number },
