@@ -21,7 +21,7 @@ import { Tv, Film, ZoomIn, ZoomOut, Maximize2, Maximize, Minimize, Library } fro
 import type { FranchiseEdge, FranchiseGraph, FranchiseNode as FranchiseNodeData } from '../../../shared/franchise';
 import { relationLabel } from './laneAssignment';
 import { categoryFor, formatFor, type FranchiseCategory, type FranchiseFormat, FranchiseFilters } from './FranchiseFilters';
-import { layoutFranchise, pickHandles, dedupeReciprocalEdges, spineOrderMap, relationLabelRelativeTo } from './franchiseLayout';
+import { layoutFranchise, pickHandles, dedupeReciprocalEdges, spineOrderMap, relationLabelRelativeTo, findFranchiseRoot } from './franchiseLayout';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -44,6 +44,7 @@ interface FranchiseNodeFlowData extends Record<string, unknown> {
   node: FranchiseNodeData;
   title: string;
   isCurrent: boolean;
+  isRoot: boolean;
   ownedId: string | undefined;
   relLabel: string | null;
   statusMarker: ReactNode;
@@ -77,6 +78,7 @@ function arrowColorFor(relationType: string): string {
 function layoutGraph(
   graph: FranchiseGraph,
   currentId: number,
+  rootId: number | null,
   hiddenCategories: ReadonlySet<FranchiseCategory>,
   hiddenFormats: ReadonlySet<FranchiseFormat>,
 ): { nodes: RFNode<FranchiseNodeFlowData>[]; edges: RFEdge[]; visibleEdges: FranchiseEdge[] } {
@@ -135,6 +137,7 @@ function layoutGraph(
     .filter((node) => positions.has(node.anilistId))
     .map((node) => {
     const isCurrent = node.anilistId === currentId;
+    const isRoot = rootId != null && node.anilistId === rootId;
     const p = positions.get(node.anilistId) ?? { x: 0, y: 0 };
 
     // Reference-relative label (spine topology + direct edge), falling back to
@@ -158,6 +161,7 @@ function layoutGraph(
         node,
         title: '',       // enriched below in useMemo
         isCurrent,
+        isRoot,
         ownedId: undefined,
         relLabel,
         statusMarker: null,
@@ -169,8 +173,13 @@ function layoutGraph(
     };
   });
 
+  // Only emit React Flow edges where both endpoints have a layout position.
+  // The simplified layoutFranchise only positions spine/chain nodes, so edges
+  // to non-chain nodes would be orphan edges (target node missing from rfNodes)
+  // — React Flow's internal node-position lookups on those orphan edges trigger
+  // cascading updates on every hover state change, causing the visible flash.
   const rfEdges: RFEdge[] = visibleEdges
-    .filter((edge) => connectedNodeIds.has(edge.from) && connectedNodeIds.has(edge.to))
+    .filter((edge) => positions.has(edge.from) && positions.has(edge.to))
     .map((edge) => {
       const { sourceHandle, targetHandle } = pickHandles(
         positions.get(edge.from) ?? { x: 0, y: 0 },
@@ -194,13 +203,18 @@ function layoutGraph(
       };
     });
 
-  return { nodes: rfNodes, edges: rfEdges, visibleEdges };
+  // Restrict visibleEdges to the same set as rfEdges (both endpoints positioned)
+  // so the light hover memos only consider neighbors that are actually rendered.
+  const positionedVisibleEdges = visibleEdges.filter(
+    (e) => positions.has(e.from) && positions.has(e.to),
+  );
+  return { nodes: rfNodes, edges: rfEdges, visibleEdges: positionedVisibleEdges };
 }
 
 // ─── Custom node component ────────────────────────────────────────────────────
 
 function FranchiseFlowNode({ data }: NodeProps<RFNode<FranchiseNodeFlowData>>) {
-  const { node, title, isCurrent, ownedId, relLabel, statusMarker, anilistIcon, onOpenInApp, onOpenExternal, dimmed } = data;
+  const { node, title, isCurrent, isRoot, ownedId, relLabel, statusMarker, anilistIcon, onOpenInApp, onOpenExternal, dimmed } = data;
   const owned = ownedId != null;
   const isManga = node.type === 'MANGA';
 
@@ -209,6 +223,7 @@ function FranchiseFlowNode({ data }: NodeProps<RFNode<FranchiseNodeFlowData>>) {
   const dataAttrs = {
     'data-format': node.format ?? '',
     'data-current': isCurrent ? 'true' : undefined,
+    'data-root': isRoot ? 'true' : undefined,
     'data-dimmed': dimmed ? 'true' : undefined,
   };
 
@@ -250,7 +265,7 @@ function FranchiseFlowNode({ data }: NodeProps<RFNode<FranchiseNodeFlowData>>) {
           {node.format && (
             <span className="relation-card-format" data-format={node.format}>{node.format}</span>
           )}
-          {node.seasonYear && <span>{node.seasonYear}</span>}
+          {(node.seasonYear ?? node.startYear) && <span>{node.seasonYear ?? node.startYear}</span>}
         </div>
       </div>
       {statusMarker}
@@ -330,7 +345,8 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
 
   // Heavy memo: layout + enrichment. Does NOT depend on hoveredId.
   const { baseRfNodes, baseRfEdges, visibleEdges, spineSet, spineOrder, nodeById } = useMemo(() => {
-    const layout = layoutGraph(graph, currentAnilistId, hiddenCategories, hiddenFormats);
+    const rootId = findFranchiseRoot(graph, currentAnilistId);
+    const layout = layoutGraph(graph, currentAnilistId, rootId, hiddenCategories, hiddenFormats);
 
     // Build node lookup map for label canonicalization.
     const nodeById = new Map<number, FranchiseNodeData>(

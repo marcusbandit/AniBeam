@@ -70,6 +70,7 @@ function buildSeed(meta: Record<string, SavedSeries>): {
       format: s.format ?? null,
       status: s.status ?? null,
       seasonYear: s.seasonYear ?? null,
+      startYear: null,
       siteUrl: null,
       titleRomaji: s.titleRomaji ?? null,
       titleEnglish: s.titleEnglish ?? null,
@@ -130,7 +131,7 @@ export async function getFranchiseGraph(anilistId: number): Promise<FranchiseGra
 
   const currentNode = ownedNodes.get(anilistId) ?? {
     anilistId, malId: null, type: 'ANIME' as const, format: null, status: null,
-    seasonYear: null, siteUrl: null, titleRomaji: null, titleEnglish: null, poster: null,
+    seasonYear: null, startYear: null, siteUrl: null, titleRomaji: null, titleEnglish: null, poster: null,
   };
 
   const graph = await closeGraph({

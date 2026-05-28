@@ -4720,6 +4720,17 @@ button.hero-chip-anilist--icon:hover {
   border-radius: var(--radius-lg, 20px);
 }
 
+/* root-node amber ring — distinct from current (teal) */
+.franchise-node[data-root="true"] {
+  outline: 2px solid var(--accent-amber, #f59e0b);
+  outline-offset: 2px;
+  border-radius: var(--radius-lg, 20px);
+}
+/* when current node is also the franchise root, current ring wins */
+.franchise-node[data-root="true"][data-current="true"] {
+  outline-color: var(--accent-teal, #14b8a6);
+}
+
 .franchise-graph {
   position: relative;
   width: 100%;

@@ -9,6 +9,9 @@ export interface FranchiseNode {
   format: string | null;
   status: string | null;
   seasonYear: number | null;
+  /** startDate.year from AniList — populated for non-anime (manga, novels, etc.)
+   *  where seasonYear is null. seasonYear takes precedence when both are present. */
+  startYear: number | null;
   siteUrl: string | null;
   titleRomaji: string | null;
   titleEnglish: string | null;
@@ -45,6 +48,7 @@ export interface RawRelation {
   format: string | null;
   status: string | null;
   seasonYear: number | null;
+  startYear: number | null;
   siteUrl: string | null;
   titleRomaji: string | null;
   titleEnglish: string | null;
@@ -70,6 +74,7 @@ function nodeFromRelation(r: RawRelation): FranchiseNode {
     format: r.format,
     status: r.status,
     seasonYear: r.seasonYear,
+    startYear: r.startYear,
     siteUrl: r.siteUrl,
     titleRomaji: r.titleRomaji,
     titleEnglish: r.titleEnglish,

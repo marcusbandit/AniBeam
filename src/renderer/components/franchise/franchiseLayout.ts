@@ -185,6 +185,34 @@ function topoSortSpine(
   return ordered.map((id) => nodeById.get(id)!).filter(Boolean);
 }
 
+/**
+ * Walk upstream from currentId via ADAPTATION edges to find the franchise's
+ * absolute source node, then return its anilistId (or null for empty graphs).
+ * Uses the same upstream-walk logic as layoutFranchise so the result is
+ * consistent with how the layout picks its spine root.
+ */
+export function findFranchiseRoot(graph: FranchiseGraph, currentId: number): number | null {
+  if (graph.nodes.length === 0) return null;
+  const nodeById = new Map(graph.nodes.map((n) => [n.anilistId, n]));
+  const edges = dedupeReciprocalEdges(graph.edges, nodeById);
+  const dist = new Map<number, number>([[currentId, 0]]);
+  const queue: number[] = [currentId];
+  let root = currentId;
+  let maxDist = 0;
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    const d = dist.get(id) ?? 0;
+    for (const e of edges) {
+      if (e.to === id && e.relationType === 'ADAPTATION' && !dist.has(e.from)) {
+        dist.set(e.from, d + 1);
+        queue.push(e.from);
+        if (d + 1 > maxDist) { maxDist = d + 1; root = e.from; }
+      }
+    }
+  }
+  return root;
+}
+
 /** BFS tree outward from spine: returns parent + children-of maps. */
 // @ts-ignore -- temporarily unused; will be reintroduced
 function buildBfsTree(

@@ -23,6 +23,7 @@ function buildLocalSeed(allMeta: Record<string, SeriesMetadata>): {
       format: s.format ?? null,
       status: s.status ?? null,
       seasonYear: s.seasonYear ?? null,
+      startYear: (s as unknown as { startYear?: number | null }).startYear ?? null,
       siteUrl: null,
       titleRomaji: s.titleRomaji ?? null,
       titleEnglish: s.titleEnglish ?? null,
@@ -62,7 +63,7 @@ export function useFranchiseGraph(
     const { ownedNodes, seedRelations } = buildLocalSeed(allMeta);
     const currentNode = ownedNodes.get(currentAnilistId) ?? {
       anilistId: currentAnilistId, malId: null, type: 'ANIME', format: null,
-      status: null, seasonYear: null, siteUrl: null, titleRomaji: null,
+      status: null, seasonYear: null, startYear: null, siteUrl: null, titleRomaji: null,
       titleEnglish: null, poster: null,
     };
     void closeGraph({ seedNodes: [currentNode], seedRelations }).then((g) => {

@@ -119,6 +119,7 @@ export interface RelationEntry {
   format: string | null;
   status: string | null;
   seasonYear: number | null;
+  startYear: number | null;
   siteUrl: string | null;
   titleRomaji: string | null;
   titleEnglish: string | null;
@@ -236,6 +237,7 @@ interface RawEnrichmentMedia {
         format: string | null;
         status: string | null;
         seasonYear: number | null;
+        startDate?: { year: number | null } | null;
         siteUrl: string | null;
         title: { romaji: string | null; english: string | null } | null;
         coverImage: { large: string | null } | null;
@@ -458,6 +460,9 @@ const ENRICHMENT_QUERY = gql`
             format
             status
             seasonYear
+            startDate {
+              year
+            }
             siteUrl
             title {
               romaji
@@ -900,6 +905,7 @@ const anilistHandler = {
           format: e.node.format,
           status: e.node.status,
           seasonYear: e.node.seasonYear,
+          startYear: e.node.startDate?.year ?? null,
           siteUrl: e.node.siteUrl,
           titleRomaji: e.node.title?.romaji ?? null,
           titleEnglish: e.node.title?.english ?? null,
@@ -988,6 +994,7 @@ const anilistHandler = {
         format: e.node.format,
         status: e.node.status,
         seasonYear: e.node.seasonYear,
+        startYear: e.node.startDate?.year ?? null,
         siteUrl: e.node.siteUrl,
         titleRomaji: e.node.title?.romaji ?? null,
         titleEnglish: e.node.title?.english ?? null,
