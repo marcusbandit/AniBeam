@@ -4,6 +4,7 @@ import { relationLane, relationLabel } from './laneAssignment';
 // ── Visual layout constants ─────────────────────────────────────────────────
 const H_GAP      = 240;   // min horizontal slot per leaf
 const V_GAP      = 500;   // vertical distance between chain rows
+// @ts-ignore -- temporarily unused; will be reintroduced
 const SPINE_X_MIN = 280;  // minimum horizontal gap between adjacent chain nodes
 const SPINE_X_GAP = 320;  // regular horizontal step between anchor-chain nodes
 
@@ -185,6 +186,7 @@ function topoSortSpine(
 }
 
 /** BFS tree outward from spine: returns parent + children-of maps. */
+// @ts-ignore -- temporarily unused; will be reintroduced
 function buildBfsTree(
   spineSet: Set<number>,
   adj: Map<number, AdjEdge[]>,
@@ -209,6 +211,7 @@ function buildBfsTree(
 
 /** Determine the lane (+1 below / -1 above) for a node relative to a spine node
  *  by inspecting the edge between them in either direction. */
+// @ts-ignore -- temporarily unused; will be reintroduced
 function laneRelativeToSpine(
   spineId: number,
   nodeId: number,
@@ -246,6 +249,7 @@ function measureSubtree(nodeId: number, children: Map<number, number[]>): number
 /** Recursively place a subtree. Parent is placed at (cx, cy); each child is
  *  placed at (cx_child, cy + dir*V_GAP), where children's x positions are
  *  centered on cx and spaced by their measured subtree widths. */
+// @ts-ignore -- temporarily unused; will be reintroduced
 function placeSubtree(
   nodeId: number,
   cx: number,
@@ -272,269 +276,41 @@ export function layoutFranchise(graph: FranchiseGraph, currentId: number): Map<n
   const positions = new Map<number, { x: number; y: number }>();
   if (graph.nodes.length === 0) return positions;
 
-  // 1. Dedupe reciprocal edges + build adjacency.
   const nodeById = new Map(graph.nodes.map((n) => [n.anilistId, n]));
   const edges = dedupeReciprocalEdges(graph.edges, nodeById);
+
+  // 1. Walk upstream from currentId via ADAPTATION-incoming edges to find the
+  //    franchise's absolute source. After normalization every ADAPTATION edge
+  //    flows source→derivative, so walking the reverse direction climbs toward
+  //    the original work.
+  const dist = new Map<number, number>([[currentId, 0]]);
+  const queue: number[] = [currentId];
+  let absoluteSource = currentId;
+  let maxDist = 0;
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    const d = dist.get(id) ?? 0;
+    for (const e of edges) {
+      if (e.to === id && e.relationType === 'ADAPTATION' && !dist.has(e.from)) {
+        dist.set(e.from, d + 1);
+        queue.push(e.from);
+        if (d + 1 > maxDist) {
+          maxDist = d + 1;
+          absoluteSource = e.from;
+        }
+      }
+    }
+  }
+
+  // 2. Pull the absolute source's PREQUEL/SEQUEL connected component.
   const adj = buildAdjacency(edges);
+  const chainSet = findSpine(absoluteSource, adj);
+  const chainOrdered = topoSortSpine(chainSet, edges, nodeById);
 
-  // ── Step 1: Find all PREQUEL/SEQUEL chains (connected components). ──────────
-  const SPINE_RELS = new Set(['PREQUEL', 'SEQUEL']);
-  const chainOf = new Map<number, number>(); // nodeId → chainIndex
-  const chains: Array<{ nodes: Set<number>; ordered: FranchiseNode[] }> = [];
-
-  for (const n of graph.nodes) {
-    if (chainOf.has(n.anilistId)) continue;
-    const members = new Set<number>([n.anilistId]);
-    const queue: number[] = [n.anilistId];
-    while (queue.length > 0) {
-      const id = queue.shift()!;
-      for (const e of adj.get(id) ?? []) {
-        if (SPINE_RELS.has(e.relationType) && !members.has(e.other)) {
-          members.add(e.other);
-          queue.push(e.other);
-        }
-      }
-    }
-    const idx = chains.length;
-    for (const id of members) chainOf.set(id, idx);
-    chains.push({ nodes: members, ordered: topoSortSpine(members, edges, nodeById) });
-  }
-
-  // ── Step 2: Anchor chain = the chain containing currentId. ─────────────────
-  const anchorIdx = chainOf.get(currentId) ?? 0;
-  const anchorChain = chains[anchorIdx];
-
-  // ── Step 3: Position anchor chain: current at x=0, others by topo offset. ──
-  const anchorOrder = anchorChain.ordered;
-  const currentTopoIdx = anchorOrder.findIndex((n) => n.anilistId === currentId);
-  anchorOrder.forEach((node, i) => {
-    positions.set(node.anilistId, { x: (i - currentTopoIdx) * SPINE_X_GAP, y: 0 });
+  // 3. Position the chain as a single horizontal line at y=0, evenly spaced.
+  chainOrdered.forEach((node, i) => {
+    positions.set(node.anilistId, { x: i * SPINE_X_GAP, y: 0 });
   });
-  const positionedChains = new Set<number>([anchorIdx]);
-  const usedChainYs = new Set<number>([0]);
-
-  // ── Step 4: BFS over chains by inter-chain connections. ────────────────────
-  // Keep processing until no more reachable multi-node chains remain.
-  let progress = true;
-  while (progress) {
-    progress = false;
-
-    for (let ci = 0; ci < chains.length; ci++) {
-      if (positionedChains.has(ci)) continue;
-      if (chains[ci].nodes.size < 2) continue; // singletons handled later via tree
-
-      // Does this chain connect to any already-positioned chain?
-      let hasConn = false;
-      for (const id of chains[ci].nodes) {
-        for (const e of adj.get(id) ?? []) {
-          const otherChain = chainOf.get(e.other);
-          if (otherChain != null && positionedChains.has(otherChain)) {
-            hasConn = true;
-            break;
-          }
-        }
-        if (hasConn) break;
-      }
-      if (!hasConn) continue;
-
-      // ── Step 5: Determine direction (above/below) for this chain. ──────────
-      // Any SOURCE or PARENT edge to a positioned chain is authoritative: chain
-      // goes above. Only fall to below when there are downstream links and zero
-      // source/parent links. Default (neither) is also above.
-      let hasSourceLink = false;
-      let hasOtherDownstreamLink = false;
-      const xAnchors = new Map<number, number>(); // chainNodeId → x of connected positioned node
-
-      for (const id of chains[ci].nodes) {
-        const node = nodeById.get(id);
-        if (!node) continue;
-        for (const e of edges) {
-          // Edge from `id` to a positioned node
-          if (e.from === id) {
-            const target = nodeById.get(e.to);
-            const otherChain = chainOf.get(e.to);
-            if (otherChain == null || !positionedChains.has(otherChain)) continue;
-            if (target) {
-              const canon = canonicalRelation(e.relationType, target);
-              if (canon === 'SOURCE' || canon === 'PARENT') hasSourceLink = true;
-              else if (canon !== 'ALTERNATIVE') hasOtherDownstreamLink = true;
-            }
-            if (!xAnchors.has(id)) xAnchors.set(id, positions.get(e.to)!.x);
-          }
-          // Edge from positioned node to `id` — reverse perspective
-          if (e.to === id) {
-            const otherChain = chainOf.get(e.from);
-            if (otherChain == null || !positionedChains.has(otherChain)) continue;
-            const reversed = REVERSE_RELATION[e.relationType] ?? e.relationType;
-            const canon = canonicalRelation(reversed, node);
-            if (canon === 'SOURCE' || canon === 'PARENT') hasSourceLink = true;
-            else if (canon !== 'ALTERNATIVE') hasOtherDownstreamLink = true;
-            if (!xAnchors.has(id)) xAnchors.set(id, positions.get(e.from)!.x);
-          }
-        }
-      }
-      // Source/parent wins outright → above. Only go below when there is at
-      // least one downstream link and zero source/parent links.
-      const dir: -1 | 1 = hasSourceLink ? -1 : (hasOtherDownstreamLink ? 1 : -1);
-
-      // ── Step 6: Find the connected chain to inherit y from (most connections). ──
-      const yByConnectedChain = new Map<number, number>();
-      for (const id of chains[ci].nodes) {
-        for (const e of adj.get(id) ?? []) {
-          const otherChain = chainOf.get(e.other);
-          if (otherChain == null || !positionedChains.has(otherChain)) continue;
-          yByConnectedChain.set(otherChain, (yByConnectedChain.get(otherChain) ?? 0) + 1);
-        }
-      }
-      let bestConnected = -1;
-      let bestCount = 0;
-      for (const [c, cnt] of yByConnectedChain) {
-        if (cnt > bestCount) { bestCount = cnt; bestConnected = c; }
-      }
-      const baseY = bestConnected >= 0
-        ? (positions.get(chains[bestConnected].ordered[0].anilistId)?.y ?? 0)
-        : 0;
-      // Each chain gets a unique y row. If the natural target is already taken,
-      // step further in the same direction until free.
-      let candidateY = baseY + dir * V_GAP;
-      while (usedChainYs.has(candidateY)) {
-        candidateY += dir * V_GAP;
-      }
-      const newY = candidateY;
-
-      // ── Step 7: Position the chain. First pass: pin x for nodes with direct anchors. ──
-      const placed = new Set<number>();
-      for (const node of chains[ci].ordered) {
-        if (xAnchors.has(node.anilistId)) {
-          positions.set(node.anilistId, { x: xAnchors.get(node.anilistId)!, y: newY });
-          placed.add(node.anilistId);
-        }
-      }
-
-      // Second pass: interpolate runs of unanchored nodes between anchored bookends.
-      const ord = chains[ci].ordered;
-      let i = 0;
-      while (i < ord.length) {
-        if (placed.has(ord[i].anilistId)) { i++; continue; }
-        let runEnd = i;
-        while (runEnd + 1 < ord.length && !placed.has(ord[runEnd + 1].anilistId)) runEnd++;
-        const runLen = runEnd - i + 1;
-        let prevX: number | null = null;
-        for (let j = i - 1; j >= 0; j--) {
-          if (placed.has(ord[j].anilistId)) { prevX = positions.get(ord[j].anilistId)!.x; break; }
-        }
-        let nextX: number | null = null;
-        for (let j = runEnd + 1; j < ord.length; j++) {
-          if (placed.has(ord[j].anilistId)) { nextX = positions.get(ord[j].anilistId)!.x; break; }
-        }
-        let startX: number;
-        let step: number;
-        if (prevX != null && nextX != null) {
-          step = (nextX - prevX) / (runLen + 1);
-          startX = prevX + step;
-        } else if (prevX != null) {
-          step = SPINE_X_MIN;
-          startX = prevX + step;
-        } else if (nextX != null) {
-          step = SPINE_X_MIN;
-          startX = nextX - step * runLen;
-        } else {
-          step = SPINE_X_MIN;
-          startX = 0;
-        }
-        for (let k = 0; k < runLen; k++) {
-          positions.set(ord[i + k].anilistId, { x: startX + k * step, y: newY });
-          placed.add(ord[i + k].anilistId);
-        }
-        i = runEnd + 1;
-      }
-
-      // ── Step 8: Strict topo enforcement — sequel must never end up left of prequel. ──
-      for (let k = 1; k < ord.length; k++) {
-        const prev = positions.get(ord[k - 1].anilistId)!;
-        const cur = positions.get(ord[k].anilistId)!;
-        if (cur.x < prev.x + SPINE_X_MIN) {
-          positions.set(ord[k].anilistId, { x: prev.x + SPINE_X_MIN, y: cur.y });
-        }
-      }
-
-      positionedChains.add(ci);
-      usedChainYs.add(newY);
-      progress = true;
-    }
-  }
-
-  // ── Step 9: Singleton chains + non-chain-tree placement. ───────────────────
-  // allSpineSet = union of every node in a positioned multi-node chain.
-  // Singletons remain unplaced and become tree leaves attached to the closest
-  // already-placed node via the BFS tree logic.
-  const allSpineSet = new Set<number>();
-  for (let ci = 0; ci < chains.length; ci++) {
-    if (chains[ci].nodes.size >= 2 && positionedChains.has(ci)) {
-      for (const id of chains[ci].nodes) allSpineSet.add(id);
-    }
-  }
-
-  // Build BFS tree from all positioned chain nodes outward.
-  const { children: treeChildren } = buildBfsTree(allSpineSet, adj);
-
-  // Collect all chain nodes (for subtree placement of their BFS-tree children).
-  const allChainNodes: FranchiseNode[] = [];
-  for (let ci = 0; ci < chains.length; ci++) {
-    if (chains[ci].nodes.size >= 2 && positionedChains.has(ci)) {
-      for (const node of chains[ci].ordered) {
-        if (nodeById.has(node.anilistId)) allChainNodes.push(node);
-      }
-    }
-  }
-
-  // Place each chain node's BFS-tree children.
-  // Anchor row (y === 0): use top/bottom lane semantics (laneRelativeToSpine).
-  // Non-anchor rows: ALL descendants go further away from the anchor (sign of y).
-  for (const chainNode of allChainNodes) {
-    const spinePos = positions.get(chainNode.anilistId);
-    if (!spinePos) continue;
-    const allKids = treeChildren.get(chainNode.anilistId) ?? [];
-    if (allKids.length === 0) continue;
-
-    const isAnchorRow = spinePos.y === 0;
-
-    if (isAnchorRow) {
-      // Anchor row: respect top/bottom lane semantics (existing behavior).
-      const tops: number[] = [];
-      const bots: number[] = [];
-      for (const kid of allKids) {
-        const kidNode = nodeById.get(kid);
-        if (!kidNode) continue;
-        const kidDir = laneRelativeToSpine(chainNode.anilistId, kid, kidNode, edges);
-        (kidDir === -1 ? tops : bots).push(kid);
-      }
-      for (const [treeDir, kids] of [[-1, tops], [1, bots]] as const) {
-        if (kids.length === 0) continue;
-        const widths = kids.map((k) => measureSubtree(k, treeChildren));
-        const total = widths.reduce((s, w) => s + w, 0);
-        let left = spinePos.x - total / 2;
-        for (let ki = 0; ki < kids.length; ki++) {
-          const childCx = left + widths[ki] / 2;
-          const childCy = spinePos.y + treeDir * V_GAP;
-          placeSubtree(kids[ki], childCx, childCy, treeDir, treeChildren, positions);
-          left += widths[ki];
-        }
-      }
-    } else {
-      // Non-anchor row: ALL descendants go AWAY from the anchor.
-      const dir: -1 | 1 = spinePos.y < 0 ? -1 : 1;
-      const widths = allKids.map((k) => measureSubtree(k, treeChildren));
-      const total = widths.reduce((s, w) => s + w, 0);
-      let left = spinePos.x - total / 2;
-      for (let i = 0; i < allKids.length; i++) {
-        const childCx = left + widths[i] / 2;
-        const childCy = spinePos.y + dir * V_GAP;
-        placeSubtree(allKids[i], childCx, childCy, dir, treeChildren, positions);
-        left += widths[i];
-      }
-    }
-  }
 
   return positions;
 }
