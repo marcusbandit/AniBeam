@@ -21,7 +21,7 @@ function AniListIcon({ size = 12 }: { size?: number }) {
   );
 }
 import type { LibraryItem } from "../../types/electron";
-import type { Character, Recommendation, Relation, SeriesMetadata, Tag } from "../hooks/useMetadata";
+import type { Character, Recommendation, SeriesMetadata, Tag } from "../hooks/useMetadata";
 import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
 import { useTitleLanguage } from "../contexts/TitleLanguageContext";
 import { useTrackerProgress } from "../contexts/TrackerProgressContext";
@@ -42,6 +42,9 @@ import {
 } from "../utils/playbackProgress";
 import type { TrackerListStatus } from "../../main/preload";
 import { Page, Section, Card, EpisodeRow, Pill, ScorePicker, Tooltip } from "../components/primitives";
+import { FranchiseMap } from "../components/franchise";
+import { useFranchiseGraph } from "../hooks/useFranchiseGraph";
+import type { FranchiseNode } from "../../shared/franchise";
 
 const LIST_STATUS_LABEL: Record<TrackerListStatus, string> = {
   watching: "Watching",
@@ -73,66 +76,6 @@ function formatStatus(status: string | null | undefined): string | null {
   return map[norm] ?? norm.replace(/_/g, " ");
 }
 
-// Display label for an AniList `relationType`. Falls back to the raw
-// SCREAMING_SNAKE form so unknown values stay debuggable instead of
-// silently rendering "".
-const RELATION_LABEL: Record<string, string> = {
-  SEQUEL: "Sequel",
-  PREQUEL: "Prequel",
-  PARENT: "Parent story",
-  SIDE_STORY: "Side story",
-  SUMMARY: "Summary",
-  ALTERNATIVE: "Alternative",
-  SPIN_OFF: "Spin-off",
-  COMPILATION: "Compilation",
-  ADAPTATION: "Source",
-  OTHER: "Other",
-  CONTAINS: "Contains",
-};
-
-// Lower index = render earlier. Story-progression edges first (prequels
-// then sequels), then companion entries (specials, spin-offs, etc.),
-// then source-media adaptations, then anything else. Stable secondary
-// sort by `seasonYear` ascending so a multi-season franchise renders
-// chronologically left-to-right.
-const RELATION_ORDER: Record<string, number> = {
-  PREQUEL: 0,
-  // Synthesized "you are here" entry — slots between PREQUEL (0) and
-  // SEQUEL (1) so a same-year tie still reads chronologically as
-  // prequel → current → sequel instead of falling to the end of the row.
-  __CURRENT__: 0.5,
-  SEQUEL: 1,
-  PARENT: 2,
-  SIDE_STORY: 3,
-  ALTERNATIVE: 4,
-  SPIN_OFF: 5,
-  SUMMARY: 6,
-  COMPILATION: 7,
-  ADAPTATION: 8,
-  OTHER: 9,
-  CONTAINS: 10,
-};
-
-// Primary sort key for the Related section. Series-type formats first
-// (TV → OVA → Special → Movie), then printed/audio formats (Manga →
-// Novel → One-shot → Visual Novel). Unknown / null formats fall to the
-// end so a missing format never displaces a properly-tagged entry. The
-// synthesized "current" card mirrors its real series format and falls
-// into the same bucket as its peers.
-const FORMAT_ORDER: Record<string, number> = {
-  TV:           0,
-  TV_SHORT:     1,
-  OVA:          2,
-  ONA:          3,
-  SPECIAL:      4,
-  MOVIE:        5,
-  MUSIC:        6,
-  MANGA:        7,
-  NOVEL:        8,
-  LIGHT_NOVEL:  8,
-  ONE_SHOT:     9,
-  VISUAL_NOVEL: 10,
-};
 
 function relationFormatLabel(format: string | null): string | null {
   if (!format) return null;
@@ -153,24 +96,6 @@ function relationFormatLabel(format: string | null): string | null {
   return map[format] ?? format.replace(/_/g, " ");
 }
 
-function sortRelations(relations: ReadonlyArray<Relation>): Relation[] {
-  return [...relations].sort((a, b) => {
-    // Primary: media format (Series → OVA → Special → Movie → Manga → ...).
-    // Items without a format fall to the end via the `?? 99` fallback.
-    const af = FORMAT_ORDER[a.format ?? ""] ?? 99;
-    const bf = FORMAT_ORDER[b.format ?? ""] ?? 99;
-    if (af !== bf) return af - bf;
-    // Secondary: release year ascending — within a format group the row
-    // reads chronologically (S1 2020, S2 2022, S3 2024, …).
-    const ay = a.seasonYear ?? Number.POSITIVE_INFINITY;
-    const by = b.seasonYear ?? Number.POSITIVE_INFINITY;
-    if (ay !== by) return ay - by;
-    // Tertiary: AniList relation-type ordering. Keeps PREQUEL before
-    // SEQUEL when both share format + year, and slots the synthesized
-    // "you are here" card between them (RELATION_ORDER.__CURRENT__).
-    return (RELATION_ORDER[a.relationType] ?? 99) - (RELATION_ORDER[b.relationType] ?? 99);
-  });
-}
 
 function formatYear(startDate: string | null | undefined, seasonYear: number | null | undefined): string | null {
   if (typeof seasonYear === "number") return String(seasonYear);
@@ -317,135 +242,21 @@ function SeriesDetailPage() {
     return { byAnilist, byMal };
   }, [allItems]);
 
-  const sortedRelations = useMemo(
-    () => sortRelations(meta?.relations ?? []),
-    [meta?.relations],
-  );
+  const { graph: franchiseGraph } = useFranchiseGraph(meta?.anilistId, allMeta);
 
-  // Helper: resolve a Relation entry to a library seriesId, if any. Same
-  // lookup as the click handler — kept consistent so the grouping never
-  // disagrees with the in-card "In Library" pill.
-  const resolveOwnedId = useCallback((rel: Relation): string | undefined => {
-    if (rel.type !== "ANIME") return undefined;
-    return (rel.anilistId != null ? ownedByExternalId.byAnilist.get(rel.anilistId) : undefined)
-      ?? (rel.malId != null ? ownedByExternalId.byMal.get(rel.malId) : undefined);
+  const resolveOwnedNode = useCallback((node: FranchiseNode): string | undefined => {
+    if (node.type === "MANGA") return undefined;
+    return (node.anilistId != null ? ownedByExternalId.byAnilist.get(node.anilistId) : undefined)
+      ?? (node.malId != null ? ownedByExternalId.byMal.get(node.malId) : undefined);
   }, [ownedByExternalId]);
 
-  // Split relations into two buckets so the page can show "what's already
-  // in your library" before "what isn't".
-  //
-  // The in-library bucket is computed transitively: starting from the
-  // current series, we BFS through each visited series's own `relations`
-  // and surface every owned entry reachable through the franchise graph.
-  // Example: current series is S1, which only directly links to S2; but
-  // S2 links to S3 (also owned). S3 is reachable through S2 and should
-  // appear here even though S1's metadata doesn't mention it. Without
-  // this, sibling seasons of a multi-cour franchise look disconnected
-  // unless every season's AniList metadata happens to list every other.
-  //
-  // External relations stay direct only — going transitive there would
-  // flood the page with every loosely-connected external entry across
-  // the entire franchise's metadata.
-  const { inLibraryRelations, externalRelations } = useMemo(() => {
-    if (!decodedId) {
-      return { inLibraryRelations: [] as Relation[], externalRelations: [] as Relation[] };
-    }
-
-    const external: Relation[] = [];
-    for (const rel of sortedRelations) {
-      if (resolveOwnedId(rel) == null) external.push(rel);
-    }
-
-    // BFS over the franchise graph. visitedOwned tracks series IDs we've
-    // already represented so we never duplicate a card if a series is
-    // reachable through multiple edges (very common — relations are
-    // bidirectional on AniList: S1→S2 sequel and S2→S1 prequel both
-    // exist, so a naive walk would loop forever).
-    const visitedOwned = new Set<string>([decodedId]);
-    const reached: Relation[] = [];
-    type Frame = { relations: Relation[] };
-    const queue: Frame[] = [{ relations: meta?.relations ?? [] }];
-
-    while (queue.length > 0) {
-      const { relations } = queue.shift()!;
-      for (const rel of relations) {
-        const ownedId = resolveOwnedId(rel);
-        if (!ownedId || visitedOwned.has(ownedId)) continue;
-        visitedOwned.add(ownedId);
-        reached.push(rel);
-        const childMeta = allMeta[ownedId];
-        if (childMeta?.relations && childMeta.relations.length > 0) {
-          queue.push({ relations: childMeta.relations });
-        }
-      }
-    }
-
-    return { inLibraryRelations: sortRelations(reached), externalRelations: external };
-  }, [decodedId, meta, allMeta, sortedRelations, resolveOwnedId]);
-
-  // Marker relationType used purely as a sentinel for the synthesized
-  // "current series" entry inside the in-library bucket. Anything that
-  // sees this value should render the Current card instead of a normal
-  // relation card. Kept out of the user-visible RELATION_LABEL map so it
-  // can never leak as a label in a normal Card.
-  const CURRENT_RELATION_TYPE = "__CURRENT__";
-
-  // Synthesize a Relation-shaped entry for the current series so it can
-  // slot into the in-library list at its real chronological position.
-  // Sort all in-library cards (the synthesized one + the BFS-discovered
-  // ones) by seasonYear ascending so a multi-cour franchise reads
-  // left-to-right as season 1, season 2, season 3 — anchored visually
-  // by where the user actually is right now.
-  const inLibraryWithSelf = useMemo<Relation[]>(() => {
-    if (!item) return inLibraryRelations;
-    // Year fallback chain matches the hero's formatYear logic: explicit
-    // seasonYear on meta → parse from startDate on either meta or item.
-    // Without this the current card sometimes had no "2022" chip while
-    // its siblings did, because metadata.seasonYear was null for shows
-    // matched by AniSchedule rather than by AniList's season query.
-    const startDate = item.startDate ?? meta?.startDate ?? null;
-    const parsedYearFromStart = startDate
-      ? (Number.isFinite(parseInt(startDate.split("-")[0], 10))
-          ? parseInt(startDate.split("-")[0], 10)
-          : null)
-      : null;
-    const resolvedYear = meta?.seasonYear ?? parsedYearFromStart;
-    // Format fallback: meta.format → item type → null. Mirrors the hero
-    // chip ("Series" default), but for the relation row we leave it null
-    // when truly unknown so relationFormatLabel returns nothing rather
-    // than showing a placeholder that the siblings don't have.
-    const resolvedFormat = meta?.format
-      ?? (item.type === "movie" ? "MOVIE" : null);
-    const self: Relation = {
-      relationType: CURRENT_RELATION_TYPE,
-      anilistId: item.anilistId ?? -1,
-      malId: item.malId ?? null,
-      type: "ANIME",
-      format: resolvedFormat,
-      status: meta?.status ?? item.status ?? null,
-      seasonYear: resolvedYear,
-      siteUrl: null,
-      titleRomaji: meta?.titleRomaji ?? item.titleRomaji ?? null,
-      titleEnglish: meta?.titleEnglish ?? item.titleEnglish ?? null,
-      poster: item.posterLocal
-        ? `media://${encodeURIComponent(item.posterLocal)}`
-        : (item.poster ?? null),
-    };
-    const merged = [self, ...inLibraryRelations];
-    // Same sort hierarchy as sortRelations() — format bucket → year →
-    // relation-type tiebreaker. Keeps the in-library row consistent with
-    // the not-in-library row so the user sees the same grouping logic on
-    // both sides of the Related section.
-    return merged.slice().sort((a, b) => {
-      const af = FORMAT_ORDER[a.format ?? ""] ?? 99;
-      const bf = FORMAT_ORDER[b.format ?? ""] ?? 99;
-      if (af !== bf) return af - bf;
-      const ay = a.seasonYear ?? Number.POSITIVE_INFINITY;
-      const by = b.seasonYear ?? Number.POSITIVE_INFINITY;
-      if (ay !== by) return ay - by;
-      return (RELATION_ORDER[a.relationType] ?? 99) - (RELATION_ORDER[b.relationType] ?? 99);
-    });
-  }, [item, meta, inLibraryRelations]);
+  const openExternalNode = useCallback((node: FranchiseNode) => {
+    const url = node.siteUrl
+      ?? (node.type === "MANGA"
+        ? `https://anilist.co/manga/${node.anilistId}`
+        : `https://anilist.co/anime/${node.anilistId}`);
+    if (url) void window.electronAPI.openExternal(url);
+  }, []);
 
   // Stable order: by season then episode number, falling back to filename.
   const sorted = useMemo(() => {
@@ -1160,196 +971,22 @@ function SeriesDetailPage() {
         </Section>
       )}
 
-      {sortedRelations.length > 0 && (
-        <Section title="Related" count={sortedRelations.length}>
-          {/* Gate on actual siblings — not on inLibraryWithSelf — so we don't
-              render a lonely "You are here" card when the user has no other
-              entries from this franchise on disk. The current series is
-              already the page itself; surfacing it alone under "Available"
-              is just visual noise. */}
-          {inLibraryRelations.length > 0 && (
-            <div className="relations-group relations-group--internal">
-              <div className="relations-group__head">
-                <span className="relations-group__dot" aria-hidden="true" />
-                <span className="relations-group__label">Available</span>
-                <span className="relations-group__count">{inLibraryWithSelf.length}</span>
-              </div>
-              {/* Timeline rail — a thin teal line behind the cards visually
-                  anchors the franchise as a single chronological chain. Only
-                  rendered when there are 2+ cards (a rail through one card is
-                  noise). */}
-              <div className="relations-grid relations-grid--timeline">
-                {inLibraryWithSelf.length > 1 && (
-                  <div className="relations-timeline-rail" aria-hidden="true" />
-                )}
-                {inLibraryWithSelf.map((rel) => {
-                  const isCurrent = rel.relationType === CURRENT_RELATION_TYPE;
-                  const ownedId = isCurrent
-                    ? decodedId
-                    : (rel.type === "ANIME"
-                      ? (rel.anilistId != null ? ownedByExternalId.byAnilist.get(rel.anilistId) : undefined)
-                        ?? (rel.malId != null ? ownedByExternalId.byMal.get(rel.malId) : undefined)
-                      : undefined);
-                  const relTitle = pickTitle({
-                    titleRomaji: rel.titleRomaji,
-                    titleEnglish: rel.titleEnglish,
-                    folderName: rel.titleRomaji ?? rel.titleEnglish ?? "Untitled",
-                  });
-                  const typeLabel = isCurrent
-                    ? "Currently viewing"
-                    : (RELATION_LABEL[rel.relationType]
-                      ?? rel.relationType.replace(/_/g, " ").toLowerCase());
-                  const formatLabel = relationFormatLabel(rel.format);
-                  if (isCurrent) {
-                    // Non-clickable marker card. Uses the same shell as the
-                    // sibling cards so it shares the chronological row with
-                    // them, but skips Card's hover-lift (it goes nowhere) and
-                    // swaps the In-Library pill for "Current".
-                    return (
-                      <Card
-                        key="current-self"
-                        variant="internal"
-                        noLift
-                        aria-current="page"
-                        data-format={rel.format ?? ""}
-                      >
-                        <div className="relation-card-poster">
-                          {rel.poster ? (
-                            <img src={rel.poster} alt={relTitle} loading="lazy" decoding="async" />
-                          ) : (
-                            <div className="relation-card-poster-empty">
-                              <Tv size={28} />
-                            </div>
-                          )}
-                          <span aria-hidden="true">
-                            <Pill tone="muted">You are here</Pill>
-                          </span>
-                        </div>
-                        <div className="relation-card-body">
-                          <div className="relation-card-type">{typeLabel}</div>
-                          <div className="relation-card-title">{relTitle}</div>
-                          <div className="relation-card-meta">
-                            {formatLabel && (
-                            <span className="relation-card-format" data-format={rel.format ?? ""}>
-                              {formatLabel}
-                            </span>
-                          )}
-                            {rel.seasonYear && <span>{rel.seasonYear}</span>}
-                          </div>
-                        </div>
-                      </Card>
-                    );
-                  }
-                  const handleClick = () => {
-                    if (ownedId) navigate(`/series/${encodeURIComponent(ownedId)}`);
-                  };
-                  const mark = listStatusMarker({ anilistId: rel.anilistId, malId: rel.malId });
-                  return (
-                    <Card
-                      key={`${rel.type ?? "x"}-${rel.anilistId}-${rel.relationType}`}
-                      variant="internal"
-                      onClick={handleClick}
-                      tooltip={`Open ${relTitle} in your library`}
-                      data-format={rel.format ?? ""}
-                    >
-                      <div className="relation-card-poster">
-                        {rel.poster ? (
-                          <img src={rel.poster} alt={relTitle} loading="lazy" decoding="async" />
-                        ) : (
-                          <div className="relation-card-poster-empty">
-                            {rel.type === "MANGA" ? <Film size={28} /> : <Tv size={28} />}
-                          </div>
-                        )}
-                        <span aria-hidden="true">
-                          <Pill tone="teal">Available</Pill>
-                        </span>
-                      </div>
-                      <div className="relation-card-body">
-                        <div className="relation-card-type">{typeLabel}</div>
-                        <div className="relation-card-title">{relTitle}</div>
-                        <div className="relation-card-meta">
-                          {formatLabel && (
-                            <span className="relation-card-format" data-format={rel.format ?? ""}>
-                              {formatLabel}
-                            </span>
-                          )}
-                          {rel.seasonYear && <span>{rel.seasonYear}</span>}
-                        </div>
-                      </div>
-                      {mark}
-                    </Card>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-          {externalRelations.length > 0 && (
-            <div className="relations-group relations-group--external">
-              <div className="relations-group__head">
-                <span className="relations-group__dot" aria-hidden="true" />
-                <span className="relations-group__label">Discover</span>
-                <span className="relations-group__count">{externalRelations.length}</span>
-              </div>
-              <div className="relations-grid">
-                {externalRelations.map((rel) => {
-                  const relTitle = pickTitle({
-                    titleRomaji: rel.titleRomaji,
-                    titleEnglish: rel.titleEnglish,
-                    folderName: rel.titleRomaji ?? rel.titleEnglish ?? "Untitled",
-                  });
-                  const typeLabel = RELATION_LABEL[rel.relationType]
-                    ?? rel.relationType.replace(/_/g, " ").toLowerCase();
-                  const formatLabel = relationFormatLabel(rel.format);
-                  const handleClick = () => {
-                    const url = rel.siteUrl
-                      ?? (rel.type === "MANGA"
-                        ? `https://anilist.co/manga/${rel.anilistId}`
-                        : `https://anilist.co/anime/${rel.anilistId}`);
-                    if (url) void window.electronAPI.openExternal(url);
-                  };
-                  const mark = listStatusMarker({ anilistId: rel.anilistId, malId: rel.malId });
-                  return (
-                    <Card
-                      key={`${rel.type ?? "x"}-${rel.anilistId}-${rel.relationType}`}
-                      variant="external"
-                      onClick={handleClick}
-                      tooltip={`Open ${relTitle} on AniList`}
-                      data-format={rel.format ?? ""}
-                    >
-                      <div className="relation-card-poster">
-                        {rel.poster ? (
-                          <img src={rel.poster} alt={relTitle} loading="lazy" decoding="async" />
-                        ) : (
-                          <div className="relation-card-poster-empty">
-                            {rel.type === "MANGA" ? <Film size={28} /> : <Tv size={28} />}
-                          </div>
-                        )}
-                        <span aria-hidden="true">
-                          <Pill tone="accent">
-                            <AniListIcon size={11} />
-                            AniList
-                          </Pill>
-                        </span>
-                      </div>
-                      <div className="relation-card-body">
-                        <div className="relation-card-type">{typeLabel}</div>
-                        <div className="relation-card-title">{relTitle}</div>
-                        <div className="relation-card-meta">
-                          {formatLabel && (
-                            <span className="relation-card-format" data-format={rel.format ?? ""}>
-                              {formatLabel}
-                            </span>
-                          )}
-                          {rel.seasonYear && <span>{rel.seasonYear}</span>}
-                        </div>
-                      </div>
-                      {mark}
-                    </Card>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+      {(franchiseGraph?.nodes.length ?? 0) > 1 && meta?.anilistId != null && (
+        <Section title="Related" count={(franchiseGraph?.nodes.length ?? 1) - 1}>
+          <FranchiseMap
+            graph={franchiseGraph!}
+            currentAnilistId={meta.anilistId}
+            resolveOwnedId={resolveOwnedNode}
+            pickTitle={(n) => pickTitle({
+              titleRomaji: n.titleRomaji,
+              titleEnglish: n.titleEnglish,
+              folderName: n.titleRomaji ?? n.titleEnglish ?? "Untitled",
+            })}
+            onOpenInApp={(id) => navigate(`/series/${encodeURIComponent(id)}`)}
+            onOpenExternal={openExternalNode}
+            statusMarkerFor={(n) => listStatusMarker({ anilistId: n.anilistId, malId: n.malId })}
+            anilistIcon={<AniListIcon size={11} />}
+          />
         </Section>
       )}
 
