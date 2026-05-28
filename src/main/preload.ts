@@ -184,6 +184,7 @@ export interface ElectronAPI {
 
   // Franchise graph
   getFranchiseGraph: (anilistId: number) => Promise<FranchiseGraph | null>;
+  onFranchiseStoreUpdated: (handler: () => void) => () => void;
 }
 
 export interface ViewHistoryEntry {
@@ -345,4 +346,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Franchise graph
   getFranchiseGraph: (anilistId: number) => ipcRenderer.invoke('franchise:graph', anilistId),
+  onFranchiseStoreUpdated: (handler: () => void) => {
+    const listener = () => handler();
+    ipcRenderer.on('franchise:store-updated', listener);
+    return () => ipcRenderer.removeListener('franchise:store-updated', listener);
+  },
 });

@@ -98,7 +98,9 @@ export function useFranchiseGraph(
 
     let timer: ReturnType<typeof setTimeout> | null = null;
     let stopped = false;
-    const POLL_MS = 5000;
+    // Polling is now a safety-net fallback only — the file-watch push is primary.
+    // Only poll while the graph is incomplete; longer interval to stay quiet.
+    const POLL_MS = 30_000;
 
     const run = () => {
       void window.electronAPI
@@ -121,6 +123,20 @@ export function useFranchiseGraph(
       if (timer) clearTimeout(timer);
       if (reqIdRef.current === myReq) setFilling(false);
     };
+  }, [currentAnilistId]);
+
+  // Push-based refresh: subscribe to file-watch events from main.
+  // Re-fetches immediately when the store file changes (any writer).
+  useEffect(() => {
+    if (currentAnilistId == null) return;
+    const off = window.electronAPI.onFranchiseStoreUpdated?.(() => {
+      const myReq = ++reqIdRef.current;
+      void window.electronAPI.getFranchiseGraph(currentAnilistId).then((g) => {
+        if (reqIdRef.current !== myReq) return;
+        if (g != null) setFilled(g);
+      });
+    });
+    return () => { off?.(); };
   }, [currentAnilistId]);
 
   // Prefer the filled graph once present; fall back to the local seed.

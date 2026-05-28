@@ -1,5 +1,6 @@
-import { app } from 'electron';
+import { app, BrowserWindow } from 'electron';
 import { readFile, writeFile, mkdir, unlink } from 'fs/promises';
+import { watch } from 'node:fs';
 import { join } from 'path';
 import anilistHandler from '../handlers/anilistHandler';
 import metadataHandler from '../handlers/metadataHandler';
@@ -13,6 +14,39 @@ import {
 
 const STORE_FILE = 'franchiseStore.json';
 const STORE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+// ---------------------------------------------------------------------------
+// Store-file watcher — notifies all renderer windows when the file changes.
+// ---------------------------------------------------------------------------
+let storeWatcher: { close(): void } | null = null;
+let storeNotifyTimer: ReturnType<typeof setTimeout> | null = null;
+const NOTIFY_DEBOUNCE_MS = 250;
+
+function ensureStoreWatcher(): void {
+  if (storeWatcher) return;
+  const path = join(app.getPath('userData'), STORE_FILE);
+  // Make sure the file exists before fs.watch — fs.watch requires an existing
+  // target on Linux.
+  void mkdir(app.getPath('userData'), { recursive: true })
+    .then(() => writeFile(path, JSON.stringify({ byId: {} }), { flag: 'a' }).catch(() => {}))
+    .then(() => {
+      try {
+        storeWatcher = watch(path, { persistent: false }, () => {
+          if (storeNotifyTimer) return; // already pending
+          storeNotifyTimer = setTimeout(() => {
+            storeNotifyTimer = null;
+            for (const win of BrowserWindow.getAllWindows()) {
+              if (!win.isDestroyed()) {
+                win.webContents.send('franchise:store-updated');
+              }
+            }
+          }, NOTIFY_DEBOUNCE_MS);
+        });
+      } catch (e) {
+        logger.warn('metadata', `franchise store watcher failed to attach: ${(e as Error).message}`);
+      }
+    });
+}
 
 interface ShowEntry {
   /** The show's own data. Null until we've directly fetched this id. */
@@ -126,6 +160,7 @@ function buildSeed(meta: Record<string, SavedSeries>): {
  * missing entries are fetched from AniList.
  */
 export async function getFranchiseGraph(anilistId: number): Promise<FranchiseGraph> {
+  ensureStoreWatcher();
   await cleanupLegacyCaches();
 
   const store = await readStore();
