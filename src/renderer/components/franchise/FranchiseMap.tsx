@@ -57,7 +57,11 @@ export function FranchiseMap(props: FranchiseMapProps) {
     const c = currentRef.current;
     const s = scrollRef.current;
     if (!c || !s) return;
-    s.scrollLeft = c.offsetLeft - s.clientWidth / 2 + c.clientWidth / 2;
+    // Rect-based so it's independent of which ancestor is the offsetParent
+    // (Task 8 may make .franchise-map__inner positioned).
+    const cRect = c.getBoundingClientRect();
+    const sRect = s.getBoundingClientRect();
+    s.scrollLeft += (cRect.left - sRect.left) - s.clientWidth / 2 + cRect.width / 2;
   }, [graph]);
 
   const renderTile = (p: Placed) => {
