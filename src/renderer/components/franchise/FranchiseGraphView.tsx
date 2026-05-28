@@ -64,7 +64,6 @@ function layoutGraph(
   currentId: number,
   hiddenCategories: ReadonlySet<FranchiseCategory>,
   hiddenFormats: ReadonlySet<FranchiseFormat>,
-  hoveredId: number | null,
 ): { nodes: RFNode<FranchiseNodeFlowData>[]; edges: RFEdge[] } {
   // Dedupe reciprocal edges (SOURCE↔ADAPTATION, PARENT↔SIDE_STORY, PREQUEL↔SEQUEL)
   const dedupedEdges = dedupeReciprocalEdges(graph.edges);
@@ -107,17 +106,6 @@ function layoutGraph(
   const filteredGraph: FranchiseGraph = { ...graph, nodes: visibleNodes, edges: visibleEdges };
   const positions = layoutFranchise(filteredGraph, currentId);
 
-  // Compute the hover highlight set: hovered node + its direct neighbors.
-  // Uses visibleEdges so dimming respects both the format and category filters.
-  let highlightSet: Set<number> | null = null;
-  if (hoveredId != null) {
-    highlightSet = new Set<number>([hoveredId]);
-    for (const e of visibleEdges) {
-      if (e.from === hoveredId) highlightSet.add(e.to);
-      if (e.to === hoveredId) highlightSet.add(e.from);
-    }
-  }
-
   const rfNodes: RFNode<FranchiseNodeFlowData>[] = visibleNodes
     .filter((node) => positions.has(node.anilistId))
     .map((node) => {
@@ -143,7 +131,7 @@ function layoutGraph(
         anilistIcon: null,
         onOpenInApp: () => {},
         onOpenExternal: () => {},
-        dimmed: highlightSet != null && !highlightSet.has(node.anilistId),
+        dimmed: false,
       },
     };
   });
@@ -155,7 +143,6 @@ function layoutGraph(
         positions.get(edge.from) ?? { x: 0, y: 0 },
         positions.get(edge.to)   ?? { x: 0, y: 0 },
       );
-      const dimmed = hoveredId != null && edge.from !== hoveredId && edge.to !== hoveredId;
       return {
         id: `${edge.from}->${edge.to}:${edge.relationType}`,
         source: String(edge.from),
@@ -163,7 +150,7 @@ function layoutGraph(
         sourceHandle,
         targetHandle,
         type: 'default',
-        className: `franchise-edge franchise-edge--${edge.relationType.toLowerCase()}${dimmed ? ' franchise-edge--dimmed' : ''}`,
+        className: `franchise-edge franchise-edge--${edge.relationType.toLowerCase()}`,
         data: { relationType: edge.relationType },
       };
     });
@@ -279,8 +266,9 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isFullscreen]);
 
-  const { nodes, edges } = useMemo(() => {
-    const layout = layoutGraph(graph, currentAnilistId, hiddenCategories, hiddenFormats, hoveredId);
+  // Heavy memo: layout + enrichment. Does NOT depend on hoveredId.
+  const { baseRfNodes, baseRfEdges } = useMemo(() => {
+    const layout = layoutGraph(graph, currentAnilistId, hiddenCategories, hiddenFormats);
 
     // Enrich node data with display fields
     const enrichedNodes = layout.nodes.map((rfNode) => {
@@ -300,8 +288,52 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
       };
     });
 
-    return { nodes: enrichedNodes, edges: layout.edges };
-  }, [graph, currentAnilistId, hiddenCategories, hiddenFormats, hoveredId, resolveOwnedId, pickTitle, onOpenInApp, onOpenExternal, statusMarkerFor, anilistIcon]);
+    return { baseRfNodes: enrichedNodes, baseRfEdges: layout.edges };
+  }, [graph, currentAnilistId, hiddenCategories, hiddenFormats, resolveOwnedId, pickTitle, onOpenInApp, onOpenExternal, statusMarkerFor, anilistIcon]);
+
+  // Light memo: compute the neighbor highlight set from hovered node + base edges.
+  const highlightSet = useMemo<Set<number> | null>(() => {
+    if (hoveredId == null) return null;
+    const s = new Set<number>([hoveredId]);
+    for (const e of baseRfEdges) {
+      const from = Number(e.source);
+      const to = Number(e.target);
+      if (from === hoveredId) s.add(to);
+      if (to === hoveredId) s.add(from);
+    }
+    return s;
+  }, [hoveredId, baseRfEdges]);
+
+  // Light memo: apply dim flag to nodes without touching layout.
+  const nodes = useMemo(() => {
+    if (highlightSet == null) {
+      return baseRfNodes.map((n) => (n.data.dimmed ? { ...n, data: { ...n.data, dimmed: false } } : n));
+    }
+    return baseRfNodes.map((n) => {
+      const id = Number(n.id);
+      const dimmed = !highlightSet.has(id);
+      if (n.data.dimmed === dimmed) return n;
+      return { ...n, data: { ...n.data, dimmed } };
+    });
+  }, [baseRfNodes, highlightSet]);
+
+  // Light memo: apply dimmed class to edges without touching layout.
+  const edges = useMemo(() => {
+    if (hoveredId == null) {
+      return baseRfEdges.map((e) => {
+        const cls = e.className?.replace(/\s*franchise-edge--dimmed/g, '') ?? '';
+        return cls === e.className ? e : { ...e, className: cls };
+      });
+    }
+    return baseRfEdges.map((e) => {
+      const from = Number(e.source);
+      const to = Number(e.target);
+      const isDimmed = from !== hoveredId && to !== hoveredId;
+      const baseClass = (e.className ?? '').replace(/\s*franchise-edge--dimmed/g, '');
+      const cls = isDimmed ? `${baseClass} franchise-edge--dimmed` : baseClass;
+      return cls === e.className ? e : { ...e, className: cls };
+    });
+  }, [baseRfEdges, hoveredId]);
 
   useEffect(() => {
     const cur = nodes.find((n) => n.data.isCurrent);
