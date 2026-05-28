@@ -38,6 +38,8 @@ export interface FranchiseGraphViewProps {
   onToggleCategory: (cat: FranchiseCategory) => void;
   hiddenFormats?: ReadonlySet<FranchiseFormat>;
   onToggleFormat: (fmt: FranchiseFormat) => void;
+  /** True while the background AniList fill is in flight. */
+  filling?: boolean;
 }
 
 interface FranchiseNodeFlowData extends Record<string, unknown> {
@@ -352,6 +354,7 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
     onToggleCategory,
     hiddenFormats = new Set(),
     onToggleFormat,
+    filling = false,
   } = props;
 
   const reactFlowInstance = useReactFlow();
@@ -500,6 +503,21 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
     else onOpenExternal(node);
   };
 
+  // ─── Debug panel values ───────────────────────────────────────────────────────
+  const rootId = findFranchiseRoot(graph, currentAnilistId);
+  const rootNode = rootId != null ? graph.nodes.find((n) => n.anilistId === rootId) : undefined;
+  const rootTitle = rootNode?.titleRomaji ?? rootNode?.titleEnglish ?? undefined;
+
+  const statusLabel = (() => {
+    if (!graph) return 'Loading…';
+    if (filling) return 'Refetching…';
+    if (!graph.complete) return `Crawling… (${graph.deferred.length} deferred)`;
+    return 'Ready';
+  })();
+
+  const totalEdges = graph.edges.length;
+  const edgeFilterDiff = totalEdges !== visibleEdges.length;
+
   const containerClass = `franchise-graph${isFullscreen ? ' franchise-graph--fullscreen' : ''}`;
   const content = (
     <div className={containerClass}>
@@ -528,6 +546,12 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
           zoomOnPinch
         >
           <Background />
+          <Panel position="top-left" className="franchise-debug">
+            <div>{statusLabel}</div>
+            <div>nodes: {graph.nodes.length}</div>
+            <div>edges: {totalEdges}{edgeFilterDiff ? ` (visible ${visibleEdges.length})` : ''}</div>
+            <div>root: {rootTitle ?? '—'}{rootId != null ? ` (${rootId})` : ''}</div>
+          </Panel>
           <Panel position="top-center" className="franchise-filters-panel">
             <FranchiseFilters hidden={hiddenCategories} onToggle={onToggleCategory} hiddenFormats={hiddenFormats} onToggleFormat={onToggleFormat} />
           </Panel>

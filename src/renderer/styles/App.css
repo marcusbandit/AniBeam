@@ -5025,3 +5025,24 @@ button.franchise-node:hover {
   align-self: flex-start;
   white-space: nowrap;
 }
+
+/* ── Franchise map debug panel ─────────────────────────────────────────────── */
+.franchise-graph .react-flow__panel.franchise-debug {
+  margin: 12px;
+  padding: 8px 10px;
+  background: rgba(21, 21, 28, 0.78);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--border-color, rgba(255,255,255,0.07));
+  border-radius: var(--radius-md, 14px);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary, #94a3b8);
+  pointer-events: none; /* purely informational; don't intercept clicks */
+  user-select: text;     /* but allow copy if needed */
+  min-width: 160px;
+}
+.franchise-graph .react-flow__panel.franchise-debug > div {
+  white-space: nowrap;
+}

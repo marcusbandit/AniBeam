@@ -255,7 +255,7 @@ function SeriesDetailPage() {
     return { byAnilist, byMal };
   }, [allItems]);
 
-  const { graph: franchiseGraph } = useFranchiseGraph(meta?.anilistId, allMeta);
+  const { graph: franchiseGraph, filling: franchiseFilling } = useFranchiseGraph(meta?.anilistId, allMeta);
 
   const resolveOwnedNode = useCallback((node: FranchiseNode): string | undefined => {
     if (node.type === "MANGA") return undefined;
@@ -989,6 +989,7 @@ function SeriesDetailPage() {
           <FranchiseGraphView
             graph={franchiseGraph!}
             currentAnilistId={meta.anilistId}
+            filling={franchiseFilling}
             resolveOwnedId={resolveOwnedNode}
             pickTitle={(n) => pickTitle({
               titleRomaji: n.titleRomaji,
