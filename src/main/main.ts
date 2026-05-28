@@ -209,6 +209,10 @@ async function ingestSingleFile(filePath: string): Promise<void> {
           subtitlePaths: f.subtitlePaths,
           filename: f.filename,
           title: f.title,
+          kind: f.kind,
+          extraIndex: f.extraIndex,
+          extraVariant: f.extraVariant,
+          rawLabel: f.rawLabel,
           status: isThisFile ? 'verifying' : (old?.status ?? f.status),
           lastProbedAt: isThisFile ? Date.now() : (old?.lastProbedAt ?? f.lastProbedAt),
         };
@@ -1317,6 +1321,10 @@ async function processOneMedia(
           filePath: f.filePath,
           subtitlePath: f.subtitlePath,
           subtitlePaths: f.subtitlePaths,
+          kind: f.kind,
+          extraIndex: f.extraIndex,
+          extraVariant: f.extraVariant,
+          rawLabel: f.rawLabel,
           filename: f.filename,
           title: f.title,
           status: f.status,
@@ -1333,10 +1341,11 @@ async function processOneMedia(
   const partInfo = media.partNumber !== null ? ` Part ${media.partNumber}` : '';
   logger.info('metadata', `Processing ${media.name}${seasonInfo}${partInfo}`, { series: media.name });
 
-  // Count only canonical episodes (exclude decimal episodes like 6.5, 7.5, 10.5)
-  // Decimal episodes are stored as actual decimals: 6.5, 7.5, 10.5, etc.
+  // Count only canonical episodes — exclude decimal episodes (6.5, 7.5, 10.5)
+  // AND non-episode kinds (OP/ED/PV/SP/extras), which now also live in
+  // media.files but must not contribute to the AniList/MAL episode-count match.
   const canonicalEpisodes = media.files.filter(f => {
-    // Skip decimal episodes: check if episodeNumber is not an integer
+    if (f.kind !== 'episode') return false;
     return Number.isInteger(f.episodeNumber);
   });
   const canonicalEpisodeCount = canonicalEpisodes.length;
@@ -1511,6 +1520,10 @@ async function processOneMedia(
         subtitlePaths: f.subtitlePaths,
         filename: f.filename,
         title: f.title,
+        kind: f.kind,
+        extraIndex: f.extraIndex,
+        extraVariant: f.extraVariant,
+        rawLabel: f.rawLabel,
         status: f.status,
         lastProbedAt: f.lastProbedAt,
       })), existingMetadata),
@@ -1566,6 +1579,10 @@ async function processOneMedia(
         subtitlePaths: f.subtitlePaths,
         filename: f.filename,
         title: f.title,
+        kind: f.kind,
+        extraIndex: f.extraIndex,
+        extraVariant: f.extraVariant,
+        rawLabel: f.rawLabel,
         status: f.status,
         lastProbedAt: f.lastProbedAt,
       })), existingMetadata),
@@ -1627,6 +1644,10 @@ async function runScanAndFetch(folderPath: string, activeRoots: string[]): Promi
           subtitlePaths: f.subtitlePaths,
           filename: f.filename,
           title: f.title,
+          kind: f.kind,
+          extraIndex: f.extraIndex,
+          extraVariant: f.extraVariant,
+          rawLabel: f.rawLabel,
           status: old?.status ?? f.status,
           lastProbedAt: old?.lastProbedAt ?? f.lastProbedAt,
         };

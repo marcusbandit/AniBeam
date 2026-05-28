@@ -107,6 +107,10 @@ export function registerFolderIpc(getMainWindow: WindowGetter): void {
           subtitlePath: f.subtitlePath,
           subtitlePaths: f.subtitlePaths,
           mtime: f.mtime,
+          kind: f.kind,
+          extraIndex: f.extraIndex,
+          extraVariant: f.extraVariant,
+          rawLabel: f.rawLabel,
         })),
       };
     });
