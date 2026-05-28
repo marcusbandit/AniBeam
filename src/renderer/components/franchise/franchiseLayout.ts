@@ -21,13 +21,57 @@ const RECIPROCAL_DROPS: Map<string, string> = new Map([
  * RECIPROCAL_DROPS, if the reciprocal edge exists in the opposite direction
  * with the "kept" relationType, drop this one. Asymmetric edges (only one
  * direction exists in the graph) are kept as-is.
+ *
+ * When nodeById is provided, also collapses same-type ADAPTATION and SOURCE
+ * reciprocals by keeping only the canonical direction:
+ *   ADAPTATION canonical: print → screen (source material is the `from`)
+ *   SOURCE canonical:     screen → print (the referencing node is the `from`)
  */
-export function dedupeReciprocalEdges(edges: ReadonlyArray<FranchiseEdge>): FranchiseEdge[] {
+export function dedupeReciprocalEdges(
+  edges: ReadonlyArray<FranchiseEdge>,
+  nodeById?: ReadonlyMap<number, FranchiseNode>,
+): FranchiseEdge[] {
   const present = new Set<string>(edges.map((e) => `${e.from}|${e.to}|${e.relationType}`));
   return edges.filter((e) => {
+    // Existing different-type reciprocal drop
     const keep = RECIPROCAL_DROPS.get(e.relationType);
-    if (keep == null) return true;
-    return !present.has(`${e.to}|${e.from}|${keep}`);
+    if (keep != null && present.has(`${e.to}|${e.from}|${keep}`)) return false;
+
+    // Same-type ADAPTATION reciprocal: keep print → screen, drop screen → print
+    if (nodeById && e.relationType === 'ADAPTATION'
+        && present.has(`${e.to}|${e.from}|ADAPTATION`)) {
+      const from = nodeById.get(e.from);
+      const to = nodeById.get(e.to);
+      if (from && to) {
+        const fromPrint = isPrintTarget(from);
+        const toPrint = isPrintTarget(to);
+        // canonical: from is print, to is screen → keep
+        if (fromPrint && !toPrint) { /* keep */ }
+        // anti-canonical: from is screen, to is print → drop
+        else if (!fromPrint && toPrint) return false;
+        // both same kind → tiebreak by id (lower from wins)
+        else if (e.from > e.to) return false;
+      }
+    }
+
+    // Same-type SOURCE reciprocal: keep screen → print, drop print → screen
+    if (nodeById && e.relationType === 'SOURCE'
+        && present.has(`${e.to}|${e.from}|SOURCE`)) {
+      const from = nodeById.get(e.from);
+      const to = nodeById.get(e.to);
+      if (from && to) {
+        const fromPrint = isPrintTarget(from);
+        const toPrint = isPrintTarget(to);
+        // canonical: from is screen, to is print → keep
+        if (!fromPrint && toPrint) { /* keep */ }
+        // anti-canonical: from is print, to is screen → drop
+        else if (fromPrint && !toPrint) return false;
+        // both same kind → tiebreak by id (lower from wins)
+        else if (e.from > e.to) return false;
+      }
+    }
+
+    return true;
   });
 }
 
@@ -217,9 +261,9 @@ export function layoutFranchise(graph: FranchiseGraph, currentId: number): Map<n
   if (graph.nodes.length === 0) return positions;
 
   // 1. Dedupe reciprocal edges + build adjacency.
-  const edges = dedupeReciprocalEdges(graph.edges);
-  const adj = buildAdjacency(edges);
   const nodeById = new Map(graph.nodes.map((n) => [n.anilistId, n]));
+  const edges = dedupeReciprocalEdges(graph.edges, nodeById);
+  const adj = buildAdjacency(edges);
 
   // ── Step 1: Find all PREQUEL/SEQUEL chains (connected components). ──────────
   const SPINE_RELS = new Set(['PREQUEL', 'SEQUEL']);
@@ -281,9 +325,12 @@ export function layoutFranchise(graph: FranchiseGraph, currentId: number): Map<n
       }
       if (!hasConn) continue;
 
-      // ── Step 5: Determine direction (above/below) by majority of edges to positioned chains. ──
-      let above = 0;
-      let below = 0;
+      // ── Step 5: Determine direction (above/below) for this chain. ──────────
+      // Any SOURCE or PARENT edge to a positioned chain is authoritative: chain
+      // goes above. Only fall to below when there are downstream links and zero
+      // source/parent links. Default (neither) is also above.
+      let hasSourceLink = false;
+      let hasOtherDownstreamLink = false;
       const xAnchors = new Map<number, number>(); // chainNodeId → x of connected positioned node
 
       for (const id of chains[ci].nodes) {
@@ -297,8 +344,8 @@ export function layoutFranchise(graph: FranchiseGraph, currentId: number): Map<n
             if (otherChain == null || !positionedChains.has(otherChain)) continue;
             if (target) {
               const canon = canonicalRelation(e.relationType, target);
-              if (canon === 'SOURCE' || canon === 'PARENT') above++;
-              else if (canon !== 'ALTERNATIVE') below++;
+              if (canon === 'SOURCE' || canon === 'PARENT') hasSourceLink = true;
+              else if (canon !== 'ALTERNATIVE') hasOtherDownstreamLink = true;
             }
             if (!xAnchors.has(id)) xAnchors.set(id, positions.get(e.to)!.x);
           }
@@ -308,13 +355,15 @@ export function layoutFranchise(graph: FranchiseGraph, currentId: number): Map<n
             if (otherChain == null || !positionedChains.has(otherChain)) continue;
             const reversed = REVERSE_RELATION[e.relationType] ?? e.relationType;
             const canon = canonicalRelation(reversed, node);
-            if (canon === 'SOURCE' || canon === 'PARENT') above++;
-            else if (canon !== 'ALTERNATIVE') below++;
+            if (canon === 'SOURCE' || canon === 'PARENT') hasSourceLink = true;
+            else if (canon !== 'ALTERNATIVE') hasOtherDownstreamLink = true;
             if (!xAnchors.has(id)) xAnchors.set(id, positions.get(e.from)!.x);
           }
         }
       }
-      const dir = above >= below ? -1 : 1;
+      // Source/parent wins outright → above. Only go below when there is at
+      // least one downstream link and zero source/parent links.
+      const dir: -1 | 1 = hasSourceLink ? -1 : (hasOtherDownstreamLink ? 1 : -1);
 
       // ── Step 6: Find the connected chain to inherit y from (most connections). ──
       const yByConnectedChain = new Map<number, number>();
@@ -501,9 +550,9 @@ export function spineOrderMap(
   graph: FranchiseGraph,
   currentId: number,
 ): { spineSet: Set<number>; order: Map<number, number> } {
-  const edges = dedupeReciprocalEdges(graph.edges);
-  const adj = buildAdjacency(edges);
   const nodeById = new Map(graph.nodes.map((n) => [n.anilistId, n]));
+  const edges = dedupeReciprocalEdges(graph.edges, nodeById);
+  const adj = buildAdjacency(edges);
   const spineSet = findSpine(currentId, adj);
   const spineList = topoSortSpine(spineSet, edges, nodeById);
   const order = new Map<number, number>();

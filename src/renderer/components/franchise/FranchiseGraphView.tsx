@@ -81,7 +81,8 @@ function layoutGraph(
   hiddenFormats: ReadonlySet<FranchiseFormat>,
 ): { nodes: RFNode<FranchiseNodeFlowData>[]; edges: RFEdge[]; visibleEdges: FranchiseEdge[] } {
   // Dedupe reciprocal edges (SOURCE↔ADAPTATION, PARENT↔SIDE_STORY, PREQUEL↔SEQUEL)
-  const dedupedEdges = dedupeReciprocalEdges(graph.edges);
+  const graphNodeById = new Map<number, FranchiseNodeData>(graph.nodes.map((n) => [n.anilistId, n]));
+  const dedupedEdges = dedupeReciprocalEdges(graph.edges, graphNodeById);
 
   // Build incoming-relation map for the tree-parent fallback label
   const incoming = new Map<number, string>();
@@ -370,7 +371,7 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
     };
   }, [graph, currentAnilistId, hiddenCategories, hiddenFormats, resolveOwnedId, pickTitle, onOpenInApp, onOpenExternal, statusMarkerFor, anilistIcon]);
 
-  // Light memo: overlay hover-based labels for direct neighbors of the hovered node.
+  // Light memo: overlay hover-based labels for the hovered node and its direct neighbors.
   const labeledRfNodes = useMemo(() => {
     if (hoveredId == null) return baseRfNodes;
     const neighbors = new Set<number>();
@@ -378,9 +379,13 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
       if (e.from === hoveredId) neighbors.add(e.to);
       if (e.to === hoveredId) neighbors.add(e.from);
     }
-    if (neighbors.size === 0) return baseRfNodes;
     return baseRfNodes.map((n) => {
       const id = Number(n.id);
+      // The hovered node itself shows "Viewing" as its label.
+      if (id === hoveredId) {
+        if (n.data.relLabel === 'Viewing') return n;
+        return { ...n, data: { ...n.data, relLabel: 'Viewing' } };
+      }
       if (!neighbors.has(id)) return n;
       const newLabel = relationLabelRelativeTo(hoveredId, id, spineSet, spineOrder, visibleEdges, nodeById);
       if (newLabel == null || newLabel === n.data.relLabel) return n;
