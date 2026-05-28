@@ -392,7 +392,7 @@ export function layoutFranchise(graph: FranchiseGraph, currentId: number): Map<n
       for (let k = 1; k < ord.length; k++) {
         const prev = positions.get(ord[k - 1].anilistId)!;
         const cur = positions.get(ord[k].anilistId)!;
-        if (cur.x <= prev.x) {
+        if (cur.x < prev.x + SPINE_X_MIN) {
           positions.set(ord[k].anilistId, { x: prev.x + SPINE_X_MIN, y: cur.y });
         }
       }
