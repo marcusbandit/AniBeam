@@ -16,12 +16,11 @@ import {
   type NodeProps,
 } from '@xyflow/react';
 import * as dagre from 'dagre';
-import { Tv, Film, ZoomIn, ZoomOut, Maximize2, Maximize, Minimize } from 'lucide-react';
+import { Tv, Film, ZoomIn, ZoomOut, Maximize2, Maximize, Minimize, Library } from 'lucide-react';
 
 import type { FranchiseGraph, FranchiseNode as FranchiseNodeData } from '../../../shared/franchise';
 import { relationLabel } from './laneAssignment';
 import { categoryFor, type FranchiseCategory, FranchiseFilters } from './FranchiseFilters';
-import { Pill } from '../primitives';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -180,18 +179,15 @@ function FranchiseFlowNode({ data }: NodeProps<RFNode<FranchiseNodeFlowData>>) {
             {isManga ? <Film size={28} /> : <Tv size={28} />}
           </div>
         )}
-        <span aria-hidden="true">
-          {isCurrent ? (
-            <Pill tone="muted">You are here</Pill>
-          ) : owned ? (
-            <Pill tone="teal">In library</Pill>
-          ) : (
-            <Pill tone="accent">{anilistIcon} AniList</Pill>
-          )}
-        </span>
       </div>
       <div className="relation-card-body">
-        {relLabel && <div className="relation-card-type">{relLabel}</div>}
+        <div className="franchise-node__relation-row">
+          {relLabel && <span className="relation-card-type">{relLabel}</span>}
+          {!isCurrent && (owned
+            ? <Library size={14} className="franchise-node__owned-icon" aria-label="In library" />
+            : <span className="franchise-node__anilist-icon" aria-label="On AniList">{anilistIcon}</span>
+          )}
+        </div>
         <div className="relation-card-title">{title}</div>
         <div className="relation-card-meta">
           {node.format && (

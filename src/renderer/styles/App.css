@@ -4921,3 +4921,22 @@ button.franchise-node:hover {
 .franchise-node--external {
   border-style: dashed;
 }
+
+/* Compact ownership indicator on the relation-label row */
+.franchise-node__relation-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 16px;
+}
+.franchise-node__owned-icon {
+  color: var(--accent-teal, #14b8a6);
+  flex-shrink: 0;
+}
+.franchise-node__anilist-icon {
+  color: var(--accent-secondary, #818cf8);
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
