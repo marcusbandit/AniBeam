@@ -19,6 +19,7 @@ import { findFileEpisode, type FileEpisodeEntry } from '../shared/fileEpisode';
 import videoProbeHandler from './handlers/videoProbeHandler';
 import transcodeCacheHandler from './handlers/transcodeCacheHandler';
 import { fileWatcher } from './services/watcher';
+import { getFranchiseGraph } from './services/franchiseGraph';
 // IPC modules — each registers its own handlers at app-ready time.
 import { registerLogIpc } from './ipc/log';
 import { registerConfigIpc } from './ipc/config';
@@ -1060,6 +1061,16 @@ ipcMain.handle('anilist:search', async (_event, query: string, limit?: number) =
   } catch (error) {
     if (!isRateLimitError(error)) logger.error('metadata', 'Error searching AniList for picker');
     return [];
+  }
+});
+
+ipcMain.handle('franchise:graph', async (_event, anilistId: number) => {
+  if (typeof anilistId !== 'number' || !Number.isFinite(anilistId)) return null;
+  try {
+    return await getFranchiseGraph(anilistId);
+  } catch (error) {
+    logger.error('metadata', `franchise:graph failed: ${(error as Error).message}`);
+    return null;
   }
 });
 

@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 export type { LogLevel, LogStage, LogEvent } from '../shared/logTypes';
+import type { FranchiseGraph } from '../shared/franchise';
 import type { LogEvent } from '../shared/logTypes';
 export type { FileStatus } from '../shared/fileStatus';
 import type { FileStatus } from '../shared/fileStatus';
@@ -180,6 +181,9 @@ export interface ElectronAPI {
 
   // Subscriptions (anirss feed list)
   listSubscriptions: () => Promise<SubscriptionsResult>;
+
+  // Franchise graph
+  getFranchiseGraph: (anilistId: number) => Promise<FranchiseGraph | null>;
 }
 
 export interface ViewHistoryEntry {
@@ -338,4 +342,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Subscriptions
   listSubscriptions: () => ipcRenderer.invoke('subscriptions:list'),
+
+  // Franchise graph
+  getFranchiseGraph: (anilistId: number) => ipcRenderer.invoke('franchise:graph', anilistId),
 });

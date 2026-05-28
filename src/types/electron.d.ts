@@ -27,6 +27,8 @@ export type {
   ViewHistoryEntry,
 } from '../main/preload';
 
+export type { FranchiseGraph, FranchiseNode, FranchiseEdge } from '../shared/franchise';
+
 declare global {
   interface Window {
     electronAPI: ElectronAPI;
