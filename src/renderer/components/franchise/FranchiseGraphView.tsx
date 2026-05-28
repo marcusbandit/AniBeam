@@ -1,6 +1,6 @@
 import '@xyflow/react/dist/style.css';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
 import {
@@ -273,6 +273,29 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
   const reactFlowInstance = useReactFlow();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [hoveredId, setHoveredId] = useState<number | null>(null);
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const HOVER_DELAY_MS = 500;
+
+  const handleNodeMouseEnter = useCallback((_: React.MouseEvent, n: RFNode) => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    const id = Number(n.id);
+    hoverTimerRef.current = setTimeout(() => {
+      hoverTimerRef.current = null;
+      setHoveredId(id);
+    }, HOVER_DELAY_MS);
+  }, []);
+
+  const handleNodeMouseLeave = useCallback(() => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    setHoveredId(null);
+  }, []);
+
+  useEffect(() => () => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+  }, []);
 
   const handleZoomIn  = () => reactFlowInstance.zoomIn({ duration: 200 });
   const handleZoomOut = () => reactFlowInstance.zoomOut({ duration: 200 });
@@ -381,8 +404,8 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
         edges={edges}
         nodeTypes={nodeTypes}
         onNodeClick={handleNodeClick as Parameters<typeof ReactFlow>[0]['onNodeClick']}
-        onNodeMouseEnter={(_, n) => setHoveredId(Number(n.id))}
-        onNodeMouseLeave={() => setHoveredId(null)}
+        onNodeMouseEnter={handleNodeMouseEnter as Parameters<typeof ReactFlow>[0]['onNodeMouseEnter']}
+        onNodeMouseLeave={handleNodeMouseLeave}
         fitView
         fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
         minZoom={0.05}
