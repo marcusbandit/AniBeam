@@ -4695,7 +4695,7 @@ button.hero-chip-anilist--icon:hover {
 /* ── Franchise Graph (React Flow canvas) ───────────────────────────────── */
 
 /* compact tile: shrink the reused relation-card shell */
-.franchise-node { width: 150px; }
+.franchise-node { width: 180px; }
 .franchise-node .relation-card-poster img,
 .franchise-node .relation-card-poster-empty { height: 200px; }
 
@@ -4796,3 +4796,88 @@ button.hero-chip-anilist--icon:hover {
 
 /* Smoothstep markers — keep them subtle */
 .franchise-graph .react-flow__edge-textwrapper { display: none; }
+
+/* ── Franchise filter chips ────────────────────────────────── */
+.franchise-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 12px;
+}
+.franchise-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--bg-tertiary, #1a1a22);
+  border: 1px solid var(--border-color, rgba(255,255,255,0.07));
+  color: var(--text-secondary, #94a3b8);
+  font-size: 12px;
+  cursor: pointer;
+  transition: opacity 120ms ease, background 120ms ease;
+}
+.franchise-filter-chip::before {
+  content: '';
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--text-muted, #64748b);
+}
+.franchise-filter-chip[data-category="spine"]::before       { background: var(--accent-teal, #14b8a6); }
+.franchise-filter-chip[data-category="source"]::before      { background: var(--accent-secondary, #818cf8); }
+.franchise-filter-chip[data-category="alternative"]::before { background: var(--accent-amber, #f59e0b); }
+.franchise-filter-chip[data-category="side"]::before        { background: var(--text-secondary, #94a3b8); }
+.franchise-filter-chip[data-category="other"]::before       { background: var(--text-muted, #64748b); }
+.franchise-filter-chip--off {
+  opacity: 0.35;
+  background: transparent;
+}
+.franchise-filter-chip:hover {
+  background: var(--bg-hover, #1d1d26);
+}
+
+/* ── Franchise graph fullscreen ────────────────────────────── */
+.franchise-graph--fullscreen {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  border-radius: 0 !important;
+  z-index: 9999 !important;
+}
+.franchise-graph .react-flow__panel button {
+  background: var(--bg-tertiary, #1a1a22);
+  color: var(--text-secondary, #94a3b8);
+  border: 1px solid var(--border-color, rgba(255,255,255,0.07));
+  border-radius: var(--radius-md, 14px);
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.franchise-graph .react-flow__panel button:hover {
+  background: var(--bg-hover, #1d1d26);
+}
+
+/* Lean franchise tile (no Card primitive) — match the visual size budget
+   that the layout's dagre dimensions assume (180×240). */
+.franchise-node {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card, #15151c);
+  border: 1px solid var(--border-color, rgba(255,255,255,0.07));
+  border-radius: var(--radius-lg, 20px);
+  overflow: hidden;
+  width: 180px;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+}
+button.franchise-node {
+  cursor: pointer;
+}
+button.franchise-node:hover {
+  border-color: var(--border-hover, rgba(255,255,255,0.14));
+}
+.franchise-node--external {
+  border-style: dashed;
+}

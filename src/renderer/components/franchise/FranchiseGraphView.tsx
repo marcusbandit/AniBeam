@@ -1,6 +1,6 @@
 import '@xyflow/react/dist/style.css';
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   ReactFlow,
@@ -8,6 +8,7 @@ import {
   Background,
   Controls,
   Handle,
+  Panel,
   Position,
   useReactFlow,
   type Node as RFNode,
@@ -19,7 +20,8 @@ import { Tv, Film } from 'lucide-react';
 
 import type { FranchiseGraph, FranchiseNode as FranchiseNodeData } from '../../../shared/franchise';
 import { relationLabel } from './laneAssignment';
-import { Card, Pill } from '../primitives';
+import { categoryFor, type FranchiseCategory } from './FranchiseFilters';
+import { Pill } from '../primitives';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -32,6 +34,7 @@ export interface FranchiseGraphViewProps {
   onOpenExternal: (node: FranchiseNodeData) => void;
   statusMarkerFor: (node: FranchiseNodeData) => ReactNode;
   anilistIcon: ReactNode;
+  hiddenCategories?: ReadonlySet<FranchiseCategory>;
 }
 
 interface FranchiseNodeFlowData extends Record<string, unknown> {
@@ -56,6 +59,7 @@ const NODE_HEIGHT = 240;
 function layoutGraph(
   graph: FranchiseGraph,
   currentId: number,
+  hiddenCategories: ReadonlySet<FranchiseCategory>,
 ): { nodes: RFNode<FranchiseNodeFlowData>[]; edges: RFEdge[] } {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
@@ -73,17 +77,36 @@ function layoutGraph(
     if (!incoming.has(e.to)) incoming.set(e.to, e.relationType);
   }
 
-  for (const node of graph.nodes) {
+  // Filter edges by hidden categories
+  const visibleEdges = graph.edges.filter(
+    (e) => !hiddenCategories.has(categoryFor(e.relationType)),
+  );
+
+  // Determine which nodes remain visible: current node always shows;
+  // other nodes are dropped if all their incident edges have been filtered out.
+  const connectedNodeIds = new Set<number>();
+  connectedNodeIds.add(currentId);
+  for (const e of visibleEdges) {
+    connectedNodeIds.add(e.from);
+    connectedNodeIds.add(e.to);
+  }
+
+  const visibleNodes = graph.nodes.filter((n) => connectedNodeIds.has(n.anilistId));
+
+  for (const node of visibleNodes) {
     g.setNode(String(node.anilistId), { width: NODE_WIDTH, height: NODE_HEIGHT });
   }
 
-  for (const edge of graph.edges) {
-    g.setEdge(String(edge.from), String(edge.to), { relationType: edge.relationType });
+  for (const edge of visibleEdges) {
+    // Only add edges where both endpoints are still visible
+    if (connectedNodeIds.has(edge.from) && connectedNodeIds.has(edge.to)) {
+      g.setEdge(String(edge.from), String(edge.to), { relationType: edge.relationType });
+    }
   }
 
   dagre.layout(g);
 
-  const rfNodes: RFNode<FranchiseNodeFlowData>[] = graph.nodes.map((node) => {
+  const rfNodes: RFNode<FranchiseNodeFlowData>[] = visibleNodes.map((node) => {
     const dagreNode = g.node(String(node.anilistId));
     const isCurrent = node.anilistId === currentId;
     const rt = incoming.get(node.anilistId);
@@ -110,14 +133,16 @@ function layoutGraph(
     };
   });
 
-  const rfEdges: RFEdge[] = graph.edges.map((edge) => ({
-    id: `${edge.from}->${edge.to}:${edge.relationType}`,
-    source: String(edge.from),
-    target: String(edge.to),
-    type: 'smoothstep',
-    className: `franchise-edge franchise-edge--${edge.relationType.toLowerCase()}`,
-    data: { relationType: edge.relationType },
-  }));
+  const rfEdges: RFEdge[] = visibleEdges
+    .filter((edge) => connectedNodeIds.has(edge.from) && connectedNodeIds.has(edge.to))
+    .map((edge) => ({
+      id: `${edge.from}->${edge.to}:${edge.relationType}`,
+      source: String(edge.from),
+      target: String(edge.to),
+      type: 'smoothstep',
+      className: `franchise-edge franchise-edge--${edge.relationType.toLowerCase()}`,
+      data: { relationType: edge.relationType },
+    }));
 
   return { nodes: rfNodes, edges: rfEdges };
 }
@@ -125,62 +150,67 @@ function layoutGraph(
 // ─── Custom node component ────────────────────────────────────────────────────
 
 function FranchiseFlowNode({ data }: NodeProps<RFNode<FranchiseNodeFlowData>>) {
-  const { node, title, isCurrent, ownedId, relLabel, statusMarker, anilistIcon } = data;
+  const { node, title, isCurrent, ownedId, relLabel, statusMarker, anilistIcon, onOpenInApp, onOpenExternal } = data;
   const owned = ownedId != null;
   const isManga = node.type === 'MANGA';
 
-  const tooltip = isCurrent
-    ? undefined
-    : owned
-      ? `Open ${title} in your library`
-      : `Open ${title} on AniList`;
+  const variantClass = owned || isCurrent ? 'franchise-node--internal' : 'franchise-node--external';
+  const className = `franchise-node ${variantClass}`;
+  const dataAttrs = {
+    'data-format': node.format ?? '',
+    'data-current': isCurrent ? 'true' : undefined,
+  };
 
-  return (
-    <div
-      className="franchise-node"
-      data-current={isCurrent ? 'true' : undefined}
-    >
+  const handleClick = () => {
+    if (isCurrent) return;
+    if (ownedId) onOpenInApp(ownedId);
+    else onOpenExternal(node);
+  };
+
+  const inner = (
+    <>
       <Handle type="target" position={Position.Left} />
       <Handle type="source" position={Position.Right} />
-      <Card
-        variant={owned || isCurrent ? 'internal' : 'external'}
-        noLift={isCurrent}
-        tooltip={tooltip}
-        aria-current={isCurrent ? 'page' : undefined}
-        data-format={node.format ?? ''}
-        style={{ width: NODE_WIDTH, height: NODE_HEIGHT, cursor: isCurrent ? 'default' : 'pointer' }}
-      >
-        <div className="relation-card-poster">
-          {node.poster ? (
-            <img src={node.poster} alt={title} loading="lazy" decoding="async" />
-          ) : (
-            <div className="relation-card-poster-empty">
-              {isManga ? <Film size={28} /> : <Tv size={28} />}
-            </div>
-          )}
-          <span aria-hidden="true">
-            {isCurrent ? (
-              <Pill tone="muted">You are here</Pill>
-            ) : owned ? (
-              <Pill tone="teal">In library</Pill>
-            ) : (
-              <Pill tone="accent">{anilistIcon} AniList</Pill>
-            )}
-          </span>
-        </div>
-        <div className="relation-card-body">
-          {relLabel && <div className="relation-card-type">{relLabel}</div>}
-          <div className="relation-card-title">{title}</div>
-          <div className="relation-card-meta">
-            {node.format && (
-              <span className="relation-card-format" data-format={node.format}>{node.format}</span>
-            )}
-            {node.seasonYear && <span>{node.seasonYear}</span>}
+      <div className="relation-card-poster">
+        {node.poster ? (
+          <img src={node.poster} alt={title} loading="lazy" decoding="async" />
+        ) : (
+          <div className="relation-card-poster-empty">
+            {isManga ? <Film size={28} /> : <Tv size={28} />}
           </div>
+        )}
+        <span aria-hidden="true">
+          {isCurrent ? (
+            <Pill tone="muted">You are here</Pill>
+          ) : owned ? (
+            <Pill tone="teal">In library</Pill>
+          ) : (
+            <Pill tone="accent">{anilistIcon} AniList</Pill>
+          )}
+        </span>
+      </div>
+      <div className="relation-card-body">
+        {relLabel && <div className="relation-card-type">{relLabel}</div>}
+        <div className="relation-card-title">{title}</div>
+        <div className="relation-card-meta">
+          {node.format && (
+            <span className="relation-card-format" data-format={node.format}>{node.format}</span>
+          )}
+          {node.seasonYear && <span>{node.seasonYear}</span>}
         </div>
-        {statusMarker}
-      </Card>
+      </div>
+      {statusMarker}
+    </>
+  );
+
+  return isCurrent ? (
+    <div className={className} {...dataAttrs}>
+      {inner}
     </div>
+  ) : (
+    <button type="button" className={className} {...dataAttrs} onClick={handleClick}>
+      {inner}
+    </button>
   );
 }
 
@@ -198,12 +228,23 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
     onOpenExternal,
     statusMarkerFor,
     anilistIcon,
+    hiddenCategories = new Set(),
   } = props;
 
   const reactFlowInstance = useReactFlow();
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsFullscreen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFullscreen]);
 
   const { nodes, edges } = useMemo(() => {
-    const layout = layoutGraph(graph, currentAnilistId);
+    const layout = layoutGraph(graph, currentAnilistId, hiddenCategories);
 
     // Enrich node data with display fields
     const enrichedNodes = layout.nodes.map((rfNode) => {
@@ -224,7 +265,7 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
     });
 
     return { nodes: enrichedNodes, edges: layout.edges };
-  }, [graph, currentAnilistId, resolveOwnedId, pickTitle, onOpenInApp, onOpenExternal, statusMarkerFor, anilistIcon]);
+  }, [graph, currentAnilistId, hiddenCategories, resolveOwnedId, pickTitle, onOpenInApp, onOpenExternal, statusMarkerFor, anilistIcon]);
 
   useEffect(() => {
     const cur = nodes.find((n) => n.data.isCurrent);
@@ -244,7 +285,7 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
   };
 
   return (
-    <div className="franchise-graph">
+    <div className={`franchise-graph${isFullscreen ? ' franchise-graph--fullscreen' : ''}`}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -252,8 +293,8 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
         onNodeClick={handleNodeClick as Parameters<typeof ReactFlow>[0]['onNodeClick']}
         fitView
         fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
-        minZoom={0.2}
-        maxZoom={1.5}
+        minZoom={0.05}
+        maxZoom={2.5}
         proOptions={{ hideAttribution: true }}
         nodesDraggable={false}
         nodesConnectable={false}
@@ -264,6 +305,14 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
       >
         <Background />
         <Controls showInteractive={false} />
+        <Panel position="top-right">
+          <button
+            type="button"
+            onClick={() => setIsFullscreen((v) => !v)}
+          >
+            {isFullscreen ? 'Exit' : 'Fullscreen'}
+          </button>
+        </Panel>
       </ReactFlow>
     </div>
   );

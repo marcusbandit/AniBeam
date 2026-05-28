@@ -42,7 +42,8 @@ import {
 } from "../utils/playbackProgress";
 import type { TrackerListStatus } from "../../main/preload";
 import { Page, Section, Card, EpisodeRow, Pill, ScorePicker, Tooltip } from "../components/primitives";
-import { FranchiseGraphView } from "../components/franchise";
+import { FranchiseGraphView, FranchiseFilters } from "../components/franchise";
+import type { FranchiseCategory } from "../components/franchise";
 import { useFranchiseGraph } from "../hooks/useFranchiseGraph";
 import type { FranchiseNode } from "../../shared/franchise";
 
@@ -112,6 +113,10 @@ function SeriesDetailPage() {
   // Tag-panel spoiler toggle. Default off — opt-in only, per the user's
   // standing preference to hide plot-spoiler tags until explicitly revealed.
   const [showSpoilerTags, setShowSpoilerTags] = useState(false);
+  // Franchise filter chips — tracks which relation categories are hidden.
+  const [hiddenCategories, setHiddenCategories] = useState<ReadonlySet<FranchiseCategory>>(
+    () => new Set(),
+  );
 
   const [item, setItem] = useState<LibraryItem | null>(null);
   const [meta, setMeta] = useState<SeriesMetadata | null>(null);
@@ -973,6 +978,17 @@ function SeriesDetailPage() {
 
       {(franchiseGraph?.nodes.length ?? 0) > 1 && meta?.anilistId != null && (
         <Section title="Related" count={(franchiseGraph?.nodes.length ?? 1) - 1}>
+          <FranchiseFilters
+            hidden={hiddenCategories}
+            onToggle={(cat) =>
+              setHiddenCategories((prev) => {
+                const n = new Set(prev);
+                if (n.has(cat)) n.delete(cat);
+                else n.add(cat);
+                return n;
+              })
+            }
+          />
           <FranchiseGraphView
             graph={franchiseGraph!}
             currentAnilistId={meta.anilistId}
@@ -986,6 +1002,7 @@ function SeriesDetailPage() {
             onOpenExternal={openExternalNode}
             statusMarkerFor={(n) => listStatusMarker({ anilistId: n.anilistId, malId: n.malId })}
             anilistIcon={<AniListIcon size={11} />}
+            hiddenCategories={hiddenCategories}
           />
         </Section>
       )}
