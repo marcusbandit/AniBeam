@@ -104,13 +104,13 @@ const Card = forwardRef<HTMLElement, CardProps>(function Card(props, _ref) {
     : null;
 
   if (props.onClick) {
-    const { onClick, variant: _v, children: _c, noLift: _n, tooltip: _t, ...rest } = props as CardAsButton & { tooltip?: string };
+    const { onClick, variant: _v, children: _c, noLift: _n, tooltip: _t, className: callerClass, ...rest } = props as CardAsButton & { tooltip?: string };
     return (
       <>
         <button
           ref={(node) => { elRef.current = node; }}
           type="button"
-          className={className}
+          className={callerClass ? `${className} ${callerClass}` : className}
           onClick={onClick}
           onMouseEnter={onEnter}
           onMouseLeave={onLeave}
@@ -122,12 +122,12 @@ const Card = forwardRef<HTMLElement, CardProps>(function Card(props, _ref) {
       </>
     );
   }
-  const { onClick: _o, variant: _v, children: _c, noLift: _n, tooltip: _t, ...rest } = props as CardAsDiv & { tooltip?: string };
+  const { onClick: _o, variant: _v, children: _c, noLift: _n, tooltip: _t, className: callerClass, ...rest } = props as CardAsDiv & { tooltip?: string };
   return (
     <>
       <div
         ref={(node) => { elRef.current = node; }}
-        className={className}
+        className={callerClass ? `${className} ${callerClass}` : className}
         onMouseEnter={onEnter}
         onMouseLeave={onLeave}
         {...rest}
