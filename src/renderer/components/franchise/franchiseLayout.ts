@@ -2,12 +2,11 @@ import type { FranchiseEdge, FranchiseGraph, FranchiseNode } from '../../../shar
 import { relationLane, relationLabel } from './laneAssignment';
 
 // ── Visual layout constants ─────────────────────────────────────────────────
-const NODE_W = 180;   // tile width
-const H_GAP  = 240;   // min horizontal slot per leaf
-const V_GAP  = 500;   // vertical distance between tree levels
-const SPINE_X_MIN = 280; // minimum horizontal gap between adjacent spine nodes
-
-const SPINE_RELATIONS = new Set(['PREQUEL', 'SEQUEL']);
+const NODE_W     = 180;   // tile width
+const H_GAP      = 240;   // min horizontal slot per leaf
+const V_GAP      = 500;   // vertical distance between chain rows
+const SPINE_X_MIN = 280;  // minimum horizontal gap between adjacent chain nodes
+const SPINE_X_GAP = 320;  // regular horizontal step between anchor-chain nodes
 
 /** For each reciprocal pair, the "kept" direction is parent→child. The map's
  *  key is the relationType to DROP when the reciprocal of the kept type also
@@ -50,12 +49,13 @@ function buildAdjacency(edges: ReadonlyArray<FranchiseEdge>): Map<number, AdjEdg
 
 /** spine = BFS from current through PREQUEL/SEQUEL edges (either direction). */
 function findSpine(currentId: number, adj: Map<number, AdjEdge[]>): Set<number> {
+  const SPINE_RELS = new Set(['PREQUEL', 'SEQUEL']);
   const seen = new Set<number>([currentId]);
   const q: number[] = [currentId];
   while (q.length > 0) {
     const id = q.shift()!;
     for (const e of adj.get(id) ?? []) {
-      if (SPINE_RELATIONS.has(e.relationType) && !seen.has(e.other)) {
+      if (SPINE_RELS.has(e.relationType) && !seen.has(e.other)) {
         seen.add(e.other);
         q.push(e.other);
       }
@@ -168,17 +168,9 @@ function laneRelativeToSpine(
     }
   }
   // Reverse edge node → spine: reverse the relation to spine's perspective
-  const REVERSE: Record<string, string> = {
-    SOURCE:     'ADAPTATION',
-    ADAPTATION: 'SOURCE',
-    PARENT:     'SIDE_STORY',
-    SIDE_STORY: 'PARENT',
-    PREQUEL:    'SEQUEL',
-    SEQUEL:     'PREQUEL',
-  };
   for (const e of edges) {
     if (e.from === nodeId && e.to === spineId) {
-      const reversed = REVERSE[e.relationType] ?? e.relationType;
+      const reversed = REVERSE_RELATION[e.relationType] ?? e.relationType;
       const lane = relationLane(reversed, node.type, node.format);
       return lane === 'top' ? -1 : 1;
     }
@@ -225,91 +217,228 @@ export function layoutFranchise(graph: FranchiseGraph, currentId: number): Map<n
   const positions = new Map<number, { x: number; y: number }>();
   if (graph.nodes.length === 0) return positions;
 
-  // 1. Dedupe reciprocal edges
+  // 1. Dedupe reciprocal edges + build adjacency.
   const edges = dedupeReciprocalEdges(graph.edges);
-
-  // 2. Build adjacency + anime spine set
   const adj = buildAdjacency(edges);
   const nodeById = new Map(graph.nodes.map((n) => [n.anilistId, n]));
-  const animeSpineSet = findSpine(currentId, adj);
-  const animeSpineList = topoSortSpine(animeSpineSet, edges, nodeById);
 
-  // ── Step A: detect direct sources of anime spine nodes ─────────────────────
-  // directSourceOf: animeId → set of sourceNodeIds
-  // animeForSource: sourceId → first animeId it's a source of
-  const directSourceOf = new Map<number, Set<number>>();
-  const animeForSource = new Map<number, number>();
+  // ── Step 1: Find all PREQUEL/SEQUEL chains (connected components). ──────────
+  const SPINE_RELS = new Set(['PREQUEL', 'SEQUEL']);
+  const chainOf = new Map<number, number>(); // nodeId → chainIndex
+  const chains: Array<{ nodes: Set<number>; ordered: FranchiseNode[] }> = [];
 
-  const recordSource = (animeId: number, sourceId: number) => {
-    if (!directSourceOf.has(animeId)) directSourceOf.set(animeId, new Set());
-    directSourceOf.get(animeId)!.add(sourceId);
-    if (!animeForSource.has(sourceId)) animeForSource.set(sourceId, animeId);
-  };
+  for (const n of graph.nodes) {
+    if (chainOf.has(n.anilistId)) continue;
+    const members = new Set<number>([n.anilistId]);
+    const queue: number[] = [n.anilistId];
+    while (queue.length > 0) {
+      const id = queue.shift()!;
+      for (const e of adj.get(id) ?? []) {
+        if (SPINE_RELS.has(e.relationType) && !members.has(e.other)) {
+          members.add(e.other);
+          queue.push(e.other);
+        }
+      }
+    }
+    const idx = chains.length;
+    for (const id of members) chainOf.set(id, idx);
+    chains.push({ nodes: members, ordered: topoSortSpine(members, edges, nodeById) });
+  }
 
-  for (const animeId of animeSpineSet) {
-    for (const e of edges) {
-      if (e.from === animeId) {
-        const target = nodeById.get(e.to);
-        if (!target) continue;
-        if (canonicalRelation(e.relationType, target) === 'SOURCE') recordSource(animeId, e.to);
-      } else if (e.to === animeId) {
-        const target = nodeById.get(e.from);
-        if (!target) continue;
-        const reversed = REVERSE_RELATION[e.relationType] ?? e.relationType;
-        if (canonicalRelation(reversed, target) === 'SOURCE') recordSource(animeId, e.from);
+  // ── Step 2: Anchor chain = the chain containing currentId. ─────────────────
+  const anchorIdx = chainOf.get(currentId) ?? 0;
+  const anchorChain = chains[anchorIdx];
+
+  // ── Step 3: Position anchor chain: current at x=0, others by topo offset. ──
+  const anchorOrder = anchorChain.ordered;
+  const currentTopoIdx = anchorOrder.findIndex((n) => n.anilistId === currentId);
+  anchorOrder.forEach((node, i) => {
+    positions.set(node.anilistId, { x: (i - currentTopoIdx) * SPINE_X_GAP, y: 0 });
+  });
+  const positionedChains = new Set<number>([anchorIdx]);
+
+  // ── Step 4: BFS over chains by inter-chain connections. ────────────────────
+  // Keep processing until no more reachable multi-node chains remain.
+  let progress = true;
+  while (progress) {
+    progress = false;
+
+    for (let ci = 0; ci < chains.length; ci++) {
+      if (positionedChains.has(ci)) continue;
+      if (chains[ci].nodes.size < 2) continue; // singletons handled later via tree
+
+      // Does this chain connect to any already-positioned chain?
+      let hasConn = false;
+      for (const id of chains[ci].nodes) {
+        for (const e of adj.get(id) ?? []) {
+          const otherChain = chainOf.get(e.other);
+          if (otherChain != null && positionedChains.has(otherChain)) {
+            hasConn = true;
+            break;
+          }
+        }
+        if (hasConn) break;
+      }
+      if (!hasConn) continue;
+
+      // ── Step 5: Determine direction (above/below) by majority of edges to positioned chains. ──
+      let above = 0;
+      let below = 0;
+      const xAnchors = new Map<number, number>(); // chainNodeId → x of connected positioned node
+
+      for (const id of chains[ci].nodes) {
+        const node = nodeById.get(id);
+        if (!node) continue;
+        for (const e of edges) {
+          // Edge from `id` to a positioned node
+          if (e.from === id) {
+            const target = nodeById.get(e.to);
+            const otherChain = chainOf.get(e.to);
+            if (otherChain == null || !positionedChains.has(otherChain)) continue;
+            if (target) {
+              const canon = canonicalRelation(e.relationType, target);
+              if (canon === 'SOURCE' || canon === 'PARENT') above++;
+              else if (canon !== 'ALTERNATIVE') below++;
+            }
+            if (!xAnchors.has(id)) xAnchors.set(id, positions.get(e.to)!.x);
+          }
+          // Edge from positioned node to `id` — reverse perspective
+          if (e.to === id) {
+            const otherChain = chainOf.get(e.from);
+            if (otherChain == null || !positionedChains.has(otherChain)) continue;
+            const reversed = REVERSE_RELATION[e.relationType] ?? e.relationType;
+            const canon = canonicalRelation(reversed, node);
+            if (canon === 'SOURCE' || canon === 'PARENT') above++;
+            else if (canon !== 'ALTERNATIVE') below++;
+            if (!xAnchors.has(id)) xAnchors.set(id, positions.get(e.from)!.x);
+          }
+        }
+      }
+      const dir = above >= below ? -1 : 1;
+
+      // ── Step 6: Find the connected chain to inherit y from (most connections). ──
+      const yByConnectedChain = new Map<number, number>();
+      for (const id of chains[ci].nodes) {
+        for (const e of adj.get(id) ?? []) {
+          const otherChain = chainOf.get(e.other);
+          if (otherChain == null || !positionedChains.has(otherChain)) continue;
+          yByConnectedChain.set(otherChain, (yByConnectedChain.get(otherChain) ?? 0) + 1);
+        }
+      }
+      let bestConnected = -1;
+      let bestCount = 0;
+      for (const [c, cnt] of yByConnectedChain) {
+        if (cnt > bestCount) { bestCount = cnt; bestConnected = c; }
+      }
+      const baseY = bestConnected >= 0
+        ? (positions.get(chains[bestConnected].ordered[0].anilistId)?.y ?? 0)
+        : 0;
+      const newY = baseY + dir * V_GAP;
+
+      // ── Step 7: Position the chain. First pass: pin x for nodes with direct anchors. ──
+      const placed = new Set<number>();
+      for (const node of chains[ci].ordered) {
+        if (xAnchors.has(node.anilistId)) {
+          positions.set(node.anilistId, { x: xAnchors.get(node.anilistId)!, y: newY });
+          placed.add(node.anilistId);
+        }
+      }
+
+      // Second pass: interpolate runs of unanchored nodes between anchored bookends.
+      const ord = chains[ci].ordered;
+      let i = 0;
+      while (i < ord.length) {
+        if (placed.has(ord[i].anilistId)) { i++; continue; }
+        let runEnd = i;
+        while (runEnd + 1 < ord.length && !placed.has(ord[runEnd + 1].anilistId)) runEnd++;
+        const runLen = runEnd - i + 1;
+        let prevX: number | null = null;
+        for (let j = i - 1; j >= 0; j--) {
+          if (placed.has(ord[j].anilistId)) { prevX = positions.get(ord[j].anilistId)!.x; break; }
+        }
+        let nextX: number | null = null;
+        for (let j = runEnd + 1; j < ord.length; j++) {
+          if (placed.has(ord[j].anilistId)) { nextX = positions.get(ord[j].anilistId)!.x; break; }
+        }
+        let startX: number;
+        let step: number;
+        if (prevX != null && nextX != null) {
+          step = (nextX - prevX) / (runLen + 1);
+          startX = prevX + step;
+        } else if (prevX != null) {
+          step = SPINE_X_MIN;
+          startX = prevX + step;
+        } else if (nextX != null) {
+          step = SPINE_X_MIN;
+          startX = nextX - step * runLen;
+        } else {
+          step = SPINE_X_MIN;
+          startX = 0;
+        }
+        for (let k = 0; k < runLen; k++) {
+          positions.set(ord[i + k].anilistId, { x: startX + k * step, y: newY });
+          placed.add(ord[i + k].anilistId);
+        }
+        i = runEnd + 1;
+      }
+
+      // ── Step 8: Strict topo enforcement — sequel must never end up left of prequel. ──
+      for (let k = 1; k < ord.length; k++) {
+        const prev = positions.get(ord[k - 1].anilistId)!;
+        const cur = positions.get(ord[k].anilistId)!;
+        if (cur.x <= prev.x) {
+          positions.set(ord[k].anilistId, { x: prev.x + SPINE_X_MIN, y: cur.y });
+        }
+      }
+
+      positionedChains.add(ci);
+      progress = true;
+    }
+  }
+
+  // ── Step 9: Singleton chains + non-chain-tree placement. ───────────────────
+  // allSpineSet = union of every node in a positioned multi-node chain.
+  // Singletons remain unplaced and become tree leaves attached to the closest
+  // already-placed node via the BFS tree logic.
+  const allSpineSet = new Set<number>();
+  for (let ci = 0; ci < chains.length; ci++) {
+    if (chains[ci].nodes.size >= 2 && positionedChains.has(ci)) {
+      for (const id of chains[ci].nodes) allSpineSet.add(id);
+    }
+  }
+
+  // Build BFS tree from all positioned chain nodes outward.
+  const { children: treeChildren } = buildBfsTree(allSpineSet, adj);
+
+  // Collect all chain nodes (for subtree placement of their BFS-tree children).
+  const allChainNodes: FranchiseNode[] = [];
+  for (let ci = 0; ci < chains.length; ci++) {
+    if (chains[ci].nodes.size >= 2 && positionedChains.has(ci)) {
+      for (const node of chains[ci].ordered) {
+        if (nodeById.has(node.anilistId)) allChainNodes.push(node);
       }
     }
   }
 
-  // ── Step B: expand direct sources to a full source spine via PREQUEL/SEQUEL ─
-  const sourceSpineSet = new Set<number>();
-  const allDirectSources = new Set([...directSourceOf.values()].flatMap((s) => [...s]));
-  for (const sourceId of allDirectSources) {
-    const chain = findSpine(sourceId, adj);
-    for (const id of chain) {
-      if (!animeSpineSet.has(id)) sourceSpineSet.add(id);
-    }
-  }
-  const sourceSpineList = topoSortSpine(sourceSpineSet, edges, nodeById);
+  // Split each chain node's BFS-tree children into top/bottom subtrees.
+  const topChildrenOf    = new Map<number, number[]>();
+  const bottomChildrenOf = new Map<number, number[]>();
 
-  // ── Step C: position source spine above anime spine, aligned by adaptation ──
-  const SOURCE_Y = -2 * V_GAP;
-  const sourcePositioned = new Set<number>();
-
-  // First pass: source nodes with a direct anime counterpart get x = anime.x
-  // (anime spine isn't placed yet — we'll pin them after step 6, so we use a
-  // two-stage approach: record the animeId and resolve x after the anime spine
-  // x-positions are computed in step 6).
-
-  // ── Unified spine set for BFS tree roots ───────────────────────────────────
-  const allSpineSet = new Set([...animeSpineSet, ...sourceSpineSet]);
-
-  // 3. Build BFS tree from BOTH spines outward
-  const { children: treeChildren } = buildBfsTree(allSpineSet, adj);
-
-  // 4. Split each anime spine node's children into top/bottom subtrees.
-  //    Source spine nodes' children are split similarly after they're positioned.
-  const topChildrenOf = new Map<number, number[]>();   // spineId → top-lane children
-  const bottomChildrenOf = new Map<number, number[]>(); // spineId → bottom-lane children
-
-  // Process both spine lists for child classification.
-  const allSpineNodes = [...animeSpineList, ...sourceSpineList];
-  for (const spineNode of allSpineNodes) {
-    const allKids = treeChildren.get(spineNode.anilistId) ?? [];
+  for (const chainNode of allChainNodes) {
+    const allKids = treeChildren.get(chainNode.anilistId) ?? [];
     const tops: number[] = [];
     const bots: number[] = [];
     for (const kid of allKids) {
       const kidNode = nodeById.get(kid);
       if (!kidNode) continue;
-      const dir = laneRelativeToSpine(spineNode.anilistId, kid, kidNode, edges);
-      (dir === -1 ? tops : bots).push(kid);
+      const kidDir = laneRelativeToSpine(chainNode.anilistId, kid, kidNode, edges);
+      (kidDir === -1 ? tops : bots).push(kid);
     }
-    if (tops.length > 0) topChildrenOf.set(spineNode.anilistId, tops);
-    if (bots.length > 0) bottomChildrenOf.set(spineNode.anilistId, bots);
+    if (tops.length > 0) topChildrenOf.set(chainNode.anilistId, tops);
+    if (bots.length > 0) bottomChildrenOf.set(chainNode.anilistId, bots);
   }
 
-  // 5. Measure half-widths for the anime spine nodes (source spine x is derived
-  //    from anime spine x, so we only need widths for the anime spine here).
+  // Measure half-widths for chain nodes (used for subtree fan-out centering).
   const halfWidthFor = (spineId: number): number => {
     const tops = topChildrenOf.get(spineId) ?? [];
     const bots = bottomChildrenOf.get(spineId) ?? [];
@@ -317,107 +446,24 @@ export function layoutFranchise(graph: FranchiseGraph, currentId: number): Map<n
     const botTotal = bots.reduce((s, k) => s + measureSubtree(k, treeChildren), 0);
     return Math.max(NODE_W + H_GAP, topTotal, botTotal) / 2;
   };
+  // halfWidthFor is available for future use (spacing refinement).
+  void halfWidthFor;
 
-  // 6. Place anime spine nodes left→right with gaps sized by adjacent half-widths.
-  let x = 0;
-  animeSpineList.forEach((node, i) => {
-    if (i > 0) {
-      const prev = animeSpineList[i - 1];
-      const gap = Math.max(SPINE_X_MIN, halfWidthFor(prev.anilistId) + halfWidthFor(node.anilistId));
-      x += gap;
-    }
-    positions.set(node.anilistId, { x, y: 0 });
-  });
-
-  // ── Step C (continued): now that anime spine x-positions are known, place source spine ──
-
-  // First pass: source nodes that have a direct anime counterpart get pinned x = anime.x
-  for (const node of sourceSpineList) {
-    const animeId = animeForSource.get(node.anilistId);
-    if (animeId != null) {
-      const animePos = positions.get(animeId);
-      if (animePos) {
-        positions.set(node.anilistId, { x: animePos.x, y: SOURCE_Y });
-        sourcePositioned.add(node.anilistId);
-      }
-    }
-  }
-
-  // Second pass: source nodes WITHOUT direct adaptations get spread evenly
-  // between their nearest topo-positioned bookends.
-  let i = 0;
-  while (i < sourceSpineList.length) {
-    const node = sourceSpineList[i];
-    if (sourcePositioned.has(node.anilistId)) { i++; continue; }
-
-    // Find the run of consecutive unmatched nodes starting at i.
-    let runEnd = i;
-    while (runEnd + 1 < sourceSpineList.length && !sourcePositioned.has(sourceSpineList[runEnd + 1].anilistId)) {
-      runEnd++;
-    }
-    const runLen = runEnd - i + 1;
-
-    // Find the nearest anchored bookend on each side of the run.
-    let prevX: number | null = null;
-    for (let j = i - 1; j >= 0; j--) {
-      const id = sourceSpineList[j].anilistId;
-      if (sourcePositioned.has(id)) { prevX = positions.get(id)!.x; break; }
-    }
-    let nextX: number | null = null;
-    for (let j = runEnd + 1; j < sourceSpineList.length; j++) {
-      const id = sourceSpineList[j].anilistId;
-      if (sourcePositioned.has(id)) { nextX = positions.get(id)!.x; break; }
-    }
-
-    // Compute the x for each member of the run.
-    let startX: number;
-    let step: number;
-    if (prevX != null && nextX != null) {
-      // Spread runLen nodes evenly in the open gap between prevX and nextX.
-      step = (nextX - prevX) / (runLen + 1);
-      startX = prevX + step;
-    } else if (prevX != null) {
-      // Run is at the right end: extend rightward with SPINE_X_MIN spacing.
-      step = SPINE_X_MIN;
-      startX = prevX + step;
-    } else if (nextX != null) {
-      // Run is at the left end: extend leftward.
-      step = SPINE_X_MIN;
-      startX = nextX - step * runLen;
-    } else {
-      // No anchored siblings at all (source spine has no direct adaptations).
-      // Fall back to a sequential layout.
-      step = SPINE_X_MIN;
-      startX = 0;
-    }
-
-    for (let k = 0; k < runLen; k++) {
-      const id = sourceSpineList[i + k].anilistId;
-      positions.set(id, { x: startX + k * step, y: SOURCE_Y });
-      sourcePositioned.add(id);
-    }
-
-    i = runEnd + 1;
-  }
-
-  // 7. Place each spine node's top and bottom subtrees.
-  //    Anime spine: placed at y=0; top subtrees go up (dir=-1), bottom go down (dir=+1).
-  //    Source spine: placed at y=SOURCE_Y; top subtrees go further up, bottom go
-  //    between source spine and anime spine.
-  for (const spineNode of allSpineNodes) {
-    const spinePos = positions.get(spineNode.anilistId);
-    if (!spinePos) continue; // defensive — all spine nodes should be placed
-    for (const dir of [-1, 1] as const) {
-      const kids = (dir === -1 ? topChildrenOf : bottomChildrenOf).get(spineNode.anilistId) ?? [];
+  // Place each chain node's top and bottom subtrees.
+  for (const chainNode of allChainNodes) {
+    const spinePos = positions.get(chainNode.anilistId);
+    if (!spinePos) continue;
+    for (const treeDir of [-1, 1] as const) {
+      const kids = (treeDir === -1 ? topChildrenOf : bottomChildrenOf).get(chainNode.anilistId) ?? [];
       if (kids.length === 0) continue;
       const widths = kids.map((k) => measureSubtree(k, treeChildren));
       const total = widths.reduce((s, w) => s + w, 0);
       let left = spinePos.x - total / 2;
-      for (let i = 0; i < kids.length; i++) {
-        const childCx = left + widths[i] / 2;
-        const childCy = spinePos.y + dir * V_GAP;
-        placeSubtree(kids[i], childCx, childCy, dir, treeChildren, positions);
-        left += widths[i];
+      for (let ki = 0; ki < kids.length; ki++) {
+        const childCx = left + widths[ki] / 2;
+        const childCy = spinePos.y + treeDir * V_GAP;
+        placeSubtree(kids[ki], childCx, childCy, treeDir, treeChildren, positions);
+        left += widths[ki];
       }
     }
   }
