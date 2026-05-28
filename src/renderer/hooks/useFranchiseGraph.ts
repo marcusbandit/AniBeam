@@ -26,7 +26,7 @@ function buildLocalSeed(allMeta: Record<string, SeriesMetadata>): {
       siteUrl: null,
       titleRomaji: s.titleRomaji ?? null,
       titleEnglish: s.titleEnglish ?? null,
-      poster: s.posterLocal ?? s.poster ?? null,
+      poster: s.poster ?? null,
     });
     if (Array.isArray(s.relations)) {
       seedRelations.set(s.anilistId, s.relations as unknown as RawRelation[]);
