@@ -7,16 +7,16 @@ import {
   type RawRelation,
 } from '../../shared/franchise';
 
-/** Build seedNodes + seedRelations from the in-memory owned-metadata map. */
+/** Build ownedNodes + seedRelations from the in-memory owned-metadata map. */
 function buildLocalSeed(allMeta: Record<string, SeriesMetadata>): {
-  seedNodes: FranchiseNode[];
+  ownedNodes: Map<number, FranchiseNode>;
   seedRelations: Map<number, RawRelation[]>;
 } {
-  const seedNodes: FranchiseNode[] = [];
+  const ownedNodes = new Map<number, FranchiseNode>();
   const seedRelations = new Map<number, RawRelation[]>();
   for (const s of Object.values(allMeta)) {
     if (typeof s.anilistId !== 'number') continue;
-    seedNodes.push({
+    ownedNodes.set(s.anilistId, {
       anilistId: s.anilistId,
       malId: s.malId ?? null,
       type: 'ANIME',
@@ -32,7 +32,7 @@ function buildLocalSeed(allMeta: Record<string, SeriesMetadata>): {
       seedRelations.set(s.anilistId, s.relations as unknown as RawRelation[]);
     }
   }
-  return { seedNodes, seedRelations };
+  return { ownedNodes, seedRelations };
 }
 
 export interface UseFranchiseGraph {
@@ -59,15 +59,13 @@ export function useFranchiseGraph(
   useEffect(() => {
     let cancelled = false;
     if (currentAnilistId == null) { setLocalGraph(null); return; }
-    const { seedNodes, seedRelations } = buildLocalSeed(allMeta);
-    if (!seedNodes.some((n) => n.anilistId === currentAnilistId)) {
-      seedNodes.push({
-        anilistId: currentAnilistId, malId: null, type: 'ANIME', format: null,
-        status: null, seasonYear: null, siteUrl: null, titleRomaji: null,
-        titleEnglish: null, poster: null,
-      });
-    }
-    void closeGraph({ seedNodes, seedRelations }).then((g) => {
+    const { ownedNodes, seedRelations } = buildLocalSeed(allMeta);
+    const currentNode = ownedNodes.get(currentAnilistId) ?? {
+      anilistId: currentAnilistId, malId: null, type: 'ANIME', format: null,
+      status: null, seasonYear: null, siteUrl: null, titleRomaji: null,
+      titleEnglish: null, poster: null,
+    };
+    void closeGraph({ seedNodes: [currentNode], seedRelations }).then((g) => {
       if (!cancelled) setLocalGraph(g);
     });
     return () => { cancelled = true; };

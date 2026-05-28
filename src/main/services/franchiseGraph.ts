@@ -53,17 +53,17 @@ interface SavedSeries {
   relations?: RawRelation[];
 }
 
-/** Build seedNodes + seedRelations from every owned series that has an anilistId.
+/** Build ownedNodes + seedRelations from every owned series that has an anilistId.
  *  The library only contains anime, so every owned node is type ANIME. */
 function buildSeed(meta: Record<string, SavedSeries>): {
-  seedNodes: FranchiseNode[];
+  ownedNodes: Map<number, FranchiseNode>;
   seedRelations: Map<number, RawRelation[]>;
 } {
-  const seedNodes: FranchiseNode[] = [];
+  const ownedNodes = new Map<number, FranchiseNode>();
   const seedRelations = new Map<number, RawRelation[]>();
   for (const s of Object.values(meta)) {
     if (typeof s.anilistId !== 'number') continue;
-    seedNodes.push({
+    ownedNodes.set(s.anilistId, {
       anilistId: s.anilistId,
       malId: s.malId ?? null,
       type: 'ANIME',
@@ -77,7 +77,7 @@ function buildSeed(meta: Record<string, SavedSeries>): {
     });
     if (Array.isArray(s.relations)) seedRelations.set(s.anilistId, s.relations);
   }
-  return { seedNodes, seedRelations };
+  return { ownedNodes, seedRelations };
 }
 
 /**
@@ -95,17 +95,13 @@ export async function getFranchiseGraph(anilistId: number): Promise<FranchiseGra
   }
 
   const meta = (await metadataHandler.loadMetadata()) as Record<string, SavedSeries>;
-  const { seedNodes, seedRelations } = buildSeed(meta);
-  // Ensure the current node is present even if it has no saved relations.
-  if (!seedNodes.some((n) => n.anilistId === anilistId)) {
-    seedNodes.push({
-      anilistId, malId: null, type: 'ANIME', format: null, status: null,
-      seasonYear: null, siteUrl: null, titleRomaji: null, titleEnglish: null, poster: null,
-    });
-  }
-
+  const { ownedNodes, seedRelations } = buildSeed(meta);
+  const currentNode = ownedNodes.get(anilistId) ?? {
+    anilistId, malId: null, type: 'ANIME', format: null, status: null,
+    seasonYear: null, siteUrl: null, titleRomaji: null, titleEnglish: null, poster: null,
+  };
   const graph = await closeGraph({
-    seedNodes,
+    seedNodes: [currentNode],
     seedRelations,
     fetch: async (id) => {
       const bundle = await anilistHandler.getEnrichment({ anilistId: id });
