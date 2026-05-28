@@ -14,6 +14,7 @@
     "verify:probe": "bun --bun scripts/verify-probe-parser.mjs",
     "verify:folder": "bun --bun scripts/verify-folder-wrapper.mjs",
     "verify:franchise-graph": "bun --bun scripts/verify-franchise-graph.mjs",
+    "verify:franchise-lanes": "bun --bun scripts/verify-franchise-lanes.mjs",
     "preview": "vite preview",
     "start": "bun run typecheck && electron-forge start",
     "package": "bun run typecheck && electron-forge package",
