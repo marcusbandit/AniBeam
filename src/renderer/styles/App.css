@@ -4842,9 +4842,14 @@ button.hero-chip-anilist--icon:hover {
   align-self: center;
   margin: 0 4px;
 }
-.franchise-filter-chip--format::before {
-  background: var(--text-muted, #64748b);
-}
+.franchise-filter-chip[data-format="series"]::before      { background: var(--format-tv,    #14b8a6); }
+.franchise-filter-chip[data-format="movie"]::before       { background: var(--format-movie, #f59e0b); }
+.franchise-filter-chip[data-format="shortform"]::before   { background: var(--format-ova,   #a78bfa); }
+.franchise-filter-chip[data-format="manga"]::before       { background: var(--format-manga, #fb923c); }
+.franchise-filter-chip[data-format="novel"]::before       { background: var(--format-novel, #f472b6); }
+.franchise-filter-chip[data-format="visualnovel"]::before { background: var(--format-vn,    #e879f9); }
+.franchise-filter-chip[data-format="music"]::before       { background: var(--format-music, #10b981); }
+.franchise-filter-chip[data-format="other"]::before       { background: var(--text-muted,   #64748b); }
 
 /* ── Franchise graph fullscreen ────────────────────────────── */
 .franchise-graph--fullscreen {

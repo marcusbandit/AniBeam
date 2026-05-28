@@ -102,17 +102,17 @@ function layoutGraph(
 
   const visibleNodes = filteredNodes.filter((n) => connectedNodeIds.has(n.anilistId));
 
-  // Compute tree positions for the format-filtered graph so the layout reflects
-  // actual visible nodes. The positions remain stable within a given format
-  // filter setting regardless of which relation categories are hidden.
-  const filteredGraph: FranchiseGraph = { ...graph, nodes: filteredNodes, edges: filteredEdges };
+  // Layout uses the *fully filtered* graph so positions reflect the actual
+  // visible structure — category-filtered nodes are dropped, not just hidden.
+  const filteredGraph: FranchiseGraph = { ...graph, nodes: visibleNodes, edges: visibleEdges };
   const positions = layoutFranchise(filteredGraph, currentId);
 
   // Compute the hover highlight set: hovered node + its direct neighbors.
+  // Uses visibleEdges so dimming respects both the format and category filters.
   let highlightSet: Set<number> | null = null;
   if (hoveredId != null) {
     highlightSet = new Set<number>([hoveredId]);
-    for (const e of filteredEdges) {
+    for (const e of visibleEdges) {
       if (e.from === hoveredId) highlightSet.add(e.to);
       if (e.to === hoveredId) highlightSet.add(e.from);
     }
