@@ -17,60 +17,72 @@ const RECIPROCAL_DROPS: Map<string, string> = new Map([
 ]);
 
 /**
- * Drop reciprocal duplicate edges. For each edge whose relationType is in
- * RECIPROCAL_DROPS, if the reciprocal edge exists in the opposite direction
- * with the "kept" relationType, drop this one. Asymmetric edges (only one
- * direction exists in the graph) are kept as-is.
+ * Normalize and dedupe edges so each connection is represented exactly once
+ * in the temporally-correct direction:
+ *   - ADAPTATION/SOURCE edges always flow print/source → screen/adaptation,
+ *     stored as `ADAPTATION`.
+ *   - PARENT/SIDE_STORY: existing reciprocal-drop (keep SIDE_STORY).
+ *   - PREQUEL/SEQUEL: existing reciprocal-drop (keep SEQUEL).
  *
- * When nodeById is provided, also collapses same-type ADAPTATION and SOURCE
- * reciprocals by keeping only the canonical direction:
- *   ADAPTATION canonical: print → screen (source material is the `from`)
- *   SOURCE canonical:     screen → print (the referencing node is the `from`)
+ * Note: for a manga adaptation of an anime (anime → manga ADAPTATION), the
+ * heuristic will reverse the edge to manga → anime ADAPTATION, treating the
+ * manga as the source. This is an acceptable false positive — the overwhelmingly
+ * common case (manga is source of anime) is correctly handled.
  */
 export function dedupeReciprocalEdges(
   edges: ReadonlyArray<FranchiseEdge>,
   nodeById?: ReadonlyMap<number, FranchiseNode>,
 ): FranchiseEdge[] {
-  const present = new Set<string>(edges.map((e) => `${e.from}|${e.to}|${e.relationType}`));
-  return edges.filter((e) => {
-    // Existing different-type reciprocal drop
+  // 1. Normalize ADAPTATION/SOURCE edges to canonical "print → screen ADAPTATION".
+  const normalized: FranchiseEdge[] = edges.map((e) => {
+    if (!nodeById) return e;
+    if (e.relationType !== 'ADAPTATION' && e.relationType !== 'SOURCE') return e;
+    const from = nodeById.get(e.from);
+    const to = nodeById.get(e.to);
+    if (!from || !to) return e;
+    const fromPrint = isPrintTarget(from);
+    const toPrint = isPrintTarget(to);
+
+    if (e.relationType === 'ADAPTATION') {
+      // ADAPTATION canonical: from = print, to = screen.
+      if (!fromPrint && toPrint) {
+        // Anti-canonical (screen → print). Reverse direction; keep type ADAPTATION.
+        return { from: e.to, to: e.from, relationType: 'ADAPTATION' };
+      }
+      // Canonical or both-print/both-screen — keep as-is.
+      return e;
+    }
+    // SOURCE: target is described as "my source". The visual flow we want is
+    // source → adaptation, so we always rewrite to ADAPTATION.
+    if (fromPrint && !toPrint) {
+      // Source claim from print to screen — nonsensical ("anime is novel's source");
+      // keep direction, just change type.
+      return { from: e.from, to: e.to, relationType: 'ADAPTATION' };
+    }
+    if (!fromPrint && toPrint) {
+      // Canonical SOURCE direction (screen → print). Reverse so arrow flows print → screen.
+      return { from: e.to, to: e.from, relationType: 'ADAPTATION' };
+    }
+    // Both print or both screen — change type to ADAPTATION, keep direction (best we can do).
+    return { from: e.from, to: e.to, relationType: 'ADAPTATION' };
+  });
+
+  // 2. Drop exact duplicates after normalization.
+  const seen = new Set<string>();
+  const uniqued: FranchiseEdge[] = [];
+  for (const e of normalized) {
+    const k = `${e.from}|${e.to}|${e.relationType}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    uniqued.push(e);
+  }
+
+  // 3. Existing different-type reciprocal drop (PARENT↔SIDE_STORY, PREQUEL↔SEQUEL).
+  //    SOURCE↔ADAPTATION is now redundant since SOURCE no longer exists post-normalize.
+  const present = new Set<string>(uniqued.map((e) => `${e.from}|${e.to}|${e.relationType}`));
+  return uniqued.filter((e) => {
     const keep = RECIPROCAL_DROPS.get(e.relationType);
     if (keep != null && present.has(`${e.to}|${e.from}|${keep}`)) return false;
-
-    // Same-type ADAPTATION reciprocal: keep print → screen, drop screen → print
-    if (nodeById && e.relationType === 'ADAPTATION'
-        && present.has(`${e.to}|${e.from}|ADAPTATION`)) {
-      const from = nodeById.get(e.from);
-      const to = nodeById.get(e.to);
-      if (from && to) {
-        const fromPrint = isPrintTarget(from);
-        const toPrint = isPrintTarget(to);
-        // canonical: from is print, to is screen → keep
-        if (fromPrint && !toPrint) { /* keep */ }
-        // anti-canonical: from is screen, to is print → drop
-        else if (!fromPrint && toPrint) return false;
-        // both same kind → tiebreak by id (lower from wins)
-        else if (e.from > e.to) return false;
-      }
-    }
-
-    // Same-type SOURCE reciprocal: keep screen → print, drop print → screen
-    if (nodeById && e.relationType === 'SOURCE'
-        && present.has(`${e.to}|${e.from}|SOURCE`)) {
-      const from = nodeById.get(e.from);
-      const to = nodeById.get(e.to);
-      if (from && to) {
-        const fromPrint = isPrintTarget(from);
-        const toPrint = isPrintTarget(to);
-        // canonical: from is screen, to is print → keep
-        if (!fromPrint && toPrint) { /* keep */ }
-        // anti-canonical: from is print, to is screen → drop
-        else if (fromPrint && !toPrint) return false;
-        // both same kind → tiebreak by id (lower from wins)
-        else if (e.from > e.to) return false;
-      }
-    }
-
     return true;
   });
 }
