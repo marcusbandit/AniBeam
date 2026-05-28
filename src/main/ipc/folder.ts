@@ -54,6 +54,7 @@ export function registerFolderIpc(getMainWindow: WindowGetter): void {
         matchedTitle?: string | null;
         titleRomaji?: string | null;
         titleEnglish?: string | null;
+        format?: string | null;
         status?: string | null;
         startDate?: string | null;
         totalEpisodes?: number | null;
@@ -63,6 +64,12 @@ export function registerFolderIpc(getMainWindow: WindowGetter): void {
         source?: string | null;
         episodes?: Array<{ episodeNumber: number; airDate: string | null }>;
       };
+      // The folder scanner classifies by structure alone, so a franchise
+      // sub-entry that's really a film (e.g. "Girls und Panzer der Film")
+      // gets tagged 'series'. Metadata knows better — when the matched
+      // format is MOVIE, trust it so the Movies tab, detail page, and
+      // metadata view all agree on the type.
+      const resolvedType = stored.format === 'MOVIE' ? 'movie' : m.type;
       return {
         id: m.id,
         // Movies share the "Movies" parent folder, so basename(folderPath)
@@ -71,7 +78,7 @@ export function registerFolderIpc(getMainWindow: WindowGetter): void {
         // rather than "Movies".
         folderName: m.type === 'movie' ? m.name : basename(m.folderPath),
         folderPath: m.folderPath,
-        type: m.type,
+        type: resolvedType,
         poster: stored.poster ?? null,
         posterLocal: stored.posterLocal ?? null,
         posterMatched: stored.posterMatched ?? false,

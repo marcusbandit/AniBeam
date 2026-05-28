@@ -280,6 +280,16 @@ function HomePage() {
     return watched >= total;
   }, [getListStatus, getWatched]);
 
+  // "Inactive" for the Progress sort = a show the user is NOT mid-way
+  // through: either finished (watched-through) or never started (no tracker
+  // entry, or zero watched). Both sink to the bottom so Progress answers
+  // "what am I in the middle of?" — completed and untouched shows are noise.
+  const isProgressInactive = useCallback((i: LibraryItem): boolean => {
+    if (isWatchedThrough(i)) return true;
+    const watched = getWatched({ anilistId: i.anilistId ?? undefined, malId: i.malId });
+    return watched == null || watched <= 0;
+  }, [isWatchedThrough, getWatched]);
+
   // Comparator factory keyed by sort + direction. Items missing a value
   // (no score, no progress, no view history) sort to the end so the
   // direction toggle never strands them at the top.
@@ -316,15 +326,16 @@ function HomePage() {
     // Stable copy → sort. Don't mutate the memoised array from useMemo above.
     const copy = activeItems.slice();
     copy.sort((a, b) => {
-      // Watched-through pinning for Progress sort — completed shows always
+      // Tier pinning for Progress sort — completed AND not-started shows both
       // sink to the bottom regardless of direction (the user's rule:
-      // "Progress should not include Watched"). Within the watched-through
-      // tier we still sort A→Z so it's not arbitrary.
+      // "completed and non-started shows should always be at the bottom").
+      // Only genuinely in-progress shows participate in the value sort; the
+      // pinned tier sorts A→Z so it's not arbitrary.
       if (sortKey === "progress") {
-        const wa = isWatchedThrough(a);
-        const wb = isWatchedThrough(b);
-        if (wa !== wb) return wa ? 1 : -1;
-        if (wa && wb) return titleOf(a).localeCompare(titleOf(b));
+        const ia = isProgressInactive(a);
+        const ib = isProgressInactive(b);
+        if (ia !== ib) return ia ? 1 : -1;
+        if (ia && ib) return titleOf(a).localeCompare(titleOf(b));
       }
       if (sortKey === "alpha") {
         return titleOf(a).localeCompare(titleOf(b)) * dirMul;
@@ -342,7 +353,7 @@ function HomePage() {
       return (va - vb) * dirMul;
     });
     return copy;
-  }, [activeItems, sortKey, sortDir, pickTitle, getWatched, getUserScore, getLastViewed, isWatchedThrough]);
+  }, [activeItems, sortKey, sortDir, pickTitle, getWatched, getUserScore, getLastViewed, isProgressInactive]);
 
   // Animate card positions when the sort order (or active tab) changes.
   // The key is just the ordered id list — any actual reorder produces a

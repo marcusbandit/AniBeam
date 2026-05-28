@@ -1,5 +1,6 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode, type ReactElement } from 'react';
 import { smoothScalar, type SmoothHandle } from '../../utils/motion';
+import Tooltip from './Tooltip';
 
 const LIFT_SPEED = 12;
 const LIFT_AMOUNT_PX = 2;
@@ -22,6 +23,29 @@ interface EpisodeRowProps {
   state?: EpisodeRowState;
   onClick?: () => void;
   disabled?: boolean;
+  /** Hover tooltip on the marker circle (e.g. "untrack to here"). */
+  markerTooltip?: string;
+  /**
+   * Cascade tone when this marker is part of an active range: 'untrack' (red) or
+   * 'track' (blue). Combined with `markerPhase` it picks the keyframe.
+   */
+  markerMode?: 'untrack' | 'track';
+  /**
+   * Cascade phase: 'in' (hover), 'out' (reverse wave on un-hover), 'commit'
+   * (after a click — settles to the new tracked/untracked colour).
+   */
+  markerPhase?: 'in' | 'out' | 'commit';
+  /** Per-marker animation-delay (ms) so the wave staggers out from the cursor. */
+  markerCascadeDelayMs?: number;
+  /** Click on just the marker — fires instead of `onClick` (stops propagation). */
+  onMarkerClick?: () => void;
+  /** Entering the CIRCLE — initiates / re-anchors the hover wave. */
+  onMarkerEnter?: () => void;
+  /** Entering the tall hit-zone (but not necessarily the circle) — only keeps an
+   *  existing hover alive (cancels the pending leave); never initiates. */
+  onMarkerZoneEnter?: () => void;
+  /** Leaving the hit-zone — debounced un-hover. */
+  onMarkerLeave?: () => void;
 }
 
 /**
@@ -36,6 +60,8 @@ export default function EpisodeRow({
   marker, code, title, trailing,
   progress = 0,
   state = 'default', onClick, disabled,
+  markerTooltip, markerMode, markerPhase, markerCascadeDelayMs,
+  onMarkerClick, onMarkerEnter, onMarkerZoneEnter, onMarkerLeave,
 }: EpisodeRowProps) {
   const elRef = useRef<HTMLButtonElement | null>(null);
   const liftRef = useRef<SmoothHandle | null>(null);
@@ -56,6 +82,50 @@ export default function EpisodeRow({
   const className = `episode-row episode-row--${state}`;
   const pct = Math.max(0, Math.min(1, progress)) * 100;
 
+  const markerInteractive = !!onMarkerClick;
+  // mode+phase → keyframe class: --untracking[-out|-commit] / --tracking[-out|-commit].
+  const phaseSuffix = markerPhase === 'out' ? '-out' : markerPhase === 'commit' ? '-commit' : '';
+  const activeClass = markerMode
+    ? ` episode-row__marker--${markerMode === 'untrack' ? 'untracking' : 'tracking'}${phaseSuffix}`
+    : '';
+  // The visible circle carries the cascade colour + bob, and — when interactive —
+  // owns hover INITIATION via its own onMouseEnter.
+  const circle = (
+    <span
+      className={`episode-row__marker${activeClass}`}
+      style={markerMode ? { animationDelay: `${markerCascadeDelayMs ?? 0}ms` } : undefined}
+      onMouseEnter={markerInteractive ? onMarkerEnter : undefined}
+    >
+      {marker}
+    </span>
+  );
+  // Interactive marker: a tall transparent hit-zone WRAPS the circle. Entering
+  // the zone only keeps an active hover alive (its column tiles, so moving
+  // zone→zone never un-hovers); a hover is only INITIATED by entering the circle
+  // itself. The zone leaves only fire on true exit (the circle is a child), and
+  // the click target is the whole zone. A sibling grid slot holds column 1 since
+  // the zone is absolutely positioned and out of grid flow.
+  let markerArea: ReactNode = circle;
+  if (markerInteractive) {
+    let hit: ReactNode = (
+      <span
+        className="episode-row__marker-hit"
+        onMouseEnter={onMarkerZoneEnter}
+        onMouseLeave={onMarkerLeave}
+        onClick={(e) => { e.stopPropagation(); onMarkerClick?.(); }}
+      >
+        {circle}
+      </span>
+    );
+    if (markerTooltip) hit = <Tooltip label={markerTooltip}>{hit as ReactElement}</Tooltip>;
+    markerArea = (
+      <>
+        <span className="episode-row__marker-slot" aria-hidden="true" />
+        {hit}
+      </>
+    );
+  }
+
   return (
     <button
       ref={elRef}
@@ -66,7 +136,7 @@ export default function EpisodeRow({
       onMouseLeave={onLeave}
       disabled={disabled}
     >
-      <span className="episode-row__marker">{marker}</span>
+      {markerArea}
       <span className="episode-row__code">{code}</span>
       <span className="episode-row__title">{title}</span>
       <span className="episode-row__trailing">{trailing}</span>

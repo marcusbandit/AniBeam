@@ -1,16 +1,27 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Activity } from "lucide-react";
+import { Activity, History, CalendarClock } from "lucide-react";
 import type { LibraryItem } from "../../types/electron";
 import { findNextUpcomingEpisode } from "../utils/airingUtils";
 import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
 import ShowCard from "../components/ShowCard";
-import { Page } from "../components/primitives";
+import { Page, Inline, SegmentedSwitch, type SegmentedOption } from "../components/primitives";
+
+type FeedSort = "recent" | "upcoming";
+
+const LS_FEED_SORT = "anibeam.feedSort";
+
+const FEED_SORT_OPTIONS: SegmentedOption<FeedSort>[] = [
+  { value: "recent", label: <History size={16} aria-hidden="true" />, ariaLabel: "Recently released" },
+  { value: "upcoming", label: <CalendarClock size={16} aria-hidden="true" />, ariaLabel: "Coming soon" },
+];
 
 interface FeedEntry {
   item: LibraryItem;
-  when: number;            // Unix seconds
-  episodeNumber: number | null;  // latest episode this entry refers to
-  source: "aired" | "downloaded";
+  // Unix seconds. Past for "recent" (last release), future for "upcoming"
+  // (next air date).
+  when: number;
+  episodeNumber: number | null;  // the episode this entry refers to
+  source: "aired" | "downloaded" | "upcoming";
 }
 
 // Mirrors fmt_relative_time from the C version (src/ui.c:862). Buckets:
@@ -46,52 +57,90 @@ function fmtRelativeTime(unixSec: number): string {
 // One entry per show. Same logic as the C reference (src/ui.c:955):
 //   - If the show has any episode whose airDate <= now, pick the latest such.
 //   - Otherwise fall back to the file with the largest mtime.
-// Future episodes are ignored. Entries with no information at all are
-// dropped (no episodes, no files, or mtime=0).
-function buildEntries(items: LibraryItem[]): FeedEntry[] {
+// Future episodes are ignored. Returns null when there's no information at all
+// (no episodes, no files, or mtime=0).
+function buildRecentEntry(item: LibraryItem, nowSec: number): FeedEntry | null {
+  if (item.files.length === 0) return null;
+
+  // 1. Try latest aired episode that we ALSO have on disk.
+  const onDiskEps = new Set(item.files.map((f) => f.episodeNumber));
+  let bestAired: { ts: number; ep: number } | null = null;
+  for (const e of item.episodes) {
+    if (!e.airDate || !onDiskEps.has(e.episodeNumber)) continue;
+    const t = Math.floor(Date.parse(e.airDate) / 1000);
+    if (!Number.isFinite(t) || t > nowSec) continue;
+    if (!bestAired || t > bestAired.ts) bestAired = { ts: t, ep: e.episodeNumber };
+  }
+  if (bestAired) return { item, when: bestAired.ts, episodeNumber: bestAired.ep, source: "aired" };
+
+  // 2. Fallback: latest file mtime.
+  let bestFile: { mtime: number; ep: number } | null = null;
+  for (const f of item.files) {
+    if (!f.mtime) continue;
+    if (!bestFile || f.mtime > bestFile.mtime) bestFile = { mtime: f.mtime, ep: f.episodeNumber };
+  }
+  if (bestFile) {
+    return { item, when: Math.floor(bestFile.mtime / 1000), episodeNumber: bestFile.ep, source: "downloaded" };
+  }
+  return null;
+}
+
+// "Recent": every show ordered by its latest release/download, newest first.
+function buildRecentFeed(items: LibraryItem[]): FeedEntry[] {
   const nowSec = Math.floor(Date.now() / 1000);
   const out: FeedEntry[] = [];
   for (const item of items) {
-    if (item.files.length === 0) continue;
-
-    // 1. Try latest aired episode that we ALSO have on disk.
-    const onDiskEps = new Set(item.files.map((f) => f.episodeNumber));
-    let bestAired: { ts: number; ep: number } | null = null;
-    for (const e of item.episodes) {
-      if (!e.airDate || !onDiskEps.has(e.episodeNumber)) continue;
-      const t = Math.floor(Date.parse(e.airDate) / 1000);
-      if (!Number.isFinite(t) || t > nowSec) continue;
-      if (!bestAired || t > bestAired.ts) bestAired = { ts: t, ep: e.episodeNumber };
-    }
-    if (bestAired) {
-      out.push({ item, when: bestAired.ts, episodeNumber: bestAired.ep, source: "aired" });
-      continue;
-    }
-
-    // 2. Fallback: latest file mtime.
-    let bestFile: { mtime: number; ep: number } | null = null;
-    for (const f of item.files) {
-      if (!f.mtime) continue;
-      if (!bestFile || f.mtime > bestFile.mtime) {
-        bestFile = { mtime: f.mtime, ep: f.episodeNumber };
-      }
-    }
-    if (bestFile) {
-      out.push({
-        item,
-        when: Math.floor(bestFile.mtime / 1000),
-        episodeNumber: bestFile.ep,
-        source: "downloaded",
-      });
-    }
+    const entry = buildRecentEntry(item, nowSec);
+    if (entry) out.push(entry);
   }
   out.sort((a, b) => b.when - a.when);
   return out;
 }
 
+// "Coming soon": shows with a known upcoming episode float to the top, soonest
+// air date first, so you can see what's next. Shows without a scheduled next
+// episode (finished, or no airing schedule cached) keep their recent ordering
+// below, so the feed still lists everything you own.
+function buildUpcomingFeed(items: LibraryItem[]): FeedEntry[] {
+  const nowMs = Date.now();
+  const nowSec = Math.floor(nowMs / 1000);
+  const upcoming: FeedEntry[] = [];
+  const rest: FeedEntry[] = [];
+  for (const item of items) {
+    if (item.files.length === 0) continue;
+    const next = findNextUpcomingEpisode(item.episodes, nowMs);
+    if (next) {
+      upcoming.push({
+        item,
+        when: Math.floor(next.airDateMs / 1000),
+        episodeNumber: next.episodeNumber,
+        source: "upcoming",
+      });
+    } else {
+      const entry = buildRecentEntry(item, nowSec);
+      if (entry) rest.push(entry);
+    }
+  }
+  upcoming.sort((a, b) => a.when - b.when);  // soonest first
+  rest.sort((a, b) => b.when - a.when);
+  return [...upcoming, ...rest];
+}
+
+const META_LEFT_TITLE: Record<FeedEntry["source"], string> = {
+  aired: "Episode aired",
+  downloaded: "File downloaded",
+  upcoming: "Next episode airs",
+};
+
 function FeedPage() {
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [sortMode, setSortMode] = useState<FeedSort>(() => {
+    if (typeof window === "undefined") return "recent";
+    const raw = window.localStorage.getItem(LS_FEED_SORT);
+    return raw === "upcoming" || raw === "recent" ? raw : "recent";
+  });
+  useEffect(() => { window.localStorage.setItem(LS_FEED_SORT, sortMode); }, [sortMode]);
 
   const reload = useCallback(async () => {
     try {
@@ -119,7 +168,10 @@ function FeedPage() {
     return () => unsubscribe?.();
   }, [debouncedReload]);
 
-  const entries = useMemo(() => buildEntries(items), [items]);
+  const entries = useMemo(
+    () => (sortMode === "upcoming" ? buildUpcomingFeed(items) : buildRecentFeed(items)),
+    [items, sortMode],
+  );
 
   // Shared coarse tick for per-card countdowns. We render minute-
   // granularity here, so a 30s interval gives at-worst 30s display lag
@@ -147,10 +199,22 @@ function FeedPage() {
   return (
     <Page
       head={
-        <div>
-          <h1 className="page-title">Feed</h1>
-          <p className="page-sub">Your library, ordered by latest episode release.</p>
-        </div>
+        <Inline justify="space-between" align="flex-start">
+          <div>
+            <h1 className="page-title">Feed</h1>
+            <p className="page-sub">
+              {sortMode === "upcoming"
+                ? "Upcoming episodes, soonest first."
+                : "Your library, ordered by latest episode release."}
+            </p>
+          </div>
+          <SegmentedSwitch<FeedSort>
+            value={sortMode}
+            options={FEED_SORT_OPTIONS}
+            onChange={setSortMode}
+            ariaLabel="Feed order"
+          />
+        </Inline>
       }
     >
       {entries.length === 0 ? (
@@ -167,7 +231,7 @@ function FeedPage() {
               item={item}
               episodeBadgeNumber={episodeNumber}
               metaLeftText={fmtRelativeTime(when)}
-              metaLeftTitle={source === "aired" ? "Episode aired" : "File downloaded"}
+              metaLeftTitle={META_LEFT_TITLE[source]}
               nowMs={nowMs}
             />
           ))}

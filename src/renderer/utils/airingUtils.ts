@@ -85,20 +85,29 @@ export type WatchProgressState = "watched" | "caught-up" | "behind";
 /**
  * Classify watched progress against released/total counts:
  *  - "watched": user has watched every episode (only when totalEpisodes is known).
- *  - "behind": at least one already-aired episode is unwatched.
- *  - "caught-up": fully up-to-date with what's released, but more is still
+ *  - "behind": at least one episode the user could watch right now is unwatched.
+ *  - "caught-up": fully up-to-date with what's reachable, but more is still
  *    coming or total is unknown.
+ *
+ * "Reachable" is the highest episode the user could play today — the later of
+ * the latest aired episode and the latest one on disk. Folding in downloaded
+ * episodes matters because plenty of shows ship with no per-episode airDate
+ * metadata at all (AniList/MAL just never populated the schedule); without
+ * this, a library of 8 downloaded episodes with 4 watched would read as
+ * "caught-up" purely because no airDate said otherwise.
  */
 export function classifyWatchProgress(args: {
   watched: number;
   totalEpisodes: number | null | undefined;
   latestAiredEpisode: number | null | undefined;
+  latestDownloadedEpisode?: number | null | undefined;
 }): WatchProgressState {
-  const { watched, totalEpisodes, latestAiredEpisode } = args;
+  const { watched, totalEpisodes, latestAiredEpisode, latestDownloadedEpisode } = args;
   if (totalEpisodes != null && totalEpisodes > 0 && watched >= totalEpisodes) {
     return "watched";
   }
-  if (latestAiredEpisode != null && watched < latestAiredEpisode) {
+  const reachable = Math.max(latestAiredEpisode ?? 0, latestDownloadedEpisode ?? 0);
+  if (reachable > 0 && watched < reachable) {
     return "behind";
   }
   return "caught-up";

@@ -33,6 +33,14 @@ interface ShowCardProps {
    *  lockstep without N timers. Omit to disable the countdown entirely
    *  even when the show has a known upcoming air date. */
   nowMs?: number;
+  /** Draw the poster border. Defaults to true. The Watching tab passes
+   *  false for shows that are on the tracker list but not in the local
+   *  library, so they read as "not owned" (borderless). */
+  outlined?: boolean;
+  /** Override the default click action (navigate to the in-app series
+   *  page). The Watching tab passes a handler that opens the show's
+   *  AniList page in the browser for non-library cards. */
+  onActivate?: () => void;
 }
 
 /**
@@ -46,6 +54,8 @@ function ShowCard({
   metaLeftText,
   metaLeftTitle,
   nowMs,
+  outlined = true,
+  onActivate,
 }: ShowCardProps) {
   const navigate = useNavigate();
   const { pickTitle } = useTitleLanguage();
@@ -94,11 +104,18 @@ function ShowCard({
     malId: item.malId ?? undefined,
   });
   const latestAiredNum = getLatestAiredEpisodeNumber(item.episodes);
+  // Highest episode number actually sitting on disk. A downloaded-but-
+  // unwatched episode counts toward "behind" even when its airDate is
+  // missing (common — see classifyWatchProgress).
+  const latestDownloadedNum = item.files.length > 0
+    ? item.files.reduce((max, f) => (f.episodeNumber > max ? f.episodeNumber : max), 0)
+    : null;
   const watchedState = watched != null
     ? classifyWatchProgress({
         watched,
         totalEpisodes: item.totalEpisodes,
         latestAiredEpisode: latestAiredNum,
+        latestDownloadedEpisode: latestDownloadedNum,
       })
     : null;
   const watchedLabel = formatWatchedLabel({
@@ -127,11 +144,11 @@ function ShowCard({
       className="show-card"
       data-halo-bias
       data-flip-id={item.id}
-      onClick={() => navigate(`/series/${encodeURIComponent(item.id)}`)}
+      onClick={() => (onActivate ? onActivate() : navigate(`/series/${encodeURIComponent(item.id)}`))}
       onMouseEnter={() => liftRef.current?.setTarget(-LIFT_AMOUNT_PX)}
       onMouseLeave={() => liftRef.current?.setTarget(0)}
     >
-      <div ref={posterWrapRef} className="show-card-poster-wrap">
+      <div ref={posterWrapRef} className={`show-card-poster-wrap${outlined ? "" : " show-card-poster-wrap--bare"}`}>
         {watchedLabel && (
           <span
             className={`show-card-watched-badge${watchedState ? ` ${watchedState}` : ""}`}

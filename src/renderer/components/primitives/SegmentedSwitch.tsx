@@ -1,5 +1,7 @@
 import {
+  useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   type PointerEvent as ReactPointerEvent,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -71,6 +73,38 @@ export default function SegmentedSwitch<T extends string>({
   const trackRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef({ pos: activeIndex, target: activeIndex });
   const dragRef = useRef<DragState | null>(null);
+  // Per-segment geometry (left offset + width, px, relative to the track's
+  // padding box) so the thumb can size & slide to content-width segments
+  // instead of assuming every segment is an equal 1/N slice. Re-measured on
+  // mount, option changes, and any track resize.
+  const geomRef = useRef<Array<{ left: number; width: number }>>([]);
+
+  const measure = useCallback(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    const trackRect = track.getBoundingClientRect();
+    const borderL = parseFloat(getComputedStyle(track).borderLeftWidth) || 0;
+    const labels = Array.from(
+      track.querySelectorAll<HTMLElement>(".segmented-switch__label"),
+    );
+    geomRef.current = labels.map((el) => {
+      const r = el.getBoundingClientRect();
+      // Convert from the track's border-box origin to its padding box, which
+      // is what `left: 0` on the absolutely-positioned thumb anchors to.
+      return { left: r.left - trackRect.left - borderL, width: r.width };
+    });
+  }, []);
+
+  // Measure before paint so the thumb never flashes at zero width, and keep
+  // it in sync with layout changes (font load, container resize, option set).
+  useLayoutEffect(() => {
+    measure();
+    const track = trackRef.current;
+    if (!track || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => measure());
+    ro.observe(track);
+    return () => ro.disconnect();
+  }, [measure, options]);
   // Set right after a drag release so the synthetic click on the segment
   // button that follows pointerup doesn't immediately re-select something
   // different from what the drag landed on.
@@ -100,8 +134,21 @@ export default function SegmentedSwitch<T extends string>({
         if (Math.abs(s.pos - s.target) < SETTLE_EPSILON) s.pos = s.target;
       }
 
-      if (trackRef.current) {
-        trackRef.current.style.setProperty("--thumb-pos", s.pos.toFixed(4));
+      // Interpolate the thumb's box between the two segments `pos` straddles,
+      // so it both slides AND morphs width as it crosses a narrow→wide gap.
+      const geom = geomRef.current;
+      if (trackRef.current && geom.length > 0) {
+        const maxIdx = geom.length - 1;
+        const clamped = Math.max(0, Math.min(maxIdx, s.pos));
+        const i0 = Math.floor(clamped);
+        const i1 = Math.min(maxIdx, i0 + 1);
+        const frac = clamped - i0;
+        const g0 = geom[i0];
+        const g1 = geom[i1];
+        const x = g0.left + (g1.left - g0.left) * frac;
+        const w = g0.width + (g1.width - g0.width) * frac;
+        trackRef.current.style.setProperty("--thumb-x", `${x.toFixed(2)}px`);
+        trackRef.current.style.setProperty("--thumb-w", `${w.toFixed(2)}px`);
       }
       raf = requestAnimationFrame(tick);
     };
@@ -109,10 +156,17 @@ export default function SegmentedSwitch<T extends string>({
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  const segmentFromClientX = (clientX: number, rect: DOMRect): number => {
-    const rel = (clientX - rect.left) / Math.max(1, rect.width);
-    const idx = Math.floor(rel * count);
-    return Math.max(0, Math.min(count - 1, idx));
+  const segmentFromClientX = (clientX: number): number => {
+    const track = trackRef.current;
+    const geom = geomRef.current;
+    if (!track || geom.length === 0) return activeIndex;
+    const trackRect = track.getBoundingClientRect();
+    const borderL = parseFloat(getComputedStyle(track).borderLeftWidth) || 0;
+    const x = clientX - trackRect.left - borderL;
+    for (let i = 0; i < geom.length; i++) {
+      if (x < geom[i].left + geom[i].width) return i;
+    }
+    return geom.length - 1;
   };
 
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -157,8 +211,7 @@ export default function SegmentedSwitch<T extends string>({
       if (opt && opt.value !== value) onChange(opt.value);
     } else {
       // Treat as a click — segment under the pointer wins.
-      const rect = e.currentTarget.getBoundingClientRect();
-      const idx = segmentFromClientX(e.clientX, rect);
+      const idx = segmentFromClientX(e.clientX);
       const opt = options[idx];
       if (opt && opt.value !== value) onChange(opt.value);
     }
@@ -191,9 +244,10 @@ export default function SegmentedSwitch<T extends string>({
     }
   };
 
-  // CSS owns the visuals via `--seg-count` (sets the thumb width and the
-  // grid column count) and `--thumb-pos` (drives translate as a multiple of
-  // one-segment width). Keeping the math in CSS keeps drag follow exact.
+  // Segments are content-width (`--seg-count` still drives the grid column
+  // count); the thumb is positioned & sized in px via `--thumb-x` / `--thumb-w`,
+  // which the rAF loop interpolates from the measured per-segment geometry so
+  // it tracks variable-width segments exactly.
   return (
     <div
       ref={trackRef}

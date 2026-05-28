@@ -106,16 +106,27 @@ img { -webkit-user-drag: none; user-drag: none; }
   font-weight: 700;
   font-size: 1.05rem;
   letter-spacing: -0.01em;
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 10px;
+  transition: opacity 120ms ease;
 }
+.navbar-brand:hover { opacity: 0.85; }
 .brand-mark {
   width: 30px;
   height: 30px;
   border-radius: 10px;
-  background: var(--accent-primary);
-  color: white;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  user-select: none;
 }
 .brand-word { color: var(--text-primary); }
 .navbar-nav { display: flex; gap: 0.25rem; flex: 1; }
@@ -255,6 +266,34 @@ img { -webkit-user-drag: none; user-drag: none; }
 .show-card:hover .show-card-poster-wrap {
   border-color: var(--border-hover);
   box-shadow: var(--shadow-md);
+}
+/* Watching tab. The app-wide default border is a 7%-white hairline — invisible
+   against a poster — so the in-library vs not-in-library distinction needs a
+   strong, dedicated treatment here. Scoped to .watching-grid (specificity beats
+   the global base rule) so other grids keep their subtle look.
+   - In-library (owned): thick bright rim + white glow so it clearly reads as
+     "in your library". Both owned and bare carry a 2px border box so the grid
+     stays aligned; bare's is just transparent.
+   - Not in library (--bare): no rim, no glow — stays flat for contrast. The
+     hover-lift + poster zoom still signal the card is interactive (opens the
+     AniList page). */
+.watching-grid .show-card-poster-wrap {
+  border-width: 2px;
+  border-color: rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.22),
+    0 0 16px 2px rgba(255, 255, 255, 0.28);
+}
+.watching-grid .show-card:hover .show-card-poster-wrap {
+  border-color: #fff;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.4),
+    0 0 24px 5px rgba(255, 255, 255, 0.42);
+}
+.watching-grid .show-card-poster-wrap--bare,
+.watching-grid .show-card:hover .show-card-poster-wrap--bare {
+  border-color: transparent;
+  box-shadow: none;
 }
 .show-card:hover .show-card-poster { transform: scale(1.04); }
 .show-card:hover .show-card-title { color: var(--accent-secondary); }
@@ -889,13 +928,21 @@ img { -webkit-user-drag: none; user-drag: none; }
 .player-ctl-btn:disabled:hover { background: transparent; }
 .player-right-group { margin-left: auto; display: flex; gap: 4px; align-items: center; }
 
-/* Skip Intro / Skip Outro button — floats above the controls bar, bottom-right.
-   Visible only while the playhead is inside the AniSkip window. */
-.player-skip {
+/* Bottom-right action row — Skip Intro/Outro and the auto-next Stay/Next pills
+   share one inline row above the controls bar: <Skip Outro> <Stay><Next>. */
+.player-bottom-actions {
   position: absolute;
   right: 24px;
   bottom: 96px;
   z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Skip Intro / Skip Outro button. Visible only while the playhead is inside the
+   AniSkip window. */
+.player-skip {
   background: rgba(20, 20, 26, 0.92);
   color: #d8d8e0;
   border: 1px solid #3a3a48;
@@ -916,14 +963,10 @@ img { -webkit-user-drag: none; user-drag: none; }
   transform: translateY(-1px);
 }
 
-/* Auto-play-next overlay — Stay + Next pills, floats above the skip button.
-   The Next pill is white and fills with a brighter white sweeping left→right
-   over the 5s countdown (no number, just the bar). */
+/* Auto-play-next — Stay + Next pills, inline in the bottom action row. The Next
+   pill is white and fills with a brighter white sweeping left→right over the 5s
+   countdown (no number, just the bar). */
 .player-autonext {
-  position: absolute;
-  right: 24px;
-  bottom: 152px;
-  z-index: 8;
   display: flex;
   align-items: stretch;
   gap: 8px;
@@ -2090,10 +2133,22 @@ img { -webkit-user-drag: none; user-drag: none; }
   background: var(--accent-primary);
   border-radius: 999px;
 }
+.files-bar-fill.over { background: var(--accent-amber); }
 .files-bar-text {
   font-family: var(--font-mono);
   font-size: 0.78rem;
   color: var(--text-primary);
+  white-space: nowrap;
+}
+/* "+N extra files" flag in the metadata Files column. */
+.files-extra-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--accent-amber);
   white-space: nowrap;
 }
 .muted { color: var(--text-muted); }
@@ -3079,103 +3134,6 @@ button.hero-chip-anilist--icon:hover {
 }
 .series-hero-progress-label { color: var(--text-muted); }
 .series-hero-progress-count { color: var(--text-primary); font-weight: 600; }
-
-/* Tracked-count correction popover — set watched progress to any value. */
-.hero-progress-edit-anchor { position: relative; display: inline-flex; z-index: 20; }
-button.series-hero-progress-count-btn {
-  appearance: none;
-  cursor: pointer;
-  background: transparent;
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-weight: 600;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm, 6px);
-  padding: 0 0.25rem;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
-}
-button.series-hero-progress-count-btn:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: var(--border-color);
-}
-.hero-progress-popover {
-  position: absolute;
-  bottom: calc(100% + 0.4rem);
-  left: 0;
-  z-index: 30;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.55rem 0.65rem;
-  background: var(--bg-card);
-  border: 1px solid var(--border-hover);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
-  font-family: var(--font-mono);
-}
-.hero-progress-stepper {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-.hero-progress-step {
-  appearance: none;
-  cursor: pointer;
-  width: 1.6rem;
-  height: 1.6rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  font-family: var(--font-mono);
-  font-size: 1rem;
-  line-height: 1;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
-}
-.hero-progress-step:hover:not(:disabled) {
-  border-color: var(--border-hover);
-  background: rgba(255, 255, 255, 0.08);
-}
-.hero-progress-value {
-  min-width: 2ch;
-  text-align: center;
-  color: var(--text-primary);
-  font-weight: 600;
-}
-.hero-progress-submit {
-  appearance: none;
-  cursor: pointer;
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--accent-secondary);
-  border: 1px solid color-mix(in srgb, var(--accent-secondary) 45%, var(--border-color));
-  border-radius: var(--radius-md);
-  padding: 0.3rem 0.65rem;
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
-}
-.hero-progress-submit:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent-secondary) 18%, transparent);
-}
-.hero-progress-step:disabled,
-.hero-progress-submit:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-.hero-progress-error {
-  flex-basis: 100%;
-  max-width: 22rem;
-  font-size: 0.72rem;
-  line-height: 1.35;
-  color: var(--accent-rose, #f43f5e);
-  word-break: break-word;
-}
 .series-hero-progress-track {
   height: 6px;
   background: rgba(255, 255, 255, 0.05);
@@ -3310,10 +3268,15 @@ button.series-hero-progress-count-btn:hover {
 }
 
 /* ---------- Characters ---------- */
+/* Single-row layout: every character (storage caps at 10) flows into one
+   row of equal-width columns that shrink to fit, rather than wrapping.
+   `grid-auto-flow: column` + `minmax(0, 1fr)` adapts to any count — 5 or
+   10 cards both fill the row evenly with no trailing empty columns. */
 .character-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 1rem;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 0.6rem;
   margin: 0.4rem 0 0;
 }
 .character-card {
@@ -3393,6 +3356,16 @@ button.series-hero-progress-count-btn:hover {
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 1rem;
   margin: 0.4rem 0 0;
+}
+/* Single-row variant (Recommendations strip). Unlike the wrapping Related
+   grid, this keeps all picks (storage caps at 8) on one line: cards shrink
+   to share the width via equal `minmax(0, 1fr)` columns flowed across a
+   single row. Tighter gap than the base grid gives small cards more room. */
+.relations-grid--single-row {
+  grid-template-columns: none;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 0.6rem;
 }
 /* Timeline-variant grid — positions a horizontal rail behind the cards
    so a chronologically-sorted franchise (S1 → S2 → S3) visually reads
@@ -3500,6 +3473,52 @@ button.series-hero-progress-count-btn:hover {
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
+}
+/* On-list status marker — a small colour-coded dot pinned to the bottom-right
+   corner of a Related or Recommended *card* (not the poster) when that entry is
+   on the user's tracker list. It's a direct child of `.card` (position:
+   relative), so it anchors to the whole card's corner, down by the format/year
+   meta row, well clear of the poster art and the top "Available"/"AniList"
+   pills. Colour encodes the status (`data-status`, mirroring an old project's
+   `[status="…"]` pattern); a dark ring + faint same-hue halo keep it legible
+   against the card surface. `pointer-events: auto` so the dot can own its own
+   hover-pause tooltip naming the status. */
+.list-status-dot {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  z-index: 2;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  /* Dark ring so the dot reads against both light and dark poster regions. */
+  border: 1.5px solid color-mix(in srgb, var(--bg-primary) 80%, transparent);
+  background: var(--text-muted);
+  pointer-events: auto;
+}
+.list-status-dot[data-status="watching"] {
+  background: var(--status-watching);
+  box-shadow: 0 0 8px 1px color-mix(in srgb, var(--status-watching) 70%, transparent);
+}
+.list-status-dot[data-status="repeating"] {
+  background: var(--status-rewatching);
+  box-shadow: 0 0 8px 1px color-mix(in srgb, var(--status-rewatching) 70%, transparent);
+}
+.list-status-dot[data-status="completed"] {
+  background: var(--status-completed);
+  box-shadow: 0 0 8px 1px color-mix(in srgb, var(--status-completed) 70%, transparent);
+}
+.list-status-dot[data-status="paused"] {
+  background: var(--status-paused);
+  box-shadow: 0 0 8px 1px color-mix(in srgb, var(--status-paused) 70%, transparent);
+}
+.list-status-dot[data-status="dropped"] {
+  background: var(--status-dropped);
+  box-shadow: 0 0 8px 1px color-mix(in srgb, var(--status-dropped) 70%, transparent);
+}
+.list-status-dot[data-status="planning"] {
+  background: var(--status-planning);
+  box-shadow: 0 0 8px 1px color-mix(in srgb, var(--status-planning) 70%, transparent);
 }
 .relation-card-body {
   padding: 0.55rem 0.65rem 0.7rem;
@@ -3928,7 +3947,10 @@ button.series-hero-progress-count-btn:hover {
   appearance: none;
   position: relative;
   display: inline-grid;
-  grid-template-columns: repeat(var(--seg-count, 2), minmax(0, 1fr));
+  /* Content-width columns: each segment is exactly as wide as its label
+     (so "All" stays narrow next to "Series"/"Movies"), not an equal 1/N
+     slice. The thumb tracks the real geometry via --thumb-x/--thumb-w. */
+  grid-template-columns: repeat(var(--seg-count, 2), auto);
   align-items: stretch;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
@@ -3941,11 +3963,10 @@ button.series-hero-progress-count-btn:hover {
   touch-action: pan-y;
   -webkit-tap-highlight-color: transparent;
   isolation: isolate;
-  --thumb-pos: 0;
-  --isLTR: 1;
+  --thumb-x: 0px;
+  --thumb-w: 0px;
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
-.segmented-switch:dir(rtl) { --isLTR: -1; }
 .segmented-switch:hover { border-color: var(--border-hover); }
 .segmented-switch:focus-visible {
   outline: none;
@@ -3958,15 +3979,17 @@ button.series-hero-progress-count-btn:hover {
   position: absolute;
   top: 2px;
   bottom: 2px;
-  left: 2px;
-  width: calc((100% - 4px) / var(--seg-count, 2));
+  left: 0;
+  width: var(--thumb-w);
   /* Accent-tinted lift over the track. --bg-tertiary alone is only ~7
      units brighter than --bg-secondary, which reads as "barely visible"
      against colour-loaded icons (stars). Mixing in the accent gives the
      thumb a distinct identity without violating the flat/dark aesthetic. */
   background: color-mix(in srgb, var(--accent-primary) 20%, var(--bg-tertiary));
   border-radius: 999px;
-  transform: translateX(calc(var(--thumb-pos) * 100% * var(--isLTR)));
+  /* x + width are px values the rAF loop interpolates from measured segment
+     geometry — no CSS transition; motion is owned by JS. */
+  transform: translateX(var(--thumb-x));
   z-index: 0;
   /* Outer drop + thin inner ring in the accent so the edge reads even
      when the thumb sits over a busy background. */
@@ -4186,6 +4209,24 @@ button.series-hero-progress-count-btn:hover {
 }
 .subscriptions-refresh .spin { animation: subspin 0.9s linear infinite; }
 @keyframes subspin { to { transform: rotate(360deg); } }
+
+/* "← Settings" link above the title — the page is no longer in the navbar,
+   so this is the way back. */
+.subscriptions-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-bottom: 0.5rem;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  transition: color var(--transition-fast);
+}
+.subscriptions-back:hover { color: var(--accent-secondary); }
 
 .subscriptions-list {
   display: flex;
@@ -4508,8 +4549,85 @@ button.series-hero-progress-count-btn:hover {
   color: var(--text-muted);
   background: rgba(255,255,255,0.03);
   border: 1px solid var(--border-color);
-  transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
+  transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
 }
+/* Empty grid placeholder holding column 1, since the interactive hit-zone is
+   absolutely positioned (out of grid flow) and would otherwise let the code/
+   title columns shift left. */
+.episode-row__marker-slot { width: 22px; height: 22px; pointer-events: none; }
+/* Tall transparent hit-zone that WRAPS the circle. ~circle-wide, (row + gap)
+   tall and vertically symmetric around the row centre so the flex-centred circle
+   lands exactly where column 1 sits. The column of zones tiles (tiny overlap) so
+   moving zone→zone keeps the hover; entering a zone only keeps a hover alive,
+   entering the circle inside initiates it. */
+.episode-row__marker-hit {
+  position: absolute;
+  left: calc(var(--s4) - 4px);
+  width: 30px;
+  top: calc(-1 * var(--s2) / 2 - 2px);
+  bottom: calc(-1 * var(--s2) / 2 - 2px);
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+/* Markers double as track/untrack controls. Each cascade keyframe carries the
+   colour flip AND a one-time size bob; per-marker animation-delay (inline)
+   staggers the wave out from the cursor. `both` fill holds the end colour while
+   hovered and the start colour during the stagger. Animation declarations
+   outrank the static `--watched`/`--next-up` marker colours, so no extra
+   specificity is needed. The '-out' classes replay the in-wave reversed (a
+   cascade back to rest from where the cursor left); '-commit' settles to the new
+   tracked/untracked colour after a click. */
+/* Untrack: watched teal → red (hover), and red → unwatched grey (commit). */
+@keyframes ep-untrack-in {
+  0%   { transform: scale(1);    background: var(--accent-teal); border-color: var(--accent-teal); color: var(--bg-primary); }
+  45%  { transform: scale(1.32); background: var(--accent-rose); border-color: var(--accent-rose); color: var(--bg-primary); }
+  100% { transform: scale(1);    background: var(--accent-rose); border-color: var(--accent-rose); color: var(--bg-primary); }
+}
+@keyframes ep-untrack-commit {
+  0%   { transform: scale(1);    background: var(--accent-rose); border-color: var(--accent-rose); color: var(--bg-primary); }
+  45%  { transform: scale(1.32); background: rgba(255,255,255,0.03); border-color: var(--border-color); color: var(--text-muted); }
+  100% { transform: scale(1);    background: rgba(255,255,255,0.03); border-color: var(--border-color); color: var(--text-muted); }
+}
+/* Track: faint blue → saturated blue (hover), and blue → watched teal (commit).
+   The 'in' 0% sets an explicit faint blue (NOT transform-only) — leaving it unset
+   lets the backwards `both` fill resolve against the next-up marker's translucent
+   indigo base, which Chromium renders as a muddy yellow during the stagger. */
+@keyframes ep-track-in {
+  0%   { transform: scale(1);    background: color-mix(in srgb, var(--accent-blue) 22%, transparent); border-color: color-mix(in srgb, var(--accent-blue) 45%, var(--border-color)); color: var(--accent-blue); }
+  45%  { transform: scale(1.32); background: var(--accent-blue); border-color: var(--accent-blue); color: #fff; }
+  100% { transform: scale(1);    background: var(--accent-blue); border-color: var(--accent-blue); color: #fff; }
+}
+@keyframes ep-track-commit {
+  0%   { transform: scale(1);    background: var(--accent-blue); border-color: var(--accent-blue); color: #fff; }
+  45%  { transform: scale(1.32); background: var(--accent-teal); border-color: var(--accent-teal); color: var(--bg-primary); }
+  100% { transform: scale(1);    background: var(--accent-teal); border-color: var(--accent-teal); color: var(--bg-primary); }
+}
+/* Out (un-hover) cascades back to rest. Distinct animation-names (not just
+   `reverse`) so switching class restarts cleanly instead of snapping. End on an
+   EXPLICIT resting colour (untrack → watched teal, track → default grey) — never
+   an omitted 100%, which would resolve against the next-up marker's translucent
+   indigo base and render the same muddy yellow as the hover cascade did. The
+   45% bob keyframe omits colour deliberately: it just samples the 0%→100%
+   interpolation, which stays clean because both ends are explicit. */
+@keyframes ep-untrack-out {
+  0%   { transform: scale(1);    background: var(--accent-rose); border-color: var(--accent-rose); color: var(--bg-primary); }
+  45%  { transform: scale(1.32); }
+  100% { transform: scale(1);    background: var(--accent-teal); border-color: var(--accent-teal); color: var(--bg-primary); }
+}
+@keyframes ep-track-out {
+  0%   { transform: scale(1);    background: var(--accent-blue); border-color: var(--accent-blue); color: #fff; }
+  45%  { transform: scale(1.32); }
+  100% { transform: scale(1);    background: rgba(255,255,255,0.03); border-color: var(--border-color); color: var(--text-muted); }
+}
+.episode-row__marker--untracking        { animation: ep-untrack-in 340ms ease both; }
+.episode-row__marker--untracking-out     { animation: ep-untrack-out 340ms ease both; }
+.episode-row__marker--untracking-commit  { animation: ep-untrack-commit 340ms ease both; }
+.episode-row__marker--tracking           { animation: ep-track-in 340ms ease both; }
+.episode-row__marker--tracking-out        { animation: ep-track-out 340ms ease both; }
+.episode-row__marker--tracking-commit     { animation: ep-track-commit 340ms ease both; }
 .episode-row__code  { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .episode-row__title { min-width: 0; word-break: break-word; }
 .episode-row__trailing { display: inline-flex; align-items: center; gap: var(--s2); }
@@ -4552,3 +4670,24 @@ button.series-hero-progress-count-btn:hover {
 
 /* List of EpisodeRow primitives inside a <Section>. */
 .episode-list { display: flex; flex-direction: column; gap: var(--s2); }
+
+/* Warning banner above the "Extra files" episode list — amber so it reads as
+   "attention needed" without the alarm of a hard error. */
+.extra-episodes-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  margin-bottom: var(--s3);
+  padding: var(--s2) var(--s3);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent-amber) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-amber) 35%, var(--border-color));
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+.extra-episodes-note svg {
+  flex: 0 0 auto;
+  margin-top: 0.1rem;
+  color: var(--accent-amber);
+}

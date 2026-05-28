@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useMetadata, type SeriesMetadata } from '../hooks/useMetadata';
-import { BookOpen, Tv, Film, Search, RefreshCw, Trash2 } from 'lucide-react';
+import { BookOpen, Tv, Film, Search, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 import MetadataMatchModal from '../components/MetadataMatchModal';
 import { useDebouncedCallback } from '../hooks/useDebouncedCallback';
 import { Page, Inline, Tooltip } from '../components/primitives';
@@ -207,6 +207,9 @@ function MetadataTab() {
             const have = data.fileEpisodes?.length || 0;
             const total = data.totalEpisodes || data.episodes?.length || (movie ? 1 : 0);
             const pct = total ? Math.round((have / total) * 100) : 0;
+            // More files on disk than the matched title has episodes — flag it
+            // so misnamed/duplicate/stray files get the user's attention.
+            const extra = total > 0 ? Math.max(0, have - total) : 0;
             const sourceClass = data.source ? data.source.toLowerCase() : 'none';
             const posterUrl = getImageUrl(data.posterLocal, data.poster);
             const isRefreshing = refreshing[seriesId];
@@ -255,11 +258,22 @@ function MetadataTab() {
                 <div className="col-files">
                   <div className="files-bar">
                     <div className="files-bar-track">
-                      <div className="files-bar-fill" style={{ width: `${pct}%` }} />
+                      <div
+                        className={`files-bar-fill${extra > 0 ? ' over' : ''}`}
+                        style={{ width: `${Math.min(pct, 100)}%` }}
+                      />
                     </div>
                     <span className="files-bar-text">
                       {have}<span className="muted">/{total}</span>
                     </span>
+                    {extra > 0 && (
+                      <Tooltip label={`${extra} file${extra === 1 ? '' : 's'} beyond the expected ${total} — needs attention`}>
+                        <span className="files-extra-flag" aria-label={`${extra} extra file${extra === 1 ? '' : 's'} detected`}>
+                          <AlertTriangle size={13} aria-hidden="true" />
+                          +{extra}
+                        </span>
+                      </Tooltip>
+                    )}
                   </div>
                 </div>
                 <div className="col-updated muted">—</div>

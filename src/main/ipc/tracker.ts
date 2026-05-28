@@ -137,6 +137,10 @@ export function registerTrackerIpc(getMainWindow: WindowGetter): void {
     return trackerHandler.getProgress();
   });
 
+  ipcMain.handle('tracker:get-watching-list', async () => {
+    return trackerHandler.getAnilistWatchingList();
+  });
+
   ipcMain.handle('tracker:get-main-provider', async () => trackerHandler.getMainProvider());
 
   ipcMain.handle('tracker:set-main-provider', async (_event, provider: unknown) => {

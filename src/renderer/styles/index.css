@@ -15,6 +15,21 @@
   --accent-rose:      #f43f5e;
   --accent-teal:      #14b8a6;
   --accent-amber:     #f59e0b;
+  /* Vivid blue for the "track to here" marker preview — deliberately more
+     saturated than the watched teal so the to-be-tracked range reads distinct. */
+  --accent-blue:      #38bdf8;
+
+  /* List-status accents — colour the small marker that flags a Related or
+     Recommended entry as already on the user's tracker list. Conventional
+     tracker palette so the meaning reads without a legend: green = actively
+     watching, blue = finished, amber = on hold, red = dropped, slate = not
+     started yet, violet = rewatching. Keyed off the canonical TrackerListStatus. */
+  --status-watching:   #4ade80;  /* green — actively watching */
+  --status-completed:  #60a5fa;  /* blue — finished */
+  --status-paused:     #fbbf24;  /* amber — on hold */
+  --status-dropped:    #f87171;  /* red — dropped */
+  --status-planning:   #94a3b8;  /* slate — planning, not started */
+  --status-rewatching: #a78bfa;  /* violet — rewatching */
 
   /* Per-format hues — used by the Related section to give each AniList
      MediaFormat a recognisable colour at a glance. Keep these distinct

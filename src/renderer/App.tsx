@@ -1,12 +1,13 @@
 import { useEffect } from "react";
 import { HashRouter, Routes, Route, NavLink, useLocation } from "react-router-dom";
-import { Tv, Home, Activity, Database, Rss, Settings as SettingsIcon } from "lucide-react";
+import { Home, Activity, Database, Eye, Settings as SettingsIcon } from "lucide-react";
 import HomePage from "./pages/HomePage";
 import SeriesDetailPage from "./pages/SeriesDetailPage";
 import SettingsTab from "./components/SettingsTab";
 import MetadataTab from "./pages/MetadataTab";
 import VideoPlayer from "./pages/VideoPlayer";
 import FeedPage from "./pages/FeedPage";
+import WatchingPage from "./pages/WatchingPage";
 import SubscriptionsPage from "./pages/SubscriptionsPage";
 import ContextMenu from "./components/ContextMenu";
 import { ActivityLogProvider } from "./contexts/ActivityLogContext";
@@ -16,6 +17,7 @@ import { TrackerProgressProvider } from "./contexts/TrackerProgressContext";
 import { ViewHistoryProvider } from "./contexts/ViewHistoryContext";
 import LangSwitch from "./components/LangSwitch";
 import AmbientCursor from "./components/AmbientCursor";
+import appIcon from "../../assets/icon.png";
 import pkg from "../../package.json";
 import "./styles/App.css";
 
@@ -28,6 +30,7 @@ function titleForPath(pathname: string): string {
   if (pathname === "/") return "AniBeam — Library";
   if (pathname.startsWith("/series/")) return "AniBeam — Series";
   if (pathname.startsWith("/feed")) return "AniBeam — Feed";
+  if (pathname.startsWith("/watching")) return "AniBeam — Watching";
   if (pathname.startsWith("/subscriptions")) return "AniBeam — Subscriptions";
   if (pathname.startsWith("/metadata")) return "AniBeam — Metadata";
   if (pathname.startsWith("/settings")) return "AniBeam — Settings";
@@ -49,10 +52,10 @@ function AppContent() {
       {!isPlayerRoute && <AmbientCursor />}
       {!isPlayerRoute && (
         <nav className="navbar">
-          <div className="navbar-brand">
-            <span className="brand-mark"><Tv size={16} strokeWidth={2.25} /></span>
+          <NavLink to="/" end className="navbar-brand" data-halo-snap aria-label="Go to Library">
+            <span className="brand-mark"><img src={appIcon} alt="" draggable={false} /></span>
             <span className="brand-word">AniBeam</span>
-          </div>
+          </NavLink>
           <div className="navbar-nav">
             <NavLink to="/" end className={`nav-link${isLib ? " active" : ""}`} data-halo-snap>
               <Home size={15} />
@@ -62,9 +65,9 @@ function AppContent() {
               <Activity size={15} />
               <span>Feed</span>
             </NavLink>
-            <NavLink to="/subscriptions" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`} data-halo-snap>
-              <Rss size={15} />
-              <span>Subscriptions</span>
+            <NavLink to="/watching" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`} data-halo-snap>
+              <Eye size={15} />
+              <span>Watching</span>
             </NavLink>
             <NavLink to="/metadata" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`} data-halo-snap>
               <Database size={15} />
@@ -86,6 +89,7 @@ function AppContent() {
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/feed" element={<FeedPage />} />
+            <Route path="/watching" element={<WatchingPage />} />
             <Route path="/subscriptions" element={<SubscriptionsPage />} />
             <Route path="/series/:seriesId" element={<SeriesDetailPage />} />
             <Route path="/settings" element={<SettingsTab />} />

@@ -877,6 +877,130 @@ export async function refreshAllProgress(opts: { force?: boolean } = {}): Promis
   await Promise.allSettled(tasks);
 }
 
+// ----- AniList watching list (metadata-carrying, for the Watching tab) -----
+//
+// The cached progress snapshot only stores {progress, status, score} keyed by
+// media id — no titles or posters. The Watching tab needs to render cards for
+// shows that aren't in the local library, so it needs the media metadata too.
+// This is a separate, on-demand query (not cached to disk): one MediaListCollection
+// call pulling cover/title/score/airing alongside the user's progress.
+
+export interface AnilistWatchingEntry {
+  anilistId: number;
+  malId: number | null;
+  titleRomaji: string | null;
+  titleEnglish: string | null;
+  coverImage: string | null;     // AniList coverImage.large URL
+  averageScore: number | null;   // 0-100 (AniList scale)
+  totalEpisodes: number | null;
+  progress: number;
+  status: 'watching' | 'repeating';
+  score: number | null;          // user's score, 0-10
+  updatedAt: number | null;      // unix seconds — sort key
+  nextAiringEpisode: { episode: number; airingAtMs: number } | null;
+  siteUrl: string;               // AniList page, opened in the browser
+}
+
+export type WatchingListResult =
+  | { ok: true; entries: AnilistWatchingEntry[] }
+  | { ok: false; error: string; needsAuth?: boolean };
+
+interface RawWatchingEntry {
+  progress: number | null;
+  status: string | null;
+  score: number | null;
+  updatedAt: number | null;
+  media: {
+    id: number;
+    idMal: number | null;
+    siteUrl: string | null;
+    episodes: number | null;
+    averageScore: number | null;
+    title: { romaji: string | null; english: string | null } | null;
+    coverImage: { large: string | null } | null;
+    nextAiringEpisode: { episode: number; airingAt: number } | null;
+  } | null;
+}
+
+export async function getAnilistWatchingList(): Promise<WatchingListResult> {
+  const acct = await getAccount('anilist');
+  const token = await getAccessToken('anilist');
+  if (!acct || !token || !acct.userId) {
+    return { ok: false, error: 'AniList isn’t connected.', needsAuth: true };
+  }
+  const headers = { Authorization: `Bearer ${token}` };
+  try {
+    const data = await withTimeout(
+      request<{ MediaListCollection: { lists: Array<{ entries: RawWatchingEntry[] }> } }>(
+        ANILIST_API,
+        gql`query ($userId: Int) {
+          MediaListCollection(userId: $userId, type: ANIME) {
+            lists {
+              entries {
+                progress
+                status
+                score(format: POINT_10_DECIMAL)
+                updatedAt
+                media {
+                  id
+                  idMal
+                  siteUrl
+                  episodes
+                  averageScore
+                  title { romaji english }
+                  coverImage { large }
+                  nextAiringEpisode { episode airingAt }
+                }
+              }
+            }
+          }
+        }`,
+        { userId: acct.userId },
+        headers,
+      ),
+      PROGRESS_FETCH_TIMEOUT_MS,
+      'AniList watching list',
+    );
+
+    // AniList repeats the same MediaList entry across custom lists, so dedupe
+    // by media id (first occurrence wins).
+    const byId = new Map<number, AnilistWatchingEntry>();
+    for (const list of data.MediaListCollection?.lists ?? []) {
+      for (const e of list.entries ?? []) {
+        const status = normalizeListStatus('anilist', e.status);
+        if (status !== 'watching' && status !== 'repeating') continue;
+        const m = e.media;
+        if (m?.id == null || byId.has(m.id)) continue;
+        const next = m.nextAiringEpisode;
+        byId.set(m.id, {
+          anilistId: m.id,
+          malId: m.idMal ?? null,
+          titleRomaji: m.title?.romaji ?? null,
+          titleEnglish: m.title?.english ?? null,
+          coverImage: m.coverImage?.large ?? null,
+          averageScore: typeof m.averageScore === 'number' ? m.averageScore : null,
+          totalEpisodes: typeof m.episodes === 'number' ? m.episodes : null,
+          progress: e.progress ?? 0,
+          status,
+          score: typeof e.score === 'number' && e.score > 0 ? e.score : null,
+          updatedAt: typeof e.updatedAt === 'number' ? e.updatedAt : null,
+          nextAiringEpisode:
+            next && typeof next.episode === 'number' && typeof next.airingAt === 'number'
+              ? { episode: next.episode, airingAtMs: next.airingAt * 1000 }
+              : null,
+          siteUrl: m.siteUrl ?? `https://anilist.co/anime/${m.id}`,
+        });
+      }
+    }
+    const entries = [...byId.values()];
+    logger.info('tracker', `anilist watching list fetched (${entries.length} entries)`);
+    return { ok: true, entries };
+  } catch (err) {
+    logger.warn('tracker', `anilist watching list fetch failed: ${(err as Error).message}`);
+    return { ok: false, error: sanitizeTrackerError(err, 'anilist') };
+  }
+}
+
 // ----- Public surface for IPC handlers -----
 
 export const trackerHandler = {
@@ -904,6 +1028,7 @@ export const trackerHandler = {
   },
   refreshProgress,
   refreshAllProgress,
+  getAnilistWatchingList,
   async getMainProvider(): Promise<TrackerProvider> {
     return getMainProvider();
   },

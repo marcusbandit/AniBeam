@@ -16,6 +16,8 @@ export type {
 import type { TrackerProvider, TrackerStatus, ProgressSnapshot as TrackerProgressSnapshot } from './services/trackerStore';
 export type { MarkResult as TrackerMarkResult, ScoreResult as TrackerScoreResult } from './handlers/trackerHandler';
 import type { MarkResult as TrackerMarkResult, ScoreResult as TrackerScoreResult } from './handlers/trackerHandler';
+export type { AnilistWatchingEntry, WatchingListResult } from './handlers/trackerHandler';
+import type { WatchingListResult } from './handlers/trackerHandler';
 
 interface ScanResult {
   success: boolean;
@@ -172,6 +174,8 @@ export interface ElectronAPI {
   trackerRefreshProgress: (provider?: TrackerProvider) => Promise<TrackerProgressSnapshot>;
   trackerGetMainProvider: () => Promise<TrackerProvider>;
   trackerSetMainProvider: (provider: TrackerProvider) => Promise<TrackerProvider>;
+  /** AniList "Currently Watching" + "Rewatching" list, with media metadata. */
+  trackerGetWatchingList: () => Promise<WatchingListResult>;
   onTrackerProgressChanged: (handler: () => void) => () => void;
 
   // Subscriptions (anirss feed list)
@@ -325,6 +329,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   trackerRefreshProgress: (provider?: TrackerProvider) => ipcRenderer.invoke('tracker:refresh-progress', provider ?? null),
   trackerGetMainProvider: () => ipcRenderer.invoke('tracker:get-main-provider'),
   trackerSetMainProvider: (provider: TrackerProvider) => ipcRenderer.invoke('tracker:set-main-provider', provider),
+  trackerGetWatchingList: () => ipcRenderer.invoke('tracker:get-watching-list'),
   onTrackerProgressChanged: (handler: () => void) => {
     const listener = () => handler();
     ipcRenderer.on('tracker:progress-changed', listener);

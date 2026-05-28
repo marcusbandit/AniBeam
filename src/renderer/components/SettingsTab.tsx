@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useMetadata } from '../hooks/useMetadata';
-import { Folder, RefreshCw, Plus, Trash2, Film } from 'lucide-react';
+import { Folder, RefreshCw, Plus, Trash2, Film, Rss, ChevronRight } from 'lucide-react';
 import TrackersSection from './TrackersSection';
 import { Page, Section, Inline, Tooltip } from './primitives';
 
@@ -64,6 +65,7 @@ function Segment<T extends string>({ value, onChange, options }: SegmentProps<T>
 type SubtitlePref = 'off' | 'auto' | 'always';
 
 function SettingsTab() {
+  const navigate = useNavigate();
   const { metadata, loadMetadata } = useMetadata();
   const [folderSources, setFolderSources] = useState<string[]>([]);
   const [folderTitleCounts, setFolderTitleCounts] = useState<Record<string, number>>({});
@@ -350,6 +352,19 @@ function SettingsTab() {
       </Section>
 
       <TrackersSection />
+
+      <Section
+        title="Subscriptions"
+        action={
+          <button className="btn btn-secondary" onClick={() => navigate('/subscriptions')}>
+            <Rss size={14} />
+            <span>Open subscriptions</span>
+            <ChevronRight size={14} />
+          </button>
+        }
+      >
+        <p className="section-sub">RSS feeds anirss is watching for you. Moved out of the main nav — open the full list here.</p>
+      </Section>
 
       <Section title="Playback">
         <div className="pref-list">

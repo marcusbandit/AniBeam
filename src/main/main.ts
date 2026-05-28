@@ -140,6 +140,34 @@ async function updateFileStatus(filePath: string, status: FileStatus): Promise<v
   }
 }
 
+// Debounced auto-fetch. When a new series lands — a whole folder dropped in,
+// or episodes copied one at a time — chokidar fires a burst of `add` events.
+// Matching metadata off the FIRST file races the rest of the folder settling:
+// the match can run against a half-populated folder or a still-renaming temp
+// name, fail, and (because matchPosterForSeries stamps posterMatchAttempted)
+// never get retried automatically — which is exactly why a manual refresh was
+// needed. So we wait for the folder to go quiet: each new file for a
+// not-yet-matched series re-arms a short timer, and the fetch only fires once
+// no new file has arrived for AUTO_FETCH_SETTLE_MS. Already-matched series are
+// never re-armed, so a weekly new episode doesn't re-fetch.
+const AUTO_FETCH_SETTLE_MS = 4000;
+const autoFetchTimers = new Map<string, NodeJS.Timeout>();
+const autoFetchInFlight = new Set<string>();
+
+function scheduleAutoFetch(seriesId: string, folderName: string): void {
+  if (autoFetchInFlight.has(seriesId)) return;
+  const prev = autoFetchTimers.get(seriesId);
+  if (prev) clearTimeout(prev);
+  autoFetchTimers.set(seriesId, setTimeout(() => {
+    autoFetchTimers.delete(seriesId);
+    autoFetchInFlight.add(seriesId);
+    logger.info('watch', `Folder settled — fetching metadata for ${folderName}`, { series: folderName });
+    void matchPosterForSeries(seriesId, folderName).finally(() => {
+      autoFetchInFlight.delete(seriesId);
+    });
+  }, AUTO_FETCH_SETTLE_MS));
+}
+
 async function ingestSingleFile(filePath: string): Promise<void> {
   try {
     const activeRoots = await configHandler.getFolderSources();
@@ -153,14 +181,17 @@ async function ingestSingleFile(filePath: string): Promise<void> {
     // Filesystem-only ingest. Splice the new file into the series's
     // fileEpisodes (creating a minimal entry if the series is brand new).
     // No network, no thumbnails, no metadata fetch — metadata is paused.
-    let isBrandNewSeries = false;
+    let everAttempted = false;
     await metadataHandler.transaction(async (current) => {
       const existing = (current[media.id] ?? {}) as {
         fileEpisodes?: FileEpisodeEntry[];
         title?: string;
         posterMatchAttempted?: boolean;
       };
-      isBrandNewSeries = !existing.fileEpisodes || existing.fileEpisodes.length === 0;
+      // A series that's never been match-attempted is either brand new or
+      // still being populated (its deferred fetch hasn't fired yet) — both
+      // should (re-)arm the settle timer below.
+      everAttempted = !!existing.posterMatchAttempted;
       const byPath = new Map((existing.fileEpisodes ?? []).map((f) => [f.filePath, f]));
       const newFileEpisodes = media.files.map((f) => {
         const old = byPath.get(f.filePath);
@@ -200,15 +231,15 @@ async function ingestSingleFile(filePath: string): Promise<void> {
       mainWindow.webContents.send('metadata:file-status-changed', { filePath, status: 'verifying' });
     }
 
-    // First time we see this series → background poster match. media.name
-    // is the right search input for both movies and series: for movies it's
-    // the cleaned filename-derived title, for series it's the cleaned
-    // wrapper-derived or folder name. The earlier code used
-    // basename(media.folderPath) for series, which broke franchise-wrapper
-    // subfolders whose folder names are release-tagged (e.g.
-    // "[Erai-raws] Karakai... - 01 ~ 12 [1080p]").
-    if (isBrandNewSeries) {
-      void matchPosterForSeries(media.id, media.name);
+    // Not yet matched → schedule a debounced metadata match once the folder
+    // stops changing (see scheduleAutoFetch). media.name is the right search
+    // input for both movies and series: for movies it's the cleaned
+    // filename-derived title, for series it's the cleaned wrapper-derived or
+    // folder name. The earlier code used basename(media.folderPath) for
+    // series, which broke franchise-wrapper subfolders whose folder names are
+    // release-tagged (e.g. "[Erai-raws] Karakai... - 01 ~ 12 [1080p]").
+    if (!everAttempted) {
+      scheduleAutoFetch(media.id, media.name);
     }
   } catch (err) {
     logger.error('watch', `Failed to ingest new file: ${(err as Error).message}`, { file: filePath });

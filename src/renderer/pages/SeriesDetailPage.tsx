@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Play, Check, Star, Tv, Film, Clock, Users, RotateCw, Eye, EyeOff } from "lucide-react";
+import { ArrowLeft, Play, Check, Star, Tv, Film, Clock, Users, RotateCw, Eye, EyeOff, AlertTriangle } from "lucide-react";
 
 // AniList brand mark. Inline rather than fetched so it ships with the
 // renderer bundle and stays available offline. Geometry is the official
@@ -219,12 +219,17 @@ function SeriesDetailPage() {
   const [scoreDraft, setScoreDraft] = useState<string>('8.0');
   const [scoreBusy, setScoreBusy] = useState(false);
   const [scoreError, setScoreError] = useState<string | null>(null);
-  // Tracked-count correction popover — lets the user set watched progress to
-  // any value (including lower) to undo an over-count.
-  const [progressEditing, setProgressEditing] = useState(false);
-  const [progressDraft, setProgressDraft] = useState(0);
-  const [progressBusy, setProgressBusy] = useState(false);
-  const [progressError, setProgressError] = useState<string | null>(null);
+  // Marker track/untrack cascade. `wave` is the active animated range + phase:
+  // 'in' (hover), 'out' (reverse wave on un-hover), 'commit' (after a click).
+  // [lo, hi] is the affected episode range; `anchor` is the cursor/click origin
+  // the stagger emanates from. `optimisticWatched` flips icons/colours the moment
+  // a click lands so the cascade isn't gated on the tracker round-trip.
+  const [wave, setWave] = useState<
+    { mode: "track" | "untrack"; phase: "in" | "out" | "commit"; lo: number; hi: number; anchor: number } | null
+  >(null);
+  const [optimisticWatched, setOptimisticWatched] = useState<number | null>(null);
+  const waveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const leaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const refresh = () => {
@@ -233,6 +238,12 @@ function SeriesDetailPage() {
     };
     window.addEventListener("focus", refresh);
     return () => window.removeEventListener("focus", refresh);
+  }, []);
+
+  // Clear any pending marker-cascade timers on unmount.
+  useEffect(() => () => {
+    if (waveTimerRef.current) clearTimeout(waveTimerRef.current);
+    if (leaveTimerRef.current) clearTimeout(leaveTimerRef.current);
   }, []);
 
   const decodedId = seriesId ? decodeURIComponent(seriesId) : "";
@@ -580,10 +591,32 @@ function SeriesDetailPage() {
   const studioName = (meta as unknown as { animationStudio?: string | null })?.animationStudio
     ?? (meta?.studios && meta.studios.length > 0 ? meta.studios[0] : null);
   const characters: Character[] = (meta?.characters ?? []) as Character[];
-  // Hard-cap at 7 — the recommendation row's layout falls apart past this
-  // count (any 8th card pushes the grid into a wrap that breaks the visual
-  // rhythm). AniList sorts by RATING_DESC so the top 7 are the strongest.
-  const recommendations: Recommendation[] = ((meta?.recommendations ?? []) as Recommendation[]).slice(0, 7);
+  // Show every stored recommendation (the main process caps storage at 8).
+  // The strip below uses a single-row grid that shrinks cards to share the
+  // width, so all picks stay on one line. AniList sorts by RATING_DESC.
+  const recommendations: Recommendation[] = (meta?.recommendations ?? []) as Recommendation[];
+  // Status marker for a Related/Recommended entry that's on the user's
+  // tracker list. Resolves by external id (works whether or not the entry is
+  // on disk) and returns the colour-coded corner dot, wrapped in a hover-pause
+  // Tooltip naming the status — so a forgotten colour is one hover away. The
+  // presence of the dot already means "on your list", so the label is just the
+  // bare status ("Completed"), not "On your list · Completed". Off-list entries
+  // render nothing.
+  const listStatusMarker = (ids: { anilistId: number; malId: number | null }) => {
+    const status = getListStatus(ids);
+    if (!status) return null;
+    const label = LIST_STATUS_LABEL[status];
+    return (
+      <Tooltip label={label}>
+        <span
+          className="list-status-dot"
+          data-status={status}
+          role="img"
+          aria-label={label}
+        />
+      </Tooltip>
+    );
+  };
   const submitSeriesScore = async (raw: string) => {
     const score = parseFloat(raw);
     if (!Number.isFinite(score)) {
@@ -618,14 +651,12 @@ function SeriesDetailPage() {
       setScoreError(lastErr ?? 'no tracker connected');
     }
   };
-  const submitSeriesProgress = async (value: number) => {
+  // Set watched progress to an exact value on every connected tracker. Used by
+  // the "untrack to here" markers (can decrease — corrects over-counts). The
+  // shared progress cache refreshes via the tracker:progress-changed broadcast.
+  const applyProgress = async (value: number) => {
     const target = Math.max(0, Math.floor(value));
-    if (!Number.isFinite(target)) {
-      setProgressError('invalid count');
-      return;
-    }
-    setProgressBusy(true);
-    setProgressError(null);
+    if (!Number.isFinite(target)) return;
     const total = item.totalEpisodes ?? meta?.totalEpisodes ?? null;
     type ProgRes = Awaited<ReturnType<typeof window.electronAPI.trackerSetProgress>>;
     const calls: Promise<ProgRes>[] = [];
@@ -635,25 +666,14 @@ function SeriesDetailPage() {
     if (item.malId != null) {
       calls.push(window.electronAPI.trackerSetProgress('mal', item.malId, target, total));
     }
-    const results = await Promise.allSettled(calls);
-    let lastErr: string | null = null;
-    let anyOk = false;
-    for (const r of results) {
-      if (r.status === 'rejected') { lastErr = (r.reason as Error)?.message ?? 'unknown error'; continue; }
-      const v = r.value;
-      if (v.ok) anyOk = true;
-      else if (v.reason === 'error') lastErr = v.message ?? null;
-      else if (v.reason === 'no-account') lastErr = lastErr ?? 'no tracker connected';
-    }
-    setProgressBusy(false);
-    if (anyOk) {
-      setProgressEditing(false);
-    } else {
-      setProgressError(lastErr ?? 'no tracker connected');
-    }
+    await Promise.allSettled(calls);
   };
   const watchedCount = typeof watched === "number" ? watched : 0;
   const trackedKnown = watched != null;
+  // Optimistic overlay: a click reflects immediately, then clears once the
+  // tracker broadcast lands the real value (effect below).
+  const effWatched = optimisticWatched ?? watchedCount;
+  const effTrackedKnown = trackedKnown || optimisticWatched != null;
   // Denominator priority: published total → latest aired episode → files
   // on disk. Aired-but-not-final shows up as "+" in the label so the user
   // sees "04/05+" instead of a misleading "04/05" or a useless "04/?".
@@ -677,14 +697,189 @@ function SeriesDetailPage() {
   // the marker anyway so the user always knows where they left off.
   const lastEpLocal = lastEpMap[item.id]?.ep ?? null;
   const effectiveLastWatched = Math.max(
-    trackedKnown ? watchedCount : 0,
+    effTrackedKnown ? effWatched : 0,
     lastEpLocal ?? 0,
   );
   const nextEpNumber = effectiveLastWatched > 0
     ? sorted.find((f) => f.episodeNumber === effectiveLastWatched + 1)?.episodeNumber
         ?? sorted.find((f) => f.episodeNumber > effectiveLastWatched)?.episodeNumber
         ?? null
-    : (trackedKnown ? sorted.find((f) => f.episodeNumber > watchedCount)?.episodeNumber ?? null : null);
+    : (effTrackedKnown ? sorted.find((f) => f.episodeNumber > effWatched)?.episodeNumber ?? null : null);
+
+  // ---- Marker track/untrack cascade handlers ----
+  const CASCADE_STEP_MS = 45;
+  const CASCADE_DUR_MS = 340;
+  // Auto-clear the wave after the staggered animation has fully played out.
+  const scheduleWaveClear = (span: number) => {
+    if (waveTimerRef.current) clearTimeout(waveTimerRef.current);
+    waveTimerRef.current = setTimeout(
+      () => setWave(null),
+      Math.min(span, 12) * CASCADE_STEP_MS + CASCADE_DUR_MS + 80,
+    );
+  };
+  // Entering the CIRCLE initiates / re-anchors the wave.
+  const onMarkerEnter = (ep: number, isW: boolean) => {
+    if (leaveTimerRef.current) { clearTimeout(leaveTimerRef.current); leaveTimerRef.current = null; }
+    if (waveTimerRef.current) { clearTimeout(waveTimerRef.current); waveTimerRef.current = null; }
+    if (isW) setWave({ mode: "untrack", phase: "in", lo: ep, hi: effWatched, anchor: ep });
+    else setWave({ mode: "track", phase: "in", lo: effWatched + 1, hi: ep, anchor: ep });
+  };
+  // Entering a hit-zone (anywhere, not necessarily the circle) only KEEPS an
+  // active hover alive — it cancels a pending leave but never starts a wave. So
+  // moving between adjacent zones stays hovered, but merely being inside a zone
+  // (without touching a circle) won't initiate one.
+  const onMarkerZoneEnter = () => {
+    if (leaveTimerRef.current) { clearTimeout(leaveTimerRef.current); leaveTimerRef.current = null; }
+  };
+  // Leaving a hit-zone is debounced: if another zone's enter fires within the
+  // grace window we stay hovered (just moving between circles). Only when the
+  // cursor is in NO zone does the reverse cascade play out from where it left.
+  const onMarkerLeave = () => {
+    if (leaveTimerRef.current) clearTimeout(leaveTimerRef.current);
+    const w = wave;
+    leaveTimerRef.current = setTimeout(() => {
+      leaveTimerRef.current = null;
+      if (!w || w.phase !== "in") return;
+      setWave({ ...w, phase: "out" });
+      scheduleWaveClear(w.hi - w.lo);
+    }, 60);
+  };
+  const onMarkerClick = (ep: number, isW: boolean) => {
+    const newWatched = isW ? ep - 1 : ep;
+    const mode = isW ? "untrack" : "track";
+    const lo = isW ? ep : effWatched + 1;
+    const hi = isW ? effWatched : ep;
+    setOptimisticWatched(newWatched);
+    setWave({ mode, phase: "commit", lo, hi, anchor: ep });
+    scheduleWaveClear(hi - lo);
+    // Drop the optimistic overlay once the IPC resolves and the
+    // tracker:progress-changed broadcast has had a tick to refresh the real
+    // value. The guard keeps a later click's optimistic value from being cleared.
+    void applyProgress(newWatched).finally(() => {
+      window.setTimeout(() => setOptimisticWatched((cur) => (cur === newWatched ? null : cur)), 500);
+    });
+  };
+
+  // Files numbered past the matched episode count (e.g. a 25th file on a
+  // 24-episode series) are almost always misnamed, duplicates, or stray
+  // specials. Split them out so they don't masquerade as real episodes and
+  // are easy to spot and fix — but only when we actually know the expected
+  // count, and only for the main season so multi-season folders (whose
+  // episode numbers reset) aren't false-flagged.
+  const extraEpisodes = (!isMovie && totalEpisodes != null && totalEpisodes > 0)
+    ? sorted.filter((f) => (f.seasonNumber == null || f.seasonNumber <= 1) && f.episodeNumber > totalEpisodes)
+    : [];
+  const extraPaths = new Set(extraEpisodes.map((f) => f.filePath));
+  const regularEpisodes = extraEpisodes.length > 0
+    ? sorted.filter((f) => !extraPaths.has(f.filePath))
+    : sorted;
+
+  // Shared row renderer so the main list and the "Extra files" list stay in
+  // lockstep. `extra` adds the warning pill and suppresses the "Next up"
+  // marker (an out-of-range file is never the next episode to watch).
+  const renderEpisodeRow = (f: (typeof sorted)[number], opts?: { extra?: boolean }) => {
+    // A movie has no episodes — the file IS the movie. Render it as a single
+    // "Movie" row with no episode code, next-up, or extra flagging. Without
+    // this, a filename like "…Dai 63-kai…" parses to a bogus episode 63 and
+    // gets flagged as an extra file. No marker track/untrack cascade either —
+    // a movie's tracker progress isn't episode-indexed.
+    if (isMovie) {
+      const movieWatched = listStatus === "completed" || (watched != null && watched > 0);
+      const fraction = getProgressFraction(localProgress, item.id, f.episodeNumber);
+      const isTranscoded = transcodedByPath.has(f.filePath);
+      return (
+        <EpisodeRow
+          key={f.filePath}
+          marker={movieWatched ? <Check size={14} strokeWidth={2.5} /> : <Play size={14} />}
+          code="Movie"
+          title={sorted.length === 1 ? displayTitle : f.title}
+          trailing={
+            (isTranscoded || movieWatched) ? (
+              <>
+                {isTranscoded && (
+                  <Tooltip label="Source codec wasn't browser-playable — this episode plays from the on-disk h.264 transcode cache">
+                    <span>
+                      <Pill tone="amber">Re-encoded</Pill>
+                    </span>
+                  </Tooltip>
+                )}
+                {movieWatched && <Pill tone="muted">Watched</Pill>}
+              </>
+            ) : null
+          }
+          progress={fraction}
+          state={movieWatched ? "watched" : "default"}
+          onClick={() =>
+            navigate(`/player/${encodeURIComponent(item.id)}/${f.episodeNumber}`)
+          }
+        />
+      );
+    }
+    const isExtra = opts?.extra ?? false;
+    const isWatched = effTrackedKnown && f.episodeNumber <= effWatched;
+    const isNext = !isExtra && nextEpNumber != null && f.episodeNumber === nextEpNumber;
+    const code = formatEpisodeCode({
+      episodeNumber: f.episodeNumber,
+      seasonNumber: f.seasonNumber,
+    });
+    // Fraction in [0, 1] from localStorage — set by the player every 4s and
+    // on pause. Zero for episodes never started OR finished (entry deleted).
+    const fraction = getProgressFraction(localProgress, item.id, f.episodeNumber);
+    const isTranscoded = transcodedByPath.has(f.filePath);
+    const statusPill =
+      isNext ? <Pill tone="accent">Next up</Pill> :
+      isWatched ? <Pill tone="muted">Watched</Pill> :
+      null;
+    // Prefer the canonical API title over the noisy filename-derived one.
+    const episodeTitle = apiTitleByEp.get(f.episodeNumber) ?? f.title;
+    const ep = f.episodeNumber;
+    const inWave = wave != null && ep >= wave.lo && ep <= wave.hi;
+    const markerMode = inWave ? wave!.mode : undefined;
+    const markerPhase = inWave ? wave!.phase : undefined;
+    const markerCascadeDelayMs = inWave
+      ? Math.min(wave!.mode === "untrack" ? ep - wave!.anchor : wave!.anchor - ep, 12) * 45
+      : 0;
+    const trailing = (isExtra || isTranscoded || statusPill) ? (
+      <>
+        {isExtra && <Pill tone="amber">Extra</Pill>}
+        {isTranscoded && (
+          <Tooltip label="Source codec wasn't browser-playable — this episode plays from the on-disk h.264 transcode cache">
+            <span>
+              <Pill tone="amber">Re-encoded</Pill>
+            </span>
+          </Tooltip>
+        )}
+        {statusPill}
+      </>
+    ) : null;
+    return (
+      <EpisodeRow
+        key={f.filePath}
+        marker={isWatched ? <Check size={14} strokeWidth={2.5} /> : <Play size={14} />}
+        code={code}
+        title={episodeTitle}
+        trailing={trailing}
+        progress={fraction}
+        state={isNext ? "next-up" : isWatched ? "watched" : "default"}
+        onClick={() =>
+          navigate(`/player/${encodeURIComponent(item.id)}/${f.episodeNumber}`)
+        }
+        // Markers double as a track/untrack control. Watched: "untrack to here"
+        // (set progress to this ep − 1). Untracked: "track to here" (set to this
+        // ep). Hovering paints the cascade range.
+        markerTooltip={
+          hasTrackerId ? (isWatched ? "untrack to here" : "track to here") : undefined
+        }
+        markerMode={markerMode}
+        markerPhase={markerPhase}
+        markerCascadeDelayMs={markerCascadeDelayMs}
+        onMarkerClick={hasTrackerId ? () => onMarkerClick(ep, isWatched) : undefined}
+        onMarkerEnter={hasTrackerId ? () => onMarkerEnter(ep, isWatched) : undefined}
+        onMarkerZoneEnter={hasTrackerId ? onMarkerZoneEnter : undefined}
+        onMarkerLeave={hasTrackerId ? onMarkerLeave : undefined}
+      />
+    );
+  };
 
   return (
     <Page>
@@ -852,57 +1047,9 @@ function SeriesDetailPage() {
                     {trackedKnown ? "Tracked" : "Not tracked"}
                   </span>
                   <span className="series-hero-progress-count">
-                    {trackedKnown && hasTrackerId ? (
-                      <span className="hero-progress-edit-anchor">
-                        <Tooltip label="Click to correct the tracked count">
-                          <button
-                            type="button"
-                            className="series-hero-progress-count-btn"
-                            onClick={() => {
-                              setProgressDraft(watchedCount);
-                              setProgressError(null);
-                              setProgressEditing((v) => !v);
-                            }}
-                          >
-                            {`${String(watchedCount).padStart(String(denom || 1).length, "0")} / ${denom > 0 ? denom : "?"}${denomIsAiringEstimate ? "+" : ""}`}
-                          </button>
-                        </Tooltip>
-                        {progressEditing && (
-                          <div className="hero-progress-popover" role="dialog">
-                            <div className="hero-progress-stepper">
-                              <button
-                                type="button"
-                                className="hero-progress-step"
-                                onClick={() => setProgressDraft((v) => Math.max(0, v - 1))}
-                                disabled={progressBusy || progressDraft <= 0}
-                                aria-label="Decrease watched count"
-                              >−</button>
-                              <span className="hero-progress-value">{progressDraft}</span>
-                              <button
-                                type="button"
-                                className="hero-progress-step"
-                                onClick={() => setProgressDraft((v) => (denom > 0 ? Math.min(denom, v + 1) : v + 1))}
-                                disabled={progressBusy || (denom > 0 && progressDraft >= denom)}
-                                aria-label="Increase watched count"
-                              >+</button>
-                            </div>
-                            <button
-                              type="button"
-                              className="hero-progress-submit"
-                              onClick={() => void submitSeriesProgress(progressDraft)}
-                              disabled={progressBusy || progressDraft === watchedCount}
-                            >
-                              {progressBusy ? "Saving…" : "Save"}
-                            </button>
-                            {progressError && <span className="hero-progress-error">{progressError}</span>}
-                          </div>
-                        )}
-                      </span>
-                    ) : (
-                      trackedKnown
-                        ? `${String(watchedCount).padStart(String(denom || 1).length, "0")} / ${denom > 0 ? denom : "?"}${denomIsAiringEstimate ? "+" : ""}`
-                        : `${sorted.length} on disk`
-                    )}
+                    {trackedKnown
+                      ? `${String(watchedCount).padStart(String(denom || 1).length, "0")} / ${denom > 0 ? denom : "?"}${denomIsAiringEstimate ? "+" : ""}`
+                      : `${sorted.length} on disk`}
                   </span>
                 </div>
                 <div className="series-hero-progress-track" aria-hidden="true">
@@ -951,59 +1098,32 @@ function SeriesDetailPage() {
         </div>
       </section>
 
-      <Section first title="Episodes" count={sorted.length}>
+      <Section
+        first
+        title={isMovie ? "Movie" : "Episodes"}
+        count={isMovie ? (sorted.length > 1 ? sorted.length : undefined) : regularEpisodes.length}
+      >
         <div className="episode-list">
-          {sorted.map((f) => {
-            const isWatched = trackedKnown && f.episodeNumber <= watchedCount;
-            const isNext = nextEpNumber != null && f.episodeNumber === nextEpNumber;
-            const code = formatEpisodeCode({
-              episodeNumber: f.episodeNumber,
-              seasonNumber: f.seasonNumber,
-            });
-            // Fraction in [0, 1] from localStorage — set by the player every
-            // 4s and on pause. Zero for episodes that were never started OR
-            // that finished (entry is deleted on completion).
-            const fraction = getProgressFraction(localProgress, item.id, f.episodeNumber);
-            const isTranscoded = transcodedByPath.has(f.filePath);
-            const statusPill =
-              isNext ? <Pill tone="accent">Next up</Pill> :
-              isWatched ? <Pill tone="muted">Watched</Pill> :
-              null;
-            // Prefer the API title (canonical name from MAL/AniList) over the
-            // filename-derived one. Filenames are noisy; the API title is the
-            // user-facing canonical name. Fall back to the file's parsed title
-            // when no API title is on hand (legacy data, untitled fillers).
-            const episodeTitle = apiTitleByEp.get(f.episodeNumber) ?? f.title;
-            return (
-              <EpisodeRow
-                key={f.filePath}
-                marker={isWatched ? <Check size={14} strokeWidth={2.5} /> : <Play size={14} />}
-                code={code}
-                title={episodeTitle}
-                trailing={
-                  isTranscoded || statusPill ? (
-                    <>
-                      {isTranscoded && (
-                        <Tooltip label="Source codec wasn't browser-playable — this episode plays from the on-disk h.264 transcode cache">
-                          <span>
-                            <Pill tone="amber">Re-encoded</Pill>
-                          </span>
-                        </Tooltip>
-                      )}
-                      {statusPill}
-                    </>
-                  ) : null
-                }
-                progress={fraction}
-                state={isNext ? "next-up" : isWatched ? "watched" : "default"}
-                onClick={() =>
-                  navigate(`/player/${encodeURIComponent(item.id)}/${f.episodeNumber}`)
-                }
-              />
-            );
-          })}
+          {regularEpisodes.map((f) => renderEpisodeRow(f))}
         </div>
       </Section>
+
+      {extraEpisodes.length > 0 && (
+        <Section title="Extra files" count={extraEpisodes.length}>
+          <div className="extra-episodes-note" role="note">
+            <AlertTriangle size={16} aria-hidden="true" />
+            <span>
+              {extraEpisodes.length === 1 ? "1 file goes" : `${extraEpisodes.length} files go`}{" "}
+              beyond the expected {totalEpisodes} episode{totalEpisodes === 1 ? "" : "s"} for this
+              title — likely misnamed, duplicates, or specials. Review them and rename or remove
+              what doesn't belong.
+            </span>
+          </div>
+          <div className="episode-list">
+            {extraEpisodes.map((f) => renderEpisodeRow(f, { extra: true }))}
+          </div>
+        </Section>
+      )}
 
       {characters.length > 0 && (
         <Section title="Characters" count={characters.length}>
@@ -1123,6 +1243,7 @@ function SeriesDetailPage() {
                   const handleClick = () => {
                     if (ownedId) navigate(`/series/${encodeURIComponent(ownedId)}`);
                   };
+                  const mark = listStatusMarker({ anilistId: rel.anilistId, malId: rel.malId });
                   return (
                     <Card
                       key={`${rel.type ?? "x"}-${rel.anilistId}-${rel.relationType}`}
@@ -1155,6 +1276,7 @@ function SeriesDetailPage() {
                           {rel.seasonYear && <span>{rel.seasonYear}</span>}
                         </div>
                       </div>
+                      {mark}
                     </Card>
                   );
                 })}
@@ -1185,6 +1307,7 @@ function SeriesDetailPage() {
                         : `https://anilist.co/anime/${rel.anilistId}`);
                     if (url) void window.electronAPI.openExternal(url);
                   };
+                  const mark = listStatusMarker({ anilistId: rel.anilistId, malId: rel.malId });
                   return (
                     <Card
                       key={`${rel.type ?? "x"}-${rel.anilistId}-${rel.relationType}`}
@@ -1220,6 +1343,7 @@ function SeriesDetailPage() {
                           {rel.seasonYear && <span>{rel.seasonYear}</span>}
                         </div>
                       </div>
+                      {mark}
                     </Card>
                   );
                 })}
@@ -1231,7 +1355,7 @@ function SeriesDetailPage() {
 
       {recommendations.length > 0 && (
         <Section title="Recommendations" count={recommendations.length}>
-          <div className="relations-grid">
+          <div className="relations-grid relations-grid--single-row">
             {recommendations.map((r) => {
               const recTitle = pickTitle({
                 titleRomaji: r.titleRomaji,
@@ -1257,6 +1381,7 @@ function SeriesDetailPage() {
                     : `https://anilist.co/anime/${r.anilistId}`);
                 if (url) void window.electronAPI.openExternal(url);
               };
+              const mark = listStatusMarker({ anilistId: r.anilistId, malId: r.malId });
               return (
                 <Card
                   key={`rec-${r.anilistId}`}
@@ -1296,6 +1421,7 @@ function SeriesDetailPage() {
                       {r.seasonYear && <span>{r.seasonYear}</span>}
                     </div>
                   </div>
+                  {mark}
                 </Card>
               );
             })}

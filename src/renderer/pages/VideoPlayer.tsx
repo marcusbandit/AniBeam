@@ -1686,41 +1686,45 @@ function VideoPlayer() {
           </div>
         </div>
       )}
-      {(inOpWindow || inEdWindow) && (
-        <button
-          className="player-skip"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (inOpWindow && skipTimes.op) skipForward(skipTimes.op.end);
-            else if (inEdWindow && skipTimes.ed) skipForward(skipTimes.ed.end);
-          }}
-        >
-          {inOpWindow ? 'Skip Intro' : 'Skip Outro'}
-        </button>
-      )}
-      {nextVisible && nextEp != null && (
-        <div className="player-autonext">
-          <button
-            className="player-autonext-stay"
-            onClick={(e) => {
-              e.stopPropagation();
-              setNextDismissed(true);
-              setNextVisible(false);
-              setNextCounting(false);
-            }}
-          >
-            Stay
-          </button>
-          <button
-            className={`player-autonext-next${nextCounting ? ' counting' : ''}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              goToEpisode(nextEp);
-            }}
-          >
-            <span className="player-autonext-fill" />
-            <span className="player-autonext-label">Next</span>
-          </button>
+      {((inOpWindow || inEdWindow) || (nextVisible && nextEp != null)) && (
+        <div className="player-bottom-actions">
+          {(inOpWindow || inEdWindow) && (
+            <button
+              className="player-skip"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (inOpWindow && skipTimes.op) skipForward(skipTimes.op.end);
+                else if (inEdWindow && skipTimes.ed) skipForward(skipTimes.ed.end);
+              }}
+            >
+              {inOpWindow ? 'Skip Intro' : 'Skip Outro'}
+            </button>
+          )}
+          {nextVisible && nextEp != null && (
+            <div className="player-autonext">
+              <button
+                className="player-autonext-stay"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setNextDismissed(true);
+                  setNextVisible(false);
+                  setNextCounting(false);
+                }}
+              >
+                Stay
+              </button>
+              <button
+                className={`player-autonext-next${nextCounting ? ' counting' : ''}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  goToEpisode(nextEp);
+                }}
+              >
+                <span className="player-autonext-fill" />
+                <span className="player-autonext-label">Next</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
       {videoEnded && !nextCounting && (
