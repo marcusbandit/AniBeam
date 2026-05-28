@@ -13,6 +13,7 @@
     "verify:motion": "bun --bun scripts/verify-motion.mjs",
     "verify:probe": "bun --bun scripts/verify-probe-parser.mjs",
     "verify:folder": "bun --bun scripts/verify-folder-wrapper.mjs",
+    "verify:franchise-graph": "bun --bun scripts/verify-franchise-graph.mjs",
     "preview": "vite preview",
     "start": "bun run typecheck && electron-forge start",
     "package": "bun run typecheck && electron-forge package",
