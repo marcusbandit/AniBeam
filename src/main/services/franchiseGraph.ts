@@ -170,11 +170,13 @@ export async function getFranchiseGraph(anilistId: number): Promise<FranchiseGra
   let relationCacheDirty = false;
   const now = Date.now();
 
-  // Seed the relation cache from owned metadata so those are never fetched from AniList.
-  for (const [id, rels] of seedRelations) {
-    const key = String(id);
-    if (!relationCache.byId[key]) {
-      relationCache.byId[key] = { relations: rels, fetchedAt: now };
+  // Auto-invalidate stale bootstrap entries: any entry whose relations predate
+  // the startYear field (the property is entirely absent, not just null) must be
+  // re-fetched so we never serve dateless data from a stale cached entry.
+  for (const [key, entry] of Object.entries(relationCache.byId)) {
+    const sample = entry.relations.find((r) => r != null);
+    if (sample && !('startYear' in sample)) {
+      delete relationCache.byId[key];
       relationCacheDirty = true;
     }
   }

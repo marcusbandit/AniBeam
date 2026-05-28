@@ -309,6 +309,9 @@ function FranchiseFlowNode({ data }: NodeProps<RFNode<FranchiseNodeFlowData>>) {
           )}
         </div>
         <div className="relation-card-title">{title}</div>
+        {node.status === 'NOT_YET_RELEASED' && (
+          <span className="franchise-node__status-tag">Not yet released</span>
+        )}
         <div className="relation-card-meta">
           {node.format && (
             <span className="relation-card-format" data-format={node.format}>{node.format}</span>
