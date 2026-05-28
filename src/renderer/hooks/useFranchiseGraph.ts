@@ -1,0 +1,91 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { SeriesMetadata } from './useMetadata';
+import {
+  closeGraph,
+  type FranchiseGraph,
+  type FranchiseNode,
+  type RawRelation,
+} from '../../shared/franchise';
+
+/** Build seedNodes + seedRelations from the in-memory owned-metadata map. */
+function buildLocalSeed(allMeta: Record<string, SeriesMetadata>): {
+  seedNodes: FranchiseNode[];
+  seedRelations: Map<number, RawRelation[]>;
+} {
+  const seedNodes: FranchiseNode[] = [];
+  const seedRelations = new Map<number, RawRelation[]>();
+  for (const s of Object.values(allMeta)) {
+    if (typeof s.anilistId !== 'number') continue;
+    seedNodes.push({
+      anilistId: s.anilistId,
+      malId: s.malId ?? null,
+      type: 'ANIME',
+      format: s.format ?? null,
+      status: s.status ?? null,
+      seasonYear: s.seasonYear ?? null,
+      siteUrl: null,
+      titleRomaji: s.titleRomaji ?? null,
+      titleEnglish: s.titleEnglish ?? null,
+      poster: s.posterLocal ?? s.poster ?? null,
+    });
+    if (Array.isArray(s.relations)) {
+      seedRelations.set(s.anilistId, s.relations as unknown as RawRelation[]);
+    }
+  }
+  return { seedNodes, seedRelations };
+}
+
+export interface UseFranchiseGraph {
+  graph: FranchiseGraph | null;
+  /** True while the background AniList fill is in flight. */
+  filling: boolean;
+}
+
+/**
+ * Hybrid franchise-graph consumer. Synchronously builds a local graph from the
+ * owned-metadata map for instant render, then requests the closed+cached graph
+ * from the main process and swaps it in when it arrives.
+ */
+export function useFranchiseGraph(
+  currentAnilistId: number | null | undefined,
+  allMeta: Record<string, SeriesMetadata>,
+): UseFranchiseGraph {
+  const [filled, setFilled] = useState<FranchiseGraph | null>(null);
+  const [filling, setFilling] = useState(false);
+  const [localGraph, setLocalGraph] = useState<FranchiseGraph | null>(null);
+  const reqIdRef = useRef(0);
+
+  // Local seed — recomputed when the current series or metadata changes.
+  useEffect(() => {
+    let cancelled = false;
+    if (currentAnilistId == null) { setLocalGraph(null); return; }
+    const { seedNodes, seedRelations } = buildLocalSeed(allMeta);
+    if (!seedNodes.some((n) => n.anilistId === currentAnilistId)) {
+      seedNodes.push({
+        anilistId: currentAnilistId, malId: null, type: 'ANIME', format: null,
+        status: null, seasonYear: null, siteUrl: null, titleRomaji: null,
+        titleEnglish: null, poster: null,
+      });
+    }
+    void closeGraph({ seedNodes, seedRelations }).then((g) => {
+      if (!cancelled) setLocalGraph(g);
+    });
+    return () => { cancelled = true; };
+  }, [currentAnilistId, allMeta]);
+
+  // Background fill from AniList (cached in main).
+  useEffect(() => {
+    setFilled(null);
+    if (currentAnilistId == null) return;
+    const myReq = ++reqIdRef.current;
+    setFilling(true);
+    void window.electronAPI
+      .getFranchiseGraph(currentAnilistId)
+      .then((g) => { if (reqIdRef.current === myReq) setFilled(g); })
+      .finally(() => { if (reqIdRef.current === myReq) setFilling(false); });
+  }, [currentAnilistId]);
+
+  // Prefer the filled graph once present; fall back to the local seed.
+  const graph = useMemo(() => filled ?? localGraph, [filled, localGraph]);
+  return { graph, filling };
+}
