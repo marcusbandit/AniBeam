@@ -273,7 +273,7 @@ export function layoutFranchise(graph: FranchiseGraph, currentId: number): Map<n
   const sourceSpineList = topoSortSpine(sourceSpineSet, edges, nodeById);
 
   // ── Step C: position source spine above anime spine, aligned by adaptation ──
-  const SOURCE_Y = -V_GAP;
+  const SOURCE_Y = -2 * V_GAP;
   const sourcePositioned = new Set<number>();
 
   // First pass: source nodes with a direct anime counterpart get x = anime.x
@@ -343,33 +343,61 @@ export function layoutFranchise(graph: FranchiseGraph, currentId: number): Map<n
     }
   }
 
-  // Second pass: source nodes WITHOUT a direct adaptation get interpolated x
-  // from their nearest topo-positioned neighbors in sourceSpineList.
-  for (let i = 0; i < sourceSpineList.length; i++) {
+  // Second pass: source nodes WITHOUT direct adaptations get spread evenly
+  // between their nearest topo-positioned bookends.
+  let i = 0;
+  while (i < sourceSpineList.length) {
     const node = sourceSpineList[i];
-    if (sourcePositioned.has(node.anilistId)) continue;
+    if (sourcePositioned.has(node.anilistId)) { i++; continue; }
 
-    // Find nearest positioned neighbor before and after in topo order.
+    // Find the run of consecutive unmatched nodes starting at i.
+    let runEnd = i;
+    while (runEnd + 1 < sourceSpineList.length && !sourcePositioned.has(sourceSpineList[runEnd + 1].anilistId)) {
+      runEnd++;
+    }
+    const runLen = runEnd - i + 1;
+
+    // Find the nearest anchored bookend on each side of the run.
     let prevX: number | null = null;
     for (let j = i - 1; j >= 0; j--) {
-      const p = positions.get(sourceSpineList[j].anilistId);
-      if (p && sourcePositioned.has(sourceSpineList[j].anilistId)) { prevX = p.x; break; }
+      const id = sourceSpineList[j].anilistId;
+      if (sourcePositioned.has(id)) { prevX = positions.get(id)!.x; break; }
     }
     let nextX: number | null = null;
-    for (let j = i + 1; j < sourceSpineList.length; j++) {
-      const p = positions.get(sourceSpineList[j].anilistId);
-      if (p && sourcePositioned.has(sourceSpineList[j].anilistId)) { nextX = p.x; break; }
+    for (let j = runEnd + 1; j < sourceSpineList.length; j++) {
+      const id = sourceSpineList[j].anilistId;
+      if (sourcePositioned.has(id)) { nextX = positions.get(id)!.x; break; }
     }
-    let xPos: number;
-    if (prevX != null && nextX != null) xPos = (prevX + nextX) / 2;
-    else if (prevX != null) xPos = prevX + SPINE_X_MIN;
-    else if (nextX != null) xPos = nextX - SPINE_X_MIN;
-    else {
-      // No anchored siblings — lay out sequentially based on topo index.
-      xPos = i * SPINE_X_MIN;
+
+    // Compute the x for each member of the run.
+    let startX: number;
+    let step: number;
+    if (prevX != null && nextX != null) {
+      // Spread runLen nodes evenly in the open gap between prevX and nextX.
+      step = (nextX - prevX) / (runLen + 1);
+      startX = prevX + step;
+    } else if (prevX != null) {
+      // Run is at the right end: extend rightward with SPINE_X_MIN spacing.
+      step = SPINE_X_MIN;
+      startX = prevX + step;
+    } else if (nextX != null) {
+      // Run is at the left end: extend leftward.
+      step = SPINE_X_MIN;
+      startX = nextX - step * runLen;
+    } else {
+      // No anchored siblings at all (source spine has no direct adaptations).
+      // Fall back to a sequential layout.
+      step = SPINE_X_MIN;
+      startX = 0;
     }
-    positions.set(node.anilistId, { x: xPos, y: SOURCE_Y });
-    sourcePositioned.add(node.anilistId);
+
+    for (let k = 0; k < runLen; k++) {
+      const id = sourceSpineList[i + k].anilistId;
+      positions.set(id, { x: startX + k * step, y: SOURCE_Y });
+      sourcePositioned.add(id);
+    }
+
+    i = runEnd + 1;
   }
 
   // 7. Place each spine node's top and bottom subtrees.
