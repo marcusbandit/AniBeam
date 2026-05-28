@@ -291,38 +291,38 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
 
   return (
     <div className={`franchise-graph${isFullscreen ? ' franchise-graph--fullscreen' : ''}`}>
-      <FranchiseFilters hidden={hiddenCategories} onToggle={onToggleCategory} />
-      <div className="franchise-graph__canvas">
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={nodeTypes}
-          onNodeClick={handleNodeClick as Parameters<typeof ReactFlow>[0]['onNodeClick']}
-          fitView
-          fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
-          minZoom={0.05}
-          maxZoom={2.5}
-          proOptions={{ hideAttribution: true }}
-          nodesDraggable={false}
-          nodesConnectable={false}
-          elementsSelectable={false}
-          panOnDrag
-          zoomOnScroll
-          zoomOnPinch
-        >
-          <Background />
-          <Panel position="bottom-left" className="franchise-controls">
-            <button type="button" onClick={handleZoomIn}  aria-label="Zoom in"  title="Zoom in"><ZoomIn size={14} /></button>
-            <button type="button" onClick={handleZoomOut} aria-label="Zoom out" title="Zoom out"><ZoomOut size={14} /></button>
-            <button type="button" onClick={handleFitView} aria-label="Fit view" title="Fit view"><Maximize2 size={14} /></button>
-          </Panel>
-          <Panel position="top-right" className="franchise-fullscreen-toggle">
-            <button type="button" onClick={() => setIsFullscreen((v) => !v)} aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}>
-              {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
-            </button>
-          </Panel>
-        </ReactFlow>
-      </div>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        onNodeClick={handleNodeClick as Parameters<typeof ReactFlow>[0]['onNodeClick']}
+        fitView
+        fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
+        minZoom={0.05}
+        maxZoom={2.5}
+        proOptions={{ hideAttribution: true }}
+        nodesDraggable={false}
+        nodesConnectable={false}
+        elementsSelectable={false}
+        panOnDrag
+        zoomOnScroll
+        zoomOnPinch
+      >
+        <Background />
+        <Panel position="top-center" className="franchise-filters-panel">
+          <FranchiseFilters hidden={hiddenCategories} onToggle={onToggleCategory} />
+        </Panel>
+        <Panel position="bottom-left" className="franchise-controls">
+          <button type="button" onClick={handleZoomIn}  aria-label="Zoom in"  title="Zoom in"><ZoomIn size={14} /></button>
+          <button type="button" onClick={handleZoomOut} aria-label="Zoom out" title="Zoom out"><ZoomOut size={14} /></button>
+          <button type="button" onClick={handleFitView} aria-label="Fit view" title="Fit view"><Maximize2 size={14} /></button>
+        </Panel>
+        <Panel position="top-right" className="franchise-fullscreen-toggle">
+          <button type="button" onClick={() => setIsFullscreen((v) => !v)} aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}>
+            {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
+          </button>
+        </Panel>
+      </ReactFlow>
     </div>
   );
 }
