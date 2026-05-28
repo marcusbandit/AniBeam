@@ -18,10 +18,10 @@ import {
 } from '@xyflow/react';
 import { Tv, Film, ZoomIn, ZoomOut, Maximize2, Maximize, Minimize, Library } from 'lucide-react';
 
-import type { FranchiseGraph, FranchiseNode as FranchiseNodeData } from '../../../shared/franchise';
+import type { FranchiseEdge, FranchiseGraph, FranchiseNode as FranchiseNodeData } from '../../../shared/franchise';
 import { relationLabel } from './laneAssignment';
 import { categoryFor, formatFor, type FranchiseCategory, type FranchiseFormat, FranchiseFilters } from './FranchiseFilters';
-import { layoutFranchise, pickHandles, dedupeReciprocalEdges } from './franchiseLayout';
+import { layoutFranchise, pickHandles, dedupeReciprocalEdges, spineOrderMap, relationLabelRelativeTo } from './franchiseLayout';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -79,11 +79,11 @@ function layoutGraph(
   currentId: number,
   hiddenCategories: ReadonlySet<FranchiseCategory>,
   hiddenFormats: ReadonlySet<FranchiseFormat>,
-): { nodes: RFNode<FranchiseNodeFlowData>[]; edges: RFEdge[] } {
+): { nodes: RFNode<FranchiseNodeFlowData>[]; edges: RFEdge[]; visibleEdges: FranchiseEdge[] } {
   // Dedupe reciprocal edges (SOURCE↔ADAPTATION, PARENT↔SIDE_STORY, PREQUEL↔SEQUEL)
   const dedupedEdges = dedupeReciprocalEdges(graph.edges);
 
-  // Build incoming-relation map to get the label per node
+  // Build incoming-relation map for the tree-parent fallback label
   const incoming = new Map<number, string>();
   for (const e of dedupedEdges) {
     if (!incoming.has(e.to)) incoming.set(e.to, e.relationType);
@@ -121,13 +121,27 @@ function layoutGraph(
   const filteredGraph: FranchiseGraph = { ...graph, nodes: visibleNodes, edges: visibleEdges };
   const positions = layoutFranchise(filteredGraph, currentId);
 
+  // Compute spine order for reference-relative labeling
+  const { spineSet, order: spineOrder } = spineOrderMap(
+    { ...graph, nodes: visibleNodes, edges: visibleEdges },
+    currentId,
+  );
+
   const rfNodes: RFNode<FranchiseNodeFlowData>[] = visibleNodes
     .filter((node) => positions.has(node.anilistId))
     .map((node) => {
     const isCurrent = node.anilistId === currentId;
-    const rt = incoming.get(node.anilistId);
-    const relLabel = isCurrent ? 'Currently viewing' : (rt ? relationLabel(rt) : null);
     const p = positions.get(node.anilistId) ?? { x: 0, y: 0 };
+
+    // Reference-relative label (spine topology + direct edge), falling back to
+    // tree-parent BFS label for multi-hop nodes.
+    const relativeLabel = isCurrent
+      ? null
+      : relationLabelRelativeTo(currentId, node.anilistId, spineSet, spineOrder, visibleEdges);
+    const fallbackLabel = incoming.get(node.anilistId);
+    const relLabel = isCurrent
+      ? 'Currently viewing'
+      : (relativeLabel ?? (fallbackLabel ? relationLabel(fallbackLabel) : null));
 
     return {
       id: String(node.anilistId),
@@ -176,7 +190,7 @@ function layoutGraph(
       };
     });
 
-  return { nodes: rfNodes, edges: rfEdges };
+  return { nodes: rfNodes, edges: rfEdges, visibleEdges };
 }
 
 // ─── Custom node component ────────────────────────────────────────────────────
@@ -311,8 +325,14 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
   }, [isFullscreen]);
 
   // Heavy memo: layout + enrichment. Does NOT depend on hoveredId.
-  const { baseRfNodes, baseRfEdges } = useMemo(() => {
+  const { baseRfNodes, baseRfEdges, visibleEdges, spineSet, spineOrder } = useMemo(() => {
     const layout = layoutGraph(graph, currentAnilistId, hiddenCategories, hiddenFormats);
+
+    // Compute spine order for the hover-relabeling memo (same visible graph).
+    const { spineSet: sSet, order: sOrder } = spineOrderMap(
+      { ...graph, nodes: layout.nodes.map((n) => n.data.node), edges: layout.visibleEdges },
+      currentAnilistId,
+    );
 
     // Enrich node data with display fields
     const enrichedNodes = layout.nodes.map((rfNode) => {
@@ -332,8 +352,32 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
       };
     });
 
-    return { baseRfNodes: enrichedNodes, baseRfEdges: layout.edges };
+    return {
+      baseRfNodes: enrichedNodes,
+      baseRfEdges: layout.edges,
+      visibleEdges: layout.visibleEdges,
+      spineSet: sSet,
+      spineOrder: sOrder,
+    };
   }, [graph, currentAnilistId, hiddenCategories, hiddenFormats, resolveOwnedId, pickTitle, onOpenInApp, onOpenExternal, statusMarkerFor, anilistIcon]);
+
+  // Light memo: overlay hover-based labels for direct neighbors of the hovered node.
+  const labeledRfNodes = useMemo(() => {
+    if (hoveredId == null) return baseRfNodes;
+    const neighbors = new Set<number>();
+    for (const e of visibleEdges) {
+      if (e.from === hoveredId) neighbors.add(e.to);
+      if (e.to === hoveredId) neighbors.add(e.from);
+    }
+    if (neighbors.size === 0) return baseRfNodes;
+    return baseRfNodes.map((n) => {
+      const id = Number(n.id);
+      if (!neighbors.has(id)) return n;
+      const newLabel = relationLabelRelativeTo(hoveredId, id, spineSet, spineOrder, visibleEdges);
+      if (newLabel == null || newLabel === n.data.relLabel) return n;
+      return { ...n, data: { ...n.data, relLabel: newLabel } };
+    });
+  }, [baseRfNodes, hoveredId, visibleEdges, spineSet, spineOrder]);
 
   // Light memo: compute the neighbor highlight set from hovered node + base edges.
   const highlightSet = useMemo<Set<number> | null>(() => {
@@ -351,15 +395,15 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
   // Light memo: apply dim flag to nodes without touching layout.
   const nodes = useMemo(() => {
     if (highlightSet == null) {
-      return baseRfNodes.map((n) => (n.data.dimmed ? { ...n, data: { ...n.data, dimmed: false } } : n));
+      return labeledRfNodes.map((n) => (n.data.dimmed ? { ...n, data: { ...n.data, dimmed: false } } : n));
     }
-    return baseRfNodes.map((n) => {
+    return labeledRfNodes.map((n) => {
       const id = Number(n.id);
       const dimmed = !highlightSet.has(id);
       if (n.data.dimmed === dimmed) return n;
       return { ...n, data: { ...n.data, dimmed } };
     });
-  }, [baseRfNodes, highlightSet]);
+  }, [labeledRfNodes, highlightSet]);
 
   // Light memo: apply dimmed class to edges without touching layout.
   const edges = useMemo(() => {

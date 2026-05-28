@@ -1,5 +1,5 @@
 import type { FranchiseEdge, FranchiseGraph, FranchiseNode } from '../../../shared/franchise';
-import { relationLane } from './laneAssignment';
+import { relationLane, relationLabel } from './laneAssignment';
 
 // ── Visual layout constants ─────────────────────────────────────────────────
 const NODE_W = 180;   // tile width
@@ -315,4 +315,68 @@ export function pickHandles(
   return dx >= 0
     ? { sourceHandle: 'right-s', targetHandle: 'left-t'  }
     : { sourceHandle: 'left-s',  targetHandle: 'right-t' };
+}
+
+/** anilistId → 0-based index along the topo-sorted spine. */
+export function spineOrderMap(
+  graph: FranchiseGraph,
+  currentId: number,
+): { spineSet: Set<number>; order: Map<number, number> } {
+  const edges = dedupeReciprocalEdges(graph.edges);
+  const adj = buildAdjacency(edges);
+  const nodeById = new Map(graph.nodes.map((n) => [n.anilistId, n]));
+  const spineSet = findSpine(currentId, adj);
+  const spineList = topoSortSpine(spineSet, edges, nodeById);
+  const order = new Map<number, number>();
+  spineList.forEach((n, i) => order.set(n.anilistId, i));
+  return { spineSet, order };
+}
+
+const REVERSE_RELATION: Record<string, string> = {
+  SOURCE:     'ADAPTATION',
+  ADAPTATION: 'SOURCE',
+  PARENT:     'SIDE_STORY',
+  SIDE_STORY: 'PARENT',
+  PREQUEL:    'SEQUEL',
+  SEQUEL:     'PREQUEL',
+};
+
+/**
+ * Compute the relation label for `nodeId` relative to `refId`.
+ * Returns null when no direct edge or spine ordering applies — caller should
+ * fall back to its own tree-derived label. The caller is also responsible for
+ * the "Currently viewing" line on the reference node itself; we return null
+ * for `nodeId === refId`.
+ */
+export function relationLabelRelativeTo(
+  refId: number,
+  nodeId: number,
+  spineSet: Set<number>,
+  spineOrder: Map<number, number>,
+  edges: ReadonlyArray<FranchiseEdge>,
+): string | null {
+  if (nodeId === refId) return null;
+
+  // Spine vs spine: position-based prequel/sequel
+  if (spineSet.has(refId) && spineSet.has(nodeId)) {
+    const ro = spineOrder.get(refId);
+    const no = spineOrder.get(nodeId);
+    if (ro != null && no != null) {
+      if (no < ro) return 'Prequel';
+      if (no > ro) return 'Sequel';
+    }
+  }
+
+  // Direct edge ref → node
+  for (const e of edges) {
+    if (e.from === refId && e.to === nodeId) return relationLabel(e.relationType);
+  }
+  // Reverse edge node → ref: relabel from ref's perspective
+  for (const e of edges) {
+    if (e.from === nodeId && e.to === refId) {
+      const rev = REVERSE_RELATION[e.relationType] ?? e.relationType;
+      return relationLabel(rev);
+    }
+  }
+  return null;
 }
