@@ -4,6 +4,7 @@
 // process consistently read back. Keep this in sync with what the scanner
 // writes in folderHandler / main.ts ingest.
 import type { FileStatus } from './fileStatus';
+import type { EpisodeKind } from './episodeClassifier';
 
 export interface FileEpisodeEntry {
   filePath: string;
@@ -16,6 +17,13 @@ export interface FileEpisodeEntry {
   title?: string;
   subtitlePath?: string | null;
   subtitlePaths?: string[];
+  // Classifier output. Optional because pre-classifier entries in metadata.json
+  // won't have it; consumers MUST treat a missing `kind` as 'episode' for
+  // backward compatibility with existing user data on disk.
+  kind?: EpisodeKind;
+  extraIndex?: number | null;
+  extraVariant?: string | null;
+  rawLabel?: string | null;
 }
 
 // Scan every series in metadata for a fileEpisodes entry whose `filePath`

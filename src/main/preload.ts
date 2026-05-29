@@ -35,6 +35,24 @@ export interface LibraryFile {
   subtitlePaths: string[];
   /** Filesystem mtime in ms since epoch. */
   mtime: number;
+  /**
+   * Discriminator for what this file actually is. `episode` is a real numbered
+   * episode; the other values are bonus content extracted from release-group
+   * naming. Renderer code that displays the canonical episode list MUST filter
+   * on `kind === 'episode'` — non-episode kinds also carry an `episodeNumber`
+   * (set to their extras index for sorting within a group) and would otherwise
+   * collide on whatever digit their label happened to end with.
+   *
+   * Optional only for backward compatibility with library entries persisted
+   * before the classifier landed; treat a missing `kind` as 'episode'.
+   */
+  kind?: 'episode' | 'op' | 'ed' | 'pv' | 'sp' | 'other';
+  /** Numeric index lifted from the extras token (ED1 → 1, OP4a → 4). Null for episodes. */
+  extraIndex?: number | null;
+  /** Letter suffix on the extras token (OP4a → "a", OP3 → null). */
+  extraVariant?: string | null;
+  /** The matched extras token verbatim ("OP4a", "ED1", "PV12"). Null for episodes. */
+  rawLabel?: string | null;
 }
 
 export interface LibraryEpisodeAirDate {

@@ -5,6 +5,7 @@ import { logger } from '../services/logger';
 import imageCacheHandler from './imageCacheHandler';
 import thumbnailHandler from './thumbnailHandler';
 import type { FileStatus } from '../../shared/fileStatus';
+import { classifyFile, type EpisodeKind } from '../../shared/episodeClassifier';
 
 const VIDEO_EXTENSIONS = ['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.ts'];
 const SUBTITLE_EXTENSIONS = ['.srt', '.vtt', '.ass', '.ssa'];
@@ -23,6 +24,14 @@ export interface VideoFile {
   // Filesystem mtime in ms since epoch. Used by the feed as a fallback
   // "downloaded X ago" when API air dates aren't available.
   mtime: number;
+  // Classifier output. Distinguishes real episodes from OP/ED/PV/SP/extras.
+  // Consumers that count or list "real" episodes must filter on
+  // kind === 'episode' (not just episodeNumber, which holds the extras index
+  // for non-episode kinds so within-kind sorting works).
+  kind: EpisodeKind;
+  extraIndex: number | null;
+  extraVariant: string | null;
+  rawLabel: string | null;
 }
 
 export interface ScannedMedia {
@@ -67,72 +76,10 @@ function cleanEpisodeTitle(filename: string): string {
   return stripFilename(filename).replace(/\s*[-_]\s*$/g, '').trim();
 }
 
-function extractSeasonAndEpisode(filename: string): { season: number | null; episode: number } {
-  // Brackets are stripped FIRST by stripFilename — patterns never see hash
-  // contents like [F1E24928] that would falsely match /E(\d{2,})/.
-  const baseName = stripFilename(filename);
-
-  // Episode 0 == Special. Force season to 0 (Plex/Jellyfin "Specials" season
-  // convention) regardless of any S0NE00 hint in the filename, so downstream
-  // sort/display can distinguish specials from real episodes uniformly.
-  const finalize = (season: number | null, episode: number): { season: number | null; episode: number } => {
-    if (episode === 0) return { season: 0, episode: 0 };
-    return { season, episode };
-  };
-
-  // First, try to extract season and episode from S01E01 format
-  const seasonEpisodeMatch = baseName.match(/\bS(\d+)E(\d+)\b/i);
-  if (seasonEpisodeMatch) {
-    return finalize(
-      parseInt(seasonEpisodeMatch[1], 10),
-      parseInt(seasonEpisodeMatch[2], 10),
-    );
-  }
-
-  // Try various patterns to extract episode number
-  const decimalEpisodeMatch = baseName.match(/Episode\s*(\d+)\.(\d+)/i);
-  if (decimalEpisodeMatch) {
-    const whole = parseInt(decimalEpisodeMatch[1], 10);
-    const decimal = parseInt(decimalEpisodeMatch[2], 10);
-    // Store as actual decimal: 6.5, 7.5, 10.5, etc.
-    return finalize(null, whole + decimal / 10);
-  }
-
-  const patterns = [
-    /Episode\s*(\d+)/i,           // "Episode 10" or "Episode10"
-    /Ep\.?\s*(\d+)/i,             // "Ep 10" or "Ep.10"
-    /\bE(\d{2,})\b/i,             // "E10" (at least 2 digits)
-    /\s-\s*(\d+)(?:\s|$)/,        // " - 10 " or " - 10" at end
-    /\s(\d{1,3})(?:\s|$)/,        // " 10 " or " 10" at end (1-3 digit episode)
-  ];
-
-  for (const pattern of patterns) {
-    const match = baseName.match(pattern);
-    if (match) {
-      return finalize(null, parseInt(match[1], 10));
-    }
-  }
-
-  // Fallback: find numbers in the cleaned base name.
-  const numbers = baseName.match(/\d+/g);
-  if (numbers && numbers.length > 0) {
-    // Filter out year-like numbers (1900-2099) AND implausibly-large episode
-    // numbers (>= 1000) — anything that big in a filename is almost certainly
-    // bitrate, resolution, or a leftover hash chunk, not an episode index.
-    const nonYearNumbers = numbers.filter(n => {
-      const num = parseInt(n, 10);
-      if (num >= 1900 && num <= 2099) return false;
-      if (num >= 1000) return false;
-      return true;
-    });
-
-    if (nonYearNumbers.length > 0) {
-      return finalize(null, parseInt(nonYearNumbers[nonYearNumbers.length - 1], 10));
-    }
-  }
-
-  return { season: null, episode: 1 };
-}
+// Episode/season extraction is now handled by classifyFile() in
+// src/shared/episodeClassifier.ts. That module also distinguishes real
+// episodes from OP/ED/PV/SP/extras tokens, so the old digit-fallback no
+// longer collapses every "<show>_ED1_.mkv" onto episode 1.
 
 function extractSeasonNumber(folderName: string): number | null {
   // Try various patterns to extract season number from folder name
@@ -276,21 +223,25 @@ async function scanFolderForVideos(folderPath: string, folderSeason: number | nu
 
         if (stats.isFile()) {
           if (isVideoFile(entry)) {
-            const { season, episode } = extractSeasonAndEpisode(entry);
-            // Use season from filename if available, otherwise from folder
-            const finalSeason = season ?? seasonFromFolder;
+            const classified = classifyFile(entry);
+            // Use season from filename if classifier found one, else from folder.
+            const finalSeason = classified.seasonNumber ?? seasonFromFolder;
 
             videos.push({
               filename: entry,
               filePath: fullPath,
               title: cleanEpisodeTitle(entry),
-              episodeNumber: episode,
+              episodeNumber: classified.episodeNumber,
               seasonNumber: finalSeason,
               subtitlePath: null,
               subtitlePaths: [],
               parentFolder: folderName,
               status: 'ready',
               mtime: stats.mtimeMs,
+              kind: classified.kind,
+              extraIndex: classified.extraIndex,
+              extraVariant: classified.extraVariant,
+              rawLabel: classified.rawLabel,
             });
           } else if (isSubtitleFile(entry)) {
             const baseName = getBaseName(entry);
@@ -354,7 +305,7 @@ async function emitMovieFile(
   const folderName = basename(containingFolder);
   const movieTitle = useFolderNameAsTitle ? cleanMovieTitle(folderName) : cleanMovieTitle(fileName);
   const movieId = movieTitle.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
-  const { episode } = extractSeasonAndEpisode(fileName);
+  const classified = classifyFile(fileName);
   let mtime = 0;
   try {
     mtime = (await stat(filePath)).mtimeMs;
@@ -369,13 +320,17 @@ async function emitMovieFile(
       filename: fileName,
       filePath,
       title: cleanEpisodeTitle(fileName),
-      episodeNumber: episode,
+      episodeNumber: classified.episodeNumber,
       seasonNumber: null,
       subtitlePath: null,
       subtitlePaths: [],
       parentFolder: folderName,
       status: 'ready',
       mtime,
+      kind: classified.kind,
+      extraIndex: classified.extraIndex,
+      extraVariant: classified.extraVariant,
+      rawLabel: classified.rawLabel,
     }],
     seasonNumber: null,
     partNumber: null,
