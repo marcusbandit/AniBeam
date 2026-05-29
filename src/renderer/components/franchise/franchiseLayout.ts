@@ -34,8 +34,27 @@ export function dedupeReciprocalEdges(
   edges: ReadonlyArray<FranchiseEdge>,
   nodeById?: ReadonlyMap<number, FranchiseNode>,
 ): FranchiseEdge[] {
-  // 1. Normalize ADAPTATION/SOURCE edges to canonical "print → screen ADAPTATION".
+  // 1. Normalize edges to canonical direction.
+  //    PARENT (raw): the `to` node is the parent of `from` — flip to
+  //      canonical parent→child SIDE_STORY so downstream code sees one shape.
+  //    ALTERNATIVE: symmetric relation — both raw directions can exist in
+  //      AniList data. Force smaller-id → larger-id so stage 2 dedupes
+  //      the redundant reciprocal automatically.
   const normalized: FranchiseEdge[] = edges.map((e) => {
+    if (e.relationType === 'PARENT') {
+      return { from: e.to, to: e.from, relationType: 'SIDE_STORY' };
+    }
+    // PREQUEL (raw): `to` is the prequel of `from` (comes BEFORE it). Flip to
+    // a forward SEQUEL so the arrow points chronologically (prequel → main)
+    // AND so topoSortSpine — which only reads SEQUEL — picks up the ordering.
+    // Without this, a relationship expressed only as PREQUEL was rendered
+    // backwards and ignored by the chain ordering.
+    if (e.relationType === 'PREQUEL') {
+      return { from: e.to, to: e.from, relationType: 'SEQUEL' };
+    }
+    if (e.relationType === 'ALTERNATIVE') {
+      return e.from <= e.to ? e : { from: e.to, to: e.from, relationType: 'ALTERNATIVE' };
+    }
     if (!nodeById) return e;
     if (e.relationType !== 'ADAPTATION' && e.relationType !== 'SOURCE') return e;
     const from = nodeById.get(e.from);
@@ -81,11 +100,31 @@ export function dedupeReciprocalEdges(
   // 3. Existing different-type reciprocal drop (PARENT↔SIDE_STORY, PREQUEL↔SEQUEL).
   //    SOURCE↔ADAPTATION is now redundant since SOURCE no longer exists post-normalize.
   const present = new Set<string>(uniqued.map((e) => `${e.from}|${e.to}|${e.relationType}`));
-  return uniqued.filter((e) => {
+  const afterReciprocal = uniqued.filter((e) => {
     const keep = RECIPROCAL_DROPS.get(e.relationType);
     if (keep != null && present.has(`${e.to}|${e.from}|${keep}`)) return false;
     return true;
   });
+
+  // 4. Collapse multiple edges between the SAME ordered pair to a single edge.
+  //    AniList often tags one relationship two ways (e.g. manga SPIN_OFF→x AND
+  //    x PARENT→manga, which normalizes to manga SIDE_STORY→x) — same direction,
+  //    different type → two arrows for one link. Keep the most structural type.
+  const TYPE_PRIORITY: Record<string, number> = {
+    SEQUEL: 0, PREQUEL: 0, ADAPTATION: 1, SOURCE: 1,
+    SIDE_STORY: 2, PARENT: 2, SPIN_OFF: 3, SUMMARY: 4,
+    COMPILATION: 4, CONTAINS: 4, ALTERNATIVE: 5, CHARACTER: 6, OTHER: 7,
+  };
+  const bestByPair = new Map<string, FranchiseEdge>();
+  for (const e of afterReciprocal) {
+    const key = `${e.from}|${e.to}`;
+    const cur = bestByPair.get(key);
+    if (!cur) { bestByPair.set(key, e); continue; }
+    const pe = TYPE_PRIORITY[e.relationType] ?? 8;
+    const pc = TYPE_PRIORITY[cur.relationType] ?? 8;
+    if (pe < pc) bestByPair.set(key, e);
+  }
+  return [...bestByPair.values()];
 }
 
 interface AdjEdge { other: number; relationType: string; direction: 'out' | 'in'; }
@@ -186,43 +225,27 @@ function topoSortSpine(
 }
 
 /**
- * Walk upstream from currentId via ADAPTATION edges to find the franchise's
- * absolute source node, then return its anilistId (or null for empty graphs).
+ * The franchise root is the FIRST instance of the franchise to exist — the
+ * earliest-released node. A node that has a source/parent above it can never
+ * be the root, and "earliest release" captures that directly without trying to
+ * reason about (often-inverted) ADAPTATION directions: an original anime with
+ * a later manga adaptation correctly stays the root, and a novel/manga that
+ * predates its anime correctly is the root.
  *
- * Only follows print→screen ADAPTATION edges in the upstream direction.
- * Once we reach a print node (manga/novel/etc.), the walk stops — that IS
- * the source. We do NOT continue print→print, because AniList's data contains
- * sideways sibling ADAPTATION edges between print formats (e.g. manga→novel)
- * that are not true upstream relationships.
+ * Primary key: earliest year (seasonYear ?? startYear; unknown sorts last).
+ * Tie-break: smallest anilistId (originals are typically catalogued first).
  */
-export function findFranchiseRoot(graph: FranchiseGraph, currentId: number): number | null {
+export function findFranchiseRoot(graph: FranchiseGraph, _currentId: number): number | null {
   if (graph.nodes.length === 0) return null;
-  const nodeById = new Map(graph.nodes.map((n) => [n.anilistId, n]));
-  const edges = dedupeReciprocalEdges(graph.edges, nodeById);
-
-  // Walk upstream: from a screen node, follow ADAPTATION-incoming edges whose
-  // `from` is print. Stop the first time we land on a print node — that's the
-  // source. (We don't follow print → print ADAPTATIONs because they're sideways
-  // sibling relationships in AniList's data, not true upstream.)
-  const visited = new Set<number>([currentId]);
-  let current: number = currentId;
-  let absoluteSource: number = currentId;
-  while (true) {
-    const curNode = nodeById.get(current);
-    if (!curNode || isPrintTarget(curNode)) break;
-    let upstream: number | null = null;
-    for (const e of edges) {
-      if (e.to === current && e.relationType === 'ADAPTATION' && !visited.has(e.from)) {
-        const from = nodeById.get(e.from);
-        if (from && isPrintTarget(from)) { upstream = e.from; break; }
-      }
-    }
-    if (upstream == null) break;
-    visited.add(upstream);
-    absoluteSource = upstream;
-    current = upstream;
+  const yearOf = (n: FranchiseNode) => n.seasonYear ?? n.startYear ?? Number.POSITIVE_INFINITY;
+  let best: FranchiseNode | null = null;
+  for (const n of graph.nodes) {
+    if (best == null) { best = n; continue; }
+    const ny = yearOf(n);
+    const by = yearOf(best);
+    if (ny < by || (ny === by && n.anilistId < best.anilistId)) best = n;
   }
-  return absoluteSource;
+  return best ? best.anilistId : null;
 }
 
 /** BFS tree outward from spine: returns parent + children-of maps. */
@@ -312,7 +335,11 @@ function placeSubtree(
   }
 }
 
-export function layoutFranchise(graph: FranchiseGraph, currentId: number): Map<number, { x: number; y: number }> {
+export function layoutFranchise(
+  graph: FranchiseGraph,
+  currentId: number,
+  rootId?: number | null,
+): Map<number, { x: number; y: number }> {
   const positions = new Map<number, { x: number; y: number }>();
   if (graph.nodes.length === 0) return positions;
 
@@ -345,11 +372,110 @@ export function layoutFranchise(graph: FranchiseGraph, currentId: number): Map<n
     }
   }
 
-  // Anchor chain (containing currentId) goes first; others retain discovery order.
-  const anchorIdx = chains.findIndex((c) => c.members.has(currentId));
-  if (anchorIdx > 0) {
-    const [anchor] = chains.splice(anchorIdx, 1);
-    chains.unshift(anchor);
+  // Row ordering: BFS discovery from the root chain via every non-spine
+  // visible edge. Newly-discovered chains are appended to the placed list,
+  // EXCEPT alternative-connections, which are inserted directly below their
+  // source chain. When a chain has multiple alts, the CLOSEST alt (by media
+  // affinity — same type > same format > nearer year) ends up immediately
+  // below, with farther alts cascading down.
+  const rootChainIdx = rootId != null ? chains.findIndex((c) => c.members.has(rootId)) : -1;
+  type Chain = (typeof chains)[number];
+  if (rootChainIdx >= 0) {
+    // Per-edge affinity score between two specific nodes — lower = closer.
+    const scoreEdgePair = (sourceId: number, targetId: number): number => {
+      const src = nodeById.get(sourceId);
+      const tgt = nodeById.get(targetId);
+      if (!src || !tgt) return Number.POSITIVE_INFINITY;
+      let s = 0;
+      if (src.type !== tgt.type) s += 1_000_000;
+      if (src.format !== tgt.format) s += 1_000;
+      const sy = src.seasonYear ?? src.startYear ?? 0;
+      const ty = tgt.seasonYear ?? tgt.startYear ?? 0;
+      s += Math.abs(sy - ty);
+      return s;
+    };
+    const chainOfNode = new Map<number, Chain>();
+    for (const c of chains) for (const id of c.members) chainOfNode.set(id, c);
+    const neighborsByChain = new Map<Chain, Array<{ chain: Chain; isAlt: boolean; weight: number }>>();
+    for (const c of chains) neighborsByChain.set(c, []);
+    const seenEdge = new Set<string>();
+    for (const e of edges) {
+      if (e.relationType === 'PREQUEL' || e.relationType === 'SEQUEL') continue;
+      const fromChain = chainOfNode.get(e.from);
+      const toChain = chainOfNode.get(e.to);
+      if (!fromChain || !toChain || fromChain === toChain) continue;
+      const isAlt = e.relationType === 'ALTERNATIVE';
+      const k1 = `${chains.indexOf(fromChain)}|${chains.indexOf(toChain)}|${e.relationType}`;
+      const k2 = `${chains.indexOf(toChain)}|${chains.indexOf(fromChain)}|${e.relationType}`;
+      if (seenEdge.has(k1) || seenEdge.has(k2)) continue;
+      seenEdge.add(k1);
+      neighborsByChain.get(fromChain)!.push({
+        chain: toChain, isAlt, weight: scoreEdgePair(e.from, e.to),
+      });
+      neighborsByChain.get(toChain)!.push({
+        chain: fromChain, isAlt, weight: scoreEdgePair(e.to, e.from),
+      });
+    }
+
+    // Parent/source chains of root go ABOVE root, in discovery order, before
+    // BFS expands the rest of the graph.
+    //   to=root with ADAPTATION  → from is root's print source     (parent)
+    //   to=root with SIDE_STORY  → from is root's main         (parent)
+    //   from=root with PARENT    → root has `to` as parent      (parent)
+    //   from=root with SOURCE    → root has `to` as source      (parent)
+    const isRootParentEdge = (e: FranchiseEdge): boolean => {
+      if (e.to === rootId && (e.relationType === 'ADAPTATION' || e.relationType === 'SIDE_STORY')) return true;
+      if (e.from === rootId && (e.relationType === 'PARENT' || e.relationType === 'SOURCE')) return true;
+      return false;
+    };
+    const rootChain = chains[rootChainIdx];
+    const parentChains: Chain[] = [];
+    for (const e of edges) {
+      if (!isRootParentEdge(e)) continue;
+      const other = e.from === rootId ? e.to : e.from;
+      const otherChain = chainOfNode.get(other);
+      if (!otherChain || otherChain === rootChain) continue;
+      if (!parentChains.includes(otherChain)) parentChains.push(otherChain);
+    }
+
+    const placed: Chain[] = [...parentChains, rootChain];
+    const placedSet = new Set<Chain>(placed);
+    // Seed the BFS queue with parent chains first (so their own connections
+    // are walked) then root.
+    const queue: Chain[] = [...parentChains, rootChain];
+    while (queue.length > 0) {
+      const cur = queue.shift()!;
+      const conns = neighborsByChain.get(cur) ?? [];
+      // Order so alts come first (need their "just below" slot before non-alts
+      // append at the bottom), and within alts FARTHER ones come first — each
+      // splice puts the new chain at curIdx+1, so the LAST alt processed (the
+      // CLOSEST) ends up immediately below the source.
+      const sorted = [...conns].sort((a, b) => {
+        if (a.isAlt !== b.isAlt) return a.isAlt ? -1 : 1;
+        if (a.isAlt && b.isAlt) return b.weight - a.weight; // descending → farthest first
+        return 0;
+      });
+      for (const { chain: next, isAlt } of sorted) {
+        if (placedSet.has(next)) continue;
+        placedSet.add(next);
+        const curIdx = placed.indexOf(cur);
+        if (isAlt) placed.splice(curIdx + 1, 0, next); // directly below cur, cascade rest down
+        else placed.push(next);                          // append at end
+        queue.push(next);
+      }
+    }
+    // Any leftover (no edge to anything placed) goes at the very end.
+    for (const c of chains) if (!placedSet.has(c)) placed.push(c);
+
+    chains.length = 0;
+    chains.push(...placed);
+  } else {
+    // No root identified — fall back to anchoring on the current viewing chain.
+    const anchorIdx = chains.findIndex((c) => c.members.has(currentId));
+    if (anchorIdx > 0) {
+      const [anchor] = chains.splice(anchorIdx, 1);
+      chains.unshift(anchor);
+    }
   }
 
   // Position: each chain at its own y row, evenly spaced from x=0.
@@ -367,16 +493,37 @@ export function layoutFranchise(graph: FranchiseGraph, currentId: number): Map<n
 
 /** Given source and target positions, pick handle ids that route the edge
  *  along the dominant axis. */
+/** Relation types that must always render as a vertical edge from the source's
+ *  bottom handle to the child's top handle, regardless of relative position.
+ *  These are the "lineage" edges (source/adaptation, parent/side-story) where
+ *  the visual hierarchy is the message. */
+const FORCED_VERTICAL_RELATIONS = new Set([
+  'SOURCE', 'ADAPTATION', 'PARENT', 'SIDE_STORY',
+]);
+
+/** Default to the center slot. The caller does a per-(node,side) pass after
+ *  ALL edges are built and rewrites handle IDs to spread slots only when
+ *  multiple arrow types collide on the same side of the same node. */
 export function pickHandles(
   src: { x: number; y: number },
   tgt: { x: number; y: number },
+  relationType?: string,
 ): { sourceHandle: string; targetHandle: string } {
+  if (relationType != null && FORCED_VERTICAL_RELATIONS.has(relationType)) {
+    // Still forced vertical, but pick direction from actual positions so a
+    // child placed ABOVE its source (e.g. a SIDE_STORY singleton above its
+    // target chain) connects child.bottom → source.top instead of crashing
+    // through the source card.
+    return tgt.y >= src.y
+      ? { sourceHandle: 'bottom-c-s', targetHandle: 'top-c-t' }
+      : { sourceHandle: 'top-c-s',    targetHandle: 'bottom-c-t' };
+  }
   const dx = tgt.x - src.x;
   const dy = tgt.y - src.y;
   if (Math.abs(dy) >= Math.abs(dx)) {
     return dy < 0
-      ? { sourceHandle: 'top-s',    targetHandle: 'bottom-t' }
-      : { sourceHandle: 'bottom-s', targetHandle: 'top-t'    };
+      ? { sourceHandle: 'top-c-s',    targetHandle: 'bottom-c-t' }
+      : { sourceHandle: 'bottom-c-s', targetHandle: 'top-c-t'    };
   }
   return dx >= 0
     ? { sourceHandle: 'right-s', targetHandle: 'left-t'  }

@@ -56,7 +56,8 @@ export interface RawRelation {
 }
 
 /** relationTypes whose edges we follow when crawling. CHARACTER and OTHER are
- *  excluded so cameos / loose links don't drag in unrelated franchises. */
+ *  excluded from TRAVERSAL (so cameos / loose links don't drag in unrelated
+ *  franchises) but their edges are still kept for DISPLAY. */
 export const TRAVERSABLE = new Set<string>([
   'PREQUEL', 'SEQUEL', 'SIDE_STORY', 'SPIN_OFF', 'ALTERNATIVE',
   'PARENT', 'CONTAINS', 'SUMMARY', 'COMPILATION', 'SOURCE', 'ADAPTATION',
@@ -99,8 +100,9 @@ export interface CloseGraphOptions {
 }
 
 /**
- * BFS the franchise graph. CHARACTER edges are dropped entirely; OTHER edges
- * are kept for display but never traversed. Nodes dedup by anilistId; a node
+ * BFS the franchise graph. CHARACTER and OTHER edges are kept for display but
+ * never traversed (so shared-character cameos don't pull in unrelated
+ * franchises). Nodes dedup by anilistId; a node
  * reached by multiple edges appears once and accumulates all its edges.
  */
 export async function closeGraph(opts: CloseGraphOptions): Promise<FranchiseGraph> {
@@ -138,7 +140,6 @@ export async function closeGraph(opts: CloseGraphOptions): Promise<FranchiseGrap
     if (relations == null) continue;
 
     for (const r of relations) {
-      if (r.relationType === 'CHARACTER') continue; // dropped from the map
       const existing = nodes.get(r.anilistId);
       if (!existing) {
         if (nodes.size >= nodeCap) { hitCap = true; continue; }

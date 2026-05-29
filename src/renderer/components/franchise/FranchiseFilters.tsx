@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 
-export type FranchiseCategory = 'spine' | 'source' | 'side' | 'alternative' | 'other';
+export type FranchiseCategory = 'spine' | 'source' | 'side' | 'alternative' | 'character' | 'other';
 
 export type FranchiseFormat =
   | 'series' | 'movie' | 'shortform'
@@ -43,7 +43,7 @@ export interface FranchiseFiltersProps {
 }
 
 /**
- * Map an AniList relationType string to one of the five display categories
+ * Map an AniList relationType string to one of the display categories
  * used by the filter chips. Pure function — no side effects.
  */
 export function categoryFor(relationType: string): FranchiseCategory {
@@ -63,6 +63,8 @@ export function categoryFor(relationType: string): FranchiseCategory {
       return 'side';
     case 'ALTERNATIVE':
       return 'alternative';
+    case 'CHARACTER':
+      return 'character';
     default:
       return 'other';
   }
@@ -75,6 +77,7 @@ export function FranchiseFilters(props: FranchiseFiltersProps): ReactElement {
     { cat: 'source',      label: 'Sources & parents' },
     { cat: 'side',        label: 'Side stories & spin-offs' },
     { cat: 'alternative', label: 'Alternatives' },
+    { cat: 'character',   label: 'Characters' },
     { cat: 'other',       label: 'Other' },
   ];
   const FORMATS: FranchiseFormat[] = ['series', 'movie', 'shortform', 'manga', 'novel', 'visualnovel', 'music', 'other'];

@@ -108,7 +108,7 @@ function formatYear(startDate: string | null | undefined, seasonYear: number | n
 function SeriesDetailPage() {
   const { seriesId } = useParams<{ seriesId: string }>();
   const navigate = useNavigate();
-  const { pickTitle } = useTitleLanguage();
+  const { pickTitle, lang } = useTitleLanguage();
   const { getWatched, getListStatus, getUserScore, getRewatchCount } = useTrackerProgress();
   // Tag-panel spoiler toggle. Default off — opt-in only, per the user's
   // standing preference to hide plot-spoiler tags until explicitly revealed.
@@ -990,6 +990,7 @@ function SeriesDetailPage() {
             graph={franchiseGraph!}
             currentAnilistId={meta.anilistId}
             filling={franchiseFilling}
+            titleLang={lang}
             resolveOwnedId={resolveOwnedNode}
             pickTitle={(n) => pickTitle({
               titleRomaji: n.titleRomaji,
