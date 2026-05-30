@@ -37,6 +37,7 @@ import {
   readProgress,
   readLastEpisodeMap,
   getProgressFraction,
+  getExtraProgressFraction,
   type ProgressMap,
   type LastEpisodeMap,
 } from "../utils/playbackProgress";
@@ -46,6 +47,7 @@ import { FranchiseGraphView } from "../components/franchise";
 import type { FranchiseCategory, FranchiseFormat } from "../components/franchise";
 import { useFranchiseGraph } from "../hooks/useFranchiseGraph";
 import type { FranchiseNode } from "../../shared/franchise";
+import { friendlyExtraTitle, extraCode } from "../../shared/extraLabels";
 
 const LIST_STATUS_LABEL: Record<TrackerListStatus, string> = {
   watching: "Watching",
@@ -104,6 +106,17 @@ function formatYear(startDate: string | null | undefined, seasonYear: number | n
   const y = parseInt(startDate.split("-")[0], 10);
   return Number.isFinite(y) ? String(y) : null;
 }
+
+// Bonus-content sub-groups, in display order. Each maps a classifier `kind` to a
+// human heading; the page renders one group per kind that actually has files,
+// so the layout follows the data (no per-show enumeration of which extras exist).
+const EXTRA_GROUPS: ReadonlyArray<{ kind: "op" | "ed" | "pv" | "sp" | "other"; label: string }> = [
+  { kind: "op", label: "Openings" },
+  { kind: "ed", label: "Endings" },
+  { kind: "pv", label: "Previews & Trailers" },
+  { kind: "sp", label: "Specials" },
+  { kind: "other", label: "Other" },
+];
 
 function SeriesDetailPage() {
   const { seriesId } = useParams<{ seriesId: string }>();
@@ -282,6 +295,20 @@ function SeriesDetailPage() {
       return a.filename.localeCompare(b.filename);
     });
   }, [item]);
+
+  // Split files by the classifier's `kind`. Real episodes drive the Episodes
+  // list, the watched denominator, and the next-up marker; OP/ED/PV/SP/extras
+  // are bonus content shown in their own section. A file with no `kind`
+  // (library entries persisted before the classifier landed) counts as a real
+  // episode so nothing is ever hidden. See shared/episodeClassifier.ts.
+  const realEpisodes = useMemo(
+    () => sorted.filter((f) => (f.kind ?? "episode") === "episode"),
+    [sorted],
+  );
+  const bonusFiles = useMemo(
+    () => sorted.filter((f) => (f.kind ?? "episode") !== "episode"),
+    [sorted],
+  );
 
   // filePath → true for any episode that's being served from the on-disk
   // transcode cache (i.e. the source codec needed conversion before
@@ -507,7 +534,7 @@ function SeriesDetailPage() {
     ? totalEpisodes!
     : (latestAired != null && latestAired > 0
         ? Math.max(latestAired, watchedCount)
-        : sorted.length);
+        : realEpisodes.length);
   const denomIsAiringEstimate = !totalKnown && latestAired != null && latestAired > 0;
   // Width of the watched-progress strip. When totalEpisodes is unknown we
   // fall back to the latest-aired count (or files on disk) so the bar
@@ -525,10 +552,10 @@ function SeriesDetailPage() {
     lastEpLocal ?? 0,
   );
   const nextEpNumber = effectiveLastWatched > 0
-    ? sorted.find((f) => f.episodeNumber === effectiveLastWatched + 1)?.episodeNumber
-        ?? sorted.find((f) => f.episodeNumber > effectiveLastWatched)?.episodeNumber
+    ? realEpisodes.find((f) => f.episodeNumber === effectiveLastWatched + 1)?.episodeNumber
+        ?? realEpisodes.find((f) => f.episodeNumber > effectiveLastWatched)?.episodeNumber
         ?? null
-    : (effTrackedKnown ? sorted.find((f) => f.episodeNumber > effWatched)?.episodeNumber ?? null : null);
+    : (effTrackedKnown ? realEpisodes.find((f) => f.episodeNumber > effWatched)?.episodeNumber ?? null : null);
 
   // ---- Marker track/untrack cascade handlers ----
   const CASCADE_STEP_MS = 45;
@@ -591,12 +618,12 @@ function SeriesDetailPage() {
   // count, and only for the main season so multi-season folders (whose
   // episode numbers reset) aren't false-flagged.
   const extraEpisodes = (!isMovie && totalEpisodes != null && totalEpisodes > 0)
-    ? sorted.filter((f) => (f.seasonNumber == null || f.seasonNumber <= 1) && f.episodeNumber > totalEpisodes)
+    ? realEpisodes.filter((f) => (f.seasonNumber == null || f.seasonNumber <= 1) && f.episodeNumber > totalEpisodes)
     : [];
   const extraPaths = new Set(extraEpisodes.map((f) => f.filePath));
   const regularEpisodes = extraEpisodes.length > 0
-    ? sorted.filter((f) => !extraPaths.has(f.filePath))
-    : sorted;
+    ? realEpisodes.filter((f) => !extraPaths.has(f.filePath))
+    : realEpisodes;
 
   // Shared row renderer so the main list and the "Extra files" list stay in
   // lockstep. `extra` adds the warning pill and suppresses the "Next up"
@@ -616,7 +643,7 @@ function SeriesDetailPage() {
           key={f.filePath}
           marker={movieWatched ? <Check size={14} strokeWidth={2.5} /> : <Play size={14} />}
           code="Movie"
-          title={sorted.length === 1 ? displayTitle : f.title}
+          title={realEpisodes.length === 1 ? displayTitle : f.title}
           trailing={
             (isTranscoded || movieWatched) ? (
               <>
@@ -701,6 +728,43 @@ function SeriesDetailPage() {
         onMarkerEnter={hasTrackerId ? () => onMarkerEnter(ep, isWatched) : undefined}
         onMarkerZoneEnter={hasTrackerId ? onMarkerZoneEnter : undefined}
         onMarkerLeave={hasTrackerId ? onMarkerLeave : undefined}
+      />
+    );
+  };
+
+  // Bonus-content row (opening/ending/PV/special). No tracker markers, next-up,
+  // or watched state — these aren't episodes. The play route carries an
+  // explicit ?file= because several extras share an episodeNumber with a real
+  // episode, so the episodeNumber→file lookup alone would open the wrong file.
+  // Resume position is keyed by file path (getExtraProgressFraction) to match
+  // how the player saves it.
+  const renderBonusRow = (f: (typeof sorted)[number]) => {
+    const isTranscoded = transcodedByPath.has(f.filePath);
+    const fraction = getExtraProgressFraction(localProgress, item.id, f.filePath);
+    const code = extraCode(f.kind);
+    const title = friendlyExtraTitle(f.kind, f.extraIndex, f.extraVariant, f.rawLabel);
+    return (
+      <EpisodeRow
+        key={f.filePath}
+        marker={<Play size={14} />}
+        code={code}
+        title={title}
+        trailing={
+          isTranscoded ? (
+            <Tooltip label="Source codec wasn't browser-playable — this file plays from the on-disk h.264 transcode cache">
+              <span>
+                <Pill tone="amber">Re-encoded</Pill>
+              </span>
+            </Tooltip>
+          ) : null
+        }
+        progress={fraction}
+        state="default"
+        onClick={() =>
+          navigate(
+            `/player/${encodeURIComponent(item.id)}/${f.episodeNumber}?file=${encodeURIComponent(f.filePath)}`,
+          )
+        }
       />
     );
   };
@@ -873,7 +937,7 @@ function SeriesDetailPage() {
                   <span className="series-hero-progress-count">
                     {trackedKnown
                       ? `${String(watchedCount).padStart(String(denom || 1).length, "0")} / ${denom > 0 ? denom : "?"}${denomIsAiringEstimate ? "+" : ""}`
-                      : `${sorted.length} on disk`}
+                      : `${realEpisodes.length} on disk`}
                   </span>
                 </div>
                 <div className="series-hero-progress-track" aria-hidden="true">
@@ -925,12 +989,37 @@ function SeriesDetailPage() {
       <Section
         first
         title={isMovie ? "Movie" : "Episodes"}
-        count={isMovie ? (sorted.length > 1 ? sorted.length : undefined) : regularEpisodes.length}
+        count={isMovie ? (realEpisodes.length > 1 ? realEpisodes.length : undefined) : regularEpisodes.length}
       >
         <div className="episode-list">
           {regularEpisodes.map((f) => renderEpisodeRow(f))}
         </div>
       </Section>
+
+      {bonusFiles.length > 0 && (
+        <Section title="Openings, Endings & More" count={bonusFiles.length}>
+          {EXTRA_GROUPS.map((g) => {
+            const groupFiles = bonusFiles
+              .filter((f) => (f.kind ?? "other") === g.kind)
+              .sort(
+                (a, b) =>
+                  (a.extraIndex ?? 0) - (b.extraIndex ?? 0) ||
+                  (a.extraVariant ?? "").localeCompare(b.extraVariant ?? "") ||
+                  a.filename.localeCompare(b.filename),
+              );
+            if (groupFiles.length === 0) return null;
+            return (
+              <div key={g.kind} className="bonus-group">
+                <div className="bonus-group__label">
+                  {g.label}
+                  <span className="bonus-group__count">{groupFiles.length}</span>
+                </div>
+                <div className="episode-list">{groupFiles.map(renderBonusRow)}</div>
+              </div>
+            );
+          })}
+        </Section>
+      )}
 
       {extraEpisodes.length > 0 && (
         <Section title="Extra files" count={extraEpisodes.length}>

@@ -2,7 +2,8 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useMetadata, type FileEpisode } from '../hooks/useMetadata.js';
 import { useLocalStorage, useLocalStorageRecord } from '../hooks/useLocalStorage';
-import { progressId, readProgress, writeProgress, recordEpisodeCompleted, RESUME_HEAD_SKIP, RESUME_TAIL_SKIP } from '../utils/playbackProgress';
+import { progressId, extraProgressToken, readProgress, writeProgress, recordEpisodeCompleted, RESUME_HEAD_SKIP, RESUME_TAIL_SKIP } from '../utils/playbackProgress';
+import { friendlyExtraTitle, extraCode } from '../../shared/extraLabels';
 import { ScorePicker, Tooltip } from '../components/primitives';
 import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Minimize, Subtitles, SkipBack, SkipForward, CheckCheck, AlertTriangle, ExternalLink, Loader2, RotateCcw } from 'lucide-react';
 import JASSUB from 'jassub';
@@ -153,6 +154,19 @@ function VideoPlayer() {
   const navigate = useNavigate();
   const location = useLocation();
   const { metadata } = useMetadata();
+
+  // Extras (openings/endings/PVs/specials) are opened with an explicit
+  // ?file=<path> param. Several extras share an episodeNumber with a real
+  // episode (ED1, PV01 both classify to "episode 1"), so the episodeNumber→file
+  // lookup alone would resolve to the wrong file. When present this param
+  // overrides file resolution AND marks the playback untracked: no episode
+  // completion, view-history, tracker mark, skip-times, or prev/next nav. When
+  // absent, every branch below takes its original path unchanged.
+  const explicitFilePath = useMemo(() => {
+    const p = new URLSearchParams(location.search).get('file');
+    return p && p.length > 0 ? p : null;
+  }, [location.search]);
+  const isExtra = explicitFilePath != null;
   const [videoSrc, setVideoSrc] = useState<string>('');
   // Playback gate. `null` = direct playback; otherwise an overlay is showing.
   //  - mode 'transcoding': ffmpeg is producing the cached MP4. Overlay shows
@@ -301,21 +315,28 @@ function VideoPlayer() {
   // We update the id only after videoSrc has actually changed so timeupdate
   // events that fire BEFORE the new src is committed still attribute to the
   // outgoing episode (otherwise we'd briefly write the wrong id).
+  // Progress key: (series, episode) for real episodes; for extras, which share
+  // episode numbers, key by the unique file path so resume positions don't
+  // collide with the real episode's.
+  const playbackProgressId = useMemo(() => {
+    if (!seriesId) return '';
+    if (isExtra) return explicitFilePath ? progressId(seriesId, extraProgressToken(explicitFilePath)) : '';
+    return episodeNumber ? progressId(seriesId, episodeNumber) : '';
+  }, [seriesId, episodeNumber, isExtra, explicitFilePath]);
+
   const currentIdRef = useRef<string>('');
   useEffect(() => {
-    currentIdRef.current = (seriesId && episodeNumber && videoSrc)
-      ? progressId(seriesId, episodeNumber)
-      : '';
-  }, [seriesId, episodeNumber, videoSrc]);
+    currentIdRef.current = (playbackProgressId && videoSrc) ? playbackProgressId : '';
+  }, [playbackProgressId, videoSrc]);
 
   // Restore saved playback position when an episode loads. Runs once per
   // episode-change via the loadedmetadata event so we have a real duration
   // before deciding whether to resume.
   useEffect(() => {
-    if (!videoSrc || !seriesId || !episodeNumber) return;
+    if (!videoSrc || !playbackProgressId) return;
     const video = videoRef.current;
     if (!video) return;
-    const id = progressId(seriesId, episodeNumber);
+    const id = playbackProgressId;
     // The Next/Prev episode buttons navigate with state.skipResume = true so
     // the new episode always starts from 0 regardless of saved position.
     const skipResume = (location.state as { skipResume?: boolean } | null)?.skipResume === true;
@@ -337,7 +358,7 @@ function VideoPlayer() {
     }
     video.addEventListener('loadedmetadata', seek, { once: true });
     return () => video.removeEventListener('loadedmetadata', seek);
-  }, [videoSrc, seriesId, episodeNumber]);
+  }, [videoSrc, playbackProgressId]);
 
   // Persist position on a 4s heartbeat + at every pause and on unload. Clear
   // the entry once the user has effectively finished the episode (within the
@@ -361,7 +382,7 @@ function VideoPlayer() {
       const map = readProgress();
       if (t >= d - RESUME_TAIL_SKIP) {
         if (map[id]) { delete map[id]; writeProgress(map); }
-        if (seriesId && episodeNumber) {
+        if (!isExtra && seriesId && episodeNumber) {
           recordEpisodeCompleted(seriesId, Number(episodeNumber));
         }
       } else if (t > RESUME_HEAD_SKIP) {
@@ -380,7 +401,7 @@ function VideoPlayer() {
       if (!id) return;
       const map = readProgress();
       if (map[id]) { delete map[id]; writeProgress(map); }
-      if (seriesId && episodeNumber) {
+      if (!isExtra && seriesId && episodeNumber) {
         recordEpisodeCompleted(seriesId, Number(episodeNumber));
       }
     };
@@ -397,7 +418,7 @@ function VideoPlayer() {
       video.removeEventListener('ended', onEnded);
       window.removeEventListener('beforeunload', save);
     };
-  }, [videoSrc, seriesId, episodeNumber]);
+  }, [videoSrc, seriesId, episodeNumber, isExtra]);
 
   // Mark the series as "viewed" once the user has accumulated >= 30s of
   // forward playback within this mount. Used by the Library "Last viewed"
@@ -408,6 +429,7 @@ function VideoPlayer() {
   // remounts the effect and re-arms the threshold.
   useEffect(() => {
     if (!videoSrc || !seriesId || !episodeNumber) return;
+    if (isExtra) return;  // extras aren't episodes — don't record a series view
     const video = videoRef.current;
     if (!video) return;
 
@@ -451,13 +473,16 @@ function VideoPlayer() {
       video.removeEventListener('timeupdate', onTime);
       video.removeEventListener('seeking', onSeeking);
     };
-  }, [videoSrc, seriesId, episodeNumber]);
+  }, [videoSrc, seriesId, episodeNumber, isExtra]);
 
-  // Derive the active episode's filePath from metadata. The memo only
-  // returns a new value if `seriesId`, `episodeNumber`, or the resolved
-  // filePath actually changes — keeps the open-video effect from re-firing
-  // every time some unrelated metadata field updates mid-playback.
+  // Derive the active file path. Extras carry it explicitly (?file=) because
+  // their episodeNumber collides with a real episode's; real episodes resolve
+  // it from metadata by episodeNumber. The memo only returns a new value if
+  // `seriesId`, `episodeNumber`, the explicit path, or the resolved filePath
+  // actually changes — keeps the open-video effect from re-firing every time
+  // some unrelated metadata field updates mid-playback.
   const activeFilePath = useMemo<string | null>(() => {
+    if (explicitFilePath) return explicitFilePath;
     if (!seriesId || !episodeNumber || !metadata[seriesId]) return null;
     const seriesData = metadata[seriesId];
     const episodeNum = parseInt(episodeNumber, 10);
@@ -465,7 +490,7 @@ function VideoPlayer() {
     const fileEpisodes = seriesData.fileEpisodes || [];
     const episode = fileEpisodes.find((ep: FileEpisode) => ep.episodeNumber === episodeNum);
     return episode?.filePath ?? null;
-  }, [seriesId, episodeNumber, metadata]);
+  }, [seriesId, episodeNumber, metadata, explicitFilePath]);
 
   // Open the underlying video through main — main checks for a cached
   // pre-transcoded copy and returns whichever URL the <video> should use.
@@ -571,16 +596,24 @@ function VideoPlayer() {
 
   // Load episode
   useEffect(() => {
-    if (!seriesId || !episodeNumber || !metadata[seriesId]) return;
+    if (!seriesId || !metadata[seriesId]) return;
 
     const seriesData = metadata[seriesId];
-    const episodeNum = parseInt(episodeNumber, 10);
-    if (isNaN(episodeNum)) return;
-
     const fileEpisodes = seriesData.fileEpisodes || [];
-    const episode = fileEpisodes.find(
-      (ep: FileEpisode) => ep.episodeNumber === episodeNum
-    );
+
+    let episode: FileEpisode | undefined;
+    if (isExtra) {
+      // Resolve the extra by its unique path. If it isn't in metadata yet
+      // (freshly added, not re-scanned), synthesize a minimal entry from the
+      // route path so embedded-subtitle extraction can still run.
+      episode = fileEpisodes.find((ep: FileEpisode) => ep.filePath === explicitFilePath)
+        ?? ({ filePath: explicitFilePath, subtitlePath: null, subtitlePaths: [] } as unknown as FileEpisode);
+    } else {
+      if (!episodeNumber) return;
+      const episodeNum = parseInt(episodeNumber, 10);
+      if (isNaN(episodeNum)) return;
+      episode = fileEpisodes.find((ep: FileEpisode) => ep.episodeNumber === episodeNum);
+    }
 
     if (episode && episode.filePath) {
       setEpisodeData(episode);
@@ -647,7 +680,7 @@ function VideoPlayer() {
       };
       void buildSubs();
     }
-  }, [seriesId, episodeNumber, metadata]);
+  }, [seriesId, episodeNumber, metadata, isExtra, explicitFilePath]);
 
   // Find the native textTrack that matches a given subtitleSrcs entry. Native
   // <track> elements are only rendered for VTT-format subs; ASS subs go to
@@ -948,6 +981,7 @@ function VideoPlayer() {
   // AniSkip-only caches still get a one-time chapter check next time.
   useEffect(() => {
     if (!seriesId || !episodeNumber || duration <= 0) return;
+    if (isExtra) return;  // openings/endings have no AniSkip/chapter windows
     const seriesData = metadata[seriesId];
     if (!seriesData) return;
     const epNum = parseInt(episodeNumber, 10);
@@ -987,7 +1021,7 @@ function VideoPlayer() {
         if (res.op || res.ed) setSkipTimes(res);
       });
     return () => { cancelled = true; };
-  }, [seriesId, episodeNumber, duration, metadata, activeFilePath]);
+  }, [seriesId, episodeNumber, duration, metadata, activeFilePath, isExtra]);
 
   // Reset skip times when the episode changes so the previous episode's
   // window doesn't briefly show on the new one.
@@ -1041,6 +1075,7 @@ function VideoPlayer() {
   }, []);
 
   const triggerMark = useCallback(async (origin: 'auto' | 'manual') => {
+    if (isExtra) return;  // extras share an episodeNumber with a real episode — never mark the tracker from one
     console.log('[tracker]', origin, 'fire requested', { seriesId, epNumForMark, seriesAnilistId, seriesMalId });
     if (!seriesId || !Number.isFinite(epNumForMark)) {
       console.warn('[tracker] bail: missing seriesId or episode number');
@@ -1113,7 +1148,7 @@ function VideoPlayer() {
     } else if (origin === 'manual') {
       showTrackerToast('Nothing to update.');
     }
-  }, [seriesId, epNumForMark, seriesAnilistId, seriesMalId, seriesTotalEps, showTrackerToast]);
+  }, [isExtra, seriesId, epNumForMark, seriesAnilistId, seriesMalId, seriesTotalEps, showTrackerToast]);
 
   // Reset the auto-mark guard whenever the episode changes.
   useEffect(() => {
@@ -1353,8 +1388,10 @@ function VideoPlayer() {
     return Array.from(new Set(nums)).sort((a, b) => a - b);
   })();
   const currentEpIdx = Number.isFinite(epNumNumeric) ? seriesEpisodeNumbers.indexOf(epNumNumeric) : -1;
-  const prevEp = currentEpIdx > 0 ? seriesEpisodeNumbers[currentEpIdx - 1] : null;
-  const nextEp = currentEpIdx >= 0 && currentEpIdx < seriesEpisodeNumbers.length - 1
+  // Extras have no sequential neighbours — disable prev/next (and, since nextEp
+  // is null, the auto-play-next overlay never arms).
+  const prevEp = (!isExtra && currentEpIdx > 0) ? seriesEpisodeNumbers[currentEpIdx - 1] : null;
+  const nextEp = (!isExtra && currentEpIdx >= 0 && currentEpIdx < seriesEpisodeNumbers.length - 1)
     ? seriesEpisodeNumbers[currentEpIdx + 1]
     : null;
 
@@ -1487,13 +1524,27 @@ function VideoPlayer() {
   const seriesTitle = metadata[seriesId]?.title || '';
   const seasonNumber = episodeData.seasonNumber ?? null;
   const episodeNum = parseInt(episodeNumber, 10);
-  const code = seasonNumber !== null
-    ? `S${pad(seasonNumber)}E${pad(episodeNum)}`
-    : `EP ${episodeNum}`;
+  // Extras share an episodeNumber with a real episode, so labelling the header
+  // from that number (or the API episodes[] keyed by it) would mislabel an
+  // opening/ending as "EP 1 · <real ep 1 title>". Label an extra by its own
+  // classifier identity instead.
+  const code = isExtra
+    ? extraCode(episodeData.kind)
+    : seasonNumber !== null
+      ? `S${pad(seasonNumber)}E${pad(episodeNum)}`
+      : `EP ${episodeNum}`;
   // Prefer the real AniList/MAL episode title (series-level `episodes[]`, keyed
   // by number) over the scanner's filename-derived `episodeData.title`. Mirrors
   // SeriesDetailPage's apiTitleByEp lookup.
   const episodeName = (() => {
+    if (isExtra) {
+      return friendlyExtraTitle(
+        episodeData.kind,
+        episodeData.extraIndex,
+        episodeData.extraVariant,
+        episodeData.rawLabel,
+      );
+    }
     const eps = metadata[seriesId]?.episodes ?? [];
     const hit = eps.find((e) => e.episodeNumber === episodeNum);
     if (hit?.title && hit.title.length > 0) return hit.title;

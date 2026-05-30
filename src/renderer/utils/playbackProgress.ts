@@ -35,6 +35,24 @@ export function getProgressFraction(
   return Math.max(0, Math.min(1, entry.t / entry.d));
 }
 
+// Extras (openings/endings/PVs/specials) share an episodeNumber with a real
+// episode — ED1, PV01 both classify to "episode 1" for sort purposes — so they
+// can't be keyed by (seriesId, episodeNumber) without their resume position
+// colliding with the real episode's. Key them by their unique file path
+// instead. Both the series page (resume bar) and the player (save/restore)
+// derive the key through this token so the two stay in lockstep.
+export function extraProgressToken(filePath: string): string {
+  return `x:${filePath}`;
+}
+
+export function getExtraProgressFraction(
+  map: ProgressMap,
+  seriesId: string,
+  filePath: string,
+): number {
+  return getProgressFraction(map, seriesId, extraProgressToken(filePath));
+}
+
 // "Last completed episode" per series — tracked separately from the in-progress
 // map (which gets cleared on completion) so the SeriesDetailPage can keep
 // showing a "Next up" marker even after every episode is marked watched in

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { FileStatus } from '../../shared/fileStatus';
+import type { EpisodeKind } from '../../shared/episodeClassifier';
 
 export interface SeriesMetadata {
   seriesId?: string;
@@ -140,6 +141,14 @@ export interface FileEpisode {
   // codec (HEVC etc.) so the <video> element can play it natively. Cached
   // across launches and validated on startup.
   transcodedPath?: string | null;
+  // Classifier output for bonus content (OP/ED/PV/SP/extras). Absent on real
+  // episodes and on entries persisted before the classifier landed. Used by the
+  // player header to label an extra by its own identity instead of the
+  // colliding episode number it shares with a real episode.
+  kind?: EpisodeKind;
+  extraIndex?: number | null;
+  extraVariant?: string | null;
+  rawLabel?: string | null;
 }
 
 const hasElectronAPI = typeof window !== 'undefined' && window.electronAPI;
