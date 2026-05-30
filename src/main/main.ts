@@ -20,6 +20,7 @@ import videoProbeHandler from './handlers/videoProbeHandler';
 import transcodeCacheHandler from './handlers/transcodeCacheHandler';
 import { fileWatcher } from './services/watcher';
 import { getFranchiseGraph, getFranchiseCrawlProgress } from './services/franchiseGraph';
+import { crawlFranchiseLive, crawlLibraryGaps } from './services/franchiseCrawler';
 // IPC modules — each registers its own handlers at app-ready time.
 import { registerLogIpc } from './ipc/log';
 import { registerConfigIpc } from './ipc/config';
@@ -329,6 +330,10 @@ async function runStartupCatchUp(): Promise<void> {
     // series instead of redoing the full search; runs alongside the heavier
     // poster matcher so users see relations populate within seconds.
     void backfillRelationsForLibrary();
+    // Background gap-fill: crawl every owned series whose franchise component
+    // isn't in the store yet. Keep + fill gaps — never re-fetch fetchedAt>0
+    // nodes. Fire-and-forget; the shared RateLimiter paces AniList.
+    void crawlLibraryGaps();
   } finally {
     startupCatchUpInFlight = false;
   }
@@ -1071,7 +1076,13 @@ ipcMain.handle('anilist:search', async (_event, query: string, limit?: number) =
 ipcMain.handle('franchise:graph', async (_event, anilistId: number) => {
   if (typeof anilistId !== 'number' || !Number.isFinite(anilistId)) return null;
   try {
-    return await getFranchiseGraph(anilistId);
+    const graph = await getFranchiseGraph(anilistId);
+    // Gentle on-click refresh: re-crawl this series' component so updates (a
+    // newly announced sequel, etc.) stream in live via the store watcher.
+    // Only the opened node is force-refetched; the rest fills via gap logic and
+    // the module throttles repeat opens of the same component. Fire-and-forget.
+    void crawlFranchiseLive(anilistId, { forceRefetch: [anilistId] });
+    return graph;
   } catch (error) {
     logger.error('metadata', `franchise:graph failed: ${(error as Error).message}`);
     return null;

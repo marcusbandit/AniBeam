@@ -1,5 +1,5 @@
 import { app, BrowserWindow } from 'electron';
-import { readFile, mkdir, writeFile } from 'fs/promises';
+import { readFile, mkdir, writeFile, rename, unlink } from 'fs/promises';
 import { watch } from 'node:fs';
 import { join } from 'path';
 import metadataHandler from '../handlers/metadataHandler';
@@ -26,7 +26,7 @@ const FRANCHISES_DIR = 'franchises';
 // franchise pointer to the per-franchise file, and builds the graph entirely
 // from disk. No AniList fetches, no writes.
 
-interface ShowEntry {
+export interface ShowEntry {
   /** The show's own data. Null until we've directly fetched this id. */
   node: FranchiseNode | null;
   /** Show's relations to other shows. */
@@ -35,33 +35,33 @@ interface ShowEntry {
   fetchedAt: number;
 }
 
-interface LibraryEntry extends ShowEntry {
+export interface LibraryEntry extends ShowEntry {
   /** Per-franchise file key, e.g. "franchise-5081". */
   franchise: string;
 }
 
-interface FranchiseStoreIndex {
+export interface FranchiseStoreIndex {
   library: Record<string, LibraryEntry>;
 }
 
-interface FranchiseFile {
+export interface FranchiseFile {
   rootId: number;
   byId: Record<string, ShowEntry>;
 }
 
-function indexPath(): string {
+export function indexPath(): string {
   return join(app.getPath('userData'), INDEX_FILE);
 }
 
-function franchisesDir(): string {
+export function franchisesDir(): string {
   return join(app.getPath('userData'), FRANCHISES_DIR);
 }
 
-function franchiseFilePath(key: string): string {
+export function franchiseFilePath(key: string): string {
   return join(franchisesDir(), `${key}.json`);
 }
 
-async function readIndex(): Promise<FranchiseStoreIndex> {
+export async function readIndex(): Promise<FranchiseStoreIndex> {
   try {
     const raw = await readFile(indexPath(), 'utf-8');
     const parsed = JSON.parse(raw);
@@ -72,7 +72,7 @@ async function readIndex(): Promise<FranchiseStoreIndex> {
   return { library: {} };
 }
 
-async function readFranchiseFile(key: string): Promise<FranchiseFile | null> {
+export async function readFranchiseFile(key: string): Promise<FranchiseFile | null> {
   try {
     const raw = await readFile(franchiseFilePath(key), 'utf-8');
     const parsed = JSON.parse(raw);
@@ -85,6 +85,38 @@ async function readFranchiseFile(key: string): Promise<FranchiseFile | null> {
     }
   } catch { /* missing/corrupt → null */ }
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Writers — atomic tmp+rename so a half-written JSON never lands where the
+// reader or the fs.watch store-watcher sees it. Mirrors metadataHandler's
+// PID-suffixed-tmp pattern so two AniBeam processes can't tear each other's
+// renames.
+// ---------------------------------------------------------------------------
+
+export async function writeIndex(index: FranchiseStoreIndex): Promise<void> {
+  const target = indexPath();
+  await mkdir(app.getPath('userData'), { recursive: true });
+  const tmp = `${target}.tmp.${process.pid}`;
+  await writeFile(tmp, JSON.stringify(index, null, 2), 'utf-8');
+  await rename(tmp, target);
+}
+
+export async function writeFranchiseFile(key: string, file: FranchiseFile): Promise<void> {
+  const dir = franchisesDir();
+  await mkdir(dir, { recursive: true });
+  const target = franchiseFilePath(key);
+  const tmp = `${target}.tmp.${process.pid}`;
+  await writeFile(tmp, JSON.stringify(file, null, 2), 'utf-8');
+  await rename(tmp, target);
+}
+
+/** Remove a per-franchise file (e.g. a now-superseded provisional key). Missing
+ *  file is not an error. */
+export async function deleteFranchiseFile(key: string): Promise<void> {
+  try {
+    await unlink(franchiseFilePath(key));
+  } catch { /* already gone → fine */ }
 }
 
 // ---------------------------------------------------------------------------
@@ -138,7 +170,7 @@ function ensureStoreWatcher(): void {
 }
 
 // SeriesMetadata-like shape we read from the saved store.
-interface SavedSeries {
+export interface SavedSeries {
   anilistId?: number;
   malId?: number | null;
   format?: string;
@@ -163,7 +195,7 @@ const yearFromStartDate = (sd: unknown): number | null => {
 };
 
 /** Build a stub FranchiseNode from a SavedSeries entry (anilistId required). */
-function nodeFromOwnedSeries(s: SavedSeries): FranchiseNode {
+export function nodeFromOwnedSeries(s: SavedSeries): FranchiseNode {
   return {
     anilistId: s.anilistId as number,
     malId: s.malId ?? null,
