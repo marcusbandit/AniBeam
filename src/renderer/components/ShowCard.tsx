@@ -125,7 +125,11 @@ function ShowCard({
     state: watchedState,
   });
 
-  const epBadge = episodeBadgeNumber != null
+  // A movie is identified by metadata (item.type), so we never derive or show
+  // an episode number for it — a filename like "…Dai 63-kai…" would otherwise
+  // surface a bogus "EP 63". Movies get a "Movie" badge in the same slot.
+  const isMovie = item.type === "movie";
+  const epBadge = !isMovie && episodeBadgeNumber != null
     ? String(episodeBadgeNumber).padStart(2, "0")
     : null;
 
@@ -157,11 +161,15 @@ function ShowCard({
             {watchedLabel}
           </span>
         )}
-        {epBadge && (
+        {isMovie && episodeBadgeNumber != null ? (
+          <span className="show-card-ep-badge" aria-label="Movie">
+            Movie
+          </span>
+        ) : epBadge ? (
           <span className="show-card-ep-badge" aria-label={`Episode ${epBadge}`}>
             EP {epBadge}
           </span>
-        )}
+        ) : null}
         {(score || myScore) && (
           <div className="show-card-ratings">
             {score && (
