@@ -54,6 +54,15 @@ function fmtRelativeTime(unixSec: number): string {
   return future ? `in ${label}` : `${label} ago`;
 }
 
+// Highest episode number actually sitting on disk — the value the "EP NN"
+// badge shows everywhere else in the app (Library, Airing). 0 when nothing is
+// on disk. The single source of truth for what "you have" means on a card.
+function highestOnDiskEpisode(item: LibraryItem): number {
+  let max = 0;
+  for (const f of item.files) if (f.episodeNumber > max) max = f.episodeNumber;
+  return max;
+}
+
 // One entry per show. Derived from the C reference (src/ui.c:955), but the
 // shown episode is the newest one ACTUALLY on disk, not just the latest with a
 // known past airDate — a freshly-downloaded episode whose airDate metadata
@@ -75,11 +84,11 @@ function buildRecentEntry(item: LibraryItem, nowSec: number): FeedEntry | null {
     if (!bestAired || t > bestAired.ts) bestAired = { ts: t, ep: e.episodeNumber };
   }
 
-  // Newest episode on disk (and its mtime) — drives the badge.
-  let highestOnDisk = 0;
+  // Newest episode on disk drives the badge; its newest mtime is the
+  // "downloaded" fallback timestamp.
+  const highestOnDisk = highestOnDiskEpisode(item);
   let newestMtime = 0;
   for (const f of item.files) {
-    if (f.episodeNumber > highestOnDisk) highestOnDisk = f.episodeNumber;
     if (f.mtime && f.mtime > newestMtime) newestMtime = f.mtime;
   }
   const episodeNumber = Math.max(highestOnDisk, bestAired?.ep ?? 0) || null;
@@ -129,7 +138,12 @@ function buildUpcomingFeed(items: LibraryItem[]): FeedEntry[] {
       upcoming.push({
         item,
         when: Math.floor(next.airDateMs / 1000),
-        episodeNumber: next.episodeNumber,
+        // Badge the newest episode ON DISK — same as the Airing view and the
+        // rest of the app — NOT the upcoming one. `when` (next air date) still
+        // drives the soonest-first sort, and the countdown chip + "Next
+        // episode airs" label convey what's coming. Badging next.episodeNumber
+        // here made the feed read "EP 09" while only 8 episodes were on disk.
+        episodeNumber: highestOnDiskEpisode(item) || null,
         source: "upcoming",
       });
     } else {
