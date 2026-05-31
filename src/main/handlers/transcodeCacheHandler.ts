@@ -12,6 +12,13 @@
 // that if the user replaces a file in place (rip a new version of the
 // same episode) we re-transcode automatically instead of serving the
 // stale cache.
+//
+// No size cap. A cached encode is "parent-backed": it exists only because
+// some source file in the library is incompatible. We never evict a
+// referenced encode to reclaim space — it's removed only when its source
+// file disappears (handleUnlink → cleanupFor) or its metadata reference is
+// dropped (the orphan-removal pass in pruneCacheNow). The cache is thus
+// naturally bounded by the amount of incompatible content the library holds.
 
 import { spawn, ChildProcess } from 'node:child_process';
 import { mkdir, stat as fsStat, unlink, rename, readdir } from 'node:fs/promises';
@@ -24,12 +31,6 @@ import metadataHandler from './metadataHandler';
 import type { FileStatus } from '../../shared/fileStatus';
 import type { FileEpisodeEntry } from '../../shared/fileEpisode';
 import { probeCodecs, needsTranscode, ensureEncoder, type EncoderKind } from '../utils/transcodeProbe';
-
-// Hard upper bound on the on-disk cache. When we cross this, oldest .mp4s
-// (by mtime) get deleted until we're back under. 20 GB is a few hundred
-// HEVC episodes worth of h264 cache — plenty for a typical browsing session
-// without slowly eating the whole drive.
-const MAX_CACHE_BYTES = 20 * 1024 * 1024 * 1024;
 
 interface QueueEntry {
   filePath: string;
@@ -57,6 +58,7 @@ let active: { filePath: string; child: ChildProcess; outTmp: string } | null = n
 let onStatusChange: ((path: string, status: FileStatus) => Promise<void> | void) | null = null;
 let onTranscodeReady: ((path: string, transcodedPath: string) => Promise<void> | void) | null = null;
 let onProgressChange: ((progress: TranscodeProgress) => void) | null = null;
+let onQueueChange: ((snap: { activePath: string | null; queuedPaths: string[] }) => void) | null = null;
 
 function cacheDir(): string {
   return join(app.getPath('userData'), 'transcode-cache');
@@ -159,6 +161,18 @@ function emitProgress(p: TranscodeProgress): void {
   }
 }
 
+// Notify the caller whenever the {active, queued} set changes so the
+// renderer can reflect which series are encoding vs. waiting. Sends the
+// FULL current shape each time; the caller resolves paths → series.
+function emitQueueChange(): void {
+  if (!onQueueChange) return;
+  try {
+    onQueueChange({ activePath: active?.filePath ?? null, queuedPaths: queue.map((e) => e.filePath) });
+  } catch (err) {
+    logger.warn('system', `transcodeCache queue emit failed: ${(err as Error).message}`);
+  }
+}
+
 async function persistTranscodedPath(filePath: string, transcodedPath: string): Promise<void> {
   await metadataHandler.transaction<boolean>(async (meta) => {
     let changed = false;
@@ -231,6 +245,9 @@ async function runOne(entry: QueueEntry): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const child = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
     active = { filePath, child, outTmp: tmpPath };
+    // This entry just became active (and pump() already shifted it out of
+    // the queue) — broadcast the new {active, queued} split.
+    emitQueueChange();
     let stderr = '';
     child.stderr.on('data', (buf: Buffer) => {
       stderr += buf.toString();
@@ -302,6 +319,9 @@ async function runOne(entry: QueueEntry): Promise<void> {
     });
   })
     .then(async () => {
+      // `active` was cleared in the child 'close' handler before this ran —
+      // broadcast the now-idle (or next-pending) state.
+      emitQueueChange();
       // Atomic publish — rename succeeds only after ffmpeg fully closed
       // the file, so callers never see a partial .mp4.
       await rename(tmpPath, finalPath);
@@ -311,6 +331,9 @@ async function runOne(entry: QueueEntry): Promise<void> {
       entry.resolve();
     })
     .catch(async (err) => {
+      // `active` was cleared in the child 'close'/'error' handler — broadcast
+      // the now-idle (or next-pending) state.
+      emitQueueChange();
       // Clean up any partial output. Leave the source untouched. ENOENT is
       // fine — ffmpeg may have been killed before writing anything.
       await unlink(tmpPath).catch((cleanupErr: NodeJS.ErrnoException) => {
@@ -335,6 +358,8 @@ async function pump(): Promise<void> {
     }
   } finally {
     pumpInFlight = false;
+    // Queue fully drained and nothing active — broadcast the empty state.
+    emitQueueChange();
   }
 }
 
@@ -346,11 +371,14 @@ const transcodeCacheHandler = {
    * caller gets a hook for renderer notification).
    * `onProgress` fires ~4× per second during an active encode so the
    * renderer can show a progress bar.
+   * `onQueue` fires whenever the {active, queued} set changes so the caller
+   * can broadcast a series-level "encoding / queued" map to the renderer.
    */
   start(
     onStatus: (path: string, status: FileStatus) => Promise<void> | void,
     onReady?: (path: string, transcodedPath: string) => Promise<void> | void,
     onProgress?: (progress: TranscodeProgress) => void,
+    onQueue?: (snap: { activePath: string | null; queuedPaths: string[] }) => void,
   ): void {
     onStatusChange = onStatus;
     onTranscodeReady = async (path, transcoded) => {
@@ -358,6 +386,7 @@ const transcodeCacheHandler = {
       if (onReady) await onReady(path, transcoded);
     };
     onProgressChange = onProgress ?? null;
+    onQueueChange = onQueue ?? null;
   },
 
   /**
@@ -383,7 +412,7 @@ const transcodeCacheHandler = {
     if (existing) {
       if (opts?.priority) {
         const idx = queue.indexOf(existing);
-        if (idx > 0) { queue.splice(idx, 1); queue.unshift(existing); }
+        if (idx > 0) { queue.splice(idx, 1); queue.unshift(existing); emitQueueChange(); }
       }
       return new Promise((resolve, reject) => {
         // Chain onto the existing entry's settlement.
@@ -396,8 +425,18 @@ const transcodeCacheHandler = {
     return new Promise((resolve, reject) => {
       const entry: QueueEntry = { filePath, resolve, reject };
       if (opts?.priority) queue.unshift(entry); else queue.push(entry);
+      emitQueueChange();
       void pump();
     });
+  },
+
+  /**
+   * On-demand read of the current {active, queued} split, for callers that
+   * missed the live onQueue events (e.g. a renderer that just mounted and
+   * needs the initial state). Mirrors what emitQueueChange() broadcasts.
+   */
+  queueSnapshot(): { activePath: string | null; queuedPaths: string[] } {
+    return { activePath: active?.filePath ?? null, queuedPaths: queue.map((e) => e.filePath) };
   },
 
   /**
@@ -454,12 +493,16 @@ const transcodeCacheHandler = {
   },
 
   /**
-   * Maintenance sweep. Two passes:
-   *   1. Drop cache files whose `transcodedPath` is no longer referenced
-   *      by any fileEpisode (e.g. metadata.json was edited externally,
-   *      a series was deleted, the source file moved and re-keyed).
-   *   2. If the remaining cache is still over MAX_CACHE_BYTES, evict
-   *      oldest-by-mtime until we're back under.
+   * Maintenance sweep — orphan cleanup only. Drops cache files whose
+   * `transcodedPath` is no longer referenced by any fileEpisode (e.g.
+   * metadata.json was edited externally, a series was deleted, the source
+   * file moved and re-keyed). A recovery pass first re-binds any orphan
+   * that's actually a valid cache for a source whose reference was wiped.
+   *
+   * There is NO size cap. A referenced (parent-backed) encode is never
+   * deleted to reclaim space — it's removed only when its source file
+   * disappears (handled elsewhere via handleUnlink → cleanupFor). The cache
+   * stays naturally bounded by the library's incompatible content.
    *
    * Best-effort, never throws. Designed to run once at app startup.
    */
@@ -530,58 +573,23 @@ const transcodeCacheHandler = {
         logger.info('system', `Transcode cache: recovered ${recoveredBindings.length} orphan(s) by re-binding to metadata`);
       }
 
-      const survivors: Array<{ path: string; size: number; mtimeMs: number }> = [];
-      let totalSize = 0;
+      // Delete every .mp4 that nothing in metadata references. Anything still
+      // referenced is parent-backed and kept regardless of size.
       let orphansRemoved = 0;
       for (const name of entries) {
         if (!name.endsWith('.mp4')) continue;
         const fullPath = join(dir, name);
-        try {
-          const st = await fsStat(fullPath);
-          if (!referenced.has(fullPath)) {
-            await unlink(fullPath).catch(() => { /* race ok */ });
-            orphansRemoved++;
-            continue;
+        if (referenced.has(fullPath)) continue;
+        await unlink(fullPath).catch((err: NodeJS.ErrnoException) => {
+          if (err.code !== 'ENOENT') {
+            logger.warn('system', `transcodeCache prune unlink failed: ${err.message}`, { file: fullPath });
           }
-          survivors.push({ path: fullPath, size: st.size, mtimeMs: st.mtimeMs });
-          totalSize += st.size;
-        } catch (err) {
-          if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-            logger.warn('system', `transcodeCache prune stat failed: ${(err as Error).message}`, { file: fullPath });
-          }
-        }
+        });
+        orphansRemoved++;
       }
 
-      let quotaEvicted = 0;
-      if (totalSize > MAX_CACHE_BYTES) {
-        survivors.sort((a, b) => a.mtimeMs - b.mtimeMs);
-        while (totalSize > MAX_CACHE_BYTES && survivors.length > 0) {
-          const victim = survivors.shift()!;
-          await unlink(victim.path).catch(() => { /* race ok */ });
-          totalSize -= victim.size;
-          quotaEvicted++;
-        }
-        // Drop now-stale transcodedPath references in metadata too.
-        if (quotaEvicted > 0) {
-          await metadataHandler.transaction<boolean>(async (current) => {
-            let changed = false;
-            for (const series of Object.values(current)) {
-              const s = series as { fileEpisodes?: FileEpisodeEntry[] };
-              if (!Array.isArray(s.fileEpisodes)) continue;
-              for (const f of s.fileEpisodes) {
-                if (f.transcodedPath && !existsSync(f.transcodedPath)) {
-                  f.transcodedPath = null;
-                  changed = true;
-                }
-              }
-            }
-            return { result: changed, updated: changed ? current : null };
-          });
-        }
-      }
-
-      if (orphansRemoved > 0 || quotaEvicted > 0) {
-        logger.info('system', `Transcode cache pruned: ${orphansRemoved} orphan(s), ${quotaEvicted} over-quota`);
+      if (orphansRemoved > 0) {
+        logger.info('system', `Transcode cache pruned: ${orphansRemoved} orphan(s)`);
       }
     } catch (err) {
       logger.warn('system', `Transcode cache prune failed: ${(err as Error).message}`);

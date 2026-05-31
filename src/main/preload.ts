@@ -141,6 +141,11 @@ export interface ElectronAPI {
   // to the cached browser-playable MP4).
   onTranscodeProgress: (handler: (payload: TranscodeProgressPayload) => void) => () => void;
 
+  // Series-level transcode queue. getTranscodeQueueSnapshot() is the initial
+  // pull; onTranscodeQueueChanged streams the full map on every change.
+  getTranscodeQueueSnapshot: () => Promise<TranscodeQueueSnapshot>;
+  onTranscodeQueueChanged: (handler: (snap: TranscodeQueueSnapshot) => void) => () => void;
+
   // Embedded subtitles
   listEmbeddedSubtitles: (videoPath: string) => Promise<Array<{ streamIndex: number; codec: string; language: string | null; title: string | null }>>;
   extractEmbeddedSubtitle: (videoPath: string, streamIndex: number, codec: string) => Promise<{ path: string; format: 'ass' | 'vtt' } | null>;
@@ -232,6 +237,12 @@ export interface TranscodeProgressPayload {
   speed: number | null;
   etaSec: number | null;
 }
+
+// Series-level view of the transcode queue. Keyed by seriesId; a series is
+// 'encoding' if one of its episodes is the active ffmpeg job, else 'queued'
+// if any of its episodes are waiting. 'encoding' wins when both apply.
+export type TranscodeQueueStatus = 'encoding' | 'queued';
+export type TranscodeQueueSnapshot = Record<string, TranscodeQueueStatus>;
 
 // Per-file classification returned by ensureSeriesTranscoded:
 //   'cached'  — a usable transcode already exists on disk (shows "Re-encoded").
@@ -326,6 +337,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const listener = (_e: unknown, payload: TranscodeProgressPayload) => handler(payload);
     ipcRenderer.on('metadata:transcode-progress', listener);
     return () => ipcRenderer.removeListener('metadata:transcode-progress', listener);
+  },
+  getTranscodeQueueSnapshot: () => ipcRenderer.invoke('transcode:queue-snapshot'),
+  onTranscodeQueueChanged: (handler: (snap: TranscodeQueueSnapshot) => void) => {
+    const listener = (_e: unknown, snap: TranscodeQueueSnapshot) => handler(snap);
+    ipcRenderer.on('transcode:queue-changed', listener);
+    return () => ipcRenderer.removeListener('transcode:queue-changed', listener);
   },
 
   // Embedded subtitles

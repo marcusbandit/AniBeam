@@ -4154,18 +4154,27 @@ button.hero-chip-anilist--icon:hover {
    left) and watched badge (top-right) and keeps the show's average score
    visible at a glance without spending a line in the meta row, which is
    now reserved for "ago" + the live next-episode countdown. */
-/* Wrapper around one or two rating badges (community + user). Lays them
-   out as a row so adding the user-score pill doesn't shove the community
-   one around; the wrapper owns the bottom-left anchor instead of each
-   badge having its own. */
-.show-card-ratings {
+/* Bottom-left corner stack. Holds the re-encode status pill (on top) and the
+   rating row (below) in a single column so two wide chips never collide on a
+   narrow card — they stack instead of both reaching toward centre. The column
+   owns the anchor; its children position statically. */
+.show-card-corner-bl {
   position: absolute;
   bottom: 0.6rem;
   left: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+  z-index: 1;
+}
+/* Wrapper around one or two rating badges (community + user). Lays them
+   out as a row so adding the user-score pill doesn't shove the community
+   one around. */
+.show-card-ratings {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  z-index: 1;
 }
 .show-card-rating-badge {
   display: inline-flex;
@@ -4193,6 +4202,50 @@ button.hero-chip-anilist--icon:hover {
    amber star without competing for attention. */
 .show-card-rating-badge--mine::before {
   color: var(--accent-teal, #4dc4b8);
+}
+
+/* Re-encode status pill — stacked above the ratings in the bottom-left corner
+   column (see .show-card-corner-bl). Same dark-glass shell as the sibling
+   badges; a leading dot signals state. Amber + pulse for an active encode,
+   muted + static for a queued one so encoding clearly reads as primary. */
+.show-card-encode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(0, 0, 0, 0.78);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.24rem 0.5rem;
+  border-radius: var(--radius-md);
+  backdrop-filter: blur(4px);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+  z-index: 1;
+}
+.show-card-encode-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.show-card-encode-badge--encoding .show-card-encode-dot {
+  background: var(--accent-amber);
+  animation: showCardEncodePulse 1.4s ease-in-out infinite;
+}
+/* Queued reads as secondary: dim the whole pill and use a static grey dot. */
+.show-card-encode-badge--queued {
+  opacity: 0.7;
+  color: var(--text-muted);
+}
+.show-card-encode-badge--queued .show-card-encode-dot {
+  background: var(--text-muted);
+}
+@keyframes showCardEncodePulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.45; transform: scale(0.78); }
 }
 
 /* ============ SUBSCRIPTIONS ============ */

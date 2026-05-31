@@ -26,7 +26,7 @@ import { registerLogIpc } from './ipc/log';
 import { registerConfigIpc } from './ipc/config';
 import { registerFolderIpc } from './ipc/folder';
 import { registerImageCacheIpc } from './ipc/imageCache';
-import { registerMediaPlaybackIpc } from './ipc/mediaPlayback';
+import { registerMediaPlaybackIpc, resolveQueueSnapshot } from './ipc/mediaPlayback';
 import { registerTrackerIpc } from './ipc/tracker';
 import { registerShellIpc } from './ipc/shell';
 import { registerSubscriptionsIpc } from './ipc/subscriptions';
@@ -894,11 +894,41 @@ app.whenReady().then(async () => {
     await updateFileStatus(filePath, status);
     if (status === 'ready') await maybeEnqueueTranscode(filePath);
   });
-  transcodeCacheHandler.start(updateFileStatus, undefined, (progress) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('metadata:transcode-progress', progress);
+  // The queue mutates in bursts (a whole series priority-enqueued at once),
+  // so coalesce the resolve+broadcast on a short trailing debounce. We keep
+  // only the latest raw {active, queued} and resolve it to a series-level map
+  // when the timer fires. Correctness over micro-optimization — a missed
+  // intermediate state is fine since each send carries the FULL current map.
+  let queueBroadcastTimer: NodeJS.Timeout | null = null;
+  let latestQueueRaw: { activePath: string | null; queuedPaths: string[] } | null = null;
+  const flushQueueBroadcast = async (): Promise<void> => {
+    queueBroadcastTimer = null;
+    if (!latestQueueRaw) return;
+    const raw = latestQueueRaw;
+    latestQueueRaw = null;
+    try {
+      const snapshot = await resolveQueueSnapshot(raw);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('transcode:queue-changed', snapshot);
+      }
+    } catch (err) {
+      logger.warn('system', `transcode queue broadcast failed: ${(err as Error).message}`);
     }
-  });
+  };
+  transcodeCacheHandler.start(
+    updateFileStatus,
+    undefined,
+    (progress) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('metadata:transcode-progress', progress);
+      }
+    },
+    (raw) => {
+      latestQueueRaw = raw;
+      if (queueBroadcastTimer) return;
+      queueBroadcastTimer = setTimeout(() => { void flushQueueBroadcast(); }, 150);
+    },
+  );
 
   // Re-enqueue any files that were 'verifying' when the app last quit —
   // the in-memory probe queue doesn't survive restarts, and the watcher's

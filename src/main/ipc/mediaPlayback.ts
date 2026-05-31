@@ -6,9 +6,48 @@ import transcodeCacheHandler from '../handlers/transcodeCacheHandler';
 import subtitleHandler from '../handlers/subtitleHandler';
 import aniSkipHandler from '../handlers/aniSkipHandler';
 import { findFileEpisode } from '../../shared/fileEpisode';
+import type { FileEpisodeEntry } from '../../shared/fileEpisode';
 import { probeCodecs, needsTranscode } from '../utils/transcodeProbe';
 import { getViewHistory, markViewed } from '../services/viewHistory';
 import type { WindowGetter } from './types';
+import type { TranscodeQueueSnapshot } from '../preload';
+
+// Map a source filePath back to its seriesId — the top-level metadata key
+// whose fileEpisodes[] contains the file. (findFileEpisode only returns the
+// entry, not which series owns it.) Returns null for untracked files.
+function seriesIdForPath(meta: Record<string, unknown>, filePath: string): string | null {
+  for (const [seriesId, series] of Object.entries(meta)) {
+    const s = series as { fileEpisodes?: FileEpisodeEntry[] };
+    if (!Array.isArray(s.fileEpisodes)) continue;
+    if (s.fileEpisodes.some((f) => f.filePath === filePath)) return seriesId;
+  }
+  return null;
+}
+
+// Resolve the raw {active, queued} path split into a series-level status map.
+// The active series → 'encoding'; each queued series → 'queued' UNLESS it's
+// already 'encoding'. Used both for the on-demand snapshot and the broadcast.
+export async function resolveQueueSnapshot(
+  raw: { activePath: string | null; queuedPaths: string[] },
+): Promise<TranscodeQueueSnapshot> {
+  let meta: Record<string, unknown> = {};
+  try {
+    meta = await metadataHandler.loadMetadata();
+  } catch {
+    // No metadata → no way to resolve series; return an empty map.
+    return {};
+  }
+  const snapshot: TranscodeQueueSnapshot = {};
+  for (const filePath of raw.queuedPaths) {
+    const seriesId = seriesIdForPath(meta, filePath);
+    if (seriesId && snapshot[seriesId] !== 'encoding') snapshot[seriesId] = 'queued';
+  }
+  if (raw.activePath) {
+    const seriesId = seriesIdForPath(meta, raw.activePath);
+    if (seriesId) snapshot[seriesId] = 'encoding';
+  }
+  return snapshot;
+}
 
 export function registerMediaPlaybackIpc(getMainWindow?: WindowGetter): void {
   const broadcastViewHistoryChanged = (): void => {
@@ -45,9 +84,12 @@ export function registerMediaPlaybackIpc(getMainWindow?: WindowGetter): void {
     // renderer so it can show progress while ffmpeg runs. The renderer
     // re-calls openVideo when it sees a 'ready' status for this file.
     // enqueue() is idempotent — duplicates collapse into the same encode.
+    // priority: true jumps this specific episode to the absolute front of
+    // the queue — the user is actively waiting on it, so it encodes next
+    // (ahead of any bulk series sweep already queued).
     const probe = await probeCodecs(filePath);
     if (probe && needsTranscode(probe)) {
-      void transcodeCacheHandler.enqueue(filePath);
+      void transcodeCacheHandler.enqueue(filePath, { priority: true });
       return {
         kind: 'transcoding' as const,
         vCodec: probe.vCodec,
@@ -96,6 +138,13 @@ export function registerMediaPlaybackIpc(getMainWindow?: WindowGetter): void {
       void transcodeCacheHandler.enqueue(pending[i].filePath, { priority: true });
     }
     return results;
+  });
+
+  // On-demand pull of the series-level transcode queue (for a renderer that
+  // just mounted). Not debounced — the live broadcast on 'transcode:queue-
+  // changed' handles streaming updates.
+  ipcMain.handle('transcode:queue-snapshot', async (): Promise<TranscodeQueueSnapshot> => {
+    return resolveQueueSnapshot(transcodeCacheHandler.queueSnapshot());
   });
 
   ipcMain.handle('subtitle:list-embedded', async (_event, videoPath: string) => {

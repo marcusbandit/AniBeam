@@ -13,6 +13,7 @@ import {
   getLatestAiredEpisodeNumber,
 } from "../utils/airingUtils";
 import { getDisplayRating } from "../utils/ratingUtils";
+import { useSeriesTranscodeStatus } from "../hooks/useTranscodeQueue";
 import { Tooltip } from "./primitives";
 
 const LIFT_SPEED = 12;
@@ -60,6 +61,10 @@ function ShowCard({
   const navigate = useNavigate();
   const { pickTitle } = useTitleLanguage();
   const { getWatched, getUserScore } = useTrackerProgress();
+
+  // Per-series re-encode status from the shared queue store (one IPC sub for
+  // the whole app). Drives the bottom-right encode pill on the poster.
+  const encodeStatus = useSeriesTranscodeStatus(item.id);
 
   // Smoothed hover-lift is applied to the poster-wrap only — the info row
   // below stays anchored so titles don't slide when the cursor enters/leaves.
@@ -170,22 +175,32 @@ function ShowCard({
             EP {epBadge}
           </span>
         ) : null}
-        {(score || myScore) && (
-          <div className="show-card-ratings">
-            {score && (
-              <span className="show-card-rating-badge" aria-label={`Rating ${score}`}>
-                {score}
+        {(score || myScore || encodeStatus) && (
+          <div className="show-card-corner-bl">
+            {encodeStatus && (
+              <span className={`show-card-encode-badge show-card-encode-badge--${encodeStatus}`}>
+                <span className="show-card-encode-dot" />
+                {encodeStatus === "encoding" ? "ENCODING" : "QUEUED"}
               </span>
             )}
-            {myScore && (
-              <Tooltip label="Your score">
-                <span
-                  className="show-card-rating-badge show-card-rating-badge--mine"
-                  aria-label={`Your rating ${myScore}`}
-                >
-                  {myScore}
-                </span>
-              </Tooltip>
+            {(score || myScore) && (
+              <div className="show-card-ratings">
+                {score && (
+                  <span className="show-card-rating-badge" aria-label={`Rating ${score}`}>
+                    {score}
+                  </span>
+                )}
+                {myScore && (
+                  <Tooltip label="Your score">
+                    <span
+                      className="show-card-rating-badge show-card-rating-badge--mine"
+                      aria-label={`Your rating ${myScore}`}
+                    >
+                      {myScore}
+                    </span>
+                  </Tooltip>
+                )}
+              </div>
             )}
           </div>
         )}
