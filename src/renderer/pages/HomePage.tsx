@@ -127,8 +127,11 @@ function fmtRelativeTime(unixSec: number): string {
 // (sortKey, latestEpisode) for an airing show. Mirrors FeedPage's logic:
 // latest aired-and-on-disk episode → fall back to highest file mtime.
 function getAiringSortInfo(item: LibraryItem): { when: number; episode: number | null } | null {
+  if (item.files.length === 0) return null;
   const nowSec = Math.floor(Date.now() / 1000);
   const onDiskEps = new Set(item.files.map((f) => f.episodeNumber));
+
+  // Latest aired-AND-on-disk episode timestamp — drives the freshness sort.
   let bestAired: { ts: number; ep: number } | null = null;
   for (const e of item.episodes) {
     if (!e.airDate || !onDiskEps.has(e.episodeNumber)) continue;
@@ -136,14 +139,32 @@ function getAiringSortInfo(item: LibraryItem): { when: number; episode: number |
     if (!Number.isFinite(t) || t > nowSec) continue;
     if (!bestAired || t > bestAired.ts) bestAired = { ts: t, ep: e.episodeNumber };
   }
-  if (bestAired) return { when: bestAired.ts, episode: bestAired.ep };
-  let bestFile: { mtime: number; ep: number } | null = null;
+
+  // The badge tracks the newest episode you ACTUALLY HAVE on disk — the
+  // highest episode number among local files. A just-downloaded episode whose
+  // airDate metadata hasn't landed yet (or is still flagged in the future) is
+  // on disk and watchable, so it counts even though `bestAired` (which needs
+  // a known *past* airDate) can't see it. Without this, a show tracked 08/12
+  // with 8 files on disk reads "EP 07" — the last episode with an airDate.
+  let highestOnDisk = 0;
+  let newestMtime = 0;
   for (const f of item.files) {
-    if (!f.mtime) continue;
-    if (!bestFile || f.mtime > bestFile.mtime) bestFile = { mtime: f.mtime, ep: f.episodeNumber };
+    if (f.episodeNumber > highestOnDisk) highestOnDisk = f.episodeNumber;
+    if (f.mtime && f.mtime > newestMtime) newestMtime = f.mtime;
   }
-  if (bestFile) return { when: Math.floor(bestFile.mtime / 1000), episode: bestFile.ep };
-  return null;
+  const episode = Math.max(highestOnDisk, bestAired?.ep ?? 0) || null;
+
+  // Timestamp for the "x ago" label + sort: prefer the shown episode's known
+  // past airDate, else the latest aired timestamp, else the newest file mtime.
+  const epAir = item.episodes.find((e) => e.episodeNumber === episode && e.airDate);
+  const epAirT = epAir?.airDate ? Math.floor(Date.parse(epAir.airDate) / 1000) : NaN;
+  let when: number;
+  if (Number.isFinite(epAirT) && epAirT <= nowSec) when = epAirT;
+  else if (bestAired) when = bestAired.ts;
+  else if (newestMtime) when = Math.floor(newestMtime / 1000);
+  else return null;
+
+  return { when, episode };
 }
 
 // Normalise raw averageScore to a 0–10 scale. AniList serves 0–100, MAL

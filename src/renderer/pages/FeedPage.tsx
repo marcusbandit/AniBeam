@@ -54,15 +54,18 @@ function fmtRelativeTime(unixSec: number): string {
   return future ? `in ${label}` : `${label} ago`;
 }
 
-// One entry per show. Same logic as the C reference (src/ui.c:955):
-//   - If the show has any episode whose airDate <= now, pick the latest such.
-//   - Otherwise fall back to the file with the largest mtime.
-// Future episodes are ignored. Returns null when there's no information at all
-// (no episodes, no files, or mtime=0).
+// One entry per show. Derived from the C reference (src/ui.c:955), but the
+// shown episode is the newest one ACTUALLY on disk, not just the latest with a
+// known past airDate — a freshly-downloaded episode whose airDate metadata
+// hasn't landed yet (or is flagged future) still counts. Without this, a show
+// with 8 files on disk but only 7 dated episodes reads "EP 07". Mirrors
+// HomePage.getAiringSortInfo. Future episodes are ignored for the timestamp.
+// Returns null when there's no information at all (no episodes, no files).
 function buildRecentEntry(item: LibraryItem, nowSec: number): FeedEntry | null {
   if (item.files.length === 0) return null;
 
-  // 1. Try latest aired episode that we ALSO have on disk.
+  // Latest aired-and-on-disk episode (needs a known past airDate) — used for
+  // the "aired" timestamp/source.
   const onDiskEps = new Set(item.files.map((f) => f.episodeNumber));
   let bestAired: { ts: number; ep: number } | null = null;
   for (const e of item.episodes) {
@@ -71,16 +74,29 @@ function buildRecentEntry(item: LibraryItem, nowSec: number): FeedEntry | null {
     if (!Number.isFinite(t) || t > nowSec) continue;
     if (!bestAired || t > bestAired.ts) bestAired = { ts: t, ep: e.episodeNumber };
   }
-  if (bestAired) return { item, when: bestAired.ts, episodeNumber: bestAired.ep, source: "aired" };
 
-  // 2. Fallback: latest file mtime.
-  let bestFile: { mtime: number; ep: number } | null = null;
+  // Newest episode on disk (and its mtime) — drives the badge.
+  let highestOnDisk = 0;
+  let newestMtime = 0;
   for (const f of item.files) {
-    if (!f.mtime) continue;
-    if (!bestFile || f.mtime > bestFile.mtime) bestFile = { mtime: f.mtime, ep: f.episodeNumber };
+    if (f.episodeNumber > highestOnDisk) highestOnDisk = f.episodeNumber;
+    if (f.mtime && f.mtime > newestMtime) newestMtime = f.mtime;
   }
-  if (bestFile) {
-    return { item, when: Math.floor(bestFile.mtime / 1000), episodeNumber: bestFile.ep, source: "downloaded" };
+  const episodeNumber = Math.max(highestOnDisk, bestAired?.ep ?? 0) || null;
+
+  // Prefer the shown episode's own past airDate (an "aired" entry at that
+  // time); else the newest file mtime ("downloaded"); else the best aired
+  // time; else bail.
+  const epAir = item.episodes.find((e) => e.episodeNumber === episodeNumber && e.airDate);
+  const epAirT = epAir?.airDate ? Math.floor(Date.parse(epAir.airDate) / 1000) : NaN;
+  if (Number.isFinite(epAirT) && epAirT <= nowSec) {
+    return { item, when: epAirT, episodeNumber, source: "aired" };
+  }
+  if (newestMtime) {
+    return { item, when: Math.floor(newestMtime / 1000), episodeNumber, source: "downloaded" };
+  }
+  if (bestAired) {
+    return { item, when: bestAired.ts, episodeNumber, source: "aired" };
   }
   return null;
 }
