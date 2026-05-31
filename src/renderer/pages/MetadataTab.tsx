@@ -236,11 +236,19 @@ function MetadataTab() {
           </div>
           {filteredSeries.map(([seriesId, data]) => {
             const movie = isMovie(data);
-            const have = data.fileEpisodes?.length || 0;
+            // Count only REAL episodes. OP/ED/PV/SP/extras are legitimate bonus
+            // files (Bakemonogatari has ~19 of them) — they must not inflate the
+            // count or trip the "more files than episodes" flag below. Entries
+            // persisted before the classifier have no `kind`, so they still
+            // count as episodes (backward compatible). Mirrors the realEpisodes
+            // split on the series page.
+            const have = (data.fileEpisodes ?? []).filter((f) => (f.kind ?? 'episode') === 'episode').length;
             const total = data.totalEpisodes || data.episodes?.length || (movie ? 1 : 0);
             const pct = total ? Math.round((have / total) * 100) : 0;
-            // More files on disk than the matched title has episodes — flag it
-            // so misnamed/duplicate/stray files get the user's attention.
+            // More EPISODES on disk than the matched title has — flag it so
+            // misnamed/duplicate/stray files get the user's attention. Bonus
+            // content is excluded above, so a show full of extras no longer
+            // false-flags.
             const extra = total > 0 ? Math.max(0, have - total) : 0;
             const sourceClass = data.source ? data.source.toLowerCase() : 'none';
             const posterUrl = getImageUrl(data.posterLocal, data.poster);
