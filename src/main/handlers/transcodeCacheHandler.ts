@@ -365,8 +365,13 @@ const transcodeCacheHandler = {
    * file's encode finishes (or fails / is skipped because the cache
    * already contains a usable copy). Safe to call multiple times for
    * the same path — duplicates collapse into a single in-flight encode.
+   *
+   * `priority` jumps the queue: a file the user is actively waiting on
+   * (e.g. just opened the series page) moves to the front so it encodes
+   * next, ahead of the bulk startup sweep. The single active encode is
+   * never interrupted — priority only reorders what's still waiting.
    */
-  enqueue(filePath: string): Promise<void> {
+  enqueue(filePath: string, opts?: { priority?: boolean }): Promise<void> {
     if (active?.filePath === filePath) {
       return new Promise((resolve, reject) => {
         const c = active!.child;
@@ -376,6 +381,10 @@ const transcodeCacheHandler = {
     }
     const existing = queue.find((e) => e.filePath === filePath);
     if (existing) {
+      if (opts?.priority) {
+        const idx = queue.indexOf(existing);
+        if (idx > 0) { queue.splice(idx, 1); queue.unshift(existing); }
+      }
       return new Promise((resolve, reject) => {
         // Chain onto the existing entry's settlement.
         const origResolve = existing.resolve;
@@ -385,7 +394,8 @@ const transcodeCacheHandler = {
       });
     }
     return new Promise((resolve, reject) => {
-      queue.push({ filePath, resolve, reject });
+      const entry: QueueEntry = { filePath, resolve, reject };
+      if (opts?.priority) queue.unshift(entry); else queue.push(entry);
       void pump();
     });
   },

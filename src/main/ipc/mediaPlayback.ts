@@ -57,6 +57,47 @@ export function registerMediaPlaybackIpc(getMainWindow?: WindowGetter): void {
     return { kind: 'direct' as const, url: `file://${filePath}` };
   });
 
+  // Opening a series page should kick off re-encoding for every episode that
+  // needs it — without the user clicking each one. The renderer hands us the
+  // series' file paths (in episode order); we classify each and priority-
+  // enqueue the ones that need transcoding so they encode next, ahead of the
+  // bulk startup sweep. Returns each file's state so the page can draw a
+  // progress bar where the "Re-encoded" tag will eventually sit.
+  ipcMain.handle('transcode:ensure-series', async (_event, filePaths: unknown) => {
+    if (!Array.isArray(filePaths)) return [];
+    const paths = filePaths.filter((p): p is string => typeof p === 'string' && p.length > 0);
+    if (paths.length === 0) return [];
+    let meta: Record<string, unknown> = {};
+    try {
+      meta = await metadataHandler.loadMetadata();
+    } catch {
+      // Fall through — we can still probe codecs without metadata.
+    }
+    // Classify in parallel (one ffprobe each), preserving input order.
+    const results = await Promise.all(paths.map(async (filePath) => {
+      try {
+        const hit = findFileEpisode(meta, filePath);
+        if (hit?.transcodedPath && existsSync(hit.transcodedPath)) {
+          return { filePath, state: 'cached' as const };
+        }
+        if (!existsSync(filePath)) return { filePath, state: 'none' as const };
+        const probe = await probeCodecs(filePath);
+        if (probe && needsTranscode(probe)) return { filePath, state: 'pending' as const };
+        return { filePath, state: 'none' as const };
+      } catch {
+        return { filePath, state: 'none' as const };
+      }
+    }));
+    // Enqueue pending files in reverse so the FIRST listed episode ends up at
+    // the front of the queue after the unshifts — earliest episode encodes
+    // first. enqueue() is idempotent; already-queued files just move up.
+    const pending = results.filter((r) => r.state === 'pending');
+    for (let i = pending.length - 1; i >= 0; i--) {
+      void transcodeCacheHandler.enqueue(pending[i].filePath, { priority: true });
+    }
+    return results;
+  });
+
   ipcMain.handle('subtitle:list-embedded', async (_event, videoPath: string) => {
     if (typeof videoPath !== 'string' || !videoPath) return [];
     return subtitleHandler.listEmbedded(videoPath);

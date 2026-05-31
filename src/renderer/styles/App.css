@@ -4420,6 +4420,69 @@ button.hero-chip-anilist--icon:hover {
   border-color: color-mix(in srgb, var(--accent-amber) 35%, var(--border-color));
 }
 
+/* Inline re-encode progress, shown in the EpisodeRow trailing slot while a
+   file is being converted — the same spot the amber "Re-encoded" pill lands
+   once it's done. Mono + amber to read as a sibling of that pill. */
+.transcode-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  border: 1px solid color-mix(in srgb, var(--accent-amber) 35%, var(--border-color));
+  background: color-mix(in srgb, var(--accent-amber) 10%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--accent-amber);
+}
+.transcode-bar__track {
+  position: relative;
+  width: 48px;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--accent-amber) 18%, transparent);
+  overflow: hidden;
+}
+.transcode-bar__fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: var(--accent-amber);
+  transition: width var(--transition-slow);
+}
+.transcode-bar__label {
+  min-width: 3ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
+}
+/* Queued: not yet encoding — a soft indeterminate shimmer instead of a frozen
+   0% bar so the row doesn't read as stalled. */
+.transcode-bar--queued .transcode-bar__fill {
+  width: 35%;
+  opacity: 0.55;
+  animation: transcodeQueued 1.4s ease-in-out infinite;
+}
+@keyframes transcodeQueued {
+  0%   { transform: translateX(-130%); }
+  100% { transform: translateX(320%); }
+}
+.transcode-bar--failed {
+  color: var(--accent-rose);
+  border-color: color-mix(in srgb, var(--accent-rose) 35%, var(--border-color));
+  background: color-mix(in srgb, var(--accent-rose) 10%, transparent);
+}
+.transcode-bar--failed .transcode-bar__track {
+  background: color-mix(in srgb, var(--accent-rose) 18%, transparent);
+}
+.transcode-bar--failed .transcode-bar__fill {
+  width: 100%;
+  background: var(--accent-rose);
+}
+
 /* App-wide hover-pause tooltip (shared bubble look for the generic Tooltip
    primitive and Card's built-in tooltip). Rendered through a portal so it
    escapes the trigger's overflow:hidden, then positioned by inline left/top

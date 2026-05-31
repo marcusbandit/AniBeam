@@ -149,6 +149,12 @@ export interface ElectronAPI {
   // returns the original file:// URL. The renderer hands the URL to <video>.
   openVideo: (filePath: string) => Promise<VideoOpenResult>;
 
+  // Opening a series page calls this with all its file paths (episode order)
+  // so every episode needing re-encode is probed and priority-queued at once,
+  // instead of waiting for the user to click each one. Returns each file's
+  // state; live progress then arrives via onTranscodeProgress.
+  ensureSeriesTranscoded: (filePaths: string[]) => Promise<TranscodeEnsureResult[]>;
+
   // View history — per-series record of the most recent playback session,
   // backing the Library "Last viewed" sort. Renderer marks an episode after
   // it has accumulated ~30s of playtime (one mark per player mount).
@@ -225,6 +231,16 @@ export interface TranscodeProgressPayload {
   fraction: number;
   speed: number | null;
   etaSec: number | null;
+}
+
+// Per-file classification returned by ensureSeriesTranscoded:
+//   'cached'  — a usable transcode already exists on disk (shows "Re-encoded").
+//   'pending' — needs transcoding; it has been priority-queued, so live
+//               progress events will follow on the transcode-progress channel.
+//   'none'    — browser-playable as-is (or missing); nothing to do.
+export interface TranscodeEnsureResult {
+  filePath: string;
+  state: 'cached' | 'pending' | 'none';
 }
 
 export interface SubscriptionFeed {
@@ -318,6 +334,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Video open
   openVideo: (filePath: string) => ipcRenderer.invoke('video:open', filePath),
+  ensureSeriesTranscoded: (filePaths: string[]) => ipcRenderer.invoke('transcode:ensure-series', filePaths),
 
   // View history
   markEpisodeViewed: (payload: { seriesId: string; episodeNumber: number; ts?: number }) =>

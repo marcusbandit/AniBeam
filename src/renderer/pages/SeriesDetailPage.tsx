@@ -118,6 +118,42 @@ const EXTRA_GROUPS: ReadonlyArray<{ kind: "op" | "ed" | "pv" | "sp" | "other"; l
   { kind: "other", label: "Other" },
 ];
 
+type TranscodePhase = "queued" | "encoding" | "failed";
+
+// Inline re-encode indicator shown in the EpisodeRow trailing slot — the same
+// spot the amber "Re-encoded" pill lands once the encode finishes. While an
+// episode is still being converted to a browser-playable copy it shows a live
+// progress bar instead, so opening the series surfaces the whole batch at once.
+function TranscodeBar({ fraction, phase }: { fraction: number; phase: TranscodePhase }) {
+  const pct = Math.round(Math.max(0, Math.min(1, fraction)) * 100);
+  const label = phase === "failed" ? "failed" : phase === "queued" ? "queued" : `${pct}%`;
+  const tip = phase === "failed"
+    ? "Re-encode failed — open the episode to retry"
+    : phase === "queued"
+      ? "Queued — re-encoding to a browser-playable copy"
+      : `Re-encoding to a browser-playable copy · ${pct}%`;
+  return (
+    <Tooltip label={tip}>
+      <span
+        className={`transcode-bar transcode-bar--${phase}`}
+        role="progressbar"
+        aria-valuenow={phase === "encoding" ? pct : undefined}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={tip}
+      >
+        <span className="transcode-bar__track">
+          <span
+            className="transcode-bar__fill"
+            style={phase === "encoding" ? { width: `${pct}%` } : undefined}
+          />
+        </span>
+        <span className="transcode-bar__label">{label}</span>
+      </span>
+    </Tooltip>
+  );
+}
+
 function SeriesDetailPage() {
   const { seriesId } = useParams<{ seriesId: string }>();
   const navigate = useNavigate();
@@ -322,6 +358,67 @@ function SeriesDetailPage() {
     }
     return set;
   }, [meta?.fileEpisodes]);
+
+  // ----- Live re-encode state (filePath → progress/phase) -----
+  // Opening the series tells main to probe + priority-queue every episode that
+  // still needs converting, so the whole batch starts without the user
+  // clicking each one. We then track each file's progress so its row can show
+  // a bar where the "Re-encoded" tag will eventually sit. A row is "encoding"
+  // while an entry lives here AND the file isn't yet in `transcodedByPath`.
+  const [transcoding, setTranscoding] = useState<Record<string, { fraction: number; phase: TranscodePhase }>>({});
+
+  // Newline-joined path list — a stable key so the effects below run once per
+  // distinct file set, not on every unrelated meta ping that rebuilds `sorted`.
+  const filePathsKey = useMemo(() => sorted.map((f) => f.filePath).join("\n"), [sorted]);
+
+  // Probe + priority-enqueue on open; seed a 'queued' entry for each pending
+  // file so the bar appears immediately, before the first progress event.
+  useEffect(() => {
+    if (!filePathsKey) return;
+    const paths = filePathsKey.split("\n");
+    let cancelled = false;
+    void window.electronAPI.ensureSeriesTranscoded?.(paths)
+      .then((results) => {
+        if (cancelled || !Array.isArray(results)) return;
+        setTranscoding((prev) => {
+          const next = { ...prev };
+          for (const r of results) {
+            if (r.state === "pending") {
+              if (!next[r.filePath]) next[r.filePath] = { fraction: 0, phase: "queued" };
+            } else {
+              delete next[r.filePath]; // cached / none → nothing to show
+            }
+          }
+          return next;
+        });
+      })
+      .catch(() => { /* best-effort — the per-click path still works */ });
+    return () => { cancelled = true; };
+  }, [filePathsKey]);
+
+  // Live progress + status for files in THIS series. Two channels: granular
+  // fraction updates while ffmpeg runs, and status flips (ready/stalled) that
+  // start/finish/fail a bar. 'ready' drops the entry — the reload triggered by
+  // the same status ping swaps in the "Re-encoded" pill via transcodedByPath.
+  useEffect(() => {
+    if (!filePathsKey) return;
+    const inSeries = new Set(filePathsKey.split("\n"));
+    const offProgress = window.electronAPI.onTranscodeProgress?.((p) => {
+      if (!inSeries.has(p.filePath)) return;
+      setTranscoding((prev) => ({ ...prev, [p.filePath]: { fraction: p.fraction, phase: "encoding" } }));
+    });
+    const offStatus = window.electronAPI.onMetadataFileStatusChanged?.((p) => {
+      if (!p.filePath || !inSeries.has(p.filePath)) return;
+      setTranscoding((prev) => {
+        const next = { ...prev };
+        if (p.status === "ready") delete next[p.filePath];
+        else if (p.status === "stalled") next[p.filePath] = { fraction: prev[p.filePath]?.fraction ?? 0, phase: "failed" };
+        else if (p.status === "transcoding") next[p.filePath] = { fraction: prev[p.filePath]?.fraction ?? 0, phase: "encoding" };
+        return next;
+      });
+    });
+    return () => { offProgress?.(); offStatus?.(); };
+  }, [filePathsKey]);
 
   // Pre-build the episode-title lookup from API metadata so the episode
   // list can swap file-derived titles for canonical AniList/MAL titles.
@@ -625,6 +722,27 @@ function SeriesDetailPage() {
     ? realEpisodes.filter((f) => !extraPaths.has(f.filePath))
     : realEpisodes;
 
+  // Trailing re-encode affordance, shared by every row type. While a file is
+  // still converting it shows a live progress bar; once the cached copy lands
+  // (transcodedByPath) it becomes the amber "Re-encoded" pill. null when the
+  // source was browser-playable to begin with.
+  const renderReencodeIndicator = (filePath: string) => {
+    const tx = transcoding[filePath];
+    if (tx && !transcodedByPath.has(filePath)) {
+      return <TranscodeBar fraction={tx.fraction} phase={tx.phase} />;
+    }
+    if (transcodedByPath.has(filePath)) {
+      return (
+        <Tooltip label="Source codec wasn't browser-playable — this episode plays from the on-disk h.264 transcode cache">
+          <span>
+            <Pill tone="amber">Re-encoded</Pill>
+          </span>
+        </Tooltip>
+      );
+    }
+    return null;
+  };
+
   // Shared row renderer so the main list and the "Extra files" list stay in
   // lockstep. `extra` adds the warning pill and suppresses the "Next up"
   // marker (an out-of-range file is never the next episode to watch).
@@ -637,7 +755,7 @@ function SeriesDetailPage() {
     if (isMovie) {
       const movieWatched = listStatus === "completed" || (watched != null && watched > 0);
       const fraction = getProgressFraction(localProgress, item.id, f.episodeNumber);
-      const isTranscoded = transcodedByPath.has(f.filePath);
+      const reencode = renderReencodeIndicator(f.filePath);
       return (
         <EpisodeRow
           key={f.filePath}
@@ -645,15 +763,9 @@ function SeriesDetailPage() {
           code="Movie"
           title={realEpisodes.length === 1 ? displayTitle : f.title}
           trailing={
-            (isTranscoded || movieWatched) ? (
+            (reencode || movieWatched) ? (
               <>
-                {isTranscoded && (
-                  <Tooltip label="Source codec wasn't browser-playable — this episode plays from the on-disk h.264 transcode cache">
-                    <span>
-                      <Pill tone="amber">Re-encoded</Pill>
-                    </span>
-                  </Tooltip>
-                )}
+                {reencode}
                 {movieWatched && <Pill tone="muted">Watched</Pill>}
               </>
             ) : null
@@ -676,7 +788,7 @@ function SeriesDetailPage() {
     // Fraction in [0, 1] from localStorage — set by the player every 4s and
     // on pause. Zero for episodes never started OR finished (entry deleted).
     const fraction = getProgressFraction(localProgress, item.id, f.episodeNumber);
-    const isTranscoded = transcodedByPath.has(f.filePath);
+    const reencode = renderReencodeIndicator(f.filePath);
     const statusPill =
       isNext ? <Pill tone="accent">Next up</Pill> :
       isWatched ? <Pill tone="muted">Watched</Pill> :
@@ -690,16 +802,10 @@ function SeriesDetailPage() {
     const markerCascadeDelayMs = inWave
       ? Math.min(wave!.mode === "untrack" ? ep - wave!.anchor : wave!.anchor - ep, 12) * 45
       : 0;
-    const trailing = (isExtra || isTranscoded || statusPill) ? (
+    const trailing = (isExtra || reencode || statusPill) ? (
       <>
         {isExtra && <Pill tone="amber">Extra</Pill>}
-        {isTranscoded && (
-          <Tooltip label="Source codec wasn't browser-playable — this episode plays from the on-disk h.264 transcode cache">
-            <span>
-              <Pill tone="amber">Re-encoded</Pill>
-            </span>
-          </Tooltip>
-        )}
+        {reencode}
         {statusPill}
       </>
     ) : null;
@@ -739,7 +845,6 @@ function SeriesDetailPage() {
   // Resume position is keyed by file path (getExtraProgressFraction) to match
   // how the player saves it.
   const renderBonusRow = (f: (typeof sorted)[number]) => {
-    const isTranscoded = transcodedByPath.has(f.filePath);
     const fraction = getExtraProgressFraction(localProgress, item.id, f.filePath);
     const code = extraCode(f.kind);
     const title = friendlyExtraTitle(f.kind, f.extraIndex, f.extraVariant, f.rawLabel);
@@ -749,15 +854,7 @@ function SeriesDetailPage() {
         marker={<Play size={14} />}
         code={code}
         title={title}
-        trailing={
-          isTranscoded ? (
-            <Tooltip label="Source codec wasn't browser-playable — this file plays from the on-disk h.264 transcode cache">
-              <span>
-                <Pill tone="amber">Re-encoded</Pill>
-              </span>
-            </Tooltip>
-          ) : null
-        }
+        trailing={renderReencodeIndicator(f.filePath)}
         progress={fraction}
         state="default"
         onClick={() =>
