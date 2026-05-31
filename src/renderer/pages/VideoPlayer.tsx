@@ -240,13 +240,16 @@ function VideoPlayer() {
   // Mirror of the captions-toggle closure so the keydown listener (bound on a
   // narrow dep set) always invokes the latest state without restaling.
   const toggleCaptionsRef = useRef<() => void>(() => {});
-  // Gate for the auto-next overlay. Episode navigation reuses this same
-  // component (route param change, no unmount), so the previous episode's
-  // end-of-stream currentTime/duration linger for a frame after we navigate —
-  // long enough to instantly re-trigger the countdown and skip again. We arm
-  // only once the *new* video has loaded, and disarm synchronously on every
-  // episode change, so a stale frame can never fire the auto-advance.
-  const autoNextArmedRef = useRef(false);
+  // "The CURRENT episode's <video> has actually loaded." Episode navigation
+  // reuses this same component (route param change, no unmount), so the
+  // previous episode's end-of-stream currentTime/duration linger for a frame
+  // after we navigate — and for a *re-encoded* episode they linger for the
+  // entire transcode overlay, since no <video> mounts until the encode lands.
+  // Anything gated on the playhead (auto-next overlay AND the tracker
+  // auto-mark) must wait for this: armed on 'loadeddata', disarmed
+  // synchronously (ref, not state) on every episode change so a stale frame
+  // can never auto-advance OR mark an unwatched episode as watched.
+  const mediaLoadedRef = useRef(false);
 
   const tearDownJassub = () => {
     if (jassubRef.current) {
@@ -1150,9 +1153,15 @@ function VideoPlayer() {
     }
   }, [isExtra, seriesId, epNumForMark, seriesAnilistId, seriesMalId, seriesTotalEps, showTrackerToast]);
 
-  // Reset the auto-mark guard whenever the episode changes.
+  // Reset the auto-mark guard whenever the episode changes. Also disarm the
+  // media-loaded gate HERE — this effect sits above both playhead consumers
+  // (auto-mark just below, auto-next further down), so the disarm lands
+  // before either re-runs in this same commit. Doing it via a setState reset
+  // of currentTime/duration wouldn't help: that re-render hasn't happened yet
+  // when the auto-mark effect reads its stale closure value.
   useEffect(() => {
     autoMarkedRef.current = '';
+    mediaLoadedRef.current = false;
     setRatingPrompt(null);
   }, [seriesId, episodeNumber]);
 
@@ -1162,6 +1171,12 @@ function VideoPlayer() {
   // hit. The console.log helps debug "why didn't it fire" reports.
   useEffect(() => {
     if (!seriesId || !episodeNumber) return;
+    // Don't trust currentTime/duration until the CURRENT episode's video has
+    // loaded. Without this, a re-encoded episode (whose <video> doesn't mount
+    // until the transcode finishes) inherits the previous episode's
+    // end-of-stream currentTime and marks itself watched the instant you open
+    // it — bypassing the completion gate. Armed on 'loadeddata'.
+    if (!mediaLoadedRef.current) return;
     const key = `${seriesId}::${episodeNumber}`;
     if (autoMarkedRef.current === key) return;
     if (autoMarkAt == null) return;
@@ -1284,14 +1299,15 @@ function VideoPlayer() {
   });
 
   // Track ended-state for the center replay affordance. Cleared on play. Also
-  // arms the auto-next overlay once the new video has actually loaded — never
-  // on the stale frame left over from the previous episode.
+  // arms the playhead gate once the new video has actually loaded — never on
+  // the stale frame left over from the previous episode. This is what lets
+  // the auto-next overlay and the tracker auto-mark trust currentTime again.
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     const onEnded = () => setVideoEnded(true);
     const onPlay = () => setVideoEnded(false);
-    const onLoaded = () => { autoNextArmedRef.current = true; };
+    const onLoaded = () => { mediaLoadedRef.current = true; };
     video.addEventListener('ended', onEnded);
     video.addEventListener('play', onPlay);
     video.addEventListener('loadeddata', onLoaded);
@@ -1457,13 +1473,13 @@ function VideoPlayer() {
     }
   }, [activeFilePath, mpvLaunching]);
 
-  // Reset the auto-next overlay whenever the episode changes. Disarm
-  // synchronously (ref, not state) so the driver effect below — which runs in
-  // this same commit, before the new video has loaded — can't act on the old
-  // episode's lingering end-of-stream currentTime/duration. Also clear those
-  // to 0 so the scrubber and `remaining` math don't read stale values.
+  // Reset the auto-next overlay whenever the episode changes. The playhead
+  // gate (mediaLoadedRef) is disarmed up in the auto-mark reset effect, which
+  // runs before this one — so by the time the driver effect below reads it,
+  // it's already false. Here we just clear the overlay flags and reset
+  // currentTime/duration to 0 so the scrubber and `remaining` math don't read
+  // the previous episode's stale values.
   useEffect(() => {
-    autoNextArmedRef.current = false;
     setNextVisible(false);
     setNextCounting(false);
     setNextDismissed(false);
@@ -1481,7 +1497,7 @@ function VideoPlayer() {
     if (nextEp == null || nextDismissed || !duration) return;
     // Bail until the current episode's video has actually loaded — guards
     // against the stale post-navigation frame re-triggering the countdown.
-    if (!autoNextArmedRef.current) return;
+    if (!mediaLoadedRef.current) return;
     const remaining = duration - currentTime;
     const ed = skipTimes.ed;
     const hasOutro = ed != null;
