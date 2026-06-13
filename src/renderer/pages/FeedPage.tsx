@@ -3,6 +3,7 @@ import { Activity, History, CalendarClock } from "lucide-react";
 import type { LibraryItem } from "../../types/electron";
 import { findNextUpcomingEpisode } from "../utils/airingUtils";
 import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
+import { useHiddenShows } from "../contexts/HiddenShowsContext";
 import ShowCard from "../components/ShowCard";
 import { Page, Inline, SegmentedSwitch, type SegmentedOption } from "../components/primitives";
 
@@ -165,6 +166,7 @@ const META_LEFT_TITLE: Record<FeedEntry["source"], string> = {
 function FeedPage() {
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
+  const { showHidden } = useHiddenShows();
   const [sortMode, setSortMode] = useState<FeedSort>(() => {
     if (typeof window === "undefined") return "recent";
     const raw = window.localStorage.getItem(LS_FEED_SORT);
@@ -198,9 +200,16 @@ function FeedPage() {
     return () => unsubscribe?.();
   }, [debouncedReload]);
 
+  // Hidden series drop out of the feed unless reveal is on; revealed ones
+  // still render through ShowCard, which badges + dims them.
+  const feedItems = useMemo(
+    () => (showHidden ? items : items.filter((i) => !i.hidden)),
+    [items, showHidden],
+  );
+
   const entries = useMemo(
-    () => (sortMode === "upcoming" ? buildUpcomingFeed(items) : buildRecentFeed(items)),
-    [items, sortMode],
+    () => (sortMode === "upcoming" ? buildUpcomingFeed(feedItems) : buildRecentFeed(feedItems)),
+    [feedItems, sortMode],
   );
 
   // Shared coarse tick for per-card countdowns. We render minute-

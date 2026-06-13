@@ -17,6 +17,7 @@ import { useGridFlipReorder } from "../hooks/useGridFlipReorder";
 import { useTitleLanguage } from "../contexts/TitleLanguageContext";
 import { useTrackerProgress } from "../contexts/TrackerProgressContext";
 import { useViewHistory } from "../contexts/ViewHistoryContext";
+import { useHiddenShows } from "../contexts/HiddenShowsContext";
 import ShowCard from "../components/ShowCard";
 import { Page, Section, SegmentedSwitch, Tooltip, type SegmentedOption } from "../components/primitives";
 
@@ -24,7 +25,7 @@ const AIRING_PAGE_COLS = 5;
 const AIRING_PAGE_ROWS = 2;
 const AIRING_PAGE_SIZE = AIRING_PAGE_COLS * AIRING_PAGE_ROWS;
 
-type LibraryTab = "all" | "series" | "movies";
+type LibraryTab = "all" | "series" | "movies" | "hidden";
 type SortKey = "alpha" | "lastViewed" | "progress" | "score" | "myScore";
 type SortDir = "asc" | "desc";
 
@@ -43,7 +44,7 @@ const NATURAL_DIR: Record<SortKey, SortDir> = {
   myScore: "desc",
 };
 
-const TAB_OPTIONS: SegmentedOption<LibraryTab>[] = [
+const BASE_TAB_OPTIONS: SegmentedOption<LibraryTab>[] = [
   { value: "all", label: "All" },
   { value: "series", label: "Series" },
   { value: "movies", label: "Movies" },
@@ -183,6 +184,7 @@ function HomePage() {
   const { pickTitle } = useTitleLanguage();
   const { getWatched, getUserScore, getListStatus } = useTrackerProgress();
   const { getLastViewed } = useViewHistory();
+  const { showHidden } = useHiddenShows();
 
   const [tab, setTab] = useState<LibraryTab>(() =>
     readStored<LibraryTab>(LS_TAB, ["all", "series", "movies"], "all"),
@@ -273,17 +275,31 @@ function HomePage() {
     return out;
   }, [items]);
 
-  // Split the library into series and movies. The tab switch chooses which
-  // collection is shown; "all" merges both. Sort key + direction are
-  // shared across all three tabs.
-  const seriesItems = useMemo(() => items.filter((i) => i.type !== "movie"), [items]);
-  const movieItems = useMemo(() => items.filter((i) => i.type === "movie"), [items]);
+  // Hidden series are segregated into their own tab — never mixed into
+  // All/Series/Movies. When reveal is off they vanish from every tab.
+  const visibleItems = useMemo(() => items.filter((i) => !i.hidden), [items]);
+  const hiddenItems = useMemo(() => items.filter((i) => i.hidden), [items]);
+  const seriesItems = useMemo(() => visibleItems.filter((i) => i.type !== "movie"), [visibleItems]);
+  const movieItems = useMemo(() => visibleItems.filter((i) => i.type === "movie"), [visibleItems]);
 
-  // Active list driven by the tab switch.
   const activeItems =
     tab === "series" ? seriesItems :
     tab === "movies" ? movieItems :
-    items;
+    tab === "hidden" ? hiddenItems :
+    visibleItems;
+
+  const tabOptions = useMemo<SegmentedOption<LibraryTab>[]>(
+    () => (showHidden && hiddenItems.length > 0
+      ? [...BASE_TAB_OPTIONS, { value: "hidden", label: "Hidden" }]
+      : BASE_TAB_OPTIONS),
+    [showHidden, hiddenItems.length],
+  );
+
+  // If reveal flips off (or the app booted with a persisted "hidden" tab),
+  // fall back to "all" so we never sit on an unavailable tab.
+  useEffect(() => {
+    if (!tabOptions.some((o) => o.value === tab)) setTab("all");
+  }, [tabOptions, tab]);
 
   // True when the user has finished the show — either marked completed on
   // the tracker, or watched count has reached the (known) total. Used by
@@ -503,7 +519,7 @@ function HomePage() {
             <div className="library-tabs-head__left">
               <SegmentedSwitch<LibraryTab>
                 value={tab}
-                options={TAB_OPTIONS}
+                options={tabOptions}
                 onChange={setTab}
                 ariaLabel="Library category"
               />

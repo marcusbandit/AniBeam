@@ -3,6 +3,7 @@ import { Eye } from "lucide-react";
 import type { LibraryItem } from "../../types/electron";
 import type { AnilistWatchingEntry, WatchingListResult } from "../../main/preload";
 import { findNextUpcomingEpisode } from "../utils/airingUtils";
+import { useHiddenShows } from "../contexts/HiddenShowsContext";
 import ShowCard from "../components/ShowCard";
 import { Page } from "../components/primitives";
 
@@ -74,6 +75,7 @@ function WatchingPage() {
   const [libraryItems, setLibraryItems] = useState<LibraryItem[]>(() => cachedLibrary);
   // Spinner only when there's nothing cached to show yet.
   const [loading, setLoading] = useState(() => cachedResult == null);
+  const { showHidden } = useHiddenShows();
 
   const reload = useCallback(async () => {
     setLoading(cachedResult == null);
@@ -120,15 +122,20 @@ function WatchingPage() {
     if (!result?.ok) return [];
     // Recently updated first; entries without updatedAt sink to the bottom.
     const sorted = [...result.entries].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
-    return sorted.map((e) => {
+    // Index ALL items (incl. hidden) so a hidden owned show resolves to `owned`
+    // and gets dropped here, rather than falling back to a synth "not owned"
+    // card. Revealed hidden owned shows still render (ShowCard badges them).
+    const mapped = sorted.map((e): WatchingCard | null => {
       const owned =
         libraryIndex.byAnilist.get(e.anilistId) ??
         (e.malId != null ? libraryIndex.byMal.get(e.malId) : undefined);
+      if (owned?.hidden && !showHidden) return null;
       return owned
         ? { key: owned.id, item: owned, inLibrary: true, siteUrl: e.siteUrl }
         : { key: `anilist:${e.anilistId}`, item: synthItem(e), inLibrary: false, siteUrl: e.siteUrl };
     });
-  }, [result, libraryIndex]);
+    return mapped.filter((c): c is WatchingCard => c !== null);
+  }, [result, libraryIndex, showHidden]);
 
   // updatedAt lookup for the meta row, keyed by anilistId.
   const updatedByAnilist = useMemo(() => {
