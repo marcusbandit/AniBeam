@@ -452,7 +452,9 @@ function HomePage() {
   };
 
   const hasLibrary = items.length > 0;
-  const showTabs = seriesItems.length > 0 || movieItems.length > 0;
+  // Keep the tab bar (and the Hidden tab) reachable even when every series is
+  // hidden — otherwise a fully-hidden library would have no way to reveal them.
+  const showTabs = visibleItems.length > 0 || (showHidden && hiddenItems.length > 0);
 
   return (
     <Page

@@ -4160,9 +4160,11 @@ button.hero-chip-anilist--icon:hover {
 .show-card--hidden { opacity: 0.55; }
 .show-card--hidden:hover { opacity: 0.8; }
 .show-card-hidden-badge {
+  /* Bottom-right is the only free poster corner — top-left holds the EP badge,
+     top-right the watched badge, bottom-left the ratings stack. */
   position: absolute;
-  top: 0.4rem;
-  right: 0.4rem;
+  bottom: 0.6rem;
+  right: 0.6rem;
   z-index: 3;
   padding: 0.1rem 0.45rem;
   font-size: 0.7rem;
