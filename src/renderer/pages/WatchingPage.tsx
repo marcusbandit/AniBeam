@@ -44,6 +44,7 @@ function synthItem(e: AnilistWatchingEntry): LibraryItem {
     totalEpisodes: e.totalEpisodes,
     anilistId: e.anilistId,
     malId: e.malId,
+    hidden: false,
     averageScore: e.averageScore,
     source: "anilist",
     episodes: e.nextAiringEpisode

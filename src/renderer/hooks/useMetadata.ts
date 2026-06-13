@@ -35,6 +35,10 @@ export interface SeriesMetadata {
   tags?: Tag[];
   characters?: Character[];
   recommendations?: Recommendation[];
+  /** Incognito flag. When true, the series never syncs to external trackers
+   *  and is hidden from all list pages unless the session "Show hidden" toggle
+   *  is on. Absent / false = visible. */
+  hidden?: boolean;
   /** Main animation studio name when known. Populated alongside `studios`
    *  from AniList's studios edge (isMain + isAnimationStudio). Falls back
    *  to the first entry of `studios[]` when AniList doesn't flag one. */

@@ -78,6 +78,9 @@ export interface LibraryItem {
   totalEpisodes: number | null;
   anilistId: number | null;
   malId: number | null;
+  /** Incognito flag mirrored from metadata.json so every list page can filter
+   *  without a separate metadata fetch. */
+  hidden: boolean;
   /** Raw score from the matched metadata source. AniList is 0-100, MAL is 0-10. */
   averageScore: number | null;
   /** Where the metadata was fetched from — controls how `averageScore` is normalised. */

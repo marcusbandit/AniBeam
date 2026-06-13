@@ -60,6 +60,7 @@ export function registerFolderIpc(getMainWindow: WindowGetter): void {
         totalEpisodes?: number | null;
         anilistId?: number;
         malId?: number | null;
+        hidden?: boolean;
         averageScore?: number | null;
         source?: string | null;
         episodes?: Array<{ episodeNumber: number; airDate: string | null }>;
@@ -92,6 +93,7 @@ export function registerFolderIpc(getMainWindow: WindowGetter): void {
         totalEpisodes: stored.totalEpisodes ?? null,
         anilistId: stored.anilistId ?? null,
         malId: stored.malId ?? null,
+        hidden: stored.hidden ?? false,
         averageScore: stored.averageScore ?? null,
         source: stored.source ?? null,
         episodes: (stored.episodes ?? []).map((e) => ({
