@@ -150,7 +150,7 @@ function ShowCard({
   return (
     <button
       type="button"
-      className="show-card"
+      className={`show-card${item.hidden ? ' show-card--hidden' : ''}`}
       data-halo-bias
       data-flip-id={item.id}
       onClick={() => (onActivate ? onActivate() : navigate(`/series/${encodeURIComponent(item.id)}`))}
@@ -158,6 +158,9 @@ function ShowCard({
       onMouseLeave={() => liftRef.current?.setTarget(0)}
     >
       <div ref={posterWrapRef} className={`show-card-poster-wrap${outlined ? "" : " show-card-poster-wrap--bare"}`}>
+        {item.hidden && (
+          <span className="show-card-hidden-badge" aria-label="Hidden">Hidden</span>
+        )}
         {watchedLabel && (
           <span
             className={`show-card-watched-badge${watchedState ? ` ${watchedState}` : ""}`}
