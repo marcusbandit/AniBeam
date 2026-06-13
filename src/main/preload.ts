@@ -113,6 +113,7 @@ export interface ElectronAPI {
   fetchAnilistMetadata: (seriesName: string) => Promise<unknown>;
   fetchMALMetadata: (seriesName: string) => Promise<unknown>;
   saveMetadata: (metadata: Record<string, unknown>) => Promise<boolean>;
+  setSeriesHidden: (seriesId: string, hidden: boolean) => Promise<boolean>;
   loadMetadata: () => Promise<Record<string, unknown>>;
   clearMetadata: () => Promise<boolean>;
   deleteSeries: (seriesId: string) => Promise<boolean>;
@@ -305,6 +306,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   fetchAnilistMetadata: (seriesName: string) => ipcRenderer.invoke('fetch-anilist-metadata', seriesName),
   fetchMALMetadata: (seriesName: string) => ipcRenderer.invoke('fetch-mal-metadata', seriesName),
   saveMetadata: (metadata: Record<string, unknown>) => ipcRenderer.invoke('save-metadata', metadata),
+  setSeriesHidden: (seriesId: string, hidden: boolean) =>
+    ipcRenderer.invoke('metadata:set-hidden', seriesId, hidden),
   loadMetadata: () => ipcRenderer.invoke('load-metadata'),
   clearMetadata: () => ipcRenderer.invoke('clear-metadata'),
   deleteSeries: (seriesId: string) => ipcRenderer.invoke('delete-series', seriesId),
