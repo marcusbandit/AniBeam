@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir, rename } from 'fs/promises';
 import { join } from 'path';
 import { app } from 'electron';
 import { logger } from '../services/logger';
+import { isSeriesHidden, type HiddenProvider } from '../../shared/hiddenMatch';
 
 function getMetadataPath(): string {
   const userDataPath = app.getPath('userData');
@@ -169,6 +170,18 @@ const metadataHandler = {
       logger.error('metadata', `Error updating series metadata: ${(error as Error).message}`);
       throw error;
     }
+  },
+
+  /** True if the local series carrying this external media id is flagged
+   *  hidden. Used by the tracker IPC guard to keep incognito series from
+   *  syncing to AniList/MAL. */
+  async isMediaHidden(provider: HiddenProvider, mediaId: number): Promise<boolean> {
+    const metadata = await this.loadMetadata();
+    return isSeriesHidden(
+      metadata as Record<string, { anilistId?: number; malId?: number | null; hidden?: boolean }>,
+      provider,
+      mediaId,
+    );
   },
 
   async getSeriesMetadata(seriesId: string): Promise<Record<string, unknown> | null> {

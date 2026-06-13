@@ -370,7 +370,7 @@ export interface MarkResult {
   provider: TrackerProvider;
   newProgress: number | null;
   previousProgress: number | null;
-  reason?: 'no-account' | 'no-id' | 'not-newer' | 'error';
+  reason?: 'no-account' | 'no-id' | 'not-newer' | 'error' | 'hidden';
   message?: string;
 }
 
@@ -619,7 +619,7 @@ export interface ScoreResult {
   ok: boolean;
   provider: TrackerProvider;
   newScore: number | null;
-  reason?: 'no-account' | 'no-id' | 'error';
+  reason?: 'no-account' | 'no-id' | 'error' | 'hidden';
   message?: string;
   /** Whether the entry was also marked completed by this call. */
   completedToo?: boolean;
