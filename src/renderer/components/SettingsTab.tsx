@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMetadata } from '../hooks/useMetadata';
+import { useHiddenShows } from '../contexts/HiddenShowsContext';
 import { Folder, RefreshCw, Plus, Trash2, Film, Rss, ChevronRight } from 'lucide-react';
 import TrackersSection from './TrackersSection';
 import { Page, Section, Inline, Tooltip } from './primitives';
@@ -67,6 +68,7 @@ type SubtitlePref = 'off' | 'auto' | 'always';
 function SettingsTab() {
   const navigate = useNavigate();
   const { metadata, loadMetadata } = useMetadata();
+  const { showHidden, setShowHidden } = useHiddenShows();
   const [folderSources, setFolderSources] = useState<string[]>([]);
   const [folderTitleCounts, setFolderTitleCounts] = useState<Record<string, number>>({});
   const [movieFoldersByRoot, setMovieFoldersByRoot] = useState<Record<string, string[]>>({});
@@ -364,6 +366,18 @@ function SettingsTab() {
         }
       >
         <p className="section-sub">RSS feeds anirss is watching for you. Moved out of the main nav — open the full list here.</p>
+      </Section>
+
+      <Section title="Library">
+        <div className="pref-list">
+          <div className="pref-row">
+            <div>
+              <div className="pref-label">Show hidden shows</div>
+              <div className="pref-help">Reveal incognito series across all pages. Resets off when AniBeam restarts.</div>
+            </div>
+            <Toggle on={showHidden} onChange={setShowHidden} ariaLabel="Toggle hidden shows" />
+          </div>
+        </div>
       </Section>
 
       <Section title="Playback">
