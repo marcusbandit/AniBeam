@@ -3036,6 +3036,11 @@ button.hero-chip-anilist--icon:hover {
   background: color-mix(in srgb, #02a9ff 22%, transparent);
   border-color: color-mix(in srgb, #02a9ff 60%, var(--border-color));
 }
+.hero-chip-hide { cursor: pointer; }
+.hero-chip-hide.is-hidden {
+  background: color-mix(in srgb, var(--accent-primary) 22%, transparent);
+  color: var(--accent-primary);
+}
 .hero-chip-status.status-finished {
   color: var(--text-secondary);
 }
