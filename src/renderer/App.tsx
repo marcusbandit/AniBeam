@@ -13,6 +13,7 @@ import ContextMenu from "./components/ContextMenu";
 import { ActivityLogProvider } from "./contexts/ActivityLogContext";
 import { ActivityLogDrawer } from "./components/ActivityLogDrawer";
 import { TitleLanguageProvider } from "./contexts/TitleLanguageContext";
+import { HiddenShowsProvider } from "./contexts/HiddenShowsContext";
 import { TrackerProgressProvider } from "./contexts/TrackerProgressContext";
 import { ViewHistoryProvider } from "./contexts/ViewHistoryContext";
 import LangSwitch from "./components/LangSwitch";
@@ -118,13 +119,15 @@ function App() {
   return (
     <HashRouter>
       <TitleLanguageProvider>
-        <TrackerProgressProvider>
-          <ViewHistoryProvider>
-            <ActivityLogProvider>
-              <AppContent />
-            </ActivityLogProvider>
-          </ViewHistoryProvider>
-        </TrackerProgressProvider>
+        <HiddenShowsProvider>
+          <TrackerProgressProvider>
+            <ViewHistoryProvider>
+              <ActivityLogProvider>
+                <AppContent />
+              </ActivityLogProvider>
+            </ViewHistoryProvider>
+          </TrackerProgressProvider>
+        </HiddenShowsProvider>
       </TitleLanguageProvider>
     </HashRouter>
   );
