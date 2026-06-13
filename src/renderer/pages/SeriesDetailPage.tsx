@@ -206,6 +206,7 @@ function SeriesDetailPage() {
   const [scoreDraft, setScoreDraft] = useState<string>('8.0');
   const [scoreBusy, setScoreBusy] = useState(false);
   const [scoreError, setScoreError] = useState<string | null>(null);
+  const [hideBusy, setHideBusy] = useState(false);
   // Marker track/untrack cascade. `wave` is the active animated range + phase:
   // 'in' (hover), 'out' (reverse wave on un-hover), 'commit' (after a click).
   // [lo, hi] is the affected episode range; `anchor` is the cursor/click origin
@@ -599,6 +600,20 @@ function SeriesDetailPage() {
       setScoreError(lastErr ?? 'no tracker connected');
     }
   };
+  const toggleHidden = async () => {
+    if (!meta && !item) return;
+    const next = !(meta?.hidden ?? false);
+    setHideBusy(true);
+    try {
+      await window.electronAPI.setSeriesHidden(decodedId, next);
+      setMeta((prev) => (prev ? { ...prev, hidden: next } : prev));
+      setAllMeta((prev) => ({ ...prev, [decodedId]: { ...prev[decodedId], hidden: next } }));
+    } catch (err) {
+      console.error('setSeriesHidden failed', err);
+    } finally {
+      setHideBusy(false);
+    }
+  };
   // Set watched progress to an exact value on every connected tracker. Used by
   // the "untrack to here" markers (can decrease — corrects over-counts). The
   // shared progress cache refreshes via the tracker:progress-changed broadcast.
@@ -978,6 +993,18 @@ function SeriesDetailPage() {
                   </button>
                 </Tooltip>
               )}
+              <Tooltip label="Incognito: stops tracker sync and hides from all lists">
+                <button
+                  type="button"
+                  className={`hero-chip hero-chip-hide${meta?.hidden ? ' is-hidden' : ''}`}
+                  aria-pressed={meta?.hidden ?? false}
+                  disabled={hideBusy}
+                  onClick={() => void toggleHidden()}
+                >
+                  {meta?.hidden ? <Eye size={14} /> : <EyeOff size={14} />}
+                  <span>{meta?.hidden ? 'Unhide' : 'Hide'}</span>
+                </button>
+              </Tooltip>
             </div>
 
             <div className="series-hero-chips series-hero-chips--info">

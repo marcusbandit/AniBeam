@@ -1254,6 +1254,17 @@ ipcMain.handle('save-metadata', async (_event, metadata: Record<string, unknown>
   }
 });
 
+ipcMain.handle('metadata:set-hidden', async (_event, seriesId: unknown, hidden: unknown) => {
+  if (typeof seriesId !== 'string' || !seriesId) throw new Error('seriesId required');
+  const ok = await metadataHandler.updateSeriesMetadata(seriesId, { hidden: hidden === true });
+  // Generic "metadata changed, re-walk" ping — same convention as the startup
+  // catch-up — so any mounted list page refreshes and the card appears/vanishes.
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('metadata:file-status-changed', { filePath: '', status: 'ready' });
+  }
+  return ok;
+});
+
 ipcMain.handle('load-metadata', async () => {
   try {
     return await metadataHandler.loadMetadata();

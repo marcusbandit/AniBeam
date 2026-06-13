@@ -3,6 +3,7 @@ import { useMetadata, type SeriesMetadata } from '../hooks/useMetadata';
 import { BookOpen, Tv, Film, Search, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 import MetadataMatchModal from '../components/MetadataMatchModal';
 import { useDebouncedCallback } from '../hooks/useDebouncedCallback';
+import { useHiddenShows } from '../contexts/HiddenShowsContext';
 import { Page, Inline, Tooltip } from '../components/primitives';
 
 type FilterOption = 'all' | 'series' | 'movies' | 'missing';
@@ -53,6 +54,7 @@ function MetadataTab() {
   const [filter, setFilter] = useState<FilterOption>('all');
   const [bulkRefreshing, setBulkRefreshing] = useState(false);
   const [matchTarget, setMatchTarget] = useState<{ seriesId: string; data: SeriesMetadata } | null>(null);
+  const { showHidden } = useHiddenShows();
 
   // Debounced — bursts of metadata pings on new ingests would otherwise
   // hammer loadMetadata + re-render the entire grid per file.
@@ -66,15 +68,21 @@ function MetadataTab() {
 
   const seriesList = useMemo(() => Object.entries(metadata), [metadata]);
 
+  // Hidden series drop out of the table (and its counts) unless reveal is on.
+  const visibleSeries = useMemo(
+    () => (showHidden ? seriesList : seriesList.filter(([, d]) => !d.hidden)),
+    [seriesList, showHidden],
+  );
+
   const filterCounts = useMemo(() => ({
-    all: seriesList.length,
-    series: seriesList.filter(([, d]) => !isMovie(d)).length,
-    movies: seriesList.filter(([, d]) => isMovie(d)).length,
-    missing: seriesList.filter(([, d]) => !(d.fileEpisodes?.length)).length,
-  }), [seriesList]);
+    all: visibleSeries.length,
+    series: visibleSeries.filter(([, d]) => !isMovie(d)).length,
+    movies: visibleSeries.filter(([, d]) => isMovie(d)).length,
+    missing: visibleSeries.filter(([, d]) => !(d.fileEpisodes?.length)).length,
+  }), [visibleSeries]);
 
   const filteredSeries = useMemo(() => {
-    return seriesList.filter(([id, data]) => {
+    return visibleSeries.filter(([id, data]) => {
       if (filter === 'series' && isMovie(data)) return false;
       if (filter === 'movies' && !isMovie(data)) return false;
       if (filter === 'missing' && (data.fileEpisodes?.length ?? 0) > 0) return false;
@@ -86,7 +94,7 @@ function MetadataTab() {
       }
       return true;
     });
-  }, [seriesList, searchQuery, filter]);
+  }, [visibleSeries, searchQuery, filter]);
 
   const handleRefresh = async (seriesId: string, seriesName: string) => {
     setRefreshing(prev => ({ ...prev, [seriesId]: true }));

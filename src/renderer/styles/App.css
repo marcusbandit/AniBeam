@@ -3036,6 +3036,11 @@ button.hero-chip-anilist--icon:hover {
   background: color-mix(in srgb, #02a9ff 22%, transparent);
   border-color: color-mix(in srgb, #02a9ff 60%, var(--border-color));
 }
+.hero-chip-hide { cursor: pointer; }
+.hero-chip-hide.is-hidden {
+  background: color-mix(in srgb, var(--accent-primary) 22%, transparent);
+  color: var(--accent-primary);
+}
 .hero-chip-status.status-finished {
   color: var(--text-secondary);
 }
@@ -4149,6 +4154,27 @@ button.hero-chip-anilist--icon:hover {
 }
 .show-card-watched-badge.behind { color: var(--accent-rose); }
 .show-card-watched-badge.watched { color: var(--text-muted); }
+
+/* Incognito reveal — a hidden show only ever reaches a card when reveal is
+   on, so the card dims itself and flags a "Hidden" pill top-right. */
+.show-card--hidden { opacity: 0.55; }
+.show-card--hidden:hover { opacity: 0.8; }
+.show-card-hidden-badge {
+  /* Bottom-right is the only free poster corner — top-left holds the EP badge,
+     top-right the watched badge, bottom-left the ratings stack. */
+  position: absolute;
+  bottom: 0.6rem;
+  right: 0.6rem;
+  z-index: 3;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--bg-primary) 70%, transparent);
+  color: var(--text-secondary);
+  backdrop-filter: blur(4px);
+}
 
 /* Rating badge — bottom-left of the poster. Balances the EP badge (top-
    left) and watched badge (top-right) and keeps the show's average score

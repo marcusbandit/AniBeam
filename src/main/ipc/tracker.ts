@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron';
 import trackerHandler from '../handlers/trackerHandler';
+import metadataHandler from '../handlers/metadataHandler';
 import { logger } from '../services/logger';
 import type { TrackerProvider } from '../services/trackerStore';
 import type { WindowGetter } from './types';
@@ -65,6 +66,9 @@ export function registerTrackerIpc(getMainWindow: WindowGetter): void {
     if (typeof mediaId !== 'number' || typeof episodeNumber !== 'number') {
       throw new Error('mediaId and episodeNumber must be numbers');
     }
+    if (await metadataHandler.isMediaHidden(provider, mediaId)) {
+      return { ok: false, provider, newProgress: null, previousProgress: null, reason: 'hidden' as const };
+    }
     const result = await trackerHandler.markEpisode({
       provider,
       mediaId,
@@ -86,6 +90,9 @@ export function registerTrackerIpc(getMainWindow: WindowGetter): void {
     if (typeof mediaId !== 'number' || typeof score !== 'number') {
       throw new Error('mediaId and score must be numbers');
     }
+    if (await metadataHandler.isMediaHidden(provider, mediaId)) {
+      return { ok: false, provider, newScore: null, reason: 'hidden' as const };
+    }
     const result = await trackerHandler.setScore({
       provider,
       mediaId,
@@ -106,6 +113,9 @@ export function registerTrackerIpc(getMainWindow: WindowGetter): void {
     if (!isProvider(provider)) throw new Error('invalid provider');
     if (typeof mediaId !== 'number' || typeof progress !== 'number') {
       throw new Error('mediaId and progress must be numbers');
+    }
+    if (await metadataHandler.isMediaHidden(provider, mediaId)) {
+      return { ok: false, provider, newProgress: null, previousProgress: null, reason: 'hidden' as const };
     }
     const result = await trackerHandler.setEpisodeProgress({
       provider,
