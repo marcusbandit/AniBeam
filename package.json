@@ -16,6 +16,7 @@
     "verify:franchise-graph": "bun --bun scripts/verify-franchise-graph.mjs",
     "verify:franchise-crawler": "bun --bun scripts/verify-franchise-crawler.mjs",
     "verify:franchise-lanes": "bun --bun scripts/verify-franchise-lanes.mjs",
+    "verify:hidden-guard": "bun --bun scripts/verify-hidden-guard.mjs",
     "preview": "vite preview",
     "start": "bun run typecheck && electron-forge start",
     "package": "bun run typecheck && electron-forge package",
