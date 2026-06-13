@@ -29,12 +29,13 @@ assert.deepEqual(g1.nodes.map((n) => n.anilistId).sort((a, b) => a - b), [1, 2, 
 assert.equal(g1.rootId, 1);
 assert.equal(g1.complete, true);
 
-// CHARACTER edges are dropped entirely (node 9 must not appear)
+// CHARACTER nodes are displayed but not traversed (node 9 appears, its rels are not followed)
 const g2 = await closeGraph({
   seedNodes: [node(1)],
   seedRelations: new Map([[1, [mk(9, 'CHARACTER')]]]),
+  fetch: async () => { throw new Error('should not fetch through CHARACTER'); },
 });
-assert.deepEqual(g2.nodes.map((n) => n.anilistId), [1]);
+assert.deepEqual(g2.nodes.map((n) => n.anilistId).sort((a, b) => a - b), [1, 9]);
 assert.equal(g2.complete, true);
 
 // OTHER nodes are displayed but not traversed (node 5 appears, its rels are not followed)
