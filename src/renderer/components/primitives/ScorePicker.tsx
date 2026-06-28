@@ -120,7 +120,27 @@ export function ScorePicker({ value, onChange, disabled, className, ariaLabel }:
     snappedRef.current = true;
   }, [open, anchor, value, options]);
 
-  const panel = open && anchor && typeof document !== 'undefined'
+  // Portal target. Normally <body>, but when the app is in the Fullscreen API
+  // top layer (the in-window video player calls requestFullscreen() on its
+  // wrapper), anything portalled to <body> renders BEHIND the fullscreen
+  // element and is invisible — body is an ancestor of the fullscreen element,
+  // not a descendant, so it isn't promoted into the top layer. Portalling into
+  // the fullscreen element instead keeps the panel in the same top layer so it
+  // shows on top. position:fixed viewport coords still line up because the
+  // fullscreen element fills the viewport. Re-render on fullscreenchange while
+  // open so toggling fullscreen mid-open re-homes the panel.
+  const [, bumpPortalTarget] = useState(0);
+  useEffect(() => {
+    if (!open) return;
+    const onFs = () => bumpPortalTarget((n) => n + 1);
+    document.addEventListener('fullscreenchange', onFs);
+    return () => document.removeEventListener('fullscreenchange', onFs);
+  }, [open]);
+  const portalTarget = typeof document !== 'undefined'
+    ? (document.fullscreenElement ?? document.body)
+    : null;
+
+  const panel = open && anchor && portalTarget
     ? createPortal(
         <ul
           ref={panelRef}
@@ -153,7 +173,7 @@ export function ScorePicker({ value, onChange, disabled, className, ariaLabel }:
             );
           })}
         </ul>,
-        document.body,
+        portalTarget,
       )
     : null;
 
