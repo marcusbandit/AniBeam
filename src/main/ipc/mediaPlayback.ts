@@ -157,6 +157,13 @@ export function registerMediaPlaybackIpc(getMainWindow?: WindowGetter): void {
     return subtitleHandler.extractEmbedded(videoPath, streamIndex, codec ?? '');
   });
 
+  // Fire-and-forget cache warm-up so subtitles don't extract on the play-time
+  // critical path (the cold-extract takes ~an OP's length). Returns nothing.
+  ipcMain.handle('subtitle:prewarm', async (_event, videoPath: string) => {
+    if (typeof videoPath !== 'string' || !videoPath) return;
+    void subtitleHandler.prewarm(videoPath);
+  });
+
   ipcMain.handle('aniskip:fetch', async (_event, seriesId: string, malId: number, episodeNumber: number, episodeLength: number, filePath?: string) => {
     if (!seriesId || typeof episodeNumber !== 'number' || typeof episodeLength !== 'number') {
       return {};

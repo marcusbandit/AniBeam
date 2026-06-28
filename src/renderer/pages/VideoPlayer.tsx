@@ -1428,6 +1428,20 @@ function VideoPlayer() {
     ? seriesEpisodeNumbers[currentEpIdx + 1]
     : null;
 
+  // Warm the NEXT episode's embedded subtitles while this one plays, so an
+  // auto-next (or the Next button) doesn't pay the cold subtitle-extract cost.
+  // Demuxing the ASS stream out of an MKV takes ~an opening's length on a cold
+  // cache, which is exactly why subs can otherwise appear only after the intro
+  // on a freshly opened file. Best-effort; the main process de-dupes/caches.
+  const nextEpFilePath = useMemo<string | null>(() => {
+    if (nextEp == null || !seriesId) return null;
+    const eps = metadata[seriesId]?.fileEpisodes ?? [];
+    return eps.find((ep: FileEpisode) => ep.episodeNumber === nextEp)?.filePath ?? null;
+  }, [nextEp, seriesId, metadata]);
+  useEffect(() => {
+    if (nextEpFilePath && videoSrc) void window.electronAPI.prewarmSubtitles?.(nextEpFilePath);
+  }, [nextEpFilePath, videoSrc]);
+
   const goToEpisode = (epNum: number) => {
     if (!seriesId) return;
     // skipResume = true forces a fresh start regardless of saved position.

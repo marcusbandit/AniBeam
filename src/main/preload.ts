@@ -153,6 +153,8 @@ export interface ElectronAPI {
   // Embedded subtitles
   listEmbeddedSubtitles: (videoPath: string) => Promise<Array<{ streamIndex: number; codec: string; language: string | null; title: string | null }>>;
   extractEmbeddedSubtitle: (videoPath: string, streamIndex: number, codec: string) => Promise<{ path: string; format: 'ass' | 'vtt' } | null>;
+  /** Warm the embedded-subtitle cache ahead of play time (fire-and-forget). */
+  prewarmSubtitles: (videoPath: string) => Promise<void>;
 
   // Open a video — main checks for a pre-transcoded cache entry, otherwise
   // returns the original file:// URL. The renderer hands the URL to <video>.
@@ -354,6 +356,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Embedded subtitles
   listEmbeddedSubtitles: (videoPath: string) => ipcRenderer.invoke('subtitle:list-embedded', videoPath),
   extractEmbeddedSubtitle: (videoPath: string, streamIndex: number, codec: string) => ipcRenderer.invoke('subtitle:extract', videoPath, streamIndex, codec),
+  prewarmSubtitles: (videoPath: string) => ipcRenderer.invoke('subtitle:prewarm', videoPath),
 
   // Video open
   openVideo: (filePath: string) => ipcRenderer.invoke('video:open', filePath),

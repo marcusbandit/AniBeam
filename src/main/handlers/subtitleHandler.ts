@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { stat, mkdir } from 'node:fs/promises';
+import { stat, mkdir, rename, unlink } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -67,6 +67,21 @@ function runFfmpeg(args: string[]): Promise<void> {
   });
 }
 
+// In-flight extractions keyed by the OUTPUT cache path. A background prewarm and
+// the play-time extract can target the same stream at once; without this both
+// would spawn `ffmpeg -y` writing the same file and corrupt it. Callers racing
+// an in-flight job await the same promise instead of starting a second ffmpeg.
+const inFlightExtract = new Map<string, Promise<{ path: string; format: 'ass' | 'vtt' } | null>>();
+
+// Prewarm runs strictly one-at-a-time so that sweeping a long episode list
+// (each row hover queues a prewarm) can never fan out into many concurrent
+// full-file ffmpeg demuxes. Play-time extracts do NOT go through this chain, so
+// pressing play never waits behind queued prewarms; the in-flight map above
+// still de-dupes a prewarm and a play that target the same file. `prewarmSeen`
+// keeps the same path from being queued twice in a session.
+let prewarmChain: Promise<void> = Promise.resolve();
+const prewarmSeen = new Set<string>();
+
 const subtitleHandler = {
   async listEmbedded(videoPath: string): Promise<EmbeddedSubInfo[]> {
     if (!existsSync(videoPath)) return [];
@@ -110,27 +125,78 @@ const subtitleHandler = {
     if (!existsSync(videoPath)) return null;
     const fmt = targetFormat(codec);
     if (!fmt) return null;
+    let out: string;
     try {
       const stats = await stat(videoPath);
       const dir = await ensureCacheDir();
-      const filename = `${cacheKeyHash(videoPath, stats.mtimeMs, streamIndex)}.${fmt}`;
-      const out = join(dir, filename);
-      if (existsSync(out)) return { path: out, format: fmt };
-      // ASS extraction: -c:s ass keeps the original styling/positioning.
-      // VTT extraction: -c:s webvtt converts SRT/MOV_TEXT to WebVTT.
-      await runFfmpeg([
-        '-y',
-        '-i', videoPath,
-        '-map', `0:${streamIndex}`,
-        '-c:s', fmt === 'ass' ? 'ass' : 'webvtt',
-        out,
-      ]);
-      logger.info('metadata', `Extracted embedded subtitle stream ${streamIndex} (${fmt}) → cache`, { file: videoPath });
-      return { path: out, format: fmt };
+      out = join(dir, `${cacheKeyHash(videoPath, stats.mtimeMs, streamIndex)}.${fmt}`);
     } catch (err) {
-      logger.warn('metadata', `Failed to extract embedded subtitle stream ${streamIndex}: ${(err as Error).message}`, { file: videoPath });
+      logger.warn('metadata', `Failed to resolve subtitle cache path for stream ${streamIndex}: ${(err as Error).message}`, { file: videoPath });
       return null;
     }
+    if (existsSync(out)) return { path: out, format: fmt };
+    // Coalesce a concurrent extract of the same output (prewarm vs play-time).
+    const pending = inFlightExtract.get(out);
+    if (pending) return pending;
+    const job = (async () => {
+      // Write to a PID-suffixed temp then atomic-rename, so existsSync(out) is
+      // only ever true for a COMPLETE file. ffmpeg writes its output in place
+      // and incrementally, so without this a cache-hit check (here or in a
+      // racing reader) could hand back a half-written .ass — much more likely
+      // now that a background prewarm can be mid-extract while the user plays.
+      const tmp = `${out}.tmp.${process.pid}.${streamIndex}`;
+      try {
+        // ASS extraction: -c:s ass keeps the original styling/positioning.
+        // VTT extraction: -c:s webvtt converts SRT/MOV_TEXT to WebVTT.
+        await runFfmpeg([
+          '-y',
+          '-i', videoPath,
+          '-map', `0:${streamIndex}`,
+          '-c:s', fmt === 'ass' ? 'ass' : 'webvtt',
+          tmp,
+        ]);
+        await rename(tmp, out);
+        logger.info('metadata', `Extracted embedded subtitle stream ${streamIndex} (${fmt}) → cache`, { file: videoPath });
+        return { path: out, format: fmt };
+      } catch (err) {
+        await unlink(tmp).catch(() => { /* tmp may not exist */ });
+        logger.warn('metadata', `Failed to extract embedded subtitle stream ${streamIndex}: ${(err as Error).message}`, { file: videoPath });
+        return null;
+      }
+    })().finally(() => inFlightExtract.delete(out));
+    inFlightExtract.set(out, job);
+    return job;
+  },
+
+  /**
+   * Warm the embedded-subtitle cache for a file ahead of play time. ffmpeg has
+   * to demux the whole container to pull a subtitle stream, which on a cold
+   * cache takes roughly as long as an opening plays — so doing it at play time
+   * is exactly why subtitles show up late on a first watch. Call this once a
+   * file is likely to be played soon (the series page's "next up" episode; the
+   * next episode while the current one is playing) so the play-time extract is
+   * an instant cache hit. Best-effort and idempotent: a cache hit or in-flight
+   * extract is a no-op and all errors are swallowed.
+   */
+  prewarm(videoPath: string): void {
+    if (!videoPath || prewarmSeen.has(videoPath)) return;
+    prewarmSeen.add(videoPath);
+    prewarmChain = prewarmChain.then(async () => {
+      try {
+        if (!existsSync(videoPath)) return;
+        const streams = await subtitleHandler.listEmbedded(videoPath);
+        // Warm EVERY renderable track. The player's play-time buildSubs extracts
+        // all embedded tracks sequentially and only then sets the subtitle list
+        // that gates JASSUB, so warming just one wouldn't clear the stall on a
+        // multi-track file. extractEmbedded caches + de-dupes, so if the user
+        // plays this file the play-time loop becomes pure cache hits.
+        for (const s of streams) {
+          await subtitleHandler.extractEmbedded(videoPath, s.streamIndex, s.codec);
+        }
+      } catch {
+        /* prewarm is best-effort; play-time extraction still works */
+      }
+    });
   },
 };
 

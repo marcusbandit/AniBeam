@@ -841,6 +841,7 @@ function SeriesDetailPage() {
           onClick={() =>
             navigate(`/player/${encodeURIComponent(item.id)}/${f.episodeNumber}`)
           }
+          onHover={() => window.electronAPI.prewarmSubtitles?.(f.filePath)}
         />
       );
     }
@@ -887,6 +888,7 @@ function SeriesDetailPage() {
         onClick={() =>
           navigate(`/player/${encodeURIComponent(item.id)}/${f.episodeNumber}`)
         }
+        onHover={() => window.electronAPI.prewarmSubtitles?.(f.filePath)}
         // Markers double as a track/untrack control. Watched: "untrack to here"
         // (set progress to this ep − 1). Untracked: "track to here" (set to this
         // ep). Hovering paints the cascade range.
@@ -928,6 +930,7 @@ function SeriesDetailPage() {
             `/player/${encodeURIComponent(item.id)}/${f.episodeNumber}?file=${encodeURIComponent(f.filePath)}`,
           )
         }
+        onHover={() => window.electronAPI.prewarmSubtitles?.(f.filePath)}
       />
     );
   };
