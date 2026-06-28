@@ -124,4 +124,39 @@ assert.equal(g9.complete, true);            // <-- the bug-fix assertion: deferr
 assert.deepEqual(g9.deferred, []);
 assert.ok(g9.nodes.length >= 3);
 
+// Member-based rootId: a CHARACTER-only neighbour with a SMALLER id is kept for
+// display but must NOT become the root (it's a different franchise across a
+// crossover), and it is reported in boundaryIds.
+const g10 = await closeGraph({
+  seedNodes: [node(100)],
+  seedRelations: new Map([[100, [mk(101, 'SEQUEL'), mk(2, 'CHARACTER')]]]),
+  fetch: async (id) => {
+    if (id === 2) throw new Error('should not fetch through CHARACTER');
+    return { relations: [], ok: true }; // member 101 fetches fine
+  },
+});
+assert.deepEqual(g10.nodes.map((n) => n.anilistId).sort((a, b) => a - b), [2, 100, 101], 'g10: boundary node 2 still displayed');
+assert.equal(g10.rootId, 100, 'g10: rootId is the smallest MEMBER (100), not the smaller boundary id (2)');
+assert.deepEqual(g10.boundaryIds, [2], 'g10: the CHARACTER-only node is a boundary node');
+
+// A fully-traversable graph has no boundary nodes.
+const g11 = await closeGraph({
+  seedNodes: [node(1)],
+  seedRelations: new Map([[1, [mk(2, 'SEQUEL')]]]),
+  fetch: async (id) => ({ relations: id === 2 ? [mk(3, 'SIDE_STORY')] : [], ok: true }),
+});
+assert.deepEqual(g11.boundaryIds, [], 'g11: no boundary nodes when every edge is traversable');
+
+// OTHER-only neighbours are boundary nodes too.
+const g12 = await closeGraph({
+  seedNodes: [node(10)],
+  seedRelations: new Map([[10, [mk(5, 'OTHER'), mk(11, 'SEQUEL')]]]),
+  fetch: async (id) => {
+    if (id === 5) throw new Error('should not fetch through OTHER');
+    return { relations: [], ok: true }; // member 11 fetches fine
+  },
+});
+assert.equal(g12.rootId, 10, 'g12: rootId is the member root (10), not the smaller OTHER boundary (5)');
+assert.deepEqual(g12.boundaryIds, [5], 'g12: OTHER-only node is a boundary node');
+
 console.log('OK: franchise graph closure');

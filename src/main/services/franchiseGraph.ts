@@ -248,28 +248,30 @@ export async function getFranchiseGraph(anilistId: number): Promise<FranchiseGra
   if (lib != null) {
     const file = await readFranchiseFile(lib.franchise);
     if (file != null) {
+      // Every fetched node's relations form the lookup table BFS reads from...
       const seedRelations = new Map<number, RawRelation[]>();
-      const seedNodes: FranchiseNode[] = [];
       for (const [idStr, entry] of Object.entries(file.byId)) {
         const id = Number(idStr);
         if (!Number.isFinite(id)) continue;
         if (entry.fetchedAt > 0) {
           seedRelations.set(id, Array.isArray(entry.relations) ? entry.relations : []);
         }
-        if (entry.node) seedNodes.push(entry.node);
       }
 
-      // Make sure the requested node is in the seed list, even if its node is
-      // null on disk — synthesize a bare stub so closeGraph can BFS from it.
+      // ...but BFS starts from the requested series ALONE, not from every node
+      // in the file. closeGraph then walks just this series' traversable
+      // component out of the stored relations; nodes that share the file only
+      // through a non-traversable crossover edge (CHARACTER/OTHER) stay out of
+      // the graph — they're a different franchise. This is what keeps an
+      // Isekai-Quartet-style crossover from dragging every linked franchise in,
+      // and it renders correctly even from a previously over-merged file.
       const fileEntry = file.byId[String(anilistId)];
-      if (!fileEntry || !fileEntry.node) {
-        seedNodes.push({
-          anilistId, malId: null, type: 'ANIME' as const, format: null, status: null,
-          seasonYear: null, startYear: null, siteUrl: null, titleRomaji: null, titleEnglish: null, poster: null,
-        });
-      }
+      const seedNode: FranchiseNode = fileEntry?.node ?? {
+        anilistId, malId: null, type: 'ANIME' as const, format: null, status: null,
+        seasonYear: null, startYear: null, siteUrl: null, titleRomaji: null, titleEnglish: null, poster: null,
+      };
 
-      return closeGraph({ seedNodes, seedRelations });
+      return closeGraph({ seedNodes: [seedNode], seedRelations });
     }
     // Index pointed at a missing franchise file → fall through to metadata fallback.
     logger.warn('metadata', `franchise file missing for ${lib.franchise}; falling back to single-node graph`);

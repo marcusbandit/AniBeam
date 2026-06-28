@@ -37,6 +37,13 @@ export interface FranchiseGraph {
   /** AniList ids whose relations we couldn't fetch this pass (rate-limited).
    *  A future closeGraph call can retry these. Empty when complete. */
   deferred: number[];
+  /** Node ids reached ONLY across a non-traversable edge (CHARACTER/OTHER) — a
+   *  crossover/cameo neighbour. Kept in `nodes`/`edges` so the connection still
+   *  shows, but they are NOT franchise members: they're never expanded, they
+   *  don't define `rootId`, and the crawler must not re-home them. This is what
+   *  stops an Isekai-Quartet-style crossover from gluing every linked franchise
+   *  into one graph. */
+  boundaryIds: number[];
 }
 
 /** A relation edge from a node's perspective, including the target's own info. */
@@ -112,9 +119,14 @@ export async function closeGraph(opts: CloseGraphOptions): Promise<FranchiseGrap
   const seenEdges = new Set<string>();
   const expanded = new Set<number>();
   const queue: number[] = [];
+  // Franchise members: the seeds plus everything reached across a TRAVERSABLE
+  // edge from an already-expanded member. A node reached only via a
+  // non-traversable (CHARACTER/OTHER) edge is a boundary node, not a member.
+  const members = new Set<number>();
 
   for (const n of opts.seedNodes) {
     if (!nodes.has(n.anilistId)) nodes.set(n.anilistId, n);
+    members.add(n.anilistId);
     queue.push(n.anilistId);
   }
 
@@ -163,13 +175,30 @@ export async function closeGraph(opts: CloseGraphOptions): Promise<FranchiseGrap
         seenEdges.add(edgeKey);
         edges.push({ from: id, to: r.anilistId, relationType: r.relationType });
       }
-      if (isTraversable(r.relationType) && !expanded.has(r.anilistId)) {
-        queue.push(r.anilistId);
+      if (isTraversable(r.relationType)) {
+        // A traversable edge makes the target a member (even if already
+        // expanded/queued); only members reached for the first time enqueue.
+        members.add(r.anilistId);
+        if (!expanded.has(r.anilistId)) queue.push(r.anilistId);
       }
     }
   }
 
-  const ids = [...nodes.keys()];
-  const rootId = ids.length ? Math.min(...ids) : 0;
-  return { rootId, nodes: [...nodes.values()], edges, complete: !hitCap && deferred.size === 0, deferred: [...deferred] };
+  // rootId is the franchise identity, so it must be drawn from MEMBERS only —
+  // a boundary crossover node (often with a much smaller id) must never become
+  // the root and re-key the whole franchise. boundaryIds = everything in the
+  // node set that never earned membership.
+  const memberIds = [...nodes.keys()].filter((id) => members.has(id));
+  const boundaryIds = [...nodes.keys()].filter((id) => !members.has(id));
+  const rootId = memberIds.length
+    ? Math.min(...memberIds)
+    : (nodes.size ? Math.min(...nodes.keys()) : 0);
+  return {
+    rootId,
+    nodes: [...nodes.values()],
+    edges,
+    complete: !hitCap && deferred.size === 0,
+    deferred: [...deferred],
+    boundaryIds,
+  };
 }
