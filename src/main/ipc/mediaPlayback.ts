@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron';
 import { existsSync } from 'fs';
+import { stat } from 'fs/promises';
 import metadataHandler from '../handlers/metadataHandler';
 import videoProbeHandler from '../handlers/videoProbeHandler';
 import transcodeCacheHandler from '../handlers/transcodeCacheHandler';
@@ -9,6 +10,7 @@ import { findFileEpisode } from '../../shared/fileEpisode';
 import type { FileEpisodeEntry } from '../../shared/fileEpisode';
 import { probeCodecs, needsTranscode } from '../utils/transcodeProbe';
 import { getViewHistory, markViewed } from '../services/viewHistory';
+import type { SubtitleState } from '../../shared/subtitleSupport';
 import type { WindowGetter } from './types';
 import type { TranscodeQueueSnapshot } from '../preload';
 
@@ -53,6 +55,13 @@ export function registerMediaPlaybackIpc(getMainWindow?: WindowGetter): void {
   const broadcastViewHistoryChanged = (): void => {
     const win = getMainWindow?.();
     if (win && !win.isDestroyed()) win.webContents.send('playback:view-history-changed');
+  };
+
+  const broadcastSubtitleStateChanged = (filePath: string, subtitleState: SubtitleState): void => {
+    const win = getMainWindow?.();
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('metadata:subtitle-state-changed', { filePath, subtitleState });
+    }
   };
 
   ipcMain.handle('probe:retry', (_event, filePath: string) => {
@@ -162,6 +171,90 @@ export function registerMediaPlaybackIpc(getMainWindow?: WindowGetter): void {
   ipcMain.handle('subtitle:prewarm', async (_event, videoPath: string) => {
     if (typeof videoPath !== 'string' || !videoPath) return;
     void subtitleHandler.prewarm(videoPath);
+  });
+
+  // Opening a series page sweeps every episode for subtitle availability so the
+  // list can flag the ones whose subs won't display (bitmap-only / unreadable).
+  // Cheap probe-only check, mirroring transcode:ensure-series: one ffprobe per
+  // file, skipping any already checked against the current on-disk mtime. The
+  // computed states are persisted (so a reload shows them instantly) and also
+  // returned so the page can paint markers without waiting for a reload.
+  ipcMain.handle('subtitle:evaluate-series', async (_event, filePaths: unknown) => {
+    if (!Array.isArray(filePaths)) return [];
+    const paths = filePaths.filter((p): p is string => typeof p === 'string' && p.length > 0);
+    if (paths.length === 0) return [];
+    let meta: Record<string, unknown> = {};
+    try {
+      meta = await metadataHandler.loadMetadata();
+    } catch {
+      // Without metadata we can't know about sidecars or persist — bail.
+      return [];
+    }
+    const evaluated = await Promise.all(paths.map(async (filePath) => {
+      try {
+        const entry = findFileEpisode(meta, filePath);
+        const hasSidecar = !!entry?.subtitlePath || !!(entry?.subtitlePaths && entry.subtitlePaths.length);
+        if (!existsSync(filePath)) {
+          return { filePath, state: entry?.subtitleState ?? null, fresh: false };
+        }
+        const { mtimeMs } = await stat(filePath);
+        // Reuse a state already computed against this exact file revision.
+        if (entry && entry.subtitleState !== undefined
+          && typeof entry.subtitleCheckedAt === 'number' && entry.subtitleCheckedAt >= mtimeMs) {
+          return { filePath, state: entry.subtitleState ?? null, fresh: false };
+        }
+        const state = await subtitleHandler.evaluateAvailability(filePath, hasSidecar);
+        return { filePath, state, checkedAt: mtimeMs, fresh: true };
+      } catch {
+        return { filePath, state: null, fresh: false };
+      }
+    }));
+    // Persist the freshly-computed states in one transaction.
+    const fresh = evaluated.filter((r): r is typeof r & { checkedAt: number } => r.fresh === true);
+    if (fresh.length > 0) {
+      const byPath = new Map(fresh.map((r) => [r.filePath, r]));
+      await metadataHandler.transaction<boolean>(async (m) => {
+        let changed = false;
+        for (const series of Object.values(m)) {
+          const s = series as { fileEpisodes?: FileEpisodeEntry[] };
+          if (!Array.isArray(s.fileEpisodes)) continue;
+          for (const file of s.fileEpisodes) {
+            const r = byPath.get(file.filePath);
+            if (!r) continue;
+            file.subtitleState = r.state;
+            file.subtitleCheckedAt = r.checkedAt;
+            changed = true;
+          }
+        }
+        return { result: changed, updated: changed ? m : null };
+      });
+    }
+    return evaluated.map((r) => ({ filePath: r.filePath, state: r.state }));
+  });
+
+  // Authoritative play-time outcome from the player's buildSubs: 'ok' once a
+  // track actually loaded, 'failed' when embedded text streams existed but none
+  // could be extracted (the case the cheap probe can't see). Persisted + pushed
+  // so an open series page updates live.
+  ipcMain.handle('subtitle:report-state', async (_event, filePath: unknown, state: unknown) => {
+    if (typeof filePath !== 'string' || !filePath) return;
+    if (state !== 'ok' && state !== 'unsupported' && state !== 'failed') return;
+    const touched = await metadataHandler.transaction<boolean>(async (m) => {
+      let changed = false;
+      for (const series of Object.values(m)) {
+        const s = series as { fileEpisodes?: FileEpisodeEntry[] };
+        if (!Array.isArray(s.fileEpisodes)) continue;
+        for (const file of s.fileEpisodes) {
+          if (file.filePath === filePath) {
+            file.subtitleState = state;
+            file.subtitleCheckedAt = Date.now();
+            changed = true;
+          }
+        }
+      }
+      return { result: changed, updated: changed ? m : null };
+    });
+    if (touched) broadcastSubtitleStateChanged(filePath, state);
   });
 
   ipcMain.handle('aniskip:fetch', async (_event, seriesId: string, malId: number, episodeNumber: number, episodeLength: number, filePath?: string) => {

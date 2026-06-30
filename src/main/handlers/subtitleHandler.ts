@@ -5,6 +5,11 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { app } from 'electron';
 import { logger } from '../services/logger';
+import {
+  classifySubtitleCodec,
+  deriveSubtitleState,
+  type SubtitleState,
+} from '../../shared/subtitleSupport';
 
 export interface EmbeddedSubInfo {
   streamIndex: number;
@@ -15,13 +20,13 @@ export interface EmbeddedSubInfo {
 
 // PGS / DVD subtitles are bitmap formats — we can't render those without OCR.
 // For text-based codecs we either keep them as ASS (rendered by libass via
-// JASSUB in the renderer) or convert them to WebVTT (browser-native).
-const ASS_FORMAT = new Set(['ass', 'ssa']);
-const VTT_FORMAT = new Set(['subrip', 'webvtt', 'mov_text']);
+// JASSUB in the renderer) or convert them to WebVTT (browser-native). Codec →
+// renderable-format mapping lives in shared/subtitleSupport so the series-view
+// probe and the play-time extract agree on what counts as renderable.
 function targetFormat(codec: string): 'ass' | 'vtt' | null {
-  const c = codec.toLowerCase();
-  if (ASS_FORMAT.has(c)) return 'ass';
-  if (VTT_FORMAT.has(c)) return 'vtt';
+  const k = classifySubtitleCodec(codec);
+  if (k === 'ass') return 'ass';
+  if (k === 'vtt') return 'vtt';
   return null;
 }
 
@@ -82,26 +87,33 @@ const inFlightExtract = new Map<string, Promise<{ path: string; format: 'ass' | 
 let prewarmChain: Promise<void> = Promise.resolve();
 const prewarmSeen = new Set<string>();
 
+// Probe EVERY subtitle stream in the container (text AND bitmap). The renderer-
+// facing listEmbedded filters this down to renderable text; evaluateAvailability
+// needs the unfiltered list so it can tell "bitmap-only" apart from "no subs".
+async function probeAllStreams(videoPath: string): Promise<EmbeddedSubInfo[]> {
+  const json = await runFfprobe([
+    '-v', 'error',
+    '-select_streams', 's',
+    '-show_entries', 'stream=index,codec_name:stream_tags=language,title',
+    '-of', 'json',
+    videoPath,
+  ]);
+  const parsed = JSON.parse(json) as {
+    streams?: Array<{ index: number; codec_name?: string; tags?: { language?: string; title?: string } }>;
+  };
+  return (parsed.streams || []).map((s) => ({
+    streamIndex: s.index,
+    codec: s.codec_name ?? '',
+    language: s.tags?.language ?? null,
+    title: s.tags?.title ?? null,
+  }));
+}
+
 const subtitleHandler = {
   async listEmbedded(videoPath: string): Promise<EmbeddedSubInfo[]> {
     if (!existsSync(videoPath)) return [];
     try {
-      const json = await runFfprobe([
-        '-v', 'error',
-        '-select_streams', 's',
-        '-show_entries', 'stream=index,codec_name:stream_tags=language,title',
-        '-of', 'json',
-        videoPath,
-      ]);
-      const parsed = JSON.parse(json) as {
-        streams?: Array<{ index: number; codec_name?: string; tags?: { language?: string; title?: string } }>;
-      };
-      const all = (parsed.streams || []).map((s) => ({
-        streamIndex: s.index,
-        codec: s.codec_name ?? '',
-        language: s.tags?.language ?? null,
-        title: s.tags?.title ?? null,
-      }));
+      const all = await probeAllStreams(videoPath);
       // Filter out subtitle codecs we can't render (bitmap PGS/DVD).
       const text = all.filter((s) => targetFormat(s.codec) !== null);
       if (all.length !== text.length) {
@@ -111,6 +123,34 @@ const subtitleHandler = {
     } catch (err) {
       logger.warn('metadata', `Failed to list embedded subtitles: ${(err as Error).message}`, { file: videoPath });
       return [];
+    }
+  },
+
+  /**
+   * Cheap (probe-only, no extraction) verdict on whether this file's subtitles
+   * will actually display, for the series-view marker. 'unsupported' means the
+   * container HAS subtitle streams but none are renderable (bitmap PGS/DVD that
+   * mpv shows but we can't, or an unknown codec); 'ok' means a renderable text
+   * stream (or external sidecar) exists; null means no subtitle content at all.
+   * Returns null on probe failure so a transient ffprobe error never paints a
+   * false marker. Does NOT attempt extraction, so it can't return 'failed' —
+   * that's the play-time path's job.
+   */
+  async evaluateAvailability(videoPath: string, hasSidecar: boolean): Promise<SubtitleState | null> {
+    if (hasSidecar) return 'ok';
+    if (!existsSync(videoPath)) return null;
+    try {
+      const all = await probeAllStreams(videoPath);
+      let renderableCount = 0;
+      let nonRenderableCount = 0;
+      for (const s of all) {
+        if (targetFormat(s.codec) !== null) renderableCount++;
+        else nonRenderableCount++;
+      }
+      return deriveSubtitleState({ hasSidecar: false, renderableCount, nonRenderableCount });
+    } catch (err) {
+      logger.warn('metadata', `Failed to evaluate subtitle availability: ${(err as Error).message}`, { file: videoPath });
+      return null;
     }
   },
 

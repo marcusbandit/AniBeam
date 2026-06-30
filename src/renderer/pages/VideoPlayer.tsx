@@ -4,6 +4,7 @@ import { useMetadata, type FileEpisode } from '../hooks/useMetadata.js';
 import { useLocalStorage, useLocalStorageRecord } from '../hooks/useLocalStorage';
 import { progressId, extraProgressToken, readProgress, writeProgress, recordEpisodeCompleted, RESUME_HEAD_SKIP, RESUME_TAIL_SKIP } from '../utils/playbackProgress';
 import { friendlyExtraTitle, extraCode } from '../../shared/extraLabels';
+import { derivePlaybackSubtitleState } from '../../shared/subtitleSupport';
 import { ScorePicker, Tooltip } from '../components/primitives';
 import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Minimize, Subtitles, SkipBack, SkipForward, CheckCheck, AlertTriangle, ExternalLink, HelpCircle, Loader2, RotateCcw } from 'lucide-react';
 import JASSUB from 'jassub';
@@ -658,8 +659,10 @@ function VideoPlayer() {
         }
 
         // Embedded streams (MKV / MP4 with internal subs)
+        let embeddedCount = 0;
         try {
           const embedded = await window.electronAPI.listEmbeddedSubtitles(episode.filePath);
+          embeddedCount = embedded.length;
           for (const e of embedded) {
             const result = await window.electronAPI.extractEmbeddedSubtitle(episode.filePath, e.streamIndex, e.codec);
             if (!result) continue;
@@ -686,6 +689,13 @@ function VideoPlayer() {
           prev.forEach((p) => { if (p.src.startsWith('blob:')) URL.revokeObjectURL(p.src); });
           return out;
         });
+
+        // Record the authoritative outcome so the series list can mark episodes
+        // whose subtitles silently failed (e.g. an embedded text track that
+        // wouldn't extract). null ⇒ nothing to attempt — don't overwrite a
+        // proactively-detected 'unsupported' (bitmap-only) marker.
+        const playState = derivePlaybackSubtitleState({ loadedCount: out.length, candidateStreamCount: embeddedCount });
+        if (playState) void window.electronAPI.reportSubtitleState?.(episode.filePath, playState);
       };
       void buildSubs();
     }

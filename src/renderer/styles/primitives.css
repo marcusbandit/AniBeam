@@ -873,6 +873,9 @@
 .episode-row__code  { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .episode-row__title { min-width: 0; word-break: break-word; }
 .episode-row__trailing { display: inline-flex; align-items: center; gap: var(--s2); }
+/* "Subtitles won't display" marker: image-based subs we can't render, or a
+   text track that failed to extract. Amber reads as a heads-up, not an error. */
+.episode-sub-warn { display: inline-flex; align-items: center; color: var(--accent-amber); opacity: 0.9; }
 
 /* Hover-only seekbar. Lives inside the row's bottom padding so it never
    collides with the text and never shifts anything when it appears. */
