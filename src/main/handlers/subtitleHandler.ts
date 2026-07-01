@@ -179,30 +179,46 @@ const subtitleHandler = {
     const pending = inFlightExtract.get(out);
     if (pending) return pending;
     const job = (async () => {
+      // ASS extraction keeps the original styling/positioning; everything else
+      // converts to WebVTT. `muxer` is BOTH the codec (-c:s) and the forced
+      // output format (-f) — see below.
+      const muxer: 'ass' | 'webvtt' = fmt === 'ass' ? 'ass' : 'webvtt';
       // Write to a PID-suffixed temp then atomic-rename, so existsSync(out) is
       // only ever true for a COMPLETE file. ffmpeg writes its output in place
       // and incrementally, so without this a cache-hit check (here or in a
       // racing reader) could hand back a half-written .ass — much more likely
       // now that a background prewarm can be mid-extract while the user plays.
       const tmp = `${out}.tmp.${process.pid}.${streamIndex}`;
-      try {
-        // ASS extraction: -c:s ass keeps the original styling/positioning.
-        // VTT extraction: -c:s webvtt converts SRT/MOV_TEXT to WebVTT.
-        await runFfmpeg([
-          '-y',
-          '-i', videoPath,
-          '-map', `0:${streamIndex}`,
-          '-c:s', fmt === 'ass' ? 'ass' : 'webvtt',
-          tmp,
-        ]);
-        await rename(tmp, out);
-        logger.info('metadata', `Extracted embedded subtitle stream ${streamIndex} (${fmt}) → cache`, { file: videoPath });
-        return { path: out, format: fmt };
-      } catch (err) {
-        await unlink(tmp).catch(() => { /* tmp may not exist */ });
-        logger.warn('metadata', `Failed to extract embedded subtitle stream ${streamIndex}: ${(err as Error).message}`, { file: videoPath });
-        return null;
+      // Two attempts. A first failure is often transient (busy disk, ffmpeg
+      // losing a race with the file); a deterministic failure just fails twice
+      // cheaply and falls through to the marker.
+      const ATTEMPTS = 2;
+      let lastErr: unknown;
+      for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+        try {
+          await runFfmpeg([
+            '-y',
+            '-i', videoPath,
+            '-map', `0:${streamIndex}`,
+            '-c:s', muxer,
+            // Force the output muxer. `tmp` ends in a numeric suffix
+            // (.tmp.<pid>.<streamIndex>), so ffmpeg can't infer the format from
+            // the file extension and aborts with "Unable to choose an output
+            // format" — which silently broke EVERY embedded extraction. -f makes
+            // the muxer explicit and independent of the temp filename.
+            '-f', muxer,
+            tmp,
+          ]);
+          await rename(tmp, out);
+          logger.info('metadata', `Extracted embedded subtitle stream ${streamIndex} (${fmt}) → cache`, { file: videoPath });
+          return { path: out, format: fmt };
+        } catch (err) {
+          lastErr = err;
+          await unlink(tmp).catch(() => { /* tmp may not exist */ });
+        }
       }
+      logger.warn('metadata', `Failed to extract embedded subtitle stream ${streamIndex} after ${ATTEMPTS} attempts: ${(lastErr as Error).message}`, { file: videoPath });
+      return null;
     })().finally(() => inFlightExtract.delete(out));
     inFlightExtract.set(out, job);
     return job;

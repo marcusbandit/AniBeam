@@ -221,6 +221,11 @@ export function registerMediaPlaybackIpc(getMainWindow?: WindowGetter): void {
           for (const file of s.fileEpisodes) {
             const r = byPath.get(file.filePath);
             if (!r) continue;
+            // Don't clobber a fresher result. The authoritative play-time report
+            // stamps wall-clock time (Date.now, always >> a file's mtime), so if
+            // one landed between our load and this commit it outranks this
+            // mtime-stamped probe and must win.
+            if (file.subtitleCheckedAt != null && file.subtitleCheckedAt >= r.checkedAt) continue;
             file.subtitleState = r.state;
             file.subtitleCheckedAt = r.checkedAt;
             changed = true;
