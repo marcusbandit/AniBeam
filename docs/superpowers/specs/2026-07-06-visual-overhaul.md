@@ -367,6 +367,61 @@ area file starts with a one-line comment naming its owner components.
   relative URLs. Run once; artifacts are committed; runtime never touches the
   network for fonts.
 
+## Facelift addendum (round two, same day)
+
+User verdict on round one: consistent and functional, but the silhouette is
+unchanged; it still reads as the same app. Round two restructures the frame.
+Everything in this addendum layers ON TOP of the token/chip/interaction system
+above; nothing below relaxes the guardrails.
+
+### 1. Sidebar rail (replaces the top navbar)
+
+A slim fixed left rail, `.rail`, ~92px wide: brand mark at top (icon only,
+rounded), then stacked nav entries (icon 18px over a 0.62rem mono uppercase
+label), flexible spacer, LangSwitch and the version tag docked at the bottom.
+Active entry: teal icon + label plus a 3px teal bar hugging the rail's left
+edge; hover: bg paint; press: scale. The app shell becomes a flex row: rail
+left, scrolling main right. The player route stays bare (no rail), as today.
+Below ~900px the rail collapses to 64px icon-only (labels hidden). All
+routing, the manual Library active logic, and ActivityLog mounting stay as is.
+
+### 2. Cinematic series hero
+
+The hero becomes a full-bleed band that escapes the page padding (define
+`--page-pad-x` on `.page`; the band uses negative inline margins). Banner
+image covers the band (clamp(300px, 38vh, 440px) tall) with a gradient that
+falls into `--bg-primary` at the bottom plus a left-side darkening for text.
+The poster floats bottom-left, overlapping below the band edge; title and alt
+title sit over the artwork's lower third. Series with no banner render a
+blurred, saturated blow-up of their own poster in the band so every page gets
+the title-screen treatment. Chip rows, Continue, progress, synopsis, tags all
+keep their behavior; the back button floats over the band as a scrim chip.
+
+### 3. Poster bloom hover (cards)
+
+ShowCard gains a `.show-card-glow` layer: a blurred (about 32px) saturated
+copy of the poster, inset ~-12%, opacity 0 at rest, blooming to ~0.5 on
+hover/focus-visible, pointer-events none, behind the poster. Mounted lazily on
+first hover so the initial grid render stays cheap. The bloom escapes the card
+bounds on purpose; it is the app's signature hover moment and inherits to
+Feed and Watching automatically through ShowCard.
+
+### 4. Player control island
+
+The full-width bottom control bar becomes a centered floating island:
+`min(920px, 100% - 48px)` wide, ~28px above the bottom edge, scrim + blur +
+hairline + radius-lg, seek row above the buttons row inside it. Skip/autonext,
+replay, and toast offsets adjust to sit above the island. Header stays. No
+logic changes; the seek bubble and sub-menu anchoring must keep working.
+
+### 5. Atmosphere
+
+Every `.page` gets a mount transition (fade + 10px rise, ~240ms, killed by the
+global reduced-motion block). The app shell gets a fixed, very quiet color
+field behind content: a teal radial tint (~5% opacity) top-right and an even
+fainter warm tint bottom-left. Flat surfaces stay flat; the field lives on the
+shell backdrop only.
+
 ## Guardrails (do not violate)
 
 - No em dashes anywhere, including UI copy.
