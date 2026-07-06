@@ -150,9 +150,11 @@ function formatTime(s: number): string {
 // frame decodes (avoids the canvas default 300x150 box flashing).
 const PREVIEW_CANVAS_W = 200;
 const PREVIEW_CANVAS_SEED_H = Math.round(PREVIEW_CANVAS_W * (9 / 16));
-// Popup outer half-width for edge clamping: canvas + 2*6px padding + 2*1px
-// border (mirrors .player-scrub-preview in player.css).
-const PREVIEW_POPUP_HALF_W = (PREVIEW_CANVAS_W + 2 * 6 + 2 * 1) / 2;
+// Popup padding: wide on purpose so the refracting glass bezel is VISIBLE
+// as a pane around the inset thumbnail (mirrors .player-scrub-preview in
+// player.css). Half-width for edge clamping: canvas + padding + border.
+const PREVIEW_PAD = 14;
+const PREVIEW_POPUP_HALF_W = (PREVIEW_CANVAS_W + 2 * PREVIEW_PAD + 2 * 1) / 2;
 
 // Note: VideoPlayer is intentionally NOT migrated to the design-system
 // primitives (Page/Section/Stack/Card/etc.). The fullscreen player is a
@@ -2261,7 +2263,7 @@ function VideoPlayer() {
               style={{ left: `${scrubHover.x}px` }}
               aria-hidden="true"
               data-liquid-glass=""
-              data-lg-bezel="10"
+              data-lg-bezel="14"
               data-lg-blur="2"
             >
               {/* Seed a 16:9 backing store so the popup mounts at the right
