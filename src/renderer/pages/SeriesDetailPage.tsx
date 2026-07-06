@@ -1000,7 +1000,7 @@ function SeriesDetailPage() {
           </div>
 
           <div className="series-hero-head">
-            <h1 className="series-hero-title">{displayTitle}</h1>
+            <h1 className="series-hero-title title-glass">{displayTitle}</h1>
             {altTitle && <p className="series-hero-alt-title">{altTitle}</p>}
 
             <div className="series-hero-chips series-hero-chips--ratings">
