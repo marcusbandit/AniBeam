@@ -1,10 +1,10 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useMetadata, type SeriesMetadata } from '../hooks/useMetadata';
-import { BookOpen, Tv, Film, Search, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
+import { BookOpen, Tv, Film, Search, RefreshCw, Trash2, AlertTriangle, Link2 } from 'lucide-react';
 import MetadataMatchModal from '../components/MetadataMatchModal';
 import { useDebouncedCallback } from '../hooks/useDebouncedCallback';
 import { useHiddenShows } from '../contexts/HiddenShowsContext';
-import { Page, Inline, Tooltip } from '../components/primitives';
+import { Page, Inline, Tooltip, Pill } from '../components/primitives';
 
 type FilterOption = 'all' | 'series' | 'movies' | 'missing';
 
@@ -56,7 +56,7 @@ function MetadataTab() {
   const [matchTarget, setMatchTarget] = useState<{ seriesId: string; data: SeriesMetadata } | null>(null);
   const { showHidden } = useHiddenShows();
 
-  // Debounced — bursts of metadata pings on new ingests would otherwise
+  // Debounced: bursts of metadata pings on new ingests would otherwise
   // hammer loadMetadata + re-render the entire grid per file.
   const debouncedLoad = useDebouncedCallback(() => { void loadMetadata(); }, 250);
   useEffect(() => {
@@ -203,14 +203,14 @@ function MetadataTab() {
             { id: 'movies', label: 'Movies' },
             { id: 'missing', label: 'Missing files' },
           ] as Array<{ id: FilterOption; label: string }>).map((f) => (
-            <button
+            <Pill
               key={f.id}
-              className={`filter-pill${filter === f.id ? ' on' : ''}`}
+              toggle
+              on={filter === f.id}
               onClick={() => setFilter(f.id)}
             >
-              <span>{f.label}</span>
-              <span className="filter-count">{filterCounts[f.id]}</span>
-            </button>
+              {f.label} {filterCounts[f.id]}
+            </Pill>
           ))}
         </div>
         <div className="meta-search">
@@ -239,13 +239,12 @@ function MetadataTab() {
             <div className="col-type">Type</div>
             <div className="col-source">Source</div>
             <div className="col-files">Files</div>
-            <div className="col-updated">Updated</div>
             <div className="col-actions"></div>
           </div>
           {filteredSeries.map(([seriesId, data]) => {
             const movie = isMovie(data);
             // Count only REAL episodes. OP/ED/PV/SP/extras are legitimate bonus
-            // files (Bakemonogatari has ~19 of them) — they must not inflate the
+            // files (Bakemonogatari has ~19 of them); they must not inflate the
             // count or trip the "more files than episodes" flag below. Entries
             // persisted before the classifier have no `kind`, so they still
             // count as episodes (backward compatible). Mirrors the realEpisodes
@@ -253,7 +252,7 @@ function MetadataTab() {
             const have = (data.fileEpisodes ?? []).filter((f) => (f.kind ?? 'episode') === 'episode').length;
             const total = data.totalEpisodes || data.episodes?.length || (movie ? 1 : 0);
             const pct = total ? Math.round((have / total) * 100) : 0;
-            // More EPISODES on disk than the matched title has — flag it so
+            // More EPISODES on disk than the matched title has: flag it so
             // misnamed/duplicate/stray files get the user's attention. Bonus
             // content is excluded above, so a show full of extras no longer
             // false-flags.
@@ -282,7 +281,7 @@ function MetadataTab() {
                     )}
                   </div>
                 </div>
-                <Tooltip label="Match this entry to a different show">
+                <Tooltip label="Match to a different show">
                   <button
                     type="button"
                     className="col-title col-title-clickable"
@@ -296,11 +295,11 @@ function MetadataTab() {
                   </button>
                 </Tooltip>
                 <div className="col-type">
-                  <span className="type-tag">{movie ? 'Movie' : 'Series'}</span>
+                  <Pill size="sm" format={movie ? 'MOVIE' : 'TV'}>{movie ? 'Movie' : 'Series'}</Pill>
                 </div>
                 <div className="col-source">
-                  <span className={`source-pill source-${sourceClass}`}>
-                    {data.source || '—'}
+                  <span className={`chip chip--sm source-chip source-${sourceClass}`}>
+                    {data.source || 'none'}
                   </span>
                 </div>
                 <div className="col-files">
@@ -315,8 +314,8 @@ function MetadataTab() {
                       {have}<span className="muted">/{total}</span>
                     </span>
                     {extra > 0 && (
-                      <Tooltip label={`${extra} file${extra === 1 ? '' : 's'} beyond the expected ${total} — needs attention`}>
-                        <span className="files-extra-flag" aria-label={`${extra} extra file${extra === 1 ? '' : 's'} detected`}>
+                      <Tooltip label={`${extra} file${extra === 1 ? '' : 's'} beyond the expected ${total}, needs attention`}>
+                        <span className="chip chip--sm chip--amber" aria-label={`${extra} extra file${extra === 1 ? '' : 's'} detected`}>
                           <AlertTriangle size={13} aria-hidden="true" />
                           +{extra}
                         </span>
@@ -324,8 +323,17 @@ function MetadataTab() {
                     )}
                   </div>
                 </div>
-                <div className="col-updated muted">—</div>
                 <div className="col-actions">
+                  <Tooltip label="Match to a different show">
+                    <button
+                      className="icon-btn"
+                      aria-label="Match to a different show"
+                      onClick={() => setMatchTarget({ seriesId, data })}
+                      disabled={isRefreshing || bulkRefreshing}
+                    >
+                      <Link2 size={14} />
+                    </button>
+                  </Tooltip>
                   <Tooltip label="Refresh">
                     <button
                       className="icon-btn"
@@ -357,7 +365,7 @@ function MetadataTab() {
         open={matchTarget !== null}
         seriesId={matchTarget?.seriesId ?? ''}
         currentTitle={matchTarget ? (matchTarget.data.titleRomaji || matchTarget.data.title || matchTarget.seriesId) : ''}
-        // The user is picking an exact AniList media — no need to re-derive
+        // The user is picking an exact AniList media; no need to re-derive
         // a season suffix server-side.
         seasonNumber={null}
         onClose={() => setMatchTarget(null)}

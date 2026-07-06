@@ -102,9 +102,9 @@ function MetadataMatchModal({ open, seriesId, currentTitle, seasonNumber, onClos
         <div className="match-modal-head">
           <div>
             <div id={`match-modal-title-${seriesId}`} className="match-modal-title">Match metadata</div>
-            <div className="match-modal-sub">Pick the right show — its data will replace the current entry.</div>
+            <div className="match-modal-sub">Pick the right show; its data will replace the current entry.</div>
           </div>
-          <button className="match-modal-close" onClick={onClose} disabled={applyingId !== null} aria-label="Close">
+          <button className="icon-btn" onClick={onClose} disabled={applyingId !== null} aria-label="Close">
             <X size={16} />
           </button>
         </div>

@@ -6,13 +6,11 @@
   .navbar { padding: var(--s2) var(--s4); gap: var(--s4); }
   .navbar-meta { display: none; }
   .show-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--s4) var(--s3); }
-  .episodes-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
   .meta-row {
-    grid-template-columns: 56px 1fr 80px;
+    grid-template-columns: 56px 1fr 112px;
   }
   .meta-row > .col-source,
-  .meta-row > .col-files,
-  .meta-row > .col-updated { display: none; }
+  .meta-row > .col-files { display: none; }
   .cache-stats {
     grid-template-columns: 1fr 1fr;
     gap: 1rem;
