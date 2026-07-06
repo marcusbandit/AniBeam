@@ -445,4 +445,12 @@ img { -webkit-user-drag: none; user-drag: none; }
 [data-liquid-glass][data-liquid-glass] {
   background: color-mix(in srgb, var(--bg-deep) 52%, transparent);
   border-color: var(--glass-edge-bright);
+  /* Specular rim in CSS: feImage cannot load inside backdrop filters, so
+     the lens highlight is inset light instead: brighter along the top,
+     a whisper along the sides, plus the ambient drop shadow. */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 1px 0 0 rgba(255, 255, 255, 0.07),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04),
+    var(--shadow-lg);
 }
