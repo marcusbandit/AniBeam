@@ -7,6 +7,7 @@ import { useTrackerProgress } from "../contexts/TrackerProgressContext";
 import { smoothScalar, type SmoothHandle } from "../utils/motion";
 import {
   classifyWatchProgress,
+  computeCardProgress,
   findNextUpcomingEpisode,
   formatCountdownMinutes,
   formatWatchedLabel,
@@ -130,6 +131,18 @@ function ShowCard({
     state: watchedState,
   });
 
+  // Progress bar overlaid on the poster's bottom edge: blue = watched, rose
+  // underlay = aired but not yet watched (releasing shows only), dark right
+  // cap = episode count unknown.
+  const progress = computeCardProgress({
+    watched,
+    totalEpisodes: item.totalEpisodes,
+    episodes: item.episodes,
+    latestDownloadedEpisode: latestDownloadedNum,
+    status: item.status,
+    nowMs,
+  });
+
   // A movie is identified by metadata (item.type), so we never derive or show
   // an episode number for it — a filename like "…Dai 63-kai…" would otherwise
   // surface a bogus "EP 63". Movies get a "Movie" badge in the same slot.
@@ -217,6 +230,28 @@ function ShowCard({
           />
         ) : (
           <div className="show-card-no-image"><Tv size={32} /></div>
+        )}
+        {progress && (
+          <div className="show-card-progress" aria-hidden="true">
+            {progress.behindPct > 0 && (
+              <span
+                className="show-card-progress-behind"
+                style={{ width: `${progress.behindPct}%` }}
+              />
+            )}
+            {progress.watchedPct > 0 && (
+              <span
+                className="show-card-progress-watched"
+                style={{ width: `${progress.watchedPct}%` }}
+              />
+            )}
+            {progress.unknownPct > 0 && (
+              <span
+                className="show-card-progress-unknown"
+                style={{ width: `${progress.unknownPct}%` }}
+              />
+            )}
+          </div>
         )}
       </div>
       <div className="show-card-info">

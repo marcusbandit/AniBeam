@@ -149,6 +149,98 @@ export function formatWatchedLabel(args: {
   return `${String(watched).padStart(2, "0")}/?`;
 }
 
+export interface CardProgress {
+  /** 0-100 width of the blue watched fill. */
+  watchedPct: number;
+  /** 0-100 width of the rose aired-but-unwatched underlay. 0 when the
+   *  show is fully released: a finished show's unwatched tail is just
+   *  backlog, not an urgency to paint red. */
+  behindPct: number;
+  /** 0-100 width of the right-anchored dark cap that marks an unknown
+   *  episode count. 0 when the total is published. */
+  unknownPct: number;
+}
+
+/** Fraction of the track reserved for the dark "total unknown" cap, so a
+ *  bar without a published episode count can never read as complete. */
+const UNKNOWN_TAIL_PCT = 15;
+
+/**
+ * Segment widths for the progress bar overlaid on the poster bottom of
+ * every show card. Blue = watched; rose = aired but not yet watched
+ * (only while the show is still releasing); dark right cap = episode
+ * count unknown.
+ *
+ * Denominator is totalEpisodes when published; otherwise the highest
+ * episode we know about, squeezed into the track minus the unknown cap
+ * (the "XX/YY+" and "XX/?" badge cases). Released is the later of: the
+ * latest past-aired episode, the episode right before the next scheduled
+ * one (Watching-tab cards only carry nextAiringEpisode, so a future date
+ * is often all we have), and the latest file on disk. A finished show
+ * counts as fully released regardless of airDate coverage.
+ *
+ * Returns null when there is nothing to scale against; the card skips
+ * the overlay entirely.
+ */
+export function computeCardProgress(args: {
+  watched: number | null;
+  totalEpisodes: number | null | undefined;
+  episodes: ReadonlyArray<{ episodeNumber: number; airDate: string | null }> | null | undefined;
+  latestDownloadedEpisode?: number | null;
+  status?: string | null;
+  nowMs?: number;
+}): CardProgress | null {
+  const { watched, totalEpisodes, episodes, latestDownloadedEpisode, status } = args;
+  const nowMs = args.nowMs ?? Date.now();
+
+  let latestAired = 0;
+  let nextScheduledEp: number | null = null;
+  let nextScheduledTs = Infinity;
+  for (const e of episodes ?? []) {
+    if (!e.airDate) continue;
+    const t = Date.parse(e.airDate);
+    if (!Number.isFinite(t)) continue;
+    if (t <= nowMs) {
+      if (e.episodeNumber > latestAired) latestAired = e.episodeNumber;
+    } else if (t < nextScheduledTs) {
+      nextScheduledTs = t;
+      nextScheduledEp = e.episodeNumber;
+    }
+  }
+
+  let released = Math.max(
+    latestAired,
+    nextScheduledEp != null ? nextScheduledEp - 1 : 0,
+    latestDownloadedEpisode ?? 0,
+  );
+  const totalKnown = totalEpisodes != null && totalEpisodes > 0;
+  const finished = normalizeStatus(status) === "finished";
+  if (totalKnown && finished) released = totalEpisodes;
+  const fullyReleased = finished || (totalKnown && released >= totalEpisodes);
+  // No tracker entry means there is no watch progress to be behind on, so
+  // untracked cards never get the rose underlay.
+  const showBehind = watched != null && !fullyReleased;
+
+  if (totalKnown) {
+    const pct = (n: number) => Math.min(100, Math.max(0, (n / totalEpisodes) * 100));
+    return {
+      watchedPct: pct(watched ?? 0),
+      behindPct: showBehind ? pct(released) : 0,
+      unknownPct: 0,
+    };
+  }
+
+  const knownExtent = Math.max(released, watched ?? 0);
+  if (knownExtent <= 0) return null;
+  const usable = 100 - UNKNOWN_TAIL_PCT;
+  const pct = (n: number) => Math.min(usable, Math.max(0, (n / knownExtent) * usable));
+  return {
+    watchedPct: pct(watched ?? 0),
+    behindPct: showBehind ? pct(released) : 0,
+    unknownPct: UNKNOWN_TAIL_PCT,
+  };
+}
+
 /**
  * Earliest episode with airDate > now. Used by the series detail chip and
  * the feed-card meta row to render a live countdown. Returns null when
