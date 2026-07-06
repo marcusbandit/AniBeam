@@ -2254,7 +2254,16 @@ function VideoPlayer() {
             } as React.CSSProperties}
           />
           {scrubHover && videoSrc && duration > 0 && (
-            <div className="player-scrub-preview" style={{ left: `${scrubHover.x}px` }} aria-hidden="true">
+            // Liquid glass is size-keyed, so cursor-following costs nothing;
+            // the per-hover mount is a cheap procedural filter build.
+            <div
+              className="player-scrub-preview"
+              style={{ left: `${scrubHover.x}px` }}
+              aria-hidden="true"
+              data-liquid-glass=""
+              data-lg-bezel="10"
+              data-lg-blur="2"
+            >
               {/* Seed a 16:9 backing store so the popup mounts at the right
                   size; drawPreviewFrame resizes it to the real frame aspect on
                   the first decoded frame. Avoids the canvas default 300x150
