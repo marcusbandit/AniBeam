@@ -23,7 +23,7 @@ const SCORE_OPTIONS: readonly string[] = Object.freeze(
 );
 
 /**
- * Custom themed score dropdown — replaces the native <select>, whose
+ * Custom themed score dropdown - replaces the native <select>, whose
  * Chromium popup ignores our dark tokens entirely. The panel renders in
  * the app's mono/dark language, scrolls smoothly, and snaps the selected
  * option into view on open so a 0.1-step list of 101 values is actually
@@ -32,7 +32,7 @@ const SCORE_OPTIONS: readonly string[] = Object.freeze(
 export function ScorePicker({ value, onChange, disabled, className, ariaLabel }: ScorePickerProps) {
   const [open, setOpen] = useState(false);
   // Anchor coords for the portalled panel. We track viewport-relative left/
-  // top/width so position: fixed math is straightforward — when the user
+  // top/width so position: fixed math is straightforward - when the user
   // scrolls the page or resizes, we recompute these and the panel follows.
   const [anchor, setAnchor] = useState<{ left: number; top: number; width: number } | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -60,7 +60,7 @@ export function ScorePicker({ value, onChange, disabled, className, ariaLabel }:
 
   useEffect(() => {
     if (!open) return;
-    // Only recompute when something OUTSIDE the panel scrolls — the panel's
+    // Only recompute when something OUTSIDE the panel scrolls - the panel's
     // own scrollTop changes don't move the trigger, so reacting to them
     // would (a) burn CPU on every wheel tick and (b) thrash the snap-to-
     // selected effect, fighting the user's scroll input. Filter by target.
@@ -77,7 +77,7 @@ export function ScorePicker({ value, onChange, disabled, className, ariaLabel }:
     };
   }, [open, recomputeAnchor]);
 
-  // Click-outside and Escape — both unmount the panel without changing
+  // Click-outside and Escape - both unmount the panel without changing
   // the value. Mouse-down (not click) so a fresh click on the trigger
   // toggles cleanly without us first closing then reopening. The panel is
   // portalled to <body>, so we have to check both the trigger root AND the
@@ -103,7 +103,7 @@ export function ScorePicker({ value, onChange, disabled, className, ariaLabel }:
 
   // Snap the selected option into view ONCE per open. If we re-ran this
   // on every anchor recompute or value change, the user couldn't scroll
-  // — every wheel tick would yank the panel back to the selected row.
+  // - every wheel tick would yank the panel back to the selected row.
   // We track whether the current open cycle has already snapped via a
   // ref. Reset on close.
   const snappedRef = useRef(false);

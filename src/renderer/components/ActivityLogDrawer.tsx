@@ -133,30 +133,37 @@ export function ActivityLogDrawer() {
       >
         <Activity size={16} />
         <span>Activity</span>
-        {unseenErrorCount > 0 && <span className="activity-log-badge">{unseenErrorCount}</span>}
+        {unseenErrorCount > 0 && <span className="chip chip--sm chip--rose">{unseenErrorCount}</span>}
       </button>
       {open && (
         <aside className="activity-log-drawer">
           <header className="activity-log-header">
             <span className="activity-log-title">Activity</span>
             <div className="activity-log-actions">
-              <button className="activity-log-action" onClick={handleCopy} aria-label="Copy log">
-                <Copy size={14} />
-              </button>
-              <button className="activity-log-action" onClick={clear} aria-label="Clear log">
-                <Trash2 size={14} />
-              </button>
-              <button className="activity-log-action" onClick={() => setOpen(false)} aria-label="Close">
-                <X size={14} />
-              </button>
+              <Tooltip label="Copy log">
+                <button className="icon-btn" onClick={handleCopy} aria-label="Copy log">
+                  <Copy size={14} />
+                </button>
+              </Tooltip>
+              <Tooltip label="Clear log">
+                <button className="icon-btn" onClick={clear} aria-label="Clear log">
+                  <Trash2 size={14} />
+                </button>
+              </Tooltip>
+              <Tooltip label="Close">
+                <button className="icon-btn" onClick={() => setOpen(false)} aria-label="Close">
+                  <X size={14} />
+                </button>
+              </Tooltip>
             </div>
           </header>
           <div className="activity-log-filters">
             {ALL_STAGES.map((stage) => (
               <button
                 key={stage}
-                className={`activity-log-chip stage-${stage}${stageFilter.has(stage) ? ' active' : ''}`}
+                className={`chip chip--sm chip--toggle stage-${stage}${stageFilter.has(stage) ? ' is-on' : ''}`}
                 onClick={() => toggleStage(stage)}
+                aria-pressed={stageFilter.has(stage)}
               >
                 {stage}
               </button>
@@ -165,8 +172,9 @@ export function ActivityLogDrawer() {
             {ALL_LEVELS.map((level) => (
               <button
                 key={level}
-                className={`activity-log-chip level-${level}${levelFilter.has(level) ? ' active' : ''}`}
+                className={`chip chip--sm chip--toggle level-${level}${levelFilter.has(level) ? ' is-on' : ''}`}
                 onClick={() => toggleLevel(level)}
+                aria-pressed={levelFilter.has(level)}
               >
                 {level}
               </button>
@@ -178,7 +186,7 @@ export function ActivityLogDrawer() {
               if (row.kind === 'single') {
                 const e = row.event;
                 const ctxText = e.ctx?.series ?? e.ctx?.file;
-                const fullLine = `${e.message}${ctxText ? ` — ${ctxText}` : ''}`;
+                const fullLine = `${e.message}${ctxText ? ` · ${ctxText}` : ''}`;
                 const expanded = expandedIds.has(e.id);
                 const rowEl = (
                   <div
@@ -217,7 +225,7 @@ export function ActivityLogDrawer() {
                       </span>
                       {row.header}
                     </span>
-                    <span className="activity-log-count">{row.events.length}</span>
+                    <span className="chip chip--sm activity-log-count">{row.events.length}</span>
                   </div>
                   {expanded && (
                     <div className="activity-log-group-children">
@@ -225,7 +233,7 @@ export function ActivityLogDrawer() {
                         const { detail } = splitMessage(e.message);
                         const ctxText = e.ctx?.series ?? e.ctx?.file;
                         const text = detail ?? e.message;
-                        const fullLine = `${text}${ctxText ? ` — ${ctxText}` : ''}`;
+                        const fullLine = `${text}${ctxText ? ` · ${ctxText}` : ''}`;
                         return (
                           <Tooltip key={e.id} label={fullLine}>
                             <div className={`activity-log-child-row level-${e.level}`}>

@@ -3,7 +3,7 @@ import { Link2, Link2Off, ExternalLink, Copy, Check } from 'lucide-react';
 import type { TrackerProvider, TrackerStatus } from '../../main/preload';
 import { LOOPBACK_REDIRECT_URI, DEFAULT_CLIENT_IDS, DEFAULT_CLIENT_SECRETS } from '../../shared/trackerConstants';
 import { useTrackerProgress } from '../contexts/TrackerProgressContext';
-import { Section, Tooltip } from './primitives';
+import { Section, Tooltip, SegmentedSwitch } from './primitives';
 
 interface TrackerRowProps {
   provider: TrackerProvider;
@@ -33,8 +33,8 @@ function CopyableUri({ value }: { value: string }) {
     } catch { /* ignore */ }
   };
   return (
-    <Tooltip label="Copy to clipboard">
-      <button type="button" className="tracker-uri" onClick={() => void onCopy()}>
+    <Tooltip label={copied ? 'Copied' : 'Copy to clipboard'}>
+      <button type="button" className={`tracker-uri${copied ? ' is-copied' : ''}`} onClick={() => void onCopy()}>
         <code>{value}</code>
         {copied ? <Check size={12} /> : <Copy size={12} />}
       </button>
@@ -124,7 +124,7 @@ function TrackerRow({ provider, label, registerUrl, registerHelp, status, onChan
               </button>
             </>
           ) : (
-            <button type="button" className="btn btn-primary" onClick={() => void handleConnect()}>
+            <button type="button" className="btn btn--accent" onClick={() => void handleConnect()}>
               <Link2 size={14} />
               <span>Log in to {label}</span>
             </button>
@@ -162,7 +162,7 @@ function TrackerRow({ provider, label, registerUrl, registerHelp, status, onChan
               <input
                 type="password"
                 className="tracker-input"
-                placeholder={savedHasSecret ? 'Client Secret (saved — leave empty to reuse)' : 'Client Secret'}
+                placeholder={savedHasSecret ? 'Client Secret (saved, leave empty to reuse)' : 'Client Secret'}
                 value={clientSecret}
                 onChange={(e) => setClientSecret(e.target.value)}
                 spellCheck={false}
@@ -178,7 +178,7 @@ function TrackerRow({ provider, label, registerUrl, registerHelp, status, onChan
             ) : (
               <button
                 type="button"
-                className="btn btn-primary"
+                className="btn btn--accent"
                 onClick={() => void handleConnect()}
               >
                 <Link2 size={14} />
@@ -242,7 +242,7 @@ function TrackersSection() {
           provider="anilist"
           label="AniList"
           registerUrl="https://anilist.co/settings/developer"
-          registerHelp={'Create a new client. Paste the redirect URL below into AniList\'s "Redirect URL" field exactly — port and trailing /callback included.'}
+          registerHelp={'Create a new client. Paste the redirect URL below into AniList\'s "Redirect URL" field exactly, port and trailing /callback included.'}
           status={anilistStatus}
           onChange={refresh}
         />
@@ -250,7 +250,7 @@ function TrackersSection() {
           provider="mal"
           label="MyAnimeList"
           registerUrl="https://myanimelist.net/apiconfig"
-          registerHelp={'Create an app (App Type: "Web"). Paste the redirect URL below into MAL\'s "App Redirect URL" field. Save the Client ID — there is no client secret used here (PKCE flow).'}
+          registerHelp={'Create an app (App Type: "Web"). Paste the redirect URL below into MAL\'s "App Redirect URL" field. Save the Client ID; there is no client secret used here (PKCE flow).'}
           status={malStatus}
           onChange={refresh}
         />
@@ -261,18 +261,15 @@ function TrackersSection() {
           <div className="pref-label">Main tracker</div>
           <div className="pref-help">Source of truth for the watched count shown on each card. The other tracker still receives updates when both are connected.</div>
         </div>
-        <div className="segment">
-          {(['anilist', 'mal'] as const).map((p) => (
-            <button
-              key={p}
-              type="button"
-              className={`segment-opt${main === p ? ' on' : ''}`}
-              onClick={() => void setMainProvider(p)}
-            >
-              {p === 'anilist' ? 'AniList' : 'MyAnimeList'}
-            </button>
-          ))}
-        </div>
+        <SegmentedSwitch
+          value={main}
+          onChange={(p) => void setMainProvider(p)}
+          ariaLabel="Main tracker"
+          options={[
+            { value: 'anilist', label: 'AniList' },
+            { value: 'mal', label: 'MyAnimeList' },
+          ]}
+        />
       </div>
     </Section>
   );

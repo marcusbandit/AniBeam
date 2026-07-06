@@ -19,7 +19,7 @@ import {
   type NodeProps,
   type EdgeProps,
 } from '@xyflow/react';
-import { Tv, Film, ZoomIn, ZoomOut, Maximize2, Maximize, Minimize, Library } from 'lucide-react';
+import { Tv, Film, ZoomIn, ZoomOut, Maximize2, Maximize, Minimize, Library, LocateFixed } from 'lucide-react';
 
 import type { FranchiseEdge, FranchiseGraph, FranchiseNode as FranchiseNodeData } from '../../../shared/franchise';
 import { relationLabel } from './laneAssignment';
@@ -79,7 +79,7 @@ interface FranchiseNodeFlowData extends Record<string, unknown> {
 //
 // Dim state and hover-relative labels are computed inside FranchiseFlowNode by
 // reading this context directly. This means hover state changes never touch
-// React Flow's node store — only the affected node components re-render, so
+// React Flow's node store - only the affected node components re-render, so
 // React Flow never re-applies transforms or recalculates edge paths on hover.
 
 interface HoverCtx {
@@ -88,7 +88,7 @@ interface HoverCtx {
   highlightSet: Set<number> | null;
   /** Ghost rfNode IDs that should stay lit while their origin or target is
    *  hovered. Separate from highlightSet because a ghost's data.node.anilistId
-   *  equals its origin — and we DON'T want a ghost to inherit highlight just
+   *  equals its origin - and we DON'T want a ghost to inherit highlight just
    *  because its origin is a secondary neighbour of the hovered node. */
   highlightGhostIds: ReadonlySet<string> | null;
   /** Stable refs from the heavy memo, used for hover-relative labeling. */
@@ -117,24 +117,28 @@ const HoverContext = createContext<HoverCtx>({
 
 const NODE_W = 180; // matches the .franchise-node CSS width
 const NODE_H = 420; // poster (180×1.5 = 270) + body ~150
-// Vertical rhythm between rows — chain rows, chain→singleton, and
+// Vertical rhythm between rows - chain rows, chain→singleton, and
 // singleton→ghost all step by this so every vertical gap is consistent.
 // Mirrors V_GAP in franchiseLayout.ts.
 const ROW_GAP = 500;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+/* Single source of truth for edge colors. The filter chip dots (franchise.css)
+   MUST read from the same tokens so the legend never drifts from the graph:
+   spine=teal, source=blue (same as parent-of-root), side=muted, alt=amber,
+   character=rose, release-order=rose (thick solid), other=border-hover. */
 function arrowColorFor(relationType: string): string {
-  if (relationType === 'RELEASE_ORDER') return 'var(--accent-red, #ef4444)';
+  if (relationType === 'RELEASE_ORDER') return 'var(--accent-rose)';
   const cat = categoryFor(relationType);
   switch (cat) {
-    case 'spine':       return 'var(--accent-teal, #14b8a6)';
-    case 'source':      return 'var(--accent-secondary, #818cf8)';
-    case 'alternative': return 'var(--accent-amber, #f59e0b)';
-    case 'character':   return 'var(--accent-rose, #fb7185)';
-    case 'side':        return 'var(--text-muted, #64748b)';
+    case 'spine':       return 'var(--accent-primary)';
+    case 'source':      return 'var(--accent-blue)';
+    case 'alternative': return 'var(--accent-amber)';
+    case 'character':   return 'var(--accent-rose)';
+    case 'side':        return 'var(--text-muted)';
     case 'other':
-    default:            return 'var(--border-hover, rgba(255,255,255,0.14))';
+    default:            return 'var(--border-hover)';
   }
 }
 
@@ -178,7 +182,7 @@ function layoutGraph(
 
   // Visible edges = every edge, minus those whose category the user has
   // hidden. categoryFor() is the single source of truth for relation types;
-  // there is NO per-type allowlist here — CHARACTER (and any genuinely
+  // there is NO per-type allowlist here - CHARACTER (and any genuinely
   // unwanted type) is dropped upstream in closeGraph, and the category-hide
   // toggles are the only visibility control.
   const visibleEdges = filteredEdges.filter(
@@ -205,7 +209,7 @@ function layoutGraph(
   const visibleNodes = filteredNodes.filter((n) => connectedNodeIds.has(n.anilistId));
 
   // Layout uses the *fully filtered* graph so positions reflect the actual
-  // visible structure — category-filtered nodes are dropped, not just hidden.
+  // visible structure - category-filtered nodes are dropped, not just hidden.
   const filteredGraph: FranchiseGraph = { ...graph, nodes: visibleNodes, edges: visibleEdges };
   const rawPositions = layoutFranchise(filteredGraph, currentId, rootId);
 
@@ -219,7 +223,7 @@ function layoutGraph(
   if (rootId != null) {
     const rootNode = visibleNodes.find((n) => n.anilistId === rootId);
     if (rootNode) {
-      // Dedupe by otherId — raw AniList data sometimes has reciprocal
+      // Dedupe by otherId - raw AniList data sometimes has reciprocal
       // ALTERNATIVE edges (root→X and X→root) and we want to treat each
       // unique alt target exactly once.
       const altMap = new Map<number, AltPair>();
@@ -324,7 +328,7 @@ function layoutGraph(
   // For each member left-to-right:
   //   forward case (avg source col >= my col): shift me+suffix right by the
   //     delta so this member lands under its source(s).
-  //   backward case (avg source col < my col): leave me put — ghost every
+  //   backward case (avg source col < my col): leave me put - ghost every
   //     source that's behind me above the target instead, dropping the
   //     direct source→target edge.
   const SPINE_X_GAP = 320;
@@ -368,7 +372,7 @@ function layoutGraph(
         const delta = avgCol - myCol;
         if (delta > 0) for (let j = i; j < ordered.length; j++) cols[j] += delta;
       } else {
-        // Source behind target. Allow 1 col of leeway — that's close enough
+        // Source behind target. Allow 1 col of leeway - that's close enough
         // to draw the direct diagonal edge without a ghost.
         for (const { sourceId, col, rel } of sourcePairs) {
           if (col >= myCol) continue;
@@ -407,7 +411,7 @@ function layoutGraph(
 
   // ── Singleton "satellite" placement (SIDE_STORY orbiters) ────────────────
   // Visible nodes that have SIDE_STORY edges to a positioned chain member
-  // but aren't in any chain themselves (no PREQUEL/SEQUEL connections —
+  // but aren't in any chain themselves (no PREQUEL/SEQUEL connections -
   // standalone OVAs, specials, supplementary novels, etc.). Place each in
   // the same column grid as its target, on whichever side is empty:
   // above when no source/alt ghost is already there, otherwise below.
@@ -559,7 +563,7 @@ function layoutGraph(
       const x = claimCell(plan.midX, y);
       positions.set(plan.id, { x, y });
     }
-    // Frame shows with MORE THAN 3 side stories — box the group under a
+    // Frame shows with MORE THAN 3 side stories - box the group under a
     // "Side stories" label (anchored leftmost.top-s → rightmost.bottom-t).
     const plansByTarget = new Map<number, SingletonPlan[]>();
     for (const plan of singletonPlans) {
@@ -583,7 +587,7 @@ function layoutGraph(
       });
     }
     // Register cross-chain source/parent ghosts so they render via the shared
-    // ghost pipeline (translucent source copy above the singleton + emerald
+    // ghost pipeline (translucent source copy above the singleton + blue
     // edge), and drop the corresponding direct cross-graph lines.
     for (const plan of singletonPlans) {
       // Ghost sits on the singleton's FAR side from its chain: a singleton
@@ -593,7 +597,7 @@ function layoutGraph(
       }
       for (const sourceId of plan.ghostSourceIds) {
         sourceGhosts.push({ sourceId, targetId: plan.id });
-        // Direct edge could be stored in either orientation — drop both.
+        // Direct edge could be stored in either orientation - drop both.
         sourceGhostByEdgeKey.set(`${sourceId}|${plan.id}`, { sourceId, targetId: plan.id });
         sourceGhostByEdgeKey.set(`${plan.id}|${sourceId}`, { sourceId, targetId: plan.id });
       }
@@ -602,7 +606,7 @@ function layoutGraph(
     // Side-story ↔ side-story connections that land on DIFFERENT rows would
     // draw long cross-row lines. Ghost the source endpoint next to the target
     // instead. Ghost the one on the HIGHER row (smaller index) as a copy by
-    // the lower one — pick deterministically by id so it's stable.
+    // the lower one - pick deterministically by id so it's stable.
     const singletonIds = new Set(singletonPlans.map((p) => p.id));
     const bandOf = (id: number) => Math.round((positions.get(id)?.y ?? 0) / ROW_GAP);
     for (const e of dedupedEdges) {
@@ -621,14 +625,14 @@ function layoutGraph(
   }
 
   // Seed the occupancy grid for the no-singleton case (when singletons exist
-  // it was already seeded before placing them). Idempotent — Set.
+  // it was already seeded before placing them). Idempotent - Set.
   if (occupiedCells.size === 0) {
     for (const [, pos] of positions) occupiedCells.add(cellKey(pos.x, pos.y));
   }
 
   // ── Root anchor ──────────────────────────────────────────────────────────
   // The franchise root can resolve to a PRINT source (novel/manga) that only
-  // connects via ADAPTATION — no spine, no side-story — so it never got a grid
+  // connects via ADAPTATION - no spine, no side-story - so it never got a grid
   // position and showed only as translucent source-ghosts (→ "no root
   // visible"). Place it as a real card above the chain it adapts into, restore
   // its direct edges, and drop its redundant ghosts.
@@ -739,7 +743,7 @@ function layoutGraph(
     if (chain.members.length < 2) continue;
     if (!chain.members.every((m) => positions.has(m.anilistId))) continue;
     // Per member: its source/parent neighbours (S → member, S a positioned
-    // real node outside this chain). Ghost status is IGNORED — the frame
+    // real node outside this chain). Ghost status is IGNORED - the frame
     // collapse takes precedence and prunes the ghost below.
     const perMember = chain.members.map((m) => {
       const s = new Set<number>();
@@ -747,7 +751,7 @@ function layoutGraph(
         if (e.relationType !== 'ADAPTATION' && e.relationType !== 'SIDE_STORY') continue;
         if (e.to !== m.anilistId) continue;             // canonical: e.from = source/parent
         if (!positions.has(e.from)) continue;
-        if (idToChainKey.get(e.from) === chainKey) continue; // within the same chain — skip
+        if (idToChainKey.get(e.from) === chainKey) continue; // within the same chain - skip
         s.add(e.from);
       }
       return s;
@@ -760,7 +764,7 @@ function layoutGraph(
 
     const memberIds = new Set(chain.members.map((m) => m.anilistId));
     for (const S of shared) {
-      // Remove any source-ghost of S that targeted these members — the real S
+      // Remove any source-ghost of S that targeted these members - the real S
       // now connects to the frame directly.
       for (let i = sourceGhosts.length - 1; i >= 0; i--) {
         if (sourceGhosts[i].sourceId === S && memberIds.has(sourceGhosts[i].targetId)) {
@@ -866,7 +870,7 @@ function layoutGraph(
           ? relationLabel(canonicalRelation(fallbackLabel, node))
           : null));
     // "Start" only surfaces when the node has no stronger identity:
-    // Viewing and Root both already say "this is something" — Start would be redundant.
+    // Viewing and Root both already say "this is something" - Start would be redundant.
     const relLabel = (isStart && !isCurrent && !isRoot) ? 'Start' : baseLabel;
 
     return {
@@ -897,11 +901,11 @@ function layoutGraph(
   // Only emit React Flow edges where both endpoints have a layout position.
   // The simplified layoutFranchise only positions spine/chain nodes, so edges
   // to non-chain nodes would be orphan edges (target node missing from rfNodes)
-  // — React Flow's internal node-position lookups on those orphan edges trigger
+  // - React Flow's internal node-position lookups on those orphan edges trigger
   // cascading updates on every hover state change, causing the visible flash.
   const rfEdges: RFEdge[] = visibleEdges
     .filter((edge) => positions.has(edge.from) && positions.has(edge.to))
-    // Drop alt edges that a ghost will replace — those go from ghost→alt
+    // Drop alt edges that a ghost will replace - those go from ghost→alt
     // instead of root→alt and are appended below.
     .filter((edge) => {
       if (edge.relationType !== 'ALTERNATIVE') return true;
@@ -909,7 +913,7 @@ function layoutGraph(
       const other = edge.from === rootId ? edge.to : (edge.to === rootId ? edge.from : null);
       return other == null || !ghostTargetIds.has(other);
     })
-    // Drop SEQUEL/PREQUEL edges INSIDE a release-mode chain — they get
+    // Drop SEQUEL/PREQUEL edges INSIDE a release-mode chain - they get
     // replaced by artificial RELEASE_ORDER edges appended below.
     .filter((edge) => {
       if (edge.relationType !== 'SEQUEL' && edge.relationType !== 'PREQUEL') return true;
@@ -929,16 +933,16 @@ function layoutGraph(
         positions.get(edge.to)   ?? { x: 0, y: 0 },
         edge.relationType,
       );
-      // Parent-of-root edges get an emerald accent so the lineage flowing into
+      // Parent-of-root edges get a heavier blue stroke so the lineage flowing into
       // the franchise root reads at a glance.
       const isParentOfRoot = rootId != null && (
         (edge.to === rootId && (edge.relationType === 'ADAPTATION' || edge.relationType === 'SIDE_STORY')) ||
         (edge.from === rootId && (edge.relationType === 'PARENT' || edge.relationType === 'SOURCE'))
       );
-      // Alternative relations are symmetric — neither side is the "parent".
+      // Alternative relations are symmetric - neither side is the "parent".
       // Render with arrows on both ends to communicate that.
       const isAlternative = edge.relationType === 'ALTERNATIVE';
-      const color = isParentOfRoot ? 'var(--accent-emerald, #6ed3a6)' : arrowColorFor(edge.relationType);
+      const color = isParentOfRoot ? 'var(--accent-blue)' : arrowColorFor(edge.relationType);
       const marker = { type: MarkerType.ArrowClosed, color, width: 18, height: 18 };
       return {
         id: `${edge.from}->${edge.to}:${edge.relationType}`,
@@ -958,7 +962,7 @@ function layoutGraph(
   if (rootId != null && ghostTargets.length > 0) {
     const rootNode = visibleNodes.find((n) => n.anilistId === rootId);
     if (rootNode) {
-      // Ghost sits one ROW_GAP above its target — same rhythm as every other
+      // Ghost sits one ROW_GAP above its target - same rhythm as every other
       // vertical step so all ghost gaps are consistent.
       for (const t of ghostTargets) {
         const altPos = positions.get(t.otherId);
@@ -998,7 +1002,7 @@ function layoutGraph(
         );
         const marker = {
           type: MarkerType.ArrowClosed,
-          color: 'var(--accent-amber, #f59e0b)',
+          color: 'var(--accent-amber)',
           width: 18,
           height: 18,
         };
@@ -1084,7 +1088,7 @@ function layoutGraph(
 
   // ── Source ghosts (inline mode, source-behind-target conflict) ───────────
   // For each conflict, drop a translucent copy of the SOURCE node above the
-  // TARGET row, then connect with a short emerald edge.
+  // TARGET row, then connect with a short blue edge.
   // Grouping rules:
   //   1. Same source + same row → ONE combined ghost centered over the range
   //      of those targets, edges fanning out to each target.
@@ -1132,7 +1136,7 @@ function layoutGraph(
     }
   }
   // Fine-grained ghost collision: keep ghosts tightly packed (GHOST_SPREAD_X
-  // steps) rather than snapping to full 320px columns like claimCell does —
+  // steps) rather than snapping to full 320px columns like claimCell does -
   // the latter spread same-target source ghosts way too far apart.
   const ghostFineCells = new Set<string>();
   const fineKey = (x: number, y: number) =>
@@ -1231,7 +1235,7 @@ function layoutGraph(
   }
   // Source ghosts are rendered as ONE rfNode per group (combined targets in
   // the id like `source-ghost-X-A+B+C`). The link map must use the SAME
-  // combined ghost id — otherwise highlightGhostIds can't find the actual
+  // combined ghost id - otherwise highlightGhostIds can't find the actual
   // rendered ghost and hovering a target won't keep the ghost lit.
   for (const group of placedGroups) {
     const sortedTargetIds = [...group.targetIds].sort((a, b) => a - b);
@@ -1244,7 +1248,7 @@ function layoutGraph(
   // ── Per-(node, side) dynamic slot assignment ─────────────────────────────
   // For each top/bottom side of each node, collect the SET of arrow types
   // arriving/leaving. Each type gets its own handle ID; the node renders the
-  // handles at evenly-spaced positions centered around 50% — N types →
+  // handles at evenly-spaced positions centered around 50% - N types →
   // positions (i+1)/(N+1) for i in [0,N). Single-type sides land at 50%.
   // No hardcoded slot positions.
   // Slot type granularity mirrors the EDGE COLOR categories so visually
@@ -1301,7 +1305,7 @@ function layoutGraph(
     if (tSide) ensureSlots(e.target)[tSide].add(`${t}-t`);
   }
   // frameLink edges (parent → frame) carry an explicit sourceHandle but live in
-  // frameAnchorEdges, not rfEdges, so reserve their source slot here too — else
+  // frameAnchorEdges, not rfEdges, so reserve their source slot here too - else
   // the handle never renders and the line snaps to a default (wrong) side.
   for (const e of frameAnchorEdges) {
     const side = sideOfHandle(e.sourceHandle);
@@ -1419,7 +1423,7 @@ const NodeHandles = memo(function NodeHandles({
 function FranchiseFlowNode({ id, data }: NodeProps<RFNode<FranchiseNodeFlowData>>) {
   const { node, title, isCurrent, isRoot, isStart, isGhost, ownedId, relLabel, statusMarker, anilistIcon, onOpenInApp, onOpenExternal } = data;
   const { hoveredId, highlightSet, highlightGhostIds, spineSet, spineOrder, visibleEdges, nodeById } = useContext(HoverContext);
-  // Compute dim state from context — never from node.data — so this component
+  // Compute dim state from context - never from node.data - so this component
   // re-renders individually via context, not via React Flow's node-store updates.
   // Ghost nodes use a SEPARATE highlight set keyed by ghost rfNode id, so a
   // ghost only lights up when its own origin or target is hovered (not when
@@ -1434,10 +1438,10 @@ function FranchiseFlowNode({ id, data }: NodeProps<RFNode<FranchiseNodeFlowData>
     const hoverLabel = relationLabelRelativeTo(hoveredId, node.anilistId, spineSet, spineOrder, visibleEdges, nodeById);
     if (hoverLabel != null) displayLabel = hoverLabel;
   } else if (hoveredId === node.anilistId) {
-    // Hovering counts as Viewing — Root may co-occur; Start does not.
+    // Hovering counts as Viewing - Root may co-occur; Start does not.
     displayLabel = isRoot ? 'Viewing · Root' : 'Viewing';
   } else if (isRoot && displayLabel == null) {
-    // Root has no parent-relation by definition — surface "Root" so the card isn't
+    // Root has no parent-relation by definition - surface "Root" so the card isn't
     // visually empty above the title.
     displayLabel = 'Root';
   } else if (isStart && displayLabel == null) {
@@ -1464,7 +1468,7 @@ function FranchiseFlowNode({ id, data }: NodeProps<RFNode<FranchiseNodeFlowData>
 
   // Right-click menu: lets you open on AniList even for owned shows
   // (where left-click opens the in-app series page). Ghost duplicates are
-  // visual references only — they get no menu.
+  // visual references only - they get no menu.
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const closeMenu = useCallback(() => setMenuPos(null), []);
   const handleContextMenu = (e: React.MouseEvent) => {
@@ -1496,9 +1500,9 @@ function FranchiseFlowNode({ id, data }: NodeProps<RFNode<FranchiseNodeFlowData>
   // over the edge layer) and are NOT clipped by the node's overflow:hidden.
   // Each ring = a bg-colored gap shadow + a colored ring shadow. Concentric
   // when both current+root: teal (viewing) inside, amber (root) outside.
-  const TEAL = 'var(--accent-teal, #14b8a6)';
-  const AMBER = 'var(--accent-amber, #f59e0b)';
-  const GAP = 'var(--bg-card, #15151c)';
+  const TEAL = 'var(--accent-primary)';
+  const AMBER = 'var(--accent-amber)';
+  const GAP = 'var(--bg-card)';
   const ringSpecs: Array<{ color: string; offset: number }> = isGhost
     ? []
     : isCurrent && isRoot
@@ -1619,7 +1623,7 @@ const nodeTypes = { franchise: FranchiseFlowNode };
 
 // Edge that connects a source/parent to a whole FRAME (a group of member
 // nodes), drawing to the frame's facing edge centre using the members' LIVE
-// measured rects — so it lands on the frame border, not on one member, and
+// measured rects - so it lands on the frame border, not on one member, and
 // never overshoots (no NODE_H estimate).
 interface FrameLinkData extends Record<string, unknown> {
   memberIds: number[];
@@ -1658,7 +1662,7 @@ function FrameLinkEdge({ sourceX, sourceY, data, markerEnd }: EdgeProps) {
     targetX: cx, targetY: ty,
     targetPosition: sourceY <= ty ? Position.Top : Position.Bottom,
   });
-  const color = d.color ?? 'var(--accent-secondary, #818cf8)';
+  const color = d.color ?? 'var(--accent-blue)';
   return (
     <g className={`franchise-edge ${d.className ?? ''}`} pointerEvents="none">
       <path d={path} fill="none" stroke={color} strokeWidth={2} className="react-flow__edge-path" markerEnd={markerEnd} />
@@ -1718,20 +1722,22 @@ function ChainToggleEdge({ sourceX, sourceY, targetX, targetY, data }: EdgeProps
       >
         <div className="franchise-chain-frame__toolbar">
           <div className="franchise-chain-frame__toggle" role="group" aria-label="Order">
-            <button
-              type="button"
-              className={`franchise-chain-frame__toggle-opt${d.settings.order === 'chrono' ? ' is-active' : ''}`}
-              aria-pressed={d.settings.order === 'chrono'}
-              title="Topological by SEQUEL"
-              onClick={(e) => { e.stopPropagation(); d.onUpdate(d.chainKey, { order: 'chrono' }); }}
-            >Chrono</button>
-            <button
-              type="button"
-              className={`franchise-chain-frame__toggle-opt${d.settings.order === 'release' ? ' is-active' : ''}`}
-              aria-pressed={d.settings.order === 'release'}
-              title="Sorted by release year"
-              onClick={(e) => { e.stopPropagation(); d.onUpdate(d.chainKey, { order: 'release' }); }}
-            >Release</button>
+            <Tooltip label="Topological by SEQUEL">
+              <button
+                type="button"
+                className={`franchise-chain-frame__toggle-opt${d.settings.order === 'chrono' ? ' is-active' : ''}`}
+                aria-pressed={d.settings.order === 'chrono'}
+                onClick={(e) => { e.stopPropagation(); d.onUpdate(d.chainKey, { order: 'chrono' }); }}
+              >Chrono</button>
+            </Tooltip>
+            <Tooltip label="Sorted by release year">
+              <button
+                type="button"
+                className={`franchise-chain-frame__toggle-opt${d.settings.order === 'release' ? ' is-active' : ''}`}
+                aria-pressed={d.settings.order === 'release'}
+                onClick={(e) => { e.stopPropagation(); d.onUpdate(d.chainKey, { order: 'release' }); }}
+              >Release</button>
+            </Tooltip>
           </div>
         </div>
       </foreignObject>
@@ -1808,7 +1814,7 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
 
   const handleNodeMouseEnter = useCallback((_: React.MouseEvent, n: RFNode) => {
     if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
-    // Ghosts inherit their origin's identity for hover purposes — hovering a
+    // Ghosts inherit their origin's identity for hover purposes - hovering a
     // ghost lights up the origin and everything the origin is connected to.
     const data = n.data as FranchiseNodeFlowData | undefined;
     const id = data?.isGhost ? data.node.anilistId : Number(n.id);
@@ -1833,7 +1839,7 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
 
   // Per-chain order setting (chrono/release). Persisted to localStorage so a
   // chain's choice carries across sessions. Keyed by chainKey =
-  // `chain-<smallest member id>` — stable across franchises since the key
+  // `chain-<smallest member id>` - stable across franchises since the key
   // includes the actual anilistId.
   const CHAIN_SETTINGS_KEY = 'franchise:chain-settings:v1';
   const [chainSettings, setChainSettingsState] = useState<Map<string, ChainSettings>>(() => {
@@ -1857,9 +1863,9 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
       const obj: Record<string, ChainSettings> = {};
       for (const [k, v] of chainSettings) obj[k] = v;
       localStorage.setItem(CHAIN_SETTINGS_KEY, JSON.stringify(obj));
-    } catch { /* quota or disabled — fine */ }
+    } catch { /* quota or disabled - fine */ }
   }, [chainSettings]);
-  // Global "inline source" toggle — applies the source-alignment algorithm to
+  // Global "inline source" toggle - applies the source-alignment algorithm to
   // every chain at once instead of per-chain. Default ON.
   const [inlineEnabled, setInlineEnabled] = useState(true);
   const updateChainSettings = useCallback((chainKey: string, patch: Partial<ChainSettings>) => {
@@ -1930,7 +1936,7 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
 
     // Enrich node data with display fields.
     const enrichedNodes = layout.nodes.map((rfNode) => {
-      // Frame-anchor nodes carry no franchise data — pass through untouched.
+      // Frame-anchor nodes carry no franchise data - pass through untouched.
       if (rfNode.type === 'frameAnchor' || !rfNode.data.node) return rfNode;
       const nodeData = rfNode.data.node;
       if (rfNode.data.isGhost) {
@@ -1972,12 +1978,12 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
       ghostNeighborsByOrigin: layout.ghostNeighborsByOrigin,
       collapsedNeighbors: layout.collapsedNeighbors,
     };
-    // Intentionally NOT including the parent-passed callbacks/render props —
+    // Intentionally NOT including the parent-passed callbacks/render props -
     // they're routed via propsRef so unstable refs don't blow the memo.
   }, [graph, currentAnilistId, hiddenCategories, hiddenFormats, chainSettings, updateChainSettings, inlineEnabled, titleLang]);
 
   // Light memo: compute the neighbour highlight set for the hover context.
-  // Only the hover context value changes on hover — React Flow's node store
+  // Only the hover context value changes on hover - React Flow's node store
   // never receives updated node objects, eliminating the transform-restart flash.
   const highlightSet = useMemo<Set<number> | null>(() => {
     if (hoveredId == null) return null;
@@ -2022,7 +2028,7 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
   // A ghost is highlighted ONLY if its origin === hoveredId, or its target via
   // a ghost edge === hoveredId. Without this, a ghost would inherit highlight
   // whenever its origin (= ghost.data.node.anilistId) happened to be in
-  // highlightSet as a secondary neighbour — e.g., hovering A would light up
+  // highlightSet as a secondary neighbour - e.g., hovering A would light up
   // the ghost of A's sequel C, which the user explicitly doesn't want.
   const highlightGhostIds = useMemo<Set<string> | null>(() => {
     if (hoveredId == null) return null;
@@ -2043,7 +2049,7 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
     return s;
   }, [hoveredId, baseRfEdges, ghostOriginByGhostId]);
 
-  // Stable context value — changes only when hoveredId / graph data change.
+  // Stable context value - changes only when hoveredId / graph data change.
   // FranchiseFlowNode reads this to compute dim + hover-relative labels locally,
   // so React Flow's node store is never touched on hover.
   const hoverCtx = useMemo<HoverCtx>(() => ({
@@ -2059,7 +2065,7 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
   }), [hoveredId, highlightSet, highlightGhostIds, spineSet, spineOrder, visibleEdges, nodeById, ghostOriginByGhostId, ghostNeighborsByOrigin]);
 
   // Light memo: apply dimmed class to edges without touching node layout.
-  // Ghost edges have synthetic string IDs as source/target — they need to map
+  // Ghost edges have synthetic string IDs as source/target - they need to map
   // through ghostOriginByGhostId so hovering the source highlights the ghost's
   // connection too (and hovering the ghost = hovering the source already, via
   // handleNodeMouseEnter).
@@ -2092,7 +2098,19 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
       cur.position.y + NODE_H / 2,
       { zoom: 1, duration: 300 },
     );
-  }, [graph, currentAnilistId]); // intentionally narrow deps — baseRfNodes is stable when graph/id are stable
+  }, [graph, currentAnilistId]); // intentionally narrow deps - baseRfNodes is stable when graph/id are stable
+
+  // Manual recenter (controls panel): same target node, zoom and duration as
+  // the center-once effect above, just on demand.
+  const handleRecenter = () => {
+    const cur = baseRfNodes.find((n) => n.data.isCurrent);
+    if (!cur) return;
+    reactFlowInstance.setCenter(
+      cur.position.x + NODE_W / 2,
+      cur.position.y + NODE_H / 2,
+      { zoom: 1, duration: 300 },
+    );
+  };
 
   const handleNodeClick = (_: React.MouseEvent, rfNode: RFNode<FranchiseNodeFlowData>) => {
     const { isCurrent, ownedId, node } = rfNode.data;
@@ -2102,6 +2120,10 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
   };
 
   // ─── Debug panel values ───────────────────────────────────────────────────────
+  // Telemetry is opt-in: dev builds, or localStorage 'anibeam.graphDebug' = '1'.
+  // Production users never see node/edge counts.
+  const showDebug = import.meta.env.DEV
+    || (typeof localStorage !== 'undefined' && localStorage.getItem('anibeam.graphDebug') === '1');
   const rootId = findFranchiseRoot(graph, currentAnilistId);
   const rootNode = rootId != null ? graph.nodes.find((n) => n.anilistId === rootId) : undefined;
   const rootTitle = rootNode?.titleRomaji ?? rootNode?.titleEnglish ?? undefined;
@@ -2121,7 +2143,7 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
     <div className={containerClass}>
       {/* HoverContext.Provider wraps ReactFlow so that FranchiseFlowNode can read
           hoveredId + highlightSet directly. This means React Flow's node store is
-          NEVER updated on hover — only the individual node components re-render via
+          NEVER updated on hover - only the individual node components re-render via
           context subscription, eliminating the transform-restart flash. */}
       <HoverContext.Provider value={hoverCtx}>
         <ReactFlow
@@ -2145,38 +2167,52 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
           zoomOnPinch
         >
           <Background />
-          <Panel position="top-left" className="franchise-debug">
-            <div>{statusLabel}</div>
-            <div>nodes: {graph.nodes.length}</div>
-            <div>edges: {totalEdges}{edgeFilterDiff ? ` (visible ${visibleEdges.length})` : ''}</div>
-            <div>root: {rootTitle ?? '—'}{rootId != null ? ` (${rootId})` : ''}</div>
-          </Panel>
+          {showDebug && (
+            <Panel position="top-left" className="franchise-debug">
+              <div>{statusLabel}</div>
+              <div>nodes: {graph.nodes.length}</div>
+              <div>edges: {totalEdges}{edgeFilterDiff ? ` (visible ${visibleEdges.length})` : ''}</div>
+              <div>root: {rootTitle ?? 'none'}{rootId != null ? ` (${rootId})` : ''}</div>
+            </Panel>
+          )}
           <Panel position="top-center" className="franchise-filters-panel">
             <FranchiseFilters hidden={hiddenCategories} onToggle={onToggleCategory} hiddenFormats={hiddenFormats} onToggleFormat={onToggleFormat} />
           </Panel>
           <Panel position="bottom-center" className="franchise-inline-panel">
-            <button
-              type="button"
-              role="switch"
-              aria-checked={inlineEnabled}
-              className={`franchise-inline-toggle${inlineEnabled ? ' is-active' : ''}`}
-              onClick={() => setInlineEnabled((v) => !v)}
-              title="Try inline source: align each entry under its source column"
-            >
-              <span className="franchise-inline-toggle__dot" aria-hidden="true" />
-              <span>Inline source</span>
-              <span className="franchise-inline-toggle__state">{inlineEnabled ? 'On' : 'Off'}</span>
-            </button>
+            <Tooltip label="Align each entry under its source column">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={inlineEnabled}
+                className={`franchise-inline-toggle${inlineEnabled ? ' is-active' : ''}`}
+                onClick={() => setInlineEnabled((v) => !v)}
+              >
+                <span className="franchise-inline-toggle__dot" aria-hidden="true" />
+                <span>Inline source</span>
+                <span className="franchise-inline-toggle__state">{inlineEnabled ? 'On' : 'Off'}</span>
+              </button>
+            </Tooltip>
           </Panel>
           <Panel position="bottom-left" className="franchise-controls">
-            <button type="button" onClick={handleZoomIn}  aria-label="Zoom in"  title="Zoom in"><ZoomIn size={14} /></button>
-            <button type="button" onClick={handleZoomOut} aria-label="Zoom out" title="Zoom out"><ZoomOut size={14} /></button>
-            <button type="button" onClick={handleFitView} aria-label="Fit view" title="Fit view"><Maximize2 size={14} /></button>
+            <Tooltip label="Zoom in">
+              <button type="button" onClick={handleZoomIn} aria-label="Zoom in"><ZoomIn size={14} /></button>
+            </Tooltip>
+            <Tooltip label="Zoom out">
+              <button type="button" onClick={handleZoomOut} aria-label="Zoom out"><ZoomOut size={14} /></button>
+            </Tooltip>
+            <Tooltip label="Fit view">
+              <button type="button" onClick={handleFitView} aria-label="Fit view"><Maximize2 size={14} /></button>
+            </Tooltip>
+            <Tooltip label="Center on current">
+              <button type="button" onClick={handleRecenter} aria-label="Center on current"><LocateFixed size={14} /></button>
+            </Tooltip>
           </Panel>
           <Panel position="top-right" className="franchise-fullscreen-toggle">
-            <button type="button" onClick={() => setIsFullscreen((v) => !v)} aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'} title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}>
-              {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
-            </button>
+            <Tooltip label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}>
+              <button type="button" onClick={() => setIsFullscreen((v) => !v)} aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}>
+                {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
+              </button>
+            </Tooltip>
           </Panel>
         </ReactFlow>
       </HoverContext.Provider>

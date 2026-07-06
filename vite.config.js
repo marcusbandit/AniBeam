@@ -13,4 +13,8 @@ export default defineConfig({
   build: {
     outDir: '../../dist',
   },
+  // JASSUB's bundle declares its worker as IIFE, which Vite's code-split
+  // production build rejects. Force ES-module workers, same as
+  // vite.renderer.config.mjs (the electron-forge path).
+  worker: { format: 'es' },
 });

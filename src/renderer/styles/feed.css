@@ -1,0 +1,217 @@
+/* feed.css - FeedPage, WatchingPage, SubscriptionsPage */
+
+/* ============ WATCHING ============ */
+/* Ownership code (the app-wide idiom): owned = the standard solid hairline
+   card, exactly like Home; unowned (AniList-only, click opens the browser) =
+   dashed hairline + the AniList mark in a scrim chip on the poster's
+   bottom-right corner. That corner is the only free one on these cards:
+   top-left holds the EP chip, top-right the watched fraction, bottom-left
+   the ratings stack, and bottom-right is otherwise Hidden-only, which never
+   applies to unowned cards. Both marks are applied by the .watching-card
+   wrapper so ShowCard itself stays shared and untouched. */
+.watching-card { position: relative; }
+.watching-card--external .show-card-poster-wrap { border-style: dashed; }
+/* Overlay box mirroring the poster geometry: same width and 2/3 aspect as
+   .show-card-poster-wrap, anchored to the wrapper top, so the chip pins to
+   the poster's bottom-right corner without living inside ShowCard. Inert to
+   the cursor so it never eats the card's click. */
+.watching-card__external-mark {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  aspect-ratio: 2 / 3;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  /* Same corner insets as ShowCard's own chips: s2 sides, s3 bottom so the
+     mark clears the poster-edge progress bar. */
+  padding: var(--s2) var(--s2) var(--s3);
+  pointer-events: none;
+}
+
+/* ============ FEED ============ */
+/* Slim eyebrow divider between the "has a known next episode" group and the
+   recent-order backfill in the upcoming sort, so the two groups never
+   silently concatenate. A lightweight row in the grid's own flow, spanning
+   the full track width; the grid's row gap provides the breathing room. */
+.feed-divider {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+.feed-divider__label {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.feed-divider__rule {
+  flex: 1;
+  height: 1px;
+  background: var(--border-color);
+}
+
+/* ============ SUBSCRIPTIONS ============ */
+/* "Settings" link above the title: the page is no longer in the navbar,
+   so this is the way back. Underline fades in on hover; press scales. */
+.subscriptions-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  margin-bottom: var(--s2);
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+  transition:
+    color var(--transition-fast),
+    text-decoration-color var(--transition-fast),
+    transform var(--transition-fast);
+}
+.subscriptions-back:hover {
+  color: var(--accent-secondary);
+  text-decoration-color: color-mix(in srgb, var(--accent-secondary) 55%, transparent);
+}
+.subscriptions-back:active { transform: scale(0.97); }
+
+.subscriptions-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+/* Rows are non-clickable containers, but they still acknowledge the cursor:
+   a subtle elevation paint + border shift on hover. The hover background is
+   the --bg-elev 4% white lift precomposited over --bg-card so background-
+   color can transition (a stacked gradient layer would snap in). */
+.subscription-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s4);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.subscription-row:hover {
+  background: color-mix(in srgb, #fff 4%, var(--bg-card));
+  border-color: var(--border-hover);
+}
+.subscription-row.disabled { opacity: 0.55; }
+
+.subscription-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s4);
+  flex-wrap: wrap;
+}
+.subscription-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+}
+.subscription-icon { color: var(--accent-amber); flex-shrink: 0; }
+.subscription-name {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.subscription-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s3);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.subscription-count { color: var(--text-secondary); }
+
+.subscription-query {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+.subscription-query code {
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  padding: var(--s1) var(--s2);
+  border-radius: var(--radius-sm);
+  word-break: break-word;
+}
+.subscription-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.subscription-path {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Contract-complete small action: rest hint (hairline + accent text),
+   hover paint, press scale; focus ring comes from the global rule. */
+.subscription-link {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--accent-secondary);
+  background: transparent;
+  border: 1px solid var(--border-color);
+  padding: var(--s1) var(--s2);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast);
+}
+.subscription-link:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+.subscription-link:active { transform: scale(0.97); }
+
+.subscriptions-error code {
+  background: var(--bg-secondary);
+  padding: var(--s1) var(--s2);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}

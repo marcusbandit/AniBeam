@@ -1,0 +1,890 @@
+/* primitives.css - shared primitives: Page, Section, Pill, Card, Tooltip, EpisodeRow, TranscodeBar, LangSwitch, SegmentedSwitch, ScorePicker */
+
+/* Themed score-picker dropdown. Replaces the browser-native <select>,
+   whose popup ignores our dark tokens entirely and renders a stark white
+   list with stark black text. The trigger looks like the rest of our
+   chip buttons; the panel is an absolutely-positioned scrollable list
+   that snaps the current value into view on open. */
+.score-picker {
+  position: relative;
+  display: inline-flex;
+}
+.score-picker-trigger {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  cursor: pointer;
+  min-width: 4.5rem;
+  padding: 0.32rem 0.55rem;
+  background: var(--bg-elev);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast);
+}
+.score-picker-trigger:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-hover);
+}
+.score-picker-trigger:active:not(:disabled) { transform: scale(0.97); }
+.score-picker-trigger:disabled { opacity: 0.55; cursor: not-allowed; }
+.score-picker--open .score-picker-trigger {
+  border-color: color-mix(in srgb, var(--accent-secondary) 50%, var(--border-color));
+  background: color-mix(in srgb, var(--accent-secondary) 8%, transparent);
+}
+.score-picker-trigger svg {
+  margin-left: auto;
+  color: var(--text-muted);
+  transition: transform var(--transition-fast);
+}
+.score-picker--open .score-picker-trigger svg { transform: rotate(180deg); }
+.score-picker-value {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+.score-picker-panel {
+  /* position/left/top/min-width are set inline by ScorePicker because the
+     panel is portalled to <body> and tracks its trigger via viewport coords. */
+  max-height: 280px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  z-index: 2000;
+  background: var(--bg-card);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  animation: scorePickerIn 120ms cubic-bezier(0.4, 0, 0.2, 1);
+  /* Thin scrollbar that doesn't blow out the panel width. */
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--text-muted) 35%, transparent) transparent;
+}
+.score-picker-panel::-webkit-scrollbar { width: 6px; }
+.score-picker-panel::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-muted) 35%, transparent);
+  border-radius: 3px;
+}
+.score-picker-panel::-webkit-scrollbar-track { background: transparent; }
+@keyframes scorePickerIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.score-picker-option {
+  padding: 0.32rem 0.55rem;
+  cursor: pointer;
+  border-radius: calc(var(--radius-md) - 4px);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  text-align: center;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast);
+}
+.score-picker-option:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.score-picker-option:active { transform: scale(0.97); }
+/* Selected score: brand teal - "yours". */
+.score-picker-option.is-selected {
+  background: color-mix(in srgb, var(--accent-primary) 18%, transparent);
+  color: var(--accent-primary);
+}
+.score-picker-option.is-selected:hover {
+  background: color-mix(in srgb, var(--accent-primary) 26%, transparent);
+  color: var(--accent-secondary);
+}
+
+/* Two-segment switch (JP / EN) - real role="switch" button with a thumb
+   pseudo-element. JS drives `--thumb-pos` via rAF + exponential smoothing
+   (no CSS transition on the thumb itself), so drag follows the pointer
+   1:1 and taps glide in. `--isLTR` flips the translate sign in RTL
+   contexts so we don't duplicate rules. */
+.lang-switch {
+  appearance: none;
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: stretch;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  padding: 2px;
+  margin: 0;
+  font: inherit;
+  cursor: pointer;
+  user-select: none;
+  touch-action: pan-y;
+  -webkit-tap-highlight-color: transparent;
+  isolation: isolate;
+  --thumb-pos: 0;
+  --isLTR: 1;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.lang-switch:dir(rtl) { --isLTR: -1; }
+.lang-switch:hover { border-color: var(--border-hover); }
+.lang-switch:focus-visible {
+  outline: none;
+  border-color: var(--accent-secondary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-secondary) 35%, transparent);
+}
+.lang-switch:active { cursor: grabbing; }
+
+.lang-switch-thumb {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc(50% - 2px);
+  background: var(--bg-tertiary);
+  border-radius: 999px;
+  transform: translateX(calc(var(--thumb-pos) * 100% * var(--isLTR)));
+  z-index: 0;
+  box-shadow: var(--shadow-sm);
+  /* Deliberately no CSS transition: rAF + Math.exp owns the motion. */
+}
+
+.lang-switch-label {
+  position: relative;
+  z-index: 1;
+  padding: 0.22rem 0.7rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  text-align: center;
+  pointer-events: none;
+  transition: color 0.18s ease;
+}
+.lang-switch-label[data-active="true"] { color: var(--accent-primary); }
+
+@media (prefers-reduced-motion: reduce) {
+  .lang-switch,
+  .lang-switch-label { transition: none; }
+}
+
+/* N-segment switch - generalisation of .lang-switch. The track is a grid
+   of `--seg-count` columns; the thumb is exactly one column wide and is
+   translated by `var(--thumb-pos)` multiples of its own width (so pos=0
+   sits on segment 0, pos=N-1 on segment N-1). JS drives `--thumb-pos`
+   via rAF + Math.exp; no CSS transition on the thumb itself. */
+.segmented-switch {
+  appearance: none;
+  position: relative;
+  display: inline-grid;
+  /* Content-width columns: each segment is exactly as wide as its label
+     (so "All" stays narrow next to "Series"/"Movies"), not an equal 1/N
+     slice. The thumb tracks the real geometry via --thumb-x/--thumb-w. */
+  grid-template-columns: repeat(var(--seg-count, 2), auto);
+  align-items: stretch;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  padding: 2px;
+  margin: 0;
+  font: inherit;
+  cursor: pointer;
+  user-select: none;
+  touch-action: pan-y;
+  -webkit-tap-highlight-color: transparent;
+  isolation: isolate;
+  --thumb-x: 0px;
+  --thumb-w: 0px;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.segmented-switch:hover { border-color: var(--border-hover); }
+.segmented-switch:focus-visible {
+  outline: none;
+  border-color: var(--accent-secondary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-secondary) 35%, transparent);
+}
+.segmented-switch:active { cursor: grabbing; }
+
+.segmented-switch__thumb {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  width: var(--thumb-w);
+  /* Accent-tinted lift over the track. --bg-tertiary alone is only ~7
+     units brighter than --bg-secondary, which reads as "barely visible"
+     against colour-loaded icons (stars). Mixing in the accent gives the
+     thumb a distinct identity without violating the flat/dark aesthetic. */
+  background: color-mix(in srgb, var(--accent-primary) 20%, var(--bg-tertiary));
+  border-radius: 999px;
+  /* x + width are px values the rAF loop interpolates from measured segment
+     geometry - no CSS transition; motion is owned by JS. */
+  transform: translateX(var(--thumb-x));
+  z-index: 0;
+  /* Outer drop + thin inner ring in the accent so the edge reads even
+     when the thumb sits over a busy background. */
+  box-shadow:
+    var(--shadow-sm),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent-primary) 35%, transparent);
+  /* Motion is owned by rAF + Math.exp in JS - no CSS transition. */
+}
+
+.segmented-switch__label {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  position: relative;
+  z-index: 1;
+  padding: 0.22rem 0.7rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  text-align: center;
+  cursor: pointer;
+  transition: color 0.18s ease, opacity 0.18s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  white-space: nowrap;
+  /* Dim inactive segments so the selected one wins by absence of noise.
+     Works for both text-coloured icons (Aa/eye/pie) and fill-coloured
+     ones (the stars) - the hue is preserved at lower luminance, so you
+     can still tell amber-star from teal-star when neither is selected. */
+  opacity: 0.45;
+}
+.segmented-switch__label[data-active="true"] {
+  color: var(--accent-primary);
+  opacity: 1;
+}
+.segmented-switch__label:hover { opacity: 0.8; }
+.segmented-switch__label[data-active="true"]:hover { opacity: 1; }
+.segmented-switch__label:focus-visible { outline: none; }
+
+/* Compact icon-only variant - used by any switch whose labels are SVGs. */
+.segmented-switch--icon .segmented-switch__label { padding: 0.22rem 0.55rem; }
+
+/* Single-button direction toggle. A two-state switch felt heavy for a
+   binary flip - this is one pill that visually matches the segmented
+   switches alongside it but reacts to a click by swapping its own
+   icon. Border + bg track the same tokens as .segmented-switch so a
+   theme change moves all three controls together. */
+.sort-dir-toggle {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  padding: 0.22rem 0.55rem;
+  margin: 0;
+  cursor: pointer;
+  color: var(--text-primary);
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast),
+    color var(--transition-fast);
+}
+.sort-dir-toggle:hover { border-color: var(--border-hover); }
+.sort-dir-toggle:focus-visible {
+  outline: none;
+  border-color: var(--accent-secondary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-secondary) 35%, transparent);
+}
+.sort-dir-toggle svg { display: block; }
+
+@media (prefers-reduced-motion: reduce) {
+  .segmented-switch,
+  .segmented-switch__label { transition: none; }
+}
+
+/* Page primitive - used by <Page>. Existing pages still use plain .page;
+   when a page migrates, its component wraps content in <Page> and the
+   .page--primitive rules win via specificity. */
+.page--primitive {
+  padding: var(--s8) var(--s10) var(--s16);
+}
+.page--primitive .page__head {
+  margin-bottom: var(--s6);
+}
+
+/* Section primitive - every <Section> gets s12 top to break from the
+   previous block. The 'first' modifier removes that for the first section
+   inside a <Page>. */
+.section--primitive { margin-top: var(--s12); }
+.section--primitive.section--first { margin-top: 0; }
+/* Eyebrow head: a sheet label, not a headline. One flex line -
+   [ TITLE ] [ count chip ] [ hairline rule filling the rest ] [ action ]. */
+.section--primitive .section__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-bottom: var(--s4);
+}
+.section--primitive .section__title {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 0;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.section--primitive .section__count { flex-shrink: 0; }
+.section--primitive .section__rule {
+  flex: 1;
+  height: 1px;
+  background: var(--border-color);
+  min-width: var(--s4);
+}
+.section--primitive .section__action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+.section--primitive .section__body { display: block; }
+
+/* ============ CHIP (the one badge system) ============ */
+/* Timing-sheet chip. Rendered by Pill.tsx; replaces every badge/pill/tag
+   shell in the app (hero chips, format pills, show-card badges, source
+   pills, filter pills, franchise status tags, transcode shell). Exactly
+   two sizes (--chip-font / --chip-font-sm), one shape, tones via modifier
+   or data-status/data-format attributes. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: var(--chip-font);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.chip svg { width: 1em; height: 1em; flex-shrink: 0; }
+
+.chip--sm {
+  font-size: var(--chip-font-sm);
+  padding: 2px 8px;
+}
+
+/* Tones: text tint + translucent tinted border/bg. One recipe, five hues.
+   Muted is the quiet outlier: hairline border, no fill, muted text. */
+.chip--teal {
+  color: var(--accent-primary);
+  border-color: color-mix(in srgb, var(--accent-primary) 35%, transparent);
+  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
+}
+.chip--amber {
+  color: var(--accent-amber);
+  border-color: color-mix(in srgb, var(--accent-amber) 35%, transparent);
+  background: color-mix(in srgb, var(--accent-amber) 10%, transparent);
+}
+.chip--rose {
+  color: var(--accent-rose);
+  border-color: color-mix(in srgb, var(--accent-rose) 35%, transparent);
+  background: color-mix(in srgb, var(--accent-rose) 10%, transparent);
+}
+.chip--blue {
+  color: var(--accent-blue);
+  border-color: color-mix(in srgb, var(--accent-blue) 35%, transparent);
+  background: color-mix(in srgb, var(--accent-blue) 10%, transparent);
+}
+.chip--violet {
+  color: var(--accent-violet);
+  border-color: color-mix(in srgb, var(--accent-violet) 35%, transparent);
+  background: color-mix(in srgb, var(--accent-violet) 10%, transparent);
+}
+.chip--muted {
+  color: var(--text-muted);
+  border-color: var(--border-color);
+  background: transparent;
+}
+
+/* Poster-overlay variant: THE dark glass recipe. The only place in the
+   app where a chip sits on artwork instead of chrome. */
+.chip--scrim {
+  background: var(--scrim);
+  backdrop-filter: blur(var(--scrim-blur));
+  -webkit-backdrop-filter: blur(var(--scrim-blur));
+  border-color: transparent;
+  color: var(--text-primary);
+}
+
+/* Interactive chip: filter pills, tag toggles. Hover paint, press scale,
+   `.is-on` = teal (spec interaction contract: hover on an inactive chip
+   stays neutral so it can never impersonate the active one). */
+.chip--toggle {
+  appearance: none;
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast);
+}
+.chip--toggle:hover {
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+.chip--toggle:active { transform: scale(0.97); }
+.chip--toggle.is-on {
+  color: var(--accent-primary);
+  border-color: color-mix(in srgb, var(--accent-primary) 45%, transparent);
+  background: var(--accent-glow);
+}
+.chip--toggle.is-on:hover {
+  color: var(--accent-secondary);
+  border-color: color-mix(in srgb, var(--accent-primary) 65%, transparent);
+}
+
+/* Status / format coloring via data attributes. Same tint recipe as the
+   tone modifiers; the tone comes from the matching token. The generic
+   rule sets a neutral default so unknown values degrade to the base look
+   instead of an invalid color. */
+.chip[data-status],
+.chip[data-format] {
+  --chip-tone: var(--text-secondary);
+  color: var(--chip-tone);
+  border-color: color-mix(in srgb, var(--chip-tone) 35%, transparent);
+  background: color-mix(in srgb, var(--chip-tone) 10%, transparent);
+}
+/* Tracker list statuses (AniList uses "repeating"; the token family calls
+   it rewatching - accept both spellings). Case-insensitive so callers can
+   pass raw API enums or lowercase. */
+.chip[data-status="watching" i]   { --chip-tone: var(--status-watching); }
+.chip[data-status="completed" i]  { --chip-tone: var(--status-completed); }
+.chip[data-status="paused" i]     { --chip-tone: var(--status-paused); }
+.chip[data-status="dropped" i]    { --chip-tone: var(--status-dropped); }
+.chip[data-status="planning" i]   { --chip-tone: var(--status-planning); }
+.chip[data-status="repeating" i],
+.chip[data-status="rewatching" i] { --chip-tone: var(--status-rewatching); }
+/* AniList MediaFormat values (case-insensitive: TV or tv both work). */
+.chip[data-format="TV" i],
+.chip[data-format="TV_SHORT" i]     { --chip-tone: var(--format-tv); }
+.chip[data-format="MOVIE" i]        { --chip-tone: var(--format-movie); }
+.chip[data-format="OVA" i]          { --chip-tone: var(--format-ova); }
+.chip[data-format="ONA" i]          { --chip-tone: var(--format-ona); }
+.chip[data-format="SPECIAL" i]      { --chip-tone: var(--format-special); }
+.chip[data-format="MUSIC" i]        { --chip-tone: var(--format-music); }
+.chip[data-format="MANGA" i]        { --chip-tone: var(--format-manga); }
+.chip[data-format="NOVEL" i],
+.chip[data-format="LIGHT_NOVEL" i]  { --chip-tone: var(--format-novel); }
+.chip[data-format="ONE_SHOT" i]     { --chip-tone: var(--format-oneshot); }
+.chip[data-format="VISUAL_NOVEL" i] { --chip-tone: var(--format-vn); }
+
+/* Inline state dot. currentColor so it always matches the chip's tone;
+   the pulse modifier marks "live" states (airing, encoding). */
+.chip__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+.chip__dot--pulse { animation: chip-pulse 1.4s ease-in-out infinite; }
+@keyframes chip-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.45; transform: scale(0.8); }
+}
+
+/* Pill primitive - single shape, mono font, tone via modifier. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-muted);
+}
+.pill--accent {
+  color: var(--accent-secondary);
+  background: color-mix(in srgb, var(--accent-secondary) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent-secondary) 35%, var(--border-color));
+}
+.pill--teal {
+  color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent-primary) 35%, var(--border-color));
+}
+.pill--rose {
+  color: var(--accent-rose);
+  background: color-mix(in srgb, var(--accent-rose) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent-rose) 35%, var(--border-color));
+}
+.pill--amber {
+  color: var(--accent-amber);
+  background: color-mix(in srgb, var(--accent-amber) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent-amber) 35%, var(--border-color));
+}
+
+/* Inline re-encode progress, shown in the EpisodeRow trailing slot while a
+   file is being converted - the same spot the amber "Re-encoded" chip lands
+   once it's done. Shell follows the chip recipe (amber tone, small size) so
+   it reads as a sibling of that chip. */
+.transcode-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  border: 1px solid color-mix(in srgb, var(--accent-amber) 35%, transparent);
+  background: color-mix(in srgb, var(--accent-amber) 10%, transparent);
+  font-family: var(--font-mono);
+  font-size: var(--chip-font-sm);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+  color: var(--accent-amber);
+}
+.transcode-bar__track {
+  position: relative;
+  width: 48px;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--accent-amber) 18%, transparent);
+  overflow: hidden;
+}
+.transcode-bar__fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: var(--accent-amber);
+  transition: width var(--transition-slow);
+}
+.transcode-bar__label {
+  min-width: 3ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
+}
+/* Queued: not yet encoding - a soft indeterminate shimmer instead of a frozen
+   0% bar so the row doesn't read as stalled. */
+.transcode-bar--queued .transcode-bar__fill {
+  width: 35%;
+  opacity: 0.55;
+  animation: transcodeQueued 1.4s ease-in-out infinite;
+}
+@keyframes transcodeQueued {
+  0%   { transform: translateX(-130%); }
+  100% { transform: translateX(320%); }
+}
+.transcode-bar--failed {
+  color: var(--accent-rose);
+  border-color: color-mix(in srgb, var(--accent-rose) 35%, transparent);
+  background: color-mix(in srgb, var(--accent-rose) 10%, transparent);
+}
+.transcode-bar--failed .transcode-bar__track {
+  background: color-mix(in srgb, var(--accent-rose) 18%, transparent);
+}
+.transcode-bar--failed .transcode-bar__fill {
+  width: 100%;
+  background: var(--accent-rose);
+}
+
+/* App-wide hover-pause tooltip (shared bubble look for the generic Tooltip
+   primitive and Card's built-in tooltip). Rendered through a portal so it
+   escapes the trigger's overflow:hidden, then positioned by inline left/top
+   set from the trigger's bounding rect. transform centers horizontally and
+   lifts it above the anchor, with a small offset so the bubble doesn't hug
+   the border. */
+.app-tooltip,
+.card-tooltip {
+  position: fixed;
+  /* Above the fullscreen franchise graph (z-index 99999) so hover tooltips
+     are visible there too - they're portaled to body and would otherwise
+     render behind the fullscreen overlay. */
+  z-index: 100001;
+  pointer-events: none;
+  transform: translate(-50%, calc(-100% - 10px));
+  max-width: 320px;
+  padding: 0.4rem 0.65rem;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  line-height: 1.35;
+  white-space: normal;
+  text-align: center;
+  animation: cardTooltipIn 120ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.app-tooltip::after,
+.card-tooltip::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -4px;
+  transform: translateX(-50%) rotate(45deg);
+  width: 8px;
+  height: 8px;
+  background: var(--bg-tertiary);
+  border-right: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+}
+@keyframes cardTooltipIn {
+  from { opacity: 0; transform: translate(-50%, calc(-100% - 14px)); }
+  to { opacity: 1; transform: translate(-50%, calc(-100% - 10px)); }
+}
+
+/* Card primitive - shared shell. Inner content layout is each page's job. */
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  /* No transition on transform - motion engine writes it directly. */
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    box-shadow var(--transition-normal);
+  /* Button reset for the button-mode of <Card>. */
+  appearance: none;
+  font: inherit;
+  color: inherit;
+}
+.card:hover {
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-md);
+}
+/* Large surface: press deepens the paint (never CSS-transform - the card's
+   inline transform is owned by the motion engine's hover lift). */
+.card:active { background: var(--bg-hover); }
+/* Variant: in-library - flat teal accent (thin border + tinted surface).
+   No inset glow. The group header dot does the heavy color signalling;
+   the card just needs a quiet hint of teal so it scans as "yours". */
+.card--internal {
+  border-color: color-mix(in srgb, var(--accent-primary) 38%, var(--border-color));
+  background: color-mix(in srgb, var(--accent-primary) 5%, var(--bg-card));
+}
+.card--internal:hover {
+  border-color: color-mix(in srgb, var(--accent-primary) 60%, var(--border-color));
+  background: color-mix(in srgb, var(--accent-primary) 8%, var(--bg-card));
+  box-shadow: var(--shadow-md);
+}
+/* Variant: external - flat neutral accent. Borders use the indigo
+   secondary so the two groups stay visually distinct even after the
+   grouping headers scroll out of view. */
+.card--external {
+  border-color: color-mix(in srgb, var(--accent-secondary) 28%, var(--border-color));
+  background: var(--bg-card);
+}
+.card--external:hover {
+  border-color: color-mix(in srgb, var(--accent-secondary) 50%, var(--border-color));
+  background: color-mix(in srgb, var(--accent-secondary) 5%, var(--bg-card));
+  box-shadow: var(--shadow-md);
+}
+
+/* EpisodeRow primitive. Single grid row - text is symmetrically padded so
+   it's optically centered. The hover seekbar is positioned absolutely
+   below the text inside the row's bottom padding, so its appearance never
+   shifts layout. */
+.episode-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 22px 78px 1fr auto;
+  column-gap: var(--s3);
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--s3) var(--s4);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    opacity var(--transition-fast);
+}
+.episode-row:hover { background: var(--bg-tertiary); border-color: var(--border-hover); }
+/* Large surface: press deepens the paint (never CSS-transform - the row's
+   inline transform is owned by the motion engine's hover lift). */
+.episode-row:active:not([disabled]) { background: var(--bg-hover); }
+.episode-row[disabled] { opacity: 0.55; cursor: not-allowed; }
+
+.episode-row__marker {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  color: var(--text-muted);
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border-color);
+  transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+/* Empty grid placeholder holding column 1, since the interactive hit-zone is
+   absolutely positioned (out of grid flow) and would otherwise let the code/
+   title columns shift left. */
+.episode-row__marker-slot { width: 22px; height: 22px; pointer-events: none; }
+/* Tall transparent hit-zone that WRAPS the circle. ~circle-wide, (row + gap)
+   tall and vertically symmetric around the row centre so the flex-centred circle
+   lands exactly where column 1 sits. The column of zones tiles (tiny overlap) so
+   moving zone→zone keeps the hover; entering a zone only keeps a hover alive,
+   entering the circle inside initiates it. */
+.episode-row__marker-hit {
+  position: absolute;
+  left: calc(var(--s4) - 4px);
+  width: 30px;
+  top: calc(-1 * var(--s2) / 2 - 2px);
+  bottom: calc(-1 * var(--s2) / 2 - 2px);
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+/* Rest-state affordance on the interactive marker. The hit-zone wrapper only
+   exists when a tracker is connected (the marker is clickable), so this hover
+   ring never appears on inert markers. Pure CSS and independent of the JS
+   cascade wave: the wave's animation classes own background/border while
+   active and outrank these static paints; box-shadow isn't in any keyframe,
+   so the ring composes cleanly with a running cascade. */
+.episode-row__marker-hit:hover .episode-row__marker {
+  border-color: color-mix(in srgb, var(--accent-primary) 55%, var(--border-color));
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+/* Markers double as track/untrack controls. Each cascade keyframe carries the
+   colour flip AND a one-time size bob; per-marker animation-delay (inline)
+   staggers the wave out from the cursor. `both` fill holds the end colour while
+   hovered and the start colour during the stagger. Animation declarations
+   outrank the static `--watched`/`--next-up` marker colours, so no extra
+   specificity is needed. The '-out' classes replay the in-wave reversed (a
+   cascade back to rest from where the cursor left); '-commit' settles to the new
+   tracked/untracked colour after a click. */
+/* Untrack: watched teal → red (hover), and red → unwatched grey (commit). */
+@keyframes ep-untrack-in {
+  0%   { transform: scale(1);    background: var(--accent-primary); border-color: var(--accent-primary); color: var(--bg-primary); }
+  45%  { transform: scale(1.32); background: var(--accent-rose); border-color: var(--accent-rose); color: var(--bg-primary); }
+  100% { transform: scale(1);    background: var(--accent-rose); border-color: var(--accent-rose); color: var(--bg-primary); }
+}
+@keyframes ep-untrack-commit {
+  0%   { transform: scale(1);    background: var(--accent-rose); border-color: var(--accent-rose); color: var(--bg-primary); }
+  45%  { transform: scale(1.32); background: rgba(255,255,255,0.03); border-color: var(--border-color); color: var(--text-muted); }
+  100% { transform: scale(1);    background: rgba(255,255,255,0.03); border-color: var(--border-color); color: var(--text-muted); }
+}
+/* Track: faint blue → saturated blue (hover), and blue → watched teal (commit).
+   The 'in' 0% sets an explicit faint blue (NOT transform-only) - leaving it unset
+   lets the backwards `both` fill resolve against the next-up marker's translucent
+   indigo base, which Chromium renders as a muddy yellow during the stagger. */
+@keyframes ep-track-in {
+  0%   { transform: scale(1);    background: color-mix(in srgb, var(--accent-blue) 22%, transparent); border-color: color-mix(in srgb, var(--accent-blue) 45%, var(--border-color)); color: var(--accent-blue); }
+  45%  { transform: scale(1.32); background: var(--accent-blue); border-color: var(--accent-blue); color: #fff; }
+  100% { transform: scale(1);    background: var(--accent-blue); border-color: var(--accent-blue); color: #fff; }
+}
+@keyframes ep-track-commit {
+  0%   { transform: scale(1);    background: var(--accent-blue); border-color: var(--accent-blue); color: #fff; }
+  45%  { transform: scale(1.32); background: var(--accent-primary); border-color: var(--accent-primary); color: var(--bg-primary); }
+  100% { transform: scale(1);    background: var(--accent-primary); border-color: var(--accent-primary); color: var(--bg-primary); }
+}
+/* Out (un-hover) cascades back to rest. Distinct animation-names (not just
+   `reverse`) so switching class restarts cleanly instead of snapping. End on an
+   EXPLICIT resting colour (untrack → watched teal, track → default grey) - never
+   an omitted 100%, which would resolve against the next-up marker's translucent
+   indigo base and render the same muddy yellow as the hover cascade did. The
+   45% bob keyframe omits colour deliberately: it just samples the 0%→100%
+   interpolation, which stays clean because both ends are explicit. */
+@keyframes ep-untrack-out {
+  0%   { transform: scale(1);    background: var(--accent-rose); border-color: var(--accent-rose); color: var(--bg-primary); }
+  45%  { transform: scale(1.32); }
+  100% { transform: scale(1);    background: var(--accent-primary); border-color: var(--accent-primary); color: var(--bg-primary); }
+}
+@keyframes ep-track-out {
+  0%   { transform: scale(1);    background: var(--accent-blue); border-color: var(--accent-blue); color: #fff; }
+  45%  { transform: scale(1.32); }
+  100% { transform: scale(1);    background: rgba(255,255,255,0.03); border-color: var(--border-color); color: var(--text-muted); }
+}
+.episode-row__marker--untracking        { animation: ep-untrack-in 340ms ease both; }
+.episode-row__marker--untracking-out     { animation: ep-untrack-out 340ms ease both; }
+.episode-row__marker--untracking-commit  { animation: ep-untrack-commit 340ms ease both; }
+.episode-row__marker--tracking           { animation: ep-track-in 340ms ease both; }
+.episode-row__marker--tracking-out        { animation: ep-track-out 340ms ease both; }
+.episode-row__marker--tracking-commit     { animation: ep-track-commit 340ms ease both; }
+.episode-row__code  { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.episode-row__title { min-width: 0; word-break: break-word; }
+.episode-row__trailing { display: inline-flex; align-items: center; gap: var(--s2); }
+
+/* Hover-only seekbar. Lives inside the row's bottom padding so it never
+   collides with the text and never shifts anything when it appears. */
+.episode-row__progress {
+  position: absolute;
+  left: var(--s4);
+  right: var(--s4);
+  bottom: 5px;
+  height: 2px;
+  background: rgba(255,255,255,0.06);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-fast);
+}
+.episode-row:hover .episode-row__progress { opacity: 1; }
+.episode-row__progress-fill {
+  display: block; height: 100%; width: 0;
+  background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+  border-radius: inherit;
+  transition: width var(--transition-slow);
+}
+
+/* States - only color/border/marker. Never reposition the text.
+   Watched rows still wear a faded background so the row reads as a card. */
+.episode-row--watched {
+  background: color-mix(in srgb, var(--bg-secondary) 55%, transparent);
+  color: var(--text-muted);
+  border-color: rgba(255,255,255,0.04);
+}
+.episode-row--watched .episode-row__marker { color: var(--bg-primary); background: var(--accent-primary); border-color: var(--accent-primary); }
+.episode-row:hover.episode-row--watched { background: var(--bg-secondary); color: var(--text-secondary); }
+
+/* Next-up: brand teal - "now / yours / alive". */
+.episode-row--next-up { border-color: color-mix(in srgb, var(--accent-primary) 30%, var(--border-color)); background: color-mix(in srgb, var(--accent-primary) 6%, var(--bg-secondary)); }
+.episode-row--next-up .episode-row__marker { color: var(--accent-primary); border-color: color-mix(in srgb, var(--accent-primary) 50%, var(--border-color)); background: color-mix(in srgb, var(--accent-primary) 12%, transparent); }
+
+/* List of EpisodeRow primitives inside a <Section>. */
+.episode-list { display: flex; flex-direction: column; gap: var(--s2); }

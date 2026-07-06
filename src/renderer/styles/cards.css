@@ -1,0 +1,329 @@
+/* cards.css - HomePage/ShowCard: show grid, card shell, poster chips, progress bar, airing pager, library head (tabs/sort), ContextMenu */
+
+/* ============ LIBRARY GRID ============ */
+.show-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--s6) var(--s5);
+  margin-bottom: var(--s12);
+}
+/* ShowCard intentionally does NOT use the Card primitive. The visible
+   "card" is the poster's own border + radius; the button shell is a
+   transparent reset. Hover-lift is applied to .show-card-poster-wrap only
+   (via the motion engine in ShowCard.tsx) so the title/meta below stays
+   anchored when the cursor enters / leaves. The button's own transform is
+   owned by the FLIP reorder hook - never transition or set it here. */
+.show-card {
+  display: block;
+  text-align: left;
+  width: 100%;
+  background: transparent;
+  border: none;
+  /* Shapes the global :focus-visible ring around the whole card. */
+  border-radius: var(--radius-xl);
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  /* Hidden-card dim/undim must glide, not snap. Opacity only - transform
+     stays out of the transition list (FLIP owns it). */
+  transition: opacity var(--transition-fast);
+}
+/* Keyboard focus mirrors the hover paint so the ring never lands on a
+   visually inert card. The ring itself comes from the global rule. */
+.show-card:hover .show-card-poster-wrap,
+.show-card:focus-visible .show-card-poster-wrap {
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-md);
+}
+
+.show-card:hover .show-card-poster { transform: scale(1.04); }
+.show-card:hover .show-card-title { color: var(--accent-secondary); }
+
+.show-card-poster-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  margin-bottom: var(--s3);
+  /* transform is owned by JS (motion engine) - keep other transitions only. */
+  transition: border-color var(--transition-fast), box-shadow var(--transition-normal);
+  container-type: inline-size;
+  will-change: transform;
+}
+.show-card-poster {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform var(--transition-slow);
+}
+.show-card-title { transition: color var(--transition-fast); }
+.show-card-no-image {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+}
+
+.show-card-info {
+  padding: 0 0.1rem;
+}
+.show-card-title {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-bottom: 0.35rem;
+  /* Always reserve exactly 2 lines of space so the title row keeps the
+     same height whether a card holds a 1-line or 2-line title - and the
+     poster above + meta line below stay anchored to the same y in every
+     card. Switching JP↔EN changes the text but never reflows the grid.
+     `lh` resolves against this element's own line-height. */
+  min-height: 2lh;
+}
+.show-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* Feed-card split meta row. Left = "ago"; right = "EP NN in 2d 14h …" with
+   a live-ticking second. tabular-nums keeps the digit positions from
+   shuffling under the cursor as seconds tick. */
+.show-card-meta-ago {
+  color: var(--text-muted);
+}
+.show-card-meta-countdown {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  color: var(--accent-primary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ============ POSTER CORNER CHIPS ============ */
+/* Every poster overlay is a `.chip chip--sm chip--scrim` (the one dark-glass
+   recipe). These classes only add corner anchoring + the state colors that
+   ride ON TEXT ONLY - the shell never changes. Top corners inset s2; bottom
+   corners inset s3 so chips clear the 6px progress bar. */
+.show-card-chip {
+  position: absolute;
+  z-index: 1;
+}
+.show-card-chip--tl { top: var(--s2); left: var(--s2); }
+.show-card-chip--tr { top: var(--s2); right: var(--s2); }
+.show-card-chip--br { bottom: var(--s3); right: var(--s2); z-index: 3; }
+
+/* Watched-fraction state color (text only): behind = amber (calm nudge,
+   never rose - rose is reserved for failures/dropped), caught-up/complete
+   = brand teal, unknown total = the neutral scrim text (no override). */
+.show-card-fraction--behind    { color: var(--accent-amber); }
+.show-card-fraction--caught-up { color: var(--accent-primary); }
+
+/* Bottom-left corner stack. Holds the re-encode chip (on top) and the
+   rating row (below) in a single column so two wide chips never collide on
+   a narrow card - they stack instead of both reaching toward centre. The
+   column owns the anchor; its children position statically. */
+.show-card-corner-bl {
+  position: absolute;
+  bottom: var(--s3);
+  left: var(--s2);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s1);
+  z-index: 1;
+}
+/* Wrapper around one or two rating chips (community + user). Lays them
+   out as a row so adding the user-score chip doesn't shove the community
+   one around. */
+.show-card-ratings {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+}
+/* Rating chips: star glyph carries the meaning - amber star = community
+   score, teal star = your score. The chip's flex gap spaces the glyph. */
+.show-card-rating-chip::before {
+  content: "★";
+  color: var(--accent-amber);
+  font-size: 0.9em;
+  line-height: 1;
+}
+.show-card-rating-chip--mine::before {
+  color: var(--accent-primary);
+}
+/* Re-encode chip: amber text (+ currentColor dot) on the scrim shell. The
+   dot pulses while encoding (class set in ShowCard); a queued chip keeps a
+   static dot and dims so the active encode clearly reads as primary. */
+.show-card-encode-chip { color: var(--accent-amber); }
+.show-card-encode-chip.is-queued { opacity: 0.75; }
+
+/* Incognito reveal - a hidden show only ever reaches a card when reveal is
+   on, so the card dims itself and flags a "Hidden" chip bottom-right (the
+   only free poster corner - top-left holds the EP chip, top-right the
+   fraction, bottom-left the encode/ratings stack). */
+.show-card--hidden { opacity: 0.55; }
+.show-card--hidden:hover { opacity: 0.8; }
+
+/* ============ PROGRESS BAR ============ */
+/* Flush on the poster's bottom edge (the wrap's overflow:hidden clips it
+   to the card radius). Teal = watched; amber underlay = aired but not yet
+   watched, shown only while the show is still releasing (a finished show's
+   unwatched tail is backlog, not urgency); scrim right cap = episode count
+   unknown, so the bar never reads as complete. The empty track is a
+   thinned scrim so it stays legible over bright posters without matching
+   the unknown cap. */
+.show-card-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 6px;
+  background: color-mix(in srgb, var(--scrim) 55%, transparent);
+}
+.show-card-progress-behind,
+.show-card-progress-watched {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  transition: width var(--transition-slow);
+}
+.show-card-progress-behind {
+  background: color-mix(in srgb, var(--accent-amber) 60%, transparent);
+}
+.show-card-progress-watched { background: var(--accent-primary); }
+.show-card-progress-unknown {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  background: var(--scrim);
+}
+
+/* ============ CONTEXT MENU ============ */
+.context-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 188px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: var(--s1);
+  animation: contextFade 120ms ease-out;
+}
+@keyframes contextFade {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: 100%;
+  padding: var(--s2) var(--s3);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast);
+}
+.context-menu-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+.context-menu-item:active { transform: scale(0.97); }
+.context-menu-icon { color: currentColor; flex-shrink: 0; display: inline-flex; }
+.context-menu-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: var(--s1);
+}
+
+/* ============ AIRING PAGER ============ */
+/* Airing carousel - 2 rows × 5 cols, paged not scrolled. */
+.airing-pager { display: flex; align-items: center; gap: var(--s2); }
+.airing-pager-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    opacity var(--transition-fast),
+    transform var(--transition-fast);
+}
+.airing-pager-btn:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  border-color: var(--border-hover);
+}
+.airing-pager-btn:active:not(:disabled) { transform: scale(0.97); }
+.airing-pager-btn:disabled { opacity: 0.4; cursor: default; }
+.airing-pager-count {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  min-width: 3.5rem;
+  text-align: center;
+}
+.airing-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  grid-template-rows: repeat(2, auto);
+  gap: var(--s5) var(--s4);
+}
+
+/* ============ LIBRARY HEAD ============ */
+/* Eyebrow-treatment section head where the "title" slot holds the category
+   switch (All/Series/Movies/Hidden) instead of a static label, followed by
+   the count chip, the hairline rule, and the sort controls in the action
+   slot. Wraps on narrow widths; the rule keeps filling the middle. */
+.library-head { flex-wrap: wrap; }
+.library-head .section__rule { min-width: var(--s6); }
+.library-head__sort-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+/* Press physics for the sort-direction toggle (base look lives in
+   primitives.css; this adds transform to the transition list too). */
+.sort-dir-toggle {
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast);
+}
+.sort-dir-toggle:active { transform: scale(0.97); }

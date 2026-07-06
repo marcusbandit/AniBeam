@@ -4,7 +4,7 @@ import { ArrowLeft, Play, Check, Star, Tv, Film, Clock, Users, RotateCw, Eye, Ey
 
 // AniList brand mark. Inline rather than fetched so it ships with the
 // renderer bundle and stays available offline. Geometry is the official
-// stylized "A" from anilist.co/img/icons — currentColor so it tints with
+// stylized "A" from anilist.co/img/icons - currentColor so it tints with
 // the surrounding chip styling.
 function AniListIcon({ size = 12 }: { size?: number }) {
   return (
@@ -60,7 +60,7 @@ const LIST_STATUS_LABEL: Record<TrackerListStatus, string> = {
 
 // AniList descriptions ship with HTML (<br>, <i>, <b>). Strip tags and
 // collapse whitespace so the hero blurb reads cleanly. We don't need a
-// full sanitizer — this string is never rendered as HTML, only as text.
+// full sanitizer - this string is never rendered as HTML, only as text.
 function stripHtml(s: string | null | undefined): string {
   if (!s) return "";
   return s.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
@@ -120,7 +120,7 @@ const EXTRA_GROUPS: ReadonlyArray<{ kind: "op" | "ed" | "pv" | "sp" | "other"; l
 
 type TranscodePhase = "queued" | "encoding" | "failed";
 
-// Inline re-encode indicator shown in the EpisodeRow trailing slot — the same
+// Inline re-encode indicator shown in the EpisodeRow trailing slot - the same
 // spot the amber "Re-encoded" pill lands once the encode finishes. While an
 // episode is still being converted to a browser-playable copy it shows a live
 // progress bar instead, so opening the series surfaces the whole batch at once.
@@ -128,9 +128,9 @@ function TranscodeBar({ fraction, phase }: { fraction: number; phase: TranscodeP
   const pct = Math.round(Math.max(0, Math.min(1, fraction)) * 100);
   const label = phase === "failed" ? "failed" : phase === "queued" ? "queued" : `${pct}%`;
   const tip = phase === "failed"
-    ? "Re-encode failed — open the episode to retry"
+    ? "Re-encode failed - open the episode to retry"
     : phase === "queued"
-      ? "Queued — re-encoding to a browser-playable copy"
+      ? "Queued - re-encoding to a browser-playable copy"
       : `Re-encoding to a browser-playable copy · ${pct}%`;
   return (
     <Tooltip label={tip}>
@@ -159,10 +159,10 @@ function SeriesDetailPage() {
   const navigate = useNavigate();
   const { pickTitle, lang } = useTitleLanguage();
   const { getWatched, getListStatus, getUserScore, getRewatchCount } = useTrackerProgress();
-  // Tag-panel spoiler toggle. Default off — opt-in only, per the user's
+  // Tag-panel spoiler toggle. Default off - opt-in only, per the user's
   // standing preference to hide plot-spoiler tags until explicitly revealed.
   const [showSpoilerTags, setShowSpoilerTags] = useState(false);
-  // Franchise filter chips — tracks which relation categories are hidden.
+  // Franchise filter chips - tracks which relation categories are hidden.
   const [hiddenCategories, setHiddenCategories] = useState<ReadonlySet<FranchiseCategory>>(
     () => new Set(),
   );
@@ -177,13 +177,13 @@ function SeriesDetailPage() {
 
   const [item, setItem] = useState<LibraryItem | null>(null);
   const [meta, setMeta] = useState<SeriesMetadata | null>(null);
-  // Full library list (not just the current series) — needed to resolve
+  // Full library list (not just the current series) - needed to resolve
   // relation clicks. If a related entry's anilistId/malId matches a
   // series the user has on disk, the click navigates in-app; otherwise
   // we open AniList in the system browser.
   const [allItems, setAllItems] = useState<LibraryItem[]>([]);
   // Full metadata map keyed by seriesId. Needed for transitive franchise
-  // expansion — to find S3 reachable from S1 through S2, we have to walk
+  // expansion - to find S3 reachable from S1 through S2, we have to walk
   // each in-library series's own `relations` array, not just the current
   // series's.
   const [allMeta, setAllMeta] = useState<Record<string, SeriesMetadata>>({});
@@ -191,7 +191,7 @@ function SeriesDetailPage() {
   // Per-episode resume position + per-series last-finished episode, both
   // sourced from localStorage. Refreshed on mount and on window-focus so a
   // session in the player updates the bars and "Next up" marker as soon as
-  // the user navigates back here. Cheap — both are single JSON.parse calls.
+  // the user navigates back here. Cheap - both are single JSON.parse calls.
   const [localProgress, setLocalProgress] = useState<ProgressMap>(() => readProgress());
   const [lastEpMap, setLastEpMap] = useState<LastEpisodeMap>(() => readLastEpisodeMap());
   // 1Hz tick driving the next-episode countdown. Only runs while a future
@@ -207,6 +207,16 @@ function SeriesDetailPage() {
   const [scoreBusy, setScoreBusy] = useState(false);
   const [scoreError, setScoreError] = useState<string | null>(null);
   const [hideBusy, setHideBusy] = useState(false);
+  // Synopsis clamp. The 5-line clamp stays; a quiet "More" toggle renders
+  // only when the text actually overflows it (scrollHeight vs clientHeight),
+  // so short blurbs never grow a dead control.
+  const [descExpanded, setDescExpanded] = useState(false);
+  const [descClipped, setDescClipped] = useState(false);
+  const descRef = useRef<HTMLParagraphElement | null>(null);
+  // Tags panel: "Show all" appears only when the 340px mask actually clips.
+  const [tagsExpanded, setTagsExpanded] = useState(false);
+  const [tagsClipped, setTagsClipped] = useState(false);
+  const tagsListRef = useRef<HTMLUListElement | null>(null);
   // Marker track/untrack cascade. `wave` is the active animated range + phase:
   // 'in' (hover), 'out' (reverse wave on un-hover), 'commit' (after a click).
   // [lo, hi] is the affected episode range; `anchor` is the cursor/click origin
@@ -236,7 +246,7 @@ function SeriesDetailPage() {
 
   const decodedId = seriesId ? decodeURIComponent(seriesId) : "";
 
-  // No setLoading toggle on reload pings — keeps the file list visible
+  // No setLoading toggle on reload pings - keeps the file list visible
   // while the background match updates posters/dates incrementally.
   const reload = useCallback(async () => {
     try {
@@ -268,7 +278,7 @@ function SeriesDetailPage() {
     void reload();
   }, [reload]);
 
-  // Debounced — bursts of metadata pings on new ingests would otherwise
+  // Debounced - bursts of metadata pings on new ingests would otherwise
   // re-fetch the entire library walk for every event.
   const debouncedReload = useDebouncedCallback(() => { void reload(); }, 250);
   useEffect(() => {
@@ -278,12 +288,12 @@ function SeriesDetailPage() {
     return () => unsubscribe?.();
   }, [debouncedReload]);
 
-  // Re-derive each render — cheap (single pass over the episode list) and
+  // Re-derive each render - cheap (single pass over the episode list) and
   // automatically rolls to the next-next episode once the current one's
   // airDate slips into the past.
   const nextUpcoming = findNextUpcomingEpisode(item?.episodes ?? null, nowMs);
 
-  // 1Hz tick — only while a future air date exists. Resets the interval
+  // 1Hz tick - only while a future air date exists. Resets the interval
   // when the upcoming episode changes (e.g. rollover after airing) so we
   // never drift on top of a stale schedule.
   useEffect(() => {
@@ -349,8 +359,8 @@ function SeriesDetailPage() {
 
   // filePath → true for any episode that's being served from the on-disk
   // transcode cache (i.e. the source codec needed conversion before
-  // Chromium could play it). LibraryItem.files doesn't carry this — the
-  // signal only lives on metadata.json's fileEpisodes — so we index it
+  // Chromium could play it). LibraryItem.files doesn't carry this - the
+  // signal only lives on metadata.json's fileEpisodes - so we index it
   // here and the row look-up stays O(1).
   const transcodedByPath = useMemo(() => {
     const set = new Set<string>();
@@ -368,7 +378,7 @@ function SeriesDetailPage() {
   // while an entry lives here AND the file isn't yet in `transcodedByPath`.
   const [transcoding, setTranscoding] = useState<Record<string, { fraction: number; phase: TranscodePhase }>>({});
 
-  // Newline-joined path list — a stable key so the effects below run once per
+  // Newline-joined path list - a stable key so the effects below run once per
   // distinct file set, not on every unrelated meta ping that rebuilds `sorted`.
   const filePathsKey = useMemo(() => sorted.map((f) => f.filePath).join("\n"), [sorted]);
 
@@ -393,13 +403,13 @@ function SeriesDetailPage() {
           return next;
         });
       })
-      .catch(() => { /* best-effort — the per-click path still works */ });
+      .catch(() => { /* best-effort - the per-click path still works */ });
     return () => { cancelled = true; };
   }, [filePathsKey]);
 
   // Live progress + status for files in THIS series. Two channels: granular
   // fraction updates while ffmpeg runs, and status flips (ready/stalled) that
-  // start/finish/fail a bar. 'ready' drops the entry — the reload triggered by
+  // start/finish/fail a bar. 'ready' drops the entry - the reload triggered by
   // the same status ping swaps in the "Re-encoded" pill via transcodedByPath.
   useEffect(() => {
     if (!filePathsKey) return;
@@ -435,7 +445,7 @@ function SeriesDetailPage() {
     }
     return map;
   }, [meta?.episodes]);
-  // Tags — sort by AniList rank desc, filter spoilers/adult unless the user
+  // Tags - sort by AniList rank desc, filter spoilers/adult unless the user
   // has toggled them on. We never cap at a fixed count here; the panel's CSS
   // clips overflow visually, so "however many fit" is layout-driven.
   const allTags: Tag[] = (meta?.tags ?? []) as Tag[];
@@ -448,6 +458,32 @@ function SeriesDetailPage() {
     () => allTags.some((t) => t.isMediaSpoiler || t.isGeneralSpoiler || t.isAdult),
     [allTags],
   );
+
+  // Overflow measurement for the clamped synopsis and the masked tag list.
+  // Only measured while collapsed (expanded content never overflows, and
+  // re-measuring it would make the toggle vanish mid-read). ResizeObserver
+  // keeps the result honest across window resizes and late metadata loads.
+  useEffect(() => {
+    if (descExpanded) return;
+    const el = descRef.current;
+    if (!el) { setDescClipped(false); return; }
+    const measure = () => setDescClipped(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [descExpanded, meta?.description, item]);
+
+  useEffect(() => {
+    if (tagsExpanded) return;
+    const el = tagsListRef.current;
+    if (!el) { setTagsClipped(false); return; }
+    const measure = () => setTagsClipped(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [tagsExpanded, visibleTags, item]);
 
   if (initialLoading) {
     return (
@@ -502,8 +538,8 @@ function SeriesDetailPage() {
     ? getDisplayRating(meta.averageScore, meta.source ?? (item.matchSource ?? null))
     : null;
   // User's own rating from MAL/AniList. The tracker layer normalises both
-  // providers to a 0–10 scale and returns null for unrated, so we just have
-  // to format it. Hidden when missing instead of "—" so the chip row stays
+  // providers to a 0-10 scale and returns null for unrated, so we just have
+  // to format it. Hidden when missing instead of "-" so the chip row stays
   // tidy on unrated series.
   const userScore = getUserScore({
     anilistId: item.anilistId ?? undefined,
@@ -525,6 +561,9 @@ function SeriesDetailPage() {
     if (f === "SPECIAL") return "Special";
     return f.replace(/_/g, " ");
   })();
+  // Raw MediaFormat value driving the chip's data-format coloring; undefined
+  // when unknown so the chip degrades to the neutral base look.
+  const formatValue = isMovie ? "MOVIE" : (meta?.format ?? undefined);
 
   const trackerIds = {
     anilistId: item.anilistId ?? undefined,
@@ -534,7 +573,7 @@ function SeriesDetailPage() {
   const listStatus = getListStatus(trackerIds);
   const rewatchCount = getRewatchCount(trackerIds);
   const hasTrackerId = item.anilistId != null || item.malId != null;
-  // Animation studio — explicit `animationStudio` (set by the matcher when
+  // Animation studio - explicit `animationStudio` (set by the matcher when
   // AniList flagged it main + isAnimationStudio) wins; otherwise show the
   // first entry of `studios` so something is still surfaced.
   const studioName = (meta as unknown as { animationStudio?: string | null })?.animationStudio
@@ -547,7 +586,7 @@ function SeriesDetailPage() {
   // Status marker for a Related/Recommended entry that's on the user's
   // tracker list. Resolves by external id (works whether or not the entry is
   // on disk) and returns the colour-coded corner dot, wrapped in a hover-pause
-  // Tooltip naming the status — so a forgotten colour is one hover away. The
+  // Tooltip naming the status - so a forgotten colour is one hover away. The
   // presence of the dot already means "on your list", so the label is just the
   // bare status ("Completed"), not "On your list · Completed". Off-list entries
   // render nothing.
@@ -615,7 +654,7 @@ function SeriesDetailPage() {
     }
   };
   // Set watched progress to an exact value on every connected tracker. Used by
-  // the "untrack to here" markers (can decrease — corrects over-counts). The
+  // the "untrack to here" markers (can decrease - corrects over-counts). The
   // shared progress cache refreshes via the tracker:progress-changed broadcast.
   const applyProgress = async (value: number) => {
     const target = Math.max(0, Math.floor(value));
@@ -655,7 +694,7 @@ function SeriesDetailPage() {
   // The next-up episode is "last completed + 1", where last-completed is the
   // max of (tracker watched count, locally finished episode from the player).
   // The local fallback keeps the marker accurate when the tracker is behind
-  // or the user is rewatching after the list is already marked completed —
+  // or the user is rewatching after the list is already marked completed -
   // in the rewatch case the row may itself be marked "watched", and we show
   // the marker anyway so the user always knows where they left off.
   const lastEpLocal = lastEpMap[item.id]?.ep ?? null;
@@ -668,6 +707,18 @@ function SeriesDetailPage() {
         ?? realEpisodes.find((f) => f.episodeNumber > effectiveLastWatched)?.episodeNumber
         ?? null
     : (effTrackedKnown ? realEpisodes.find((f) => f.episodeNumber > effWatched)?.episodeNumber ?? null : null);
+
+  // Continue affordance target. nextEpNumber is derived from files actually
+  // on disk, so a tracker that is ahead of the folder yields null and no
+  // button. Movies get a plain Play instead, and only while unwatched.
+  const nextEpFile = !isMovie && nextEpNumber != null
+    ? realEpisodes.find((f) => f.episodeNumber === nextEpNumber) ?? null
+    : null;
+  const heroMovieWatched = isMovie && (listStatus === "completed" || (watched != null && watched > 0));
+  // Mirror the movie row exactly (realEpisodes only): a bonus file must never
+  // become the Play target, since its episodeNumber can collide with extras.
+  const movieFile = isMovie && !heroMovieWatched ? (realEpisodes[0] ?? null) : null;
+  const continueTarget = nextEpFile ?? movieFile;
 
   // ---- Marker track/untrack cascade handlers ----
   const CASCADE_STEP_MS = 45;
@@ -688,7 +739,7 @@ function SeriesDetailPage() {
     else setWave({ mode: "track", phase: "in", lo: effWatched + 1, hi: ep, anchor: ep });
   };
   // Entering a hit-zone (anywhere, not necessarily the circle) only KEEPS an
-  // active hover alive — it cancels a pending leave but never starts a wave. So
+  // active hover alive - it cancels a pending leave but never starts a wave. So
   // moving between adjacent zones stays hovered, but merely being inside a zone
   // (without touching a circle) won't initiate one.
   const onMarkerZoneEnter = () => {
@@ -726,7 +777,7 @@ function SeriesDetailPage() {
   // Files numbered past the matched episode count (e.g. a 25th file on a
   // 24-episode series) are almost always misnamed, duplicates, or stray
   // specials. Split them out so they don't masquerade as real episodes and
-  // are easy to spot and fix — but only when we actually know the expected
+  // are easy to spot and fix - but only when we actually know the expected
   // count, and only for the main season so multi-season folders (whose
   // episode numbers reset) aren't false-flagged.
   const extraEpisodes = (!isMovie && totalEpisodes != null && totalEpisodes > 0)
@@ -748,7 +799,7 @@ function SeriesDetailPage() {
     }
     if (transcodedByPath.has(filePath)) {
       return (
-        <Tooltip label="Source codec wasn't browser-playable — this episode plays from the on-disk h.264 transcode cache">
+        <Tooltip label="Source codec wasn't browser-playable - this episode plays from the on-disk h.264 transcode cache">
           <span>
             <Pill tone="amber">Re-encoded</Pill>
           </span>
@@ -762,10 +813,10 @@ function SeriesDetailPage() {
   // lockstep. `extra` adds the warning pill and suppresses the "Next up"
   // marker (an out-of-range file is never the next episode to watch).
   const renderEpisodeRow = (f: (typeof sorted)[number], opts?: { extra?: boolean }) => {
-    // A movie has no episodes — the file IS the movie. Render it as a single
+    // A movie has no episodes - the file IS the movie. Render it as a single
     // "Movie" row with no episode code, next-up, or extra flagging. Without
     // this, a filename like "…Dai 63-kai…" parses to a bogus episode 63 and
-    // gets flagged as an extra file. No marker track/untrack cascade either —
+    // gets flagged as an extra file. No marker track/untrack cascade either -
     // a movie's tracker progress isn't episode-indexed.
     if (isMovie) {
       const movieWatched = listStatus === "completed" || (watched != null && watched > 0);
@@ -800,7 +851,7 @@ function SeriesDetailPage() {
       episodeNumber: f.episodeNumber,
       seasonNumber: f.seasonNumber,
     });
-    // Fraction in [0, 1] from localStorage — set by the player every 4s and
+    // Fraction in [0, 1] from localStorage - set by the player every 4s and
     // on pause. Zero for episodes never started OR finished (entry deleted).
     const fraction = getProgressFraction(localProgress, item.id, f.episodeNumber);
     const reencode = renderReencodeIndicator(f.filePath);
@@ -854,7 +905,7 @@ function SeriesDetailPage() {
   };
 
   // Bonus-content row (opening/ending/PV/special). No tracker markers, next-up,
-  // or watched state — these aren't episodes. The play route carries an
+  // or watched state - these aren't episodes. The play route carries an
   // explicit ?file= because several extras share an episodeNumber with a real
   // episode, so the episodeNumber→file lookup alone would open the wrong file.
   // Resume position is keyed by file path (getExtraProgressFraction) to match
@@ -921,8 +972,8 @@ function SeriesDetailPage() {
             <div className="series-hero-chips series-hero-chips--ratings">
               {rating && (
                 <Tooltip label="Average rating">
-                  <span className="hero-chip hero-chip-rating">
-                    <Star size={12} strokeWidth={2.25} />
+                  <span className="chip chip--amber">
+                    <Star size={12} strokeWidth={2.25} fill="currentColor" />
                     {rating}
                   </span>
                 </Tooltip>
@@ -932,16 +983,18 @@ function SeriesDetailPage() {
                   <Tooltip label={userScoreLabel ? "Click to change your rating" : "Click to rate this show"}>
                     <button
                       type="button"
-                      className="hero-chip hero-chip-myscore hero-chip-myscore-button"
+                      className={`chip chip--toggle hero-chip-myscore${userScore != null ? ' is-on' : ''}`}
+                      aria-haspopup="dialog"
+                      aria-expanded={scoreEditing}
                       onClick={() => {
                         setScoreDraft(userScore != null ? userScore.toFixed(1) : '8.0');
                         setScoreError(null);
                         setScoreEditing((v) => !v);
                       }}
                     >
-                      <Star size={12} strokeWidth={2.25} />
+                      <Star size={12} strokeWidth={2.25} fill="currentColor" />
                       {userScoreLabel ?? 'Rate'}
-                      <span className="hero-chip-myscore-tag">YOU</span>
+                      <span className="hero-chip-myscore-tag">You</span>
                     </button>
                   </Tooltip>
                   {scoreEditing && (
@@ -954,7 +1007,7 @@ function SeriesDetailPage() {
                       />
                       <button
                         type="button"
-                        className="hero-score-submit"
+                        className="btn btn--accent btn-small"
                         onClick={() => void submitSeriesScore(scoreDraft)}
                         disabled={scoreBusy}
                       >
@@ -964,7 +1017,7 @@ function SeriesDetailPage() {
                         <Tooltip label="Clear rating">
                           <button
                             type="button"
-                            className="hero-score-clear"
+                            className="btn btn-danger btn-small"
                             onClick={() => void submitSeriesScore('0')}
                             disabled={scoreBusy}
                           >
@@ -981,7 +1034,7 @@ function SeriesDetailPage() {
                 <Tooltip label="Open on AniList">
                   <button
                     type="button"
-                    className="hero-chip hero-chip-anilist hero-chip-anilist--icon"
+                    className="chip chip--toggle hero-chip-anilist"
                     aria-label="Open on AniList"
                     onClick={() => {
                       void window.electronAPI.openExternal(
@@ -996,7 +1049,7 @@ function SeriesDetailPage() {
               <Tooltip label="Incognito: stops tracker sync and hides from all lists">
                 <button
                   type="button"
-                  className={`hero-chip hero-chip-hide${meta?.hidden ? ' is-hidden' : ''}`}
+                  className={`chip chip--toggle${meta?.hidden ? ' is-on' : ''}`}
                   aria-pressed={meta?.hidden ?? false}
                   disabled={hideBusy}
                   onClick={() => void toggleHidden()}
@@ -1008,24 +1061,24 @@ function SeriesDetailPage() {
             </div>
 
             <div className="series-hero-chips series-hero-chips--info">
-              <span className="hero-chip">{formatLabel}</span>
-              {year && <span className="hero-chip">{year}</span>}
+              <span className="chip" data-format={formatValue}>{formatLabel}</span>
+              {year && <span className="chip">{year}</span>}
               {!isMovie && totalEpisodes != null && (
-                <span className="hero-chip">{totalEpisodes} ep</span>
+                <span className="chip">{totalEpisodes} ep</span>
               )}
               {studioName && (
                 <Tooltip label="Animation studio">
-                  <span className="hero-chip hero-chip-studio">{studioName}</span>
+                  <span className="chip">{studioName}</span>
                 </Tooltip>
               )}
               {statusLabel && (
-                <span className={`hero-chip hero-chip-status status-${normalizeStatus(item.status ?? meta?.status ?? null)}`}>
+                <span className="chip" data-status={normalizeStatus(item.status ?? meta?.status ?? null) ?? undefined}>
                   {statusLabel}
                 </span>
               )}
               {nextUpcoming && (
                 <Tooltip label={`Episode ${nextUpcoming.episodeNumber} airs ${new Date(nextUpcoming.airDateMs).toLocaleString()}`}>
-                  <span className="hero-chip hero-chip-next-ep">
+                  <span className="chip chip--teal">
                     <Clock size={12} strokeWidth={2.25} />
                     EP {String(nextUpcoming.episodeNumber).padStart(2, "0")} in {formatCountdown(nextUpcoming.airDateMs - nowMs)}
                   </span>
@@ -1033,14 +1086,18 @@ function SeriesDetailPage() {
               )}
               {listStatus && (
                 <Tooltip label={`On your list: ${LIST_STATUS_LABEL[listStatus]}`}>
-                  <span className={`hero-chip hero-chip-list list-${listStatus}`}>
+                  <span className="chip" data-status={listStatus}>
+                    <span
+                      className={`chip__dot${listStatus === "watching" ? " chip__dot--pulse" : ""}`}
+                      aria-hidden="true"
+                    />
                     {LIST_STATUS_LABEL[listStatus]}
                   </span>
                 </Tooltip>
               )}
               {rewatchCount != null && rewatchCount > 0 && (
                 <Tooltip label={`Rewatched ${rewatchCount}${rewatchCount === 1 ? " time" : " times"}`}>
-                  <span className="hero-chip hero-chip-rewatch">
+                  <span className="chip chip--violet">
                     <RotateCw size={12} strokeWidth={2.25} />
                     {rewatchCount}× rewatched
                   </span>
@@ -1049,50 +1106,103 @@ function SeriesDetailPage() {
             </div>
 
             {description && (
-              <p className="series-hero-desc">{description}</p>
+              <div className="series-hero-desc-wrap">
+                <p
+                  ref={descRef}
+                  className={`series-hero-desc${descExpanded ? " is-expanded" : ""}`}
+                >
+                  {description}
+                </p>
+                {(descClipped || descExpanded) && (
+                  <button
+                    type="button"
+                    className={`chip chip--sm chip--toggle${descExpanded ? " is-on" : ""}`}
+                    aria-expanded={descExpanded}
+                    onClick={() => setDescExpanded((v) => !v)}
+                  >
+                    {descExpanded ? "Less" : "More"}
+                  </button>
+                )}
+              </div>
             )}
 
-            {!isMovie && (
-              <div className="series-hero-progress">
-                <div className="series-hero-progress-meta">
-                  <span className="series-hero-progress-label">
-                    {trackedKnown ? "Tracked" : "Not tracked"}
-                  </span>
-                  <span className="series-hero-progress-count">
-                    {trackedKnown
-                      ? `${String(watchedCount).padStart(String(denom || 1).length, "0")} / ${denom > 0 ? denom : "?"}${denomIsAiringEstimate ? "+" : ""}`
-                      : `${realEpisodes.length} on disk`}
-                  </span>
-                </div>
-                <div className="series-hero-progress-track" aria-hidden="true">
-                  <div
-                    className={`series-hero-progress-fill${trackedKnown ? "" : " untracked"}`}
-                    style={{ width: `${trackedKnown ? progressPct : 0}%` }}
-                  />
-                </div>
+            {(continueTarget != null || !isMovie) && (
+              <div className="series-hero-foot">
+                {continueTarget != null && (
+                  <button
+                    type="button"
+                    className="btn btn--accent series-hero-continue"
+                    onClick={() =>
+                      navigate(`/player/${encodeURIComponent(item.id)}/${continueTarget.episodeNumber}`)
+                    }
+                  >
+                    <Play size={14} />
+                    <span>{isMovie ? "Play" : "Continue"}</span>
+                    {!isMovie && (
+                      <span className="series-hero-continue-code">
+                        {formatEpisodeCode({
+                          episodeNumber: continueTarget.episodeNumber,
+                          seasonNumber: continueTarget.seasonNumber,
+                        })}
+                      </span>
+                    )}
+                  </button>
+                )}
+                {!isMovie && (
+                  <div className="series-hero-progress">
+                    <div className="series-hero-progress-meta">
+                      <span className="series-hero-progress-label">
+                        {trackedKnown ? "Tracked" : "Not tracked"}
+                      </span>
+                      <span className="series-hero-progress-count">
+                        {trackedKnown
+                          ? `${String(watchedCount).padStart(String(denom || 1).length, "0")} / ${denom > 0 ? denom : "?"}${denomIsAiringEstimate ? "+" : ""}`
+                          : `${realEpisodes.length} on disk`}
+                      </span>
+                    </div>
+                    <div className="series-hero-progress-track" aria-hidden="true">
+                      <div
+                        className={`series-hero-progress-fill${trackedKnown ? "" : " untracked"}`}
+                        style={{ width: `${trackedKnown ? progressPct : 0}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
 
           {allTags.length > 0 && (
-            <aside className="series-hero-tags" aria-label="Tags">
+            <aside className={`series-hero-tags${tagsExpanded ? " is-expanded" : ""}`} aria-label="Tags">
               <div className="series-hero-tags-head">
                 <span className="series-hero-tags-label">Tags</span>
-                {hasHiddenSpoilerTags && (
-                  <Tooltip label={showSpoilerTags ? "Hide spoiler tags" : "Show spoiler tags"}>
+                <span className="series-hero-tags-actions">
+                  {hasHiddenSpoilerTags && (
+                    <Tooltip label={showSpoilerTags ? "Hide spoiler tags" : "Show spoiler tags"}>
+                      <button
+                        type="button"
+                        className={`chip chip--sm chip--toggle${showSpoilerTags ? " is-on" : ""}`}
+                        aria-pressed={showSpoilerTags}
+                        onClick={() => setShowSpoilerTags((v) => !v)}
+                      >
+                        {showSpoilerTags ? <EyeOff size={12} strokeWidth={2.25} /> : <Eye size={12} strokeWidth={2.25} />}
+                        <span>Spoilers</span>
+                      </button>
+                    </Tooltip>
+                  )}
+                  {(tagsClipped || tagsExpanded) && (
                     <button
                       type="button"
-                      className={`series-hero-tags-toggle${showSpoilerTags ? " is-active" : ""}`}
-                      aria-pressed={showSpoilerTags}
-                      onClick={() => setShowSpoilerTags((v) => !v)}
+                      className={`chip chip--sm chip--toggle${tagsExpanded ? " is-on" : ""}`}
+                      aria-expanded={tagsExpanded}
+                      onClick={() => setTagsExpanded((v) => !v)}
                     >
-                      {showSpoilerTags ? <EyeOff size={12} strokeWidth={2.25} /> : <Eye size={12} strokeWidth={2.25} />}
-                      <span>{showSpoilerTags ? "Hide spoilers" : "Show spoilers"}</span>
+                      {tagsExpanded ? "Less" : "Show all"}
                     </button>
-                  </Tooltip>
-                )}
+                  )}
+                </span>
               </div>
-              <ul className="series-hero-tags-list">
+              <ul ref={tagsListRef} className="series-hero-tags-list">
                 {visibleTags.map((t) => {
                   const isSpoilery = t.isMediaSpoiler || t.isGeneralSpoiler || t.isAdult;
                   return (
@@ -1152,7 +1262,7 @@ function SeriesDetailPage() {
             <span>
               {extraEpisodes.length === 1 ? "1 file goes" : `${extraEpisodes.length} files go`}{" "}
               beyond the expected {totalEpisodes} episode{totalEpisodes === 1 ? "" : "s"} for this
-              title — likely misnamed, duplicates, or specials. Review them and rename or remove
+              title - likely misnamed, duplicates, or specials. Review them and rename or remove
               what doesn't belong.
             </span>
           </div>
@@ -1274,11 +1384,11 @@ function SeriesDetailPage() {
                         {r.type === "MANGA" ? <Film size={28} /> : <Tv size={28} />}
                       </div>
                     )}
-                    <span aria-hidden="true">
+                    <span className="relation-card-flag" aria-hidden="true">
                       {ownedId ? (
-                        <Pill tone="teal">Available</Pill>
+                        <Pill tone="teal" size="sm" scrim>Available</Pill>
                       ) : (
-                        <Pill tone="accent">
+                        <Pill size="sm" scrim>
                           <AniListIcon size={11} />
                           AniList
                         </Pill>
@@ -1290,9 +1400,7 @@ function SeriesDetailPage() {
                     <div className="relation-card-title">{recTitle}</div>
                     <div className="relation-card-meta">
                       {fmtLabel && (
-                        <span className="relation-card-format" data-format={r.format ?? ""}>
-                          {fmtLabel}
-                        </span>
+                        <Pill size="sm" format={r.format ?? undefined}>{fmtLabel}</Pill>
                       )}
                       {r.seasonYear && <span>{r.seasonYear}</span>}
                     </div>

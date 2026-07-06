@@ -5,11 +5,11 @@ import { useLocalStorage, useLocalStorageRecord } from '../hooks/useLocalStorage
 import { progressId, extraProgressToken, readProgress, writeProgress, recordEpisodeCompleted, RESUME_HEAD_SKIP, RESUME_TAIL_SKIP } from '../utils/playbackProgress';
 import { friendlyExtraTitle, extraCode } from '../../shared/extraLabels';
 import { ScorePicker, Tooltip } from '../components/primitives';
-import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Minimize, Subtitles, SkipBack, SkipForward, CheckCheck, AlertTriangle, ExternalLink, Loader2, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Minimize, Subtitles, SkipBack, SkipForward, CheckCheck, AlertTriangle, ExternalLink, HelpCircle, Loader2, RotateCcw } from 'lucide-react';
 import JASSUB from 'jassub';
 // `?worker&url` (not `?url`) so Vite bundles the worker as a self-contained
 // ES module with its bare-import dependencies (abslink, lfa-ponyfill, etc.)
-// resolved. With plain `?url` Vite copies the worker file raw — fine in dev
+// resolved. With plain `?url` Vite copies the worker file raw - fine in dev
 // because the dev server resolves bare imports on the fly, but in a packaged
 // build the worker fetches the static file and chokes on `import 'abslink'`.
 import jassubWorkerUrl from 'jassub/dist/worker/worker.js?worker&url';
@@ -22,7 +22,7 @@ import jassubDefaultFontUrl from 'jassub/dist/default.woff2?url';
 // Fetch the bytes once in the renderer, wrap as a Blob with the correct MIME,
 // and hand JASSUB the resulting blob: URLs. Cached so we don't refetch.
 //
-// JASSUB has TWO wasm bundles — a legacy one and a "modern" one for browsers
+// JASSUB has TWO wasm bundles - a legacy one and a "modern" one for browsers
 // that support newer WebAssembly features. Chromium picks the modern one, so
 // we MUST override both or the worker silently falls back to its default URL
 // (which still has the wrong MIME).
@@ -42,7 +42,7 @@ function getJassubWasmUrls() {
 }
 
 interface SubtitleTrack {
-  src: string;        // file:// or media:// or blob: URL — used for native VTT or JASSUB
+  src: string;        // file:// or media:// or blob: URL - used for native VTT or JASSUB
   origPath: string;   // original file path
   kind: string;       // 'subtitles'
   label: string;
@@ -69,7 +69,7 @@ async function srtToVttUrl(srcUrl: string): Promise<string> {
 type SubtitleFont = 'Arial, sans-serif' | 'sans-serif' | 'serif' | 'ui-monospace';
 
 interface SubtitleStyle {
-  fontSize: number;        // in vh — % of viewport height, scales with fullscreen
+  fontSize: number;        // in vh - % of viewport height, scales with fullscreen
   positionBottom: number;  // distance above the bottom edge in vh
   color: string;
   bgColor: string;
@@ -106,18 +106,18 @@ function hexToRgb(hex: string): string {
 
 /**
  * Heuristic: is this ASS style name most likely a dialogue/spoken-text style
- * (vs a typesetting/sign style)? Conservative — when unsure we say "yes" so
+ * (vs a typesetting/sign style)? Conservative - when unsure we say "yes" so
  * the user sees more options to pick from.
  */
 function isDialogueStyleName(name: string): boolean {
   const n = name.toLowerCase().trim();
   // "Default" is an ASS placeholder name that's almost never used by actual
-  // dialogue events — exclude it so it doesn't pollute the dropdown.
+  // dialogue events - exclude it so it doesn't pollute the dropdown.
   if (n === 'default' || n === 'default style' || n.startsWith('default ')) return false;
-  // Hard exclude — these are clearly typesetting / signs.
+  // Hard exclude - these are clearly typesetting / signs.
   if (/^sign[_\s-]|^_sign|sign_\d|_sign_/i.test(name)) return false;
   if (/(^|[_\s-])(sign|signs|box|caption|note|disclaimer|credit|next.?episode|preview|circuit|attack|button|menu|overlay|on.?screen|location|placard|title.?card|subtitle.?list|opening|ending|op[_\s-]|ed[_\s-])/i.test(n)) return false;
-  // Hard include — common dialogue style names.
+  // Hard include - common dialogue style names.
   if (['main', 'dialogue', 'dialog', 'italics', 'italic', 'narrator', 'narration', 'top', 'alt'].includes(n)) return true;
   if (n.startsWith('main') || n.endsWith('italics') || n.endsWith(' alt')) return true;
   // Otherwise: include (let the user filter visually).
@@ -147,7 +147,7 @@ function formatTime(s: number): string {
 // primitives (Page/Section/Stack/Card/etc.). The fullscreen player is a
 // single-purpose route with bespoke chrome (.player-*) that already reads
 // consistently and has no off-center / pixel-brother gestalt bugs. JASSUB
-// and the mpv-fallback wiring are load-bearing workarounds — don't touch
+// and the mpv-fallback wiring are load-bearing workarounds - don't touch
 // the internals here. See docs/superpowers/specs/2026-05-21-gestalt-overhaul-design.md.
 function VideoPlayer() {
   const { seriesId, episodeNumber } = useParams<{ seriesId?: string; episodeNumber?: string }>();
@@ -172,7 +172,7 @@ function VideoPlayer() {
   //  - mode 'transcoding': ffmpeg is producing the cached MP4. Overlay shows
   //    a progress bar; playback starts automatically when it finishes.
   //  - mode 'decode-failed': <video> errored out even though we thought the
-  //    codec was OK. No transcode in flight — only mpv fallback.
+  //    codec was OK. No transcode in flight - only mpv fallback.
   const [unsupported, setUnsupported] = useState<
     | { mode: 'transcoding'; vCodec?: string; aCodec?: string }
     | { mode: 'decode-failed' }
@@ -199,9 +199,9 @@ function VideoPlayer() {
   const [skipTimes, setSkipTimes] = useState<{ op?: { start: number; end: number }; ed?: { start: number; end: number }; source?: 'chapters' | 'aniskip' }>({});
   const [subMenuOpen, setSubMenuOpen] = useState(false);
   const [subMenuTab, setSubMenuTab] = useState<'tracks' | 'style'>('tracks');
-  // VTT styling — applied via ::cue CSS. One global setting for all SRT/VTT.
+  // VTT styling - applied via ::cue CSS. One global setting for all SRT/VTT.
   const [vttStyle, setVttStyle] = useLocalStorage<SubtitleStyle>('subtitle-style-v2', DEFAULT_SUB_STYLE);
-  // ASS styling — keyed by style name so settings follow the style across
+  // ASS styling - keyed by style name so settings follow the style across
   // shows. Edit "Main" once → applies anywhere "Main" appears.
   const [assStyles, setAssStyles] = useLocalStorageRecord<SubtitleStyle>('subtitle-style-ass-v1', {});
   // Dialogue style names detected in the current ASS track (populated when
@@ -209,14 +209,14 @@ function VideoPlayer() {
   const [assDialogueStyleNames, setAssDialogueStyleNames] = useState<string[]>([]);
   const [selectedAssStyle, setSelectedAssStyle] = useState<string | null>(null);
   const assPlayResYRef = useRef<number>(288);
-  // Captured once when JASSUB initializes — every override is applied on top
+  // Captured once when JASSUB initializes - every override is applied on top
   // of these originals, and clearing an override restores the original.
   // Without this snapshot, setStyle mutates the wasm's style in place and
   // there's no way back to the file's defaults.
   const assOriginalsRef = useRef<Array<Record<string, unknown>>>([]);
   // Bumps each time a JASSUB instance finishes initializing, so dependent
   // effects can react after JASSUB is actually ready (selectSubtitle is async
-  // — activeSubIdx changes BEFORE jassubRef.current is set).
+  // - activeSubIdx changes BEFORE jassubRef.current is set).
   const [jassubReadyTick, setJassubReadyTick] = useState(0);
   // Auto-play-next overlay. `nextVisible` shows the idle "Next" pill the moment
   // the outro begins; `nextCounting` starts the 5s fill + auto-advance timer
@@ -227,6 +227,12 @@ function VideoPlayer() {
   const [nextCounting, setNextCounting] = useState(false);
   const [nextDismissed, setNextDismissed] = useState(false);
   const [videoEnded, setVideoEnded] = useState(false);
+  // Chrome-only UI state (visual overhaul). Seek-hover time bubble: cursor x
+  // within the scrubber + the formatted time at that fraction of duration.
+  const [seekBubble, setSeekBubble] = useState<{ x: number; label: string; visible: boolean }>({ x: 0, label: '', visible: false });
+  // Keyboard-shortcut legend overlay, toggled by the ? button in the right
+  // control group. Purely presentational; adds no bindings of its own.
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -243,7 +249,7 @@ function VideoPlayer() {
   // "The CURRENT episode's <video> has actually loaded." Episode navigation
   // reuses this same component (route param change, no unmount), so the
   // previous episode's end-of-stream currentTime/duration linger for a frame
-  // after we navigate — and for a *re-encoded* episode they linger for the
+  // after we navigate - and for a *re-encoded* episode they linger for the
   // entire transcode overlay, since no <video> mounts until the encode lands.
   // Anything gated on the playhead (auto-next overlay AND the tracker
   // auto-mark) must wait for this: armed on 'loadeddata', disarmed
@@ -273,7 +279,7 @@ function VideoPlayer() {
     };
   }, []);
 
-  // Web Audio gain stage — exponential volume curve with boost past unity.
+  // Web Audio gain stage - exponential volume curve with boost past unity.
   // Curve: total output = slider² × MAX_BOOST. Slider 100% = 250%.
   useEffect(() => {
     const video = videoRef.current;
@@ -367,7 +373,7 @@ function VideoPlayer() {
   // the entry once the user has effectively finished the episode (within the
   // tail window) so the next play starts fresh instead of jumping to credits.
   // Depend on videoSrc so we (re-)attach AFTER the <video> element actually
-  // mounts — on the first render the player shows a loading shell with no
+  // mounts - on the first render the player shows a loading shell with no
   // <video>, so videoRef.current is null and an empty-deps effect would bail
   // out for the entire lifetime of this mount.
   useEffect(() => {
@@ -427,12 +433,12 @@ function VideoPlayer() {
   // forward playback within this mount. Used by the Library "Last viewed"
   // sort. Accumulating real elapsed time (rather than reading currentTime
   // directly) means a scrub to ep credits doesn't count as a view, but
-  // pause/resume sessions do — what the user would intuit by "I watched
+  // pause/resume sessions do - what the user would intuit by "I watched
   // some of this". Fires once per mount; navigating to a new episode
   // remounts the effect and re-arms the threshold.
   useEffect(() => {
     if (!videoSrc || !seriesId || !episodeNumber) return;
-    if (isExtra) return;  // extras aren't episodes — don't record a series view
+    if (isExtra) return;  // extras aren't episodes - don't record a series view
     const video = videoRef.current;
     if (!video) return;
 
@@ -444,7 +450,7 @@ function VideoPlayer() {
     let marked = false;
 
     const VIEW_THRESHOLD_SEC = 30;
-    // Cap per-tick advance — guards against seeks and tab-backgrounding
+    // Cap per-tick advance - guards against seeks and tab-backgrounding
     // gaps. timeupdate normally fires ~4×/sec, so 2s is generous headroom
     // for legitimate playback while still rejecting jumps.
     const MAX_TICK_DELTA = 2;
@@ -482,7 +488,7 @@ function VideoPlayer() {
   // their episodeNumber collides with a real episode's; real episodes resolve
   // it from metadata by episodeNumber. The memo only returns a new value if
   // `seriesId`, `episodeNumber`, the explicit path, or the resolved filePath
-  // actually changes — keeps the open-video effect from re-firing every time
+  // actually changes - keeps the open-video effect from re-firing every time
   // some unrelated metadata field updates mid-playback.
   const activeFilePath = useMemo<string | null>(() => {
     if (explicitFilePath) return explicitFilePath;
@@ -495,7 +501,7 @@ function VideoPlayer() {
     return episode?.filePath ?? null;
   }, [seriesId, episodeNumber, metadata, explicitFilePath]);
 
-  // Open the underlying video through main — main checks for a cached
+  // Open the underlying video through main - main checks for a cached
   // pre-transcoded copy and returns whichever URL the <video> should use.
   // The `cancelled` flag guards against strict-mode double-mount races
   // where a stale openVideo() resolves AFTER the unmount.
@@ -537,7 +543,7 @@ function VideoPlayer() {
   // While a file is being transcoded, subscribe to status + progress IPC
   // events. When the file flips to 'ready' (cached MP4 has been published),
   // re-call openVideo so the renderer picks up the cached URL and playback
-  // begins automatically — the user never has to click anything.
+  // begins automatically - the user never has to click anything.
   useEffect(() => {
     if (!activeFilePath) return;
     const filePath = activeFilePath;
@@ -659,7 +665,7 @@ function VideoPlayer() {
             if (!result) continue;
             const lang = e.language ? e.language.toUpperCase() : null;
             const label = e.title && lang
-              ? `${lang} — ${e.title}`
+              ? `${lang} · ${e.title}`
               : e.title ?? (lang ?? `Track #${e.streamIndex}`);
             const isDefault = !out.some((s) => s.default) && (lang === 'ENG' || lang === 'EN' || out.length === 0);
             out.push({
@@ -737,7 +743,7 @@ function VideoPlayer() {
             queryFonts: false,
             // SSAA: render at 2× display × DPR, browser downsamples on blit.
             // prescaleHeightLimit is the CAP under which prescaleFactor is
-            // applied — it is NOT "0 = unlimited" (that branch becomes
+            // applied - it is NOT "0 = unlimited" (that branch becomes
             // `result <= 0` which never fires). Set huge so the upscale
             // branch always runs; maxRenderHeight: 0 means no upper cap.
             prescaleHeightLimit: 8640,
@@ -781,7 +787,7 @@ function VideoPlayer() {
     }
 
     // VTT path. The native <track>'s TextTrack may not have appeared in
-    // video.textTracks yet right after subtitleSrcs changes — give it a
+    // video.textTracks yet right after subtitleSrcs changes - give it a
     // microtask to materialize, then retry.
     const tryEnable = (attempt = 0) => {
       const t = findVttTrack(sub);
@@ -813,7 +819,7 @@ function VideoPlayer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subtitleSrcs]);
 
-  // Bottom-offset for native VTT cues. Doesn't apply to ASS — JASSUB renders
+  // Bottom-offset for native VTT cues. Doesn't apply to ASS - JASSUB renders
   // those with the file's own positioning, untouched. We only adjust cues
   // whose original line === 'auto' so author-positioned signs stay put.
   useEffect(() => {
@@ -897,12 +903,12 @@ function VideoPlayer() {
     return () => { cancelled = true; };
   }, [activeSubIdx, subtitleSrcs, jassubReadyTick]);
 
-  // ASS style override application — DISABLED while the feature is W.I.P.
+  // ASS style override application - DISABLED while the feature is W.I.P.
   // The dropdown still detects and lists dialogue styles for visibility,
   // but nothing gets written to JASSUB so the file's authored styling is
   // shown verbatim. Re-enable by removing the `return` below.
   useEffect(() => {
-    return; // W.I.P. — see Style tab banner.
+    return; // W.I.P. - see Style tab banner.
     // eslint-disable-next-line @typescript-eslint/no-unreachable-code, no-unreachable
     if (activeSubIdx < 0) return;
     const sub = subtitleSrcs[activeSubIdx];
@@ -980,7 +986,7 @@ function VideoPlayer() {
   //   2. AniSkip community DB keyed on MAL id.
   // Main handles the source decision; the renderer just calls and caches
   // the resolved values on the episode entry in metadata.json. We short-
-  // circuit only when the cached entry was sourced from chapters — older
+  // circuit only when the cached entry was sourced from chapters - older
   // AniSkip-only caches still get a one-time chapter check next time.
   useEffect(() => {
     if (!seriesId || !episodeNumber || duration <= 0) return;
@@ -1000,7 +1006,7 @@ function VideoPlayer() {
     }
 
     // Seed the UI with cached AniSkip values (if any) while we kick off
-    // the IPC — chapters might add or replace them, but in the meantime
+    // the IPC - chapters might add or replace them, but in the meantime
     // the skip bands don't flash empty.
     if (epMeta?.skipFetched) {
       setSkipTimes({
@@ -1010,7 +1016,7 @@ function VideoPlayer() {
     }
 
     const malId = (seriesData as { malId?: number }).malId;
-    // Without a malId AND no filePath, neither source can resolve — bail.
+    // Without a malId AND no filePath, neither source can resolve - bail.
     if (!malId && !activeFilePath) return;
 
     let cancelled = false;
@@ -1018,7 +1024,7 @@ function VideoPlayer() {
       .fetchSkipTimes(seriesId, malId ?? 0, epNum, duration, activeFilePath ?? undefined)
       .then((res) => {
         if (cancelled) return;
-        // Only overwrite if main actually returned something — a network
+        // Only overwrite if main actually returned something - a network
         // failure with no chapters returns {} and we don't want to clear
         // the cached seed we just set.
         if (res.op || res.ed) setSkipTimes(res);
@@ -1042,7 +1048,7 @@ function VideoPlayer() {
   };
 
   // ----- Tracker auto-mark -----
-  // Resolves to the time at which we count the episode as "watched" — outro
+  // Resolves to the time at which we count the episode as "watched" - outro
   // start when AniSkip has data, otherwise duration minus 90 s as a coarse
   // "credits started" fallback. null when we have no signal yet.
   const epNumForMark = parseInt(episodeNumber ?? '', 10);
@@ -1078,19 +1084,19 @@ function VideoPlayer() {
   }, []);
 
   const triggerMark = useCallback(async (origin: 'auto' | 'manual') => {
-    if (isExtra) return;  // extras share an episodeNumber with a real episode — never mark the tracker from one
+    if (isExtra) return;  // extras share an episodeNumber with a real episode - never mark the tracker from one
     console.log('[tracker]', origin, 'fire requested', { seriesId, epNumForMark, seriesAnilistId, seriesMalId });
     if (!seriesId || !Number.isFinite(epNumForMark)) {
       console.warn('[tracker] bail: missing seriesId or episode number');
       return;
     }
     if (!seriesAnilistId && !seriesMalId) {
-      // Surface the bail in both auto and manual cases — silent failures
+      // Surface the bail in both auto and manual cases - silent failures
       // here were the cause of "I watched a full episode and nothing
       // happened". Most common reason: poster auto-match didn't find a
       // confident hit, so the series has no anilistId/malId. Match it
       // manually from the Metadata tab.
-      showTrackerToast('No AniList/MAL id on this series — match it from the Metadata tab.');
+      showTrackerToast('No AniList/MAL id on this series; match it from the Metadata tab.');
       return;
     }
     type MarkRes = Awaited<ReturnType<typeof window.electronAPI.trackerMarkEpisode>>;
@@ -1143,7 +1149,7 @@ function VideoPlayer() {
     } else if (anyError) {
       showTrackerToast(`Tracker error${lastErrorMsg ? ': ' + lastErrorMsg : ''}`);
     } else if (summary.length) {
-      // Always show "already at N" — for the auto case this confirms the
+      // Always show "already at N" - for the auto case this confirms the
       // fire actually happened, just nothing to bump.
       showTrackerToast(summary.join(' · '));
     } else if (anyNotConnected) {
@@ -1154,7 +1160,7 @@ function VideoPlayer() {
   }, [isExtra, seriesId, epNumForMark, seriesAnilistId, seriesMalId, seriesTotalEps, showTrackerToast]);
 
   // Reset the auto-mark guard whenever the episode changes. Also disarm the
-  // media-loaded gate HERE — this effect sits above both playhead consumers
+  // media-loaded gate HERE - this effect sits above both playhead consumers
   // (auto-mark just below, auto-next further down), so the disarm lands
   // before either re-runs in this same commit. Doing it via a setState reset
   // of currentTime/duration wouldn't help: that re-render hasn't happened yet
@@ -1167,7 +1173,7 @@ function VideoPlayer() {
 
   // Fire once when playback first crosses the auto-mark threshold (the
   // earlier of AniSkip's outro start and 85% of duration). Re-checks on every
-  // currentTime update — cheap because a ref short-circuits after the first
+  // currentTime update - cheap because a ref short-circuits after the first
   // hit. The console.log helps debug "why didn't it fire" reports.
   useEffect(() => {
     if (!seriesId || !episodeNumber) return;
@@ -1175,7 +1181,7 @@ function VideoPlayer() {
     // loaded. Without this, a re-encoded episode (whose <video> doesn't mount
     // until the transcode finishes) inherits the previous episode's
     // end-of-stream currentTime and marks itself watched the instant you open
-    // it — bypassing the completion gate. Armed on 'loadeddata'.
+    // it - bypassing the completion gate. Armed on 'loadeddata'.
     if (!mediaLoadedRef.current) return;
     const key = `${seriesId}::${episodeNumber}`;
     if (autoMarkedRef.current === key) return;
@@ -1299,7 +1305,7 @@ function VideoPlayer() {
   });
 
   // Track ended-state for the center replay affordance. Cleared on play. Also
-  // arms the playhead gate once the new video has actually loaded — never on
+  // arms the playhead gate once the new video has actually loaded - never on
   // the stale frame left over from the previous episode. This is what lets
   // the auto-next overlay and the tracker auto-mark trust currentTime again.
   useEffect(() => {
@@ -1326,13 +1332,13 @@ function VideoPlayer() {
       const el = e.target as HTMLElement | null;
       const tag = el?.tagName?.toLowerCase();
       // Let our own range sliders (scrubber, volume) fall through to the
-      // shortcuts below — otherwise a focused slider eats Arrow keys as native
+      // shortcuts below - otherwise a focused slider eats Arrow keys as native
       // 0.1-step increments (feels like "seeking does nothing, just stutters").
       // The handled branches all preventDefault(), suppressing that native step.
       const isRange = tag === 'input' && (el as HTMLInputElement).type === 'range';
       if ((tag === 'input' && !isRange) || tag === 'textarea') return;
       // Suppress OS key auto-repeat. Every shortcut here is meant to fire
-      // once per press — without this, holding Arrow Right floods <video>
+      // once per press - without this, holding Arrow Right floods <video>
       // with overlapping currentTime assignments; Chromium cancels the
       // in-flight seek for each new one and the picture freezes, then
       // snaps to a compounded target. Feels exactly like "jittery and
@@ -1384,6 +1390,17 @@ function VideoPlayer() {
     return () => window.removeEventListener('keydown', onKey);
   }, [showChrome, skipTimes]);
 
+  // Close the shortcut legend on Escape. A separate listener so the main
+  // keyboard handler above stays exactly as it is (it never handled Escape).
+  useEffect(() => {
+    if (!shortcutsOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShortcutsOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [shortcutsOpen]);
+
   const togglePlay = () => {
     const video = videoRef.current;
     if (!video) return;
@@ -1391,7 +1408,7 @@ function VideoPlayer() {
   };
 
   // Sorted episode-number list for prev/next nav. Built from the series's
-  // fileEpisodes (only on-disk episodes are navigable). Integer numbers only —
+  // fileEpisodes (only on-disk episodes are navigable). Integer numbers only;
   // skip decimals like 6.5 since those aren't really sequential.
   const epNumNumeric = episodeNumber ? parseInt(episodeNumber, 10) : NaN;
   const seriesEpisodeNumbers: number[] = (() => {
@@ -1404,7 +1421,7 @@ function VideoPlayer() {
     return Array.from(new Set(nums)).sort((a, b) => a - b);
   })();
   const currentEpIdx = Number.isFinite(epNumNumeric) ? seriesEpisodeNumbers.indexOf(epNumNumeric) : -1;
-  // Extras have no sequential neighbours — disable prev/next (and, since nextEp
+  // Extras have no sequential neighbours - disable prev/next (and, since nextEp
   // is null, the auto-play-next overlay never arms).
   const prevEp = (!isExtra && currentEpIdx > 0) ? seriesEpisodeNumbers[currentEpIdx - 1] : null;
   const nextEp = (!isExtra && currentEpIdx >= 0 && currentEpIdx < seriesEpisodeNumbers.length - 1)
@@ -1455,7 +1472,7 @@ function VideoPlayer() {
     const code = video?.error?.code;
     // MEDIA_ERR_SRC_NOT_SUPPORTED (4) and MEDIA_ERR_DECODE (3) are the
     // "Chromium can't play this" cases. Aborts (1) and network errors (2)
-    // are noise — let those re-try naturally.
+    // are noise - let those re-try naturally.
     if (code !== 3 && code !== 4) return;
     if (unsupported) return;
     setUnsupported({ mode: 'decode-failed' });
@@ -1475,7 +1492,7 @@ function VideoPlayer() {
 
   // Reset the auto-next overlay whenever the episode changes. The playhead
   // gate (mediaLoadedRef) is disarmed up in the auto-mark reset effect, which
-  // runs before this one — so by the time the driver effect below reads it,
+  // runs before this one - so by the time the driver effect below reads it,
   // it's already false. Here we just clear the overlay flags and reset
   // currentTime/duration to 0 so the scrubber and `remaining` math don't read
   // the previous episode's stale values.
@@ -1495,7 +1512,7 @@ function VideoPlayer() {
   // longer next-episode previews are left to play out).
   useEffect(() => {
     if (nextEp == null || nextDismissed || !duration) return;
-    // Bail until the current episode's video has actually loaded — guards
+    // Bail until the current episode's video has actually loaded - guards
     // against the stale post-navigation frame re-triggering the countdown.
     if (!mediaLoadedRef.current) return;
     const remaining = duration - currentTime;
@@ -1529,7 +1546,7 @@ function VideoPlayer() {
           </button>
         </div>
         <div className="player-canvas">
-          <div style={{ color: 'rgba(255,255,255,0.6)', fontFamily: 'var(--font-mono)' }}>
+          <div style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
             Loading episode…
           </div>
         </div>
@@ -1579,7 +1596,7 @@ function VideoPlayer() {
 
   return (
     <div
-      className={`player-wrap${!chrome && !subMenuOpen && !unsupported ? ' cursor-hidden' : ''}`}
+      className={`player-wrap${!chrome && !subMenuOpen && !unsupported && !shortcutsOpen ? ' cursor-hidden' : ''}`}
       ref={wrapRef}
       onMouseMove={showChrome}
     >
@@ -1633,7 +1650,7 @@ function VideoPlayer() {
         <div className="player-rating-prompt" role="dialog" aria-modal="false">
           <div className="player-rating-prompt-head">
             <CheckCheck size={14} strokeWidth={2.5} />
-            <span>Tracked · final episode — rate this show?</span>
+            <span>Tracked · final episode · rate this show?</span>
           </div>
           <div className="player-rating-prompt-body">
             <ScorePicker
@@ -1707,7 +1724,7 @@ function VideoPlayer() {
                 className="codec-modal-btn ghost"
                 onClick={() => navigate(`/series/${seriesId}`)}
               >Back to series</button>
-              <Tooltip label="Skip the wait — play the original file in your system mpv">
+              <Tooltip label="Skip the wait: play the original file in your system mpv">
                 <button
                   className="codec-modal-btn"
                   onClick={() => void handleOpenInMpv()}
@@ -1734,7 +1751,7 @@ function VideoPlayer() {
               </div>
             </div>
             <div className="codec-modal-body">
-              Launch the file in your system&rsquo;s <code>mpv</code> instead. AniBeam stays running — mpv opens in its own window.
+              Launch the file in your system&rsquo;s <code>mpv</code> instead. AniBeam stays running; mpv opens in its own window.
             </div>
             <div className="codec-modal-actions">
               <button
@@ -1812,38 +1829,86 @@ function VideoPlayer() {
           </button>
         </div>
       )}
+      {shortcutsOpen && (
+        <div
+          className="player-shortcuts-backdrop"
+          onClick={() => setShortcutsOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Keyboard shortcuts"
+        >
+          <div className="player-shortcuts" onClick={(e) => e.stopPropagation()}>
+            <div className="player-shortcuts-title">Keyboard shortcuts</div>
+            <div className="player-shortcuts-list">
+              {([
+                ['Space / K', 'Play / pause'],
+                ['←', 'Back 5s'],
+                ['→', 'Forward 5s'],
+                ['Ctrl →', 'Skip intro/outro, else forward 90s'],
+                ['M', 'Mute / unmute'],
+                ['F', 'Fullscreen'],
+                ['C', 'Captions on / off'],
+              ] as const).map(([keys, label]) => (
+                <div className="player-shortcut-row" key={label}>
+                  <span className="chip chip--sm player-shortcut-key">{keys}</span>
+                  <span className="player-shortcut-label">{label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
       <div
         className="player-controls"
         style={{ opacity: chrome ? 1 : 0, pointerEvents: chrome ? 'auto' : 'none' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <input
-          className="player-scrub"
-          type="range"
-          min={0}
-          max={duration || 0}
-          step={0.1}
-          value={Math.min(currentTime, duration || 0)}
-          onChange={onSeek}
-          style={{
-            '--progress': `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
-            // Build the track background dynamically: stacked gradients with
-            // intro / outro tints overlaid on the played-vs-unplayed base.
-            // First listed gradient renders on top.
-            background: (() => {
-              if (!duration) return undefined;
-              const pct = (n: number) => `${Math.max(0, Math.min(100, (n / duration) * 100))}%`;
-              const layers: string[] = [];
-              const band = (start: number, end: number, rgba: string) =>
-                `linear-gradient(to right, transparent 0, transparent ${pct(start)}, ${rgba} ${pct(start)}, ${rgba} ${pct(end)}, transparent ${pct(end)}, transparent 100%)`;
-              if (skipTimes.op) layers.push(band(skipTimes.op.start, skipTimes.op.end, 'rgba(224, 192, 137, 0.7)')); // intro: warm amber
-              if (skipTimes.ed) layers.push(band(skipTimes.ed.start, skipTimes.ed.end, 'rgba(96, 144, 208, 0.7)'));  // outro: cool blue
-              const progress = Math.max(0, Math.min(100, (currentTime / duration) * 100));
-              layers.push(`linear-gradient(to right, #d8d8e0 0%, #d8d8e0 ${progress}%, rgba(255,255,255,0.18) ${progress}%, rgba(255,255,255,0.18) 100%)`);
-              return layers.join(', ');
-            })(),
-          } as React.CSSProperties}
-        />
+        <div className="player-scrub-wrap">
+          <input
+            className="player-scrub"
+            type="range"
+            min={0}
+            max={duration || 0}
+            step={0.1}
+            value={Math.min(currentTime, duration || 0)}
+            onChange={onSeek}
+            onMouseMove={(e) => {
+              // Seek-hover time bubble: pure chrome, no seeking involved.
+              if (!duration) return;
+              const rect = e.currentTarget.getBoundingClientRect();
+              if (rect.width <= 0) return;
+              const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+              setSeekBubble({ x: e.clientX - rect.left, label: formatTime(frac * duration), visible: true });
+            }}
+            onMouseLeave={() => setSeekBubble((b) => (b.visible ? { ...b, visible: false } : b))}
+            style={{
+              '--progress': `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
+              // Build the track background dynamically: stacked gradients with
+              // intro / outro tints overlaid on the played-vs-unplayed base.
+              // First listed gradient renders on top. Colors are var() refs to
+              // the tokenized palette declared on .player-controls in player.css.
+              background: (() => {
+                if (!duration) return undefined;
+                const pct = (n: number) => `${Math.max(0, Math.min(100, (n / duration) * 100))}%`;
+                const layers: string[] = [];
+                const band = (start: number, end: number, color: string) =>
+                  `linear-gradient(to right, transparent 0, transparent ${pct(start)}, ${color} ${pct(start)}, ${color} ${pct(end)}, transparent ${pct(end)}, transparent 100%)`;
+                if (skipTimes.op) layers.push(band(skipTimes.op.start, skipTimes.op.end, 'var(--player-band-intro)')); // intro: warm amber
+                if (skipTimes.ed) layers.push(band(skipTimes.ed.start, skipTimes.ed.end, 'var(--player-band-outro)')); // outro: brand teal
+                const progress = Math.max(0, Math.min(100, (currentTime / duration) * 100));
+                layers.push(`linear-gradient(to right, var(--player-scrub-played) 0%, var(--player-scrub-played) ${progress}%, var(--player-scrub-rest) ${progress}%, var(--player-scrub-rest) 100%)`);
+                return layers.join(', ');
+              })(),
+            } as React.CSSProperties}
+          />
+          <span
+            className={`chip chip--sm chip--scrim player-seek-bubble${seekBubble.visible ? ' is-visible' : ''}`}
+            style={{ left: seekBubble.x }}
+            aria-hidden="true"
+          >
+            {seekBubble.label}
+          </span>
+        </div>
         <div className="player-controls-row">
           <Tooltip label={prevEp != null ? `Previous: episode ${prevEp}` : 'No previous episode'}>
             <button
@@ -1964,7 +2029,7 @@ function VideoPlayer() {
                           setVttStyle(DEFAULT_SUB_STYLE);
                         }
                       };
-                      // ASS styling is disabled for now — libass's layout cache
+                      // ASS styling is disabled for now - libass's layout cache
                       // makes per-style edits behave inconsistently and the
                       // current code path was producing more frustration than
                       // value. Coming back to it later with a different approach.
@@ -1973,7 +2038,7 @@ function VideoPlayer() {
                         <div className="sub-menu-body sub-menu-style">
                           {isAss && (
                             <div className="sub-wip-banner">
-                              <span className="sub-wip-tag">W.I.P.</span>
+                              <span className="chip chip--sm chip--amber">W.I.P.</span>
                               <span>Style overrides for embedded ASS subs are temporarily disabled. The dropdown still shows the dialogue styles detected in this file.</span>
                             </div>
                           )}
@@ -1990,7 +2055,7 @@ function VideoPlayer() {
                                   ))}
                                 </select>
                               ) : (
-                                <span className="sub-style-val" style={{ fontStyle: 'italic', color: '#6a6a76' }}>none detected</span>
+                                <span className="sub-style-val" style={{ fontStyle: 'italic', color: 'var(--text-muted)' }}>none detected</span>
                               )}
                             </label>
                           )}
@@ -2066,8 +2131,8 @@ function VideoPlayer() {
                             </select>
                           </label>
                           {isAss && (
-                            <p style={{ margin: '4px 0 0', color: '#6a6a76', fontSize: 11, fontStyle: 'italic' }}>
-                              Colors come from the file&rsquo;s author-typeset styling — left untouched on purpose.
+                            <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: 11, fontStyle: 'italic' }}>
+                              Colors come from the file&rsquo;s author-typeset styling, left untouched on purpose.
                             </p>
                           )}
                           <button
@@ -2082,6 +2147,15 @@ function VideoPlayer() {
                 )}
               </div>
             )}
+            <Tooltip label="Keyboard shortcuts">
+              <button
+                className={`player-ctl-btn${shortcutsOpen ? ' active' : ''}`}
+                onClick={() => setShortcutsOpen((v) => !v)}
+                aria-label="Keyboard shortcuts"
+              >
+                <HelpCircle size={18} />
+              </button>
+            </Tooltip>
             <button className="player-ctl-btn" onClick={toggleFullscreen} aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}>
               {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
             </button>

@@ -4,7 +4,7 @@ import { useMetadata } from '../hooks/useMetadata';
 import { useHiddenShows } from '../contexts/HiddenShowsContext';
 import { Folder, RefreshCw, Plus, Trash2, Film, Rss, ChevronRight } from 'lucide-react';
 import TrackersSection from './TrackersSection';
-import { Page, Section, Inline, Tooltip } from './primitives';
+import { Page, Section, Inline, Tooltip, SegmentedSwitch } from './primitives';
 
 interface CacheStats {
   count: number;
@@ -40,29 +40,6 @@ function Toggle({ on, onChange, ariaLabel }: ToggleProps) {
   );
 }
 
-interface SegmentProps<T extends string> {
-  value: T;
-  onChange: (v: T) => void;
-  options: Array<{ id: T; label: string }>;
-}
-
-function Segment<T extends string>({ value, onChange, options }: SegmentProps<T>) {
-  return (
-    <div className="segment">
-      {options.map((o) => (
-        <button
-          key={o.id}
-          type="button"
-          className={`segment-opt${value === o.id ? ' on' : ''}`}
-          onClick={() => onChange(o.id)}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 type SubtitlePref = 'off' | 'auto' | 'always';
 
 function SettingsTab() {
@@ -77,7 +54,7 @@ function SettingsTab() {
   const [loading, setLoading] = useState(true);
   const [cacheStats, setCacheStats] = useState<CacheStats>({ count: 0, sizeBytes: 0 });
 
-  // Design-only state (no persistence wired up yet — flagged in copy)
+  // Design-only state (no persistence wired up yet; flagged in copy)
   const [sources, setSources] = useState({ anilist: true, mal: true });
   const [autoScan, setAutoScan] = useState(true);
   const [subtitles, setSubtitles] = useState<SubtitlePref>('auto');
@@ -341,7 +318,7 @@ function SettingsTab() {
               <div className="source-priority">{String(s.priority).padStart(2, '0')}</div>
               <div className="source-info">
                 <div className="source-name">{s.label}</div>
-                <div className="source-desc">{s.desc}</div>
+                <div className="source-desc">{s.desc} · <span className="pref-note">not wired up yet</span></div>
               </div>
               <Toggle
                 on={sources[s.id]}
@@ -365,7 +342,7 @@ function SettingsTab() {
           </button>
         }
       >
-        <p className="section-sub">RSS feeds anirss is watching for you. Moved out of the main nav — open the full list here.</p>
+        <p className="section-sub">RSS feeds anirss is watching for you. Moved out of the main nav; open the full list here.</p>
       </Section>
 
       <Section title="Library">
@@ -385,22 +362,23 @@ function SettingsTab() {
           <div className="pref-row">
             <div>
               <div className="pref-label">Subtitles</div>
-              <div className="pref-help">Default subtitle track when starting playback.</div>
+              <div className="pref-help">Default subtitle track when starting playback. <span className="pref-note">not wired up yet</span></div>
             </div>
-            <Segment<SubtitlePref>
+            <SegmentedSwitch<SubtitlePref>
               value={subtitles}
               onChange={setSubtitles}
+              ariaLabel="Default subtitles"
               options={[
-                { id: 'off', label: 'Off' },
-                { id: 'auto', label: 'Auto' },
-                { id: 'always', label: 'Always English' },
+                { value: 'off', label: 'Off' },
+                { value: 'auto', label: 'Auto' },
+                { value: 'always', label: 'Always English' },
               ]}
             />
           </div>
           <div className="pref-row">
             <div>
               <div className="pref-label">Auto-scan on launch</div>
-              <div className="pref-help">Re-scan folders for new files when AniBeam starts.</div>
+              <div className="pref-help">Re-scan folders for new files when AniBeam starts. <span className="pref-note">not wired up yet</span></div>
             </div>
             <Toggle on={autoScan} onChange={setAutoScan} ariaLabel="Toggle auto-scan" />
           </div>

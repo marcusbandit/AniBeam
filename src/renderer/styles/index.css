@@ -1,66 +1,67 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import './fonts.css';
 
 :root {
-  /* Surfaces */
-  --bg-primary:   #0b0b10;
-  --bg-secondary: #131319;
-  --bg-tertiary:  #1a1a22;
-  --bg-card:      #15151c;
-  --bg-hover:     #1d1d26;
+  /* Surfaces: flat, barely-teal neutral */
+  --bg-primary:   #0b0d0e;   /* page */
+  --bg-secondary: #121517;
+  --bg-tertiary:  #191d20;
+  --bg-card:      #14181a;
+  --bg-hover:     #1c2124;
+  --bg-elev:      rgba(255, 255, 255, 0.04);
 
-  /* Accents (used sparingly) */
-  --accent-primary:   #6366f1;
-  --accent-secondary: #818cf8;
-  --accent-glow:      rgba(99, 102, 241, 0.18);
-  --accent-rose:      #f43f5e;
-  --accent-teal:      #14b8a6;
-  --accent-amber:     #f59e0b;
-  /* Vivid blue for the "track to here" marker preview — deliberately more
-     saturated than the watched teal so the to-be-tracked range reads distinct. */
-  --accent-blue:      #38bdf8;
-
-  /* List-status accents — colour the small marker that flags a Related or
-     Recommended entry as already on the user's tracker list. Conventional
-     tracker palette so the meaning reads without a legend: green = actively
-     watching, blue = finished, amber = on hold, red = dropped, slate = not
-     started yet, violet = rewatching. Keyed off the canonical TrackerListStatus. */
-  --status-watching:   #4ade80;  /* green — actively watching */
-  --status-completed:  #60a5fa;  /* blue — finished */
-  --status-paused:     #fbbf24;  /* amber — on hold */
-  --status-dropped:    #f87171;  /* red — dropped */
-  --status-planning:   #94a3b8;  /* slate — planning, not started */
-  --status-rewatching: #a78bfa;  /* violet — rewatching */
-
-  /* Per-format hues — used by the Related section to give each AniList
-     MediaFormat a recognisable colour at a glance. Keep these distinct
-     enough that two adjacent cards never look the same, but soft enough
-     that the chip/border tint doesn't fight with the card content. */
-  --format-tv:        #14b8a6;  /* teal — TV series (incl. TV_SHORT) */
-  --format-movie:     #f59e0b;  /* amber */
-  --format-ova:       #a78bfa;  /* violet */
-  --format-ona:       #22d3ee;  /* cyan */
-  --format-special:   #f43f5e;  /* rose */
-  --format-music:     #10b981;  /* emerald */
-  --format-manga:     #fb923c;  /* orange */
-  --format-novel:     #f472b6;  /* pink — NOVEL / LIGHT_NOVEL */
-  --format-oneshot:   #fbbf24;  /* warm yellow */
-  --format-vn:        #e879f9;  /* fuchsia — VISUAL_NOVEL */
+  /* Borders: hairlines */
+  --border-color: rgba(255, 255, 255, 0.08);
+  --border-hover: rgba(255, 255, 255, 0.16);
 
   /* Text */
-  --text-primary:   #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-muted:     #64748b;
+  --text-primary:   #eef3f2;
+  --text-secondary: #9aa7a4;
+  --text-muted:     #5f6b68;
 
-  /* Borders */
-  --border-color: rgba(255, 255, 255, 0.07);
-  --border-hover: rgba(255, 255, 255, 0.14);
+  /* Accents: one living accent (brand teal), the rest are quiet state hues */
+  --accent-primary:   #3ecfb2;                 /* brand teal */
+  --accent-secondary: #8ae7d4;                 /* lighter teal: hover text, focus ring */
+  --accent-glow:      rgba(62, 207, 178, 0.16);
+  --accent-amber:     #e0b568;                 /* pending, warnings, extras */
+  --accent-rose:      #e8647e;                 /* danger, failures, dropped */
+  --accent-blue:      #6cb0f0;                 /* completed, informational */
+  --accent-violet:    #b39ce8;                 /* rewatching, OVA-ish */
 
-  /* Shadows — subtle */
+  /* AniList brand blue: external-entry chips only */
+  --anilist-blue: #02a9ff;
+
+
+  /* Tracker list-status hues */
+  --status-watching:   var(--accent-primary);
+  --status-completed:  var(--accent-blue);
+  --status-paused:     var(--accent-amber);
+  --status-dropped:    var(--accent-rose);
+  --status-planning:   #8b9895;
+  --status-rewatching: var(--accent-violet);
+
+  /* Per-format hues: recalibrated to the palette's saturation family.
+     None equals brand teal, no two adjacent formats are confusable. */
+  --format-tv:        #5fc4de;
+  --format-movie:     #e0b568;
+  --format-ova:       #b39ce8;
+  --format-ona:       #7dd4a8;
+  --format-special:   #e8647e;
+  --format-music:     #62c99a;
+  --format-manga:     #e89a62;
+  --format-novel:     #e88ab0;
+  --format-oneshot:   #d4c060;
+  --format-vn:        #cf8ae0;
+
+  /* THE dark glass over posters: the only scrim recipe in the app */
+  --scrim: rgba(10, 12, 12, 0.78);
+  --scrim-blur: 6px;
+
+  /* Shadows: subtle */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.5);
 
-  /* Radii — generous rounding */
+  /* Radii: generous rounding */
   --radius-sm: 10px;
   --radius-md: 14px;
   --radius-lg: 20px;
@@ -72,10 +73,15 @@
   --transition-normal: 200ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition-slow:   320ms cubic-bezier(0.4, 0, 0.2, 1);
 
-  /* Type families — mono-forward */
-  --font-sans: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+  /* Type families: display face is used sparingly (brand word, page titles,
+     hero titles); everything else is mono */
+  --font-display: 'Zen Maru Gothic', 'Noto Sans CJK JP', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  --font-ui:   'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Chip type scale: exactly two sizes, app-wide. Every badge/pill/chip
+     uses one of these; no other chip font sizes are allowed. */
+  --chip-font:    0.72rem;
+  --chip-font-sm: 0.64rem;
 
   /* Spacing scale (4px base). Use these for every padding/margin/gap;
      gaps inside a unit must be smaller than gaps between units. */
@@ -90,7 +96,7 @@
   --s12: 48px;
   --s16: 64px;
 
-  /* Motion engine constants — values here are read directly by motion.ts
+  /* Motion engine constants: values here are read directly by motion.ts
      via getComputedStyle when needed, and by CSS for non-engine fades. */
   --motion-lift-speed:  12;
   --motion-halo-speed:  9;
@@ -126,25 +132,11 @@ body {
   flex-direction: column;
 }
 
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--bg-tertiary);
-  border-radius: 999px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--bg-hover);
-}
-
-::selection {
-  background: var(--accent-primary);
-  color: white;
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
 }

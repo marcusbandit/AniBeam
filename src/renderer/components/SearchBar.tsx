@@ -68,7 +68,7 @@ function SearchBar({ onSearch, placeholder = 'Search…' }: SearchBarProps) {
           <X size={14} />
         </button>
       ) : (
-        <span className="library-search-hint">/</span>
+        <span className="library-search-hint chip chip--sm" aria-hidden="true">Ctrl K</span>
       )}
     </div>
   );
