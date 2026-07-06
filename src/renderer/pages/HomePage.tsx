@@ -89,8 +89,8 @@ const SORT_OPTIONS: SegmentedOption<SortKey>[] = [
       <Star
         size={16}
         aria-hidden="true"
-        fill="var(--accent-teal)"
-        stroke="var(--accent-teal)"
+        fill="var(--accent-primary)"
+        stroke="var(--accent-primary)"
       />
     ),
     ariaLabel: "My score",

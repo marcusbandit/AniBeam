@@ -1,0 +1,33 @@
+/* responsive.css - all max-width media overrides; imported last so they beat the area files */
+
+/* ============ RESPONSIVE ============ */
+@media (max-width: 768px) {
+  .page { padding: 1.25rem 1.25rem 3rem; }
+  .navbar { padding: 0.5rem 1rem; gap: 1rem; }
+  .navbar-meta { display: none; }
+  .show-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 1rem 0.75rem; }
+  .episodes-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+  .meta-row {
+    grid-template-columns: 56px 1fr 80px;
+  }
+  .meta-row > .col-source,
+  .meta-row > .col-files,
+  .meta-row > .col-updated { display: none; }
+  .cache-stats {
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+  .cache-actions { grid-column: 1 / -1; justify-self: stretch; }
+}
+
+@media (max-width: 980px) {
+  .series-hero-inner {
+    grid-template-columns: 220px 1fr;
+  }
+}
+@media (max-width: 720px) {
+  .series-hero-inner {
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+  }
+}

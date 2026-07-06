@@ -1,0 +1,275 @@
+/* base.css - global resets, .app shell, ambient cursor, page scaffold, library search, .btn/.icon-btn, empty/loading states */
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+}
+button:disabled { cursor: not-allowed; opacity: 0.55; }
+input, select, textarea { font-family: inherit; }
+a { color: inherit; text-decoration: none; }
+/* No image drag anywhere in the app - it's a media library, not a clipboard
+   source, and the drag ghost is just noise on hover-heavy grids. */
+img { -webkit-user-drag: none; user-drag: none; }
+
+/* Text selection picks up the app accent instead of OS blue. */
+::selection {
+  background: color-mix(in srgb, var(--accent-primary) 35%, transparent);
+  color: var(--text-primary);
+}
+
+/* Keyboard-only focus ring (mouse clicks don't trigger). The radius
+   inherits so the ring hugs whatever element shape it's wrapping. */
+:focus-visible {
+  outline: 2px solid var(--accent-secondary);
+  outline-offset: 2px;
+  border-radius: inherit;
+}
+
+/* Quiet themed scrollbar - pairs with the scrollbar-gutter: stable rule on
+   .main-content. WebKit / Blink only (Electron is Chromium). */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-muted) 35%, transparent);
+  border-radius: var(--radius-pill);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--text-muted) 60%, transparent);
+}
+
+.app {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+/* ============ AMBIENT CURSOR ============ */
+/* Sits at the root, behind everything. All four halo properties (center
+   x/y, radius, intensity) are driven by JS via AmbientCursor.tsx and the
+   shared motion engine - CSS just renders whatever values are set.
+   At rest the radius is wide (SIZE_IDLE) and intensity is low (INTENSITY_IDLE);
+   when a halo target is hovered the radius shrinks and intensity rises,
+   producing a "zoom-in" toward the focused element. */
+.ambient-cursor {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: var(--ambient-intensity, 0);
+  background:
+    radial-gradient(
+      var(--ambient-size, 1200px) circle at var(--ambient-x, 50%) var(--ambient-y, 50%),
+      color-mix(in srgb, var(--accent-primary) 16%, transparent),
+      color-mix(in srgb, var(--accent-primary)    5%, transparent) 35%,
+      transparent 65%
+    );
+}
+
+/* The app shell already establishes a stacking context; nudge real content
+   above the halo. */
+.navbar, .main-content { position: relative; z-index: 1; }
+
+.main-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  scroll-behavior: smooth;
+}
+
+/* ============ PAGE SHELL ============ */
+.page {
+  padding: 2rem 2.5rem 4rem;
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+}
+.page-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.875rem;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+}
+.page-sub {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  max-width: 60ch;
+}
+
+/* ============ LIBRARY: PAGE-LEVEL SEARCH ============ */
+.library-search {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+  margin-bottom: 2rem;
+}
+.library-search-icon {
+  position: absolute;
+  left: 0.875rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  display: flex;
+  pointer-events: none;
+}
+.library-search-input {
+  width: 100%;
+  padding: 0.85rem 2.75rem 0.85rem 2.75rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-pill);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-family: var(--font-mono);
+  outline: none;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+.library-search-input::placeholder { color: var(--text-muted); }
+.library-search-input:focus { border-color: var(--accent-primary); }
+.library-search-clear {
+  position: absolute;
+  right: 0.6rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+.library-search-clear:hover { color: var(--text-primary); background: var(--bg-tertiary); }
+.library-search-hint {
+  position: absolute;
+  right: 0.6rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  pointer-events: none;
+}
+
+/* ============ SECTION HEADERS ============ */
+.section-sub {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-top: 0.2rem;
+  max-width: 60ch;
+}
+
+/* ============ EMPTY STATES ============ */
+.empty {
+  padding: 4rem 2rem;
+  text-align: center;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+}
+.empty-icon {
+  color: var(--text-muted);
+  opacity: 0.5;
+  margin-bottom: 0.75rem;
+  display: inline-flex;
+}
+.empty-title {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--text-primary);
+  margin-bottom: 0.4rem;
+}
+.empty-text {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+.empty-text strong { color: var(--text-secondary); font-weight: 600; }
+
+/* ============ BUTTONS ============ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem 0.95rem;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 0.875rem;
+  border-radius: var(--radius-lg);
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-primary { background: var(--accent-primary); color: white; }
+.btn-primary:hover:not(:disabled) { background: var(--accent-secondary); }
+.btn-secondary { background: var(--bg-secondary); color: var(--text-primary); border-color: var(--border-color); }
+.btn-secondary:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--border-hover); }
+.btn-danger { background: transparent; color: var(--accent-rose); border-color: rgba(244, 63, 94, 0.3); }
+.btn-danger:hover:not(:disabled) { background: rgba(244, 63, 94, 0.08); border-color: rgba(244, 63, 94, 0.5); }
+.btn-small { padding: 0.35rem 0.65rem; font-size: 0.78rem; }
+
+.icon-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  flex-shrink: 0;
+}
+.icon-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.icon-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.icon-btn-danger:hover { color: var(--accent-rose); background: rgba(244, 63, 94, 0.08); }
+
+/* ============ LOADING ============ */
+.loading {
+  padding: 4rem 2rem;
+  text-align: center;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+}
+.error {
+  padding: 4rem 2rem;
+  text-align: center;
+  color: var(--accent-rose);
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+}
+.loading-spinner {
+  width: 48px;
+  height: 48px;
+  border: 3px solid var(--bg-tertiary);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 1rem;
+}
+.loading-spinner.small {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+  margin: 0;
+  display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin 1s linear infinite; }

@@ -30,9 +30,6 @@
   /* AniList brand blue: external-entry chips only */
   --anilist-blue: #02a9ff;
 
-  /* Compat alias while the retokenization sweep is in flight; remap usages
-     to --accent-primary and then delete this. */
-  --accent-teal: var(--accent-primary);
 
   /* Tracker list-status hues */
   --status-watching:   var(--accent-primary);

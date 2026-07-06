@@ -1,0 +1,709 @@
+/* player.css - VideoPlayer chrome: controls, skip/autonext, toasts, rating prompt, codec modal, subtitle menu */
+
+/* ============ VIDEO PLAYER ============ */
+.player-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: #000;
+}
+/* Hide the cursor along with the chrome - applied as a sibling class so
+   the wrap stays at the same DOM node and the cursor returns the moment
+   mouse-move re-shows chrome. */
+.player-wrap.cursor-hidden,
+.player-wrap.cursor-hidden * {
+  cursor: none;
+}
+.player-canvas {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.player-canvas video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  /* Give the video its own stacking context AT THE BASE so that positioned
+     siblings (the JASSUB canvas) can sit above it via z-index. Without
+     this, Chromium's video compositor layer can render on top of normal
+     positioned elements. */
+  position: relative;
+  z-index: 0;
+}
+
+/* JASSUB injects its own canvas as a sibling of the <video>. JASSUB sets
+   inline width/height/top/left from the video's bounding rect; we just need
+   to ensure it sits above the video on its own compositor layer (Chromium
+   <video> renders on a GPU layer that ignores naive z-index). */
+.player-canvas canvas.JASSUB {
+  pointer-events: none !important;
+  display: block !important;
+  z-index: 3 !important;
+  transform: translateZ(0) !important;
+  will-change: transform !important;
+  /* Force smooth high-quality interpolation when the SSAA bitmap is
+     downsampled to display pixels. Default 'auto' is usually smooth but
+     in some Chromium configs falls back to nearest-neighbor. */
+  image-rendering: auto !important;
+  image-rendering: high-quality !important;
+}
+
+/* Force a stacking context on the player canvas so its children stack
+   independently of anything else on the page. */
+.player-canvas {
+  isolation: isolate;
+}
+
+/* Custom player controls - replaces native <video controls>. No Chromium
+   pseudo-elements involved; we render a regular bar with regular range
+   inputs we can size and style cleanly. */
+.player-controls {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  padding: 16px 24px 18px;
+  background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0) 100%);
+  transition: opacity 200ms ease;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: var(--font-mono);
+  color: #d8d8e0;
+}
+.player-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.player-ctl-btn {
+  background: transparent;
+  border: none;
+  color: #d8d8e0;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 0;
+}
+.player-ctl-btn:hover { background: rgba(255,255,255,0.1); }
+.player-ctl-btn.active { color: #ffffff; background: rgba(255,255,255,0.14); }
+.player-ctl-btn:disabled { opacity: 0.3; cursor: default; }
+.player-ctl-btn:disabled:hover { background: transparent; }
+.player-right-group { margin-left: auto; display: flex; gap: 4px; align-items: center; }
+
+/* Bottom-right action row - Skip Intro/Outro and the auto-next Stay/Next pills
+   share one inline row above the controls bar: <Skip Outro> <Stay><Next>. */
+.player-bottom-actions {
+  position: absolute;
+  right: 24px;
+  bottom: 96px;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Skip Intro / Skip Outro button. Visible only while the playhead is inside the
+   AniSkip window. */
+.player-skip {
+  background: rgba(20, 20, 26, 0.92);
+  color: #d8d8e0;
+  border: 1px solid #3a3a48;
+  border-radius: 999px;
+  padding: 10px 18px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  transition: transform 120ms ease, background 120ms ease;
+}
+.player-skip:hover {
+  background: #1a1a22;
+  border-color: #6090d0;
+  transform: translateY(-1px);
+}
+
+/* Auto-play-next - Stay + Next pills, inline in the bottom action row. The Next
+   pill is white and fills with a brighter white sweeping left→right over the 5s
+   countdown (no number, just the bar). */
+.player-autonext {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+.player-autonext-stay,
+.player-autonext-next {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 10px 18px;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+.player-autonext-stay {
+  background: rgba(20, 20, 26, 0.92);
+  color: #d8d8e0;
+  border: 1px solid #3a3a48;
+}
+.player-autonext-stay:hover {
+  background: #1a1a22;
+  border-color: #6090d0;
+  transform: translateY(-1px);
+}
+.player-autonext-next {
+  position: relative;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.24);
+  color: #14141a;
+  font-weight: 700;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+.player-autonext-next:hover { background: rgba(255, 255, 255, 0.34); }
+.player-autonext-fill {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.62);
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+.player-autonext-next.counting .player-autonext-fill {
+  transform: scaleX(1);
+  transition: transform 5s linear;
+}
+.player-autonext-label { position: relative; z-index: 1; }
+
+/* Replay affordance - center icon shown once the episode ends without
+   auto-advancing (Stay chosen, or no next episode). Backdrop is click-through;
+   clicking anywhere already restarts playback, this just surfaces the UI. */
+.player-replay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.player-replay-btn {
+  pointer-events: auto;
+  width: 84px;
+  height: 84px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: rgba(20, 20, 26, 0.85);
+  border: 1px solid #3a3a48;
+  cursor: pointer;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
+  transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+.player-replay-btn:hover {
+  background: #1a1a22;
+  border-color: #6090d0;
+  transform: scale(1.05);
+}
+.player-sub-anchor { position: relative; display: inline-flex; }
+
+/* Tracker confirmation toast - top-center, fades in & out. */
+.player-toast {
+  position: absolute;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9;
+  max-width: min(80vw, 32rem);
+  background: rgba(20, 20, 26, 0.92);
+  color: var(--text-primary);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-pill);
+  padding: 0.5rem 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  letter-spacing: 0.02em;
+  text-align: center;
+  box-shadow: var(--shadow-md);
+  animation: toastIn 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+@keyframes toastIn {
+  from { opacity: 0; transform: translate(-50%, -8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* Final-episode rating prompt - persistent, sits just under the toast. */
+.player-rating-prompt {
+  position: absolute;
+  top: 108px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  background: rgba(20, 20, 26, 0.95);
+  color: var(--text-primary);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-lg);
+  padding: 0.75rem 0.95rem 0.8rem;
+  font-family: var(--font-mono);
+  box-shadow: var(--shadow-lg);
+  animation: toastIn 220ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.player-rating-prompt-head {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  color: var(--text-primary);
+}
+.player-rating-prompt-head svg { color: var(--accent-blue); }
+.player-rating-prompt-body {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.player-rating-submit,
+.player-rating-dismiss {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 0.35rem 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.player-rating-submit { border-color: var(--accent-blue); color: var(--accent-blue); }
+.player-rating-submit:hover:not(:disabled) { background: rgba(110, 211, 166, 0.1); }
+.player-rating-dismiss:hover:not(:disabled) { background: rgba(255, 255, 255, 0.04); border-color: var(--border-hover); }
+.player-rating-submit:disabled,
+.player-rating-dismiss:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* Unsupported-codec popup - shown when the in-app <video> can't decode the
+   file. Offers to launch the user's system mpv instead. */
+.codec-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  animation: matchFadeIn 140ms ease-out;
+}
+.codec-modal {
+  width: min(480px, 100%);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  padding: 1.25rem 1.4rem 1.1rem;
+  animation: matchPop 160ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.codec-modal-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+.codec-modal-icon {
+  color: var(--accent-amber, #e0c089);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.codec-modal-title {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.codec-modal-sub {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+  line-height: 1.4;
+}
+.codec-modal-body {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  padding: 0.5rem 0 1rem;
+}
+.codec-modal-body code {
+  background: var(--bg-secondary);
+  padding: 0.05rem 0.35rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+  color: var(--text-primary);
+}
+.codec-modal-actions {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: flex-end;
+}
+.codec-modal-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 500;
+  padding: 0.55rem 0.95rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), opacity var(--transition-fast);
+}
+.codec-modal-btn:hover { background: var(--bg-hover); }
+.codec-modal-btn.ghost { color: var(--text-secondary); }
+.codec-modal-btn.primary {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: #0f0f14;
+}
+.codec-modal-btn.primary:hover { filter: brightness(1.05); }
+.codec-modal-btn:disabled { opacity: 0.55; cursor: default; }
+
+/* Re-encoding overlay - same shell, no AlertTriangle, spinning loader,
+   progress bar in place of the body paragraph. */
+.codec-modal--transcoding .codec-modal-icon {
+  color: var(--accent-primary);
+}
+.codec-modal-icon--spin {
+  animation: codecSpin 1.1s linear infinite;
+}
+@keyframes codecSpin {
+  to { transform: rotate(360deg); }
+}
+.codec-modal-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.35rem 0 1rem;
+}
+.codec-modal-progress-track {
+  position: relative;
+  height: 6px;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+.codec-modal-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-primary), var(--accent-primary));
+  border-radius: inherit;
+  transition: width 280ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.codec-modal-progress-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.codec-modal-progress-pct {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.codec-modal-progress-time {
+  flex: 1;
+  text-align: center;
+}
+.codec-modal-progress-eta {
+  text-align: right;
+}
+
+/* Subtitle picker / style menu - anchored above the CC button. */
+.sub-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  width: 280px;
+  background: #14141a;
+  border: 1px solid #2a2a32;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: #d8d8e0;
+  overflow: hidden;
+  z-index: 10;
+}
+.sub-menu-tabs {
+  display: flex;
+  border-bottom: 1px solid #20202a;
+}
+.sub-menu-tab {
+  flex: 1;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  color: #8a8a96;
+  cursor: pointer;
+  font: inherit;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 11px;
+}
+.sub-menu-tab.active {
+  color: #d8d8e0;
+  background: #1a1a22;
+  box-shadow: inset 0 -2px 0 #6090d0;
+}
+.sub-menu-body {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px 0;
+  display: flex;
+  flex-direction: column;
+}
+.sub-menu-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: #d8d8e0;
+  padding: 8px 14px;
+  cursor: pointer;
+  font: inherit;
+}
+.sub-menu-row:hover { background: #1a1a22; }
+.sub-menu-row.active {
+  color: #ffffff;
+  background: rgba(96, 144, 208, 0.2);
+  font-weight: 600;
+}
+
+/* Style tab */
+.sub-menu-style { padding: 12px 14px; gap: 10px; }
+.sub-style-row {
+  display: grid;
+  grid-template-columns: 90px 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+.sub-style-row > span:first-child {
+  color: #9a9aa6;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 11px;
+}
+.sub-style-val {
+  color: #6a6a76;
+  font-variant-numeric: tabular-nums;
+  min-width: 38px;
+  text-align: right;
+}
+.sub-style-row input[type="color"] {
+  width: 100%;
+  height: 22px;
+  background: transparent;
+  border: 1px solid #2a2a32;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+}
+.sub-style-row input[type="range"] {
+  width: 100%;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: #2a2a32;
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+.sub-style-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #d8d8e0;
+  cursor: pointer;
+  border: none;
+}
+.sub-style-row select {
+  background: #0e0e14;
+  color: #d8d8e0;
+  border: 1px solid #2a2a32;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font: inherit;
+  cursor: pointer;
+  grid-column: 2 / -1;
+}
+.sub-style-reset {
+  margin-top: 6px;
+  background: transparent;
+  border: 1px solid #2a2a32;
+  color: #9a9aa6;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.sub-style-reset:hover { color: #d8d8e0; background: #1a1a22; }
+
+.sub-wip-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-bottom: 4px;
+  background: rgba(180, 130, 50, 0.12);
+  border: 1px solid rgba(180, 130, 50, 0.4);
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #d8d8e0;
+}
+.sub-wip-tag {
+  flex-shrink: 0;
+  background: rgba(180, 130, 50, 0.6);
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+}
+.player-time {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: #c0c0c8;
+  min-width: 110px;
+}
+.player-volume {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.player-vol-slider {
+  width: 160px;
+}
+
+/* Range inputs: matching mono-forward, dark style. The --progress var is
+   set inline per-slider to drive the filled-portion gradient. */
+.player-scrub,
+.player-vol-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    #d8d8e0 0%,
+    #d8d8e0 var(--progress, 0%),
+    rgba(255,255,255,0.18) var(--progress, 0%),
+    rgba(255,255,255,0.18) 100%
+  );
+  outline: none;
+  cursor: pointer;
+  margin: 0;
+}
+.player-scrub { width: 100%; }
+.player-scrub::-webkit-slider-thumb,
+.player-vol-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.4);
+}
+.player-scrub::-webkit-slider-thumb:hover,
+.player-vol-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
+
+.player-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 1.5rem;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.75), transparent);
+  transition: opacity var(--transition-normal);
+}
+.player-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: white;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+.player-back:hover { background: rgba(255, 255, 255, 0.15); }
+.player-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.player-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.55);
+}
+.player-title {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 1rem;
+  color: white;
+}
+.player-meta {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.5);
+}

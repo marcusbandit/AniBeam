@@ -41,7 +41,7 @@ function SubscriptionsPage() {
       head={
         <Inline gap="s4" justify="space-between" align="flex-start">
           <div>
-            <button type="button" className="btn-link subscriptions-back" onClick={() => navigate("/settings")}>
+            <button type="button" className="subscriptions-back" onClick={() => navigate("/settings")}>
               <ArrowLeft size={14} />
               <span>Settings</span>
             </button>

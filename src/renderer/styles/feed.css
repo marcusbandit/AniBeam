@@ -1,0 +1,243 @@
+/* feed.css - FeedPage, WatchingPage, SubscriptionsPage */
+
+/* Watching tab. The app-wide default border is a 7%-white hairline - invisible
+   against a poster - so the in-library vs not-in-library distinction needs a
+   strong, dedicated treatment here. Scoped to .watching-grid (specificity beats
+   the global base rule) so other grids keep their subtle look.
+   - In-library (owned): thick bright rim + white glow so it clearly reads as
+     "in your library". Both owned and bare carry a 2px border box so the grid
+     stays aligned; bare's is just transparent.
+   - Not in library (--bare): no rim, no glow - stays flat for contrast. The
+     hover-lift + poster zoom still signal the card is interactive (opens the
+     AniList page). */
+.watching-grid .show-card-poster-wrap {
+  border-width: 2px;
+  border-color: rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.22),
+    0 0 16px 2px rgba(255, 255, 255, 0.28);
+}
+.watching-grid .show-card:hover .show-card-poster-wrap {
+  border-color: #fff;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.4),
+    0 0 24px 5px rgba(255, 255, 255, 0.42);
+}
+.watching-grid .show-card-poster-wrap--bare,
+.watching-grid .show-card:hover .show-card-poster-wrap--bare {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+/* Feed page - one row per on-disk episode, sorted by air date desc. */
+.feed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 1.5rem;
+}
+.feed-row {
+  display: grid;
+  grid-template-columns: 56px 1fr auto auto;
+  align-items: center;
+  gap: 0.85rem;
+  width: 100%;
+  text-align: left;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 0.55rem 0.85rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.feed-row:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--border-hover);
+}
+.feed-row-poster {
+  width: 56px;
+  height: 80px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+.feed-row-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.feed-row-body { min-width: 0; }
+.feed-row-show {
+  font-size: 0.95rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.feed-row-ep {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 0.15rem;
+}
+.feed-row-date {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.feed-row-play {
+  color: var(--text-muted);
+  display: inline-flex;
+}
+.feed-row:hover .feed-row-play { color: var(--accent-secondary); }
+
+/* ============ SUBSCRIPTIONS ============ */
+.subscriptions-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  padding: 0.45rem 0.8rem;
+  border-radius: var(--radius-md);
+  border-width: 1px;
+  border-style: solid;
+}
+.subscriptions-refresh .spin { animation: subspin 0.9s linear infinite; }
+@keyframes subspin { to { transform: rotate(360deg); } }
+
+/* "← Settings" link above the title - the page is no longer in the navbar,
+   so this is the way back. */
+.subscriptions-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-bottom: 0.5rem;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  transition: color var(--transition-fast);
+}
+.subscriptions-back:hover { color: var(--accent-secondary); }
+
+.subscriptions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.subscription-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.85rem 1rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+}
+.subscription-row.disabled { opacity: 0.55; }
+
+.subscription-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+}
+.subscription-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.subscription-icon { color: var(--accent-amber); flex-shrink: 0; }
+.subscription-name {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.subscription-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.subscription-count { color: var(--text-secondary); }
+
+.subscription-query {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+.subscription-query code {
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  padding: 0.18rem 0.4rem;
+  border-radius: var(--radius-sm);
+  word-break: break-word;
+}
+.subscription-label {
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.subscription-path {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subscription-link {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--accent-secondary);
+  border: 1px solid var(--border-color);
+  padding: 0.24rem 0.55rem;
+  border-radius: var(--radius-md);
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+.subscription-link:hover { border-color: var(--border-hover); color: var(--text-primary); }
+
+.subscriptions-error code {
+  background: var(--bg-secondary);
+  padding: 0.1rem 0.35rem;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}

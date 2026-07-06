@@ -125,10 +125,10 @@ const ROW_GAP = 500;
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function arrowColorFor(relationType: string): string {
-  if (relationType === 'RELEASE_ORDER') return 'var(--accent-red, #ef4444)';
+  if (relationType === 'RELEASE_ORDER') return 'var(--accent-rose)';
   const cat = categoryFor(relationType);
   switch (cat) {
-    case 'spine':       return 'var(--accent-teal, #14b8a6)';
+    case 'spine':       return 'var(--accent-primary)';
     case 'source':      return 'var(--accent-secondary, #818cf8)';
     case 'alternative': return 'var(--accent-amber, #f59e0b)';
     case 'character':   return 'var(--accent-rose, #fb7185)';
@@ -938,7 +938,7 @@ function layoutGraph(
       // Alternative relations are symmetric — neither side is the "parent".
       // Render with arrows on both ends to communicate that.
       const isAlternative = edge.relationType === 'ALTERNATIVE';
-      const color = isParentOfRoot ? 'var(--accent-emerald, #6ed3a6)' : arrowColorFor(edge.relationType);
+      const color = isParentOfRoot ? 'var(--accent-blue)' : arrowColorFor(edge.relationType);
       const marker = { type: MarkerType.ArrowClosed, color, width: 18, height: 18 };
       return {
         id: `${edge.from}->${edge.to}:${edge.relationType}`,
@@ -1496,7 +1496,7 @@ function FranchiseFlowNode({ id, data }: NodeProps<RFNode<FranchiseNodeFlowData>
   // over the edge layer) and are NOT clipped by the node's overflow:hidden.
   // Each ring = a bg-colored gap shadow + a colored ring shadow. Concentric
   // when both current+root: teal (viewing) inside, amber (root) outside.
-  const TEAL = 'var(--accent-teal, #14b8a6)';
+  const TEAL = 'var(--accent-primary)';
   const AMBER = 'var(--accent-amber, #f59e0b)';
   const GAP = 'var(--bg-card, #15151c)';
   const ringSpecs: Array<{ color: string; offset: number }> = isGhost

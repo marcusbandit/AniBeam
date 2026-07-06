@@ -1,0 +1,417 @@
+/* cards.css - HomePage/ShowCard: show grid, card shell, poster badges, progress bar, airing pager, library tabs head, ContextMenu */
+
+/* ============ LIBRARY GRID ============ */
+.show-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1.5rem 1.25rem;
+  margin-bottom: 3rem;
+}
+/* ShowCard intentionally does NOT use the Card primitive. The visible
+   "card" is the poster's own border + radius; the button shell is a
+   transparent reset. Hover-lift is applied to .show-card-poster-wrap only
+   (via the motion engine in ShowCard.tsx) so the title/meta below stays
+   anchored when the cursor enters / leaves. */
+.show-card {
+  display: block;
+  text-align: left;
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.show-card:hover .show-card-poster-wrap {
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-md);
+}
+
+.show-card:hover .show-card-poster { transform: scale(1.04); }
+.show-card:hover .show-card-title { color: var(--accent-secondary); }
+
+.show-card-poster-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  margin-bottom: 0.75rem;
+  /* transform is owned by JS (motion engine) - keep other transitions only. */
+  transition: border-color var(--transition-fast), box-shadow var(--transition-normal);
+  container-type: inline-size;
+  will-change: transform;
+}
+.show-card-poster {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform var(--transition-slow);
+}
+.show-card-title { transition: color var(--transition-fast); }
+.show-card-no-image {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+}
+
+.show-card-info {
+  padding: 0 0.1rem;
+}
+.show-card-title {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-bottom: 0.35rem;
+  /* Always reserve exactly 2 lines of space so the title row keeps the
+     same height whether a card holds a 1-line or 2-line title - and the
+     poster above + meta line below stay anchored to the same y in every
+     card. Switching JP↔EN changes the text but never reflows the grid.
+     `lh` resolves against this element's own line-height. */
+  min-height: 2lh;
+}
+.show-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+/* Feed-card split meta row. Left = "ago"; right = "EP NN in 2d 14h …" with
+   a live-ticking second. tabular-nums keeps the digit positions from
+   shuffling under the cursor as seconds tick. */
+.show-card-meta-ago {
+  color: var(--text-muted);
+}
+.show-card-meta-countdown {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  color: var(--accent-primary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Progress bar flush on the poster's bottom edge (the wrap's
+   overflow:hidden clips it to the card radius). Blue = watched; rose
+   underlay = aired but not yet watched, shown only while the show is
+   still releasing (a finished show's unwatched tail is backlog, not
+   urgency); dark right cap = episode count unknown, so the bar never
+   reads as complete. The empty track is a dark scrim so it stays
+   legible over bright posters. */
+.show-card-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 6px;
+  background: rgba(0, 0, 0, 0.45);
+}
+.show-card-progress-behind,
+.show-card-progress-watched {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  transition: width 320ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.show-card-progress-behind { background: var(--accent-rose); }
+.show-card-progress-watched { background: var(--accent-primary); }
+.show-card-progress-unknown {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  background: rgba(0, 0, 0, 0.82);
+}
+
+/* ============ CONTEXT MENU ============ */
+.context-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 188px;
+  background: rgba(21, 21, 28, 0.95);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 0.3rem;
+  animation: contextFade 120ms ease-out;
+}
+@keyframes contextFade {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.45rem 0.65rem;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.context-menu-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+.context-menu-icon { color: currentColor; flex-shrink: 0; display: inline-flex; }
+.context-menu-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 0.3rem 0.2rem;
+}
+
+/* Airing carousel - 2 rows × 5 cols, paged not scrolled. */
+.airing-pager { display: flex; align-items: center; gap: 0.5rem; }
+.airing-pager-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), opacity var(--transition-fast);
+}
+.airing-pager-btn:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  border-color: var(--border-hover);
+}
+.airing-pager-btn:disabled { opacity: 0.4; cursor: default; }
+.airing-pager-count {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  min-width: 3.5rem;
+  text-align: center;
+}
+.airing-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  grid-template-rows: repeat(2, auto);
+  gap: 1.25rem 1rem;
+}
+
+/* Section header layout used by the Library page when the section title
+   is a switch (Series/Movies) and the action slot holds sort controls.
+   Lets both ends wrap independently on narrow widths. */
+.library-tabs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s4);
+  flex-wrap: wrap;
+  margin-bottom: var(--s4);
+  padding-bottom: var(--s3);
+  border-bottom: 1px solid var(--border-color);
+}
+.library-tabs-head__left,
+.library-tabs-head__right {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+.library-tabs-head__count {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.library-tabs-head__sort-label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+/* Episode badge on the poster - bigger, louder than the meta line so the
+   episode number is the first thing your eye lands on. */
+.show-card-ep-badge {
+  position: absolute;
+  top: 0.6rem;
+  left: 0.6rem;
+  display: inline-flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.78);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  padding: 0.28rem 0.55rem;
+  border-radius: var(--radius-md);
+  backdrop-filter: blur(4px);
+  z-index: 1;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+}
+
+/* Watched-progress badge - sits to the right of the EP badge, accent-colored
+   to read as "your number" vs. the neutral EP marker. */
+.show-card-watched-badge {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  display: inline-flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.78);
+  color: var(--accent-primary);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  padding: 0.28rem 0.55rem;
+  border-radius: var(--radius-md);
+  backdrop-filter: blur(4px);
+  z-index: 1;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+}
+.show-card-watched-badge.behind { color: var(--accent-rose); }
+.show-card-watched-badge.watched { color: var(--text-muted); }
+
+/* Incognito reveal - a hidden show only ever reaches a card when reveal is
+   on, so the card dims itself and flags a "Hidden" pill top-right. */
+.show-card--hidden { opacity: 0.55; }
+.show-card--hidden:hover { opacity: 0.8; }
+.show-card-hidden-badge {
+  /* Bottom-right is the only free poster corner - top-left holds the EP badge,
+     top-right the watched badge, bottom-left the ratings stack. */
+  position: absolute;
+  bottom: 0.6rem;
+  right: 0.6rem;
+  z-index: 3;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--bg-primary) 70%, transparent);
+  color: var(--text-secondary);
+  backdrop-filter: blur(4px);
+}
+
+/* Rating badge - bottom-left of the poster. Balances the EP badge (top-
+   left) and watched badge (top-right) and keeps the show's average score
+   visible at a glance without spending a line in the meta row, which is
+   now reserved for "ago" + the live next-episode countdown. */
+/* Bottom-left corner stack. Holds the re-encode status pill (on top) and the
+   rating row (below) in a single column so two wide chips never collide on a
+   narrow card - they stack instead of both reaching toward centre. The column
+   owns the anchor; its children position statically. */
+.show-card-corner-bl {
+  position: absolute;
+  bottom: 0.6rem;
+  left: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+  z-index: 1;
+}
+/* Wrapper around one or two rating badges (community + user). Lays them
+   out as a row so adding the user-score pill doesn't shove the community
+   one around. */
+.show-card-ratings {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.show-card-rating-badge {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.78);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 0.24rem 0.5rem;
+  border-radius: var(--radius-md);
+  backdrop-filter: blur(4px);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+}
+.show-card-rating-badge::before {
+  content: "★";
+  color: var(--accent-amber);
+  margin-right: 0.25rem;
+  font-size: 0.9em;
+  line-height: 1;
+}
+/* User's personal score - same shape, different star colour so the eye
+   can tell community-vs-mine at a glance. Teal pairs cleanly with the
+   amber star without competing for attention. */
+.show-card-rating-badge--mine::before {
+  color: var(--accent-primary);
+}
+
+/* Re-encode status pill - stacked above the ratings in the bottom-left corner
+   column (see .show-card-corner-bl). Same dark-glass shell as the sibling
+   badges; a leading dot signals state. Amber + pulse for an active encode,
+   muted + static for a queued one so encoding clearly reads as primary. */
+.show-card-encode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(0, 0, 0, 0.78);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.24rem 0.5rem;
+  border-radius: var(--radius-md);
+  backdrop-filter: blur(4px);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+  z-index: 1;
+}
+.show-card-encode-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.show-card-encode-badge--encoding .show-card-encode-dot {
+  background: var(--accent-amber);
+  animation: showCardEncodePulse 1.4s ease-in-out infinite;
+}
+/* Queued reads as secondary: dim the whole pill and use a static grey dot. */
+.show-card-encode-badge--queued {
+  opacity: 0.7;
+  color: var(--text-muted);
+}
+.show-card-encode-badge--queued .show-card-encode-dot {
+  background: var(--text-muted);
+}
+@keyframes showCardEncodePulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.45; transform: scale(0.78); }
+}
