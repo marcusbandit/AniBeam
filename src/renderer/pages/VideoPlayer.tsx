@@ -1,4 +1,5 @@
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { createPortal } from 'react-dom';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useMetadata, type FileEpisode } from '../hooks/useMetadata.js';
 import { useLocalStorage, useLocalStorageRecord } from '../hooks/useLocalStorage';
@@ -250,9 +251,13 @@ function VideoPlayer() {
   // hidden, muted <video> on the SAME source is seeked to the hovered
   // timestamp and its decoded frame is blitted into a canvas in a popup above
   // the bar. Entirely renderer-side (no ffmpeg/IPC round-trip), so it tracks
-  // the cursor instantly. `scrubHover` holds the popup's x offset (px within
-  // the scrub track, clamped to the popup half-width) and the hovered time.
-  const [scrubHover, setScrubHover] = useState<{ x: number; time: number } | null>(null);
+  // the cursor instantly. `scrubHover` holds VIEWPORT coordinates for the
+  // popup (left, clamped to the track; bottom, lifted above the island) and
+  // the hovered time. Viewport coords because the popup is PORTALLED out of
+  // the island: the island's own backdrop-filter makes it a backdrop root,
+  // and a descendant's backdrop-filter can only sample within that root, so
+  // the popup would refract nothing while nested inside it.
+  const [scrubHover, setScrubHover] = useState<{ left: number; bottom: number; time: number } | null>(null);
   // Keyboard-shortcut legend overlay, toggled by the ? button in the right
   // control group. Purely presentational; adds no bindings of its own.
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -1755,9 +1760,14 @@ function VideoPlayer() {
     const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     const time = frac * duration;
     // Clamp the popup centre so it never overflows the track edges (and thus
-    // never the island edges: the track is inset inside the island).
+    // never the island edges: the track is inset inside the island), then
+    // convert to viewport coordinates for the portalled popup.
     const x = Math.max(PREVIEW_POPUP_HALF_W, Math.min(rect.width - PREVIEW_POPUP_HALF_W, frac * rect.width));
-    setScrubHover({ x, time });
+    setScrubHover({
+      left: rect.left + x,
+      bottom: window.innerHeight - rect.top + 18,
+      time,
+    });
     requestPreviewFrame(time);
   }, [duration, videoSrc, requestPreviewFrame]);
 
@@ -2255,12 +2265,19 @@ function VideoPlayer() {
               })(),
             } as React.CSSProperties}
           />
-          {scrubHover && videoSrc && duration > 0 && (
+          {scrubHover && videoSrc && duration > 0 && wrapRef.current && createPortal(
+            // PORTALLED to the player root, NOT rendered inside the island:
+            // the island's backdrop-filter makes it a backdrop root, and a
+            // nested backdrop-filter can only sample within that root, so the
+            // popup's refraction would see nothing but the island's own
+            // pixels. At the wrap level it samples the actual video. The wrap
+            // is also the fullscreen element, so the portal survives
+            // fullscreen (see the fullscreen-portal rule used by ScorePicker).
             // Liquid glass is size-keyed, so cursor-following costs nothing;
             // the per-hover mount is a cheap procedural filter build.
             <div
               className="player-scrub-preview"
-              style={{ left: `${scrubHover.x}px` }}
+              style={{ left: `${scrubHover.left}px`, bottom: `${scrubHover.bottom}px` }}
               aria-hidden="true"
               data-liquid-glass=""
               data-lg-bezel="14"
@@ -2277,7 +2294,8 @@ function VideoPlayer() {
                 height={PREVIEW_CANVAS_SEED_H}
               />
               <div className="player-scrub-preview-time">{formatTime(scrubHover.time)}</div>
-            </div>
+            </div>,
+            wrapRef.current,
           )}
         </div>
         <div className="player-controls-row">
