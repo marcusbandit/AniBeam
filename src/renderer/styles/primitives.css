@@ -756,7 +756,7 @@
   color: var(--text-muted);
   background: rgba(255,255,255,0.03);
   border: 1px solid var(--border-color);
-  transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+  transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
 }
 /* Empty grid placeholder holding column 1, since the interactive hit-zone is
    absolutely positioned (out of grid flow) and would otherwise let the code/
@@ -778,6 +778,16 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
+}
+/* Rest-state affordance on the interactive marker. The hit-zone wrapper only
+   exists when a tracker is connected (the marker is clickable), so this hover
+   ring never appears on inert markers. Pure CSS and independent of the JS
+   cascade wave: the wave's animation classes own background/border while
+   active and outrank these static paints; box-shadow isn't in any keyframe,
+   so the ring composes cleanly with a running cascade. */
+.episode-row__marker-hit:hover .episode-row__marker {
+  border-color: color-mix(in srgb, var(--accent-primary) 55%, var(--border-color));
+  box-shadow: 0 0 0 3px var(--accent-glow);
 }
 /* Markers double as track/untrack controls. Each cascade keyframe carries the
    colour flip AND a one-time size bob; per-marker animation-delay (inline)

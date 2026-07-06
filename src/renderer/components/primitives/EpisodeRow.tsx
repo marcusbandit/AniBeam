@@ -6,7 +6,7 @@ const LIFT_SPEED = 12;
 const LIFT_AMOUNT_PX = 2;
 
 /**
- * Visual variants. "in-progress" intentionally is NOT a row variant — the
+ * Visual variants. "in-progress" intentionally is NOT a row variant - the
  * partial-watch signal is carried by `progressVisibleAtRest` + the seekbar
  * opacity, not by a different row color. Keeping it out of the enum
  * prevents callers from coding to a CSS class that wouldn't exist.
@@ -18,7 +18,7 @@ interface EpisodeRowProps {
   code: ReactNode;         // S01E03
   title: ReactNode;
   trailing?: ReactNode;    // pill, flag, "Next up", etc.
-  /** 0..1 — hovered seekbar fill. The bar is only visible on hover. */
+  /** 0..1 - hovered seekbar fill. The bar is only visible on hover. */
   progress?: number;
   state?: EpisodeRowState;
   onClick?: () => void;
@@ -32,19 +32,19 @@ interface EpisodeRowProps {
   markerMode?: 'untrack' | 'track';
   /**
    * Cascade phase: 'in' (hover), 'out' (reverse wave on un-hover), 'commit'
-   * (after a click — settles to the new tracked/untracked colour).
+   * (after a click - settles to the new tracked/untracked colour).
    */
   markerPhase?: 'in' | 'out' | 'commit';
   /** Per-marker animation-delay (ms) so the wave staggers out from the cursor. */
   markerCascadeDelayMs?: number;
-  /** Click on just the marker — fires instead of `onClick` (stops propagation). */
+  /** Click on just the marker - fires instead of `onClick` (stops propagation). */
   onMarkerClick?: () => void;
-  /** Entering the CIRCLE — initiates / re-anchors the hover wave. */
+  /** Entering the CIRCLE - initiates / re-anchors the hover wave. */
   onMarkerEnter?: () => void;
-  /** Entering the tall hit-zone (but not necessarily the circle) — only keeps an
+  /** Entering the tall hit-zone (but not necessarily the circle) - only keeps an
    *  existing hover alive (cancels the pending leave); never initiates. */
   onMarkerZoneEnter?: () => void;
-  /** Leaving the hit-zone — debounced un-hover. */
+  /** Leaving the hit-zone - debounced un-hover. */
   onMarkerLeave?: () => void;
 }
 
@@ -53,7 +53,7 @@ interface EpisodeRowProps {
  *
  * Layout: [marker | code | title | trailing] above a reserved seekbar row.
  * The seekbar slot is structural (its own row in a grid), so the text's
- * vertical centering is independent of the seekbar's presence — fixing the
+ * vertical centering is independent of the seekbar's presence - fixing the
  * off-center bug.
  */
 export default function EpisodeRow({
@@ -88,7 +88,7 @@ export default function EpisodeRow({
   const activeClass = markerMode
     ? ` episode-row__marker--${markerMode === 'untrack' ? 'untracking' : 'tracking'}${phaseSuffix}`
     : '';
-  // The visible circle carries the cascade colour + bob, and — when interactive —
+  // The visible circle carries the cascade colour + bob, and - when interactive -
   // owns hover INITIATION via its own onMouseEnter.
   const circle = (
     <span

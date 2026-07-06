@@ -1,17 +1,18 @@
-/* series.css - SeriesDetailPage: hero, chips, score popover, tags, characters, relations, format chips, bonus groups */
+/* series.css - SeriesDetailPage: hero, chip rows, score popover, tags panel, characters, recommendations, format accents, bonus groups */
 
-/* ============ SERIES DETAIL ============ */
-.series-detail { animation: fadeIn 200ms ease-out; }
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* Folder-driven detail page shell. */
+.series-detail-bare { animation: fadeIn 200ms ease-out; }
+
 .detail-back {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.4rem 0.65rem;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
   font-family: var(--font-mono);
   font-size: 0.85rem;
   color: var(--text-secondary);
@@ -19,148 +20,20 @@
   border: none;
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: color var(--transition-fast), background var(--transition-fast);
-  margin-bottom: 1.5rem;
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast),
+    transform var(--transition-fast);
+  margin-bottom: var(--s6);
 }
 .detail-back:hover { color: var(--text-primary); background: var(--bg-secondary); }
-
-.detail-title {
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: clamp(1.75rem, 3vw, 2.5rem);
-  line-height: 1.1;
-  color: var(--text-primary);
-  letter-spacing: -0.02em;
-  margin-bottom: 0.4rem;
-}
-.detail-alt {
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  margin-bottom: 1.5rem;
-  font-family: var(--font-mono);
-}
-
-.detail-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-  gap: 1rem 1.5rem;
-  padding: 1rem 0;
-  border-top: 1px solid var(--border-color);
-  border-bottom: 1px solid var(--border-color);
-  margin-bottom: 1.5rem;
-}
-.stat {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-}
-.stat-label {
-  font-family: var(--font-mono);
-  font-size: 0.65rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--text-muted);
-}
-.stat-value {
-  font-family: var(--font-mono);
-  font-size: 1rem;
-  font-weight: 500;
-  color: var(--text-primary);
-}
-.stat-value.sans {
-  font-family: var(--font-mono);
-  font-size: 0.9rem;
-  font-weight: 500;
-}
-.stat-of { color: var(--text-muted); font-size: 0.85em; }
-
-.detail-desc {
-  color: var(--text-secondary);
-  font-size: 0.95rem;
-  line-height: 1.65;
-  max-width: 70ch;
-  margin-bottom: 1.25rem;
-  text-wrap: pretty;
-}
-.detail-genres {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin-bottom: 1.5rem;
-}
-.genre-pill {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  font-weight: 500;
-  padding: 0.25rem 0.6rem;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 999px;
-  color: var(--text-secondary);
-}
-
-.detail-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-}
-.detail-unavailable {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.55rem 0.95rem;
-  background: rgba(244, 63, 94, 0.06);
-  color: var(--accent-rose);
-  border: 1px solid rgba(244, 63, 94, 0.25);
-  border-radius: var(--radius-lg);
-  font-family: var(--font-mono);
-  font-size: 0.875rem;
-}
-
-/* ============ EPISODES ============ */
-.episodes-section { margin-top: 1rem; }
-.season-section { margin-bottom: 2rem; }
-.season-title {
-  font-family: var(--font-mono);
-  font-weight: 500;
-  font-size: 0.95rem;
-  color: var(--text-secondary);
-  margin-bottom: 0.75rem;
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-}
-.season-episode-count {
-  margin-left: auto;
-  font-size: 0.7rem;
-  color: var(--text-muted);
-  font-weight: 400;
-}
-
-.episodes-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 0.75rem;
-}
-.no-episodes {
-  padding: 2rem;
-  text-align: center;
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-  color: var(--text-muted);
-  background: var(--bg-card);
-  border: 1px dashed var(--border-color);
-  border-radius: var(--radius-lg);
-}
-
-/* Bare folder-driven detail page (metadata paused). */
-.series-detail-bare { animation: fadeIn 200ms ease-out; }
+.detail-back:active { transform: scale(0.97); }
 
 /* ---------- Series hero ---------- */
 .series-hero {
   position: relative;
-  margin-top: 0.5rem;
-  margin-bottom: 2rem;
+  margin-top: var(--s2);
+  margin-bottom: var(--s8);
   border-radius: var(--radius-xl);
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
@@ -181,13 +54,20 @@
   transform: scale(1.12);
   z-index: 0;
 }
+/* Neutral dark scrim over the banner, fading to the hero surface at the
+   bottom, plus a whisper of the brand glow in the top-left corner. */
 .series-hero.has-banner::after {
   content: "";
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(180deg, rgba(11, 11, 16, 0.55) 0%, rgba(11, 11, 16, 0.85) 60%, var(--bg-secondary) 100%),
-    radial-gradient(120% 80% at 0% 0%, rgba(99, 102, 241, 0.12), transparent 60%);
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--scrim) 70%, transparent) 0%,
+      var(--scrim) 60%,
+      var(--bg-secondary) 100%
+    ),
+    radial-gradient(120% 80% at 0% 0%, color-mix(in srgb, var(--accent-glow) 70%, transparent), transparent 60%);
   z-index: 0;
   pointer-events: none;
 }
@@ -196,8 +76,8 @@
   z-index: 1;
   display: grid;
   grid-template-columns: 220px 1fr 220px;
-  gap: 1.75rem;
-  padding: 1.5rem;
+  gap: var(--s6);
+  padding: var(--s6);
 }
 /* No tag column to render - collapse the third track so the body can use
    the full remaining width. Set on the section element via JSX-conditional
@@ -233,13 +113,13 @@
 .series-hero-body {
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
+  gap: var(--s3);
   min-width: 0;
 }
 .series-hero-title {
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: clamp(1.65rem, 2.6vw, 2.4rem);
+  font-size: clamp(1.6rem, 3vw, 2.2rem);
   line-height: 1.1;
   letter-spacing: -0.02em;
   color: var(--text-primary);
@@ -250,48 +130,31 @@
   font-size: 0.8rem;
   color: var(--text-muted);
   letter-spacing: 0.02em;
-  margin-top: -0.35rem;
+  margin-top: calc(-1 * var(--s2));
 }
+
+/* ---------- Hero chip rows ---------- */
+/* Chips themselves are the shared .chip system (primitives.css); this file
+   only holds the row containers and the few hero-specific extensions. */
 .series-hero-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
-}
-.series-hero-chips--ratings { margin-bottom: 0.35rem; }
-.series-hero-chips--info { margin-bottom: 0; }
-.hero-chip {
-  display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-secondary);
-  padding: 0.35rem 0.65rem;
-  border-radius: var(--radius-pill);
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border-color);
+  gap: var(--s2);
 }
-.hero-chip-rating {
-  color: var(--accent-amber);
-  border-color: color-mix(in srgb, var(--accent-amber) 35%, var(--border-color));
-  background: color-mix(in srgb, var(--accent-amber) 10%, transparent);
-}
-.hero-chip-rating svg { fill: currentColor; }
 
-/* User's own rating - same shape as the average-rating chip but tinted with
-   the secondary accent and tagged "YOU" so the two are unambiguous at a
-   glance. The tag piggybacks on the chip's mono font and reuses the existing
-   border tokens, keeping it flush with the rest of the chip row. */
-.hero-chip-myscore {
-  color: var(--accent-secondary);
-  border-color: color-mix(in srgb, var(--accent-secondary) 35%, var(--border-color));
-  background: color-mix(in srgb, var(--accent-secondary) 10%, transparent);
-  padding-right: 0.45rem;
+/* My-score chip: .chip--toggle carries the interaction contract; .is-on =
+   scored (teal). The You tag rides currentColor so it follows the chip's
+   state colour with zero extra rules. */
+.hero-chip-myscore-tag {
+  font-size: 0.85em;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 0 var(--s1);
+  margin-left: 2px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, currentColor 16%, transparent);
 }
-.hero-chip-myscore svg { fill: currentColor; }
 .hero-chip-myscore-anchor {
   position: relative;
   display: inline-flex;
@@ -302,240 +165,128 @@
      stacking context. Lift the anchor so its descendants float over them. */
   z-index: 20;
 }
-button.hero-chip-myscore-button {
-  appearance: none;
-  cursor: pointer;
-  font-family: var(--font-mono);
-  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+
+/* AniList external-link chip: brand blue, icon-only. Same-specificity
+   overrides of .chip--toggle's neutral hover; series.css imports after
+   primitives.css so these win. */
+.hero-chip-anilist {
+  color: var(--anilist-blue);
+  border-color: color-mix(in srgb, var(--anilist-blue) 40%, transparent);
+  background: color-mix(in srgb, var(--anilist-blue) 10%, transparent);
 }
-button.hero-chip-myscore-button:hover {
-  background: color-mix(in srgb, var(--accent-secondary) 18%, transparent);
-  border-color: color-mix(in srgb, var(--accent-secondary) 55%, var(--border-color));
+.hero-chip-anilist svg { width: 14px; height: 14px; }
+.hero-chip-anilist:hover {
+  color: color-mix(in srgb, var(--anilist-blue) 75%, white);
+  border-color: color-mix(in srgb, var(--anilist-blue) 60%, transparent);
+  background: color-mix(in srgb, var(--anilist-blue) 20%, transparent);
 }
+
+/* Airing-status tones for the hero status chip. The chip system's
+   data-status recipe (primitives.css) covers tracker list statuses; these
+   add the airing vocabulary on top: releasing = alive (teal), upcoming =
+   informational, hiatus = warning, cancelled = failure. */
+.series-hero .chip[data-status="releasing" i] { --chip-tone: var(--accent-primary); }
+.series-hero .chip[data-status="upcoming" i]  { --chip-tone: var(--accent-blue); }
+.series-hero .chip[data-status="hiatus" i]    { --chip-tone: var(--accent-amber); }
+.series-hero .chip[data-status="cancelled" i] { --chip-tone: var(--accent-rose); }
+.series-hero .chip[data-status="finished" i]  { --chip-tone: var(--text-secondary); }
+
+/* Score popover, anchored to the my-score chip. Buttons inside are the
+   shared .btn system (Save = btn--accent, Clear = btn-danger). */
 .hero-score-popover {
   position: absolute;
-  top: calc(100% + 0.4rem);
+  top: calc(100% + var(--s2));
   left: 0;
   z-index: 30;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.55rem 0.65rem;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
   background: var(--bg-card);
   border: 1px solid var(--border-hover);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-lg);
   font-family: var(--font-mono);
   min-width: 14rem;
-}
-
-.hero-score-submit,
-.hero-score-clear {
-  appearance: none;
-  cursor: pointer;
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  padding: 0.3rem 0.65rem;
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
-}
-.hero-score-submit {
-  color: var(--accent-secondary);
-  border-color: color-mix(in srgb, var(--accent-secondary) 45%, var(--border-color));
-}
-.hero-score-submit:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent-secondary) 18%, transparent);
-}
-.hero-score-clear:hover:not(:disabled) {
-  border-color: var(--border-hover);
-  background: rgba(255, 255, 255, 0.06);
-}
-.hero-score-submit:disabled,
-.hero-score-clear:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
 }
 .hero-score-error {
   flex-basis: 100%;
   max-width: 22rem;
   font-size: 0.72rem;
   line-height: 1.35;
-  color: var(--accent-rose, #f43f5e);
+  color: var(--accent-rose);
   /* Belt-and-braces against any error message that slips through the
      main-side sanitizer with a long JSON payload - wrap, don't push out. */
   word-break: break-word;
   overflow-wrap: anywhere;
 }
-.hero-chip-myscore-tag {
-  font-size: 0.6rem;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  padding: 0.1rem 0.35rem;
-  margin-left: 0.15rem;
-  border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--accent-secondary) 22%, transparent);
-  color: color-mix(in srgb, var(--accent-secondary) 80%, var(--text-primary));
-}
-.hero-chip-status.status-releasing {
-  color: var(--accent-primary);
-  border-color: color-mix(in srgb, var(--accent-primary) 35%, var(--border-color));
-  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
-}
-/* Next-episode countdown chip. Tinted teal to read as part of the
-   "airing" cluster, with a tabular-nums font feature so the seconds
-   digit doesn't shimmy as it ticks. */
-.hero-chip-next-ep {
-  color: var(--accent-primary);
-  border-color: color-mix(in srgb, var(--accent-primary) 35%, var(--border-color));
-  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
-  font-variant-numeric: tabular-nums;
-}
-.hero-chip-next-ep svg { color: currentColor; }
 
-/* AniList external-link chip - same shape as the other chips but
-   actually clickable (it's a <button>), so it needs cursor + hover. */
-button.hero-chip-anilist {
-  appearance: none;
-  cursor: pointer;
-  color: var(--accent-secondary);
-  border-color: color-mix(in srgb, var(--accent-secondary) 35%, var(--border-color));
-  background: color-mix(in srgb, var(--accent-secondary) 10%, transparent);
-  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
-}
-button.hero-chip-anilist:hover {
-  color: color-mix(in srgb, var(--accent-secondary) 80%, white);
-  background: color-mix(in srgb, var(--accent-secondary) 20%, transparent);
-  border-color: color-mix(in srgb, var(--accent-secondary) 55%, var(--border-color));
-}
-button.hero-chip-anilist svg { color: currentColor; }
-/* Icon-only AniList chip. Square aspect, brand-colored "A" mark. The
-   official AniList brand blue (#02a9ff) reads cleanly on the hero
-   background and keeps the chip recognisable without the "AniList"
-   label next to it. */
-button.hero-chip-anilist--icon {
-  color: #02a9ff;
-  border-color: color-mix(in srgb, #02a9ff 40%, var(--border-color));
-  background: color-mix(in srgb, #02a9ff 12%, transparent);
-  padding: 0.3rem 0.45rem;
-  gap: 0;
-}
-button.hero-chip-anilist--icon:hover {
-  color: color-mix(in srgb, #02a9ff 75%, white);
-  background: color-mix(in srgb, #02a9ff 22%, transparent);
-  border-color: color-mix(in srgb, #02a9ff 60%, var(--border-color));
-}
-.hero-chip-hide { cursor: pointer; }
-.hero-chip-hide.is-hidden {
-  background: color-mix(in srgb, var(--accent-primary) 22%, transparent);
-  color: var(--accent-primary);
-}
-.hero-chip-status.status-finished {
-  color: var(--text-secondary);
-}
-.hero-chip-status.status-upcoming {
-  color: var(--accent-secondary);
-  border-color: color-mix(in srgb, var(--accent-secondary) 35%, var(--border-color));
-  background: color-mix(in srgb, var(--accent-secondary) 10%, transparent);
-}
-
-/* User's tracker list-status chip - rendered alongside the show's airing
-   status. Color signals at a glance what slot the show is in on the
-   user's list. Watching/Completed lean teal, Planning/Repeating lean the
-   indigo accent, Paused borrows amber from the rating chip, Dropped uses
-   the only rose token in the palette. */
-.hero-chip-list {
-  position: relative;
-  padding-left: 1.25rem;
-}
-.hero-chip-list::before {
-  content: "";
-  position: absolute;
-  left: 0.6rem;
-  top: 50%;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-  transform: translateY(-50%);
-  box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 35%, transparent);
-}
-.hero-chip-list.list-watching {
-  color: var(--accent-primary);
-  border-color: color-mix(in srgb, var(--accent-primary) 40%, var(--border-color));
-  background: color-mix(in srgb, var(--accent-primary) 12%, transparent);
-}
-.hero-chip-list.list-watching::before {
-  /* Soft pulsing ring on the active slot - only the one that's "now". */
-  animation: list-pulse 2.4s ease-in-out infinite;
-}
-.hero-chip-list.list-planning {
-  color: var(--accent-secondary);
-  border-color: color-mix(in srgb, var(--accent-secondary) 40%, var(--border-color));
-  background: color-mix(in srgb, var(--accent-secondary) 10%, transparent);
-}
-.hero-chip-list.list-completed {
-  color: color-mix(in srgb, var(--accent-primary) 75%, var(--text-secondary));
-  border-color: color-mix(in srgb, var(--accent-primary) 28%, var(--border-color));
-  background: color-mix(in srgb, var(--accent-primary) 7%, transparent);
-}
-.hero-chip-list.list-paused {
-  color: var(--accent-amber);
-  border-color: color-mix(in srgb, var(--accent-amber) 38%, var(--border-color));
-  background: color-mix(in srgb, var(--accent-amber) 10%, transparent);
-}
-.hero-chip-list.list-dropped {
-  color: var(--accent-rose);
-  border-color: color-mix(in srgb, var(--accent-rose) 38%, var(--border-color));
-  background: color-mix(in srgb, var(--accent-rose) 10%, transparent);
-}
-.hero-chip-list.list-repeating {
-  color: var(--accent-secondary);
-  border-color: color-mix(in srgb, var(--accent-secondary) 40%, var(--border-color));
-  background: color-mix(in srgb, var(--accent-secondary) 10%, transparent);
-}
-@keyframes list-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 35%, transparent); }
-  50%      { box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 0%, transparent); }
+/* ---------- Synopsis ---------- */
+.series-hero-desc-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s2);
 }
 .series-hero-desc {
   color: var(--text-secondary);
-  font-family: var(--font-display);
-  font-size: 0.95rem;
-  line-height: 1.55;
+  font-size: 0.88rem;
+  line-height: 1.6;
   max-width: 70ch;
   display: -webkit-box;
   -webkit-line-clamp: 5;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.series-hero-desc.is-expanded {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+}
+
+/* ---------- Hero foot: Continue button + tracked progress ---------- */
+.series-hero-foot {
+  margin-top: var(--s2);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s5);
+}
+.series-hero-continue { flex-shrink: 0; }
+.series-hero-continue-code {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.78em;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 1px var(--s2);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
 .series-hero-progress {
-  margin-top: 0.35rem;
+  flex: 1 1 16rem;
+  max-width: 28rem;
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
-  max-width: 28rem;
+  gap: var(--s2);
 }
 .series-hero-progress-meta {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 1rem;
+  gap: var(--s4);
   font-family: var(--font-mono);
   font-size: 0.72rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
 }
 .series-hero-progress-label { color: var(--text-muted); }
 .series-hero-progress-count { color: var(--text-primary); font-weight: 600; }
 .series-hero-progress-track {
   height: 6px;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-elev);
   border-radius: var(--radius-pill);
   overflow: hidden;
 }
@@ -544,79 +295,43 @@ button.hero-chip-anilist--icon:hover {
   width: 0;
   border-radius: inherit;
   background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
-  transition: width 320ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width var(--transition-slow);
 }
 .series-hero-progress-fill.untracked {
   background: var(--bg-tertiary);
 }
 
-/* ---------- Hero extras (studio / rewatch / tags column) ---------- */
-/* Studio chip - neutral, just a thin border accent so it doesn't compete
-   with the colorful status / list chips. */
-.hero-chip-studio {
-  border-color: color-mix(in srgb, var(--accent-primary) 28%, var(--border-color));
-  color: var(--text-primary);
-}
-/* Rewatch chip - pull from the warm side of the palette so it visually
-   separates from the watching/completed list-status chips. Only renders
-   when the user has actually rewatched the series, so emphasis is fine. */
-.hero-chip-rewatch {
-  border-color: color-mix(in srgb, var(--accent-secondary) 40%, var(--border-color));
-  background: color-mix(in srgb, var(--accent-secondary) 10%, transparent);
-  color: var(--accent-secondary);
-}
-.hero-chip-rewatch svg { color: inherit; }
-
-/* Tags panel - vertical list of AniList tags on the right side of the hero.
-   Capped by max-height (responsive to the hero height) so it never makes
-   the whole hero taller; tags that don't fit are clipped at the bottom
-   with a fade. This matches the user's "top XX (whatever fits)" intent. */
+/* ---------- Tags panel ---------- */
+/* Vertical list of AniList tags on the right side of the hero. Capped by
+   max-height so it never makes the whole hero taller; tags that don't fit
+   are clipped at the bottom with a fade, and a "Show all" toggle (rendered
+   only when the mask actually clips) removes the cap. */
 .series-hero-tags {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: var(--s3);
   min-width: 0;
-  /* Hard cap so the tag column doesn't stretch the hero. The fade-out
-     gradient on -list visually communicates that there may be more. */
   max-height: 340px;
 }
+.series-hero-tags.is-expanded { max-height: none; }
 .series-hero-tags-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
+  flex-wrap: wrap;
+  gap: var(--s2);
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-muted);
 }
 .series-hero-tags-label { color: var(--text-muted); }
-.series-hero-tags-toggle {
+.series-hero-tags-actions {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--border-color);
-  background: transparent;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 0.65rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
-}
-.series-hero-tags-toggle:hover {
-  color: var(--text-primary);
-  border-color: color-mix(in srgb, var(--accent-primary) 40%, var(--border-color));
-}
-.series-hero-tags-toggle.is-active {
-  color: var(--accent-secondary);
-  border-color: color-mix(in srgb, var(--accent-secondary) 50%, var(--border-color));
-  background: color-mix(in srgb, var(--accent-secondary) 10%, transparent);
+  gap: var(--s1);
 }
 .series-hero-tags-list {
   list-style: none;
@@ -624,23 +339,26 @@ button.hero-chip-anilist--icon:hover {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: var(--s1);
   flex: 1;
   overflow: hidden;
   /* Fade out at the bottom so tags that overflow the panel feel intentional,
-     not cut off. mask-image is layered so Safari without -webkit prefix
-     still falls back to a hard clip rather than a hard edge. */
+     not cut off. */
   mask-image: linear-gradient(180deg, #000 0%, #000 80%, transparent 100%);
   -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 80%, transparent 100%);
+}
+.series-hero-tags.is-expanded .series-hero-tags-list {
+  mask-image: none;
+  -webkit-mask-image: none;
 }
 .series-hero-tag {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.3rem 0.55rem;
-  border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.03);
+  gap: var(--s2);
+  padding: var(--s1) var(--s2);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elev);
   border: 1px solid var(--border-color);
   font-family: var(--font-mono);
   font-size: 0.7rem;
@@ -648,10 +366,11 @@ button.hero-chip-anilist--icon:hover {
   color: var(--text-secondary);
   min-width: 0;
 }
+/* Revealed spoiler tags read as "attention": amber, the warning hue. */
 .series-hero-tag.is-spoiler {
-  border-color: color-mix(in srgb, var(--accent-secondary) 35%, var(--border-color));
-  color: var(--accent-secondary);
-  background: color-mix(in srgb, var(--accent-secondary) 8%, transparent);
+  border-color: color-mix(in srgb, var(--accent-amber) 35%, var(--border-color));
+  color: var(--accent-amber);
+  background: color-mix(in srgb, var(--accent-amber) 8%, transparent);
 }
 .series-hero-tag-name {
   min-width: 0;
@@ -664,6 +383,7 @@ button.hero-chip-anilist--icon:hover {
   color: var(--text-muted);
   font-size: 0.65rem;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---------- Characters ---------- */
@@ -675,27 +395,34 @@ button.hero-chip-anilist--icon:hover {
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: minmax(0, 1fr);
-  gap: 0.6rem;
-  margin: 0.4rem 0 0;
+  gap: var(--s3);
+  margin: var(--s2) 0 0;
 }
 .character-card {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: var(--s2);
   text-decoration: none;
   color: inherit;
   border-radius: var(--radius-lg);
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   overflow: hidden;
-  transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-fast),
+    transform var(--transition-fast),
+    box-shadow var(--transition-fast);
   cursor: pointer;
 }
 .character-card:hover {
-  border-color: color-mix(in srgb, var(--accent-primary) 40%, var(--border-color));
+  border-color: var(--border-hover);
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }
+/* Large surface press: deepen the paint (the lift here is plain CSS, not
+   motion.ts, but scaling a whole card still reads heavy - paint instead). */
+.character-card:active { background: var(--bg-hover); }
 .character-card-portrait {
   width: 100%;
   aspect-ratio: 3 / 4;
@@ -718,10 +445,10 @@ button.hero-chip-anilist--icon:hover {
   color: var(--text-muted);
 }
 .character-card-body {
-  padding: 0.5rem 0.7rem 0.7rem;
+  padding: var(--s2) var(--s3) var(--s3);
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: var(--s1);
   min-width: 0;
 }
 .character-card-name {
@@ -746,111 +473,42 @@ button.hero-chip-anilist--icon:hover {
   color: var(--text-muted);
 }
 
-/* ---------- Related (franchise relations) ---------- */
-/* Grid of related entries - sequels, prequels, side stories, manga
-   adaptations. Each card is a button: in-library entries route in-app,
-   everything else opens AniList in the system browser. */
+/* ---------- Recommendations (and shared relation-card anatomy) ---------- */
+/* The relation-card-* classes are shared with the franchise graph's ghost
+   cards (FranchiseGraphView), so their anatomy lives here unchanged even
+   though the Related strip itself is now the graph. */
 .relations-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 1rem;
-  margin: 0.4rem 0 0;
+  gap: var(--s4);
+  margin: var(--s2) 0 0;
 }
-/* Single-row variant (Recommendations strip). Unlike the wrapping Related
-   grid, this keeps all picks (storage caps at 8) on one line: cards shrink
-   to share the width via equal `minmax(0, 1fr)` columns flowed across a
-   single row. Tighter gap than the base grid gives small cards more room. */
+/* Single-row variant (Recommendations strip). Keeps all picks (storage caps
+   at 8) on one line: cards shrink to share the width via equal
+   `minmax(0, 1fr)` columns flowed across a single row. */
 .relations-grid--single-row {
   grid-template-columns: none;
   grid-auto-flow: column;
   grid-auto-columns: minmax(0, 1fr);
-  gap: 0.6rem;
+  gap: var(--s3);
 }
-/* Timeline-variant grid - positions a horizontal rail behind the cards
-   so a chronologically-sorted franchise (S1 → S2 → S3) visually reads
-   as a single chain. Rail sits a third of the way down the poster so
-   it appears to thread through the cards rather than crossing the
-   titles. Grid stays auto-wrapping - on a narrow window the rail
-   simply trails off behind the row that fits. */
-.relations-grid--timeline {
-  position: relative;
-}
-.relations-timeline-rail {
+/* Ownership code (app-wide rule, applied here to recommendation cards):
+   external AniList-only entries wear a DASHED hairline; owned entries keep
+   the solid border the Card variant already provides. */
+.relations-grid .card--external { border-style: dashed; }
+/* Ownership flag pinned to the poster's top-left corner: a scrim chip
+   ("Available" in teal for owned, the AniList glyph for external). The chip
+   system's scrim recipe forces --text-primary; re-tint the owned flag teal
+   and the AniList glyph brand blue. */
+.relation-card-flag {
   position: absolute;
-  left: 0;
-  right: 0;
-  top: 18%;
-  height: 2px;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    color-mix(in srgb, var(--accent-primary) 55%, transparent) 8%,
-    color-mix(in srgb, var(--accent-primary) 55%, transparent) 92%,
-    transparent 100%
-  );
-  pointer-events: none;
-  z-index: 0;
+  top: var(--s2);
+  left: var(--s2);
+  z-index: 2;
+  display: inline-flex;
 }
-.relations-grid--timeline > .card { position: relative; z-index: 1; }
-/* Current-series marker card. Intentionally dulled - the user is already
-   here, so the card is a positional anchor in the timeline, not a call
-   to action. No halo, no hover lift (Card already opts out via noLift).
-   Dulling is done with explicit muted colors rather than `opacity`, so
-   the card still fully occludes the timeline rail behind it instead of
-   letting the rail bleed through. */
-.card--internal[aria-current="page"] {
-  border-color: var(--border-color);
-  background: var(--bg-card);
-  box-shadow: none;
-  cursor: default;
-}
-.card--internal[aria-current="page"]:hover {
-  border-color: var(--border-color);
-  background: var(--bg-card);
-  box-shadow: none;
-}
-.card--internal[aria-current="page"] .relation-card-title { color: var(--text-secondary); }
-.card--internal[aria-current="page"] .relation-card-type,
-.card--internal[aria-current="page"] .relation-card-meta { color: var(--text-muted); }
-.card--internal[aria-current="page"] .relation-card-poster img { filter: saturate(0.65) brightness(0.85); }
-/* Bucketed group inside the Related section. Each bucket has its own
-   small header (dot + label + count) and a grid. The header sits flush
-   with the cards - no card-style background or border - so the actual
-   cards remain the visual anchor. */
-.relations-group + .relations-group {
-  margin-top: 1.5rem;
-}
-.relations-group__head {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  margin: 0 0 0.7rem;
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-.relations-group__dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.relations-group--internal .relations-group__dot {
-  background: var(--accent-primary);
-}
-.relations-group--external .relations-group__dot {
-  background: var(--accent-secondary);
-}
-.relations-group--internal .relations-group__label { color: var(--accent-primary); }
-.relations-group--external .relations-group__label { color: var(--accent-secondary); }
-.relations-group__count {
-  font-size: 0.7rem;
-  color: var(--text-muted);
-  font-weight: 500;
-  letter-spacing: 0;
-}
+.relation-card-flag .chip--teal.chip--scrim { color: var(--accent-primary); }
+.relation-card-flag .chip--scrim svg { color: var(--anilist-blue); }
 .relation-card-poster {
   position: relative;
   width: 100%;
@@ -877,11 +535,10 @@ button.hero-chip-anilist--icon:hover {
    corner of a Related or Recommended *card* (not the poster) when that entry is
    on the user's tracker list. It's a direct child of `.card` (position:
    relative), so it anchors to the whole card's corner, down by the format/year
-   meta row, well clear of the poster art and the top "Available"/"AniList"
-   pills. Colour encodes the status (`data-status`, mirroring an old project's
-   `[status="…"]` pattern); a dark ring + faint same-hue halo keep it legible
-   against the card surface. `pointer-events: auto` so the dot can own its own
-   hover-pause tooltip naming the status. */
+   meta row, well clear of the poster art and the top ownership flag. Colour
+   encodes the status (`data-status`); a dark ring + faint same-hue halo keep it
+   legible against the card surface. `pointer-events: auto` so the dot can own
+   its own hover-pause tooltip naming the status. */
 .list-status-dot {
   position: absolute;
   bottom: 8px;
@@ -920,10 +577,10 @@ button.hero-chip-anilist--icon:hover {
   box-shadow: 0 0 8px 1px color-mix(in srgb, var(--status-planning) 70%, transparent);
 }
 .relation-card-body {
-  padding: 0.55rem 0.65rem 0.7rem;
+  padding: var(--s2) var(--s3) var(--s3);
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: var(--s1);
 }
 .relation-card-type {
   font-family: var(--font-mono);
@@ -948,33 +605,18 @@ button.hero-chip-anilist--icon:hover {
 .relation-card-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  gap: var(--s1);
   align-items: center;
-  margin-top: 0.15rem;
+  margin-top: 2px;
   font-family: var(--font-mono);
   font-size: 0.7rem;
   color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
-/* Per-format chip + card accent. Each AniList MediaFormat picks a colour
-   from the --format-* token set in index.css. The chip in the meta row
-   gets a bold tinted pill, and the card itself gets a thin coloured strip
-   along the top edge so the format is recognisable at a glance even
-   without reading the chip. */
-.relation-card-format {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.15rem 0.45rem;
-  border-radius: var(--radius-pill);
-  font-family: var(--font-mono);
-  font-size: 0.62rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border-color);
-  color: var(--text-secondary);
-}
+/* Per-format card accent: a thin coloured strip along the card's top edge
+   so the format is recognisable at a glance even without reading the chip.
+   Colour comes from the --format-* token set in index.css via data-format. */
 .card[data-format] { isolation: isolate; }
 .card[data-format]::before {
   content: "";
@@ -1002,6 +644,23 @@ button.hero-chip-anilist--icon:hover {
 .card[data-format="ONE_SHOT"]      { --format-accent: var(--format-oneshot); }
 .card[data-format="VISUAL_NOVEL"]  { --format-accent: var(--format-vn); }
 
+/* Legacy format chip shell - still consumed by FranchiseGraphView's ghost
+   cards. The SeriesDetail page itself now renders format chips through the
+   .chip system (Pill format=...). Delete once the franchise view migrates. */
+.relation-card-format {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: var(--chip-font-sm);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
 .relation-card-format[data-format="TV"],
 .relation-card-format[data-format="TV_SHORT"] {
   color: var(--format-tv);
@@ -1054,20 +713,19 @@ button.hero-chip-anilist--icon:hover {
   border-color: color-mix(in srgb, var(--format-vn) 38%, var(--border-color));
   background: color-mix(in srgb, var(--format-vn) 14%, transparent);
 }
-/* Dulled-current-card override: keep the format chip readable but mute its
-   saturation slightly so it matches the rest of the muted card. */
-.card--internal[aria-current="page"] .relation-card-format { filter: saturate(0.75); }
 
-/* Bonus-content groups (Openings / Endings / Previews / …) inside the
-   "Openings, Endings & Extras" section. Each group is a small uppercase
-   sub-heading above its own episode-list, matching the .episode-row__code
-   treatment so the heading and the per-row labels read as one family. */
+/* ---------- Bonus-content groups ---------- */
+/* (Openings / Endings / Previews / ...) inside the "Openings, Endings &
+   More" section. Each group is a small uppercase sub-heading above its own
+   episode-list, matching the .episode-row__code treatment so the heading
+   and the per-row labels read as one family. */
 .bonus-group + .bonus-group { margin-top: var(--s5); }
 .bonus-group__label {
   display: flex;
   align-items: baseline;
   gap: var(--s2);
   margin-bottom: var(--s2);
+  font-family: var(--font-mono);
   font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -1097,6 +755,6 @@ button.hero-chip-anilist--icon:hover {
 }
 .extra-episodes-note svg {
   flex: 0 0 auto;
-  margin-top: 0.1rem;
+  margin-top: 2px;
   color: var(--accent-amber);
 }
