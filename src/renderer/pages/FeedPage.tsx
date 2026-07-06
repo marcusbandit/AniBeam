@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { Activity, History, CalendarClock } from "lucide-react";
 import type { LibraryItem } from "../../types/electron";
 import { findNextUpcomingEpisode } from "../utils/airingUtils";
+import { fmtShort } from "../utils/relativeTime";
 import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
 import { useHiddenShows } from "../contexts/HiddenShowsContext";
 import ShowCard from "../components/ShowCard";
@@ -23,39 +24,14 @@ interface FeedEntry {
   when: number;
   episodeNumber: number | null;  // the episode this entry refers to
   source: "aired" | "downloaded" | "upcoming";
+  // For "upcoming" entries only: the show's LAST release (aired/downloaded),
+  // shown in the meta row. The future air time itself is the countdown chip's
+  // job; repeating it on the left would state the same fact twice.
+  lastWhen?: number;
+  lastSource?: "aired" | "downloaded";
 }
 
-// Mirrors fmt_relative_time from the C version (src/ui.c:862). Buckets:
-// 60s → 1h → 1d → 30d → "months" → "years". 30-day "month" / 12-month
-// "year" is intentional — keeps the maths cheap and the labels readable.
-function fmtRelativeTime(unixSec: number): string {
-  const now = Math.floor(Date.now() / 1000);
-  const diff = now - unixSec;
-  const abs = Math.abs(diff);
-  const future = diff < 0;
-  if (abs < 60) return "just now";
-  if (abs < 3600) {
-    const m = Math.floor(abs / 60);
-    return future ? `in ${m}m` : `${m}m ago`;
-  }
-  if (abs < 86400) {
-    const h = Math.floor(abs / 3600);
-    return future ? `in ${h}h` : `${h}h ago`;
-  }
-  if (abs < 86400 * 30) {
-    const d = Math.floor(abs / 86400);
-    return future ? `in ${d}d` : `${d}d ago`;
-  }
-  const totalMo = Math.floor(abs / (86400 * 30));
-  const y = Math.floor(totalMo / 12);
-  const mo = totalMo % 12;
-  const label = y > 0
-    ? (mo > 0 ? `${y}y ${mo}mo` : `${y}y`)
-    : `${totalMo}mo`;
-  return future ? `in ${label}` : `${label} ago`;
-}
-
-// Highest episode number actually sitting on disk — the value the "EP NN"
+// Highest episode number actually sitting on disk: the value the "EP NN"
 // badge shows everywhere else in the app (Library, Airing). 0 when nothing is
 // on disk. The single source of truth for what "you have" means on a card.
 function highestOnDiskEpisode(item: LibraryItem): number {
@@ -66,7 +42,7 @@ function highestOnDiskEpisode(item: LibraryItem): number {
 
 // One entry per show. Derived from the C reference (src/ui.c:955), but the
 // shown episode is the newest one ACTUALLY on disk, not just the latest with a
-// known past airDate — a freshly-downloaded episode whose airDate metadata
+// known past airDate: a freshly-downloaded episode whose airDate metadata
 // hasn't landed yet (or is flagged future) still counts. Without this, a show
 // with 8 files on disk but only 7 dated episodes reads "EP 07". Mirrors
 // HomePage.getAiringSortInfo. Future episodes are ignored for the timestamp.
@@ -74,7 +50,7 @@ function highestOnDiskEpisode(item: LibraryItem): number {
 function buildRecentEntry(item: LibraryItem, nowSec: number): FeedEntry | null {
   if (item.files.length === 0) return null;
 
-  // Latest aired-and-on-disk episode (needs a known past airDate) — used for
+  // Latest aired-and-on-disk episode (needs a known past airDate); used for
   // the "aired" timestamp/source.
   const onDiskEps = new Set(item.files.map((f) => f.episodeNumber));
   let bestAired: { ts: number; ep: number } | null = null;
@@ -126,7 +102,8 @@ function buildRecentFeed(items: LibraryItem[]): FeedEntry[] {
 // "Coming soon": shows with a known upcoming episode float to the top, soonest
 // air date first, so you can see what's next. Shows without a scheduled next
 // episode (finished, or no airing schedule cached) keep their recent ordering
-// below, so the feed still lists everything you own.
+// below, so the feed still lists everything you own. The render inserts an
+// eyebrow divider between the two groups.
 function buildUpcomingFeed(items: LibraryItem[]): FeedEntry[] {
   const nowMs = Date.now();
   const nowSec = Math.floor(nowMs / 1000);
@@ -136,16 +113,23 @@ function buildUpcomingFeed(items: LibraryItem[]): FeedEntry[] {
     if (item.files.length === 0) continue;
     const next = findNextUpcomingEpisode(item.episodes, nowMs);
     if (next) {
+      // The meta row shows the show's LAST release, not the future air time
+      // (the countdown chip already owns that fact).
+      const last = buildRecentEntry(item, nowSec);
       upcoming.push({
         item,
         when: Math.floor(next.airDateMs / 1000),
-        // Badge the newest episode ON DISK — same as the Airing view and the
-        // rest of the app — NOT the upcoming one. `when` (next air date) still
-        // drives the soonest-first sort, and the countdown chip + "Next
-        // episode airs" label convey what's coming. Badging next.episodeNumber
-        // here made the feed read "EP 09" while only 8 episodes were on disk.
+        // Badge the newest episode ON DISK, same as the Airing view and the
+        // rest of the app, NOT the upcoming one. `when` (next air date) still
+        // drives the soonest-first sort, and the countdown chip conveys
+        // what's coming. Badging next.episodeNumber here made the feed read
+        // "EP 09" while only 8 episodes were on disk.
         episodeNumber: highestOnDiskEpisode(item) || null,
         source: "upcoming",
+        lastWhen: last?.when,
+        // buildRecentEntry only ever yields aired/downloaded; the guard just
+        // narrows the type.
+        lastSource: last && last.source !== "upcoming" ? last.source : undefined,
       });
     } else {
       const entry = buildRecentEntry(item, nowSec);
@@ -157,10 +141,9 @@ function buildUpcomingFeed(items: LibraryItem[]): FeedEntry[] {
   return [...upcoming, ...rest];
 }
 
-const META_LEFT_TITLE: Record<FeedEntry["source"], string> = {
+const META_LEFT_TITLE: Record<"aired" | "downloaded", string> = {
   aired: "Episode aired",
   downloaded: "File downloaded",
-  upcoming: "Next episode airs",
 };
 
 function FeedPage() {
@@ -190,7 +173,7 @@ function FeedPage() {
     void reload();
   }, [reload]);
 
-  // Debounced — see HomePage for the reasoning. New shows fire bursts of
+  // Debounced; see HomePage for the reasoning. New shows fire bursts of
   // metadata change pings; we want one walk per burst, not 2N+1.
   const debouncedReload = useDebouncedCallback(() => { void reload(); }, 250);
   useEffect(() => {
@@ -210,6 +193,14 @@ function FeedPage() {
   const entries = useMemo(
     () => (sortMode === "upcoming" ? buildUpcomingFeed(feedItems) : buildRecentFeed(feedItems)),
     [feedItems, sortMode],
+  );
+
+  // Where the "has a known next episode" group ends and the recent-order
+  // backfill begins (upcoming sort only). -1 or 0 means there is no boundary
+  // to mark: either everything has a next episode, or nothing does.
+  const dividerIndex = useMemo(
+    () => (sortMode === "upcoming" ? entries.findIndex((e) => e.source !== "upcoming") : -1),
+    [entries, sortMode],
   );
 
   // Shared coarse tick for per-card countdowns. We render minute-
@@ -259,21 +250,37 @@ function FeedPage() {
       {entries.length === 0 ? (
         <div className="empty">
           <div className="empty-icon"><Activity size={48} /></div>
-          <div className="empty-title">Nothing yet</div>
-          <div className="empty-text">Add a folder in Settings to get started.</div>
+          <div className="empty-title">Nothing here yet</div>
+          <div className="empty-text">Add a folder in Settings to build your feed.</div>
         </div>
       ) : (
         <div className="show-grid" data-halo-cluster>
-          {entries.map(({ item, when, episodeNumber, source }) => (
-            <ShowCard
-              key={item.id}
-              item={item}
-              episodeBadgeNumber={episodeNumber}
-              metaLeftText={fmtRelativeTime(when)}
-              metaLeftTitle={META_LEFT_TITLE[source]}
-              nowMs={nowMs}
-            />
-          ))}
+          {entries.map((entry, idx) => {
+            const { item, when, episodeNumber, source } = entry;
+            // Upcoming cards: the future air time lives in the countdown chip
+            // alone; the meta row shows the last release instead (or falls
+            // back to ShowCard's file count when the show has none recorded).
+            const metaWhen = source === "upcoming" ? entry.lastWhen : when;
+            const metaSource: "aired" | "downloaded" | undefined =
+              source === "upcoming" ? entry.lastSource : source;
+            return (
+              <Fragment key={item.id}>
+                {dividerIndex > 0 && idx === dividerIndex && (
+                  <div className="feed-divider" role="presentation">
+                    <span className="feed-divider__label">Everything else</span>
+                    <span className="feed-divider__rule" aria-hidden="true" />
+                  </div>
+                )}
+                <ShowCard
+                  item={item}
+                  episodeBadgeNumber={episodeNumber}
+                  metaLeftText={metaWhen != null ? fmtShort(metaWhen * 1000) : undefined}
+                  metaLeftTitle={metaWhen != null && metaSource ? META_LEFT_TITLE[metaSource] : undefined}
+                  nowMs={nowMs}
+                />
+              </Fragment>
+            );
+          })}
         </div>
       )}
     </Page>

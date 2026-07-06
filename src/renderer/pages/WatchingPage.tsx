@@ -3,22 +3,28 @@ import { Eye } from "lucide-react";
 import type { LibraryItem } from "../../types/electron";
 import type { AnilistWatchingEntry, WatchingListResult } from "../../main/preload";
 import { findNextUpcomingEpisode } from "../utils/airingUtils";
+import { fmtShort } from "../utils/relativeTime";
 import { useHiddenShows } from "../contexts/HiddenShowsContext";
 import ShowCard from "../components/ShowCard";
-import { Page } from "../components/primitives";
+import { Page, Pill } from "../components/primitives";
 
-// Compact "time since" for the meta row. Past-only (AniList updatedAt is
-// always in the past), same buckets as the Feed's relative-time helper.
-function fmtAgo(unixSec: number | null): string {
-  if (!unixSec) return "—";
-  const diff = Math.floor(Date.now() / 1000) - unixSec;
-  if (diff < 60) return "just now";
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  if (diff < 86400 * 30) return `${Math.floor(diff / 86400)}d ago`;
-  const mo = Math.floor(diff / (86400 * 30));
-  if (mo < 12) return `${mo}mo ago`;
-  return `${Math.floor(mo / 12)}y ago`;
+// AniList brand mark. Inline rather than fetched so it ships with the
+// renderer bundle and stays available offline. Geometry is the official
+// stylized "A" from anilist.co/img/icons; currentColor so it tints with
+// the surrounding chip styling.
+function AniListIcon({ size = 12 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M6.361 2.943 0 21.056h4.942l1.077-3.133H11.4l1.052 3.133H22.9c.71 0 1.1-.39 1.1-1.1V17.53c0-.71-.39-1.1-1.1-1.1h-6.483V4.045c0-.71-.39-1.1-1.1-1.1h-2.422c-.71 0-1.1.39-1.1 1.1v1.728L11.295 4.04c-.39-.71-.926-1.097-1.55-1.097H6.361zm2.107 6.508 1.541 4.514H6.928l1.54-4.514z" />
+    </svg>
+  );
 }
 
 // Turn a non-library watching entry into a LibraryItem so it can flow through
@@ -65,7 +71,7 @@ interface WatchingCard {
 // Session-level cache (module scope = lives as long as the window). Switching
 // to the Watching tab renders this instantly instead of waiting on the AniList
 // round-trip; a background refresh on every mount keeps it fresh and updates
-// the UI when it resolves. Not persisted to disk — a fresh app launch still
+// the UI when it resolves. Not persisted to disk; a fresh app launch still
 // does one initial fetch.
 let cachedResult: WatchingListResult | null = null;
 let cachedLibrary: LibraryItem[] = [];
@@ -105,7 +111,7 @@ function WatchingPage() {
   }, [reload]);
 
   // Index the local library by BOTH ids so a watching entry can find its
-  // owned counterpart (→ outlined, opens the in-app series page) regardless of
+  // owned counterpart (solid card, opens the in-app series page) regardless of
   // which provider the library show was matched against. A show matched via
   // MAL has anilistId === null, so anilist-only matching would miss it.
   const libraryIndex = useMemo(() => {
@@ -160,7 +166,7 @@ function WatchingPage() {
   const head = (
     <div>
       <h1 className="page-title">Watching</h1>
-      <p className="page-sub">Your AniList watching list. Outlined shows are in your library.</p>
+      <p className="page-sub">Your AniList watching list. Dashed cards are AniList-only; click to open them there.</p>
     </div>
   );
 
@@ -176,25 +182,36 @@ function WatchingPage() {
     <Page head={head}>
       {result?.ok ? (
         cards.length === 0 ? (
-          <EmptyState title="Nothing on your watching list" hint="Set a show to “Watching” on AniList and it’ll show up here." />
+          <EmptyState title="Nothing on your watching list" hint="Mark a show as Watching on AniList to see it here." />
         ) : (
           <div className="show-grid watching-grid" data-halo-cluster>
-            {cards.map((c) => (
-              <ShowCard
-                key={c.key}
-                item={c.item}
-                outlined={c.inLibrary}
-                onActivate={c.inLibrary ? undefined : () => void window.electronAPI.openExternal(c.siteUrl)}
-                metaLeftText={fmtAgo(updatedByAnilist.get(c.item.anilistId ?? -1) ?? null)}
-                metaLeftTitle="Last updated on AniList"
-                nowMs={nowMs}
-              />
-            ))}
+            {cards.map((c) => {
+              const updated = updatedByAnilist.get(c.item.anilistId ?? -1) ?? null;
+              return (
+                // Ownership code: owned = the standard solid hairline card;
+                // AniList-only = dashed border + the AniList mark in a scrim
+                // chip, both applied by the wrapper so ShowCard stays shared.
+                <div key={c.key} className={`watching-card${c.inLibrary ? "" : " watching-card--external"}`}>
+                  <ShowCard
+                    item={c.item}
+                    onActivate={c.inLibrary ? undefined : () => void window.electronAPI.openExternal(c.siteUrl)}
+                    metaLeftText={updated != null ? fmtShort(updated * 1000) : c.inLibrary ? undefined : "-"}
+                    metaLeftTitle={updated != null ? "Last updated on AniList" : undefined}
+                    nowMs={nowMs}
+                  />
+                  {!c.inLibrary && (
+                    <div className="watching-card__external-mark" aria-hidden="true">
+                      <Pill size="sm" scrim><AniListIcon size={11} /></Pill>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )
       ) : result ? (
         <EmptyState
-          title={result.needsAuth ? "AniList not connected" : "Couldn’t load watching list"}
+          title={result.needsAuth ? "AniList not connected" : "Couldn't load watching list"}
           hint={result.needsAuth ? "Connect AniList in Settings → Trackers to see your watching list." : result.error}
         />
       ) : null}

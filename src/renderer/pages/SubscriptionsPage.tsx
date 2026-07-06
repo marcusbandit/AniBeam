@@ -50,7 +50,7 @@ function SubscriptionsPage() {
           </div>
           <button
             type="button"
-            className="btn-secondary subscriptions-refresh"
+            className="btn"
             onClick={() => void reload()}
             disabled={loading}
             aria-label="Refresh subscriptions"
@@ -150,7 +150,7 @@ function ErrorState({ message, needsAuth }: { message: string; needsAuth: boolea
       <div className="empty-text">
         {needsAuth ? (
           <>
-            Run <code>anirss -Sy</code> in a terminal once to log in to qBittorrent. AniBeam will pick up the cached session afterwards.
+            Run <code>anirss -Sy</code> in a terminal to log in to qBittorrent. AniBeam picks up the cached session.
           </>
         ) : (
           message
