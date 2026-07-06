@@ -876,6 +876,25 @@ function VideoPlayer() {
           // now that the renderer is reachable.
           setJassubReadyTick((t) => t + 1);
 
+          // JASSUB sizes its canvas buffer via a single async worker RPC on
+          // the first render whose dimensions changed. If that one call lands
+          // while the worker/layout is still settling, the buffer stays at
+          // the 300x150 canvas default FOREVER (its ResizeObserver only fires
+          // on video SIZE changes, so nothing ever retries) and subtitles
+          // render into a stretched postage stamp: invisible/misplaced text.
+          // Verified live: a stuck instance heals the moment resize() runs.
+          // Force idempotent re-syncs while the mount settles.
+          const forceResize = () => {
+            if (jassubRef.current !== inst) return;
+            try {
+              void (inst as unknown as { resize: (forceRepaint?: boolean) => Promise<void> }).resize(true);
+            } catch { /* instance mid-teardown */ }
+          };
+          forceResize();
+          setTimeout(forceResize, 400);
+          setTimeout(forceResize, 1500);
+          video.addEventListener('canplay', forceResize, { once: true });
+
           // Render every rAF tick with the current mediaTime. JASSUB's
           // internal _demandRender skips redundant renders (same frame, no
           // change since last) so this is cheap. Letting it dedupe internally
