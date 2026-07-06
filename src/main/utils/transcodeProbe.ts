@@ -22,6 +22,41 @@ export interface CodecProbe {
   aCodec: string;
   width: number;
   height: number;
+  /** Display aspect (width/height in DISPLAY pixels), or null if unknown. */
+  displayAspect: number | null;
+}
+
+/**
+ * Display aspect ratio of a video stream as a number. Prefers ffprobe's
+ * display_aspect_ratio; falls back to storage dimensions corrected by the
+ * sample aspect ratio (anamorphic sources store non-square pixels). Returns
+ * null when underdetermined or implausible. Exported pure for the verify
+ * script.
+ */
+export function parseDisplayAspect(v: {
+  width?: number;
+  height?: number;
+  sample_aspect_ratio?: string;
+  display_aspect_ratio?: string;
+}): number | null {
+  const ratioOf = (s: string | undefined): number | null => {
+    if (!s) return null;
+    const m = /^(\d+):(\d+)$/.exec(s.trim());
+    if (!m) return null;
+    const num = parseInt(m[1], 10);
+    const den = parseInt(m[2], 10);
+    if (!num || !den) return null;
+    return num / den;
+  };
+  const plausible = (r: number) => r > 0.2 && r < 5;
+  const dar = ratioOf(v.display_aspect_ratio);
+  if (dar && plausible(dar)) return dar;
+  const w = v.width ?? 0;
+  const h = v.height ?? 0;
+  if (w <= 0 || h <= 0) return null;
+  const sar = ratioOf(v.sample_aspect_ratio) ?? 1;
+  const aspect = (w * (sar > 0 ? sar : 1)) / h;
+  return plausible(aspect) ? aspect : null;
 }
 
 export type EncoderKind = 'vaapi' | 'nvenc' | 'libx264';
@@ -50,7 +85,14 @@ export async function probeCodecs(filePath: string): Promise<CodecProbe | null> 
   try {
     const raw = await ffprobeJson(filePath);
     const parsed = JSON.parse(raw) as {
-      streams?: Array<{ codec_type?: string; codec_name?: string; width?: number; height?: number }>;
+      streams?: Array<{
+        codec_type?: string;
+        codec_name?: string;
+        width?: number;
+        height?: number;
+        sample_aspect_ratio?: string;
+        display_aspect_ratio?: string;
+      }>;
       format?: { duration?: string | number };
     };
     const streams = parsed.streams ?? [];
@@ -65,6 +107,7 @@ export async function probeCodecs(filePath: string): Promise<CodecProbe | null> 
       aCodec: (a?.codec_name ?? '').toLowerCase(),
       width: v.width ?? 0,
       height: v.height ?? 0,
+      displayAspect: parseDisplayAspect(v),
     };
   } catch (err) {
     logger.warn('system', `Codec probe failed: ${(err as Error).message}`, { file: filePath });

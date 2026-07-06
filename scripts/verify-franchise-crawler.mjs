@@ -27,7 +27,7 @@ mock.module('../src/main/handlers/anilistHandler.ts', () => ({
 }));
 
 const { crawlFranchiseLive, crawlLibraryGaps } = await import('../src/main/services/franchiseCrawler.ts');
-const { readIndex, readFranchiseFile, writeFranchiseFile } = await import('../src/main/services/franchiseGraph.ts');
+const { readIndex, readFranchiseFile, writeFranchiseFile, franchiseFilePath } = await import('../src/main/services/franchiseGraph.ts');
 
 // --- helpers ----------------------------------------------------------------
 const FIXED = 1_700_000_000_000;
@@ -259,6 +259,50 @@ const exists = async (p) => { try { await access(p); return true; } catch { retu
   assert.ok(idx.library['600'], 'gaps: 600 now indexed');
 
   console.log('OK gaps: crawlLibraryGaps skips covered, fills the gap');
+}
+
+// ===========================================================================
+// Case 6 — Crossover boundary does not merge or re-home.
+//   700 (owned) → SEQUEL → 701 (member). 700 → CHARACTER → 50 (a crossover hub
+//   with a SMALLER id) that itself links to a foreign franchise 800. The
+//   CHARACTER edge must NOT be traversed: 50/800 are never fetched, 800 never
+//   appears, 50 stays a stale boundary leaf, the franchise is keyed by its
+//   member root (franchise-700, NOT the smaller 50), and only owned member 700
+//   is indexed — 50 and 800 are not.
+// ===========================================================================
+{
+  owned = { a: { anilistId: 700 } };
+  const graph = new Map([
+    [700, [rel(701, 'SEQUEL'), rel(50, 'CHARACTER')]],
+    [701, [rel(700, 'PREQUEL')]],
+    [50, [rel(800, 'CHARACTER'), rel(700, 'CHARACTER')]], // must never be fetched
+    [800, [rel(50, 'CHARACTER')]],                        // must never appear
+  ]);
+  const calls = [];
+  const fetch = async (id) => {
+    calls.push(id);
+    return { self: self(id), relations: graph.get(id) ?? [], ok: true };
+  };
+
+  await crawlFranchiseLive(700, { fetch, now: clock });
+
+  assert.ok(!calls.includes(50) && !calls.includes(800), 'case6: crossover + foreign side never fetched');
+  const file = await readFranchiseFile('franchise-700');
+  assert.ok(file, 'case6: keyed by the member root, franchise-700');
+  assert.equal(file.rootId, 700, 'case6: rootId is the member root (700), not the smaller boundary id (50)');
+  assert.deepEqual(
+    Object.keys(file.byId).map(Number).sort((a, b) => a - b),
+    [50, 700, 701],
+    'case6: component = members {700,701} + boundary leaf 50; foreign 800 excluded',
+  );
+  assert.equal(file.byId['50'].fetchedAt, 0, 'case6: crossover kept as a stale display leaf');
+  assert.equal(await exists(franchiseFilePath('franchise-50')), false, 'case6: no franchise-50 file');
+  const index = await readIndex();
+  assert.equal(index.library['700'].franchise, 'franchise-700', 'case6: owned member indexed to its own franchise');
+  assert.equal(index.library['50'], undefined, 'case6: boundary crossover not indexed');
+  assert.equal(index.library['800'], undefined, 'case6: foreign franchise not pulled in');
+
+  console.log('OK case6: crossover stays a boundary leaf — member-based root, foreign side excluded');
 }
 
 console.log('OK: franchise crawler');

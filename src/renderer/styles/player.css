@@ -13,10 +13,12 @@
      the island's fixed parts: 1px border + 12px pad + 12px scrub row + 8px
      gap + 32px buttons row + 12px pad + 1px border = 78px. */
   /* Track the VIDEO's displayed width, not the window: the player fills the
-     window and content is 16:9, so the contain-fit content box is
-     min(100vw, 100vh * 16/9). The island spans it minus the side gaps
-     (pillarboxes on ultrawide monitors don't count as video). */
-  --player-island-max-w: calc(min(100vw, 100vh * (16 / 9)) - var(--player-island-side-gap) * 2);
+     window, so the contain-fit content box is min(100vw, 100vh * aspect).
+     --player-aspect is set inline on .player-wrap from the file's probed
+     display aspect (backfilled on series open, so it's correct on the first
+     frame) and refined by the decoded stream; 16:9 is only the never-probed
+     fallback. Pillarboxes on ultrawide monitors don't count as video. */
+  --player-island-max-w: calc(min(100vw, 100vh * var(--player-aspect, 1.77778)) - var(--player-island-side-gap) * 2);
   --player-island-side-gap: 24px;
   --player-island-bottom: 28px;
   --player-island-height: 78px;
@@ -98,7 +100,13 @@
   bottom: var(--player-island-bottom);
   margin-inline: auto;
   width: min(var(--player-island-max-w), calc(100% - var(--player-island-side-gap) * 2));
-  z-index: 5;
+  /* Above .player-bottom-actions (z-index 8) so the seek-bar hover preview,
+     which lives in this subtree and pokes above the island's top edge, paints
+     over the Skip/Auto-next pills on far-right hover. Still below the rating
+     prompt (10) and codec modal (50). The island box itself never spatially
+     overlaps the pills (they sit a full island-gap above it), so nothing
+     else changes. */
+  z-index: 9;
   padding: var(--s3) var(--s4);
   /* Island material: stays on --scrim (opaque dark glass reads over any
      video frame; --glass-veil is for overlays over chrome/artwork), but
@@ -840,7 +848,7 @@
 .player-vol-slider {
   -webkit-appearance: none;
   appearance: none;
-  height: 4px;
+  height: 7px;
   border-radius: var(--radius-pill);
   background: linear-gradient(
     to right,
@@ -853,12 +861,14 @@
   margin: 0;
 }
 .player-scrub { width: 100%; }
+/* The volume slider stays slimmer than the seek bar. */
+.player-vol-slider { height: 5px; }
 .player-scrub::-webkit-slider-thumb,
 .player-vol-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: var(--text-primary);
   border: none;
@@ -883,19 +893,57 @@
   padding: var(--s1) 0;
 }
 
-/* Seek-hover time bubble: a scrim chip pinned above the cursor's x on the
-   scrubber. Chip look comes from .chip chip--sm chip--scrim in the JSX;
-   this only positions and fades it. The 18px lift clears the island's top
-   hairline (12px pad + 1px border above the scrub wrap) with room to spare. */
-.player-seek-bubble {
+/* Seek-bar hover frame preview: a small glass card pinned above the cursor's
+   x on the scrubber, holding the frame canvas + timestamp. No backdrop-filter:
+   it shows an opaque decoded frame, blur would buy nothing (and the popup must
+   not take [data-liquid-glass]; that would churn maps while tracking the
+   cursor). pointer-events off so it never steals the wrap's mousemove. The
+   18px lift clears the island's top hairline (12px pad + 1px border above the
+   scrub wrap) with room to spare. */
+.player-scrub-preview {
   position: absolute;
   bottom: calc(100% + 18px);
   transform: translateX(-50%);
   pointer-events: none;
-  opacity: 0;
-  transition: opacity var(--transition-fast);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 6px;
+  background: var(--glass-veil);
+  border: 1px solid var(--glass-edge-bright);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 6;
 }
-.player-seek-bubble.is-visible { opacity: 1; }
+/* Width mirrors PREVIEW_CANVAS_W in VideoPlayer.tsx; height follows the
+   backing store's aspect (16:9 seed, then the real frame aspect). Inner
+   radius = outer radius minus the 6px padding so the corners stay concentric. */
+.player-scrub-preview-canvas {
+  display: block;
+  width: 200px;
+  height: auto;
+  border-radius: calc(var(--radius-md) - 6px);
+  background: #000;
+}
+.player-scrub-preview-time {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+/* Off-screen frame-extraction source for the hover preview. Hidden but still
+   laid out (NOT display:none) so Chromium keeps decoding seeked frames. */
+.player-preview-video {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  top: 0;
+  left: 0;
+  opacity: 0;
+  pointer-events: none;
+}
 
 /* Keyboard-shortcut legend: centered scrim overlay toggled by the ? button
    in the right control group. Lists the existing bindings only. */

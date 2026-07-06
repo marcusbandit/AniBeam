@@ -158,6 +158,10 @@ export interface FileEpisode {
   // main; drives the episode-row "no subs" marker. See shared/subtitleSupport.ts.
   subtitleState?: SubtitleState | null;
   subtitleCheckedAt?: number;
+  // Display aspect ratio (width/height, anamorphic-aware), backfilled by the
+  // series-open probe sweep so the player can size chrome before metadata
+  // loads. null = probed but unknown; missing = not probed yet.
+  displayAspect?: number | null;
 }
 
 const hasElectronAPI = typeof window !== 'undefined' && window.electronAPI;

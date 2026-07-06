@@ -169,16 +169,16 @@ function layoutGraph(
   const graphNodeById = new Map<number, FranchiseNodeData>(graph.nodes.map((n) => [n.anilistId, n]));
   const dedupedEdges = dedupeReciprocalEdges(graph.edges, graphNodeById);
 
-  // Apply format filter: the current node is always visible; other nodes are
-  // hidden if their format category is in hiddenFormats.
-  const visibleNodeIds = new Set<number>();
-  for (const n of graph.nodes) {
-    if (n.anilistId === currentId || !hiddenFormats.has(formatFor(n.format))) {
-      visibleNodeIds.add(n.anilistId);
-    }
-  }
-  const filteredNodes = graph.nodes.filter((n) => visibleNodeIds.has(n.anilistId));
-  const filteredEdges = dedupedEdges.filter((e) => visibleNodeIds.has(e.from) && visibleNodeIds.has(e.to));
+  // The FORMAT filter is applied at the very end as a render-stage hide, NOT
+  // here as a pre-layout drop. If we removed hidden-format nodes before layout,
+  // hiding e.g. "Manga" would cut the edge of a novel that reaches the franchise
+  // only THROUGH a manga, and the connectivity cull below would then delete the
+  // novel too: the reported "hiding Manga also hides the novel" bug. So every
+  // node flows through layout positioned (neighbours stay anchored), and
+  // hidden-format cards + their dangling edges are stripped just before return.
+  // CATEGORY filtering stays a structural pre-layout drop (via visibleEdges).
+  const filteredNodes = graph.nodes;
+  const filteredEdges = dedupedEdges;
 
   // Visible edges = every edge, minus those whose category the user has
   // hidden. categoryFor() is the single source of truth for relation types;
@@ -1351,13 +1351,53 @@ function layoutGraph(
   const positionedVisibleEdges = visibleEdges.filter(
     (e) => positions.has(e.from) && positions.has(e.to),
   );
+
+  // Format filter: render-stage hide. Drop hidden-format cards now that
+  // everything is laid out (so the nodes they anchored kept their positions).
+  // Remove the real card, its ghost copies (via ghostOriginByGhostId), and
+  // EVERY edge touching a removed node: a dangling edge whose endpoint node
+  // is gone re-triggers React Flow position lookups and causes the hover
+  // flash this file is careful to avoid. The current node is never hidden
+  // even if its own format is filtered.
+  const formatHiddenIds = new Set<string>();
+  for (const n of graph.nodes) {
+    if (n.anilistId !== currentId && hiddenFormats.has(formatFor(n.format))) {
+      formatHiddenIds.add(String(n.anilistId));
+    }
+  }
+  const allRfNodes = rfNodes;
+  const allRfEdges = [...frameBgEdges, ...sideStoryFrameEdges, ...rfEdges, ...frameAnchorEdges, ...frameToggleEdges];
+  let outNodes = allRfNodes;
+  let outEdges = allRfEdges;
+  let outVisibleEdges = positionedVisibleEdges;
+  if (formatHiddenIds.size > 0) {
+    outNodes = allRfNodes.filter((rn) => {
+      if (formatHiddenIds.has(rn.id)) return false; // real hidden-format card
+      const origin = ghostOriginByGhostId.get(rn.id);
+      return origin == null || !formatHiddenIds.has(String(origin)); // ghost of a hidden node
+    });
+    let keptIds = new Set(outNodes.map((n) => n.id));
+    outEdges = allRfEdges.filter((e) => keptIds.has(e.source) && keptIds.has(e.target));
+    // A ghost copy whose only edge pointed AT a now-hidden node would otherwise
+    // float as a disconnected translucent card (origin visible, target hidden).
+    // Drop any ghost left without a surviving edge, then re-prune edges.
+    const edgeEndpoints = new Set<string>();
+    for (const e of outEdges) { edgeEndpoints.add(e.source); edgeEndpoints.add(e.target); }
+    outNodes = outNodes.filter((rn) => !ghostOriginByGhostId.has(rn.id) || edgeEndpoints.has(rn.id));
+    keptIds = new Set(outNodes.map((n) => n.id));
+    outEdges = allRfEdges.filter((e) => keptIds.has(e.source) && keptIds.has(e.target));
+    outVisibleEdges = positionedVisibleEdges.filter(
+      (e) => !formatHiddenIds.has(String(e.from)) && !formatHiddenIds.has(String(e.to)),
+    );
+  }
+
   return {
-    nodes: rfNodes,
+    nodes: outNodes,
     // Paint order (SVG, back to front): chain + side-story backgrounds →
     // real edges → frame-collapse edges → chain toggles. (Outline rings live
     // in the node DOM now.)
-    edges: [...frameBgEdges, ...sideStoryFrameEdges, ...rfEdges, ...frameAnchorEdges, ...frameToggleEdges],
-    visibleEdges: positionedVisibleEdges,
+    edges: outEdges,
+    visibleEdges: outVisibleEdges,
     ghostOriginByGhostId,
     ghostNeighborsByOrigin,
     collapsedNeighbors,
@@ -2097,15 +2137,24 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
     });
   }, [baseRfEdges, hoveredId, ghostOriginByGhostId]);
 
+  // Center the current card ONCE per viewed series. The graph object changes
+  // identity on every background franchise:store-updated re-fetch (the crawler
+  // writes on each open), so centering on `graph` would repeatedly yank the
+  // viewport back to the current card while the user is panning/zooming out.
+  // Guard on the series id: center when the current node first appears for an
+  // id, then never again until the user opens a different series.
+  const centeredIdRef = useRef<number | null>(null);
   useEffect(() => {
+    if (centeredIdRef.current === currentAnilistId) return;
     const cur = baseRfNodes.find((n) => n.data.isCurrent);
-    if (!cur) return;
+    if (!cur) return; // current node not laid out yet: retry on the next update
+    centeredIdRef.current = currentAnilistId ?? null;
     reactFlowInstance.setCenter(
       cur.position.x + NODE_W / 2,
       cur.position.y + NODE_H / 2,
       { zoom: 1, duration: 300 },
     );
-  }, [graph, currentAnilistId]); // intentionally narrow deps - baseRfNodes is stable when graph/id are stable
+  }, [baseRfNodes, currentAnilistId, reactFlowInstance]);
 
   // Manual recenter (controls panel): same target node, zoom and duration as
   // the center-once effect above, just on demand.
