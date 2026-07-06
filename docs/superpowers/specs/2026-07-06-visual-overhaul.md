@@ -422,6 +422,91 @@ field behind content: a teal radial tint (~5% opacity) top-right and an even
 fainter warm tint bottom-left. Flat surfaces stay flat; the field lives on the
 shell backdrop only.
 
+## Night Glass addendum (round three)
+
+User verdict on round two: layout restructure landed, but the STYLE is still
+the same flat-black-hairline-mono world, rearranged. Round three replaces the
+material system. Everything keeps working; the rail, cinematic band, bloom,
+and island layouts stay; the chip/interaction contracts stay. What changes is
+what surfaces are MADE OF.
+
+### The material: layered glass over a night field
+
+- Background world: the page base becomes a deep blue-black night
+  (`--bg-primary: #07090f` over `--bg-deep: #05060b`), and the old 5% color
+  field becomes a real AURORA FIELD: three or four large soft radial washes
+  (indigo, violet, deep teal) at 10-16% opacity, fixed behind everything,
+  plus a gentle vignette. Static (no drift animation).
+- Surfaces become frosted glass instead of flat fills with gray hairlines:
+  translucent cool-tinted fills + a LIGHT EDGE (brighter on top: light from
+  above) + an inner top highlight. Blur is an ELEVATION cue: backdrop-blur
+  belongs ONLY to floating/overlay surfaces (rail, player island, drawers,
+  menus, tooltips, modals, graph panels, poster scrim chips); in-flow panels
+  and grid cards use the translucent fill + edge WITHOUT backdrop-blur (keeps
+  the grid cheap and the hierarchy honest).
+- Accent becomes LIGHT, not paint: a gradient pair
+  `--accent-a: #46e0c4` to `--accent-b: #7c8cf8` (`--grad-accent`, 135deg).
+  Active states, progress fills, the Continue button, active rail entry, and
+  selection states use the gradient plus a soft glow (`--glow-accent`).
+  `--accent-primary` stays defined (brightened to `#46e0c4`) so every existing
+  single-color usage remains coherent; `--accent-secondary: #8ff0dc`.
+  Semantic hues (amber/rose/blue/violet, status, formats) stay but brighten
+  ~8% for the deeper background. Text cools: primary `#f2f5fa`, secondary
+  `#a3aec5`, muted `#5f6885`.
+
+### Canonical tokens (index.css)
+
+```css
+--bg-deep: #05060b;
+--bg-primary: #07090f;
+--glass-bg: rgba(150, 170, 255, 0.05);
+--glass-bg-strong: rgba(150, 170, 255, 0.09);
+--glass-edge: rgba(255, 255, 255, 0.10);
+--glass-edge-bright: rgba(255, 255, 255, 0.17);
+--glass-blur: 18px;
+--glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+--accent-a: #46e0c4;
+--accent-b: #7c8cf8;
+--grad-accent: linear-gradient(135deg, var(--accent-a), var(--accent-b));
+--glow-accent: 0 0 24px rgba(70, 224, 196, 0.22);
+```
+
+The old `--bg-secondary/tertiary/card/hover` tokens REMAIN but are redefined
+as translucent glass values so every existing usage inherits the new material
+without a full rewrite (`--bg-card` = glass-bg, `--bg-hover` = glass-bg-strong,
+`--border-color` = glass-edge, `--border-hover` = glass-edge-bright).
+Genuinely opaque needs (the player letterbox, poster scrims) keep their own
+values.
+
+### Readability sizes (explicit user complaint: chips too small)
+
+- `--chip-font: 0.8rem` (was 0.72), `--chip-font-sm: 0.7rem` (was 0.64);
+  chip padding up one notch (default ~4px 12px, sm ~3px 10px).
+- Poster corner chips on cards (episode code, watched fraction) are PROMOTED
+  from `chip--sm` to the DEFAULT chip size with a stronger scrim so they read
+  at a glance. Ratings/encode/hidden stay sm (now 0.7rem).
+- Page titles up to ~2.2rem; card titles ~0.95rem; card meta ~0.78rem;
+  section eyebrows 0.78rem. Nothing informational below 0.7rem anywhere.
+
+### Surface treatments per area (consistency contract)
+
+- Rail: frosted glass column (backdrop-blur) over the aurora; active entry =
+  gradient-tinted pill glow behind icon+label instead of the flat edge bar
+  (keep a slim gradient edge bar if it reads better; pick ONE and apply it).
+- Cards: glass fill + light edge; poster chips as above; progress fill uses
+  the gradient with a faint glow; bloom stays.
+- Series band: unchanged structure; chips inherit new sizes/material; the
+  Continue button becomes the gradient-fill button with glow (dark text).
+- Player island, drawers, menus, tooltips, modals, graph filter/control
+  panels: full frosted glass (blur + edge + highlight + shadow-lg).
+- Buttons: neutral = glass; accent = gradient fill with dark text + glow.
+- Tables/rows (metadata, settings, subscriptions, activity log): glass rows
+  on hover (translucent fill), light edges between sections instead of solid
+  gray rules.
+- Page/hero titles: a SUBTLE gradient text treatment (text-primary into
+  accent-a at the tail), background-clip: text; keep it quiet, no rainbow.
+- Focus ring stays solid `--accent-secondary` (accessibility, unchanged).
+
 ## Guardrails (do not violate)
 
 - No em dashes anywhere, including UI copy.
