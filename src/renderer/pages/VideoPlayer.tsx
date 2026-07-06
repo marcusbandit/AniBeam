@@ -1859,7 +1859,7 @@ function VideoPlayer() {
         </div>
       )}
       <div
-        className="player-controls"
+        className={`player-controls${chrome ? '' : ' is-hidden'}`}
         style={{ opacity: chrome ? 1 : 0, pointerEvents: chrome ? 'auto' : 'none' }}
         onClick={(e) => e.stopPropagation()}
       >

@@ -8,6 +8,15 @@
   /* Deliberate pure black: letterbox bars around the video must stay black,
      not the page surface tone. */
   background: #000;
+  /* Floating-island geometry. Shared by the control island itself and every
+     overlay that has to clear it (skip/autonext row). Height is the sum of
+     the island's fixed parts: 1px border + 12px pad + 12px scrub row + 8px
+     gap + 32px buttons row + 12px pad + 1px border = 78px. */
+  --player-island-max-w: 920px;
+  --player-island-side-gap: 24px;
+  --player-island-bottom: 28px;
+  --player-island-height: 78px;
+  --player-island-gap: 12px;
 }
 /* Hide the cursor along with the chrome - applied as a sibling class so
    the wrap stays at the same DOM node and the cursor returns the moment
@@ -72,19 +81,33 @@
 
 /* Custom player controls - replaces native <video controls>. No Chromium
    pseudo-elements involved; we render a regular bar with regular range
-   inputs we can size and style cleanly. */
+   inputs we can size and style cleanly.
+   Facelift: a centered floating island instead of a full-width bottom
+   gradient. left/right 0 + explicit width + auto inline margins center it
+   without a transform, so translateY stays free for the hide slide. The
+   backdrop-filter also makes the island the containing block for the
+   absolutely positioned .sub-menu (see .player-sub-anchor). */
 .player-controls {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: var(--player-island-bottom);
+  margin-inline: auto;
+  width: min(var(--player-island-max-w), calc(100% - var(--player-island-side-gap) * 2));
   z-index: 5;
-  padding: 16px 24px 18px;
-  background: linear-gradient(to top, var(--scrim) 0%, transparent 100%);
-  transition: opacity var(--transition-normal);
+  padding: var(--s3) var(--s4);
+  background: var(--scrim);
+  backdrop-filter: blur(var(--scrim-blur));
+  -webkit-backdrop-filter: blur(var(--scrim-blur));
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  transition:
+    opacity var(--transition-normal),
+    transform var(--transition-normal);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--s2);
   font-family: var(--font-mono);
   color: var(--text-primary);
   /* Scrub palette, consumed by the inline gradient string built in JSX
@@ -96,10 +119,16 @@
   --player-scrub-played: var(--text-primary);
   --player-scrub-rest: color-mix(in srgb, var(--text-primary) 18%, transparent);
 }
+/* Auto-hide slide: opacity + pointer-events stay inline-gated off the same
+   `chrome` state as before; this class only adds the 8px settle. */
+.player-controls.is-hidden {
+  transform: translateY(8px);
+}
 .player-controls-row {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-height: 32px;
 }
 .player-ctl-btn {
   background: transparent;
@@ -107,6 +136,7 @@
   color: var(--text-primary);
   width: 32px;
   height: 32px;
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -129,11 +159,13 @@
 .player-right-group { margin-left: auto; display: flex; gap: 4px; align-items: center; }
 
 /* Bottom-right action row - Skip Intro/Outro and the auto-next Stay/Next pills
-   share one inline row above the controls bar: <Skip Outro> <Stay><Next>. */
+   share one inline row: <Skip Outro> <Stay><Next>. Sits above the floating
+   island, right-aligned to the island's right edge (falls back to the 24px
+   side gap once the island spans the viewport minus margins). */
 .player-bottom-actions {
   position: absolute;
-  right: 24px;
-  bottom: 96px;
+  right: max(var(--player-island-side-gap), calc((100% - var(--player-island-max-w)) / 2));
+  bottom: calc(var(--player-island-bottom) + var(--player-island-height) + var(--player-island-gap));
   z-index: 8;
   display: flex;
   align-items: center;
@@ -267,7 +299,11 @@
   transform: scale(1.05);
 }
 .player-replay-btn:active { transform: scale(0.98); }
-.player-sub-anchor { position: relative; display: inline-flex; }
+/* Deliberately NOT position: relative. The .sub-menu inside it positions
+   against the nearest containing block, which is the .player-controls island
+   itself (position: absolute + backdrop-filter), so the menu opens fully
+   ABOVE the island instead of overlapping its seek row. */
+.player-sub-anchor { display: inline-flex; }
 
 /* Tracker confirmation toast - top-center, fades in & out. */
 .player-toast {
@@ -518,10 +554,12 @@
   text-align: right;
 }
 
-/* Subtitle picker / style menu - anchored above the CC button. */
+/* Subtitle picker / style menu - contained by the .player-controls island
+   (see .player-sub-anchor): bottom 100% is the island's top edge, right 0 its
+   right inner edge, so the menu floats just above the island's CC corner. */
 .sub-menu {
   position: absolute;
-  bottom: calc(100% + 8px);
+  bottom: calc(100% + 10px);
   right: 0;
   width: 280px;
   background: var(--bg-card);
@@ -713,14 +751,20 @@
   letter-spacing: 0.04em;
   color: var(--text-secondary);
   min-width: 110px;
+  flex-shrink: 0;
 }
 .player-volume {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
+/* The slider is the row's designated shock absorber: on narrow islands it
+   shrinks from 160px down to 90px before anything else gives. */
 .player-vol-slider {
   width: 160px;
+  min-width: 90px;
+  flex-shrink: 1;
 }
 
 /* Range inputs: matching mono-forward, dark style. The --progress var is
@@ -762,20 +806,23 @@
 }
 
 /* Wrapper so the seek-hover time bubble can absolutely position against the
-   scrubber's own box. */
+   scrubber's own box. The vertical padding gives the 12px thumb layout room
+   inside the island (and keeps --player-island-height honest). */
 .player-scrub-wrap {
   position: relative;
   width: 100%;
   display: flex;
   align-items: center;
+  padding: var(--s1) 0;
 }
 
 /* Seek-hover time bubble: a scrim chip pinned above the cursor's x on the
    scrubber. Chip look comes from .chip chip--sm chip--scrim in the JSX;
-   this only positions and fades it. */
+   this only positions and fades it. The 18px lift clears the island's top
+   hairline (12px pad + 1px border above the scrub wrap) with room to spare. */
 .player-seek-bubble {
   position: absolute;
-  bottom: calc(100% + 10px);
+  bottom: calc(100% + 18px);
   transform: translateX(-50%);
   pointer-events: none;
   opacity: 0;
@@ -838,13 +885,14 @@
   color: var(--text-secondary);
 }
 
+/* Slimmed top band so the frame reads floating-on-video next to the island. */
 .player-header {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   z-index: 2;
-  padding: 1.25rem 1.5rem;
+  padding: 0.85rem 1.25rem 1.1rem;
   display: flex;
   align-items: flex-start;
   gap: 1.5rem;
