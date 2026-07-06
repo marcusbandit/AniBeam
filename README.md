@@ -1,63 +1,53 @@
-# React + Vite
+# AniBeam
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+<img src="assets/icon.png" alt="AniBeam icon" width="96" align="right" />
 
-## Using Bun
+Electron app for browsing, playing, and tracking a local anime library. It scans your configured folders, matches series against AniList/MAL, transcodes incompatible video for in-window playback, renders a franchise relation graph, and syncs watch progress with AniList and MyAnimeList.
 
-This project uses [Bun](https://bun.sh) as the package manager and runtime.
+Linux x64 is the supported target.
 
-### Installation
+## Install from a GitHub release
 
-If you haven't installed Bun yet, install it:
+1. Download the latest `AniBeam-linux-x64-<version>.zip` from [Releases](https://github.com/marcusbandit/AniBeam/releases).
+2. Unzip it wherever you want the app to live, e.g. `~/Apps/AniBeam-linux-x64/`.
+3. Run the bundled desktop installer:
 
 ```bash
-curl -fsSL https://bun.sh/install | bash
+bash ~/Apps/AniBeam-linux-x64/resources/install-desktop.sh
 ```
 
-### Setup
+That installs the launcher entry (`anibeam.desktop`) and the app icon into `~/.local/share`, no root needed. AniBeam then shows up in your app launcher like any other application.
 
-Install dependencies:
+Runtime requirements: `ffmpeg` and `ffprobe` on PATH (used for playback of formats the browser engine can't decode).
+
+## Install from source
 
 ```bash
+git clone https://github.com/marcusbandit/AniBeam.git
+cd AniBeam
 bun install
+bun run package          # builds out/AniBeam-linux-x64/
+bun run install:desktop  # launcher entry + icon
 ```
 
-### Development
+[Bun](https://bun.sh) is the package manager and script runner; npm/yarn are not supported.
 
-Start the development server:
+## Development
 
 ```bash
-bun run dev
+bun run dev          # typecheck + electron-forge start with HMR
+bun run package      # typecheck + package to out/AniBeam-linux-x64/anibeam
+bun run typecheck    # tsc --noEmit
+bun run lint         # eslint + typecheck
 ```
 
-### Build
+Tests are plain bun scripts under `scripts/verify-*.mjs`, wired as `bun run verify:<name>` (see package.json). API client IDs are configured via `ANIBEAM_`-prefixed env vars; see `.env.example`.
 
-Build for production:
+## Releasing
+
+Push a version tag and CI builds the Linux zip and attaches it to a GitHub Release:
 
 ```bash
-bun run build
+git tag v1.1.0
+git push origin v1.1.0
 ```
-
-### Preview
-
-Preview the production build:
-
-```bash
-bun run preview
-```
-
-### Lint
-
-Run ESLint:
-
-```bash
-bun run lint
-```
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.

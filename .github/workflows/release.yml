@@ -1,0 +1,25 @@
+name: Release
+
+# Builds the Linux zip and attaches it to a GitHub Release whenever a
+# version tag is pushed:  git tag v1.1.0 && git push origin v1.1.0
+# The zip contains the packaged app plus resources/install-desktop.sh,
+# which sets up the launcher entry and icon on the target machine.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run make
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: out/make/zip/linux/x64/*.zip
+          generate_release_notes: true
