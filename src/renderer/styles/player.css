@@ -901,8 +901,11 @@
    18px lift clears the island's top hairline (12px pad + 1px border above the
    scrub wrap) with room to spare. */
 .player-scrub-preview {
-  position: absolute;
-  bottom: calc(100% + 18px);
+  /* Fixed + viewport coords from JSX: the popup is portalled OUT of the
+     island so its backdrop-filter can sample the video (a backdrop-filter
+     ancestor is a backdrop root that nested filters cannot see past). The
+     wrap has no transform/filter, so fixed = viewport even in fullscreen. */
+  position: fixed;
   transform: translateX(-50%);
   pointer-events: none;
   display: flex;
@@ -913,11 +916,11 @@
      bezel, so the thumbnail must sit inset for the glass to be visible as a
      pane around it (mirrors PREVIEW_PAD in VideoPlayer.tsx). */
   padding: 14px 14px 8px;
-  background: var(--glass-veil);
+  background: color-mix(in srgb, var(--bg-deep) 40%, transparent);
   border: 1px solid var(--glass-edge-bright);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
-  z-index: 6;
+  z-index: 9;
 }
 /* Width mirrors PREVIEW_CANVAS_W in VideoPlayer.tsx; height follows the
    backing store's aspect (16:9 seed, then the real frame aspect). Inner
