@@ -7,6 +7,8 @@
   gap: var(--s2);
 }
 
+/* In-flow glass rows: translucent fill + light edge + top highlight.
+   No backdrop-blur here; blur is reserved for floating surfaces. */
 .tracker-row {
   display: flex;
   flex-direction: column;
@@ -15,6 +17,7 @@
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
+  box-shadow: var(--glass-highlight);
   transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 .tracker-row:hover { background: var(--bg-hover); }
@@ -107,9 +110,12 @@
   font-family: var(--font-mono);
   font-size: 0.82rem;
   outline: none;
-  transition: border-color var(--transition-fast);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
-.tracker-input:focus { border-color: var(--accent-primary); }
+.tracker-input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
 .tracker-input::placeholder { color: var(--text-muted); }
 .tracker-error {
   font-family: var(--font-mono);
@@ -174,6 +180,7 @@
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
+  box-shadow: var(--glass-highlight);
   transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 .folder-row:hover { background: var(--bg-hover); }
@@ -253,6 +260,7 @@
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
+  box-shadow: var(--glass-highlight);
   transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 .source-row:hover { background: var(--bg-hover); }
@@ -292,13 +300,20 @@
   transition:
     background var(--transition-fast),
     border-color var(--transition-fast),
+    box-shadow var(--transition-fast),
     transform var(--transition-fast);
 }
 .toggle:hover { border-color: var(--border-hover); }
 .toggle:active { transform: scale(0.94); }
+/* On: accent is light, not paint - gradient-tinted translucent track with
+   a whisper glow instead of a solid teal fill. */
 .toggle.on {
-  background: var(--accent-primary);
-  border-color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-a) 25%, transparent);
+  border-color: color-mix(in srgb, var(--accent-a) 55%, transparent);
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+.toggle.on:hover {
+  border-color: color-mix(in srgb, var(--accent-a) 75%, transparent);
 }
 .toggle-thumb {
   position: absolute;
@@ -313,11 +328,11 @@
     transform var(--transition-normal),
     background var(--transition-fast);
 }
-/* On: thumb slides right and flips dark over the teal track (same
-   teal-carries-a-dark-glyph idiom as the watched episode marker). */
+/* On: thumb slides right and lights up teal over the tinted glass track
+   (a dark thumb would vanish on a translucent track). */
 .toggle.on .toggle-thumb {
   transform: translate(16px, -50%);
-  background: var(--bg-primary);
+  background: var(--accent-a);
 }
 
 .pref-row {
@@ -329,6 +344,7 @@
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
+  box-shadow: var(--glass-highlight);
   transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 .pref-row:hover { background: var(--bg-hover); }
@@ -357,6 +373,7 @@
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
+  box-shadow: var(--glass-highlight);
 }
 .cache-stat-num {
   font-family: var(--font-mono);
@@ -373,7 +390,7 @@
 }
 .cache-stat-label {
   font-family: var(--font-mono);
-  font-size: 0.65rem;
+  font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
@@ -411,9 +428,12 @@
   padding: var(--s2) var(--s3);
   gap: var(--s2);
   width: 240px;
-  transition: border-color var(--transition-fast);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
-.meta-search:focus-within { border-color: var(--accent-primary); }
+.meta-search:focus-within {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
 .meta-search > svg { color: var(--text-muted); flex-shrink: 0; }
 .meta-search input {
   background: transparent;
@@ -430,6 +450,7 @@
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
+  box-shadow: var(--glass-highlight);
   overflow: hidden;
 }
 .meta-row {
@@ -445,7 +466,10 @@
 .meta-row:last-child { border-bottom: none; }
 .meta-row:not(.meta-row-head):hover { background: var(--bg-hover); }
 .meta-row-head {
-  background: var(--bg-secondary);
+  /* Transparent on purpose: a second glass wash inside the already-glass
+     .meta-table stacks the tint and reads as a permanently hovered row.
+     The light bottom edge + eyebrow type carry the header. */
+  background: transparent;
   font-family: var(--font-mono);
   font-size: 0.7rem;
   text-transform: uppercase;
@@ -460,7 +484,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-tertiary);
+  /* --bg-elev, not --bg-tertiary: this sits inside the glass .meta-table,
+     so a 7% wash on the 5% card doubles up muddy. The light edge does the
+     framing; the fill stays a whisper for the no-poster placeholder. */
+  background: var(--bg-elev);
   color: var(--text-muted);
   overflow: hidden;
   border: 1px solid var(--border-color);
@@ -515,14 +542,21 @@
   height: 4px;
   background: var(--bg-tertiary);
   border-radius: var(--radius-pill);
-  overflow: hidden;
+  /* No overflow: hidden - the fill clips itself with its own pill radius,
+     and clipping here would swallow the fill's faint glow. */
 }
+/* Progress is accent LIGHT: gradient fill + a faint glow bleeding past
+   the track. */
 .files-bar-fill {
   height: 100%;
-  background: var(--accent-primary);
+  background: var(--grad-accent);
   border-radius: var(--radius-pill);
+  box-shadow: 0 0 8px var(--accent-glow);
 }
-.files-bar-fill.over { background: var(--accent-amber); }
+.files-bar-fill.over {
+  background: var(--accent-amber);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent-amber) 25%, transparent);
+}
 .files-bar-text {
   font-family: var(--font-mono);
   font-size: 0.78rem;
@@ -577,10 +611,14 @@
   max-height: min(80vh, 720px);
   display: flex;
   flex-direction: column;
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
+  /* Floating overlay: full frosted glass (dark veil keeps the result list
+     readable over whatever the backdrop scrims). */
+  background: var(--glass-veil);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-edge-bright);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--glass-highlight), var(--shadow-lg);
   overflow: hidden;
   animation: matchPop 160ms cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -618,9 +656,12 @@
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
-  transition: border-color var(--transition-fast);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
-.match-modal-search:focus-within { border-color: var(--accent-primary); }
+.match-modal-search:focus-within {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
 .match-modal-search > svg { color: var(--text-muted); flex-shrink: 0; }
 .match-modal-search input {
   flex: 1;
@@ -763,6 +804,7 @@
 .activity-log-filters .level-warn     { --stage-color: var(--accent-amber); }
 .activity-log-filters .level-error    { --stage-color: var(--accent-rose); }
 
+/* Floating pill over page content: frosted glass, not an in-flow wash. */
 .activity-log-toggle {
   position: fixed;
   bottom: var(--s4);
@@ -772,11 +814,13 @@
   align-items: center;
   gap: var(--s2);
   padding: var(--s2) var(--s3);
-  border: 1px solid var(--border-color);
-  background: var(--bg-card);
+  border: 1px solid var(--glass-edge-bright);
+  background: var(--glass-veil);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   color: var(--text-secondary);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--glass-highlight), var(--shadow-md);
   font-family: var(--font-mono);
   font-size: 0.75rem;
   cursor: pointer;
@@ -786,9 +830,12 @@
     color var(--transition-fast),
     transform var(--transition-fast);
 }
+/* Hover keeps the veil underneath and lays a glass wash on top (a plain
+   --bg-hover swap would strip the veil and go see-through). */
 .activity-log-toggle:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-hover);
+  background:
+    linear-gradient(var(--glass-bg-strong), var(--glass-bg-strong)),
+    var(--glass-veil);
   color: var(--text-primary);
 }
 .activity-log-toggle:active { transform: scale(0.97); }
@@ -807,10 +854,14 @@
   z-index: 9000;
   display: flex;
   flex-direction: column;
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
+  /* Floating drawer: full frosted glass. Rows inside keep their translucent
+     fills; glass on the veiled panel is the intended layering. */
+  background: var(--glass-veil);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-edge-bright);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--glass-highlight), var(--shadow-lg);
   overflow: hidden;
   font-family: var(--font-mono);
   font-size: 0.75rem;
@@ -999,6 +1050,7 @@
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
+  box-shadow: var(--glass-highlight);
 }
 .franchise-crawl-progress__header {
   display: flex;
@@ -1022,12 +1074,14 @@
   height: 8px;
   background: var(--bg-tertiary);
   border-radius: var(--radius-pill);
-  overflow: hidden;
+  /* No overflow: hidden - the fill's pill radius clips itself, and the
+     faint glow needs to escape the track. */
 }
 .franchise-crawl-progress__fill {
   position: absolute;
   inset: 0 auto 0 0;
-  background: var(--accent-primary);
+  background: var(--grad-accent);
   border-radius: var(--radius-pill);
+  box-shadow: 0 0 10px var(--accent-glow);
   transition: width var(--transition-normal);
 }
