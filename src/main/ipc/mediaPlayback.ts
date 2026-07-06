@@ -124,21 +124,50 @@ export function registerMediaPlaybackIpc(getMainWindow?: WindowGetter): void {
     } catch {
       // Fall through — we can still probe codecs without metadata.
     }
-    // Classify in parallel (one ffprobe each), preserving input order.
+    // Classify in parallel (one ffprobe each), preserving input order. The
+    // same probe carries the display aspect ratio, which the player uses to
+    // size its chrome before video metadata loads; backfill it here (once per
+    // file: entries that already carry displayAspect skip the extra probe, so
+    // cached files stay probe-free in steady state).
+    const freshAspects = new Map<string, number>();
     const results = await Promise.all(paths.map(async (filePath) => {
       try {
         const hit = findFileEpisode(meta, filePath);
-        if (hit?.transcodedPath && existsSync(hit.transcodedPath)) {
+        const needsAspect = !hit || hit.displayAspect === undefined;
+        if (hit?.transcodedPath && existsSync(hit.transcodedPath) && !needsAspect) {
           return { filePath, state: 'cached' as const };
         }
         if (!existsSync(filePath)) return { filePath, state: 'none' as const };
         const probe = await probeCodecs(filePath);
+        if (probe && needsAspect && probe.displayAspect != null) {
+          freshAspects.set(filePath, probe.displayAspect);
+        }
+        if (hit?.transcodedPath && existsSync(hit.transcodedPath)) {
+          return { filePath, state: 'cached' as const };
+        }
         if (probe && needsTranscode(probe)) return { filePath, state: 'pending' as const };
         return { filePath, state: 'none' as const };
       } catch {
         return { filePath, state: 'none' as const };
       }
     }));
+    // Persist freshly-probed aspects in one transaction.
+    if (freshAspects.size > 0) {
+      await metadataHandler.transaction<boolean>(async (m) => {
+        let changed = false;
+        for (const series of Object.values(m)) {
+          const s = series as { fileEpisodes?: FileEpisodeEntry[] };
+          if (!Array.isArray(s.fileEpisodes)) continue;
+          for (const file of s.fileEpisodes) {
+            const aspect = freshAspects.get(file.filePath);
+            if (aspect == null || file.displayAspect !== undefined) continue;
+            file.displayAspect = aspect;
+            changed = true;
+          }
+        }
+        return { result: changed, updated: changed ? m : null };
+      });
+    }
     // Enqueue pending files in reverse so the FIRST listed episode ends up at
     // the front of the queue after the unshifts — earliest episode encodes
     // first. enqueue() is idempotent; already-queued files just move up.

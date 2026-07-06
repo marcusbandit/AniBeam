@@ -32,6 +32,11 @@ export interface FileEpisodeEntry {
   // re-check ones that were replaced on disk. See shared/subtitleSupport.ts.
   subtitleState?: SubtitleState | null;
   subtitleCheckedAt?: number;
+  // Display aspect ratio (width/height in display pixels, anamorphic-aware).
+  // Backfilled by the transcode:ensure-series sweep on series open, so the
+  // player can size its chrome to the real picture BEFORE video metadata
+  // loads. null = probed but underdetermined; missing = never probed.
+  displayAspect?: number | null;
 }
 
 // Scan every series in metadata for a fileEpisodes entry whose `filePath`
