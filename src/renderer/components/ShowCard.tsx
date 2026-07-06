@@ -67,7 +67,7 @@ function ShowCard({
   // the whole app). Drives the bottom-right encode pill on the poster.
   const encodeStatus = useSeriesTranscodeStatus(item.id);
 
-  // Smoothed hover-lift is applied to the poster-wrap only — the info row
+  // Smoothed hover-lift is applied to the poster-wrap only - the info row
   // below stays anchored so titles don't slide when the cursor enters/leaves.
   // The button itself is a transparent shell (no background/border); the
   // visible "card" is the poster's own border + radius.
@@ -96,7 +96,7 @@ function ShowCard({
     : null;
 
   // User's personal score from their tracker (AniList POINT_10_DECIMAL or
-  // MAL native — both already 0–10 thanks to TrackerProgressContext).
+  // MAL native - both already 0-10 thanks to TrackerProgressContext).
   // Rendered as a sibling badge to the community score, same shape with a
   // teal star instead of amber so the eye can tell the two apart.
   const myScoreRaw = getUserScore({
@@ -112,7 +112,7 @@ function ShowCard({
   const latestAiredNum = getLatestAiredEpisodeNumber(item.episodes);
   // Highest episode number actually sitting on disk. A downloaded-but-
   // unwatched episode counts toward "behind" even when its airDate is
-  // missing (common — see classifyWatchProgress).
+  // missing (common - see classifyWatchProgress).
   const latestDownloadedNum = item.files.length > 0
     ? item.files.reduce((max, f) => (f.episodeNumber > max ? f.episodeNumber : max), 0)
     : null;
@@ -131,8 +131,17 @@ function ShowCard({
     state: watchedState,
   });
 
-  // Progress bar overlaid on the poster's bottom edge: blue = watched, rose
-  // underlay = aired but not yet watched (releasing shows only), dark right
+  // Fraction chip text color encodes state calmly: behind = amber,
+  // caught-up/complete = teal, unknown total = neutral scrim text. Rose is
+  // reserved for failures/dropped so the grid never reads as alarmed.
+  const totalUnknown = item.totalEpisodes == null || item.totalEpisodes <= 0;
+  const fractionState =
+    watchedState === "behind" ? "behind"
+    : totalUnknown ? "unknown"
+    : "caught-up";
+
+  // Progress bar overlaid on the poster's bottom edge: teal = watched, amber
+  // underlay = aired but not yet watched (releasing shows only), scrim right
   // cap = episode count unknown.
   const progress = computeCardProgress({
     watched,
@@ -144,7 +153,7 @@ function ShowCard({
   });
 
   // A movie is identified by metadata (item.type), so we never derive or show
-  // an episode number for it — a filename like "…Dai 63-kai…" would otherwise
+  // an episode number for it - a filename like "…Dai 63-kai…" would otherwise
   // surface a bogus "EP 63". Movies get a "Movie" badge in the same slot.
   const isMovie = item.type === "movie";
   const epBadge = !isMovie && episodeBadgeNumber != null
@@ -172,44 +181,63 @@ function ShowCard({
     >
       <div ref={posterWrapRef} className={`show-card-poster-wrap${outlined ? "" : " show-card-poster-wrap--bare"}`}>
         {item.hidden && (
-          <span className="show-card-hidden-badge" aria-label="Hidden">Hidden</span>
+          <span
+            className="chip chip--sm chip--scrim show-card-chip show-card-chip--br"
+            aria-label="Hidden"
+          >
+            Hidden
+          </span>
         )}
         {watchedLabel && (
           <span
-            className={`show-card-watched-badge${watchedState ? ` ${watchedState}` : ""}`}
+            className={`chip chip--sm chip--scrim show-card-chip show-card-chip--tr show-card-fraction--${fractionState}`}
             aria-label={`Watched ${watchedLabel}`}
           >
             {watchedLabel}
           </span>
         )}
         {isMovie && episodeBadgeNumber != null ? (
-          <span className="show-card-ep-badge" aria-label="Movie">
+          <span
+            className="chip chip--sm chip--scrim show-card-chip show-card-chip--tl"
+            aria-label="Movie"
+          >
             Movie
           </span>
         ) : epBadge ? (
-          <span className="show-card-ep-badge" aria-label={`Episode ${epBadge}`}>
+          <span
+            className="chip chip--sm chip--scrim show-card-chip show-card-chip--tl"
+            aria-label={`Episode ${epBadge}`}
+          >
             EP {epBadge}
           </span>
         ) : null}
         {(score || myScore || encodeStatus) && (
           <div className="show-card-corner-bl">
             {encodeStatus && (
-              <span className={`show-card-encode-badge show-card-encode-badge--${encodeStatus}`}>
-                <span className="show-card-encode-dot" />
-                {encodeStatus === "encoding" ? "ENCODING" : "QUEUED"}
+              <span
+                className={`chip chip--sm chip--scrim show-card-encode-chip${encodeStatus === "queued" ? " is-queued" : ""}`}
+              >
+                <span
+                  className={`chip__dot${encodeStatus === "encoding" ? " chip__dot--pulse" : ""}`}
+                  aria-hidden="true"
+                />
+                {encodeStatus === "encoding" ? "Encoding" : "Queued"}
               </span>
             )}
             {(score || myScore) && (
               <div className="show-card-ratings">
                 {score && (
-                  <span className="show-card-rating-badge" aria-label={`Rating ${score}`}>
+                  <span
+                    className="chip chip--sm chip--scrim show-card-rating-chip"
+                    aria-label={`Rating ${score}`}
+                  >
                     {score}
                   </span>
                 )}
                 {myScore && (
                   <Tooltip label="Your score">
                     <span
-                      className="show-card-rating-badge show-card-rating-badge--mine"
+                      className="chip chip--sm chip--scrim show-card-rating-chip show-card-rating-chip--mine"
                       aria-label={`Your rating ${myScore}`}
                     >
                       {myScore}

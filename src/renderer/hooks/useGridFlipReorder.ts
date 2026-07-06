@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, type RefObject } from "react";
 import { smoothScalar, type SmoothHandle } from "../utils/motion";
 
 // Matches the codebase animation preference: exponential smoothing via the
-// shared rAF engine. SPEED ~18 settles a reorder in roughly 200ms — quick
+// shared rAF engine. SPEED ~18 settles a reorder in roughly 200ms - quick
 // enough to feel like a direct response to the click, slow enough to read
 // the motion.
 const FLIP_SPEED = 18;
@@ -25,7 +25,7 @@ function prefersReducedMotion(): boolean {
  *
  * Each animated child must carry a stable `data-flip-id` attribute. On
  * every change to `orderKey`:
- *   1. Read the new bounding rects (the "Last" in FLIP — React has already
+ *   1. Read the new bounding rects (the "Last" in FLIP - React has already
  *      committed the new layout by the time a useLayoutEffect runs).
  *   2. For each child present in the previous snapshot, compute
  *      prev−new and set the transform to that offset *instantly*, pinning
@@ -33,7 +33,7 @@ function prefersReducedMotion(): boolean {
  *   3. Ease the offset back to 0 via the shared exponential-smoothing
  *      engine. The element drifts to its real grid slot under animation.
  *
- * Brand-new and removed cards are ignored — only nodes present in both
+ * Brand-new and removed cards are ignored - only nodes present in both
  * snapshots animate.  Respects `prefers-reduced-motion`.
  */
 export function useGridFlipReorder(
@@ -81,7 +81,7 @@ export function useGridFlipReorder(
 
       const anim: CardAnim = {
         el,
-        // Handles assigned in the next two lines — null! avoids requiring
+        // Handles assigned in the next two lines - null! avoids requiring
         // the engine to expose a no-op handle for construction.
         xHandle: null as unknown as SmoothHandle,
         yHandle: null as unknown as SmoothHandle,
@@ -103,7 +103,7 @@ export function useGridFlipReorder(
       anim.yHandle = smoothScalar(dy, FLIP_SPEED, (v) => { anim.y = v; writeTransform(); });
       animations.current.set(id, anim);
 
-      // Pin at the old visual position before the first rAF tick — the
+      // Pin at the old visual position before the first rAF tick - the
       // engine's first callback is one frame away, and without this the
       // card would jump to its new slot for one frame.
       el.style.willChange = "transform";

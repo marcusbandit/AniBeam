@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, ReactNode } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, ReactNode } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { ChevronLeft, RefreshCw, FileText, ExternalLink } from "lucide-react";
 import { useMetadata } from "../hooks/useMetadata";
@@ -43,13 +43,28 @@ function ContextMenu() {
     const fileFromEpisode = targetEl?.closest('[data-episode-file]')?.getAttribute('data-episode-file') ?? null;
     setEpisodeFile(fileFromEpisode);
 
-    // Position the menu at the cursor, but keep it within viewport
-    const x = Math.min(e.clientX, window.innerWidth - 188);
-    const y = Math.min(e.clientY, window.innerHeight - 120);
-
-    setPosition({ x, y });
+    // Raw cursor position; the layout effect below clamps it to the viewport
+    // using the menu's real rendered size (it varies with which items show).
+    setPosition({ x: e.clientX, y: e.clientY });
     setVisible(true);
   }, []);
+
+  // Keep the menu inside the viewport. Runs before paint, measures the real
+  // menu box (offsetWidth/Height ignore the entry animation's transform), and
+  // nudges the position when the cursor is too close to an edge. Converges in
+  // one pass; the state write only happens when a clamp actually moved it.
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    if (!visible) return;
+    const el = menuRef.current;
+    if (!el) return;
+    const margin = 8;
+    const maxX = window.innerWidth - el.offsetWidth - margin;
+    const maxY = window.innerHeight - el.offsetHeight - margin;
+    const x = Math.max(margin, Math.min(position.x, maxX));
+    const y = Math.max(margin, Math.min(position.y, maxY));
+    if (x !== position.x || y !== position.y) setPosition({ x, y });
+  }, [visible, position, episodeFile, isSeriesDetailPage]);
 
   const handleClick = useCallback(() => {
     setVisible(false);
@@ -121,6 +136,7 @@ function ContextMenu() {
 
   return (
     <div
+      ref={menuRef}
       className="context-menu"
       style={{
         left: position.x,

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import type { LibraryItem } from "../../types/electron";
 import { findNextUpcomingEpisode, normalizeStatus } from "../utils/airingUtils";
+import { fmtShort } from "../utils/relativeTime";
 import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
 import { useGridFlipReorder } from "../hooks/useGridFlipReorder";
 import { useTitleLanguage } from "../contexts/TitleLanguageContext";
@@ -50,7 +51,7 @@ const BASE_TAB_OPTIONS: SegmentedOption<LibraryTab>[] = [
   { value: "movies", label: "Movies" },
 ];
 
-// Icon glyphs only — the meaning lives in the tooltip (ariaLabel) so each
+// Icon glyphs only - the meaning lives in the tooltip (ariaLabel) so each
 // button stays compact and the row of switches doesn't crowd the header.
 // Star tones are tied to the rating pills on ShowCard so the same colour
 // always means the same thing across the app: amber = community, teal =
@@ -103,28 +104,6 @@ function readStored<T extends string>(key: string, allowed: readonly T[], fallba
   return raw && (allowed as readonly string[]).includes(raw) ? (raw as T) : fallback;
 }
 
-function fmtRelativeTime(unixSec: number): string {
-  const now = Math.floor(Date.now() / 1000);
-  const diff = now - unixSec;
-  const abs = Math.abs(diff);
-  const future = diff < 0;
-  if (abs < 60) return "just now";
-  if (abs < 3600) {
-    const m = Math.floor(abs / 60);
-    return future ? `in ${m}m` : `${m}m ago`;
-  }
-  if (abs < 86400) {
-    const h = Math.floor(abs / 3600);
-    return future ? `in ${h}h` : `${h}h ago`;
-  }
-  if (abs < 86400 * 30) {
-    const d = Math.floor(abs / 86400);
-    return future ? `in ${d}d` : `${d}d ago`;
-  }
-  const mo = Math.floor(abs / (86400 * 30));
-  return future ? `in ${mo}mo` : `${mo}mo ago`;
-}
-
 // (sortKey, latestEpisode) for an airing show. Mirrors FeedPage's logic:
 // latest aired-and-on-disk episode → fall back to highest file mtime.
 function getAiringSortInfo(item: LibraryItem): { when: number; episode: number | null } | null {
@@ -132,7 +111,7 @@ function getAiringSortInfo(item: LibraryItem): { when: number; episode: number |
   const nowSec = Math.floor(Date.now() / 1000);
   const onDiskEps = new Set(item.files.map((f) => f.episodeNumber));
 
-  // Latest aired-AND-on-disk episode timestamp — drives the freshness sort.
+  // Latest aired-AND-on-disk episode timestamp - drives the freshness sort.
   let bestAired: { ts: number; ep: number } | null = null;
   for (const e of item.episodes) {
     if (!e.airDate || !onDiskEps.has(e.episodeNumber)) continue;
@@ -141,12 +120,12 @@ function getAiringSortInfo(item: LibraryItem): { when: number; episode: number |
     if (!bestAired || t > bestAired.ts) bestAired = { ts: t, ep: e.episodeNumber };
   }
 
-  // The badge tracks the newest episode you ACTUALLY HAVE on disk — the
+  // The badge tracks the newest episode you ACTUALLY HAVE on disk - the
   // highest episode number among local files. A just-downloaded episode whose
   // airDate metadata hasn't landed yet (or is still flagged in the future) is
   // on disk and watchable, so it counts even though `bestAired` (which needs
   // a known *past* airDate) can't see it. Without this, a show tracked 08/12
-  // with 8 files on disk reads "EP 07" — the last episode with an airDate.
+  // with 8 files on disk reads "EP 07" - the last episode with an airDate.
   let highestOnDisk = 0;
   let newestMtime = 0;
   for (const f of item.files) {
@@ -168,8 +147,8 @@ function getAiringSortInfo(item: LibraryItem): { when: number; episode: number |
   return { when, episode };
 }
 
-// Normalise raw averageScore to a 0–10 scale. AniList serves 0–100, MAL
-// 0–10. Anything else (missing source, missing score) becomes null so the
+// Normalise raw averageScore to a 0-10 scale. AniList serves 0-100, MAL
+// 0-10. Anything else (missing source, missing score) becomes null so the
 // sort can push it to the end regardless of direction.
 function normalisedScore(item: LibraryItem): number | null {
   if (item.averageScore == null) return null;
@@ -206,11 +185,11 @@ function HomePage() {
   useEffect(() => { window.localStorage.setItem(LS_SORT_KEY, sortKey); }, [sortKey]);
   useEffect(() => { window.localStorage.setItem(LS_SORT_DIR, sortDir); }, [sortDir]);
 
-  // Reloads triggered by metadata pings update items in place — no
+  // Reloads triggered by metadata pings update items in place - no
   // setLoading(true), so the page doesn't flash through a "Reading
   // folders…" state on every poster match. Only the first mount shows it.
   // Diff-merge by id so React keeps stable refs for cards that didn't
-  // change — prevents poster <img> elements from being unnecessarily
+  // change - prevents poster <img> elements from being unnecessarily
   // re-evaluated on every ping during the match burst at startup.
   const reload = useCallback(async () => {
     try {
@@ -247,7 +226,7 @@ function HomePage() {
     void reload();
   }, [reload]);
 
-  // Debounce the reload — adding a new show fires ~2N+1
+  // Debounce the reload - adding a new show fires ~2N+1
   // metadata:file-status-changed events (per-file ingest, per-file probe
   // completion, plus the poster-match landing). Without this, each event
   // triggers a separate library:walk + setItems and the grid flickers
@@ -275,7 +254,7 @@ function HomePage() {
     return out;
   }, [items]);
 
-  // Hidden series are segregated into their own tab — never mixed into
+  // Hidden series are segregated into their own tab - never mixed into
   // All/Series/Movies. When reveal is off they vanish from every tab.
   const visibleItems = useMemo(() => items.filter((i) => !i.hidden), [items]);
   const hiddenItems = useMemo(() => items.filter((i) => i.hidden), [items]);
@@ -301,7 +280,7 @@ function HomePage() {
     if (!tabOptions.some((o) => o.value === tab)) setTab("all");
   }, [tabOptions, tab]);
 
-  // True when the user has finished the show — either marked completed on
+  // True when the user has finished the show - either marked completed on
   // the tracker, or watched count has reached the (known) total. Used by
   // the Progress sort to always pin completed shows to the bottom of the
   // list regardless of direction, so they don't pollute the "what should I
@@ -320,7 +299,7 @@ function HomePage() {
   // "Inactive" for the Progress sort = a show the user is NOT mid-way
   // through: either finished (watched-through) or never started (no tracker
   // entry, or zero watched). Both sink to the bottom so Progress answers
-  // "what am I in the middle of?" — completed and untouched shows are noise.
+  // "what am I in the middle of?" - completed and untouched shows are noise.
   const isProgressInactive = useCallback((i: LibraryItem): boolean => {
     if (isWatchedThrough(i)) return true;
     const watched = getWatched({ anilistId: i.anilistId ?? undefined, malId: i.malId });
@@ -363,7 +342,7 @@ function HomePage() {
     // Stable copy → sort. Don't mutate the memoised array from useMemo above.
     const copy = activeItems.slice();
     copy.sort((a, b) => {
-      // Tier pinning for Progress sort — completed AND not-started shows both
+      // Tier pinning for Progress sort - completed AND not-started shows both
       // sink to the bottom regardless of direction (the user's rule:
       // "completed and non-started shows should always be at the bottom").
       // Only genuinely in-progress shows participate in the value sort; the
@@ -393,7 +372,7 @@ function HomePage() {
   }, [activeItems, sortKey, sortDir, pickTitle, getWatched, getUserScore, getLastViewed, isProgressInactive]);
 
   // Animate card positions when the sort order (or active tab) changes.
-  // The key is just the ordered id list — any actual reorder produces a
+  // The key is just the ordered id list - any actual reorder produces a
   // different string and re-runs the FLIP. Item *content* changes
   // (poster matching, watched counts) don't change the key, so they
   // don't trigger an animation.
@@ -413,7 +392,7 @@ function HomePage() {
 
   // Shared 30s tick driving the next-episode countdown on cards that have
   // a known upcoming air date. Only mounted when at least one item is
-  // actually airing — finished libraries don't keep a timer alive.
+  // actually airing - finished libraries don't keep a timer alive.
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const hasAnyUpcoming = useMemo(
     () => items.some((item) => findNextUpcomingEpisode(item.episodes, Date.now()) != null),
@@ -438,7 +417,7 @@ function HomePage() {
       key={item.id}
       item={item}
       episodeBadgeNumber={sub?.episode ?? null}
-      metaLeftText={sub ? fmtRelativeTime(sub.when) : undefined}
+      metaLeftText={sub ? fmtShort(sub.when * 1000) : undefined}
       nowMs={nowMs}
     />
   );
@@ -453,7 +432,7 @@ function HomePage() {
 
   const hasLibrary = items.length > 0;
   // Keep the tab bar (and the Hidden tab) reachable even when every series is
-  // hidden — otherwise a fully-hidden library would have no way to reveal them.
+  // hidden - otherwise a fully-hidden library would have no way to reveal them.
   const showTabs = visibleItems.length > 0 || (showHidden && hiddenItems.length > 0);
 
   return (
@@ -473,6 +452,7 @@ function HomePage() {
         <Section
           first
           title="Airing"
+          count={airing.length}
           action={
             <div className="airing-pager">
               <button
@@ -517,25 +497,27 @@ function HomePage() {
         </div>
       ) : showTabs ? (
         <section className={`section--primitive${airing.length === 0 ? " section--first" : ""}`}>
-          <header className="library-tabs-head">
-            <div className="library-tabs-head__left">
-              <SegmentedSwitch<LibraryTab>
-                value={tab}
-                options={tabOptions}
-                onChange={setTab}
-                ariaLabel="Library category"
-              />
-              <span className="library-tabs-head__count">{activeItems.length}</span>
-            </div>
-            <div className="library-tabs-head__right">
-              <span className="library-tabs-head__sort-label">Sort</span>
+          {/* Eyebrow head in the Section idiom, hand-rolled only because the
+              title slot is the category switch instead of a static label:
+              [ tabs ] [ count chip ] [ hairline rule ] [ sort action ]. */}
+          <header className="section__head library-head">
+            <SegmentedSwitch<LibraryTab>
+              value={tab}
+              options={tabOptions}
+              onChange={setTab}
+              ariaLabel="Library category"
+            />
+            <span className="chip chip--sm section__count">{activeItems.length}</span>
+            <span className="section__rule" aria-hidden="true" />
+            <div className="section__action">
+              <span className="library-head__sort-label">Sort</span>
               <SegmentedSwitch<SortKey>
                 value={sortKey}
                 options={SORT_OPTIONS}
                 onChange={onSortKeyChange}
                 ariaLabel="Sort by"
               />
-              <Tooltip label={sortDir === "desc" ? "Descending — click for ascending" : "Ascending — click for descending"}>
+              <Tooltip label={sortDir === "desc" ? "Descending. Click for ascending" : "Ascending. Click for descending"}>
                 <button
                   type="button"
                   className="sort-dir-toggle"
