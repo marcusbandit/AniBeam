@@ -449,39 +449,23 @@ img { -webkit-user-drag: none; user-drag: none; }
   border-color: color-mix(in srgb, var(--glass-edge-bright) 55%, transparent);
   box-shadow: var(--shadow-lg);
 }
-/* Global glass light: ONE shared light source, up and to the left, applied
-   to every liquid surface so edges catch it consistently (feImage specular
-   is impossible inside backdrop filters, so this is CSS light).
-   ::before is a gradient ring traced onto the border via the mask trick:
-   bright glint toward the light, near-dark flanks, a faint counter-glint on
-   the far corner. ::after is a soft interior bloom falling from the lit
-   corner. Both are pointer-transparent overlays; every liquid surface in
-   the app is a positioned element, so inset: 0 resolves against itself. */
-[data-liquid-glass][data-liquid-glass]::before {
+/* Global glass light, PHYSICAL: liquidGlass.ts bakes a Blinn-Phong lit rim
+   per surface (true 3D bezel normals from the squircle profile + rounded
+   rect SDF, one shared light vector) and hands the map to this ::before via
+   a per-element data-lg-id rule. This scaffold is everything except the
+   baked image. Screen blending keeps the glint additive over any backdrop.
+   Every liquid surface in the app is a positioned element, so inset: 0
+   resolves against itself. */
+[data-lg-id]::before {
   content: '';
   position: absolute;
+  /* -1px: absolute inset resolves against the PADDING box, which would
+     leave the 1px border as a dead strip before the light begins; the rim
+     glint must start at the silhouette, covering the border itself. */
   inset: -1px;
   border-radius: inherit;
-  padding: 1.5px;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.50),
-    rgba(255, 255, 255, 0.14) 26%,
-    rgba(255, 255, 255, 0.03) 52%,
-    rgba(255, 255, 255, 0.10) 86%,
-    rgba(255, 255, 255, 0.26)
-  );
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
-}
-[data-liquid-glass][data-liquid-glass]::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: radial-gradient(120% 65% at 14% 0%, rgba(255, 255, 255, 0.10), transparent 55%);
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  mix-blend-mode: screen;
   pointer-events: none;
 }
