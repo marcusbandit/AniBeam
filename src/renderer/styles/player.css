@@ -5,6 +5,8 @@
   position: fixed;
   inset: 0;
   z-index: 200;
+  /* Deliberate pure black: letterbox bars around the video must stay black,
+     not the page surface tone. */
   background: #000;
 }
 /* Hide the cursor along with the chrome - applied as a sibling class so
@@ -57,6 +59,17 @@
   isolation: isolate;
 }
 
+/* Player-scoped entrance keyframes (self-contained; no dependency on the
+   match-modal keyframes living in settings.css). */
+@keyframes playerFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes playerPop {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 /* Custom player controls - replaces native <video controls>. No Chromium
    pseudo-elements involved; we render a regular bar with regular range
    inputs we can size and style cleanly. */
@@ -67,13 +80,21 @@
   bottom: 0;
   z-index: 5;
   padding: 16px 24px 18px;
-  background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0) 100%);
-  transition: opacity 200ms ease;
+  background: linear-gradient(to top, var(--scrim) 0%, transparent 100%);
+  transition: opacity var(--transition-normal);
   display: flex;
   flex-direction: column;
   gap: 8px;
   font-family: var(--font-mono);
-  color: #d8d8e0;
+  color: var(--text-primary);
+  /* Scrub palette, consumed by the inline gradient string built in JSX
+     (var() references resolve at computed-value time). Keeps the band and
+     track colors in one tokenized place: intro band = amber, outro band =
+     brand teal, played = primary text, unplayed = faint text wash. */
+  --player-band-intro: color-mix(in srgb, var(--accent-amber) 70%, transparent);
+  --player-band-outro: color-mix(in srgb, var(--accent-primary) 70%, transparent);
+  --player-scrub-played: var(--text-primary);
+  --player-scrub-rest: color-mix(in srgb, var(--text-primary) 18%, transparent);
 }
 .player-controls-row {
   display: flex;
@@ -83,18 +104,26 @@
 .player-ctl-btn {
   background: transparent;
   border: none;
-  color: #d8d8e0;
+  color: var(--text-primary);
   width: 32px;
   height: 32px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   padding: 0;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast);
 }
-.player-ctl-btn:hover { background: rgba(255,255,255,0.1); }
-.player-ctl-btn.active { color: #ffffff; background: rgba(255,255,255,0.14); }
+.player-ctl-btn:hover { background: color-mix(in srgb, var(--text-primary) 10%, transparent); }
+.player-ctl-btn:active:not(:disabled) { transform: scale(0.97); }
+.player-ctl-btn.active {
+  color: var(--accent-primary);
+  background: var(--accent-glow);
+}
 .player-ctl-btn:disabled { opacity: 0.3; cursor: default; }
 .player-ctl-btn:disabled:hover { background: transparent; }
 .player-right-group { margin-left: auto; display: flex; gap: 4px; align-items: center; }
@@ -112,31 +141,37 @@
 }
 
 /* Skip Intro / Skip Outro button. Visible only while the playhead is inside the
-   AniSkip window. */
+   AniSkip window. Dark-glass scrim shell (it floats on the video). */
 .player-skip {
-  background: rgba(20, 20, 26, 0.92);
-  color: #d8d8e0;
-  border: 1px solid #3a3a48;
-  border-radius: 999px;
+  background: var(--scrim);
+  backdrop-filter: blur(var(--scrim-blur));
+  -webkit-backdrop-filter: blur(var(--scrim-blur));
+  color: var(--text-primary);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-pill);
   padding: 10px 18px;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--chip-font);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   cursor: pointer;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
-  transition: transform 120ms ease, background 120ms ease;
+  box-shadow: var(--shadow-md);
+  transition:
+    transform var(--transition-fast),
+    background var(--transition-fast),
+    border-color var(--transition-fast);
 }
 .player-skip:hover {
-  background: #1a1a22;
-  border-color: #6090d0;
+  background: var(--bg-hover);
+  border-color: var(--accent-primary);
   transform: translateY(-1px);
 }
+.player-skip:active { transform: translateY(-1px) scale(0.97); }
 
 /* Auto-play-next - Stay + Next pills, inline in the bottom action row. The Next
-   pill is white and fills with a brighter white sweeping left→right over the 5s
-   countdown (no number, just the bar). */
+   pill is white and fills with a brighter white sweeping left to right over the
+   5s countdown (no number, just the bar). */
 .player-autonext {
   display: flex;
   align-items: stretch;
@@ -145,39 +180,46 @@
 .player-autonext-stay,
 .player-autonext-next {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--chip-font);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 10px 18px;
   cursor: pointer;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
-  transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+  box-shadow: var(--shadow-md);
+  transition:
+    transform var(--transition-fast),
+    background var(--transition-fast),
+    border-color var(--transition-fast);
 }
 .player-autonext-stay {
-  background: rgba(20, 20, 26, 0.92);
-  color: #d8d8e0;
-  border: 1px solid #3a3a48;
+  background: var(--scrim);
+  backdrop-filter: blur(var(--scrim-blur));
+  -webkit-backdrop-filter: blur(var(--scrim-blur));
+  color: var(--text-primary);
+  border: 1px solid var(--border-hover);
 }
 .player-autonext-stay:hover {
-  background: #1a1a22;
-  border-color: #6090d0;
+  background: var(--bg-hover);
+  border-color: var(--accent-primary);
   transform: translateY(-1px);
 }
+.player-autonext-stay:active { transform: translateY(-1px) scale(0.97); }
 .player-autonext-next {
   position: relative;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.24);
-  color: #14141a;
+  background: color-mix(in srgb, var(--text-primary) 24%, transparent);
+  color: var(--bg-primary);
   font-weight: 700;
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 50%, transparent);
 }
-.player-autonext-next:hover { background: rgba(255, 255, 255, 0.34); }
+.player-autonext-next:hover { background: color-mix(in srgb, var(--text-primary) 34%, transparent); }
+.player-autonext-next:active { transform: scale(0.97); }
 .player-autonext-fill {
   position: absolute;
   inset: 0;
-  background: rgba(255, 255, 255, 0.62);
+  background: color-mix(in srgb, var(--text-primary) 62%, transparent);
   transform: scaleX(0);
   transform-origin: left center;
 }
@@ -203,22 +245,28 @@
   pointer-events: auto;
   width: 84px;
   height: 84px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
-  background: rgba(20, 20, 26, 0.85);
-  border: 1px solid #3a3a48;
+  color: var(--text-primary);
+  background: var(--scrim);
+  backdrop-filter: blur(var(--scrim-blur));
+  -webkit-backdrop-filter: blur(var(--scrim-blur));
+  border: 1px solid var(--border-hover);
   cursor: pointer;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
-  transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+  box-shadow: var(--shadow-lg);
+  transition:
+    transform var(--transition-fast),
+    background var(--transition-fast),
+    border-color var(--transition-fast);
 }
 .player-replay-btn:hover {
-  background: #1a1a22;
-  border-color: #6090d0;
+  background: var(--bg-hover);
+  border-color: var(--accent-primary);
   transform: scale(1.05);
 }
+.player-replay-btn:active { transform: scale(0.98); }
 .player-sub-anchor { position: relative; display: inline-flex; }
 
 /* Tracker confirmation toast - top-center, fades in & out. */
@@ -229,7 +277,9 @@
   transform: translateX(-50%);
   z-index: 9;
   max-width: min(80vw, 32rem);
-  background: rgba(20, 20, 26, 0.92);
+  background: var(--scrim);
+  backdrop-filter: blur(var(--scrim-blur));
+  -webkit-backdrop-filter: blur(var(--scrim-blur));
   color: var(--text-primary);
   border: 1px solid var(--border-hover);
   border-radius: var(--radius-pill);
@@ -260,7 +310,9 @@
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
-  background: rgba(20, 20, 26, 0.95);
+  background: var(--scrim);
+  backdrop-filter: blur(var(--scrim-blur));
+  -webkit-backdrop-filter: blur(var(--scrim-blur));
   color: var(--text-primary);
   border: 1px solid var(--border-hover);
   border-radius: var(--radius-lg);
@@ -277,7 +329,7 @@
   letter-spacing: 0.02em;
   color: var(--text-primary);
 }
-.player-rating-prompt-head svg { color: var(--accent-blue); }
+.player-rating-prompt-head svg { color: var(--accent-primary); }
 .player-rating-prompt-body {
   display: flex;
   align-items: center;
@@ -294,11 +346,26 @@
   font-family: var(--font-mono);
   font-size: 0.78rem;
   cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast);
 }
-.player-rating-submit { border-color: var(--accent-blue); color: var(--accent-blue); }
-.player-rating-submit:hover:not(:disabled) { background: rgba(110, 211, 166, 0.1); }
-.player-rating-dismiss:hover:not(:disabled) { background: rgba(255, 255, 255, 0.04); border-color: var(--border-hover); }
+.player-rating-submit:active:not(:disabled),
+.player-rating-dismiss:active:not(:disabled) { transform: scale(0.97); }
+.player-rating-submit {
+  border-color: color-mix(in srgb, var(--accent-primary) 45%, transparent);
+  color: var(--accent-primary);
+}
+.player-rating-submit:hover:not(:disabled) {
+  background: var(--accent-glow);
+  color: var(--accent-secondary);
+}
+.player-rating-dismiss:hover:not(:disabled) {
+  background: var(--bg-elev);
+  border-color: var(--border-hover);
+}
 .player-rating-submit:disabled,
 .player-rating-dismiss:disabled { opacity: 0.55; cursor: not-allowed; }
 
@@ -308,14 +375,14 @@
   position: absolute;
   inset: 0;
   z-index: 50;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: var(--scrim);
+  backdrop-filter: blur(var(--scrim-blur));
+  -webkit-backdrop-filter: blur(var(--scrim-blur));
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 2rem;
-  animation: matchFadeIn 140ms ease-out;
+  animation: playerFadeIn 140ms ease-out;
 }
 .codec-modal {
   width: min(480px, 100%);
@@ -324,7 +391,7 @@
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-lg);
   padding: 1.25rem 1.4rem 1.1rem;
-  animation: matchPop 160ms cubic-bezier(0.4, 0, 0.2, 1);
+  animation: playerPop 160ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 .codec-modal-head {
   display: flex;
@@ -333,7 +400,7 @@
   margin-bottom: 0.85rem;
 }
 .codec-modal-icon {
-  color: var(--accent-amber, #e0c089);
+  color: var(--accent-amber);
   flex-shrink: 0;
   margin-top: 2px;
 }
@@ -382,16 +449,21 @@
   background: var(--bg-secondary);
   color: var(--text-primary);
   cursor: pointer;
-  transition: background var(--transition-fast), border-color var(--transition-fast), opacity var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    opacity var(--transition-fast),
+    transform var(--transition-fast);
 }
-.codec-modal-btn:hover { background: var(--bg-hover); }
+.codec-modal-btn:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--border-hover); }
+.codec-modal-btn:active:not(:disabled) { transform: scale(0.97); }
 .codec-modal-btn.ghost { color: var(--text-secondary); }
 .codec-modal-btn.primary {
   background: var(--accent-primary);
   border-color: var(--accent-primary);
-  color: #0f0f14;
+  color: var(--bg-primary);
 }
-.codec-modal-btn.primary:hover { filter: brightness(1.05); }
+.codec-modal-btn.primary:hover:not(:disabled) { background: var(--accent-secondary); border-color: var(--accent-secondary); }
 .codec-modal-btn:disabled { opacity: 0.55; cursor: default; }
 
 /* Re-encoding overlay - same shell, no AlertTriangle, spinning loader,
@@ -414,13 +486,13 @@
 .codec-modal-progress-track {
   position: relative;
   height: 6px;
-  border-radius: var(--radius-pill, 999px);
+  border-radius: var(--radius-pill);
   background: var(--bg-secondary);
   overflow: hidden;
 }
 .codec-modal-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--accent-primary), var(--accent-primary));
+  background: var(--accent-primary);
   border-radius: inherit;
   transition: width 280ms cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -430,7 +502,7 @@
   align-items: baseline;
   gap: 0.6rem;
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: var(--chip-font);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -452,36 +524,45 @@
   bottom: calc(100% + 8px);
   right: 0;
   width: 280px;
-  background: #14141a;
-  border: 1px solid #2a2a32;
-  border-radius: 12px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
   font-family: var(--font-mono);
   font-size: 12px;
-  color: #d8d8e0;
+  color: var(--text-primary);
   overflow: hidden;
   z-index: 10;
 }
 .sub-menu-tabs {
   display: flex;
-  border-bottom: 1px solid #20202a;
+  border-bottom: 1px solid var(--border-color);
 }
 .sub-menu-tab {
   flex: 1;
   padding: 10px 14px;
   background: transparent;
   border: none;
-  color: #8a8a96;
+  color: var(--text-secondary);
   cursor: pointer;
   font: inherit;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-size: 11px;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast);
 }
+.sub-menu-tab:hover {
+  background: var(--bg-elev);
+  color: var(--text-primary);
+}
+.sub-menu-tab:active { transform: scale(0.97); }
 .sub-menu-tab.active {
-  color: #d8d8e0;
-  background: #1a1a22;
-  box-shadow: inset 0 -2px 0 #6090d0;
+  color: var(--text-primary);
+  background: var(--bg-hover);
+  box-shadow: inset 0 -2px 0 var(--accent-primary);
 }
 .sub-menu-body {
   max-height: 320px;
@@ -496,15 +577,18 @@
   text-align: left;
   background: transparent;
   border: none;
-  color: #d8d8e0;
+  color: var(--text-primary);
   padding: 8px 14px;
   cursor: pointer;
   font: inherit;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
 }
-.sub-menu-row:hover { background: #1a1a22; }
+.sub-menu-row:hover { background: var(--bg-hover); }
 .sub-menu-row.active {
-  color: #ffffff;
-  background: rgba(96, 144, 208, 0.2);
+  color: var(--accent-primary);
+  background: var(--accent-glow);
   font-weight: 600;
 }
 
@@ -517,13 +601,13 @@
   gap: 10px;
 }
 .sub-style-row > span:first-child {
-  color: #9a9aa6;
+  color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   font-size: 11px;
 }
 .sub-style-val {
-  color: #6a6a76;
+  color: var(--text-muted);
   font-variant-numeric: tabular-nums;
   min-width: 38px;
   text-align: right;
@@ -532,84 +616,102 @@
   width: 100%;
   height: 22px;
   background: transparent;
-  border: 1px solid #2a2a32;
-  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   padding: 0;
+  transition: border-color var(--transition-fast);
 }
+.sub-style-row input[type="color"]:hover { border-color: var(--border-hover); }
 .sub-style-row input[type="range"] {
   width: 100%;
   height: 4px;
   -webkit-appearance: none;
   appearance: none;
-  background: #2a2a32;
-  border-radius: 2px;
-  outline: none;
+  background: color-mix(in srgb, var(--text-primary) 16%, transparent);
+  border-radius: var(--radius-pill);
   cursor: pointer;
 }
+.sub-style-row input[type="range"]:disabled { opacity: 0.4; cursor: not-allowed; }
 .sub-style-row input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: #d8d8e0;
+  background: var(--text-primary);
   cursor: pointer;
   border: none;
+  transition: transform var(--transition-fast), background var(--transition-fast);
+}
+.sub-style-row input[type="range"]:not(:disabled)::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  background: var(--accent-secondary);
 }
 .sub-style-row select {
-  background: #0e0e14;
-  color: #d8d8e0;
-  border: 1px solid #2a2a32;
-  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
   padding: 4px 8px;
   font: inherit;
   cursor: pointer;
   grid-column: 2 / -1;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast);
 }
+.sub-style-row select:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-hover);
+}
+.sub-style-row select:disabled { opacity: 0.4; cursor: not-allowed; }
 .sub-style-reset {
   margin-top: 6px;
   background: transparent;
-  border: 1px solid #2a2a32;
-  color: #9a9aa6;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
   padding: 6px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font: inherit;
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast);
 }
-.sub-style-reset:hover { color: #d8d8e0; background: #1a1a22; }
+.sub-style-reset:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+  border-color: var(--border-hover);
+}
+.sub-style-reset:active:not(:disabled) { transform: scale(0.97); }
+.sub-style-reset:disabled { opacity: 0.4; cursor: not-allowed; }
 
+/* W.I.P. note in the Style tab. The tag itself is a .chip chip--sm
+   chip--amber in the JSX; this is just the tinted note shell around it. */
 .sub-wip-banner {
   display: flex;
   align-items: flex-start;
   gap: 8px;
   padding: 10px 12px;
   margin-bottom: 4px;
-  background: rgba(180, 130, 50, 0.12);
-  border: 1px solid rgba(180, 130, 50, 0.4);
-  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent-amber) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-amber) 35%, transparent);
+  border-radius: var(--radius-sm);
   font-size: 11px;
   line-height: 1.4;
-  color: #d8d8e0;
-}
-.sub-wip-tag {
-  flex-shrink: 0;
-  background: rgba(180, 130, 50, 0.6);
-  color: #fff;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 10px;
+  color: var(--text-secondary);
 }
 .player-time {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.04em;
-  color: #c0c0c8;
+  color: var(--text-secondary);
   min-width: 110px;
 }
 .player-volume {
@@ -628,15 +730,14 @@
   -webkit-appearance: none;
   appearance: none;
   height: 4px;
-  border-radius: 2px;
+  border-radius: var(--radius-pill);
   background: linear-gradient(
     to right,
-    #d8d8e0 0%,
-    #d8d8e0 var(--progress, 0%),
-    rgba(255,255,255,0.18) var(--progress, 0%),
-    rgba(255,255,255,0.18) 100%
+    var(--player-scrub-played) 0%,
+    var(--player-scrub-played) var(--progress, 0%),
+    var(--player-scrub-rest) var(--progress, 0%),
+    var(--player-scrub-rest) 100%
   );
-  outline: none;
   cursor: pointer;
   margin: 0;
 }
@@ -648,13 +749,94 @@
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: #ffffff;
+  background: var(--text-primary);
   border: none;
   cursor: pointer;
-  box-shadow: 0 0 0 1px rgba(0,0,0,0.4);
+  box-shadow: 0 0 0 1px var(--scrim);
+  transition: transform var(--transition-fast), background var(--transition-fast);
 }
 .player-scrub::-webkit-slider-thumb:hover,
-.player-vol-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
+.player-vol-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  background: var(--accent-secondary);
+}
+
+/* Wrapper so the seek-hover time bubble can absolutely position against the
+   scrubber's own box. */
+.player-scrub-wrap {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+}
+
+/* Seek-hover time bubble: a scrim chip pinned above the cursor's x on the
+   scrubber. Chip look comes from .chip chip--sm chip--scrim in the JSX;
+   this only positions and fades it. */
+.player-seek-bubble {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  transform: translateX(-50%);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+.player-seek-bubble.is-visible { opacity: 1; }
+
+/* Keyboard-shortcut legend: centered scrim overlay toggled by the ? button
+   in the right control group. Lists the existing bindings only. */
+.player-shortcuts-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  background: var(--scrim);
+  backdrop-filter: blur(var(--scrim-blur));
+  -webkit-backdrop-filter: blur(var(--scrim-blur));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  animation: playerFadeIn 140ms ease-out;
+}
+.player-shortcuts {
+  width: min(400px, 100%);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--s5) var(--s6);
+  font-family: var(--font-mono);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  animation: playerPop 160ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.player-shortcuts-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+}
+.player-shortcuts-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+.player-shortcut-row {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  align-items: center;
+  gap: var(--s3);
+}
+.player-shortcut-key {
+  justify-self: start;
+  color: var(--text-primary);
+}
+.player-shortcut-label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
 
 .player-header {
   position: absolute;
@@ -666,7 +848,7 @@
   display: flex;
   align-items: flex-start;
   gap: 1.5rem;
-  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.75), transparent);
+  background: linear-gradient(to bottom, var(--scrim), transparent);
   transition: opacity var(--transition-normal);
 }
 .player-back {
@@ -676,14 +858,21 @@
   padding: 0.45rem 0.75rem;
   font-family: var(--font-mono);
   font-size: 0.8rem;
-  color: white;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-primary);
+  background: var(--bg-elev);
+  border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: background var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    transform var(--transition-fast);
 }
-.player-back:hover { background: rgba(255, 255, 255, 0.15); }
+.player-back:hover {
+  background: color-mix(in srgb, var(--text-primary) 12%, transparent);
+  border-color: var(--border-hover);
+}
+.player-back:active { transform: scale(0.97); }
 .player-titles {
   display: flex;
   flex-direction: column;
@@ -694,16 +883,21 @@
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--text-secondary);
 }
 .player-title {
-  font-family: var(--font-mono);
-  font-weight: 600;
-  font-size: 1rem;
-  color: white;
+  /* Episode names (often native Japanese) get the display face; it holds up
+     well at this size and echoes the hero-title treatment. */
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.05rem;
+  line-height: 1.35;
+  color: var(--text-primary);
 }
 .player-meta {
   font-family: var(--font-mono);
   font-size: 0.7rem;
-  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
 }
