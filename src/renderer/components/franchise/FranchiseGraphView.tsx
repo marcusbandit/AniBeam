@@ -1568,6 +1568,8 @@ function FranchiseFlowNode({ id, data }: NodeProps<RFNode<FranchiseNodeFlowData>
   const menu = menuPos && createPortal(
     <div
       className="franchise-context-menu"
+      data-liquid-glass=""
+      data-lg-bezel="10"
       style={{ left: menuPos.x, top: menuPos.y }}
       role="menu"
     >
@@ -2180,7 +2182,7 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
               <div>root: {rootTitle ?? 'none'}{rootId != null ? ` (${rootId})` : ''}</div>
             </Panel>
           )}
-          <Panel position="top-center" className="franchise-filters-panel">
+          <Panel position="top-center" className="franchise-filters-panel" data-liquid-glass="" data-lg-bezel="12">
             <FranchiseFilters hidden={hiddenCategories} onToggle={onToggleCategory} hiddenFormats={hiddenFormats} onToggleFormat={onToggleFormat} />
           </Panel>
           <Panel position="bottom-center" className="franchise-inline-panel">
@@ -2198,7 +2200,7 @@ function FranchiseGraphCanvas(props: FranchiseGraphViewProps) {
               </button>
             </Tooltip>
           </Panel>
-          <Panel position="bottom-left" className="franchise-controls">
+          <Panel position="bottom-left" className="franchise-controls" data-liquid-glass="" data-lg-bezel="10">
             <Tooltip label="Zoom in">
               <button type="button" onClick={handleZoomIn} aria-label="Zoom in"><ZoomIn size={14} /></button>
             </Tooltip>

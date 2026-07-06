@@ -1109,7 +1109,7 @@ function SeriesDetailPage() {
                     </button>
                   </Tooltip>
                   {scoreEditing && (
-                    <div className="hero-score-popover" role="dialog">
+                    <div className="hero-score-popover" role="dialog" data-liquid-glass="" data-lg-bezel="12">
                       <ScorePicker
                         value={scoreDraft}
                         onChange={setScoreDraft}

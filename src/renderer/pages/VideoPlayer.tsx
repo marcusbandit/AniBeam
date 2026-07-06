@@ -1817,7 +1817,7 @@ function VideoPlayer() {
         <div className="player-toast" role="status">{trackerToast}</div>
       )}
       {subsWait && (
-        <div className="player-subs-wait" role="alert">
+        <div className="player-subs-wait" role="alert" data-liquid-glass="" data-lg-bezel="10">
           <span
             className={`player-subs-wait__dot${subsWait.kind === 'failed' ? ' player-subs-wait__dot--failed' : ''}`}
             aria-hidden="true"
@@ -1845,7 +1845,7 @@ function VideoPlayer() {
         </div>
       )}
       {ratingPrompt && (
-        <div className="player-rating-prompt" role="dialog" aria-modal="false">
+        <div className="player-rating-prompt" role="dialog" aria-modal="false" data-liquid-glass="" data-lg-bezel="14">
           <div className="player-rating-prompt-head">
             <CheckCheck size={14} strokeWidth={2.5} />
             <span>Tracked · final episode · rate this show?</span>
@@ -1938,7 +1938,7 @@ function VideoPlayer() {
       )}
       {unsupported && unsupported.mode === 'decode-failed' && (
         <div className="codec-modal-backdrop" role="dialog" aria-modal="true">
-          <div className="codec-modal">
+          <div className="codec-modal" data-liquid-glass="" data-lg-bezel="14">
             <div className="codec-modal-head">
               <AlertTriangle size={22} className="codec-modal-icon" />
               <div>
@@ -2039,7 +2039,7 @@ function VideoPlayer() {
           aria-modal="true"
           aria-label="Keyboard shortcuts"
         >
-          <div className="player-shortcuts" onClick={(e) => e.stopPropagation()}>
+          <div className="player-shortcuts" onClick={(e) => e.stopPropagation()} data-liquid-glass="" data-lg-bezel="14">
             <div className="player-shortcuts-title">Keyboard shortcuts</div>
             <div className="player-shortcuts-list">
               {([
@@ -2064,6 +2064,8 @@ function VideoPlayer() {
         className={`player-controls${chrome ? '' : ' is-hidden'}`}
         style={{ opacity: chrome ? 1 : 0, pointerEvents: chrome ? 'auto' : 'none' }}
         onClick={(e) => e.stopPropagation()}
+        data-liquid-glass=""
+        data-lg-bezel="16"
       >
         <div className="player-scrub-wrap">
           <input
@@ -2176,7 +2178,7 @@ function VideoPlayer() {
                   </button>
                 </Tooltip>
                 {subMenuOpen && (
-                  <div className="sub-menu" ref={subMenuRef}>
+                  <div className="sub-menu" ref={subMenuRef} data-liquid-glass="" data-lg-bezel="12">
                     <div className="sub-menu-tabs">
                       <button
                         className={`sub-menu-tab${subMenuTab === 'tracks' ? ' active' : ''}`}

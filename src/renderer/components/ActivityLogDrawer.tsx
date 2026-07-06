@@ -130,13 +130,15 @@ export function ActivityLogDrawer() {
         className={`activity-log-toggle${unseenErrorCount > 0 ? ' has-errors' : ''}`}
         onClick={() => setOpen((v) => !v)}
         aria-label="Toggle activity log"
+        data-liquid-glass=""
+        data-lg-bezel="10"
       >
         <Activity size={16} />
         <span>Activity</span>
         {unseenErrorCount > 0 && <span className="chip chip--sm chip--rose">{unseenErrorCount}</span>}
       </button>
       {open && (
-        <aside className="activity-log-drawer">
+        <aside className="activity-log-drawer" data-liquid-glass="" data-lg-bezel="16">
           <header className="activity-log-header">
             <span className="activity-log-title">Activity</span>
             <div className="activity-log-actions">

@@ -138,6 +138,8 @@ function ContextMenu() {
     <div
       ref={menuRef}
       className="context-menu"
+      data-liquid-glass=""
+      data-lg-bezel="10"
       style={{
         left: position.x,
         top: position.y,
