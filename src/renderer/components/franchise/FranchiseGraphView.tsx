@@ -1498,11 +1498,15 @@ function FranchiseFlowNode({ id, data }: NodeProps<RFNode<FranchiseNodeFlowData>
   // Outline rings for current / root, rendered as the node's own box-shadow
   // so they paint ABOVE the card + posters (and above edges, since nodes sit
   // over the edge layer) and are NOT clipped by the node's overflow:hidden.
-  // Each ring = a bg-colored gap shadow + a colored ring shadow. Concentric
-  // when both current+root: teal (viewing) inside, amber (root) outside.
-  const TEAL = 'var(--accent-primary)';
+  // Each ring = a gap shadow + a colored ring shadow. The gap must be the
+  // OPAQUE well color (--bg-deep): the legacy --bg-card is translucent glass
+  // now and would let the outer ring bleed through the gap. Concentric when
+  // both current+root: teal (viewing) inside, amber (root) outside. The
+  // current node also gets the whisper accent glow, and the node's CSS
+  // glass highlight is re-appended because this inline shadow replaces it.
+  const TEAL = 'var(--accent-a)';
   const AMBER = 'var(--accent-amber)';
-  const GAP = 'var(--bg-card)';
+  const GAP = 'var(--bg-deep)';
   const ringSpecs: Array<{ color: string; offset: number }> = isGhost
     ? []
     : isCurrent && isRoot
@@ -1512,9 +1516,10 @@ function FranchiseFlowNode({ id, data }: NodeProps<RFNode<FranchiseNodeFlowData>
         : isRoot
           ? [{ color: AMBER, offset: 3 }]
           : [];
-  const ringBoxShadow = ringSpecs.length
-    ? ringSpecs.map((r) => `0 0 0 ${r.offset}px ${GAP}, 0 0 0 ${r.offset + 2}px ${r.color}`).join(', ')
-    : undefined;
+  const ringLayers = ringSpecs.map((r) => `0 0 0 ${r.offset}px ${GAP}, 0 0 0 ${r.offset + 2}px ${r.color}`);
+  if (ringLayers.length && isCurrent) ringLayers.push('var(--glow-accent)');
+  if (ringLayers.length) ringLayers.push('var(--glass-highlight)');
+  const ringBoxShadow = ringLayers.length ? ringLayers.join(', ') : undefined;
   // Push handles out past the OUTERMOST ring (offset + 2px stroke) so edges
   // meet outside the ring rather than under it.
   const ringOutset = ringSpecs.length ? Math.max(...ringSpecs.map((r) => r.offset + 2)) : 0;
