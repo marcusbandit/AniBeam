@@ -78,6 +78,11 @@
   --font-display: 'Zen Maru Gothic', 'Noto Sans CJK JP', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
+  /* Chip type scale: exactly two sizes, app-wide. Every badge/pill/chip
+     uses one of these; no other chip font sizes are allowed. */
+  --chip-font:    0.72rem;
+  --chip-font-sm: 0.64rem;
+
   /* Spacing scale (4px base). Use these for every padding/margin/gap;
      gaps inside a unit must be smaller than gaps between units. */
   --s1:  4px;

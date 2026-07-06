@@ -17,19 +17,24 @@
   cursor: pointer;
   min-width: 4.5rem;
   padding: 0.32rem 0.55rem;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--bg-elev);
   color: var(--text-primary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   font-family: var(--font-mono);
   font-size: 0.85rem;
   letter-spacing: 0.02em;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast);
 }
 .score-picker-trigger:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--bg-hover);
   border-color: var(--border-hover);
 }
+.score-picker-trigger:active:not(:disabled) { transform: scale(0.97); }
 .score-picker-trigger:disabled { opacity: 0.55; cursor: not-allowed; }
 .score-picker--open .score-picker-trigger {
   border-color: color-mix(in srgb, var(--accent-secondary) 50%, var(--border-color));
@@ -61,11 +66,11 @@
   animation: scorePickerIn 120ms cubic-bezier(0.4, 0, 0.2, 1);
   /* Thin scrollbar that doesn't blow out the panel width. */
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+  scrollbar-color: color-mix(in srgb, var(--text-muted) 35%, transparent) transparent;
 }
 .score-picker-panel::-webkit-scrollbar { width: 6px; }
 .score-picker-panel::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: color-mix(in srgb, var(--text-muted) 35%, transparent);
   border-radius: 3px;
 }
 .score-picker-panel::-webkit-scrollbar-track { background: transparent; }
@@ -83,18 +88,24 @@
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.04em;
   text-align: center;
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast);
 }
 .score-picker-option:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-hover);
   color: var(--text-primary);
 }
+.score-picker-option:active { transform: scale(0.97); }
+/* Selected score: brand teal - "yours". */
 .score-picker-option.is-selected {
-  background: color-mix(in srgb, var(--accent-secondary) 18%, transparent);
-  color: color-mix(in srgb, var(--accent-secondary) 80%, var(--text-primary));
+  background: color-mix(in srgb, var(--accent-primary) 18%, transparent);
+  color: var(--accent-primary);
 }
 .score-picker-option.is-selected:hover {
-  background: color-mix(in srgb, var(--accent-secondary) 26%, transparent);
+  background: color-mix(in srgb, var(--accent-primary) 26%, transparent);
+  color: var(--accent-secondary);
 }
 
 /* Two-segment switch (JP / EN) - real role="switch" button with a thumb
@@ -142,7 +153,7 @@
   border-radius: 999px;
   transform: translateX(calc(var(--thumb-pos) * 100% * var(--isLTR)));
   z-index: 0;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+  box-shadow: var(--shadow-sm);
   /* Deliberately no CSS transition: rAF + Math.exp owns the motion. */
 }
 
@@ -159,7 +170,7 @@
   pointer-events: none;
   transition: color 0.18s ease;
 }
-.lang-switch-label[data-active="true"] { color: var(--text-primary); }
+.lang-switch-label[data-active="true"] { color: var(--accent-primary); }
 
 @media (prefers-reduced-motion: reduce) {
   .lang-switch,
@@ -222,7 +233,7 @@
   /* Outer drop + thin inner ring in the accent so the edge reads even
      when the thumb sits over a busy background. */
   box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.35),
+    var(--shadow-sm),
     inset 0 0 0 1px color-mix(in srgb, var(--accent-primary) 35%, transparent);
   /* Motion is owned by rAF + Math.exp in JS - no CSS transition. */
 }
@@ -254,7 +265,7 @@
   opacity: 0.45;
 }
 .segmented-switch__label[data-active="true"] {
-  color: var(--text-primary);
+  color: var(--accent-primary);
   opacity: 1;
 }
 .segmented-switch__label:hover { opacity: 0.8; }
@@ -314,38 +325,193 @@
    inside a <Page>. */
 .section--primitive { margin-top: var(--s12); }
 .section--primitive.section--first { margin-top: 0; }
+/* Eyebrow head: a sheet label, not a headline. One flex line -
+   [ TITLE ] [ count chip ] [ hairline rule filling the rest ] [ action ]. */
 .section--primitive .section__head {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  align-items: center;
+  gap: var(--s3);
   margin-bottom: var(--s4);
-  padding-bottom: var(--s3);
-  border-bottom: 1px solid var(--border-color);
-}
-.section--primitive .section__title-group {
-  display: inline-flex;
-  align-items: baseline;
-  gap: var(--s2);
 }
 .section--primitive .section__title {
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 1.05rem;
-  letter-spacing: -0.01em;
-  margin: 0;
-  color: var(--text-primary);
-}
-.section--primitive .section__count {
   font-family: var(--font-mono);
-  font-size: 0.78rem;
-  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 0;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.section--primitive .section__count { flex-shrink: 0; }
+.section--primitive .section__rule {
+  flex: 1;
+  height: 1px;
+  background: var(--border-color);
+  min-width: var(--s4);
 }
 .section--primitive .section__action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-shrink: 0;
   font-family: var(--font-mono);
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   color: var(--text-secondary);
 }
 .section--primitive .section__body { display: block; }
+
+/* ============ CHIP (the one badge system) ============ */
+/* Timing-sheet chip. Rendered by Pill.tsx; replaces every badge/pill/tag
+   shell in the app (hero chips, format pills, show-card badges, source
+   pills, filter pills, franchise status tags, transcode shell). Exactly
+   two sizes (--chip-font / --chip-font-sm), one shape, tones via modifier
+   or data-status/data-format attributes. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: var(--chip-font);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.chip svg { width: 1em; height: 1em; flex-shrink: 0; }
+
+.chip--sm {
+  font-size: var(--chip-font-sm);
+  padding: 2px 8px;
+}
+
+/* Tones: text tint + translucent tinted border/bg. One recipe, five hues.
+   Muted is the quiet outlier: hairline border, no fill, muted text. */
+.chip--teal {
+  color: var(--accent-primary);
+  border-color: color-mix(in srgb, var(--accent-primary) 35%, transparent);
+  background: color-mix(in srgb, var(--accent-primary) 10%, transparent);
+}
+.chip--amber {
+  color: var(--accent-amber);
+  border-color: color-mix(in srgb, var(--accent-amber) 35%, transparent);
+  background: color-mix(in srgb, var(--accent-amber) 10%, transparent);
+}
+.chip--rose {
+  color: var(--accent-rose);
+  border-color: color-mix(in srgb, var(--accent-rose) 35%, transparent);
+  background: color-mix(in srgb, var(--accent-rose) 10%, transparent);
+}
+.chip--blue {
+  color: var(--accent-blue);
+  border-color: color-mix(in srgb, var(--accent-blue) 35%, transparent);
+  background: color-mix(in srgb, var(--accent-blue) 10%, transparent);
+}
+.chip--violet {
+  color: var(--accent-violet);
+  border-color: color-mix(in srgb, var(--accent-violet) 35%, transparent);
+  background: color-mix(in srgb, var(--accent-violet) 10%, transparent);
+}
+.chip--muted {
+  color: var(--text-muted);
+  border-color: var(--border-color);
+  background: transparent;
+}
+
+/* Poster-overlay variant: THE dark glass recipe. The only place in the
+   app where a chip sits on artwork instead of chrome. */
+.chip--scrim {
+  background: var(--scrim);
+  backdrop-filter: blur(var(--scrim-blur));
+  -webkit-backdrop-filter: blur(var(--scrim-blur));
+  border-color: transparent;
+  color: var(--text-primary);
+}
+
+/* Interactive chip: filter pills, tag toggles. Hover paint, press scale,
+   `.is-on` = teal (spec interaction contract: hover on an inactive chip
+   stays neutral so it can never impersonate the active one). */
+.chip--toggle {
+  appearance: none;
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast);
+}
+.chip--toggle:hover {
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+.chip--toggle:active { transform: scale(0.97); }
+.chip--toggle.is-on {
+  color: var(--accent-primary);
+  border-color: color-mix(in srgb, var(--accent-primary) 45%, transparent);
+  background: var(--accent-glow);
+}
+.chip--toggle.is-on:hover {
+  color: var(--accent-secondary);
+  border-color: color-mix(in srgb, var(--accent-primary) 65%, transparent);
+}
+
+/* Status / format coloring via data attributes. Same tint recipe as the
+   tone modifiers; the tone comes from the matching token. The generic
+   rule sets a neutral default so unknown values degrade to the base look
+   instead of an invalid color. */
+.chip[data-status],
+.chip[data-format] {
+  --chip-tone: var(--text-secondary);
+  color: var(--chip-tone);
+  border-color: color-mix(in srgb, var(--chip-tone) 35%, transparent);
+  background: color-mix(in srgb, var(--chip-tone) 10%, transparent);
+}
+/* Tracker list statuses (AniList uses "repeating"; the token family calls
+   it rewatching - accept both spellings). Case-insensitive so callers can
+   pass raw API enums or lowercase. */
+.chip[data-status="watching" i]   { --chip-tone: var(--status-watching); }
+.chip[data-status="completed" i]  { --chip-tone: var(--status-completed); }
+.chip[data-status="paused" i]     { --chip-tone: var(--status-paused); }
+.chip[data-status="dropped" i]    { --chip-tone: var(--status-dropped); }
+.chip[data-status="planning" i]   { --chip-tone: var(--status-planning); }
+.chip[data-status="repeating" i],
+.chip[data-status="rewatching" i] { --chip-tone: var(--status-rewatching); }
+/* AniList MediaFormat values (case-insensitive: TV or tv both work). */
+.chip[data-format="TV" i],
+.chip[data-format="TV_SHORT" i]     { --chip-tone: var(--format-tv); }
+.chip[data-format="MOVIE" i]        { --chip-tone: var(--format-movie); }
+.chip[data-format="OVA" i]          { --chip-tone: var(--format-ova); }
+.chip[data-format="ONA" i]          { --chip-tone: var(--format-ona); }
+.chip[data-format="SPECIAL" i]      { --chip-tone: var(--format-special); }
+.chip[data-format="MUSIC" i]        { --chip-tone: var(--format-music); }
+.chip[data-format="MANGA" i]        { --chip-tone: var(--format-manga); }
+.chip[data-format="NOVEL" i],
+.chip[data-format="LIGHT_NOVEL" i]  { --chip-tone: var(--format-novel); }
+.chip[data-format="ONE_SHOT" i]     { --chip-tone: var(--format-oneshot); }
+.chip[data-format="VISUAL_NOVEL" i] { --chip-tone: var(--format-vn); }
+
+/* Inline state dot. currentColor so it always matches the chip's tone;
+   the pulse modifier marks "live" states (airing, encoding). */
+.chip__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+.chip__dot--pulse { animation: chip-pulse 1.4s ease-in-out infinite; }
+@keyframes chip-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.45; transform: scale(0.8); }
+}
+
 /* Pill primitive - single shape, mono font, tone via modifier. */
 .pill {
   display: inline-flex;
@@ -384,20 +550,23 @@
 }
 
 /* Inline re-encode progress, shown in the EpisodeRow trailing slot while a
-   file is being converted - the same spot the amber "Re-encoded" pill lands
-   once it's done. Mono + amber to read as a sibling of that pill. */
+   file is being converted - the same spot the amber "Re-encoded" chip lands
+   once it's done. Shell follows the chip recipe (amber tone, small size) so
+   it reads as a sibling of that chip. */
 .transcode-bar {
   display: inline-flex;
   align-items: center;
   gap: var(--s2);
   padding: 3px 10px;
   border-radius: var(--radius-pill);
-  border: 1px solid color-mix(in srgb, var(--accent-amber) 35%, var(--border-color));
+  border: 1px solid color-mix(in srgb, var(--accent-amber) 35%, transparent);
   background: color-mix(in srgb, var(--accent-amber) 10%, transparent);
   font-family: var(--font-mono);
-  font-size: 0.65rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  font-size: var(--chip-font-sm);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
   color: var(--accent-amber);
 }
 .transcode-bar__track {
@@ -435,7 +604,7 @@
 }
 .transcode-bar--failed {
   color: var(--accent-rose);
-  border-color: color-mix(in srgb, var(--accent-rose) 35%, var(--border-color));
+  border-color: color-mix(in srgb, var(--accent-rose) 35%, transparent);
   background: color-mix(in srgb, var(--accent-rose) 10%, transparent);
 }
 .transcode-bar--failed .transcode-bar__track {
@@ -463,13 +632,13 @@
   transform: translate(-50%, calc(-100% - 10px));
   max-width: 320px;
   padding: 0.4rem 0.65rem;
-  background: rgba(20, 20, 26, 0.96);
+  background: var(--bg-tertiary);
   color: var(--text-primary);
-  border: 1px solid var(--border-hover);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
   box-shadow: var(--shadow-md);
   font-family: var(--font-mono);
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   letter-spacing: 0.02em;
   line-height: 1.35;
   white-space: normal;
@@ -485,9 +654,9 @@
   transform: translateX(-50%) rotate(45deg);
   width: 8px;
   height: 8px;
-  background: rgba(20, 20, 26, 0.96);
-  border-right: 1px solid var(--border-hover);
-  border-bottom: 1px solid var(--border-hover);
+  background: var(--bg-tertiary);
+  border-right: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
 }
 @keyframes cardTooltipIn {
   from { opacity: 0; transform: translate(-50%, calc(-100% - 14px)); }
@@ -507,7 +676,10 @@
   text-align: left;
   cursor: pointer;
   /* No transition on transform - motion engine writes it directly. */
-  transition: border-color var(--transition-fast), box-shadow var(--transition-normal);
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    box-shadow var(--transition-normal);
   /* Button reset for the button-mode of <Card>. */
   appearance: none;
   font: inherit;
@@ -517,6 +689,9 @@
   border-color: var(--border-hover);
   box-shadow: var(--shadow-md);
 }
+/* Large surface: press deepens the paint (never CSS-transform - the card's
+   inline transform is owned by the motion engine's hover lift). */
+.card:active { background: var(--bg-hover); }
 /* Variant: in-library - flat teal accent (thin border + tinted surface).
    No inset glow. The group header dot does the heavy color signalling;
    the card just needs a quiet hint of teal so it scans as "yours". */
@@ -569,6 +744,9 @@
     opacity var(--transition-fast);
 }
 .episode-row:hover { background: var(--bg-tertiary); border-color: var(--border-hover); }
+/* Large surface: press deepens the paint (never CSS-transform - the row's
+   inline transform is owned by the motion engine's hover lift). */
+.episode-row:active:not([disabled]) { background: var(--bg-hover); }
 .episode-row[disabled] { opacity: 0.55; cursor: not-allowed; }
 
 .episode-row__marker {
@@ -694,8 +872,9 @@
 .episode-row--watched .episode-row__marker { color: var(--bg-primary); background: var(--accent-primary); border-color: var(--accent-primary); }
 .episode-row:hover.episode-row--watched { background: var(--bg-secondary); color: var(--text-secondary); }
 
-.episode-row--next-up { border-color: color-mix(in srgb, var(--accent-secondary) 30%, var(--border-color)); background: color-mix(in srgb, var(--accent-secondary) 6%, var(--bg-secondary)); }
-.episode-row--next-up .episode-row__marker { color: var(--accent-secondary); border-color: color-mix(in srgb, var(--accent-secondary) 50%, var(--border-color)); background: color-mix(in srgb, var(--accent-secondary) 12%, transparent); }
+/* Next-up: brand teal - "now / yours / alive". */
+.episode-row--next-up { border-color: color-mix(in srgb, var(--accent-primary) 30%, var(--border-color)); background: color-mix(in srgb, var(--accent-primary) 6%, var(--bg-secondary)); }
+.episode-row--next-up .episode-row__marker { color: var(--accent-primary); border-color: color-mix(in srgb, var(--accent-primary) 50%, var(--border-color)); background: color-mix(in srgb, var(--accent-primary) 12%, transparent); }
 
 /* List of EpisodeRow primitives inside a <Section>. */
 .episode-list { display: flex; flex-direction: column; gap: var(--s2); }
