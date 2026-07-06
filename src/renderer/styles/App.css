@@ -429,6 +429,39 @@ img { -webkit-user-drag: none; user-drag: none; }
   white-space: nowrap;
 }
 
+/* Progress bar flush on the poster's bottom edge (the wrap's
+   overflow:hidden clips it to the card radius). Blue = watched; rose
+   underlay = aired but not yet watched, shown only while the show is
+   still releasing (a finished show's unwatched tail is backlog, not
+   urgency); dark right cap = episode count unknown, so the bar never
+   reads as complete. The empty track is a dark scrim so it stays
+   legible over bright posters. */
+.show-card-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 6px;
+  background: rgba(0, 0, 0, 0.45);
+}
+.show-card-progress-behind,
+.show-card-progress-watched {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  transition: width 320ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.show-card-progress-behind { background: var(--accent-rose); }
+.show-card-progress-watched { background: var(--accent-primary); }
+.show-card-progress-unknown {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  background: rgba(0, 0, 0, 0.82);
+}
+
 .show-card-ep {
   font-family: var(--font-mono);
   font-weight: 500;
