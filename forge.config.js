@@ -7,6 +7,10 @@ export default {
     name: 'AniBeam',
     executableName: 'anibeam',
     icon: './assets/icon',
+    // Ship the icon and the desktop-integration installer inside the
+    // packaged app (resources/), so a release zip is self-contained:
+    // unzip, then run resources/install-desktop.sh.
+    extraResource: ['./assets/icon.png', './scripts/install-desktop.sh'],
     download: {
       mirrorOptions: {
         mirror: 'https://github.com/castlabs/electron-releases/releases/download/',

@@ -21,7 +21,8 @@
     "preview": "vite preview",
     "start": "bun run typecheck && electron-forge start",
     "package": "bun run typecheck && electron-forge package",
-    "make": "bun run typecheck && electron-forge make"
+    "make": "bun run typecheck && electron-forge make",
+    "install:desktop": "bash scripts/install-desktop.sh"
   },
   "dependencies": {
     "@xyflow/react": "^12.10.2",
