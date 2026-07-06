@@ -435,3 +435,14 @@ img { -webkit-user-drag: none; user-drag: none; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 .spin { animation: spin 1s linear infinite; }
+
+/* ============ LIQUID GLASS SURFACES ============ */
+/* Doubled attribute selector on purpose: (0,2,0) specificity beats the
+   single-class fills that area files give these surfaces, without relying
+   on import order. Liquid surfaces need a lighter fill than the frosted
+   veil so the refraction of the backdrop stays visible; the displacement
+   filter itself is attached inline by utils/liquidGlass.ts. */
+[data-liquid-glass][data-liquid-glass] {
+  background: color-mix(in srgb, var(--bg-deep) 52%, transparent);
+  border-color: var(--glass-edge-bright);
+}

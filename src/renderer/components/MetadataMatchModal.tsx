@@ -98,7 +98,7 @@ function MetadataMatchModal({ open, seriesId, currentTitle, seasonNumber, onClos
 
   return (
     <div className="match-modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget && applyingId === null) onClose(); }}>
-      <div className="match-modal" role="dialog" aria-modal="true" aria-labelledby={`match-modal-title-${seriesId}`}>
+      <div className="match-modal" data-liquid-glass="" data-lg-bezel="16" role="dialog" aria-modal="true" aria-labelledby={`match-modal-title-${seriesId}`}>
         <div className="match-modal-head">
           <div>
             <div id={`match-modal-title-${seriesId}`} className="match-modal-title">Match metadata</div>

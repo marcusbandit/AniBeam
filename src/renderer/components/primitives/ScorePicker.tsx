@@ -125,6 +125,8 @@ export function ScorePicker({ value, onChange, disabled, className, ariaLabel }:
         <ul
           ref={panelRef}
           className="score-picker-panel"
+          data-liquid-glass=""
+          data-lg-bezel="10"
           role="listbox"
           aria-label="Select score"
           tabIndex={-1}
