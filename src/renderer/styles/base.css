@@ -107,6 +107,20 @@ img { -webkit-user-drag: none; user-drag: none; }
 }
 
 /* ============ LIBRARY: PAGE-LEVEL SEARCH ============ */
+/* Page head row: title block left, search right, wraps on narrow widths. */
+.page-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s6);
+  flex-wrap: wrap;
+}
+.page-head-row .library-search {
+  margin-bottom: 0;
+  flex: 0 1 380px;
+  min-width: 240px;
+}
+
 .library-search {
   position: relative;
   width: 100%;

@@ -21,6 +21,7 @@ import { useViewHistory } from "../contexts/ViewHistoryContext";
 import { useHiddenShows } from "../contexts/HiddenShowsContext";
 import ShowCard from "../components/ShowCard";
 import { Page, Section, SegmentedSwitch, Tooltip, type SegmentedOption } from "../components/primitives";
+import SearchBar from "../components/SearchBar";
 
 const AIRING_PAGE_COLS = 5;
 const AIRING_PAGE_ROWS = 2;
@@ -267,6 +268,19 @@ function HomePage() {
     tab === "hidden" ? hiddenItems :
     visibleItems;
 
+  // Page-level search. Filters the library grid; the Airing rail steps aside
+  // while a query is active so matches are the only thing on screen.
+  const [query, setQuery] = useState("");
+  const searchedItems = useMemo(() => {
+    const q = query.trim().toLocaleLowerCase();
+    if (!q) return activeItems;
+    return activeItems.filter((i) =>
+      [i.titleRomaji, i.titleEnglish, i.matchedTitle, i.folderName].some(
+        (t) => t?.toLocaleLowerCase().includes(q),
+      ),
+    );
+  }, [activeItems, query]);
+
   const tabOptions = useMemo<SegmentedOption<LibraryTab>[]>(
     () => (showHidden && hiddenItems.length > 0
       ? [...BASE_TAB_OPTIONS, { value: "hidden", label: "Hidden" }]
@@ -340,7 +354,7 @@ function HomePage() {
     };
 
     // Stable copy → sort. Don't mutate the memoised array from useMemo above.
-    const copy = activeItems.slice();
+    const copy = searchedItems.slice();
     copy.sort((a, b) => {
       // Tier pinning for Progress sort - completed AND not-started shows both
       // sink to the bottom regardless of direction (the user's rule:
@@ -369,7 +383,7 @@ function HomePage() {
       return (va - vb) * dirMul;
     });
     return copy;
-  }, [activeItems, sortKey, sortDir, pickTitle, getWatched, getUserScore, getLastViewed, isProgressInactive]);
+  }, [searchedItems, sortKey, sortDir, pickTitle, getWatched, getUserScore, getLastViewed, isProgressInactive]);
 
   // Animate card positions when the sort order (or active tab) changes.
   // The key is just the ordered id list - any actual reorder produces a
@@ -438,17 +452,22 @@ function HomePage() {
   return (
     <Page
       head={
-        <div>
-          <h1 className="page-title">Library</h1>
-          <p className="page-sub">
-            {items.length === 0
-              ? "Your scanned folders are empty."
-              : `${items.length} folder${items.length === 1 ? "" : "s"}.`}
-          </p>
+        <div className="page-head-row">
+          <div>
+            <h1 className="page-title">Library</h1>
+            <p className="page-sub">
+              {items.length === 0
+                ? "Your scanned folders are empty."
+                : `${items.length} folder${items.length === 1 ? "" : "s"}.`}
+            </p>
+          </div>
+          {hasLibrary ? (
+            <SearchBar onSearch={setQuery} placeholder="Search your library…" />
+          ) : null}
         </div>
       }
     >
-      {airing.length > 0 && (
+      {airing.length > 0 && query.trim() === "" && (
         <Section
           first
           title="Airing"
@@ -507,7 +526,7 @@ function HomePage() {
               onChange={setTab}
               ariaLabel="Library category"
             />
-            <span className="chip chip--sm section__count">{activeItems.length}</span>
+            <span className="chip chip--sm section__count">{searchedItems.length}</span>
             <span className="section__rule" aria-hidden="true" />
             <div className="section__action">
               <span className="library-head__sort-label">Sort</span>
@@ -533,10 +552,12 @@ function HomePage() {
             </div>
           </header>
           <div className="section__body">
-            {activeItems.length === 0 ? (
+            {searchedItems.length === 0 ? (
               <div className="empty">
                 <div className="empty-text">
-                  No {tab === "series" ? "series" : tab === "movies" ? "movies" : "items"} in your library yet.
+                  {query.trim()
+                    ? `No matches for "${query.trim()}".`
+                    : `No ${tab === "series" ? "series" : tab === "movies" ? "movies" : "items"} in your library yet.`}
                 </div>
               </div>
             ) : (
