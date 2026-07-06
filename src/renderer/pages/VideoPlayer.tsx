@@ -235,6 +235,23 @@ function VideoPlayer() {
   // control group. Purely presentational; adds no bindings of its own.
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
+  // Subtitle supervisor. Contract: subtitles that exist MUST load. While the
+  // subtitle build is slow or failing, playback is held paused with a visible
+  // notice, and failed builds retry forever with backoff; playback resumes the
+  // moment they load. The user can explicitly play without subs, which lifts
+  // the hold but keeps the retries running in the background.
+  const [subsWait, setSubsWaitState] = useState<null | { kind: 'loading' | 'failed'; attempt: number }>(null);
+  // The ref mirrors the state SYNCHRONOUSLY (not via effect) so the video
+  // 'play' listener and our own programmatic resume never race a stale value.
+  const subsWaitRef = useRef<typeof subsWait>(null);
+  const setSubsWait = useCallback((v: typeof subsWaitRef.current) => {
+    subsWaitRef.current = v;
+    setSubsWaitState(v);
+  }, []);
+  const pausedForSubsRef = useRef(false);   // we paused, so we may auto-resume
+  const subsOverrideRef = useRef(false);    // user chose to play without subs
+  const supervisedPathRef = useRef<string | null>(null);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -627,11 +644,32 @@ function VideoPlayer() {
 
     if (episode && episode.filePath) {
       setEpisodeData(episode);
+      // The override/auto-pause flags belong to one FILE, not to one effect
+      // run: this effect also re-runs on unrelated metadata pushes (including
+      // our own subtitle-state reports), and those must not clear the user's
+      // "play without subs" choice mid-episode.
+      if (supervisedPathRef.current !== episode.filePath) {
+        supervisedPathRef.current = episode.filePath;
+        subsOverrideRef.current = false;
+        pausedForSubsRef.current = false;
+        setSubsWait(null);
+      }
+      let cancelled = false;
+      let retryTimer: ReturnType<typeof setTimeout> | null = null;
+      // Surface the hold only if the first build is actually slow; a warm
+      // cache resolves in milliseconds and should never flash a notice.
+      const slowTimer = setTimeout(() => {
+        if (!cancelled && !subsOverrideRef.current && subsWaitRef.current === null) {
+          setSubsWait({ kind: 'loading', attempt: 0 });
+        }
+      }, 600);
       // Build the subtitle list:
       //  1. External .srt/.vtt sidecar files (convert .srt → VTT blob)
       //  2. Embedded text-based subtitle streams in the MKV (extract via
       //     ffmpeg in main, served from the on-disk cache via media://)
-      const buildSubs = async () => {
+      // Returns the outcome so the supervisor below can tell "no subs exist"
+      // (fine) apart from "subs exist but did not load" (hold + retry).
+      const buildSubs = async (): Promise<{ loaded: number; candidates: number; errored: boolean }> => {
         const out: SubtitleTrack[] = [];
 
         // External sidecars
@@ -660,6 +698,7 @@ function VideoPlayer() {
 
         // Embedded streams (MKV / MP4 with internal subs)
         let embeddedCount = 0;
+        let errored = false;
         try {
           const embedded = await window.electronAPI.listEmbeddedSubtitles(episode.filePath);
           embeddedCount = embedded.length;
@@ -681,8 +720,11 @@ function VideoPlayer() {
             });
           }
         } catch (err) {
-          console.warn('Embedded subtitle extraction failed:', err);
+          errored = true;
+          console.warn('Embedded subtitle listing/extraction failed:', err);
         }
+
+        if (cancelled) return { loaded: out.length, candidates: embeddedCount, errored };
 
         setSubtitleSrcs((prev) => {
           // Revoke previous blob URLs so they don't leak.
@@ -693,13 +735,80 @@ function VideoPlayer() {
         // Record the authoritative outcome so the series list can mark episodes
         // whose subtitles silently failed (e.g. an embedded text track that
         // wouldn't extract). null ⇒ nothing to attempt — don't overwrite a
-        // proactively-detected 'unsupported' (bitmap-only) marker.
+        // proactively-detected 'unsupported' (bitmap-only) marker. Only report
+        // CHANGES: reporting writes metadata, which re-runs this effect; an
+        // unconditional report would turn every retry into an effect restart.
         const playState = derivePlaybackSubtitleState({ loadedCount: out.length, candidateStreamCount: embeddedCount });
-        if (playState) void window.electronAPI.reportSubtitleState?.(episode.filePath, playState);
+        if (playState && playState !== episode.subtitleState) {
+          void window.electronAPI.reportSubtitleState?.(episode.filePath, playState);
+        }
+        return { loaded: out.length, candidates: embeddedCount, errored };
       };
-      void buildSubs();
+
+      // The supervisor: run the build, and if subs exist but none loaded,
+      // hold playback with a notice and retry forever with capped backoff.
+      const supervise = async (attempt: number) => {
+        let result: { loaded: number; candidates: number; errored: boolean };
+        try {
+          result = await buildSubs();
+        } catch (err) {
+          // A sidecar conversion threw; same treatment as an extraction miss.
+          console.warn('Subtitle build failed:', err);
+          result = { loaded: 0, candidates: 1, errored: true };
+        }
+        if (cancelled) return;
+        clearTimeout(slowTimer);
+        const failed = result.loaded === 0 && (result.errored || result.candidates > 0);
+        if (!failed) {
+          const hadVisibleWait = subsWaitRef.current !== null;
+          setSubsWait(null);
+          if (hadVisibleWait && result.loaded > 0) showTrackerToast('Subtitles loaded');
+          if (pausedForSubsRef.current && !subsOverrideRef.current) {
+            void videoRef.current?.play();
+          }
+          pausedForSubsRef.current = false;
+          return;
+        }
+        if (!subsOverrideRef.current) setSubsWait({ kind: 'failed', attempt });
+        const delay = Math.min(8000, 1000 * 2 ** Math.min(attempt - 1, 3));
+        retryTimer = setTimeout(() => { if (!cancelled) void supervise(attempt + 1); }, delay);
+      };
+      void supervise(1);
+      return () => {
+        cancelled = true;
+        clearTimeout(slowTimer);
+        if (retryTimer) clearTimeout(retryTimer);
+      };
     }
-  }, [seriesId, episodeNumber, metadata, isExtra, explicitFilePath]);
+  }, [seriesId, episodeNumber, metadata, isExtra, explicitFilePath, setSubsWait]);
+
+  // Enforce the hold: while a subtitle wait is active and not overridden,
+  // playback must not run sub-less. Covers autoplay, keyboard, and any other
+  // path that starts the video; our own auto-resume clears the wait ref
+  // synchronously first, so it passes through.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const onPlay = () => {
+      if (subsWaitRef.current && !subsOverrideRef.current) {
+        pausedForSubsRef.current = true;
+        video.pause();
+      }
+    };
+    video.addEventListener('play', onPlay);
+    return () => video.removeEventListener('play', onPlay);
+  }, [videoSrc]);
+
+  // And the reverse direction: if the wait appears while already playing
+  // (e.g. a retry started failing mid-episode after a rebuild), pause.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !subsWait || subsOverrideRef.current) return;
+    if (!video.paused) {
+      pausedForSubsRef.current = true;
+      video.pause();
+    }
+  }, [subsWait]);
 
   // Find the native textTrack that matches a given subtitleSrcs entry. Native
   // <track> elements are only rendered for VTT-format subs; ASS subs go to
@@ -1356,7 +1465,15 @@ function VideoPlayer() {
       if (e.repeat) return;
       if (e.key === ' ' || e.key === 'k') {
         e.preventDefault();
-        if (video.paused) void video.play(); else video.pause();
+        if (video.paused) {
+          if (subsWaitRef.current) {
+            subsOverrideRef.current = true;
+            setSubsWait(null);
+          }
+          void video.play();
+        } else {
+          video.pause();
+        }
         showChrome();
       } else if (e.ctrlKey && e.key === 'ArrowRight') {
         // Ctrl+Right = jump to the end of the current intro/outro if we're
@@ -1414,7 +1531,17 @@ function VideoPlayer() {
   const togglePlay = () => {
     const video = videoRef.current;
     if (!video) return;
-    if (video.paused) void video.play(); else video.pause();
+    if (video.paused) {
+      // Playing by hand while the subtitle hold is up is an explicit
+      // "play without subs"; retries keep running in the background.
+      if (subsWaitRef.current) {
+        subsOverrideRef.current = true;
+        setSubsWait(null);
+      }
+      void video.play();
+    } else {
+      video.pause();
+    }
   };
 
   // Sorted episode-number list for prev/next nav. Built from the series's
@@ -1670,6 +1797,34 @@ function VideoPlayer() {
       {trackerToast && (
         <div className="player-toast" role="status">{trackerToast}</div>
       )}
+      {subsWait && (
+        <div className="player-subs-wait" role="alert">
+          <span
+            className={`player-subs-wait__dot${subsWait.kind === 'failed' ? ' player-subs-wait__dot--failed' : ''}`}
+            aria-hidden="true"
+          />
+          <span className="player-subs-wait__text">
+            {subsWait.kind === 'loading'
+              ? 'Loading subtitles…'
+              : `Subtitles failed to load. Retrying (attempt ${subsWait.attempt})…`}
+          </span>
+          <button
+            type="button"
+            className="btn btn-small player-subs-wait__skip"
+            onClick={(e) => {
+              e.stopPropagation();
+              subsOverrideRef.current = true;
+              setSubsWait(null);
+              if (pausedForSubsRef.current) {
+                pausedForSubsRef.current = false;
+                void videoRef.current?.play();
+              }
+            }}
+          >
+            Play without subs
+          </button>
+        </div>
+      )}
       {ratingPrompt && (
         <div className="player-rating-prompt" role="dialog" aria-modal="false">
           <div className="player-rating-prompt-head">
@@ -1843,6 +1998,10 @@ function VideoPlayer() {
               e.stopPropagation();
               const video = videoRef.current;
               if (!video) return;
+              if (subsWaitRef.current) {
+                subsOverrideRef.current = true;
+                setSubsWait(null);
+              }
               video.currentTime = 0;
               void video.play();
               setVideoEnded(false);

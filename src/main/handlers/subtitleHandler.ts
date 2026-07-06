@@ -174,7 +174,20 @@ const subtitleHandler = {
       logger.warn('metadata', `Failed to resolve subtitle cache path for stream ${streamIndex}: ${(err as Error).message}`, { file: videoPath });
       return null;
     }
-    if (existsSync(out)) return { path: out, format: fmt };
+    if (existsSync(out)) {
+      // Self-heal: extractions written by the pre-atomic code could be
+      // interrupted mid-write, leaving a truncated/empty file that a bare
+      // existsSync would trust forever ("this episode never loads subs").
+      // An empty file is never a valid extract; drop it and re-extract.
+      try {
+        const cached = await stat(out);
+        if (cached.size > 0) return { path: out, format: fmt };
+        await unlink(out);
+        logger.warn('metadata', `Discarded empty cached subtitle extract for stream ${streamIndex}; re-extracting`, { file: videoPath });
+      } catch {
+        // stat/unlink raced with something else; fall through and re-extract.
+      }
+    }
     // Coalesce a concurrent extract of the same output (prewarm vs play-time).
     const pending = inFlightExtract.get(out);
     if (pending) return pending;
@@ -209,6 +222,10 @@ const subtitleHandler = {
             '-f', muxer,
             tmp,
           ]);
+          // ffmpeg exited 0 but validate anyway: an empty output must count as
+          // a failed attempt, never get renamed into the cache.
+          const produced = await stat(tmp);
+          if (produced.size === 0) throw new Error('extraction produced an empty file');
           await rename(tmp, out);
           logger.info('metadata', `Extracted embedded subtitle stream ${streamIndex} (${fmt}) → cache`, { file: videoPath });
           return { path: out, format: fmt };
