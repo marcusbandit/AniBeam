@@ -102,7 +102,7 @@ img { -webkit-user-drag: none; user-drag: none; }
   display: flex;
   align-items: center;
   gap: 0.55rem;
-  font-family: var(--font-sans);
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: 1.05rem;
   letter-spacing: -0.01em;
@@ -159,7 +159,7 @@ img { -webkit-user-drag: none; user-drag: none; }
   width: 100%;
 }
 .page-title {
-  font-family: var(--font-sans);
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: 1.875rem;
   letter-spacing: -0.02em;
@@ -592,7 +592,7 @@ img { -webkit-user-drag: none; user-drag: none; }
 .detail-eyebrow .source-tag { color: var(--text-secondary); }
 
 .detail-title {
-  font-family: var(--font-sans);
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: clamp(1.75rem, 3vw, 2.5rem);
   line-height: 1.1;
@@ -934,7 +934,7 @@ img { -webkit-user-drag: none; user-drag: none; }
   display: flex;
   flex-direction: column;
   gap: 8px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   color: #d8d8e0;
 }
 .player-controls-row {
@@ -981,7 +981,7 @@ img { -webkit-user-drag: none; user-drag: none; }
   border: 1px solid #3a3a48;
   border-radius: 999px;
   padding: 10px 18px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -1006,7 +1006,7 @@ img { -webkit-user-drag: none; user-drag: none; }
 }
 .player-autonext-stay,
 .player-autonext-next {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -1329,7 +1329,7 @@ img { -webkit-user-drag: none; user-drag: none; }
   border: 1px solid #2a2a32;
   border-radius: 12px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   color: #d8d8e0;
   overflow: hidden;
@@ -2529,7 +2529,7 @@ img { -webkit-user-drag: none; user-drag: none; }
   background: #14141a;
   color: #d8d8e0;
   border-radius: 14px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   cursor: pointer;
 }
@@ -2558,7 +2558,7 @@ img { -webkit-user-drag: none; user-drag: none; }
   border: 1px solid #2a2a32;
   border-radius: 16px;
   overflow: hidden;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   color: #d8d8e0;
 }
@@ -2758,7 +2758,7 @@ img { -webkit-user-drag: none; user-drag: none; }
   color: #d8d8e0;
   border: 1px solid #2a2a32;
   border-radius: 8px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 10.5px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -2864,7 +2864,7 @@ img { -webkit-user-drag: none; user-drag: none; }
   min-width: 0;
 }
 .series-hero-title {
-  font-family: var(--font-sans);
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: clamp(1.65rem, 2.6vw, 2.4rem);
   line-height: 1.1;
@@ -3144,7 +3144,7 @@ button.hero-chip-anilist--icon:hover {
 }
 .series-hero-desc {
   color: var(--text-secondary);
-  font-family: var(--font-sans);
+  font-family: var(--font-display);
   font-size: 0.95rem;
   line-height: 1.55;
   max-width: 70ch;
@@ -3364,7 +3364,7 @@ button.hero-chip-anilist--icon:hover {
   min-width: 0;
 }
 .character-card-name {
-  font-family: var(--font-sans);
+  font-family: var(--font-display);
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--text-primary);
@@ -4477,7 +4477,7 @@ button.hero-chip-anilist--icon:hover {
   gap: var(--s2);
 }
 .section--primitive .section__title {
-  font-family: var(--font-sans);
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: 1.05rem;
   letter-spacing: -0.01em;
