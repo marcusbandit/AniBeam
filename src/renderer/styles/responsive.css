@@ -1,10 +1,24 @@
 /* responsive.css - all max-width media overrides; imported last so they beat the area files */
 
 /* ============ RESPONSIVE ============ */
+/* Rail collapse: below 900px the rail goes icon-only at 64px. Labels and
+   the version tag hide; LangSwitch labels tighten so the pill still fits
+   the narrow column. */
+@media (max-width: 900px) {
+  .rail { width: 64px; }
+  .rail-link { min-height: 52px; }
+  .rail-link-label { display: none; }
+  .rail-meta { display: none; }
+  .rail .lang-switch-label { padding: 0.22rem 0.3rem; }
+}
+/* Below 720px even the tightened LangSwitch is cramped in the 64px
+   rail; hide it. Widen the window to switch language. */
+@media (max-width: 720px) {
+  .rail .lang-switch { display: none; }
+}
+
 @media (max-width: 768px) {
-  .page { padding: 1.25rem 1.25rem 3rem; }
-  .navbar { padding: var(--s2) var(--s4); gap: var(--s4); }
-  .navbar-meta { display: none; }
+  .page { --page-pad-x: 1.25rem; padding: 1.25rem var(--page-pad-x) 3rem; }
   .show-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--s4) var(--s3); }
   .meta-row {
     grid-template-columns: 56px 1fr 112px;
@@ -16,16 +30,4 @@
     gap: 1rem;
   }
   .cache-actions { grid-column: 1 / -1; justify-self: stretch; }
-}
-
-@media (max-width: 980px) {
-  .series-hero-inner {
-    grid-template-columns: 220px 1fr;
-  }
-}
-@media (max-width: 720px) {
-  .series-hero-inner {
-    grid-template-columns: 1fr;
-    gap: 1.25rem;
-  }
 }

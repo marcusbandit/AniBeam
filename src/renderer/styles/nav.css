@@ -1,102 +1,109 @@
-/* nav.css - App.tsx navbar: brand, nav links, navbar tail */
+/* nav.css - App.tsx left rail: brand mark, stacked nav entries, rail foot (LangSwitch + version) */
 
-/* ============ NAVBAR ============ */
-.navbar {
-  position: sticky;
-  top: 0;
-  z-index: 50;
+/* ============ SIDEBAR RAIL ============ */
+/* Slim fixed-width column on the shell's left edge. Background stays
+   transparent on purpose: the shell's quiet color field (.app::before)
+   glows through the rail's bottom corner; the hairline right border is
+   the only chrome. Flat, no panel tint. */
+.rail {
+  width: 92px;
+  flex-shrink: 0;
   display: flex;
-  align-items: center;
-  gap: var(--s8);
-  padding: var(--s3) var(--s6);
-  background: var(--bg-primary);
-  border-bottom: 1px solid var(--border-color);
+  flex-direction: column;
+  align-items: stretch;
+  padding: var(--s4) 0;
+  border-right: 1px solid var(--border-color);
+  background: transparent;
 }
-.navbar-brand {
-  display: flex;
-  align-items: center;
-  gap: var(--s2);
-  text-decoration: none;
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-  transition: opacity var(--transition-fast), transform var(--transition-fast);
-}
-.navbar-brand:hover { opacity: 0.85; }
-.navbar-brand:active { transform: scale(0.97); }
-.brand-mark {
-  width: 30px;
-  height: 30px;
+
+/* Brand mark: icon only, routed to the Library like the old brand link. */
+.rail-brand {
+  width: 32px;
+  height: 32px;
+  margin: 0 auto var(--s6);
   border-radius: var(--radius-sm);
   overflow: hidden;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
 }
-.brand-mark img {
+.rail-brand:hover { opacity: 0.85; }
+.rail-brand:active { transform: scale(0.97); }
+.rail-brand img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
   user-select: none;
 }
-.brand-word {
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 1.05rem;
-  letter-spacing: -0.01em;
-  color: var(--text-primary);
+
+.rail-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
 }
-.navbar-nav { display: flex; gap: var(--s1); flex: 1; }
-.nav-link {
+.rail-link {
   position: relative;
-  display: inline-flex;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: var(--s2);
+  justify-content: center;
+  gap: var(--s1);
+  min-height: 64px;
+  margin: 0 var(--s2);
+  border-radius: var(--radius-md);
   font-family: var(--font-mono);
   font-weight: 500;
-  font-size: 0.88rem;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   color: var(--text-secondary);
-  padding: var(--s2) var(--s3);
-  border-radius: var(--radius-md);
   transition:
     color var(--transition-fast),
     background var(--transition-fast),
     transform var(--transition-fast);
 }
-/* Hover: neutral paint only. An inactive tab must never look like the
+/* Hover: neutral paint only. An inactive entry must never look like the
    active one (interaction contract rule 8). */
-.nav-link:hover { color: var(--text-primary); background: var(--bg-hover); }
-.nav-link:active { transform: scale(0.97); }
-/* Active: teal text + a quiet 4px teal dot under the label. No background,
-   so active and hover stay distinguishable; hovering the active tab still
-   paints the neutral bg from the rule above. */
-.nav-link::after {
+.rail-link:hover { color: var(--text-primary); background: var(--bg-hover); }
+.rail-link:active { transform: scale(0.97); }
+/* Active: teal icon + label plus a 3px teal bar hugging the rail's LEFT
+   edge. Entries are inset by --s2, so the bar reaches back to the true
+   rail edge with a matching negative offset. */
+.rail-link::before {
   content: "";
   position: absolute;
-  left: 50%;
-  bottom: 2px;
-  width: 4px;
-  height: 4px;
-  border-radius: var(--radius-pill);
+  left: calc(-1 * var(--s2));
+  top: 50%;
+  width: 3px;
+  height: 28px;
+  border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
   background: var(--accent-primary);
   opacity: 0;
-  transform: translateX(-50%) scale(0);
+  transform: translateY(-50%) scaleY(0.4);
   transition: opacity var(--transition-fast), transform var(--transition-fast);
 }
-.nav-link.active { color: var(--accent-primary); }
-.nav-link.active::after { opacity: 1; transform: translateX(-50%) scale(1); }
-.nav-link.active:hover { color: var(--accent-secondary); }
-.navbar-meta {
+.rail-link.active { color: var(--accent-primary); }
+.rail-link.active::before { opacity: 1; transform: translateY(-50%) scaleY(1); }
+.rail-link.active:hover { color: var(--accent-secondary); }
+
+/* Rail foot - LangSwitch + version, docked to the bottom via the auto
+   margin (the flex spacer), both centered. */
+.rail-foot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s3);
+  padding-top: var(--s4);
+}
+/* Slightly tighter LangSwitch labels inside the rail so the pill sits
+   with breathing room in the 92px column. */
+.rail .lang-switch-label { padding: 0.22rem 0.5rem; }
+.rail-meta {
   font-family: var(--font-mono);
   font-size: 0.7rem;
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
-}
-
-/* Navbar tail - language switch + version. */
-.navbar-tail {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-  margin-left: auto;
 }
