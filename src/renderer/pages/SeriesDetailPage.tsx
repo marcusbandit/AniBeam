@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Play, Check, Star, Tv, Film, Clock, Users, RotateCw, Eye, EyeOff, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Play, Check, Star, Tv, Film, Clock, Users, RotateCw, Eye, EyeOff, AlertTriangle, CaptionsOff } from "lucide-react";
 
 // AniList brand mark. Inline rather than fetched so it ships with the
 // renderer bundle and stays available offline. Geometry is the official
@@ -22,6 +22,7 @@ function AniListIcon({ size = 12 }: { size?: number }) {
 }
 import type { LibraryItem } from "../../types/electron";
 import type { Character, Recommendation, SeriesMetadata, Tag } from "../hooks/useMetadata";
+import type { SubtitleState } from "../../shared/subtitleSupport";
 import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
 import { useTitleLanguage } from "../contexts/TitleLanguageContext";
 import { useTrackerProgress } from "../contexts/TrackerProgressContext";
@@ -370,6 +371,24 @@ function SeriesDetailPage() {
     return set;
   }, [meta?.fileEpisodes]);
 
+  // filePath → subtitle availability, for the "subs won't display" episode-row
+  // marker. The persisted state on metadata is the base; `subtitleOverrides`
+  // holds fresher values from the on-open probe sweep and the live play-time
+  // push (which land before the next library reload). resolveSubtitleState lets
+  // an override of `null` (subs are fine now) win over a stale base.
+  const subtitleStateByPath = useMemo(() => {
+    const map: Record<string, SubtitleState> = {};
+    for (const fe of meta?.fileEpisodes ?? []) {
+      if (fe.subtitleState) map[fe.filePath] = fe.subtitleState;
+    }
+    return map;
+  }, [meta?.fileEpisodes]);
+  const [subtitleOverrides, setSubtitleOverrides] = useState<Record<string, SubtitleState | null>>({});
+  const resolveSubtitleState = useCallback((filePath: string): SubtitleState | null | undefined => {
+    if (Object.prototype.hasOwnProperty.call(subtitleOverrides, filePath)) return subtitleOverrides[filePath];
+    return subtitleStateByPath[filePath];
+  }, [subtitleOverrides, subtitleStateByPath]);
+
   // ----- Live re-encode state (filePath → progress/phase) -----
   // Opening the series tells main to probe + priority-queue every episode that
   // still needs converting, so the whole batch starts without the user
@@ -430,6 +449,36 @@ function SeriesDetailPage() {
     });
     return () => { offProgress?.(); offStatus?.(); };
   }, [filePathsKey]);
+
+  // Sweep this series' files for subtitle availability on open, so episodes
+  // whose subs won't display get a marker without the user playing each one.
+  // Cheap (one ffprobe per uncached file in main); results paint immediately.
+  useEffect(() => {
+    if (!filePathsKey) return;
+    const paths = filePathsKey.split("\n");
+    let cancelled = false;
+    void window.electronAPI.evaluateSeriesSubtitles?.(paths)
+      .then((results) => {
+        if (cancelled || !Array.isArray(results)) return;
+        setSubtitleOverrides((prev) => {
+          const next = { ...prev };
+          for (const r of results) next[r.filePath] = r.state;
+          return next;
+        });
+      })
+      .catch(() => { /* best-effort — play-time still records the outcome */ });
+    return () => { cancelled = true; };
+  }, [filePathsKey]);
+
+  // Live subtitle-state pushes (the authoritative play-time outcome) while the
+  // series page is open — e.g. an embedded track that failed to extract.
+  useEffect(() => {
+    const off = window.electronAPI.onSubtitleStateChanged?.((p) => {
+      if (!p?.filePath) return;
+      setSubtitleOverrides((prev) => ({ ...prev, [p.filePath]: p.subtitleState }));
+    });
+    return () => off?.();
+  }, []);
 
   // Pre-build the episode-title lookup from API metadata so the episode
   // list can swap file-derived titles for canonical AniList/MAL titles.
@@ -809,6 +858,25 @@ function SeriesDetailPage() {
     return null;
   };
 
+  // Marks episodes whose subtitles won't display even though the file has them.
+  // 'unsupported' = image-based (PGS/Blu-ray) subs we can't render but mpv can;
+  // 'failed' = a text track that exists but wouldn't extract. 'ok' / unknown
+  // render nothing.
+  const renderSubtitleMarker = (filePath: string) => {
+    const st = resolveSubtitleState(filePath);
+    if (st !== "unsupported" && st !== "failed") return null;
+    const label = st === "unsupported"
+      ? "No subtitles will show — this file only has image-based (PGS/Blu-ray) subtitles, which play in mpv but AniBeam can't render."
+      : "Subtitles failed to load — the track is in the file but couldn't be extracted.";
+    return (
+      <Tooltip label={label}>
+        <span className="episode-sub-warn" aria-label="Subtitles unavailable">
+          <CaptionsOff size={14} />
+        </span>
+      </Tooltip>
+    );
+  };
+
   // Shared row renderer so the main list and the "Extra files" list stay in
   // lockstep. `extra` adds the warning pill and suppresses the "Next up"
   // marker (an out-of-range file is never the next episode to watch).
@@ -822,6 +890,7 @@ function SeriesDetailPage() {
       const movieWatched = listStatus === "completed" || (watched != null && watched > 0);
       const fraction = getProgressFraction(localProgress, item.id, f.episodeNumber);
       const reencode = renderReencodeIndicator(f.filePath);
+      const subWarn = renderSubtitleMarker(f.filePath);
       return (
         <EpisodeRow
           key={f.filePath}
@@ -829,8 +898,9 @@ function SeriesDetailPage() {
           code="Movie"
           title={realEpisodes.length === 1 ? displayTitle : f.title}
           trailing={
-            (reencode || movieWatched) ? (
+            (reencode || subWarn || movieWatched) ? (
               <>
+                {subWarn}
                 {reencode}
                 {movieWatched && <Pill tone="muted">Watched</Pill>}
               </>
@@ -841,6 +911,7 @@ function SeriesDetailPage() {
           onClick={() =>
             navigate(`/player/${encodeURIComponent(item.id)}/${f.episodeNumber}`)
           }
+          onHover={() => window.electronAPI.prewarmSubtitles?.(f.filePath)}
         />
       );
     }
@@ -855,6 +926,7 @@ function SeriesDetailPage() {
     // on pause. Zero for episodes never started OR finished (entry deleted).
     const fraction = getProgressFraction(localProgress, item.id, f.episodeNumber);
     const reencode = renderReencodeIndicator(f.filePath);
+    const subWarn = renderSubtitleMarker(f.filePath);
     const statusPill =
       isNext ? <Pill tone="accent">Next up</Pill> :
       isWatched ? <Pill tone="muted">Watched</Pill> :
@@ -868,9 +940,10 @@ function SeriesDetailPage() {
     const markerCascadeDelayMs = inWave
       ? Math.min(wave!.mode === "untrack" ? ep - wave!.anchor : wave!.anchor - ep, 12) * 45
       : 0;
-    const trailing = (isExtra || reencode || statusPill) ? (
+    const trailing = (isExtra || reencode || subWarn || statusPill) ? (
       <>
         {isExtra && <Pill tone="amber">Extra</Pill>}
+        {subWarn}
         {reencode}
         {statusPill}
       </>
@@ -887,6 +960,7 @@ function SeriesDetailPage() {
         onClick={() =>
           navigate(`/player/${encodeURIComponent(item.id)}/${f.episodeNumber}`)
         }
+        onHover={() => window.electronAPI.prewarmSubtitles?.(f.filePath)}
         // Markers double as a track/untrack control. Watched: "untrack to here"
         // (set progress to this ep − 1). Untracked: "track to here" (set to this
         // ep). Hovering paints the cascade range.
@@ -914,13 +988,15 @@ function SeriesDetailPage() {
     const fraction = getExtraProgressFraction(localProgress, item.id, f.filePath);
     const code = extraCode(f.kind);
     const title = friendlyExtraTitle(f.kind, f.extraIndex, f.extraVariant, f.rawLabel);
+    const reencode = renderReencodeIndicator(f.filePath);
+    const subWarn = renderSubtitleMarker(f.filePath);
     return (
       <EpisodeRow
         key={f.filePath}
         marker={<Play size={14} />}
         code={code}
         title={title}
-        trailing={renderReencodeIndicator(f.filePath)}
+        trailing={(reencode || subWarn) ? <>{subWarn}{reencode}</> : null}
         progress={fraction}
         state="default"
         onClick={() =>
@@ -928,6 +1004,7 @@ function SeriesDetailPage() {
             `/player/${encodeURIComponent(item.id)}/${f.episodeNumber}?file=${encodeURIComponent(f.filePath)}`,
           )
         }
+        onHover={() => window.electronAPI.prewarmSubtitles?.(f.filePath)}
       />
     );
   };
@@ -1000,7 +1077,7 @@ function SeriesDetailPage() {
           </div>
 
           <div className="series-hero-head">
-            <h1 className="series-hero-title">{displayTitle}</h1>
+            <h1 className="series-hero-title title-glass">{displayTitle}</h1>
             {altTitle && <p className="series-hero-alt-title">{altTitle}</p>}
 
             <div className="series-hero-chips series-hero-chips--ratings">

@@ -24,25 +24,34 @@
 
 /* current/root rings are rendered as the node's own box-shadow (computed
    inline in FranchiseFlowNode) so they paint above the card + posters and
-   aren't clipped by the node's overflow:hidden. Ring hues: current = teal
-   (--accent-primary), root = amber (--accent-amber). */
+   aren't clipped by the node's overflow:hidden. Ring hues: current = brand
+   teal (--accent-a, plus the whisper --glow-accent), root = amber
+   (--accent-amber). The gap layer is --bg-deep so it masks the outer ring
+   against the well. */
 
+/* The graph canvas is a deep WELL sunk into the page: near-solid --bg-deep
+   (a 12% window lets a whisper of the aurora field through) so the glass
+   nodes read as floating on the night field instead of glass-on-glass. */
 .franchise-graph {
   position: relative;
   width: 100%;
   height: 560px;
   border-radius: var(--radius-lg);
   overflow: hidden;
-  background: var(--bg-card);
+  background: color-mix(in srgb, var(--bg-deep) 88%, transparent);
+  border: 1px solid var(--glass-edge);
+  /* Recessed, not raised: a soft inner dark falloff instead of a highlight. */
+  box-shadow: inset 0 1px 12px rgba(0, 0, 0, 0.4);
 }
 
-/* React Flow theming overrides - match the app's dark surface */
+/* React Flow theming overrides - the canvas itself stays transparent so the
+   well shows through. */
 .franchise-graph .react-flow {
   background: transparent;
 }
 .franchise-graph .react-flow__background {
-  /* dots/grid use currentColor on path; this sets a subtle tint */
-  color: var(--border-color);
+  /* dots/grid use currentColor on path; light-edge tint on the night field */
+  color: var(--glass-edge);
 }
 
 /* The custom node wrapper - pointer affordances follow ownership.
@@ -170,7 +179,7 @@
    Filled background + dashed border. A foreignObject hosts the Chrono/
    Release toggle in the top-right. */
 .franchise-chain-frame__bg {
-  fill: var(--bg-elev);
+  fill: var(--glass-bg);
   stroke: color-mix(in srgb, var(--text-muted) 50%, transparent);
   stroke-width: 1;
   stroke-dasharray: 6 4;
@@ -199,12 +208,17 @@
   justify-content: flex-end;
   width: 100%;
 }
+/* Floating control over the well. Veil fill + light edge; NO backdrop-blur
+   here on purpose: this lives inside an SVG foreignObject, where
+   backdrop-filter is unreliable in Chromium. The veil is opaque enough that
+   crossing edges never muddy the labels. */
 .franchise-chain-frame__toggle {
   display: inline-flex;
   align-items: stretch;
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
+  background: var(--glass-veil);
+  border: 1px solid var(--glass-edge);
   border-radius: var(--radius-pill);
+  box-shadow: var(--glass-highlight);
   font-family: var(--font-mono);
   font-size: var(--chip-font);
   overflow: hidden;
@@ -222,20 +236,24 @@
   transition:
     color var(--transition-fast),
     background var(--transition-fast),
+    box-shadow var(--transition-fast),
     transform var(--transition-fast);
 }
 .franchise-chain-frame__toggle-opt:hover {
   color: var(--text-primary);
-  background: var(--bg-hover);
+  background: var(--glass-bg-strong);
 }
 .franchise-chain-frame__toggle-opt:active { transform: scale(0.97); }
 .franchise-chain-frame__toggle-opt:focus-visible {
   outline: 2px solid var(--accent-secondary);
   outline-offset: -2px;
 }
+/* Active segment: accent-a tint + whisper glow (composited over the
+   container veil; the glow clips at the pill bounds, which keeps it quiet). */
 .franchise-chain-frame__toggle-opt.is-active {
-  color: var(--accent-primary);
-  background: var(--accent-glow);
+  color: var(--accent-a);
+  background: color-mix(in srgb, var(--accent-a) 12%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent-a) 20%, transparent);
 }
 
 /* Right-click context menu (portal'd at document.body, positioned at cursor).
@@ -246,10 +264,13 @@
   z-index: 2500;
   min-width: 160px;
   padding: var(--s1);
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
+  /* Floating overlay: full frosted glass. */
+  background: var(--glass-veil);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-edge-bright);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--glass-highlight), var(--shadow-lg);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -270,13 +291,13 @@
     transform var(--transition-fast);
 }
 .franchise-context-menu__item:hover {
-  background: var(--bg-elev);
+  background: var(--glass-bg-strong);
 }
 .franchise-context-menu__item:active { transform: scale(0.97); }
 .franchise-context-menu__item:focus-visible {
   outline: 2px solid var(--accent-secondary);
   outline-offset: -2px;
-  background: var(--bg-elev);
+  background: var(--glass-bg-strong);
 }
 
 /* Smoothstep markers - keep them subtle */
@@ -311,12 +332,12 @@
 }
 .franchise-filter-chip.is-on {
   color: var(--text-secondary);
-  border-color: var(--border-color);
-  background: var(--bg-tertiary);
+  border-color: var(--glass-edge);
+  background: var(--glass-bg-strong);
 }
 .franchise-filter-chip.is-on:hover {
   color: var(--text-primary);
-  border-color: var(--border-hover);
+  border-color: var(--glass-edge-bright);
 }
 .franchise-filter-chip:not(.is-on) {
   opacity: 0.4;
@@ -364,9 +385,13 @@
   display: inline-flex;
   flex-direction: column;
   gap: 0;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
+  /* Floating panel over the well: full frosted glass. */
+  background: var(--glass-veil);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-edge-bright);
   border-radius: var(--radius-md);
+  box-shadow: var(--glass-highlight), var(--shadow-lg);
   overflow: hidden;
 }
 .franchise-graph .react-flow__panel.franchise-controls button,
@@ -387,15 +412,22 @@
     transform var(--transition-fast);
 }
 .franchise-graph .react-flow__panel.franchise-controls button {
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--glass-edge);
   border-radius: 0;
 }
 .franchise-graph .react-flow__panel.franchise-controls button:last-child {
   border-bottom: none;
 }
-.franchise-graph .react-flow__panel.franchise-controls button:hover,
+.franchise-graph .react-flow__panel.franchise-controls button:hover {
+  background: var(--glass-bg-strong);
+  color: var(--text-primary);
+}
+/* The standalone fullscreen button carries its own veil, so hover has to
+   COMPOSE the brighter glass over the veil instead of replacing it. */
 .franchise-graph .react-flow__panel.franchise-fullscreen-toggle button:hover {
-  background: var(--bg-hover);
+  background:
+    linear-gradient(var(--glass-bg-strong), var(--glass-bg-strong)),
+    var(--glass-veil);
   color: var(--text-primary);
 }
 .franchise-graph .react-flow__panel.franchise-controls button:active,
@@ -408,9 +440,12 @@
   outline-offset: -2px;
 }
 .franchise-graph .react-flow__panel.franchise-fullscreen-toggle button {
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
+  background: var(--glass-veil);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-edge-bright);
   border-radius: var(--radius-md);
+  box-shadow: var(--glass-highlight), var(--shadow-lg);
 }
 
 /* Global Inline-source toggle at the bottom of the franchise canvas.
@@ -423,9 +458,14 @@
   display: inline-flex;
   align-items: center;
   gap: var(--s2);
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
+  /* Floating control over the well: frosted glass (HTML panel layer, so
+     backdrop-blur is safe here, unlike the SVG-hosted chain toggle). */
+  background: var(--glass-veil);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-edge);
   border-radius: var(--radius-pill);
+  box-shadow: var(--glass-highlight);
   color: var(--text-muted);
   font: inherit;
   font-size: var(--chip-font);
@@ -436,6 +476,7 @@
     color var(--transition-fast),
     border-color var(--transition-fast),
     background var(--transition-fast),
+    box-shadow var(--transition-fast),
     transform var(--transition-fast);
 }
 .franchise-inline-toggle__dot {
@@ -457,38 +498,50 @@
 }
 .franchise-inline-toggle:hover {
   color: var(--text-primary);
-  border-color: var(--border-hover);
+  border-color: var(--glass-edge-bright);
 }
 .franchise-inline-toggle:active { transform: scale(0.97); }
 .franchise-inline-toggle:focus-visible {
   outline: 2px solid var(--accent-secondary);
   outline-offset: 2px;
 }
+/* Active: accent-a tint COMPOSED over the veil (a plain tinted background
+   would go see-through over the canvas) + whisper glow. */
 .franchise-inline-toggle.is-active {
   color: var(--text-primary);
-  border-color: color-mix(in srgb, var(--accent-primary) 45%, transparent);
-  background: var(--accent-glow);
+  border-color: color-mix(in srgb, var(--accent-a) 45%, transparent);
+  background:
+    linear-gradient(
+      color-mix(in srgb, var(--accent-a) 12%, transparent),
+      color-mix(in srgb, var(--accent-a) 12%, transparent)
+    ),
+    var(--glass-veil);
+  box-shadow:
+    var(--glass-highlight),
+    0 0 12px color-mix(in srgb, var(--accent-a) 20%, transparent);
 }
 .franchise-inline-toggle.is-active:hover {
-  border-color: color-mix(in srgb, var(--accent-primary) 65%, transparent);
+  border-color: color-mix(in srgb, var(--accent-a) 65%, transparent);
 }
 .franchise-inline-toggle.is-active .franchise-inline-toggle__dot {
-  background: var(--accent-primary);
+  background: var(--accent-a);
   box-shadow: 0 0 8px var(--accent-glow);
 }
 .franchise-inline-toggle.is-active .franchise-inline-toggle__state {
-  background: color-mix(in srgb, var(--accent-primary) 30%, transparent);
+  background: color-mix(in srgb, var(--accent-a) 30%, transparent);
   color: var(--text-primary);
 }
 
-/* Filters panel: THE dark glass recipe over the canvas. */
+/* Filters panel: floating glass panel over the well, same frosted recipe as
+   every other overlay surface. */
 .franchise-graph .react-flow__panel.franchise-filters-panel {
   margin: var(--s3);
-  background: var(--scrim);
-  backdrop-filter: blur(var(--scrim-blur));
-  -webkit-backdrop-filter: blur(var(--scrim-blur));
-  border: 1px solid var(--border-color);
+  background: var(--glass-veil);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-edge-bright);
   border-radius: var(--radius-lg);
+  box-shadow: var(--glass-highlight), var(--shadow-lg);
   padding: 10px 14px;
   pointer-events: auto;
   max-width: calc(100% - var(--s6));
@@ -503,9 +556,13 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
+  /* Glass tile floating on the well: fill + light edge + top highlight.
+     NOTE: current/root nodes get an inline box-shadow (the rings), which
+     re-appends var(--glass-highlight) so the material stays consistent. */
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-edge);
   border-radius: var(--radius-lg);
+  box-shadow: var(--glass-highlight);
   overflow: hidden;
   width: 180px;
   text-align: left;
@@ -521,8 +578,11 @@
 button.franchise-node {
   cursor: pointer;
 }
+/* Fill delta included so EXTERNAL nodes (whose rest border is already the
+   bright edge) still get a visible hover paint change. */
 button.franchise-node:hover {
-  border-color: var(--border-hover);
+  border-color: var(--glass-edge-bright);
+  background: var(--glass-bg-strong);
 }
 .franchise-node .relation-card-poster img {
   transition: filter var(--transition-fast);
@@ -532,6 +592,21 @@ button.franchise-node:hover .relation-card-poster img {
 }
 .franchise-node--external {
   border-style: dashed;
+  /* The 10% edge dashes vanish on the deep well; the bright edge keeps the
+     ownership code legible without changing its meaning. */
+  border-color: var(--glass-edge-bright);
+}
+
+/* Node relation labels: readability floor is 0.7rem (base .relation-card-type
+   is 0.65rem in series.css). Clamped with an ellipsis so the longest label
+   ("Shared characters") can never push the 180px tile. */
+.franchise-node .relation-card-type {
+  font-size: 0.7rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Compact ownership indicator on the relation-label row */
@@ -568,7 +643,8 @@ button.franchise-node:hover .relation-card-poster img {
 .franchise-node {
   transition:
     opacity 260ms ease-out,
-    border-color var(--transition-fast);
+    border-color var(--transition-fast),
+    background var(--transition-fast);
 }
 .franchise-node[data-dimmed="true"] {
   opacity: 0.18;
@@ -591,7 +667,7 @@ button.franchise-node:hover .relation-card-poster img {
   display: inline-flex;
   align-items: center;
   gap: var(--s1);
-  padding: 2px 8px;
+  padding: 3px 10px;
   border-radius: var(--radius-pill);
   font-family: var(--font-mono);
   font-size: var(--chip-font-sm);
@@ -611,13 +687,14 @@ button.franchise-node:hover .relation-card-poster img {
 .franchise-graph .react-flow__panel.franchise-debug {
   margin: var(--s3);
   padding: var(--s2) 10px;
-  background: var(--scrim);
-  backdrop-filter: blur(var(--scrim-blur));
-  -webkit-backdrop-filter: blur(var(--scrim-blur));
-  border: 1px solid var(--border-color);
+  background: var(--glass-veil);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-edge-bright);
   border-radius: var(--radius-md);
+  box-shadow: var(--glass-highlight), var(--shadow-lg);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 0.7rem;
   line-height: 1.5;
   color: var(--text-secondary);
   pointer-events: none; /* purely informational; don't intercept clicks */

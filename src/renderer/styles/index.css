@@ -1,31 +1,62 @@
 @import './fonts.css';
 
 :root {
-  /* Surfaces: flat, barely-teal neutral */
-  --bg-primary:   #0b0d0e;   /* page */
-  --bg-secondary: #121517;
-  --bg-tertiary:  #191d20;
-  --bg-card:      #14181a;
-  --bg-hover:     #1c2124;
-  --bg-elev:      rgba(255, 255, 255, 0.04);
+  /* ===== Night Glass canonical block ===== */
+  /* Night field base: deep blue-black under everything. */
+  --bg-deep: #05060b;
+  --bg-primary: #07090f;
+  /* Glass material: translucent cool-tinted fills + light edges (brighter
+     on top: light from above). Blur is an ELEVATION cue: backdrop-blur
+     belongs ONLY to floating/overlay surfaces (rail, player island,
+     drawers, menus, tooltips, modals, graph panels, poster scrim chips);
+     in-flow panels and grid cards use fill + edge WITHOUT blur. */
+  --glass-bg: rgba(150, 170, 255, 0.05);
+  --glass-bg-strong: rgba(150, 170, 255, 0.09);
+  --glass-edge: rgba(255, 255, 255, 0.10);
+  --glass-edge-bright: rgba(255, 255, 255, 0.17);
+  --glass-blur: 18px;
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  /* Accent is LIGHT, not paint: a teal-to-indigo gradient pair + glow. */
+  --accent-a: #46e0c4;
+  --accent-b: #7c8cf8;
+  --grad-accent: linear-gradient(135deg, var(--accent-a), var(--accent-b));
+  --glow-accent: 0 0 24px rgba(70, 224, 196, 0.22);
+  /* ===== end canonical block ===== */
 
-  /* Borders: hairlines */
-  --border-color: rgba(255, 255, 255, 0.08);
-  --border-hover: rgba(255, 255, 255, 0.16);
+  /* Frosted overlay fill: the dark translucent base for FLOATING surfaces
+     (drawers, menus, modals, tooltips, floating panels). Pair with
+     backdrop-filter: blur(var(--glass-blur)) + --glass-edge-bright +
+     --glass-highlight + --shadow-lg. Dark (not cool-light) so text stays
+     readable when the surface floats over artwork or video. */
+  --glass-veil: color-mix(in srgb, var(--bg-deep) 78%, transparent);
 
-  /* Text */
-  --text-primary:   #eef3f2;
-  --text-secondary: #9aa7a4;
-  --text-muted:     #5f6b68;
+  /* Legacy surface tokens, remapped onto the glass material so every
+     existing usage inherits the new look. These are TRANSLUCENT: nesting
+     one inside another stacks the tint (glass on glass doubles up). */
+  --bg-secondary: rgba(150, 170, 255, 0.04);
+  --bg-tertiary:  rgba(150, 170, 255, 0.07);
+  --bg-card:      var(--glass-bg);
+  --bg-hover:     var(--glass-bg-strong);
+  --bg-elev:      rgba(150, 170, 255, 0.04);
 
-  /* Accents: one living accent (brand teal), the rest are quiet state hues */
-  --accent-primary:   #3ecfb2;                 /* brand teal */
-  --accent-secondary: #8ae7d4;                 /* lighter teal: hover text, focus ring */
-  --accent-glow:      rgba(62, 207, 178, 0.16);
-  --accent-amber:     #e0b568;                 /* pending, warnings, extras */
-  --accent-rose:      #e8647e;                 /* danger, failures, dropped */
-  --accent-blue:      #6cb0f0;                 /* completed, informational */
-  --accent-violet:    #b39ce8;                 /* rewatching, OVA-ish */
+  /* Borders: light edges */
+  --border-color: var(--glass-edge);
+  --border-hover: var(--glass-edge-bright);
+
+  /* Text: cooled for the night field */
+  --text-primary:   #f2f5fa;
+  --text-secondary: #a3aec5;
+  --text-muted:     #5f6885;
+
+  /* Accents: one living accent (brand teal = --accent-a), the rest are
+     quiet state hues, brightened ~8% for the deeper background. */
+  --accent-primary:   #46e0c4;                 /* brand teal (= --accent-a) */
+  --accent-secondary: #8ff0dc;                 /* lighter teal: hover text, focus ring */
+  --accent-glow:      rgba(70, 224, 196, 0.16);
+  --accent-amber:     #e8bf78;                 /* pending, warnings, extras */
+  --accent-rose:      #f0718a;                 /* danger, failures, dropped */
+  --accent-blue:      #7cbcf5;                 /* completed, informational */
+  --accent-violet:    #c0abf0;                 /* rewatching, OVA-ish */
 
   /* AniList brand blue: external-entry chips only */
   --anilist-blue: #02a9ff;
@@ -36,24 +67,26 @@
   --status-completed:  var(--accent-blue);
   --status-paused:     var(--accent-amber);
   --status-dropped:    var(--accent-rose);
-  --status-planning:   #8b9895;
+  --status-planning:   #97a4a1;
   --status-rewatching: var(--accent-violet);
 
-  /* Per-format hues: recalibrated to the palette's saturation family.
-     None equals brand teal, no two adjacent formats are confusable. */
-  --format-tv:        #5fc4de;
-  --format-movie:     #e0b568;
-  --format-ova:       #b39ce8;
-  --format-ona:       #7dd4a8;
-  --format-special:   #e8647e;
-  --format-music:     #62c99a;
-  --format-manga:     #e89a62;
-  --format-novel:     #e88ab0;
-  --format-oneshot:   #d4c060;
-  --format-vn:        #cf8ae0;
+  /* Per-format hues: recalibrated to the palette's saturation family and
+     brightened ~8% for the night field. None equals brand teal, no two
+     adjacent formats are confusable. */
+  --format-tv:        #6fd0e8;
+  --format-movie:     #e8bf78;
+  --format-ova:       #c0abf0;
+  --format-ona:       #8adfb5;
+  --format-special:   #f0718a;
+  --format-music:     #70d5a8;
+  --format-manga:     #f0a772;
+  --format-novel:     #f098bd;
+  --format-oneshot:   #e0cd70;
+  --format-vn:        #da9aeb;
 
-  /* THE dark glass over posters: the only scrim recipe in the app */
-  --scrim: rgba(10, 12, 12, 0.78);
+  /* THE dark glass over posters: the only scrim recipe in the app.
+     Stays opaque-dark on purpose (readability over artwork). */
+  --scrim: rgba(6, 8, 12, 0.8);
   --scrim-blur: 6px;
 
   /* Shadows: subtle */
@@ -80,8 +113,8 @@
 
   /* Chip type scale: exactly two sizes, app-wide. Every badge/pill/chip
      uses one of these; no other chip font sizes are allowed. */
-  --chip-font:    0.72rem;
-  --chip-font-sm: 0.64rem;
+  --chip-font:    0.8rem;
+  --chip-font-sm: 0.7rem;
 
   /* Spacing scale (4px base). Use these for every padding/margin/gap;
      gaps inside a unit must be smaller than gaps between units. */

@@ -5,6 +5,8 @@ import type { FranchiseGraph } from '../shared/franchise';
 import type { LogEvent } from '../shared/logTypes';
 export type { FileStatus } from '../shared/fileStatus';
 import type { FileStatus } from '../shared/fileStatus';
+export type { SubtitleState } from '../shared/subtitleSupport';
+import type { SubtitleState } from '../shared/subtitleSupport';
 // Source-of-truth tracker types live with the store/handler code in main.
 // Re-export from preload so renderer code only has to import from one place.
 export type {
@@ -153,6 +155,17 @@ export interface ElectronAPI {
   // Embedded subtitles
   listEmbeddedSubtitles: (videoPath: string) => Promise<Array<{ streamIndex: number; codec: string; language: string | null; title: string | null }>>;
   extractEmbeddedSubtitle: (videoPath: string, streamIndex: number, codec: string) => Promise<{ path: string; format: 'ass' | 'vtt' } | null>;
+  /** Warm the embedded-subtitle cache ahead of play time (fire-and-forget). */
+  prewarmSubtitles: (videoPath: string) => Promise<void>;
+
+  // Per-file subtitle availability for the episode-list marker.
+  // evaluateSeriesSubtitles: cheap probe sweep over a series' files on open
+  // (flags bitmap-only / unreadable subs). reportSubtitleState: authoritative
+  // play-time outcome from the player. onSubtitleStateChanged: live push when
+  // the play-time outcome lands while the series page is open.
+  evaluateSeriesSubtitles: (filePaths: string[]) => Promise<Array<{ filePath: string; state: SubtitleState | null }>>;
+  reportSubtitleState: (filePath: string, state: SubtitleState) => Promise<void>;
+  onSubtitleStateChanged: (handler: (payload: { filePath: string; subtitleState: SubtitleState }) => void) => () => void;
 
   // Open a video — main checks for a pre-transcoded cache entry, otherwise
   // returns the original file:// URL. The renderer hands the URL to <video>.
@@ -354,6 +367,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Embedded subtitles
   listEmbeddedSubtitles: (videoPath: string) => ipcRenderer.invoke('subtitle:list-embedded', videoPath),
   extractEmbeddedSubtitle: (videoPath: string, streamIndex: number, codec: string) => ipcRenderer.invoke('subtitle:extract', videoPath, streamIndex, codec),
+  prewarmSubtitles: (videoPath: string) => ipcRenderer.invoke('subtitle:prewarm', videoPath),
+  evaluateSeriesSubtitles: (filePaths: string[]) => ipcRenderer.invoke('subtitle:evaluate-series', filePaths),
+  reportSubtitleState: (filePath: string, state: SubtitleState) => ipcRenderer.invoke('subtitle:report-state', filePath, state),
+  onSubtitleStateChanged: (handler: (payload: { filePath: string; subtitleState: SubtitleState }) => void) => {
+    const listener = (_e: unknown, payload: { filePath: string; subtitleState: SubtitleState }) => handler(payload);
+    ipcRenderer.on('metadata:subtitle-state-changed', listener);
+    return () => ipcRenderer.removeListener('metadata:subtitle-state-changed', listener);
+  },
 
   // Video open
   openVideo: (filePath: string) => ipcRenderer.invoke('video:open', filePath),

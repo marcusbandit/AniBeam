@@ -1,16 +1,23 @@
 /* feed.css - FeedPage, WatchingPage, SubscriptionsPage */
 
 /* ============ WATCHING ============ */
-/* Ownership code (the app-wide idiom): owned = the standard solid hairline
+/* Ownership code (the app-wide idiom): owned = the standard solid light-edge
    card, exactly like Home; unowned (AniList-only, click opens the browser) =
-   dashed hairline + the AniList mark in a scrim chip on the poster's
+   dashed light edge + the AniList mark in a scrim chip on the poster's
    bottom-right corner. That corner is the only free one on these cards:
    top-left holds the EP chip, top-right the watched fraction, bottom-left
    the ratings stack, and bottom-right is otherwise Hidden-only, which never
    applies to unowned cards. Both marks are applied by the .watching-card
    wrapper so ShowCard itself stays shared and untouched. */
 .watching-card { position: relative; }
-.watching-card--external .show-card-poster-wrap { border-style: dashed; }
+/* Dashing halves a hairline's visual weight, and the base --glass-edge (10%
+   white) all but vanishes over the night field, so the external edge rests at
+   the bright step. Hover still reads through shadow, zoom, bloom, and title
+   color (the border has no headroom left, and that is fine). */
+.watching-card--external .show-card-poster-wrap {
+  border-style: dashed;
+  border-color: var(--glass-edge-bright);
+}
 /* Overlay box mirroring the poster geometry: same width and 2/3 aspect as
    .show-card-poster-wrap, anchored to the wrapper top, so the chip pins to
    the poster's bottom-right corner without living inside ShowCard. Inert to
@@ -44,7 +51,7 @@
 .feed-divider__label {
   font-family: var(--font-mono);
   font-weight: 600;
-  font-size: 0.72rem;
+  font-size: 0.78rem; /* section-eyebrow size (Night Glass readability) */
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-secondary);
@@ -92,9 +99,10 @@
 }
 
 /* Rows are non-clickable containers, but they still acknowledge the cursor:
-   a subtle elevation paint + border shift on hover. The hover background is
-   the --bg-elev 4% white lift precomposited over --bg-card so background-
-   color can transition (a stacked gradient layer would snap in). */
+   a subtle elevation paint + border shift on hover. In-flow glass: translucent
+   fill + light edge + inner top highlight, NO backdrop-blur (blur is an
+   elevation cue reserved for floating surfaces). Hover swaps the fill for the
+   strong glass wash; both are plain backgrounds so the transition glides. */
 .subscription-row {
   display: flex;
   flex-direction: column;
@@ -103,10 +111,11 @@
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
+  box-shadow: var(--glass-highlight);
   transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 .subscription-row:hover {
-  background: color-mix(in srgb, #fff 4%, var(--bg-card));
+  background: var(--bg-hover);
   border-color: var(--border-hover);
 }
 .subscription-row.disabled { opacity: 0.55; }
@@ -139,7 +148,7 @@
   align-items: center;
   gap: var(--s3);
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
   flex-shrink: 0;
@@ -173,7 +182,7 @@
   align-items: center;
   gap: var(--s2);
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -188,7 +197,7 @@
   align-items: center;
   gap: var(--s1);
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   color: var(--accent-secondary);
   background: transparent;
   border: 1px solid var(--border-color);

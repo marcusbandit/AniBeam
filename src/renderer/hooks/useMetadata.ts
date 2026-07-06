@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { FileStatus } from '../../shared/fileStatus';
 import type { EpisodeKind } from '../../shared/episodeClassifier';
+import type { SubtitleState } from '../../shared/subtitleSupport';
 
 export interface SeriesMetadata {
   seriesId?: string;
@@ -153,6 +154,10 @@ export interface FileEpisode {
   extraIndex?: number | null;
   extraVariant?: string | null;
   rawLabel?: string | null;
+  // Subtitle availability marker (bitmap-only / failed-to-load). Persisted by
+  // main; drives the episode-row "no subs" marker. See shared/subtitleSupport.ts.
+  subtitleState?: SubtitleState | null;
+  subtitleCheckedAt?: number;
 }
 
 const hasElectronAPI = typeof window !== 'undefined' && window.electronAPI;

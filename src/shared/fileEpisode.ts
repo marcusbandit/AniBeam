@@ -5,6 +5,7 @@
 // writes in folderHandler / main.ts ingest.
 import type { FileStatus } from './fileStatus';
 import type { EpisodeKind } from './episodeClassifier';
+import type { SubtitleState } from './subtitleSupport';
 
 export interface FileEpisodeEntry {
   filePath: string;
@@ -24,6 +25,13 @@ export interface FileEpisodeEntry {
   extraIndex?: number | null;
   extraVariant?: string | null;
   rawLabel?: string | null;
+  // Subtitle availability, surfaced as an episode-row marker. Set by the
+  // series-view probe sweep (cheap, bitmap/unreadable detection) and refined by
+  // the authoritative play-time outcome. `subtitleCheckedAt` is the file mtimeMs
+  // the state was computed against, so the sweep can skip unchanged files and
+  // re-check ones that were replaced on disk. See shared/subtitleSupport.ts.
+  subtitleState?: SubtitleState | null;
+  subtitleCheckedAt?: number;
 }
 
 // Scan every series in metadata for a fileEpisodes entry whose `filePath`

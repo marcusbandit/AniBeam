@@ -19,6 +19,7 @@
     "verify:hidden-guard": "bun --bun scripts/verify-hidden-guard.mjs",
     "verify:card-progress": "bun --bun scripts/verify-card-progress.mjs",
     "verify:relative-time": "bun --bun scripts/verify-relative-time.mjs",
+    "verify:subtitle-support": "bun --bun scripts/verify-subtitle-support.mjs",
     "preview": "vite preview",
     "start": "bun run typecheck && electron-forge start",
     "package": "bun run typecheck && electron-forge package",

@@ -129,7 +129,7 @@
 .show-card-title {
   font-family: var(--font-mono);
   font-weight: 500;
-  font-size: 0.875rem;
+  font-size: 0.95rem;
   color: var(--text-primary);
   line-height: 1.35;
   display: -webkit-box;
@@ -149,7 +149,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--s2);
-  font-size: 0.75rem;
+  font-size: 0.78rem;
   color: var(--text-muted);
 }
 
@@ -161,7 +161,7 @@
 }
 .show-card-meta-countdown {
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  /* Inherits the meta row's 0.78rem - one size for the whole meta line. */
   letter-spacing: 0.02em;
   color: var(--accent-primary);
   font-variant-numeric: tabular-nums;
@@ -169,10 +169,12 @@
 }
 
 /* ============ POSTER CORNER CHIPS ============ */
-/* Every poster overlay is a `.chip chip--sm chip--scrim` (the one dark-glass
-   recipe). These classes only add corner anchoring + the state colors that
-   ride ON TEXT ONLY - the shell never changes. Top corners inset s2; bottom
-   corners inset s3 so chips clear the 6px progress bar. */
+/* Every poster overlay is a `.chip chip--scrim` (the one dark-glass recipe).
+   The two TOP chips (episode code, watched fraction) are DEFAULT chip size
+   so they read at a glance; the bottom stack (ratings/encode/hidden) stays
+   `chip--sm`. These classes only add corner anchoring + the state colors
+   that ride ON TEXT ONLY - the shell never changes. Top corners inset s2;
+   bottom corners inset s3 so chips clear the 6px progress bar. */
 .show-card-chip {
   position: absolute;
   z-index: 1;
@@ -180,6 +182,15 @@
 .show-card-chip--tl { top: var(--s2); left: var(--s2); }
 .show-card-chip--tr { top: var(--s2); right: var(--s2); }
 .show-card-chip--br { bottom: var(--s3); right: var(--s2); z-index: 3; }
+/* Narrow-poster guard: the wrap is a size container, so when a grid cell
+   squeezes below ~176px (airing grid on a small window) the two default
+   size top chips keep their font and give up padding instead of colliding.
+   At the grid's 180px minimum, "EP 05" + "05/12" clear each other by ~30px
+   with full padding. */
+@container (max-width: 176px) {
+  .show-card-chip--tl,
+  .show-card-chip--tr { padding-inline: var(--s2); }
+}
 
 /* Watched-fraction state color (text only): behind = amber (calm nudge,
    never rose - rose is reserved for failures/dropped), caught-up/complete
@@ -235,12 +246,12 @@
 
 /* ============ PROGRESS BAR ============ */
 /* Flush on the poster's bottom edge (the wrap's overflow:hidden clips it
-   to the card radius). Teal = watched; amber underlay = aired but not yet
-   watched, shown only while the show is still releasing (a finished show's
-   unwatched tail is backlog, not urgency); scrim right cap = episode count
-   unknown, so the bar never reads as complete. The empty track is a
-   thinned scrim so it stays legible over bright posters without matching
-   the unknown cap. */
+   to the card radius). Accent-gradient light = watched; amber underlay =
+   aired but not yet watched, shown only while the show is still releasing
+   (a finished show's unwatched tail is backlog, not urgency); scrim right
+   cap = episode count unknown, so the bar never reads as complete. The
+   empty track is a thinned scrim so it stays legible over bright posters
+   without matching the unknown cap. */
 .show-card-progress {
   position: absolute;
   left: 0;
@@ -260,7 +271,12 @@
 .show-card-progress-behind {
   background: color-mix(in srgb, var(--accent-amber) 60%, transparent);
 }
-.show-card-progress-watched { background: var(--accent-primary); }
+/* Watched fill is accent LIGHT, not paint: the gradient plus a very faint
+   glow bleeding up into the artwork (the wrap clips the downward half). */
+.show-card-progress-watched {
+  background: var(--grad-accent);
+  box-shadow: var(--glow-accent);
+}
 .show-card-progress-unknown {
   position: absolute;
   top: 0;
@@ -270,14 +286,19 @@
 }
 
 /* ============ CONTEXT MENU ============ */
+/* Floating surface: full frosted glass (veil + backdrop blur + bright edge
+   + inner highlight + deep shadow). Blur is an elevation cue - this menu
+   floats, so it earns it. */
 .context-menu {
   position: fixed;
   z-index: 1000;
   min-width: 188px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
+  background: var(--glass-veil);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-edge-bright);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--glass-highlight), var(--shadow-lg);
   padding: var(--s1);
   animation: contextFade 120ms ease-out;
 }
@@ -323,8 +344,9 @@
   justify-content: center;
   width: 28px;
   height: 28px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-highlight);
   border-radius: var(--radius-md);
   color: var(--text-primary);
   cursor: pointer;
@@ -335,8 +357,8 @@
     transform var(--transition-fast);
 }
 .airing-pager-btn:hover:not(:disabled) {
-  background: var(--bg-tertiary);
-  border-color: var(--border-hover);
+  background: var(--glass-bg-strong);
+  border-color: var(--glass-edge-bright);
 }
 .airing-pager-btn:active:not(:disabled) { transform: scale(0.97); }
 .airing-pager-btn:disabled { opacity: 0.4; cursor: default; }

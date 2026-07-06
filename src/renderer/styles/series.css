@@ -35,12 +35,19 @@
 
 /* Artwork layer, clipped to the band so the blur/scale spill of the
    poster-fill treatment never leaks. bg-secondary doubles as the quiet
-   fallback band for series with no art (and behind a failed image load). */
+   fallback band for series with no art (and behind a failed image load).
+   The mask dissolves the WHOLE layer (art + overlay gradients) to
+   transparent at the bottom edge: the page behind is the aurora field
+   (bg-deep plus washes and vignette), not flat bg-primary, so no flat
+   landing color can match it everywhere - landing on transparency is the
+   only seamless-by-construction dissolve. */
 .series-hero-band__art {
   position: absolute;
   inset: 0;
   overflow: hidden;
   background: var(--bg-secondary);
+  mask-image: linear-gradient(180deg, #000 0%, #000 58%, transparent 100%);
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 58%, transparent 100%);
 }
 .series-hero-band__img {
   width: 100%;
@@ -59,11 +66,12 @@
   opacity: 0.5;
 }
 /* Overlay gradients (first layer paints on top). Layer 1: vertical
-   dissolve landing on fully opaque bg-primary at the bottom edge, so the
-   band melts into the page with no hard line - being opaque there it also
-   covers layer 2, which would otherwise leave a dark corner seam. Layer 2:
-   left-side darkening (roughly 55% black, gone by 60% width) for title
-   legibility over busy art. */
+   dissolve into bg-deep - the aurora field's base color - so the art is
+   already night-dark by the time the mask on __art fades everything to
+   transparent at the bottom edge (the mask also kills the dark corner
+   seam layer 2 would otherwise leave). Layer 2: left-side darkening
+   (roughly 55% black, gone by 60% width) for title legibility over busy
+   art. */
 .series-hero-band__art::after {
   content: "";
   position: absolute;
@@ -73,8 +81,8 @@
       180deg,
       transparent 0%,
       transparent 34%,
-      color-mix(in srgb, var(--bg-primary) 55%, transparent) 70%,
-      var(--bg-primary) 100%
+      color-mix(in srgb, var(--bg-deep) 55%, transparent) 70%,
+      var(--bg-deep) 100%
     ),
     linear-gradient(
       90deg,
@@ -160,15 +168,19 @@
   gap: var(--s3);
   padding-bottom: var(--s5);
 }
+/* Gradient text comes from .title-glass (base.css) on the same element;
+   no color here or it would win the cascade and kill the clip. Legibility
+   over artwork is a drop-shadow FILTER, not text-shadow - a text-shadow
+   paints behind the transparent gradient-clipped glyphs and shows through
+   them, while drop-shadow shadows the rendered glyph alpha. */
 .series-hero-title {
   font-family: var(--font-display);
   font-weight: 700;
   font-size: clamp(1.6rem, 3vw, 2.2rem);
   line-height: 1.1;
   letter-spacing: -0.02em;
-  color: var(--text-primary);
   word-break: break-word;
-  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.55);
+  filter: drop-shadow(0 2px 12px rgba(0, 0, 0, 0.6));
 }
 .series-hero-alt-title {
   font-family: var(--font-mono);
@@ -193,7 +205,9 @@
    scored (teal). The You tag rides currentColor so it follows the chip's
    state colour with zero extra rules. */
 .hero-chip-myscore-tag {
-  font-size: 0.85em;
+  /* 0.875em of the default chip's 0.8rem = 0.7rem, the informational
+     floor - nothing informational renders below 0.7rem. */
+  font-size: 0.875em;
   font-weight: 700;
   letter-spacing: 0.1em;
   padding: 0 var(--s1);
@@ -237,8 +251,10 @@
 .series-hero-band .chip[data-status="cancelled" i] { --chip-tone: var(--accent-rose); }
 .series-hero-band .chip[data-status="finished" i]  { --chip-tone: var(--text-secondary); }
 
-/* Score popover, anchored to the my-score chip. Buttons inside are the
-   shared .btn system (Save = btn--accent, Clear = btn-danger). */
+/* Score popover, anchored to the my-score chip. Floating overlay, so it
+   gets the full frosted recipe: dark veil fill + backdrop blur + bright
+   edge + top highlight + heavy shadow. Buttons inside are the shared .btn
+   system (Save = btn--accent, Clear = btn-danger). */
 .hero-score-popover {
   position: absolute;
   top: calc(100% + var(--s2));
@@ -249,10 +265,12 @@
   align-items: center;
   gap: var(--s2);
   padding: var(--s2) var(--s3);
-  background: var(--bg-card);
-  border: 1px solid var(--border-hover);
+  background: var(--glass-veil);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-edge-bright);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--glass-highlight), var(--shadow-lg);
   font-family: var(--font-mono);
   min-width: 14rem;
 }
@@ -302,7 +320,8 @@
 .series-hero-continue { flex-shrink: 0; }
 .series-hero-continue-code {
   font-variant-numeric: tabular-nums;
-  font-size: 0.78em;
+  /* 0.8em of the .btn's 0.875rem = 0.7rem, the informational floor. */
+  font-size: 0.8em;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -332,15 +351,18 @@
 .series-hero-progress-count { color: var(--text-primary); font-weight: 600; }
 .series-hero-progress-track {
   height: 6px;
-  background: var(--bg-elev);
+  background: var(--glass-bg);
   border-radius: var(--radius-pill);
   overflow: hidden;
 }
+/* Accent is light, not paint: the fill is the house gradient with a faint
+   glow bleeding past the track's clip. */
 .series-hero-progress-fill {
   height: 100%;
   width: 0;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+  background: var(--grad-accent);
+  box-shadow: var(--glow-accent);
   transition: width var(--transition-slow);
 }
 .series-hero-progress-fill.untracked {
@@ -424,6 +446,7 @@
   mask-image: none;
   -webkit-mask-image: none;
 }
+/* In-flow glass rows: translucent fill + light edge, no backdrop-blur. */
 .series-hero-tag {
   display: flex;
   align-items: center;
@@ -431,8 +454,8 @@
   gap: var(--s2);
   padding: var(--s1) var(--s2);
   border-radius: var(--radius-sm);
-  background: var(--bg-elev);
-  border: 1px solid var(--border-color);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-edge);
   font-family: var(--font-mono);
   font-size: 0.7rem;
   letter-spacing: 0.02em;
@@ -454,7 +477,7 @@
 .series-hero-tag-rank {
   flex-shrink: 0;
   color: var(--text-muted);
-  font-size: 0.65rem;
+  font-size: 0.7rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -471,6 +494,8 @@
   gap: var(--s3);
   margin: var(--s2) 0 0;
 }
+/* In-flow glass card: translucent fill + light edge + inner top highlight,
+   no backdrop-blur (blur is reserved for floating surfaces). */
 .character-card {
   display: flex;
   flex-direction: column;
@@ -480,6 +505,7 @@
   border-radius: var(--radius-lg);
   background: var(--bg-card);
   border: 1px solid var(--border-color);
+  box-shadow: var(--glass-highlight);
   overflow: hidden;
   transition:
     border-color var(--transition-fast),
@@ -490,12 +516,17 @@
 }
 .character-card:hover {
   border-color: var(--border-hover);
+  background: var(--bg-hover);
   transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--glass-highlight), var(--shadow-md);
 }
-/* Large surface press: deepen the paint (the lift here is plain CSS, not
-   motion.ts, but scaling a whole card still reads heavy - paint instead). */
-.character-card:active { background: var(--bg-hover); }
+/* Large surface press: the card settles back down - the hover paint stays,
+   the lift and its shadow drop (the lift here is plain CSS, not motion.ts,
+   so a transform is safe). */
+.character-card:active {
+  transform: translateY(0);
+  box-shadow: var(--glass-highlight);
+}
 .character-card-portrait {
   width: 100%;
   aspect-ratio: 3 / 4;
@@ -540,7 +571,7 @@
 }
 .character-card-role {
   font-family: var(--font-mono);
-  font-size: 0.65rem;
+  font-size: 0.7rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -657,7 +688,7 @@
 }
 .relation-card-type {
   font-family: var(--font-mono);
-  font-size: 0.65rem;
+  font-size: 0.7rem;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -812,7 +843,9 @@
 }
 
 /* Warning banner above the "Extra files" episode list - amber so it reads as
-   "attention needed" without the alarm of a hard error. */
+   "attention needed" without the alarm of a hard error. In-flow glass:
+   amber-tinted translucent fill + tinted light edge + top highlight, no
+   backdrop-blur. */
 .extra-episodes-note {
   display: flex;
   align-items: flex-start;
@@ -821,7 +854,8 @@
   padding: var(--s2) var(--s3);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--accent-amber) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent-amber) 35%, var(--border-color));
+  border: 1px solid color-mix(in srgb, var(--accent-amber) 35%, var(--glass-edge));
+  box-shadow: var(--glass-highlight);
   color: var(--text-secondary);
   font-size: 0.85rem;
   line-height: 1.45;

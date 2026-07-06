@@ -22,6 +22,9 @@ interface EpisodeRowProps {
   progress?: number;
   state?: EpisodeRowState;
   onClick?: () => void;
+  /** Pointer entered the row — used to prewarm the episode (e.g. its subtitles)
+   *  before the likely click. Fires alongside the internal lift animation. */
+  onHover?: () => void;
   disabled?: boolean;
   /** Hover tooltip on the marker circle (e.g. "untrack to here"). */
   markerTooltip?: string;
@@ -59,12 +62,15 @@ interface EpisodeRowProps {
 export default function EpisodeRow({
   marker, code, title, trailing,
   progress = 0,
-  state = 'default', onClick, disabled,
+  state = 'default', onClick, onHover, disabled,
   markerTooltip, markerMode, markerPhase, markerCascadeDelayMs,
   onMarkerClick, onMarkerEnter, onMarkerZoneEnter, onMarkerLeave,
 }: EpisodeRowProps) {
   const elRef = useRef<HTMLButtonElement | null>(null);
   const liftRef = useRef<SmoothHandle | null>(null);
+  // Hover-intent timer for onHover: fire only after the pointer rests on the
+  // row, so sweeping a long episode list doesn't kick off a prewarm per row.
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const el = elRef.current;
@@ -76,8 +82,23 @@ export default function EpisodeRow({
     return () => { handle.release(); el.style.transform = ''; };
   }, [disabled]);
 
-  const onEnter = () => { if (!disabled) liftRef.current?.setTarget(-LIFT_AMOUNT_PX); };
-  const onLeave = () => liftRef.current?.setTarget(0);
+  // Clear any pending hover-intent timer on unmount.
+  useEffect(() => () => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+  }, []);
+
+  const onEnter = () => {
+    if (disabled) return;
+    liftRef.current?.setTarget(-LIFT_AMOUNT_PX);
+    if (onHover) {
+      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = setTimeout(() => { hoverTimerRef.current = null; onHover(); }, 220);
+    }
+  };
+  const onLeave = () => {
+    liftRef.current?.setTarget(0);
+    if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null; }
+  };
 
   const className = `episode-row episode-row--${state}`;
   const pct = Math.max(0, Math.min(1, progress)) * 100;
