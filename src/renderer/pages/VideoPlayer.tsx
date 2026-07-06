@@ -199,6 +199,12 @@ function VideoPlayer() {
   const [mpvLaunching, setMpvLaunching] = useState(false);
   const [subtitleSrcs, setSubtitleSrcs] = useState<SubtitleTrack[]>([]);
   const [episodeData, setEpisodeData] = useState<FileEpisode | null>(null);
+  // Display aspect of the playing file, driving --player-aspect (island and
+  // overlay widths track the picture, not the window). Seeded instantly from
+  // the probe-backfilled metadata so the chrome is right on the FIRST frame;
+  // refined by the decoded stream once metadata loads. 16:9 only as the
+  // last-resort fallback for never-probed files.
+  const [liveAspect, setLiveAspect] = useState<number | null>(null);
   const [chrome, setChrome] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
@@ -676,6 +682,9 @@ function VideoPlayer() {
         subsOverrideRef.current = false;
         pausedForSubsRef.current = false;
         setSubsWait(null);
+        // New file: drop the previous stream's decoded aspect so the chrome
+        // falls back to this file's probed value until metadata loads.
+        setLiveAspect(null);
       }
       let cancelled = false;
       let retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1403,7 +1412,14 @@ function VideoPlayer() {
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
     const onTime = () => setCurrentTime(video.currentTime);
-    const onMeta = () => setDuration(video.duration);
+    const onMeta = () => {
+      setDuration(video.duration);
+      // The decoded stream is the authoritative aspect (videoWidth/Height are
+      // display dimensions, anamorphic-corrected); refine the probed value.
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        setLiveAspect(video.videoWidth / video.videoHeight);
+      }
+    };
     const onVol = () => { setVolume(video.volume); setMuted(video.muted); };
 
     video.addEventListener('play', onPlay);
@@ -1890,6 +1906,7 @@ function VideoPlayer() {
       className={`player-wrap${!chrome && !subMenuOpen && !unsupported && !shortcutsOpen ? ' cursor-hidden' : ''}`}
       ref={wrapRef}
       onMouseMove={showChrome}
+      style={{ ['--player-aspect' as never]: String(liveAspect ?? episodeData.displayAspect ?? 16 / 9) }}
     >
       <style>{cueCss}</style>
       {/* Hidden frame source for the seek-bar hover preview. Bound to the SAME

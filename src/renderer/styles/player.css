@@ -13,10 +13,12 @@
      the island's fixed parts: 1px border + 12px pad + 12px scrub row + 8px
      gap + 32px buttons row + 12px pad + 1px border = 78px. */
   /* Track the VIDEO's displayed width, not the window: the player fills the
-     window and content is 16:9, so the contain-fit content box is
-     min(100vw, 100vh * 16/9). The island spans it minus the side gaps
-     (pillarboxes on ultrawide monitors don't count as video). */
-  --player-island-max-w: calc(min(100vw, 100vh * (16 / 9)) - var(--player-island-side-gap) * 2);
+     window, so the contain-fit content box is min(100vw, 100vh * aspect).
+     --player-aspect is set inline on .player-wrap from the file's probed
+     display aspect (backfilled on series open, so it's correct on the first
+     frame) and refined by the decoded stream; 16:9 is only the never-probed
+     fallback. Pillarboxes on ultrawide monitors don't count as video. */
+  --player-island-max-w: calc(min(100vw, 100vh * var(--player-aspect, 1.77778)) - var(--player-island-side-gap) * 2);
   --player-island-side-gap: 24px;
   --player-island-bottom: 28px;
   --player-island-height: 78px;
