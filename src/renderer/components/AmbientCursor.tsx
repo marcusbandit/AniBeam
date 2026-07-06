@@ -5,8 +5,8 @@ const POS_SPEED       = 9;
 const SIZE_SPEED      = 6;
 const INTENSITY_SPEED = 7;
 
-const SIZE_IDLE     = 1200;   // px — wide, exploratory gaze
-const SIZE_FOCUSED  = 540;    // px — tight, focused on a target
+const SIZE_IDLE     = 1200;   // px: wide, exploratory gaze
+const SIZE_FOCUSED  = 540;    // px: tight, focused on a target
 
 const INTENSITY_IDLE    = 0.45;   // faded at rest
 const INTENSITY_FOCUSED = 1.0;    // full when something's hovered
@@ -19,10 +19,10 @@ const BIAS_PX = 40;   // constant-magnitude pull toward a card's center
  * Root-level pointer halo. Renders a single fixed-position layer behind
  * .main-content. The halo has three opt-in modes driven by data attributes:
  *
- *   (none)              — idle: massive radius, low intensity, follows the cursor.
- *   data-halo-snap      — focus: lock position to the element's center
+ *   (none)              : idle: massive radius, low intensity, follows the cursor.
+ *   data-halo-snap      : focus: lock position to the element's center
  *                          (used by nav buttons / discrete targets).
- *   data-halo-bias      — focus: shift the halo BIAS_PX along the unit vector
+ *   data-halo-bias      : focus: shift the halo BIAS_PX along the unit vector
  *                          from cursor toward the element's center. Halo
  *                          stays cursor-driven but is gently pulled in
  *                          (used by cards). If the cursor is already
@@ -31,14 +31,14 @@ const BIAS_PX = 40;   // constant-magnitude pull toward a card's center
  *
  * A fourth attribute lets a container debounce the focus → idle transition:
  *
- *   data-halo-cluster   — when the cursor is inside this element but not
+ *   data-halo-cluster   : when the cursor is inside this element but not
  *                          on any halo target, the focused size + intensity
  *                          are held for HOLD_TIMEOUT_MS before shrinking
  *                          back to idle. Prevents the "bounce" between
  *                          two cards in a grid.
  *
  * The mouse-idle fade-out (intensity → 0) is suppressed while the cursor
- * is on a halo target — the user explicitly asked: don't hide what they're
+ * is on a halo target; the user explicitly asked: don't hide what they're
  * actively pointing at.
  *
  * All four properties (x, y, size, intensity) are smoothed by the shared
@@ -122,7 +122,7 @@ export default function AmbientCursor() {
       y.setTarget(ev.clientY);
 
       if (clusterEl) {
-        // Inside a cluster — hold the focused size/intensity briefly to
+        // Inside a cluster: hold the focused size/intensity briefly to
         // avoid the "bounce to massive" between adjacent cards.
         size.setTarget(SIZE_FOCUSED);
         intensity.setTarget(INTENSITY_FOCUSED);
@@ -132,7 +132,7 @@ export default function AmbientCursor() {
           intensity.setTarget(INTENSITY_IDLE);
         }, HOLD_TIMEOUT_MS);
       } else {
-        // Outside any cluster — go idle immediately.
+        // Outside any cluster: go idle immediately.
         size.setTarget(SIZE_IDLE);
         intensity.setTarget(INTENSITY_IDLE);
         clearHold();

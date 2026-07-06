@@ -28,14 +28,14 @@ const VERSION = pkg.version;
 // label here; deeper pages can override their own title with a useEffect
 // in the page component if they want a per-series taskbar entry.
 function titleForPath(pathname: string): string {
-  if (pathname === "/") return "AniBeam — Library";
-  if (pathname.startsWith("/series/")) return "AniBeam — Series";
-  if (pathname.startsWith("/feed")) return "AniBeam — Feed";
-  if (pathname.startsWith("/watching")) return "AniBeam — Watching";
-  if (pathname.startsWith("/subscriptions")) return "AniBeam — Subscriptions";
-  if (pathname.startsWith("/metadata")) return "AniBeam — Metadata";
-  if (pathname.startsWith("/settings")) return "AniBeam — Settings";
-  if (pathname.startsWith("/player/")) return "AniBeam — Player";
+  if (pathname === "/") return "AniBeam - Library";
+  if (pathname.startsWith("/series/")) return "AniBeam - Series";
+  if (pathname.startsWith("/feed")) return "AniBeam - Feed";
+  if (pathname.startsWith("/watching")) return "AniBeam - Watching";
+  if (pathname.startsWith("/subscriptions")) return "AniBeam - Subscriptions";
+  if (pathname.startsWith("/metadata")) return "AniBeam - Metadata";
+  if (pathname.startsWith("/settings")) return "AniBeam - Settings";
+  if (pathname.startsWith("/player/")) return "AniBeam - Player";
   return "AniBeam";
 }
 

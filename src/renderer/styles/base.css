@@ -85,7 +85,7 @@ img { -webkit-user-drag: none; user-drag: none; }
 
 /* ============ PAGE SHELL ============ */
 .page {
-  padding: 2rem 2.5rem 4rem;
+  padding: var(--s8) var(--s10) var(--s16);
   max-width: 1400px;
   margin: 0 auto;
   width: 100%;
@@ -94,13 +94,15 @@ img { -webkit-user-drag: none; user-drag: none; }
   font-family: var(--font-display);
   font-weight: 700;
   font-size: 1.875rem;
+  line-height: 1.2;
   letter-spacing: -0.02em;
   color: var(--text-primary);
-  margin-bottom: 0.25rem;
+  margin-bottom: var(--s1);
 }
 .page-sub {
-  color: var(--text-secondary);
-  font-size: 0.9rem;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  font-size: 0.85rem;
   max-width: 60ch;
 }
 
@@ -109,7 +111,7 @@ img { -webkit-user-drag: none; user-drag: none; }
   position: relative;
   width: 100%;
   max-width: 520px;
-  margin-bottom: 2rem;
+  margin-bottom: var(--s8);
 }
 .library-search-icon {
   position: absolute;
@@ -130,37 +132,46 @@ img { -webkit-user-drag: none; user-drag: none; }
   font-size: 0.85rem;
   font-family: var(--font-mono);
   outline: none;
-  transition: border-color var(--transition-fast), background var(--transition-fast);
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 .library-search-input::placeholder { color: var(--text-muted); }
-.library-search-input:focus { border-color: var(--accent-primary); }
+.library-search-input:hover { border-color: var(--border-hover); }
+/* outline: none is safe here: the teal border + glow is the replacement
+   focus ring on this same element (interaction contract rule 3). */
+.library-search-input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
 .library-search-clear {
   position: absolute;
-  right: 0.6rem;
+  right: var(--s2);
   top: 50%;
   transform: translateY(-50%);
   width: 24px;
   height: 24px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
-  transition: color var(--transition-fast), background var(--transition-fast);
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast),
+    transform var(--transition-fast);
 }
-.library-search-clear:hover { color: var(--text-primary); background: var(--bg-tertiary); }
+.library-search-clear:hover { color: var(--text-primary); background: var(--bg-hover); }
+/* Press composes with the centering translate; scale alone would un-center it. */
+.library-search-clear:active { transform: translateY(-50%) scale(0.97); }
+/* Shortcut hint: paint comes from .chip chip--sm (primitives.css); this
+   rule only pins it inside the input and keeps it inert. */
 .library-search-hint {
   position: absolute;
-  right: 0.6rem;
+  right: var(--s2);
   top: 50%;
   transform: translateY(-50%);
-  font-family: var(--font-mono);
-  font-size: 0.65rem;
-  color: var(--text-muted);
-  background: var(--bg-tertiary);
-  padding: 0.15rem 0.4rem;
-  border-radius: 4px;
-  border: 1px solid var(--border-color);
   pointer-events: none;
 }
 
@@ -173,8 +184,10 @@ img { -webkit-user-drag: none; user-drag: none; }
 }
 
 /* ============ EMPTY STATES ============ */
+/* Voice: plain and directive. The heading gets the display face (spec:
+   empty-state headings are a display-face surface); body stays mono muted. */
 .empty {
-  padding: 4rem 2rem;
+  padding: var(--s16) var(--s8);
   text-align: center;
   border: 1px dashed var(--border-color);
   border-radius: var(--radius-lg);
@@ -183,17 +196,18 @@ img { -webkit-user-drag: none; user-drag: none; }
 .empty-icon {
   color: var(--text-muted);
   opacity: 0.5;
-  margin-bottom: 0.75rem;
+  margin-bottom: var(--s3);
   display: inline-flex;
 }
 .empty-title {
-  font-family: var(--font-mono);
-  font-weight: 600;
-  font-size: 1rem;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.05rem;
   color: var(--text-primary);
-  margin-bottom: 0.4rem;
+  margin-bottom: var(--s2);
 }
 .empty-text {
+  font-family: var(--font-mono);
   color: var(--text-muted);
   font-size: 0.85rem;
 }
@@ -283,18 +297,18 @@ img { -webkit-user-drag: none; user-drag: none; }
 
 /* ============ LOADING ============ */
 .loading {
-  padding: 4rem 2rem;
+  padding: var(--s16) var(--s8);
   text-align: center;
   color: var(--text-secondary);
   font-family: var(--font-mono);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
 }
 .error {
-  padding: 4rem 2rem;
+  padding: var(--s16) var(--s8);
   text-align: center;
   color: var(--accent-rose);
   font-family: var(--font-mono);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
 }
 .loading-spinner {
   width: 48px;
@@ -303,7 +317,7 @@ img { -webkit-user-drag: none; user-drag: none; }
   border-top-color: var(--accent-primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
-  margin: 0 auto 1rem;
+  margin: 0 auto var(--s4);
 }
 .loading-spinner.small {
   width: 16px;

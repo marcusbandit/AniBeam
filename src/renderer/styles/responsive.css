@@ -3,7 +3,7 @@
 /* ============ RESPONSIVE ============ */
 @media (max-width: 768px) {
   .page { padding: 1.25rem 1.25rem 3rem; }
-  .navbar { padding: 0.5rem 1rem; gap: 1rem; }
+  .navbar { padding: var(--s2) var(--s4); gap: var(--s4); }
   .navbar-meta { display: none; }
   .show-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 1rem 0.75rem; }
   .episodes-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
