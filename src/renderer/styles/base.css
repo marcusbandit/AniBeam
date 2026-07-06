@@ -44,9 +44,35 @@ img { -webkit-user-drag: none; user-drag: none; }
   height: 100%;
   width: 100%;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   background: var(--bg-primary);
   color: var(--text-primary);
+}
+
+/* ============ ATMOSPHERE ============ */
+/* Fixed, very quiet color field behind all content: a huge soft teal
+   radial top-right (~5%) and an even fainter warm amber one bottom-left
+   (~3%). Lives on the shell backdrop only; panels above it stay flat.
+   Paints above .app's own background but below its positioned children
+   (.rail/.main-content carry z-index 1). The player route covers it
+   entirely with its fixed black wrap. */
+.app::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(
+      1200px circle at 100% 0%,
+      color-mix(in srgb, var(--accent-primary) 5%, transparent),
+      transparent 62%
+    ),
+    radial-gradient(
+      1000px circle at 0% 100%,
+      color-mix(in srgb, var(--accent-amber) 3%, transparent),
+      transparent 62%
+    );
 }
 
 /* ============ AMBIENT CURSOR ============ */
@@ -71,12 +97,13 @@ img { -webkit-user-drag: none; user-drag: none; }
     );
 }
 
-/* The app shell already establishes a stacking context; nudge real content
-   above the halo. */
-.navbar, .main-content { position: relative; z-index: 1; }
+/* Nudge real content above the halo and the atmosphere field (both sit
+   at z-index 0 on the shell backdrop). */
+.rail, .main-content { position: relative; z-index: 1; }
 
 .main-content {
   flex: 1;
+  min-width: 0;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-gutter: stable;
@@ -84,11 +111,25 @@ img { -webkit-user-drag: none; user-drag: none; }
 }
 
 /* ============ PAGE SHELL ============ */
+/* --page-pad-x is the single source of truth for the page's horizontal
+   padding; full-bleed sections escape it with negative inline margins
+   (margin-inline: calc(-1 * var(--page-pad-x))). */
 .page {
-  padding: var(--s8) var(--s10) var(--s16);
+  --page-pad-x: var(--s10);
+  padding: var(--s8) var(--page-pad-x) var(--s16);
   max-width: 1400px;
   margin: 0 auto;
   width: 100%;
+  animation: page-mount 240ms ease-out;
+}
+/* Mount: fade + 10px rise. The global reduced-motion block in index.css
+   neutralizes it. No fill mode, so the transform (and the containing
+   block it creates for fixed descendants) vanishes once settled. */
+@keyframes page-mount {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
 }
 .page-title {
   font-family: var(--font-display);

@@ -52,38 +52,37 @@ function AppContent() {
     <div className="app">
       {!isPlayerRoute && <AmbientCursor />}
       {!isPlayerRoute && (
-        <nav className="navbar">
-          <NavLink to="/" end className="navbar-brand" data-halo-snap aria-label="Go to Library">
-            <span className="brand-mark"><img src={appIcon} alt="" draggable={false} /></span>
-            <span className="brand-word">AniBeam</span>
+        <aside className="rail">
+          <NavLink to="/" end className="rail-brand" data-halo-snap aria-label="Go to Library">
+            <img src={appIcon} alt="" draggable={false} />
           </NavLink>
-          <div className="navbar-nav">
-            <NavLink to="/" end className={`nav-link${isLib ? " active" : ""}`} data-halo-snap>
-              <Home size={15} />
-              <span>Library</span>
+          <nav className="rail-nav">
+            <NavLink to="/" end className={`rail-link${isLib ? " active" : ""}`} data-halo-snap>
+              <Home size={18} />
+              <span className="rail-link-label">Library</span>
             </NavLink>
-            <NavLink to="/feed" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`} data-halo-snap>
-              <Activity size={15} />
-              <span>Feed</span>
+            <NavLink to="/feed" className={({ isActive }) => `rail-link${isActive ? " active" : ""}`} data-halo-snap>
+              <Activity size={18} />
+              <span className="rail-link-label">Feed</span>
             </NavLink>
-            <NavLink to="/watching" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`} data-halo-snap>
-              <Eye size={15} />
-              <span>Watching</span>
+            <NavLink to="/watching" className={({ isActive }) => `rail-link${isActive ? " active" : ""}`} data-halo-snap>
+              <Eye size={18} />
+              <span className="rail-link-label">Watching</span>
             </NavLink>
-            <NavLink to="/metadata" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`} data-halo-snap>
-              <Database size={15} />
-              <span>Metadata</span>
+            <NavLink to="/metadata" className={({ isActive }) => `rail-link${isActive ? " active" : ""}`} data-halo-snap>
+              <Database size={18} />
+              <span className="rail-link-label">Metadata</span>
             </NavLink>
-            <NavLink to="/settings" className={({ isActive }) => `nav-link${isActive ? " active" : ""}`} data-halo-snap>
-              <SettingsIcon size={15} />
-              <span>Settings</span>
+            <NavLink to="/settings" className={({ isActive }) => `rail-link${isActive ? " active" : ""}`} data-halo-snap>
+              <SettingsIcon size={18} />
+              <span className="rail-link-label">Settings</span>
             </NavLink>
-          </div>
-          <div className="navbar-tail">
+          </nav>
+          <div className="rail-foot">
             <LangSwitch />
-            <span className="navbar-meta">v{VERSION}</span>
+            <span className="rail-meta">v{VERSION}</span>
           </div>
-        </nav>
+        </aside>
       )}
       {!isPlayerRoute ? (
         <main className="main-content">
