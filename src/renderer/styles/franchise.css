@@ -304,10 +304,14 @@
 .franchise-graph .react-flow__edge-textwrapper { display: none; }
 
 /* ── Franchise filter chips ────────────────────────────────── */
+/* The two chip rows collapsed into two dropdown triggers, so the panel now
+   holds a single small row instead of two wrapping rows. */
 .franchise-filters {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: var(--s2);
+  align-items: center;
+  justify-content: center;
 }
 .franchise-filters__group {
   display: flex;
@@ -315,6 +319,67 @@
   gap: var(--s2);
   align-items: center;
   justify-content: center;
+}
+
+/* Collapsed filter dropdowns: "Relations" and "Formats" triggers (chip--toggle
+   glass buttons) reveal the unchanged chip groups in a portalled popover
+   (document.fullscreenElement when the Fullscreen API is active, else <body>)
+   so the panel floats above the CSS-fullscreen graph instead of being clipped
+   by React Flow's overflow:hidden viewport. */
+.franchise-filter-menu { display: inline-flex; }
+.chip.franchise-filter-menu-trigger { gap: var(--s2); }
+.franchise-filter-menu-trigger svg {
+  opacity: 0.65;
+  transition: transform var(--transition-fast);
+}
+.franchise-filter-menu-trigger.is-open svg { transform: rotate(180deg); }
+/* Open state: brighter glass, NOT the teal is-on wash - the trigger is a menu
+   button, not a filter, and must never impersonate an active chip. */
+.chip--toggle.franchise-filter-menu-trigger.is-open {
+  color: var(--text-primary);
+  border-color: var(--glass-edge-bright);
+  background: var(--glass-bg-strong);
+}
+.franchise-filter-menu-trigger:focus-visible {
+  outline: 2px solid var(--accent-secondary);
+  outline-offset: 2px;
+}
+/* Active-filter count: how many of the group's filters are hiding something. */
+.franchise-filter-menu-count {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--accent-a) 25%, transparent);
+  color: var(--accent-secondary);
+  font-size: 10px;
+  line-height: 1;
+}
+/* Portalled popover holding one chip group. position/left/top come inline
+   from FilterMenu (viewport coords tracking the trigger); the keyframes carry
+   the -50% centering so the entrance slide cannot yank it sideways. */
+.franchise-filter-menu-panel {
+  z-index: 100001; /* above .franchise-graph--fullscreen at 99999 */
+  max-width: 360px;
+  padding: 10px;
+  /* Floating overlay: full frosted glass, same recipe as every other one. */
+  background: var(--glass-veil);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-edge-bright);
+  border-radius: var(--radius-md);
+  box-shadow: var(--glass-highlight), var(--shadow-lg);
+  animation: franchiseFilterMenuIn 120ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+@keyframes franchiseFilterMenuIn {
+  from { opacity: 0; transform: translate(-50%, -4px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+.franchise-filter-menu-panel .franchise-filters__group {
+  justify-content: flex-start;
 }
 /* The chips ride the .chip--sm .chip--toggle idiom, but with per-category dot
    colors instead of the teal is-on wash: the dot IS the legend (it uses the

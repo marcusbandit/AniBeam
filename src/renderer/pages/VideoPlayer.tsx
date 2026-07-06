@@ -144,6 +144,16 @@ function formatTime(s: number): string {
   return `${m}:${pad(sec)}`;
 }
 
+// Seek-preview popup geometry. The canvas backing store is (re)sized from
+// these; .player-scrub-preview-canvas in player.css mirrors the width. The
+// seed height is 16:9 so the popup mounts at a sane size before the first
+// frame decodes (avoids the canvas default 300x150 box flashing).
+const PREVIEW_CANVAS_W = 200;
+const PREVIEW_CANVAS_SEED_H = Math.round(PREVIEW_CANVAS_W * (9 / 16));
+// Popup outer half-width for edge clamping: canvas + 2*6px padding + 2*1px
+// border (mirrors .player-scrub-preview in player.css).
+const PREVIEW_POPUP_HALF_W = (PREVIEW_CANVAS_W + 2 * 6 + 2 * 1) / 2;
+
 // Note: VideoPlayer is intentionally NOT migrated to the design-system
 // primitives (Page/Section/Stack/Card/etc.). The fullscreen player is a
 // single-purpose route with bespoke chrome (.player-*) that already reads
@@ -228,9 +238,13 @@ function VideoPlayer() {
   const [nextCounting, setNextCounting] = useState(false);
   const [nextDismissed, setNextDismissed] = useState(false);
   const [videoEnded, setVideoEnded] = useState(false);
-  // Chrome-only UI state (visual overhaul). Seek-hover time bubble: cursor x
-  // within the scrubber + the formatted time at that fraction of duration.
-  const [seekBubble, setSeekBubble] = useState<{ x: number; label: string; visible: boolean }>({ x: 0, label: '', visible: false });
+  // Seek-bar hover frame preview (replaces the old time-only bubble). A
+  // hidden, muted <video> on the SAME source is seeked to the hovered
+  // timestamp and its decoded frame is blitted into a canvas in a popup above
+  // the bar. Entirely renderer-side (no ffmpeg/IPC round-trip), so it tracks
+  // the cursor instantly. `scrubHover` holds the popup's x offset (px within
+  // the scrub track, clamped to the popup half-width) and the hovered time.
+  const [scrubHover, setScrubHover] = useState<{ x: number; time: number } | null>(null);
   // Keyboard-shortcut legend overlay, toggled by the ? button in the right
   // control group. Purely presentational; adds no bindings of its own.
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -254,6 +268,15 @@ function VideoPlayer() {
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  // Seek-preview plumbing: the hidden frame-source <video>, the popup canvas,
+  // and the seek serializer. While one preview seek is in flight only the
+  // newest requested time is stashed (previewPendingRef) and applied on
+  // 'seeked', so fast scrubbing collapses to the latest target instead of
+  // flooding the decoder.
+  const previewVideoRef = useRef<HTMLVideoElement>(null);
+  const previewCanvasRef = useRef<HTMLCanvasElement>(null);
+  const previewSeekingRef = useRef(false);
+  const previewPendingRef = useRef<number | null>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const subMenuRef = useRef<HTMLDivElement>(null);
   const ccBtnRef = useRef<HTMLButtonElement>(null);
@@ -1626,6 +1649,104 @@ function VideoPlayer() {
     video.currentTime = Number(e.target.value);
   };
 
+  // Blit the preview <video>'s current decoded frame into the preview canvas,
+  // sized to the source aspect ratio so frames aren't squashed. Tainting from
+  // a cross-origin source is irrelevant: we only ever DISPLAY the canvas,
+  // never read pixels back (no toDataURL/getImageData), so drawImage is enough.
+  const drawPreviewFrame = useCallback(() => {
+    const v = previewVideoRef.current;
+    const c = previewCanvasRef.current;
+    if (!v || !c) return;
+    const vw = v.videoWidth;
+    const vh = v.videoHeight;
+    if (!vw || !vh) return;
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    const targetW = PREVIEW_CANVAS_W;
+    const targetH = Math.max(1, Math.round(targetW * (vh / vw)));
+    if (c.width !== targetW || c.height !== targetH) {
+      c.width = targetW;
+      c.height = targetH;
+    }
+    try { ctx.drawImage(v, 0, 0, targetW, targetH); } catch { /* ignore */ }
+  }, []);
+
+  // Wire the hidden preview <video>: each requested hover time is seeked and
+  // rendered. Re-arm on src change (episode switch) and reset the seek queue.
+  useEffect(() => {
+    const v = previewVideoRef.current;
+    if (!v) return;
+    previewSeekingRef.current = false;
+    previewPendingRef.current = null;
+    // Start a fresh seek to the latest stashed time, if any. Returns whether a
+    // seek was actually started (so callers know if 'seeked' will follow).
+    const applyPending = () => {
+      if (previewPendingRef.current == null) return false;
+      const next = previewPendingRef.current;
+      previewPendingRef.current = null;
+      previewSeekingRef.current = true;
+      try { v.currentTime = next; return true; }
+      catch { previewSeekingRef.current = false; return false; }
+    };
+    const onSeeked = () => {
+      drawPreviewFrame();
+      if (!applyPending()) previewSeekingRef.current = false;
+    };
+    // A time requested before metadata loaded was stashed (no seek could run
+    // yet); now that the video can seek, drain it. Guard on the seeking flag
+    // so we never start a second concurrent seek.
+    const onLoaded = () => { if (!previewSeekingRef.current) applyPending(); };
+    v.addEventListener('seeked', onSeeked);
+    v.addEventListener('loadedmetadata', onLoaded);
+    return () => {
+      v.removeEventListener('seeked', onSeeked);
+      v.removeEventListener('loadedmetadata', onLoaded);
+    };
+  }, [videoSrc, drawPreviewFrame]);
+
+  // Release the preview element's media resource when leaving the player.
+  // Episode changes are handled by React swapping the bound src attribute
+  // (the element loads the new source and drops the old decoder); this covers
+  // full unmount, where the src must be cleared before the element goes away.
+  useEffect(() => () => {
+    const v = previewVideoRef.current;
+    if (!v) return;
+    v.removeAttribute('src');
+    v.load();
+  }, []);
+
+  const requestPreviewFrame = useCallback((t: number) => {
+    const v = previewVideoRef.current;
+    if (!v || !Number.isFinite(t)) return;
+    // Before metadata (readyState < HAVE_METADATA) a currentTime assignment is
+    // recorded as the "default playback start position" and fires NO 'seeked',
+    // which would wedge previewSeekingRef=true forever and freeze the preview.
+    // Stash it instead; the loadedmetadata handler drains it once seeking works.
+    if (v.readyState < 1 || previewSeekingRef.current) {
+      previewPendingRef.current = t;
+      return;
+    }
+    previewSeekingRef.current = true;
+    try { v.currentTime = t; } catch { previewSeekingRef.current = false; }
+  }, []);
+
+  const onScrubHover = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!duration || !videoSrc) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const time = frac * duration;
+    // Clamp the popup centre so it never overflows the track edges (and thus
+    // never the island edges: the track is inset inside the island).
+    const x = Math.max(PREVIEW_POPUP_HALF_W, Math.min(rect.width - PREVIEW_POPUP_HALF_W, frac * rect.width));
+    setScrubHover({ x, time });
+    requestPreviewFrame(time);
+  }, [duration, videoSrc, requestPreviewFrame]);
+
+  const onScrubLeave = useCallback(() => {
+    setScrubHover(null);
+  }, []);
+
   const onVolume = (e: React.ChangeEvent<HTMLInputElement>) => {
     const video = videoRef.current;
     if (!video) return;
@@ -1771,6 +1892,21 @@ function VideoPlayer() {
       onMouseMove={showChrome}
     >
       <style>{cueCss}</style>
+      {/* Hidden frame source for the seek-bar hover preview. Bound to the SAME
+          src as the main video (media:// cached mp4 or original file URL), so
+          frames always decode. Kept visually hidden (1px, opacity 0) rather
+          than display:none so Chromium still decodes seeked frames for
+          drawImage. Never plays; only seeks. No subtitle tracks, no JASSUB,
+          no tracker wiring: it is chrome, not playback. */}
+      <video
+        ref={previewVideoRef}
+        className="player-preview-video"
+        src={videoSrc || undefined}
+        muted
+        preload="metadata"
+        aria-hidden="true"
+        tabIndex={-1}
+      />
       <div className="player-header" style={{ opacity: chrome ? 1 : 0 }}>
         <button
           className="player-back"
@@ -2067,7 +2203,11 @@ function VideoPlayer() {
         data-liquid-glass=""
         data-lg-bezel="16"
       >
-        <div className="player-scrub-wrap">
+        <div
+          className="player-scrub-wrap"
+          onMouseMove={onScrubHover}
+          onMouseLeave={onScrubLeave}
+        >
           <input
             className="player-scrub"
             type="range"
@@ -2076,15 +2216,6 @@ function VideoPlayer() {
             step={0.1}
             value={Math.min(currentTime, duration || 0)}
             onChange={onSeek}
-            onMouseMove={(e) => {
-              // Seek-hover time bubble: pure chrome, no seeking involved.
-              if (!duration) return;
-              const rect = e.currentTarget.getBoundingClientRect();
-              if (rect.width <= 0) return;
-              const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-              setSeekBubble({ x: e.clientX - rect.left, label: formatTime(frac * duration), visible: true });
-            }}
-            onMouseLeave={() => setSeekBubble((b) => (b.visible ? { ...b, visible: false } : b))}
             style={{
               '--progress': `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
               // Build the track background dynamically: stacked gradients with
@@ -2105,13 +2236,21 @@ function VideoPlayer() {
               })(),
             } as React.CSSProperties}
           />
-          <span
-            className={`chip chip--sm chip--scrim player-seek-bubble${seekBubble.visible ? ' is-visible' : ''}`}
-            style={{ left: seekBubble.x }}
-            aria-hidden="true"
-          >
-            {seekBubble.label}
-          </span>
+          {scrubHover && videoSrc && duration > 0 && (
+            <div className="player-scrub-preview" style={{ left: `${scrubHover.x}px` }} aria-hidden="true">
+              {/* Seed a 16:9 backing store so the popup mounts at the right
+                  size; drawPreviewFrame resizes it to the real frame aspect on
+                  the first decoded frame. Avoids the canvas default 300x150
+                  (2:1) box flashing on first hover. */}
+              <canvas
+                ref={previewCanvasRef}
+                className="player-scrub-preview-canvas"
+                width={PREVIEW_CANVAS_W}
+                height={PREVIEW_CANVAS_SEED_H}
+              />
+              <div className="player-scrub-preview-time">{formatTime(scrubHover.time)}</div>
+            </div>
+          )}
         </div>
         <div className="player-controls-row">
           <Tooltip label={prevEp != null ? `Previous: episode ${prevEp}` : 'No previous episode'}>
