@@ -2,7 +2,8 @@
 
 /* ── Franchise Graph (React Flow canvas) ───────────────────────────────── */
 
-/* compact tile: shrink the reused relation-card shell */
+/* compact tile: shrink the reused relation-card shell (franchise-specific
+   overrides only; the .relation-card-* base lives in series.css) */
 .franchise-node { width: 180px; }
 .franchise-node .relation-card-poster {
   display: block;
@@ -23,15 +24,16 @@
 
 /* current/root rings are rendered as the node's own box-shadow (computed
    inline in FranchiseFlowNode) so they paint above the card + posters and
-   aren't clipped by the node's overflow:hidden. */
+   aren't clipped by the node's overflow:hidden. Ring hues: current = teal
+   (--accent-primary), root = amber (--accent-amber). */
 
 .franchise-graph {
   position: relative;
   width: 100%;
   height: 560px;
-  border-radius: var(--radius-lg, 20px);
+  border-radius: var(--radius-lg);
   overflow: hidden;
-  background: var(--bg-card, #15151c);
+  background: var(--bg-card);
 }
 
 /* React Flow theming overrides - match the app's dark surface */
@@ -40,24 +42,37 @@
 }
 .franchise-graph .react-flow__background {
   /* dots/grid use currentColor on path; this sets a subtle tint */
-  color: var(--border-color, rgba(255,255,255,0.07));
+  color: var(--border-color);
 }
 
 /* The custom node wrapper - pointer affordances follow ownership.
-   Current node has its own non-clickable treatment. */
+   Current node is a non-clickable div: cursor stays default and it gets NO
+   hover paint, so "not clickable" reads honestly. */
 .franchise-graph .react-flow__node {
   cursor: default;
 }
 .franchise-graph .react-flow__node[data-id]:not([data-id=""]) .franchise-node:not([data-current="true"]) {
   cursor: pointer;
 }
+.franchise-graph .franchise-node[data-current="true"] { cursor: default; }
 
 /* Edges - base styling, then per-relationType variants. Selectors target
-   React Flow's internal path element via the class we put on the edge group. */
+   React Flow's internal path element via the class we put on the edge group.
+   Edge colors mirror arrowColorFor() in FranchiseGraphView.tsx; the filter
+   chip dots below MUST use the same tokens (that parity is the legend). */
 .franchise-graph .franchise-edge .react-flow__edge-path {
-  stroke: var(--border-hover, rgba(255,255,255,0.14));
+  stroke: var(--border-hover);
   stroke-width: 1.5;
   fill: none;
+}
+/* Edges are deliberately non-interactive: no tooltips, no hover highlight.
+   The relation labels ON THE NODES (plus the hover-relative relabeling) are
+   the source of truth for what an edge means; an edge hover treatment would
+   fight the 280ms delayed neighbor-dim. cursor: default keeps the pointer
+   honest over edge paths. */
+.franchise-graph .react-flow__edge,
+.franchise-graph .react-flow__edge path {
+  cursor: default;
 }
 /* Spine: prequel/sequel - thick, teal */
 .franchise-graph .franchise-edge--prequel .react-flow__edge-path,
@@ -66,30 +81,30 @@
   stroke-width: 2.5;
   opacity: 0.85;
 }
-/* Upstream: source/parent/adaptation - solid accent */
+/* Upstream: source/parent/adaptation - solid blue */
 .franchise-graph .franchise-edge--source     .react-flow__edge-path,
 .franchise-graph .franchise-edge--parent     .react-flow__edge-path,
 .franchise-graph .franchise-edge--adaptation .react-flow__edge-path {
-  stroke: var(--accent-secondary, #818cf8);
+  stroke: var(--accent-blue);
   stroke-width: 2;
   opacity: 0.75;
 }
-/* Alternative: dashed, distinct color */
+/* Alternative: dashed, amber */
 .franchise-graph .franchise-edge--alternative .react-flow__edge-path {
-  stroke: var(--accent-amber, #f59e0b);
+  stroke: var(--accent-amber);
   stroke-width: 1.75;
   stroke-dasharray: 6 4;
   opacity: 0.8;
 }
-/* Release-order: red, thick - artificial sequel-like edges drawn when a
+/* Release-order: rose, thick - artificial sequel-like edges drawn when a
    chain frame's toggle is set to Release. */
 .franchise-graph .franchise-edge--release_order .react-flow__edge-path {
   stroke: var(--accent-rose);
   stroke-width: 2.5;
   opacity: 0.9;
 }
-/* Parent-of-root override: emerald accent so the lineage flowing INTO the
-   franchise root reads at a glance (wins over the upstream/side defaults). */
+/* Parent-of-root override: same blue as the other source edges but heavier,
+   so the lineage flowing INTO the franchise root reads at a glance. */
 .franchise-graph .franchise-edge--parent-of-root .react-flow__edge-path {
   stroke: var(--accent-blue);
   stroke-width: 2;
@@ -101,20 +116,20 @@
 .franchise-graph .franchise-edge--summary     .react-flow__edge-path,
 .franchise-graph .franchise-edge--compilation .react-flow__edge-path,
 .franchise-graph .franchise-edge--contains    .react-flow__edge-path {
-  stroke: var(--text-muted, #64748b);
+  stroke: var(--text-muted);
   stroke-width: 1.25;
   opacity: 0.7;
 }
 /* Character: rose, thin dashed (loose link - shared characters) */
 .franchise-graph .franchise-edge--character .react-flow__edge-path {
-  stroke: var(--accent-rose, #fb7185);
+  stroke: var(--accent-rose);
   stroke-width: 1.25;
   stroke-dasharray: 3 4;
   opacity: 0.6;
 }
 /* Other: thin dashed */
 .franchise-graph .franchise-edge--other .react-flow__edge-path {
-  stroke: var(--border-hover, rgba(255,255,255,0.14));
+  stroke: var(--border-hover);
   stroke-width: 1.25;
   stroke-dasharray: 3 4;
   opacity: 0.6;
@@ -133,16 +148,16 @@
   opacity: 0.85;
   filter: saturate(0.85);
   pointer-events: none;
-  border-radius: var(--radius-lg, 20px);
+  border-radius: var(--radius-lg);
   transform: scale(0.7);
   /* transform-origin set inline per ghost (faces its target). */
 }
-/* Dashed ring overlay - above the poster (the old `outline` sat behind it). */
+/* Dashed amber ring overlay - above the poster (the old `outline` sat behind it). */
 .franchise-node__ghost-ring {
   position: absolute;
   inset: 0;
-  border: 1.5px dashed var(--accent-amber, #f59e0b);
-  border-radius: var(--radius-lg, 20px);
+  border: 1.5px dashed var(--accent-amber);
+  border-radius: var(--radius-lg);
   pointer-events: none;
   z-index: 6;
 }
@@ -152,45 +167,46 @@
 
 /* Chain frame: rendered as an SVG <rect> inside the edge layer (so its
    vertical bounds come from real handle positions, not the NODE_H estimate).
-   Filled background + dashed border. A foreignObject hosts the Chronological/
+   Filled background + dashed border. A foreignObject hosts the Chrono/
    Release toggle in the top-right. */
 .franchise-chain-frame__bg {
   fill: var(--bg-elev);
-  stroke: color-mix(in srgb, var(--text-muted, #64748b) 50%, transparent);
+  stroke: color-mix(in srgb, var(--text-muted) 50%, transparent);
   stroke-width: 1;
   stroke-dasharray: 6 4;
 }
 /* Side-story group frame: subtle tinted box + label for shows with >3 side
    stories, so they read as a cluster instead of loose floating cards. */
 .franchise-sidestory-frame__bg {
-  fill: color-mix(in srgb, var(--text-muted, #64748b) 8%, transparent);
-  stroke: color-mix(in srgb, var(--text-muted, #64748b) 45%, transparent);
+  fill: color-mix(in srgb, var(--text-muted) 8%, transparent);
+  stroke: color-mix(in srgb, var(--text-muted) 45%, transparent);
   stroke-width: 1;
   stroke-dasharray: 4 4;
 }
 .franchise-sidestory-frame__label {
-  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  font-size: var(--chip-font);
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-muted, #64748b);
+  color: var(--text-muted);
   font-weight: 600;
   white-space: nowrap;
 }
 .franchise-chain-frame__toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--s2);
   justify-content: flex-end;
   width: 100%;
 }
 .franchise-chain-frame__toggle {
   display: inline-flex;
   align-items: stretch;
-  background: var(--bg-card, #15151c);
-  border: 1px solid var(--border-color, rgba(255,255,255,0.08));
-  border-radius: 999px;
-  font: inherit;
-  font-size: 0.7rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: var(--chip-font);
   overflow: hidden;
   white-space: nowrap;
 }
@@ -198,18 +214,28 @@
   appearance: none;
   background: transparent;
   border: none;
-  color: var(--text-muted, #64748b);
+  color: var(--text-muted);
   font: inherit;
-  font-size: 0.7rem;
-  padding: 5px 12px;
+  font-size: var(--chip-font);
+  padding: 5px var(--s3);
   cursor: pointer;
-  opacity: 0.65;
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast),
+    transform var(--transition-fast);
 }
-.franchise-chain-frame__toggle-opt:hover { opacity: 0.95; }
+.franchise-chain-frame__toggle-opt:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.franchise-chain-frame__toggle-opt:active { transform: scale(0.97); }
+.franchise-chain-frame__toggle-opt:focus-visible {
+  outline: 2px solid var(--accent-secondary);
+  outline-offset: -2px;
+}
 .franchise-chain-frame__toggle-opt.is-active {
-  opacity: 1;
-  color: var(--text-primary, #e5e7eb);
-  background: color-mix(in srgb, var(--accent-primary) 18%, transparent);
+  color: var(--accent-primary);
+  background: var(--accent-glow);
 }
 
 /* Right-click context menu (portal'd at document.body, positioned at cursor).
@@ -219,11 +245,11 @@
   position: fixed;
   z-index: 2500;
   min-width: 160px;
-  padding: 4px;
-  background: var(--bg-card, #15151c);
-  border: 1px solid var(--border-color, rgba(255,255,255,0.08));
-  border-radius: var(--radius-md, 10px);
-  box-shadow: 0 12px 32px rgba(0,0,0,0.45);
+  padding: var(--s1);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -232,18 +258,25 @@
   appearance: none;
   background: transparent;
   border: none;
-  color: var(--text-primary, #e5e7eb);
+  color: var(--text-primary);
   font: inherit;
   font-size: 0.85rem;
   text-align: left;
   padding: 6px 10px;
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--radius-sm);
   cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    transform var(--transition-fast);
 }
-.franchise-context-menu__item:hover,
-.franchise-context-menu__item:focus-visible {
+.franchise-context-menu__item:hover {
   background: var(--bg-elev);
-  outline: none;
+}
+.franchise-context-menu__item:active { transform: scale(0.97); }
+.franchise-context-menu__item:focus-visible {
+  outline: 2px solid var(--accent-secondary);
+  outline-offset: -2px;
+  background: var(--bg-elev);
 }
 
 /* Smoothstep markers - keep them subtle */
@@ -253,54 +286,66 @@
 .franchise-filters {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--s2);
 }
 .franchise-filters__group {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--s2);
   align-items: center;
   justify-content: center;
 }
+/* The chips ride the .chip--sm .chip--toggle idiom, but with per-category dot
+   colors instead of the teal is-on wash: the dot IS the legend (it uses the
+   exact token its edges/nodes are painted with), so an all-teal active state
+   would destroy the mapping. Visible (.is-on) = solid chip + colored dot;
+   hidden = dimmed outline chip (dot keeps its hue, just dimmed with it). */
 .franchise-filter-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: var(--bg-tertiary, #1a1a22);
-  border: 1px solid var(--border-color, rgba(255,255,255,0.07));
-  color: var(--text-secondary, #94a3b8);
-  font-size: 12px;
-  cursor: pointer;
-  transition: opacity 120ms ease, background 120ms ease;
+  gap: var(--s2);
+  transition:
+    opacity var(--transition-fast),
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast);
 }
-.franchise-filter-chip::before {
-  content: '';
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--text-muted, #64748b);
+.franchise-filter-chip.is-on {
+  color: var(--text-secondary);
+  border-color: var(--border-color);
+  background: var(--bg-tertiary);
 }
-.franchise-filter-chip[data-category="spine"]::before       { background: var(--accent-primary); }
-.franchise-filter-chip[data-category="source"]::before      { background: var(--accent-secondary, #818cf8); }
-.franchise-filter-chip[data-category="alternative"]::before { background: var(--accent-amber, #f59e0b); }
-.franchise-filter-chip[data-category="character"]::before   { background: var(--accent-rose, #fb7185); }
-.franchise-filter-chip[data-category="side"]::before        { background: var(--text-secondary, #94a3b8); }
-.franchise-filter-chip[data-category="other"]::before       { background: var(--text-muted, #64748b); }
-.franchise-filter-chip--off {
-  opacity: 0.35;
+.franchise-filter-chip.is-on:hover {
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+}
+.franchise-filter-chip:not(.is-on) {
+  opacity: 0.4;
   background: transparent;
 }
-.franchise-filter-chip:hover {
-  background: var(--bg-hover, #1d1d26);
+.franchise-filter-chip:not(.is-on):hover {
+  opacity: 0.75;
 }
-.franchise-filter-chip[data-format="series"]::before      { background: var(--format-tv,    #14b8a6); }
-.franchise-filter-chip[data-format="movie"]::before       { background: var(--format-movie, #f59e0b); }
-.franchise-filter-chip[data-format="shortform"]::before   { background: var(--format-ova,   #a78bfa); }
-.franchise-filter-chip[data-format="manga"]::before       { background: var(--format-manga, #fb923c); }
-.franchise-filter-chip[data-format="novel"]::before       { background: var(--format-novel, #f472b6); }
-.franchise-filter-chip[data-format="visualnovel"]::before { background: var(--format-vn,    #e879f9); }
-.franchise-filter-chip[data-format="music"]::before       { background: var(--format-music, #10b981); }
-.franchise-filter-chip[data-format="other"]::before       { background: var(--text-muted,   #64748b); }
+.franchise-filter-chip:focus-visible {
+  outline: 2px solid var(--accent-secondary);
+  outline-offset: 2px;
+}
+/* Dot parity: each dot uses the SAME token as the edges/nodes it stands for
+   (see arrowColorFor + the edge variants above, and the --format-* node hues). */
+.franchise-filter-chip .chip__dot { background: var(--text-muted); }
+.franchise-filter-chip[data-category="spine"]       .chip__dot { background: var(--accent-primary); }
+.franchise-filter-chip[data-category="source"]      .chip__dot { background: var(--accent-blue); }
+.franchise-filter-chip[data-category="side"]        .chip__dot { background: var(--text-muted); }
+.franchise-filter-chip[data-category="alternative"] .chip__dot { background: var(--accent-amber); }
+.franchise-filter-chip[data-category="character"]   .chip__dot { background: var(--accent-rose); }
+.franchise-filter-chip[data-category="other"]       .chip__dot { background: var(--border-hover); }
+.franchise-filter-chip[data-format-group="series"]      .chip__dot { background: var(--format-tv); }
+.franchise-filter-chip[data-format-group="movie"]       .chip__dot { background: var(--format-movie); }
+.franchise-filter-chip[data-format-group="shortform"]   .chip__dot { background: var(--format-ova); }
+.franchise-filter-chip[data-format-group="manga"]       .chip__dot { background: var(--format-manga); }
+.franchise-filter-chip[data-format-group="novel"]       .chip__dot { background: var(--format-novel); }
+.franchise-filter-chip[data-format-group="visualnovel"] .chip__dot { background: var(--format-vn); }
+.franchise-filter-chip[data-format-group="music"]       .chip__dot { background: var(--format-music); }
+.franchise-filter-chip[data-format-group="other"]       .chip__dot { background: var(--text-muted); }
 
 /* ── Franchise graph fullscreen ────────────────────────────── */
 .franchise-graph--fullscreen {
@@ -311,102 +356,20 @@
   border-radius: 0 !important;
   z-index: 99999 !important;
 }
-.franchise-graph .react-flow__panel button {
-  background: var(--bg-tertiary, #1a1a22);
-  color: var(--text-secondary, #94a3b8);
-  border: 1px solid var(--border-color, rgba(255,255,255,0.07));
-  border-radius: var(--radius-md, 14px);
-  padding: 6px 12px;
-  font-size: 12px;
-  cursor: pointer;
-}
-.franchise-graph .react-flow__panel button:hover {
-  background: var(--bg-hover, #1d1d26);
-}
 
-/* Custom franchise graph controls - grouped buttons inside React Flow Panels */
+/* Custom franchise graph controls - grouped icon buttons inside React Flow
+   Panels. Scoped to the two icon-button panels (NOT every panel button) so
+   the chip classes in the filters panel are never overridden. */
 .franchise-graph .react-flow__panel.franchise-controls {
   display: inline-flex;
   flex-direction: column;
   gap: 0;
-  background: var(--bg-tertiary, #1a1a22);
-  border: 1px solid var(--border-color, rgba(255,255,255,0.07));
-  border-radius: var(--radius-md, 14px);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
-.franchise-graph .react-flow__panel.franchise-controls button {
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  color: var(--text-secondary, #94a3b8);
-  border: none;
-  border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.07));
-  border-radius: 0;
-  cursor: pointer;
-}
-.franchise-graph .react-flow__panel.franchise-controls button:last-child {
-  border-bottom: none;
-}
-.franchise-graph .react-flow__panel.franchise-controls button:hover {
-  background: var(--bg-hover, #1d1d26);
-  color: var(--text-primary, #e2e8f0);
-}
-/* Global Inline-source toggle at the bottom of the franchise canvas. */
-.franchise-graph .react-flow__panel.franchise-inline-panel {
-  margin-bottom: 12px;
-}
-.franchise-inline-toggle {
-  appearance: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--bg-card, #15151c);
-  border: 1px solid var(--border-color, rgba(255,255,255,0.08));
-  border-radius: 999px;
-  color: var(--text-muted, #64748b);
-  font: inherit;
-  font-size: 0.75rem;
-  padding: 6px 12px 6px 10px;
-  cursor: pointer;
-  letter-spacing: 0.03em;
-}
-.franchise-inline-toggle__dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--text-muted, #64748b);
-  transition: background 120ms ease;
-}
-.franchise-inline-toggle__state {
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--text-muted, #64748b) 18%, transparent);
-  color: var(--text-muted, #64748b);
-}
-.franchise-inline-toggle:hover {
-  color: var(--text-primary, #e2e8f0);
-  border-color: var(--accent-amber, #f59e0b);
-}
-.franchise-inline-toggle.is-active {
-  color: var(--text-primary, #e2e8f0);
-  border-color: var(--accent-amber, #f59e0b);
-  background: color-mix(in srgb, var(--accent-amber, #f59e0b) 22%, var(--bg-card, #15151c));
-}
-.franchise-inline-toggle.is-active .franchise-inline-toggle__dot {
-  background: var(--accent-amber, #f59e0b);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--accent-amber, #f59e0b) 60%, transparent);
-}
-.franchise-inline-toggle.is-active .franchise-inline-toggle__state {
-  background: color-mix(in srgb, var(--accent-amber, #f59e0b) 40%, transparent);
-  color: var(--text-primary, #e2e8f0);
-}
+.franchise-graph .react-flow__panel.franchise-controls button,
 .franchise-graph .react-flow__panel.franchise-fullscreen-toggle button {
   width: 32px;
   height: 32px;
@@ -414,17 +377,121 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  background: transparent;
+  color: var(--text-secondary);
+  border: none;
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast);
 }
+.franchise-graph .react-flow__panel.franchise-controls button {
+  border-bottom: 1px solid var(--border-color);
+  border-radius: 0;
+}
+.franchise-graph .react-flow__panel.franchise-controls button:last-child {
+  border-bottom: none;
+}
+.franchise-graph .react-flow__panel.franchise-controls button:hover,
+.franchise-graph .react-flow__panel.franchise-fullscreen-toggle button:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.franchise-graph .react-flow__panel.franchise-controls button:active,
+.franchise-graph .react-flow__panel.franchise-fullscreen-toggle button:active {
+  transform: scale(0.97);
+}
+.franchise-graph .react-flow__panel.franchise-controls button:focus-visible,
+.franchise-graph .react-flow__panel.franchise-fullscreen-toggle button:focus-visible {
+  outline: 2px solid var(--accent-secondary);
+  outline-offset: -2px;
+}
+.franchise-graph .react-flow__panel.franchise-fullscreen-toggle button {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+/* Global Inline-source toggle at the bottom of the franchise canvas.
+   Active state is teal like every other "on" control in the app. */
+.franchise-graph .react-flow__panel.franchise-inline-panel {
+  margin-bottom: var(--s3);
+}
+.franchise-inline-toggle {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--chip-font);
+  padding: 6px var(--s3) 6px 10px;
+  cursor: pointer;
+  letter-spacing: 0.03em;
+  transition:
+    color var(--transition-fast),
+    border-color var(--transition-fast),
+    background var(--transition-fast),
+    transform var(--transition-fast);
+}
+.franchise-inline-toggle__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: background var(--transition-fast), box-shadow var(--transition-fast);
+}
+.franchise-inline-toggle__state {
+  font-size: var(--chip-font-sm);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 2px var(--s2);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--text-muted) 18%, transparent);
+  color: var(--text-muted);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.franchise-inline-toggle:hover {
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+}
+.franchise-inline-toggle:active { transform: scale(0.97); }
+.franchise-inline-toggle:focus-visible {
+  outline: 2px solid var(--accent-secondary);
+  outline-offset: 2px;
+}
+.franchise-inline-toggle.is-active {
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--accent-primary) 45%, transparent);
+  background: var(--accent-glow);
+}
+.franchise-inline-toggle.is-active:hover {
+  border-color: color-mix(in srgb, var(--accent-primary) 65%, transparent);
+}
+.franchise-inline-toggle.is-active .franchise-inline-toggle__dot {
+  background: var(--accent-primary);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+.franchise-inline-toggle.is-active .franchise-inline-toggle__state {
+  background: color-mix(in srgb, var(--accent-primary) 30%, transparent);
+  color: var(--text-primary);
+}
+
+/* Filters panel: THE dark glass recipe over the canvas. */
 .franchise-graph .react-flow__panel.franchise-filters-panel {
-  margin: 12px;
-  background: rgba(21, 21, 28, 0.78);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid var(--border-color, rgba(255,255,255,0.07));
-  border-radius: var(--radius-lg, 20px);
+  margin: var(--s3);
+  background: var(--scrim);
+  backdrop-filter: blur(var(--scrim-blur));
+  -webkit-backdrop-filter: blur(var(--scrim-blur));
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
   padding: 10px 14px;
   pointer-events: auto;
-  max-width: calc(100% - 24px);
+  max-width: calc(100% - var(--s6));
 }
 .franchise-graph .react-flow__panel.franchise-filters-panel .franchise-filters {
   margin: 0;
@@ -436,9 +503,9 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  background: var(--bg-card, #15151c);
-  border: 1px solid var(--border-color, rgba(255,255,255,0.07));
-  border-radius: var(--radius-lg, 20px);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
   overflow: hidden;
   width: 180px;
   text-align: left;
@@ -446,11 +513,22 @@
   font: inherit;
   padding: 0;
 }
+/* Immediate hover feedback on the node itself (border + slight poster
+   brighten at --transition-fast); the 280ms delayed neighbor-dim is a
+   separate, slower system layered on top. Scoped to button nodes only:
+   the current node is a div and stays visually inert (it is not clickable).
+   External nodes keep their dashed border on hover - ownership stays legible. */
 button.franchise-node {
   cursor: pointer;
 }
 button.franchise-node:hover {
-  border-color: var(--border-hover, rgba(255,255,255,0.14));
+  border-color: var(--border-hover);
+}
+.franchise-node .relation-card-poster img {
+  transition: filter var(--transition-fast);
+}
+button.franchise-node:hover .relation-card-poster img {
+  filter: brightness(1.06);
 }
 .franchise-node--external {
   border-style: dashed;
@@ -461,7 +539,7 @@ button.franchise-node:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--s2);
   min-height: 16px;
 }
 .franchise-node__owned-icon {
@@ -469,7 +547,7 @@ button.franchise-node:hover {
   flex-shrink: 0;
 }
 .franchise-node__anilist-icon {
-  color: var(--accent-secondary, #818cf8);
+  color: var(--anilist-blue);
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
@@ -488,7 +566,9 @@ button.franchise-node:hover {
 
 /* ── Hover-dim: non-connected nodes + edges ────────────────────────────── */
 .franchise-node {
-  transition: opacity 260ms ease-out;
+  transition:
+    opacity 260ms ease-out,
+    border-color var(--transition-fast);
 }
 .franchise-node[data-dimmed="true"] {
   opacity: 0.18;
@@ -505,36 +585,41 @@ button.franchise-node:hover {
 .franchise-graph .franchise-edge.franchise-edge--dimmed marker path {
   opacity: 0.08;
 }
+/* Not-yet-released tag: the chip--sm amber recipe (class kept for the node
+   markup, look shared with the app-wide chip system). */
 .franchise-node__status-tag {
   display: inline-flex;
   align-items: center;
-  padding: 0.15rem 0.45rem;
+  gap: var(--s1);
+  padding: 2px 8px;
   border-radius: var(--radius-pill);
   font-family: var(--font-mono);
-  font-size: 0.62rem;
+  font-size: var(--chip-font-sm);
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
   color: var(--accent-amber);
-  border: 1px solid color-mix(in srgb, var(--accent-amber) 38%, var(--border-color));
-  background: color-mix(in srgb, var(--accent-amber) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-amber) 35%, transparent);
+  background: color-mix(in srgb, var(--accent-amber) 10%, transparent);
   align-self: flex-start;
   white-space: nowrap;
 }
 
-/* ── Franchise map debug panel ─────────────────────────────────────────────── */
+/* ── Franchise map debug panel (dev / anibeam.graphDebug only) ─────────────── */
 .franchise-graph .react-flow__panel.franchise-debug {
-  margin: 12px;
-  padding: 8px 10px;
-  background: rgba(21, 21, 28, 0.78);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid var(--border-color, rgba(255,255,255,0.07));
-  border-radius: var(--radius-md, 14px);
+  margin: var(--s3);
+  padding: var(--s2) 10px;
+  background: var(--scrim);
+  backdrop-filter: blur(var(--scrim-blur));
+  -webkit-backdrop-filter: blur(var(--scrim-blur));
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
   font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.5;
-  color: var(--text-secondary, #94a3b8);
+  color: var(--text-secondary);
   pointer-events: none; /* purely informational; don't intercept clicks */
   user-select: text;     /* but allow copy if needed */
   min-width: 160px;

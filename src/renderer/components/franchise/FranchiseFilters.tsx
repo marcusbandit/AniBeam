@@ -44,7 +44,7 @@ export interface FranchiseFiltersProps {
 
 /**
  * Map an AniList relationType string to one of the display categories
- * used by the filter chips. Pure function — no side effects.
+ * used by the filter chips. Pure function - no side effects.
  */
 export function categoryFor(relationType: string): FranchiseCategory {
   switch (relationType) {
@@ -90,22 +90,28 @@ export function FranchiseFilters(props: FranchiseFiltersProps): ReactElement {
             key={cat}
             type="button"
             data-category={cat}
-            className={`franchise-filter-chip${hidden.has(cat) ? ' franchise-filter-chip--off' : ''}`}
+            aria-pressed={!hidden.has(cat)}
+            className={`chip chip--sm chip--toggle franchise-filter-chip${hidden.has(cat) ? '' : ' is-on'}`}
             onClick={() => onToggle(cat)}
           >
+            <span className="chip__dot" aria-hidden="true" />
             {label}
           </button>
         ))}
       </div>
       <div className="franchise-filters__group">
+        {/* data-format-group (not data-format) so the primitives' .chip[data-format]
+            AniList-enum tinting can't half-match these grouped values. */}
         {FORMATS.map((fmt) => (
           <button
             key={fmt}
             type="button"
-            data-format={fmt}
-            className={`franchise-filter-chip franchise-filter-chip--format${hiddenFormats.has(fmt) ? ' franchise-filter-chip--off' : ''}`}
+            data-format-group={fmt}
+            aria-pressed={!hiddenFormats.has(fmt)}
+            className={`chip chip--sm chip--toggle franchise-filter-chip${hiddenFormats.has(fmt) ? '' : ' is-on'}`}
             onClick={() => onToggleFormat(fmt)}
           >
+            <span className="chip__dot" aria-hidden="true" />
             {FORMAT_LABELS[fmt]}
           </button>
         ))}
