@@ -96,12 +96,15 @@
   width: min(var(--player-island-max-w), calc(100% - var(--player-island-side-gap) * 2));
   z-index: 5;
   padding: var(--s3) var(--s4);
+  /* Island material: stays on --scrim (opaque dark glass reads over any
+     video frame; --glass-veil is for overlays over chrome/artwork), but
+     joins the glass family via the light edge + inner top highlight. */
   background: var(--scrim);
   backdrop-filter: blur(var(--scrim-blur));
   -webkit-backdrop-filter: blur(var(--scrim-blur));
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--glass-edge-bright);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--glass-highlight), var(--shadow-lg);
   transition:
     opacity var(--transition-normal),
     transform var(--transition-normal);
@@ -113,10 +116,11 @@
   /* Scrub palette, consumed by the inline gradient string built in JSX
      (var() references resolve at computed-value time). Keeps the band and
      track colors in one tokenized place: intro band = amber, outro band =
-     brand teal, played = primary text, unplayed = faint text wash. */
+     indigo (--accent-b, contrasts the played teal), played = accent teal,
+     unplayed = faint text wash. */
   --player-band-intro: color-mix(in srgb, var(--accent-amber) 70%, transparent);
-  --player-band-outro: color-mix(in srgb, var(--accent-primary) 70%, transparent);
-  --player-scrub-played: var(--text-primary);
+  --player-band-outro: color-mix(in srgb, var(--accent-b) 70%, transparent);
+  --player-scrub-played: var(--accent-a);
   --player-scrub-rest: color-mix(in srgb, var(--text-primary) 18%, transparent);
 }
 /* Auto-hide slide: opacity + pointer-events stay inline-gated off the same
@@ -151,8 +155,9 @@
 .player-ctl-btn:hover { background: color-mix(in srgb, var(--text-primary) 10%, transparent); }
 .player-ctl-btn:active:not(:disabled) { transform: scale(0.97); }
 .player-ctl-btn.active {
-  color: var(--accent-primary);
+  color: var(--accent-a);
   background: var(--accent-glow);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accent-a) 20%, transparent);
 }
 .player-ctl-btn:disabled { opacity: 0.3; cursor: default; }
 .player-ctl-btn:disabled:hover { background: transparent; }
@@ -194,8 +199,10 @@
     background var(--transition-fast),
     border-color var(--transition-fast);
 }
+/* Hover lightens INTO the scrim (a bare --bg-hover wash would drop the
+   opaque base and go see-through over the video). */
 .player-skip:hover {
-  background: var(--bg-hover);
+  background: color-mix(in srgb, var(--text-primary) 10%, var(--scrim));
   border-color: var(--accent-primary);
   transform: translateY(-1px);
 }
@@ -233,7 +240,7 @@
   border: 1px solid var(--border-hover);
 }
 .player-autonext-stay:hover {
-  background: var(--bg-hover);
+  background: color-mix(in srgb, var(--text-primary) 10%, var(--scrim));
   border-color: var(--accent-primary);
   transform: translateY(-1px);
 }
@@ -294,7 +301,7 @@
     border-color var(--transition-fast);
 }
 .player-replay-btn:hover {
-  background: var(--bg-hover);
+  background: color-mix(in srgb, var(--text-primary) 10%, var(--scrim));
   border-color: var(--accent-primary);
   transform: scale(1.05);
 }
@@ -336,7 +343,8 @@
   to { opacity: 1; transform: translate(-50%, 0); }
 }
 
-/* Final-episode rating prompt - persistent, sits just under the toast. */
+/* Final-episode rating prompt - persistent, sits just under the toast.
+   Frosted glass: it is a floating panel, not a poster chip. */
 .player-rating-prompt {
   position: absolute;
   top: 108px;
@@ -346,15 +354,15 @@
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
-  background: var(--scrim);
-  backdrop-filter: blur(var(--scrim-blur));
-  -webkit-backdrop-filter: blur(var(--scrim-blur));
+  background: var(--glass-veil);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   color: var(--text-primary);
-  border: 1px solid var(--border-hover);
+  border: 1px solid var(--glass-edge-bright);
   border-radius: var(--radius-lg);
   padding: 0.75rem 0.95rem 0.8rem;
   font-family: var(--font-mono);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--glass-highlight), var(--shadow-lg);
   animation: toastIn 220ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 .player-rating-prompt-head {
@@ -372,11 +380,13 @@
   gap: 0.5rem;
 }
 
+/* Sit on the prompt's veil, so translucent glass fills read: rest is the
+   quiet glass wash, hover steps up to the strong wash + bright edge. */
 .player-rating-submit,
 .player-rating-dismiss {
-  background: var(--bg-card);
+  background: var(--glass-bg);
   color: var(--text-primary);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--glass-edge);
   border-radius: var(--radius-md);
   padding: 0.35rem 0.75rem;
   font-family: var(--font-mono);
@@ -399,8 +409,8 @@
   color: var(--accent-secondary);
 }
 .player-rating-dismiss:hover:not(:disabled) {
-  background: var(--bg-elev);
-  border-color: var(--border-hover);
+  background: var(--glass-bg-strong);
+  border-color: var(--glass-edge-bright);
 }
 .player-rating-submit:disabled,
 .player-rating-dismiss:disabled { opacity: 0.55; cursor: not-allowed; }
@@ -422,10 +432,12 @@
 }
 .codec-modal {
   width: min(480px, 100%);
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
+  background: var(--glass-veil);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-edge-bright);
   border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--glass-highlight), var(--shadow-lg);
   padding: 1.25rem 1.4rem 1.1rem;
   animation: playerPop 160ms cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -489,17 +501,25 @@
     background var(--transition-fast),
     border-color var(--transition-fast),
     opacity var(--transition-fast),
+    filter var(--transition-fast),
     transform var(--transition-fast);
 }
 .codec-modal-btn:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--border-hover); }
 .codec-modal-btn:active:not(:disabled) { transform: scale(0.97); }
 .codec-modal-btn.ghost { color: var(--text-secondary); }
+/* Accent CTA = the house gradient-light button: gradient fill, dark text, glow. */
 .codec-modal-btn.primary {
-  background: var(--accent-primary);
-  border-color: var(--accent-primary);
-  color: var(--bg-primary);
+  background: var(--grad-accent);
+  border-color: transparent;
+  color: var(--bg-deep);
+  font-weight: 700;
+  box-shadow: var(--glow-accent);
 }
-.codec-modal-btn.primary:hover:not(:disabled) { background: var(--accent-secondary); border-color: var(--accent-secondary); }
+.codec-modal-btn.primary:hover:not(:disabled) {
+  background: var(--grad-accent);
+  border-color: transparent;
+  filter: brightness(1.08);
+}
 .codec-modal-btn:disabled { opacity: 0.55; cursor: default; }
 
 /* Re-encoding overlay - same shell, no AlertTriangle, spinning loader,
@@ -528,8 +548,9 @@
 }
 .codec-modal-progress-fill {
   height: 100%;
-  background: var(--accent-primary);
+  background: var(--grad-accent);
   border-radius: inherit;
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent-a) 30%, transparent);
   transition: width 280ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 .codec-modal-progress-meta {
@@ -562,12 +583,14 @@
   bottom: calc(100% + 10px);
   right: 0;
   width: 280px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
+  background: var(--glass-veil);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-edge-bright);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--glass-highlight), var(--shadow-lg);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--text-primary);
   overflow: hidden;
   z-index: 10;
@@ -586,7 +609,7 @@
   font: inherit;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  font-size: 11px;
+  font-size: 0.7rem;
   transition:
     background var(--transition-fast),
     color var(--transition-fast),
@@ -598,9 +621,11 @@
 }
 .sub-menu-tab:active { transform: scale(0.97); }
 .sub-menu-tab.active {
-  color: var(--text-primary);
+  color: var(--accent-a);
   background: var(--bg-hover);
-  box-shadow: inset 0 -2px 0 var(--accent-primary);
+  box-shadow:
+    inset 0 -2px 0 var(--accent-a),
+    inset 0 -10px 14px -12px color-mix(in srgb, var(--accent-a) 45%, transparent);
 }
 .sub-menu-body {
   max-height: 320px;
@@ -625,8 +650,9 @@
 }
 .sub-menu-row:hover { background: var(--bg-hover); }
 .sub-menu-row.active {
-  color: var(--accent-primary);
+  color: var(--accent-a);
   background: var(--accent-glow);
+  box-shadow: inset 0 0 16px color-mix(in srgb, var(--accent-a) 8%, transparent);
   font-weight: 600;
 }
 
@@ -642,7 +668,7 @@
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  font-size: 11px;
+  font-size: 0.7rem;
 }
 .sub-style-val {
   color: var(--text-muted);
@@ -713,7 +739,7 @@
   border-radius: var(--radius-sm);
   cursor: pointer;
   font: inherit;
-  font-size: 11px;
+  font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   transition:
@@ -741,7 +767,7 @@
   background: color-mix(in srgb, var(--accent-amber) 10%, transparent);
   border: 1px solid color-mix(in srgb, var(--accent-amber) 35%, transparent);
   border-radius: var(--radius-sm);
-  font-size: 11px;
+  font-size: 0.7rem;
   line-height: 1.4;
   color: var(--text-secondary);
 }
@@ -847,10 +873,12 @@
 }
 .player-shortcuts {
   width: min(400px, 100%);
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
+  background: var(--glass-veil);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-edge-bright);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--glass-highlight), var(--shadow-lg);
   padding: var(--s5) var(--s6);
   font-family: var(--font-mono);
   display: flex;
@@ -899,6 +927,8 @@
   background: linear-gradient(to bottom, var(--scrim), transparent);
   transition: opacity var(--transition-normal);
 }
+/* Floats over raw video (the header gradient fades fast), so it gets the
+   scrim-chip shell like .player-skip, not a translucent wash. */
 .player-back {
   display: inline-flex;
   align-items: center;
@@ -907,8 +937,10 @@
   font-family: var(--font-mono);
   font-size: 0.8rem;
   color: var(--text-primary);
-  background: var(--bg-elev);
-  border: 1px solid var(--border-color);
+  background: var(--scrim);
+  backdrop-filter: blur(var(--scrim-blur));
+  -webkit-backdrop-filter: blur(var(--scrim-blur));
+  border: 1px solid var(--glass-edge);
   border-radius: var(--radius-md);
   cursor: pointer;
   transition:
@@ -917,8 +949,8 @@
     transform var(--transition-fast);
 }
 .player-back:hover {
-  background: color-mix(in srgb, var(--text-primary) 12%, transparent);
-  border-color: var(--border-hover);
+  background: color-mix(in srgb, var(--text-primary) 12%, var(--scrim));
+  border-color: var(--glass-edge-bright);
 }
 .player-back:active { transform: scale(0.97); }
 .player-titles {
