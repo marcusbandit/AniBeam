@@ -211,9 +211,12 @@ function ShowCard({
             Hidden
           </span>
         )}
+        {/* Top corner chips are DEFAULT chip size (readability: the episode
+            code and watched fraction are the two facts a glance needs);
+            ratings/encode/hidden stay chip--sm. */}
         {watchedLabel && (
           <span
-            className={`chip chip--sm chip--scrim show-card-chip show-card-chip--tr show-card-fraction--${fractionState}`}
+            className={`chip chip--scrim show-card-chip show-card-chip--tr show-card-fraction--${fractionState}`}
             aria-label={`Watched ${watchedLabel}`}
           >
             {watchedLabel}
@@ -221,14 +224,14 @@ function ShowCard({
         )}
         {isMovie && episodeBadgeNumber != null ? (
           <span
-            className="chip chip--sm chip--scrim show-card-chip show-card-chip--tl"
+            className="chip chip--scrim show-card-chip show-card-chip--tl"
             aria-label="Movie"
           >
             Movie
           </span>
         ) : epBadge ? (
           <span
-            className="chip chip--sm chip--scrim show-card-chip show-card-chip--tl"
+            className="chip chip--scrim show-card-chip show-card-chip--tl"
             aria-label={`Episode ${epBadge}`}
           >
             EP {epBadge}
