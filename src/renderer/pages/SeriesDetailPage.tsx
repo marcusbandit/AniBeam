@@ -935,17 +935,51 @@ function SeriesDetailPage() {
   return (
     <Page>
       <div className="series-detail-bare">
-        <button className="detail-back" onClick={() => navigate("/")}>
+
+      {/* Cinematic full-bleed band. Art priority: banner (object-position
+          top) → blurred blow-up of the series' own poster → quiet
+          bg-secondary. The gradients live on the art layer's ::after; the
+          band itself never clips so the poster hang and the score popover
+          can escape its box. */}
+      <section
+        className={`series-hero-band${bannerUrl ? " has-banner" : posterUrl ? " has-posterfill" : ""}`}
+      >
+        <div className="series-hero-band__art" aria-hidden="true">
+          {bannerUrl ? (
+            <img
+              className="series-hero-band__img series-hero-band__img--banner"
+              src={bannerUrl}
+              alt=""
+              decoding="async"
+              onError={(e) => {
+                const t = e.target as HTMLImageElement;
+                t.style.display = "none";
+              }}
+            />
+          ) : posterUrl ? (
+            <img
+              className="series-hero-band__img series-hero-band__img--posterfill"
+              src={posterUrl}
+              alt=""
+              decoding="async"
+              onError={(e) => {
+                const t = e.target as HTMLImageElement;
+                t.style.display = "none";
+              }}
+            />
+          ) : null}
+        </div>
+
+        <button
+          type="button"
+          className="chip chip--scrim series-hero-back"
+          onClick={() => navigate("/")}
+        >
           <ArrowLeft size={14} />
           <span>Library</span>
         </button>
 
-      <section
-        className={`series-hero${bannerUrl ? " has-banner" : ""}`}
-        style={bannerUrl ? { ["--hero-banner" as string]: `url("${bannerUrl}")` } : undefined}
-      >
-        {bannerUrl && <div className="series-hero-banner" aria-hidden="true" />}
-        <div className="series-hero-inner">
+        <div className="series-hero-band__inner">
           <div className="series-hero-poster">
             {posterUrl ? (
               <img
@@ -965,7 +999,7 @@ function SeriesDetailPage() {
             )}
           </div>
 
-          <div className="series-hero-body">
+          <div className="series-hero-head">
             <h1 className="series-hero-title">{displayTitle}</h1>
             {altTitle && <p className="series-hero-alt-title">{altTitle}</p>}
 
@@ -1104,7 +1138,16 @@ function SeriesDetailPage() {
                 </Tooltip>
               )}
             </div>
+          </div>
+        </div>
+      </section>
 
+      {/* Under-band flow: normal padded grid right below the band. The first
+          column is reserved for the poster's ~60px overlap; synopsis +
+          Continue + progress take the middle; the tags panel is the right
+          column when the series has tags. */}
+      <div className="series-hero-under">
+        <div className="series-hero-under__main">
             {description && (
               <div className="series-hero-desc-wrap">
                 <p
@@ -1170,9 +1213,9 @@ function SeriesDetailPage() {
                 )}
               </div>
             )}
-          </div>
+        </div>
 
-          {allTags.length > 0 && (
+        {allTags.length > 0 && (
             <aside className={`series-hero-tags${tagsExpanded ? " is-expanded" : ""}`} aria-label="Tags">
               <div className="series-hero-tags-head">
                 <span className="series-hero-tags-label">Tags</span>
@@ -1216,9 +1259,8 @@ function SeriesDetailPage() {
                 })}
               </ul>
             </aside>
-          )}
-        </div>
-      </section>
+        )}
+      </div>
 
       <Section
         first

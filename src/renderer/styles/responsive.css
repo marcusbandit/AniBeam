@@ -31,15 +31,3 @@
   }
   .cache-actions { grid-column: 1 / -1; justify-self: stretch; }
 }
-
-@media (max-width: 980px) {
-  .series-hero-inner {
-    grid-template-columns: 220px 1fr;
-  }
-}
-@media (max-width: 720px) {
-  .series-hero-inner {
-    grid-template-columns: 1fr;
-    gap: 1.25rem;
-  }
-}

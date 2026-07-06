@@ -1,100 +1,138 @@
-/* series.css - SeriesDetailPage: hero, chip rows, score popover, tags panel, characters, recommendations, format accents, bonus groups */
+/* series.css - SeriesDetailPage: cinematic hero band, chip rows, score popover, under-band flow, tags panel, characters, recommendations, format accents, bonus groups */
 
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Folder-driven detail page shell. */
-.series-detail-bare { animation: fadeIn 200ms ease-out; }
-
-.detail-back {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s2);
-  padding: var(--s2) var(--s3);
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition:
-    color var(--transition-fast),
-    background var(--transition-fast),
-    transform var(--transition-fast);
-  margin-bottom: var(--s6);
+/* Folder-driven detail page shell. Hero geometry is declared once here so
+   the band and the under-band grid agree: the poster column is
+   --hero-poster-w wide and the poster hangs --hero-overlap below the
+   band's bottom edge, straddling artwork and page. */
+.series-detail-bare {
+  animation: fadeIn 200ms ease-out;
+  --hero-poster-w: clamp(160px, 18vw, 210px);
+  --hero-overlap: 60px;
 }
-.detail-back:hover { color: var(--text-primary); background: var(--bg-secondary); }
-.detail-back:active { transform: scale(0.97); }
 
-/* ---------- Series hero ---------- */
-.series-hero {
+/* ---------- Cinematic hero band ---------- */
+/* Full-bleed: escapes the page's horizontal padding (and its top padding)
+   with negative margins so the artwork runs edge to edge and dissolves
+   into the page below. The old boxed hero card is gone - the page IS the
+   card now. --page-pad-x is defined on .page (base.css); the fallbacks
+   keep the math correct regardless of which style change lands first. */
+.series-hero-band {
   position: relative;
-  margin-top: var(--s2);
-  margin-bottom: var(--s8);
-  border-radius: var(--radius-xl);
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  overflow: hidden;
-  isolation: isolate;
+  /* Lifted above the under-band grid and the sections that follow so the
+     hanging poster and the score popover paint over them. The band itself
+     never clips (no overflow rule) - only __art does - so absolutely
+     positioned descendants like the popover escape its box freely. */
+  z-index: 2;
+  height: clamp(300px, 38vh, 440px);
+  margin-inline: calc(-1 * var(--page-pad-x, var(--s10)));
+  margin-top: calc(-1 * var(--page-pad-top, var(--s8)));
 }
-/* Banner art is decorative atmosphere - heavy darken + blur so the hero
-   text always wins contrast. The image is set as a CSS variable on the
-   parent so we can keep the JSX free of inline backgroundImage strings. */
-.series-hero-banner {
+
+/* Artwork layer, clipped to the band so the blur/scale spill of the
+   poster-fill treatment never leaks. bg-secondary doubles as the quiet
+   fallback band for series with no art (and behind a failed image load). */
+.series-hero-band__art {
   position: absolute;
   inset: 0;
-  background-image: var(--hero-banner);
-  background-size: cover;
-  background-position: center 30%;
-  filter: blur(28px) saturate(1.05);
-  opacity: 0.45;
-  transform: scale(1.12);
-  z-index: 0;
+  overflow: hidden;
+  background: var(--bg-secondary);
 }
-/* Neutral dark scrim over the banner, fading to the hero surface at the
-   bottom, plus a whisper of the brand glow in the top-left corner. */
-.series-hero.has-banner::after {
+.series-hero-band__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.series-hero-band__img--banner { object-position: top; }
+/* No banner: the series' own poster blown up into atmosphere - blurred,
+   saturated, half-opacity - so every series gets the title-screen
+   treatment, not just the ones AniList shipped a banner for. */
+.series-hero-band__img--posterfill {
+  object-position: center 30%;
+  filter: blur(60px) saturate(1.3);
+  transform: scale(1.25);
+  opacity: 0.5;
+}
+/* Overlay gradients (first layer paints on top). Layer 1: vertical
+   dissolve landing on fully opaque bg-primary at the bottom edge, so the
+   band melts into the page with no hard line - being opaque there it also
+   covers layer 2, which would otherwise leave a dark corner seam. Layer 2:
+   left-side darkening (roughly 55% black, gone by 60% width) for title
+   legibility over busy art. */
+.series-hero-band__art::after {
   content: "";
   position: absolute;
   inset: 0;
   background:
     linear-gradient(
       180deg,
-      color-mix(in srgb, var(--scrim) 70%, transparent) 0%,
-      var(--scrim) 60%,
-      var(--bg-secondary) 100%
+      transparent 0%,
+      transparent 34%,
+      color-mix(in srgb, var(--bg-primary) 55%, transparent) 70%,
+      var(--bg-primary) 100%
     ),
-    radial-gradient(120% 80% at 0% 0%, color-mix(in srgb, var(--accent-glow) 70%, transparent), transparent 60%);
-  z-index: 0;
+    linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.55) 0%,
+      rgba(0, 0, 0, 0.28) 32%,
+      transparent 60%
+    );
   pointer-events: none;
 }
-.series-hero-inner {
+
+/* Back control floating over the art at the band's top-left, aligned to
+   the page content column. chip--scrim is THE dark-glass recipe; this
+   only adds interactivity (hover paint, press scale) and a roomier hit
+   target. */
+.series-hero-back {
+  position: absolute;
+  top: var(--s5);
+  left: var(--page-pad-x, var(--s10));
+  z-index: 3;
+  padding: var(--s2) var(--s3);
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast),
+    transform var(--transition-fast);
+}
+.series-hero-back:hover {
+  background: color-mix(in srgb, var(--scrim) 82%, var(--text-primary));
+  color: var(--accent-secondary);
+}
+.series-hero-back:active { transform: scale(0.97); }
+
+/* Band content: poster column + title block, pinned to the band's bottom
+   edge over the artwork's lower third. Padding mirrors the page padding
+   the band escaped, so content stays on the page's content grid. */
+.series-hero-band__inner {
   position: relative;
   z-index: 1;
+  height: 100%;
+  padding-inline: var(--page-pad-x, var(--s10));
   display: grid;
-  grid-template-columns: 220px 1fr 220px;
-  gap: var(--s6);
-  padding: var(--s6);
-}
-/* No tag column to render - collapse the third track so the body can use
-   the full remaining width. Set on the section element via JSX-conditional
-   class wasn't worth the noise; the :has selector reads the live DOM. */
-.series-hero-inner:not(:has(.series-hero-tags)) {
-  grid-template-columns: 220px 1fr;
+  grid-template-columns: var(--hero-poster-w) minmax(0, 1fr);
+  column-gap: var(--s6);
+  align-items: end;
 }
 
+/* The poster straddles the band edge: its bottom hangs --hero-overlap
+   below the band, into the under-band grid's reserved first column. */
 .series-hero-poster {
   position: relative;
-  width: 220px;
+  width: var(--hero-poster-w);
   aspect-ratio: 2 / 3;
+  margin-bottom: calc(-1 * var(--hero-overlap));
   border-radius: var(--radius-lg);
   overflow: hidden;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-lg);
 }
 .series-hero-poster img {
   width: 100%;
@@ -110,11 +148,17 @@
   justify-content: center;
   color: var(--text-muted);
 }
-.series-hero-body {
+
+/* Title block: display-face title, alt title, then the two chip rows,
+   sitting over the gradient's landing zone. Text shadows carry legibility
+   where the art is still visible behind them; the chips are already
+   opaque chrome. */
+.series-hero-head {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: var(--s3);
-  min-width: 0;
+  padding-bottom: var(--s5);
 }
 .series-hero-title {
   font-family: var(--font-display);
@@ -124,13 +168,15 @@
   letter-spacing: -0.02em;
   color: var(--text-primary);
   word-break: break-word;
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.55);
 }
 .series-hero-alt-title {
   font-family: var(--font-mono);
   font-size: 0.8rem;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   letter-spacing: 0.02em;
   margin-top: calc(-1 * var(--s2));
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
 }
 
 /* ---------- Hero chip rows ---------- */
@@ -185,11 +231,11 @@
    data-status recipe (primitives.css) covers tracker list statuses; these
    add the airing vocabulary on top: releasing = alive (teal), upcoming =
    informational, hiatus = warning, cancelled = failure. */
-.series-hero .chip[data-status="releasing" i] { --chip-tone: var(--accent-primary); }
-.series-hero .chip[data-status="upcoming" i]  { --chip-tone: var(--accent-blue); }
-.series-hero .chip[data-status="hiatus" i]    { --chip-tone: var(--accent-amber); }
-.series-hero .chip[data-status="cancelled" i] { --chip-tone: var(--accent-rose); }
-.series-hero .chip[data-status="finished" i]  { --chip-tone: var(--text-secondary); }
+.series-hero-band .chip[data-status="releasing" i] { --chip-tone: var(--accent-primary); }
+.series-hero-band .chip[data-status="upcoming" i]  { --chip-tone: var(--accent-blue); }
+.series-hero-band .chip[data-status="hiatus" i]    { --chip-tone: var(--accent-amber); }
+.series-hero-band .chip[data-status="cancelled" i] { --chip-tone: var(--accent-rose); }
+.series-hero-band .chip[data-status="finished" i]  { --chip-tone: var(--text-secondary); }
 
 /* Score popover, anchored to the my-score chip. Buttons inside are the
    shared .btn system (Save = btn--accent, Clear = btn-danger). */
@@ -301,11 +347,38 @@
   background: var(--bg-tertiary);
 }
 
+/* ---------- Under-band flow ---------- */
+/* Normal padded flow right below the band. Column 1 is the poster's
+   reserved overlap column (the hanging poster occupies it visually, so it
+   stays empty in the DOM); synopsis + Continue + progress take the middle
+   column; the tags panel adds a right-edge track only when it renders. */
+.series-hero-under {
+  display: grid;
+  grid-template-columns: var(--hero-poster-w) minmax(0, 1fr);
+  column-gap: var(--s6);
+  margin-top: var(--s5);
+  margin-bottom: var(--s8);
+  /* Even when the under content is short, keep the next section clear of
+     the poster hang: overlap minus the top margin already spent, plus air. */
+  min-height: calc(var(--hero-overlap) - var(--s5) + var(--s2));
+}
+.series-hero-under:has(.series-hero-tags) {
+  grid-template-columns: var(--hero-poster-w) minmax(0, 1fr) minmax(200px, 240px);
+}
+.series-hero-under__main {
+  grid-column: 2;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+.series-hero-under > .series-hero-tags { grid-column: 3; }
+
 /* ---------- Tags panel ---------- */
-/* Vertical list of AniList tags on the right side of the hero. Capped by
-   max-height so it never makes the whole hero taller; tags that don't fit
-   are clipped at the bottom with a fade, and a "Show all" toggle (rendered
-   only when the mask actually clips) removes the cap. */
+/* Vertical list of AniList tags, riding the right column of the under-band
+   grid. Capped by max-height so it never stretches the block; tags that
+   don't fit are clipped at the bottom with a fade, and a "Show all" toggle
+   (rendered only when the mask actually clips) removes the cap. */
 .series-hero-tags {
   display: flex;
   flex-direction: column;
@@ -757,4 +830,19 @@
   flex: 0 0 auto;
   margin-top: 2px;
   color: var(--accent-amber);
+}
+
+/* ---------- Hero-owned responsive ---------- */
+/* The shared page breakpoints live in responsive.css; this one is specific
+   to the hero's under-band geometry: when the viewport can't fit the
+   synopsis and the tags rail side by side, the tags drop below the main
+   column (still aligned to the text column, clear of the poster hang). */
+@media (max-width: 920px) {
+  .series-hero-under:has(.series-hero-tags) {
+    grid-template-columns: var(--hero-poster-w) minmax(0, 1fr);
+  }
+  .series-hero-under > .series-hero-tags {
+    grid-column: 2 / -1;
+    margin-top: var(--s4);
+  }
 }
