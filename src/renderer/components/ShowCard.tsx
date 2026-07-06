@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Tv } from "lucide-react";
 import type { LibraryItem } from "../../types/electron";
@@ -73,6 +73,16 @@ function ShowCard({
   // visible "card" is the poster's own border + radius.
   const posterWrapRef = useRef<HTMLDivElement | null>(null);
   const liftRef = useRef<SmoothHandle | null>(null);
+
+  // Poster bloom (the signature hover moment). The blurred glow copy is NOT
+  // part of the initial render - the first mouseenter/focus latches hasGlow
+  // on (set once, never unset) so a cold grid of N cards mounts N imgs, not
+  // 2N. glowReady flips when the copy has actually loaded: a freshly
+  // inserted element has no before-change style, so gating the visible
+  // opacity on `.is-ready` makes the very first bloom transition from 0
+  // instead of snapping (and an unloaded/broken copy never flashes).
+  const [hasGlow, setHasGlow] = useState(false);
+  const [glowReady, setGlowReady] = useState(false);
   useEffect(() => {
     const el = posterWrapRef.current;
     if (!el) return;
@@ -176,9 +186,22 @@ function ShowCard({
       data-halo-bias
       data-flip-id={item.id}
       onClick={() => (onActivate ? onActivate() : navigate(`/series/${encodeURIComponent(item.id)}`))}
-      onMouseEnter={() => liftRef.current?.setTarget(-LIFT_AMOUNT_PX)}
+      onMouseEnter={() => { liftRef.current?.setTarget(-LIFT_AMOUNT_PX); setHasGlow(true); }}
       onMouseLeave={() => liftRef.current?.setTarget(0)}
+      onFocus={() => setHasGlow(true)}
     >
+      {posterUrl && hasGlow && (
+        <img
+          className={`show-card-glow${glowReady ? " is-ready" : ""}`}
+          src={posterUrl}
+          alt=""
+          aria-hidden="true"
+          draggable={false}
+          loading="lazy"
+          decoding="async"
+          onLoad={() => setGlowReady(true)}
+        />
+      )}
       <div ref={posterWrapRef} className={`show-card-poster-wrap${outlined ? "" : " show-card-poster-wrap--bare"}`}>
         {item.hidden && (
           <span

@@ -25,6 +25,13 @@
   color: inherit;
   font: inherit;
   cursor: pointer;
+  /* Anchor for the poster bloom (.show-card-glow); overflow stays visible
+     so the bloom can bleed past the card bounds. isolate keeps the glow's
+     negative z-index inside this card's own stacking context: above the
+     page background, below every other layer of the card, and never lost
+     behind an opaque ancestor. */
+  position: relative;
+  isolation: isolate;
   /* Hidden-card dim/undim must glide, not snap. Opacity only - transform
      stays out of the transition list (FLIP owns it). */
   transition: opacity var(--transition-fast);
@@ -39,6 +46,50 @@
 
 .show-card:hover .show-card-poster { transform: scale(1.04); }
 .show-card:hover .show-card-title { color: var(--accent-secondary); }
+
+/* ============ POSTER BLOOM ============ */
+/* The app's signature hover moment: a blurred, saturated copy of the same
+   poster blooms out from behind the card. ShowCard mounts it lazily on the
+   first hover/focus (initial grid render stays cheap) and adds `.is-ready`
+   once the copy has loaded, so even the first bloom transitions from 0.
+   The bloom deliberately bleeds past the card bounds: the button and every
+   grid keep overflow visible; only .show-card-poster-wrap clips (for the
+   poster zoom). Opacity is the ONLY animated property. The scale() below
+   is static and never transitioned - it exists because inset percentages
+   would resolve against the button's full height (poster + info block) and
+   skew the bleed; scaling the poster-shaped box by 1.24 is the exact
+   "-12% on every edge" the design asks for. FLIP owns the button's inline
+   transform and the motion engine owns the wrap's; neither touches this. */
+.show-card-glow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  /* Mirror the poster-wrap box exactly, then scale outward. */
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  /* Ellipse the copy so the bloom reads as light, not a blurry rectangle. */
+  border-radius: 50%;
+  transform: scale(1.24);
+  filter: blur(32px) saturate(1.35);
+  opacity: 0;
+  z-index: -1;
+  pointer-events: none;
+  will-change: opacity;
+  /* ~240ms sits between --transition-normal and --transition-slow on
+     purpose: the bloom lingers a beat longer than chrome paint. */
+  transition: opacity 240ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.show-card:hover .show-card-glow.is-ready,
+.show-card:focus-visible .show-card-glow.is-ready {
+  opacity: 0.5;
+}
+/* Incognito-revealed cards stay visually recessed: cap the bloom well under
+   the normal 0.5 (the card's own hover opacity of 0.8 dims it further). */
+.show-card--hidden:hover .show-card-glow.is-ready,
+.show-card--hidden:focus-visible .show-card-glow.is-ready {
+  opacity: 0.25;
+}
 
 .show-card-poster-wrap {
   position: relative;
