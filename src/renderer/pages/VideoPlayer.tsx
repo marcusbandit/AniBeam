@@ -5,7 +5,7 @@ import { useMetadata, type FileEpisode } from '../hooks/useMetadata.js';
 import { useLocalStorage, useLocalStorageRecord } from '../hooks/useLocalStorage';
 import { progressId, extraProgressToken, readProgress, writeProgress, recordEpisodeCompleted, RESUME_HEAD_SKIP, RESUME_TAIL_SKIP } from '../utils/playbackProgress';
 import { friendlyExtraTitle, extraCode } from '../../shared/extraLabels';
-import { derivePlaybackSubtitleState } from '../../shared/subtitleSupport';
+import { derivePlaybackSubtitleState, pickDefaultSubtitleStream } from '../../shared/subtitleSupport';
 import { ScorePicker, Tooltip } from '../components/primitives';
 import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Minimize, Subtitles, SkipBack, SkipForward, CheckCheck, AlertTriangle, ExternalLink, HelpCircle, Loader2, RotateCcw } from 'lucide-react';
 import JASSUB from 'jassub';
@@ -795,19 +795,19 @@ function VideoPlayer() {
           const embedded = await window.electronAPI.listEmbeddedSubtitles(episode.filePath);
           embeddedCount = embedded.length;
           window.electronAPI.subLog?.('build', 'embedded streams listed', { file: episode.filePath, count: embedded.length });
-          // Pick the display track BEFORE extracting anything: first English
-          // stream, else the first stream (unless a sidecar already claimed
-          // the default slot).
-          const langOf = (e: { language: string | null }) => (e.language ?? '').toUpperCase();
-          const defaultStream = out.some((s) => s.default)
-            ? null
-            : embedded.find((e) => langOf(e) === 'ENG' || langOf(e) === 'EN') ?? embedded[0] ?? null;
-          if (defaultStream) {
+          // Pick the display track BEFORE extracting anything: English
+          // dialogue over English signs/songs/forced tracks, else the first
+          // stream (unless a sidecar already claimed the default slot).
+          // Shared with main's prewarm so the warmed track is always the one
+          // the gate waits on.
+          const defaultPick = out.some((s) => s.default) ? null : pickDefaultSubtitleStream(embedded);
+          const defaultStream = defaultPick?.stream ?? null;
+          if (defaultPick) {
             window.electronAPI.subLog?.('build', 'default embedded track picked', {
               file: episode.filePath,
-              streamIndex: defaultStream.streamIndex,
-              language: defaultStream.language,
-              reason: langOf(defaultStream) === 'ENG' || langOf(defaultStream) === 'EN' ? 'english match' : 'first stream',
+              streamIndex: defaultPick.stream.streamIndex,
+              language: defaultPick.stream.language,
+              reason: defaultPick.reason,
             });
           } else if (embedded.length > 0) {
             window.electronAPI.subLog?.('build', 'no embedded default: sidecar holds the default slot', { file: episode.filePath });

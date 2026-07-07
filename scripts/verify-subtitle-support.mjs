@@ -5,6 +5,9 @@ const {
   isRenderableSubtitleCodec,
   deriveSubtitleState,
   derivePlaybackSubtitleState,
+  isEnglishSubtitleStream,
+  isSignsSubtitleStream,
+  pickDefaultSubtitleStream,
 } = await import('../src/shared/subtitleSupport.ts');
 
 // ---- classifySubtitleCodec --------------------------------------------------
@@ -56,5 +59,66 @@ assert.equal(derivePlaybackSubtitleState({ loadedCount: 0, candidateStreamCount:
 // Nothing to attempt → null, so the player never clobbers a proactively-set
 // 'unsupported' (bitmap-only files report zero embedded TEXT streams here).
 assert.equal(derivePlaybackSubtitleState({ loadedCount: 0, candidateStreamCount: 0 }), null);
+
+// ---- pickDefaultSubtitleStream (the ONE track the gate waits on) ------------
+const stream = (streamIndex, language, title) => ({ streamIndex, codec: 'ass', language, title });
+
+// Signs track first in stream order, both tagged eng: dialogue still wins.
+{
+  const signs = stream(2, 'eng', 'English (Signs & Songs)');
+  const full = stream(3, 'eng', 'English');
+  const pick = pickDefaultSubtitleStream([signs, full]);
+  assert.equal(pick.stream.streamIndex, 3, 'dialogue outranks signs regardless of order');
+  assert.equal(pick.reason, 'english dialogue');
+}
+// Untagged multisub (language lives in the title): the English title is found.
+{
+  const pick = pickDefaultSubtitleStream([
+    stream(2, 'und', 'Español (Latinoamérica)'),
+    stream(3, null, 'English'),
+    stream(4, 'und', 'Português (Brasil)'),
+  ]);
+  assert.equal(pick.stream.streamIndex, 3, 'title-only English is identified');
+  assert.equal(pick.reason, 'english dialogue');
+}
+// Only English track is forced-only: picked, but flagged as signs/forced.
+{
+  const pick = pickDefaultSubtitleStream([
+    stream(2, 'spa', 'Español'),
+    stream(3, 'eng', 'English (Forced)'),
+  ]);
+  assert.equal(pick.stream.streamIndex, 3, 'english forced beats wrong language');
+  assert.equal(pick.reason, 'english (signs/forced)');
+}
+// No English anywhere: fall back to probe order (waiting for a track that
+// doesn't exist would gate playback forever).
+{
+  const pick = pickDefaultSubtitleStream([
+    stream(2, 'spa', 'Español'),
+    stream(3, 'fre', 'Français'),
+  ]);
+  assert.equal(pick.stream.streamIndex, 2, 'no English → first stream');
+  assert.equal(pick.reason, 'first stream fallback');
+}
+// Ties keep stream order: two full English tracks → the first one.
+{
+  const pick = pickDefaultSubtitleStream([
+    stream(2, 'eng', 'English'),
+    stream(3, 'eng', 'English (SDH)'),
+  ]);
+  assert.equal(pick.stream.streamIndex, 2, 'equal rank keeps probe order');
+}
+assert.equal(pickDefaultSubtitleStream([]), null, 'empty input → null');
+
+// Language-tag matching: BCP47 en-* forms count, enm (Middle English) does not.
+assert.equal(isEnglishSubtitleStream(stream(0, 'en-US', null)), true, 'en-US is English');
+assert.equal(isEnglishSubtitleStream(stream(0, 'EN', null)), true, 'tag matching is case-insensitive');
+assert.equal(isEnglishSubtitleStream(stream(0, 'enm', null)), false, 'enm alone is not English');
+assert.equal(isEnglishSubtitleStream(stream(0, null, null)), false, 'nothing to identify');
+// SDH/CC are full dialogue, not signs.
+assert.equal(isSignsSubtitleStream(stream(0, 'eng', 'English (SDH)')), false, 'SDH is dialogue');
+assert.equal(isSignsSubtitleStream(stream(0, 'eng', 'English [CC]')), false, 'CC is dialogue');
+assert.equal(isSignsSubtitleStream(stream(0, 'eng', 'Signs/Songs')), true);
+assert.equal(isSignsSubtitleStream(stream(0, 'eng', 'Commentary')), true);
 
 console.log('verify-subtitle-support: all assertions passed');
