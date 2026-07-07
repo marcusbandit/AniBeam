@@ -9,6 +9,7 @@ import { subLog } from '../services/subtitleDebugLog';
 import {
   classifySubtitleCodec,
   deriveSubtitleState,
+  pickDefaultSubtitleStream,
   type SubtitleState,
 } from '../../shared/subtitleSupport';
 
@@ -300,21 +301,21 @@ const subtitleHandler = {
           return;
         }
         const streams = await subtitleHandler.listEmbedded(videoPath);
-        // Warm ONLY the track that will actually display. The player picks
-        // the first English stream (else the first stream) and extracts just
-        // that at play time; other languages extract lazily on selection.
+        // Warm ONLY the track that will actually display: the same
+        // pickDefaultSubtitleStream the player gates on (English dialogue
+        // over signs/forced, else the first stream), extracted just as the
+        // play-time build will; other languages extract lazily on selection.
         // MultiSub releases carry ~10 languages and each extraction demuxes
         // the whole file, so warming them all was 10x wasted IO per episode
         // (and read as "8 tries for one episode" in the activity log).
-        const lang = (s: { language: string | null }) => (s.language ?? '').toUpperCase();
-        const engMatch = streams.find((s) => lang(s) === 'ENG' || lang(s) === 'EN');
-        const target = engMatch ?? streams[0];
-        if (target) {
+        const pick = pickDefaultSubtitleStream(streams);
+        if (pick) {
+          const target = pick.stream;
           subLog('main/prewarm', 'target stream chosen', {
             file: videoPath,
             streamIndex: target.streamIndex,
             language: target.language,
-            reason: engMatch ? 'english match' : 'first stream',
+            reason: pick.reason,
           });
           await subtitleHandler.extractEmbedded(videoPath, target.streamIndex, target.codec);
           subLog('main/prewarm', 'done', { file: videoPath, ms: Date.now() - startedAt });

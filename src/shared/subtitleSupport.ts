@@ -62,6 +62,66 @@ export function deriveSubtitleState(input: {
   return null;
 }
 
+/** The probe fields the default-track pick needs (matches EmbeddedSubInfo). */
+export interface SubtitleStreamLike {
+  streamIndex: number;
+  codec: string;
+  language: string | null;
+  title: string | null;
+}
+
+/**
+ * True when a stream is identifiably English: an English language tag (en, eng,
+ * or a BCP47 en-* form; enm and other lookalike codes don't count) or, for the
+ * untagged/und multisub muxes that put the language in the track title, a title
+ * mentioning English.
+ */
+export function isEnglishSubtitleStream(s: SubtitleStreamLike): boolean {
+  const lang = (s.language ?? '').toLowerCase();
+  if (lang === 'en' || lang === 'eng' || lang.startsWith('en-')) return true;
+  return /english/i.test(s.title ?? '');
+}
+
+/**
+ * True for tracks that are not full dialogue: signs-and-songs, forced-only, and
+ * commentary. SDH/CC tracks are full dialogue and stay false.
+ */
+export function isSignsSubtitleStream(s: SubtitleStreamLike): boolean {
+  return /sign|song|forced|comment/i.test(s.title ?? '');
+}
+
+const DEFAULT_PICK_REASONS = ['english dialogue', 'english (signs/forced)', 'first stream fallback'] as const;
+export type DefaultSubtitlePickReason = (typeof DEFAULT_PICK_REASONS)[number];
+
+// A stream's pick class doubles as its priority: its index in
+// DEFAULT_PICK_REASONS is the rank, lower wins.
+function classifyDefaultPick(s: SubtitleStreamLike): DefaultSubtitlePickReason {
+  if (!isEnglishSubtitleStream(s)) return 'first stream fallback';
+  return isSignsSubtitleStream(s) ? 'english (signs/forced)' : 'english dialogue';
+}
+
+/**
+ * Pick the ONE stream the player gates on and prewarm warms: the best English
+ * dialogue track, else an English signs/forced track, else the first stream.
+ * Ties keep probe (stream) order. Both the play-time build and main's prewarm
+ * MUST use this so the warmed track is always the track playback waits for.
+ */
+export function pickDefaultSubtitleStream<T extends SubtitleStreamLike>(
+  streams: T[],
+): { stream: T; reason: DefaultSubtitlePickReason } | null {
+  let best: { stream: T; reason: DefaultSubtitlePickReason } | null = null;
+  let bestRank: number = DEFAULT_PICK_REASONS.length;
+  for (const s of streams) {
+    const reason = classifyDefaultPick(s);
+    const rank = DEFAULT_PICK_REASONS.indexOf(reason);
+    if (rank < bestRank) {
+      bestRank = rank;
+      best = { stream: s, reason };
+    }
+  }
+  return best;
+}
+
 /**
  * Decide a file's subtitle state from the actual play-time build result. This is
  * authoritative for the "text track exists but extraction failed" case the cheap
