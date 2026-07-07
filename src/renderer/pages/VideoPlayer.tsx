@@ -44,12 +44,20 @@ function getJassubWasmUrls() {
 }
 
 interface SubtitleTrack {
-  src: string;        // file:// or media:// or blob: URL - used for native VTT or JASSUB
+  /** file:// or media:// or blob: URL for native VTT or JASSUB. null =
+   *  embedded track listed but NOT extracted yet; MultiSub releases carry
+   *  ~10 languages and demuxing the whole file once per language at play
+   *  time was pure waste, so only the displayed track extracts eagerly and
+   *  the rest extract lazily on selection. */
+  src: string | null;
   origPath: string;   // original file path
   kind: string;       // 'subtitles'
   label: string;
   default?: boolean;
   format: 'vtt' | 'ass';
+  /** Embedded-stream identity for lazy extraction. */
+  streamIndex?: number;
+  codec?: string;
 }
 
 /**
@@ -261,6 +269,13 @@ function VideoPlayer() {
   // Keyboard-shortcut legend overlay, toggled by the ? button in the right
   // control group. Purely presentational; adds no bindings of its own.
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  // Ref mirrors for the Escape branch of the main keydown handler (bound
+  // once per [showChrome, skipTimes] change; reading state there would be
+  // stale without re-binding on every open/close).
+  const subMenuOpenRef = useRef(false);
+  const shortcutsOpenRef = useRef(false);
+  useEffect(() => { subMenuOpenRef.current = subMenuOpen; }, [subMenuOpen]);
+  useEffect(() => { shortcutsOpenRef.current = shortcutsOpen; }, [shortcutsOpen]);
 
   // Subtitle supervisor. Contract: subtitles that exist MUST load. While the
   // subtitle build is slow or failing, playback is held paused with a visible
@@ -278,6 +293,15 @@ function VideoPlayer() {
   const pausedForSubsRef = useRef(false);   // we paused, so we may auto-resume
   const subsOverrideRef = useRef(false);    // user chose to play without subs
   const supervisedPathRef = useRef<string | null>(null);
+  // Set by the supervisor while it waits for the ASS renderer to confirm it
+  // is actually drawing; invoked by the jassubReadyTick effect below.
+  const confirmApplyRef = useRef<(() => void) | null>(null);
+  // File key whose default track the activation effect already applied, so
+  // lazy MultiSub src patches don't re-yank the user's chosen track.
+  const appliedDefaultForRef = useRef<string | null>(null);
+  // Stable re-entry point for lazy extraction (selectSubtitle is recreated
+  // per render; the async lazy path must call the CURRENT one).
+  const selectSubtitleRef = useRef<((idx: number) => void) | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -688,13 +712,22 @@ function VideoPlayer() {
         supervisedPathRef.current = episode.filePath;
         subsOverrideRef.current = false;
         pausedForSubsRef.current = false;
-        setSubsWait(null);
+        // HARD GATE: if this file is KNOWN to carry subtitles (sidecar on
+        // disk, or the probe sweep marked text streams), hold playback from
+        // the very first frame: the episode does not start sub-less, ever.
+        // Files with unknown/absent subtitle state fall back to the slow
+        // timer below so a genuinely subless file never flashes a notice.
+        const subsExpected = episode.subtitleState === 'ok'
+          || !!episode.subtitlePath
+          || !!(episode.subtitlePaths && episode.subtitlePaths.length);
+        setSubsWait(subsExpected ? { kind: 'loading', attempt: 0 } : null);
         // New file: drop the previous stream's decoded aspect so the chrome
         // falls back to this file's probed value until metadata loads.
         setLiveAspect(null);
       }
       let cancelled = false;
       let retryTimer: ReturnType<typeof setTimeout> | null = null;
+      let applyTimer: ReturnType<typeof setTimeout> | null = null;
       // Surface the hold only if the first build is actually slow; a warm
       // cache resolves in milliseconds and should never flash a notice.
       const slowTimer = setTimeout(() => {
@@ -708,7 +741,7 @@ function VideoPlayer() {
       //     ffmpeg in main, served from the on-disk cache via media://)
       // Returns the outcome so the supervisor below can tell "no subs exist"
       // (fine) apart from "subs exist but did not load" (hold + retry).
-      const buildSubs = async (): Promise<{ loaded: number; candidates: number; errored: boolean }> => {
+      const buildSubs = async (): Promise<{ loaded: number; candidates: number; errored: boolean; defaultFormat: 'ass' | 'vtt' | null }> => {
         const out: SubtitleTrack[] = [];
 
         // External sidecars
@@ -735,39 +768,67 @@ function VideoPlayer() {
           }
         }
 
-        // Embedded streams (MKV / MP4 with internal subs)
+        // Embedded streams (MKV / MP4 with internal subs). MultiSub releases
+        // carry ~10 language tracks and each extraction demuxes the WHOLE
+        // file, so only the track that will actually display is extracted
+        // here; the rest are listed for the menu and extract lazily when
+        // picked (selectSubtitle handles src === null).
         let embeddedCount = 0;
         let errored = false;
         try {
           const embedded = await window.electronAPI.listEmbeddedSubtitles(episode.filePath);
           embeddedCount = embedded.length;
+          // Pick the display track BEFORE extracting anything: first English
+          // stream, else the first stream (unless a sidecar already claimed
+          // the default slot).
+          const langOf = (e: { language: string | null }) => (e.language ?? '').toUpperCase();
+          const defaultStream = out.some((s) => s.default)
+            ? null
+            : embedded.find((e) => langOf(e) === 'ENG' || langOf(e) === 'EN') ?? embedded[0] ?? null;
           for (const e of embedded) {
-            const result = await window.electronAPI.extractEmbeddedSubtitle(episode.filePath, e.streamIndex, e.codec);
-            if (!result) continue;
             const lang = e.language ? e.language.toUpperCase() : null;
             const label = e.title && lang
               ? `${lang} · ${e.title}`
               : e.title ?? (lang ?? `Track #${e.streamIndex}`);
-            const isDefault = !out.some((s) => s.default) && (lang === 'ENG' || lang === 'EN' || out.length === 0);
-            out.push({
-              src: `media://${result.path}`,
-              origPath: episode.filePath,
-              kind: 'subtitles',
-              label,
-              default: isDefault,
-              format: result.format,
-            });
+            const isDefault = defaultStream != null && e.streamIndex === defaultStream.streamIndex;
+            if (isDefault) {
+              const result = await window.electronAPI.extractEmbeddedSubtitle(episode.filePath, e.streamIndex, e.codec);
+              if (!result) { errored = true; continue; }
+              out.push({
+                src: `media://${result.path}`,
+                origPath: episode.filePath,
+                kind: 'subtitles',
+                label,
+                default: true,
+                format: result.format,
+                streamIndex: e.streamIndex,
+                codec: e.codec,
+              });
+            } else {
+              // Listed, not extracted: ASS is what anime muxes carry; the
+              // real format is corrected on lazy extraction.
+              out.push({
+                src: null,
+                origPath: episode.filePath,
+                kind: 'subtitles',
+                label,
+                default: false,
+                format: e.codec === 'subrip' || e.codec === 'webvtt' || e.codec === 'mov_text' ? 'vtt' : 'ass',
+                streamIndex: e.streamIndex,
+                codec: e.codec,
+              });
+            }
           }
         } catch (err) {
           errored = true;
           console.warn('Embedded subtitle listing/extraction failed:', err);
         }
 
-        if (cancelled) return { loaded: out.length, candidates: embeddedCount, errored };
+        if (cancelled) return { loaded: out.length, candidates: embeddedCount, errored, defaultFormat: null };
 
         setSubtitleSrcs((prev) => {
           // Revoke previous blob URLs so they don't leak.
-          prev.forEach((p) => { if (p.src.startsWith('blob:')) URL.revokeObjectURL(p.src); });
+          prev.forEach((p) => { if (p.src?.startsWith('blob:')) URL.revokeObjectURL(p.src); });
           return out;
         });
 
@@ -781,31 +842,71 @@ function VideoPlayer() {
         if (playState && playState !== episode.subtitleState) {
           void window.electronAPI.reportSubtitleState?.(episode.filePath, playState);
         }
-        return { loaded: out.length, candidates: embeddedCount, errored };
+        const defaultFormat = out.find((s) => s.default)?.format ?? out[0]?.format ?? null;
+        return { loaded: out.length, candidates: embeddedCount, errored, defaultFormat };
       };
 
-      // The supervisor: run the build, and if subs exist but none loaded,
-      // hold playback with a notice and retry forever with capped backoff.
+      // Releases the hold: subtitles are CONFIRMED on screen (or genuinely
+      // absent). Resumes playback we paused; the user override stands.
+      const releaseHold = (toast: boolean) => {
+        if (cancelled) return;
+        if (applyTimer) { clearTimeout(applyTimer); applyTimer = null; }
+        confirmApplyRef.current = null;
+        const hadVisibleWait = subsWaitRef.current !== null;
+        setSubsWait(null);
+        if (toast && hadVisibleWait) showTrackerToast('Subtitles loaded');
+        if (pausedForSubsRef.current && !subsOverrideRef.current) {
+          void videoRef.current?.play();
+        }
+        pausedForSubsRef.current = false;
+      };
+
+      // The supervisor: playback holds until subtitles are either confirmed
+      // RENDERING or confirmed absent. Build failures AND apply failures
+      // (JASSUB never coming up) both retry forever with capped backoff.
       const supervise = async (attempt: number) => {
-        let result: { loaded: number; candidates: number; errored: boolean };
+        let result: { loaded: number; candidates: number; errored: boolean; defaultFormat: 'ass' | 'vtt' | null };
         try {
           result = await buildSubs();
         } catch (err) {
           // A sidecar conversion threw; same treatment as an extraction miss.
           console.warn('Subtitle build failed:', err);
-          result = { loaded: 0, candidates: 1, errored: true };
+          result = { loaded: 0, candidates: 1, errored: true, defaultFormat: null };
         }
         if (cancelled) return;
         clearTimeout(slowTimer);
         const failed = result.loaded === 0 && (result.errored || result.candidates > 0);
         if (!failed) {
-          const hadVisibleWait = subsWaitRef.current !== null;
-          setSubsWait(null);
-          if (hadVisibleWait && result.loaded > 0) showTrackerToast('Subtitles loaded');
-          if (pausedForSubsRef.current && !subsOverrideRef.current) {
-            void videoRef.current?.play();
+          if (result.loaded === 0) {
+            // Genuinely no subtitles in this file: nothing to gate on.
+            releaseHold(false);
+            return;
           }
-          pausedForSubsRef.current = false;
+          if (result.defaultFormat === 'ass') {
+            // Tracks are built, but built is NOT rendered: keep the hold
+            // until the JASSUB ready tick confirms the renderer is up. If it
+            // never comes (init threw, worker died), the watchdog fails this
+            // attempt and rebuilds. This is the "don't start the episode
+            // without subtitles on screen" guarantee.
+            if (!subsOverrideRef.current && subsWaitRef.current === null) {
+              setSubsWait({ kind: 'loading', attempt });
+            }
+            confirmApplyRef.current = () => releaseHold(true);
+            if (applyTimer) clearTimeout(applyTimer);
+            applyTimer = setTimeout(() => {
+              if (cancelled || confirmApplyRef.current === null) return;
+              confirmApplyRef.current = null;
+              if (!subsOverrideRef.current) setSubsWait({ kind: 'failed', attempt });
+              tearDownJassub();
+              // Let the rebuilt list re-apply its default track.
+              appliedDefaultForRef.current = null;
+              void supervise(attempt + 1);
+            }, 6000);
+          } else {
+            // Native VTT tracks render as soon as the activation effect
+            // flips them to showing; no async renderer to wait for.
+            releaseHold(true);
+          }
           return;
         }
         if (!subsOverrideRef.current) setSubsWait({ kind: 'failed', attempt });
@@ -817,9 +918,21 @@ function VideoPlayer() {
         cancelled = true;
         clearTimeout(slowTimer);
         if (retryTimer) clearTimeout(retryTimer);
+        if (applyTimer) clearTimeout(applyTimer);
+        confirmApplyRef.current = null;
       };
     }
   }, [seriesId, episodeNumber, metadata, isExtra, explicitFilePath, setSubsWait]);
+
+  // The ASS renderer confirmed it is up and drawing: release the hold the
+  // supervisor left armed (if any). Ticks from stale instances are harmless;
+  // releaseHold is nulled on every episode change and after firing.
+  useEffect(() => {
+    if (jassubReadyTick === 0) return;
+    const confirm = confirmApplyRef.current;
+    confirmApplyRef.current = null;
+    confirm?.();
+  }, [jassubReadyTick]);
 
   // Enforce the hold: while a subtitle wait is active and not overridden,
   // playback must not run sub-less. Covers autoplay, keyboard, and any other
@@ -875,14 +988,34 @@ function VideoPlayer() {
 
     const sub = subtitleSrcs[idx];
 
+    if (sub.src === null) {
+      // Lazy MultiSub extraction: this language was listed but never demuxed
+      // (only the displayed track extracts at play time). Extract now, patch
+      // the src into state, then re-enter once the state has flushed.
+      void (async () => {
+        if (sub.streamIndex == null) return;
+        const result = await window.electronAPI.extractEmbeddedSubtitle(sub.origPath, sub.streamIndex, sub.codec ?? '');
+        if (!result) {
+          showTrackerToast('That subtitle track failed to load');
+          return;
+        }
+        const src = `media://${result.path}`;
+        setSubtitleSrcs((prev) => prev.map((s, i) => (i === idx ? { ...s, src, format: result.format } : s)));
+        setTimeout(() => selectSubtitleRef.current?.(idx), 0);
+      })();
+      return;
+    }
+
     if (sub.format === 'ass') {
       // Fetch the ASS file in the renderer (where the media:// protocol IS
       // registered) and hand the content to JASSUB. The JASSUB worker can't
       // fetch arbitrary URLs reliably from its own context.
       void (async () => {
         try {
-          const [resp, wasmUrls] = await Promise.all([fetch(sub.src), getJassubWasmUrls()]);
-          if (!resp.ok) throw new Error(`fetch ${sub.src} → ${resp.status}`);
+          const assUrl = sub.src;
+          if (!assUrl) return; // lazy track: the null-src branch above re-enters
+          const [resp, wasmUrls] = await Promise.all([fetch(assUrl), getJassubWasmUrls()]);
+          if (!resp.ok) throw new Error(`fetch ${assUrl} → ${resp.status}`);
           const subContent = await resp.text();
           assPlayResYRef.current = parsePlayResY(subContent);
           // The user may have switched again before this resolves; bail.
@@ -940,6 +1073,7 @@ function VideoPlayer() {
           // avoids the trap of trying to be clever with frame counters that
           // don't update on the same cadence as the compositor.
           const renderRef = (inst as unknown as { manualRender: (m: { expectedDisplayTime: number; width: number; height: number; mediaTime: number }) => Promise<unknown> });
+          let pumpFrame = 0;
           const pump = () => {
             if (jassubRef.current !== inst) return;
             const v = videoRef.current;
@@ -952,12 +1086,44 @@ function VideoPlayer() {
                   mediaTime: v.currentTime,
                 });
               } catch { /* ignore */ }
+              // GEOMETRY ENFORCEMENT, continuous: every ~15 frames, measure
+              // where the subtitle canvas actually is against where the video
+              // content box actually is, and force a resync on any drift.
+              // One-shot resyncs proved insufficient (layout shifts JASSUB's
+              // ResizeObserver never sees left subs rendering off-screen
+              // forever); measuring on a cadence makes misplacement
+              // self-healing within a quarter second, always.
+              if (++pumpFrame % 15 === 0 && v.videoWidth > 0 && v.videoHeight > 0) {
+                const canvas = v.parentElement?.querySelector('canvas');
+                if (canvas) {
+                  const vr = v.getBoundingClientRect();
+                  const ar = v.videoWidth / v.videoHeight;
+                  const cw = Math.min(vr.width, vr.height * ar);
+                  const ch = cw / ar;
+                  const ex = vr.left + (vr.width - cw) / 2;
+                  const ey = vr.top + (vr.height - ch) / 2;
+                  const cr = canvas.getBoundingClientRect();
+                  const drift = Math.max(
+                    Math.abs(cr.left - ex),
+                    Math.abs(cr.top - ey),
+                    Math.abs(cr.width - cw),
+                    Math.abs(cr.height - ch),
+                  );
+                  if (drift > 2) {
+                    try {
+                      void (inst as unknown as { resize: (f?: boolean) => Promise<void> }).resize(true);
+                    } catch { /* mid-teardown */ }
+                  }
+                }
+              }
             }
             requestAnimationFrame(pump);
           };
           requestAnimationFrame(pump);
         } catch (err) {
           console.error('JASSUB init failed:', err);
+          // The apply-confirmation watchdog below treats the missing ready
+          // tick as a failure and retries; nothing to do here beyond logging.
         }
       })();
       return;
@@ -974,15 +1140,25 @@ function VideoPlayer() {
     };
     tryEnable();
   };
+  // Keep the lazy-extraction re-entry pointing at THIS render's closure
+  // (the async patch-then-reapply path must see the updated subtitleSrcs).
+  selectSubtitleRef.current = selectSubtitle;
 
   // Activate the default subtitle (VTT or ASS) when the list changes.
-  // Re-runs per episode.
+  // Guarded per FILE, not per array identity: lazy MultiSub extraction
+  // patches new srcs into the array mid-episode and must never yank the
+  // user's chosen track back to the default. The supervisor's watchdog
+  // resets the guard when it rebuilds after a failure.
   useEffect(() => {
     if (subtitleSrcs.length === 0) {
       tearDownJassub();
       setActiveSubIdx(-1);
+      appliedDefaultForRef.current = null;
       return;
     }
+    const fileKey = subtitleSrcs[0]?.origPath ?? '';
+    if (appliedDefaultForRef.current === fileKey) return;
+    appliedDefaultForRef.current = fileKey;
     const defaultIdx = subtitleSrcs.findIndex((s) => s.default);
     const target = defaultIdx >= 0 ? defaultIdx : -1;
     const apply = () => selectSubtitle(target);
@@ -1576,11 +1752,23 @@ function VideoPlayer() {
         e.preventDefault();
         toggleCaptionsRef.current();
         showChrome();
+      } else if (e.key === 'Escape') {
+        // Escape leaves the player like the Back button, but only when
+        // nothing else claims it: the shortcut legend closes itself (its own
+        // listener), the subtitle menu closes here, and in fullscreen the
+        // browser's native Escape-to-exit-fullscreen must win.
+        if (shortcutsOpenRef.current) return;
+        if (subMenuOpenRef.current) {
+          setSubMenuOpen(false);
+          return;
+        }
+        if (document.fullscreenElement) return;
+        navigate(seriesId ? `/series/${seriesId}` : '/');
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [showChrome, skipTimes]);
+  }, [showChrome, skipTimes, navigate, seriesId]);
 
   // Close the shortcut legend on Escape. A separate listener so the main
   // keyboard handler above stays exactly as it is (it never handled Escape).
@@ -1666,11 +1854,20 @@ function VideoPlayer() {
     }
   };
 
+  // Live-follow scrubbing. The input is normally slaved to currentTime, so
+  // without this the 4Hz timeupdate state kept snapping the thumb back to
+  // the video's actual (lagging) position mid-drag and dragging felt dead.
+  // While dragging, dragTime owns the thumb and the fill; the video seeks
+  // continuously; release hands control back to currentTime.
+  const [dragTime, setDragTime] = useState<number | null>(null);
   const onSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const video = videoRef.current;
     if (!video) return;
-    video.currentTime = Number(e.target.value);
+    const t = Number(e.target.value);
+    setDragTime(t);
+    video.currentTime = t;
   };
+  const onSeekRelease = () => setDragTime(null);
 
   // Blit the preview <video>'s current decoded frame into the preview canvas,
   // sized to the source aspect ratio so frames aren't squashed. Tainting from
@@ -1965,7 +2162,7 @@ function VideoPlayer() {
           {subtitleSrcs.map((subtitle, index) => (
             // ASS tracks are rendered by JASSUB on a canvas overlay; only VTT
             // entries become native <track> children of the <video>.
-            subtitle.format === 'vtt' ? (
+            subtitle.format === 'vtt' && subtitle.src ? (
               <track
                 key={index}
                 src={subtitle.src}
@@ -2243,10 +2440,13 @@ function VideoPlayer() {
             min={0}
             max={duration || 0}
             step={0.1}
-            value={Math.min(currentTime, duration || 0)}
+            value={Math.min(dragTime ?? currentTime, duration || 0)}
             onChange={onSeek}
+            onPointerUp={onSeekRelease}
+            onKeyUp={onSeekRelease}
+            onBlur={onSeekRelease}
             style={{
-              '--progress': `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
+              '--progress': `${duration > 0 ? ((dragTime ?? currentTime) / duration) * 100 : 0}%`,
               // Build the track background dynamically: stacked gradients with
               // intro / outro tints overlaid on the played-vs-unplayed base.
               // First listed gradient renders on top. Colors are var() refs to
@@ -2259,7 +2459,7 @@ function VideoPlayer() {
                   `linear-gradient(to right, transparent 0, transparent ${pct(start)}, ${color} ${pct(start)}, ${color} ${pct(end)}, transparent ${pct(end)}, transparent 100%)`;
                 if (skipTimes.op) layers.push(band(skipTimes.op.start, skipTimes.op.end, 'var(--player-band-intro)')); // intro: warm amber
                 if (skipTimes.ed) layers.push(band(skipTimes.ed.start, skipTimes.ed.end, 'var(--player-band-outro)')); // outro: brand teal
-                const progress = Math.max(0, Math.min(100, (currentTime / duration) * 100));
+                const progress = Math.max(0, Math.min(100, ((dragTime ?? currentTime) / duration) * 100));
                 layers.push(`linear-gradient(to right, var(--player-scrub-played) 0%, var(--player-scrub-played) ${progress}%, var(--player-scrub-rest) ${progress}%, var(--player-scrub-rest) 100%)`);
                 return layers.join(', ');
               })(),

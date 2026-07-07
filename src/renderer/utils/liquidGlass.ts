@@ -58,17 +58,26 @@ function el(name: string, attrs: Record<string, string | number>): SVGElement {
 
 // ─── Physical specular ───────────────────────────────────────────────────────
 
-/** The app's ONE light source: up-left and GRAZING (low z), so the mirror
- *  reflection toward the viewer peaks on steep bezel, i.e. near the rim. */
-const LIGHT = (() => {
-  const x = -0.6, y = -0.74, z = 0.3;
-  const l = Math.hypot(x, y, z);
+/** The app's ONE light source is a POINT anchored above the top-left region
+ *  of the screen; each surface derives its own light DIRECTION from its own
+ *  position, so a panel on the right catches the glint from further left
+ *  than one under the lamp. Height keeps the light grazing (low z) so the
+ *  mirror reflection toward the viewer peaks on steep bezel, at the rim. */
+const LIGHT_ANCHOR = { xFrac: 0.22, yFrac: -0.3, z: 480 };
+
+function lightDirFor(cx: number, cy: number): { x: number; y: number; z: number } {
+  const ax = window.innerWidth * LIGHT_ANCHOR.xFrac;
+  const ay = window.innerHeight * LIGHT_ANCHOR.yFrac;
+  const x = ax - cx;
+  const y = ay - cy;
+  const z = LIGHT_ANCHOR.z;
+  const l = Math.hypot(x, y, z) || 1;
   return { x: x / l, y: y / l, z: z / l };
-})();
-const SPEC_EXP = 22;          // primary glint lobe width
-const COUNTER_EXP = 12;       // far-rim exit glint, broader and dimmer
-const COUNTER_GAIN = 0.55;
-const LIGHT_GAIN = 2.6;       // overall specular energy
+}
+const SPEC_EXP = 16;          // primary glint lobe width
+const COUNTER_EXP = 10;       // far-rim exit glint, broader and dimmer
+const COUNTER_GAIN = 0.7;
+const LIGHT_GAIN = 6;         // overall specular energy (Apple-strength rims)
 
 /** Signed distance of point p (relative to center) to a rounded-rect edge.
  *  Negative inside. Standard sdRoundedBox. */
@@ -98,7 +107,7 @@ function squircleSlope(x: number): number {
  * The interior needs no special casing: slope -> 0 makes N -> (0,0,1) and
  * the specular self-extinguishes.
  */
-function bakeSpecular(w: number, h: number, radius: number, bezel: number, gain: number): string {
+function bakeSpecular(w: number, h: number, radius: number, bezel: number, gain: number, light: { x: number; y: number; z: number }): string {
   const width = Math.max(2, Math.round(w));
   const height = Math.max(2, Math.round(h));
   const r = Math.min(radius, width / 2, height / 2);
@@ -143,13 +152,13 @@ function bakeSpecular(w: number, h: number, radius: number, bezel: number, gain:
         // spec = max(0, R.z)^n with R = 2(N.L)N - L. Unlike the Blinn half
         // vector, this peaks on STEEP bezel with a grazing light, so the
         // glint hugs the rim instead of floating mid-bezel.
-        const nDotL = nX * LIGHT.x + nY * LIGHT.y + nZ * LIGHT.z;
-        const rz = 2 * nDotL * nZ - LIGHT.z;
+        const nDotL = nX * light.x + nY * light.y + nZ * light.z;
+        const rz = 2 * nDotL * nZ - light.z;
         const primary = nDotL > 0 ? Math.pow(Math.max(0, rz), SPEC_EXP) : 0;
         // Exit glint on the far rim: same response with the mirrored normal
         // (light leaving the pane catches the opposite inner bezel).
-        const mDotL = -nX * LIGHT.x + -nY * LIGHT.y + nZ * LIGHT.z;
-        const mrz = 2 * mDotL * nZ - LIGHT.z;
+        const mDotL = -nX * light.x + -nY * light.y + nZ * light.z;
+        const mrz = 2 * mDotL * nZ - light.z;
         const counter = mDotL > 0 ? Math.pow(Math.max(0, mrz), COUNTER_EXP) * COUNTER_GAIN : 0;
         // Grazing bezel reflects more (Schlick-flavoured rim term).
         const rim = Math.pow(1 - cosT, 1.35);
@@ -260,15 +269,21 @@ function refresh(m: Managed): void {
   const bezel = parseFloat(m.el.dataset.lgBezel ?? '') || Math.max(8, Math.min(radius, 18));
   const strength = parseFloat(m.el.dataset.lgStrength ?? '') || 1;
   const blur = parseFloat(m.el.dataset.lgBlur ?? '') || 2.5;
-  const light = parseFloat(m.el.dataset.lgLight ?? '') || 1;
-  const key = [w, h, radius, bezel, strength, blur, light].join(':');
+  const lightGain = parseFloat(m.el.dataset.lgLight ?? '') || 1;
+  // Per-position lighting: the light direction depends on where this surface
+  // sits relative to the screen's light anchor, so bucketized position joins
+  // the rebake key (surfaces mostly mount at their final spot; a coarse
+  // bucket keeps cursor-followers like the seek preview from rebaking).
+  const bx = Math.round((rect.left + w / 2) / 160);
+  const by = Math.round((rect.top + h / 2) / 160);
+  const key = [w, h, radius, bezel, strength, blur, lightGain, bx, by].join(':');
   if (key === m.lastKey) return;
   m.lastKey = key;
   renderFilterContents(m.filter, w, h, bezel, strength, blur);
   m.el.style.backdropFilter = `url(#${m.id})`;
   // The lit rim rides a ::before selected by data-lg-id (static scaffold in
   // base.css); only the baked map itself lives in this per-element rule.
-  const specular = bakeSpecular(w, h, radius, bezel, light);
+  const specular = bakeSpecular(w, h, radius, bezel, lightGain, lightDirFor(rect.left + w / 2, rect.top + h / 2));
   m.lightStyle.textContent =
     `[data-lg-id="${m.id}"]::before { background-image: url(${specular}); }`;
 }

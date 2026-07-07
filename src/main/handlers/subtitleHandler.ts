@@ -258,13 +258,16 @@ const subtitleHandler = {
       try {
         if (!existsSync(videoPath)) return;
         const streams = await subtitleHandler.listEmbedded(videoPath);
-        // Warm EVERY renderable track. The player's play-time buildSubs extracts
-        // all embedded tracks sequentially and only then sets the subtitle list
-        // that gates JASSUB, so warming just one wouldn't clear the stall on a
-        // multi-track file. extractEmbedded caches + de-dupes, so if the user
-        // plays this file the play-time loop becomes pure cache hits.
-        for (const s of streams) {
-          await subtitleHandler.extractEmbedded(videoPath, s.streamIndex, s.codec);
+        // Warm ONLY the track that will actually display. The player picks
+        // the first English stream (else the first stream) and extracts just
+        // that at play time; other languages extract lazily on selection.
+        // MultiSub releases carry ~10 languages and each extraction demuxes
+        // the whole file, so warming them all was 10x wasted IO per episode
+        // (and read as "8 tries for one episode" in the activity log).
+        const lang = (s: { language: string | null }) => (s.language ?? '').toUpperCase();
+        const target = streams.find((s) => lang(s) === 'ENG' || lang(s) === 'EN') ?? streams[0];
+        if (target) {
+          await subtitleHandler.extractEmbedded(videoPath, target.streamIndex, target.codec);
         }
       } catch {
         /* prewarm is best-effort; play-time extraction still works */
