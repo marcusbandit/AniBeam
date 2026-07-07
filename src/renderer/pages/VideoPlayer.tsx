@@ -721,9 +721,17 @@ function VideoPlayer() {
           || !!episode.subtitlePath
           || !!(episode.subtitlePaths && episode.subtitlePaths.length);
         setSubsWait(subsExpected ? { kind: 'loading', attempt: 0 } : null);
+        window.electronAPI.subLog?.('gate', subsExpected ? 'gate armed from first frame' : 'no subs expected, deferring to slow timer', {
+          file: episode.filePath,
+          subsExpected,
+          subtitleState: episode.subtitleState ?? null,
+          sidecars: episode.subtitlePaths?.length ?? 0,
+        });
         // New file: drop the previous stream's decoded aspect so the chrome
         // falls back to this file's probed value until metadata loads.
         setLiveAspect(null);
+      } else {
+        window.electronAPI.subLog?.('gate', 'metadata re-push for supervised file, override/gate state kept', { file: episode.filePath });
       }
       let cancelled = false;
       let retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -767,6 +775,14 @@ function VideoPlayer() {
             out.push({ src, origPath: r.path, kind: 'subtitles', label: r.label, default: r.default, format: 'vtt' });
           }
         }
+        if (sidecars.length > 0) {
+          window.electronAPI.subLog?.('build', 'sidecar tracks added', {
+            file: episode.filePath,
+            count: out.length,
+            formats: out.map((t) => t.format).join(','),
+            srtConverted: sidecars.filter((r) => r.path.toLowerCase().endsWith('.srt')).length,
+          });
+        }
 
         // Embedded streams (MKV / MP4 with internal subs). MultiSub releases
         // carry ~10 language tracks and each extraction demuxes the WHOLE
@@ -778,6 +794,7 @@ function VideoPlayer() {
         try {
           const embedded = await window.electronAPI.listEmbeddedSubtitles(episode.filePath);
           embeddedCount = embedded.length;
+          window.electronAPI.subLog?.('build', 'embedded streams listed', { file: episode.filePath, count: embedded.length });
           // Pick the display track BEFORE extracting anything: first English
           // stream, else the first stream (unless a sidecar already claimed
           // the default slot).
@@ -785,6 +802,16 @@ function VideoPlayer() {
           const defaultStream = out.some((s) => s.default)
             ? null
             : embedded.find((e) => langOf(e) === 'ENG' || langOf(e) === 'EN') ?? embedded[0] ?? null;
+          if (defaultStream) {
+            window.electronAPI.subLog?.('build', 'default embedded track picked', {
+              file: episode.filePath,
+              streamIndex: defaultStream.streamIndex,
+              language: defaultStream.language,
+              reason: langOf(defaultStream) === 'ENG' || langOf(defaultStream) === 'EN' ? 'english match' : 'first stream',
+            });
+          } else if (embedded.length > 0) {
+            window.electronAPI.subLog?.('build', 'no embedded default: sidecar holds the default slot', { file: episode.filePath });
+          }
           for (const e of embedded) {
             const lang = e.language ? e.language.toUpperCase() : null;
             const label = e.title && lang
@@ -793,6 +820,11 @@ function VideoPlayer() {
             const isDefault = defaultStream != null && e.streamIndex === defaultStream.streamIndex;
             if (isDefault) {
               const result = await window.electronAPI.extractEmbeddedSubtitle(episode.filePath, e.streamIndex, e.codec);
+              window.electronAPI.subLog?.('build', result ? 'eager extract ok' : 'eager extract failed', {
+                file: episode.filePath,
+                streamIndex: e.streamIndex,
+                format: result?.format ?? null,
+              });
               if (!result) { errored = true; continue; }
               out.push({
                 src: `media://${result.path}`,
@@ -819,9 +851,15 @@ function VideoPlayer() {
               });
             }
           }
+          window.electronAPI.subLog?.('build', 'embedded tracks staged', {
+            file: episode.filePath,
+            lazy: out.filter((t) => t.src === null).length,
+            errored,
+          });
         } catch (err) {
           errored = true;
           console.warn('Embedded subtitle listing/extraction failed:', err);
+          window.electronAPI.subLog?.('build', 'embedded listing/extraction failed', { file: episode.filePath, error: String(err) });
         }
 
         if (cancelled) return { loaded: out.length, candidates: embeddedCount, errored, defaultFormat: null };
@@ -840,9 +878,11 @@ function VideoPlayer() {
         // unconditional report would turn every retry into an effect restart.
         const playState = derivePlaybackSubtitleState({ loadedCount: out.length, candidateStreamCount: embeddedCount });
         if (playState && playState !== episode.subtitleState) {
+          window.electronAPI.subLog?.('build', 'reporting play-time subtitle state', { file: episode.filePath, state: playState, prev: episode.subtitleState ?? null });
           void window.electronAPI.reportSubtitleState?.(episode.filePath, playState);
         }
         const defaultFormat = out.find((s) => s.default)?.format ?? out[0]?.format ?? null;
+        window.electronAPI.subLog?.('build', 'build done', { file: episode.filePath, loaded: out.length, candidates: embeddedCount, errored, defaultFormat });
         return { loaded: out.length, candidates: embeddedCount, errored, defaultFormat };
       };
 
@@ -853,6 +893,12 @@ function VideoPlayer() {
         if (applyTimer) { clearTimeout(applyTimer); applyTimer = null; }
         confirmApplyRef.current = null;
         const hadVisibleWait = subsWaitRef.current !== null;
+        window.electronAPI.subLog?.('supervisor', 'hold released', {
+          file: episode.filePath,
+          toast,
+          hadVisibleWait,
+          resuming: pausedForSubsRef.current && !subsOverrideRef.current,
+        });
         setSubsWait(null);
         if (toast && hadVisibleWait) showTrackerToast('Subtitles loaded');
         if (pausedForSubsRef.current && !subsOverrideRef.current) {
@@ -871,14 +917,24 @@ function VideoPlayer() {
         } catch (err) {
           // A sidecar conversion threw; same treatment as an extraction miss.
           console.warn('Subtitle build failed:', err);
+          window.electronAPI.subLog?.('supervisor', 'build threw', { file: episode.filePath, attempt, error: String(err) });
           result = { loaded: 0, candidates: 1, errored: true, defaultFormat: null };
         }
         if (cancelled) return;
         clearTimeout(slowTimer);
+        window.electronAPI.subLog?.('supervisor', `attempt ${attempt} built`, {
+          file: episode.filePath,
+          attempt,
+          loaded: result.loaded,
+          candidates: result.candidates,
+          errored: result.errored,
+          defaultFormat: result.defaultFormat,
+        });
         const failed = result.loaded === 0 && (result.errored || result.candidates > 0);
         if (!failed) {
           if (result.loaded === 0) {
             // Genuinely no subtitles in this file: nothing to gate on.
+            window.electronAPI.subLog?.('supervisor', 'no subtitles in file, nothing to gate', { file: episode.filePath, attempt });
             releaseHold(false);
             return;
           }
@@ -891,10 +947,12 @@ function VideoPlayer() {
             if (!subsOverrideRef.current && subsWaitRef.current === null) {
               setSubsWait({ kind: 'loading', attempt });
             }
+            window.electronAPI.subLog?.('supervisor', 'ASS tracks built, holding for JASSUB ready tick (6s watchdog armed)', { file: episode.filePath, attempt });
             confirmApplyRef.current = () => releaseHold(true);
             if (applyTimer) clearTimeout(applyTimer);
             applyTimer = setTimeout(() => {
               if (cancelled || confirmApplyRef.current === null) return;
+              window.electronAPI.subLog?.('supervisor', 'apply watchdog fired: no JASSUB ready tick, tearing down and rebuilding', { file: episode.filePath, attempt });
               confirmApplyRef.current = null;
               if (!subsOverrideRef.current) setSubsWait({ kind: 'failed', attempt });
               tearDownJassub();
@@ -905,12 +963,18 @@ function VideoPlayer() {
           } else {
             // Native VTT tracks render as soon as the activation effect
             // flips them to showing; no async renderer to wait for.
+            window.electronAPI.subLog?.('supervisor', 'VTT tracks built, releasing immediately', { file: episode.filePath, attempt });
             releaseHold(true);
           }
           return;
         }
         if (!subsOverrideRef.current) setSubsWait({ kind: 'failed', attempt });
         const delay = Math.min(8000, 1000 * 2 ** Math.min(attempt - 1, 3));
+        window.electronAPI.subLog?.(
+          'supervisor',
+          `attempt ${attempt} failed, retrying in ${delay}ms`,
+          { file: episode.filePath, attempt, delay, loaded: result.loaded, candidates: result.candidates, errored: result.errored },
+        );
         retryTimer = setTimeout(() => { if (!cancelled) void supervise(attempt + 1); }, delay);
       };
       void supervise(1);
@@ -943,6 +1007,7 @@ function VideoPlayer() {
     if (!video) return;
     const onPlay = () => {
       if (subsWaitRef.current && !subsOverrideRef.current) {
+        window.electronAPI.subLog?.('hold', 'play blocked: subtitle gate is up, pausing', { t: Math.round(video.currentTime * 10) / 10 });
         pausedForSubsRef.current = true;
         video.pause();
       }
@@ -957,6 +1022,7 @@ function VideoPlayer() {
     const video = videoRef.current;
     if (!video || !subsWait || subsOverrideRef.current) return;
     if (!video.paused) {
+      window.electronAPI.subLog?.('hold', 'wait appeared mid-playback, pausing', { kind: subsWait.kind, attempt: subsWait.attempt });
       pausedForSubsRef.current = true;
       video.pause();
     }
@@ -979,6 +1045,7 @@ function VideoPlayer() {
     const video = videoRef.current;
     if (!video) return;
 
+    window.electronAPI.subLog?.('select', 'teardown previous renderer, all tracks disabled', { idx });
     tearDownJassub();
     for (let i = 0; i < video.textTracks.length; i++) {
       video.textTracks[i].mode = 'disabled';
@@ -987,6 +1054,7 @@ function VideoPlayer() {
     if (idx < 0 || idx >= subtitleSrcs.length) return;
 
     const sub = subtitleSrcs[idx];
+    window.electronAPI.subLog?.('select', 'track selected', { idx, label: sub.label, format: sub.format, hasSrc: sub.src !== null });
 
     if (sub.src === null) {
       // Lazy MultiSub extraction: this language was listed but never demuxed
@@ -994,11 +1062,14 @@ function VideoPlayer() {
       // the src into state, then re-enter once the state has flushed.
       void (async () => {
         if (sub.streamIndex == null) return;
+        window.electronAPI.subLog?.('select', 'lazy extract for listed track', { idx, label: sub.label, streamIndex: sub.streamIndex });
         const result = await window.electronAPI.extractEmbeddedSubtitle(sub.origPath, sub.streamIndex, sub.codec ?? '');
         if (!result) {
+          window.electronAPI.subLog?.('select', 'lazy extract failed', { idx, label: sub.label, streamIndex: sub.streamIndex });
           showTrackerToast('That subtitle track failed to load');
           return;
         }
+        window.electronAPI.subLog?.('select', 'lazy extract ok, re-entering with patched src', { idx, format: result.format });
         const src = `media://${result.path}`;
         setSubtitleSrcs((prev) => prev.map((s, i) => (i === idx ? { ...s, src, format: result.format } : s)));
         setTimeout(() => selectSubtitleRef.current?.(idx), 0);
@@ -1012,6 +1083,8 @@ function VideoPlayer() {
       // fetch arbitrary URLs reliably from its own context.
       void (async () => {
         try {
+          const jassubInitStart = performance.now();
+          window.electronAPI.subLog?.('select', 'JASSUB init start', { label: sub.label });
           const assUrl = sub.src;
           if (!assUrl) return; // lazy track: the null-src branch above re-enters
           const [resp, wasmUrls] = await Promise.all([fetch(assUrl), getJassubWasmUrls()]);
@@ -1044,6 +1117,7 @@ function VideoPlayer() {
           jassubRef.current = inst;
           await (inst as unknown as { ready?: Promise<unknown> }).ready;
           console.log('[subs] JASSUB ready for', sub.label);
+          window.electronAPI.subLog?.('select', 'JASSUB ready', { label: sub.label, ms: Math.round(performance.now() - jassubInitStart) });
           // Trigger dialogue-style detection / override-application effects
           // now that the renderer is reachable.
           setJassubReadyTick((t) => t + 1);
@@ -1058,6 +1132,7 @@ function VideoPlayer() {
           // Force idempotent re-syncs while the mount settles.
           const forceResize = () => {
             if (jassubRef.current !== inst) return;
+            window.electronAPI.subLog?.('select', 'forceResize resync (postage-stamp guard)', { label: sub.label });
             try {
               void (inst as unknown as { resize: (forceRepaint?: boolean) => Promise<void> }).resize(true);
             } catch { /* instance mid-teardown */ }
@@ -1110,6 +1185,7 @@ function VideoPlayer() {
                     Math.abs(cr.height - ch),
                   );
                   if (drift > 2) {
+                    window.electronAPI.subLog?.('select', 'geometry drift correction, forcing resize', { label: sub.label, drift: Math.round(drift * 10) / 10 });
                     try {
                       void (inst as unknown as { resize: (f?: boolean) => Promise<void> }).resize(true);
                     } catch { /* mid-teardown */ }
@@ -1122,6 +1198,7 @@ function VideoPlayer() {
           requestAnimationFrame(pump);
         } catch (err) {
           console.error('JASSUB init failed:', err);
+          window.electronAPI.subLog?.('select', 'JASSUB init failed', { label: sub.label, error: String(err) });
           // The apply-confirmation watchdog below treats the missing ready
           // tick as a failure and retries; nothing to do here beyond logging.
         }
@@ -1134,9 +1211,16 @@ function VideoPlayer() {
     // microtask to materialize, then retry.
     const tryEnable = (attempt = 0) => {
       const t = findVttTrack(sub);
-      if (t) { t.mode = 'showing'; return; }
+      if (t) {
+        t.mode = 'showing';
+        window.electronAPI.subLog?.('select', 'VTT track showing', { label: sub.label, retry: attempt });
+        return;
+      }
       if (attempt < 10) setTimeout(() => tryEnable(attempt + 1), 50);
-      else console.warn('No matching textTrack for', sub.label);
+      else {
+        console.warn('No matching textTrack for', sub.label);
+        window.electronAPI.subLog?.('select', 'no matching textTrack, gave up after 10 tries', { label: sub.label });
+      }
     };
     tryEnable();
   };
@@ -1246,11 +1330,13 @@ function VideoPlayer() {
           .map((s) => s.name);
 
         setAssDialogueStyleNames(ranked);
+        window.electronAPI.subLog?.('style', 'ASS dialogue styles detected', { count: ranked.length, styles: ranked.slice(0, 8).join(', ') });
         // Default selection = most-used dialogue style. Keep prior selection
         // if it still exists in the new list.
         setSelectedAssStyle((prev) => (prev && ranked.includes(prev) ? prev : (ranked[0] ?? null)));
       } catch (err) {
         console.warn('[subs] could not list ASS styles', err);
+        window.electronAPI.subLog?.('style', 'could not list ASS styles', { error: String(err) });
       }
     })();
     return () => { cancelled = true; };
@@ -1304,8 +1390,10 @@ function VideoPlayer() {
           }
           await r.setStyle(patch, i);
         }
+        window.electronAPI.subLog?.('style', 'ASS style overrides applied', { playResY: assPlayResYRef.current || 288 });
       } catch (err) {
         console.warn('[subs] failed to apply ASS overrides', err);
+        window.electronAPI.subLog?.('style', 'failed to apply ASS overrides', { error: String(err) });
       }
     })();
   }, [activeSubIdx, subtitleSrcs, assStyles, jassubReadyTick]);
@@ -1651,6 +1739,7 @@ function VideoPlayer() {
       if (activeSubIdx >= 0) {
         // Currently showing a track → remember it and turn captions off.
         lastSubIdxRef.current = activeSubIdx;
+        window.electronAPI.subLog?.('keys', 'captions toggled off (C)', { remembered: activeSubIdx });
         selectSubtitle(-1);
       } else {
         // Off → restore the last track, falling back to the default or first.
@@ -1659,6 +1748,7 @@ function VideoPlayer() {
           const def = subtitleSrcs.findIndex((s) => s.default);
           target = def >= 0 ? def : 0;
         }
+        window.electronAPI.subLog?.('keys', 'captions toggled on (C)', { restored: target });
         selectSubtitle(target);
       }
     };
@@ -1709,6 +1799,7 @@ function VideoPlayer() {
         if (video.paused) {
           if (subsWaitRef.current) {
             subsOverrideRef.current = true;
+            window.electronAPI.subLog?.('hold', 'user override: play without subs (keyboard play)');
             setSubsWait(null);
           }
           void video.play();
@@ -1789,6 +1880,7 @@ function VideoPlayer() {
       // "play without subs"; retries keep running in the background.
       if (subsWaitRef.current) {
         subsOverrideRef.current = true;
+        window.electronAPI.subLog?.('hold', 'user override: play without subs (play button)');
         setSubsWait(null);
       }
       void video.play();
@@ -1829,7 +1921,10 @@ function VideoPlayer() {
     return eps.find((ep: FileEpisode) => ep.episodeNumber === nextEp)?.filePath ?? null;
   }, [nextEp, seriesId, metadata]);
   useEffect(() => {
-    if (nextEpFilePath && videoSrc) void window.electronAPI.prewarmSubtitles?.(nextEpFilePath);
+    if (nextEpFilePath && videoSrc) {
+      window.electronAPI.subLog?.('prewarm', 'prewarming next episode subtitles', { file: nextEpFilePath });
+      void window.electronAPI.prewarmSubtitles?.(nextEpFilePath);
+    }
   }, [nextEpFilePath, videoSrc]);
 
   const goToEpisode = (epNum: number) => {
@@ -2195,6 +2290,7 @@ function VideoPlayer() {
             onClick={(e) => {
               e.stopPropagation();
               subsOverrideRef.current = true;
+              window.electronAPI.subLog?.('hold', 'user override: play without subs (skip button)');
               setSubsWait(null);
               if (pausedForSubsRef.current) {
                 pausedForSubsRef.current = false;
@@ -2381,6 +2477,7 @@ function VideoPlayer() {
               if (!video) return;
               if (subsWaitRef.current) {
                 subsOverrideRef.current = true;
+                window.electronAPI.subLog?.('hold', 'user override: play without subs (replay button)');
                 setSubsWait(null);
               }
               video.currentTime = 0;

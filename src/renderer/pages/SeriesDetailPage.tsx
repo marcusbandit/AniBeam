@@ -457,6 +457,7 @@ function SeriesDetailPage() {
     if (!filePathsKey) return;
     const paths = filePathsKey.split("\n");
     let cancelled = false;
+    window.electronAPI.subLog?.("evaluate-ui", "series sweep requested", { fileCount: paths.length, first: paths[0] });
     void window.electronAPI.evaluateSeriesSubtitles?.(paths)
       .then((results) => {
         if (cancelled || !Array.isArray(results)) return;
