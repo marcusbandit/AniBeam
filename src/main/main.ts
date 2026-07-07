@@ -30,6 +30,8 @@ import { registerMediaPlaybackIpc, resolveQueueSnapshot } from './ipc/mediaPlayb
 import { registerTrackerIpc } from './ipc/tracker';
 import { registerShellIpc } from './ipc/shell';
 import { registerSubscriptionsIpc } from './ipc/subscriptions';
+import { registerSubtitleLogIpc } from './ipc/subtitleLog';
+import { initSubtitleDebugLog } from './services/subtitleDebugLog';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -874,6 +876,14 @@ app.whenReady().then(async () => {
 
   createWindow();
 
+  // Subtitle debug log: append-only file under userData/logs so subtitle
+  // behavior stays tailable in the packaged build (`bun run logs:subs`).
+  // Initialized before the IPC modules so renderer lines never race it.
+  initSubtitleDebugLog(join(app.getPath('userData'), 'logs'), {
+    version: app.getVersion(),
+    pid: process.pid,
+  });
+
   // Wire IPC modules. Each register() takes a window getter (or nothing
   // when handlers don't need to send to the renderer) and adds its
   // handlers to ipcMain. Order doesn't matter — they're independent.
@@ -886,6 +896,7 @@ app.whenReady().then(async () => {
   registerTrackerIpc(getMainWindow);
   registerShellIpc();
   registerSubscriptionsIpc();
+  registerSubtitleLogIpc();
 
   // Probe-ready and transcode events share the same status update plumbing.
   // The probe callback also tees into maybeEnqueueTranscode whenever a file

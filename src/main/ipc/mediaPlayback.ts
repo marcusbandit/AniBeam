@@ -10,6 +10,7 @@ import { findFileEpisode } from '../../shared/fileEpisode';
 import type { FileEpisodeEntry } from '../../shared/fileEpisode';
 import { probeCodecs, needsTranscode } from '../utils/transcodeProbe';
 import { getViewHistory, markViewed } from '../services/viewHistory';
+import { subLog } from '../services/subtitleDebugLog';
 import type { SubtitleState } from '../../shared/subtitleSupport';
 import type { WindowGetter } from './types';
 import type { TranscodeQueueSnapshot } from '../preload';
@@ -58,6 +59,7 @@ export function registerMediaPlaybackIpc(getMainWindow?: WindowGetter): void {
   };
 
   const broadcastSubtitleStateChanged = (filePath: string, subtitleState: SubtitleState): void => {
+    subLog('main/state', 'broadcast subtitle-state-changed', { file: filePath, state: subtitleState });
     const win = getMainWindow?.();
     if (win && !win.isDestroyed()) {
       win.webContents.send('metadata:subtitle-state-changed', { filePath, subtitleState });
@@ -212,11 +214,13 @@ export function registerMediaPlaybackIpc(getMainWindow?: WindowGetter): void {
     if (!Array.isArray(filePaths)) return [];
     const paths = filePaths.filter((p): p is string => typeof p === 'string' && p.length > 0);
     if (paths.length === 0) return [];
+    subLog('main/evaluate-series', 'sweep start', { fileCount: paths.length, first: paths[0] });
     let meta: Record<string, unknown> = {};
     try {
       meta = await metadataHandler.loadMetadata();
     } catch {
       // Without metadata we can't know about sidecars or persist — bail.
+      subLog('main/evaluate-series', 'bail: metadata unavailable', { fileCount: paths.length });
       return [];
     }
     const evaluated = await Promise.all(paths.map(async (filePath) => {
@@ -238,7 +242,17 @@ export function registerMediaPlaybackIpc(getMainWindow?: WindowGetter): void {
         return { filePath, state: null, fresh: false };
       }
     }));
-    // Persist the freshly-computed states in one transaction.
+    // Persist the freshly-computed states in one transaction. Per-file fresh
+    // verdicts are logged by evaluateAvailability (main/evaluate); this is the
+    // sweep-level summary, with cached reuses as a single count.
+    const tally = { ok: 0, unsupported: 0, failed: 0, none: 0 };
+    for (const r of evaluated) tally[r.state ?? 'none'] += 1;
+    subLog('main/evaluate-series', 'sweep done', {
+      fileCount: paths.length,
+      fresh: evaluated.filter((r) => r.fresh).length,
+      cached: evaluated.filter((r) => !r.fresh).length,
+      ...tally,
+    });
     const fresh = evaluated.filter((r): r is typeof r & { checkedAt: number } => r.fresh === true);
     if (fresh.length > 0) {
       const byPath = new Map(fresh.map((r) => [r.filePath, r]));
@@ -273,6 +287,7 @@ export function registerMediaPlaybackIpc(getMainWindow?: WindowGetter): void {
   ipcMain.handle('subtitle:report-state', async (_event, filePath: unknown, state: unknown) => {
     if (typeof filePath !== 'string' || !filePath) return;
     if (state !== 'ok' && state !== 'unsupported' && state !== 'failed') return;
+    subLog('main/report-state', 'play-time state reported', { file: filePath, state });
     const touched = await metadataHandler.transaction<boolean>(async (m) => {
       let changed = false;
       for (const series of Object.values(m)) {
