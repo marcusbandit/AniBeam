@@ -167,6 +167,13 @@ export interface ElectronAPI {
   reportSubtitleState: (filePath: string, state: SubtitleState) => Promise<void>;
   onSubtitleStateChanged: (handler: (payload: { filePath: string; subtitleState: SubtitleState }) => void) => () => void;
 
+  /**
+   * Append a line to the subtitle debug log (userData/logs/subtitles.log).
+   * Fire-and-forget; main prefixes the scope with `renderer/`. Debug-only,
+   * never reaches the user-facing activity log.
+   */
+  subLog: (scope: string, message: string, data?: unknown) => void;
+
   // Open a video — main checks for a pre-transcoded cache entry, otherwise
   // returns the original file:// URL. The renderer hands the URL to <video>.
   openVideo: (filePath: string) => Promise<VideoOpenResult>;
@@ -375,6 +382,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('metadata:subtitle-state-changed', listener);
     return () => ipcRenderer.removeListener('metadata:subtitle-state-changed', listener);
   },
+  subLog: (scope: string, message: string, data?: unknown) => ipcRenderer.send('subtitle:log', scope, message, data),
 
   // Video open
   openVideo: (filePath: string) => ipcRenderer.invoke('video:open', filePath),

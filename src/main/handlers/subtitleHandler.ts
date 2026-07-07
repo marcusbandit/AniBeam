@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { app } from 'electron';
 import { logger } from '../services/logger';
+import { subLog } from '../services/subtitleDebugLog';
 import {
   classifySubtitleCodec,
   deriveSubtitleState,
@@ -91,22 +92,30 @@ const prewarmSeen = new Set<string>();
 // facing listEmbedded filters this down to renderable text; evaluateAvailability
 // needs the unfiltered list so it can tell "bitmap-only" apart from "no subs".
 async function probeAllStreams(videoPath: string): Promise<EmbeddedSubInfo[]> {
-  const json = await runFfprobe([
-    '-v', 'error',
-    '-select_streams', 's',
-    '-show_entries', 'stream=index,codec_name:stream_tags=language,title',
-    '-of', 'json',
-    videoPath,
-  ]);
+  let json: string;
+  try {
+    json = await runFfprobe([
+      '-v', 'error',
+      '-select_streams', 's',
+      '-show_entries', 'stream=index,codec_name:stream_tags=language,title',
+      '-of', 'json',
+      videoPath,
+    ]);
+  } catch (err) {
+    subLog('main/probe', 'ffprobe failed', { file: videoPath, error: err });
+    throw err;
+  }
   const parsed = JSON.parse(json) as {
     streams?: Array<{ index: number; codec_name?: string; tags?: { language?: string; title?: string } }>;
   };
-  return (parsed.streams || []).map((s) => ({
+  const streams = (parsed.streams || []).map((s) => ({
     streamIndex: s.index,
     codec: s.codec_name ?? '',
     language: s.tags?.language ?? null,
     title: s.tags?.title ?? null,
   }));
+  subLog('main/probe', `found ${streams.length} subtitle stream(s)`, { file: videoPath, streams });
+  return streams;
 }
 
 const subtitleHandler = {
@@ -119,9 +128,11 @@ const subtitleHandler = {
       if (all.length !== text.length) {
         logger.info('metadata', `Skipping ${all.length - text.length} non-text subtitle stream(s) (bitmap)`, { file: videoPath });
       }
+      subLog('main/list-embedded', 'renderable text streams', { file: videoPath, renderable: text.length, bitmapSkipped: all.length - text.length });
       return text;
     } catch (err) {
       logger.warn('metadata', `Failed to list embedded subtitles: ${(err as Error).message}`, { file: videoPath });
+      subLog('main/list-embedded', 'listing failed', { file: videoPath, error: err });
       return [];
     }
   },
@@ -137,7 +148,10 @@ const subtitleHandler = {
    * that's the play-time path's job.
    */
   async evaluateAvailability(videoPath: string, hasSidecar: boolean): Promise<SubtitleState | null> {
-    if (hasSidecar) return 'ok';
+    if (hasSidecar) {
+      subLog('main/evaluate', 'verdict: ok (sidecar present)', { file: videoPath, hasSidecar });
+      return 'ok';
+    }
     if (!existsSync(videoPath)) return null;
     try {
       const all = await probeAllStreams(videoPath);
@@ -147,9 +161,12 @@ const subtitleHandler = {
         if (targetFormat(s.codec) !== null) renderableCount++;
         else nonRenderableCount++;
       }
-      return deriveSubtitleState({ hasSidecar: false, renderableCount, nonRenderableCount });
+      const state = deriveSubtitleState({ hasSidecar: false, renderableCount, nonRenderableCount });
+      subLog('main/evaluate', `verdict: ${state ?? 'none'}`, { file: videoPath, hasSidecar, renderableCount, nonRenderableCount });
+      return state;
     } catch (err) {
       logger.warn('metadata', `Failed to evaluate subtitle availability: ${(err as Error).message}`, { file: videoPath });
+      subLog('main/evaluate', 'verdict: null (probe failed)', { file: videoPath, hasSidecar, error: err });
       return null;
     }
   },
@@ -164,7 +181,11 @@ const subtitleHandler = {
   async extractEmbedded(videoPath: string, streamIndex: number, codec: string): Promise<{ path: string; format: 'ass' | 'vtt' } | null> {
     if (!existsSync(videoPath)) return null;
     const fmt = targetFormat(codec);
-    if (!fmt) return null;
+    subLog('main/extract', 'extract requested', { file: videoPath, streamIndex, codec, targetFormat: fmt });
+    if (!fmt) {
+      subLog('main/extract', 'bail: unrenderable codec', { file: videoPath, streamIndex, codec });
+      return null;
+    }
     let out: string;
     try {
       const stats = await stat(videoPath);
@@ -172,6 +193,7 @@ const subtitleHandler = {
       out = join(dir, `${cacheKeyHash(videoPath, stats.mtimeMs, streamIndex)}.${fmt}`);
     } catch (err) {
       logger.warn('metadata', `Failed to resolve subtitle cache path for stream ${streamIndex}: ${(err as Error).message}`, { file: videoPath });
+      subLog('main/extract', 'bail: cache path resolve failed', { file: videoPath, streamIndex, error: err });
       return null;
     }
     if (existsSync(out)) {
@@ -181,16 +203,24 @@ const subtitleHandler = {
       // An empty file is never a valid extract; drop it and re-extract.
       try {
         const cached = await stat(out);
-        if (cached.size > 0) return { path: out, format: fmt };
+        if (cached.size > 0) {
+          subLog('main/extract', 'cache hit', { file: videoPath, streamIndex, out, bytes: cached.size });
+          return { path: out, format: fmt };
+        }
         await unlink(out);
         logger.warn('metadata', `Discarded empty cached subtitle extract for stream ${streamIndex}; re-extracting`, { file: videoPath });
+        subLog('main/extract', 'discarded empty cached extract, re-extracting', { file: videoPath, streamIndex, out });
       } catch {
         // stat/unlink raced with something else; fall through and re-extract.
       }
     }
     // Coalesce a concurrent extract of the same output (prewarm vs play-time).
     const pending = inFlightExtract.get(out);
-    if (pending) return pending;
+    if (pending) {
+      subLog('main/extract', 'joining in-flight extraction', { file: videoPath, streamIndex, out });
+      return pending;
+    }
+    const startedAt = Date.now();
     const job = (async () => {
       // ASS extraction keeps the original styling/positioning; everything else
       // converts to WebVTT. `muxer` is BOTH the codec (-c:s) and the forced
@@ -228,13 +258,16 @@ const subtitleHandler = {
           if (produced.size === 0) throw new Error('extraction produced an empty file');
           await rename(tmp, out);
           logger.info('metadata', `Extracted embedded subtitle stream ${streamIndex} (${fmt}) → cache`, { file: videoPath });
+          subLog('main/extract', 'extracted ok', { file: videoPath, streamIndex, format: fmt, ms: Date.now() - startedAt, bytes: produced.size, out });
           return { path: out, format: fmt };
         } catch (err) {
           lastErr = err;
+          subLog('main/extract', `ffmpeg attempt ${attempt}/${ATTEMPTS} failed`, { file: videoPath, streamIndex, error: err });
           await unlink(tmp).catch(() => { /* tmp may not exist */ });
         }
       }
       logger.warn('metadata', `Failed to extract embedded subtitle stream ${streamIndex} after ${ATTEMPTS} attempts: ${(lastErr as Error).message}`, { file: videoPath });
+      subLog('main/extract', `giving up after ${ATTEMPTS} attempts`, { file: videoPath, streamIndex, ms: Date.now() - startedAt, error: lastErr });
       return null;
     })().finally(() => inFlightExtract.delete(out));
     inFlightExtract.set(out, job);
@@ -252,11 +285,20 @@ const subtitleHandler = {
    * extract is a no-op and all errors are swallowed.
    */
   prewarm(videoPath: string): void {
-    if (!videoPath || prewarmSeen.has(videoPath)) return;
+    if (!videoPath) return;
+    if (prewarmSeen.has(videoPath)) {
+      subLog('main/prewarm', 'skip: already queued this session', { file: videoPath });
+      return;
+    }
     prewarmSeen.add(videoPath);
+    subLog('main/prewarm', 'queued', { file: videoPath });
     prewarmChain = prewarmChain.then(async () => {
+      const startedAt = Date.now();
       try {
-        if (!existsSync(videoPath)) return;
+        if (!existsSync(videoPath)) {
+          subLog('main/prewarm', 'abort: file missing', { file: videoPath });
+          return;
+        }
         const streams = await subtitleHandler.listEmbedded(videoPath);
         // Warm ONLY the track that will actually display. The player picks
         // the first English stream (else the first stream) and extracts just
@@ -265,12 +307,23 @@ const subtitleHandler = {
         // the whole file, so warming them all was 10x wasted IO per episode
         // (and read as "8 tries for one episode" in the activity log).
         const lang = (s: { language: string | null }) => (s.language ?? '').toUpperCase();
-        const target = streams.find((s) => lang(s) === 'ENG' || lang(s) === 'EN') ?? streams[0];
+        const engMatch = streams.find((s) => lang(s) === 'ENG' || lang(s) === 'EN');
+        const target = engMatch ?? streams[0];
         if (target) {
+          subLog('main/prewarm', 'target stream chosen', {
+            file: videoPath,
+            streamIndex: target.streamIndex,
+            language: target.language,
+            reason: engMatch ? 'english match' : 'first stream',
+          });
           await subtitleHandler.extractEmbedded(videoPath, target.streamIndex, target.codec);
+          subLog('main/prewarm', 'done', { file: videoPath, ms: Date.now() - startedAt });
+        } else {
+          subLog('main/prewarm', 'no renderable embedded streams', { file: videoPath });
         }
-      } catch {
+      } catch (err) {
         /* prewarm is best-effort; play-time extraction still works */
+        subLog('main/prewarm', 'failed (swallowed, play-time extract still works)', { file: videoPath, error: err });
       }
     });
   },
