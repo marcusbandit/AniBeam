@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useMetadata, type SeriesMetadata } from '../hooks/useMetadata';
 import { BookOpen, Tv, Film, Search, RefreshCw, Trash2, AlertTriangle, Link2 } from 'lucide-react';
 import MetadataMatchModal from '../components/MetadataMatchModal';
@@ -48,9 +49,12 @@ function getImageUrl(localPath?: string | null, remotePath?: string | null): str
 }
 
 function MetadataTab() {
+  const location = useLocation();
   const { metadata, loading, updateSeriesMetadata, loadMetadata } = useMetadata();
   const [refreshing, setRefreshing] = useState<Record<string, boolean>>({});
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState<string>(
+    () => (location.state as { q?: string } | null)?.q ?? ''
+  );
   const [filter, setFilter] = useState<FilterOption>('all');
   const [bulkRefreshing, setBulkRefreshing] = useState(false);
   const [matchTarget, setMatchTarget] = useState<{ seriesId: string; data: SeriesMetadata } | null>(null);
@@ -65,6 +69,12 @@ function MetadataTab() {
     });
     return () => unsubscribe?.();
   }, [debouncedLoad]);
+
+  // Seed the filter from navigation state when arriving via "To Metadata".
+  useEffect(() => {
+    const q = (location.state as { q?: string } | null)?.q;
+    if (typeof q === 'string') setSearchQuery(q);
+  }, [location.state]);
 
   const seriesList = useMemo(() => Object.entries(metadata), [metadata]);
 

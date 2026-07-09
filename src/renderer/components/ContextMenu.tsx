@@ -105,8 +105,10 @@ function ContextMenu() {
 
   const handleToMetadata = useCallback(() => {
     setVisible(false);
-    navigate("/metadata");
-  }, [navigate]);
+    const data = seriesId ? metadata[seriesId] : null;
+    const q = data?.title || data?.titleRomaji || "";
+    navigate("/metadata", { state: { q } });
+  }, [navigate, seriesId, metadata]);
 
   const handleOpenWithMpv = useCallback(async () => {
     if (!episodeFile) return;
