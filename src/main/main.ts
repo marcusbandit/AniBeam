@@ -497,12 +497,23 @@ async function matchPosterForSeries(seriesId: string, folderName: string): Promi
 // modal in the Metadata tab. (Aligns with the "no periodic rescans"
 // design: the user opts in to expensive work, the app never re-does it
 // behind their back.)
+//
+// Bump when the auto-matcher logic changes and previously-failed series
+// deserve one automatic re-attempt with the new logic. Stored in config
+// as autoMatchVersion; a one-time catch-up runs when the stored value is
+// behind this, then the strict attempt-once discipline resumes.
+const AUTO_MATCH_VERSION = 2;
 async function matchPostersForLibrary(): Promise<void> {
   const meta = await metadataHandler.loadMetadata();
+  const cfg = await configHandler.loadConfig();
+  const forceRetry = (cfg.autoMatchVersion ?? 0) < AUTO_MATCH_VERSION;
   const todo: Array<{ seriesId: string; folderName: string }> = [];
   for (const [seriesId, raw] of Object.entries(meta)) {
-    const s = raw as { posterMatchAttempted?: boolean; title?: string };
-    if (s.posterMatchAttempted) continue;
+    const s = raw as { posterMatchAttempted?: boolean; posterMatched?: boolean; title?: string };
+    // Normally: attempt each series once. During a one-time post-upgrade
+    // catch-up, also re-attempt entries that were attempted but never matched
+    // (never re-touch a good match).
+    if (s.posterMatchAttempted && !(forceRetry && !s.posterMatched)) continue;
     // Use the cleaned title for the lookup. The scanner sets `title` to the
     // user-canonical (wrapper-derived for franchise subfolders, folder name
     // for root-level series, cleaned filename for movies) string — which is
@@ -510,10 +521,20 @@ async function matchPostersForLibrary(): Promise<void> {
     const matchQuery = s.title ?? seriesId;
     todo.push({ seriesId, folderName: matchQuery });
   }
-  if (todo.length === 0) return;
-  logger.info('metadata', `Matching ${todo.length} new series (poster + air dates)`);
+  if (todo.length === 0) {
+    if (forceRetry) await configHandler.saveConfig({ autoMatchVersion: AUTO_MATCH_VERSION });
+    return;
+  }
+  if (forceRetry) {
+    logger.info('metadata', `Auto-match upgraded to v${AUTO_MATCH_VERSION}: re-attempting ${todo.length} unmatched series`);
+  } else {
+    logger.info('metadata', `Matching ${todo.length} new series (poster + air dates)`);
+  }
   for (const { seriesId, folderName } of todo) {
     await matchPosterForSeries(seriesId, folderName);
+  }
+  if (forceRetry) {
+    await configHandler.saveConfig({ autoMatchVersion: AUTO_MATCH_VERSION });
   }
 }
 

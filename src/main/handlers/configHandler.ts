@@ -7,12 +7,14 @@ export interface AppConfig {
   folderSources: string[];
   lastScanned: string | null;
   version: number;
+  autoMatchVersion?: number;
 }
 
 const DEFAULT_CONFIG: AppConfig = {
   folderSources: [],
   lastScanned: null,
   version: 1,
+  autoMatchVersion: 0,
 };
 
 function getConfigPath(): string {
