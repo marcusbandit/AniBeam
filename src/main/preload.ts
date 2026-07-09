@@ -120,6 +120,7 @@ export interface ElectronAPI {
   clearMetadata: () => Promise<boolean>;
   deleteSeries: (seriesId: string) => Promise<boolean>;
   getSeriesEpisodes: (seriesId: string) => Promise<unknown[]>;
+  attachMissingSources: () => Promise<{ backfilled: number; matched: number; stillUnmatched: number }>;
 
   // Match picker (override metadata for a series)
   searchAnilist: (query: string, limit?: number) => Promise<AnilistSearchResult[]>;
@@ -332,6 +333,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   clearMetadata: () => ipcRenderer.invoke('clear-metadata'),
   deleteSeries: (seriesId: string) => ipcRenderer.invoke('delete-series', seriesId),
   getSeriesEpisodes: (seriesId: string) => ipcRenderer.invoke('get-series-episodes', seriesId),
+  attachMissingSources: () => ipcRenderer.invoke('metadata:attach-missing-sources'),
 
   // Match picker
   searchAnilist: (query: string, limit?: number) => ipcRenderer.invoke('anilist:search', query, limit),

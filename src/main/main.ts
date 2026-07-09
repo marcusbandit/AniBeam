@@ -457,6 +457,10 @@ async function matchPosterForSeries(seriesId: string, folderName: string): Promi
         posterMatchAttempted: true,
         posterMatched: true,
         matchSource: match.source,
+        // Also populate `source`, the field the Metadata tab's source column
+        // reads. Historically only matchSource was set on this path, so
+        // auto-matched series displayed "none". Keep both for back-compat.
+        source: match.source,
         anilistId: match.anilistId ?? undefined,
         malId: match.malId ?? null,
         matchedTitle: match.matchedTitle,
@@ -1102,6 +1106,57 @@ ipcMain.handle('fetch-metadata', async (_event, searchName: string, seasonNumber
   }
   logger.warn('metadata', `No metadata found for: "${searchName}"${seasonInfo}`);
   return null;
+});
+
+// Attach a `source` label to every series that has none. Most "sourceless"
+// series are actually matched: the background matcher wrote matchSource / ids
+// but historically not `source` (the field the Metadata tab reads), so they
+// showed "none". Those are backfilled instantly with no network. Only series
+// with no match at all are searched against the providers. The backfill runs
+// inside a transaction so a concurrent background match is never clobbered.
+ipcMain.handle('metadata:attach-missing-sources', async () => {
+  const tx = await metadataHandler.transaction<{
+    backfilled: number;
+    unmatched: Array<{ id: string; title: string }>;
+  }>(async (current) => {
+    let backfilled = 0;
+    const unmatched: Array<{ id: string; title: string }> = [];
+    for (const [id, raw] of Object.entries(current)) {
+      const s = raw as Record<string, unknown>;
+      if (s.source) continue;
+      const derived =
+        (s.matchSource as string | undefined) ??
+        (s.anilistId ? 'anilist' : s.malId != null ? 'mal' : null);
+      if (derived) {
+        current[id] = { ...s, source: derived };
+        backfilled++;
+      } else {
+        unmatched.push({ id, title: (s.title as string) ?? id });
+      }
+    }
+    if (backfilled > 0) {
+      logger.info('metadata', `Attached source label to ${backfilled} already-matched series`);
+    }
+    return { result: { backfilled, unmatched }, updated: current };
+  });
+  const backfilled = tx?.backfilled ?? 0;
+  const unmatched = tx?.unmatched ?? [];
+
+  // Only series with no existing match hit the providers.
+  for (const { id, title } of unmatched) {
+    await matchPosterForSeries(id, title);
+  }
+  let matched = 0;
+  if (unmatched.length > 0) {
+    const after = await metadataHandler.loadMetadata();
+    for (const { id } of unmatched) {
+      if ((after[id] as Record<string, unknown> | undefined)?.source) matched++;
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('metadata:file-status-changed', { filePath: '', status: 'ready' });
+    }
+  }
+  return { backfilled, matched, stillUnmatched: unmatched.length - matched };
 });
 
 ipcMain.handle('fetch-mal-metadata', async (_event, seriesName: string, seasonNumber?: number | null) => {
