@@ -41,6 +41,7 @@ interface AniListMedia {
     english: string | null;
     native: string;
   };
+  synonyms: string[];
   description: string | null;
   genres: string[];
   coverImage: {
@@ -322,6 +323,7 @@ const SEARCH_MULTIPLE_QUERY = gql`
           english
           native
         }
+        synonyms
         description
         genres
         coverImage {

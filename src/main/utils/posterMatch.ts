@@ -1,33 +1,41 @@
-// Folder-name → MAL/AniList poster match. Used during the
-// metadata-paused phase: only the poster URL is fetched, nothing else.
+// Folder-name -> AniList/MAL background auto-match.
+//
+// This mirrors the manual match picker: it queries AniList's
+// relevance-ordered search (the same list the user sees when matching by
+// hand), the top of which is usually the correct show.
 //
 // Folder name goes in VERBATIM. No stripping. The user keeps folder
-// names clean — that's the contract. We compare the folder name's
-// tokens against each result's romaji + english title via the existing
-// Dice similarity helper, take the max, and accept iff >= THRESHOLD.
+// names clean, that's the contract.
 //
-// Source preference: MAL first (per Liam's spec). AniList only runs if
-// MAL doesn't clear the threshold. We do NOT merge results — first
-// confident match wins.
+// Each candidate is scored against romaji + english + native + synonyms
+// via tokenized Dice similarity (bestTitleScore). We take the
+// BEST-scoring candidate, breaking ties toward AniList's relevance order
+// (an earlier result wins). Accept iff the best score >= THRESHOLD (0.5):
+// a "pretty close" bar. Anything further off returns null and is left for
+// manual matching.
+//
+// AniList is primary (the relevance list). MAL (Jikan) is a fallback only
+// when AniList yields nothing over the threshold. First confident source
+// wins; results are not merged.
 
-import malHandler from '../handlers/malHandler';
-import anilistHandler from '../handlers/anilistHandler';
-import { bestTitleScore } from './titleSimilarity';
-import { logger } from '../services/logger';
+import malHandler from "../handlers/malHandler";
+import anilistHandler from "../handlers/anilistHandler";
+import { bestTitleScore } from "./titleSimilarity";
+import { logger } from "../services/logger";
 
-const THRESHOLD = 0.95;
+const THRESHOLD = 0.5;
 
 export interface ShowMatch {
-  source: 'mal' | 'anilist';       // which provider scored ≥ THRESHOLD first
-  anilistId: number | null;        // populated for AniList primary matches; cross-resolved for MAL
-  malId: number | null;            // populated for MAL primary matches; cross-referenced via AniList's idMal
-  matchedTitle: string;            // primary romaji-ish title (back-compat)
-  titleRomaji: string | null;      // explicit romaji form
-  titleEnglish: string | null;     // English localization, when available
+  source: "mal" | "anilist"; // which provider scored ≥ THRESHOLD first
+  anilistId: number | null; // populated for AniList primary matches; cross-resolved for MAL
+  malId: number | null; // populated for MAL primary matches; cross-referenced via AniList's idMal
+  matchedTitle: string; // primary romaji-ish title (back-compat)
+  titleRomaji: string | null; // explicit romaji form
+  titleEnglish: string | null; // English localization, when available
   posterUrl: string;
   score: number;
-  status: string | null;        // raw from source — caller normalizes if needed
-  startDate: string | null;     // YYYY-MM-DD
+  status: string | null; // raw from source — caller normalizes if needed
+  startDate: string | null; // YYYY-MM-DD
   totalEpisodes: number | null;
 }
 
@@ -40,80 +48,135 @@ export interface EpisodeAirDate {
   title: string | null;
 }
 
-function aniListDate(d: { year: number | null; month: number | null; day: number | null } | null | undefined): string | null {
+function aniListDate(
+  d:
+    | { year: number | null; month: number | null; day: number | null }
+    | null
+    | undefined,
+): string | null {
   if (!d?.year) return null;
-  const m = String(d.month ?? 1).padStart(2, '0');
-  const day = String(d.day ?? 1).padStart(2, '0');
+  const m = String(d.month ?? 1).padStart(2, "0");
+  const day = String(d.day ?? 1).padStart(2, "0");
   return `${d.year}-${m}-${day}`;
 }
 
-export async function findShowMatch(folderName: string): Promise<ShowMatch | null> {
-  // 1. MAL via Jikan.
-  try {
-    const malResults = await malHandler.searchAnime(folderName, 10);
-    for (const r of malResults) {
-      const score = bestTitleScore(folderName, [r.title, r.title_english]);
-      if (score >= THRESHOLD) {
-        const poster = r.images?.jpg?.large_image_url ?? r.images?.jpg?.image_url ?? null;
-        if (poster) {
-          logger.info('metadata', `Match (MAL ${score.toFixed(2)}): ${folderName} → ${r.title}`, { series: folderName });
-          // AniList accepts an idMal filter, so we can grab the AniList id
-          // for free with a single extra query. Best-effort — null on
-          // failure means the MAL tracker still works, just not AniList.
-          const anilistId = await anilistHandler.resolveAnilistIdByMal(r.mal_id);
-          return {
-            source: 'mal',
-            anilistId,
-            malId: r.mal_id,
-            matchedTitle: r.title,
-            titleRomaji: r.title,
-            titleEnglish: r.title_english ?? null,
-            posterUrl: poster,
-            score,
-            status: r.status ?? null,
-            startDate: r.aired?.from ? new Date(r.aired.from).toISOString().split('T')[0] : null,
-            totalEpisodes: r.episodes ?? null,
-          };
-        }
-      }
-    }
-  } catch (err) {
-    logger.warn('metadata', `MAL search failed for ${folderName}: ${(err as Error).message}`, { series: folderName });
-  }
-
-  // 2. AniList fallback.
+export async function findShowMatch(
+  folderName: string,
+): Promise<ShowMatch | null> {
+  // 1. AniList relevance-ordered search (primary, the manual picker's list).
+  //    Score every candidate and take the best; ties break toward the
+  //    earlier (higher-relevance) result via strict greater-than.
   try {
     const aniResults = await anilistHandler.searchAnimeMultiple(folderName, 10);
+    let bestScore = -1;
+    let best: (typeof aniResults)[number] | null = null;
     for (const r of aniResults) {
-      const score = bestTitleScore(folderName, [r.title?.romaji, r.title?.english]);
-      if (score >= THRESHOLD) {
-        const poster = r.coverImage?.extraLarge ?? r.coverImage?.large ?? null;
-        if (poster) {
-          const matchedTitle = r.title?.romaji ?? r.title?.english ?? '?';
-          logger.info('metadata', `Match (AniList ${score.toFixed(2)}): ${folderName} → ${matchedTitle}`, { series: folderName });
-          return {
-            source: 'anilist',
-            anilistId: r.id,
-            // SEARCH_MULTIPLE_QUERY now includes idMal — null when AniList
-            // has no MAL cross-reference for this entry.
-            malId: r.idMal ?? null,
-            matchedTitle,
-            titleRomaji: r.title?.romaji ?? null,
-            titleEnglish: r.title?.english ?? null,
-            posterUrl: poster,
-            score,
-            status: r.status ?? null,
-            startDate: aniListDate(r.startDate),
-            totalEpisodes: r.episodes ?? null,
-          };
-        }
+      const score = bestTitleScore(folderName, [
+        r.title?.romaji,
+        r.title?.english,
+        r.title?.native,
+        ...(r.synonyms ?? []),
+      ]);
+      if (score > bestScore) {
+        bestScore = score;
+        best = r;
+      }
+    }
+    if (best && bestScore >= THRESHOLD) {
+      const poster =
+        best.coverImage?.extraLarge ?? best.coverImage?.large ?? null;
+      if (poster) {
+        const matchedTitle = best.title?.romaji ?? best.title?.english ?? "?";
+        logger.info(
+          "metadata",
+          `Match (AniList ${bestScore.toFixed(2)}): ${folderName} → ${matchedTitle}`,
+          { series: folderName },
+        );
+        return {
+          source: "anilist",
+          anilistId: best.id,
+          // SEARCH_MULTIPLE_QUERY includes idMal — null when AniList has no
+          // MAL cross-reference for this entry.
+          malId: best.idMal ?? null,
+          matchedTitle,
+          titleRomaji: best.title?.romaji ?? null,
+          titleEnglish: best.title?.english ?? null,
+          posterUrl: poster,
+          score: bestScore,
+          status: best.status ?? null,
+          startDate: aniListDate(best.startDate),
+          totalEpisodes: best.episodes ?? null,
+        };
       }
     }
   } catch (err) {
-    logger.warn('metadata', `AniList search failed for ${folderName}: ${(err as Error).message}`, { series: folderName });
+    logger.warn(
+      "metadata",
+      `AniList search failed for ${folderName}: ${(err as Error).message}`,
+      { series: folderName },
+    );
   }
 
-  logger.info('metadata', `No match for ${folderName} (threshold ${THRESHOLD})`, { series: folderName });
+  // 2. MAL (Jikan) fallback, only reached when AniList had nothing over the
+  //    threshold. Same best-scoring-with-relevance-tiebreak selection.
+  try {
+    const malResults = await malHandler.searchAnime(folderName, 10);
+    let bestScore = -1;
+    let best: (typeof malResults)[number] | null = null;
+    for (const r of malResults) {
+      const score = bestTitleScore(folderName, [r.title, r.title_english]);
+      if (score > bestScore) {
+        bestScore = score;
+        best = r;
+      }
+    }
+    if (best && bestScore >= THRESHOLD) {
+      const poster =
+        best.images?.jpg?.large_image_url ??
+        best.images?.jpg?.image_url ??
+        null;
+      if (poster) {
+        logger.info(
+          "metadata",
+          `Match (MAL ${bestScore.toFixed(2)}): ${folderName} → ${best.title}`,
+          { series: folderName },
+        );
+        // AniList accepts an idMal filter, so we can grab the AniList id
+        // for free with a single extra query. Best-effort, null on failure
+        // means the MAL tracker still works, just not AniList.
+        const anilistId = await anilistHandler.resolveAnilistIdByMal(
+          best.mal_id,
+        );
+        return {
+          source: "mal",
+          anilistId,
+          malId: best.mal_id,
+          matchedTitle: best.title,
+          titleRomaji: best.title,
+          titleEnglish: best.title_english ?? null,
+          posterUrl: poster,
+          score: bestScore,
+          status: best.status ?? null,
+          startDate: best.aired?.from
+            ? new Date(best.aired.from).toISOString().split("T")[0]
+            : null,
+          totalEpisodes: best.episodes ?? null,
+        };
+      }
+    }
+  } catch (err) {
+    logger.warn(
+      "metadata",
+      `MAL search failed for ${folderName}: ${(err as Error).message}`,
+      { series: folderName },
+    );
+  }
+
+  logger.info(
+    "metadata",
+    `No match for ${folderName} (threshold ${THRESHOLD})`,
+    { series: folderName },
+  );
   return null;
 }
 
@@ -128,16 +191,19 @@ export async function findShowMatch(folderName: string): Promise<ShowMatch | nul
  * is empty (older / completed runs).
  */
 export async function fetchEpisodeAirDates(
-  source: 'mal' | 'anilist',
+  source: "mal" | "anilist",
   externalId: number,
   totalEpisodes: number | null,
   malIdForTitles?: number | null,
 ): Promise<EpisodeAirDate[]> {
   // 1. AniList airingSchedule (preferred for dates).
-  let fromAnilist: Array<{ episodeNumber: number; airDate: string | null }> | null = null;
+  let fromAnilist: Array<{
+    episodeNumber: number;
+    airDate: string | null;
+  }> | null = null;
   try {
     const nodes = await anilistHandler.getAiringSchedule(
-      source === 'anilist' ? { anilistId: externalId } : { malId: externalId },
+      source === "anilist" ? { anilistId: externalId } : { malId: externalId },
     );
     if (nodes.length > 0) {
       fromAnilist = nodes
@@ -148,13 +214,20 @@ export async function fetchEpisodeAirDates(
         }));
     }
   } catch (err) {
-    logger.warn('metadata', `AniList airingSchedule failed: ${(err as Error).message}`);
+    logger.warn(
+      "metadata",
+      `AniList airingSchedule failed: ${(err as Error).message}`,
+    );
   }
 
   // 2. MAL /episodes — used for titles whenever malId is known, and as the
   // air-date source when AniList didn't return any.
-  const malId = source === 'mal' ? externalId : (malIdForTitles ?? null);
-  let fromMal: Array<{ episodeNumber: number; title: string | null; airDate: string | null }> | null = null;
+  const malId = source === "mal" ? externalId : (malIdForTitles ?? null);
+  let fromMal: Array<{
+    episodeNumber: number;
+    title: string | null;
+    airDate: string | null;
+  }> | null = null;
   if (malId != null) {
     try {
       const eps = await malHandler.getEpisodes(malId, totalEpisodes);
@@ -167,7 +240,10 @@ export async function fetchEpisodeAirDates(
         airDate: e.airDate,
       }));
     } catch (err) {
-      logger.warn('metadata', `MAL episodes fetch failed for ${malId}: ${(err as Error).message}`);
+      logger.warn(
+        "metadata",
+        `MAL episodes fetch failed for ${malId}: ${(err as Error).message}`,
+      );
     }
   }
 
@@ -176,7 +252,11 @@ export async function fetchEpisodeAirDates(
   // only the currently airing batch while MAL covers the full run.
   const byEp = new Map<number, EpisodeAirDate>();
   for (const a of fromAnilist ?? []) {
-    byEp.set(a.episodeNumber, { episodeNumber: a.episodeNumber, airDate: a.airDate, title: null });
+    byEp.set(a.episodeNumber, {
+      episodeNumber: a.episodeNumber,
+      airDate: a.airDate,
+      title: null,
+    });
   }
   for (const m of fromMal ?? []) {
     const existing = byEp.get(m.episodeNumber);
@@ -186,8 +266,14 @@ export async function fetchEpisodeAirDates(
       existing.title = m.title;
       if (!existing.airDate) existing.airDate = m.airDate;
     } else {
-      byEp.set(m.episodeNumber, { episodeNumber: m.episodeNumber, airDate: m.airDate, title: m.title });
+      byEp.set(m.episodeNumber, {
+        episodeNumber: m.episodeNumber,
+        airDate: m.airDate,
+        title: m.title,
+      });
     }
   }
-  return Array.from(byEp.values()).sort((a, b) => a.episodeNumber - b.episodeNumber);
+  return Array.from(byEp.values()).sort(
+    (a, b) => a.episodeNumber - b.episodeNumber,
+  );
 }

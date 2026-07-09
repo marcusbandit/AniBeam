@@ -49,6 +49,7 @@ interface AnilistCandidate {
   result: {
     id: number;
     title: { romaji: string; english: string | null; native: string };
+    synonyms?: string[];
     episodes: number | null;
     status: string;
   };
@@ -109,7 +110,7 @@ function buildCandidates(
     out.push({
       source: 'anilist',
       result: r,
-      score: bestTitleScore(seriesName, [r.title.romaji, r.title.english, r.title.native]),
+      score: bestTitleScore(seriesName, [r.title.romaji, r.title.english, r.title.native, ...(r.synonyms ?? [])]),
       episodes: r.episodes,
       released: anilistReleased(r.status),
     });
