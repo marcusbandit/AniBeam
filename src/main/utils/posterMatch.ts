@@ -1,4 +1,9 @@
-// Folder-name -> AniList/MAL background auto-match.
+// Folder-name -> AniList background auto-match.
+//
+// AniList is the ONLY matching provider, by explicit user decision
+// (2026-07-14). MAL (Jikan) was removed as a metadata source; do not
+// re-add it. Jikan survives in this file solely as the per-episode
+// title/air-date side-fetch in fetchEpisodeAirDates below.
 //
 // This mirrors the manual match picker: it queries AniList's
 // relevance-ordered search (the same list the user sees when matching by
@@ -13,10 +18,6 @@
 // (an earlier result wins). Accept iff the best score >= THRESHOLD (0.5):
 // a "pretty close" bar. Anything further off returns null and is left for
 // manual matching.
-//
-// AniList is primary (the relevance list). MAL (Jikan) is a fallback only
-// when AniList yields nothing over the threshold. First confident source
-// wins; results are not merged.
 
 import malHandler from "../handlers/malHandler";
 import anilistHandler from "../handlers/anilistHandler";
@@ -26,9 +27,9 @@ import { logger } from "../services/logger";
 const THRESHOLD = 0.5;
 
 export interface ShowMatch {
-  source: "mal" | "anilist"; // which provider scored ≥ THRESHOLD first
-  anilistId: number | null; // populated for AniList primary matches; cross-resolved for MAL
-  malId: number | null; // populated for MAL primary matches; cross-referenced via AniList's idMal
+  source: "anilist"; // AniList is the only matching provider
+  anilistId: number | null; // the matched AniList media id
+  malId: number | null; // AniList's idMal cross-reference; kept for AniSkip + Jikan episode titles
   matchedTitle: string; // primary romaji-ish title (back-compat)
   titleRomaji: string | null; // explicit romaji form
   titleEnglish: string | null; // English localization, when available
@@ -117,61 +118,6 @@ export async function findShowMatch(
     );
   }
 
-  // 2. MAL (Jikan) fallback, only reached when AniList had nothing over the
-  //    threshold. Same best-scoring-with-relevance-tiebreak selection.
-  try {
-    const malResults = await malHandler.searchAnime(folderName, 10);
-    let bestScore = -1;
-    let best: (typeof malResults)[number] | null = null;
-    for (const r of malResults) {
-      const score = bestTitleScore(folderName, [r.title, r.title_english]);
-      if (score > bestScore) {
-        bestScore = score;
-        best = r;
-      }
-    }
-    if (best && bestScore >= THRESHOLD) {
-      const poster =
-        best.images?.jpg?.large_image_url ??
-        best.images?.jpg?.image_url ??
-        null;
-      if (poster) {
-        logger.info(
-          "metadata",
-          `Match (MAL ${bestScore.toFixed(2)}): ${folderName} → ${best.title}`,
-          { series: folderName },
-        );
-        // AniList accepts an idMal filter, so we can grab the AniList id
-        // for free with a single extra query. Best-effort, null on failure
-        // means the MAL tracker still works, just not AniList.
-        const anilistId = await anilistHandler.resolveAnilistIdByMal(
-          best.mal_id,
-        );
-        return {
-          source: "mal",
-          anilistId,
-          malId: best.mal_id,
-          matchedTitle: best.title,
-          titleRomaji: best.title,
-          titleEnglish: best.title_english ?? null,
-          posterUrl: poster,
-          score: bestScore,
-          status: best.status ?? null,
-          startDate: best.aired?.from
-            ? new Date(best.aired.from).toISOString().split("T")[0]
-            : null,
-          totalEpisodes: best.episodes ?? null,
-        };
-      }
-    }
-  } catch (err) {
-    logger.warn(
-      "metadata",
-      `MAL search failed for ${folderName}: ${(err as Error).message}`,
-      { series: folderName },
-    );
-  }
-
   logger.info(
     "metadata",
     `No match for ${folderName} (threshold ${THRESHOLD})`,
@@ -182,13 +128,17 @@ export async function findShowMatch(
 
 /**
  * Pull per-episode metadata for a matched show. AniList airingSchedule is
- * the primary source for air dates — prompt for current shows and queryable
- * by AniList id OR by MAL id. Episode titles only come from MAL/Jikan
+ * the primary source for air dates: prompt for current shows and queryable
+ * by AniList id OR by MAL id. Episode titles only come from Jikan
  * (AniList's airing schedule doesn't carry them), so when a malId is known
- * we side-fetch and merge titles in by episodeNumber.
+ * we side-fetch and merge titles in by episodeNumber. This Jikan call is
+ * an episode-title side-fetch, NOT a metadata source; it stays by design.
  *
- * MAL `/episodes` is also the fallback for shows where AniList's schedule
+ * Jikan `/episodes` is also the fallback for shows where AniList's schedule
  * is empty (older / completed runs).
+ *
+ * `source` keeps its union for the malId-primary query arm, but every
+ * current caller passes "anilist": findShowMatch never produces "mal".
  */
 export async function fetchEpisodeAirDates(
   source: "mal" | "anilist",

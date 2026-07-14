@@ -342,10 +342,11 @@ async function runStartupCatchUp(): Promise<void> {
 }
 
 // Background match for one series: poster + status + per-episode air
-// dates (MAL only — AniList airing-schedule not wired yet). Idempotent:
-// always writes `posterMatchAttempted: true` so we don't re-hammer MAL
-// on every restart. Misses leave the placeholder; future "human in the
-// loop" UI will let the user pick manually.
+// dates. AniList is the only metadata source; Jikan is touched just for
+// the episode-title side-fetch inside fetchEpisodeAirDates. Idempotent:
+// always writes `posterMatchAttempted: true` so we don't re-hammer the
+// providers on every restart. Misses leave the placeholder; the Metadata
+// tab's match modal lets the user pick manually.
 async function matchPosterForSeries(seriesId: string, folderName: string): Promise<void> {
   try {
     const match = await findShowMatch(folderName);
@@ -358,17 +359,10 @@ async function matchPosterForSeries(seriesId: string, folderName: string): Promi
       });
       return;
     }
-    // findShowMatch guarantees the id matching `source` is set; the other
-    // is best-effort (cross-resolved or absent).
-    const primaryId = match.source === 'anilist' ? match.anilistId! : match.malId!;
-    // Relations come from AniList only (MAL has related_anime but no
-    // cross-media graph), so we query by anilistId when we have it and
-    // fall back to AniList's idMal filter for MAL-primary matches.
-    const enrichmentOpts = match.anilistId
-      ? { anilistId: match.anilistId }
-      : match.malId
-        ? { malId: match.malId }
-        : {};
+    // findShowMatch is AniList-only, so the AniList id is always set;
+    // malId is AniList's idMal cross-reference (may be absent).
+    const primaryId = match.anilistId!;
+    const enrichmentOpts = { anilistId: primaryId };
     const [cached, episodeDates, enrichment] = await Promise.all([
       imageCacheHandler.cacheImages([match.posterUrl]),
       fetchEpisodeAirDates(match.source, primaryId, match.totalEpisodes, match.malId),
@@ -490,7 +484,7 @@ async function matchPosterForSeries(seriesId: string, folderName: string): Promi
 
 // Walk every series in metadata.json and match a poster for any that
 // haven't been attempted yet. Sequential so we don't blow through the
-// MAL/AniList rate limiters in bursts. Designed to run in the background
+// AniList/Jikan rate limiters in bursts. Designed to run in the background
 // — never throw, never block the caller.
 //
 // Launch-time matching is intentionally narrow: ONLY entries that have
@@ -520,8 +514,8 @@ async function matchPostersForLibrary(): Promise<void> {
     if (s.posterMatchAttempted && !(forceRetry && !s.posterMatched)) continue;
     // Use the cleaned title for the lookup. The scanner sets `title` to the
     // user-canonical (wrapper-derived for franchise subfolders, folder name
-    // for root-level series, cleaned filename for movies) string — which is
-    // what MAL/AniList actually expects to match against.
+    // for root-level series, cleaned filename for movies) string, which is
+    // what AniList actually expects to match against.
     const matchQuery = s.title ?? seriesId;
     todo.push({ seriesId, folderName: matchQuery });
   }
@@ -545,7 +539,7 @@ async function matchPostersForLibrary(): Promise<void> {
 // Dedicated fast-path backfill for the enrichment bundle (relations, tags,
 // characters, recommendations, studio) on series that are already matched
 // but predate one of those fields. Skips the entire findShowMatch round-trip
-// (which would re-do MAL search + AniList fallback per series), and just
+// (which would re-do the AniList search per series), and just
 // calls AniList getEnrichment with the stored ids. One AniList request per
 // series → completes in seconds for libraries that would otherwise spend
 // minutes redoing search queries they don't need.
@@ -1089,8 +1083,8 @@ app.on('window-all-closed', () => {
 // ==================== METADATA IPC ====================
 
 ipcMain.handle('fetch-metadata', async (_event, searchName: string, seasonNumber?: number | null) => {
-  // AniList-first best match with MAL fallback. No folderEpisodeCount on
-  // this path (renderer-side refresh doesn't know it), so the strict-tier
+  // AniList-only best match. No folderEpisodeCount on this path
+  // (renderer-side refresh doesn't know it), so the strict-tier
   // ep-count filter is disabled: title similarity does the heavy lifting.
   const seasonInfo = seasonNumber !== null && seasonNumber !== undefined ? ` Season ${seasonNumber}` : '';
   logger.info('metadata', `Fetching metadata for: "${searchName}"${seasonInfo}`);
@@ -1124,9 +1118,12 @@ ipcMain.handle('metadata:attach-missing-sources', async () => {
     for (const [id, raw] of Object.entries(current)) {
       const s = raw as Record<string, unknown>;
       if (s.source) continue;
+      // MAL is no longer a metadata source: only an AniList match (or an
+      // AniList id) yields a label. A bare malId (the AniSkip / episode-title
+      // cross-reference) does not imply a source, and legacy 'mal'
+      // matchSource entries fall through to a fresh AniList match below.
       const derived =
-        (s.matchSource as string | undefined) ??
-        (s.anilistId ? 'anilist' : s.malId != null ? 'mal' : null);
+        s.matchSource === 'anilist' || s.anilistId != null ? 'anilist' : null;
       if (derived) {
         current[id] = { ...s, source: derived };
         backfilled++;
@@ -1157,15 +1154,6 @@ ipcMain.handle('metadata:attach-missing-sources', async () => {
     }
   }
   return { backfilled, matched, stillUnmatched: unmatched.length - matched };
-});
-
-ipcMain.handle('fetch-mal-metadata', async (_event, seriesName: string, seasonNumber?: number | null) => {
-  try {
-    return await malHandler.searchAndFetchMetadata(seriesName, seasonNumber);
-  } catch (error) {
-    logger.error('metadata', 'Error fetching MAL metadata');
-    throw error;
-  }
 });
 
 ipcMain.handle('fetch-anilist-metadata', async (_event, seriesName: string, seasonNumber?: number | null) => {
@@ -1407,7 +1395,7 @@ ipcMain.handle('delete-series', async (_event, seriesId: string) => {
 // sync. processOneMedia is kept here to make re-enabling enrichment a
 // one-liner (call it again from runScanAndFetch's slow pass) without
 // rewriting the hundreds of lines of online-thumbnail / image-cache /
-// MAL+AniList logic. Don't delete it.
+// AniList logic. Don't delete it.
 void processOneMedia;
 
 async function processOneMedia(
@@ -1510,11 +1498,10 @@ async function processOneMedia(
 
   logger.info('folder', `Folder has ${canonicalEpisodeCount} canonical episode${canonicalEpisodeCount !== 1 ? 's' : ''} (${media.files.length} total files including decimal episodes)`, { series: media.name });
 
-  // Fetch new metadata. findBestMatch searches AniList first (the same
-  // relevance list the manual picker shows), scores every candidate against
-  // the folder name, and falls back to MAL only when AniList yields nothing
-  // that clears the title-similarity threshold (refusing entirely when
-  // neither provider does).
+  // Fetch new metadata. findBestMatch searches AniList (the same relevance
+  // list the manual picker shows), scores every candidate against the
+  // folder name, and refuses entirely when nothing clears the
+  // title-similarity threshold.
   type FetchedShape = Record<string, unknown> & {
     title: string;
     poster?: string | null;
