@@ -13,6 +13,7 @@ import thumbnailHandler from './handlers/thumbnailHandler';
 import { initMediaProgress, updateMediaProgress } from './utils/debugUtils';
 import { findBestMatch } from './utils/metadataMatcher';
 import { findShowMatch, fetchEpisodeAirDates } from './utils/posterMatch';
+import { isMalRegistered, stripMalRegistration } from './utils/malPurge';
 import { logger } from './services/logger';
 import type { FileStatus } from '../shared/fileStatus';
 import { findFileEpisode, type FileEpisodeEntry } from '../shared/fileEpisode';
@@ -500,11 +501,34 @@ async function matchPosterForSeries(seriesId: string, folderName: string): Promi
 // deserve one automatic re-attempt with the new logic. Stored in config
 // as autoMatchVersion; a one-time catch-up runs when the stored value is
 // behind this, then the strict attempt-once discipline resumes.
-const AUTO_MATCH_VERSION = 2;
+// v3 is the MAL purge: MAL-registered series get their registration nulled
+// and are re-matched via AniList once.
+const AUTO_MATCH_VERSION = 3;
 async function matchPostersForLibrary(): Promise<void> {
-  const meta = await metadataHandler.loadMetadata();
   const cfg = await configHandler.loadConfig();
   const forceRetry = (cfg.autoMatchVersion ?? 0) < AUTO_MATCH_VERSION;
+  if (forceRetry) {
+    // One-time MAL purge (v3): null out every MAL registration BEFORE the
+    // todo scan below, so the freshly-cleared posterMatchAttempted flags are
+    // what the scan sees and the entries re-enter the AniList matcher pool.
+    // Entries whose AniList re-match then fails stay stripped: source null
+    // shows as "none" in the Metadata tab, available for manual matching,
+    // which is the desired end state.
+    const strippedIds: string[] = [];
+    await metadataHandler.transaction(async (current) => {
+      for (const [seriesId, raw] of Object.entries(current)) {
+        const entry = raw as Record<string, unknown>;
+        if (!isMalRegistered(entry)) continue;
+        current[seriesId] = stripMalRegistration(entry);
+        strippedIds.push(seriesId);
+      }
+      return { updated: strippedIds.length > 0 ? current : null };
+    });
+    if (strippedIds.length > 0) {
+      logger.info('metadata', `MAL purge: cleared ${strippedIds.length} MAL-registered series, re-matching via AniList`);
+    }
+  }
+  const meta = await metadataHandler.loadMetadata();
   const todo: Array<{ seriesId: string; folderName: string }> = [];
   for (const [seriesId, raw] of Object.entries(meta)) {
     const s = raw as { posterMatchAttempted?: boolean; posterMatched?: boolean; title?: string };
