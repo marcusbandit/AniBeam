@@ -1,19 +1,22 @@
 // Best-match orchestrator for series metadata.
 //
-// Replaces the old "MAL first, AniList fallback, accept first result with
-// enough episodes" flow that mismatched fuzzy-similar shows (e.g. matched
-// "Otaku ni Yasashii Gal wa Inai" → "Wotaku ni Koi wa Muzukashii"). Now:
-//   1. Search both providers in parallel.
-//   2. Score every candidate's title variants against the folder name with
-//      a tokenized Jaccard similarity (titleSimilarity.bestTitleScore).
-//   3. Filter by release status and episode-count viability.
-//   4. Pick the highest score. Refuse to match below MIN_TITLE_SCORE so
-//      bad data stops landing in metadata.json.
+// Contract (mirrors posterMatch.ts findShowMatch): AniList is primary, MAL
+// is a fallback only. AniList's relevance-ordered search is the same list
+// the manual match picker shows, so the auto-matcher trusts it first:
+//   1. Search AniList only. Score every candidate's title variants
+//      (romaji, english, native, synonyms) against the folder name with
+//      tokenized similarity (titleSimilarity.bestTitleScore), filter by
+//      release status and episode-count viability, pick the highest score.
+//   2. If that winner clears MIN_TITLE_SCORE, AniList wins outright and
+//      MAL is never consulted.
+//   3. Only when AniList yields nothing acceptable, run the same search
+//      and scoring against MAL (Jikan).
+//   4. Refuse to match below MIN_TITLE_SCORE so bad data stops landing
+//      in metadata.json.
 //
-// On equal scores we prefer AniList; MAL is the fallback. AniList's
-// schema (idMal, banners, season/year) is what the rest of the app is
-// built around — picking it on ties keeps malId populated for AniSkip
-// and avoids round-trips when the renderer needs AniList-only fields.
+// MAL-sourced metadata is brought to renderer parity: the AniList id is
+// cross-resolved best-effort (resolveAnilistIdByMal) and included only
+// when it resolves, so merges never clobber an existing good id.
 
 import malHandler from '../handlers/malHandler';
 import anilistHandler from '../handlers/anilistHandler';
@@ -77,18 +80,24 @@ function candidateTitle(c: Candidate): string {
   return c.result.title.english || c.result.title.romaji || c.result.title.native || '?';
 }
 
-async function searchBoth(query: string): Promise<{ mal: MalCandidate['result'][]; anilist: AnilistCandidate['result'][] }> {
-  const [malResults, anilistResults] = await Promise.all([
-    malHandler.searchAnime(query, SEARCH_LIMIT).catch((err) => {
-      logger.warn('metadata', `MAL search failed for "${query}": ${(err as Error).message}`);
-      return [] as MalCandidate['result'][];
-    }),
-    anilistHandler.searchAnimeMultiple(query, SEARCH_LIMIT).catch((err) => {
-      logger.warn('metadata', `AniList search failed for "${query}": ${(err as Error).message}`);
-      return [] as AnilistCandidate['result'][];
-    }),
-  ]);
-  return { mal: malResults, anilist: anilistResults };
+// Provider searches degrade to "no candidates" on failure: a dead provider
+// must never sink the whole match (the other stage still gets its shot).
+async function searchAnilist(query: string): Promise<AnilistCandidate['result'][]> {
+  try {
+    return await anilistHandler.searchAnimeMultiple(query, SEARCH_LIMIT);
+  } catch (err) {
+    logger.warn('metadata', `AniList search failed for "${query}": ${(err as Error).message}`);
+    return [];
+  }
+}
+
+async function searchMal(query: string): Promise<MalCandidate['result'][]> {
+  try {
+    return await malHandler.searchAnime(query, SEARCH_LIMIT);
+  } catch (err) {
+    logger.warn('metadata', `MAL search failed for "${query}": ${(err as Error).message}`);
+    return [];
+  }
 }
 
 function buildCandidates(
@@ -119,6 +128,9 @@ function buildCandidates(
 }
 
 function pickWinner(candidates: Candidate[], folderEpisodeCount: number): Candidate | null {
+  // Candidate lists are single-provider now (AniList stage or MAL stage),
+  // so the AniList tie-break below is inert; kept so the function stays
+  // shared and order-stable.
   // Strict tier: released + episode count covers what's on disk.
   const strict = candidates
     .filter((c) => c.released && (folderEpisodeCount === 0 || (c.episodes !== null && c.episodes >= folderEpisodeCount)))
@@ -146,14 +158,18 @@ async function fetchFullMetadata(
     const a = winner.result;
     try {
       const episodes = await malHandler.getEpisodes(a.mal_id, a.episodes, seasonNumber);
-      // Cast through unknown — the handler-local JikanAnime is not exported,
+      // Cast through unknown: the handler-local JikanAnime is not exported,
       // and the orchestrator already extracted just what it needed for
       // scoring. formatMetadata only reads the fields a JikanAnime has.
       const formatted = malHandler.formatMetadata(a as unknown as Parameters<typeof malHandler.formatMetadata>[0], episodes, seasonNumber);
+      // Cross-resolve the AniList id best-effort (same as posterMatch.ts).
+      // Include the key ONLY when it resolves: a null/undefined anilistId in
+      // the payload would let a downstream merge clobber an existing good id.
+      const anilistId = await anilistHandler.resolveAnilistIdByMal(a.mal_id).catch(() => null);
       return {
         source: 'mal',
         score: winner.score,
-        metadata: { ...formatted, source: 'mal' } as Record<string, unknown>,
+        metadata: { ...formatted, ...(anilistId != null ? { anilistId } : {}), source: 'mal' } as Record<string, unknown>,
       };
     } catch (err) {
       logger.error('metadata', `MAL fetch failed for id ${a.mal_id}: ${(err as Error).message}`);
@@ -179,9 +195,17 @@ async function fetchFullMetadata(
   }
 }
 
+function logWinner(seriesName: string, winner: Candidate): void {
+  logger.info(
+    'metadata',
+    `Best match for "${seriesName}": ${winner.source.toUpperCase()} "${candidateTitle(winner)}" (${winner.score.toFixed(2)}, ${winner.episodes ?? '?'} ep)`,
+  );
+}
+
 /**
- * Search MAL + AniList in parallel and return the best-scoring metadata
- * for `seriesName`. Returns null when nothing clears MIN_TITLE_SCORE.
+ * AniList-first best match for `seriesName`, with MAL as the fallback when
+ * AniList yields nothing acceptable (mirrors posterMatch.ts). Returns null
+ * when nothing clears MIN_TITLE_SCORE.
  *
  * @param seriesName        Folder-derived name (used for scoring; never has
  *                          `Season N` / `Part N` appended even if those are
@@ -200,8 +224,8 @@ export async function findBestMatch(
   partNumber: number | null | undefined,
   folderEpisodeCount: number | undefined,
 ): Promise<BestMatchResult | null> {
-  // Folder name goes to both providers verbatim. Season / Part are NOT
-  // appended — the folder string already carries them if relevant, and
+  // Folder name goes to the providers verbatim. Season / Part are NOT
+  // appended: the folder string already carries them if relevant, and
   // appending would double-tag (e.g. "Frieren Season 2 Season 2"). The
   // seasonNumber / partNumber args are still used downstream for title
   // suffixing and id generation.
@@ -209,32 +233,43 @@ export async function findBestMatch(
   const wantEpCount = typeof folderEpisodeCount === 'number' ? folderEpisodeCount : 0;
   void partNumber;
 
-  const { mal, anilist } = await searchBoth(searchQuery);
-  const candidates = buildCandidates(seriesName, mal, anilist);
+  // Stage 1: AniList only (primary). Its relevance list is what the manual
+  // picker shows; an acceptable winner here ends the hunt without touching
+  // MAL at all.
+  const anilistCandidates = buildCandidates(seriesName, [], await searchAnilist(searchQuery));
+  const anilistWinner = pickWinner(anilistCandidates, wantEpCount);
+  if (anilistWinner && anilistWinner.score >= MIN_TITLE_SCORE) {
+    logWinner(seriesName, anilistWinner);
+    return fetchFullMetadata(anilistWinner, seasonNumber);
+  }
 
-  if (candidates.length === 0) {
+  // Stage 2: MAL fallback, reached only when AniList produced no winner at
+  // or over MIN_TITLE_SCORE.
+  const malCandidates = buildCandidates(seriesName, await searchMal(searchQuery), []);
+  const malWinner = pickWinner(malCandidates, wantEpCount);
+  if (malWinner && malWinner.score >= MIN_TITLE_SCORE) {
+    logWinner(seriesName, malWinner);
+    return fetchFullMetadata(malWinner, seasonNumber);
+  }
+
+  // Nothing acceptable on either provider. One signal-level warn stating
+  // why: no candidates at all, none eligible, or best score under the bar.
+  if (anilistCandidates.length === 0 && malCandidates.length === 0) {
     logger.warn('metadata', `No candidates for "${searchQuery}"`);
     return null;
   }
 
-  const winner = pickWinner(candidates, wantEpCount);
-  if (!winner) {
-    logger.warn('metadata', `No eligible candidates for "${searchQuery}" (released + ep ≥ ${wantEpCount})`);
+  const closest = [anilistWinner, malWinner]
+    .filter((c): c is Candidate => c !== null)
+    .sort((a, b) => b.score - a.score)[0];
+  if (!closest) {
+    logger.warn('metadata', `No eligible candidates for "${searchQuery}" (released + ep >= ${wantEpCount})`);
     return null;
   }
 
-  if (winner.score < MIN_TITLE_SCORE) {
-    logger.warn(
-      'metadata',
-      `Best candidate "${candidateTitle(winner)}" scored ${winner.score.toFixed(2)} (< ${MIN_TITLE_SCORE}); refusing to match "${seriesName}"`,
-    );
-    return null;
-  }
-
-  logger.info(
+  logger.warn(
     'metadata',
-    `Best match for "${seriesName}": ${winner.source.toUpperCase()} "${candidateTitle(winner)}" (${winner.score.toFixed(2)}, ${winner.episodes ?? '?'} ep)`,
+    `Best candidate "${candidateTitle(closest)}" scored ${closest.score.toFixed(2)} (< ${MIN_TITLE_SCORE}); refusing to match "${seriesName}"`,
   );
-
-  return fetchFullMetadata(winner, seasonNumber);
+  return null;
 }

@@ -7,7 +7,7 @@ const MAL_SEARCH_LIMIT = 10;
 
 // Jikan published limits: 60 req/min sustained. 1100ms between starts =
 // ~54/min with safety margin. 429s on top get exponential backoff via
-// the limiter — no per-call retry loops needed downstream.
+// the limiter: no per-call retry loops needed downstream.
 const limiter = new RateLimiter({
   source: 'Jikan',
   minIntervalMs: 1100,
@@ -49,6 +49,9 @@ interface JikanAnime {
     from: string | null;
     to: string | null;
   };
+  // Jikan v4 /anime returns both; season is lowercase ("summer").
+  season: string | null;
+  year: number | null;
 }
 
 interface JikanEpisode {
@@ -67,6 +70,7 @@ interface JikanEpisode {
 export interface SeriesMetadata {
   seriesId: string;
   title: string;
+  titleRomaji?: string | null;
   titleEnglish?: string | null;
   titleJapanese?: string | null;
   description: string;
@@ -75,6 +79,8 @@ export interface SeriesMetadata {
   banner: null;
   episodes: EpisodeMetadata[];
   totalEpisodes: number | null;
+  season?: string | null;
+  seasonYear?: number | null;
   status: string;
   format: string;
   averageScore: number | null;
@@ -114,8 +120,10 @@ const malHandler = {
       );
       return response.data?.data || [];
     } catch (error) {
+      // No error-level log here: every caller logs its own contextual warn,
+      // and MAL is a fallback provider, so a failure that the overall match
+      // survives must not badge the Activity drawer with an error.
       if (isRateLimitError(error)) logRateLimitWarning('MAL');
-      else logger.error('metadata', 'Error searching MyAnimeList');
       throw error;
     }
   },
@@ -348,6 +356,10 @@ const malHandler = {
     return {
       seriesId: `mal_${anime.mal_id}${seasonNumber ? `_s${String(seasonNumber).padStart(2, '0')}` : ''}`,
       title,
+      // Jikan's default `title` IS the romaji title (MAL's canonical form),
+      // so MAL-sourced series feed the same alt-title line, language toggle,
+      // and search haystack as AniList-sourced ones.
+      titleRomaji: anime.title || null,
       titleEnglish: anime.title_english,
       titleJapanese: anime.title_japanese,
       description: anime.synopsis || anime.background || '',
@@ -356,6 +368,10 @@ const malHandler = {
       banner: null,
       episodes,
       totalEpisodes: anime.episodes,
+      // Normalize Jikan's lowercase season ("summer") to AniList's uppercase
+      // convention ('SUMMER') so both sources read the same downstream.
+      season: anime.season ? anime.season.toUpperCase() : null,
+      seasonYear: anime.year ?? null,
       status: anime.status,
       format: anime.type,
       averageScore: anime.score,

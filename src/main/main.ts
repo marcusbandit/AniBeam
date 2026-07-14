@@ -1089,9 +1089,9 @@ app.on('window-all-closed', () => {
 // ==================== METADATA IPC ====================
 
 ipcMain.handle('fetch-metadata', async (_event, searchName: string, seasonNumber?: number | null) => {
-  // Best-match across MAL + AniList. No folderEpisodeCount on this path
-  // (renderer-side refresh doesn't know it), so the strict-tier ep-count
-  // filter is disabled — title similarity does the heavy lifting.
+  // AniList-first best match with MAL fallback. No folderEpisodeCount on
+  // this path (renderer-side refresh doesn't know it), so the strict-tier
+  // ep-count filter is disabled: title similarity does the heavy lifting.
   const seasonInfo = seasonNumber !== null && seasonNumber !== undefined ? ` Season ${seasonNumber}` : '';
   logger.info('metadata', `Fetching metadata for: "${searchName}"${seasonInfo}`);
 
@@ -1510,10 +1510,11 @@ async function processOneMedia(
 
   logger.info('folder', `Folder has ${canonicalEpisodeCount} canonical episode${canonicalEpisodeCount !== 1 ? 's' : ''} (${media.files.length} total files including decimal episodes)`, { series: media.name });
 
-  // Fetch new metadata. findBestMatch searches MAL + AniList in parallel,
-  // scores every candidate against the folder name, and picks the best
-  // (refusing if nothing clears the title-similarity threshold). Replaces
-  // the old MAL-first AniList-fallback that mismatched fuzzy-similar shows.
+  // Fetch new metadata. findBestMatch searches AniList first (the same
+  // relevance list the manual picker shows), scores every candidate against
+  // the folder name, and falls back to MAL only when AniList yields nothing
+  // that clears the title-similarity threshold (refusing entirely when
+  // neither provider does).
   type FetchedShape = Record<string, unknown> & {
     title: string;
     poster?: string | null;
