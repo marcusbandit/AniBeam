@@ -8,7 +8,7 @@ import subtitleHandler from '../handlers/subtitleHandler';
 import aniSkipHandler from '../handlers/aniSkipHandler';
 import { findFileEpisode } from '../../shared/fileEpisode';
 import type { FileEpisodeEntry } from '../../shared/fileEpisode';
-import { probeCodecs, needsTranscode } from '../utils/transcodeProbe';
+import { probeCodecs, needsTranscode, ensureEncoderStatus, type EncoderStatus } from '../utils/transcodeProbe';
 import { getViewHistory, markViewed } from '../services/viewHistory';
 import { subLog } from '../services/subtitleDebugLog';
 import type { SubtitleState } from '../../shared/subtitleSupport';
@@ -185,6 +185,14 @@ export function registerMediaPlaybackIpc(getMainWindow?: WindowGetter): void {
   // changed' handles streaming updates.
   ipcMain.handle('transcode:queue-snapshot', async (): Promise<TranscodeQueueSnapshot> => {
     return resolveQueueSnapshot(transcodeCacheHandler.queueSnapshot());
+  });
+
+  // Which encoder transcodes actually run on, so the UI can flag a silent
+  // CPU fallback. Runs the probe if it hasn't happened yet (it's a pair of
+  // sub-100ms synthetic encodes, cached for the app lifetime), so a renderer
+  // asking before the first transcode still gets a real answer.
+  ipcMain.handle('transcode:encoder', async (): Promise<EncoderStatus> => {
+    return ensureEncoderStatus();
   });
 
   ipcMain.handle('subtitle:list-embedded', async (_event, videoPath: string) => {

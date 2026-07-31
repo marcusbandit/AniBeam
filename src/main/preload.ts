@@ -152,6 +152,12 @@ export interface ElectronAPI {
   getTranscodeQueueSnapshot: () => Promise<TranscodeQueueSnapshot>;
   onTranscodeQueueChanged: (handler: (snap: TranscodeQueueSnapshot) => void) => () => void;
 
+  /**
+   * Which encoder transcodes run on. `kind: 'libx264'` means no hardware
+   * encoder was usable and every transcode is burning CPU; `reason` says why.
+   */
+  getTranscodeEncoder: () => Promise<TranscodeEncoderStatus>;
+
   // Embedded subtitles
   listEmbeddedSubtitles: (videoPath: string) => Promise<Array<{ streamIndex: number; codec: string; language: string | null; title: string | null }>>;
   extractEmbeddedSubtitle: (videoPath: string, streamIndex: number, codec: string) => Promise<{ path: string; format: 'ass' | 'vtt' } | null>;
@@ -268,6 +274,15 @@ export interface TranscodeProgressPayload {
 export type TranscodeQueueStatus = 'encoding' | 'queued';
 export type TranscodeQueueSnapshot = Record<string, TranscodeQueueStatus>;
 
+// Which encoder the transcode pipeline resolved to. 'vaapi' / 'nvenc' are
+// hardware; 'libx264' is the CPU fallback, which saturates every core for
+// the length of an encode. `reason` is non-null only for that fallback and
+// explains why hardware was unusable.
+export interface TranscodeEncoderStatus {
+  kind: 'vaapi' | 'nvenc' | 'libx264';
+  reason: string | null;
+}
+
 // Per-file classification returned by ensureSeriesTranscoded:
 //   'cached'  — a usable transcode already exists on disk (shows "Re-encoded").
 //   'pending' — needs transcoding; it has been priority-queued, so live
@@ -365,6 +380,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('metadata:transcode-progress', listener);
   },
   getTranscodeQueueSnapshot: () => ipcRenderer.invoke('transcode:queue-snapshot'),
+  getTranscodeEncoder: () => ipcRenderer.invoke('transcode:encoder'),
   onTranscodeQueueChanged: (handler: (snap: TranscodeQueueSnapshot) => void) => {
     const listener = (_e: unknown, snap: TranscodeQueueSnapshot) => handler(snap);
     ipcRenderer.on('transcode:queue-changed', listener);

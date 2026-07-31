@@ -6,6 +6,7 @@ import { useLocalStorage, useLocalStorageRecord } from '../hooks/useLocalStorage
 import { progressId, extraProgressToken, readProgress, writeProgress, recordEpisodeCompleted, RESUME_HEAD_SKIP, RESUME_TAIL_SKIP } from '../utils/playbackProgress';
 import { friendlyExtraTitle, extraCode } from '../../shared/extraLabels';
 import { derivePlaybackSubtitleState, pickDefaultSubtitleStream } from '../../shared/subtitleSupport';
+import type { TranscodeEncoderStatus } from '../../types/electron';
 import { ScorePicker, Tooltip } from '../components/primitives';
 import { ArrowLeft, Play, Pause, Volume2, VolumeX, Maximize, Minimize, Subtitles, SkipBack, SkipForward, CheckCheck, AlertTriangle, ExternalLink, HelpCircle, Loader2, RotateCcw } from 'lucide-react';
 import JASSUB from 'jassub';
@@ -207,6 +208,10 @@ function VideoPlayer() {
     speed: number | null;
     etaSec: number | null;
   } | null>(null);
+  // Encoder backing the transcode. Only interesting when it's the CPU
+  // fallback, which the overlay calls out so a slow encode is explained
+  // rather than mysterious. Fetched once; the probe is cached in main.
+  const [encoder, setEncoder] = useState<TranscodeEncoderStatus | null>(null);
   const [mpvLaunching, setMpvLaunching] = useState(false);
   const [subtitleSrcs, setSubtitleSrcs] = useState<SubtitleTrack[]>([]);
   const [episodeData, setEpisodeData] = useState<FileEpisode | null>(null);
@@ -674,6 +679,18 @@ function VideoPlayer() {
       offProgress();
     };
   }, [activeFilePath]);
+
+  // Resolve the encoder the first time an encode is actually on screen.
+  // Deferred to here (rather than mount) so the probe cost lands only for
+  // users who hit a transcode at all; main caches it for the app lifetime.
+  useEffect(() => {
+    if (unsupported?.mode !== 'transcoding' || encoder) return;
+    let cancelled = false;
+    void window.electronAPI.getTranscodeEncoder?.()
+      .then((status) => { if (!cancelled && status) setEncoder(status); })
+      .catch(() => { /* best-effort: the badge just stays hidden */ });
+    return () => { cancelled = true; };
+  }, [unsupported?.mode, encoder]);
 
   const showChrome = useCallback(() => {
     setChrome(true);
@@ -2375,6 +2392,25 @@ function VideoPlayer() {
                 </span>
               </div>
             </div>
+            {encoder && (
+              <div className={`codec-modal-encoder${encoder.kind === 'libx264' ? ' codec-modal-encoder--cpu' : ''}`}>
+                {encoder.kind === 'libx264' ? (
+                  <Tooltip label={encoder.reason ?? 'No hardware encoder was usable on this machine.'}>
+                    <span className="codec-modal-encoder-inner">
+                      <AlertTriangle size={13} />
+                      <span>
+                        <strong>CPU encoding (libx264).</strong> No GPU encoder available, so this
+                        is slow and will use every core. Hover for the reason.
+                      </span>
+                    </span>
+                  </Tooltip>
+                ) : (
+                  <span className="codec-modal-encoder-inner">
+                    GPU encoding ({encoder.kind})
+                  </span>
+                )}
+              </div>
+            )}
             <div className="codec-modal-actions">
               <button
                 className="codec-modal-btn ghost"

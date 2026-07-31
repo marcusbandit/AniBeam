@@ -130,20 +130,60 @@ export function needsTranscode(p: CodecProbe): boolean {
 //
 // 256x256 frame: small enough to encode in <100ms, large enough that
 // NVENC accepts it (the API rejects sub-145px dimensions).
-let cachedKind: EncoderKind | null = null;
-let probeInFlight: Promise<EncoderKind> | null = null;
+/**
+ * Outcome of the encoder probe. `reason` is only populated for the
+ * 'libx264' fallback: it's the human-readable explanation of WHY no
+ * hardware encoder was usable, surfaced in the activity log and in the
+ * transcode overlay so a silent fallback can't quietly eat every core.
+ */
+export interface EncoderStatus {
+  kind: EncoderKind;
+  /** Null when a hardware encoder was selected. */
+  reason: string | null;
+}
 
-async function tryEncoder(args: string[]): Promise<boolean> {
+let cachedStatus: EncoderStatus | null = null;
+let probeInFlight: Promise<EncoderStatus> | null = null;
+
+async function tryEncoder(args: string[]): Promise<{ ok: boolean; err: string }> {
   return new Promise((resolve) => {
-    const p = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'ignore'] });
-    p.on('close', (code) => resolve(code === 0));
-    p.on('error', () => resolve(false));
+    const p = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    // Probe output is a handful of lines at most; cap anyway so a chatty
+    // driver can't balloon this.
+    let err = '';
+    p.stderr.on('data', (buf: Buffer) => {
+      if (err.length < 2048) err += buf.toString();
+    });
+    p.on('close', (code) => resolve({ ok: code === 0, err: err.trim() }));
+    p.on('error', (e: Error) => resolve({ ok: false, err: e.message }));
   });
 }
 
-async function detectEncoder(): Promise<EncoderKind> {
+// ffmpeg's probe stderr is multi-line and back-to-front (the root cause is
+// usually the FIRST line, with generic "Device creation failed" noise after).
+// Keep the first non-empty line, minus the leading "[component @ 0x…] " tag.
+function firstErrorLine(stderr: string): string {
+  const line = stderr.split('\n').map((l) => l.trim()).find((l) => l.length > 0);
+  if (!line) return 'no error output';
+  return line.replace(/^\[[^\]]*\]\s*/, '');
+}
+
+// A driver name that doesn't match the installed GPU is the single most
+// common cause of a total VAAPI failure, and it's invisible from inside the
+// app. If one is forced via the environment, name it; that's the actionable
+// half of the message.
+function libvaOverrideHint(): string {
+  const forced = process.env.LIBVA_DRIVER_NAME;
+  return forced
+    ? ` · LIBVA_DRIVER_NAME is forced to "${forced}", so if that doesn't match this machine's GPU, unset it.`
+    : '';
+}
+
+async function detectEncoder(): Promise<EncoderStatus> {
+  const failures: string[] = [];
+
   if (existsSync('/dev/dri/renderD128')) {
-    const ok = await tryEncoder([
+    const vaapi = await tryEncoder([
       '-v', 'error',
       '-hwaccel', 'vaapi', '-vaapi_device', '/dev/dri/renderD128',
       '-f', 'lavfi', '-i', 'color=c=black:s=256x256:d=0.1',
@@ -151,26 +191,57 @@ async function detectEncoder(): Promise<EncoderKind> {
       '-c:v', 'h264_vaapi',
       '-f', 'null', '-',
     ]);
-    if (ok) return 'vaapi';
+    if (vaapi.ok) return { kind: 'vaapi', reason: null };
+    failures.push(`VAAPI: ${firstErrorLine(vaapi.err)}`);
+  } else {
+    failures.push('VAAPI: no /dev/dri/renderD128 render node');
   }
-  const nvencOk = await tryEncoder([
+
+  const nvenc = await tryEncoder([
     '-v', 'error',
     '-f', 'lavfi', '-i', 'color=c=black:s=256x256:d=0.1',
     '-c:v', 'h264_nvenc', '-preset', 'p1',
     '-f', 'null', '-',
   ]);
-  if (nvencOk) return 'nvenc';
-  return 'libx264';
+  if (nvenc.ok) return { kind: 'nvenc', reason: null };
+  failures.push(`NVENC: ${firstErrorLine(nvenc.err)}`);
+
+  return { kind: 'libx264', reason: failures.join(' · ') + libvaOverrideHint() };
+}
+
+/**
+ * Probes once per app lifetime and returns the full status. The fallback
+ * to CPU encoding is logged at warn level (not info) because it's a real
+ * degradation: libx264 will saturate every core for the length of a
+ * transcode, where a hardware encoder is close to free.
+ */
+export async function ensureEncoderStatus(): Promise<EncoderStatus> {
+  if (cachedStatus) return cachedStatus;
+  if (probeInFlight) return probeInFlight;
+  probeInFlight = detectEncoder().then((status) => {
+    cachedStatus = status;
+    probeInFlight = null;
+    if (status.kind === 'libx264') {
+      logger.warn(
+        'system',
+        `No hardware video encoder available, falling back to CPU (libx264). Transcodes will be slow and use every core. ${status.reason}`,
+      );
+    } else {
+      logger.info('system', `Transcode encoder: ${status.kind} (hardware)`);
+    }
+    return status;
+  });
+  return probeInFlight;
 }
 
 export async function ensureEncoder(): Promise<EncoderKind> {
-  if (cachedKind) return cachedKind;
-  if (probeInFlight) return probeInFlight;
-  probeInFlight = detectEncoder().then((kind) => {
-    cachedKind = kind;
-    probeInFlight = null;
-    logger.info('system', `Transcode encoder: ${kind}`);
-    return kind;
-  });
-  return probeInFlight;
+  return (await ensureEncoderStatus()).kind;
+}
+
+/**
+ * Synchronous read of an already-completed probe, for IPC callers that
+ * must not block. Null until the first transcode triggers the probe.
+ */
+export function cachedEncoderStatus(): EncoderStatus | null {
+  return cachedStatus;
 }

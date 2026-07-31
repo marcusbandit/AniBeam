@@ -624,6 +624,35 @@
   text-align: right;
 }
 
+/* Which encoder is doing the work. Silent by design when a GPU encoder is
+   in use; the --cpu variant is a warning because the CPU fallback saturates
+   every core for the length of an encode. */
+.codec-modal-encoder {
+  margin-top: 0.85rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--glass-edge);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+.codec-modal-encoder-inner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+}
+.codec-modal-encoder-inner > svg {
+  flex: none;
+  margin-top: 0.15rem;
+}
+.codec-modal-encoder--cpu {
+  color: var(--accent-amber);
+}
+.codec-modal-encoder--cpu strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
 /* Subtitle picker / style menu - contained by the .player-controls island
    (see .player-sub-anchor): bottom 100% is the island's top edge, right 0 its
    right inner edge, so the menu floats just above the island's CC corner. */
