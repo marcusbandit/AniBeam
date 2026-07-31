@@ -151,17 +151,27 @@ export async function fetchEpisodeAirDates(
     episodeNumber: number;
     airDate: string | null;
   }> | null = null;
+  // The next broadcast, kept separate so it survives even when the schedule
+  // page itself is empty or stale (see below).
+  let nextAiring: { episodeNumber: number; airDate: string } | null = null;
   try {
-    const nodes = await anilistHandler.getAiringSchedule(
+    const schedule = await anilistHandler.getAiringSchedule(
       source === "anilist" ? { anilistId: externalId } : { malId: externalId },
     );
-    if (nodes.length > 0) {
-      fromAnilist = nodes
+    if (schedule.nodes.length > 0) {
+      fromAnilist = schedule.nodes
         .filter((n) => Number.isFinite(n.airingAt) && n.airingAt > 0)
         .map((n) => ({
           episodeNumber: n.episode,
           airDate: new Date(n.airingAt * 1000).toISOString(),
         }));
+    }
+    const next = schedule.nextAiringEpisode;
+    if (next && Number.isFinite(next.airingAt) && next.airingAt > 0) {
+      nextAiring = {
+        episodeNumber: next.episode,
+        airDate: new Date(next.airingAt * 1000).toISOString(),
+      };
     }
   } catch (err) {
     logger.warn(
@@ -223,6 +233,27 @@ export async function fetchEpisodeAirDates(
       });
     }
   }
+
+  // Fold in the next broadcast last, and let it win on its own episode.
+  // airingSchedule is paginated at 25 nodes and we hold one page, so for a
+  // long-running series the upcoming episode is usually missing from every
+  // list above (One Piece: page 1 is episodes 1123-1147 while episode 1172
+  // is the one actually airing next). Without this the renderer's
+  // findNextUpcomingEpisode has nothing in the future to find and the
+  // countdown silently never appears.
+  if (nextAiring) {
+    const existing = byEp.get(nextAiring.episodeNumber);
+    if (existing) {
+      existing.airDate = nextAiring.airDate;
+    } else {
+      byEp.set(nextAiring.episodeNumber, {
+        episodeNumber: nextAiring.episodeNumber,
+        airDate: nextAiring.airDate,
+        title: null,
+      });
+    }
+  }
+
   return Array.from(byEp.values()).sort(
     (a, b) => a.episodeNumber - b.episodeNumber,
   );

@@ -375,10 +375,22 @@ const RESOLVE_ID_BY_MAL_QUERY = gql`
 // sorting the feed by latest aired. Fetch by AniList id OR by MAL id —
 // AniList's Media query accepts either as a filter, so we can resolve air
 // dates for MAL-matched series without doing a second title search.
+// nextAiringEpisode is queried alongside because airingSchedule is a
+// PAGINATED connection: it returns 25 nodes per page and we ask for one
+// page. For a long-runner that is nowhere near the end of the schedule
+// (One Piece: total 500, page 1 = episodes 1123-1147) the upcoming
+// episode is simply absent, so a countdown built purely from these nodes
+// is impossible. nextAiringEpisode is a single unpaginated field that
+// always carries the next broadcast for any RELEASING series, whatever
+// its length, and costs nothing extra in the same request.
 const AIRING_SCHEDULE_QUERY = gql`
   query ($id: Int, $idMal: Int) {
     Media(id: $id, idMal: $idMal, type: ANIME) {
       id
+      nextAiringEpisode {
+        episode
+        airingAt
+      }
       airingSchedule {
         nodes {
           episode
@@ -388,6 +400,14 @@ const AIRING_SCHEDULE_QUERY = gql`
     }
   }
 `;
+
+/** Airing data for one series: the (paginated) schedule page plus the
+ *  always-present next broadcast, which is the only reliable source of
+ *  "when does the next episode air" for long-running series. */
+export interface AiringScheduleResult {
+  nodes: Array<{ episode: number; airingAt: number }>;
+  nextAiringEpisode: { episode: number; airingAt: number } | null;
+}
 
 // Enrichment bundle — one query returns the franchise graph plus the
 // extras the series-detail page wants (tags, top characters,
@@ -634,24 +654,33 @@ const anilistHandler = {
     }
   },
 
-  async getAiringSchedule(opts: { anilistId?: number; malId?: number }): Promise<Array<{ episode: number; airingAt: number }>> {
+  async getAiringSchedule(opts: { anilistId?: number; malId?: number }): Promise<AiringScheduleResult> {
+    const empty: AiringScheduleResult = { nodes: [], nextAiringEpisode: null };
     const variables: { id?: number; idMal?: number } = {};
     if (opts.anilistId) variables.id = opts.anilistId;
     if (opts.malId) variables.idMal = opts.malId;
-    if (variables.id === undefined && variables.idMal === undefined) return [];
+    if (variables.id === undefined && variables.idMal === undefined) return empty;
     try {
       const data = await limiter.run(() =>
-        request<{ Media: { airingSchedule: { nodes: Array<{ episode: number; airingAt: number }> } } | null }>(
+        request<{
+          Media: {
+            nextAiringEpisode: { episode: number; airingAt: number } | null;
+            airingSchedule: { nodes: Array<{ episode: number; airingAt: number }> };
+          } | null;
+        }>(
           ANILIST_API_URL,
           AIRING_SCHEDULE_QUERY,
           variables,
         ),
       );
-      return data?.Media?.airingSchedule?.nodes ?? [];
+      return {
+        nodes: data?.Media?.airingSchedule?.nodes ?? [],
+        nextAiringEpisode: data?.Media?.nextAiringEpisode ?? null,
+      };
     } catch (error) {
       if (isRateLimitError(error)) logRateLimitWarning('AniList');
       else logger.warn('metadata', `AniList airingSchedule failed: ${(error as Error).message}`);
-      return [];
+      return empty;
     }
   },
 

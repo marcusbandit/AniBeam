@@ -32,6 +32,38 @@ function logRateLimitWarning(source: string): void {
   logger.warn('metadata', `Rate limited by ${source}. Please wait before trying again.`);
 }
 
+// Jikan's /episodes route proxies a live read of MyAnimeList, so it fails
+// independently of the rest of the API: it can 504 with "failed to connect
+// to MyAnimeList" for most titles while /anime/{id} still answers 200, and
+// it flaps per-title rather than going cleanly down. When it fails, every
+// affected series silently loses its episode titles, and its air dates too
+// if AniList has no airingSchedule for it (nothing before ~2014 does).
+//
+// The activity log is signal-only, and a library sweep touches hundreds of
+// series, so this is throttled to one line per window instead of one per
+// failed fetch. Flapping therefore reports once, not once per alternation.
+const OUTAGE_LOG_INTERVAL_MS = 10 * 60_000;
+let lastOutageLogMs = 0;
+
+function logEpisodeFetchOutage(error: unknown): void {
+  const now = Date.now();
+  if (now - lastOutageLogMs < OUTAGE_LOG_INTERVAL_MS) return;
+  lastOutageLogMs = now;
+
+  const status = axios.isAxiosError(error) ? (error.response?.status ?? null) : null;
+  const detail =
+    status === 504
+      ? 'Jikan cannot reach MyAnimeList (504)'
+      : status != null
+        ? `HTTP ${status}`
+        : ((error as Error).message || 'unknown error');
+
+  logger.warn(
+    'metadata',
+    `MAL episode data unavailable: ${detail}. Episode titles will be missing; air dates too for series AniList has no schedule for (roughly pre-2014). Retried automatically as series are matched.`,
+  );
+}
+
 interface JikanEpisode {
   mal_id: number;
   episode: number;
@@ -95,7 +127,7 @@ const malHandler = {
         logRateLimitWarning('MAL');
         throw error;
       }
-      logger.error('metadata', 'Error fetching MAL episodes');
+      logEpisodeFetchOutage(error);
       // If fetching fails but we know totalEpisodes, generate basic entries
       if (totalEpisodes) {
         return Array.from({ length: totalEpisodes }, (_, i) => ({
