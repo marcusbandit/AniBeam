@@ -158,6 +158,13 @@ export interface ElectronAPI {
    */
   getTranscodeEncoder: () => Promise<TranscodeEncoderStatus>;
 
+  /**
+   * Re-pull air dates for one releasing series if they've gone stale, so an
+   * open series page shows a current next-episode countdown. No-ops for
+   * finished series and inside the refresh TTL.
+   */
+  refreshAiring: (seriesId: string) => Promise<{ ok: boolean; updated: boolean }>;
+
   // Embedded subtitles
   listEmbeddedSubtitles: (videoPath: string) => Promise<Array<{ streamIndex: number; codec: string; language: string | null; title: string | null }>>;
   extractEmbeddedSubtitle: (videoPath: string, streamIndex: number, codec: string) => Promise<{ path: string; format: 'ass' | 'vtt' } | null>;
@@ -381,6 +388,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   getTranscodeQueueSnapshot: () => ipcRenderer.invoke('transcode:queue-snapshot'),
   getTranscodeEncoder: () => ipcRenderer.invoke('transcode:encoder'),
+  refreshAiring: (seriesId: string) => ipcRenderer.invoke('metadata:refresh-airing', seriesId),
   onTranscodeQueueChanged: (handler: (snap: TranscodeQueueSnapshot) => void) => {
     const listener = (_e: unknown, snap: TranscodeQueueSnapshot) => handler(snap);
     ipcRenderer.on('transcode:queue-changed', listener);

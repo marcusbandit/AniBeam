@@ -279,6 +279,20 @@ function SeriesDetailPage() {
     void reload();
   }, [reload]);
 
+  // Opening a series is the moment its countdown has to be right. Air dates
+  // are otherwise written once at match time, so a releasing show's next
+  // episode would be whatever was true then. Main no-ops this for finished
+  // series and inside its refresh TTL, and only reloads when it wrote
+  // something, so revisits cost nothing.
+  useEffect(() => {
+    if (!seriesId) return;
+    let cancelled = false;
+    void window.electronAPI.refreshAiring?.(seriesId)
+      .then((res) => { if (!cancelled && res?.updated) void reload(); })
+      .catch(() => { /* best-effort: the stored schedule still renders */ });
+    return () => { cancelled = true; };
+  }, [seriesId, reload]);
+
   // Debounced - bursts of metadata pings on new ingests would otherwise
   // re-fetch the entire library walk for every event.
   const debouncedReload = useDebouncedCallback(() => { void reload(); }, 250);

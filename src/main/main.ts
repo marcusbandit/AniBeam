@@ -17,6 +17,7 @@ import { isMalRegistered, stripMalRegistration } from './utils/malPurge';
 import { logger } from './services/logger';
 import type { FileStatus } from '../shared/fileStatus';
 import { findFileEpisode, type FileEpisodeEntry } from '../shared/fileEpisode';
+import { normalizeStatus } from '../shared/airingStatus';
 import videoProbeHandler from './handlers/videoProbeHandler';
 import transcodeCacheHandler from './handlers/transcodeCacheHandler';
 import { fileWatcher } from './services/watcher';
@@ -337,6 +338,10 @@ async function runStartupCatchUp(): Promise<void> {
     // isn't in the store yet. Keep + fill gaps — never re-fetch fetchedAt>0
     // nodes. Fire-and-forget; the shared RateLimiter paces AniList.
     void crawlLibraryGaps();
+    // Background: bring releasing series' air dates up to date so countdowns
+    // are correct on the first paint. Only touches RELEASING series past the
+    // TTL, so this is usually a handful of calls or none at all.
+    void refreshAiringForLibrary();
   } finally {
     startupCatchUpInFlight = false;
   }
@@ -571,6 +576,148 @@ async function matchPostersForLibrary(): Promise<void> {
 // Also backfills episode titles via MAL/Jikan when malId is known and the
 // existing episodes array lacks them — feature was added after the slim
 // schedule was already cached for most users.
+// Air dates are fetched exactly once, when a series is first matched
+// (scheduleAutoFetch never re-arms an already-matched series). That is fine
+// for a finished show and useless for a releasing one: the next broadcast
+// moves every week, so a countdown captured at match time is wrong within
+// days and vanishes entirely once that episode airs and nothing in the
+// stored list is in the future any more.
+//
+// Refresh is event-driven, never timed (no intervals, per the scanning
+// rule): once per launch, and again whenever a series page is opened. The
+// TTL stops repeat opens from re-hitting AniList, and only RELEASING series
+// are eligible, so a large finished library costs nothing.
+const AIRING_REFRESH_TTL_MS = 6 * 60 * 60 * 1000;
+
+interface AiringRefreshCandidate {
+  seriesId: string;
+  anilistId?: number;
+  malId?: number | null;
+  totalEpisodes?: number | null;
+  title: string;
+}
+
+// Reads one stored entry and decides whether its airing data is worth
+// re-fetching. Returns null when the series isn't releasing, isn't matched,
+// or was refreshed recently enough.
+function airingRefreshCandidate(
+  seriesId: string,
+  raw: unknown,
+  nowMs: number,
+  force: boolean,
+): AiringRefreshCandidate | null {
+  const s = (raw ?? {}) as {
+    posterMatched?: boolean;
+    anilistId?: number;
+    malId?: number | null;
+    status?: string | null;
+    totalEpisodes?: number | null;
+    title?: string;
+    airingRefreshedAt?: number;
+    fileEpisodes?: unknown[];
+  };
+  if (!s.posterMatched) return null;
+  if (s.anilistId == null && s.malId == null) return null;
+  // Only shows that are actually still airing have a next episode.
+  if (normalizeStatus(s.status) !== 'releasing') return null;
+  if (!Array.isArray(s.fileEpisodes) || s.fileEpisodes.length === 0) return null;
+  if (!force && typeof s.airingRefreshedAt === 'number' && nowMs - s.airingRefreshedAt < AIRING_REFRESH_TTL_MS) {
+    return null;
+  }
+  return {
+    seriesId,
+    anilistId: s.anilistId,
+    malId: s.malId,
+    totalEpisodes: s.totalEpisodes ?? null,
+    title: s.title ?? seriesId,
+  };
+}
+
+/**
+ * Re-pull air dates for one releasing series and merge them over the stored
+ * episode list. Only airDate is touched: titles, thumbnails and descriptions
+ * already persisted are preserved, since this fetch is not their source.
+ * Returns true when something was written.
+ */
+async function refreshAiringForSeries(seriesId: string, opts?: { force?: boolean }): Promise<boolean> {
+  const meta = await metadataHandler.loadMetadata();
+  const candidate = airingRefreshCandidate(seriesId, meta[seriesId], Date.now(), opts?.force ?? false);
+  if (!candidate) return false;
+
+  const primaryId = candidate.anilistId ?? candidate.malId!;
+  const source = candidate.anilistId != null ? 'anilist' : 'mal';
+  const fresh = await fetchEpisodeAirDates(source, primaryId, candidate.totalEpisodes ?? null, candidate.malId ?? null);
+  if (fresh.length === 0) {
+    // Nothing came back (AniList has no schedule, or both providers failed).
+    // Still stamp the attempt so a dead series isn't retried on every open.
+    await metadataHandler.transaction(async (current) => {
+      const existing = (current[seriesId] ?? {}) as Record<string, unknown>;
+      if (!existing.posterMatched) return { updated: null };
+      current[seriesId] = { ...existing, airingRefreshedAt: Date.now() };
+      return { updated: current };
+    });
+    return false;
+  }
+
+  const freshByEp = new Map(fresh.map((e) => [e.episodeNumber, e]));
+  await metadataHandler.transaction(async (current) => {
+    const existing = (current[seriesId] ?? {}) as Record<string, unknown> & {
+      episodes?: Array<{ episodeNumber: number; airDate?: string | null; title?: string | null }>;
+    };
+    if (!existing.posterMatched) return { updated: null };
+    const stored = Array.isArray(existing.episodes) ? existing.episodes : [];
+    const merged = stored.map((ep) => {
+      const f = freshByEp.get(ep.episodeNumber);
+      if (!f) return ep;
+      freshByEp.delete(ep.episodeNumber);
+      // Keep the stored title (AniList streamingEpisodes / Jikan populated
+      // it and this fetch may not have one), take the fresher date.
+      return { ...ep, airDate: f.airDate ?? ep.airDate ?? null };
+    });
+    // Episodes the stored list didn't know about yet - notably the upcoming
+    // one, which is the whole point of the refresh.
+    for (const f of freshByEp.values()) {
+      merged.push({
+        episodeNumber: f.episodeNumber,
+        airDate: f.airDate,
+        ...(f.title ? { title: f.title } : {}),
+      });
+    }
+    merged.sort((a, b) => a.episodeNumber - b.episodeNumber);
+    current[seriesId] = { ...existing, episodes: merged, airingRefreshedAt: Date.now() };
+    return { updated: current };
+  });
+  return true;
+}
+
+/**
+ * One-shot sweep at startup: refresh every releasing series whose airing
+ * data has gone stale. Sequential so the shared AniList limiter paces it and
+ * a large library can't burst.
+ */
+async function refreshAiringForLibrary(): Promise<void> {
+  const meta = await metadataHandler.loadMetadata();
+  const nowMs = Date.now();
+  const todo: AiringRefreshCandidate[] = [];
+  for (const [seriesId, raw] of Object.entries(meta)) {
+    const c = airingRefreshCandidate(seriesId, raw, nowMs, false);
+    if (c) todo.push(c);
+  }
+  if (todo.length === 0) return;
+  logger.info('metadata', `Refreshing airing schedule for ${todo.length} releasing series`);
+  let updated = 0;
+  for (const c of todo) {
+    try {
+      if (await refreshAiringForSeries(c.seriesId)) updated++;
+    } catch (err) {
+      logger.warn('metadata', `Airing refresh failed for ${c.title}: ${(err as Error).message}`, { series: c.title });
+    }
+  }
+  if (updated > 0 && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('metadata:file-status-changed', { filePath: '', status: 'ready' });
+  }
+}
+
 async function backfillRelationsForLibrary(): Promise<void> {
   const meta = await metadataHandler.loadMetadata();
   const todo: Array<{
@@ -1231,6 +1378,20 @@ ipcMain.handle('franchise:crawl-progress', async () => {
 // scan-and-fetch uses, so episode thumbnails actually populate (raw AniList
 // data has only a sparse `streamingEpisodes` set; everything else needs an
 // ffmpeg fallback against the on-disk video files).
+// Opening a series page refreshes that one series' airing data if it has
+// gone stale, so the countdown you're looking at is current even if the app
+// has been open for days. No-ops for finished series and inside the TTL.
+ipcMain.handle('metadata:refresh-airing', async (_event, seriesId: string) => {
+  if (typeof seriesId !== 'string' || !seriesId) return { ok: false, updated: false };
+  try {
+    const updated = await refreshAiringForSeries(seriesId);
+    return { ok: true, updated };
+  } catch (err) {
+    logger.warn('metadata', `Airing refresh failed: ${(err as Error).message}`);
+    return { ok: false, updated: false };
+  }
+});
+
 ipcMain.handle('metadata:apply-anilist-match', async (
   _event,
   seriesId: string,
@@ -1323,7 +1484,41 @@ ipcMain.handle('metadata:apply-anilist-match', async (
       }
     }));
   }
-  const episodesWithLocalThumbs = thumbnailJobs.map((job) => ({ ...job.ep, thumbnailLocal: generated[job.idx] }));
+  // AniList's episode query carries titles and thumbnails but no air dates
+  // (getEpisodes hardcodes airDate: null), so applying a match would null
+  // out every date and destroy the series' next-episode countdown. Pull the
+  // schedule separately and merge it in by episode number.
+  const appliedAirDates = await fetchEpisodeAirDates(
+    'anilist',
+    anilistId,
+    fetched.totalEpisodes ?? null,
+    fetched.malId ?? null,
+  );
+  const airDateByEp = new Map(appliedAirDates.map((e) => [e.episodeNumber, e.airDate]));
+  const episodesWithLocalThumbs: Array<Record<string, unknown>> = thumbnailJobs.map((job) => ({
+    ...job.ep,
+    thumbnailLocal: generated[job.idx],
+    airDate: airDateByEp.get(job.ep.episodeNumber) ?? job.ep.airDate ?? null,
+  }));
+  // Episodes the schedule knows about but AniList's episode list doesn't,
+  // notably the upcoming one when no total is published yet. Without this
+  // the countdown would still have nothing in the future to point at.
+  const listedEps = new Set(thumbnailJobs.map((j) => j.ep.episodeNumber));
+  for (const e of appliedAirDates) {
+    if (listedEps.has(e.episodeNumber)) continue;
+    episodesWithLocalThumbs.push({
+      episodeNumber: e.episodeNumber,
+      seasonNumber: seasonNumber ?? null,
+      title: e.title ?? null,
+      description: null,
+      airDate: e.airDate,
+      thumbnail: null,
+      thumbnailLocal: null,
+    });
+  }
+  episodesWithLocalThumbs.sort(
+    (a, b) => (a.episodeNumber as number) - (b.episodeNumber as number),
+  );
 
   // 6. Merge into existing entry. Keep the original seriesId KEY in
   //    metadata.json (caller still uses it); also write the AniList one
@@ -1337,6 +1532,9 @@ ipcMain.handle('metadata:apply-anilist-match', async (
     folderPath: existing?.folderPath,
     type: existing?.type,
     source: 'anilist',
+    // The dates just written are current, so don't immediately re-fetch them
+    // when the series page mounts after the apply.
+    airingRefreshedAt: Date.now(),
   };
 
   await metadataHandler.updateSeriesMetadata(seriesId, merged);
