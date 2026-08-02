@@ -219,7 +219,15 @@ export interface ElectronAPI {
 
   // Shell — open a URL in the user's default browser, not an Electron window.
   openExternal: (url: string) => Promise<boolean>;
-  openWithMpv: (filePath: string) => Promise<boolean>;
+  // Launch mpv on a library file. Resolves as soon as mpv is up, not when it
+  // exits. `context` lets main attribute the session to an episode: without it
+  // the file still plays, but nothing is recorded when it ends.
+  openWithMpv: (filePath: string, context?: MpvLaunchContext) => Promise<boolean>;
+  // Fires when an mpv session started by openWithMpv ends. Carries the final
+  // playhead so the renderer can store the resume position (localStorage is
+  // renderer-owned). View history and tracker updates are applied in main
+  // before this fires — the renderer only handles the resume point.
+  onMpvPlaybackEnded: (handler: (report: MpvPlaybackEnded) => void) => () => void;
 
   // Trackers (MAL + AniList progress sync)
   trackerStatus: (provider: TrackerProvider) => Promise<TrackerStatus>;
@@ -317,6 +325,31 @@ export interface TranscodeEnsureResult {
 export interface TranscodeAutoState {
   auto: boolean;
   optedOutCount: number;
+}
+
+// What the renderer tells main about an mpv launch. Everything is optional:
+// a launch with no context still plays, it just can't be attributed to an
+// episode when it ends.
+export interface MpvLaunchContext {
+  seriesId?: string | null;
+  episodeNumber?: number | null;
+  /** OP/ED/PV/SP — shares an episodeNumber with a real episode, so it must
+   *  never move the tracker or the view history. */
+  isExtra?: boolean;
+  /** Resume point in seconds, passed to mpv as --start. */
+  startSec?: number;
+}
+
+// Final state of an mpv session, pushed when the window closes.
+export interface MpvPlaybackEnded {
+  filePath: string;
+  seriesId: string | null;
+  episodeNumber: number | null;
+  isExtra: boolean;
+  /** Last observed playhead in seconds. */
+  position: number;
+  /** Media duration in seconds; 0 when mpv never reported one. */
+  duration: number;
 }
 
 export interface SubscriptionFeed {
@@ -451,7 +484,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Shell
   openExternal: (url: string) => ipcRenderer.invoke('shell:open-external', url),
-  openWithMpv: (filePath: string) => ipcRenderer.invoke('shell:open-with-mpv', filePath),
+  openWithMpv: (filePath: string, context?: MpvLaunchContext) =>
+    ipcRenderer.invoke('shell:open-with-mpv', filePath, context ?? null),
+  onMpvPlaybackEnded: (handler: (report: MpvPlaybackEnded) => void) => {
+    const listener = (_e: unknown, report: MpvPlaybackEnded) => handler(report);
+    ipcRenderer.on('playback:mpv-ended', listener);
+    return () => ipcRenderer.removeListener('playback:mpv-ended', listener);
+  },
 
   // Trackers
   trackerStatus: (provider: TrackerProvider) => ipcRenderer.invoke('tracker:status', provider),

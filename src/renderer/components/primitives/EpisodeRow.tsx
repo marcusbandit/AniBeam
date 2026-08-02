@@ -49,6 +49,17 @@ interface EpisodeRowProps {
   onMarkerZoneEnter?: () => void;
   /** Leaving the hit-zone - debounced un-hover. */
   onMarkerLeave?: () => void;
+  /**
+   * File-level context for the right-click menu. ContextMenu reads these off
+   * the DOM (`closest('[data-episode-file]')`) rather than through React, so
+   * it can offer per-file actions like "Open with mpv" without every page
+   * threading a handler down. Omit on rows that aren't backed by a file.
+   */
+  episodeFile?: string;
+  episodeNumber?: number | string;
+  /** Extras (OP/ED/PV/SP) share an episodeNumber with a real episode, so
+   *  anything that tracks progress has to know not to treat them as one. */
+  isExtra?: boolean;
 }
 
 /**
@@ -65,6 +76,7 @@ export default function EpisodeRow({
   state = 'default', onClick, onHover, disabled,
   markerTooltip, markerMode, markerPhase, markerCascadeDelayMs,
   onMarkerClick, onMarkerEnter, onMarkerZoneEnter, onMarkerLeave,
+  episodeFile, episodeNumber, isExtra,
 }: EpisodeRowProps) {
   const elRef = useRef<HTMLButtonElement | null>(null);
   const liftRef = useRef<SmoothHandle | null>(null);
@@ -156,6 +168,9 @@ export default function EpisodeRow({
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
       disabled={disabled}
+      data-episode-file={episodeFile}
+      data-episode-number={episodeNumber}
+      data-episode-extra={isExtra ? '1' : undefined}
     >
       {markerArea}
       <span className="episode-row__code">{code}</span>

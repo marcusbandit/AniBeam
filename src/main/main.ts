@@ -1084,7 +1084,7 @@ app.whenReady().then(async () => {
   registerImageCacheIpc();
   registerMediaPlaybackIpc(getMainWindow);
   registerTrackerIpc(getMainWindow);
-  registerShellIpc();
+  registerShellIpc(getMainWindow);
   registerSubscriptionsIpc();
   registerSubtitleLogIpc();
 

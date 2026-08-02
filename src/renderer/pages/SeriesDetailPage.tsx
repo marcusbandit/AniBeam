@@ -1017,6 +1017,8 @@ function SeriesDetailPage() {
             navigate(`/player/${encodeURIComponent(item.id)}/${f.episodeNumber}`)
           }
           onHover={() => window.electronAPI.prewarmSubtitles?.(f.filePath)}
+          episodeFile={f.filePath}
+          episodeNumber={f.episodeNumber}
         />
       );
     }
@@ -1079,6 +1081,9 @@ function SeriesDetailPage() {
         onMarkerEnter={hasTrackerId ? () => onMarkerEnter(ep, isWatched) : undefined}
         onMarkerZoneEnter={hasTrackerId ? onMarkerZoneEnter : undefined}
         onMarkerLeave={hasTrackerId ? onMarkerLeave : undefined}
+        episodeFile={f.filePath}
+        episodeNumber={f.episodeNumber}
+        isExtra={isExtra}
       />
     );
   };
@@ -1110,6 +1115,9 @@ function SeriesDetailPage() {
           )
         }
         onHover={() => window.electronAPI.prewarmSubtitles?.(f.filePath)}
+        episodeFile={f.filePath}
+        episodeNumber={f.episodeNumber}
+        isExtra
       />
     );
   };
