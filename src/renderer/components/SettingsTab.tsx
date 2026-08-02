@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMetadata } from '../hooks/useMetadata';
 import { useHiddenShows } from '../contexts/HiddenShowsContext';
-import { Folder, RefreshCw, Plus, Trash2, Film, Rss, ChevronRight, Square } from 'lucide-react';
+import { Folder, RefreshCw, Plus, Trash2, Film, Rss, ChevronRight, Square, ExternalLink } from 'lucide-react';
 import TrackersSection from './TrackersSection';
 import { Page, Section, Inline, Tooltip, SegmentedSwitch } from './primitives';
 
@@ -67,13 +67,43 @@ function SettingsTab() {
   const [optedOutCount, setOptedOutCount] = useState(0);
   const [stopAllNote, setStopAllNote] = useState<string | null>(null);
 
+  // TMDB key. The stored value is never read back into the field - the input
+  // only ever holds something the user just typed, and the placeholder says
+  // whether one is on file.
+  const [tmdbKey, setTmdbKey] = useState('');
+  const [tmdbKeySaved, setTmdbKeySaved] = useState(false);
+  const [tmdbBusy, setTmdbBusy] = useState(false);
+  const [tmdbNote, setTmdbNote] = useState<string | null>(null);
+
 
   useEffect(() => {
     loadFolderSources();
     loadCacheStats();
     void refreshTranscodeAuto();
+    void window.electronAPI.tmdbHasApiKey?.().then(setTmdbKeySaved).catch(() => { /* best-effort */ });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function handleSaveTmdbKey(): Promise<void> {
+    setTmdbBusy(true);
+    setTmdbNote(null);
+    try {
+      // Main validates against TMDB before storing, so a typo'd key is caught
+      // here rather than surfacing as a mystery empty search later.
+      const res = await window.electronAPI.tmdbSetApiKey?.(tmdbKey);
+      if (res?.ok) {
+        setTmdbKeySaved(true);
+        setTmdbKey('');
+        setTmdbNote('Key verified and saved.');
+      } else {
+        setTmdbNote(res?.message ?? 'Could not save that key.');
+      }
+    } catch (err) {
+      setTmdbNote(err instanceof Error ? err.message : 'Could not save that key.');
+    } finally {
+      setTmdbBusy(false);
+    }
+  }
 
   async function refreshTranscodeAuto(): Promise<void> {
     try {
@@ -384,6 +414,46 @@ function SettingsTab() {
               />
             </div>
           ))}
+        </div>
+
+        <div className="pref-list">
+          <div className="pref-row">
+            <div>
+              <div className="pref-label">TMDB API key</div>
+              <div className="pref-help">
+                Needed to match films and non-anime TV, which AniList has no entry for.
+                Free from{' '}
+                <button
+                  type="button"
+                  className="tracker-link"
+                  onClick={() => void window.electronAPI.openExternal('https://www.themoviedb.org/settings/api')}
+                >
+                  themoviedb.org <ExternalLink size={11} />
+                </button>
+                {' '}(the v3 key).
+                {tmdbNote && <> <span className="pref-note">{tmdbNote}</span></>}
+              </div>
+            </div>
+            <Inline gap="s2">
+              <input
+                className="tracker-input"
+                type="password"
+                value={tmdbKey}
+                onChange={(e) => setTmdbKey(e.target.value)}
+                placeholder={tmdbKeySaved ? '••••••••  (saved)' : 'v3 API key'}
+                spellCheck={false}
+                autoComplete="off"
+                aria-label="TMDB API key"
+              />
+              <button
+                className="btn btn-secondary"
+                onClick={() => void handleSaveTmdbKey()}
+                disabled={tmdbBusy || tmdbKey.trim().length === 0}
+              >
+                {tmdbBusy ? 'Checking…' : 'Save'}
+              </button>
+            </Inline>
+          </div>
         </div>
       </Section>
 

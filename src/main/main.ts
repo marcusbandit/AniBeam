@@ -5,6 +5,7 @@ import { existsSync } from 'fs';
 import axios from 'axios';
 import folderHandler, { type ScannedMedia } from './handlers/folderHandler';
 import anilistHandler from './handlers/anilistHandler';
+import tmdbHandler, { TmdbKeyMissingError } from './handlers/tmdbHandler';
 import malHandler from './handlers/malHandler';
 import metadataHandler from './handlers/metadataHandler';
 import configHandler from './handlers/configHandler';
@@ -1542,6 +1543,116 @@ ipcMain.handle('metadata:apply-anilist-match', async (
 
   await metadataHandler.updateSeriesMetadata(seriesId, merged);
   logger.info('metadata', `Override applied: ${seriesId} → AniList ${anilistId}`);
+  return { ok: true };
+});
+
+// ----- TMDB: metadata for the non-anime part of the library -----
+// AniList has no entry for a live-action film, so matching one there either
+// fails or lands on something unrelated with a similar title. These mirror the
+// AniList search/apply pair; the record they write is the same shape, marked
+// `source: 'tmdb'`.
+
+ipcMain.handle('tmdb:has-key', async () => tmdbHandler.hasApiKey());
+
+ipcMain.handle('tmdb:set-key', async (_event, key: unknown) => {
+  if (typeof key !== 'string') return { ok: false, message: 'key must be a string' };
+  return tmdbHandler.setApiKey(key);
+});
+
+ipcMain.handle('metadata:search-tmdb', async (_event, query: unknown, limit: unknown) => {
+  if (typeof query !== 'string' || query.trim().length < 2) return [];
+  try {
+    return await tmdbHandler.search(query, typeof limit === 'number' ? limit : 12);
+  } catch (err) {
+    if (err instanceof TmdbKeyMissingError) throw new Error('no-api-key');
+    throw err;
+  }
+});
+
+ipcMain.handle('metadata:apply-tmdb-match', async (
+  _event,
+  seriesId: string,
+  tmdbId: number,
+  kind: unknown,
+  seasonNumber: number | null = null,
+) => {
+  if (!seriesId || typeof tmdbId !== 'number' || !Number.isFinite(tmdbId)) {
+    return { ok: false, reason: 'bad-args' };
+  }
+  if (kind !== 'movie' && kind !== 'tv') return { ok: false, reason: 'bad-args' };
+
+  let fetched;
+  try {
+    fetched = await tmdbHandler.fetchById(tmdbId, kind, seasonNumber);
+  } catch (err) {
+    if (err instanceof TmdbKeyMissingError) return { ok: false, reason: 'no-api-key' };
+    throw err;
+  }
+  if (!fetched) return { ok: false, reason: 'fetch-failed' };
+
+  // Local state (which files exist, where they live) survives the override —
+  // same contract as the AniList apply above.
+  const allMeta = await metadataHandler.loadMetadata();
+  const existing = allMeta[seriesId] as {
+    fileEpisodes?: Array<{ episodeNumber: number; seasonNumber?: number | null; filePath: string }>;
+    folderPath?: string;
+    type?: 'series' | 'movie';
+  } | undefined;
+  const fileEpisodes = existing?.fileEpisodes ?? [];
+
+  const cachedImages = await imageCacheHandler.cacheImages([
+    fetched.poster,
+    fetched.banner,
+    ...fetched.episodes.map((e) => e.thumbnail),
+  ]);
+  const posterLocal = fetched.poster ? cachedImages.get(fetched.poster) ?? null : null;
+  const bannerLocal = fetched.banner ? cachedImages.get(fetched.banner) ?? null : null;
+
+  // Episode stills are far patchier on TMDB than AniList thumbnails, so the
+  // local-frame fallback matters more here: match by episode number, then fall
+  // back to the file at that ordinal so a one-file movie still gets a frame.
+  const byEpisodeNumber = new Map<number, string>();
+  for (const f of fileEpisodes) byEpisodeNumber.set(f.episodeNumber, f.filePath);
+
+  const jobs = fetched.episodes.map((ep, idx) => {
+    const online = ep.thumbnail ? cachedImages.get(ep.thumbnail) ?? null : null;
+    const videoPath = online
+      ? undefined
+      : byEpisodeNumber.get(ep.episodeNumber) ?? fileEpisodes[idx]?.filePath;
+    return { idx, ep, online, videoPath };
+  });
+
+  const THUMBNAIL_CONCURRENCY = 4;
+  const generated = new Array<string | null>(jobs.length).fill(null);
+  for (let i = 0; i < jobs.length; i += THUMBNAIL_CONCURRENCY) {
+    const batch = jobs.slice(i, i + THUMBNAIL_CONCURRENCY);
+    await Promise.allSettled(batch.map(async (job) => {
+      if (job.online) { generated[job.idx] = job.online; return; }
+      if (!job.videoPath) return;
+      try {
+        generated[job.idx] = await thumbnailHandler.generateThumbnail(job.videoPath, 120, i === 0 && job === batch[0]);
+      } catch {
+        logger.warn('thumbnail', `apply-tmdb: no thumbnail for ep ${job.ep.episodeNumber}`, { file: job.videoPath });
+      }
+    }));
+  }
+
+  const merged: Record<string, unknown> = {
+    ...fetched,
+    posterLocal,
+    bannerLocal,
+    episodes: jobs.map((job) => ({ ...job.ep, thumbnailLocal: generated[job.idx] })),
+    fileEpisodes,
+    folderPath: existing?.folderPath,
+    type: existing?.type,
+    source: 'tmdb',
+    // TMDB records carry no AniList/MAL id, so the auto-matcher must not treat
+    // this as an unmatched series and overwrite it on the next sweep.
+    posterMatchAttempted: true,
+  };
+
+  await metadataHandler.updateSeriesMetadata(seriesId, merged);
+  logger.info('metadata', `Override applied: ${seriesId} → TMDB ${kind} ${tmdbId}`);
   return { ok: true };
 });
 

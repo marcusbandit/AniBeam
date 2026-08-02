@@ -128,7 +128,20 @@ export interface ElectronAPI {
     anilistId: number,
     seasonNumber?: number | null,
   ) => Promise<{ ok: boolean; reason?: string }>;
-  
+
+  // The same pair against TMDB, for films and shows that aren't anime and so
+  // have no AniList entry to match. Search rejects with 'no-api-key' when the
+  // user hasn't set one; apply returns reason: 'no-api-key' for the same case.
+  searchTmdb: (query: string, limit?: number) => Promise<TmdbSearchResult[]>;
+  applyTmdbMatch: (
+    seriesId: string,
+    tmdbId: number,
+    kind: TmdbKind,
+    seasonNumber?: number | null,
+  ) => Promise<{ ok: boolean; reason?: string }>;
+  tmdbHasApiKey: () => Promise<boolean>;
+  tmdbSetApiKey: (key: string) => Promise<{ ok: boolean; message?: string }>;
+
   // Image cache
   getImageCacheStats: () => Promise<CacheStats>;
   clearImageCache: () => Promise<boolean>;
@@ -375,6 +388,21 @@ export interface AnilistSearchResult {
   seasonYear: number | null;
 }
 
+// A TMDB match candidate. Flatter than the AniList one because TMDB has no
+// romaji/native split — just a title and, when it differs, the original-language
+// one.
+export type TmdbKind = 'movie' | 'tv';
+export interface TmdbSearchResult {
+  id: number;
+  kind: TmdbKind;
+  title: string;
+  originalTitle: string | null;
+  year: number | null;
+  overview: string | null;
+  posterUrl: string | null;
+  episodes: number | null;
+}
+
 declare global {
   interface Window {
     electronAPI: ElectronAPI;
@@ -409,6 +437,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Match picker
   searchAnilist: (query: string, limit?: number) => ipcRenderer.invoke('anilist:search', query, limit),
+  searchTmdb: (query: string, limit?: number) => ipcRenderer.invoke('metadata:search-tmdb', query, limit),
+  applyTmdbMatch: (seriesId: string, tmdbId: number, kind: TmdbKind, seasonNumber?: number | null) =>
+    ipcRenderer.invoke('metadata:apply-tmdb-match', seriesId, tmdbId, kind, seasonNumber ?? null),
+  tmdbHasApiKey: () => ipcRenderer.invoke('tmdb:has-key'),
+  tmdbSetApiKey: (key: string) => ipcRenderer.invoke('tmdb:set-key', key),
   applyAnilistMatch: (seriesId: string, anilistId: number, seasonNumber?: number | null) =>
     ipcRenderer.invoke('metadata:apply-anilist-match', seriesId, anilistId, seasonNumber ?? null),
   

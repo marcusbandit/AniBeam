@@ -11,6 +11,8 @@ export type {
   LibraryEpisodeAirDate,
   LibraryItem,
   AnilistSearchResult,
+  TmdbSearchResult,
+  TmdbKind,
   VideoOpenResult,
   SubscriptionFeed,
   SubscriptionsResult,

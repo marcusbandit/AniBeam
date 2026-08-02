@@ -60,6 +60,8 @@
 
   /* AniList brand blue: external-entry chips only */
   --anilist-blue: #02a9ff;
+  /* TMDB brand teal: source chips on film / non-anime TV entries */
+  --tmdb-teal: #01b4e4;
 
 
   /* Tracker list-status hues */
