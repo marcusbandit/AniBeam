@@ -216,7 +216,12 @@ export interface ElectronAPI {
   // just stopped — opening the episode still forces a fresh encode.
   cancelTranscode: (filePath: string) => Promise<{ ok: boolean; stopped: boolean }>;
   cancelAllTranscodes: () => Promise<{ ok: boolean; stopped: number }>;
+  /** Re-encode this file after all — lifts both a stop and a never-mark. */
   resumeTranscode: (filePath: string) => Promise<{ ok: boolean }>;
+  /** Rule this file out of re-encoding for good. Opening it then offers mpv
+   *  rather than starting an encode. */
+  setTranscodeNever: (filePath: string, never: boolean) =>
+    Promise<{ ok: boolean; never?: boolean; stopped?: boolean }>;
   getTranscodeAuto: () => Promise<TranscodeAutoState>;
   setTranscodeAuto: (enabled: boolean) => Promise<{ auto: boolean; stopped: number; resumed: number }>;
 
@@ -295,6 +300,10 @@ export interface ViewHistoryEntry {
 export type VideoOpenResult =
   | { kind: 'direct'; url: string }
   | { kind: 'transcoding'; vCodec: string; aCodec: string }
+  // The file needs converting but the user marked it never-re-encode, so
+  // nothing was queued. The renderer offers mpv (which plays it as-is) or an
+  // explicit re-encode.
+  | { kind: 'needs-external'; vCodec: string; aCodec: string }
   | { kind: 'unsupported'; vCodec: string; aCodec: string };
 
 export interface TranscodeProgressPayload {
@@ -327,17 +336,20 @@ export interface TranscodeEncoderStatus {
 //               progress events will follow on the transcode-progress channel.
 //   'none'    — browser-playable as-is (or missing); nothing to do.
 //   'stopped' — needs transcoding, but the user stopped this file (or turned
-//               automatic re-encoding off), so nothing was queued.
+//               automatic re-encoding off), so nothing was queued. Resumable.
+//   'never'   — needs transcoding, but the user ruled it out permanently.
+//               Playing it offers mpv instead of starting an encode.
 export interface TranscodeEnsureResult {
   filePath: string;
-  state: 'cached' | 'pending' | 'none' | 'stopped';
+  state: 'cached' | 'pending' | 'none' | 'stopped' | 'never';
 }
 
 // Whether the automatic re-encode sweeps may queue work, and how many files
-// the user has individually stopped.
+// the user has individually stopped or ruled out for good.
 export interface TranscodeAutoState {
   auto: boolean;
   optedOutCount: number;
+  neverCount: number;
 }
 
 // What the renderer tells main about an mpv launch. Everything is optional:
@@ -499,6 +511,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   cancelTranscode: (filePath: string) => ipcRenderer.invoke('transcode:cancel', filePath),
   cancelAllTranscodes: () => ipcRenderer.invoke('transcode:cancel-all'),
   resumeTranscode: (filePath: string) => ipcRenderer.invoke('transcode:resume', filePath),
+  setTranscodeNever: (filePath: string, never: boolean) =>
+    ipcRenderer.invoke('transcode:set-never', filePath, never),
   getTranscodeAuto: () => ipcRenderer.invoke('transcode:get-auto'),
   setTranscodeAuto: (enabled: boolean) => ipcRenderer.invoke('transcode:set-auto', enabled),
 

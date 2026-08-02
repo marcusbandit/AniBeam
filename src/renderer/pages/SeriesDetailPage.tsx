@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Play, Check, Star, Tv, Film, Clock, Users, RotateCw, Eye, EyeOff, AlertTriangle, CaptionsOff, X } from "lucide-react";
+import { ArrowLeft, Play, Check, Star, Tv, Film, Clock, Users, RotateCw, Eye, EyeOff, AlertTriangle, CaptionsOff, X, Ban } from "lucide-react";
 
 // AniList brand mark. Inline rather than fetched so it ships with the
 // renderer bundle and stays available offline. Geometry is the official
@@ -39,9 +39,14 @@ import {
   readLastEpisodeMap,
   getProgressFraction,
   getExtraProgressFraction,
+  progressId,
+  extraProgressToken,
+  RESUME_HEAD_SKIP,
+  RESUME_TAIL_SKIP,
   type ProgressMap,
   type LastEpisodeMap,
 } from "../utils/playbackProgress";
+import ExternalPlayPrompt from "../components/ExternalPlayPrompt";
 import type { TrackerListStatus } from "../../main/preload";
 import { Page, Section, Card, EpisodeRow, Pill, ScorePicker, Tooltip } from "../components/primitives";
 import { FranchiseGraphView } from "../components/franchise";
@@ -119,43 +124,51 @@ const EXTRA_GROUPS: ReadonlyArray<{ kind: "op" | "ed" | "pv" | "sp" | "other"; l
   { kind: "other", label: "Other" },
 ];
 
-type TranscodePhase = "queued" | "encoding" | "failed" | "stopped";
+type TranscodePhase = "queued" | "encoding" | "failed" | "stopped" | "never";
 
 // Inline re-encode indicator shown in the EpisodeRow trailing slot - the same
 // spot the amber "Re-encoded" pill lands once the encode finishes. While an
 // episode is still being converted to a browser-playable copy it shows a live
 // progress bar instead, so opening the series surfaces the whole batch at once.
 //
-// A live bar (queued or encoding) carries a stop button; a stopped row carries
-// the inverse, a resume button. Both sit OUTSIDE the progressbar element so the
-// bar keeps its single, clean accessibility role.
+// A live bar (queued or encoding) carries a stop button plus a "never" one, so
+// the choice to opt out for good is available at the moment the user is already
+// saying "not this". A stopped row carries the inverse pair (resume / never),
+// and a never row just an undo. All of them sit OUTSIDE the progressbar element
+// so the bar keeps its single, clean accessibility role.
 function TranscodeBar({
   fraction,
   phase,
   onStop,
   onResume,
+  onNever,
 }: {
   fraction: number;
   phase: TranscodePhase;
   onStop: () => void;
   onResume: () => void;
+  onNever: () => void;
 }) {
   const pct = Math.round(Math.max(0, Math.min(1, fraction)) * 100);
   const label = phase === "failed"
     ? "failed"
-    : phase === "stopped"
-      ? "stopped"
-      : phase === "queued"
-        ? "queued"
-        : `${pct}%`;
+    : phase === "never"
+      ? "mpv only"
+      : phase === "stopped"
+        ? "stopped"
+        : phase === "queued"
+          ? "queued"
+          : `${pct}%`;
   const tip = phase === "failed"
     ? "Re-encode failed - open the episode to retry"
-    : phase === "stopped"
-      ? "Re-encoding stopped - this episode still plays in mpv"
-      : phase === "queued"
-        ? "Queued - re-encoding to a browser-playable copy"
-        : `Re-encoding to a browser-playable copy · ${pct}%`;
-  const canStop = phase === "queued" || phase === "encoding";
+    : phase === "never"
+      ? "Never re-encoded - opening this episode offers mpv, which plays it as it is"
+      : phase === "stopped"
+        ? "Re-encoding stopped - this episode still plays in mpv"
+        : phase === "queued"
+          ? "Queued - re-encoding to a browser-playable copy"
+          : `Re-encoding to a browser-playable copy · ${pct}%`;
+  const isLive = phase === "queued" || phase === "encoding";
   return (
     <span className="transcode-bar-group">
       <Tooltip label={tip}>
@@ -176,7 +189,7 @@ function TranscodeBar({
           <span className="transcode-bar__label">{label}</span>
         </span>
       </Tooltip>
-      {canStop && (
+      {isLive && (
         <Tooltip label="Stop re-encoding this episode">
           <button
             className="transcode-bar__stop"
@@ -187,7 +200,7 @@ function TranscodeBar({
           </button>
         </Tooltip>
       )}
-      {phase === "stopped" && (
+      {(phase === "stopped" || phase === "never") && (
         <Tooltip label="Re-encode this episode after all">
           <button
             className="transcode-bar__stop"
@@ -195,6 +208,17 @@ function TranscodeBar({
             onClick={(e) => { e.stopPropagation(); onResume(); }}
           >
             <RotateCw size={12} />
+          </button>
+        </Tooltip>
+      )}
+      {(isLive || phase === "stopped") && (
+        <Tooltip label="Never re-encode this episode - play it in mpv instead">
+          <button
+            className="transcode-bar__stop transcode-bar__never"
+            aria-label="Never re-encode this episode"
+            onClick={(e) => { e.stopPropagation(); onNever(); }}
+          >
+            <Ban size={12} />
           </button>
         </Tooltip>
       )}
@@ -476,11 +500,11 @@ function SeriesDetailPage() {
           for (const r of results) {
             if (r.state === "pending") {
               if (!next[r.filePath]) next[r.filePath] = { fraction: 0, phase: "queued" };
-            } else if (r.state === "stopped") {
-              // Needs an encode but the user stopped it - show the stopped
-              // marker with its resume button rather than nothing, so the row
-              // explains why there's no "Re-encoded" pill.
-              next[r.filePath] = { fraction: 0, phase: "stopped" };
+            } else if (r.state === "stopped" || r.state === "never") {
+              // Needs an encode but the user ruled it out - show the marker
+              // rather than nothing, so the row explains why there's no
+              // "Re-encoded" pill and offers the way back.
+              next[r.filePath] = { fraction: 0, phase: r.state };
             } else {
               delete next[r.filePath]; // cached / none → nothing to show
             }
@@ -513,6 +537,101 @@ function SeriesDetailPage() {
     }
   }, []);
 
+  // "Never re-encode this." Stronger than a stop: from here on, opening the
+  // episode offers mpv rather than quietly starting the encode again.
+  const neverTranscode = useCallback(async (filePath: string) => {
+    setTranscoding((prev) => ({ ...prev, [filePath]: { fraction: 0, phase: "never" } }));
+    try {
+      await window.electronAPI.setTranscodeNever?.(filePath, true);
+    } catch (err) {
+      console.error("[transcode] never-mark failed:", err);
+    }
+  }, []);
+
+  // ----- Opening an episode that will never be re-encoded -----
+  // The in-window player can't decode it, so instead of routing to a dead
+  // player we put the choice up front, led by the option that just works.
+  const [playPrompt, setPlayPrompt] = useState<null | {
+    filePath: string;
+    code: string;
+    title: string;
+    episodeNumber: number;
+    isExtra: boolean;
+  }>(null);
+  const [playPromptBusy, setPlayPromptBusy] = useState(false);
+
+  // Route to the player, unless this file is one the user ruled out - then ask.
+  // Every episode/extra/movie row goes through here so the two paths can't
+  // drift apart.
+  const openEpisode = useCallback((
+    f: { filePath: string; episodeNumber: number },
+    opts: { code: string; title: string; isExtra: boolean; route: string },
+  ) => {
+    if (transcoding[f.filePath]?.phase === "never") {
+      setPlayPrompt({
+        filePath: f.filePath,
+        code: opts.code,
+        title: opts.title,
+        episodeNumber: f.episodeNumber,
+        isExtra: opts.isExtra,
+      });
+      return;
+    }
+    navigate(opts.route);
+  }, [navigate, transcoding]);
+
+  const playPromptInMpv = useCallback(async () => {
+    if (!playPrompt || !item) return;
+    setPlayPromptBusy(true);
+    // Same resume + attribution context the right-click launch passes, so an
+    // episode watched this way still lands in view history and the tracker.
+    const token = playPrompt.isExtra
+      ? extraProgressToken(playPrompt.filePath)
+      : playPrompt.episodeNumber;
+    const entry = readProgress()[progressId(item.id, token)];
+    const startSec = entry && entry.d > 0
+      && entry.t >= RESUME_HEAD_SKIP && entry.t <= entry.d - RESUME_TAIL_SKIP
+      ? entry.t
+      : 0;
+    try {
+      await window.electronAPI.openWithMpv(playPrompt.filePath, {
+        seriesId: item.id,
+        episodeNumber: playPrompt.episodeNumber,
+        isExtra: playPrompt.isExtra,
+        startSec,
+      });
+      setPlayPrompt(null);
+    } catch (err) {
+      console.error("[playback] mpv launch failed:", err);
+    } finally {
+      setPlayPromptBusy(false);
+    }
+  }, [playPrompt, item]);
+
+  // "Re-encode and play here" - lifts the never-mark, queues the encode, and
+  // drops the user on the player, which shows the progress bar and starts
+  // playing by itself once the cached copy lands.
+  const playPromptReencode = useCallback(async () => {
+    if (!playPrompt || !item) return;
+    setPlayPromptBusy(true);
+    try {
+      await window.electronAPI.resumeTranscode?.(playPrompt.filePath);
+      setTranscoding((prev) => ({
+        ...prev,
+        [playPrompt.filePath]: { fraction: 0, phase: "queued" },
+      }));
+      const route = playPrompt.isExtra
+        ? `/player/${encodeURIComponent(item.id)}/${playPrompt.episodeNumber}?file=${encodeURIComponent(playPrompt.filePath)}`
+        : `/player/${encodeURIComponent(item.id)}/${playPrompt.episodeNumber}`;
+      setPlayPrompt(null);
+      navigate(route);
+    } catch (err) {
+      console.error("[transcode] re-encode from prompt failed:", err);
+    } finally {
+      setPlayPromptBusy(false);
+    }
+  }, [playPrompt, item, navigate]);
+
   // Live progress + status for files in THIS series. Two channels: granular
   // fraction updates while ffmpeg runs, and status flips (ready/stalled) that
   // start/finish/fail a bar. 'ready' drops the entry - the reload triggered by
@@ -525,7 +644,8 @@ function SeriesDetailPage() {
       setTranscoding((prev) => {
         // Drop a progress frame that was already in flight when the user hit
         // stop - otherwise it would flip the row back to "encoding" for a beat.
-        if (prev[p.filePath]?.phase === "stopped") return prev;
+        const held = prev[p.filePath]?.phase;
+        if (held === "stopped" || held === "never") return prev;
         return { ...prev, [p.filePath]: { fraction: p.fraction, phase: "encoding" } };
       });
     });
@@ -537,8 +657,9 @@ function SeriesDetailPage() {
         // just didn't produce a cached copy), so a plain ready-ping would erase
         // the marker the user just created. Keep 'stopped' pinned until they
         // resume it or leave the page.
+        const held = prev[p.filePath]?.phase;
         if (p.status === "ready") {
-          if (prev[p.filePath]?.phase !== "stopped") delete next[p.filePath];
+          if (held !== "stopped" && held !== "never") delete next[p.filePath];
         } else if (p.status === "stalled") next[p.filePath] = { fraction: prev[p.filePath]?.fraction ?? 0, phase: "failed" };
         else if (p.status === "transcoding") next[p.filePath] = { fraction: prev[p.filePath]?.fraction ?? 0, phase: "encoding" };
         return next;
@@ -948,6 +1069,7 @@ function SeriesDetailPage() {
           phase={tx.phase}
           onStop={() => void stopTranscode(filePath)}
           onResume={() => void resumeTranscode(filePath)}
+          onNever={() => void neverTranscode(filePath)}
         />
       );
     }
@@ -1013,9 +1135,12 @@ function SeriesDetailPage() {
           }
           progress={fraction}
           state={movieWatched ? "watched" : "default"}
-          onClick={() =>
-            navigate(`/player/${encodeURIComponent(item.id)}/${f.episodeNumber}`)
-          }
+          onClick={() => openEpisode(f, {
+            code: "Movie",
+            title: realEpisodes.length === 1 ? displayTitle : f.title,
+            isExtra: false,
+            route: `/player/${encodeURIComponent(item.id)}/${f.episodeNumber}`,
+          })}
           onHover={() => window.electronAPI.prewarmSubtitles?.(f.filePath)}
           episodeFile={f.filePath}
           episodeNumber={f.episodeNumber}
@@ -1064,9 +1189,12 @@ function SeriesDetailPage() {
         trailing={trailing}
         progress={fraction}
         state={isNext ? "next-up" : isWatched ? "watched" : "default"}
-        onClick={() =>
-          navigate(`/player/${encodeURIComponent(item.id)}/${f.episodeNumber}`)
-        }
+        onClick={() => openEpisode(f, {
+          code,
+          title: episodeTitle,
+          isExtra,
+          route: `/player/${encodeURIComponent(item.id)}/${f.episodeNumber}`,
+        })}
         onHover={() => window.electronAPI.prewarmSubtitles?.(f.filePath)}
         // Markers double as a track/untrack control. Watched: "untrack to here"
         // (set progress to this ep − 1). Untracked: "track to here" (set to this
@@ -1109,11 +1237,12 @@ function SeriesDetailPage() {
         trailing={(reencode || subWarn) ? <>{subWarn}{reencode}</> : null}
         progress={fraction}
         state="default"
-        onClick={() =>
-          navigate(
-            `/player/${encodeURIComponent(item.id)}/${f.episodeNumber}?file=${encodeURIComponent(f.filePath)}`,
-          )
-        }
+        onClick={() => openEpisode(f, {
+          code,
+          title,
+          isExtra: true,
+          route: `/player/${encodeURIComponent(item.id)}/${f.episodeNumber}?file=${encodeURIComponent(f.filePath)}`,
+        })}
         onHover={() => window.electronAPI.prewarmSubtitles?.(f.filePath)}
         episodeFile={f.filePath}
         episodeNumber={f.episodeNumber}
@@ -1645,6 +1774,17 @@ function SeriesDetailPage() {
         </Section>
       )}
       </div>
+
+      <ExternalPlayPrompt
+        open={playPrompt !== null}
+        code={playPrompt?.code ?? ""}
+        title={playPrompt?.title ?? ""}
+        vCodec={null}
+        busy={playPromptBusy}
+        onPlayInMpv={() => void playPromptInMpv()}
+        onReencode={() => void playPromptReencode()}
+        onClose={() => setPlayPrompt(null)}
+      />
     </Page>
   );
 }

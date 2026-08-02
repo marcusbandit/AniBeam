@@ -155,6 +155,51 @@ const idle = await fixture('never-queued.mkv');
 assert.equal(handler.cancel(idle), false, 'cancel() reports false when there was nothing to stop');
 assert.equal(handler.isSkipped(idle), false, 'a no-op cancel does not record an opt-out');
 
+// --- "never re-encode" ----------------------------------------------------
+// Stronger than a stop: a plain stop is lifted by playing the episode, whereas
+// never survives it (playing offers mpv instead) and is only lifted by an
+// explicit force.
+
+const never = await fixture('never.mkv');
+const neverSettles = handler.enqueue(never);
+const marked = handler.setNever(never, true);
+assert.equal(marked.stopped, true, 'marking never stops an encode that is already running');
+await neverSettles;
+assert.equal(handler.isNever(never), true, 'the file is marked never');
+assert.equal(handler.isSkipped(never), true, 'automatic sweeps skip it');
+assert.equal(handler.autoState().neverCount, 1, 'the mark is counted separately from plain stops');
+
+// The decisive difference from a stop: a user-initiated play must NOT start an
+// encode, because "never" exists so that playing offers mpv instead.
+await handler.enqueue(never, { reason: 'user' });
+assert.equal(
+  handler.queueSnapshot().queuedPaths.includes(never),
+  false,
+  'playing a never-encode file does not start an encode',
+);
+assert.equal(handler.isNever(never), true, 'and does not clear the mark');
+
+// Only an explicit "re-encode anyway" lifts it.
+const forced = handler.enqueue(never, { reason: 'force' });
+assert.equal(handler.isNever(never), false, 'force lifts the never mark');
+handler.cancel(never);
+await forced;
+handler.clearOptOut();
+
+// A never mark is a per-file decision, not a side effect of the global switch,
+// so re-enabling auto must not quietly undo it.
+handler.setNever(never, true);
+const reEnabled = handler.setAuto(true);
+assert.equal(
+  handler.isNever(never),
+  true,
+  'turning automatic re-encoding back on does not clear a never mark',
+);
+assert.equal(reEnabled.auto, true);
+handler.setNever(never, false);
+assert.equal(handler.isNever(never), false, 'the mark can be cleared directly');
+assert.equal(handler.autoState().neverCount, 0);
+
 await rm(userData, { recursive: true, force: true });
 await rm(library, { recursive: true, force: true });
 console.log('verify-transcode-cancel: all assertions passed');

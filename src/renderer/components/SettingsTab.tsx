@@ -65,6 +65,7 @@ function SettingsTab() {
   // reason nothing is encoding.
   const [transcodeAuto, setTranscodeAuto] = useState(true);
   const [optedOutCount, setOptedOutCount] = useState(0);
+  const [neverCount, setNeverCount] = useState(0);
   const [stopAllNote, setStopAllNote] = useState<string | null>(null);
 
   // TMDB key. The stored value is never read back into the field - the input
@@ -111,6 +112,7 @@ function SettingsTab() {
       if (!state) return;
       setTranscodeAuto(state.auto);
       setOptedOutCount(state.optedOutCount);
+      setNeverCount(state.neverCount);
     } catch (err) {
       console.error('[settings] could not read re-encode state:', err);
     }
@@ -528,6 +530,12 @@ function SettingsTab() {
                   : 'Nothing is converted in the background. Opening an episode in the app still re-encodes that one.'}
                 {optedOutCount > 0 && (
                   <> <span className="pref-note">{optedOutCount} file{optedOutCount === 1 ? '' : 's'} individually stopped</span></>
+                )}
+                {neverCount > 0 && (
+                  <> <span className="pref-note">
+                    {neverCount} set to never re-encode (those play in mpv; turning this
+                    back on does not undo them)
+                  </span></>
                 )}
               </div>
             </div>

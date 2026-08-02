@@ -101,6 +101,17 @@ export function registerMediaPlaybackIpc(getMainWindow?: WindowGetter): void {
     // (ahead of any bulk series sweep already queued).
     const probe = await probeCodecs(filePath);
     if (probe && needsTranscode(probe)) {
+      // Marked never-re-encode: don't quietly start one. Hand the renderer the
+      // codecs so it can offer mpv (which plays this file as-is) or an explicit
+      // re-encode, rather than the user watching a progress bar they'd said
+      // they never wanted.
+      if (transcodeCacheHandler.isNever(filePath)) {
+        return {
+          kind: 'needs-external' as const,
+          vCodec: probe.vCodec,
+          aCodec: probe.aCodec,
+        };
+      }
       // reason: 'user' — an explicit play overrides both the global auto-off
       // switch and any earlier stop on this file. The user asked to watch it
       // in-window, which requires the encode.
@@ -152,9 +163,12 @@ export function registerMediaPlaybackIpc(getMainWindow?: WindowGetter): void {
           return { filePath, state: 'cached' as const };
         }
         if (probe && needsTranscode(probe)) {
-          // Would need an encode, but the user stopped this file (or turned the
-          // sweeps off). Report it as such so the row shows a "stopped" marker
-          // the user can click to re-run, not a queued bar that never moves.
+          // Would need an encode, but the user has ruled it out. 'never' is
+          // permanent and plays in mpv; 'stopped' is this-time-only and offers
+          // a resume. Either way, not a queued bar that never moves.
+          if (transcodeCacheHandler.isNever(filePath)) {
+            return { filePath, state: 'never' as const };
+          }
           if (transcodeCacheHandler.isSkipped(filePath)) {
             return { filePath, state: 'stopped' as const };
           }
@@ -215,13 +229,23 @@ export function registerMediaPlaybackIpc(getMainWindow?: WindowGetter): void {
     return { ok: true, stopped };
   });
 
-  // Undo a stop for one file. reason: 'user' so it runs even with the global
-  // auto switch off — the user just asked for this specific encode.
+  // Undo a stop for one file. reason: 'force' so it runs regardless of the
+  // global auto switch AND lifts a never-encode mark — this is the explicit
+  // "re-encode anyway" the playback prompt offers.
   ipcMain.handle('transcode:resume', async (_event, filePath: unknown) => {
     if (typeof filePath !== 'string' || !filePath) return { ok: false };
     if (!existsSync(filePath)) return { ok: false };
-    void transcodeCacheHandler.enqueue(filePath, { priority: true, reason: 'user' });
+    void transcodeCacheHandler.enqueue(filePath, { priority: true, reason: 'force' });
     return { ok: true };
+  });
+
+  // "Never re-encode this file." Stops it if it's running, and from then on
+  // opening it offers mpv instead of starting an encode.
+  ipcMain.handle('transcode:set-never', async (_event, filePath: unknown, never: unknown) => {
+    if (typeof filePath !== 'string' || !filePath) return { ok: false };
+    const res = transcodeCacheHandler.setNever(filePath, never === true);
+    logger.info('system', res.never ? 'Marked never re-encode' : 'Cleared never re-encode', { file: filePath });
+    return { ok: true, ...res };
   });
 
   ipcMain.handle('transcode:get-auto', async () => transcodeCacheHandler.autoState());

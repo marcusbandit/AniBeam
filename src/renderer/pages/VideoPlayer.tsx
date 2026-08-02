@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useMetadata, type FileEpisode } from '../hooks/useMetadata.js';
 import { useLocalStorage, useLocalStorageRecord } from '../hooks/useLocalStorage';
 import { progressId, extraProgressToken, readProgress, writeProgress, recordEpisodeCompleted, RESUME_HEAD_SKIP, RESUME_TAIL_SKIP } from '../utils/playbackProgress';
+import ExternalPlayPrompt from '../components/ExternalPlayPrompt';
 import { friendlyExtraTitle, extraCode } from '../../shared/extraLabels';
 import { derivePlaybackSubtitleState, pickDefaultSubtitleStream } from '../../shared/subtitleSupport';
 import type { TranscodeEncoderStatus } from '../../types/electron';
@@ -201,6 +202,11 @@ function VideoPlayer() {
     | { mode: 'decode-failed' }
     | null
   >(null);
+  // The episode is marked never-re-encode, so there's no encode to wait for.
+  // Distinct from `unsupported` because the resolution is a choice (mpv, or
+  // lift the mark), not a failure to report.
+  const [needsExternal, setNeedsExternal] = useState<{ vCodec: string } | null>(null);
+  const [externalBusy, setExternalBusy] = useState(false);
   const [transcodeProgress, setTranscodeProgress] = useState<{
     currentSec: number;
     totalSec: number;
@@ -595,6 +601,7 @@ function VideoPlayer() {
 
     // Reset on episode change so the popup doesn't linger across switches.
     setUnsupported(null);
+    setNeedsExternal(null);
     setTranscodeProgress(null);
     setVideoSrc('');
 
@@ -604,6 +611,13 @@ function VideoPlayer() {
         if (cancelled) return;
         if (result.kind === 'transcoding') {
           setUnsupported({ mode: 'transcoding', vCodec: result.vCodec, aCodec: result.aCodec });
+          return;
+        }
+        if (result.kind === 'needs-external') {
+          // Ruled out of re-encoding, so there is nothing to wait for and no
+          // player to show. Ask, rather than dropping the user on a dead
+          // <video> - reached by a deep link or by auto-next rolling into it.
+          setNeedsExternal({ vCodec: result.vCodec });
           return;
         }
         if (result.kind === 'unsupported') {
@@ -2212,6 +2226,51 @@ function VideoPlayer() {
     return episodeData.title || `Episode ${episodeNum}`;
   })();
 
+  // ----- Resolving a never-re-encode episode -----
+  // Hand mpv the same context the series page does, so an episode watched this
+  // way still lands in view history and bumps the tracker. Then leave the
+  // player: there's nothing for it to show.
+  const playExternally = async (): Promise<void> => {
+    if (!activeFilePath || !seriesId) return;
+    setExternalBusy(true);
+    const token = isExtra ? extraProgressToken(activeFilePath) : episodeNum;
+    const entry = readProgress()[progressId(seriesId, token)];
+    const startSec = entry && entry.d > 0
+      && entry.t >= RESUME_HEAD_SKIP && entry.t <= entry.d - RESUME_TAIL_SKIP
+      ? entry.t
+      : 0;
+    try {
+      await window.electronAPI.openWithMpv(activeFilePath, {
+        seriesId,
+        episodeNumber: episodeNum,
+        isExtra,
+        startSec,
+      });
+      navigate(-1);
+    } catch (err) {
+      console.error('[playback] mpv launch failed:', err);
+    } finally {
+      setExternalBusy(false);
+    }
+  };
+
+  // Lift the never-mark and queue the encode. Staying put is the point: the
+  // existing transcoding UI takes over from here and starts playback by itself
+  // once the cached copy lands.
+  const reencodeAndStay = async (): Promise<void> => {
+    if (!activeFilePath) return;
+    setExternalBusy(true);
+    try {
+      await window.electronAPI.resumeTranscode?.(activeFilePath);
+      setNeedsExternal(null);
+      setUnsupported({ mode: 'transcoding', vCodec: needsExternal?.vCodec });
+    } catch (err) {
+      console.error('[transcode] re-encode from prompt failed:', err);
+    } finally {
+      setExternalBusy(false);
+    }
+  };
+
   const cueCss = `
     .player-canvas video::cue {
       background-color: rgba(${hexToRgb(vttStyle.bgColor)}, ${vttStyle.bgOpacity});
@@ -2224,12 +2283,23 @@ function VideoPlayer() {
 
   return (
     <div
-      className={`player-wrap${!chrome && !subMenuOpen && !unsupported && !shortcutsOpen ? ' cursor-hidden' : ''}`}
+      className={`player-wrap${!chrome && !subMenuOpen && !unsupported && !needsExternal && !shortcutsOpen ? ' cursor-hidden' : ''}`}
       ref={wrapRef}
       onMouseMove={showChrome}
       style={{ ['--player-aspect' as never]: String(liveAspect ?? episodeData.displayAspect ?? 16 / 9) }}
     >
       <style>{cueCss}</style>
+      <ExternalPlayPrompt
+        open={needsExternal !== null}
+        code={code}
+        title={episodeName}
+        vCodec={needsExternal?.vCodec ?? null}
+        busy={externalBusy}
+        onPlayInMpv={() => void playExternally()}
+        onReencode={() => void reencodeAndStay()}
+        // Closing has nowhere to go but back - there's no video behind this.
+        onClose={() => navigate(-1)}
+      />
       {/* Hidden frame source for the seek-bar hover preview. Bound to the SAME
           src as the main video (media:// cached mp4 or original file URL), so
           frames always decode. Kept visually hidden (1px, opacity 0) rather

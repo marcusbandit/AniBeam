@@ -85,6 +85,11 @@ let preparing: string | null = null;
 // instead of being re-queued seconds later. Opening the episode still forces a
 // fresh encode — an explicit play is a stronger signal than the old refusal.
 let optedOut = new Set<string>();
+// Files the user marked "never re-encode". Stronger than optedOut: opening the
+// episode does NOT quietly start an encode, because the whole point is that
+// this file should never be converted. The player offers mpv instead. Only an
+// explicit "re-encode anyway" (reason: 'force') clears it.
+let neverEncode = new Set<string>();
 // Master switch for the automatic sweeps. When false, only explicit
 // user-initiated encodes (play an episode) run; nothing is queued in bulk.
 let autoEnabled = true;
@@ -214,6 +219,14 @@ async function persistOptOut(): Promise<void> {
     await configHandler.saveConfig({ transcodeOptOut: [...optedOut] });
   } catch (err) {
     logger.warn('system', `transcodeCache: opt-out persist failed: ${(err as Error).message}`);
+  }
+}
+
+async function persistNever(): Promise<void> {
+  try {
+    await configHandler.saveConfig({ transcodeNever: [...neverEncode] });
+  } catch (err) {
+    logger.warn('system', `transcodeCache: never-list persist failed: ${(err as Error).message}`);
   }
 }
 
@@ -514,19 +527,29 @@ const transcodeCacheHandler = {
    * next, ahead of the bulk startup sweep. The single active encode is
    * never interrupted — priority only reorders what's still waiting.
    *
-   * `reason` separates the two callers. 'auto' (the startup catch-up and the
-   * series-open sweep) is refused when the user has turned auto re-encoding
-   * off or stopped this specific file — otherwise a cancel would be undone by
-   * the next sweep. 'user' (opening an episode) always runs and clears any
-   * standing opt-out, since an explicit play outranks the earlier refusal.
+   * `reason` separates the three callers, in ascending authority:
+   *
+   *   'auto'  — the startup catch-up and the series-open sweep. Refused when
+   *             auto re-encoding is off, or this file was stopped or marked
+   *             never; otherwise a cancel would be undone by the next sweep.
+   *   'user'  — opening an episode. Clears a standing stop (an explicit play
+   *             outranks the earlier refusal) but is still refused for a
+   *             never-encode file: that flag exists precisely so that playing
+   *             it offers mpv instead of quietly starting an encode.
+   *   'force' — "re-encode anyway" from the playback prompt. Always runs and
+   *             clears both flags; it's the only thing that lifts 'never'.
    */
-  enqueue(filePath: string, opts?: { priority?: boolean; reason?: 'auto' | 'user' }): Promise<void> {
+  enqueue(filePath: string, opts?: { priority?: boolean; reason?: 'auto' | 'user' | 'force' }): Promise<void> {
     const reason = opts?.reason ?? 'auto';
     if (reason === 'auto') {
       if (!autoEnabled) return Promise.resolve();
-      if (optedOut.has(filePath)) return Promise.resolve();
-    } else if (optedOut.delete(filePath)) {
-      void persistOptOut();
+      if (optedOut.has(filePath) || neverEncode.has(filePath)) return Promise.resolve();
+    } else if (reason === 'user') {
+      if (neverEncode.has(filePath)) return Promise.resolve();
+      if (optedOut.delete(filePath)) void persistOptOut();
+    } else {
+      if (optedOut.delete(filePath)) void persistOptOut();
+      if (neverEncode.delete(filePath)) void persistNever();
     }
     if (active?.filePath === filePath) {
       // Chain onto the running entry's settlement so this caller sees the same
@@ -580,6 +603,7 @@ const transcodeCacheHandler = {
       const cfg = await configHandler.loadConfig();
       autoEnabled = cfg.transcodeAuto !== false;
       optedOut = new Set(Array.isArray(cfg.transcodeOptOut) ? cfg.transcodeOptOut : []);
+      neverEncode = new Set(Array.isArray(cfg.transcodeNever) ? cfg.transcodeNever : []);
     } catch (err) {
       logger.warn('system', `transcodeCache: could not read stop state: ${(err as Error).message}`);
     }
@@ -644,15 +668,43 @@ const transcodeCacheHandler = {
   /** Whether the automatic sweeps may queue work, plus how many files are
    *  currently opted out — enough for Settings to render its toggle and a
    *  "clear stops" affordance. */
-  autoState(): { auto: boolean; optedOutCount: number } {
-    return { auto: autoEnabled, optedOutCount: optedOut.size };
+  autoState(): { auto: boolean; optedOutCount: number; neverCount: number } {
+    return { auto: autoEnabled, optedOutCount: optedOut.size, neverCount: neverEncode.size };
   },
 
   /** True when an automatic enqueue for this file would be refused (auto off,
    *  or the user stopped it). Lets the series sweep report a "stopped" row
    *  instead of a queued bar that will never move. */
   isSkipped(filePath: string): boolean {
-    return !autoEnabled || optedOut.has(filePath);
+    return !autoEnabled || optedOut.has(filePath) || neverEncode.has(filePath);
+  },
+
+  /** True when the user has said this file should never be converted. The
+   *  playback path checks this to offer mpv instead of starting an encode. */
+  isNever(filePath: string): boolean {
+    return neverEncode.has(filePath);
+  },
+
+  /**
+   * Mark (or unmark) a file as never-re-encode. Marking also stops it if it
+   * happens to be running — "never" that let the current encode finish would
+   * be a strange kind of never.
+   *
+   * The plain stop list is cleared at the same time so a file is only ever in
+   * one of the two states; `never` is the stronger of the pair and subsumes it.
+   */
+  setNever(filePath: string, never: boolean): { never: boolean; stopped: boolean } {
+    let stopped = false;
+    if (never) {
+      stopped = this.cancel(filePath);
+      neverEncode.add(filePath);
+      optedOut.delete(filePath);
+      void persistOptOut();
+    } else {
+      neverEncode.delete(filePath);
+    }
+    void persistNever();
+    return { never, stopped };
   },
 
   /**
@@ -671,7 +723,13 @@ const transcodeCacheHandler = {
     return { auto: autoEnabled, stopped: 0, resumed: this.clearOptOut() };
   },
 
-  /** Forget every stop, so the next sweep re-queues those files. */
+  /**
+   * Forget every plain stop, so the next sweep re-queues those files.
+   *
+   * Deliberately does NOT touch the never-encode list: that's a per-file
+   * decision the user made about that file, not a side effect of the global
+   * switch. Undoing it takes an explicit "re-encode anyway".
+   */
   clearOptOut(): number {
     const n = optedOut.size;
     optedOut.clear();
