@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMetadata } from '../hooks/useMetadata';
 import { useHiddenShows } from '../contexts/HiddenShowsContext';
-import { Folder, RefreshCw, Plus, Trash2, Film, Rss, ChevronRight } from 'lucide-react';
+import { Folder, RefreshCw, Plus, Trash2, Film, Rss, ChevronRight, Square } from 'lucide-react';
 import TrackersSection from './TrackersSection';
 import { Page, Section, Inline, Tooltip, SegmentedSwitch } from './primitives';
 
@@ -59,12 +59,69 @@ function SettingsTab() {
   const [autoScan, setAutoScan] = useState(true);
   const [subtitles, setSubtitles] = useState<SubtitlePref>('auto');
 
+  // Re-encoding controls. `transcodeAuto` mirrors main's master switch for the
+  // background sweeps; `optedOutCount` is how many individual files the user
+  // has stopped, which the copy surfaces so "off" doesn't look like the only
+  // reason nothing is encoding.
+  const [transcodeAuto, setTranscodeAuto] = useState(true);
+  const [optedOutCount, setOptedOutCount] = useState(0);
+  const [stopAllNote, setStopAllNote] = useState<string | null>(null);
+
 
   useEffect(() => {
     loadFolderSources();
     loadCacheStats();
+    void refreshTranscodeAuto();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function refreshTranscodeAuto(): Promise<void> {
+    try {
+      const state = await window.electronAPI.getTranscodeAuto?.();
+      if (!state) return;
+      setTranscodeAuto(state.auto);
+      setOptedOutCount(state.optedOutCount);
+    } catch (err) {
+      console.error('[settings] could not read re-encode state:', err);
+    }
+  }
+
+  async function handleTranscodeAuto(enabled: boolean): Promise<void> {
+    setTranscodeAuto(enabled);   // optimistic - the toggle should feel instant
+    try {
+      const res = await window.electronAPI.setTranscodeAuto?.(enabled);
+      if (!res) return;
+      setTranscodeAuto(res.auto);
+      // Turning it off stops what was running; turning it back on forgets the
+      // per-file stops so the sweep genuinely resumes. Report whichever
+      // happened rather than leaving the user guessing.
+      if (!res.auto && res.stopped > 0) {
+        setStopAllNote(`Stopped ${res.stopped} re-encode${res.stopped === 1 ? '' : 's'}.`);
+      } else if (res.auto && res.resumed > 0) {
+        setStopAllNote(`Resumed ${res.resumed} previously stopped file${res.resumed === 1 ? '' : 's'}.`);
+      } else {
+        setStopAllNote(null);
+      }
+      await refreshTranscodeAuto();
+    } catch (err) {
+      console.error('[settings] could not change re-encode state:', err);
+      await refreshTranscodeAuto();
+    }
+  }
+
+  async function handleStopAllTranscodes(): Promise<void> {
+    try {
+      const res = await window.electronAPI.cancelAllTranscodes?.();
+      const n = res?.stopped ?? 0;
+      setStopAllNote(n > 0
+        ? `Stopped ${n} re-encode${n === 1 ? '' : 's'}.`
+        : 'Nothing was encoding.');
+      await refreshTranscodeAuto();
+    } catch (err) {
+      console.error('[settings] stop-all failed:', err);
+      setStopAllNote('Could not stop re-encoding.');
+    }
+  }
 
   // Whenever metadata changes, recount titles per folder root (best-effort)
   useEffect(() => {
@@ -381,6 +438,47 @@ function SettingsTab() {
               <div className="pref-help">Re-scan folders for new files when AniBeam starts. <span className="pref-note">not wired up yet</span></div>
             </div>
             <Toggle on={autoScan} onChange={setAutoScan} ariaLabel="Toggle auto-scan" />
+          </div>
+        </div>
+      </Section>
+
+      <Section title="Re-encoding">
+        <p className="section-sub">
+          Files whose codec the in-app player can&apos;t decode (HEVC, mostly) are converted to a
+          cached h.264 copy in the background. Stopping one leaves the original untouched - it
+          still plays in mpv.
+        </p>
+        <div className="pref-list">
+          <div className="pref-row">
+            <div>
+              <div className="pref-label">Re-encode automatically</div>
+              <div className="pref-help">
+                {transcodeAuto
+                  ? 'Incompatible files are converted as they are found.'
+                  : 'Nothing is converted in the background. Opening an episode in the app still re-encodes that one.'}
+                {optedOutCount > 0 && (
+                  <> <span className="pref-note">{optedOutCount} file{optedOutCount === 1 ? '' : 's'} individually stopped</span></>
+                )}
+              </div>
+            </div>
+            <Toggle
+              on={transcodeAuto}
+              onChange={(v) => void handleTranscodeAuto(v)}
+              ariaLabel="Toggle automatic re-encoding"
+            />
+          </div>
+          <div className="pref-row">
+            <div>
+              <div className="pref-label">Stop everything now</div>
+              <div className="pref-help">
+                Kills the running encode and clears the queue.
+                {stopAllNote && <> <span className="pref-note">{stopAllNote}</span></>}
+              </div>
+            </div>
+            <button className="btn btn-secondary" onClick={() => void handleStopAllTranscodes()}>
+              <Square size={14} />
+              <span>Stop all</span>
+            </button>
           </div>
         </div>
       </Section>

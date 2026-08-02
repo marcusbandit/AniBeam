@@ -14,6 +14,7 @@
     "verify:metadata-matcher": "bun --bun scripts/verify-metadata-matcher.mjs",
     "verify:motion": "bun --bun scripts/verify-motion.mjs",
     "verify:probe": "bun --bun scripts/verify-probe-parser.mjs",
+    "verify:transcode-cancel": "bun --bun scripts/verify-transcode-cancel.mjs",
     "verify:poster-match": "bun --bun scripts/verify-poster-match.mjs",
     "verify:folder": "bun --bun scripts/verify-folder-wrapper.mjs",
     "verify:franchise-graph": "bun --bun scripts/verify-franchise-graph.mjs",

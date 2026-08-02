@@ -1116,6 +1116,9 @@ app.whenReady().then(async () => {
       logger.warn('system', `transcode queue broadcast failed: ${(err as Error).message}`);
     }
   };
+  // Restore the user's stop state BEFORE anything below can enqueue, so files
+  // stopped last session (or a global auto-off) aren't re-queued on launch.
+  await transcodeCacheHandler.init();
   transcodeCacheHandler.start(
     updateFileStatus,
     undefined,

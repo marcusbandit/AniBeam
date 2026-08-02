@@ -10,6 +10,7 @@ import { findFileEpisode } from '../../shared/fileEpisode';
 import type { FileEpisodeEntry } from '../../shared/fileEpisode';
 import { probeCodecs, needsTranscode, ensureEncoderStatus, type EncoderStatus } from '../utils/transcodeProbe';
 import { getViewHistory, markViewed } from '../services/viewHistory';
+import { logger } from '../services/logger';
 import { subLog } from '../services/subtitleDebugLog';
 import type { SubtitleState } from '../../shared/subtitleSupport';
 import type { WindowGetter } from './types';
@@ -100,7 +101,10 @@ export function registerMediaPlaybackIpc(getMainWindow?: WindowGetter): void {
     // (ahead of any bulk series sweep already queued).
     const probe = await probeCodecs(filePath);
     if (probe && needsTranscode(probe)) {
-      void transcodeCacheHandler.enqueue(filePath, { priority: true });
+      // reason: 'user' — an explicit play overrides both the global auto-off
+      // switch and any earlier stop on this file. The user asked to watch it
+      // in-window, which requires the encode.
+      void transcodeCacheHandler.enqueue(filePath, { priority: true, reason: 'user' });
       return {
         kind: 'transcoding' as const,
         vCodec: probe.vCodec,
@@ -147,7 +151,15 @@ export function registerMediaPlaybackIpc(getMainWindow?: WindowGetter): void {
         if (hit?.transcodedPath && existsSync(hit.transcodedPath)) {
           return { filePath, state: 'cached' as const };
         }
-        if (probe && needsTranscode(probe)) return { filePath, state: 'pending' as const };
+        if (probe && needsTranscode(probe)) {
+          // Would need an encode, but the user stopped this file (or turned the
+          // sweeps off). Report it as such so the row shows a "stopped" marker
+          // the user can click to re-run, not a queued bar that never moves.
+          if (transcodeCacheHandler.isSkipped(filePath)) {
+            return { filePath, state: 'stopped' as const };
+          }
+          return { filePath, state: 'pending' as const };
+        }
         return { filePath, state: 'none' as const };
       } catch {
         return { filePath, state: 'none' as const };
@@ -185,6 +197,41 @@ export function registerMediaPlaybackIpc(getMainWindow?: WindowGetter): void {
   // changed' handles streaming updates.
   ipcMain.handle('transcode:queue-snapshot', async (): Promise<TranscodeQueueSnapshot> => {
     return resolveQueueSnapshot(transcodeCacheHandler.queueSnapshot());
+  });
+
+  // ----- Stopping encodes -----
+  // A stop is per-file (kill the active ffmpeg / drop it from the queue) or
+  // wholesale. Both remember the choice so the automatic sweeps don't undo it
+  // moments later; playing the episode still forces a fresh encode.
+  ipcMain.handle('transcode:cancel', async (_event, filePath: unknown) => {
+    if (typeof filePath !== 'string' || !filePath) return { ok: false, stopped: false };
+    const stopped = transcodeCacheHandler.cancel(filePath);
+    return { ok: true, stopped };
+  });
+
+  ipcMain.handle('transcode:cancel-all', async () => {
+    const stopped = transcodeCacheHandler.cancelAll();
+    if (stopped > 0) logger.info('system', `Stopped ${stopped} re-encode(s) on request`);
+    return { ok: true, stopped };
+  });
+
+  // Undo a stop for one file. reason: 'user' so it runs even with the global
+  // auto switch off — the user just asked for this specific encode.
+  ipcMain.handle('transcode:resume', async (_event, filePath: unknown) => {
+    if (typeof filePath !== 'string' || !filePath) return { ok: false };
+    if (!existsSync(filePath)) return { ok: false };
+    void transcodeCacheHandler.enqueue(filePath, { priority: true, reason: 'user' });
+    return { ok: true };
+  });
+
+  ipcMain.handle('transcode:get-auto', async () => transcodeCacheHandler.autoState());
+
+  ipcMain.handle('transcode:set-auto', async (_event, enabled: unknown) => {
+    const res = transcodeCacheHandler.setAuto(enabled === true);
+    logger.info('system', res.auto
+      ? `Automatic re-encoding on${res.resumed > 0 ? ` — ${res.resumed} stopped file(s) resumed` : ''}`
+      : `Automatic re-encoding off${res.stopped > 0 ? ` — ${res.stopped} stopped` : ''}`);
+    return res;
   });
 
   // Which encoder transcodes actually run on, so the UI can flag a silent

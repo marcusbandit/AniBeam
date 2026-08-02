@@ -197,6 +197,16 @@ export interface ElectronAPI {
   // state; live progress then arrives via onTranscodeProgress.
   ensureSeriesTranscoded: (filePaths: string[]) => Promise<TranscodeEnsureResult[]>;
 
+  // Stopping re-encodes. cancelTranscode kills the named file's ffmpeg (or
+  // drops it from the queue); cancelAllTranscodes clears the lot. Both are
+  // remembered so the automatic sweeps don't immediately re-queue what was
+  // just stopped — opening the episode still forces a fresh encode.
+  cancelTranscode: (filePath: string) => Promise<{ ok: boolean; stopped: boolean }>;
+  cancelAllTranscodes: () => Promise<{ ok: boolean; stopped: number }>;
+  resumeTranscode: (filePath: string) => Promise<{ ok: boolean }>;
+  getTranscodeAuto: () => Promise<TranscodeAutoState>;
+  setTranscodeAuto: (enabled: boolean) => Promise<{ auto: boolean; stopped: number; resumed: number }>;
+
   // View history — per-series record of the most recent playback session,
   // backing the Library "Last viewed" sort. Renderer marks an episode after
   // it has accumulated ~30s of playtime (one mark per player mount).
@@ -295,9 +305,18 @@ export interface TranscodeEncoderStatus {
 //   'pending' — needs transcoding; it has been priority-queued, so live
 //               progress events will follow on the transcode-progress channel.
 //   'none'    — browser-playable as-is (or missing); nothing to do.
+//   'stopped' — needs transcoding, but the user stopped this file (or turned
+//               automatic re-encoding off), so nothing was queued.
 export interface TranscodeEnsureResult {
   filePath: string;
-  state: 'cached' | 'pending' | 'none';
+  state: 'cached' | 'pending' | 'none' | 'stopped';
+}
+
+// Whether the automatic re-encode sweeps may queue work, and how many files
+// the user has individually stopped.
+export interface TranscodeAutoState {
+  auto: boolean;
+  optedOutCount: number;
 }
 
 export interface SubscriptionFeed {
@@ -411,6 +430,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Video open
   openVideo: (filePath: string) => ipcRenderer.invoke('video:open', filePath),
   ensureSeriesTranscoded: (filePaths: string[]) => ipcRenderer.invoke('transcode:ensure-series', filePaths),
+  cancelTranscode: (filePath: string) => ipcRenderer.invoke('transcode:cancel', filePath),
+  cancelAllTranscodes: () => ipcRenderer.invoke('transcode:cancel-all'),
+  resumeTranscode: (filePath: string) => ipcRenderer.invoke('transcode:resume', filePath),
+  getTranscodeAuto: () => ipcRenderer.invoke('transcode:get-auto'),
+  setTranscodeAuto: (enabled: boolean) => ipcRenderer.invoke('transcode:set-auto', enabled),
 
   // View history
   markEpisodeViewed: (payload: { seriesId: string; episodeNumber: number; ts?: number }) =>

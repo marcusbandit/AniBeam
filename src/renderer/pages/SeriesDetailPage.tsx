@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Play, Check, Star, Tv, Film, Clock, Users, RotateCw, Eye, EyeOff, AlertTriangle, CaptionsOff } from "lucide-react";
+import { ArrowLeft, Play, Check, Star, Tv, Film, Clock, Users, RotateCw, Eye, EyeOff, AlertTriangle, CaptionsOff, X } from "lucide-react";
 
 // AniList brand mark. Inline rather than fetched so it ships with the
 // renderer bundle and stays available offline. Geometry is the official
@@ -119,39 +119,86 @@ const EXTRA_GROUPS: ReadonlyArray<{ kind: "op" | "ed" | "pv" | "sp" | "other"; l
   { kind: "other", label: "Other" },
 ];
 
-type TranscodePhase = "queued" | "encoding" | "failed";
+type TranscodePhase = "queued" | "encoding" | "failed" | "stopped";
 
 // Inline re-encode indicator shown in the EpisodeRow trailing slot - the same
 // spot the amber "Re-encoded" pill lands once the encode finishes. While an
 // episode is still being converted to a browser-playable copy it shows a live
 // progress bar instead, so opening the series surfaces the whole batch at once.
-function TranscodeBar({ fraction, phase }: { fraction: number; phase: TranscodePhase }) {
+//
+// A live bar (queued or encoding) carries a stop button; a stopped row carries
+// the inverse, a resume button. Both sit OUTSIDE the progressbar element so the
+// bar keeps its single, clean accessibility role.
+function TranscodeBar({
+  fraction,
+  phase,
+  onStop,
+  onResume,
+}: {
+  fraction: number;
+  phase: TranscodePhase;
+  onStop: () => void;
+  onResume: () => void;
+}) {
   const pct = Math.round(Math.max(0, Math.min(1, fraction)) * 100);
-  const label = phase === "failed" ? "failed" : phase === "queued" ? "queued" : `${pct}%`;
+  const label = phase === "failed"
+    ? "failed"
+    : phase === "stopped"
+      ? "stopped"
+      : phase === "queued"
+        ? "queued"
+        : `${pct}%`;
   const tip = phase === "failed"
     ? "Re-encode failed - open the episode to retry"
-    : phase === "queued"
-      ? "Queued - re-encoding to a browser-playable copy"
-      : `Re-encoding to a browser-playable copy · ${pct}%`;
+    : phase === "stopped"
+      ? "Re-encoding stopped - this episode still plays in mpv"
+      : phase === "queued"
+        ? "Queued - re-encoding to a browser-playable copy"
+        : `Re-encoding to a browser-playable copy · ${pct}%`;
+  const canStop = phase === "queued" || phase === "encoding";
   return (
-    <Tooltip label={tip}>
-      <span
-        className={`transcode-bar transcode-bar--${phase}`}
-        role="progressbar"
-        aria-valuenow={phase === "encoding" ? pct : undefined}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-label={tip}
-      >
-        <span className="transcode-bar__track">
-          <span
-            className="transcode-bar__fill"
-            style={phase === "encoding" ? { width: `${pct}%` } : undefined}
-          />
+    <span className="transcode-bar-group">
+      <Tooltip label={tip}>
+        <span
+          className={`transcode-bar transcode-bar--${phase}`}
+          role="progressbar"
+          aria-valuenow={phase === "encoding" ? pct : undefined}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={tip}
+        >
+          <span className="transcode-bar__track">
+            <span
+              className="transcode-bar__fill"
+              style={phase === "encoding" ? { width: `${pct}%` } : undefined}
+            />
+          </span>
+          <span className="transcode-bar__label">{label}</span>
         </span>
-        <span className="transcode-bar__label">{label}</span>
-      </span>
-    </Tooltip>
+      </Tooltip>
+      {canStop && (
+        <Tooltip label="Stop re-encoding this episode">
+          <button
+            className="transcode-bar__stop"
+            aria-label="Stop re-encoding this episode"
+            onClick={(e) => { e.stopPropagation(); onStop(); }}
+          >
+            <X size={12} />
+          </button>
+        </Tooltip>
+      )}
+      {phase === "stopped" && (
+        <Tooltip label="Re-encode this episode after all">
+          <button
+            className="transcode-bar__stop"
+            aria-label="Re-encode this episode after all"
+            onClick={(e) => { e.stopPropagation(); onResume(); }}
+          >
+            <RotateCw size={12} />
+          </button>
+        </Tooltip>
+      )}
+    </span>
   );
 }
 
@@ -429,6 +476,11 @@ function SeriesDetailPage() {
           for (const r of results) {
             if (r.state === "pending") {
               if (!next[r.filePath]) next[r.filePath] = { fraction: 0, phase: "queued" };
+            } else if (r.state === "stopped") {
+              // Needs an encode but the user stopped it - show the stopped
+              // marker with its resume button rather than nothing, so the row
+              // explains why there's no "Re-encoded" pill.
+              next[r.filePath] = { fraction: 0, phase: "stopped" };
             } else {
               delete next[r.filePath]; // cached / none → nothing to show
             }
@@ -440,6 +492,27 @@ function SeriesDetailPage() {
     return () => { cancelled = true; };
   }, [filePathsKey]);
 
+  // Stop / resume a single episode's re-encode. Both flip the local phase
+  // straight away so the row responds on click; main's status ping and the
+  // queue broadcast then confirm it.
+  const stopTranscode = useCallback(async (filePath: string) => {
+    setTranscoding((prev) => ({ ...prev, [filePath]: { fraction: 0, phase: "stopped" } }));
+    try {
+      await window.electronAPI.cancelTranscode?.(filePath);
+    } catch (err) {
+      console.error("[transcode] stop failed:", err);
+    }
+  }, []);
+
+  const resumeTranscode = useCallback(async (filePath: string) => {
+    setTranscoding((prev) => ({ ...prev, [filePath]: { fraction: 0, phase: "queued" } }));
+    try {
+      await window.electronAPI.resumeTranscode?.(filePath);
+    } catch (err) {
+      console.error("[transcode] resume failed:", err);
+    }
+  }, []);
+
   // Live progress + status for files in THIS series. Two channels: granular
   // fraction updates while ffmpeg runs, and status flips (ready/stalled) that
   // start/finish/fail a bar. 'ready' drops the entry - the reload triggered by
@@ -449,14 +522,24 @@ function SeriesDetailPage() {
     const inSeries = new Set(filePathsKey.split("\n"));
     const offProgress = window.electronAPI.onTranscodeProgress?.((p) => {
       if (!inSeries.has(p.filePath)) return;
-      setTranscoding((prev) => ({ ...prev, [p.filePath]: { fraction: p.fraction, phase: "encoding" } }));
+      setTranscoding((prev) => {
+        // Drop a progress frame that was already in flight when the user hit
+        // stop - otherwise it would flip the row back to "encoding" for a beat.
+        if (prev[p.filePath]?.phase === "stopped") return prev;
+        return { ...prev, [p.filePath]: { fraction: p.fraction, phase: "encoding" } };
+      });
     });
     const offStatus = window.electronAPI.onMetadataFileStatusChanged?.((p) => {
       if (!p.filePath || !inSeries.has(p.filePath)) return;
       setTranscoding((prev) => {
         const next = { ...prev };
-        if (p.status === "ready") delete next[p.filePath];
-        else if (p.status === "stalled") next[p.filePath] = { fraction: prev[p.filePath]?.fraction ?? 0, phase: "failed" };
+        // A stop puts the file back on 'ready' in main (the source is fine, we
+        // just didn't produce a cached copy), so a plain ready-ping would erase
+        // the marker the user just created. Keep 'stopped' pinned until they
+        // resume it or leave the page.
+        if (p.status === "ready") {
+          if (prev[p.filePath]?.phase !== "stopped") delete next[p.filePath];
+        } else if (p.status === "stalled") next[p.filePath] = { fraction: prev[p.filePath]?.fraction ?? 0, phase: "failed" };
         else if (p.status === "transcoding") next[p.filePath] = { fraction: prev[p.filePath]?.fraction ?? 0, phase: "encoding" };
         return next;
       });
@@ -859,7 +942,14 @@ function SeriesDetailPage() {
   const renderReencodeIndicator = (filePath: string) => {
     const tx = transcoding[filePath];
     if (tx && !transcodedByPath.has(filePath)) {
-      return <TranscodeBar fraction={tx.fraction} phase={tx.phase} />;
+      return (
+        <TranscodeBar
+          fraction={tx.fraction}
+          phase={tx.phase}
+          onStop={() => void stopTranscode(filePath)}
+          onResume={() => void resumeTranscode(filePath)}
+        />
+      );
     }
     if (transcodedByPath.has(filePath)) {
       return (

@@ -629,6 +629,57 @@
   width: 100%;
   background: var(--accent-rose);
 }
+/* Stopped by the user: neutral rather than alarming - nothing went wrong, the
+   source file still plays. Full-width flat track reads as "parked". */
+.transcode-bar--stopped {
+  color: var(--text-secondary);
+  border-color: color-mix(in srgb, var(--text-secondary) 30%, transparent);
+  background: color-mix(in srgb, var(--text-secondary) 8%, transparent);
+}
+.transcode-bar--stopped .transcode-bar__track {
+  background: color-mix(in srgb, var(--text-secondary) 18%, transparent);
+}
+.transcode-bar--stopped .transcode-bar__fill {
+  width: 100%;
+  opacity: 0.45;
+  background: var(--text-secondary);
+}
+
+/* Bar + its stop/resume button. The button lives outside the progressbar
+   element so the bar keeps one clean a11y role; the group just keeps them
+   travelling together in the row's trailing slot. */
+.transcode-bar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+}
+.transcode-bar__stop {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  border: 1px solid color-mix(in srgb, var(--text-secondary) 28%, transparent);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color var(--transition-fast), border-color var(--transition-fast),
+    background var(--transition-fast);
+}
+.transcode-bar__stop:hover {
+  color: var(--accent-rose);
+  border-color: color-mix(in srgb, var(--accent-rose) 45%, transparent);
+  background: color-mix(in srgb, var(--accent-rose) 12%, transparent);
+}
+/* Resume button (Tooltip clones its child rather than wrapping it, so the bar
+   and the button really are siblings here). */
+.transcode-bar--stopped + .transcode-bar__stop:hover {
+  color: var(--accent-amber);
+  border-color: color-mix(in srgb, var(--accent-amber) 45%, transparent);
+  background: color-mix(in srgb, var(--accent-amber) 12%, transparent);
+}
 
 /* App-wide hover-pause tooltip (shared bubble look for the generic Tooltip
    primitive and Card's built-in tooltip). Rendered through a portal so it

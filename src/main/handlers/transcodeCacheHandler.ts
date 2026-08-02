@@ -27,6 +27,7 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { app } from 'electron';
 import { logger } from '../services/logger';
+import configHandler from './configHandler';
 import metadataHandler from './metadataHandler';
 import type { FileStatus } from '../../shared/fileStatus';
 import type { FileEpisodeEntry } from '../../shared/fileEpisode';
@@ -53,8 +54,40 @@ export interface TranscodeProgress {
   etaSec: number | null;
 }
 
+/** Thrown (and swallowed) when the user stops an encode. Distinguished from a
+ *  real ffmpeg failure so the file lands on 'ready' rather than 'stalled' and
+ *  the activity log stays signal-only. */
+export class TranscodeCancelledError extends Error {
+  constructor(filePath: string) {
+    super(`Transcode cancelled: ${filePath}`);
+    this.name = 'TranscodeCancelledError';
+  }
+}
+
 const queue: QueueEntry[] = [];
-let active: { filePath: string; child: ChildProcess; outTmp: string } | null = null;
+// `entry` is carried alongside the child so a duplicate enqueue() for the
+// file that's already encoding can chain onto the SAME settlement the queued
+// branch uses, instead of racing its own 'close' listener (which couldn't tell
+// a user stop from a crash).
+let active: { filePath: string; child: ChildProcess; outTmp: string; entry: QueueEntry } | null = null;
+// Paths whose encode the user stopped. Serves two readers: the child 'close'
+// handler (which can't otherwise tell a user stop from a crash — both surface
+// as a non-zero exit) and runOne's pre-spawn checks.
+const cancelling = new Set<string>();
+// The file runOne is currently preparing: already shifted off `queue` but not
+// yet spawned, so it lives in neither `queue` nor `active`. Preparation
+// includes an ffprobe and the encoder capability check, which together can run
+// for seconds — without tracking this, a stop during that window would report
+// "nothing to stop" and ffmpeg would start anyway.
+let preparing: string | null = null;
+// Files the user explicitly stopped. The automatic sweeps (startup catch-up,
+// series-open ensure) consult this and skip them, so a cancel actually sticks
+// instead of being re-queued seconds later. Opening the episode still forces a
+// fresh encode — an explicit play is a stronger signal than the old refusal.
+let optedOut = new Set<string>();
+// Master switch for the automatic sweeps. When false, only explicit
+// user-initiated encodes (play an episode) run; nothing is queued in bulk.
+let autoEnabled = true;
 let onStatusChange: ((path: string, status: FileStatus) => Promise<void> | void) | null = null;
 let onTranscodeReady: ((path: string, transcodedPath: string) => Promise<void> | void) | null = null;
 let onProgressChange: ((progress: TranscodeProgress) => void) | null = null;
@@ -173,6 +206,25 @@ function emitQueueChange(): void {
   }
 }
 
+// Opt-outs and the auto switch live in config.json so a stop survives a
+// restart. Writes are fire-and-forget: losing one on a crash just means a file
+// gets re-queued next launch, which the user can stop again.
+async function persistOptOut(): Promise<void> {
+  try {
+    await configHandler.saveConfig({ transcodeOptOut: [...optedOut] });
+  } catch (err) {
+    logger.warn('system', `transcodeCache: opt-out persist failed: ${(err as Error).message}`);
+  }
+}
+
+async function persistAuto(): Promise<void> {
+  try {
+    await configHandler.saveConfig({ transcodeAuto: autoEnabled });
+  } catch (err) {
+    logger.warn('system', `transcodeCache: auto-flag persist failed: ${(err as Error).message}`);
+  }
+}
+
 async function persistTranscodedPath(filePath: string, transcodedPath: string): Promise<void> {
   await metadataHandler.transaction<boolean>(async (meta) => {
     let changed = false;
@@ -190,7 +242,34 @@ async function persistTranscodedPath(filePath: string, transcodedPath: string): 
   });
 }
 
+// Settle `entry` as stopped: source untouched, status back to 'ready', and the
+// promise RESOLVED (never rejected — every enqueue() call site fire-and-forgets
+// with `void`, so rejecting a routine user action would surface as an unhandled
+// rejection). Used by the pre-spawn checks; the post-spawn path goes through
+// runOne's catch instead.
+async function settleCancelled(entry: QueueEntry): Promise<void> {
+  await emitStatus(entry.filePath, 'ready');
+  logger.info('system', `Transcode stopped`, { file: entry.filePath });
+  entry.resolve();
+}
+
 async function runOne(entry: QueueEntry): Promise<void> {
+  const { filePath } = entry;
+  // Claim the preparation window so cancel() can find this file before ffmpeg
+  // exists. Cleared once the child is spawned (`active` covers it from there)
+  // or when this function returns by any path.
+  preparing = filePath;
+  try {
+    await runOneInner(entry);
+  } finally {
+    if (preparing === filePath) preparing = null;
+    // A stop that landed after the last pre-spawn check (or on a path that
+    // returned early) must not leave a stale flag for the next file.
+    cancelling.delete(filePath);
+  }
+}
+
+async function runOneInner(entry: QueueEntry): Promise<void> {
   const { filePath } = entry;
   if (!existsSync(filePath)) {
     entry.reject(new Error(`File missing: ${filePath}`));
@@ -209,6 +288,13 @@ async function runOne(entry: QueueEntry): Promise<void> {
     // Already compatible — record nothing, status back to ready.
     await emitStatus(filePath, 'ready');
     entry.resolve();
+    return;
+  }
+
+  // The ffprobe above is the long pole before ffmpeg starts; a stop during it
+  // must not be followed by the encode starting anyway.
+  if (cancelling.delete(filePath)) {
+    await settleCancelled(entry);
     return;
   }
 
@@ -234,6 +320,12 @@ async function runOne(entry: QueueEntry): Promise<void> {
 
   await emitStatus(filePath, 'transcoding');
   const encoder = await ensureEncoder();
+  // Last gate before spawning. ensureEncoder() runs synthetic test encodes on
+  // a cold start, which is another multi-second window a stop can land in.
+  if (cancelling.delete(filePath)) {
+    await settleCancelled(entry);
+    return;
+  }
   const args = ffmpegArgsFor(encoder, filePath, tmpPath);
   const totalSec = Number.isFinite(probe.duration) && probe.duration > 0 ? probe.duration : 0;
   // Seed the renderer with a 0% frame before ffmpeg's first progress
@@ -244,7 +336,10 @@ async function runOne(entry: QueueEntry): Promise<void> {
 
   await new Promise<void>((resolve, reject) => {
     const child = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
-    active = { filePath, child, outTmp: tmpPath };
+    active = { filePath, child, outTmp: tmpPath, entry };
+    // Hand the file off from the preparation window to `active` — from here a
+    // stop kills the process rather than setting a flag.
+    preparing = null;
     // This entry just became active (and pump() already shifted it out of
     // the queue) — broadcast the new {active, queued} split.
     emitQueueChange();
@@ -314,6 +409,12 @@ async function runOne(entry: QueueEntry): Promise<void> {
     });
     child.on('close', (code) => {
       active = null;
+      // A stop kills ffmpeg, so the non-zero exit here is expected — surface it
+      // as a cancellation rather than a failure.
+      if (cancelling.delete(filePath)) {
+        reject(new TranscodeCancelledError(filePath));
+        return;
+      }
       if (code === 0) resolve();
       else reject(new Error(`ffmpeg exit ${code}: ${stderr.trim().split('\n').slice(-3).join(' | ')}`));
     });
@@ -341,9 +442,22 @@ async function runOne(entry: QueueEntry): Promise<void> {
           logger.warn('system', `transcodeCache: tmp cleanup after failure: ${cleanupErr.message}`);
         }
       });
-      await emitStatus(filePath, 'stalled');
-      logger.warn('system', `Transcode failed: ${(err as Error).message}`, { file: filePath });
-      entry.reject(err as Error);
+      // A user stop isn't a failure: the source file is untouched and still
+      // playable in mpv, so the row goes back to 'ready' rather than wearing a
+      // red "failed" bar the user has to dismiss.
+      if (err instanceof TranscodeCancelledError) {
+        await emitStatus(filePath, 'ready');
+        logger.info('system', `Transcode stopped`, { file: filePath });
+        // RESOLVE, not reject. Every enqueue() call site fire-and-forgets with
+        // `void`, so rejecting a routine user action would surface as an
+        // unhandled rejection. A stop is a skip, which this promise already
+        // models as success.
+        entry.resolve();
+      } else {
+        await emitStatus(filePath, 'stalled');
+        logger.warn('system', `Transcode failed: ${(err as Error).message}`, { file: filePath });
+        entry.reject(err as Error);
+      }
     });
 }
 
@@ -399,13 +513,30 @@ const transcodeCacheHandler = {
    * (e.g. just opened the series page) moves to the front so it encodes
    * next, ahead of the bulk startup sweep. The single active encode is
    * never interrupted — priority only reorders what's still waiting.
+   *
+   * `reason` separates the two callers. 'auto' (the startup catch-up and the
+   * series-open sweep) is refused when the user has turned auto re-encoding
+   * off or stopped this specific file — otherwise a cancel would be undone by
+   * the next sweep. 'user' (opening an episode) always runs and clears any
+   * standing opt-out, since an explicit play outranks the earlier refusal.
    */
-  enqueue(filePath: string, opts?: { priority?: boolean }): Promise<void> {
+  enqueue(filePath: string, opts?: { priority?: boolean; reason?: 'auto' | 'user' }): Promise<void> {
+    const reason = opts?.reason ?? 'auto';
+    if (reason === 'auto') {
+      if (!autoEnabled) return Promise.resolve();
+      if (optedOut.has(filePath)) return Promise.resolve();
+    } else if (optedOut.delete(filePath)) {
+      void persistOptOut();
+    }
     if (active?.filePath === filePath) {
+      // Chain onto the running entry's settlement so this caller sees the same
+      // outcome (done / failed / stopped) the original enqueue does.
+      const running = active.entry;
       return new Promise((resolve, reject) => {
-        const c = active!.child;
-        c.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg exit ${code}`))));
-        c.on('error', reject);
+        const origResolve = running.resolve;
+        const origReject = running.reject;
+        running.resolve = () => { origResolve(); resolve(); };
+        running.reject = (err) => { origReject(err); reject(err); };
       });
     }
     const existing = queue.find((e) => e.filePath === filePath);
@@ -437,6 +568,115 @@ const transcodeCacheHandler = {
    */
   queueSnapshot(): { activePath: string | null; queuedPaths: string[] } {
     return { activePath: active?.filePath ?? null, queuedPaths: queue.map((e) => e.filePath) };
+  },
+
+  /**
+   * Restore the persisted stop state. Called once from app.whenReady() BEFORE
+   * the startup sweep runs, so files the user stopped last session aren't
+   * immediately re-queued.
+   */
+  async init(): Promise<void> {
+    try {
+      const cfg = await configHandler.loadConfig();
+      autoEnabled = cfg.transcodeAuto !== false;
+      optedOut = new Set(Array.isArray(cfg.transcodeOptOut) ? cfg.transcodeOptOut : []);
+    } catch (err) {
+      logger.warn('system', `transcodeCache: could not read stop state: ${(err as Error).message}`);
+    }
+  },
+
+  /**
+   * Stop one file. Kills ffmpeg if it's the active encode, otherwise drops it
+   * from the queue. Either way the file is remembered as opted-out so the
+   * automatic sweeps leave it alone. Returns false when the path wasn't
+   * encoding or queued (nothing to stop).
+   *
+   * The partial .mp4 is cleaned up by runOne's failure path; the source file
+   * is never touched, so the episode stays playable in mpv.
+   */
+  cancel(filePath: string): boolean {
+    let stopped = false;
+    const idx = queue.findIndex((e) => e.filePath === filePath);
+    if (idx >= 0) {
+      const [entry] = queue.splice(idx, 1);
+      // Resolve rather than reject — see the note in runOne's cancel branch.
+      entry.resolve();
+      stopped = true;
+    }
+    if (active?.filePath === filePath) {
+      cancelling.add(filePath);
+      // SIGKILL, not SIGTERM: ffmpeg traps TERM to finalise the container,
+      // which on a hardware encode can take seconds the user has just said
+      // they don't want to wait for. The tmp output is discarded anyway.
+      active.child.kill('SIGKILL');
+      stopped = true;
+    } else if (preparing === filePath) {
+      // Dequeued but not spawned yet (mid-ffprobe / encoder check). Raise the
+      // flag; runOne's pre-spawn gates pick it up and settle without starting
+      // ffmpeg at all.
+      cancelling.add(filePath);
+      stopped = true;
+    }
+    if (stopped) {
+      optedOut.add(filePath);
+      void persistOptOut();
+      emitQueueChange();
+    }
+    return stopped;
+  },
+
+  /**
+   * Stop everything: the active encode plus the whole waiting queue. Returns
+   * how many files were stopped so the caller can report it.
+   */
+  cancelAll(): number {
+    // Snapshot first — cancel() mutates the queue. Include whatever is being
+    // prepared as well as the running encode, or "stop all" would miss a file
+    // that's mid-probe and let it start seconds later.
+    const paths = [...queue.map((e) => e.filePath)];
+    if (active) paths.push(active.filePath);
+    if (preparing) paths.push(preparing);
+    let count = 0;
+    for (const p of paths) if (this.cancel(p)) count++;
+    return count;
+  },
+
+  /** Whether the automatic sweeps may queue work, plus how many files are
+   *  currently opted out — enough for Settings to render its toggle and a
+   *  "clear stops" affordance. */
+  autoState(): { auto: boolean; optedOutCount: number } {
+    return { auto: autoEnabled, optedOutCount: optedOut.size };
+  },
+
+  /** True when an automatic enqueue for this file would be refused (auto off,
+   *  or the user stopped it). Lets the series sweep report a "stopped" row
+   *  instead of a queued bar that will never move. */
+  isSkipped(filePath: string): boolean {
+    return !autoEnabled || optedOut.has(filePath);
+  },
+
+  /**
+   * Flip the automatic sweeps.
+   *
+   * Off also stops whatever is running — otherwise "off" wouldn't take effect
+   * until the current encode finished. On clears the per-file stops those
+   * cancels recorded, so the next sweep genuinely resumes; without that, the
+   * toggle would read as on while every previously-stopped file stayed
+   * permanently skipped.
+   */
+  setAuto(enabled: boolean): { auto: boolean; stopped: number; resumed: number } {
+    autoEnabled = enabled;
+    void persistAuto();
+    if (!enabled) return { auto: autoEnabled, stopped: this.cancelAll(), resumed: 0 };
+    return { auto: autoEnabled, stopped: 0, resumed: this.clearOptOut() };
+  },
+
+  /** Forget every stop, so the next sweep re-queues those files. */
+  clearOptOut(): number {
+    const n = optedOut.size;
+    optedOut.clear();
+    void persistOptOut();
+    return n;
   },
 
   /**
