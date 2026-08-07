@@ -10,6 +10,7 @@ import FeedPage from "./pages/FeedPage";
 import WatchingPage from "./pages/WatchingPage";
 import SubscriptionsPage from "./pages/SubscriptionsPage";
 import ContextMenu from "./components/ContextMenu";
+import { useMpvPlaybackSync } from "./hooks/useMpvPlaybackSync";
 import { ActivityLogProvider } from "./contexts/ActivityLogContext";
 import { ActivityLogDrawer } from "./components/ActivityLogDrawer";
 import { TitleLanguageProvider } from "./contexts/TitleLanguageContext";
@@ -43,6 +44,10 @@ function AppContent() {
   const location = useLocation();
   const isPlayerRoute = location.pathname.startsWith("/player/");
   const isLib = location.pathname === "/" || location.pathname.startsWith("/series/");
+
+  // App-wide, not per-page: an mpv window routinely outlives the page that
+  // launched it, and its resume position still has to land.
+  useMpvPlaybackSync();
 
   useEffect(() => {
     document.title = titleForPath(location.pathname);

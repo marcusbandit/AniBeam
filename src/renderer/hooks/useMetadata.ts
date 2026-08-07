@@ -19,6 +19,10 @@ export interface SeriesMetadata {
   fileEpisodes?: FileEpisode[];
   folderPath?: string;
   source?: string;
+  /** Provider the background auto-matcher matched against ('mal' | 'anilist').
+   *  Set alongside `source`; kept for back-compat with entries matched before
+   *  `source` was written on this path. */
+  matchSource?: 'mal' | 'anilist' | null;
   totalEpisodes?: number | null;
   duration?: number | null;
   season?: string | null;

@@ -113,13 +113,13 @@ export interface ElectronAPI {
   // Metadata
   fetchMetadata: (seriesName: string) => Promise<unknown>;
   fetchAnilistMetadata: (seriesName: string) => Promise<unknown>;
-  fetchMALMetadata: (seriesName: string) => Promise<unknown>;
   saveMetadata: (metadata: Record<string, unknown>) => Promise<boolean>;
   setSeriesHidden: (seriesId: string, hidden: boolean) => Promise<boolean>;
   loadMetadata: () => Promise<Record<string, unknown>>;
   clearMetadata: () => Promise<boolean>;
   deleteSeries: (seriesId: string) => Promise<boolean>;
   getSeriesEpisodes: (seriesId: string) => Promise<unknown[]>;
+  attachMissingSources: () => Promise<{ backfilled: number; matched: number; stillUnmatched: number }>;
 
   // Match picker (override metadata for a series)
   searchAnilist: (query: string, limit?: number) => Promise<AnilistSearchResult[]>;
@@ -128,7 +128,20 @@ export interface ElectronAPI {
     anilistId: number,
     seasonNumber?: number | null,
   ) => Promise<{ ok: boolean; reason?: string }>;
-  
+
+  // The same pair against TMDB, for films and shows that aren't anime and so
+  // have no AniList entry to match. Search rejects with 'no-api-key' when the
+  // user hasn't set one; apply returns reason: 'no-api-key' for the same case.
+  searchTmdb: (query: string, limit?: number) => Promise<TmdbSearchResult[]>;
+  applyTmdbMatch: (
+    seriesId: string,
+    tmdbId: number,
+    kind: TmdbKind,
+    seasonNumber?: number | null,
+  ) => Promise<{ ok: boolean; reason?: string }>;
+  tmdbHasApiKey: () => Promise<boolean>;
+  tmdbSetApiKey: (key: string) => Promise<{ ok: boolean; message?: string }>;
+
   // Image cache
   getImageCacheStats: () => Promise<CacheStats>;
   clearImageCache: () => Promise<boolean>;
@@ -151,6 +164,19 @@ export interface ElectronAPI {
   // pull; onTranscodeQueueChanged streams the full map on every change.
   getTranscodeQueueSnapshot: () => Promise<TranscodeQueueSnapshot>;
   onTranscodeQueueChanged: (handler: (snap: TranscodeQueueSnapshot) => void) => () => void;
+
+  /**
+   * Which encoder transcodes run on. `kind: 'libx264'` means no hardware
+   * encoder was usable and every transcode is burning CPU; `reason` says why.
+   */
+  getTranscodeEncoder: () => Promise<TranscodeEncoderStatus>;
+
+  /**
+   * Re-pull air dates for one releasing series if they've gone stale, so an
+   * open series page shows a current next-episode countdown. No-ops for
+   * finished series and inside the refresh TTL.
+   */
+  refreshAiring: (seriesId: string) => Promise<{ ok: boolean; updated: boolean }>;
 
   // Embedded subtitles
   listEmbeddedSubtitles: (videoPath: string) => Promise<Array<{ streamIndex: number; codec: string; language: string | null; title: string | null }>>;
@@ -184,6 +210,21 @@ export interface ElectronAPI {
   // state; live progress then arrives via onTranscodeProgress.
   ensureSeriesTranscoded: (filePaths: string[]) => Promise<TranscodeEnsureResult[]>;
 
+  // Stopping re-encodes. cancelTranscode kills the named file's ffmpeg (or
+  // drops it from the queue); cancelAllTranscodes clears the lot. Both are
+  // remembered so the automatic sweeps don't immediately re-queue what was
+  // just stopped — opening the episode still forces a fresh encode.
+  cancelTranscode: (filePath: string) => Promise<{ ok: boolean; stopped: boolean }>;
+  cancelAllTranscodes: () => Promise<{ ok: boolean; stopped: number }>;
+  /** Re-encode this file after all — lifts both a stop and a never-mark. */
+  resumeTranscode: (filePath: string) => Promise<{ ok: boolean }>;
+  /** Rule this file out of re-encoding for good. Opening it then offers mpv
+   *  rather than starting an encode. */
+  setTranscodeNever: (filePath: string, never: boolean) =>
+    Promise<{ ok: boolean; never?: boolean; stopped?: boolean }>;
+  getTranscodeAuto: () => Promise<TranscodeAutoState>;
+  setTranscodeAuto: (enabled: boolean) => Promise<{ auto: boolean; stopped: number; resumed: number }>;
+
   // View history — per-series record of the most recent playback session,
   // backing the Library "Last viewed" sort. Renderer marks an episode after
   // it has accumulated ~30s of playtime (one mark per player mount).
@@ -196,7 +237,15 @@ export interface ElectronAPI {
 
   // Shell — open a URL in the user's default browser, not an Electron window.
   openExternal: (url: string) => Promise<boolean>;
-  openWithMpv: (filePath: string) => Promise<boolean>;
+  // Launch mpv on a library file. Resolves as soon as mpv is up, not when it
+  // exits. `context` lets main attribute the session to an episode: without it
+  // the file still plays, but nothing is recorded when it ends.
+  openWithMpv: (filePath: string, context?: MpvLaunchContext) => Promise<boolean>;
+  // Fires when an mpv session started by openWithMpv ends. Carries the final
+  // playhead so the renderer can store the resume position (localStorage is
+  // renderer-owned). View history and tracker updates are applied in main
+  // before this fires — the renderer only handles the resume point.
+  onMpvPlaybackEnded: (handler: (report: MpvPlaybackEnded) => void) => () => void;
 
   // Trackers (MAL + AniList progress sync)
   trackerStatus: (provider: TrackerProvider) => Promise<TrackerStatus>;
@@ -251,6 +300,10 @@ export interface ViewHistoryEntry {
 export type VideoOpenResult =
   | { kind: 'direct'; url: string }
   | { kind: 'transcoding'; vCodec: string; aCodec: string }
+  // The file needs converting but the user marked it never-re-encode, so
+  // nothing was queued. The renderer offers mpv (which plays it as-is) or an
+  // explicit re-encode.
+  | { kind: 'needs-external'; vCodec: string; aCodec: string }
   | { kind: 'unsupported'; vCodec: string; aCodec: string };
 
 export interface TranscodeProgressPayload {
@@ -268,14 +321,60 @@ export interface TranscodeProgressPayload {
 export type TranscodeQueueStatus = 'encoding' | 'queued';
 export type TranscodeQueueSnapshot = Record<string, TranscodeQueueStatus>;
 
+// Which encoder the transcode pipeline resolved to. 'vaapi' / 'nvenc' are
+// hardware; 'libx264' is the CPU fallback, which saturates every core for
+// the length of an encode. `reason` is non-null only for that fallback and
+// explains why hardware was unusable.
+export interface TranscodeEncoderStatus {
+  kind: 'vaapi' | 'nvenc' | 'libx264';
+  reason: string | null;
+}
+
 // Per-file classification returned by ensureSeriesTranscoded:
 //   'cached'  — a usable transcode already exists on disk (shows "Re-encoded").
 //   'pending' — needs transcoding; it has been priority-queued, so live
 //               progress events will follow on the transcode-progress channel.
 //   'none'    — browser-playable as-is (or missing); nothing to do.
+//   'stopped' — needs transcoding, but the user stopped this file (or turned
+//               automatic re-encoding off), so nothing was queued. Resumable.
+//   'never'   — needs transcoding, but the user ruled it out permanently.
+//               Playing it offers mpv instead of starting an encode.
 export interface TranscodeEnsureResult {
   filePath: string;
-  state: 'cached' | 'pending' | 'none';
+  state: 'cached' | 'pending' | 'none' | 'stopped' | 'never';
+}
+
+// Whether the automatic re-encode sweeps may queue work, and how many files
+// the user has individually stopped or ruled out for good.
+export interface TranscodeAutoState {
+  auto: boolean;
+  optedOutCount: number;
+  neverCount: number;
+}
+
+// What the renderer tells main about an mpv launch. Everything is optional:
+// a launch with no context still plays, it just can't be attributed to an
+// episode when it ends.
+export interface MpvLaunchContext {
+  seriesId?: string | null;
+  episodeNumber?: number | null;
+  /** OP/ED/PV/SP — shares an episodeNumber with a real episode, so it must
+   *  never move the tracker or the view history. */
+  isExtra?: boolean;
+  /** Resume point in seconds, passed to mpv as --start. */
+  startSec?: number;
+}
+
+// Final state of an mpv session, pushed when the window closes.
+export interface MpvPlaybackEnded {
+  filePath: string;
+  seriesId: string | null;
+  episodeNumber: number | null;
+  isExtra: boolean;
+  /** Last observed playhead in seconds. */
+  position: number;
+  /** Media duration in seconds; 0 when mpv never reported one. */
+  duration: number;
 }
 
 export interface SubscriptionFeed {
@@ -301,6 +400,21 @@ export interface AnilistSearchResult {
   seasonYear: number | null;
 }
 
+// A TMDB match candidate. Flatter than the AniList one because TMDB has no
+// romaji/native split — just a title and, when it differs, the original-language
+// one.
+export type TmdbKind = 'movie' | 'tv';
+export interface TmdbSearchResult {
+  id: number;
+  kind: TmdbKind;
+  title: string;
+  originalTitle: string | null;
+  year: number | null;
+  overview: string | null;
+  posterUrl: string | null;
+  episodes: number | null;
+}
+
 declare global {
   interface Window {
     electronAPI: ElectronAPI;
@@ -324,7 +438,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Metadata
   fetchMetadata: (seriesName: string) => ipcRenderer.invoke('fetch-metadata', seriesName),
   fetchAnilistMetadata: (seriesName: string) => ipcRenderer.invoke('fetch-anilist-metadata', seriesName),
-  fetchMALMetadata: (seriesName: string) => ipcRenderer.invoke('fetch-mal-metadata', seriesName),
   saveMetadata: (metadata: Record<string, unknown>) => ipcRenderer.invoke('save-metadata', metadata),
   setSeriesHidden: (seriesId: string, hidden: boolean) =>
     ipcRenderer.invoke('metadata:set-hidden', seriesId, hidden),
@@ -332,9 +445,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   clearMetadata: () => ipcRenderer.invoke('clear-metadata'),
   deleteSeries: (seriesId: string) => ipcRenderer.invoke('delete-series', seriesId),
   getSeriesEpisodes: (seriesId: string) => ipcRenderer.invoke('get-series-episodes', seriesId),
+  attachMissingSources: () => ipcRenderer.invoke('metadata:attach-missing-sources'),
 
   // Match picker
   searchAnilist: (query: string, limit?: number) => ipcRenderer.invoke('anilist:search', query, limit),
+  searchTmdb: (query: string, limit?: number) => ipcRenderer.invoke('metadata:search-tmdb', query, limit),
+  applyTmdbMatch: (seriesId: string, tmdbId: number, kind: TmdbKind, seasonNumber?: number | null) =>
+    ipcRenderer.invoke('metadata:apply-tmdb-match', seriesId, tmdbId, kind, seasonNumber ?? null),
+  tmdbHasApiKey: () => ipcRenderer.invoke('tmdb:has-key'),
+  tmdbSetApiKey: (key: string) => ipcRenderer.invoke('tmdb:set-key', key),
   applyAnilistMatch: (seriesId: string, anilistId: number, seasonNumber?: number | null) =>
     ipcRenderer.invoke('metadata:apply-anilist-match', seriesId, anilistId, seasonNumber ?? null),
   
@@ -365,6 +484,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('metadata:transcode-progress', listener);
   },
   getTranscodeQueueSnapshot: () => ipcRenderer.invoke('transcode:queue-snapshot'),
+  getTranscodeEncoder: () => ipcRenderer.invoke('transcode:encoder'),
+  refreshAiring: (seriesId: string) => ipcRenderer.invoke('metadata:refresh-airing', seriesId),
   onTranscodeQueueChanged: (handler: (snap: TranscodeQueueSnapshot) => void) => {
     const listener = (_e: unknown, snap: TranscodeQueueSnapshot) => handler(snap);
     ipcRenderer.on('transcode:queue-changed', listener);
@@ -387,6 +508,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Video open
   openVideo: (filePath: string) => ipcRenderer.invoke('video:open', filePath),
   ensureSeriesTranscoded: (filePaths: string[]) => ipcRenderer.invoke('transcode:ensure-series', filePaths),
+  cancelTranscode: (filePath: string) => ipcRenderer.invoke('transcode:cancel', filePath),
+  cancelAllTranscodes: () => ipcRenderer.invoke('transcode:cancel-all'),
+  resumeTranscode: (filePath: string) => ipcRenderer.invoke('transcode:resume', filePath),
+  setTranscodeNever: (filePath: string, never: boolean) =>
+    ipcRenderer.invoke('transcode:set-never', filePath, never),
+  getTranscodeAuto: () => ipcRenderer.invoke('transcode:get-auto'),
+  setTranscodeAuto: (enabled: boolean) => ipcRenderer.invoke('transcode:set-auto', enabled),
 
   // View history
   markEpisodeViewed: (payload: { seriesId: string; episodeNumber: number; ts?: number }) =>
@@ -403,7 +531,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Shell
   openExternal: (url: string) => ipcRenderer.invoke('shell:open-external', url),
-  openWithMpv: (filePath: string) => ipcRenderer.invoke('shell:open-with-mpv', filePath),
+  openWithMpv: (filePath: string, context?: MpvLaunchContext) =>
+    ipcRenderer.invoke('shell:open-with-mpv', filePath, context ?? null),
+  onMpvPlaybackEnded: (handler: (report: MpvPlaybackEnded) => void) => {
+    const listener = (_e: unknown, report: MpvPlaybackEnded) => handler(report);
+    ipcRenderer.on('playback:mpv-ended', listener);
+    return () => ipcRenderer.removeListener('playback:mpv-ended', listener);
+  },
 
   // Trackers
   trackerStatus: (provider: TrackerProvider) => ipcRenderer.invoke('tracker:status', provider),

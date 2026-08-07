@@ -2,6 +2,13 @@ import { useState, useEffect, useLayoutEffect, useCallback, useRef, ReactNode } 
 import { useNavigate, useLocation } from "react-router-dom";
 import { ChevronLeft, RefreshCw, FileText, ExternalLink } from "lucide-react";
 import { useMetadata } from "../hooks/useMetadata";
+import {
+  progressId,
+  extraProgressToken,
+  readProgress,
+  RESUME_HEAD_SKIP,
+  RESUME_TAIL_SKIP,
+} from "../utils/playbackProgress";
 
 interface MenuPosition {
   x: number;
@@ -25,6 +32,8 @@ function ContextMenu() {
   const [visible, setVisible] = useState(false);
   const [position, setPosition] = useState<MenuPosition>({ x: 0, y: 0 });
   const [episodeFile, setEpisodeFile] = useState<string | null>(null);
+  const [episodeNumber, setEpisodeNumber] = useState<number | null>(null);
+  const [episodeIsExtra, setEpisodeIsExtra] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { metadata, loadMetadata } = useMetadata();
@@ -38,10 +47,16 @@ function ContextMenu() {
     e.preventDefault();
 
     // If the right-click landed on an episode card with a known file, surface
-    // file-specific actions (mpv launch). The data attribute is the contract.
+    // file-specific actions (mpv launch). The data attributes are the contract;
+    // EpisodeRow writes them. The episode number and extra flag ride along so
+    // an mpv session can be attributed to the right episode when it ends.
     const targetEl = e.target instanceof Element ? e.target : null;
-    const fileFromEpisode = targetEl?.closest('[data-episode-file]')?.getAttribute('data-episode-file') ?? null;
-    setEpisodeFile(fileFromEpisode);
+    const row = targetEl?.closest('[data-episode-file]') ?? null;
+    setEpisodeFile(row?.getAttribute('data-episode-file') ?? null);
+    const epRaw = row?.getAttribute('data-episode-number');
+    const epNum = epRaw != null ? Number(epRaw) : NaN;
+    setEpisodeNumber(Number.isFinite(epNum) ? epNum : null);
+    setEpisodeIsExtra(row?.getAttribute('data-episode-extra') === '1');
 
     // Raw cursor position; the layout effect below clamps it to the viewport
     // using the menu's real rendered size (it varies with which items show).
@@ -105,20 +120,41 @@ function ContextMenu() {
 
   const handleToMetadata = useCallback(() => {
     setVisible(false);
-    navigate("/metadata");
-  }, [navigate]);
+    const data = seriesId ? metadata[seriesId] : null;
+    const q = data?.title || data?.titleRomaji || "";
+    navigate("/metadata", { state: { q } });
+  }, [navigate, seriesId, metadata]);
 
   const handleOpenWithMpv = useCallback(async () => {
     if (!episodeFile) return;
     setVisible(false);
+    // Hand mpv the same resume point the in-window player would use, and tell
+    // main which episode this is so the position that comes back at the end
+    // can be filed against it.
+    let startSec = 0;
+    if (seriesId && episodeNumber != null) {
+      const token = episodeIsExtra ? extraProgressToken(episodeFile) : episodeNumber;
+      const entry = readProgress()[progressId(seriesId, token)];
+      // Same head/tail rules as the player's own resume: too near either end
+      // and starting from the beginning is what the user wants.
+      if (entry && entry.d > 0
+        && entry.t >= RESUME_HEAD_SKIP && entry.t <= entry.d - RESUME_TAIL_SKIP) {
+        startSec = entry.t;
+      }
+    }
     try {
-      await window.electronAPI.openWithMpv(episodeFile);
+      await window.electronAPI.openWithMpv(episodeFile, {
+        seriesId,
+        episodeNumber,
+        isExtra: episodeIsExtra,
+        startSec,
+      });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
       console.error("Error launching mpv:", err);
       alert(`Could not launch mpv: ${errorMessage}`);
     }
-  }, [episodeFile]);
+  }, [episodeFile, episodeNumber, episodeIsExtra, seriesId]);
 
   useEffect(() => {
     document.addEventListener("contextmenu", handleContextMenu);

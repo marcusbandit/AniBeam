@@ -11,6 +11,8 @@ export type {
   LibraryEpisodeAirDate,
   LibraryItem,
   AnilistSearchResult,
+  TmdbSearchResult,
+  TmdbKind,
   VideoOpenResult,
   SubscriptionFeed,
   SubscriptionsResult,
@@ -25,6 +27,7 @@ export type {
   LogStage,
   FileStatus,
   ViewHistoryEntry,
+  TranscodeEncoderStatus,
 } from '../main/preload';
 
 export type { FranchiseGraph, FranchiseNode, FranchiseEdge } from '../shared/franchise';

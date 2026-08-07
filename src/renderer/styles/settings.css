@@ -516,7 +516,8 @@
   white-space: nowrap;
 }
 /* Source chips ride the .chip shell; only the tone differs per provider.
-   AniList wears its brand blue (tokenized), MAL violet, unmatched muted. */
+   AniList wears its brand blue (tokenized), MAL violet, TMDB its brand teal,
+   unmatched muted. */
 .source-chip.source-anilist {
   color: var(--anilist-blue);
   border-color: color-mix(in srgb, var(--anilist-blue) 35%, transparent);
@@ -526,6 +527,11 @@
   color: var(--accent-violet);
   border-color: color-mix(in srgb, var(--accent-violet) 35%, transparent);
   background: color-mix(in srgb, var(--accent-violet) 10%, transparent);
+}
+.source-chip.source-tmdb {
+  color: var(--tmdb-teal);
+  border-color: color-mix(in srgb, var(--tmdb-teal) 35%, transparent);
+  background: color-mix(in srgb, var(--tmdb-teal) 10%, transparent);
 }
 .source-chip.source-none {
   color: var(--text-muted);
@@ -645,6 +651,15 @@
   font-size: 0.75rem;
   color: var(--text-muted);
   margin-top: 0.2rem;
+}
+
+/* Catalogue picker above the search field: AniList for anime, TMDB for the
+   films and live-action shows AniList has no entry for at all. Sits between
+   the head and the input because it changes what the input searches. */
+.match-modal-source {
+  display: flex;
+  justify-content: center;
+  margin: var(--s3) var(--s5) 0;
 }
 
 .match-modal-search {

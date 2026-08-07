@@ -8,8 +8,9 @@ import subtitleHandler from '../handlers/subtitleHandler';
 import aniSkipHandler from '../handlers/aniSkipHandler';
 import { findFileEpisode } from '../../shared/fileEpisode';
 import type { FileEpisodeEntry } from '../../shared/fileEpisode';
-import { probeCodecs, needsTranscode } from '../utils/transcodeProbe';
+import { probeCodecs, needsTranscode, ensureEncoderStatus, type EncoderStatus } from '../utils/transcodeProbe';
 import { getViewHistory, markViewed } from '../services/viewHistory';
+import { logger } from '../services/logger';
 import { subLog } from '../services/subtitleDebugLog';
 import type { SubtitleState } from '../../shared/subtitleSupport';
 import type { WindowGetter } from './types';
@@ -100,7 +101,21 @@ export function registerMediaPlaybackIpc(getMainWindow?: WindowGetter): void {
     // (ahead of any bulk series sweep already queued).
     const probe = await probeCodecs(filePath);
     if (probe && needsTranscode(probe)) {
-      void transcodeCacheHandler.enqueue(filePath, { priority: true });
+      // Marked never-re-encode: don't quietly start one. Hand the renderer the
+      // codecs so it can offer mpv (which plays this file as-is) or an explicit
+      // re-encode, rather than the user watching a progress bar they'd said
+      // they never wanted.
+      if (transcodeCacheHandler.isNever(filePath)) {
+        return {
+          kind: 'needs-external' as const,
+          vCodec: probe.vCodec,
+          aCodec: probe.aCodec,
+        };
+      }
+      // reason: 'user' — an explicit play overrides both the global auto-off
+      // switch and any earlier stop on this file. The user asked to watch it
+      // in-window, which requires the encode.
+      void transcodeCacheHandler.enqueue(filePath, { priority: true, reason: 'user' });
       return {
         kind: 'transcoding' as const,
         vCodec: probe.vCodec,
@@ -147,7 +162,18 @@ export function registerMediaPlaybackIpc(getMainWindow?: WindowGetter): void {
         if (hit?.transcodedPath && existsSync(hit.transcodedPath)) {
           return { filePath, state: 'cached' as const };
         }
-        if (probe && needsTranscode(probe)) return { filePath, state: 'pending' as const };
+        if (probe && needsTranscode(probe)) {
+          // Would need an encode, but the user has ruled it out. 'never' is
+          // permanent and plays in mpv; 'stopped' is this-time-only and offers
+          // a resume. Either way, not a queued bar that never moves.
+          if (transcodeCacheHandler.isNever(filePath)) {
+            return { filePath, state: 'never' as const };
+          }
+          if (transcodeCacheHandler.isSkipped(filePath)) {
+            return { filePath, state: 'stopped' as const };
+          }
+          return { filePath, state: 'pending' as const };
+        }
         return { filePath, state: 'none' as const };
       } catch {
         return { filePath, state: 'none' as const };
@@ -185,6 +211,59 @@ export function registerMediaPlaybackIpc(getMainWindow?: WindowGetter): void {
   // changed' handles streaming updates.
   ipcMain.handle('transcode:queue-snapshot', async (): Promise<TranscodeQueueSnapshot> => {
     return resolveQueueSnapshot(transcodeCacheHandler.queueSnapshot());
+  });
+
+  // ----- Stopping encodes -----
+  // A stop is per-file (kill the active ffmpeg / drop it from the queue) or
+  // wholesale. Both remember the choice so the automatic sweeps don't undo it
+  // moments later; playing the episode still forces a fresh encode.
+  ipcMain.handle('transcode:cancel', async (_event, filePath: unknown) => {
+    if (typeof filePath !== 'string' || !filePath) return { ok: false, stopped: false };
+    const stopped = transcodeCacheHandler.cancel(filePath);
+    return { ok: true, stopped };
+  });
+
+  ipcMain.handle('transcode:cancel-all', async () => {
+    const stopped = transcodeCacheHandler.cancelAll();
+    if (stopped > 0) logger.info('system', `Stopped ${stopped} re-encode(s) on request`);
+    return { ok: true, stopped };
+  });
+
+  // Undo a stop for one file. reason: 'force' so it runs regardless of the
+  // global auto switch AND lifts a never-encode mark — this is the explicit
+  // "re-encode anyway" the playback prompt offers.
+  ipcMain.handle('transcode:resume', async (_event, filePath: unknown) => {
+    if (typeof filePath !== 'string' || !filePath) return { ok: false };
+    if (!existsSync(filePath)) return { ok: false };
+    void transcodeCacheHandler.enqueue(filePath, { priority: true, reason: 'force' });
+    return { ok: true };
+  });
+
+  // "Never re-encode this file." Stops it if it's running, and from then on
+  // opening it offers mpv instead of starting an encode.
+  ipcMain.handle('transcode:set-never', async (_event, filePath: unknown, never: unknown) => {
+    if (typeof filePath !== 'string' || !filePath) return { ok: false };
+    const res = transcodeCacheHandler.setNever(filePath, never === true);
+    logger.info('system', res.never ? 'Marked never re-encode' : 'Cleared never re-encode', { file: filePath });
+    return { ok: true, ...res };
+  });
+
+  ipcMain.handle('transcode:get-auto', async () => transcodeCacheHandler.autoState());
+
+  ipcMain.handle('transcode:set-auto', async (_event, enabled: unknown) => {
+    const res = transcodeCacheHandler.setAuto(enabled === true);
+    logger.info('system', res.auto
+      ? `Automatic re-encoding on${res.resumed > 0 ? ` — ${res.resumed} stopped file(s) resumed` : ''}`
+      : `Automatic re-encoding off${res.stopped > 0 ? ` — ${res.stopped} stopped` : ''}`);
+    return res;
+  });
+
+  // Which encoder transcodes actually run on, so the UI can flag a silent
+  // CPU fallback. Runs the probe if it hasn't happened yet (it's a pair of
+  // sub-100ms synthetic encodes, cached for the app lifetime), so a renderer
+  // asking before the first transcode still gets a real answer.
+  ipcMain.handle('transcode:encoder', async (): Promise<EncoderStatus> => {
+    return ensureEncoderStatus();
   });
 
   ipcMain.handle('subtitle:list-embedded', async (_event, videoPath: string) => {

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMetadata } from '../hooks/useMetadata';
 import { useHiddenShows } from '../contexts/HiddenShowsContext';
-import { Folder, RefreshCw, Plus, Trash2, Film, Rss, ChevronRight } from 'lucide-react';
+import { Folder, RefreshCw, Plus, Trash2, Film, Rss, ChevronRight, Square, ExternalLink } from 'lucide-react';
 import TrackersSection from './TrackersSection';
 import { Page, Section, Inline, Tooltip, SegmentedSwitch } from './primitives';
 
@@ -59,12 +59,101 @@ function SettingsTab() {
   const [autoScan, setAutoScan] = useState(true);
   const [subtitles, setSubtitles] = useState<SubtitlePref>('auto');
 
+  // Re-encoding controls. `transcodeAuto` mirrors main's master switch for the
+  // background sweeps; `optedOutCount` is how many individual files the user
+  // has stopped, which the copy surfaces so "off" doesn't look like the only
+  // reason nothing is encoding.
+  const [transcodeAuto, setTranscodeAuto] = useState(true);
+  const [optedOutCount, setOptedOutCount] = useState(0);
+  const [neverCount, setNeverCount] = useState(0);
+  const [stopAllNote, setStopAllNote] = useState<string | null>(null);
+
+  // TMDB key. The stored value is never read back into the field - the input
+  // only ever holds something the user just typed, and the placeholder says
+  // whether one is on file.
+  const [tmdbKey, setTmdbKey] = useState('');
+  const [tmdbKeySaved, setTmdbKeySaved] = useState(false);
+  const [tmdbBusy, setTmdbBusy] = useState(false);
+  const [tmdbNote, setTmdbNote] = useState<string | null>(null);
+
 
   useEffect(() => {
     loadFolderSources();
     loadCacheStats();
+    void refreshTranscodeAuto();
+    void window.electronAPI.tmdbHasApiKey?.().then(setTmdbKeySaved).catch(() => { /* best-effort */ });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function handleSaveTmdbKey(): Promise<void> {
+    setTmdbBusy(true);
+    setTmdbNote(null);
+    try {
+      // Main validates against TMDB before storing, so a typo'd key is caught
+      // here rather than surfacing as a mystery empty search later.
+      const res = await window.electronAPI.tmdbSetApiKey?.(tmdbKey);
+      if (res?.ok) {
+        setTmdbKeySaved(true);
+        setTmdbKey('');
+        setTmdbNote('Key verified and saved.');
+      } else {
+        setTmdbNote(res?.message ?? 'Could not save that key.');
+      }
+    } catch (err) {
+      setTmdbNote(err instanceof Error ? err.message : 'Could not save that key.');
+    } finally {
+      setTmdbBusy(false);
+    }
+  }
+
+  async function refreshTranscodeAuto(): Promise<void> {
+    try {
+      const state = await window.electronAPI.getTranscodeAuto?.();
+      if (!state) return;
+      setTranscodeAuto(state.auto);
+      setOptedOutCount(state.optedOutCount);
+      setNeverCount(state.neverCount);
+    } catch (err) {
+      console.error('[settings] could not read re-encode state:', err);
+    }
+  }
+
+  async function handleTranscodeAuto(enabled: boolean): Promise<void> {
+    setTranscodeAuto(enabled);   // optimistic - the toggle should feel instant
+    try {
+      const res = await window.electronAPI.setTranscodeAuto?.(enabled);
+      if (!res) return;
+      setTranscodeAuto(res.auto);
+      // Turning it off stops what was running; turning it back on forgets the
+      // per-file stops so the sweep genuinely resumes. Report whichever
+      // happened rather than leaving the user guessing.
+      if (!res.auto && res.stopped > 0) {
+        setStopAllNote(`Stopped ${res.stopped} re-encode${res.stopped === 1 ? '' : 's'}.`);
+      } else if (res.auto && res.resumed > 0) {
+        setStopAllNote(`Resumed ${res.resumed} previously stopped file${res.resumed === 1 ? '' : 's'}.`);
+      } else {
+        setStopAllNote(null);
+      }
+      await refreshTranscodeAuto();
+    } catch (err) {
+      console.error('[settings] could not change re-encode state:', err);
+      await refreshTranscodeAuto();
+    }
+  }
+
+  async function handleStopAllTranscodes(): Promise<void> {
+    try {
+      const res = await window.electronAPI.cancelAllTranscodes?.();
+      const n = res?.stopped ?? 0;
+      setStopAllNote(n > 0
+        ? `Stopped ${n} re-encode${n === 1 ? '' : 's'}.`
+        : 'Nothing was encoding.');
+      await refreshTranscodeAuto();
+    } catch (err) {
+      console.error('[settings] stop-all failed:', err);
+      setStopAllNote('Could not stop re-encoding.');
+    }
+  }
 
   // Whenever metadata changes, recount titles per folder root (best-effort)
   useEffect(() => {
@@ -328,6 +417,46 @@ function SettingsTab() {
             </div>
           ))}
         </div>
+
+        <div className="pref-list">
+          <div className="pref-row">
+            <div>
+              <div className="pref-label">TMDB API key</div>
+              <div className="pref-help">
+                Needed to match films and non-anime TV, which AniList has no entry for.
+                Free from{' '}
+                <button
+                  type="button"
+                  className="tracker-link"
+                  onClick={() => void window.electronAPI.openExternal('https://www.themoviedb.org/settings/api')}
+                >
+                  themoviedb.org <ExternalLink size={11} />
+                </button>
+                {' '}(the v3 key).
+                {tmdbNote && <> <span className="pref-note">{tmdbNote}</span></>}
+              </div>
+            </div>
+            <Inline gap="s2">
+              <input
+                className="tracker-input"
+                type="password"
+                value={tmdbKey}
+                onChange={(e) => setTmdbKey(e.target.value)}
+                placeholder={tmdbKeySaved ? '••••••••  (saved)' : 'v3 API key'}
+                spellCheck={false}
+                autoComplete="off"
+                aria-label="TMDB API key"
+              />
+              <button
+                className="btn btn-secondary"
+                onClick={() => void handleSaveTmdbKey()}
+                disabled={tmdbBusy || tmdbKey.trim().length === 0}
+              >
+                {tmdbBusy ? 'Checking…' : 'Save'}
+              </button>
+            </Inline>
+          </div>
+        </div>
       </Section>
 
       <TrackersSection />
@@ -381,6 +510,53 @@ function SettingsTab() {
               <div className="pref-help">Re-scan folders for new files when AniBeam starts. <span className="pref-note">not wired up yet</span></div>
             </div>
             <Toggle on={autoScan} onChange={setAutoScan} ariaLabel="Toggle auto-scan" />
+          </div>
+        </div>
+      </Section>
+
+      <Section title="Re-encoding">
+        <p className="section-sub">
+          Files whose codec the in-app player can&apos;t decode (HEVC, mostly) are converted to a
+          cached h.264 copy in the background. Stopping one leaves the original untouched - it
+          still plays in mpv.
+        </p>
+        <div className="pref-list">
+          <div className="pref-row">
+            <div>
+              <div className="pref-label">Re-encode automatically</div>
+              <div className="pref-help">
+                {transcodeAuto
+                  ? 'Incompatible files are converted as they are found.'
+                  : 'Nothing is converted in the background. Opening an episode in the app still re-encodes that one.'}
+                {optedOutCount > 0 && (
+                  <> <span className="pref-note">{optedOutCount} file{optedOutCount === 1 ? '' : 's'} individually stopped</span></>
+                )}
+                {neverCount > 0 && (
+                  <> <span className="pref-note">
+                    {neverCount} set to never re-encode (those play in mpv; turning this
+                    back on does not undo them)
+                  </span></>
+                )}
+              </div>
+            </div>
+            <Toggle
+              on={transcodeAuto}
+              onChange={(v) => void handleTranscodeAuto(v)}
+              ariaLabel="Toggle automatic re-encoding"
+            />
+          </div>
+          <div className="pref-row">
+            <div>
+              <div className="pref-label">Stop everything now</div>
+              <div className="pref-help">
+                Kills the running encode and clears the queue.
+                {stopAllNote && <> <span className="pref-note">{stopAllNote}</span></>}
+              </div>
+            </div>
+            <button className="btn btn-secondary" onClick={() => void handleStopAllTranscodes()}>
+              <Square size={14} />
+              <span>Stop all</span>
+            </button>
           </div>
         </div>
       </Section>

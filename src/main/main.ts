@@ -5,6 +5,7 @@ import { existsSync } from 'fs';
 import axios from 'axios';
 import folderHandler, { type ScannedMedia } from './handlers/folderHandler';
 import anilistHandler from './handlers/anilistHandler';
+import tmdbHandler, { TmdbKeyMissingError } from './handlers/tmdbHandler';
 import malHandler from './handlers/malHandler';
 import metadataHandler from './handlers/metadataHandler';
 import configHandler from './handlers/configHandler';
@@ -13,9 +14,11 @@ import thumbnailHandler from './handlers/thumbnailHandler';
 import { initMediaProgress, updateMediaProgress } from './utils/debugUtils';
 import { findBestMatch } from './utils/metadataMatcher';
 import { findShowMatch, fetchEpisodeAirDates } from './utils/posterMatch';
+import { isMalRegistered, stripMalRegistration } from './utils/malPurge';
 import { logger } from './services/logger';
 import type { FileStatus } from '../shared/fileStatus';
 import { findFileEpisode, type FileEpisodeEntry } from '../shared/fileEpisode';
+import { normalizeStatus } from '../shared/airingStatus';
 import videoProbeHandler from './handlers/videoProbeHandler';
 import transcodeCacheHandler from './handlers/transcodeCacheHandler';
 import { fileWatcher } from './services/watcher';
@@ -336,16 +339,21 @@ async function runStartupCatchUp(): Promise<void> {
     // isn't in the store yet. Keep + fill gaps — never re-fetch fetchedAt>0
     // nodes. Fire-and-forget; the shared RateLimiter paces AniList.
     void crawlLibraryGaps();
+    // Background: bring releasing series' air dates up to date so countdowns
+    // are correct on the first paint. Only touches RELEASING series past the
+    // TTL, so this is usually a handful of calls or none at all.
+    void refreshAiringForLibrary();
   } finally {
     startupCatchUpInFlight = false;
   }
 }
 
 // Background match for one series: poster + status + per-episode air
-// dates (MAL only — AniList airing-schedule not wired yet). Idempotent:
-// always writes `posterMatchAttempted: true` so we don't re-hammer MAL
-// on every restart. Misses leave the placeholder; future "human in the
-// loop" UI will let the user pick manually.
+// dates. AniList is the only metadata source; Jikan is touched just for
+// the episode-title side-fetch inside fetchEpisodeAirDates. Idempotent:
+// always writes `posterMatchAttempted: true` so we don't re-hammer the
+// providers on every restart. Misses leave the placeholder; the Metadata
+// tab's match modal lets the user pick manually.
 async function matchPosterForSeries(seriesId: string, folderName: string): Promise<void> {
   try {
     const match = await findShowMatch(folderName);
@@ -358,17 +366,10 @@ async function matchPosterForSeries(seriesId: string, folderName: string): Promi
       });
       return;
     }
-    // findShowMatch guarantees the id matching `source` is set; the other
-    // is best-effort (cross-resolved or absent).
-    const primaryId = match.source === 'anilist' ? match.anilistId! : match.malId!;
-    // Relations come from AniList only (MAL has related_anime but no
-    // cross-media graph), so we query by anilistId when we have it and
-    // fall back to AniList's idMal filter for MAL-primary matches.
-    const enrichmentOpts = match.anilistId
-      ? { anilistId: match.anilistId }
-      : match.malId
-        ? { malId: match.malId }
-        : {};
+    // findShowMatch is AniList-only, so the AniList id is always set;
+    // malId is AniList's idMal cross-reference (may be absent).
+    const primaryId = match.anilistId!;
+    const enrichmentOpts = { anilistId: primaryId };
     const [cached, episodeDates, enrichment] = await Promise.all([
       imageCacheHandler.cacheImages([match.posterUrl]),
       fetchEpisodeAirDates(match.source, primaryId, match.totalEpisodes, match.malId),
@@ -457,6 +458,10 @@ async function matchPosterForSeries(seriesId: string, folderName: string): Promi
         posterMatchAttempted: true,
         posterMatched: true,
         matchSource: match.source,
+        // Also populate `source`, the field the Metadata tab's source column
+        // reads. Historically only matchSource was set on this path, so
+        // auto-matched series displayed "none". Keep both for back-compat.
+        source: match.source,
         anilistId: match.anilistId ?? undefined,
         malId: match.malId ?? null,
         matchedTitle: match.matchedTitle,
@@ -486,7 +491,7 @@ async function matchPosterForSeries(seriesId: string, folderName: string): Promi
 
 // Walk every series in metadata.json and match a poster for any that
 // haven't been attempted yet. Sequential so we don't blow through the
-// MAL/AniList rate limiters in bursts. Designed to run in the background
+// AniList/Jikan rate limiters in bursts. Designed to run in the background
 // — never throw, never block the caller.
 //
 // Launch-time matching is intentionally narrow: ONLY entries that have
@@ -497,30 +502,74 @@ async function matchPosterForSeries(seriesId: string, folderName: string): Promi
 // modal in the Metadata tab. (Aligns with the "no periodic rescans"
 // design: the user opts in to expensive work, the app never re-does it
 // behind their back.)
+//
+// Bump when the auto-matcher logic changes and previously-failed series
+// deserve one automatic re-attempt with the new logic. Stored in config
+// as autoMatchVersion; a one-time catch-up runs when the stored value is
+// behind this, then the strict attempt-once discipline resumes.
+// v3 is the MAL purge: MAL-registered series get their registration nulled
+// and are re-matched via AniList once.
+const AUTO_MATCH_VERSION = 3;
 async function matchPostersForLibrary(): Promise<void> {
+  const cfg = await configHandler.loadConfig();
+  const forceRetry = (cfg.autoMatchVersion ?? 0) < AUTO_MATCH_VERSION;
+  if (forceRetry) {
+    // One-time MAL purge (v3): null out every MAL registration BEFORE the
+    // todo scan below, so the freshly-cleared posterMatchAttempted flags are
+    // what the scan sees and the entries re-enter the AniList matcher pool.
+    // Entries whose AniList re-match then fails stay stripped: source null
+    // shows as "none" in the Metadata tab, available for manual matching,
+    // which is the desired end state.
+    const strippedIds: string[] = [];
+    await metadataHandler.transaction(async (current) => {
+      for (const [seriesId, raw] of Object.entries(current)) {
+        const entry = raw as Record<string, unknown>;
+        if (!isMalRegistered(entry)) continue;
+        current[seriesId] = stripMalRegistration(entry);
+        strippedIds.push(seriesId);
+      }
+      return { updated: strippedIds.length > 0 ? current : null };
+    });
+    if (strippedIds.length > 0) {
+      logger.info('metadata', `MAL purge: cleared ${strippedIds.length} MAL-registered series, re-matching via AniList`);
+    }
+  }
   const meta = await metadataHandler.loadMetadata();
   const todo: Array<{ seriesId: string; folderName: string }> = [];
   for (const [seriesId, raw] of Object.entries(meta)) {
-    const s = raw as { posterMatchAttempted?: boolean; title?: string };
-    if (s.posterMatchAttempted) continue;
+    const s = raw as { posterMatchAttempted?: boolean; posterMatched?: boolean; title?: string };
+    // Normally: attempt each series once. During a one-time post-upgrade
+    // catch-up, also re-attempt entries that were attempted but never matched
+    // (never re-touch a good match).
+    if (s.posterMatchAttempted && !(forceRetry && !s.posterMatched)) continue;
     // Use the cleaned title for the lookup. The scanner sets `title` to the
     // user-canonical (wrapper-derived for franchise subfolders, folder name
-    // for root-level series, cleaned filename for movies) string — which is
-    // what MAL/AniList actually expects to match against.
+    // for root-level series, cleaned filename for movies) string, which is
+    // what AniList actually expects to match against.
     const matchQuery = s.title ?? seriesId;
     todo.push({ seriesId, folderName: matchQuery });
   }
-  if (todo.length === 0) return;
-  logger.info('metadata', `Matching ${todo.length} new series (poster + air dates)`);
+  if (todo.length === 0) {
+    if (forceRetry) await configHandler.saveConfig({ autoMatchVersion: AUTO_MATCH_VERSION });
+    return;
+  }
+  if (forceRetry) {
+    logger.info('metadata', `Auto-match upgraded to v${AUTO_MATCH_VERSION}: re-attempting ${todo.length} unmatched series`);
+  } else {
+    logger.info('metadata', `Matching ${todo.length} new series (poster + air dates)`);
+  }
   for (const { seriesId, folderName } of todo) {
     await matchPosterForSeries(seriesId, folderName);
+  }
+  if (forceRetry) {
+    await configHandler.saveConfig({ autoMatchVersion: AUTO_MATCH_VERSION });
   }
 }
 
 // Dedicated fast-path backfill for the enrichment bundle (relations, tags,
 // characters, recommendations, studio) on series that are already matched
 // but predate one of those fields. Skips the entire findShowMatch round-trip
-// (which would re-do MAL search + AniList fallback per series), and just
+// (which would re-do the AniList search per series), and just
 // calls AniList getEnrichment with the stored ids. One AniList request per
 // series → completes in seconds for libraries that would otherwise spend
 // minutes redoing search queries they don't need.
@@ -528,6 +577,148 @@ async function matchPostersForLibrary(): Promise<void> {
 // Also backfills episode titles via MAL/Jikan when malId is known and the
 // existing episodes array lacks them — feature was added after the slim
 // schedule was already cached for most users.
+// Air dates are fetched exactly once, when a series is first matched
+// (scheduleAutoFetch never re-arms an already-matched series). That is fine
+// for a finished show and useless for a releasing one: the next broadcast
+// moves every week, so a countdown captured at match time is wrong within
+// days and vanishes entirely once that episode airs and nothing in the
+// stored list is in the future any more.
+//
+// Refresh is event-driven, never timed (no intervals, per the scanning
+// rule): once per launch, and again whenever a series page is opened. The
+// TTL stops repeat opens from re-hitting AniList, and only RELEASING series
+// are eligible, so a large finished library costs nothing.
+const AIRING_REFRESH_TTL_MS = 6 * 60 * 60 * 1000;
+
+interface AiringRefreshCandidate {
+  seriesId: string;
+  anilistId?: number;
+  malId?: number | null;
+  totalEpisodes?: number | null;
+  title: string;
+}
+
+// Reads one stored entry and decides whether its airing data is worth
+// re-fetching. Returns null when the series isn't releasing, isn't matched,
+// or was refreshed recently enough.
+function airingRefreshCandidate(
+  seriesId: string,
+  raw: unknown,
+  nowMs: number,
+  force: boolean,
+): AiringRefreshCandidate | null {
+  const s = (raw ?? {}) as {
+    posterMatched?: boolean;
+    anilistId?: number;
+    malId?: number | null;
+    status?: string | null;
+    totalEpisodes?: number | null;
+    title?: string;
+    airingRefreshedAt?: number;
+    fileEpisodes?: unknown[];
+  };
+  if (!s.posterMatched) return null;
+  if (s.anilistId == null && s.malId == null) return null;
+  // Only shows that are actually still airing have a next episode.
+  if (normalizeStatus(s.status) !== 'releasing') return null;
+  if (!Array.isArray(s.fileEpisodes) || s.fileEpisodes.length === 0) return null;
+  if (!force && typeof s.airingRefreshedAt === 'number' && nowMs - s.airingRefreshedAt < AIRING_REFRESH_TTL_MS) {
+    return null;
+  }
+  return {
+    seriesId,
+    anilistId: s.anilistId,
+    malId: s.malId,
+    totalEpisodes: s.totalEpisodes ?? null,
+    title: s.title ?? seriesId,
+  };
+}
+
+/**
+ * Re-pull air dates for one releasing series and merge them over the stored
+ * episode list. Only airDate is touched: titles, thumbnails and descriptions
+ * already persisted are preserved, since this fetch is not their source.
+ * Returns true when something was written.
+ */
+async function refreshAiringForSeries(seriesId: string, opts?: { force?: boolean }): Promise<boolean> {
+  const meta = await metadataHandler.loadMetadata();
+  const candidate = airingRefreshCandidate(seriesId, meta[seriesId], Date.now(), opts?.force ?? false);
+  if (!candidate) return false;
+
+  const primaryId = candidate.anilistId ?? candidate.malId!;
+  const source = candidate.anilistId != null ? 'anilist' : 'mal';
+  const fresh = await fetchEpisodeAirDates(source, primaryId, candidate.totalEpisodes ?? null, candidate.malId ?? null);
+  if (fresh.length === 0) {
+    // Nothing came back (AniList has no schedule, or both providers failed).
+    // Still stamp the attempt so a dead series isn't retried on every open.
+    await metadataHandler.transaction(async (current) => {
+      const existing = (current[seriesId] ?? {}) as Record<string, unknown>;
+      if (!existing.posterMatched) return { updated: null };
+      current[seriesId] = { ...existing, airingRefreshedAt: Date.now() };
+      return { updated: current };
+    });
+    return false;
+  }
+
+  const freshByEp = new Map(fresh.map((e) => [e.episodeNumber, e]));
+  await metadataHandler.transaction(async (current) => {
+    const existing = (current[seriesId] ?? {}) as Record<string, unknown> & {
+      episodes?: Array<{ episodeNumber: number; airDate?: string | null; title?: string | null }>;
+    };
+    if (!existing.posterMatched) return { updated: null };
+    const stored = Array.isArray(existing.episodes) ? existing.episodes : [];
+    const merged = stored.map((ep) => {
+      const f = freshByEp.get(ep.episodeNumber);
+      if (!f) return ep;
+      freshByEp.delete(ep.episodeNumber);
+      // Keep the stored title (AniList streamingEpisodes / Jikan populated
+      // it and this fetch may not have one), take the fresher date.
+      return { ...ep, airDate: f.airDate ?? ep.airDate ?? null };
+    });
+    // Episodes the stored list didn't know about yet - notably the upcoming
+    // one, which is the whole point of the refresh.
+    for (const f of freshByEp.values()) {
+      merged.push({
+        episodeNumber: f.episodeNumber,
+        airDate: f.airDate,
+        ...(f.title ? { title: f.title } : {}),
+      });
+    }
+    merged.sort((a, b) => a.episodeNumber - b.episodeNumber);
+    current[seriesId] = { ...existing, episodes: merged, airingRefreshedAt: Date.now() };
+    return { updated: current };
+  });
+  return true;
+}
+
+/**
+ * One-shot sweep at startup: refresh every releasing series whose airing
+ * data has gone stale. Sequential so the shared AniList limiter paces it and
+ * a large library can't burst.
+ */
+async function refreshAiringForLibrary(): Promise<void> {
+  const meta = await metadataHandler.loadMetadata();
+  const nowMs = Date.now();
+  const todo: AiringRefreshCandidate[] = [];
+  for (const [seriesId, raw] of Object.entries(meta)) {
+    const c = airingRefreshCandidate(seriesId, raw, nowMs, false);
+    if (c) todo.push(c);
+  }
+  if (todo.length === 0) return;
+  logger.info('metadata', `Refreshing airing schedule for ${todo.length} releasing series`);
+  let updated = 0;
+  for (const c of todo) {
+    try {
+      if (await refreshAiringForSeries(c.seriesId)) updated++;
+    } catch (err) {
+      logger.warn('metadata', `Airing refresh failed for ${c.title}: ${(err as Error).message}`, { series: c.title });
+    }
+  }
+  if (updated > 0 && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('metadata:file-status-changed', { filePath: '', status: 'ready' });
+  }
+}
+
 async function backfillRelationsForLibrary(): Promise<void> {
   const meta = await metadataHandler.loadMetadata();
   const todo: Array<{
@@ -894,7 +1085,7 @@ app.whenReady().then(async () => {
   registerImageCacheIpc();
   registerMediaPlaybackIpc(getMainWindow);
   registerTrackerIpc(getMainWindow);
-  registerShellIpc();
+  registerShellIpc(getMainWindow);
   registerSubscriptionsIpc();
   registerSubtitleLogIpc();
 
@@ -926,6 +1117,9 @@ app.whenReady().then(async () => {
       logger.warn('system', `transcode queue broadcast failed: ${(err as Error).message}`);
     }
   };
+  // Restore the user's stop state BEFORE anything below can enqueue, so files
+  // stopped last session (or a global auto-off) aren't re-queued on launch.
+  await transcodeCacheHandler.init();
   transcodeCacheHandler.start(
     updateFileStatus,
     undefined,
@@ -1064,9 +1258,9 @@ app.on('window-all-closed', () => {
 // ==================== METADATA IPC ====================
 
 ipcMain.handle('fetch-metadata', async (_event, searchName: string, seasonNumber?: number | null) => {
-  // Best-match across MAL + AniList. No folderEpisodeCount on this path
-  // (renderer-side refresh doesn't know it), so the strict-tier ep-count
-  // filter is disabled — title similarity does the heavy lifting.
+  // AniList-only best match. No folderEpisodeCount on this path
+  // (renderer-side refresh doesn't know it), so the strict-tier
+  // ep-count filter is disabled: title similarity does the heavy lifting.
   const seasonInfo = seasonNumber !== null && seasonNumber !== undefined ? ` Season ${seasonNumber}` : '';
   logger.info('metadata', `Fetching metadata for: "${searchName}"${seasonInfo}`);
 
@@ -1083,13 +1277,58 @@ ipcMain.handle('fetch-metadata', async (_event, searchName: string, seasonNumber
   return null;
 });
 
-ipcMain.handle('fetch-mal-metadata', async (_event, seriesName: string, seasonNumber?: number | null) => {
-  try {
-    return await malHandler.searchAndFetchMetadata(seriesName, seasonNumber);
-  } catch (error) {
-    logger.error('metadata', 'Error fetching MAL metadata');
-    throw error;
+// Attach a `source` label to every series that has none. Most "sourceless"
+// series are actually matched: the background matcher wrote matchSource / ids
+// but historically not `source` (the field the Metadata tab reads), so they
+// showed "none". Those are backfilled instantly with no network. Only series
+// with no match at all are searched against the providers. The backfill runs
+// inside a transaction so a concurrent background match is never clobbered.
+ipcMain.handle('metadata:attach-missing-sources', async () => {
+  const tx = await metadataHandler.transaction<{
+    backfilled: number;
+    unmatched: Array<{ id: string; title: string }>;
+  }>(async (current) => {
+    let backfilled = 0;
+    const unmatched: Array<{ id: string; title: string }> = [];
+    for (const [id, raw] of Object.entries(current)) {
+      const s = raw as Record<string, unknown>;
+      if (s.source) continue;
+      // MAL is no longer a metadata source: only an AniList match (or an
+      // AniList id) yields a label. A bare malId (the AniSkip / episode-title
+      // cross-reference) does not imply a source, and legacy 'mal'
+      // matchSource entries fall through to a fresh AniList match below.
+      const derived =
+        s.matchSource === 'anilist' || s.anilistId != null ? 'anilist' : null;
+      if (derived) {
+        current[id] = { ...s, source: derived };
+        backfilled++;
+      } else {
+        unmatched.push({ id, title: (s.title as string) ?? id });
+      }
+    }
+    if (backfilled > 0) {
+      logger.info('metadata', `Attached source label to ${backfilled} already-matched series`);
+    }
+    return { result: { backfilled, unmatched }, updated: current };
+  });
+  const backfilled = tx?.backfilled ?? 0;
+  const unmatched = tx?.unmatched ?? [];
+
+  // Only series with no existing match hit the providers.
+  for (const { id, title } of unmatched) {
+    await matchPosterForSeries(id, title);
   }
+  let matched = 0;
+  if (unmatched.length > 0) {
+    const after = await metadataHandler.loadMetadata();
+    for (const { id } of unmatched) {
+      if ((after[id] as Record<string, unknown> | undefined)?.source) matched++;
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('metadata:file-status-changed', { filePath: '', status: 'ready' });
+    }
+  }
+  return { backfilled, matched, stillUnmatched: unmatched.length - matched };
 });
 
 ipcMain.handle('fetch-anilist-metadata', async (_event, seriesName: string, seasonNumber?: number | null) => {
@@ -1143,6 +1382,20 @@ ipcMain.handle('franchise:crawl-progress', async () => {
 // scan-and-fetch uses, so episode thumbnails actually populate (raw AniList
 // data has only a sparse `streamingEpisodes` set; everything else needs an
 // ffmpeg fallback against the on-disk video files).
+// Opening a series page refreshes that one series' airing data if it has
+// gone stale, so the countdown you're looking at is current even if the app
+// has been open for days. No-ops for finished series and inside the TTL.
+ipcMain.handle('metadata:refresh-airing', async (_event, seriesId: string) => {
+  if (typeof seriesId !== 'string' || !seriesId) return { ok: false, updated: false };
+  try {
+    const updated = await refreshAiringForSeries(seriesId);
+    return { ok: true, updated };
+  } catch (err) {
+    logger.warn('metadata', `Airing refresh failed: ${(err as Error).message}`);
+    return { ok: false, updated: false };
+  }
+});
+
 ipcMain.handle('metadata:apply-anilist-match', async (
   _event,
   seriesId: string,
@@ -1235,7 +1488,41 @@ ipcMain.handle('metadata:apply-anilist-match', async (
       }
     }));
   }
-  const episodesWithLocalThumbs = thumbnailJobs.map((job) => ({ ...job.ep, thumbnailLocal: generated[job.idx] }));
+  // AniList's episode query carries titles and thumbnails but no air dates
+  // (getEpisodes hardcodes airDate: null), so applying a match would null
+  // out every date and destroy the series' next-episode countdown. Pull the
+  // schedule separately and merge it in by episode number.
+  const appliedAirDates = await fetchEpisodeAirDates(
+    'anilist',
+    anilistId,
+    fetched.totalEpisodes ?? null,
+    fetched.malId ?? null,
+  );
+  const airDateByEp = new Map(appliedAirDates.map((e) => [e.episodeNumber, e.airDate]));
+  const episodesWithLocalThumbs: Array<Record<string, unknown>> = thumbnailJobs.map((job) => ({
+    ...job.ep,
+    thumbnailLocal: generated[job.idx],
+    airDate: airDateByEp.get(job.ep.episodeNumber) ?? job.ep.airDate ?? null,
+  }));
+  // Episodes the schedule knows about but AniList's episode list doesn't,
+  // notably the upcoming one when no total is published yet. Without this
+  // the countdown would still have nothing in the future to point at.
+  const listedEps = new Set(thumbnailJobs.map((j) => j.ep.episodeNumber));
+  for (const e of appliedAirDates) {
+    if (listedEps.has(e.episodeNumber)) continue;
+    episodesWithLocalThumbs.push({
+      episodeNumber: e.episodeNumber,
+      seasonNumber: seasonNumber ?? null,
+      title: e.title ?? null,
+      description: null,
+      airDate: e.airDate,
+      thumbnail: null,
+      thumbnailLocal: null,
+    });
+  }
+  episodesWithLocalThumbs.sort(
+    (a, b) => (a.episodeNumber as number) - (b.episodeNumber as number),
+  );
 
   // 6. Merge into existing entry. Keep the original seriesId KEY in
   //    metadata.json (caller still uses it); also write the AniList one
@@ -1249,10 +1536,123 @@ ipcMain.handle('metadata:apply-anilist-match', async (
     folderPath: existing?.folderPath,
     type: existing?.type,
     source: 'anilist',
+    // The dates just written are current, so don't immediately re-fetch them
+    // when the series page mounts after the apply.
+    airingRefreshedAt: Date.now(),
   };
 
   await metadataHandler.updateSeriesMetadata(seriesId, merged);
   logger.info('metadata', `Override applied: ${seriesId} → AniList ${anilistId}`);
+  return { ok: true };
+});
+
+// ----- TMDB: metadata for the non-anime part of the library -----
+// AniList has no entry for a live-action film, so matching one there either
+// fails or lands on something unrelated with a similar title. These mirror the
+// AniList search/apply pair; the record they write is the same shape, marked
+// `source: 'tmdb'`.
+
+ipcMain.handle('tmdb:has-key', async () => tmdbHandler.hasApiKey());
+
+ipcMain.handle('tmdb:set-key', async (_event, key: unknown) => {
+  if (typeof key !== 'string') return { ok: false, message: 'key must be a string' };
+  return tmdbHandler.setApiKey(key);
+});
+
+ipcMain.handle('metadata:search-tmdb', async (_event, query: unknown, limit: unknown) => {
+  if (typeof query !== 'string' || query.trim().length < 2) return [];
+  try {
+    return await tmdbHandler.search(query, typeof limit === 'number' ? limit : 12);
+  } catch (err) {
+    if (err instanceof TmdbKeyMissingError) throw new Error('no-api-key');
+    throw err;
+  }
+});
+
+ipcMain.handle('metadata:apply-tmdb-match', async (
+  _event,
+  seriesId: string,
+  tmdbId: number,
+  kind: unknown,
+  seasonNumber: number | null = null,
+) => {
+  if (!seriesId || typeof tmdbId !== 'number' || !Number.isFinite(tmdbId)) {
+    return { ok: false, reason: 'bad-args' };
+  }
+  if (kind !== 'movie' && kind !== 'tv') return { ok: false, reason: 'bad-args' };
+
+  let fetched;
+  try {
+    fetched = await tmdbHandler.fetchById(tmdbId, kind, seasonNumber);
+  } catch (err) {
+    if (err instanceof TmdbKeyMissingError) return { ok: false, reason: 'no-api-key' };
+    throw err;
+  }
+  if (!fetched) return { ok: false, reason: 'fetch-failed' };
+
+  // Local state (which files exist, where they live) survives the override —
+  // same contract as the AniList apply above.
+  const allMeta = await metadataHandler.loadMetadata();
+  const existing = allMeta[seriesId] as {
+    fileEpisodes?: Array<{ episodeNumber: number; seasonNumber?: number | null; filePath: string }>;
+    folderPath?: string;
+    type?: 'series' | 'movie';
+  } | undefined;
+  const fileEpisodes = existing?.fileEpisodes ?? [];
+
+  const cachedImages = await imageCacheHandler.cacheImages([
+    fetched.poster,
+    fetched.banner,
+    ...fetched.episodes.map((e) => e.thumbnail),
+  ]);
+  const posterLocal = fetched.poster ? cachedImages.get(fetched.poster) ?? null : null;
+  const bannerLocal = fetched.banner ? cachedImages.get(fetched.banner) ?? null : null;
+
+  // Episode stills are far patchier on TMDB than AniList thumbnails, so the
+  // local-frame fallback matters more here: match by episode number, then fall
+  // back to the file at that ordinal so a one-file movie still gets a frame.
+  const byEpisodeNumber = new Map<number, string>();
+  for (const f of fileEpisodes) byEpisodeNumber.set(f.episodeNumber, f.filePath);
+
+  const jobs = fetched.episodes.map((ep, idx) => {
+    const online = ep.thumbnail ? cachedImages.get(ep.thumbnail) ?? null : null;
+    const videoPath = online
+      ? undefined
+      : byEpisodeNumber.get(ep.episodeNumber) ?? fileEpisodes[idx]?.filePath;
+    return { idx, ep, online, videoPath };
+  });
+
+  const THUMBNAIL_CONCURRENCY = 4;
+  const generated = new Array<string | null>(jobs.length).fill(null);
+  for (let i = 0; i < jobs.length; i += THUMBNAIL_CONCURRENCY) {
+    const batch = jobs.slice(i, i + THUMBNAIL_CONCURRENCY);
+    await Promise.allSettled(batch.map(async (job) => {
+      if (job.online) { generated[job.idx] = job.online; return; }
+      if (!job.videoPath) return;
+      try {
+        generated[job.idx] = await thumbnailHandler.generateThumbnail(job.videoPath, 120, i === 0 && job === batch[0]);
+      } catch {
+        logger.warn('thumbnail', `apply-tmdb: no thumbnail for ep ${job.ep.episodeNumber}`, { file: job.videoPath });
+      }
+    }));
+  }
+
+  const merged: Record<string, unknown> = {
+    ...fetched,
+    posterLocal,
+    bannerLocal,
+    episodes: jobs.map((job) => ({ ...job.ep, thumbnailLocal: generated[job.idx] })),
+    fileEpisodes,
+    folderPath: existing?.folderPath,
+    type: existing?.type,
+    source: 'tmdb',
+    // TMDB records carry no AniList/MAL id, so the auto-matcher must not treat
+    // this as an unmatched series and overwrite it on the next sweep.
+    posterMatchAttempted: true,
+  };
+
+  await metadataHandler.updateSeriesMetadata(seriesId, merged);
+  logger.info('metadata', `Override applied: ${seriesId} → TMDB ${kind} ${tmdbId}`);
   return { ok: true };
 });
 
@@ -1331,7 +1731,7 @@ ipcMain.handle('delete-series', async (_event, seriesId: string) => {
 // sync. processOneMedia is kept here to make re-enabling enrichment a
 // one-liner (call it again from runScanAndFetch's slow pass) without
 // rewriting the hundreds of lines of online-thumbnail / image-cache /
-// MAL+AniList logic. Don't delete it.
+// AniList logic. Don't delete it.
 void processOneMedia;
 
 async function processOneMedia(
@@ -1434,10 +1834,10 @@ async function processOneMedia(
 
   logger.info('folder', `Folder has ${canonicalEpisodeCount} canonical episode${canonicalEpisodeCount !== 1 ? 's' : ''} (${media.files.length} total files including decimal episodes)`, { series: media.name });
 
-  // Fetch new metadata. findBestMatch searches MAL + AniList in parallel,
-  // scores every candidate against the folder name, and picks the best
-  // (refusing if nothing clears the title-similarity threshold). Replaces
-  // the old MAL-first AniList-fallback that mismatched fuzzy-similar shows.
+  // Fetch new metadata. findBestMatch searches AniList (the same relevance
+  // list the manual picker shows), scores every candidate against the
+  // folder name, and refuses entirely when nothing clears the
+  // title-similarity threshold.
   type FetchedShape = Record<string, unknown> & {
     title: string;
     poster?: string | null;

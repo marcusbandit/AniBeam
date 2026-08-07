@@ -1,4 +1,5 @@
 import type { EpisodeMetadata, SeriesMetadata } from "../hooks/useMetadata";
+import { normalizeStatus } from "../../shared/airingStatus";
 
 export interface AiringShow {
   seriesId: string;
@@ -7,27 +8,10 @@ export interface AiringShow {
   latestAirDate: Date;
 }
 
-/**
- * Normalize a status string from any source (AniList: RELEASING / FINISHED;
- * MAL: "Currently Airing" / "Finished Airing") into one of:
- * "releasing" | "finished" | "upcoming" | "cancelled" | "hiatus" | "" (unknown).
- */
-export function normalizeStatus(status?: string | null): string {
-  if (!status) return "";
-  const s = status.trim().toLowerCase().replace(/[\s-]+/g, "_");
-  if (s === "releasing" || s === "currently_airing" || s === "airing" || s === "ongoing") {
-    return "releasing";
-  }
-  if (s === "finished" || s === "finished_airing" || s === "ended" || s === "completed") {
-    return "finished";
-  }
-  if (s === "not_yet_released" || s === "not_yet_aired" || s === "upcoming" || s === "tba") {
-    return "upcoming";
-  }
-  if (s === "cancelled" || s === "canceled") return "cancelled";
-  if (s === "hiatus" || s === "on_hiatus") return "hiatus";
-  return s;
-}
+// Lives in src/shared so the main process can use the same vocabulary when
+// picking series to refresh. Re-exported here so existing renderer imports
+// keep working unchanged.
+export { normalizeStatus };
 
 function isReleasing(data: SeriesMetadata): boolean {
   return normalizeStatus(data.status) === "releasing";

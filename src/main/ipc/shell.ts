@@ -5,8 +5,11 @@ import { spawn } from 'child_process';
 import { platform } from 'os';
 import configHandler from '../handlers/configHandler';
 import { logger } from '../services/logger';
+import { playInMpv } from '../services/mpvPlayback';
+import { finishMpvSession, type MpvSessionContext } from '../handlers/externalPlaybackHandler';
+import type { WindowGetter } from './types';
 
-export function registerShellIpc(): void {
+export function registerShellIpc(getMainWindow?: WindowGetter): void {
   // Open a URL in the user's default browser. window.open() inside the
   // renderer would otherwise spawn a child Electron BrowserWindow, which is
   // not what users expect for things like "Open API config".
@@ -42,9 +45,15 @@ export function registerShellIpc(): void {
     return true;
   });
 
-  // Launch mpv on a local video file in a detached window. Validated against
-  // configured library roots so the renderer can't request arbitrary paths.
-  ipcMain.handle('shell:open-with-mpv', async (_event, filePath: unknown) => {
+  // Launch mpv on a local video file. Validated against configured library
+  // roots so the renderer can't request arbitrary paths.
+  //
+  // The launch resolves as soon as mpv is up; the session keeps running in the
+  // background and reports its final position through onMpvPlaybackEnded, which
+  // is what turns watching in mpv into a resume point, a view-history entry and
+  // a tracker bump. `context` carries which episode this is — mpv only knows a
+  // file path, and an extra (OP/ED/PV) must never bump a tracker.
+  ipcMain.handle('shell:open-with-mpv', async (_event, filePath: unknown, context: unknown) => {
     if (typeof filePath !== 'string' || !filePath) {
       throw new Error('filePath required');
     }
@@ -66,17 +75,28 @@ export function registerShellIpc(): void {
     if (!existsSync(normalizedPath)) {
       throw new Error('file not found');
     }
-    try {
-      const child = spawn('mpv', [normalizedPath], { detached: true, stdio: 'ignore' });
-      child.on('error', (err) => {
-        logger.error('system', `mpv launch failed: ${(err as Error).message}`, { file: normalizedPath });
+    const ctx = (context && typeof context === 'object' ? context : {}) as {
+      seriesId?: unknown; episodeNumber?: unknown; isExtra?: unknown; startSec?: unknown;
+    };
+    const session: MpvSessionContext = {
+      seriesId: typeof ctx.seriesId === 'string' && ctx.seriesId ? ctx.seriesId : null,
+      episodeNumber: typeof ctx.episodeNumber === 'number' && Number.isFinite(ctx.episodeNumber)
+        ? ctx.episodeNumber
+        : null,
+      isExtra: ctx.isExtra === true,
+    };
+    const startSec = typeof ctx.startSec === 'number' && Number.isFinite(ctx.startSec) && ctx.startSec > 0
+      ? ctx.startSec
+      : undefined;
+
+    logger.info('system', `Launched mpv`, { file: normalizedPath });
+    // Fire-and-forget: the renderer's await must not block for the length of
+    // an episode. Errors are reported through the same finish path.
+    void playInMpv(normalizedPath, { startSec })
+      .then((report) => finishMpvSession(report, session, getMainWindow?.() ?? null))
+      .catch((err: Error) => {
+        logger.error('system', `mpv launch failed: ${err.message}`, { file: normalizedPath });
       });
-      child.unref();
-      logger.info('system', `Launched mpv`, { file: normalizedPath });
-      return true;
-    } catch (err) {
-      logger.error('system', `mpv spawn threw: ${(err as Error).message}`, { file: normalizedPath });
-      throw err;
-    }
+    return true;
   });
 }

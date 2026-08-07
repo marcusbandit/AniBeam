@@ -7,12 +7,32 @@ export interface AppConfig {
   folderSources: string[];
   lastScanned: string | null;
   version: number;
+  autoMatchVersion?: number;
+  /** Master switch for the automatic re-encode sweeps (startup catch-up and
+   *  series-open ensure). Off means only an explicit play transcodes. */
+  transcodeAuto?: boolean;
+  /** Files the user stopped mid-encode. The sweeps skip these; playing the
+   *  episode still forces a fresh encode. Absolute source paths. */
+  transcodeOptOut?: string[];
+  /** Files the user marked "never re-encode". Stronger than transcodeOptOut:
+   *  playing one does NOT trigger an encode, it offers mpv instead. Only an
+   *  explicit "re-encode anyway" clears it. Absolute source paths. */
+  transcodeNever?: string[];
+  /** TMDB v3 API key for matching non-anime films and shows. Per-user — TMDB
+   *  keys are personal, so there's no build-time env fallback like the
+   *  AniList/MAL client ids have. */
+  tmdbApiKey?: string;
 }
 
 const DEFAULT_CONFIG: AppConfig = {
   folderSources: [],
   lastScanned: null,
   version: 1,
+  autoMatchVersion: 0,
+  transcodeAuto: true,
+  transcodeOptOut: [],
+  transcodeNever: [],
+  tmdbApiKey: '',
 };
 
 function getConfigPath(): string {

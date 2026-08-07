@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useMetadata, type SeriesMetadata } from '../hooks/useMetadata';
 import { BookOpen, Tv, Film, Search, RefreshCw, Trash2, AlertTriangle, Link2 } from 'lucide-react';
 import MetadataMatchModal from '../components/MetadataMatchModal';
@@ -48,11 +49,15 @@ function getImageUrl(localPath?: string | null, remotePath?: string | null): str
 }
 
 function MetadataTab() {
+  const location = useLocation();
   const { metadata, loading, updateSeriesMetadata, loadMetadata } = useMetadata();
   const [refreshing, setRefreshing] = useState<Record<string, boolean>>({});
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState<string>(
+    () => (location.state as { q?: string } | null)?.q ?? ''
+  );
   const [filter, setFilter] = useState<FilterOption>('all');
   const [bulkRefreshing, setBulkRefreshing] = useState(false);
+  const [attaching, setAttaching] = useState(false);
   const [matchTarget, setMatchTarget] = useState<{ seriesId: string; data: SeriesMetadata } | null>(null);
   const { showHidden } = useHiddenShows();
 
@@ -65,6 +70,12 @@ function MetadataTab() {
     });
     return () => unsubscribe?.();
   }, [debouncedLoad]);
+
+  // Seed the filter from navigation state when arriving via "To Metadata".
+  useEffect(() => {
+    const q = (location.state as { q?: string } | null)?.q;
+    if (typeof q === 'string') setSearchQuery(q);
+  }, [location.state]);
 
   const seriesList = useMemo(() => Object.entries(metadata), [metadata]);
 
@@ -80,6 +91,12 @@ function MetadataTab() {
     movies: visibleSeries.filter(([, d]) => isMovie(d)).length,
     missing: visibleSeries.filter(([, d]) => !(d.fileEpisodes?.length)).length,
   }), [visibleSeries]);
+
+  // Titles showing no source in the table (the source column reads `source`).
+  const sourcelessCount = useMemo(
+    () => visibleSeries.filter(([, d]) => !d.source).length,
+    [visibleSeries],
+  );
 
   const filteredSeries = useMemo(() => {
     return visibleSeries.filter(([id, data]) => {
@@ -140,6 +157,28 @@ function MetadataTab() {
     await loadMetadata();
   };
 
+  // Attach a source to every title showing none. Series already matched by the
+  // background matcher get their label back instantly (no network); only the
+  // genuinely unmatched are searched. Does not re-fetch anything already sourced.
+  const handleAttachSources = async () => {
+    setAttaching(true);
+    try {
+      const res = await window.electronAPI.attachMissingSources();
+      await loadMetadata();
+      const total = (res?.backfilled ?? 0) + (res?.matched ?? 0);
+      const still = res?.stillUnmatched ?? 0;
+      alert(
+        `Attached ${total} source${total === 1 ? '' : 's'}.` +
+        (still ? `\n${still} still had no match, left for manual matching.` : ''),
+      );
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      alert('Error attaching sources: ' + errorMessage);
+    } finally {
+      setAttaching(false);
+    }
+  };
+
   const handleDelete = async (seriesId: string, seriesName: string) => {
     if (!confirm(`Delete "${seriesName}"?\n\nThis will remove all cached images and metadata for this series.`)) return;
     try {
@@ -181,14 +220,26 @@ function MetadataTab() {
             <h1 className="page-title">Metadata</h1>
             <p className="page-sub">All matched titles in your library, the source they came from, and the files on disk.</p>
           </div>
-          <button
-            className="btn btn-secondary"
-            onClick={handleBulkRefresh}
-            disabled={bulkRefreshing || filteredSeries.length === 0}
-          >
-            <RefreshCw size={14} className={bulkRefreshing ? 'spin' : ''} />
-            <span>{bulkRefreshing ? 'Refreshing…' : 'Refresh all'}</span>
-          </button>
+          <Inline gap="s2">
+            <Tooltip label="Give a source to every title showing none. Matched shows get their label back instantly; only genuinely unmatched titles are searched.">
+              <button
+                className="btn btn-secondary"
+                onClick={handleAttachSources}
+                disabled={attaching || bulkRefreshing || sourcelessCount === 0}
+              >
+                <Link2 size={14} className={attaching ? 'spin' : ''} />
+                <span>{attaching ? 'Attaching…' : `Attach sources${sourcelessCount ? ` (${sourcelessCount})` : ''}`}</span>
+              </button>
+            </Tooltip>
+            <button
+              className="btn btn-secondary"
+              onClick={handleBulkRefresh}
+              disabled={bulkRefreshing || attaching || filteredSeries.length === 0}
+            >
+              <RefreshCw size={14} className={bulkRefreshing ? 'spin' : ''} />
+              <span>{bulkRefreshing ? 'Refreshing…' : 'Refresh all'}</span>
+            </button>
+          </Inline>
         </Inline>
       }
     >
