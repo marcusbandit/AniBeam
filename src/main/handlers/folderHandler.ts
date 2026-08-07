@@ -141,6 +141,55 @@ function cleanFolderTitle(name: string): string {
     .trim();
 }
 
+// A franchise wrapper's subfolders normally label which slice of the
+// franchise they hold: "S1", "Season 2", "3rd Season", "OVAs", "Specials".
+// Recognising that label is what lets a release-tagged subfolder name
+// ("[Judas] Kaminomi - S3") be turned back into a searchable series name
+// anchored on the wrapper's own folder name.
+type SubfolderLabel =
+  | { kind: 'season'; season: number }
+  | { kind: 'ova' }
+  | { kind: 'special' };
+
+function classifySubfolderLabel(folderName: string): SubfolderLabel | null {
+  const cleaned = cleanFolderTitle(folderName);
+
+  // OVA/Specials first: they're the more specific intent, and a folder that
+  // says "OVAs" is never a numbered season even if it also carries digits.
+  if (/\b(?:OVA|OAD|ONA)s?\b/i.test(cleaned)) return { kind: 'ova' };
+  if (/\bSpecials?\b/i.test(cleaned)) return { kind: 'special' };
+
+  // "2nd Season" / "3rd Season" — extractSeasonNumber only knows
+  // "Season N" and "SNN", so handle the ordinal form here.
+  const ordinal = cleaned.match(/\b(\d+)(?:st|nd|rd|th)\s+Season\b/i);
+  if (ordinal) return { kind: 'season', season: parseInt(ordinal[1], 10) };
+
+  const season = extractSeasonNumber(cleaned);
+  if (season !== null) return { kind: 'season', season };
+
+  return null;
+}
+
+// Hang a recognised subfolder label off the wrapper's canonical name, so the
+// string we hand to AniList reads like a title rather than a release tag.
+// Season 1 keeps the bare franchise name — that's how AniList indexes a
+// first season.
+function nameFromSubfolderLabel(
+  wrapperName: string,
+  label: SubfolderLabel,
+): { name: string; seasonHint: number | null } {
+  switch (label.kind) {
+    case 'season':
+      return label.season <= 1
+        ? { name: wrapperName, seasonHint: label.season }
+        : { name: `${wrapperName} Season ${label.season}`, seasonHint: label.season };
+    case 'ova':
+      return { name: `${wrapperName} OVA`, seasonHint: null };
+    case 'special':
+      return { name: `${wrapperName} Specials`, seasonHint: null };
+  }
+}
+
 // When recursing into a "franchise wrapper" subfolder, derive a clean series
 // name anchored on the WRAPPER folder name (which the user named themselves
 // and is treated as canonical). The cleaned subfolder name is searched for
@@ -163,8 +212,15 @@ function deriveSubfolderSeriesName(
     }
     return { name: `${cleanedWrapper} ${suffix}`, seasonHint: null };
   }
-  // Wrapper name not found in cleaned subfolder — fall back to whatever
-  // cleanup produced, or the wrapper name itself if cleanup left nothing.
+  // Wrapper name isn't spelled out in the subfolder — release groups
+  // abbreviate ("Kami Nomi zo Shiru Sekai" → "[Judas] Kaminomi - S3"), and a
+  // plain "Season 2" folder never contains the show name at all. Fall back to
+  // the season/OVA/Specials label the subfolder does carry.
+  const label = classifySubfolderLabel(subfolderName);
+  if (label) return nameFromSubfolderLabel(cleanedWrapper, label);
+
+  // No label either — keep whatever cleanup produced, or the wrapper name
+  // itself if cleanup left nothing.
   return { name: cleanedSub || cleanedWrapper, seasonHint: null };
 }
 
@@ -405,23 +461,57 @@ async function hasVideosShallow(dir: string): Promise<boolean> {
   return false;
 }
 
-// Decide whether a non-root, non-Movies folder is a single series ('series')
-// or a "franchise wrapper" ('wrapper') that holds multiple distinct shows
-// (and possibly a loose movie file) — e.g. an "Anime/Show Title/" folder
-// containing "Show S1/", "Show S2/", "Show S3/", "Show - Movie.mkv".
+// Shallow check for videos sitting DIRECTLY in `dir` — no descent. Used to
+// tell a release folder that holds the episodes itself
+// ("Show/[Group] Show/ep01.mkv") from one that only holds more folders
+// ("Show/[Group] Show (Seasons 1-3 + OVAs)/S1/ep01.mkv").
+async function hasLooseVideos(dir: string): Promise<boolean> {
+  let entries: string[];
+  try {
+    entries = await readdir(dir);
+  } catch {
+    return false;
+  }
+  for (const entry of entries) {
+    try {
+      if ((await stat(join(dir, entry))).isFile() && isVideoFile(entry)) return true;
+    } catch { /* skip unreadable */ }
+  }
+  return false;
+}
+
+// Decide whether a non-root, non-Movies folder is a single series ('series'),
+// a "franchise wrapper" ('wrapper') that holds multiple distinct shows (and
+// possibly a loose movie file) — e.g. an "Anime/Show Title/" folder containing
+// "Show S1/", "Show S2/", "Show S3/", "Show - Movie.mkv" — or a 'passthrough':
+// a single transparent release folder that hides the real structure one level
+// down.
 //
 // Rule (shallow, no full subtree walk):
 //   - 2+ video-bearing subfolders                            → wrapper
 //   - 1+ video-bearing subfolder AND 1+ loose video at top   → wrapper
+//   - exactly 1 video-bearing subfolder, nothing loose here,
+//     and that subfolder holds no videos of its own          → passthrough
 //   - otherwise                                              → series
 //
-// Returns the wrapper's video-bearing subfolders so the caller can skip
+// The passthrough case exists because hasVideosShallow deliberately peeks one
+// level down, so a release folder whose episodes live in "S1/", "S2/", "OVAs/"
+// still reports as video-bearing. Without it, that single subdir looks like an
+// ordinary `[release-group]/ep01.mkv` wrapper and the whole franchise collapses
+// into one long series. Descending re-runs this classification where the
+// seasons actually are.
+//
+// For a wrapper, returns the video-bearing subfolders so the caller can skip
 // non-video subdirs (`screenshots/`, empty `Extras/`) cleanly.
 async function classifyFolder(
   looseVideoCount: number,
   subDirs: string[],
   folderPath: string,
-): Promise<{ kind: 'series' } | { kind: 'wrapper'; videoBearingSubs: string[] }> {
+): Promise<
+  | { kind: 'series' }
+  | { kind: 'wrapper'; videoBearingSubs: string[] }
+  | { kind: 'passthrough'; sub: string }
+> {
   const videoBearing: string[] = [];
   for (const sub of subDirs) {
     if (await hasVideosShallow(join(folderPath, sub))) {
@@ -431,6 +521,11 @@ async function classifyFolder(
   if (videoBearing.length >= 2) return { kind: 'wrapper', videoBearingSubs: videoBearing };
   if (videoBearing.length >= 1 && looseVideoCount >= 1) {
     return { kind: 'wrapper', videoBearingSubs: videoBearing };
+  }
+  if (videoBearing.length === 1 && looseVideoCount === 0) {
+    if (!(await hasLooseVideos(join(folderPath, videoBearing[0])))) {
+      return { kind: 'passthrough', sub: videoBearing[0] };
+    }
   }
   return { kind: 'series' };
 }
@@ -449,10 +544,11 @@ async function classifyFolder(
 //
 //   3. Anything else (non-root, non-Movies): classifyFolder decides whether
 //      this is a single series (whose subtree is collapsed into one entry,
-//      with intermediate folders treated transparently) or a "franchise
+//      with intermediate folders treated transparently), a "franchise
 //      wrapper" — multiple distinct shows under one parent folder, where
 //      each subfolder becomes its own series and loose top-level videos
-//      become individual movies.
+//      become individual movies — or a transparent release folder to descend
+//      through before deciding.
 async function collectMediaRecursive(
   folderPath: string,
   results: ScannedMedia[],
@@ -463,6 +559,11 @@ async function collectMediaRecursive(
   // derived from the wrapper's folder name. Consumed exactly once, in the
   // single-series branch — never propagated deeper.
   wrapperContext?: { name: string; seasonHint: number | null },
+  // Set when one or more transparent release folders were descended through
+  // to reach here. Carries the outermost (user-named, canonical) folder's
+  // name and season hint so the release folder's own release-tagged name
+  // never becomes the series name.
+  passThrough?: { name: string; seasonHint: number | null },
 ): Promise<void> {
   const folderName = basename(folderPath);
   const isMoviesContainer = isMoviesFolderName(folderName);
@@ -522,8 +623,27 @@ async function collectMediaRecursive(
     return;
   }
 
-  // 3. Series or franchise wrapper — see classifyFolder.
+  // 3. Series, franchise wrapper, or transparent release folder — see
+  //    classifyFolder.
   const classification = await classifyFolder(videoFilenames.length, subDirs, folderPath);
+
+  // The canonical name for anything at or below this folder: the outermost
+  // user-named folder we've descended from, else this folder's own name.
+  const canonicalName = passThrough?.name ?? folderName;
+
+  if (classification.kind === 'passthrough') {
+    // A single release folder holding no episodes of its own — the real
+    // structure is one level down. Descend, carrying this folder's canonical
+    // name and season hint so the release-tagged name never surfaces.
+    await collectMediaRecursive(
+      join(folderPath, classification.sub), results, false, false, undefined,
+      {
+        name: canonicalName,
+        seasonHint: passThrough?.seasonHint ?? extractSeasonNumber(folderName),
+      },
+    );
+    return;
+  }
 
   if (classification.kind === 'wrapper') {
     // Loose videos at the wrapper level → individual movies. Use the
@@ -537,7 +657,7 @@ async function collectMediaRecursive(
     // wrapper name (+ trailing digit as season hint) instead of the raw
     // release-tagged subfolder name.
     for (const subDir of classification.videoBearingSubs) {
-      const derived = deriveSubfolderSeriesName(subDir, folderName);
+      const derived = deriveSubfolderSeriesName(subDir, canonicalName);
       await collectMediaRecursive(
         join(folderPath, subDir), results, false, false, derived,
       );
@@ -548,14 +668,16 @@ async function collectMediaRecursive(
   // Single-series case: walk the whole subtree as one series. Outer folder
   // name wins; intermediate folders are transparent except for season hints.
   // wrapperContext (set only when this is the immediate child of a franchise
-  // wrapper) overrides the verbatim folder name and contributes a season hint.
+  // wrapper) overrides the verbatim folder name and contributes a season hint;
+  // passThrough does the same for release folders we descended through.
+  const context = wrapperContext ?? passThrough;
   const seasonFromFolder =
-    extractSeasonNumber(folderName) ?? wrapperContext?.seasonHint ?? null;
+    extractSeasonNumber(folderName) ?? context?.seasonHint ?? null;
   const partFromFolder = extractPartNumber(folderName);
   const allVideos = await collectVideosInSubtree(folderPath, seasonFromFolder);
   if (allVideos.length === 0) return;
 
-  const seriesName = wrapperContext?.name ?? extractSeriesNameFromFolder(folderName);
+  const seriesName = context?.name ?? extractSeriesNameFromFolder(folderName);
   const seriesId = generateSeriesId(seriesName, folderName, seasonFromFolder, partFromFolder);
 
   results.push({

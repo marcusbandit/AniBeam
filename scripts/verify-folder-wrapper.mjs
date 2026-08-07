@@ -145,10 +145,110 @@ assert.equal(edgeSeries.length, 1, `edge case: expected 1 series, got ${edgeSeri
 assert.equal(edgeMovies.length, 1, `edge case: expected 1 movie, got ${edgeMovies.length}`);
 console.log('OK: edge case (1 subdir + 1 loose video) → 1 series + 1 movie');
 
+// ---------- Season folders behind a release folder (real Kaminomi layout) ----------
+// <root>/Kami Nomi zo Shiru Sekai/
+//   [Judas] Kami Nomi zo Shiru Sekai (Seasons 1-3 + OVAs) [BD 1080p][...]/
+//     [Judas] Kaminomi - OVAs/   (4 files)
+//     [Judas] Kaminomi - S1/     (12 episodes)
+//     [Judas] Kaminomi - S2/     (12 episodes)
+//     [Judas] Kaminomi - S3/     (12 episodes)
+//
+// The release folder holds no episodes of its own, so it's transparent: the
+// four season folders below it are the real series. Before the passthrough
+// case existed, hasVideosShallow's one-level peek made the release folder look
+// like an ordinary `[group]/ep01.mkv` wrapper and all 40 files collapsed into a
+// single 40-episode series matched against season 1.
+const KN_ROOT = await mkdtemp(join(tmpdir(), 'anibeam-kaminomi-'));
+const KN_SHOW = join(KN_ROOT, 'Kami Nomi zo Shiru Sekai');
+const KN_RELEASE = join(
+  KN_SHOW,
+  '[Judas] Kami Nomi zo Shiru Sekai (The World God Only Knows) (Seasons 1-3 + OVAs) [BD 1080p][HEVC x265 10bit][Dual-Audio][Eng-Subs]',
+);
+for (const s of [1, 2, 3]) {
+  const dir = join(KN_RELEASE, `[Judas] Kaminomi - S${s}`);
+  await mkdir(dir, { recursive: true });
+  for (let ep = 1; ep <= 12; ep++) {
+    await touch(join(dir, `[Judas] Kami nomi zo Shiru Sekai - S0${s}E${String(ep).padStart(2, '0')}.mkv`));
+  }
+}
+const KN_OVA = join(KN_RELEASE, '[Judas] Kaminomi - OVAs');
+await mkdir(KN_OVA, { recursive: true });
+for (const f of [
+  '[Judas] Kaminomi OAD - Four Plus an Idol.mkv',
+  '[Judas] Kaminomi OVA - Magical Star Kanon 100%.mkv',
+  '[Judas] Kaminomi OVA - Tenri Arc 01.mkv',
+  '[Judas] Kaminomi OVA - Tenri Arc 02.mkv',
+]) {
+  await touch(join(KN_OVA, f));
+}
+
+const knResults = await folderHandler.scanFolder(KN_ROOT);
+const knSeries = knResults.filter(r => r.type === 'series');
+assert.equal(
+  knSeries.length, 4,
+  `expected 4 series (S1, S2, S3, OVAs), got ${knSeries.length}: ${knSeries.map(s => s.name).join(' | ')}`,
+);
+assert.equal(new Set(knSeries.map(s => s.id)).size, 4, 'season entries must have distinct ids');
+
+// Every file is claimed exactly once — nothing lost, nothing double-counted.
+const knFiles = knSeries.flatMap(s => s.files.map(f => f.filePath));
+assert.equal(knFiles.length, 40, `expected 40 files across the split, got ${knFiles.length}`);
+assert.equal(new Set(knFiles).size, 40, 'a file is claimed by more than one series');
+
+// Names are anchored on the OUTER folder the user named, not the release
+// folder's own tag-laden name, and are shaped so AniList can find them.
+const knByName = Object.fromEntries(knSeries.map(s => [s.name, s]));
+for (const [name, eps, season] of [
+  ['Kami Nomi zo Shiru Sekai', 12, 1],
+  ['Kami Nomi zo Shiru Sekai Season 2', 12, 2],
+  ['Kami Nomi zo Shiru Sekai Season 3', 12, 3],
+  ['Kami Nomi zo Shiru Sekai OVA', 4, null],
+]) {
+  const entry = knByName[name];
+  assert.ok(entry, `expected a series named "${name}"; got: ${knSeries.map(s => s.name).join(' | ')}`);
+  assert.equal(entry.files.length, eps, `"${name}" has ${entry.files.length} files (expected ${eps})`);
+  assert.equal(entry.seasonNumber, season, `"${name}" seasonNumber should be ${season}`);
+  assert.ok(
+    entry.folderPath.startsWith(KN_RELEASE + '/'),
+    `"${name}" folderPath should be a season folder under the release folder; got '${entry.folderPath}'`,
+  );
+}
+
+// Each season's episodes are numbered 1-12 in their own namespace.
+for (const name of ['Kami Nomi zo Shiru Sekai', 'Kami Nomi zo Shiru Sekai Season 2', 'Kami Nomi zo Shiru Sekai Season 3']) {
+  const eps = knByName[name].files.map(f => f.episodeNumber).sort((a, b) => a - b);
+  assert.deepEqual(eps, [1,2,3,4,5,6,7,8,9,10,11,12], `episodes for '${name}': ${eps.join(',')}`);
+}
+
+console.log('OK: season folders behind a transparent release folder split into 4 series');
+for (const s of knSeries) console.log(`  series: ${s.name}  (${s.files.length} files, season ${s.seasonNumber ?? '-'})`);
+
+// ---------- Plain "Season N" subfolders get the show's name, not "Season N" ----------
+// Without a label fallback, deriveSubfolderSeriesName returned the bare
+// subfolder name — so these matched AniList as a show literally called
+// "Season 2".
+const SEA_ROOT = await mkdtemp(join(tmpdir(), 'anibeam-seasons-'));
+const SEA_SHOW = join(SEA_ROOT, 'Some Show');
+for (const [dir, n] of [['Season 1', 3], ['Season 2', 3], ['Specials', 2]]) {
+  const d = join(SEA_SHOW, dir);
+  await mkdir(d, { recursive: true });
+  for (let ep = 1; ep <= n; ep++) await touch(join(d, `${dir} - ${String(ep).padStart(2, '0')}.mkv`));
+}
+const seaSeries = (await folderHandler.scanFolder(SEA_ROOT)).filter(r => r.type === 'series');
+const seaNames = seaSeries.map(s => s.name).sort();
+assert.deepEqual(
+  seaNames,
+  ['Some Show', 'Some Show Season 2', 'Some Show Specials'],
+  `plain season folders should be named after the show; got: ${seaNames.join(' | ')}`,
+);
+console.log('OK: plain "Season N" / "Specials" subfolders are named after the show');
+
 // Cleanup
 await rm(tmp, { recursive: true, force: true });
 await rm(REG_ROOT, { recursive: true, force: true });
 await rm(FLAT_ROOT, { recursive: true, force: true });
 await rm(EDGE_ROOT, { recursive: true, force: true });
+await rm(KN_ROOT, { recursive: true, force: true });
+await rm(SEA_ROOT, { recursive: true, force: true });
 
 console.log('\nAll checks passed.');
