@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useMetadata, type FileEpisode } from '../hooks/useMetadata.js';
 import { useLocalStorage, useLocalStorageRecord } from '../hooks/useLocalStorage';
+import { useNavTrail } from '../hooks/useNavTrail';
 import { progressId, extraProgressToken, readProgress, writeProgress, recordEpisodeCompleted, RESUME_HEAD_SKIP, RESUME_TAIL_SKIP } from '../utils/playbackProgress';
 import ExternalPlayPrompt from '../components/ExternalPlayPrompt';
 import { friendlyExtraTitle, extraCode } from '../../shared/extraLabels';
@@ -178,6 +179,19 @@ function VideoPlayer() {
   const navigate = useNavigate();
   const location = useLocation();
   const { metadata } = useMetadata();
+  // Leaving the player walks one level up the browsing tree: normally the
+  // series page the episode was opened from (carrying ITS origin along, so
+  // the next Back lands on Feed/Watching/Library as appropriate), and the
+  // series page itself when the player was deep-linked.
+  const { keep, goBack } = useNavTrail();
+  const exitPlayer = useCallback(
+    () => goBack(seriesId ? `/series/${seriesId}` : '/'),
+    [goBack, seriesId],
+  );
+  // The Escape handler is bound once; read the current exit through a ref so
+  // it never goes stale (same pattern as toggleCaptionsRef).
+  const exitPlayerRef = useRef(exitPlayer);
+  exitPlayerRef.current = exitPlayer;
 
   // Extras (openings/endings/PVs/specials) are opened with an explicit
   // ?file=<path> param. Several extras share an episodeNumber with a real
@@ -1885,7 +1899,7 @@ function VideoPlayer() {
           return;
         }
         if (document.fullscreenElement) return;
-        navigate(seriesId ? `/series/${seriesId}` : '/');
+        exitPlayerRef.current();
       }
     };
     window.addEventListener('keydown', onKey);
@@ -1961,7 +1975,7 @@ function VideoPlayer() {
   const goToEpisode = (epNum: number) => {
     if (!seriesId) return;
     // skipResume = true forces a fresh start regardless of saved position.
-    navigate(`/player/${seriesId}/${epNum}`, { state: { skipResume: true }, replace: false });
+    navigate(`/player/${seriesId}/${epNum}`, { state: keep({ skipResume: true }), replace: false });
   };
 
   const toggleMute = () => {
@@ -2182,7 +2196,7 @@ function VideoPlayer() {
     return (
       <div className="player-wrap">
         <div className="player-header" style={{ opacity: 1 }}>
-          <button className="player-back" onClick={() => navigate(seriesId ? `/series/${seriesId}` : '/')}>
+          <button className="player-back" onClick={exitPlayer}>
             <ArrowLeft size={15} />
             <span>Back</span>
           </button>
@@ -2246,7 +2260,7 @@ function VideoPlayer() {
         isExtra,
         startSec,
       });
-      navigate(-1);
+      exitPlayer();
     } catch (err) {
       console.error('[playback] mpv launch failed:', err);
     } finally {
@@ -2298,7 +2312,7 @@ function VideoPlayer() {
         onPlayInMpv={() => void playExternally()}
         onReencode={() => void reencodeAndStay()}
         // Closing has nowhere to go but back - there's no video behind this.
-        onClose={() => navigate(-1)}
+        onClose={exitPlayer}
       />
       {/* Hidden frame source for the seek-bar hover preview. Bound to the SAME
           src as the main video (media:// cached mp4 or original file URL), so
@@ -2318,7 +2332,7 @@ function VideoPlayer() {
       <div className="player-header" style={{ opacity: chrome ? 1 : 0 }}>
         <button
           className="player-back"
-          onClick={() => navigate(`/series/${seriesId}`)}
+          onClick={exitPlayer}
           aria-label="Back to series"
         >
           <ArrowLeft size={15} />
@@ -2484,7 +2498,7 @@ function VideoPlayer() {
             <div className="codec-modal-actions">
               <button
                 className="codec-modal-btn ghost"
-                onClick={() => navigate(`/series/${seriesId}`)}
+                onClick={exitPlayer}
               >Back to series</button>
               <Tooltip label="Skip the wait: play the original file in your system mpv">
                 <button
@@ -2518,7 +2532,7 @@ function VideoPlayer() {
             <div className="codec-modal-actions">
               <button
                 className="codec-modal-btn ghost"
-                onClick={() => navigate(`/series/${seriesId}`)}
+                onClick={exitPlayer}
               >Back to series</button>
               <button
                 className="codec-modal-btn primary"

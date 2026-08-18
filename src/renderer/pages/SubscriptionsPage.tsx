@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavTrail } from "../hooks/useNavTrail";
 import { Rss, RefreshCw, ExternalLink, FolderOpen, ArrowLeft } from "lucide-react";
 import type { SubscriptionFeed, SubscriptionsResult } from "../../main/preload";
 import { Page, Inline, Pill, Tooltip } from "../components/primitives";
@@ -16,7 +16,7 @@ function decodeNyaaQuery(feedUrl: string): string | null {
 }
 
 function SubscriptionsPage() {
-  const navigate = useNavigate();
+  const { backTarget, goBack } = useNavTrail();
   const [result, setResult] = useState<SubscriptionsResult | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -41,9 +41,9 @@ function SubscriptionsPage() {
       head={
         <Inline gap="s4" justify="space-between" align="flex-start">
           <div>
-            <button type="button" className="subscriptions-back" onClick={() => navigate("/settings")}>
+            <button type="button" className="subscriptions-back" onClick={() => goBack("/settings")}>
               <ArrowLeft size={14} />
-              <span>Settings</span>
+              <span>{backTarget?.label ?? "Settings"}</span>
             </button>
             <h1 className="page-title">Subscriptions</h1>
             <p className="page-sub">RSS feeds anirss is watching for you.</p>
