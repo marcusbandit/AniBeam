@@ -1,59 +1,13 @@
 import { useCallback, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { MAIN_SCROLL_ID, MAX_TRAIL, labelForPath, readTrail } from "./navTrailCore";
+import type { TrailEntry } from "./navTrailCore";
 
-/**
- * One step up the browsing tree: where the user came from, and what to
- * call it on the Back button.
- */
-export interface TrailEntry {
-  /** Full route including search, so a query/tab state survives the trip back. */
-  path: string;
-  /** Button text: "Feed", "Library", a series title, … */
-  label: string;
-}
-
-/**
- * The trail rides in react-router location state rather than being derived
- * from browser history, because history is unreliable here: the player
- * pushes forward navigations (next episode), the franchise graph can loop
- * back onto a series already visited, and a reload wipes the stack. Keeping
- * an explicit ancestor list means Back always walks the tree the user
- * actually browsed - Feed → series → related series → player unwinds one
- * level per press. Capped so a long franchise crawl can't grow state without
- * bound.
- */
-const MAX_TRAIL = 12;
-
-const ROUTE_LABELS: ReadonlyArray<[RegExp, string]> = [
-  [/^\/$/, "Library"],
-  [/^\/feed/, "Feed"],
-  [/^\/watching/, "Watching"],
-  [/^\/subscriptions/, "Subscriptions"],
-  [/^\/settings/, "Settings"],
-  [/^\/metadata/, "Metadata"],
-  [/^\/series\//, "Series"],
-  [/^\/player\//, "Player"],
-];
-
-/** Generic name for a route, used when the caller has nothing better. */
-export function labelForPath(pathname: string): string {
-  for (const [re, label] of ROUTE_LABELS) {
-    if (re.test(pathname)) return label;
-  }
-  return "Back";
-}
-
-/** Defensive read: state comes from history and may be anything. */
-export function readTrail(state: unknown): TrailEntry[] {
-  const raw = (state as { trail?: unknown } | null | undefined)?.trail;
-  if (!Array.isArray(raw)) return [];
-  return raw.filter(
-    (e): e is TrailEntry =>
-      !!e &&
-      typeof (e as TrailEntry).path === "string" &&
-      typeof (e as TrailEntry).label === "string",
-  );
-}
+// The pure half (route labels, defensive state reading, the rail's tab list)
+// lives in ./navTrailCore so it can be tested without React. Re-exported here
+// so the existing import sites keep pointing at the hook.
+export { labelForPath, readTrail };
+export type { TrailEntry };
 
 /**
  * Browsing-tree navigation.
@@ -74,15 +28,28 @@ export function useNavTrail(currentLabel?: string) {
    * Router state for a navigation one level DEEPER (library → series,
    * series → player): appends this page to the trail. Extra state (a query,
    * a skipResume flag) can ride along.
+   *
+   * The scroll offset rides in the trail entry for the same reason the trail
+   * itself does: browser history can't be trusted to hand it back. A forward
+   * push from the player, a loop back onto a series already visited, or a
+   * reload all leave the native scroll restoration pointing at the wrong
+   * entry (or at nothing). Reading `scrollTop` at navigation time and
+   * carrying it with the ancestor means Back restores the exact view the
+   * user left, however they got back to it.
    */
   const descend = useCallback(
-    (extra?: Record<string, unknown>) => ({
-      ...extra,
-      trail: [
-        ...trail.filter((e) => e.path !== here),
-        { path: here, label: hereLabel },
-      ].slice(-MAX_TRAIL),
-    }),
+    (extra?: Record<string, unknown>) => {
+      // Absent on routes with no rail or main content (the player), in which
+      // case there is no offset to remember.
+      const scroll = document.getElementById(MAIN_SCROLL_ID)?.scrollTop ?? 0;
+      return {
+        ...extra,
+        trail: [
+          ...trail.filter((e) => e.path !== here),
+          { path: here, label: hereLabel, scroll },
+        ].slice(-MAX_TRAIL),
+      };
+    },
     [trail, here, hereLabel],
   );
 
@@ -108,7 +75,15 @@ export function useNavTrail(currentLabel?: string) {
         return;
       }
       const rest = trail.slice(0, -1);
-      navigate(target.path, { state: rest.length ? { trail: rest } : undefined });
+      // `restoreScroll` is undefined for entries recorded before the offset
+      // existed, or for a page that had no scroll container; App.tsx treats
+      // that as "leave the scroll alone".
+      navigate(target.path, {
+        state: {
+          ...(rest.length ? { trail: rest } : {}),
+          restoreScroll: target.scroll,
+        },
+      });
     },
     [trail, navigate],
   );

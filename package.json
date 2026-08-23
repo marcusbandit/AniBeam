@@ -19,6 +19,7 @@
     "verify:tmdb-shape": "bun --bun scripts/verify-tmdb-shape.mjs",
     "verify:poster-match": "bun --bun scripts/verify-poster-match.mjs",
     "verify:folder": "bun --bun scripts/verify-folder-wrapper.mjs",
+    "verify:nav-trail": "bun --bun scripts/verify-nav-trail.mjs",
     "verify:franchise-graph": "bun --bun scripts/verify-franchise-graph.mjs",
     "verify:franchise-crawler": "bun --bun scripts/verify-franchise-crawler.mjs",
     "verify:franchise-lanes": "bun --bun scripts/verify-franchise-lanes.mjs",

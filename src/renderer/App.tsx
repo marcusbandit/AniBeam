@@ -11,6 +11,8 @@ import WatchingPage from "./pages/WatchingPage";
 import SubscriptionsPage from "./pages/SubscriptionsPage";
 import ContextMenu from "./components/ContextMenu";
 import { useMpvPlaybackSync } from "./hooks/useMpvPlaybackSync";
+import { useScrollRestore } from "./hooks/useScrollRestore";
+import { MAIN_SCROLL_ID, RAIL_TABS, activeTab, readTrail } from "./hooks/navTrailCore";
 import { ActivityLogProvider } from "./contexts/ActivityLogContext";
 import { ActivityLogDrawer } from "./components/ActivityLogDrawer";
 import { TitleLanguageProvider } from "./contexts/TitleLanguageContext";
@@ -40,14 +42,32 @@ function titleForPath(pathname: string): string {
   return "AniBeam";
 }
 
+// Icon per rail destination. The tab list itself lives in navTrailCore, which
+// stays React-free so the verify script can import it; icons are components,
+// so the pairing is completed here. Keys are RAIL_TABS paths.
+const RAIL_ICONS: Record<string, typeof Home> = {
+  "/": Home,
+  "/feed": Activity,
+  "/watching": Eye,
+  "/metadata": Database,
+  "/settings": SettingsIcon,
+};
+
 function AppContent() {
   const location = useLocation();
   const isPlayerRoute = location.pathname.startsWith("/player/");
-  const isLib = location.pathname === "/" || location.pathname.startsWith("/series/");
+  // One highlight decision for the whole rail, off the trail rather than off
+  // NavLink's own isActive: a series page has no rail route of its own and
+  // belongs to whichever tab the user browsed in from. Letting both mechanisms
+  // run would light two links at once.
+  const tab = activeTab(location.pathname, readTrail(location.state));
 
   // App-wide, not per-page: an mpv window routinely outlives the page that
   // launched it, and its resume position still has to land.
   useMpvPlaybackSync();
+  // Same reasoning: `.main-content` is one element shared by every route, so
+  // its scroll position has to be owned above the pages, not inside them.
+  useScrollRestore();
 
   useEffect(() => {
     document.title = titleForPath(location.pathname);
@@ -62,26 +82,21 @@ function AppContent() {
             <img src={appIcon} alt="" draggable={false} />
           </NavLink>
           <nav className="rail-nav">
-            <NavLink to="/" end className={`rail-link${isLib ? " active" : ""}`} data-halo-snap>
-              <Home size={18} />
-              <span className="rail-link-label">Library</span>
-            </NavLink>
-            <NavLink to="/feed" className={({ isActive }) => `rail-link${isActive ? " active" : ""}`} data-halo-snap>
-              <Activity size={18} />
-              <span className="rail-link-label">Feed</span>
-            </NavLink>
-            <NavLink to="/watching" className={({ isActive }) => `rail-link${isActive ? " active" : ""}`} data-halo-snap>
-              <Eye size={18} />
-              <span className="rail-link-label">Watching</span>
-            </NavLink>
-            <NavLink to="/metadata" className={({ isActive }) => `rail-link${isActive ? " active" : ""}`} data-halo-snap>
-              <Database size={18} />
-              <span className="rail-link-label">Metadata</span>
-            </NavLink>
-            <NavLink to="/settings" className={({ isActive }) => `rail-link${isActive ? " active" : ""}`} data-halo-snap>
-              <SettingsIcon size={18} />
-              <span className="rail-link-label">Settings</span>
-            </NavLink>
+            {RAIL_TABS.map((t) => {
+              const Icon = RAIL_ICONS[t.path];
+              return (
+                <NavLink
+                  key={t.path}
+                  to={t.path}
+                  end={t.path === "/"}
+                  className={`rail-link${tab === t.path ? " active" : ""}`}
+                  data-halo-snap
+                >
+                  <Icon size={18} />
+                  <span className="rail-link-label">{t.label}</span>
+                </NavLink>
+              );
+            })}
           </nav>
           <div className="rail-foot">
             <LangSwitch />
@@ -90,7 +105,7 @@ function AppContent() {
         </aside>
       )}
       {!isPlayerRoute ? (
-        <main className="main-content">
+        <main id={MAIN_SCROLL_ID} className="main-content">
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/feed" element={<FeedPage />} />
