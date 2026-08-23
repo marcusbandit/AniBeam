@@ -2,6 +2,7 @@ import { useState, useEffect, useLayoutEffect, useCallback, useRef, ReactNode } 
 import { useNavigate, useLocation } from "react-router-dom";
 import { ChevronLeft, RefreshCw, FileText, ExternalLink } from "lucide-react";
 import { useMetadata } from "../hooks/useMetadata";
+import { useNavTrail } from "../hooks/useNavTrail";
 import {
   progressId,
   extraProgressToken,
@@ -37,6 +38,9 @@ function ContextMenu() {
   const navigate = useNavigate();
   const location = useLocation();
   const { metadata, loadMetadata } = useMetadata();
+  // Right-click Back mirrors the on-page Back: up the browsing tree, not
+  // blindly back through history.
+  const { descend, goBack } = useNavTrail();
 
   // Extract seriesId from pathname (e.g., /series/12345 -> 12345)
   const seriesIdMatch = location.pathname.match(/^\/series\/([^/]+)/);
@@ -93,8 +97,8 @@ function ContextMenu() {
 
   const handleBack = useCallback(() => {
     setVisible(false);
-    navigate(-1);
-  }, [navigate]);
+    goBack();
+  }, [goBack]);
 
   const handleRescanShow = useCallback(async () => {
     if (!seriesId || !isSeriesDetailPage) return;
@@ -122,8 +126,8 @@ function ContextMenu() {
     setVisible(false);
     const data = seriesId ? metadata[seriesId] : null;
     const q = data?.title || data?.titleRomaji || "";
-    navigate("/metadata", { state: { q } });
-  }, [navigate, seriesId, metadata]);
+    navigate("/metadata", { state: descend({ q }) });
+  }, [navigate, descend, seriesId, metadata]);
 
   const handleOpenWithMpv = useCallback(async () => {
     if (!episodeFile) return;

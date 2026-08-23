@@ -25,6 +25,7 @@ import type { Character, Recommendation, SeriesMetadata, Tag } from "../hooks/us
 import type { SubtitleState } from "../../shared/subtitleSupport";
 import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
 import { useTitleLanguage } from "../contexts/TitleLanguageContext";
+import { useNavTrail } from "../hooks/useNavTrail";
 import { useTrackerProgress } from "../contexts/TrackerProgressContext";
 import { getDisplayRating, formatRating } from "../utils/ratingUtils";
 import {
@@ -260,6 +261,19 @@ function SeriesDetailPage() {
   // series's.
   const [allMeta, setAllMeta] = useState<Record<string, SeriesMetadata>>({});
   const [initialLoading, setInitialLoading] = useState(true);
+
+  // Browsing-tree navigation. The label is this series' title, so a page
+  // opened FROM here (the player, a related series) can name it on its own
+  // Back button. Computed here rather than reusing `displayTitle` below
+  // because the hook has to run above the early returns.
+  const trailLabel = item
+    ? pickTitle({
+        titleRomaji: item.titleRomaji ?? meta?.titleRomaji ?? null,
+        titleEnglish: item.titleEnglish ?? meta?.titleEnglish ?? null,
+        folderName: item.folderName,
+      })
+    : "Series";
+  const { descend, backTarget, goBack } = useNavTrail(trailLabel);
   // Per-episode resume position + per-series last-finished episode, both
   // sourced from localStorage. Refreshed on mount and on window-focus so a
   // session in the player updates the bars and "Next up" marker as soon as
@@ -577,8 +591,8 @@ function SeriesDetailPage() {
       });
       return;
     }
-    navigate(opts.route);
-  }, [navigate, transcoding]);
+    navigate(opts.route, { state: descend() });
+  }, [navigate, descend, transcoding]);
 
   const playPromptInMpv = useCallback(async () => {
     if (!playPrompt || !item) return;
@@ -624,13 +638,13 @@ function SeriesDetailPage() {
         ? `/player/${encodeURIComponent(item.id)}/${playPrompt.episodeNumber}?file=${encodeURIComponent(playPrompt.filePath)}`
         : `/player/${encodeURIComponent(item.id)}/${playPrompt.episodeNumber}`;
       setPlayPrompt(null);
-      navigate(route);
+      navigate(route, { state: descend() });
     } catch (err) {
       console.error("[transcode] re-encode from prompt failed:", err);
     } finally {
       setPlayPromptBusy(false);
     }
-  }, [playPrompt, item, navigate]);
+  }, [playPrompt, item, navigate, descend]);
 
   // Live progress + status for files in THIS series. Two channels: granular
   // fraction updates while ffmpeg runs, and status flips (ready/stalled) that
@@ -765,8 +779,8 @@ function SeriesDetailPage() {
     return (
       <div className="page">
         <div className="error">Folder not found.</div>
-        <button className="btn btn-secondary" onClick={() => navigate("/")}>
-          <ArrowLeft size={14} /> Library
+        <button className="btn btn-secondary" onClick={() => goBack()}>
+          <ArrowLeft size={14} /> {backTarget?.label ?? "Library"}
         </button>
       </div>
     );
@@ -774,11 +788,7 @@ function SeriesDetailPage() {
 
   const isMovie = item.type === "movie" || meta?.format === "MOVIE";
 
-  const displayTitle = pickTitle({
-    titleRomaji: item.titleRomaji ?? meta?.titleRomaji ?? null,
-    titleEnglish: item.titleEnglish ?? meta?.titleEnglish ?? null,
-    folderName: item.folderName,
-  });
+  const displayTitle = trailLabel;
   // Surface the alternate title underneath, so the hero shows both
   // identities at a glance without needing to flip the navbar switch.
   const titleRomaji = item.titleRomaji ?? meta?.titleRomaji ?? null;
@@ -1292,10 +1302,10 @@ function SeriesDetailPage() {
         <button
           type="button"
           className="chip chip--scrim series-hero-back"
-          onClick={() => navigate("/")}
+          onClick={() => goBack()}
         >
           <ArrowLeft size={14} />
-          <span>Library</span>
+          <span>{backTarget?.label ?? "Library"}</span>
         </button>
 
         <div className="series-hero-band__inner">
@@ -1495,7 +1505,10 @@ function SeriesDetailPage() {
                     type="button"
                     className="btn btn--accent series-hero-continue"
                     onClick={() =>
-                      navigate(`/player/${encodeURIComponent(item.id)}/${continueTarget.episodeNumber}`)
+                      navigate(
+                        `/player/${encodeURIComponent(item.id)}/${continueTarget.episodeNumber}`,
+                        { state: descend() },
+                      )
                     }
                   >
                     <Play size={14} />
@@ -1681,7 +1694,7 @@ function SeriesDetailPage() {
               titleEnglish: n.titleEnglish,
               folderName: n.titleRomaji ?? n.titleEnglish ?? "Untitled",
             })}
-            onOpenInApp={(id) => navigate(`/series/${encodeURIComponent(id)}`)}
+            onOpenInApp={(id) => navigate(`/series/${encodeURIComponent(id)}`, { state: descend() })}
             onOpenExternal={openExternalNode}
             statusMarkerFor={(n) => listStatusMarker({ anilistId: n.anilistId, malId: n.malId })}
             anilistIcon={<AniListIcon size={11} />}
@@ -1719,7 +1732,7 @@ function SeriesDetailPage() {
                 : undefined;
               const handleClick = () => {
                 if (ownedId) {
-                  navigate(`/series/${encodeURIComponent(ownedId)}`);
+                  navigate(`/series/${encodeURIComponent(ownedId)}`, { state: descend() });
                   return;
                 }
                 const url = r.siteUrl

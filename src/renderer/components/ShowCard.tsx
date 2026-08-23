@@ -15,6 +15,7 @@ import {
 } from "../utils/airingUtils";
 import { getDisplayRating } from "../utils/ratingUtils";
 import { useSeriesTranscodeStatus } from "../hooks/useTranscodeQueue";
+import { useNavTrail } from "../hooks/useNavTrail";
 import { Tooltip } from "./primitives";
 
 const LIFT_SPEED = 12;
@@ -60,6 +61,11 @@ function ShowCard({
   onActivate,
 }: ShowCardProps) {
   const navigate = useNavigate();
+  // Cards are the entry point into a series from every grid (Library, Feed,
+  // Watching), so they stamp the current page onto the trail - that's what
+  // lets the series page's Back button say "Feed" when the user came from
+  // the Feed.
+  const { descend } = useNavTrail();
   const { pickTitle } = useTitleLanguage();
   const { getWatched, getUserScore } = useTrackerProgress();
 
@@ -185,7 +191,11 @@ function ShowCard({
       className={`show-card${item.hidden ? ' show-card--hidden' : ''}`}
       data-halo-bias
       data-flip-id={item.id}
-      onClick={() => (onActivate ? onActivate() : navigate(`/series/${encodeURIComponent(item.id)}`))}
+      onClick={() =>
+        onActivate
+          ? onActivate()
+          : navigate(`/series/${encodeURIComponent(item.id)}`, { state: descend() })
+      }
       onMouseEnter={() => { liftRef.current?.setTarget(-LIFT_AMOUNT_PX); setHasGlow(true); }}
       onMouseLeave={() => liftRef.current?.setTarget(0)}
       onFocus={() => setHasGlow(true)}

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useNavTrail } from '../hooks/useNavTrail';
 import { useMetadata } from '../hooks/useMetadata';
 import { useHiddenShows } from '../contexts/HiddenShowsContext';
 import { Folder, RefreshCw, Plus, Trash2, Film, Rss, ChevronRight, Square, ExternalLink } from 'lucide-react';
@@ -44,6 +45,7 @@ type SubtitlePref = 'off' | 'auto' | 'always';
 
 function SettingsTab() {
   const navigate = useNavigate();
+  const { descend } = useNavTrail();
   const { metadata, loadMetadata } = useMetadata();
   const { showHidden, setShowHidden } = useHiddenShows();
   const [folderSources, setFolderSources] = useState<string[]>([]);
@@ -464,7 +466,7 @@ function SettingsTab() {
       <Section
         title="Subscriptions"
         action={
-          <button className="btn btn-secondary" onClick={() => navigate('/subscriptions')}>
+          <button className="btn btn-secondary" onClick={() => navigate('/subscriptions', { state: descend() })}>
             <Rss size={14} />
             <span>Open subscriptions</span>
             <ChevronRight size={14} />
