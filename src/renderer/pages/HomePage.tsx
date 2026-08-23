@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useLocation, useSearchParams } from "react-router-dom";
+import { carryState } from "../hooks/navTrailCore";
 import {
   Tv,
   ChevronLeft,
@@ -160,11 +162,38 @@ function normalisedScore(item: LibraryItem): number | null {
 function HomePage() {
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
-  const [airingPage, setAiringPage] = useState(0);
   const { pickTitle } = useTitleLanguage();
   const { getWatched, getUserScore, getListStatus } = useTrackerProgress();
   const { getLastViewed } = useViewHistory();
   const { showHidden } = useHiddenShows();
+
+  // The search text and the Airing page live in the query string rather than
+  // in component state: the browsing trail stores `pathname + search` per
+  // entry, so anything parked here comes back with the user when they walk
+  // out to a series and press Back. Sort key/direction stay in localStorage -
+  // those are a standing preference, not a view the trail should restore.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+
+  // Single write path for both params. Two things it has to get right:
+  // `replace` so a search box keystroke refines the current history entry
+  // instead of pushing one per character, and `carryState` so the trail
+  // riding in router state survives the rewrite while the one-shot
+  // `restoreScroll` does not (re-arming it per keystroke would snap the
+  // grid back to wherever Back had landed).
+  const writeParams = useCallback(
+    (mutate: (next: URLSearchParams) => void) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          mutate(next);
+          return next;
+        },
+        { replace: true, state: carryState(location.state) },
+      );
+    },
+    [setSearchParams, location.state],
+  );
 
   const [tab, setTab] = useState<LibraryTab>(() =>
     readStored<LibraryTab>(LS_TAB, ["all", "series", "movies"], "all"),
@@ -269,8 +298,19 @@ function HomePage() {
     visibleItems;
 
   // Page-level search. Filters the library grid; the Airing rail steps aside
-  // while a query is active so matches are the only thing on screen.
-  const [query, setQuery] = useState("");
+  // while a query is active so matches are the only thing on screen. No `q`
+  // means no search, and an empty box drops the param instead of leaving a
+  // bare `?q=` behind, so the resting Library URL stays `#/`.
+  const query = searchParams.get("q") ?? "";
+  const setQuery = useCallback(
+    (next: string) => {
+      writeParams((p) => {
+        if (next.trim() === "") p.delete("q");
+        else p.set("q", next);
+      });
+    },
+    [writeParams],
+  );
   const searchedItems = useMemo(() => {
     const q = query.trim().toLocaleLowerCase();
     if (!q) return activeItems;
@@ -394,10 +434,26 @@ function HomePage() {
   useGridFlipReorder(gridRef, orderKey);
 
   const airingTotalPages = Math.max(1, Math.ceil(airing.length / AIRING_PAGE_SIZE));
-  // Reset page if the airing list shrinks below the current page.
-  useEffect(() => {
-    if (airingPage >= airingTotalPages) setAiringPage(0);
-  }, [airingPage, airingTotalPages]);
+  // `p` is the zero-based page index, absent when we're on the first page.
+  // Clamped on read rather than corrected by an effect: the value arrives
+  // from a URL the user can edit or from a trail entry written before the
+  // airing list shrank, and clamping keeps that from rendering an empty
+  // carousel without a setState-in-effect that could re-trigger itself.
+  const airingPage = useMemo(() => {
+    const raw = Number.parseInt(searchParams.get("p") ?? "", 10);
+    if (!Number.isFinite(raw) || raw <= 0) return 0;
+    return Math.min(raw, airingTotalPages - 1);
+  }, [searchParams, airingTotalPages]);
+
+  const setAiringPage = useCallback(
+    (next: number) => {
+      writeParams((p) => {
+        if (next <= 0) p.delete("p");
+        else p.set("p", String(next));
+      });
+    },
+    [writeParams],
+  );
 
   const airingPageItems = airing.slice(
     airingPage * AIRING_PAGE_SIZE,
@@ -462,7 +518,7 @@ function HomePage() {
             </p>
           </div>
           {hasLibrary ? (
-            <SearchBar onSearch={setQuery} placeholder="Search your library…" />
+            <SearchBar value={query} onSearch={setQuery} placeholder="Search your library…" />
           ) : null}
         </div>
       }
@@ -477,7 +533,7 @@ function HomePage() {
               <button
                 type="button"
                 className="airing-pager-btn"
-                onClick={() => setAiringPage((p) => Math.max(0, p - 1))}
+                onClick={() => setAiringPage(Math.max(0, airingPage - 1))}
                 disabled={airingPage === 0}
                 aria-label="Previous page"
               >
@@ -489,7 +545,7 @@ function HomePage() {
               <button
                 type="button"
                 className="airing-pager-btn"
-                onClick={() => setAiringPage((p) => Math.min(airingTotalPages - 1, p + 1))}
+                onClick={() => setAiringPage(Math.min(airingTotalPages - 1, airingPage + 1))}
                 disabled={airingPage >= airingTotalPages - 1}
                 aria-label="Next page"
               >

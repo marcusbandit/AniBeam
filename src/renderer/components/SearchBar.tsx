@@ -1,14 +1,28 @@
-import { useState, useRef, useEffect } from 'react';
+import { useRef, useEffect } from 'react';
 import { Search, X } from 'lucide-react';
 
 interface SearchBarProps {
+  /**
+   * The current query. Fully controlled: HomePage parks the search text in
+   * the URL so the browsing trail restores it, and a mirrored copy in here
+   * would be a second source of truth free to drift out of sync with it.
+   */
+  value: string;
   onSearch: (query: string) => void;
   placeholder?: string;
 }
 
-function SearchBar({ onSearch, placeholder = 'Search…' }: SearchBarProps) {
-  const [query, setQuery] = useState('');
+function SearchBar({ value, onSearch, placeholder = 'Search…' }: SearchBarProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // The listener only ever needs the LATEST onSearch, and its identity now
+  // changes on every keystroke (it writes through the query string). Holding
+  // it in a ref keeps the window listener registered once instead of being
+  // torn down and rebuilt per character.
+  const onSearchRef = useRef(onSearch);
+  useEffect(() => {
+    onSearchRef.current = onSearch;
+  }, [onSearch]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -24,24 +38,20 @@ function SearchBar({ onSearch, placeholder = 'Search…' }: SearchBarProps) {
         inputRef.current?.focus();
       }
       if (e.key === 'Escape' && document.activeElement === inputRef.current) {
-        setQuery('');
-        onSearch('');
+        onSearchRef.current('');
         inputRef.current?.blur();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onSearch]);
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setQuery(value);
-    onSearch(value);
+    onSearch(e.target.value);
   };
 
   const handleClear = () => {
-    setQuery('');
     onSearch('');
     inputRef.current?.focus();
   };
@@ -54,12 +64,12 @@ function SearchBar({ onSearch, placeholder = 'Search…' }: SearchBarProps) {
         type="text"
         className="library-search-input"
         placeholder={placeholder}
-        value={query}
+        value={value}
         onChange={handleChange}
         spellCheck={false}
         autoComplete="off"
       />
-      {query ? (
+      {value ? (
         <button
           className="library-search-clear"
           onClick={handleClear}
