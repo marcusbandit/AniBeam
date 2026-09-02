@@ -12,6 +12,7 @@
     "verify:logger": "bun --bun scripts/verify-logger.mjs",
     "verify:mal-purge": "bun --bun scripts/verify-mal-purge.mjs",
     "verify:metadata-matcher": "bun --bun scripts/verify-metadata-matcher.mjs",
+    "verify:metadata-link": "bun --bun scripts/verify-metadata-link.mjs",
     "verify:motion": "bun --bun scripts/verify-motion.mjs",
     "verify:probe": "bun --bun scripts/verify-probe-parser.mjs",
     "verify:transcode-cancel": "bun --bun scripts/verify-transcode-cancel.mjs",
