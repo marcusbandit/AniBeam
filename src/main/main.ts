@@ -1353,6 +1353,14 @@ ipcMain.handle('anilist:search', async (_event, query: string, limit?: number) =
   }
 });
 
+// A pasted MyAnimeList link carries only a MAL id. AniList's Media query
+// accepts idMal as a filter, so this is one cheap lookup and the apply then
+// runs through the normal AniList path. MAL itself is never queried.
+ipcMain.handle('anilist:resolve-mal-id', async (_event, malId: unknown) => {
+  if (typeof malId !== 'number' || !Number.isInteger(malId) || malId <= 0) return null;
+  return anilistHandler.resolveAnilistIdByMal(malId);
+});
+
 ipcMain.handle('franchise:graph', async (_event, anilistId: number) => {
   if (typeof anilistId !== 'number' || !Number.isFinite(anilistId)) return null;
   try {

@@ -128,6 +128,8 @@ export interface ElectronAPI {
     anilistId: number,
     seasonNumber?: number | null,
   ) => Promise<{ ok: boolean; reason?: string }>;
+  /** Maps a MyAnimeList id to its AniList id, or null when AniList has no entry for it. */
+  resolveAnilistIdByMal: (malId: number) => Promise<number | null>;
 
   // The same pair against TMDB, for films and shows that aren't anime and so
   // have no AniList entry to match. Search rejects with 'no-api-key' when the
@@ -456,6 +458,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   tmdbSetApiKey: (key: string) => ipcRenderer.invoke('tmdb:set-key', key),
   applyAnilistMatch: (seriesId: string, anilistId: number, seasonNumber?: number | null) =>
     ipcRenderer.invoke('metadata:apply-anilist-match', seriesId, anilistId, seasonNumber ?? null),
+  resolveAnilistIdByMal: (malId: number) => ipcRenderer.invoke('anilist:resolve-mal-id', malId),
   
   // Image cache
   getImageCacheStats: () => ipcRenderer.invoke('get-image-cache-stats'),
