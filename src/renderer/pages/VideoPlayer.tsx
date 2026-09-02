@@ -5,6 +5,8 @@ import { useMetadata, type FileEpisode } from '../hooks/useMetadata.js';
 import { useLocalStorage, useLocalStorageRecord } from '../hooks/useLocalStorage';
 import { useNavTrail } from '../hooks/useNavTrail';
 import { useMediaSession, useBlobUrl, type MediaSessionSpec } from '../hooks/useMediaSession';
+import { useFrameStep } from '../hooks/useFrameStep';
+import { estimatedFrameIndex, formatTimeMs } from '../../shared/frameStep';
 import { progressId, extraProgressToken, readProgress, writeProgress, recordEpisodeCompleted, RESUME_HEAD_SKIP, RESUME_TAIL_SKIP } from '../utils/playbackProgress';
 import ExternalPlayPrompt from '../components/ExternalPlayPrompt';
 import { friendlyExtraTitle, extraCode } from '../../shared/extraLabels';
@@ -1559,6 +1561,29 @@ function VideoPlayer() {
   const autoMarkedRef = useRef<string>('');
   const [trackerToast, setTrackerToast] = useState<string | null>(null);
   const trackerToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Frame-step readout (top-left): the exact timestamp and frame number of
+  // the frame on screen after a , or . press. Lingers briefly after the last
+  // step so holding the key keeps it on, and drops the moment playback
+  // resumes.
+  const [frameHud, setFrameHud] = useState<{ pts: number; frame: number } | null>(null);
+  const frameHudTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hideFrameHud = useCallback(() => {
+    if (frameHudTimer.current) clearTimeout(frameHudTimer.current);
+    frameHudTimer.current = null;
+    setFrameHud(null);
+  }, []);
+  const { step: stepFrame } = useFrameStep(videoRef, (pts, frameDuration) => {
+    setFrameHud({ pts, frame: estimatedFrameIndex(pts, frameDuration) });
+    if (frameHudTimer.current) clearTimeout(frameHudTimer.current);
+    frameHudTimer.current = setTimeout(() => {
+      frameHudTimer.current = null;
+      setFrameHud(null);
+    }, 1200);
+  }, videoSrc);
+  useEffect(() => () => {
+    if (frameHudTimer.current) clearTimeout(frameHudTimer.current);
+  }, []);
   // When the auto-mark fires on the final episode, we surface a persistent
   // "Rate this show" prompt above the auto-dismiss toast. Null = not shown.
   const [ratingPrompt, setRatingPrompt] = useState<null | { seriesKey: string }>(null);
@@ -1727,7 +1752,7 @@ function VideoPlayer() {
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    const onPlay = () => setIsPlaying(true);
+    const onPlay = () => { setIsPlaying(true); hideFrameHud(); };
     const onPause = () => setIsPlaying(false);
     const onTime = () => setCurrentTime(video.currentTime);
     const onMeta = () => {
@@ -1763,7 +1788,7 @@ function VideoPlayer() {
       video.removeEventListener('durationchange', onMeta);
       video.removeEventListener('volumechange', onVol);
     };
-  }, [videoSrc]);
+  }, [videoSrc, hideFrameHud]);
 
   // Set initial volume on mount
   useEffect(() => {
@@ -1834,11 +1859,21 @@ function VideoPlayer() {
       // The handled branches all preventDefault(), suppressing that native step.
       const isRange = tag === 'input' && (el as HTMLInputElement).type === 'range';
       if ((tag === 'input' && !isRange) || tag === 'textarea') return;
-      // Suppress OS key auto-repeat. Every shortcut here is meant to fire
-      // once per press - without this, holding Arrow Right floods <video>
-      // with overlapping currentTime assignments; Chromium cancels the
-      // in-flight seek for each new one and the picture freezes, then
-      // snaps to a compounded target. Feels exactly like "jittery and
+      // Frame stepping sits above the auto-repeat guard on purpose: holding
+      // . or , keeps stepping, and the stepper serialises the presses against
+      // the video's own seek/paint cycle (at most a few queued, opposite
+      // directions cancel), so nothing compounds. No showChrome() here: the
+      // frame readout is the feedback and the picture is the point.
+      if ((e.key === '.' || e.key === ',') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        stepFrame(e.key === '.' ? 1 : -1);
+        return;
+      }
+      // Suppress OS key auto-repeat for everything else. Those shortcuts are
+      // meant to fire once per press - without this, holding Arrow Right
+      // floods <video> with overlapping currentTime assignments; Chromium
+      // cancels the in-flight seek for each new one and the picture freezes,
+      // then snaps to a compounded target. Feels exactly like "jittery and
       // doesn't actually work" even though the file itself is fine.
       if (e.repeat) return;
       if (e.key === ' ' || e.key === 'k') {
@@ -1906,7 +1941,7 @@ function VideoPlayer() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [showChrome, skipTimes, navigate, seriesId]);
+  }, [showChrome, skipTimes, navigate, seriesId, stepFrame]);
 
   // Close the shortcut legend on Escape. A separate listener so the main
   // keyboard handler above stays exactly as it is (it never handled Escape).
@@ -2422,6 +2457,12 @@ function VideoPlayer() {
       {trackerToast && (
         <div className="player-toast" role="status">{trackerToast}</div>
       )}
+      {frameHud && (
+        <div className="player-framestep" role="status" aria-live="polite">
+          <span className="player-framestep__time">{formatTimeMs(frameHud.pts)}</span>
+          <span className="player-framestep__frame">frame {frameHud.frame.toLocaleString()}</span>
+        </div>
+      )}
       {subsWait && (
         <div className="player-subs-wait" role="alert" data-liquid-glass="" data-lg-bezel="10">
           <span
@@ -2673,6 +2714,8 @@ function VideoPlayer() {
                 ['Space / K', 'Play / pause'],
                 ['←', 'Back 5s'],
                 ['→', 'Forward 5s'],
+                [',', 'Previous frame'],
+                ['.', 'Next frame'],
                 ['Ctrl →', 'Skip intro/outro, else forward 90s'],
                 ['M', 'Mute / unmute'],
                 ['F', 'Fullscreen'],

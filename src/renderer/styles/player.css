@@ -350,6 +350,45 @@
   word-break: break-word;
   overflow-wrap: anywhere;
 }
+/* Frame-step readout: the exact timestamp and frame number of the frame on
+   screen after a , or . press. Top-right, on the header's own padding line,
+   because that corner is free in every state: Back and the titles sit on the
+   left, the toasts and prompts take the centre. Same surface as the toast. */
+.player-framestep {
+  position: absolute;
+  top: 0.85rem;
+  right: 1.25rem;
+  z-index: 9;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  background: var(--scrim);
+  backdrop-filter: blur(var(--scrim-blur));
+  -webkit-backdrop-filter: blur(var(--scrim-blur));
+  color: var(--text-primary);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-pill);
+  padding: 0.5rem 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  box-shadow: var(--shadow-md);
+  animation: frameStepIn 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+.player-framestep__time { color: var(--text-primary); }
+.player-framestep__frame {
+  color: var(--text-secondary);
+  padding-left: 0.75rem;
+  border-left: 1px solid var(--border-hover);
+}
+@keyframes frameStepIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 /* Subtitle hold notice. Persistent (unlike the toast) while subtitles are
    loading or failing; playback is paused underneath it until subs arrive or
    the user explicitly plays without them. */
