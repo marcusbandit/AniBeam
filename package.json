@@ -30,6 +30,7 @@
     "verify:subtitle-log": "bun --bun scripts/verify-subtitle-log.mjs",
     "verify:now-playing": "bun --bun scripts/verify-now-playing.mjs",
     "verify:frame-step": "bun --bun scripts/verify-frame-step.mjs",
+    "verify:frame-step-chromium": "bun --bun scripts/verify-frame-step-chromium.mjs",
     "logs:subs": "bun scripts/tail-subtitle-log.mjs",
     "preview": "vite preview",
     "start": "bun run typecheck && electron-forge start",
