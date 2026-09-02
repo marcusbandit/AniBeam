@@ -28,6 +28,7 @@
     "verify:relative-time": "bun --bun scripts/verify-relative-time.mjs",
     "verify:subtitle-support": "bun --bun scripts/verify-subtitle-support.mjs",
     "verify:subtitle-log": "bun --bun scripts/verify-subtitle-log.mjs",
+    "verify:now-playing": "bun --bun scripts/verify-now-playing.mjs",
     "logs:subs": "bun scripts/tail-subtitle-log.mjs",
     "preview": "vite preview",
     "start": "bun run typecheck && electron-forge start",

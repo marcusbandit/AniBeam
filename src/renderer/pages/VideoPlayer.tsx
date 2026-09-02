@@ -4,9 +4,11 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useMetadata, type FileEpisode } from '../hooks/useMetadata.js';
 import { useLocalStorage, useLocalStorageRecord } from '../hooks/useLocalStorage';
 import { useNavTrail } from '../hooks/useNavTrail';
+import { useMediaSession, useBlobUrl, type MediaSessionSpec } from '../hooks/useMediaSession';
 import { progressId, extraProgressToken, readProgress, writeProgress, recordEpisodeCompleted, RESUME_HEAD_SKIP, RESUME_TAIL_SKIP } from '../utils/playbackProgress';
 import ExternalPlayPrompt from '../components/ExternalPlayPrompt';
 import { friendlyExtraTitle, extraCode } from '../../shared/extraLabels';
+import { broadcastShowTitle, nowPlayingLines } from '../../shared/nowPlaying';
 import { derivePlaybackSubtitleState, pickDefaultSubtitleStream } from '../../shared/subtitleSupport';
 import type { TranscodeEncoderStatus } from '../../types/electron';
 import { ScorePicker, Tooltip } from '../components/primitives';
@@ -1977,6 +1979,52 @@ function VideoPlayer() {
     // skipResume = true forces a fresh start regardless of saved position.
     navigate(`/player/${seriesId}/${epNum}`, { state: keep({ skipResume: true }), replace: false });
   };
+
+  // Now-playing broadcast. navigator.mediaSession feeds Chromium's MPRIS
+  // bridge, so Linux media widgets show these two lines: title carries the
+  // episode name (or the show when the episode has none), artist carries the
+  // show and episode number. The poster goes out as artwork. Position and
+  // duration reach MPRIS from the <video> element on their own. Only the
+  // series-level episodes[] title counts as a name; the filename-derived
+  // episodeData.title never goes out. The cached poster has to travel as a
+  // blob: URL (see useBlobUrl); the remote poster covers the gap until the
+  // blob is ready and the case where there is no local copy.
+  const posterBlobUrl = useBlobUrl(
+    series?.posterLocal ? `media://${encodeURIComponent(series.posterLocal)}` : null,
+  );
+  const nowPlaying: MediaSessionSpec | null = (() => {
+    if (!episodeData || !series) return null;
+    const showTitle = broadcastShowTitle(series);
+    const extraLabel = isExtra
+      ? friendlyExtraTitle(episodeData.kind, episodeData.extraIndex, episodeData.extraVariant, episodeData.rawLabel)
+      : null;
+    const episodeTitle = isExtra
+      ? null
+      : (series.episodes ?? []).find((e) => e.episodeNumber === epNumNumeric)?.title ?? null;
+    const artworkUrl = posterBlobUrl ?? series.poster ?? null;
+    const { title, artist } = nowPlayingLines({
+      showTitle,
+      episodeNumber: isExtra || !Number.isFinite(epNumNumeric) ? null : epNumNumeric,
+      episodeTitle,
+      extraLabel,
+    });
+    return {
+      title,
+      artist,
+      artworkUrl,
+      // togglePlay owns the subtitle-hold override, so a media-key play goes
+      // through it rather than calling video.play() directly.
+      onPlay: () => { if (videoRef.current?.paused) togglePlay(); },
+      onPause: () => { videoRef.current?.pause(); },
+      onPrevious: prevEp != null ? () => goToEpisode(prevEp) : null,
+      onNext: nextEp != null ? () => goToEpisode(nextEp) : null,
+      onSeekTo: (seconds: number) => {
+        const video = videoRef.current;
+        if (video) video.currentTime = seconds;
+      },
+    };
+  })();
+  useMediaSession(nowPlaying);
 
   const toggleMute = () => {
     const video = videoRef.current;
