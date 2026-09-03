@@ -290,7 +290,33 @@ export interface ElectronAPI {
   getFranchiseGraph: (anilistId: number) => Promise<FranchiseGraph | null>;
   getFranchiseCrawlProgress: () => Promise<{ total: number; crawled: number }>;
   onFranchiseStoreUpdated: (handler: () => void) => () => void;
+
+  // Export: the last feature Electron ships (see the export ticket).
+  // Unticked writes sources and every series' match; ticked adds accounts,
+  // the TMDB key, history and preferences. Main reads config.json,
+  // metadata.json, trackers.json and view-history.json itself; the renderer
+  // only forwards its localStorage state, since that's the one slice main
+  // has no other way to reach.
+  writeExport: (includePrivate: boolean, rendererState: RendererExportState) => Promise<ExportWriteResult>;
 }
+
+// The renderer's own localStorage state, forwarded verbatim (raw strings, as
+// localStorage stores them) so main can fold it into a full export without
+// the renderer knowing anything about the export format itself.
+export interface RendererExportState {
+  videoProgress: string | null;      // 'video-progress-v1'
+  videoLastEpisode: string | null;   // 'video-last-ep-v1'
+  titleLanguage: string | null;      // 'anibeam.titleLanguage'
+  libraryTab: string | null;         // 'anibeam.libraryTab'
+  librarySortKey: string | null;     // 'anibeam.librarySortKey'
+  librarySortDir: string | null;     // 'anibeam.librarySortDir'
+  feedSort: string | null;           // 'anibeam.feedSort'
+}
+
+export type ExportWriteResult =
+  | { ok: true; path: string }
+  | { ok: false; reason: 'canceled' }
+  | { ok: false; reason: 'error'; message: string };
 
 export interface ViewHistoryEntry {
   /** ms-since-epoch the user crossed the watched-threshold for the session. */
@@ -577,4 +603,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('franchise:store-updated', listener);
     return () => ipcRenderer.removeListener('franchise:store-updated', listener);
   },
+
+  // Export
+  writeExport: (includePrivate: boolean, rendererState: RendererExportState) =>
+    ipcRenderer.invoke('export:write', includePrivate, rendererState),
 });

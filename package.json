@@ -32,6 +32,7 @@
     "verify:now-playing": "bun --bun scripts/verify-now-playing.mjs",
     "verify:frame-step": "bun --bun scripts/verify-frame-step.mjs",
     "verify:frame-step-chromium": "bun --bun scripts/verify-frame-step-chromium.mjs",
+    "verify:export": "bun --bun scripts/verify-export.mjs",
     "logs:subs": "bun scripts/tail-subtitle-log.mjs",
     "preview": "vite preview",
     "start": "bun run typecheck && electron-forge start",

@@ -34,6 +34,7 @@ import { registerTrackerIpc } from './ipc/tracker';
 import { registerShellIpc } from './ipc/shell';
 import { registerSubscriptionsIpc } from './ipc/subscriptions';
 import { registerSubtitleLogIpc } from './ipc/subtitleLog';
+import { registerExportIpc } from './ipc/export';
 import { initSubtitleDebugLog } from './services/subtitleDebugLog';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1088,6 +1089,7 @@ app.whenReady().then(async () => {
   registerShellIpc(getMainWindow);
   registerSubscriptionsIpc();
   registerSubtitleLogIpc();
+  registerExportIpc(getMainWindow);
 
   // Probe-ready and transcode events share the same status update plumbing.
   // The probe callback also tees into maybeEnqueueTranscode whenever a file

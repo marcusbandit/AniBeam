@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useNavTrail } from '../hooks/useNavTrail';
 import { useMetadata } from '../hooks/useMetadata';
 import { useHiddenShows } from '../contexts/HiddenShowsContext';
-import { Folder, RefreshCw, Plus, Trash2, Film, Rss, ChevronRight, Square, ExternalLink } from 'lucide-react';
+import { Folder, RefreshCw, Plus, Trash2, Film, Rss, ChevronRight, Square, ExternalLink, Download } from 'lucide-react';
 import TrackersSection from './TrackersSection';
 import { Page, Section, Inline, Tooltip, SegmentedSwitch } from './primitives';
 
@@ -78,6 +78,11 @@ function SettingsTab() {
   const [tmdbBusy, setTmdbBusy] = useState(false);
   const [tmdbNote, setTmdbNote] = useState<string | null>(null);
 
+  // Export (see the export ticket: anibeam-export v1).
+  const [exportPrivate, setExportPrivate] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportNote, setExportNote] = useState<string | null>(null);
+
 
   useEffect(() => {
     loadFolderSources();
@@ -105,6 +110,34 @@ function SettingsTab() {
       setTmdbNote(err instanceof Error ? err.message : 'Could not save that key.');
     } finally {
       setTmdbBusy(false);
+    }
+  }
+
+  async function handleExport(): Promise<void> {
+    setExportBusy(true);
+    setExportNote(null);
+    try {
+      const rendererState = {
+        videoProgress: localStorage.getItem('video-progress-v1'),
+        videoLastEpisode: localStorage.getItem('video-last-ep-v1'),
+        titleLanguage: localStorage.getItem('anibeam.titleLanguage'),
+        libraryTab: localStorage.getItem('anibeam.libraryTab'),
+        librarySortKey: localStorage.getItem('anibeam.librarySortKey'),
+        librarySortDir: localStorage.getItem('anibeam.librarySortDir'),
+        feedSort: localStorage.getItem('anibeam.feedSort'),
+      };
+      const result = await window.electronAPI.writeExport(exportPrivate, rendererState);
+      if (result.ok) {
+        setExportNote(`Saved to ${result.path}`);
+      } else if (result.reason === 'canceled') {
+        setExportNote(null);
+      } else {
+        setExportNote(result.message ?? 'Could not write the export.');
+      }
+    } catch (err) {
+      setExportNote(err instanceof Error ? err.message : 'Could not write the export.');
+    } finally {
+      setExportBusy(false);
     }
   }
 
@@ -591,6 +624,42 @@ function SettingsTab() {
             <button className="btn btn-danger" onClick={handleClearAll} disabled={scanning}>
               <Trash2 size={14} />
               <span>Clear all</span>
+            </button>
+          </div>
+        </div>
+      </Section>
+
+      <Section title="Export">
+        <p className="section-sub">
+          Writes your library to a JSON file the native app can import later. Unticked: folder
+          sources and every series' match. Ticked: also tracker logins, API keys, watch history,
+          and preferences, all in plain text.
+        </p>
+        <div className="pref-list">
+          <div className="pref-row">
+            <div>
+              <div className="pref-label">Include private data</div>
+              <div className="pref-help">Tracker logins, API keys, watch history, preferences.</div>
+            </div>
+            <Toggle
+              on={exportPrivate}
+              onChange={setExportPrivate}
+              ariaLabel="Include private data in export"
+            />
+          </div>
+          <div className="pref-row">
+            <div>
+              <div className="pref-label">Export library</div>
+              <div className="pref-help">
+                {exportPrivate
+                  ? 'Writes anibeam-export-full-<date>.json.'
+                  : 'Writes anibeam-export-<date>.json.'}
+                {exportNote && <> <span className="pref-note">{exportNote}</span></>}
+              </div>
+            </div>
+            <button className="btn btn-secondary" onClick={() => void handleExport()} disabled={exportBusy}>
+              <Download size={14} />
+              <span>{exportBusy ? 'Exporting…' : 'Export'}</span>
             </button>
           </div>
         </div>

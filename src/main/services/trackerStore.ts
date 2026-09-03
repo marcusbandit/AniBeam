@@ -264,6 +264,17 @@ export async function getAccessToken(provider: TrackerProvider): Promise<string 
   }
 }
 
+export async function getRefreshToken(provider: TrackerProvider): Promise<string | null> {
+  const acct = await getAccount(provider);
+  if (!acct || !acct.refreshTokenCipher) return null;
+  try {
+    return decrypt(acct.refreshTokenCipher, acct.cipherEncrypted);
+  } catch (err) {
+    logger.error('tracker', `failed to decrypt ${provider} refresh token: ${(err as Error).message}`);
+    return null;
+  }
+}
+
 export async function setClientId(provider: TrackerProvider, clientId: string): Promise<void> {
   const store = await loadStore();
   store.clientIds[provider] = clientId.trim();

@@ -7,6 +7,7 @@ export type LogStage =
   | 'watch'
   | 'probe'
   | 'tracker'
+  | 'export'
   | 'system';
 
 export interface LogEvent {
