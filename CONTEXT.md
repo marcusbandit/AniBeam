@@ -73,3 +73,17 @@ _Avoid_: secrets, credentials, settings
 **Import**:
 The job that merges an export into the library. The file wins for matches, flags, accounts and preferences; the newer timestamp wins for history; nothing is deleted.
 _Avoid_: restore, load, sync
+
+### Route
+
+**Parity checklist**:
+The list of behaviours the Electron app has that the native shell must reproduce, in build order. It lives on its ticket and the spec lifts it.
+_Avoid_: feature list, backlog, roadmap, scope
+
+**Switch line**:
+The first part of the parity checklist. When every item in it is green, the launcher entry points at the native binary and Electron stays installed beside it.
+_Avoid_: MVP, daily-driver build, phase 2 exit
+
+**Retire line**:
+The rest of the parity checklist. When it is green too, Electron is deleted.
+_Avoid_: full parity, phase 3 gate, the remainder
