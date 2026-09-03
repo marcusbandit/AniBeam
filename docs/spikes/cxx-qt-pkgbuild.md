@@ -8,7 +8,7 @@ Code: `spikes/cxx-qt-pkgbuild/` on this branch. One Cargo crate and no CMake any
 
 Yes. `cargo build --release` links the binary, `makepkg` turns it into `anibeam-spike-0.1.0-1-x86_64.pkg.tar.zst`, and the desktop entry starts it from a launcher. Nothing needed CMake. Two things `find_package(MpvQt)` used to supply silently now sit in build.rs by hand: the MpvQt include directory and the two link lines. One PKGBUILD option is mandatory: `options=(!lto)`. makepkg's default LTO flag reaches g++ through cc-rs, and the lld linker that cxx-qt-build forces cannot read GCC LTO objects, so the link ends with every C++ bridge symbol undefined.
 
-Two steps waited on the owner's sudo when this was written: the `pacman -U` of the built package and the launch from the entry under `/usr/share/applications`. The install is staged as a `sudo_pending` script. The same entry placed under the home directory started the app through `gtk-launch`, the path a launcher takes, so what remains unproven is the pacman transaction itself and nothing about the binary or the entry.
+`pacman -U` installed the package on 2026-09-04, three files: the binary, the entry and the icon. `gtk-launch anibeam-spike` against the entry under `/usr/share/applications` then started `/usr/bin/anibeam-spike`: the window mapped 818 ms after exec, the journal carried the same five ticks and the mpv version, and the portal app-id complaint from the bare run did not appear. Before the install, the same entry copied under the home directory had already started the app the same way; that copy was removed so it could not shadow the package's.
 
 ## The crate
 
