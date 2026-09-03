@@ -2,6 +2,8 @@
 
 Research for ticket #7, part of the native line map (#2). Written 2026-09-03 against xdg-desktop-portal 1.22.1, xdg-desktop-portal-gtk 1.15.3, xdg-desktop-portal-hyprland 1.4.1, Hyprland 0.56.1, Qt 6.11.1, qt6ct 0.11, caelestia-shell 2.2.0 and caelestia-cli 1.1.2 on the owner's Arch desktop. Vocabulary follows CONTEXT.md: the core is the Rust crate, the shell is the Qt app, and a colour change reaches the shell as an event.
 
+> **Erratum, 2026-09-04.** The owner does not run caelestia. Their desktop shell is bandit shell (`~/banditshell`, their own Quickshell shell), on its `slate` theme, and it writes no colour file. The caelestia packages, `scheme.json`, gtk.css and qt6ct palette this document reads are leftovers that nothing launches. Section 4 and every conclusion built on scheme.json or matugen are void. The theme model ticket (#14) settled the source instead: the terminal palette, read from the terminal's own config. Sections 1 to 3 and 5 stand.
+
 ## Summary
 
 1. The portal is the only cross-desktop standard, and it carries three keys under `org.freedesktop.appearance`: `color-scheme` (0 no preference, 1 dark, 2 light), `accent-color` (three sRGB doubles in 0..1) and `contrast` (0 or 1). No standard anywhere exposes a background, surface or text colour. The core reads these itself over D-Bus with `ReadOne` and listens to `SettingChanged`; it does not go through Qt for them.
