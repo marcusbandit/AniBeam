@@ -1,6 +1,6 @@
 # Spike: libmpv renders inside a QML window on the NVIDIA desktop
 
-Resolves wayfinder ticket #9 on the native line map (#2). Run on 2026-09-03 on banditbox: Arch, Hyprland 0.56.1, RTX 3090 with nvidia-utils 610.43.03, qt6-base and qt6-declarative 6.11.1, mpv 0.41.0 (libmpv client API 2.5), mpvqt 1.2.0-1 installed from extra for this spike. The AMD laptop was offline all session; its half is a separate ticket.
+Resolves wayfinder ticket #9 on the native line map (#2). Run on 2026-09-03 on banditbox: Arch, Hyprland 0.56.1, RTX 3090 with nvidia-utils 610.43.03, qt6-base and qt6-declarative 6.11.1, mpv 0.41.0 (libmpv client API 2.5), mpvqt 1.2.0-1 installed from extra for this spike. The AMD laptop was offline all session; its half is ticket #18, written up in [libmpv-qml-laptop.md](libmpv-qml-laptop.md).
 
 Code: `spikes/libmpv-qml/` on this branch. A C++ and CMake app, no Rust: one `MpvItem` subclass of `MpvAbstractItem` marked `QML_ELEMENT`, `QQuickWindow::setGraphicsApi(OpenGL)` before the application object, a second `MpvItem` in the corner as a seek preview, and a scripted 68 second sequence that logs observed mpv properties as JSON events instead of polling them.
 
@@ -77,7 +77,7 @@ While paused, `frame-step` unpauses, presents exactly one frame (time-pos advanc
 - `screenshot-to-file` and `screenshot-raw` on hwdec frames, above.
 - Presentation while occluded by a fullscreen window, above. A design point for the shell, not a blocker.
 - The VO timing properties (`vsync-*`, `display-fps`, `mistimed-frame-count`) are unavailable under the render API.
-- Not covered: the 144 Hz main monitor, a hidden regular workspace, `video-sync=display-resample`, and the AMD laptop (offline).
+- Not covered: the 144 Hz main monitor, a hidden regular workspace, `video-sync=display-resample`, and the AMD laptop (offline). The laptop write-up covers the hidden workspace.
 
 ## Environment notes for whoever reruns this
 

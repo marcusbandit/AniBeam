@@ -1,6 +1,7 @@
 # libmpv inside a Qt Quick window: throwaway spike
 
-Wayfinder ticket #9. Findings live in `docs/spikes/libmpv-qml.md`. This code is a probe, not a
+Wayfinder tickets #9 (NVIDIA desktop) and #18 (AMD laptop). Findings live in `docs/spikes/libmpv-qml.md` and
+`docs/spikes/libmpv-qml-laptop.md`. This code is a probe, not a
 starting point for the shell; it exists so the numbers in that document can be reproduced.
 
 Build (needs `mpvqt`, `qt6-declarative`, `cmake`, `ninja` from the Arch repos):
@@ -17,3 +18,7 @@ Run interactively (space pauses, `,` and `.` step frames, `f` toggles fullscreen
 window moves and screenshots used for the ticket and prints the observed events. Every event is a
 `SPIKE <tag> <json>` line on stdout; mpv's own verbose log goes to `mpv-player.log` and
 `mpv-preview.log` in the `--out` directory.
+
+`run-laptop.sh` is the same wrapper for the laptop (one monitor, no window moves; `QPA=xcb` and
+`RENDER_LOOP=basic` select the variants) and `occlude.sh` switches the workspace away and back to count
+the frames dropped while the window is hidden. Both expect the tree exported to `~/spike-libmpv`.
