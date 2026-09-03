@@ -74,3 +74,13 @@ HashRouter pages in `src/renderer/pages/` (Home, SeriesDetail, Feed, Watching, S
 - **App behavior must be self-contained** — no Hyprland windowrules, hyprctl, or other compositor coupling.
 - `vendor/extract-zip-shim/` works around a Node fd-slicer/zlib deadlock by shelling out to `unzip(1)` — leave it in place.
 - Persistence lives under Electron `userData/` (config.json, metadata.json, image-cache/ with 30-day expiry, transcode-cache/, franchise store); view history is renderer localStorage.
+
+## Agent skills
+
+### Issue tracker
+
+Issues, specs and wayfinder maps live in this repo's GitHub Issues, driven with `gh`. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` at the root and ADRs under `docs/adr/`. See `docs/agents/domain.md`.
