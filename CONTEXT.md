@@ -47,3 +47,29 @@ _Avoid_: complete, progress update, sync
 **Resume point**:
 The position playback restarts from the next time an episode opens. Not recorded for a session the player never reported on.
 _Avoid_: position, progress, bookmark
+
+### Library
+
+**Source**:
+A folder the core scans. Every series lives under exactly one source. A source whose path is missing is unavailable, not gone: it stays in the library and its series attach again when the path returns.
+_Avoid_: folder source, root, watch folder, library folder
+
+**Series**:
+One entry in the library: a show, which is a folder, or a film, which is a single file. The word covers films too, a wart inherited from the Electron line.
+_Avoid_: show, title, entry, anime, media
+
+**Match**:
+The link from a series to one provider record: AniList (carrying the MAL id when known), MAL alone, or TMDB. A series has at most one match. A match the user applied or imported is confirmed, and the auto-match sweep never replaces it.
+_Avoid_: mapping, source mapping, metadata link
+
+**Export**:
+The JSON file that carries a library out of one AniBeam and into another. A library export holds sources and series with their matches; a full export adds private data. The same file is the native app's backup.
+_Avoid_: backup, dump, migration file
+
+**Private data**:
+What the full export adds: tracker accounts and their tokens, API keys, history, preferences.
+_Avoid_: secrets, credentials, settings
+
+**Import**:
+The job that merges an export into the library. The file wins for matches, flags, accounts and preferences; the newer timestamp wins for history; nothing is deleted.
+_Avoid_: restore, load, sync
