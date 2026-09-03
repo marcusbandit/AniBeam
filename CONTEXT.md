@@ -74,6 +74,36 @@ _Avoid_: secrets, credentials, settings
 The job that merges an export into the library. The file wins for matches, flags, accounts and preferences; the newer timestamp wins for history; nothing is deleted.
 _Avoid_: restore, load, sync
 
+### Look
+
+**Token**:
+One named value the shell styles from. Every colour, size, radius and spacing in the shell is a token; nothing is set inline.
+_Avoid_: variable, style constant, CSS var
+
+**Terminal palette**:
+The sixteen ANSI colours plus foreground and background the user's terminal draws with, read from the terminal's own config. It is what the system colour source means by "the user's colours".
+_Avoid_: neofetch colours, system colours, Xresources, scheme.json
+
+**Colour source**:
+Where the colour tokens come from: the system, meaning the terminal palette and, failing that, the portal's scheme and accent, or a theme.
+_Avoid_: override, provider, colour mode
+
+**Theme**:
+A named palette file that fills the colour tokens, shipped with the app or dropped into the user's config directory. Two themes are chosen at a time, one per mode.
+_Avoid_: skin, colour scheme, style, look
+
+**Mode**:
+Dark or light. The setting adds system, which resolves to one of the two.
+_Avoid_: scheme, appearance, variant, colour-scheme
+
+**Accent**:
+The one colour that marks attention: selection, focus, the active item, progress.
+_Avoid_: highlight, primary, brand colour
+
+**Density**:
+The spacing setting: compact, normal or comfortable. It scales spacing, control heights and radii, never type or poster size.
+_Avoid_: scale, zoom, compact mode
+
 ### Route
 
 **Parity checklist**:
