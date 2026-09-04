@@ -1,5 +1,6 @@
 // A segmented switch: options in a sunken pill, the active one carried by a raised thumb
-// that follows with exponential smoothing.
+// that follows with exponential smoothing. Picking emits `picked`; the owner sets `index`,
+// so a binding on it survives.
 import QtQuick
 
 Corner {
@@ -68,7 +69,7 @@ Corner {
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: { root.index = index; root.picked(index) }
+                    onClicked: root.picked(index)
                 }
             }
         }

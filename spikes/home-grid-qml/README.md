@@ -17,8 +17,13 @@ the image cache) and the kitty config strictly read-only; nothing is written any
 - `qml/Corner.qml` is the one rounded-shape primitive, a G2 squircle with reach semantics; a
   poster is an `Image` painted through it with `ShapePath.fillItem`.
 - `qml/Card.qml`, `qml/Chip.qml`, `qml/Seg.qml`, `qml/Rail.qml` are the pieces; `qml/Main.qml`
-  is the page; `qml/KnobBar.qml` is the floating prototype bar. H hides the bar, Ctrl+K and /
-  focus the search, Ctrl+R re-reads the files, Ctrl+Q quits.
+  is the window with the page switch; `qml/KnobBar.qml` is the floating prototype bar. H hides
+  the bar, Ctrl+K and / focus the search, Ctrl+R re-reads the files, Ctrl+Q quits.
+- Second round: `qml/SettingsPage.qml` (Ctrl+, opens it; the Look section drives the same knobs
+  as the bar, the rest is fake state), `qml/StatusStrip.qml` and `qml/ActivityDrawer.qml` at the
+  foot of every page (click the strip or Ctrl+L, Escape closes), and the primitives they are
+  built from: `Switch`, `Button`, `Field`, `Dropdown`, `Swatches`, `SliderRow`, `SettingRow`,
+  `Section`. Feed, Watching and Metadata are a title only.
 - `themes/` holds the built-ins as verbatim tinted-theming base16 YAML plus the two AniBeam files.
 
 ## Presets and screenshots
@@ -30,7 +35,9 @@ Every knob can be set at launch, so a state can be captured unattended:
 Keys: `mode` (dark, light, system), `source` (system, theme), `dark` and `light` (theme slugs),
 `density` (compact, normal, comfortable), `poster` (px), `smoothing` (0 to 1), `base` (radius
 base px), `accent` (terminal slot 1 to 6), `lang` (jp, en), `knobs` (0 hides the bar), `sort`
-(0 to 4), `tab` (0 to 2).
+(0 to 4), `tab` (0 to 2), `page` (library, feed, watching, metadata, settings), `drawer` (open),
+`job` (1 fakes a running scan on the strip), `scroll` (px down the settings page), `confirm`
+(1 opens the first source's Remove question).
 
 `scripts/shoot.sh <name> <preset> [keep]` launches a preset, moves the window to DP-1's workspace
 6 on this desktop, captures it with grim into `captures/` (or `$OUT`) and closes it unless `keep`

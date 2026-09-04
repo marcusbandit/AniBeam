@@ -18,7 +18,7 @@ Item {
     property int posterWidth: 180
     property real cornerSmoothing: 0.6
     property real cornerBase: 14
-    property int accentSlot: 4
+    property int accentSlot: 4               // terminal slot 1 to 6; 7 is the derived orange
 
     // Ratios: mixes of bg toward text (negative: away from text)
     property real stepSunken: 0.03
@@ -46,6 +46,7 @@ Item {
     readonly property int motionNormal: 200
     readonly property int motionSlow: 320
     readonly property real controlHeight: space(8)
+    readonly property real disabledOpacity: 0.45
 
     // Mode
     readonly property string terminalMode: palettes.terminal ? (lightness(hexToRgb(palettes.terminal.background)) < 0.5 ? "dark" : "light") : ""
@@ -61,6 +62,7 @@ Item {
     readonly property color surface: tokens.surface
     readonly property color surfaceRaised: tokens.surfaceRaised
     readonly property color surfaceSunken: tokens.surfaceSunken
+    readonly property color surfacePressed: tokens.surfacePressed
     readonly property color line: tokens.line
     readonly property color lineStrong: tokens.lineStrong
     readonly property color text: tokens.text
@@ -69,6 +71,7 @@ Item {
     readonly property color accent: tokens.accent
     readonly property color accentText: tokens.accentText
     readonly property color accentSoft: tokens.accentSoft
+    readonly property color redSoft: tokens.redSoft
     readonly property color focusRing: tokens.focus
     readonly property color red: tokens.red
     readonly property color orange: tokens.orange
@@ -97,6 +100,14 @@ Item {
         return { r: parseInt(h.substr(0, 2), 16) / 255, g: parseInt(h.substr(2, 2), 16) / 255, b: parseInt(h.substr(4, 2), 16) / 255 }
     }
     function q(c, a) { return Qt.rgba(c.r, c.g, c.b, a === undefined ? 1 : a) }
+    // A colour t of the way from a to b, alpha included, so a transparent rest state works;
+    // takes Qt colours as well as the rgb records
+    function tone(a, b, t) {
+        t = Math.max(0, Math.min(1, t))
+        var aa = a.a === undefined ? 1 : a.a, ba = b.a === undefined ? 1 : b.a
+        var m = mix(a, b, t)
+        return Qt.rgba(m.r, m.g, m.b, aa + (ba - aa) * t)
+    }
     function mix(a, b, t) { return { r: a.r + (b.r - a.r) * t, g: a.g + (b.g - a.g) * t, b: a.b + (b.b - a.b) * t } }
     function lightness(c) { return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b }
     function lin(v) { return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4) }
@@ -180,20 +191,20 @@ Item {
                 fg = m === "dark" ? hexToRgb("#e4e7ee") : hexToRgb("#1b1e26")
                 C = C.map(function(c, i) { return i === 0 || i === 7 || i === 8 || i === 15 ? c : retone(c, m) })
             }
-            t.surface = mix(bg, fg, sSurface); t.surfaceRaised = mix(bg, fg, sRaised)
+            t.surface = mix(bg, fg, sSurface); t.surfaceRaised = mix(bg, fg, sRaised); t.surfacePressed = mix(bg, fg, sRaised * 1.5)
             t.line = mix(bg, fg, sLine * contrastMul); t.lineStrong = mix(bg, fg, sLineStrong * contrastMul)
             t.textFaint = mix(bg, fg, sFaint * contrastMul); t.textDim = mix(bg, fg, sDim)
             t.red = C[1]; t.green = C[2]; t.yellow = C[3]; t.blue = C[4]; t.purple = C[5]; t.cyan = C[6]
             t.orange = hueBetween(t.red, t.yellow); t.brown = browned(t.orange)
-            var s = Math.max(1, Math.min(6, slot))
-            t.accent = C[s]
-            t.focus = sameHex(term.colors[s], term.colors[s + 8]) ? t.accent : C[s + 8]
+            var s = Math.max(1, Math.min(7, slot))
+            t.accent = s === 7 ? t.orange : C[s]
+            t.focus = s === 7 ? t.orange : (sameHex(term.colors[s], term.colors[s + 8]) ? t.accent : C[s + 8])
             t.sourceLabel = "terminal " + (term.source || "") + (native !== m ? " (forced " + m + ")" : "")
         } else if (src === "system") {
             var seed = P.portal && P.portal.accent ? hexToRgb(P.portal.accent) : hexToRgb("#46e0c4")
             bg = mix(m === "dark" ? hexToRgb("#101216") : hexToRgb("#f6f7fa"), seed, 0.03)
             fg = m === "dark" ? hexToRgb("#e4e7ee") : hexToRgb("#1b1e26")
-            t.surface = mix(bg, fg, sSurface); t.surfaceRaised = mix(bg, fg, sRaised)
+            t.surface = mix(bg, fg, sSurface); t.surfaceRaised = mix(bg, fg, sRaised); t.surfacePressed = mix(bg, fg, sRaised * 1.5)
             t.line = mix(bg, fg, sLine * contrastMul); t.lineStrong = mix(bg, fg, sLineStrong * contrastMul)
             t.textFaint = mix(bg, fg, sFaint * contrastMul); t.textDim = mix(bg, fg, sDim)
             var fb = findTheme(m === "dark" ? "anibeam-dark" : "anibeam-light")
@@ -208,7 +219,7 @@ Item {
             var p = th ? th.palette : {}
             function pc(k, d) { return hexToRgb(p[k] || d) }
             bg = pc("base00", "#101216"); fg = pc("base05", "#e4e7ee")
-            t.surface = pc("base01", "#15181e"); t.surfaceRaised = pc("base02", "#1d2129")
+            t.surface = pc("base01", "#15181e"); t.surfaceRaised = pc("base02", "#1d2129"); t.surfacePressed = pc("base03", "#2c3140")
             t.line = pc("base02", "#1d2129"); t.lineStrong = pc("base03", "#2c3140")
             t.textFaint = pc("base03", "#2c3140"); t.textDim = pc("base04", "#6b7590")
             t.red = pc("base08", "#f0718a"); t.orange = pc("base09", "#f0a772"); t.yellow = pc("base0A", "#e8bf78"); t.green = pc("base0B", "#8adfb5")
@@ -219,6 +230,7 @@ Item {
         t.bg = bg; t.text = fg
         t.surfaceSunken = mix(bg, away, sSunken)
         t.accentSoft = mix(bg, t.accent, 0.2)
+        t.redSoft = mix(bg, t.red, 0.2)
         t.accentText = contrast(t.accent, bg) > contrast(t.accent, fg) ? bg : fg
         var out = {}
         for (var k in t) out[k] = (k === "sourceLabel") ? t[k] : q(t[k])
