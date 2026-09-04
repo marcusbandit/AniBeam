@@ -69,6 +69,12 @@ fn main() {
         "assets/icons/monitor.svg",
         "assets/icons/circle-alert.svg",
         "assets/icons/activity.svg",
+        "assets/icons/folder-x.svg",
+        "assets/icons/info.svg",
+        "assets/icons/type.svg",
+        "assets/icons/globe.svg",
+        "assets/icons/heart.svg",
+        "assets/icons/git-branch.svg",
     ])
     .build();
 }

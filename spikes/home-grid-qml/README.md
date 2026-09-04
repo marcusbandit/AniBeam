@@ -20,12 +20,22 @@ the image cache) and the kitty config strictly read-only; nothing is written any
   is the window with the page switch; `qml/KnobBar.qml` is the floating prototype bar. H hides
   the bar, Ctrl+K and / focus the search, Ctrl+R re-reads the files, Ctrl+Q quits.
 - Second round: `qml/SettingsPage.qml` (Ctrl+, opens it; four tabs, Library, Appearance, Playback
-  and Data, each a scrolling page of panels in two columns that fill the width, capped at
+  and Data, each a page of panels in two columns that fill the width, capped at
   `theme.space(560)` and centred past that; the Appearance tab drives the same knobs as the bar,
   the rest is fake state), `qml/StatusStrip.qml` and `qml/ActivityDrawer.qml` at the foot of every
   page (click the strip or Ctrl+L, Escape closes), and the primitives they are built from:
   `Switch`, `Button`, `Field`, `Dropdown`, `Swatches`, `SliderRow`, `SettingRow`, `Panel`. Feed,
   Watching and Metadata are a title only.
+- Fifth round: a settings tab fits the viewport and scrolls only when forced. Every column is a
+  `ColumnLayout` as tall as the viewport while its content fits; one panel per column marked
+  `grows: true` takes the spare height (`Layout.fillHeight`) and a panel's minimum is its content
+  height, so when the natural height passes the viewport (the portrait monitor) the Flickable
+  scrolls and nothing is squished. `Panel` gained `stretch` (one item that takes what is left) and
+  `foot` (rows pinned to the bottom) slots beside its default rows; `SettingRow` drops its control
+  under the words when they would be narrower than `theme.space(60)`. The Playback tab holds
+  Playback, Tracks and Subtitle defaults on the left and the preview alone on the right,
+  letterboxed; Library and Storage open with stat tiles, Storage has a usage bar, Trackers have
+  avatars and counts, and the Data tab ends with an About panel across both columns.
 - Third round: `qml/LookPreview.qml` beside the Appearance controls draws one `qml/LookPane.qml`
   per mode, a small Library page from the header to the status strip. A pane holds its own
   `Theme`, forced to that mode and following every other knob, under the id `theme`, so the
