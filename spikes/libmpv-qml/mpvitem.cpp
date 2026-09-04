@@ -37,6 +37,9 @@ void MpvItem::at(int ms, std::function<void()> f) { QTimer::singleShot(ms, this,
 void MpvItem::onReady()
 {
     const auto &cfg = spikeConfig();
+    // The preview item exists in the scene whether or not it was asked for. Without this it
+    // would load the file a second time and seek inside a quality run's measurement window.
+    if (m_preview && !cfg.preview) { log(QStringLiteral("preview-idle"), {}); return; }
     const QString who = m_preview ? QStringLiteral("preview") : QStringLiteral("player");
     setProperty(QStringLiteral("log-file"), QDir(cfg.outDir).filePath(QStringLiteral("mpv-%1.log").arg(who)));
     setProperty(QStringLiteral("hwdec"), cfg.hwdec);
@@ -61,6 +64,14 @@ void MpvItem::onReady()
     observeProperty(QStringLiteral("chapter"), MPV_FORMAT_INT64);
     observeProperty(QStringLiteral("seeking"), MPV_FORMAT_FLAG);
     observeProperty(QStringLiteral("vo-configured"), MPV_FORMAT_FLAG);
+    for (const QString &kv : cfg.sets) {
+        const int eq = kv.indexOf(QLatin1Char('='));
+        if (eq <= 0) { log(QStringLiteral("set-bad"), {{"arg", kv}}); continue; }
+        const QString key = kv.left(eq), value = kv.mid(eq + 1);
+        if (key == QLatin1String("profile")) command({QStringLiteral("apply-profile"), value});
+        else command({QStringLiteral("set"), key, value});
+        log(QStringLiteral("set"), {{"key", key}, {"value", value}});
+    }
     log(QStringLiteral("ready"), {{"hwdec", cfg.hwdec}, {"file", cfg.file}});
     command({QStringLiteral("loadfile"), cfg.file});
 }
@@ -83,7 +94,8 @@ void MpvItem::onFileLoaded()
         at(65000, [this] { report(QStringLiteral("preview-final")); });
         return;
     }
-    if (spikeConfig().script) runScript();
+    if (spikeConfig().quality) runQualityScript();
+    else if (spikeConfig().script) runScript();
 }
 
 void MpvItem::previewSeek(double t)
@@ -171,4 +183,41 @@ void MpvItem::runScript()
     at(46500, [this] { Q_EMIT fullscreenRequested(false); log(QStringLiteral("fullscreen"), {{"on", false}}); });
     at(66000, [this] { report(QStringLiteral("final")); shot(QStringLiteral("final")); });
     at(67500, [this] { Q_EMIT quitRequested(); });
+}
+
+void MpvItem::reportOptions(const QString &tag)
+{
+    static const char *opts[] = {
+        "scale", "cscale", "dscale", "tscale", "dither-depth", "dither", "deband", "deband-iterations",
+        "deband-threshold", "deband-range", "deband-grain", "interpolation", "video-sync", "correct-downscaling",
+        "linear-downscaling", "sigmoid-upscaling", "hdr-peak-percentile", "hdr-contrast-recovery", "gpu-api",
+        "current-vo", "hwdec-current", "hwdec-interop", "video-params/pixelformat", "video-params/hw-pixelformat",
+        "video-params/w", "video-params/h", "osd-dimensions", "display-fps", "container-fps", "video-out-params/w", "video-out-params/h"
+    };
+    QJsonObject o;
+    for (const char *k : opts) o.insert(QString::fromLatin1(k), jv(getProperty(QString::fromLatin1(k))));
+    log(tag, o);
+}
+
+void MpvItem::runQualityScript()
+{
+    const auto &cfg = spikeConfig();
+    if (cfg.fullscreen) Q_EMIT fullscreenRequested(true);
+    if (cfg.startAt > 0) setProperty(QStringLiteral("time-pos"), cfg.startAt);
+    at(2000, [this] { reportOptions(QStringLiteral("options")); });
+    at(3000, [this] { log(QStringLiteral("measure-begin"), {{"drops", double(m_drops)}, {"time-pos", m_timePos}}); });
+    const int endMs = 3000 + spikeConfig().playSeconds * 1000;
+    at(endMs, [this] {
+        log(QStringLiteral("measure-end"), {{"drops", double(m_drops)}, {"time-pos", m_timePos}});
+        report(QStringLiteral("play-final"));
+    });
+    int t = endMs + 500;
+    for (int i = 0; i < cfg.stills.size(); ++i) {
+        const double ts = cfg.stills.at(i);
+        at(t, [this, ts] { setProperty(QStringLiteral("pause"), true); setProperty(QStringLiteral("time-pos"), ts); });
+        at(t + 2500, [this, i, ts] { log(QStringLiteral("still-hold"), {{"n", i}, {"target", ts}, {"time-pos", jv(getProperty(QStringLiteral("time-pos")))}}); });
+        t += 5500;
+    }
+    at(t, [this] { report(QStringLiteral("final")); });
+    at(t + 1500, [this] { Q_EMIT quitRequested(); });
 }

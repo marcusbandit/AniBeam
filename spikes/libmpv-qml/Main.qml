@@ -39,6 +39,7 @@ Window {
     }
 
     Rectangle {
+        visible: !spikeQuality
         anchors.left: parent.left
         anchors.top: parent.top
         anchors.margins: 12

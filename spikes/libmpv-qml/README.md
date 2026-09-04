@@ -19,6 +19,12 @@ window moves and screenshots used for the ticket and prints the observed events.
 `SPIKE <tag> <json>` line on stdout; mpv's own verbose log goes to `mpv-player.log` and
 `mpv-preview.log` in the `--out` directory.
 
+`quality.sh NAME FILE [args]` is the wrapper for ticket #23's quality matrix: it plays a fixed
+60 seconds with whatever `--set key=value` options are given, samples the GPU four times a second,
+and grabs the panel on each `--stills` timestamp. `matrix.sh` runs all 23 configs, `table.py` prints
+drops and GPU load, `compare2.py` diffs every config's stills against its block's baseline.
+Findings live in `docs/spikes/mpv-quality-options-laptop.md`.
+
 `run-laptop.sh` is the same wrapper for the laptop (one monitor, no window moves; `QPA=xcb` and
 `RENDER_LOOP=basic` select the variants) and `occlude.sh` switches the workspace away and back to count
 the frames dropped while the window is hidden. Both expect the tree exported to `~/spike-libmpv`.

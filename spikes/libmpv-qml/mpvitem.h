@@ -3,6 +3,7 @@
 #include <QtQml/qqmlregistration.h>
 #include <QJsonObject>
 #include <QElapsedTimer>
+#include <QStringList>
 
 struct SpikeConfig {
     QString file;
@@ -10,6 +11,12 @@ struct SpikeConfig {
     QString outDir;
     bool script = false;
     bool preview = false;
+    QStringList sets;
+    bool quality = false;
+    int playSeconds = 60;
+    double startAt = 0;
+    QList<double> stills;
+    bool fullscreen = false;
 };
 SpikeConfig &spikeConfig();
 
@@ -42,6 +49,8 @@ private:
     void onFileLoaded();
     void onPropertyChanged(const QString &name, const QVariant &value);
     void runScript();
+    void runQualityScript();
+    void reportOptions(const QString &tag);
     void log(const QString &tag, const QJsonObject &o);
     void at(int ms, std::function<void()> f);
     void previewSeek(double t);
