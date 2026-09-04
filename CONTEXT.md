@@ -22,6 +22,10 @@ _Avoid_: binding layer, FFI layer, IPC
 A request a shell sends to the core, expressed as plain data (an enum variant with fields), never a function reference, so the same call can travel in-process or over a socket.
 _Avoid_: command, request, message, IPC channel
 
+**Reply**:
+What a call returns at once: the data asked for, or the id of the job it started.
+_Avoid_: response, result, return value
+
 **Event**:
 A fact the core pushes to every subscribed shell. Events reach a shell through a subscription.
 _Avoid_: push, notification, signal, callback
@@ -31,6 +35,10 @@ Long-running work started by a call that returns at once and reports through eve
 _Avoid_: task, sweep, operation
 
 ### Playback
+
+**Session**:
+One run of a player over one file, from the open call to the close call. Ticks belong to a session, and the view and mark rules fire at most once per session.
+_Avoid_: playback, play, run
 
 **Tick**:
 A playback position report from whichever player is running. The single input to the view and mark rules.
@@ -47,6 +55,10 @@ _Avoid_: complete, progress update, sync
 **Resume point**:
 The position playback restarts from the next time an episode opens. Not recorded for a session the player never reported on.
 _Avoid_: position, progress, bookmark
+
+**Skip window**:
+A span of an episode the player offers to jump over, an intro or an outro, taken from the file's chapters first and from AniSkip otherwise.
+_Avoid_: skip times, OP/ED range, chapter
 
 ### Library
 
