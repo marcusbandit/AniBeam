@@ -136,6 +136,32 @@ _Avoid_: highlight, primary, brand colour
 The spacing setting: compact, normal or comfortable. It scales spacing, control heights and radii, never type or poster size.
 _Avoid_: scale, zoom, compact mode
 
+### Frame
+
+**Frame**:
+The parts of the window every page shares: the rail, the page area and the status strip. The player is the one page that takes the whole window.
+_Avoid_: chrome, layout, main window
+
+**Rail**:
+The column at the window's left edge that lists the pages and carries the title language switch and the version.
+_Avoid_: sidebar, nav, tab bar
+
+**Status strip**:
+The one-line bar at the foot of every page but the player: the latest activity line, a running job's phase and the unseen errors. Clicking it opens the activity log.
+_Avoid_: status bar, footer, toast
+
+**Activity log**:
+The event stream at Info and above, shown in a drawer that rises from the status strip. The core writes every line; the shell filters, groups and shows them.
+_Avoid_: console, log panel, notification centre
+
+**Unseen errors**:
+Error events that arrived since the activity log was last open, counted on the status strip. Opening the log clears the count, and it starts at zero on every launch.
+_Avoid_: badge, unread, error count
+
+**Inline confirm**:
+The guard on a destructive action: the row's controls give way to a line naming the consequence, a red confirm button and Keep. There is no modal dialog.
+_Avoid_: confirm dialog, modal, alert
+
 ### Route
 
 **Parity checklist**:
