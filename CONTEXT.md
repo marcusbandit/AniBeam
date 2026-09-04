@@ -83,8 +83,16 @@ One entry in the library: a show, which is a folder, or a film, which is a singl
 _Avoid_: show, title, entry, anime, media
 
 **Match**:
-The link from a series to one provider record: AniList (carrying the MAL id when known), MAL alone, or TMDB. A series has at most one match. A match the user applied or imported is confirmed, and the auto-match sweep never replaces it.
+The link from a series to one provider record: AniList (carrying the MAL id when known) or MAL alone. A TMDB match only arrives through an import and carries its ids with nothing behind them. A series has at most one match. A match the user applied or imported is confirmed, and the auto-match sweep never replaces it.
 _Avoid_: mapping, source mapping, metadata link
+
+**Missing**:
+A series whose path is gone while its source is available. It keeps its match, its flags and its history, leaves every list but the Metadata table, and attaches again when the path returns. An import creates a missing series for a path it cannot find.
+_Avoid_: orphaned, stale, deleted, dead
+
+**Forget**:
+Removing a missing series with everything it holds. The only way a series leaves the library other than its source being removed.
+_Avoid_: delete, purge, remove series
 
 **Export**:
 The JSON file that carries a library out of one AniBeam and into another. A library export holds sources and series with their matches; a full export adds private data. The same file is the native app's backup.
