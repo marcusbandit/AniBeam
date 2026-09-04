@@ -1,0 +1,42 @@
+# Maintainer: Marcus Rosado
+# Throwaway spike for wayfinder ticket #10. It builds the crate one directory up instead
+# of a release tarball, so the package rebuilds from any checkout without a tag.
+# The real shell's PKGBUILD will fetch a tagged tarball into $srcdir; everything else stays.
+pkgname=anibeam-spike
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Throwaway probe: a Cargo-only cxx-qt app with a C++ MpvAbstractItem, packaged for Arch"
+arch=(x86_64)
+url="https://github.com/marcusbandit/AniBeam"
+license=(MIT)
+depends=(qt6-base qt6-declarative mpvqt mpv gcc-libs glibc hicolor-icon-theme)
+makedepends=(rust lld)
+# makepkg's default lto option puts -flto=auto into CXXFLAGS; cc-rs passes it to g++ and the
+# lld linker cxx-qt-build forces cannot read GCC LTO objects, so every C++ bridge symbol
+# comes back undefined. Rust's own LTO is a Cargo profile matter, not a makepkg one.
+options=(!lto)
+source=()
+sha256sums=()
+
+_crate="$startdir/.."
+
+prepare() {
+  cp -r "$_crate"/{Cargo.toml,Cargo.lock,build.rs,src,cpp,qml,assets} "$srcdir/"
+  cd "$srcdir"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "$srcdir"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  cargo build --frozen --release
+}
+
+package() {
+  cd "$srcdir"
+  install -Dm755 target/release/anibeam-spike "$pkgdir/usr/bin/anibeam-spike"
+  install -Dm644 "$_crate/anibeam-spike.desktop" "$pkgdir/usr/share/applications/anibeam-spike.desktop"
+  install -Dm644 "$_crate/assets/icon.png" "$pkgdir/usr/share/icons/hicolor/512x512/apps/anibeam-spike.png"
+}
