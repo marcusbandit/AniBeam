@@ -1,5 +1,5 @@
 // The activity drawer: rises from the status strip with exponential smoothing. A header
-// with the stage and level filters and the Copy, Clear and Close actions, then the log,
+// with the stage and level filters and the Copy, Clear and Close actions, glyphs and all, then the log,
 // newest first, with runs of identical lines folded into one row that expands on click.
 import QtQuick
 import QtQuick.Controls.Basic as QC
@@ -93,6 +93,10 @@ Item {
                 anchors.rightMargin: theme.space(4)
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: theme.space(2)
+                Icon {
+                    anchors.verticalCenter: parent.verticalCenter
+                    glyph: "activity"
+                }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     text: "Activity"
@@ -137,9 +141,9 @@ Item {
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: theme.space(1)
-                Button { text: "Copy"; flat: true; small: true; onClicked: root.copyAll() }
-                Button { text: "Clear"; flat: true; small: true; onClicked: { root.entries = []; root.expanded = ({}) } }
-                Button { text: "Close"; flat: true; small: true; onClicked: root.close() }
+                Button { text: "Copy"; icon: "copy"; flat: true; small: true; onClicked: root.copyAll() }
+                Button { text: "Clear"; icon: "trash-2"; flat: true; small: true; onClicked: { root.entries = []; root.expanded = ({}) } }
+                Button { text: "Close"; icon: "x"; flat: true; small: true; onClicked: root.close() }
             }
         }
         Rectangle { anchors.top: header.bottom; width: parent.width; height: 1; color: theme.line }

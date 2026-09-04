@@ -69,7 +69,7 @@ Corner {
         padding: 0
         focus: true
         background: null
-        closePolicy: QC.Popup.CloseOnEscape | QC.Popup.CloseOnPressOutside
+        closePolicy: QC.Popup.CloseOnEscape | QC.Popup.CloseOnPressOutsideParent
         onOpened: list.forceActiveFocus()
         contentItem: Corner {
             radius: theme.radiusMd

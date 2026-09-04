@@ -1,6 +1,6 @@
-// The Look tab's preview: the same sample drawn once per mode from the knobs as they are
-// now, so a change to any Look control shows in both at once. Two panes side by side, or
-// stacked when the area is too narrow for both.
+// The Appearance preview: the same sample page drawn once per mode from the knobs as they
+// are now, so a change to any control shows in both at once. Two panes side by side while
+// the width holds two of theme.space(90) and the gap, stacked otherwise.
 import QtQuick
 
 Item {
@@ -11,18 +11,16 @@ Item {
 
     readonly property var modes: ["dark", "light"]
     readonly property real gap: theme.space(4)
-    readonly property int columns: width >= modes.length * theme.space(72) + (modes.length - 1) * gap ? modes.length : 1
+    readonly property int columns: width >= modes.length * theme.space(90) + (modes.length - 1) * gap ? modes.length : 1
     readonly property real paneWidth: (width - (columns - 1) * gap) / columns
     implicitHeight: childrenRect.height
 
-    // A series with a poster and progress under way shows every corner fact; failing that any
-    // poster, failing that the no-poster state
-    readonly property var sample: {
-        var list = library || []
-        var pick = list.find(function(i) { return i.poster && i.watched !== null && i.watched !== undefined && i.total && i.watched < i.total })
-            || list.find(function(i) { return i.poster })
-        if (pick) return pick
-        return { folderName: "Sample series", titleRomaji: "Sample series", fileCount: 12, latestFile: 12, watched: 8, total: 12, score: 8.2 }
+    // Records with posters, the ones with progress under way first so every corner fact shows
+    readonly property var samples: {
+        var list = (library || []).filter(function(i) { return i.poster })
+        var going = list.filter(function(i) { return i.watched !== null && i.watched !== undefined && i.total && i.watched < i.total })
+        var rest = list.filter(function(i) { return going.indexOf(i) < 0 })
+        return going.concat(rest).slice(0, 8)
     }
 
     Repeater {
@@ -35,7 +33,6 @@ Item {
             width: root.paneWidth
             spacing: theme.space(2)
             Text {
-                id: label
                 text: modelData
                 color: theme.textDim
                 font.family: theme.fontSans
@@ -44,11 +41,11 @@ Item {
                 font.letterSpacing: 1
             }
             LookPane {
-                id: pane
                 width: parent.width
                 mode: modelData
                 host: theme
-                sample: root.sample
+                samples: root.samples
+                seriesCount: (root.library || []).length
                 titleLang: root.titleLang
                 nowMs: root.nowMs
             }

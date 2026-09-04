@@ -67,6 +67,7 @@ Item {
         visible: root.unseenErrors > 0
         width: visible ? implicitWidth : 0
         text: root.unseenErrors + (root.unseenErrors === 1 ? " error" : " errors")
+        icon: "circle-alert"
         small: true
         color: theme.redSoft
         textColor: theme.red

@@ -19,16 +19,22 @@ the image cache) and the kitty config strictly read-only; nothing is written any
 - `qml/Card.qml`, `qml/Chip.qml`, `qml/Seg.qml`, `qml/Rail.qml` are the pieces; `qml/Main.qml`
   is the window with the page switch; `qml/KnobBar.qml` is the floating prototype bar. H hides
   the bar, Ctrl+K and / focus the search, Ctrl+R re-reads the files, Ctrl+Q quits.
-- Second round: `qml/SettingsPage.qml` (Ctrl+, opens it; four tabs, Library, Look, Playback and
-  Data, each its own scrolling column; the Look tab drives the same knobs as the bar, the rest is
-  fake state), `qml/StatusStrip.qml` and `qml/ActivityDrawer.qml` at the foot of every page
-  (click the strip or Ctrl+L, Escape closes), and the primitives they are built from: `Switch`,
-  `Button`, `Field`, `Dropdown`, `Swatches`, `SliderRow`, `SettingRow`, `Section`. Feed, Watching
-  and Metadata are a title only.
-- Third round: `qml/LookPreview.qml` beside the Look controls draws one `qml/LookPane.qml` per
-  mode. A pane holds its own `Theme`, forced to that mode and following every other knob, under
-  the id `theme`, so the Card, Chips, Switch and Buttons inside render as they would with the
-  app in that mode; `Theme.tokensFor(mode)` hands out either token set for anything else.
+- Second round: `qml/SettingsPage.qml` (Ctrl+, opens it; four tabs, Library, Appearance, Playback
+  and Data, each a scrolling page of panels in two columns that fill the width, capped at
+  `theme.space(560)` and centred past that; the Appearance tab drives the same knobs as the bar,
+  the rest is fake state), `qml/StatusStrip.qml` and `qml/ActivityDrawer.qml` at the foot of every
+  page (click the strip or Ctrl+L, Escape closes), and the primitives they are built from:
+  `Switch`, `Button`, `Field`, `Dropdown`, `Swatches`, `SliderRow`, `SettingRow`, `Panel`. Feed,
+  Watching and Metadata are a title only.
+- Third round: `qml/LookPreview.qml` beside the Appearance controls draws one `qml/LookPane.qml`
+  per mode, a small Library page from the header to the status strip. A pane holds its own
+  `Theme`, forced to that mode and following every other knob, under the id `theme`, so the
+  Cards, Chips, Seg, Switch, Buttons and Icons inside render as they would with the app in that
+  mode; `Theme.tokensFor(mode)` hands out either token set for anything else.
+- Fourth round: `qml/Icon.qml` draws a Lucide glyph (`assets/icons/`, the SVGs with their stroke
+  set to black so QtSvg reads them, tinted by `IconImage.color`; needs `qt6-svg`), and `Seg`,
+  `Button` and `Chip` take an `icon`. A Seg option can also carry a `delegate` Component, which
+  is how the Corners switch shows a smooth and a plain corner instead of words.
   `qml/SubtitlePreview.qml` at the top of the subtitle defaults draws the text style over a
   still, sized off mpv's 720 line reference, and follows the fields as you type.
 - `themes/` holds the built-ins as verbatim tinted-theming base16 YAML plus the two AniBeam files.
@@ -42,11 +48,14 @@ Every knob can be set at launch, so a state can be captured unattended:
 Keys: `mode` (dark, light, system), `source` (system, theme), `dark` and `light` (theme slugs),
 `density` (compact, normal, comfortable), `poster` (px), `smoothing` (0 to 1), `base` (radius
 base px), `accent` (terminal slot 1 to 6), `lang` (jp, en), `knobs` (0 hides the bar), `sort`
-(0 to 4), `tab` (0 to 2), `page` (library, feed, watching, metadata, settings; `settings:look`,
-`settings:playback` and `settings:data` open the other settings tabs), `drawer` (open), `job`
+(0 to 4), `tab` (0 to 2), `page` (library, feed, watching, metadata, settings; `settings:appearance` (or
+`settings:look`), `settings:playback` and `settings:data` open the other settings tabs), `drawer` (open), `job`
 (1 fakes a running scan on the strip), `scroll` (px down the settings tab shown), `confirm`
 (1 opens the first source's Remove question).
 
 `scripts/shoot.sh <name> <preset> [keep]` launches a preset, moves the window to DP-1's workspace
 6 on this desktop, captures it with grim into `captures/` (or `$OUT`) and closes it unless `keep`
-is given. The captures the ticket was judged on are under `docs/prototypes/home-grid-qml/`.
+is given. `scripts/shoot-main.sh <name> <preset> <workspace> [keep]` does the same on the main
+monitor: it moves the window to that workspace, shows the workspace, and captures the window's
+own rectangle, so a landscape window and nothing else lands in the picture. The captures the
+ticket was judged on are under `docs/prototypes/home-grid-qml/`.

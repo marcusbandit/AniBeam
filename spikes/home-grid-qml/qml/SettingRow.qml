@@ -1,5 +1,5 @@
 // One setting: a label, an optional status line in the fixed face and an optional helper
-// under it, and a control slot on the right. Never shorter than theme.space(10).
+// under it, and a control slot on the right. Never shorter than theme.space(12).
 import QtQuick
 
 Item {
@@ -10,7 +10,7 @@ Item {
     default property alias control: slot.data
 
     width: parent ? parent.width : theme.space(100)
-    height: Math.max(theme.space(10), words.implicitHeight + theme.space(2) * 2, slot.height + theme.space(2) * 2)
+    height: Math.max(theme.space(12), words.implicitHeight + theme.space(2) * 2, slot.height + theme.space(2) * 2)
 
     Column {
         id: words

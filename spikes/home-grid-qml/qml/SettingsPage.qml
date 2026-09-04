@@ -1,24 +1,35 @@
-// The settings page: a title, a Seg of four tabs, and a scrolling Flickable per tab. The Look
-// tab drives the real theme knobs and shows both modes beside them; the Playback tab draws
-// the subtitle style over a still; everything else is fake state so the copy and the
-// controls can be judged. The current tab is remembered while the app runs.
+// The settings page: a title, a Seg of four tabs, and a scrolling Flickable per tab. Each tab
+// lays its panels out in two columns that fill the page together, one under the other when
+// the page is too narrow for both. The Appearance tab drives the real theme knobs and shows
+// both modes beside them; the Playback tab draws the subtitle style over a still; everything
+// else is fake state so the copy and the controls can be judged. The current tab is
+// remembered while the app runs. The page is a FocusScope: a press on empty space takes the
+// focus off whatever control had it.
 import QtQuick
 import QtQuick.Controls.Basic as QC
 
-Item {
+FocusScope {
     id: root
     property real footInset: theme.space(10)
     property var library: []
     property string titleLang: "jp"
     property bool demoConfirm: false     // preset confirm=1 opens the first source's Remove question
 
-    readonly property var tabNames: ["Library", "Look", "Playback", "Data"]
+    readonly property var tabNames: ["Library", "Appearance", "Playback", "Data"]
+    readonly property var tabIcons: ["folder", "palette", "play", "hard-drive"]
     property int tab: 0
     readonly property var tabs: [libraryTab, lookTab, playbackTab, dataTab]
     readonly property Flickable current: tabs[tab]
     // preset scroll=<px> lands on the tab shown at that moment
     property real scrollY: 0
     onScrollYChanged: current.contentY = scrollY
+
+    // The block the header and the panels share: the page's width up to a cap, centred when
+    // the page is wider, so a row's label and its control never drift metres apart
+    readonly property real gap: theme.space(6)
+    readonly property real maxWidth: theme.space(560)
+    readonly property real blockWidth: Math.min(width, maxWidth)
+    readonly property real blockX: Math.round((width - blockWidth) / 2)
 
     readonly property var themeList: theme.palettes.themes || []
     readonly property var darkThemes: themeList.filter(function(t) { return t.variant === "dark" })
@@ -56,7 +67,7 @@ Item {
             font.family: theme.fontSans
             font.pointSize: theme.typeNormal
         }
-        Button { id: yesButton; anchors.verticalCenter: parent.verticalCenter; text: confirm.yes; danger: true; onClicked: confirm.accepted() }
+        Button { id: yesButton; anchors.verticalCenter: parent.verticalCenter; text: confirm.yes; icon: "trash-2"; danger: true; onClicked: confirm.accepted() }
         Button { id: keepButton; anchors.verticalCenter: parent.verticalCenter; text: "Keep"; flat: true; onClicked: confirm.kept() }
     }
 
@@ -93,7 +104,7 @@ Item {
                     text: "Unavailable"
                     small: true
                     mono: false
-                    color: theme.surfaceSunken
+                    color: theme.surface
                     textColor: theme.textDim
                 }
             }
@@ -113,8 +124,8 @@ Item {
             Row {
                 visible: !source.confirming
                 spacing: theme.space(1)
-                Button { text: "Rescan"; flat: true }
-                Button { text: "Remove"; flat: true; onClicked: { source.confirming = true; source.forceActiveFocus() } }
+                Button { text: "Rescan"; icon: "refresh-cw"; flat: true }
+                Button { text: "Remove"; icon: "trash-2"; flat: true; onClicked: { source.confirming = true; source.forceActiveFocus() } }
             }
             Confirm {
                 visible: source.confirming
@@ -126,19 +137,27 @@ Item {
         }
     }
 
-    // One tab: a Flickable over a page item that holds whatever the tab lays out
+    // One tab: a Flickable over a page item that holds whatever the tab lays out. Under the
+    // page sits the focus sink: a press that no control claimed lands on it and takes the
+    // focus, so a Field, Dropdown or Slider lets go when the user clicks elsewhere.
     component Tab: Flickable {
         id: tabFlick
         default property alias body: page.data
-        readonly property real pageWidth: page.width
         anchors.fill: parent
         contentWidth: width
         contentHeight: page.childrenRect.height + root.footInset
         clip: true
         boundsBehavior: Flickable.StopAtBounds
+        MouseArea {
+            id: sink
+            width: tabFlick.width
+            height: Math.max(tabFlick.height, tabFlick.contentHeight)
+            onPressed: sink.forceActiveFocus()
+        }
         Item {
             id: page
-            width: tabFlick.width
+            x: root.blockX
+            width: root.blockWidth
         }
         QC.ScrollBar.vertical: QC.ScrollBar {
             policy: QC.ScrollBar.AsNeeded
@@ -146,17 +165,54 @@ Item {
         }
     }
 
-    // The capped column the sections sit in
-    component Col: Column {
-        width: Math.min(parent.width, theme.space(176))
-        spacing: theme.space(8)
+    // Two columns that fill the width together, the leading one `split` of it, or one under
+    // the other when the width holds fewer than two of theme.space(100) and the gap between.
+    // Children land in the leading column; `trail` takes the other's.
+    component Pair: Item {
+        id: pair
+        property real split: 0.5
+        property real columnGap: root.gap
+        property real rowGap: root.gap
+        default property alias lead: leadCol.data
+        property alias trail: trailCol.data
+        readonly property bool twoUp: width >= 2 * theme.space(100) + columnGap
+        readonly property real leftW: twoUp ? Math.round((width - columnGap) * split) : width
+        width: parent ? parent.width : root.blockWidth
+        height: twoUp ? Math.max(leadCol.height, trailCol.height) : leadCol.height + rowGap + trailCol.height
+        Column {
+            id: leadCol
+            width: pair.leftW
+            spacing: root.gap
+        }
+        Column {
+            id: trailCol
+            x: pair.twoUp ? pair.leftW + pair.columnGap : 0
+            y: pair.twoUp ? 0 : leadCol.height + pair.rowGap
+            width: pair.twoUp ? pair.width - pair.leftW - pair.columnGap : pair.width
+            spacing: root.gap
+        }
+    }
+
+    // The corner option's glyph: a stroked square at the smoothing the option stands for,
+    // in the option's text colour, both read off the Seg's Loader
+    Component {
+        id: cornerGlyph
+        Corner {
+            width: theme.space(5)
+            height: width
+            radius: width * 0.45
+            smoothing: parent && parent.option ? parent.option.smoothing : 0.6
+            borderColor: parent ? parent.tint : "transparent"
+            borderWidth: 2
+        }
     }
 
     Column {
         id: header
         anchors.top: parent.top
         anchors.topMargin: theme.space(7)
-        width: parent.width
+        x: root.blockX
+        width: root.blockWidth
         spacing: theme.space(4)
 
         Text {
@@ -167,7 +223,7 @@ Item {
             font.weight: Font.Bold
         }
         Seg {
-            options: root.tabNames
+            options: root.tabNames.map(function(n, i) { return { text: n, icon: root.tabIcons[i] } })
             index: root.tab
             onPicked: function(i) { root.tab = i }
         }
@@ -184,16 +240,17 @@ Item {
         Tab {
             id: libraryTab
             visible: root.tab === 0
-            Col {
-                Section {
+            Pair {
+                split: 3 / 5
+                Panel {
                     title: "Library"
-                    Item { width: parent.width; height: theme.space(1) }
+                    icon: "folder-open"
                     Corner {
                         width: parent.width
                         height: sources.height
                         radius: theme.radiusMd
                         smoothing: theme.cornerSmoothing
-                        color: theme.surface
+                        color: theme.surfaceSunken
                         borderColor: theme.line
                         borderWidth: 1
                         Column {
@@ -204,14 +261,12 @@ Item {
                             SourceRow { path: "/mnt/media/Films"; available: false; question: "Remove Films and its history?" }
                         }
                     }
-                    Item { width: parent.width; height: theme.space(1) }
                     Row {
                         spacing: theme.space(2)
-                        Button { text: "Add folder" }
-                        Button { text: "Scan all" }
+                        Button { text: "Add folder"; icon: "folder-plus" }
+                        Button { text: "Scan all"; icon: "refresh-cw" }
                     }
                     Note { text: "AniBeam scans these folders for video files. A folder is a series; a file at the top level of a Movies folder is a film." }
-                    Item { width: parent.width; height: theme.space(1) }
                     SettingRow {
                         label: "Show hidden shows"
                         helper: "Shows hidden series on every page until AniBeam closes."
@@ -220,22 +275,22 @@ Item {
                     SettingRow {
                         label: "Subscriptions"
                         helper: "The feeds anirss watches for you."
-                        Button { text: "Open" }
+                        Button { text: "Open"; icon: "arrow-up-right" }
                     }
                 }
-
-                Section {
+                trail: Panel {
                     title: "Trackers"
+                    icon: "user-check"
                     helper: "Episodes are marked on every connected tracker when you reach the outro or mark them by hand. Counts only go up."
                     SettingRow {
                         label: "AniList"
                         line: "Connected as marcusbandit · synced 4 min ago"
-                        Button { text: "Disconnect" }
+                        Button { text: "Disconnect"; icon: "log-out" }
                     }
                     SettingRow {
                         label: "MyAnimeList"
                         line: "Not connected"
-                        Button { text: "Log in" }
+                        Button { text: "Log in"; icon: "log-in" }
                     }
                     SettingRow {
                         id: mainTracker
@@ -248,23 +303,19 @@ Item {
             }
         }
 
-        // Look: the controls in the capped column, the preview beside them while both fit,
-        // under them otherwise. The breakpoint is the column, the gap and the preview's
-        // least width added up.
+        // Appearance: the controls on the left, the preview of both modes on the right
         Tab {
             id: lookTab
             visible: root.tab === 1
-            readonly property real gap: theme.space(6)
-            readonly property real previewMin: theme.space(120)
-            readonly property bool beside: pageWidth >= lookCol.width + gap + previewMin
-            Col {
-                id: lookCol
-                Section {
+            Pair {
+                split: 2 / 5
+                Panel {
                     title: "Colours"
+                    icon: "palette"
                     SettingRow {
                         label: "Mode"
                         Seg {
-                            options: ["Dark", "Light", "System"]
+                            options: [{ text: "Dark", icon: "moon" }, { text: "Light", icon: "sun" }, { text: "System", icon: "monitor" }]
                             index: theme.mode === "dark" ? 0 : theme.mode === "light" ? 1 : 2
                             onPicked: function(i) { theme.mode = ["dark", "light", "system"][i] }
                         }
@@ -306,9 +357,9 @@ Item {
                         Swatches { slot: theme.accentSlot; onPicked: function(s) { theme.accentSlot = s } }
                     }
                 }
-
-                Section {
+                Panel {
                     title: "Shape"
+                    icon: "shapes"
                     SettingRow {
                         label: "Density"
                         Seg {
@@ -328,29 +379,39 @@ Item {
                     SettingRow {
                         label: "Corners"
                         Seg {
-                            options: ["Smooth", "Plain"]
+                            options: [{ text: "Smooth", delegate: cornerGlyph, smoothing: 0.6 }, { text: "Plain", delegate: cornerGlyph, smoothing: 0 }]
                             index: theme.cornerSmoothing > 0 ? 0 : 1
                             onPicked: function(i) { theme.cornerSmoothing = i === 0 ? 0.6 : 0 }
                         }
                     }
-                    Note { text: "All of this lives in ~/.config/anibeam/theme.toml and reloads when the file changes." }
                 }
-            }
-            LookPreview {
-                x: lookTab.beside ? lookCol.width + lookTab.gap : 0
-                y: lookTab.beside ? 0 : lookCol.height + lookTab.gap
-                width: lookTab.beside ? lookTab.pageWidth - lookCol.width - lookTab.gap : lookCol.width
-                library: root.library
-                titleLang: root.titleLang
+                Note {
+                    x: theme.space(6)
+                    width: parent.width - theme.space(6) * 2
+                    text: "All of this lives in ~/.config/anibeam/theme.toml and reloads when the file changes."
+                }
+                trail: Panel {
+                    title: "Preview"
+                    icon: "eye"
+                    LookPreview {
+                        width: parent.width
+                        library: root.library
+                        titleLang: root.titleLang
+                    }
+                }
             }
         }
 
+        // Playback: the switches on the left; the subtitle defaults on the right with the
+        // picture across the top and the fields that change it in a grid under it
         Tab {
             id: playbackTab
             visible: root.tab === 2
-            Col {
-                Section {
+            Pair {
+                split: 2 / 5
+                Panel {
                     title: "Playback"
+                    icon: "play"
                     SettingRow {
                         label: "Auto-skip intro"
                         helper: "Jumps the intro when the file's chapters or AniSkip know where it is. Undo in the player turns it off for the session."
@@ -367,11 +428,10 @@ Item {
                         Switch {}
                     }
                 }
-
-                Section {
+                trail: Panel {
                     title: "Subtitle defaults"
+                    icon: "captions"
                     helper: "What every session starts from. Change tracks in the player and AniBeam remembers them per series."
-                    // The picture first, the fields that change it below
                     SubtitlePreview {
                         width: parent.width
                         fontFamily: fontField.text
@@ -385,77 +445,92 @@ Item {
                         textScale: scaleRow.scale
                     }
                     Item { width: parent.width; height: theme.space(2) }
-                    SettingRow {
-                        label: "Subtitle languages"
-                        Field { text: "en"; implicitWidth: theme.space(30) }
-                    }
-                    SettingRow {
-                        label: "Audio languages"
-                        Field { text: "ja"; implicitWidth: theme.space(30) }
+                    Pair {
+                        rowGap: theme.space(2)
+                        SettingRow {
+                            label: "Subtitle languages"
+                            Field { text: "en"; implicitWidth: theme.space(30) }
+                        }
+                        trail: SettingRow {
+                            label: "Audio languages"
+                            Field { text: "ja"; implicitWidth: theme.space(30) }
+                        }
                     }
                     Note { text: "Comma separated, first match wins." }
-                    SettingRow {
-                        id: scaleRow
-                        property real scale: 1
-                        label: "Scale"
-                        SliderRow { from: 0.5; to: 2.0; stepSize: 0.05; decimals: 2; value: scaleRow.scale; onMoved: function(v) { scaleRow.scale = v } }
-                    }
-                    SettingRow {
-                        id: assRow
-                        property int choice: 0
-                        label: "ASS override"
-                        helper: "Force applies the text style to styled subtitles and may break signs and karaoke."
-                        Seg { options: ["As scripted", "Scale only", "Force"]; index: assRow.choice; onPicked: function(i) { assRow.choice = i } }
+                    Pair {
+                        rowGap: theme.space(2)
+                        SettingRow {
+                            id: scaleRow
+                            property real scale: 1
+                            label: "Scale"
+                            SliderRow { from: 0.5; to: 2.0; stepSize: 0.05; decimals: 2; value: scaleRow.scale; onMoved: function(v) { scaleRow.scale = v } }
+                        }
+                        trail: SettingRow {
+                            id: assRow
+                            property int choice: 0
+                            label: "ASS override"
+                            helper: "Force applies the text style to styled subtitles and may break signs and karaoke."
+                            Seg { options: ["As scripted", "Scale only", "Force"]; index: assRow.choice; onPicked: function(i) { assRow.choice = i } }
+                        }
                     }
                     Item { width: parent.width; height: theme.space(2) }
                     Note { text: "TEXT STYLE, FOR SRT AND VTT"; font.letterSpacing: 1 }
-                    SettingRow {
-                        label: "Font"
-                        Field { id: fontField; text: "sans-serif"; implicitWidth: theme.space(30) }
-                    }
-                    SettingRow {
-                        label: "Colour"
-                        Row {
-                            spacing: theme.space(2)
-                            Corner {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: theme.space(6); height: width
-                                radius: theme.radiusSm
-                                smoothing: theme.cornerSmoothing
-                                color: root.isHex(textColour.text) ? textColour.text : "transparent"
-                                borderColor: theme.line
-                                borderWidth: 1
-                            }
-                            Field { id: textColour; text: "#FFFFFF"; mono: true; implicitWidth: theme.space(28) }
+                    Pair {
+                        rowGap: theme.space(2)
+                        SettingRow {
+                            label: "Font"
+                            Field { id: fontField; text: "sans-serif"; implicitWidth: theme.space(30) }
                         }
-                    }
-                    SettingRow {
-                        label: "Outline"
-                        Row {
-                            spacing: theme.space(2)
-                            Field { id: outlineField; text: "1.65"; mono: true; implicitWidth: theme.space(20) }
-                            Corner {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: theme.space(6); height: width
-                                radius: theme.radiusSm
-                                smoothing: theme.cornerSmoothing
-                                color: root.outlineColour
-                                borderColor: theme.line
-                                borderWidth: 1
+                        trail: SettingRow {
+                            label: "Colour"
+                            Row {
+                                spacing: theme.space(2)
+                                Corner {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: theme.space(6); height: width
+                                    radius: theme.radiusSm
+                                    smoothing: theme.cornerSmoothing
+                                    color: root.isHex(textColour.text) ? textColour.text : "transparent"
+                                    borderColor: theme.line
+                                    borderWidth: 1
+                                }
+                                Field { id: textColour; text: "#FFFFFF"; mono: true; implicitWidth: theme.space(28) }
                             }
                         }
                     }
-                    SettingRow {
-                        label: "Shadow"
-                        Field { id: shadowField; text: "0"; mono: true; implicitWidth: theme.space(20) }
+                    Pair {
+                        rowGap: theme.space(2)
+                        SettingRow {
+                            label: "Outline"
+                            Row {
+                                spacing: theme.space(2)
+                                Field { id: outlineField; text: "1.65"; mono: true; implicitWidth: theme.space(20) }
+                                Corner {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: theme.space(6); height: width
+                                    radius: theme.radiusSm
+                                    smoothing: theme.cornerSmoothing
+                                    color: root.outlineColour
+                                    borderColor: theme.line
+                                    borderWidth: 1
+                                }
+                            }
+                        }
+                        trail: SettingRow {
+                            label: "Shadow"
+                            Field { id: shadowField; text: "0"; mono: true; implicitWidth: theme.space(20) }
+                        }
                     }
-                    SettingRow {
-                        label: "Box opacity"
-                        Field { id: boxField; text: "0"; mono: true; implicitWidth: theme.space(20) }
-                    }
-                    SettingRow {
-                        label: "Bold"
-                        Switch { id: boldSwitch }
+                    Pair {
+                        rowGap: theme.space(2)
+                        SettingRow {
+                            label: "Box opacity"
+                            Field { id: boxField; text: "0"; mono: true; implicitWidth: theme.space(20) }
+                        }
+                        trail: SettingRow {
+                            label: "Bold"
+                            Switch { id: boldSwitch }
+                        }
                     }
                     SettingRow {
                         id: positionRow
@@ -470,9 +545,11 @@ Item {
         Tab {
             id: dataTab
             visible: root.tab === 3
-            Col {
-                Section {
+            Pair {
+                split: 1 / 2
+                Panel {
                     title: "Storage"
+                    icon: "hard-drive"
                     SettingRow {
                         id: imagesRow
                         property bool confirming: false
@@ -481,7 +558,7 @@ Item {
                         helper: "Posters come back on the next launch."
                         Keys.onEscapePressed: confirming = false
                         Row {
-                            Button { visible: !imagesRow.confirming; text: "Clear images"; onClicked: { imagesRow.confirming = true; imagesRow.forceActiveFocus() } }
+                            Button { visible: !imagesRow.confirming; text: "Clear images"; icon: "trash-2"; onClicked: { imagesRow.confirming = true; imagesRow.forceActiveFocus() } }
                             Confirm {
                                 visible: imagesRow.confirming
                                 question: "Clear 1,204 images?"
@@ -497,9 +574,9 @@ Item {
                     SettingRow { label: "Config"; line: "~/.config/anibeam" }
                     SettingRow { label: "Cache"; line: "~/.cache/anibeam" }
                 }
-
-                Section {
+                trail: Panel {
                     title: "Export and import"
+                    icon: "archive"
                     SettingRow {
                         label: "Include private data"
                         helper: "Tracker logins, API keys, watch history and preferences, in plain text."
@@ -508,12 +585,12 @@ Item {
                     SettingRow {
                         label: "Export"
                         helper: privateData.checked ? "Writes anibeam-export-full-<date>.json." : "Writes anibeam-export-<date>.json."
-                        Button { text: "Export" }
+                        Button { text: "Export"; icon: "upload" }
                     }
                     SettingRow {
                         label: "Import"
                         helper: "Merges a file into this library. The file wins for matches and accounts, the newer entry wins for history, nothing is deleted."
-                        Button { text: "Import" }
+                        Button { text: "Import"; icon: "download" }
                     }
                 }
             }

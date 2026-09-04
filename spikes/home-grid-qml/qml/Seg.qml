@@ -1,6 +1,9 @@
 // A segmented switch: options in a sunken pill, the active one carried by a raised thumb
 // that follows with exponential smoothing. Picking emits `picked`; the owner sets `index`,
-// so a binding on it survives.
+// so a binding on it survives. An option is a string, or a record { text, icon, delegate }:
+// `icon` names a Lucide glyph drawn before the text, `delegate` is a Component drawn before
+// it instead, which reads the option's colour and record off its parent Loader as `tint`
+// and `option`.
 import QtQuick
 
 Corner {
@@ -55,21 +58,52 @@ Corner {
             id: labels
             model: root.options
             Item {
-                width: t.implicitWidth + theme.space(3) * 2
+                id: cell
+                required property int index
+                required property var modelData
+                readonly property bool record: typeof modelData === "object" && modelData !== null
+                readonly property string label: record ? String(modelData.text || "") : String(modelData)
+                readonly property string icon: record && modelData.icon ? String(modelData.icon) : ""
+                readonly property var custom: record && modelData.delegate ? modelData.delegate : null
+                readonly property bool on: index === root.index
+                readonly property color tint: on ? theme.text : theme.textDim
+                width: content.implicitWidth + theme.space(3) * 2
                 height: root.height - root.pad * 2
-                Text {
-                    id: t
+                Row {
+                    id: content
                     anchors.centerIn: parent
-                    text: modelData
-                    color: index === root.index ? theme.text : theme.textDim
-                    font.family: theme.fontSans
-                    font.pointSize: root.small ? theme.typeSmall : theme.typeNormal
-                    font.weight: index === root.index ? Font.DemiBold : Font.Normal
+                    spacing: theme.space(1.5)
+                    Loader {
+                        id: glyph
+                        readonly property color tint: cell.tint
+                        readonly property var option: cell.modelData
+                        anchors.verticalCenter: parent.verticalCenter
+                        active: cell.custom !== null
+                        visible: active
+                        sourceComponent: cell.custom
+                    }
+                    Icon {
+                        visible: cell.icon !== ""
+                        anchors.verticalCenter: parent.verticalCenter
+                        glyph: cell.icon
+                        color: cell.tint
+                        size: theme.space(root.small ? 3.5 : 4.5)
+                    }
+                    Text {
+                        id: t
+                        visible: cell.label !== ""
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: cell.label
+                        color: cell.tint
+                        font.family: theme.fontSans
+                        font.pointSize: root.small ? theme.typeSmall : theme.typeNormal
+                        font.weight: cell.on ? Font.DemiBold : Font.Normal
+                    }
                 }
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: root.picked(index)
+                    onClicked: root.picked(cell.index)
                 }
             }
         }

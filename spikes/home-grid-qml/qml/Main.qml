@@ -338,8 +338,9 @@ ApplicationWindow {
     // --preset mode=light,source=theme,dark=gruvbox-dark-medium,light=catppuccin-latte,density=compact,
     //          poster=240,smoothing=0,base=10,accent=6,lang=en,knobs=0,sort=1,tab=1,page=settings:look,
     //          drawer=open,job=1,scroll=1400,confirm=1
-    // page=settings opens the Library tab; settings:look, settings:playback and settings:data the
-    // others. scroll and confirm apply last, to whichever settings tab the preset chose.
+    // page=settings opens the Library tab; settings:appearance (or settings:look), settings:playback
+    // and settings:data the others. scroll and confirm apply last, to whichever settings tab the
+    // preset chose.
     Component.onCompleted: {
         var args = Qt.application.arguments
         var at = args.indexOf("--preset")
@@ -362,6 +363,7 @@ ApplicationWindow {
             else if (k === "tab") window.tab = parseInt(v)
             else if (k === "page") {
                 var name = v.split(":")[0], sub = v.split(":")[1]
+                if (sub === "look") sub = "appearance"     // the tab's old name still opens it
                 var p = window.pageNames.map(function(n) { return n.toLowerCase() }).indexOf(name)
                 if (p >= 0) rail.active = p
                 if (p === 4 && sub) { var t = settingsPage.tabNames.map(function(n) { return n.toLowerCase() }).indexOf(sub); if (t >= 0) settingsPage.tab = t }
