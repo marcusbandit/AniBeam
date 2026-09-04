@@ -141,3 +141,11 @@ _Avoid_: MVP, daily-driver build, phase 2 exit
 **Retire line**:
 The rest of the parity checklist. When it is green too, Electron is deleted.
 _Avoid_: full parity, phase 3 gate, the remainder
+
+**App id**:
+The one name a shell's window, its launcher entry, its icon and its bus name share, so the desktop can pair them. Each shell has its own. The Linux shell's is not Electron's, so the two stand side by side until the retire line.
+_Avoid_: window class, WM_CLASS, desktop file id, bundle id
+
+**Install**:
+A build of the checkout put on a machine. Every install carries a version unique to the commit it came from, so a build is a version, never just a file.
+_Avoid_: deploy, release build, dev build
