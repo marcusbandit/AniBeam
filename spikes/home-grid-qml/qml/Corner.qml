@@ -13,7 +13,12 @@ Item {
     property color color: "transparent"
     property color borderColor: "transparent"
     property real borderWidth: 0
-    // A texture-providing item (an Image) painted inside the shape instead of `color`.
+    // Any Item painted inside the shape instead of `color`, as it is laid out: the shape is
+    // handed a live rendering of the item (a ShaderEffectSource at the item's size times the
+    // device pixel ratio), never the item's own texture. An Image's texture provider is its
+    // decoded source, so handing the Image itself to ShapePath.fillItem ignores its fillMode,
+    // width and height and maps the raw texture from the top left. Lay the item out at this
+    // shape's size; it is hidden on screen while it is the fill.
     property Item fillItem: null
     // A ShapeGradient (LinearGradient and friends) painted instead of `color`.
     property ShapeGradient fillGradient: null
@@ -21,6 +26,17 @@ Item {
 
     readonly property real inset: borderWidth / 2
     readonly property string pathData: squircle(width, height, radius, smoothing, inset)
+
+    ShaderEffectSource {
+        id: fillTexture
+        visible: false
+        sourceItem: root.fillItem
+        hideSource: true
+        live: true
+        smooth: true
+        readonly property real dpr: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
+        textureSize: root.fillItem ? Qt.size(Math.ceil(root.fillItem.width * dpr), Math.ceil(root.fillItem.height * dpr)) : Qt.size(0, 0)
+    }
 
     Shape {
         anchors.fill: parent
@@ -31,7 +47,7 @@ Item {
             strokeStyle: root.dashed ? ShapePath.DashLine : ShapePath.SolidLine
             dashPattern: [3, 3]
             fillColor: root.fillItem ? "white" : root.color
-            fillItem: root.fillItem
+            fillItem: root.fillItem ? fillTexture : null
             fillGradient: root.fillGradient
             PathSvg { path: root.pathData }
         }

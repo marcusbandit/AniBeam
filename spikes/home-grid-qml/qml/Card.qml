@@ -37,6 +37,8 @@ Item {
         onTriggered: root.lift += (root.liftTarget - root.lift) * (1 - Math.exp(-12 * frameTime))
     }
 
+    // The poster, laid out at the frame's size and cropped to it; the frame paints it as
+    // laid out through Corner.fillItem
     Image {
         id: poster
         visible: false
@@ -45,6 +47,8 @@ Item {
         source: item.poster ? "file://" + item.poster : ""
         sourceSize.width: 480
         fillMode: Image.PreserveAspectCrop
+        smooth: true
+        mipmap: true
         asynchronous: true
         cache: true
     }

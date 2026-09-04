@@ -833,7 +833,7 @@ FocusScope {
             }
         }
 
-        // Data: storage and export side by side, the about panel across the foot
+        // Data: storage and export side by side filling the tab, the about panel across the foot
         Tab {
             id: dataTab
             visible: root.tab === 3
@@ -842,6 +842,7 @@ FocusScope {
                 Panel {
                     title: "Storage"
                     icon: "hard-drive"
+                    grows: true
                     Tiles {
                         stats: [
                             { value: "312 MB", label: "Images" }, { value: "4.1 MB", label: "Database" },
@@ -881,6 +882,7 @@ FocusScope {
                 trail: Panel {
                     title: "Export and import"
                     icon: "archive"
+                    grows: true
                     SettingRow {
                         label: "Include private data"
                         helper: "Tracker logins, API keys, watch history and preferences, in plain text."
@@ -902,11 +904,11 @@ FocusScope {
             }
             // About: the icon, the name with its version and licence, the maker, one line
             // of what it is, the links; and the eight hues as dots at the right edge, a
-            // flourish that doubles as a palette check. Nothing here is live.
+            // flourish that doubles as a palette check. Nothing here is live. A compact band
+            // at its natural height under the pair, which takes the spare height instead.
             Panel {
                 title: "About"
                 icon: "info"
-                grows: true
                 stretch: Item {
                     id: aboutBox
                     anchors.fill: parent

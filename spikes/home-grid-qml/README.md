@@ -15,10 +15,18 @@ the image cache) and the kitty config strictly read-only; nothing is written any
 - `qml/Theme.qml` turns a palette and the knobs into tokens: the mix ratios from the theme ticket,
   the base16 slot mapping, the density factor, the radius ladder and the three type sizes.
 - `qml/Corner.qml` is the one rounded-shape primitive, a G2 squircle with reach semantics; a
-  poster is an `Image` painted through it with `ShapePath.fillItem`.
+  poster is an `Image` laid out at the frame's size and painted through it with `fillItem`,
+  which hands `ShapePath.fillItem` a live rendering of the item (a `ShaderEffectSource` at the
+  item's size times the device pixel ratio), so the Image's crop applies.
 - `qml/Card.qml`, `qml/Chip.qml`, `qml/Seg.qml`, `qml/Rail.qml` are the pieces; `qml/Main.qml`
   is the window with the page switch; `qml/KnobBar.qml` is the floating prototype bar. H hides
-  the bar, Ctrl+K and / focus the search, Ctrl+R re-reads the files, Ctrl+Q quits.
+  the bar, Ctrl+K and / focus the search, Ctrl+R re-reads the files, Ctrl+Q quits. The window's
+  first frame is the ground alone: Hyprland answers the first configure with 0x0 and sends the
+  tile's size only after the window has mapped, so the rail, the pages and the bar are built
+  once the window is settled (the first resize after the first frame, or 200 ms after it) and
+  are laid out once, at the compositor's size. `qml/Icon.qml` is a `ColorImage`, not an
+  `IconImage`: the latter's icon-theme search on every load and geometry change was most of
+  the start-up time.
 - Second round: `qml/SettingsPage.qml` (Ctrl+, opens it; four tabs, Library, Appearance, Playback
   and Data, each a page of panels in two columns that fill the width, capped at
   `theme.space(560)` and centred past that; the Appearance tab drives the same knobs as the bar,
@@ -63,9 +71,10 @@ base px), `accent` (terminal slot 1 to 6), `lang` (jp, en), `knobs` (0 hides the
 (1 fakes a running scan on the strip), `scroll` (px down the settings tab shown), `confirm`
 (1 opens the first source's Remove question).
 
-`scripts/shoot.sh <name> <preset> [keep]` launches a preset, moves the window to DP-1's workspace
-6 on this desktop, captures it with grim into `captures/` (or `$OUT`) and closes it unless `keep`
-is given. `scripts/shoot-main.sh <name> <preset> <workspace> [keep]` does the same on the main
-monitor: it moves the window to that workspace, shows the workspace, and captures the window's
-own rectangle, so a landscape window and nothing else lands in the picture. The captures the
+`scripts/shoot.sh <name> <preset> [keep]` shows DP-1's workspace 6 on this desktop, launches a
+preset straight onto it, captures the output with grim into `captures/` (or `$OUT`) and closes
+the window unless `keep` is given. `scripts/shoot-main.sh <name> <preset> <workspace> [keep]`
+does the same on the main monitor: it shows that workspace, launches the window onto it, and
+captures the window's own rectangle, so a landscape window and nothing else lands in the
+picture; the window is never moved, so it tiles once, where it is captured. The captures the
 ticket was judged on are under `docs/prototypes/home-grid-qml/`.
