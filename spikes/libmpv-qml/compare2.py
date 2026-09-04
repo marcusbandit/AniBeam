@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 import os, re, subprocess
-RUNS = os.path.expanduser("~/spike-libmpv/qruns")
-CROP = "crop=1600:900:160:150"   # inside the video on every geometry: no cursor, no window edge
+RUNS = os.environ.get("QRUNS") or os.path.expanduser("~/spike-libmpv/qruns")
+CROP = os.environ.get("QCROP") or "crop=1600:900:160:150"   # inside the video on every laptop geometry: no cursor, no window edge
+# desktop: QCROP=crop=2000:1200:1560:120, inside the 2560x1440 video centred on the 5120x1440 output
 
 def metrics(a, b):
     lav = f"[0]{CROP}[a];[1]{CROP}[b];[a][b]psnr=stats_file=-"

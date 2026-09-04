@@ -25,6 +25,12 @@ and grabs the panel on each `--stills` timestamp. `matrix.sh` runs all 23 config
 drops and GPU load, `compare2.py` diffs every config's stills against its block's baseline.
 Findings live in `docs/spikes/mpv-quality-options-laptop.md`.
 
+`quality-nv.sh` is the same wrapper for the NVIDIA desktop (ticket #25): it launches the window
+straight onto a workspace through `hl.dsp.exec_cmd` so it never lands on the owner's screen,
+`nvsample.py` samples `nvidia-smi` into the same `gpu.log` format, and `matrix-nv.sh fhd|uhd MON WS`
+runs one block. `table.py` and `compare2.py` take `QRUNS`, `QDESKTOP=1` and `QCROP` from the
+environment for that geometry. Findings live in `docs/spikes/mpv-quality-options-desktop.md`.
+
 `run-laptop.sh` is the same wrapper for the laptop (one monitor, no window moves; `QPA=xcb` and
 `RENDER_LOOP=basic` select the variants) and `occlude.sh` switches the workspace away and back to count
 the frames dropped while the window is hidden. Both expect the tree exported to `~/spike-libmpv`.

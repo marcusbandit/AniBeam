@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os, re, sys
-RUNS = os.path.expanduser("~/spike-libmpv/qruns")
+RUNS = os.environ.get("QRUNS") or os.path.expanduser("~/spike-libmpv/qruns")
+DESKTOP = bool(os.environ.get("QDESKTOP"))   # the 5120x1440 geometries of the NVIDIA desktop
 ORDER = ["base", "hq", "scale-ewa", "cscale-ewa", "dscale-mit", "dither8", "deband", "interp", "base2"]
 
 def parse(path):
@@ -32,9 +33,14 @@ def parse(path):
             d["resolved"] = line.strip()
     return d
 
-for block, label in (("fhd", "1080p fullscreen (video drawn 1920x1080, 1:1)"),
-                     ("uhd", "2160p fullscreen (video drawn 1920x1080, 0.5x)"),
-                     ("win", "1080p tiled (video drawn 1824x1026, 0.95x)")):
+LABELS = {
+    False: (("fhd", "1080p fullscreen (video drawn 1920x1080, 1:1)"),
+            ("uhd", "2160p fullscreen (video drawn 1920x1080, 0.5x)"),
+            ("win", "1080p tiled (video drawn 1824x1026, 0.95x)")),
+    True: (("fhd", "1080p fullscreen on 5120x1440 (video drawn 2560x1440, 1.33x upscale)"),
+           ("uhd", "2160p fullscreen on 5120x1440 (video drawn 2560x1440, 0.67x)")),
+}
+for block, label in LABELS[DESKTOP]:
     rows = [(c, os.path.join(RUNS, f"{block}-{c}", "summary.txt")) for c in ORDER]
     rows = [(c, p) for c, p in rows if os.path.exists(p)]
     if not rows:
