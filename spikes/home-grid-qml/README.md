@@ -19,11 +19,18 @@ the image cache) and the kitty config strictly read-only; nothing is written any
 - `qml/Card.qml`, `qml/Chip.qml`, `qml/Seg.qml`, `qml/Rail.qml` are the pieces; `qml/Main.qml`
   is the window with the page switch; `qml/KnobBar.qml` is the floating prototype bar. H hides
   the bar, Ctrl+K and / focus the search, Ctrl+R re-reads the files, Ctrl+Q quits.
-- Second round: `qml/SettingsPage.qml` (Ctrl+, opens it; the Look section drives the same knobs
-  as the bar, the rest is fake state), `qml/StatusStrip.qml` and `qml/ActivityDrawer.qml` at the
-  foot of every page (click the strip or Ctrl+L, Escape closes), and the primitives they are
-  built from: `Switch`, `Button`, `Field`, `Dropdown`, `Swatches`, `SliderRow`, `SettingRow`,
-  `Section`. Feed, Watching and Metadata are a title only.
+- Second round: `qml/SettingsPage.qml` (Ctrl+, opens it; four tabs, Library, Look, Playback and
+  Data, each its own scrolling column; the Look tab drives the same knobs as the bar, the rest is
+  fake state), `qml/StatusStrip.qml` and `qml/ActivityDrawer.qml` at the foot of every page
+  (click the strip or Ctrl+L, Escape closes), and the primitives they are built from: `Switch`,
+  `Button`, `Field`, `Dropdown`, `Swatches`, `SliderRow`, `SettingRow`, `Section`. Feed, Watching
+  and Metadata are a title only.
+- Third round: `qml/LookPreview.qml` beside the Look controls draws one `qml/LookPane.qml` per
+  mode. A pane holds its own `Theme`, forced to that mode and following every other knob, under
+  the id `theme`, so the Card, Chips, Switch and Buttons inside render as they would with the
+  app in that mode; `Theme.tokensFor(mode)` hands out either token set for anything else.
+  `qml/SubtitlePreview.qml` at the top of the subtitle defaults draws the text style over a
+  still, sized off mpv's 720 line reference, and follows the fields as you type.
 - `themes/` holds the built-ins as verbatim tinted-theming base16 YAML plus the two AniBeam files.
 
 ## Presets and screenshots
@@ -35,8 +42,9 @@ Every knob can be set at launch, so a state can be captured unattended:
 Keys: `mode` (dark, light, system), `source` (system, theme), `dark` and `light` (theme slugs),
 `density` (compact, normal, comfortable), `poster` (px), `smoothing` (0 to 1), `base` (radius
 base px), `accent` (terminal slot 1 to 6), `lang` (jp, en), `knobs` (0 hides the bar), `sort`
-(0 to 4), `tab` (0 to 2), `page` (library, feed, watching, metadata, settings), `drawer` (open),
-`job` (1 fakes a running scan on the strip), `scroll` (px down the settings page), `confirm`
+(0 to 4), `tab` (0 to 2), `page` (library, feed, watching, metadata, settings; `settings:look`,
+`settings:playback` and `settings:data` open the other settings tabs), `drawer` (open), `job`
+(1 fakes a running scan on the strip), `scroll` (px down the settings tab shown), `confirm`
 (1 opens the first source's Remove question).
 
 `scripts/shoot.sh <name> <preset> [keep]` launches a preset, moves the window to DP-1's workspace

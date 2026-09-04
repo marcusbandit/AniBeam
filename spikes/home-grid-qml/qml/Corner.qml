@@ -15,6 +15,8 @@ Item {
     property real borderWidth: 0
     // A texture-providing item (an Image) painted inside the shape instead of `color`.
     property Item fillItem: null
+    // A ShapeGradient (LinearGradient and friends) painted instead of `color`.
+    property ShapeGradient fillGradient: null
     property int dashed: 0
 
     readonly property real inset: borderWidth / 2
@@ -30,6 +32,7 @@ Item {
             dashPattern: [3, 3]
             fillColor: root.fillItem ? "white" : root.color
             fillItem: root.fillItem
+            fillGradient: root.fillGradient
             PathSvg { path: root.pathData }
         }
     }

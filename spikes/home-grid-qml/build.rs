@@ -24,6 +24,9 @@ fn main() {
             .qml_file("qml/SliderRow.qml")
             .qml_file("qml/SettingRow.qml")
             .qml_file("qml/Section.qml")
+            .qml_file("qml/LookPane.qml")
+            .qml_file("qml/LookPreview.qml")
+            .qml_file("qml/SubtitlePreview.qml")
             .qml_file("qml/SettingsPage.qml")
             .qml_file("qml/StatusStrip.qml")
             .qml_file("qml/ActivityDrawer.qml"),

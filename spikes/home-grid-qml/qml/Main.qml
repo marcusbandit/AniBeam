@@ -272,6 +272,8 @@ ApplicationWindow {
                 anchors.fill: parent
                 visible: window.page === 4
                 footInset: window.footInset
+                library: window.library
+                titleLang: window.titleLang
             }
 
             // Feed, Watching and Metadata: a title and a line, nothing else in this round
@@ -334,12 +336,15 @@ ApplicationWindow {
     }
 
     // --preset mode=light,source=theme,dark=gruvbox-dark-medium,light=catppuccin-latte,density=compact,
-    //          poster=240,smoothing=0,base=10,accent=6,lang=en,knobs=0,sort=1,tab=1,page=settings,
+    //          poster=240,smoothing=0,base=10,accent=6,lang=en,knobs=0,sort=1,tab=1,page=settings:look,
     //          drawer=open,job=1,scroll=1400,confirm=1
+    // page=settings opens the Library tab; settings:look, settings:playback and settings:data the
+    // others. scroll and confirm apply last, to whichever settings tab the preset chose.
     Component.onCompleted: {
         var args = Qt.application.arguments
         var at = args.indexOf("--preset")
         if (at < 0 || at + 1 >= args.length) return
+        var late = {}
         args[at + 1].split(",").forEach(function(kv) {
             var k = kv.split("=")[0], v = kv.split("=")[1]
             if (k === "mode") theme.mode = v
@@ -355,12 +360,18 @@ ApplicationWindow {
             else if (k === "knobs") knobBar.visible = v !== "0"
             else if (k === "sort") { window.sortKey = parseInt(v); window.descending = parseInt(v) !== 0 }
             else if (k === "tab") window.tab = parseInt(v)
-            else if (k === "page") { var p = window.pageNames.map(function(n) { return n.toLowerCase() }).indexOf(v); if (p >= 0) rail.active = p }
+            else if (k === "page") {
+                var name = v.split(":")[0], sub = v.split(":")[1]
+                var p = window.pageNames.map(function(n) { return n.toLowerCase() }).indexOf(name)
+                if (p >= 0) rail.active = p
+                if (p === 4 && sub) { var t = settingsPage.tabNames.map(function(n) { return n.toLowerCase() }).indexOf(sub); if (t >= 0) settingsPage.tab = t }
+            }
             else if (k === "drawer") { drawer.open = v === "open" }
             else if (k === "job") window.jobRunning = v !== "0"
-            else if (k === "scroll") settingsPage.scrollY = parseInt(v)
-            else if (k === "confirm") settingsPage.demoConfirm = v !== "0"
+            else if (k === "scroll" || k === "confirm") late[k] = v
         })
+        if (late.scroll !== undefined) settingsPage.scrollY = parseInt(late.scroll)
+        if (late.confirm !== undefined) settingsPage.demoConfirm = late.confirm !== "0"
     }
 
     Shortcut { sequence: "H"; onActivated: knobBar.visible = !knobBar.visible }

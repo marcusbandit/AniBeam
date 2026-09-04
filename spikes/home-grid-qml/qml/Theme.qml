@@ -55,9 +55,14 @@ Item {
     readonly property string resolvedMode: mode === "system" ? systemMode : mode
     readonly property bool dark: resolvedMode === "dark"
 
-    // Tokens
-    readonly property var tokens: computeTokens(palettes, resolvedMode, colourSource, themeDark, themeLight, accentSlot,
-                                                stepSunken, stepSurface, stepRaised, stepLine, stepLineStrong, stepFaint, stepDim)
+    // Tokens: both modes from the same knobs, so a preview can show the one the app is not
+    // in. `tokens` is the mode the app resolved to; `tokensFor(m)` hands out either set.
+    readonly property var tokensDark: computeTokens(palettes, "dark", colourSource, themeDark, themeLight, accentSlot,
+                                                    stepSunken, stepSurface, stepRaised, stepLine, stepLineStrong, stepFaint, stepDim)
+    readonly property var tokensLight: computeTokens(palettes, "light", colourSource, themeDark, themeLight, accentSlot,
+                                                     stepSunken, stepSurface, stepRaised, stepLine, stepLineStrong, stepFaint, stepDim)
+    readonly property var tokens: dark ? tokensDark : tokensLight
+    function tokensFor(m) { return m === "dark" ? tokensDark : tokensLight }
     readonly property color bg: tokens.bg
     readonly property color surface: tokens.surface
     readonly property color surfaceRaised: tokens.surfaceRaised
