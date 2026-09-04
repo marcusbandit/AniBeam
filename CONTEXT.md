@@ -1,6 +1,6 @@
 # AniBeam
 
-A local anime library: it scans folders, matches what it finds against AniList, Jikan and TMDB, plays the files, and keeps trackers up to date. The native line splits the app into one core and one shell per platform; this glossary is the vocabulary both halves share.
+A local anime library: it scans folders, matches what it finds against AniList and Jikan, plays the files, and keeps trackers up to date. The native line splits the app into one core and one shell per platform; this glossary is the vocabulary both halves share.
 
 ## Language
 
