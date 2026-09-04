@@ -17,7 +17,7 @@ Item {
     property string density: "normal"        // compact | normal | comfortable
     property int posterWidth: 180
     property real cornerSmoothing: 0.6
-    property real cornerBase: 10
+    property real cornerBase: 14
     property int accentSlot: 4
 
     // Ratios: mixes of bg toward text (negative: away from text)
@@ -144,6 +144,12 @@ Item {
         return hslToRgb(h, (A.s + B.s) / 2, (A.l + B.l) / 2)
     }
     function browned(c) { var H = rgbToHsl(c); return hslToRgb(H.h, H.s * 0.55, H.l * 0.72) }
+    // Same hue and saturation, lightness capped at 0.42 on a light ground or floored at 0.62 on a dark one
+    function retone(c, m) {
+        var H = rgbToHsl(c)
+        var l = m === "light" ? Math.min(H.l, 0.42) : Math.max(H.l, 0.62)
+        return hslToRgb(H.h, H.s, l)
+    }
     function sameHex(a, b) { return a.toLowerCase() === b.toLowerCase() }
 
     function findTheme(slug) {
@@ -163,8 +169,17 @@ Item {
             bg = hexToRgb(term.background)
             fg = hexToRgb(term.foreground)
             var native = lightness(bg) < 0.5 ? "dark" : "light"
-            if (native !== m) { var tmp = bg; bg = fg; fg = tmp }
             var C = term.colors.map(hexToRgb)
+            if (native !== m) {
+                // Forced mode against the terminal: keep its hues and accent, derive a neutral
+                // ground and text for the other mode, tinted a little toward the accent, and
+                // re-tone the hues so they hold contrast on the new ground (a dark terminal's
+                // pastels vanish on white).
+                var tint = C[Math.max(1, Math.min(6, slot))]
+                bg = mix(m === "dark" ? hexToRgb("#101216") : hexToRgb("#f6f7fa"), tint, 0.03)
+                fg = m === "dark" ? hexToRgb("#e4e7ee") : hexToRgb("#1b1e26")
+                C = C.map(function(c, i) { return i === 0 || i === 7 || i === 8 || i === 15 ? c : retone(c, m) })
+            }
             t.surface = mix(bg, fg, sSurface); t.surfaceRaised = mix(bg, fg, sRaised)
             t.line = mix(bg, fg, sLine * contrastMul); t.lineStrong = mix(bg, fg, sLineStrong * contrastMul)
             t.textFaint = mix(bg, fg, sFaint * contrastMul); t.textDim = mix(bg, fg, sDim)
