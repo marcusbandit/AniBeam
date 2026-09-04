@@ -41,7 +41,7 @@ One run of a player over one file, from the open call to the close call. Ticks b
 _Avoid_: playback, play, run
 
 **Tick**:
-A playback position report from whichever player is running. The single input to the view and mark rules.
+A playback position report from the player. The single input to the view, mark and completion rules.
 _Avoid_: progress report, time-pos update, heartbeat
 
 **View**:
@@ -56,9 +56,21 @@ _Avoid_: complete, progress update, sync
 The position playback restarts from the next time an episode opens. Not recorded for a session the player never reported on.
 _Avoid_: position, progress, bookmark
 
+**Completion**:
+The outcome of the end rule: the position reached the last 30 seconds, a known outro window or the end of the file, so the resume point is cleared and the episode is recorded as completed.
+_Avoid_: finished, done, watched to the end
+
 **Skip window**:
 A span of an episode the player offers to jump over, an intro or an outro, taken from the file's chapters first and from AniSkip otherwise.
 _Avoid_: skip times, OP/ED range, chapter
+
+**Track choice**:
+The audio and subtitle track a series remembers from the user's last pick in the player, applied to every later file of that series. Off is a choice too.
+_Avoid_: preferred track, track preference, aid/sid
+
+**Subtitle defaults**:
+The one global set of subtitle options every session starts from, each one an mpv option. There is no per-file or per-series style.
+_Avoid_: subtitle style, style record, sub settings
 
 ### Library
 
