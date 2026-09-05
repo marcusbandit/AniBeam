@@ -12,7 +12,7 @@ use rusqlite::{Connection, ErrorCode, OptionalExtension, Transaction, params, pa
 
 use crate::contract::*;
 use crate::core::Core;
-use crate::jobs::Finished;
+use crate::jobs::{Finished, JobCtx};
 use crate::library::cards;
 use crate::library::walk::{self, ScannedSeries};
 use crate::time;
@@ -664,6 +664,52 @@ pub fn rescan_series(core: &Core, series: u64) -> Result<Reply, CoreError> {
 
 // The job ---------------------------------------------------------------
 
+/// Writes a source's availability and says so once. Called when the flag
+/// actually turns over, so the log line is a state change rather than a
+/// report of every pass.
+async fn set_available(
+    core: &Arc<Core>,
+    ctx: &JobCtx,
+    source_id: u64,
+    path: &str,
+    available: bool,
+) -> Result<(), CoreError> {
+    core.store
+        .write_async(move |c| {
+            c.execute(
+                "UPDATE sources SET available = ?2 WHERE id = ?1",
+                params![source_id as i64, i64::from(available)],
+            )?;
+            Ok(())
+        })
+        .await?;
+    let Some((row_path, row_available)) = core
+        .store
+        .write_async(move |c| source_row(c, source_id))
+        .await?
+    else {
+        return Ok(());
+    };
+    let count = core
+        .store
+        .write_async(move |c| series_count(c, source_id))
+        .await?;
+    let source = Source {
+        id: source_id,
+        path: row_path,
+        available: row_available,
+        series_count: count,
+        movie_folders: core.library.movie_folders_for(source_id),
+    };
+    let message = if available {
+        format!("source available again: {path}")
+    } else {
+        format!("source unavailable: {path}")
+    };
+    ctx.emit(Level::Info, message, EventBody::SourceChanged { source });
+    Ok(())
+}
+
 /// Starts the Scan job and returns its id. Scan runs one at a time, so a
 /// second call while one is running returns the running job's id.
 pub fn start(core: &Arc<Core>, scope: ScanScope) -> u64 {
@@ -715,38 +761,7 @@ pub fn start(core: &Arc<Core>, scope: ScanScope) -> u64 {
                     let path = target.path;
                     let available = Path::new(&path).is_dir();
                     if available != target.available {
-                        core.store
-                            .write_async(move |c| {
-                                c.execute(
-                                    "UPDATE sources SET available = ?2 WHERE id = ?1",
-                                    params![source_id as i64, i64::from(available)],
-                                )?;
-                                Ok(())
-                            })
-                            .await?;
-                        if let Some((row_path, row_available)) = core
-                            .store
-                            .write_async(move |c| source_row(c, source_id))
-                            .await?
-                        {
-                            let count = core
-                                .store
-                                .write_async(move |c| series_count(c, source_id))
-                                .await?;
-                            let source = Source {
-                                id: source_id,
-                                path: row_path,
-                                available: row_available,
-                                series_count: count,
-                                movie_folders: core.library.movie_folders_for(source_id),
-                            };
-                            let message = if available {
-                                format!("source available again: {path}")
-                            } else {
-                                format!("source unavailable: {path}")
-                            };
-                            ctx.emit(Level::Info, message, EventBody::SourceChanged { source });
-                        }
+                        set_available(&core, &ctx, source_id, &path, available).await?;
                     }
                     if !available {
                         continue;
@@ -770,11 +785,50 @@ pub fn start(core: &Arc<Core>, scope: ScanScope) -> u64 {
                         );
                     }
 
+                    // A drive that is not mounted still answers `is_dir`
+                    // for its mount point, and the failure only shows when
+                    // the root is read. A root that cannot be read says
+                    // nothing about what is under it, so the source is
+                    // unavailable for this pass and every series it owns
+                    // is left exactly as it was.
                     let root = path.clone();
-                    let scanned =
+                    let walked =
                         tokio::task::spawn_blocking(move || walk::scan_source(Path::new(&root)))
                             .await
-                            .map_err(|e| CoreError::internal(e.to_string()))??;
+                            .map_err(|e| CoreError::internal(e.to_string()))?;
+                    let scanned = match walked {
+                        Ok(scanned) => scanned,
+                        Err(e) => {
+                            ctx.emit(
+                                Level::Warn,
+                                format!("cannot read {path}: {e}"),
+                                EventBody::Notice,
+                            );
+                            set_available(&core, &ctx, source_id, &path, false).await?;
+                            continue;
+                        }
+                    };
+                    // A root that reads as empty is the same story when the
+                    // source held series a moment ago: an empty listing and
+                    // a filesystem that answered nothing look identical
+                    // from here, and marking a whole library missing is the
+                    // far more expensive way to be wrong. An emptied source
+                    // is emptied by Forget or by RemoveSource.
+                    if scanned.is_empty() {
+                        let held = core
+                            .store
+                            .write_async(move |c| series_count(c, source_id))
+                            .await?;
+                        if held > 0 {
+                            ctx.emit(
+                                Level::Warn,
+                                format!("{path} read as empty while it holds {held} series"),
+                                EventBody::Notice,
+                            );
+                            set_available(&core, &ctx, source_id, &path, false).await?;
+                            continue;
+                        }
+                    }
                     let root = path.clone();
                     let movie_folders = tokio::task::spawn_blocking(move || {
                         walk::find_movie_folders(Path::new(&root))
@@ -785,12 +839,26 @@ pub fn start(core: &Arc<Core>, scope: ScanScope) -> u64 {
 
                     let only = only_under.clone();
                     let now = time::now_secs();
-                    let r = core
+                    // One source failing to reconcile is one source's
+                    // problem: the pass carries on to the next rather than
+                    // abandoning a library because one drive misbehaved.
+                    let r = match core
                         .store
                         .tx_async(move |tx| {
                             reconcile_source(tx, source_id, &scanned, only.as_deref(), now)
                         })
-                        .await?;
+                        .await
+                    {
+                        Ok(r) => r,
+                        Err(e) => {
+                            ctx.emit(
+                                Level::Warn,
+                                format!("cannot reconcile {path}: {e}"),
+                                EventBody::Notice,
+                            );
+                            continue;
+                        }
+                    };
                     added += r.added.len() as u64;
                     changed += r.changed.len() as u64;
                     removed += r.removed.len() as u64;

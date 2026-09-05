@@ -8,6 +8,26 @@ fn touch(p: &Path) {
     fs::write(p, b"x").unwrap();
 }
 
+/// The id of the first Scan job the collector saw start, which is the one
+/// `AddSource` kicks off on its way out.
+fn first_scan(c: &events::Collector) -> u64 {
+    common::wait_for(
+        c,
+        |e| {
+            matches!(
+                e.body,
+                EventBody::JobStarted {
+                    kind: JobKind::Scan
+                }
+            )
+        },
+        std::time::Duration::from_secs(5),
+    )
+    .job
+    .unwrap()
+    .id
+}
+
 fn started(reply: Reply) -> u64 {
     match reply {
         Reply::Started { job } => job,
@@ -448,4 +468,167 @@ fn an_unavailable_source_is_kept_and_untouched() {
         }),
         Err(CoreError::Invalid { .. })
     ));
+}
+
+/// A root the process cannot read says nothing about what is under it. It
+/// used to say "nothing at all", because the walk treats an unreadable
+/// directory as an empty one, and every series under the source went
+/// missing on the strength of it. Now the source is unavailable for the
+/// pass and its series are left exactly where they were.
+#[test]
+fn an_unreadable_root_is_unavailable_and_marks_nothing_missing() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let (dir, core, c) = common::open_core();
+    let lib = dir.path().join("lib");
+    touch(&lib.join("Show A").join("Show A - 01.mkv"));
+    touch(&lib.join("Show B").join("Show B - 01.mkv"));
+    core.call(Call::AddSource {
+        path: lib.to_string_lossy().into_owned(),
+    })
+    .unwrap();
+    common::wait_job(&c, first_scan(&c));
+
+    fs::set_permissions(&lib, fs::Permissions::from_mode(0o000)).unwrap();
+    // Root reads it anyway, and then there is nothing to test.
+    if fs::read_dir(&lib).is_ok() {
+        fs::set_permissions(&lib, fs::Permissions::from_mode(0o755)).unwrap();
+        return;
+    }
+
+    let job = started(core.call(Call::Scan { source: None }).unwrap());
+    let done = common::wait_job(&c, job);
+    assert!(
+        matches!(done.body, EventBody::ScanFinished { removed: 0, .. }),
+        "{done:?}"
+    );
+    assert!(
+        c.events()
+            .iter()
+            .any(|e| e.level == Level::Warn && e.message.starts_with("cannot read ")),
+        "{:#?}",
+        c.events()
+    );
+    assert!(
+        c.bodies()
+            .iter()
+            .any(|b| matches!(b, EventBody::SourceChanged { source } if !source.available)),
+        "the source never went unavailable"
+    );
+
+    fs::set_permissions(&lib, fs::Permissions::from_mode(0o755)).unwrap();
+    let both = match core
+        .call(Call::ListSeries {
+            tab: Tab::All,
+            query: String::new(),
+            sort: Sort::Alpha,
+            direction: Direction::Asc,
+            reveal_hidden: false,
+        })
+        .unwrap()
+    {
+        Reply::Series { series } => series,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(both.len(), 2);
+    assert!(both.iter().all(|s| !s.missing), "{both:?}");
+
+    // Readable again: the pass finds both series where it left them and
+    // the source says so.
+    let job = started(core.call(Call::Scan { source: None }).unwrap());
+    let done = common::wait_job(&c, job);
+    assert!(
+        matches!(
+            done.body,
+            EventBody::ScanFinished {
+                added: 0,
+                removed: 0,
+                ..
+            }
+        ),
+        "{done:?}"
+    );
+    core.shutdown();
+}
+
+/// An unplugged drive's mount point is a directory that reads as empty,
+/// which is indistinguishable from a library somebody deleted. Marking a
+/// whole source missing is the expensive way to be wrong, so an empty
+/// reading of a source that holds series is treated as unavailable; a
+/// source that genuinely holds nothing is not.
+#[test]
+fn a_root_that_reads_as_empty_while_it_holds_series_is_unavailable() {
+    let (dir, core, c) = common::open_core();
+    let lib = dir.path().join("lib");
+    touch(&lib.join("Show A").join("Show A - 01.mkv"));
+    core.call(Call::AddSource {
+        path: lib.to_string_lossy().into_owned(),
+    })
+    .unwrap();
+    common::wait_job(&c, first_scan(&c));
+
+    fs::remove_dir_all(lib.join("Show A")).unwrap();
+    let job = started(core.call(Call::Scan { source: None }).unwrap());
+    let done = common::wait_job(&c, job);
+    assert!(
+        matches!(done.body, EventBody::ScanFinished { removed: 0, .. }),
+        "{done:?}"
+    );
+    assert!(
+        c.events()
+            .iter()
+            .any(|e| e.level == Level::Warn && e.message.contains("read as empty")),
+        "{:#?}",
+        c.events()
+    );
+    let cards = match core
+        .call(Call::ListSeries {
+            tab: Tab::All,
+            query: String::new(),
+            sort: Sort::Alpha,
+            direction: Direction::Asc,
+            reveal_hidden: false,
+        })
+        .unwrap()
+    {
+        Reply::Series { series } => series,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(cards.len(), 1);
+    assert!(!cards[0].missing);
+    core.shutdown();
+}
+
+/// An empty source that never held anything is just an empty source: it
+/// stays available and the pass says nothing about it.
+#[test]
+fn an_empty_source_that_never_held_series_stays_available() {
+    let (dir, core, c) = common::open_core();
+    let lib = dir.path().join("lib");
+    fs::create_dir_all(&lib).unwrap();
+    core.call(Call::AddSource {
+        path: lib.to_string_lossy().into_owned(),
+    })
+    .unwrap();
+    let done = common::wait_job(&c, first_scan(&c));
+    assert!(
+        matches!(
+            done.body,
+            EventBody::ScanFinished {
+                added: 0,
+                changed: 0,
+                removed: 0,
+                ..
+            }
+        ),
+        "{done:?}"
+    );
+    match core.call(Call::ListSources).unwrap() {
+        Reply::Sources { sources } => {
+            assert!(sources[0].available, "{sources:?}");
+            assert_eq!(sources[0].series_count, 0);
+        }
+        other => panic!("{other:?}"),
+    }
+    core.shutdown();
 }

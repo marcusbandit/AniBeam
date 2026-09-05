@@ -572,6 +572,12 @@ fn collect(
 }
 
 /// The walk of one source. Blocking; the scan job runs it on a blocking thread.
+///
+/// The root's own listing is read here rather than left to `list`, which
+/// treats a directory it cannot read as a directory with nothing in it.
+/// That reading is right for a folder deep inside a library and wrong for
+/// the root: a mount point whose drive is gone is still a directory, and an
+/// empty answer from one would mark every series under it missing.
 pub fn scan_source(root: &Path) -> Result<Vec<ScannedSeries>, CoreError> {
     let meta = fs::metadata(root).map_err(|e| CoreError::io_at(root.to_string_lossy(), e))?;
     if !meta.is_dir() {
@@ -580,6 +586,7 @@ pub fn scan_source(root: &Path) -> Result<Vec<ScannedSeries>, CoreError> {
             message: "not a directory".into(),
         });
     }
+    fs::read_dir(root).map_err(|e| CoreError::io_at(root.to_string_lossy(), e))?;
     let mut results = Vec::new();
     let mut state = WalkState::new(root);
     collect(&mut state, root, &mut results, true, false, None, None);
