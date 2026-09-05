@@ -22,6 +22,7 @@ pub mod store;
 pub mod subscriptions;
 pub mod time;
 pub mod trackers;
+pub mod transfer;
 
 pub use contract::*;
 pub use core::Core;

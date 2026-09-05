@@ -1,0 +1,68 @@
+{
+  "format": "anibeam-export",
+  "version": 1,
+  "exportedAt": "2026-09-04T18:12:00Z",
+  "exportedBy": { "app": "anibeam", "line": "electron", "version": "1.0.0" },
+  "private": true,
+  "sources": [
+    { "path": "/mnt/media/anime" }
+  ],
+  "series": [
+    {
+      "kind": "series",
+      "path": "/mnt/media/anime/Sousou no Frieren",
+      "id": "sousou_no_frieren",
+      "title": "Sousou no Frieren",
+      "hidden": false,
+      "match": { "provider": "anilist", "anilistId": 154587, "malId": 52991 }
+    },
+    {
+      "kind": "movie",
+      "path": "/mnt/media/anime/Movies/Perfect Blue (1997).mkv",
+      "id": "movie_perfect_blue",
+      "title": "Perfect Blue",
+      "hidden": false,
+      "match": { "provider": "tmdb", "tmdbId": 10494, "tmdbKind": "movie" }
+    },
+    {
+      "kind": "series",
+      "path": "/mnt/media/anime/Some Unmatched Folder",
+      "id": "some_unmatched_folder",
+      "title": "Some Unmatched Folder",
+      "hidden": true,
+      "match": null
+    }
+  ],
+  "accounts": {
+    "main": "anilist",
+    "anilist": {
+      "userId": 123456,
+      "username": "bandit",
+      "clientId": "12345",
+      "clientSecret": null,
+      "accessToken": "eyJ...",
+      "refreshToken": null,
+      "expiresAt": null
+    },
+    "mal": null
+  },
+  "keys": { "tmdb": "0123abcd" },
+  "history": {
+    "views": [
+      { "series": "/mnt/media/anime/Sousou no Frieren", "lastEpisode": 12, "at": "2026-08-30T21:04:11Z" }
+    ],
+    "completed": [
+      { "series": "/mnt/media/anime/Sousou no Frieren", "episode": 12, "at": "2026-08-30T21:04:11Z" }
+    ],
+    "resumePoints": [
+      { "series": "/mnt/media/anime/Sousou no Frieren", "episode": 13, "position": 612.4, "duration": 1420.0, "at": "2026-09-01T19:30:00Z" },
+      { "file": "/mnt/media/anime/Sousou no Frieren/NCOP1.mkv", "position": 30.1, "duration": 90.0, "at": "2026-09-01T19:35:00Z" }
+    ]
+  },
+  "preferences": {
+    "titleLanguage": "romaji",
+    "libraryTab": "all",
+    "librarySort": { "key": "alpha", "direction": "asc" },
+    "feedSort": "recent"
+  }
+}

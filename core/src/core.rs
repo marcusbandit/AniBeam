@@ -32,6 +32,7 @@ use crate::trackers::oauth;
 use crate::trackers::secrets::{Secrets, KEYRING_UNAVAILABLE};
 use crate::trackers::watching;
 use crate::trackers::writes;
+use crate::transfer;
 
 /// The core is one object. A shell opens it once, starts it once, subscribes
 /// once, and from then on sends calls and receives events.
@@ -485,7 +486,15 @@ impl Core {
                 Ok(Reply::Ok)
             }
             Call::SetTrackChoice { series, audio, subtitle } => session::set_track_choice(self, series, audio, subtitle),
-            other => Err(CoreError::Unsupported { what: format!("{} is not built yet", call_name(&other)) }),
+            Call::Export { path, private } => {
+                let core = self.arc().ok_or_else(|| CoreError::internal("core is shutting down"))?;
+                Ok(Reply::Started { job: transfer::export::start(&core, path, private) })
+            }
+            // The file is read and its version checked here rather than in
+            // the job, so a document this core is too old to read is
+            // refused at once instead of failing a job the shell already
+            // thinks is running.
+            Call::Import { path } => Ok(Reply::Started { job: transfer::import::start(self, &path)? }),
         }
     }
 
