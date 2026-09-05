@@ -54,7 +54,7 @@ pub struct Core {
     /// Built by `start` and dropped first by `shutdown`. `None` before
     /// `start` and after `shutdown`, so a call that arrives on either side
     /// of the core's life finds nothing to watch with rather than failing.
-    pub(crate) watcher: Mutex<Option<Watcher>>,
+    pub(crate) watcher: Mutex<Option<Arc<Watcher>>>,
     /// The launch's one-shot listener, held here so it lives as long as it
     /// is waiting and no longer: it takes itself out the moment the
     /// catch-up scan finishes, and `shutdown` takes it out if it never
@@ -263,7 +263,7 @@ impl Core {
         &self.secrets
     }
 
-    fn watcher(&self) -> MutexGuard<'_, Option<Watcher>> {
+    fn watcher(&self) -> MutexGuard<'_, Option<Arc<Watcher>>> {
         self.watcher.lock().unwrap_or_else(|e| e.into_inner())
     }
 
@@ -293,14 +293,19 @@ impl Core {
     /// has built the watcher: the launch's catch-up scan is what puts the
     /// first watch on every source.
     pub(crate) fn install_watch(&self, path: &str) -> Result<(), CoreError> {
-        match self.watcher().as_mut() {
+        // Cloned out of the slot and the guard dropped before the walk:
+        // the watcher keeps its own lock around the notify call, so this
+        // one is held for a clone and nothing more.
+        let watcher = self.watcher().clone();
+        match watcher {
             Some(watcher) => watcher.watch(path),
             None => Ok(()),
         }
     }
 
     pub(crate) fn unwatch_source(&self, path: &str) {
-        if let Some(watcher) = self.watcher().as_mut() {
+        let watcher = self.watcher().clone();
+        if let Some(watcher) = watcher {
             watcher.unwatch(path);
         }
     }
@@ -416,7 +421,7 @@ impl Core {
         // scale, so it belongs to the scan below and to every scan after
         // it rather than to this thread.
         match Watcher::new(self.me.clone()) {
-            Ok(watcher) => *self.watcher() = Some(watcher),
+            Ok(watcher) => *self.watcher() = Some(Arc::new(watcher)),
             Err(e) => {
                 self.bus.warn(
                     Stage::Library,
@@ -703,7 +708,7 @@ impl Core {
         // debouncer's thread dispatches into this core, so it has to be
         // gone before the runtime and the store are.
         let watcher = self.watcher().take();
-        if let Some(mut watcher) = watcher {
+        if let Some(watcher) = watcher {
             watcher.stop();
         }
         // A launch whose scan never finished has no list left to run.

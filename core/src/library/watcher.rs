@@ -155,7 +155,14 @@ fn size_stable_fallback(_paths: &[PathBuf]) -> Vec<Trigger> {
 pub struct Watcher {
     /// `None` once `stop` has taken it. `Debouncer::stop` consumes itself,
     /// which is why the field is an option rather than the debouncer.
-    debouncer: Option<Debouncer<RecommendedWatcher, RecommendedCache>>,
+    ///
+    /// Behind its own lock, taken only around a call into notify. Notify
+    /// wants `&mut` and installs a recursive watch by walking every
+    /// directory under the root, which is disk work at library scale, so
+    /// this lock is held for as long as that walk takes. Keeping it here
+    /// rather than on the core's slot is what stops everything else that
+    /// touches the watcher from waiting on the walk.
+    debouncer: Mutex<Option<Debouncer<RecommendedWatcher, RecommendedCache>>>,
     /// Shared with the handler, which needs them to tell a hidden entry in
     /// the library from a hidden directory the library merely sits under.
     /// Never held across a call into the debouncer, so it can never take
@@ -203,34 +210,37 @@ impl Watcher {
         })
         .map_err(|e| CoreError::internal(format!("watcher: {e}")))?;
         Ok(Watcher {
-            debouncer: Some(debouncer),
+            debouncer: Mutex::new(Some(debouncer)),
             roots,
         })
     }
 
     /// Installs one recursive watch on a source. Idempotent per root, which
     /// matters because every Scan job asks for it again.
-    pub fn watch(&mut self, path: &str) -> Result<(), CoreError> {
+    pub fn watch(&self, path: &str) -> Result<(), CoreError> {
         if roots_of(&self.roots).iter().any(|r| r == path) {
             return Ok(());
         }
-        let Some(debouncer) = self.debouncer.as_mut() else {
-            return Ok(());
-        };
-        debouncer
-            .watch(Path::new(path), RecursiveMode::Recursive)
-            .map_err(|e| CoreError::Io {
-                path: Some(path.to_string()),
-                message: e.to_string(),
-            })?;
+        {
+            let mut held = self.debouncer();
+            let Some(debouncer) = held.as_mut() else {
+                return Ok(());
+            };
+            debouncer
+                .watch(Path::new(path), RecursiveMode::Recursive)
+                .map_err(|e| CoreError::Io {
+                    path: Some(path.to_string()),
+                    message: e.to_string(),
+                })?;
+        }
         roots_of(&self.roots).push(path.to_string());
         Ok(())
     }
 
     /// Drops a source's watch. A path that was never watched, or a watch the
     /// OS already dropped with the directory, is not an error worth raising.
-    pub fn unwatch(&mut self, path: &str) {
-        if let Some(debouncer) = self.debouncer.as_mut() {
+    pub fn unwatch(&self, path: &str) {
+        if let Some(debouncer) = self.debouncer().as_mut() {
             let _ = debouncer.unwatch(Path::new(path));
         }
         roots_of(&self.roots).retain(|r| r != path);
@@ -239,11 +249,18 @@ impl Watcher {
     /// Stops the debouncer and waits for its thread, so nothing can still be
     /// dispatching into a core that is shutting down. A second call does
     /// nothing.
-    pub fn stop(&mut self) {
-        if let Some(debouncer) = self.debouncer.take() {
+    pub fn stop(&self) {
+        let debouncer = self.debouncer().take();
+        if let Some(debouncer) = debouncer {
             debouncer.stop();
         }
         roots_of(&self.roots).clear();
+    }
+
+    fn debouncer(
+        &self,
+    ) -> std::sync::MutexGuard<'_, Option<Debouncer<RecommendedWatcher, RecommendedCache>>> {
+        self.debouncer.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
 
@@ -260,6 +277,35 @@ mod tests {
             e = e.add_path(PathBuf::from(*p));
         }
         DebouncedEvent::new(e, Instant::now())
+    }
+
+    /// The debouncer lives behind the watcher's own lock, so a watcher is
+    /// driven through a shared reference. That is what keeps the core's
+    /// slot free: it is held for a clone and never for the recursive
+    /// install walk, which is disk work at library scale and used to leave
+    /// RemoveSource and shutdown waiting behind it. This test only compiles
+    /// while `watch`, `unwatch` and `stop` take `&self`.
+    #[test]
+    fn a_watcher_is_driven_through_a_shared_reference() {
+        let dir = tempfile::tempdir().unwrap();
+        let deep = dir.path().join("a").join("b").join("c");
+        std::fs::create_dir_all(&deep).unwrap();
+        let other = dir.path().join("other");
+        std::fs::create_dir_all(&other).unwrap();
+
+        let watcher = Arc::new(Watcher::new(Weak::new()).unwrap());
+        let installing = Arc::clone(&watcher);
+        let root = dir.path().to_string_lossy().into_owned();
+        let installer = std::thread::spawn(move || installing.watch(&root));
+        // Nothing here takes the installer's reference away from it.
+        watcher.unwatch(&other.to_string_lossy());
+        installer.join().unwrap().unwrap();
+
+        watcher.watch(&dir.path().to_string_lossy()).unwrap();
+        watcher.stop();
+        // A stopped watcher answers rather than failing, so a scan that
+        // outlives shutdown asks for nothing it cannot have.
+        watcher.watch(&deep.to_string_lossy()).unwrap();
     }
 
     #[test]
