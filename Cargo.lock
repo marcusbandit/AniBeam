@@ -34,6 +34,7 @@ version = "2.0.0-dev"
 dependencies = [
  "anibeam-core",
  "clap",
+ "serde_json",
 ]
 
 [[package]]

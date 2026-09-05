@@ -2,6 +2,7 @@
 //! contract in `contract`.
 
 pub mod contract;
+pub mod core;
 pub mod events;
 pub mod jobs;
 pub mod paths;
@@ -9,6 +10,7 @@ pub mod store;
 pub mod time;
 
 pub use contract::*;
+pub use core::Core;
 pub use paths::CorePaths;
 
 /// The describe string computed by build.rs: `2.0.0.r14.g1a2b3c4` at a commit,
