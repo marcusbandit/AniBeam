@@ -17,9 +17,7 @@
 //! them), the hidden guard in `src/main/ipc/tracker.ts`, and
 //! `src/shared/hiddenMatch.ts`.
 
-use std::future::Future;
 use std::sync::Arc;
-use std::time::Duration;
 
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -32,12 +30,7 @@ use crate::net::HttpResponse;
 use crate::net::anilist::{MEDIA_LIST_ENTRY_QUERY, SAVE_PROGRESS_MUTATION, SAVE_SCORE_MUTATION};
 use crate::prefs;
 use crate::time;
-use crate::trackers::{accounts, cache};
-
-/// How long one provider call has before it is given up on. A page is
-/// waiting on a mark, so it gives up well before the transport's own
-/// thirty seconds.
-const WRITE_TIMEOUT: Duration = Duration::from_secs(15);
+use crate::trackers::{TRACKER_TIMEOUT, accounts, cache};
 
 /// The account says it is connected but there is no token behind it: a
 /// keyring that lost the entry, or a MAL session whose refresh has failed
@@ -595,13 +588,15 @@ async fn read_entry(
             let user_id = user_id
                 .ok_or_else(|| accounts::tracker_error(t, "the account carries no user id"))?;
             let variables = serde_json::json!({ "userId": user_id, "mediaId": media_id });
-            match timed(
-                t,
-                "read",
-                core.anilist
-                    .graphql(MEDIA_LIST_ENTRY_QUERY, variables, Some(token)),
-            )
-            .await
+            match core
+                .anilist
+                .graphql_within(
+                    MEDIA_LIST_ENTRY_QUERY,
+                    variables,
+                    Some(token),
+                    TRACKER_TIMEOUT,
+                )
+                .await
             {
                 Ok(data) => Ok(as_count(data["MediaList"]["progress"].as_u64())),
                 Err(e) if is_not_found(&e) => Ok(0),
@@ -610,7 +605,7 @@ async fn read_entry(
         }
         Tracker::Mal => {
             let url = format!("{MAL_API}/anime/{media_id}?fields=my_list_status");
-            let response = timed(t, "read", core.mal.get(&url, token)).await?;
+            let response = core.mal.get(&url, token).await?;
             if response.status == 404 {
                 return Ok(0);
             }
@@ -636,25 +631,24 @@ async fn send_progress(
     match t {
         Tracker::Anilist => {
             let variables = serde_json::json!({ "mediaId": media_id, "progress": progress, "status": anilist_status(status) });
-            timed(
-                t,
-                "write",
-                core.anilist
-                    .graphql(SAVE_PROGRESS_MUTATION, variables, Some(token)),
-            )
-            .await?;
+            core.anilist
+                .graphql_within(
+                    SAVE_PROGRESS_MUTATION,
+                    variables,
+                    Some(token),
+                    TRACKER_TIMEOUT,
+                )
+                .await?;
         }
         Tracker::Mal => {
             let form = vec![
                 ("num_watched_episodes".to_string(), progress.to_string()),
                 ("status".to_string(), mal_status(status).to_string()),
             ];
-            let response = timed(
-                t,
-                "write",
-                core.mal.patch_form(&list_status_url(media_id), token, form),
-            )
-            .await?;
+            let response = core
+                .mal
+                .patch_form(&list_status_url(media_id), token, form)
+                .await?;
             if !response.is_success() {
                 return Err(mal_failure(&response));
             }
@@ -686,13 +680,9 @@ async fn send_score(
                 variables["status"] =
                     serde_json::Value::String(anilist_status(ListStatus::Completed).to_string());
             }
-            timed(
-                t,
-                "score",
-                core.anilist
-                    .graphql(SAVE_SCORE_MUTATION, variables, Some(token)),
-            )
-            .await?;
+            core.anilist
+                .graphql_within(SAVE_SCORE_MUTATION, variables, Some(token), TRACKER_TIMEOUT)
+                .await?;
             Ok(score)
         }
         Tracker::Mal => {
@@ -704,12 +694,10 @@ async fn send_score(
                     mal_status(ListStatus::Completed).to_string(),
                 ));
             }
-            let response = timed(
-                t,
-                "score",
-                core.mal.patch_form(&list_status_url(media_id), token, form),
-            )
-            .await?;
+            let response = core
+                .mal
+                .patch_form(&list_status_url(media_id), token, form)
+                .await?;
             if !response.is_success() {
                 return Err(mal_failure(&response));
             }
@@ -720,27 +708,6 @@ async fn send_score(
 
 fn list_status_url(media_id: u64) -> String {
     format!("{MAL_API}/anime/{media_id}/my_list_status")
-}
-
-/// Every provider call one write makes, with the tracker timeout on it. A
-/// call that never answered has no status to report, so the failure is the
-/// provider's with the tracker and the action named in the message.
-async fn timed<T>(
-    t: Tracker,
-    what: &str,
-    call: impl Future<Output = Result<T, CoreError>>,
-) -> Result<T, CoreError> {
-    match tokio::time::timeout(WRITE_TIMEOUT, call).await {
-        Ok(result) => result,
-        Err(_) => Err(accounts::tracker_error(
-            t,
-            format!(
-                "{} {what} timed out after {}ms",
-                t.label(),
-                WRITE_TIMEOUT.as_millis()
-            ),
-        )),
-    }
 }
 
 /// MAL's failure with the `message` field it usually carries lifted out of

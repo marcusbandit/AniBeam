@@ -25,17 +25,13 @@ use crate::jobs::{Finished, JobCtx};
 use crate::library::cards;
 use crate::net::anilist::MEDIA_LIST_COLLECTION_QUERY;
 use crate::time;
+use crate::trackers::TRACKER_TIMEOUT;
 use crate::trackers::accounts;
 use crate::trackers::writes;
 
 /// How long a fetched list is taken to be current. Electron's
 /// `PROGRESS_FRESHNESS_MS`.
 pub const PROGRESS_FRESH: Duration = Duration::from_secs(5 * 60);
-
-/// How long one list read has before it is given up on. A list is what a
-/// page is waiting for, so it gives up well before the transport's own
-/// thirty seconds.
-const FETCH_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// MAL pages its list, and hands back a `paging.next` while there is more.
 /// The page count is a hard bound rather than a real limit: fifty pages is
@@ -101,16 +97,15 @@ pub async fn fetch_anilist(
     user_id: u64,
     token: &str,
 ) -> Result<Vec<Entry>, CoreError> {
-    let data = tokio::time::timeout(
-        FETCH_TIMEOUT,
-        core.anilist.graphql(
+    let data = core
+        .anilist
+        .graphql_within(
             MEDIA_LIST_COLLECTION_QUERY,
             serde_json::json!({ "userId": user_id }),
             Some(token),
-        ),
-    )
-    .await
-    .map_err(|_| timed_out(Tracker::Anilist, "AniList MediaListCollection"))??;
+            TRACKER_TIMEOUT,
+        )
+        .await?;
     let mut entries = Vec::new();
     for list in data["MediaListCollection"]["lists"]
         .as_array()
@@ -143,13 +138,11 @@ pub async fn fetch_anilist(
 pub async fn fetch_mal(core: &Arc<Core>, token: &str) -> Result<Vec<Entry>, CoreError> {
     let mut entries = Vec::new();
     let mut offset = 0u64;
-    for page in 0..MAL_MAX_PAGES {
+    for _page in 0..MAL_MAX_PAGES {
         let url = format!(
             "https://api.myanimelist.net/v2/users/@me/animelist?fields=list_status{{status,num_episodes_watched,is_rewatching,num_times_rewatched,score}}&limit={MAL_PAGE}&offset={offset}"
         );
-        let response = tokio::time::timeout(FETCH_TIMEOUT, core.mal.get(&url, token))
-            .await
-            .map_err(|_| timed_out(Tracker::Mal, &format!("MAL animelist page {page}")))??;
+        let response = core.mal.get(&url, token).await?;
         if !response.is_success() {
             return Err(CoreError::Provider {
                 provider: Provider::Mal,
@@ -374,11 +367,19 @@ async fn run(
             message: refreshed_line(t, count),
             body: EventBody::ProgressRefreshed { tracker: t },
         }),
-        // Nothing was refreshed, so a failure here is every tracker that
-        // was asked for: the job failed. One failure among several never
-        // gets this far, since the one that worked ends the job.
+        // Nothing was refreshed. A refresh asked for by name fails red:
+        // the shell asked about that tracker and nothing else, so its
+        // failure is the whole answer. A sweep never does: it runs at
+        // launch over whatever is connected, each failure has already had
+        // its Warn line, and one dead token beside one fresh account is
+        // not a red job on the shell's status strip.
         None => match failure {
-            Some(e) => Err(e),
+            Some(e) if tracker.is_some() => Err(e),
+            Some(_) => Ok(Finished {
+                level: Level::Debug,
+                message: "no progress refreshed".to_string(),
+                body: EventBody::Notice,
+            }),
             None => Ok(Finished {
                 level: Level::Debug,
                 message: "nothing to refresh".to_string(),
@@ -457,15 +458,6 @@ fn is_fresh(fetched_at: Option<SystemTime>, now: SystemTime) -> bool {
 
 fn refreshed_line(t: Tracker, count: usize) -> String {
     format!("{} progress cache refreshed ({count} entries)", t.as_str())
-}
-
-/// A list read that ran out of time. The provider never answered, so there
-/// is no status to carry.
-fn timed_out(t: Tracker, label: &str) -> CoreError {
-    accounts::tracker_error(
-        t,
-        format!("{label} timed out after {}ms", FETCH_TIMEOUT.as_millis()),
-    )
 }
 
 /// A count off a provider's JSON, which is unsigned and small: anything

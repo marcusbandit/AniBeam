@@ -586,6 +586,31 @@ impl AnilistClient {
         variables: serde_json::Value,
         token: Option<&str>,
     ) -> Result<serde_json::Value, CoreError> {
+        self.post_query(query, variables, token, None).await
+    }
+
+    /// The same, with a cap on each request. The tracker calls take one: a
+    /// user is waiting on those, and the client's own 30 second ceiling is
+    /// a long time to watch a spinner. The cap is per request, so the 429
+    /// schedule underneath keeps its own bounds.
+    pub async fn graphql_within(
+        &self,
+        query: &'static str,
+        variables: serde_json::Value,
+        token: Option<&str>,
+        timeout: std::time::Duration,
+    ) -> Result<serde_json::Value, CoreError> {
+        self.post_query(query, variables, token, Some(timeout))
+            .await
+    }
+
+    async fn post_query(
+        &self,
+        query: &'static str,
+        variables: serde_json::Value,
+        token: Option<&str>,
+        timeout: Option<std::time::Duration>,
+    ) -> Result<serde_json::Value, CoreError> {
         let mut headers = vec![
             ("Content-Type".to_string(), "application/json".to_string()),
             ("Accept".to_string(), "application/json".to_string()),
@@ -593,17 +618,18 @@ impl AnilistClient {
         if let Some(token) = token {
             headers.push(("Authorization".to_string(), format!("Bearer {token}")));
         }
-        let response = self
-            .client
-            .send(HttpRequest {
-                method: Method::Post,
-                url: ANILIST_API.to_string(),
-                headers,
-                body: Some(Body::Json(
-                    serde_json::json!({ "query": query, "variables": variables }),
-                )),
-            })
-            .await?;
+        let request = HttpRequest {
+            method: Method::Post,
+            url: ANILIST_API.to_string(),
+            headers,
+            body: Some(Body::Json(
+                serde_json::json!({ "query": query, "variables": variables }),
+            )),
+        };
+        let response = match timeout {
+            Some(d) => self.client.send_within(request, d).await?,
+            None => self.client.send(request).await?,
+        };
         // AniList answers a GraphQL failure with a 200 and an `errors`
         // array as often as it answers with the status, so the body is
         // read first and the status is only the fallback.

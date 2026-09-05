@@ -192,11 +192,14 @@ impl Core {
             http.clone(),
             ANISKIP_GAP,
         )));
-        let mal = Arc::new(MalClient::new(ProviderClient::new(
-            Upstream::Mal,
-            http.clone(),
-            MAL_GAP,
-        )));
+        // Every MAL call is a tracker call with a user waiting on it, so
+        // this client caps each request rather than each call site doing
+        // it; AniList is shared with the metadata jobs and takes its cap
+        // per call instead.
+        let mal = Arc::new(MalClient::new(
+            ProviderClient::new(Upstream::Mal, http.clone(), MAL_GAP)
+                .with_attempt_timeout(crate::trackers::TRACKER_TIMEOUT),
+        ));
         Ok(Arc::new_cyclic(|me| Core {
             paths,
             store,

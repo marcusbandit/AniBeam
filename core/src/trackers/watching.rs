@@ -18,7 +18,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
-use std::time::{Duration, UNIX_EPOCH};
+use std::time::UNIX_EPOCH;
 
 use rusqlite::{Connection, Transaction, params};
 
@@ -29,14 +29,10 @@ use crate::metadata::record::{self, StubWrite};
 use crate::net::anilist::WATCHING_LIST_QUERY;
 use crate::store::settings;
 use crate::time;
+use crate::trackers::TRACKER_TIMEOUT;
 use crate::trackers::accounts;
 use crate::trackers::cache::normalize_status;
 use crate::trackers::writes;
-
-/// How long the list read has before it is given up on, the same window
-/// the progress fetch gives itself: a page is waiting on this, so it gives
-/// up well before the transport's own thirty seconds.
-const FETCH_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// The account says it is connected but there is no token behind it,
 /// which for AniList's implicit grant means the keyring lost the entry.
@@ -282,21 +278,15 @@ async fn refresh(core: &Arc<Core>) -> Result<Finished, CoreError> {
 /// first copy of it is the one kept, and anything that is not being
 /// watched belongs to another page.
 async fn fetch(core: &Arc<Core>, user_id: u64, token: &str) -> Result<Vec<Row>, CoreError> {
-    let data = tokio::time::timeout(
-        FETCH_TIMEOUT,
-        core.anilist.graphql(
+    let data = core
+        .anilist
+        .graphql_within(
             WATCHING_LIST_QUERY,
             serde_json::json!({ "userId": user_id }),
             Some(token),
-        ),
-    )
-    .await
-    .map_err(|_| {
-        tracker_error(format!(
-            "AniList watching list timed out after {}ms",
-            FETCH_TIMEOUT.as_millis()
-        ))
-    })??;
+            TRACKER_TIMEOUT,
+        )
+        .await?;
 
     let mut seen: HashSet<u64> = HashSet::new();
     let mut rows: Vec<Row> = Vec::new();

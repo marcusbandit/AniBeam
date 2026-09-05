@@ -322,3 +322,56 @@ fn a_disconnected_tracker_is_skipped() {
     assert_eq!(done.message, "nothing to refresh");
     assert!(http.requests().is_empty());
 }
+
+/// The launch sweep is not a question about one tracker, so one dead token
+/// beside one account that needs nothing is a Warn line and a quiet
+/// terminal, never a red job on the shell's status strip. A refresh asked
+/// for by name still fails red: there the shell asked about that tracker
+/// and nothing else.
+#[test]
+fn a_sweep_with_one_dead_token_warns_rather_than_failing_the_job() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    library(&core);
+    fixtures::connect_tracker(&core, Tracker::Anilist, 42, "tok");
+    fixtures::connect_tracker(&core, Tracker::Mal, 7, "mtok");
+
+    // Both fill once, so both carry a fetch time.
+    http.push_for("anilist", 200, collection(5).to_string());
+    http.push_for(
+        "animelist",
+        200,
+        serde_json::json!({ "data": [], "paging": {} }).to_string(),
+    );
+    let job = started(core.call(Call::RefreshProgress { tracker: None }).unwrap());
+    common::wait_job(&c, job);
+
+    // AniList is fresh and skipped; MAL is stale and its token is dead.
+    fixtures::age_progress(&core, Tracker::Mal, 600);
+    http.fail_next("connection refused");
+    let job = started(core.call(Call::RefreshProgress { tracker: None }).unwrap());
+    let done = common::wait_job(&c, job);
+    assert!(matches!(done.body, EventBody::Notice), "{done:?}");
+    assert_eq!(done.level, Level::Debug);
+    assert!(
+        c.events()
+            .iter()
+            .any(|e| e.level == Level::Warn && e.message.contains("mal progress refresh failed")),
+        "{:#?}",
+        c.events()
+            .iter()
+            .map(|e| (e.level, e.message.clone()))
+            .collect::<Vec<_>>()
+    );
+
+    // The same failure, asked for by name, is the job's answer.
+    http.fail_next("connection refused");
+    let job = started(
+        core.call(Call::RefreshProgress {
+            tracker: Some(Tracker::Mal),
+        })
+        .unwrap(),
+    );
+    let done = common::wait_job(&c, job);
+    assert!(matches!(done.body, EventBody::JobFailed { .. }), "{done:?}");
+}

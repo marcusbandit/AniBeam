@@ -24,6 +24,10 @@ pub struct ProviderClient {
     limiter: DefaultDirectRateLimiter,
     min_delay: Duration,
     max_attempts: usize,
+    /// A cap on one request, never on the whole call. A timeout around the
+    /// retries would swallow the 429 schedule and report a rate limit as a
+    /// timeout, which is the one thing a caller must not be told.
+    attempt_timeout: Option<Duration>,
 }
 
 /// A 429 by status, or AniList's 429 inside a 200 body. AniList answers a
@@ -73,7 +77,16 @@ impl ProviderClient {
             limiter: RateLimiter::direct(quota),
             min_delay: Duration::from_secs(1),
             max_attempts: DEFAULT_MAX_ATTEMPTS,
+            attempt_timeout: None,
         }
+    }
+
+    /// Caps every request this client makes, retries included, at `d`. For
+    /// a client whose calls all want the same cap; a client shared between
+    /// callers that want different ones uses `send_within` instead.
+    pub fn with_attempt_timeout(mut self, d: Duration) -> Self {
+        self.attempt_timeout = Some(d);
+        self
     }
 
     /// Tests shrink the backoff; production keeps the one second floor.
@@ -94,9 +107,40 @@ impl ProviderClient {
     }
 
     pub async fn send(&self, req: HttpRequest) -> Result<HttpResponse, CoreError> {
+        self.send_capped(req, self.attempt_timeout).await
+    }
+
+    /// `send` with a cap on each request. The retries keep their own
+    /// schedule, so a 429 storm still ends as a rate limit rather than as
+    /// a timeout, and one wedged connection still ends in a bounded wait.
+    pub async fn send_within(
+        &self,
+        req: HttpRequest,
+        timeout: Duration,
+    ) -> Result<HttpResponse, CoreError> {
+        self.send_capped(req, Some(timeout)).await
+    }
+
+    async fn send_capped(
+        &self,
+        req: HttpRequest,
+        per_attempt: Option<Duration>,
+    ) -> Result<HttpResponse, CoreError> {
         let attempt = || async {
             self.limiter.until_ready().await;
-            match self.http.send(req.clone()).await {
+            let sent = match per_attempt {
+                Some(d) => match tokio::time::timeout(d, self.http.send(req.clone())).await {
+                    Ok(sent) => sent,
+                    // A request that never answered is a transport failure
+                    // like any other: nothing is retried and the caller
+                    // decides what to do about it.
+                    Err(_) => Err(super::HttpError {
+                        message: format!("timed out after {}ms", d.as_millis()),
+                    }),
+                },
+                None => self.http.send(req.clone()).await,
+            };
+            match sent {
                 Ok(r) if is_rate_limited(&r) => Err(Attempt::Limited(Box::new(r))),
                 Ok(r) => Ok(r),
                 Err(e) => Err(Attempt::Transport(e.message)),
@@ -161,6 +205,96 @@ mod tests {
             headers: vec![],
             body: None,
         }
+    }
+
+    /// A server that takes its time and then answers.
+    struct Slow {
+        delay: Duration,
+    }
+
+    impl Http for Slow {
+        fn send(
+            &self,
+            _req: HttpRequest,
+        ) -> crate::net::BoxFuture<'_, Result<HttpResponse, crate::net::HttpError>> {
+            let delay = self.delay;
+            Box::pin(async move {
+                tokio::time::sleep(delay).await;
+                Ok(HttpResponse {
+                    status: 200,
+                    headers: vec![],
+                    body: b"{}".to_vec(),
+                })
+            })
+        }
+    }
+
+    /// The timeout is on one request, never on the call. A wedged
+    /// connection still ends in a bounded transport failure, and a 429
+    /// storm whose backoff outlasts the cap several times over still
+    /// reports as the rate limit it is: a caller told "timed out" would
+    /// retry into a provider that asked it to stop.
+    #[tokio::test]
+    async fn a_per_attempt_timeout_ends_one_request_and_never_the_retry_schedule() {
+        let slow = Arc::new(Slow {
+            delay: Duration::from_millis(200),
+        });
+        let client = ProviderClient::new(Upstream::Anilist, slow, Duration::from_millis(1));
+        let err = client
+            .send_within(get("https://x/"), Duration::from_millis(20))
+            .await
+            .err()
+            .unwrap();
+        assert!(
+            matches!(&err, CoreError::Provider { status: None, message, .. } if message.contains("timed out")),
+            "{err:?}"
+        );
+
+        let http = FakeHttp::new();
+        for _ in 0..3 {
+            http.push(429, "no");
+        }
+        let client = ProviderClient::new(Upstream::Anilist, http, Duration::from_millis(1))
+            .with_min_delay(Duration::from_millis(40))
+            .with_max_attempts(2);
+        let start = Instant::now();
+        let err = client
+            .send_within(get("https://x/"), Duration::from_millis(5))
+            .await
+            .err()
+            .unwrap();
+        assert!(
+            matches!(
+                err,
+                CoreError::Provider {
+                    status: Some(429),
+                    ..
+                }
+            ),
+            "{err:?}"
+        );
+        assert!(
+            start.elapsed() >= Duration::from_millis(120),
+            "the schedule was cut short: {:?}",
+            start.elapsed()
+        );
+    }
+
+    /// A client built with a cap applies it to every plain `send` too,
+    /// which is how the MAL client caps its calls without every call site
+    /// saying so.
+    #[tokio::test]
+    async fn a_client_built_with_a_cap_applies_it_to_every_send() {
+        let slow = Arc::new(Slow {
+            delay: Duration::from_millis(200),
+        });
+        let client = ProviderClient::new(Upstream::Mal, slow, Duration::from_millis(1))
+            .with_attempt_timeout(Duration::from_millis(20));
+        let err = client.send(get("https://x/")).await.err().unwrap();
+        assert!(
+            matches!(&err, CoreError::Provider { status: None, message, .. } if message.contains("timed out")),
+            "{err:?}"
+        );
     }
 
     #[tokio::test]
