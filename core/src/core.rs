@@ -20,6 +20,7 @@ use crate::net::limiter::ProviderClient;
 use crate::net::mal::MalClient;
 use crate::net::{Http, ReqwestHttp, Upstream};
 use crate::paths::CorePaths;
+use crate::playback::session::{self, Sessions};
 use crate::prefs;
 use crate::store::Store;
 use crate::subscriptions;
@@ -87,6 +88,10 @@ pub struct Core {
     /// its titles rather than its match, and a job walking a whole library
     /// through one must not write a warning per series into the log.
     pub(crate) jikan_outage: Mutex<Option<Instant>>,
+    /// Every open playback session, and the counter that names the next
+    /// one. A session lives in memory for one run of the player: the rows
+    /// its rules write are the record, and none of it survives a restart.
+    pub(crate) sessions: Arc<Sessions>,
     /// When each franchise root was last crawled on a page's behalf. A
     /// series page asks for its franchise every time it opens, and the
     /// crawl behind that read runs at most once a minute per root, so
@@ -175,6 +180,7 @@ impl Core {
             mal,
             oauth_port: AtomicU16::new(DEFAULT_OAUTH_PORT),
             jikan_outage: Mutex::new(None),
+            sessions: Arc::new(Sessions::default()),
             crawl_recent: Mutex::new(HashMap::new()),
             me: me.clone(),
             started: AtomicBool::new(false),
@@ -461,6 +467,18 @@ impl Core {
                 Ok(Reply::Graph { layout: franchise::graph(&core, series)? })
             }
             Call::ListSubscriptions => Ok(Reply::Started { job: subscriptions::start(self)? }),
+            Call::OpenPlayback { file } => Ok(Reply::Playback { session: Box::new(session::open(self, file)?) }),
+            // The tick's reply is `Ok` and nothing else; every outcome the
+            // rules decide arrives as an event.
+            Call::Tick { session, position, paused } => {
+                session::tick(self, session, position, paused)?;
+                Ok(Reply::Ok)
+            }
+            Call::ClosePlayback { session, position, reason } => {
+                session::close(self, session, position, reason)?;
+                Ok(Reply::Ok)
+            }
+            Call::SetTrackChoice { series, audio, subtitle } => session::set_track_choice(self, series, audio, subtitle),
             other => Err(CoreError::Unsupported { what: format!("{} is not built yet", call_name(&other)) }),
         }
     }

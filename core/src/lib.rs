@@ -16,6 +16,7 @@ pub mod metadata;
 #[doc(hidden)]
 pub mod net;
 pub mod paths;
+pub mod playback;
 pub mod prefs;
 pub mod store;
 pub mod subscriptions;
