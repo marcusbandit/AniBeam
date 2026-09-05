@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 
 use crate::contract::*;
 use crate::events::{EventBus, Subscription};
+use crate::feed;
 use crate::franchise;
 use crate::images::{self, ImageCache};
 use crate::jobs::Jobs;
@@ -21,6 +22,7 @@ use crate::net::{Http, ReqwestHttp, Upstream};
 use crate::paths::CorePaths;
 use crate::prefs;
 use crate::store::Store;
+use crate::time;
 use crate::trackers::accounts;
 use crate::trackers::cache;
 use crate::trackers::oauth;
@@ -377,6 +379,14 @@ impl Core {
             // the Hidden tab always lists what it holds.
             Call::ListSeries { tab, query, sort, direction, reveal_hidden: _ } => reads::list_series(self, tab, &query, sort, direction),
             Call::ListAiring { offset, limit } => reads::list_airing(self, offset, limit),
+            // Pure over one snapshot load, scope None: nothing to write and
+            // no job. The shell's own sort preference is saved separately
+            // through SetPreferences.
+            Call::ListFeed { sort } => {
+                let images_dir = self.paths.images_dir();
+                let cards = self.store.read(|c| feed::list(c, &images_dir, sort, time::now()))?;
+                Ok(Reply::Feed { cards })
+            }
             Call::GetSeries { series } => reads::get_series(self, series),
             Call::SetHidden { series, hidden } => reads::set_hidden(self, series, hidden),
             Call::ListMetadata { filter, query, reveal_hidden } => reads::list_metadata(self, filter, &query, reveal_hidden),
