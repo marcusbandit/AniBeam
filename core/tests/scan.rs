@@ -61,6 +61,14 @@ fn add_source_scans_reconciles_marks_missing_and_forgets() {
     fs::remove_dir_all(lib.join("Show A")).unwrap();
     let job = started(core.call(Call::Scan { source: None }).unwrap());
     assert!(matches!(common::wait_job(&c, job).body, EventBody::ScanFinished { added: 0, changed: 0, removed: 1, .. }));
+    // The series that went missing leaves in the scan's own batch, card and
+    // all, so a shell patching its grid from events can drop it.
+    assert!(
+        c.bodies().iter().any(|b| matches!(b, EventBody::SeriesChanged { series }
+            if series.iter().any(|s| s.title == "Show A" && s.missing && s.episodes_on_disk == 0))),
+        "{:?}",
+        c.bodies()
+    );
     let all = match core.call(Call::ListSeries { tab: Tab::All, query: String::new(), sort: Sort::Alpha, direction: Direction::Asc, reveal_hidden: false }).unwrap() {
         Reply::Series { series } => series,
         other => panic!("{other:?}"),

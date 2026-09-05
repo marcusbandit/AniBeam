@@ -5,9 +5,10 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::Duration;
 
-use rusqlite::{params, Connection, ErrorCode, OptionalExtension, Transaction};
+use rusqlite::{params, params_from_iter, Connection, ErrorCode, OptionalExtension, Transaction};
 
 use crate::contract::*;
 use crate::core::Core;
@@ -16,19 +17,37 @@ use crate::library::cards;
 use crate::library::walk::{self, ScannedSeries};
 use crate::time;
 
-/// The library's in-memory state, the part that has no column. Task 12
-/// adds the watcher's `settle`, `pending_paths` and `match_in_flight`.
+/// How long a folder has to sit still before the core believes the copying
+/// into it has finished and a match is worth attempting.
+pub const SETTLE: Duration = Duration::from_secs(4);
+
+/// The library's in-memory state, the part that has no column.
 #[derive(Default)]
 pub struct LibraryState {
     pub movie_folders: Mutex<HashMap<u64, Vec<String>>>,
+    /// One armed settle timer per series, re-armed on every reconcile that
+    /// touched it, so the timer only fires once the folder stops changing.
+    pub settle: Mutex<HashMap<u64, tokio::task::JoinHandle<()>>>,
+    /// Paths the watcher reported that no scan has looked at yet. Scan runs
+    /// one at a time, so a trigger arriving while a scan is walking waits
+    /// here and the running job comes back for it.
+    pub pending_paths: Mutex<Vec<String>>,
+    /// Series whose auto-match is running right now, filled by Task 16. A
+    /// settle timer is never armed for one of these: the match it would ask
+    /// for is already under way.
+    pub match_in_flight: Mutex<HashSet<u64>>,
+}
+
+/// A panicking job must never wedge one of these for the rest of the
+/// process; everything inside them is plain data, so a poisoned lock is
+/// recovered rather than propagated.
+fn recover<T>(lock: &Mutex<T>) -> MutexGuard<'_, T> {
+    lock.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 impl LibraryState {
-    /// A panicking job must never wedge the map for the rest of the
-    /// process; the folders inside are plain data, so a poisoned lock is
-    /// recovered rather than propagated.
-    fn folders(&self) -> std::sync::MutexGuard<'_, HashMap<u64, Vec<String>>> {
-        self.movie_folders.lock().unwrap_or_else(|e| e.into_inner())
+    fn folders(&self) -> MutexGuard<'_, HashMap<u64, Vec<String>>> {
+        recover(&self.movie_folders)
     }
 
     pub fn movie_folders_for(&self, source: u64) -> Vec<String> {
@@ -41,6 +60,22 @@ impl LibraryState {
 
     fn forget_source(&self, source: u64) {
         self.folders().remove(&source);
+    }
+
+    pub(crate) fn push_pending(&self, paths: Vec<String>) {
+        recover(&self.pending_paths).extend(paths);
+    }
+
+    fn take_pending(&self) -> Vec<String> {
+        std::mem::take(&mut *recover(&self.pending_paths))
+    }
+
+    fn pending_is_empty(&self) -> bool {
+        recover(&self.pending_paths).is_empty()
+    }
+
+    fn is_matching(&self, series: u64) -> bool {
+        recover(&self.match_in_flight).contains(&series)
     }
 }
 
@@ -207,14 +242,24 @@ pub fn reconcile_source(
     }
 
     // A scoped scan walked the whole source for context but speaks for its
-    // own paths alone, so it never marks anything missing and never claims
-    // the source was scanned in full.
+    // own paths alone. It speaks for them fully, though: a series inside
+    // the scope that the walk did not produce is gone, and it goes missing
+    // exactly as a full scan would mark it. Series outside the scope are
+    // the ones it says nothing about. Sorted so the terminal event's order
+    // does not depend on a hash map's.
+    let mut vanished: Vec<u64> = existing
+        .iter()
+        .filter(|((_, path), e)| !e.missing && !seen.contains(&e.id) && in_scope(path))
+        .map(|(_, e)| e.id)
+        .collect();
+    vanished.sort_unstable();
+    for id in vanished {
+        tx.execute("UPDATE series SET missing_since = ?2 WHERE id = ?1", params![id as i64, now])?;
+        tx.execute("DELETE FROM files WHERE series_id = ?1", params![id as i64])?;
+        out.removed.push(id);
+    }
+    // Only a full walk can claim the source was scanned in full.
     if only_under.is_none() {
-        for e in existing.values().filter(|e| !seen.contains(&e.id) && !e.missing) {
-            tx.execute("UPDATE series SET missing_since = ?2 WHERE id = ?1", params![e.id as i64, now])?;
-            tx.execute("DELETE FROM files WHERE series_id = ?1", params![e.id as i64])?;
-            out.removed.push(e.id);
-        }
         tx.execute("UPDATE sources SET scanned_at = ?2 WHERE id = ?1", params![source_id as i64, now])?;
     }
 
@@ -231,6 +276,55 @@ pub fn reconcile_source(
         }
     }
     Ok(out)
+}
+
+/// Pushes a series' settle timer out by another four seconds, replacing the
+/// one already armed. When it finally fires, the folder has stopped
+/// changing and `Core::settle_fired` decides what to do about it; Task 16
+/// makes that an auto-match.
+///
+/// The task holds a `Weak`, never an `Arc`: a timer must not be the reason
+/// the core is still alive.
+pub fn arm_settle(core: &Arc<Core>, series_id: u64) {
+    let mut settle = recover(&core.library.settle);
+    if let Some(previous) = settle.remove(&series_id) {
+        previous.abort();
+    }
+    let weak = Arc::downgrade(core);
+    let handle = core.handle.spawn(async move {
+        tokio::time::sleep(SETTLE).await;
+        let Some(core) = weak.upgrade() else { return };
+        {
+            let mut armed = recover(&core.library.settle);
+            // `abort` cannot reach a timer that is already past its sleep,
+            // so a re-arm landing in that window would otherwise fire the
+            // old timer as well. The map says which one is the live timer.
+            match armed.get(&series_id) {
+                Some(current) if current.id() == tokio::task::id() => armed.remove(&series_id),
+                _ => return,
+            };
+        }
+        core.settle_fired(series_id);
+    });
+    settle.insert(series_id, handle);
+}
+
+/// `?,?,?` for an `IN` list. Ids are bound, never formatted into the SQL.
+fn placeholders(n: usize) -> String {
+    std::iter::repeat_n("?", n).collect::<Vec<_>>().join(",")
+}
+
+/// Which of these series have never been matched and never been attempted:
+/// the ones a settled folder is worth an auto-match for. A MAL-only
+/// confirmed match has a `provider` and is left alone.
+fn never_attempted(conn: &Connection, ids: &[u64]) -> Result<Vec<u64>, CoreError> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let sql = format!("SELECT id FROM series WHERE attempted_at IS NULL AND provider IS NULL AND id IN ({})", placeholders(ids.len()));
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(params_from_iter(ids.iter().map(|id| *id as i64)), |r| r.get::<_, i64>(0).map(|v| v as u64))?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
 }
 
 /// An extra's number column is NULL; an episode's is its number.
@@ -262,6 +356,13 @@ fn all_targets(conn: &Connection) -> Result<Vec<Target>, CoreError> {
     let rows = stmt
         .query_map([], |r| Ok(Target { id: r.get::<_, i64>(0)? as u64, path: r.get(1)?, available: r.get::<_, i64>(2)? == 1 }))?
         .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+/// The sources a watch can be installed on right now, for `Core::start`.
+pub fn available_source_paths(conn: &Connection) -> Result<Vec<String>, CoreError> {
+    let mut stmt = conn.prepare("SELECT path FROM sources WHERE available = 1 ORDER BY id")?;
+    let rows = stmt.query_map([], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
     Ok(rows)
 }
 
@@ -369,6 +470,12 @@ pub fn add_source(core: &Core, path: &str) -> Result<Reply, CoreError> {
     })?;
     let source = Source { id, path: path.clone(), available, series_count: 0, movie_folders: Vec::new() };
     core.bus.info(Stage::Library, format!("source added: {path}"), EventBody::SourceChanged { source: source.clone() });
+    // A scan already running knows nothing about this source and the
+    // one-at-a-time rule means the call below starts nothing. Queued here,
+    // the running job comes back for it before it finishes; when no scan is
+    // running, the scan the next line starts covers the path and takes it
+    // straight back off the queue.
+    core.library.push_pending(vec![path.clone()]);
     start(&owner, ScanScope::Source(id));
     Ok(Reply::Source { source })
 }
@@ -387,7 +494,7 @@ pub fn remove_source(core: &Core, source: u64) -> Result<Reply, CoreError> {
         Ok((path, ids))
     })?;
     core.library.forget_source(source);
-    // Task 12 stops watching `path` here.
+    core.unwatch_source(&path);
     if !ids.is_empty() {
         core.bus.info(Stage::Library, format!("source removed with {} series", ids.len()), EventBody::SeriesRemoved { ids });
     }
@@ -447,73 +554,148 @@ pub fn rescan_series(core: &Core, series: u64) -> Result<Reply, CoreError> {
 pub fn start(core: &Arc<Core>, scope: ScanScope) -> u64 {
     let core = core.clone();
     core.jobs.clone().start(JobKind::Scan, move |ctx| async move {
-        let plan = resolve(&core, &scope).await?;
         let (mut added, mut changed, mut removed) = (0u64, 0u64, 0u64);
-        let total = plan.targets.len() as u64;
+        let mut reply_source = None;
+        let mut scope = scope;
+        let mut first_pass = true;
 
-        for (i, target) in plan.targets.into_iter().enumerate() {
-            ctx.checkpoint()?;
-            ctx.progress(i as u64, Some(total), &target.path);
-            // Task 12 installs the watcher's recursive watch on the source here.
+        loop {
+            // A `Paths` scan is the drain: it takes the whole queue, both
+            // the paths it was handed and whatever the watcher reported
+            // while an earlier scan was walking. An empty list means "just
+            // the queue", which is how the watcher asks for one.
+            if let ScanScope::Paths(handed) = &scope {
+                let mut all = core.library.take_pending();
+                all.extend(handed.iter().cloned());
+                all.sort_unstable();
+                all.dedup();
+                scope = ScanScope::Paths(all);
+            }
+            let plan = resolve(&core, &scope).await?;
+            // Any other scope takes off the queue only what its own walk
+            // covers anyway, so a scan of a source does not leave a
+            // redundant follow-up pass behind it. What it does not cover
+            // stays queued for the drain.
+            if !matches!(scope, ScanScope::Paths(_)) {
+                recover(&core.library.pending_paths).retain(|p| !covered_by(&plan, p));
+            }
+            if first_pass {
+                reply_source = plan.reply_source;
+                first_pass = false;
+            }
+            let Plan { targets, only_under, .. } = plan;
+            let total = targets.len() as u64;
 
-            let source_id = target.id;
-            let path = target.path;
-            let available = Path::new(&path).is_dir();
-            if available != target.available {
-                core.store
-                    .write_async(move |c| {
-                        c.execute("UPDATE sources SET available = ?2 WHERE id = ?1", params![source_id as i64, i64::from(available)])?;
-                        Ok(())
-                    })
-                    .await?;
-                if let Some((row_path, row_available)) = core.store.write_async(move |c| source_row(c, source_id)).await? {
-                    let count = core.store.write_async(move |c| series_count(c, source_id)).await?;
-                    let source = Source {
-                        id: source_id,
-                        path: row_path,
-                        available: row_available,
-                        series_count: count,
-                        movie_folders: core.library.movie_folders_for(source_id),
-                    };
-                    let message = if available { format!("source available again: {path}") } else { format!("source unavailable: {path}") };
-                    ctx.emit(Level::Info, message, EventBody::SourceChanged { source });
+            for (i, target) in targets.into_iter().enumerate() {
+                ctx.checkpoint()?;
+                ctx.progress(i as u64, Some(total), &target.path);
+
+                let source_id = target.id;
+                let path = target.path;
+                let available = Path::new(&path).is_dir();
+                if available != target.available {
+                    core.store
+                        .write_async(move |c| {
+                            c.execute("UPDATE sources SET available = ?2 WHERE id = ?1", params![source_id as i64, i64::from(available)])?;
+                            Ok(())
+                        })
+                        .await?;
+                    if let Some((row_path, row_available)) = core.store.write_async(move |c| source_row(c, source_id)).await? {
+                        let count = core.store.write_async(move |c| series_count(c, source_id)).await?;
+                        let source = Source {
+                            id: source_id,
+                            path: row_path,
+                            available: row_available,
+                            series_count: count,
+                            movie_folders: core.library.movie_folders_for(source_id),
+                        };
+                        let message = if available { format!("source available again: {path}") } else { format!("source unavailable: {path}") };
+                        ctx.emit(Level::Info, message, EventBody::SourceChanged { source });
+                    }
+                }
+                if !available {
+                    continue;
+                }
+
+                // The recursive watch is installed here rather than by
+                // `AddSource`, because notify installs one by walking every
+                // directory under the root: that is disk work at library
+                // scale and belongs to a job. Idempotent per root, so every
+                // later scan asking again costs a string compare.
+                let owner = core.clone();
+                let root = path.clone();
+                let watched = tokio::task::spawn_blocking(move || owner.install_watch(&root)).await.map_err(|e| CoreError::internal(e.to_string()))?;
+                if let Err(e) = watched {
+                    ctx.emit(Level::Warn, format!("cannot watch {path}: {e}"), EventBody::Notice);
+                }
+
+                let root = path.clone();
+                let scanned = tokio::task::spawn_blocking(move || walk::scan_source(Path::new(&root)))
+                    .await
+                    .map_err(|e| CoreError::internal(e.to_string()))??;
+                let root = path.clone();
+                let movie_folders = tokio::task::spawn_blocking(move || walk::find_movie_folders(Path::new(&root)))
+                    .await
+                    .map_err(|e| CoreError::internal(e.to_string()))?;
+                core.library.set_movie_folders(source_id, movie_folders);
+
+                let only = only_under.clone();
+                let now = time::now_secs();
+                let r = core.store.tx_async(move |tx| reconcile_source(tx, source_id, &scanned, only.as_deref(), now)).await?;
+                added += r.added.len() as u64;
+                changed += r.changed.len() as u64;
+                removed += r.removed.len() as u64;
+
+                // The batch carries what went missing too: those cards say
+                // `missing: true`, which is how a shell patching its grid
+                // from events knows to drop them. `SeriesRemoved` stays
+                // what it was, the answer to Forget and RemoveSource.
+                let touched: Vec<u64> = r.added.iter().chain(r.changed.iter()).chain(r.removed.iter()).copied().collect();
+                if !touched.is_empty() {
+                    let dir = core.paths.images_dir();
+                    let cards = core.store.write_async(move |c| cards::cards_for(c, &dir, &touched)).await?;
+                    ctx.changed_all(cards);
+                }
+
+                // A folder that changed is a folder still being copied
+                // into, so every series this pass added or changed has its
+                // settle timer pushed out again. Only one that has never
+                // been matched and is not being matched right now is worth
+                // a timer at all, and a folder that just vanished is worth
+                // none.
+                let ids: Vec<u64> = r.added.iter().chain(r.changed.iter()).copied().collect();
+                if !ids.is_empty() {
+                    let unmatched = core.store.write_async(move |c| never_attempted(c, &ids)).await?;
+                    for id in unmatched.into_iter().filter(|id| !core.library.is_matching(*id)) {
+                        arm_settle(&core, id);
+                    }
                 }
             }
-            if !available {
-                continue;
+
+            // A trigger that arrived while this pass was walking is not in
+            // it. Going round again inside this job is the only way to
+            // reach it: Scan runs one at a time, so asking for a new job
+            // from here would only be handed this one's own id back.
+            if core.library.pending_is_empty() {
+                break;
             }
-
-            let root = path.clone();
-            let scanned = tokio::task::spawn_blocking(move || walk::scan_source(Path::new(&root)))
-                .await
-                .map_err(|e| CoreError::internal(e.to_string()))??;
-            let root = path.clone();
-            let movie_folders = tokio::task::spawn_blocking(move || walk::find_movie_folders(Path::new(&root)))
-                .await
-                .map_err(|e| CoreError::internal(e.to_string()))?;
-            core.library.set_movie_folders(source_id, movie_folders);
-
-            let only = plan.only_under.clone();
-            let now = time::now_secs();
-            let r = core.store.tx_async(move |tx| reconcile_source(tx, source_id, &scanned, only.as_deref(), now)).await?;
-            added += r.added.len() as u64;
-            changed += r.changed.len() as u64;
-            removed += r.removed.len() as u64;
-
-            let ids: Vec<u64> = r.added.iter().chain(r.changed.iter()).copied().collect();
-            if !ids.is_empty() {
-                let dir = core.paths.images_dir();
-                let cards = core.store.write_async(move |c| cards::cards_for(c, &dir, &ids)).await?;
-                ctx.changed_all(cards);
-            }
+            scope = ScanScope::Paths(Vec::new());
         }
-        // Task 12: drain pending_paths here.
+
         Ok(Finished {
             level: Level::Info,
             message: format!("scan finished: {added} added, {changed} changed, {removed} missing"),
-            body: EventBody::ScanFinished { source: plan.reply_source, added, changed, removed },
+            body: EventBody::ScanFinished { source: reply_source, added, changed, removed },
         })
     })
+}
+
+/// Whether this run is going to look at `path` anyway: some target contains
+/// it, and either the run is a full walk of that source or the path is in
+/// its scope both ways round, the same test `reconcile_source` applies.
+fn covered_by(plan: &Plan, path: &str) -> bool {
+    plan.targets.iter().any(|t| under(path, &t.path))
+        && plan.only_under.as_ref().is_none_or(|roots| roots.iter().any(|r| under(path, r) || under(r, path)))
 }
 
 /// Turns a scope into the sources to walk and the paths to limit the work

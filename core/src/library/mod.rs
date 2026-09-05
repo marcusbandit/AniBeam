@@ -26,3 +26,4 @@ pub mod sidecar;
 pub mod sort;
 pub mod titles;
 pub mod walk;
+pub mod watcher;
