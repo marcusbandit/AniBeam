@@ -10,7 +10,11 @@ fn main() {
             .qml_file("qml/Main.qml"),
     )
     .qt_module("Quick")
-    .files(["src/bridge/helpers.rs", "src/bridge/shell.rs"])
+    .files([
+        "src/bridge/fmt.rs",
+        "src/bridge/helpers.rs",
+        "src/bridge/shell.rs",
+    ])
     .include_dir("cpp")
     // mpvqt_export.h includes mpvqt_version.h bare; CMake's target used to supply this.
     .include_dir("/usr/include/MpvQt")

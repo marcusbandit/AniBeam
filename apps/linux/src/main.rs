@@ -1,5 +1,6 @@
 mod args;
 mod bridge;
+mod format;
 mod paths;
 mod runtime;
 
