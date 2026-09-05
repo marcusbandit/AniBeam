@@ -6,6 +6,7 @@ use rusqlite::{params, OptionalExtension};
 
 use crate::contract::*;
 use crate::events::{EventBus, Subscription};
+use crate::images::{self, ImageCache};
 use crate::jobs::Jobs;
 use crate::library::reads;
 use crate::library::scan::{self, LibraryState, ScanScope};
@@ -28,6 +29,10 @@ pub struct Core {
     pub(crate) store: Arc<Store>,
     pub(crate) bus: Arc<EventBus>,
     pub(crate) jobs: Arc<Jobs>,
+    /// The poster, banner and portrait files under `<cache_dir>/images`,
+    /// and the row per file that says what is there. Reads consult it,
+    /// jobs fill it, and the sweep keeps it from growing without end.
+    pub(crate) images: Arc<ImageCache>,
     /// The library's in-memory state: the movie folders each source's walk
     /// found, the watcher's queue of paths, and the settle timers. The core
     /// is already the `Arc`, so this is a plain field.
@@ -87,6 +92,11 @@ impl Core {
     pub fn open_with_http(paths: CorePaths, http: Arc<dyn Http>) -> Result<Arc<Core>, CoreError> {
         let store = Store::open(&paths.db_path())?;
         let bus = EventBus::new(store.clone())?;
+        // Creating the cache directory is opening, the same as creating the
+        // data directory the database file lives in.
+        let images_dir = paths.images_dir();
+        std::fs::create_dir_all(&images_dir).map_err(|e| CoreError::io_at(images_dir.to_string_lossy(), e))?;
+        let images = ImageCache::new(store.clone(), images_dir, http.clone());
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(4)
             .thread_name("anibeam-core")
@@ -104,6 +114,7 @@ impl Core {
             store,
             bus,
             jobs,
+            images,
             library: LibraryState::default(),
             watcher: Mutex::new(None),
             runtime: Mutex::new(Some(runtime)),
@@ -277,6 +288,16 @@ impl Core {
             Call::SetHidden { series, hidden } => reads::set_hidden(self, series, hidden),
             Call::ListMetadata { filter, query, reveal_hidden } => reads::list_metadata(self, filter, &query, reveal_hidden),
             Call::Lookup { path } => reads::lookup(self, &path),
+            // Two counts off one table, so this answers off the reader
+            // connection rather than becoming a job.
+            Call::GetStorage => {
+                let (image_count, image_bytes) = self.store.read(|c| self.images.storage(c))?;
+                Ok(Reply::Storage { image_count, image_bytes })
+            }
+            Call::ClearImages => {
+                let core = self.arc().ok_or_else(|| CoreError::internal("core is shutting down"))?;
+                Ok(Reply::Started { job: images::start_clear(&core) })
+            }
             Call::GetPreferences => Ok(Reply::Preferences { preferences: self.store.read(prefs::load_preferences)? }),
             Call::SetPreferences { preferences } => {
                 let p = preferences.clone();

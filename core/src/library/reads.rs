@@ -3,10 +3,13 @@
 //! path back into an id. Every one of them runs on the reader connection,
 //! so a list never waits behind a long write.
 
+use std::collections::HashMap;
+
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::images;
 use crate::library::cards::{self, Snapshot};
 use crate::library::sort;
 use crate::time;
@@ -31,19 +34,56 @@ fn in_tab(c: &SeriesCard, tab: Tab) -> bool {
     }
 }
 
-fn load_cards(core: &Core) -> Result<Vec<SeriesCard>, CoreError> {
-    let images = core.paths.images_dir();
+/// One whole-library read: the cards, the series whose poster is missing,
+/// and the cover url behind each poster actually handed out.
+struct Loaded {
+    cards: Vec<SeriesCard>,
+    gaps: Vec<u64>,
+    posters: HashMap<u64, String>,
+}
+
+fn load_all(core: &Core) -> Result<Loaded, CoreError> {
+    let images_dir = core.paths.images_dir();
     let now = time::now();
-    core.store.read(|c| Ok(Snapshot::load(c, &images, now, None)?.cards()))
+    core.store.read(|c| {
+        let snap = Snapshot::load(c, &images_dir, now, None)?;
+        let posters = snap
+            .series
+            .iter()
+            .filter(|r| r.poster_path.is_some())
+            .filter_map(|r| Some((r.id, r.media.as_ref()?.cover_url.clone()?)))
+            .collect();
+        Ok(Loaded { gaps: snap.gaps.clone(), posters, cards: snap.cards() })
+    })
+}
+
+fn load_cards(core: &Core) -> Result<Vec<SeriesCard>, CoreError> {
+    Ok(load_all(core)?.cards)
+}
+
+/// What every card read owes the image cache: the posters it handed out are
+/// marked used, so the sweep can tell a live image from a forgotten one,
+/// and a read that found a gap asks for a fill. The bump is queued on the
+/// writer thread with no reply waited for, and the fill is coalesced and
+/// rate-gated, so neither costs the read anything.
+fn after_read(core: &Core, gaps: &[u64], used: Vec<String>) {
+    core.images.bump_used(used);
+    if gaps.is_empty() || !core.images.fill_is_due() {
+        return;
+    }
+    if let Some(owner) = core.arc() {
+        images::start_fill(&owner);
+    }
 }
 
 /// The home grid. `reveal_hidden` is the shell's own tab visibility: the
 /// Hidden tab always lists what it holds.
 pub fn list_series(core: &Core, tab: Tab, query: &str, sort_key: Sort, direction: Direction) -> Result<Reply, CoreError> {
-    let mut series = load_cards(core)?;
-    series.retain(|c| in_tab(c, tab) && sort::matches_query(c, query));
-    sort::sort_cards(&mut series, sort_key, direction);
-    Ok(Reply::Series { series })
+    let Loaded { mut cards, gaps, posters } = load_all(core)?;
+    cards.retain(|c| in_tab(c, tab) && sort::matches_query(c, query));
+    sort::sort_cards(&mut cards, sort_key, direction);
+    after_read(core, &gaps, cards.iter().filter_map(|c| posters.get(&c.id).cloned()).collect());
+    Ok(Reply::Series { series: cards })
 }
 
 /// The airing rail: what is still releasing and has something on disk,
@@ -58,14 +98,21 @@ pub fn list_airing(core: &Core, offset: u64, limit: u64) -> Result<Reply, CoreEr
 
 /// One series page, loaded through a snapshot scoped to that series alone.
 pub fn get_series(core: &Core, series: u64) -> Result<Reply, CoreError> {
-    let images = core.paths.images_dir();
+    let images_dir = core.paths.images_dir();
     let now = time::now();
-    let detail = core.store.read(|c| {
-        let snap = Snapshot::load(c, &images, now, Some(&[series]))?;
-        snap.detail(c, series)
+    let (detail, gaps, poster) = core.store.read(|c| {
+        let snap = Snapshot::load(c, &images_dir, now, Some(&[series]))?;
+        let poster = snap
+            .row(series)
+            .filter(|r| r.poster_path.is_some())
+            .and_then(|r| r.media.as_ref()?.cover_url.clone());
+        Ok((snap.detail(c, series)?, snap.gaps.clone(), poster))
     })?;
     match detail {
-        Some(detail) => Ok(Reply::SeriesDetail { detail: Box::new(detail) }),
+        Some(detail) => {
+            after_read(core, &gaps, poster.into_iter().collect());
+            Ok(Reply::SeriesDetail { detail: Box::new(detail) })
+        }
         None => Err(CoreError::NotFound { what: Entity::Series, id: series }),
     }
 }
@@ -77,8 +124,8 @@ pub fn set_hidden(core: &Core, series: u64, hidden: bool) -> Result<Reply, CoreE
     if changed == 0 {
         return Err(CoreError::NotFound { what: Entity::Series, id: series });
     }
-    let images = core.paths.images_dir();
-    let cards = core.store.read(|c| cards::cards_for(c, &images, &[series]))?;
+    let images_dir = core.paths.images_dir();
+    let cards = core.store.read(|c| cards::cards_for(c, &images_dir, &[series]))?;
     let title = cards.first().map_or_else(String::new, |c| c.title.clone());
     let what = if hidden { "hidden" } else { "shown" };
     core.bus.debug(Stage::Library, format!("{title} {what}"), EventBody::SeriesChanged { series: cards });
@@ -88,10 +135,10 @@ pub fn set_hidden(core: &Core, series: u64, hidden: bool) -> Result<Reply, CoreE
 /// The metadata table. The counts are over the visible set, so they answer
 /// "how many of what you can see", and only this call reveals hidden rows.
 pub fn list_metadata(core: &Core, filter: MetadataFilter, query: &str, reveal_hidden: bool) -> Result<Reply, CoreError> {
-    let images = core.paths.images_dir();
+    let images_dir = core.paths.images_dir();
     let now = time::now();
     let visible: Vec<MetadataRow> = core.store.read(|c| {
-        let snap = Snapshot::load(c, &images, now, None)?;
+        let snap = Snapshot::load(c, &images_dir, now, None)?;
         Ok(snap
             .series
             .iter()

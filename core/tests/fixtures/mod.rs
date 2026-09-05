@@ -108,6 +108,23 @@ pub fn insert_media(
         .unwrap()
 }
 
+/// A media row that names the pictures the image cache would go and get.
+/// The cover is what a card draws, so a series matched to one of these has
+/// a gap until the fill runs.
+pub fn insert_media_with_cover(core: &Core, anilist_id: u64, cover_url: &str, banner_url: Option<&str>) {
+    let (cover_url, banner_url) = (cover_url.to_string(), banner_url.map(str::to_string));
+    core.store()
+        .write(move |c| {
+            c.execute(
+                "INSERT OR REPLACE INTO anilist_media (id, media_type, title_romaji, status, format, cover_url, banner_url, fetched_at)
+                 VALUES (?1, 'ANIME', ?2, 'FINISHED', 'TV', ?3, ?4, ?5)",
+                params![anilist_id as i64, format!("Media {anilist_id}"), cover_url, banner_url, time::now_secs()],
+            )?;
+            Ok(())
+        })
+        .unwrap()
+}
+
 pub fn match_series(core: &Core, series: u64, anilist_id: Option<u64>, mal_id: Option<u64>) {
     let provider = if anilist_id.is_some() { "anilist" } else { "mal" };
     core.store()

@@ -4,6 +4,7 @@
 pub mod contract;
 pub mod core;
 pub mod events;
+pub mod images;
 pub mod jobs;
 pub mod library;
 /// The network layer. Not part of the contract and not exported to any

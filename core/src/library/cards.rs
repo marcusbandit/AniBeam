@@ -217,6 +217,10 @@ pub struct Snapshot {
     /// AniList ids with at least one relation row.
     pub graph_seeds: HashSet<u64>,
     pub images_dir: String,
+    /// Series whose media names a cover the image cache has no row for.
+    /// The read hands this to the cache, which decides whether it is worth
+    /// a fill; the loader gets it free from the join it already makes.
+    pub gaps: Vec<u64>,
 }
 
 /// `?,?,?` for an `IN` list of `n` values. Ids go in as bound parameters,
@@ -282,6 +286,7 @@ impl Snapshot {
             resume: HashMap::new(),
             graph_seeds: HashSet::new(),
             images_dir: images_dir.to_string_lossy().into_owned(),
+            gaps: Vec::new(),
         };
         if scope.is_some_and(<[u64]>::is_empty) {
             return Ok(snap);
@@ -377,6 +382,12 @@ impl Snapshot {
         })?;
         for row in rows {
             if let Some(row) = row? {
+                // The LEFT JOIN above already answered this: a cover the
+                // series names with no path beside it is an image nobody
+                // has fetched yet.
+                if row.poster_path.is_none() && row.media.as_ref().is_some_and(|m| m.cover_url.is_some()) {
+                    self.gaps.push(row.id);
+                }
                 self.index.insert(row.id, self.series.len());
                 self.series.push(row);
             }
