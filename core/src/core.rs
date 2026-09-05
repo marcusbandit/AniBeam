@@ -23,6 +23,7 @@ use crate::trackers::accounts;
 use crate::trackers::cache;
 use crate::trackers::oauth;
 use crate::trackers::secrets::{Secrets, KEYRING_UNAVAILABLE};
+use crate::trackers::writes;
 
 /// The core is one object. A shell opens it once, starts it once, subscribes
 /// once, and from then on sends calls and receives events.
@@ -421,6 +422,9 @@ impl Core {
             Call::ConnectTracker { tracker } => Ok(Reply::Started { job: oauth::connect(self, tracker)? }),
             Call::DisconnectTracker { tracker } => accounts::disconnect(self, tracker),
             Call::SetMainTracker { tracker } => accounts::set_main(self, tracker),
+            Call::MarkEpisode { series, episode } => Ok(Reply::Started { job: writes::mark(self, series, episode)? }),
+            Call::SetProgress { series, progress } => Ok(Reply::Started { job: writes::set_progress(self, series, progress)? }),
+            Call::SetScore { series, score } => Ok(Reply::Started { job: writes::set_score(self, series, score)? }),
             // Nothing to check up front: an unconnected or a fresh tracker
             // is the job's own skip, not a refusal.
             Call::RefreshProgress { tracker } => {

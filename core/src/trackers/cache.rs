@@ -23,10 +23,10 @@ use crate::contract::*;
 use crate::core::Core;
 use crate::jobs::{Finished, JobCtx};
 use crate::library::cards;
-use crate::metadata::fetch::message_of;
 use crate::net::anilist::MEDIA_LIST_COLLECTION_QUERY;
 use crate::time;
 use crate::trackers::accounts;
+use crate::trackers::writes;
 
 /// How long a fetched list is taken to be current. Electron's
 /// `PROGRESS_FRESHNESS_MS`.
@@ -299,8 +299,7 @@ async fn run(core: Arc<Core>, ctx: Arc<JobCtx>, tracker: Option<Tracker>, force:
                 // The rows stay: a list that could not be fetched is still
                 // the best answer there is, and a card with yesterday's
                 // progress reads better than a card with none.
-                // Task 22: sanitize
-                ctx.emit(Level::Warn, format!("{} progress refresh failed: {}", t.as_str(), message_of(&e)), EventBody::Notice);
+                ctx.emit(Level::Warn, format!("{} progress refresh failed: {}", t.as_str(), writes::sanitize_error(t, &e)), EventBody::Notice);
                 failure = Some(e);
             }
         }
