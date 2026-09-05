@@ -320,3 +320,58 @@ fn a_disconnected_anilist_starts_no_refresh() {
     assert_eq!(refreshing, None);
     assert!(http.requests().is_empty());
 }
+
+/// A watching card sits on the same page as the library's own cards, so it
+/// reads the same title preference; and a series whose files went away is
+/// on no library page, so the card that names it must not offer to open it.
+#[test]
+fn a_watching_entry_follows_the_title_preference_and_drops_a_missing_owner() {
+    let http = FakeHttp::new();
+    let (_dir, core, _c) = common::open_core_with_http(http.clone());
+    let src = fixtures::insert_source(&core, "/lib");
+    let frieren = fixtures::insert_series(
+        &core,
+        src,
+        SeriesKind::Show,
+        "/lib/Frieren",
+        "Sousou no Frieren",
+    );
+    fixtures::insert_media(
+        &core,
+        154587,
+        Some("Sousou no Frieren"),
+        Some("Frieren: Beyond Journey's End"),
+        Some(28),
+        "RELEASING",
+        "TV",
+        Some(91),
+    );
+    fixtures::match_series(&core, frieren, Some(154587), Some(52991));
+    fixtures::insert_tracker_entry(&core, "anilist", 154587, 5, "watching", Some(8.5));
+
+    let (list, _) = watching(&core);
+    let entry = list.entries.first().expect("one entry");
+    assert_eq!(entry.title, "Sousou no Frieren");
+    assert_eq!(entry.owned, Some(frieren));
+
+    // English, and the whole page follows.
+    let mut preferences = match core.call(Call::GetPreferences).unwrap() {
+        Reply::Preferences { preferences } => preferences,
+        other => panic!("{other:?}"),
+    };
+    preferences.title_language = TitleLanguage::English;
+    core.call(Call::SetPreferences { preferences }).unwrap();
+    let (list, _) = watching(&core);
+    assert_eq!(
+        list.entries.first().map(|e| e.title.as_str()),
+        Some("Frieren: Beyond Journey's End")
+    );
+
+    // The files went away. The entry keeps its place on the list, since it
+    // is the tracker's, but there is nothing to open any more.
+    fixtures::mark_missing(&core, frieren);
+    let (list, _) = watching(&core);
+    let entry = list.entries.first().expect("the entry keeps its place");
+    assert_eq!(entry.anilist_id, 154587);
+    assert_eq!(entry.owned, None);
+}
