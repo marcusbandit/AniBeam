@@ -23,6 +23,7 @@ use crate::trackers::accounts;
 use crate::trackers::cache;
 use crate::trackers::oauth;
 use crate::trackers::secrets::{Secrets, KEYRING_UNAVAILABLE};
+use crate::trackers::watching;
 use crate::trackers::writes;
 
 /// The core is one object. A shell opens it once, starts it once, subscribes
@@ -431,6 +432,9 @@ impl Core {
                 let core = self.arc().ok_or_else(|| CoreError::internal("core is shutting down"))?;
                 Ok(Reply::Started { job: cache::start_refresh(&core, tracker, false) })
             }
+            // The cached list leaves at once and the refresh runs behind
+            // it, the way the Electron page did on every visit.
+            Call::ListWatching => watching::list_call(self),
             other => Err(CoreError::Unsupported { what: format!("{} is not built yet", call_name(&other)) }),
         }
     }

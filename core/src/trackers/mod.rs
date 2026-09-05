@@ -5,6 +5,7 @@ pub mod accounts;
 pub mod cache;
 pub mod oauth;
 pub mod secrets;
+pub mod watching;
 pub mod writes;
 
 pub use secrets::{Secrets, StoreKind};
