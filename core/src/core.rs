@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 
 use crate::contract::*;
 use crate::events::{EventBus, Subscription};
+use crate::franchise;
 use crate::images::{self, ImageCache};
 use crate::jobs::Jobs;
 use crate::library::reads;
@@ -442,6 +443,12 @@ impl Core {
             // The cached list leaves at once and the refresh runs behind
             // it, the way the Electron page did on every visit.
             Call::ListWatching => watching::list_call(self),
+            // The graph is drawn off the tables as they stand, and the
+            // crawl behind it fills in whatever the walk found missing.
+            Call::GetFranchiseGraph { series } => {
+                let core = self.arc().ok_or_else(|| CoreError::internal("core is shutting down"))?;
+                Ok(Reply::Graph { layout: franchise::graph(&core, series)? })
+            }
             other => Err(CoreError::Unsupported { what: format!("{} is not built yet", call_name(&other)) }),
         }
     }
