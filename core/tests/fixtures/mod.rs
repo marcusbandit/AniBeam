@@ -150,6 +150,33 @@ pub fn insert_airing(core: &Core, anilist_id: u64, number: i64, aired_at: i64) {
         .unwrap()
 }
 
+/// One `anilist_episodes` row as a full metadata fetch would have left
+/// it: the title is what the airing refresh must never replace, since the
+/// schedule it fetches carries none.
+pub fn insert_episode(core: &Core, anilist_id: u64, number: i64, title: Option<&str>, aired_at: Option<i64>) {
+    let title = title.map(str::to_string);
+    core.store()
+        .write(move |c| {
+            c.execute(
+                "INSERT OR REPLACE INTO anilist_episodes (anilist_id, number, title, aired_at) VALUES (?1, ?2, ?3, ?4)",
+                params![anilist_id as i64, number, title, aired_at],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+}
+
+/// When the airing refresh last looked at this media row. A test puts the
+/// six hour window in front of or behind a series without waiting for it.
+pub fn set_airing_refreshed_at(core: &Core, anilist_id: u64, at: Option<i64>) {
+    core.store()
+        .write(move |c| {
+            c.execute("UPDATE anilist_media SET airing_refreshed_at = ?2 WHERE id = ?1", params![anilist_id as i64, at])?;
+            Ok(())
+        })
+        .unwrap();
+}
+
 pub fn insert_tracker_entry(core: &Core, tracker: &str, media_id: u64, progress: u32, status: &str, score: Option<f64>) {
     let (tracker, status) = (tracker.to_string(), status.to_string());
     core.store()

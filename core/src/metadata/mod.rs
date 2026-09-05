@@ -4,6 +4,7 @@
 
 use std::time::Duration;
 
+pub mod airing;
 pub mod apply;
 pub mod automatch;
 pub mod fetch;

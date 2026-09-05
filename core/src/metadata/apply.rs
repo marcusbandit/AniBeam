@@ -389,7 +389,7 @@ fn folder_name(core: &Core, series: u64) -> Result<String, CoreError> {
 
 /// The one card a single-series job reports. `None` when the series went
 /// away underneath the job, which is not worth failing over.
-async fn card_for(core: &Core, series: u64) -> Result<Option<SeriesCard>, CoreError> {
+pub(crate) async fn card_for(core: &Core, series: u64) -> Result<Option<SeriesCard>, CoreError> {
     let dir = core.paths.images_dir();
     let cards = core.store.write_async(move |c| cards::cards_for(c, &dir, &[series])).await?;
     Ok(cards.into_iter().next())
@@ -412,10 +412,10 @@ async fn sweep_images(core: &Core, what: &str) {
     }
 }
 
-fn is_rate_limited(e: &CoreError) -> bool {
+pub(crate) fn is_rate_limited(e: &CoreError) -> bool {
     matches!(e, CoreError::Provider { status: Some(429), .. })
 }
 
-fn owner(core: &Core) -> Result<Arc<Core>, CoreError> {
+pub(crate) fn owner(core: &Core) -> Result<Arc<Core>, CoreError> {
     core.arc().ok_or_else(|| CoreError::internal("core is shutting down"))
 }

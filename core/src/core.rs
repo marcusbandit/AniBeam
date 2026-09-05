@@ -9,7 +9,7 @@ use crate::jobs::Jobs;
 use crate::library::reads;
 use crate::library::scan::{self, LibraryState, ScanScope};
 use crate::library::watcher::{self, Trigger, Watcher};
-use crate::metadata::{apply, automatch, OUTAGE_WINDOW};
+use crate::metadata::{airing, apply, automatch, OUTAGE_WINDOW};
 use crate::net::anilist::AnilistClient;
 use crate::net::aniskip::AniSkipClient;
 use crate::net::jikan::JikanClient;
@@ -327,6 +327,7 @@ impl Core {
                 let core = self.arc().ok_or_else(|| CoreError::internal("core is shutting down"))?;
                 Ok(Reply::Started { job: automatch::start(&core) })
             }
+            Call::RefreshAiring { series } => Ok(Reply::Started { job: airing::start_refresh(self, series)? }),
             Call::ClearMatch { series } => automatch::clear_match(self, series),
             Call::GetPreferences => Ok(Reply::Preferences { preferences: self.store.read(prefs::load_preferences)? }),
             Call::SetPreferences { preferences } => {
