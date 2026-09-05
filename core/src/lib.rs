@@ -3,6 +3,7 @@
 
 pub mod contract;
 pub mod events;
+pub mod jobs;
 pub mod paths;
 pub mod store;
 pub mod time;
