@@ -322,3 +322,44 @@ fn mal_pkce_flow_checks_state_and_exchanges_the_code() {
         Duration::from_secs(5),
     );
 }
+
+/// A connect whose port is still held waits for it instead of failing at
+/// once. That is not a hypothetical: a new connect cancels the flow in
+/// flight, and that flow's listener is dropped by its own task, so a
+/// double click reaches the bind before the port is free. Here the test
+/// plays the part of the flow that has not let go yet.
+#[test]
+fn a_connect_waits_for_a_port_that_is_still_held() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let port = 53692;
+    core.set_oauth_port(port);
+    core.call(Call::SetTrackerCredentials {
+        tracker: Tracker::Anilist,
+        client_id: "123".into(),
+        client_secret: None,
+    })
+    .unwrap();
+
+    let held = std::net::TcpListener::bind(("127.0.0.1", port)).unwrap();
+    let job = started(
+        core.call(Call::ConnectTracker {
+            tracker: Tracker::Anilist,
+        })
+        .unwrap(),
+    );
+    // Long enough that the first bind has certainly been refused.
+    std::thread::sleep(Duration::from_millis(300));
+    drop(held);
+
+    let ready = common::wait_for(
+        &c,
+        |e| {
+            matches!(e.body, EventBody::AuthUrlReady { .. })
+                && e.job.as_ref().is_some_and(|j| j.id == job)
+        },
+        Duration::from_secs(5),
+    );
+    assert!(matches!(ready.body, EventBody::AuthUrlReady { .. }));
+    core.shutdown();
+}

@@ -124,7 +124,7 @@ async fn run(
 ) -> Result<Finished, CoreError> {
     // First, before anything is generated or announced: a port that is
     // already taken means there is nothing to announce.
-    let listener = bind(port)?;
+    let listener = bind_with_retry(port).await?;
     let state = random_token(STATE_BYTES);
     let verifier = random_token(VERIFIER_BYTES);
     let redirect_url = format!("http://127.0.0.1:{port}{CALLBACK_PATH}");
@@ -294,6 +294,23 @@ fn bind(port: u16) -> Result<TcpListener, CoreError> {
     })?;
     listener.set_nonblocking(true).map_err(io_error)?;
     TcpListener::from_std(listener).map_err(io_error)
+}
+
+/// The bind, retried while the port is still held: up to two seconds, a
+/// tenth of a second apart. A new connect cancels the one in flight, and
+/// that flow's listener is dropped by its own task, so the caller can and
+/// does get here first. Two seconds is far longer than a drop takes and
+/// far shorter than a user would wait to be told about a real clash.
+async fn bind_with_retry(port: u16) -> Result<TcpListener, CoreError> {
+    const GAP: Duration = Duration::from_millis(100);
+    const ATTEMPTS: u32 = 20;
+    for _ in 1..ATTEMPTS {
+        if let Ok(listener) = bind(port) {
+            return Ok(listener);
+        }
+        tokio::time::sleep(GAP).await;
+    }
+    bind(port)
 }
 
 /// One connection at a time until the flow is settled. Everything that is
