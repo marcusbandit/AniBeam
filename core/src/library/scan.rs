@@ -36,6 +36,21 @@ pub struct LibraryState {
     /// settle timer is never armed for one of these: the match it would ask
     /// for is already under way.
     pub match_in_flight: Mutex<HashSet<u64>>,
+    /// Scopes asked for while a scan was already walking. Scan runs one at
+    /// a time, so those calls were handed the running job's id, and that
+    /// job resolved its targets before the request existed: without this
+    /// the request is simply lost. The drain loop takes them.
+    pending_scopes: Mutex<PendingScopes>,
+}
+
+/// A whole library, whole sources and single series, in the order the drain
+/// loop honours them. `all` swallows the other two, since a full walk
+/// covers every source and every series in it.
+#[derive(Default)]
+struct PendingScopes {
+    all: bool,
+    sources: HashSet<u64>,
+    series: HashSet<u64>,
 }
 
 /// A panicking job must never wedge one of these for the rest of the
@@ -72,6 +87,59 @@ impl LibraryState {
 
     fn pending_is_empty(&self) -> bool {
         recover(&self.pending_paths).is_empty()
+    }
+
+    /// Keeps a scope the running scan cannot be speaking for. Paths go on
+    /// the path queue, which the drain already reads.
+    fn remember_scope(&self, scope: ScanScope) {
+        match scope {
+            ScanScope::Paths(paths) => self.push_pending(paths),
+            ScanScope::All => {
+                let mut pending = recover(&self.pending_scopes);
+                pending.all = true;
+                pending.sources.clear();
+                pending.series.clear();
+            }
+            ScanScope::Source(id) => {
+                let mut pending = recover(&self.pending_scopes);
+                if !pending.all {
+                    pending.sources.insert(id);
+                }
+            }
+            ScanScope::Series(id) => {
+                let mut pending = recover(&self.pending_scopes);
+                if !pending.all {
+                    pending.series.insert(id);
+                }
+            }
+        }
+    }
+
+    /// The next pass the running scan owes, taken off the queue, or nothing
+    /// when it owes none and the job can finish.
+    fn take_next_scope(&self) -> Option<ScanScope> {
+        {
+            let mut pending = recover(&self.pending_scopes);
+            if pending.all {
+                *pending = PendingScopes::default();
+                return Some(ScanScope::All);
+            }
+            // Smallest id first, so a run of queued scopes is walked in a
+            // deterministic order rather than a hash set's.
+            if let Some(id) = pending.sources.iter().copied().min() {
+                pending.sources.remove(&id);
+                return Some(ScanScope::Source(id));
+            }
+            if let Some(id) = pending.series.iter().copied().min() {
+                pending.series.remove(&id);
+                return Some(ScanScope::Series(id));
+            }
+        }
+        if self.pending_is_empty() {
+            None
+        } else {
+            Some(ScanScope::Paths(Vec::new()))
+        }
     }
 
     fn is_matching(&self, series: u64) -> bool {
@@ -711,12 +779,16 @@ async fn set_available(
 }
 
 /// Starts the Scan job and returns its id. Scan runs one at a time, so a
-/// second call while one is running returns the running job's id.
+/// second call while one is running returns the running job's id, and the
+/// scope it asked for is queued for that job's drain rather than dropped:
+/// the running pass resolved its own targets before this call happened, so
+/// its id is not an answer to this question.
 pub fn start(core: &Arc<Core>, scope: ScanScope) -> u64 {
-    let core = core.clone();
-    core.jobs
-        .clone()
-        .start(JobKind::Scan, move |ctx| async move {
+    let requested = scope.clone();
+    let owner = core.clone();
+    let (id, started) = owner.jobs.clone().start_reporting(JobKind::Scan, {
+        let core = owner.clone();
+        move |ctx| async move {
             let (mut added, mut changed, mut removed) = (0u64, 0u64, 0u64);
             let mut reply_source = None;
             let mut scope = scope;
@@ -904,14 +976,15 @@ pub fn start(core: &Arc<Core>, scope: ScanScope) -> u64 {
                     }
                 }
 
-                // A trigger that arrived while this pass was walking is not in
-                // it. Going round again inside this job is the only way to
-                // reach it: Scan runs one at a time, so asking for a new job
-                // from here would only be handed this one's own id back.
-                if core.library.pending_is_empty() {
+                // A trigger or a call that arrived while this pass was
+                // walking is not in it. Going round again inside this job is
+                // the only way to reach it: Scan runs one at a time, so
+                // asking for a new job from here would only be handed this
+                // one's own id back.
+                let Some(next) = core.library.take_next_scope() else {
                     break;
-                }
-                scope = ScanScope::Paths(Vec::new());
+                };
+                scope = next;
             }
 
             Ok(Finished {
@@ -926,7 +999,12 @@ pub fn start(core: &Arc<Core>, scope: ScanScope) -> u64 {
                     removed,
                 },
             })
-        })
+        }
+    });
+    if !started {
+        owner.library.remember_scope(requested);
+    }
+    id
 }
 
 /// Whether this run is going to look at `path` anyway: some target contains

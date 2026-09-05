@@ -2,10 +2,38 @@ mod common;
 use anibeam_core::*;
 use std::fs;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Weak};
 
 fn touch(p: &Path) {
     fs::create_dir_all(p.parent().unwrap()).unwrap();
     fs::write(p, b"x").unwrap();
+}
+
+/// When a source was last walked in full. Only a full walk stamps it, so a
+/// NULL here is proof that no pass covered the source.
+fn scanned_at(core: &Core, source: u64) -> Option<i64> {
+    core.store()
+        .read(|c| {
+            Ok(c.query_row(
+                "SELECT scanned_at FROM sources WHERE id = ?1",
+                [source as i64],
+                |r| r.get(0),
+            )?)
+        })
+        .unwrap()
+}
+
+fn clear_scanned_at(core: &Core, source: u64) {
+    core.store()
+        .write(move |c| {
+            c.execute(
+                "UPDATE sources SET scanned_at = NULL WHERE id = ?1",
+                [source as i64],
+            )?;
+            Ok(())
+        })
+        .unwrap();
 }
 
 /// The id of the first Scan job the collector saw start, which is the one
@@ -630,5 +658,101 @@ fn an_empty_source_that_never_held_series_stays_available() {
         }
         other => panic!("{other:?}"),
     }
+    core.shutdown();
+}
+
+/// Asks for a second scope from inside the first scan's `JobStarted`, which
+/// is emitted on the calling thread before the body is spawned: by then the
+/// job is registered, so the second call is handed the running job's id and
+/// nothing of its own. The running pass had already resolved its targets,
+/// so without a queue that request is simply lost.
+struct RescanFromInsideTheStart {
+    core: Weak<Core>,
+    source: u64,
+    fired: AtomicBool,
+}
+
+impl EventListener for RescanFromInsideTheStart {
+    fn on_event(&self, event: Event) {
+        if !matches!(
+            event.body,
+            EventBody::JobStarted {
+                kind: JobKind::Scan
+            }
+        ) || self.fired.swap(true, Ordering::SeqCst)
+        {
+            return;
+        }
+        let Some(core) = self.core.upgrade() else {
+            return;
+        };
+        let reply = core.call(Call::Scan {
+            source: Some(self.source),
+        });
+        assert!(matches!(reply, Ok(Reply::Started { .. })), "{reply:?}");
+    }
+}
+
+#[test]
+fn a_scope_asked_for_during_a_running_scan_is_not_lost() {
+    let (dir, core, c) = common::open_core();
+    let a = dir.path().join("a");
+    let b = dir.path().join("b");
+    touch(&a.join("Show A").join("Show A - 01.mkv"));
+    touch(&b.join("Show B").join("Show B - 01.mkv"));
+    let first = match core
+        .call(Call::AddSource {
+            path: a.to_string_lossy().into_owned(),
+        })
+        .unwrap()
+    {
+        Reply::Source { source } => source.id,
+        other => panic!("{other:?}"),
+    };
+    common::wait_job(&c, first_scan(&c));
+    let second = match core
+        .call(Call::AddSource {
+            path: b.to_string_lossy().into_owned(),
+        })
+        .unwrap()
+    {
+        Reply::Source { source } => source.id,
+        other => panic!("{other:?}"),
+    };
+    let second_scan = common::wait_for(
+        &c,
+        |e| {
+            e.job.as_ref().is_some_and(|j| {
+                j.kind == JobKind::Scan && j.phase == JobPhase::Started && j.id > 1
+            })
+        },
+        std::time::Duration::from_secs(5),
+    )
+    .job
+    .unwrap()
+    .id;
+    common::wait_job(&c, second_scan);
+
+    // Only a full walk of a source stamps it, so an empty stamp is proof
+    // the second scope never ran.
+    clear_scanned_at(&core, second);
+    assert_eq!(scanned_at(&core, second), None);
+
+    let _sub = core.subscribe(Arc::new(RescanFromInsideTheStart {
+        core: Arc::downgrade(&core),
+        source: second,
+        fired: AtomicBool::new(false),
+    }));
+    let job = started(
+        core.call(Call::Scan {
+            source: Some(first),
+        })
+        .unwrap(),
+    );
+    common::wait_job(&c, job);
+    assert!(
+        scanned_at(&core, second).is_some(),
+        "the scope asked for mid-scan was dropped"
+    );
     core.shutdown();
 }

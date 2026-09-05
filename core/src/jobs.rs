@@ -343,11 +343,25 @@ impl Jobs {
         F: FnOnce(Arc<JobCtx>) -> Fut + Send + 'static,
         Fut: Future<Output = Result<Finished, CoreError>> + Send + 'static,
     {
+        self.start_reporting(kind, f).0
+    }
+
+    /// `start`, and whether this call is what started the job. The id alone
+    /// cannot say: a caller whose kind runs one at a time gets the running
+    /// job's id back, and that job resolved its own scope before this
+    /// request existed, so it is no promise that this request is covered.
+    /// A caller that asked for something in particular keeps it and hands
+    /// it to the running job.
+    pub fn start_reporting<F, Fut>(self: &Arc<Self>, kind: JobKind, f: F) -> (u64, bool)
+    where
+        F: FnOnce(Arc<JobCtx>) -> Fut + Send + 'static,
+        Fut: Future<Output = Result<Finished, CoreError>> + Send + 'static,
+    {
         let mut running = self.running.lock().unwrap();
         if kind.one_at_a_time()
             && let Some((id, _)) = running.iter().find(|(_, r)| r.kind == kind)
         {
-            return *id;
+            return (*id, false);
         }
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let cancel = CancellationToken::new();
@@ -450,7 +464,7 @@ impl Jobs {
                 }
             }
         });
-        id
+        (id, true)
     }
 
     pub fn cancel(&self, id: u64) -> Result<(), CoreError> {
