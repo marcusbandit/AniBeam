@@ -634,8 +634,17 @@ impl AnilistClient {
     }
 
     pub async fn media_by_id(&self, id: u64) -> Result<Option<Media>, CoreError> {
+        Ok(self.media_by_id_raw(id).await?.0)
+    }
+
+    /// The typed reply and the JSON it was parsed from, together. A match
+    /// keeps the second half verbatim in `anilist_media.raw`, so a later
+    /// migration can mine a field this schema has no column for without
+    /// asking AniList again.
+    pub async fn media_by_id_raw(&self, id: u64) -> Result<(Option<Media>, serde_json::Value), CoreError> {
         let data = self.graphql(MEDIA_BY_ID_QUERY, serde_json::json!({ "id": id }), None).await?;
-        parse_media(&data["Media"])
+        let raw = data["Media"].clone();
+        Ok((parse_media(&raw)?, raw))
     }
 
     /// The MAL id to its AniList id. AniList answers a MAL id it has never
@@ -651,21 +660,33 @@ impl AnilistClient {
     /// The paginated schedule page and the always-present next broadcast.
     /// A series AniList carries no schedule for is an empty schedule.
     pub async fn schedule(&self, id: u64) -> Result<Schedule, CoreError> {
+        Ok(self.schedule_raw(id).await?.0)
+    }
+
+    /// The schedule and the JSON behind it, for the same reason
+    /// `media_by_id_raw` exists.
+    pub async fn schedule_raw(&self, id: u64) -> Result<(Schedule, serde_json::Value), CoreError> {
         let data = self.graphql(AIRING_SCHEDULE_QUERY, serde_json::json!({ "id": id }), None).await?;
-        let media = &data["Media"];
-        if media.is_null() {
-            return Ok(Schedule::default());
+        let raw = data["Media"].clone();
+        if raw.is_null() {
+            return Ok((Schedule::default(), raw));
         }
-        Ok(serde_json::from_value(media.clone())?)
+        Ok((serde_json::from_value(raw.clone())?, raw))
     }
 
     pub async fn enrichment(&self, id: u64) -> Result<Option<Enrichment>, CoreError> {
+        Ok(self.enrichment_raw(id).await?.0)
+    }
+
+    /// The series page and the JSON behind it, for the same reason
+    /// `media_by_id_raw` exists.
+    pub async fn enrichment_raw(&self, id: u64) -> Result<(Option<Enrichment>, serde_json::Value), CoreError> {
         let data = self.graphql(ENRICHMENT_QUERY, serde_json::json!({ "id": id }), None).await?;
-        let media = &data["Media"];
-        if media.is_null() {
-            return Ok(None);
+        let raw = data["Media"].clone();
+        if raw.is_null() {
+            return Ok((None, raw));
         }
-        Ok(Some(serde_json::from_value(media.clone())?))
+        Ok((Some(serde_json::from_value(raw.clone())?), raw))
     }
 }
 

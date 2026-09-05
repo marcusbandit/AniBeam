@@ -1,8 +1,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
-use std::time::Duration;
-
-use rusqlite::{params, OptionalExtension};
+use std::time::{Duration, Instant};
 
 use crate::contract::*;
 use crate::events::{EventBus, Subscription};
@@ -11,6 +9,7 @@ use crate::jobs::Jobs;
 use crate::library::reads;
 use crate::library::scan::{self, LibraryState, ScanScope};
 use crate::library::watcher::{self, Trigger, Watcher};
+use crate::metadata::{automatch, OUTAGE_WINDOW};
 use crate::net::anilist::AnilistClient;
 use crate::net::aniskip::AniSkipClient;
 use crate::net::jikan::JikanClient;
@@ -66,6 +65,11 @@ pub struct Core {
     pub(crate) aniskip: Arc<AniSkipClient>,
     #[allow(dead_code)]
     pub(crate) mal: Arc<MalClient>,
+    /// When the core last said out loud that Jikan was not answering.
+    /// Jikan is the episode-title side-fetch, so an outage costs a series
+    /// its titles rather than its match, and a job walking a whole library
+    /// through one must not write a warning per series into the log.
+    pub(crate) jikan_outage: Mutex<Option<Instant>>,
     /// Jobs need an `Arc<Core>` of their own; exported methods take `&self`,
     /// so the core keeps a `Weak` to itself from `Arc::new_cyclic` and
     /// upgrades it.
@@ -124,6 +128,7 @@ impl Core {
             jikan,
             aniskip,
             mal,
+            jikan_outage: Mutex::new(None),
             me: me.clone(),
             started: AtomicBool::new(false),
             closed: AtomicBool::new(false),
@@ -192,17 +197,29 @@ impl Core {
         scan::start(self, scope);
     }
 
-    /// A folder has stopped changing. Task 16 starts the auto-match here;
-    /// until then the timer is only made visible, so the watcher's end of
-    /// the chain can be seen working.
+    /// A folder has stopped changing, so it is worth a match. The entry
+    /// goes first: the candidate query skips whatever is still armed, so a
+    /// job already running picks this series up on its next time round the
+    /// loop precisely because it no longer is.
     pub(crate) fn settle_fired(&self, series_id: u64) {
-        let path: Option<String> = self
-            .store
-            .read(|c| Ok(c.query_row("SELECT path FROM series WHERE id = ?1", params![series_id as i64], |r| r.get(0)).optional()?))
-            .unwrap_or(None);
-        if let Some(path) = path {
-            self.bus.debug(Stage::Library, format!("folder settled: {path}"), EventBody::Notice);
+        self.library.settle.lock().unwrap_or_else(|e| e.into_inner()).remove(&series_id);
+        let Some(core) = self.arc() else { return };
+        automatch::start(&core);
+    }
+
+    /// Warns that Jikan is not answering, at most once every ten minutes.
+    /// Every caller reports every failure; this is what decides which of
+    /// them the user is told about.
+    pub(crate) fn report_jikan_outage(&self, message: &str) {
+        let mut last = self.jikan_outage.lock().unwrap_or_else(|e| e.into_inner());
+        if last.is_some_and(|at| at.elapsed() < OUTAGE_WINDOW) {
+            return;
         }
+        *last = Some(Instant::now());
+        // Dropped before the emit: a listener runs on this thread, and
+        // nothing it does should be able to deadlock on this gate.
+        drop(last);
+        self.bus.warn(Stage::Metadata, format!("Jikan is not answering: {message}"), EventBody::Notice);
     }
 }
 
@@ -298,6 +315,11 @@ impl Core {
                 let core = self.arc().ok_or_else(|| CoreError::internal("core is shutting down"))?;
                 Ok(Reply::Started { job: images::start_clear(&core) })
             }
+            Call::AutoMatch => {
+                let core = self.arc().ok_or_else(|| CoreError::internal("core is shutting down"))?;
+                Ok(Reply::Started { job: automatch::start(&core) })
+            }
+            Call::ClearMatch { series } => automatch::clear_match(self, series),
             Call::GetPreferences => Ok(Reply::Preferences { preferences: self.store.read(prefs::load_preferences)? }),
             Call::SetPreferences { preferences } => {
                 let p = preferences.clone();

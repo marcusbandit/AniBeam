@@ -6,11 +6,21 @@ use std::time::Duration;
 
 /// The watcher end to end on inotify: a finished write is ingested, a folder
 /// that appears is walked, the settle timer fires for a series that has
-/// never been matched, and a deleted file takes its episode away again.
+/// never been matched and hands it to the auto-match, and a deleted file
+/// takes its episode away again.
+///
+/// The network is canned, because the settle timer's whole point is that it
+/// ends in a search. Every reply is an empty page, so every series the
+/// walks produce misses and is stamped, which is the quietest outcome the
+/// chain has: nothing is fetched and nothing is written.
 #[cfg(target_os = "linux")]
 #[test]
 fn a_file_landing_in_a_watched_source_is_ingested_after_close_write() {
-    let (dir, core, c) = common::open_core();
+    let http = anibeam_core::net::FakeHttp::new();
+    for _ in 0..6 {
+        http.push_for("graphql.anilist.co", 200, serde_json::json!({ "data": { "Page": { "media": [] } } }).to_string());
+    }
+    let (dir, core, c) = common::open_core_with_http(http);
     let lib = dir.path().join("lib");
     fs::create_dir_all(lib.join("Show")).unwrap();
     fs::write(lib.join("Show").join("Show - 01.mkv"), b"x").unwrap();
@@ -43,7 +53,13 @@ fn a_file_landing_in_a_watched_source_is_ingested_after_close_write() {
         |e| matches!(&e.body, EventBody::SeriesChanged { series } if series.iter().any(|s| s.title == "Other")),
         Duration::from_secs(10),
     );
-    common::wait_for(&c, |e| e.message.starts_with("folder settled"), Duration::from_secs(10));
+    // The settle timer's end of the chain: a folder that has stopped
+    // changing and has never been matched is handed to the auto-match.
+    common::wait_for(
+        &c,
+        |e| matches!(&e.body, EventBody::JobStarted { kind: JobKind::AutoMatch }),
+        Duration::from_secs(10),
+    );
 
     fs::remove_file(lib.join("Show").join("Show - 02.mkv")).unwrap();
     common::wait_for(
