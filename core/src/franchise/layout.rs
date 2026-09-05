@@ -403,9 +403,10 @@ pub fn order_rows(
 ///
 /// A node in no chain that is a side story of a placed one takes that
 /// chain's column grid, centred on the targets it names, one row above
-/// when that row is free and one row below when it is not. The rows around
-/// it shift by one to make the space, and satellites that share a target
-/// spread sideways into free columns.
+/// when that row is free and one row below when it is not. The print
+/// source of an adaptation takes the same grid and always the row above.
+/// The rows around it shift by one to make the space, and satellites that
+/// share a target spread sideways into free columns.
 ///
 /// A node joined to nothing placed takes a last row of its own, one node
 /// per column: it is in the graph because something reached it, and the
@@ -424,6 +425,25 @@ pub fn satellites(
         column: i64,
     }
 
+    /// The placed nodes this one is joined to by `relation`, in edge order
+    /// and each named once.
+    fn joined(edges: &[Edge], id: u64, relation: &str, positions: &HashMap<u64, Cell>) -> Vec<u64> {
+        let mut targets: Vec<u64> = Vec::new();
+        for x in edges.iter().filter(|x| x.relation == relation) {
+            let far = if x.from == id {
+                x.to
+            } else if x.to == id {
+                x.from
+            } else {
+                continue;
+            };
+            if positions.contains_key(&far) && !targets.contains(&far) {
+                targets.push(far);
+            }
+        }
+        targets
+    }
+
     let mut chain_of: HashMap<u64, usize> = HashMap::new();
     for (i, c) in chains.iter().enumerate() {
         for id in &c.ordered {
@@ -440,18 +460,15 @@ pub fn satellites(
         if positions.contains_key(&id) {
             continue;
         }
-        let mut targets: Vec<u64> = Vec::new();
-        for x in edges.iter().filter(|x| x.relation == "SIDE_STORY") {
-            let far = if x.from == id {
-                x.to
-            } else if x.to == id {
-                x.from
-            } else {
-                continue;
-            };
-            if positions.contains_key(&far) && !targets.contains(&far) {
-                targets.push(far);
-            }
+        // A side story sits beside the chain it belongs to. The print
+        // source of an adaptation sits above it, always: a manga over the
+        // anime it became is how the relation reads and how Electron drew
+        // it, and a source pushed to the loose row at the bottom read as
+        // unconnected when it is the thing the chain came from.
+        let mut targets = joined(edges, id, "SIDE_STORY", positions);
+        let adaptation = targets.is_empty();
+        if adaptation {
+            targets = joined(edges, id, "ADAPTATION", positions);
         }
         if targets.is_empty() {
             loose.push(id);
@@ -500,7 +517,7 @@ pub fn satellites(
             id,
             target,
             row,
-            above: !occupied(positions, row - 1),
+            above: adaptation || !occupied(positions, row - 1),
             column,
         });
     }
@@ -1103,6 +1120,39 @@ mod tests {
             .map(|(_, x, y)| ((x / SPINE_X_GAP) as i64, (y / V_GAP) as i64))
             .collect();
         assert_eq!(cells.len(), placed.len(), "no two nodes share a cell");
+    }
+
+    /// The print source of an adaptation is not a side story and is not
+    /// loose: it sits directly above the chain it became, whatever is on
+    /// the row above, which is how the relation reads and how Electron
+    /// drew it. Dropped to the bottom row it read as unconnected, when it
+    /// is the thing the chain came from.
+    #[test]
+    fn an_adaptation_source_sits_above_the_chain_it_became() {
+        let mut positions: HashMap<u64, Cell> =
+            HashMap::from([(1, (0, 0)), (2, (1, 0)), (3, (0, 1)), (4, (1, 1))]);
+        let nodes = [
+            anime(1, 2000),
+            anime(2, 2001),
+            anime(3, 2002),
+            anime(4, 2003),
+            manga(10, 1999),
+        ];
+        let edges = [e(10, 3, "ADAPTATION")];
+        let cs = chains(&nodes, &[e(1, 2, "SEQUEL"), e(3, 4, "SEQUEL")]);
+        satellites(&nodes, &edges, &cs, &mut positions);
+
+        assert_eq!(
+            positions[&10].1,
+            positions[&3].1 - 1,
+            "the source belongs above its chain, not on the loose row"
+        );
+        assert_eq!(
+            positions[&10].0, positions[&3].0,
+            "and on its target's column"
+        );
+        let cells: HashSet<Cell> = positions.values().copied().collect();
+        assert_eq!(cells.len(), positions.len(), "no two nodes share a cell");
     }
 
     #[test]
