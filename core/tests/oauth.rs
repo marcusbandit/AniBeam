@@ -53,6 +53,14 @@ fn anilist_implicit_grant_through_the_forwarder_connects() {
     core.call(Call::SetTrackerCredentials { tracker: Tracker::Anilist, client_id: "123".into(), client_secret: None })
         .unwrap();
     http.push_json(200, serde_json::json!({ "data": { "Viewer": { "id": 42, "name": "bandit" } } }));
+    // The list the connection just gave access to: a finished connect
+    // starts a forced refresh of its own, and this is what it reads.
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "MediaListCollection": { "lists": [
+            { "entries": [{ "progress": 5, "status": "CURRENT", "score": 8.5, "repeat": 0, "media": { "id": 154587 } }] }
+        ] } } }),
+    );
     let job = started(core.call(Call::ConnectTracker { tracker: Tracker::Anilist }).unwrap());
     let ready = common::wait_for(
         &c,
@@ -110,6 +118,14 @@ fn anilist_implicit_grant_through_the_forwarder_connects() {
     let viewer = &http.requests()[0];
     assert!(viewer.headers.iter().any(|(k, v)| k == "Authorization" && v == "Bearer tok"), "{viewer:?}");
 
+    // The connect ends with a forced progress refresh, so the account's
+    // list is cached before any page asks for a number.
+    common::wait_for(
+        &c,
+        |e| matches!(e.body, EventBody::ProgressRefreshed { tracker: Tracker::Anilist }),
+        Duration::from_secs(5),
+    );
+
     assert!(matches!(core.call(Call::DisconnectTracker { tracker: Tracker::Anilist }).unwrap(), Reply::Ok));
     match core.call(Call::GetTrackers).unwrap() {
         Reply::Trackers { state } => {
@@ -140,6 +156,14 @@ fn mal_pkce_flow_checks_state_and_exchanges_the_code() {
         serde_json::json!({ "access_token": "mtok", "refresh_token": "mref", "expires_in": 2_415_600 }).to_string(),
     );
     http.push_for("users/@me", 200, serde_json::json!({ "id": 7, "name": "bandit" }).to_string());
+    // The forced refresh the connect ends with. Matched on the list path,
+    // since `myanimelist.net` carries `animelist` in the host itself.
+    http.push_for(
+        "users/@me/animelist",
+        200,
+        serde_json::json!({ "data": [{ "node": { "id": 52991 }, "list_status": { "status": "watching", "num_episodes_watched": 5 } }], "paging": {} })
+            .to_string(),
+    );
 
     let job = started(core.call(Call::ConnectTracker { tracker: Tracker::Mal }).unwrap());
     let open_url = ready_url(&c, job);
@@ -185,4 +209,5 @@ fn mal_pkce_flow_checks_state_and_exchanges_the_code() {
         }
         other => panic!("{other:?}"),
     }
+    common::wait_for(&c, |e| matches!(e.body, EventBody::ProgressRefreshed { tracker: Tracker::Mal }), Duration::from_secs(5));
 }

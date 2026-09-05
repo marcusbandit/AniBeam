@@ -2,6 +2,7 @@
 //! the core does with them.
 
 pub mod accounts;
+pub mod cache;
 pub mod oauth;
 pub mod secrets;
 

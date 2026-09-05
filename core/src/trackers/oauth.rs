@@ -29,6 +29,7 @@ use crate::jobs::{Finished, JobCtx};
 use crate::net::anilist::VIEWER_QUERY;
 use crate::time;
 use crate::trackers::accounts::{self, Tokens};
+use crate::trackers::cache;
 
 /// The one path the listener serves. Both providers redirect here.
 const CALLBACK_PATH: &str = "/callback";
@@ -170,6 +171,11 @@ async fn run(
     accounts::save_connection(&core, t, user_id, &username, &client_id, tokens.expires_at, store).await?;
     let trackers = accounts::state_async(&core).await?;
     ctx.emit(Level::Debug, "trackers changed", EventBody::TrackersChanged { state: trackers });
+    // The account has a list and the core has none of it, so the fetch is
+    // started here rather than waited for by the first page that wants a
+    // number. Forced, because a connection that has just happened cannot
+    // be inside anybody's freshness window.
+    cache::start_refresh(&core, Some(t), true);
     Ok(Finished {
         level: Level::Info,
         message: format!("{} connected as {username}", site_name(t)),

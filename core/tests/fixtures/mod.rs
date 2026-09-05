@@ -4,8 +4,10 @@
 //! read that follows a fixture always sees it.
 #![allow(dead_code)]
 
+use std::collections::BTreeMap;
+
 use anibeam_core::library::{classifier, labels};
-use anibeam_core::{time, Core, ExtraKind, SeriesKind};
+use anibeam_core::{time, Call, Core, ExtraKind, Reply, SeriesKind, Tracker};
 use rusqlite::params;
 
 pub fn insert_source(core: &Core, path: &str) -> u64 {
@@ -210,6 +212,62 @@ pub fn insert_view(core: &Core, series: u64, key: &str, at: i64) {
             Ok(())
         })
         .unwrap()
+}
+
+/// A connected tracker without the OAuth flow: the row the callback would
+/// have written, and the token in the same `secrets.json` the test's core
+/// reads from. `secret_store` is `file` because every test core is opened
+/// with `Secrets::file_only`, so the read goes straight there and never
+/// reaches the machine's keyring.
+pub fn connect_tracker(core: &Core, tracker: Tracker, user_id: u64, token: &str) {
+    let now = time::now_secs();
+    core.store()
+        .write(move |c| {
+            c.execute(
+                "INSERT INTO tracker_accounts (tracker, user_id, username, client_id, connected_at, secret_store)
+                 VALUES (?1, ?2, 'bandit', '123', ?3, 'file')
+                 ON CONFLICT(tracker) DO UPDATE SET user_id = excluded.user_id, username = excluded.username,
+                        client_id = excluded.client_id, connected_at = excluded.connected_at,
+                        secret_store = excluded.secret_store",
+                params![tracker.as_str(), user_id as i64, now],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    write_secret(core, &format!("{}.access_token", tracker.as_str()), token);
+}
+
+/// Moves a tracker's last progress fetch back by `secs`, so a test can put
+/// the five minute window behind it without waiting for it.
+pub fn age_progress(core: &Core, tracker: Tracker, secs: i64) {
+    core.store()
+        .write(move |c| {
+            c.execute(
+                "UPDATE tracker_accounts SET progress_fetched_at = progress_fetched_at - ?2 WHERE tracker = ?1",
+                params![tracker.as_str(), secs],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+}
+
+/// One secret into the file store, by writing the file that store reads:
+/// the facade itself is not reachable from a test binary, and the format
+/// is one flat JSON object keyed `<service>/<key>`.
+fn write_secret(core: &Core, key: &str, value: &str) {
+    let path = std::path::Path::new(&data_dir(core)).join("secrets.json");
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let mut map: BTreeMap<String, String> =
+        if text.trim().is_empty() { BTreeMap::new() } else { serde_json::from_str(&text).unwrap() };
+    map.insert(format!("anibeam/{key}"), value.to_string());
+    std::fs::write(&path, serde_json::to_string_pretty(&map).unwrap()).unwrap();
+}
+
+fn data_dir(core: &Core) -> String {
+    match core.call(Call::About).unwrap() {
+        Reply::About { about } => about.data_dir,
+        other => panic!("{other:?}"),
+    }
 }
 
 /// The path went away: the series lingers with its match and its history,

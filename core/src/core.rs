@@ -20,6 +20,7 @@ use crate::paths::CorePaths;
 use crate::prefs;
 use crate::store::Store;
 use crate::trackers::accounts;
+use crate::trackers::cache;
 use crate::trackers::oauth;
 use crate::trackers::secrets::{Secrets, KEYRING_UNAVAILABLE};
 
@@ -420,6 +421,12 @@ impl Core {
             Call::ConnectTracker { tracker } => Ok(Reply::Started { job: oauth::connect(self, tracker)? }),
             Call::DisconnectTracker { tracker } => accounts::disconnect(self, tracker),
             Call::SetMainTracker { tracker } => accounts::set_main(self, tracker),
+            // Nothing to check up front: an unconnected or a fresh tracker
+            // is the job's own skip, not a refusal.
+            Call::RefreshProgress { tracker } => {
+                let core = self.arc().ok_or_else(|| CoreError::internal("core is shutting down"))?;
+                Ok(Reply::Started { job: cache::start_refresh(&core, tracker, false) })
+            }
             other => Err(CoreError::Unsupported { what: format!("{} is not built yet", call_name(&other)) }),
         }
     }
