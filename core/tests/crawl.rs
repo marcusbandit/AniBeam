@@ -163,15 +163,24 @@ fn the_crawl_walks_traversable_edges_stops_at_a_cameo_and_defers_a_rate_limit() 
             &[("PREQUEL", 1), ("SEQUEL", 3), ("SEQUEL", 4), ("SEQUEL", 5)],
         ),
     );
-    http.push_for("img/1.jpg", 200, vec![0xFF, 0xD8, 0xFF, 0xE0]);
-    http.push_for("img/2.jpg", 200, vec![0xFF, 0xD8, 0xFF, 0xE0]);
+    // Every node's own cover and every neighbour's: the crawl fetches the
+    // stubs it writes, since the library's fill never reaches a cover no
+    // series owns.
+    for n in [1, 2, 3, 4, 5, 50] {
+        http.push_for(&format!("img/{n}.jpg"), 200, vec![0xFF, 0xD8, 0xFF, 0xE0]);
+    }
+    // Scoped to the query, or the cover fetches would eat the rate limit
+    // meant for node 3.
     for _ in 0..7 {
-        http.push_with_headers(429, "no", vec![("Retry-After".into(), "0".into())]);
+        http.push_for_with_headers(
+            "graphql.anilist.co",
+            429,
+            "no",
+            vec![("Retry-After".into(), "0".into())],
+        );
     }
     http.push_for("graphql.anilist.co", 200, enrichment(4, &[("PREQUEL", 2)]));
-    http.push_for("img/4.jpg", 200, vec![0xFF, 0xD8, 0xFF, 0xE0]);
     http.push_for("graphql.anilist.co", 200, enrichment(5, &[("PREQUEL", 2)]));
-    http.push_for("img/5.jpg", 200, vec![0xFF, 0xD8, 0xFF, 0xE0]);
 
     let (_dir, core, c) = common::open_core_with_http(http.clone());
     let src = fixtures::insert_source(&core, "/lib");
@@ -268,9 +277,12 @@ fn the_crawl_walks_traversable_edges_stops_at_a_cameo_and_defers_a_rate_limit() 
         vec![
             "https://img/1.jpg".to_string(),
             "https://img/2.jpg".to_string(),
+            "https://img/3.jpg".to_string(),
             "https://img/4.jpg".to_string(),
             "https://img/5.jpg".to_string(),
-        ]
+            "https://img/50.jpg".to_string(),
+        ],
+        "a node the crawl only stubbed draws with no poster at all"
     );
     assert!(
         warnings(&c).is_empty(),

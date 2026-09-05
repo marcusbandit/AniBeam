@@ -690,3 +690,48 @@ fn a_transport_failure_ends_the_refresh_walk() {
     );
     core.shutdown();
 }
+
+/// The backfill writes records, so it brings covers and banners in, so it
+/// owes the sweep that keeps the image directory from only ever growing.
+/// It used to run the sweep for RefreshAll alone.
+#[test]
+fn the_backfill_sweeps_the_image_cache_like_every_other_refresh() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let src = fixtures::insert_source(&core, "/lib");
+    let stub = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Stub", "Stub");
+    core.store()
+        .write(|conn| {
+            conn.execute(
+                "INSERT INTO anilist_media (id, media_type, title_romaji) VALUES (11, 'ANIME', 'Stub')",
+                [],
+            )?;
+            // A row whose file is not there: a lie the sweep exists to
+            // clear out.
+            conn.execute(
+                "INSERT INTO images (url, path, bytes, fetched_at, used_at) VALUES ('https://img/gone.jpg', 'ab/gone.jpg', 2, 1, 1)",
+                [],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    fixtures::match_series(&core, stub, Some(11), None);
+
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "Media": media_json(11, "Stub filled in", None, false) } }),
+    );
+    http.push_json(200, bare_enrichment(11, None));
+    http.push_json(200, empty_schedule(11));
+    let job = anibeam_core::metadata::apply::backfill_stubs(&core);
+    common::wait_job(&c, job);
+
+    let rows: i64 = core
+        .store()
+        .read(|conn| Ok(conn.query_row("SELECT count(*) FROM images", [], |r| r.get(0))?))
+        .unwrap();
+    assert_eq!(
+        rows, 0,
+        "the backfill left a row naming a file that is gone"
+    );
+}

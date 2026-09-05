@@ -405,9 +405,10 @@ fn start_refresh_walk(
                 }
             }
         }
-        if kind == JobKind::RefreshAll {
-            sweep_images(&owner, "a refresh").await;
-        }
+        // Both walks write records, so both bring covers, banners and
+        // portraits in, and both owe the sweep that keeps the directory
+        // from only ever growing.
+        sweep_images(&owner, label).await;
         Ok(Finished {
             level: Level::Info,
             message: format!("{label}: {refreshed} refreshed, {failed} failed"),

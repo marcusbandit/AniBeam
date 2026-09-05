@@ -260,6 +260,20 @@ impl FakeHttp {
         self.queue(None, status, headers, body.into());
     }
 
+    /// Both at once: a reply with headers that only answers a url
+    /// containing `url_contains`. A test that queues a rate limit needs
+    /// this, since an unmatched reply answers the next request whatever it
+    /// was for, and an image fetch would eat the 429 meant for a query.
+    pub fn push_for_with_headers(
+        &self,
+        url_contains: &str,
+        status: u16,
+        body: impl Into<Vec<u8>>,
+        headers: Vec<(String, String)>,
+    ) {
+        self.queue(Some(url_contains.to_string()), status, headers, body.into());
+    }
+
     /// The next `send` fails as if the connection never opened. Queued once
     /// per call, so two calls fail the next two sends.
     pub fn fail_next(&self, message: impl Into<String>) {

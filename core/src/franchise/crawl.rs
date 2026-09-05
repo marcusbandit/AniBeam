@@ -140,7 +140,7 @@ async fn run(
                 // one a full fetch left in `raw`.
                 Ok((Some(enrichment), _raw)) => {
                     write_node(core, id, &enrichment, time::now_secs()).await?;
-                    fetch_cover(core, &enrichment).await;
+                    fetch_covers(core, &enrichment).await;
                     fetched += 1;
                     ctx.emit(
                         Level::Debug,
@@ -320,17 +320,30 @@ fn own_stub(id: u64, e: &Enrichment) -> StubWrite {
     }
 }
 
-/// The node's poster, so the graph draws with pictures rather than gaps.
-/// A failure is that one url's own and is bookkeeping, not a state change.
-async fn fetch_cover(core: &Core, enrichment: &Enrichment) {
-    let Some(url) = enrichment
+/// The node's poster and its neighbours', so the graph draws with pictures
+/// rather than gaps. The neighbours matter as much as the node: the
+/// library's own image fill only ever reaches a cover some series owns,
+/// and a boundary node owns none, so a stub the crawl wrote would draw
+/// blank for ever. A failure is that one url's own and is bookkeeping,
+/// not a state change.
+async fn fetch_covers(core: &Core, enrichment: &Enrichment) {
+    let mut urls: Vec<String> = enrichment
         .cover_image
         .as_ref()
         .and_then(|c| c.large.clone())
-    else {
+        .into_iter()
+        .collect();
+    for edge in enrichment.relations.iter().flat_map(|r| r.edges.iter()) {
+        if let Some(url) = edge.node.cover_image.as_ref().and_then(|c| c.large.clone()) {
+            urls.push(url);
+        }
+    }
+    urls.sort();
+    urls.dedup();
+    if urls.is_empty() {
         return;
-    };
-    for (url, outcome) in core.images.ensure(std::slice::from_ref(&url)).await {
+    }
+    for (url, outcome) in core.images.ensure(&urls).await {
         if let Err(e) = outcome {
             tracing::debug!("the crawl could not fetch {url}: {e}");
         }
