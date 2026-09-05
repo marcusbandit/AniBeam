@@ -191,21 +191,20 @@ pub fn from_terminal(
 
 /// The tinted-theming slot roles: base00 bg, base01 surface, base02 raised and line,
 /// base03 line.strong and text.faint, base04 text.dim, base05 text, base08 to base0F the hues.
-pub fn from_base16(theme: &Base16Theme, contrast: bool, steps: &Steps) -> Palette {
+// `contrast` widens the terminal and portal mixes but not a base16 file's: spec 4.2's
+// contrast column only multiplies a *mix step*, and a base16 theme's slots are colours
+// taken as written, not a step from bg toward text. The engine still passes `contrast`
+// uniformly across all three sources, so the parameter stays even though it's a no-op here.
+pub fn from_base16(theme: &Base16Theme, _contrast: bool, steps: &Steps) -> Palette {
     let p = theme.palette;
     let mode = theme.mode();
     let (bg, text) = (p[0], p[5]);
-    let m = if contrast { 1.5 } else { 1.0 };
     let mixed = Mixed {
         surface: p[1],
         raised: p[2],
         pressed: p[3],
-        line: if contrast { bg.mix(p[2], m) } else { p[2] },
-        line_strong: if contrast {
-            bg.mix(p[3], m.min(1.0))
-        } else {
-            p[3]
-        },
+        line: p[2],
+        line_strong: p[3],
         faint: p[3],
         dim: p[4],
     };
@@ -257,11 +256,8 @@ fn rgb_to_argb(c: Rgb) -> Argb {
 pub fn from_portal(portal: &Portal, mode: Mode, contrast: bool, steps: &Steps) -> Palette {
     let seed = portal.accent.unwrap_or_else(|| hex(ANIBEAM_TEAL));
     let seed_hct = Hct::new(rgb_to_argb(seed));
-    let level = if contrast || portal.contrast {
-        Some(1.0)
-    } else {
-        Some(0.0)
-    };
+    let high = contrast || portal.contrast;
+    let level = if high { Some(1.0) } else { Some(0.0) };
     let scheme = SchemeTonalSpot::new(seed_hct, mode == Mode::Dark, level).scheme;
     let bg = argb_to_rgb(scheme.background());
     let text = argb_to_rgb(scheme.on_surface());
@@ -290,7 +286,7 @@ pub fn from_portal(portal: &Portal, mode: Mode, contrast: bool, steps: &Steps) -
         pressed: argb_to_rgb(scheme.surface_container_highest()),
         line: argb_to_rgb(scheme.outline_variant()),
         line_strong: argb_to_rgb(scheme.outline()),
-        faint: bg.mix(text, steps.faint * if contrast { 1.5 } else { 1.0 }),
+        faint: bg.mix(text, steps.faint * if high { 1.5 } else { 1.0 }),
         dim: argb_to_rgb(scheme.on_surface_variant()),
     };
     let accent = argb_to_rgb(scheme.primary());
@@ -457,6 +453,12 @@ mod tests {
                 .to_hex(),
             "#cba6f7"
         );
+        // base16 is exempt from the contrast widening: spec 4.2's contrast column
+        // multiplies a mix step, and a base16 file's slots are colours taken as written.
+        let contrasted = from_base16(&mocha(), true, &Steps::default());
+        assert_eq!(contrasted.line.to_hex(), "#313244");
+        assert_eq!(contrasted.line_strong.to_hex(), "#45475a");
+        assert_eq!(contrasted.text_faint.to_hex(), "#45475a");
     }
 
     #[test]
