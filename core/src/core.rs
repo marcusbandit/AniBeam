@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::{Duration, Instant};
@@ -82,6 +83,11 @@ pub struct Core {
     /// its titles rather than its match, and a job walking a whole library
     /// through one must not write a warning per series into the log.
     pub(crate) jikan_outage: Mutex<Option<Instant>>,
+    /// When each franchise root was last crawled on a page's behalf. A
+    /// series page asks for its franchise every time it opens, and the
+    /// crawl behind that read runs at most once a minute per root, so
+    /// opening the same page twice costs AniList nothing the second time.
+    pub(crate) crawl_recent: Mutex<HashMap<u64, Instant>>,
     /// Jobs need an `Arc<Core>` of their own; exported methods take `&self`,
     /// so the core keeps a `Weak` to itself from `Arc::new_cyclic` and
     /// upgrades it.
@@ -165,6 +171,7 @@ impl Core {
             mal,
             oauth_port: AtomicU16::new(DEFAULT_OAUTH_PORT),
             jikan_outage: Mutex::new(None),
+            crawl_recent: Mutex::new(HashMap::new()),
             me: me.clone(),
             started: AtomicBool::new(false),
             closed: AtomicBool::new(false),

@@ -4,6 +4,7 @@
 pub mod contract;
 pub mod core;
 pub mod events;
+pub mod franchise;
 pub mod images;
 pub mod jobs;
 pub mod library;
