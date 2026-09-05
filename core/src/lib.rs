@@ -2,6 +2,7 @@
 //! contract in `contract`.
 
 pub mod contract;
+pub mod events;
 pub mod paths;
 pub mod store;
 pub mod time;
