@@ -81,7 +81,6 @@ pub struct Core {
     /// The provider clients. Tasks 16 onwards are the callers; the fields
     /// are built here so every job shares one limiter per upstream.
     pub(crate) anilist: Arc<AnilistClient>,
-    #[allow(dead_code)]
     pub(crate) jikan: Arc<JikanClient>,
     pub(crate) aniskip: Arc<AniSkipClient>,
     pub(crate) mal: Arc<MalClient>,
@@ -112,9 +111,9 @@ pub struct Core {
     closed: AtomicBool,
 }
 
-/// One client, one timeout, every provider. The tracker calls wrap their
-/// own futures in a shorter `tokio::time::timeout` where a slow list read
-/// should give up sooner than a slow image fetch.
+/// One client, one timeout, every provider. This is the ceiling on a
+/// single request; a tracker call caps itself tighter than an image fetch
+/// through the limiter's own per-attempt timeout.
 const HTTP_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// How long `shutdown` waits for the runtime's tasks to observe the

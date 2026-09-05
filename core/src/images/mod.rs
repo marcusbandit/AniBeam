@@ -682,7 +682,14 @@ pub fn start_fill(core: &Arc<Core>) -> u64 {
                 );
             }
             Ok(Finished {
-                level: Level::Info,
+                // Every launch runs this, and on most of them there is
+                // nothing to fill: a line saying so belongs in the trace
+                // rather than in a log of state changes.
+                level: if fetched == 0 && failed == 0 {
+                    Level::Debug
+                } else {
+                    Level::Info
+                },
                 message: format!("images filled: {fetched} fetched, {failed} failed"),
                 body: EventBody::Notice,
             })

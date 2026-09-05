@@ -55,6 +55,17 @@ fn retry_after(r: &HttpResponse) -> Option<f64> {
         .filter(|s| s.is_finite())
 }
 
+/// How long to wait before the next attempt: the provider's own
+/// `Retry-After` when it sent one readable, clamped to the schedule's
+/// ceiling so a header of an hour cannot park a job for an hour, and the
+/// schedule's planned wait when it sent none.
+fn wait_before_retry(asked: Option<f64>, planned: Duration) -> Duration {
+    match asked {
+        Some(seconds) => Duration::from_secs_f64(seconds.clamp(0.0, MAX_RETRY_DELAY.as_secs_f64())),
+        None => planned,
+    }
+}
+
 /// What one attempt can go wrong with. `Limited` is retried, `Transport`
 /// is not: a connection that never opened will not open on the next tick
 /// either, and the job above decides whether to try again later.
@@ -162,13 +173,7 @@ impl ProviderClient {
             .adjust(|e, planned| {
                 let planned = planned?;
                 match e {
-                    Attempt::Limited(r) => Some(
-                        retry_after(r)
-                            .map(|s| {
-                                Duration::from_secs_f64(s.clamp(0.0, MAX_RETRY_DELAY.as_secs_f64()))
-                            })
-                            .unwrap_or(planned),
-                    ),
+                    Attempt::Limited(r) => Some(wait_before_retry(retry_after(r), planned)),
                     Attempt::Transport(_) => Some(planned),
                 }
             })
@@ -294,6 +299,38 @@ mod tests {
         assert!(
             matches!(&err, CoreError::Provider { status: None, message, .. } if message.contains("timed out")),
             "{err:?}"
+        );
+    }
+
+    /// The provider's own wait wins, up to the ceiling. A header asking for
+    /// an hour must never park a job for an hour, and one asking for
+    /// nothing must not be talked into the schedule's wait instead.
+    #[test]
+    fn a_retry_after_is_taken_but_clamped_to_the_ceiling() {
+        let planned = Duration::from_secs(8);
+        assert_eq!(
+            wait_before_retry(None, planned),
+            planned,
+            "no header, so the schedule decides"
+        );
+        assert_eq!(
+            wait_before_retry(Some(0.0), planned),
+            Duration::ZERO,
+            "a wait of nothing is a wait of nothing"
+        );
+        assert_eq!(
+            wait_before_retry(Some(5.5), planned),
+            Duration::from_secs_f64(5.5)
+        );
+        assert_eq!(
+            wait_before_retry(Some(3600.0), planned),
+            MAX_RETRY_DELAY,
+            "an hour is clamped to the ceiling"
+        );
+        assert_eq!(
+            wait_before_retry(Some(-30.0), planned),
+            Duration::ZERO,
+            "a negative wait is nought, never a panic"
         );
     }
 

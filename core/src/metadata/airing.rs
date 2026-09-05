@@ -310,7 +310,13 @@ pub fn start_refresh_library(core: &Arc<Core>) -> u64 {
                 }
             }
             Ok(Finished {
-                level: Level::Info,
+                // The launch runs this whether anything was due or not, so
+                // a sweep that changed nothing is trace rather than log.
+                level: if updated == 0 {
+                    Level::Debug
+                } else {
+                    Level::Info
+                },
                 message: format!("airing refreshed for {updated} series"),
                 body: EventBody::Notice,
             })

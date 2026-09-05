@@ -137,6 +137,10 @@ impl EventBus {
     /// than repaired into a default; a genuine rusqlite error still
     /// propagates.
     pub fn recent(&self, limit: u64) -> Result<Vec<Event>, CoreError> {
+        // The ring never holds more than this, so a shell asking for a
+        // billion asks for the ring; the cast below is only safe because
+        // of it.
+        let limit = limit.min(RING_SIZE);
         self.store.write(move |c| {
             let mut stmt = c.prepare_cached(
                 "SELECT seq, at, level, stage, message, job_id, job_kind, job_phase, body FROM events ORDER BY seq DESC LIMIT ?1",

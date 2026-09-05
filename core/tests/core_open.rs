@@ -35,3 +35,27 @@ fn open_about_and_events_work_without_start() {
     core.shutdown();
     core.shutdown();
 }
+
+/// A limit past what the ring can hold is the ring. The shell is on the
+/// other side of a bridge, so a number that would not fit an i64 has to be
+/// clamped rather than cast: the query binds an i64, and u64::MAX as i64
+/// is a negative limit.
+#[test]
+fn a_recent_limit_past_the_ring_is_the_ring() {
+    let (_dir, core, c) = common::open_core();
+    core.start().unwrap();
+    common::wait_for(
+        &c,
+        |e| matches!(e.body, EventBody::Ready),
+        std::time::Duration::from_secs(2),
+    );
+    let all = match core.call(Call::RecentEvents { limit: u64::MAX }).unwrap() {
+        Reply::Events { events } => events,
+        other => panic!("{other:?}"),
+    };
+    assert!(
+        all.iter().any(|e| matches!(e.body, EventBody::Ready)),
+        "a negative limit answers with nothing at all"
+    );
+    core.shutdown();
+}

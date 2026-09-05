@@ -682,10 +682,10 @@ fn complete(core: &Core, s: &Session) -> Result<(), CoreError> {
         .store
         .read(|c| cards::cards_for(c, &images_dir, &[s.series]))?;
     let title = cards.first().map_or_else(String::new, |c| c.title.clone());
-    let what = if s.is_film { "film" } else { "episode" };
+    let what = if s.is_film { "a film" } else { "an episode" };
     core.bus.debug(
         Stage::Playback,
-        format!("{title} finished a {what}"),
+        format!("{title} finished {what}"),
         EventBody::SeriesChanged { series: cards },
     );
     Ok(())

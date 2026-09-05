@@ -167,10 +167,12 @@ fn under(path: &str, root: &str) -> bool {
 }
 
 /// Writes one source's walk into the tables. `only_under` limits the work to
-/// series whose path equals or lies under one of the given paths, and then
-/// nothing is marked missing. The containment is tested both ways: a file
-/// path deep inside a series folder still reaches the series row, and a
-/// series-level path still reaches a loose film by its file path.
+/// series whose path equals or lies under one of the given paths: a series
+/// inside that scope the walk did not produce is marked missing exactly as
+/// a full scan would mark it, and only series outside it are left alone.
+/// The containment is tested both ways: a file path deep inside a series
+/// folder still reaches the series row, and a series-level path still
+/// reaches a loose film by its file path.
 pub fn reconcile_source(
     tx: &Transaction,
     source_id: u64,

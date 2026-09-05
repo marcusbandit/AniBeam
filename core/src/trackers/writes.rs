@@ -389,12 +389,24 @@ async fn run(
     Ok(finished(&target, action, outcomes))
 }
 
+/// The terminal's level. A write that reached a tracker and was refused by
+/// every one of them is not something that happened: the line has to read
+/// as the failure it is, or the log says the mark landed.
+fn level_of(outcomes: &[TrackerOutcome]) -> Level {
+    if !outcomes.is_empty() && outcomes.iter().all(|o| !o.ok) {
+        Level::Warn
+    } else {
+        Level::Info
+    }
+}
+
 fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> Finished {
     let series = target.series;
     let folder = &target.folder_name;
+    let level = level_of(&outcomes);
     match action {
         Action::Mark { episode } => Finished {
-            level: Level::Info,
+            level,
             message: format!("marked episode {episode} of {folder}"),
             body: EventBody::Marked {
                 series,
@@ -403,7 +415,7 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
             },
         },
         Action::Progress { progress } => Finished {
-            level: Level::Info,
+            level,
             message: format!("progress of {folder} set to {progress}"),
             body: EventBody::ProgressSet {
                 series,
@@ -416,7 +428,7 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
             // carries no score rather than a rating of nothing.
             let rated = (score > 0.0).then_some(score);
             Finished {
-                level: Level::Info,
+                level,
                 message: match rated {
                     Some(score) => format!("score of {folder} set to {score}"),
                     None => format!("score of {folder} cleared"),
@@ -505,8 +517,10 @@ async fn attempt(
             };
             send_progress(core, t, media_id, &token, episode, status).await?;
             record_progress(core, t, media_id, episode, status).await?;
+            // The terminal event carries every tracker's outcome, so a
+            // line per tracker here would say the same thing twice.
             ctx.emit(
-                Level::Info,
+                Level::Debug,
                 format!("{} {current} -> {episode} (mediaId {media_id})", t.as_str()),
                 EventBody::Notice,
             );
@@ -529,7 +543,7 @@ async fn attempt(
             send_progress(core, t, media_id, &token, progress, status).await?;
             record_progress(core, t, media_id, progress, status).await?;
             ctx.emit(
-                Level::Info,
+                Level::Debug,
                 format!(
                     "{} set {current} -> {progress} (mediaId {media_id})",
                     t.as_str()
@@ -553,7 +567,7 @@ async fn attempt(
             record_score(core, t, media_id, sent, completed).await?;
             let tail = if completed { " + completed" } else { "" };
             ctx.emit(
-                Level::Info,
+                Level::Debug,
                 format!("{} score -> {sent} (mediaId {media_id}){tail}", t.as_str()),
                 EventBody::Notice,
             );

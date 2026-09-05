@@ -131,7 +131,7 @@ async fn run(
             .await?
         {
             ctx.emit(
-                Level::Debug,
+                Level::Info,
                 format!("source imported: {}", source.path),
                 EventBody::SourceChanged { source },
             );

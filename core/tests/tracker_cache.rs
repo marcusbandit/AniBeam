@@ -375,3 +375,59 @@ fn a_sweep_with_one_dead_token_warns_rather_than_failing_the_job() {
     let done = common::wait_job(&c, job);
     assert!(matches!(done.body, EventBody::JobFailed { .. }), "{done:?}");
 }
+
+/// A rate limit the limiter could not ride out reaches the shell as a rate
+/// limit, with the tracker named and the provider's own message sanitised.
+/// It must never arrive as a timeout: the whole point of capping one
+/// request rather than the call is that the 429 schedule underneath is
+/// allowed to run to its end.
+#[test]
+fn an_exhausted_rate_limit_is_a_rate_limit_and_not_a_timeout() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    library(&core);
+    fixtures::connect_tracker(&core, Tracker::Anilist, 42, "tok");
+
+    // The first request plus the limiter's six retries. `Retry-After: 0`
+    // is what keeps the test to the pacing gap rather than the 1, 2, 4, 8,
+    // 16, 32 second schedule.
+    for _ in 0..7 {
+        http.push_for_with_headers(
+            "graphql",
+            429,
+            "rate limited",
+            vec![("Retry-After".to_string(), "0".to_string())],
+        );
+    }
+
+    let job = started(
+        core.call(Call::RefreshProgress {
+            tracker: Some(Tracker::Anilist),
+        })
+        .unwrap(),
+    );
+    let done = common::wait_job(&c, job);
+    assert!(
+        matches!(
+            done.body,
+            EventBody::JobFailed {
+                error: CoreError::Provider {
+                    status: Some(429),
+                    ..
+                }
+            }
+        ),
+        "{done:?}"
+    );
+    assert_eq!(http.requests().len(), 7, "the whole schedule was not spent");
+    let warning = c
+        .events()
+        .into_iter()
+        .find(|e| e.level == Level::Warn && e.message.contains("progress refresh failed"))
+        .expect("one warning naming the tracker");
+    assert!(
+        !warning.message.contains("timed out"),
+        "a rate limit read as a timeout: {}",
+        warning.message
+    );
+}
