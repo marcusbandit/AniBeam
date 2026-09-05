@@ -44,6 +44,27 @@ fn apply_pragmas(conn: &Connection) -> Result<(), CoreError> {
     Ok(())
 }
 
+/// Waits on the writer's reply from whatever thread called. A plain thread
+/// blocks on the receiver. Inside a runtime `blocking_recv` panics, and a
+/// shell listener runs inline on the tokio thread that emitted the event,
+/// so a listener that turns around and calls a writing call would take a
+/// worker down: there the wait goes through `block_in_place`, which hands
+/// the worker's other tasks to a sibling before it blocks.
+fn recv_blocking<T>(rrx: oneshot::Receiver<T>) -> Result<T, CoreError> {
+    // `block_in_place` itself panics on a current-thread runtime, so it is
+    // only for the multi-thread one the core builds.
+    let on_a_worker = matches!(
+        tokio::runtime::Handle::try_current().map(|h| h.runtime_flavor()),
+        Ok(tokio::runtime::RuntimeFlavor::MultiThread)
+    );
+    let received = if on_a_worker {
+        tokio::task::block_in_place(|| rrx.blocking_recv())
+    } else {
+        rrx.blocking_recv()
+    };
+    received.map_err(|_| CoreError::internal("store thread dropped the reply"))
+}
+
 impl Store {
     pub fn open(db_path: &Path) -> Result<Arc<Store>, CoreError> {
         if let Some(parent) = db_path.parent() {
@@ -102,8 +123,9 @@ impl Store {
 
     /// Runs `f` on the writer thread and blocks the calling thread for the
     /// result. For a plain thread: a shell's calling thread, the event bus,
-    /// a test. This panics if called from inside a tokio runtime context;
-    /// use `write_async` there instead.
+    /// a test. A job body on the runtime uses `write_async` instead, but
+    /// this stays safe on a runtime thread all the same: see
+    /// `recv_blocking`.
     pub fn write<T, F>(&self, f: F) -> Result<T, CoreError>
     where
         T: Send + 'static,
@@ -113,8 +135,7 @@ impl Store {
         self.send_task(Box::new(move |conn| {
             let _ = rtx.send(f(conn));
         }))?;
-        rrx.blocking_recv()
-            .map_err(|_| CoreError::internal("store thread dropped the reply"))?
+        recv_blocking(rrx)?
     }
 
     /// The `write` a job body on the tokio runtime calls instead: same
@@ -377,6 +398,35 @@ mod tests {
             .read(|c| Ok(c.query_row("SELECT count(*) FROM sources", [], |r| r.get(0))?))
             .unwrap();
         assert_eq!(n, 0);
+    }
+
+    /// A shell listener runs inline on the tokio thread that emitted the
+    /// event, and a listener is free to call back into the core, so the
+    /// blocking `write` has to survive a runtime worker. Without
+    /// `block_in_place` the spawned task panics on `blocking_recv` and the
+    /// join below fails.
+    #[test]
+    fn write_survives_a_call_from_a_runtime_worker() {
+        let (_dir, store) = open_temp();
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        let inner = Arc::clone(&store);
+        let n: i64 = rt
+            .block_on(async move {
+                tokio::spawn(async move {
+                    inner.write(|c| {
+                        c.execute("INSERT INTO sources (path, added_at) VALUES ('/e', 1)", [])?;
+                        Ok(c.query_row("SELECT count(*) FROM sources", [], |r| r.get(0))?)
+                    })
+                })
+                .await
+                .expect("the task must not panic on the writer round trip")
+            })
+            .unwrap();
+        assert_eq!(n, 1);
     }
 
     #[test]
