@@ -233,17 +233,34 @@ impl Drop for JobGuard {
         if self.done {
             return;
         }
-        // No further scheduled flush should emit for a panicked job either.
+        // No further scheduled flush should emit for a job ending this way
+        // either.
         self.ctx.finished.store(true, Ordering::SeqCst);
         self.jobs.running.lock().unwrap().remove(&self.id);
         let finished = JobRef { id: self.id, kind: self.kind, phase: JobPhase::Finished };
-        self.jobs.bus.emit(
-            Level::Error,
-            self.kind.stage(),
-            format!("{} panicked", self.kind.as_str()),
-            Some(finished),
-            EventBody::JobFailed { error: CoreError::internal("job panicked") },
-        );
+        if std::thread::panicking() {
+            self.jobs.bus.emit(
+                Level::Error,
+                self.kind.stage(),
+                format!("{} panicked", self.kind.as_str()),
+                Some(finished),
+                EventBody::JobFailed { error: CoreError::internal("job panicked") },
+            );
+        } else {
+            // Still armed at drop but the thread is not unwinding: the
+            // body's future was dropped without running to completion,
+            // which is what a runtime shutdown produces (and, in
+            // principle, a `select!` whose cancelled arm won before this
+            // guard's `done` flag could be set). Either way the job did
+            // not fail, it was cancelled.
+            self.jobs.bus.emit(
+                Level::Info,
+                self.kind.stage(),
+                format!("{} cancelled", self.kind.as_str()),
+                Some(finished),
+                EventBody::JobCancelled,
+            );
+        }
     }
 }
 
@@ -590,6 +607,49 @@ mod tests {
         });
         assert_ne!(id, second);
         wait_for_finished(&c, second);
+    }
+
+    #[test]
+    fn a_job_dropped_by_runtime_shutdown_ends_cancelled_not_failed() {
+        let (_d, rt, jobs, c) = setup();
+        let id = jobs.start(JobKind::Scan, |ctx| async move {
+            ctx.checkpoint()?;
+            ctx.emit(Level::Debug, "about to hang", EventBody::Notice);
+            // Never resolves: the only way this task ends is by being
+            // dropped, either by `cancel` (not exercised here) or by the
+            // runtime shutting down out from under it, which is what this
+            // test does below.
+            std::future::pending::<Result<Finished, CoreError>>().await
+        });
+
+        // Wait until the body has actually been polled and reached the
+        // pending await, so shutting the runtime down below drops a task
+        // that genuinely started running rather than one that was queued
+        // but never polled even once.
+        let started = c.wait_for(
+            |events| events.iter().any(|e| e.job.as_ref().is_some_and(|j| j.id == id) && matches!(e.body, EventBody::Notice)),
+            Duration::from_secs(2),
+        );
+        assert!(started, "job never reached the pending await; events seen: {:?}", c.events());
+
+        // Drops the still-pending task without ever resuming it: the
+        // `JobGuard`'s `done` flag is never set on this path, so its
+        // `Drop` is what has to tell a runtime-shutdown drop apart from a
+        // real panic.
+        rt.shutdown_timeout(Duration::from_millis(100));
+
+        // The store's writer thread is a plain OS thread independent of
+        // the tokio runtime just shut down, so the bus and its listeners
+        // are unaffected; assert on the collector, not `bus.recent`, since
+        // the point of this test is what the shell saw, not the ring.
+        let arrived = c.wait_for(
+            |events| events.iter().any(|e| e.job.as_ref().is_some_and(|j| j.id == id && j.phase == JobPhase::Finished)),
+            Duration::from_secs(2),
+        );
+        assert!(arrived, "job never got a terminal event; events seen: {:?}", c.events());
+        let last = c.events().into_iter().rfind(|e| e.job.as_ref().is_some_and(|j| j.id == id)).unwrap();
+        assert!(matches!(last.body, EventBody::JobCancelled), "{:?}", last.body);
+        assert_eq!(last.level, Level::Info);
     }
 
     #[test]
