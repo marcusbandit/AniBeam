@@ -642,3 +642,51 @@ fn the_backfill_walks_the_stubs_and_refresh_all_walks_every_match() {
 
     core.shutdown();
 }
+
+/// AniList not answering at all ends the walk. Every series after the
+/// first keeps its record and its place in the next run's list, and the
+/// terminal is the failure rather than a count of series that never had
+/// their turn.
+#[test]
+fn a_transport_failure_ends_the_refresh_walk() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let src = fixtures::insert_source(&core, "/lib");
+    for (n, name) in [(10u64, "Aaa"), (11, "Bbb")] {
+        let series =
+            fixtures::insert_series(&core, src, SeriesKind::Show, &format!("/lib/{name}"), name);
+        fixtures::insert_media(
+            &core,
+            n,
+            Some(name),
+            None,
+            Some(12),
+            "FINISHED",
+            "TV",
+            Some(80),
+        );
+        fixtures::match_series(&core, series, Some(n), None);
+    }
+
+    // A connection that never opened. The limiter does not retry one, so
+    // this is a single request and the second series is never asked about.
+    http.fail_next("connection refused");
+
+    let job = started(&core, Call::RefreshAll);
+    let done = common::wait_job(&c, job);
+    assert!(
+        matches!(
+            done.body,
+            EventBody::JobFailed {
+                error: CoreError::Provider { status: None, .. }
+            }
+        ),
+        "{done:?}"
+    );
+    assert_eq!(
+        http.requests().len(),
+        1,
+        "the walk carried on past an outage"
+    );
+    core.shutdown();
+}

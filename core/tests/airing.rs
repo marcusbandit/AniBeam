@@ -301,3 +301,45 @@ fn two_jikan_failures_inside_the_window_write_one_warning() {
 
     core.shutdown();
 }
+
+/// AniList not answering at all is not the series' turn having come. The
+/// sweep ends there and stamps nothing, so the next launch asks about the
+/// same series rather than counting a whole library refreshed against an
+/// outage.
+#[test]
+fn a_transport_failure_ends_the_sweep_and_stamps_nothing() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let src = fixtures::insert_source(&core, "/lib");
+    releasing(&core, src, "Aaa", 1, 1001);
+    releasing(&core, src, "Bbb", 2, 1002);
+
+    // A connection that never opened. The limiter does not retry one, so
+    // the sweep makes a single request and never reaches the second row.
+    http.fail_next("connection refused");
+
+    let job = anibeam_core::metadata::airing::start_refresh_library(&core);
+    let done = common::wait_job(&c, job);
+    assert!(
+        matches!(
+            done.body,
+            EventBody::JobFailed {
+                error: CoreError::Provider { status: None, .. }
+            }
+        ),
+        "{done:?}"
+    );
+    assert_eq!(http.requests().len(), 1);
+    let stamped: i64 = core
+        .store()
+        .read(|conn| {
+            Ok(conn.query_row(
+                "SELECT count(*) FROM anilist_media WHERE airing_refreshed_at IS NOT NULL",
+                [],
+                |r| r.get(0),
+            )?)
+        })
+        .unwrap();
+    assert_eq!(stamped, 0, "an outage stamped a series as refreshed");
+    core.shutdown();
+}

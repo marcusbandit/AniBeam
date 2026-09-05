@@ -27,7 +27,7 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use crate::contract::*;
 use crate::core::Core;
 use crate::jobs::{Finished, JobCtx};
-use crate::metadata::apply::{card_for, is_rate_limited, owner};
+use crate::metadata::apply::{card_for, owner, provider_stopped};
 use crate::metadata::fetch::message_of;
 use crate::metadata::record;
 use crate::time;
@@ -205,9 +205,11 @@ async fn refresh_reported(
 ) -> Result<bool, CoreError> {
     match refresh_one(core, cand, now).await {
         Ok(updated) => Ok(updated),
-        // A rate limit the limiter could not ride out is AniList saying
-        // stop, not this series failing.
-        Err(e) if is_rate_limited(&e) => Err(e),
+        // A rate limit the limiter could not ride out, or nothing
+        // answering at all, is AniList saying stop rather than this series
+        // failing. The job ends and the series keeps its old stamp, so the
+        // next run asks again.
+        Err(e) if provider_stopped(&e) => Err(e),
         Err(e) => {
             ctx.emit(
                 Level::Warn,

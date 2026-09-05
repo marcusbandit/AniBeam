@@ -24,6 +24,7 @@ use crate::core::Core;
 use crate::jobs::Finished;
 use crate::library::cards;
 use crate::library::scan::LibraryState;
+use crate::metadata::apply::provider_stopped;
 use crate::metadata::fetch::{self, message_of};
 use crate::metadata::similarity::best_title_score;
 use crate::net::anilist::Media;
@@ -227,9 +228,10 @@ pub fn start(core: &Arc<Core>) -> u64 {
             ctx.emit(Level::Info, format!("auto-match v{AUTO_MATCH_VERSION}: re-attempting {reset} unmatched series"), EventBody::Notice);
         }
 
-        // 3. The loop, one series at a time. `seen` is what keeps it
-        //    finite: a transport failure deliberately stamps nothing, so
-        //    without it the same series would come back round for ever.
+        // 3. The loop, one series at a time. `seen` is the belt to the
+        //    stamping's braces: every turn that ends short of a match
+        //    stamps its series, but one that somehow stayed a candidate
+        //    would otherwise come back round for ever.
         let (mut matched, mut unmatched) = (0u64, 0u64);
         let mut seen: HashSet<u64> = HashSet::new();
         let images_dir = owner.paths.images_dir();
@@ -264,12 +266,13 @@ pub fn start(core: &Arc<Core>) -> u64 {
                     stamp_attempt(&owner, series, time::now_secs()).await?;
                     ctx.emit(Level::Info, format!("no match for {folder} (threshold {THRESHOLD})"), EventBody::Notice);
                 }
-                // A rate limit the limiter could not ride out is AniList
-                // saying stop, not this series failing. Nothing is
-                // stamped and the job ends: stamping here would cost the
-                // series its one attempt for a reason that had nothing to
-                // do with it.
-                Err(e) if matches!(&e, CoreError::Provider { status: Some(429), .. }) => return Err(e),
+                // A rate limit the limiter could not ride out, or nothing
+                // answering at all, is AniList saying stop rather than
+                // this series failing. Nothing is stamped and the job
+                // ends: stamping here would cost every series left its one
+                // attempt for a reason that had nothing to do with them,
+                // and one outage is one state change.
+                Err(e) if provider_stopped(&e) => return Err(e),
                 // The provider answered, and the answer was an error. It
                 // had its turn, so it is stamped and the run moves on.
                 Err(e) if matches!(&e, CoreError::Provider { status: Some(_), .. }) => {
@@ -277,11 +280,15 @@ pub fn start(core: &Arc<Core>) -> u64 {
                     ctx.emit(Level::Warn, format!("AniList search failed for {folder}: {}", message_of(&e)), EventBody::Notice);
                     stamp_attempt(&owner, series, time::now_secs()).await?;
                 }
-                // Nothing answered at all. The series never had its turn,
-                // so nothing is stamped and the next run tries again.
-                Err(e) if matches!(&e, CoreError::Provider { status: None, .. }) => {
+                // The provider answered with something that did not parse.
+                // That is this series' own reply and no one else's, so it
+                // is stamped like any other answered error: failing the job
+                // here would wedge the library behind one malformed reply,
+                // since the same series comes first again next run.
+                Err(e) if e.is_decode_failure() => {
                     unmatched += 1;
                     ctx.emit(Level::Warn, format!("AniList search failed for {folder}: {}", message_of(&e)), EventBody::Notice);
+                    stamp_attempt(&owner, series, time::now_secs()).await?;
                 }
                 // A storage or an internal failure is the core's own, not
                 // the provider's, and it is not this series' fault either.

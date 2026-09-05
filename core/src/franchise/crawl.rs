@@ -18,7 +18,7 @@ use super::{as_i64, as_u64};
 use crate::contract::*;
 use crate::core::Core;
 use crate::jobs::{Finished, JobCtx};
-use crate::metadata::apply::is_rate_limited;
+use crate::metadata::apply::{is_rate_limited, provider_unreachable};
 use crate::metadata::fetch::message_of;
 use crate::metadata::record::{self, StubWrite};
 use crate::net::anilist::{Enrichment, RelatedNode};
@@ -168,6 +168,11 @@ async fn run(
                     deferred += 1;
                     tracing::debug!("the crawl deferred {id} for {wait}s after a rate limit");
                 }
+                // Nothing answered at all. The node never had its turn,
+                // and stamping it here would mark it edgeless for good on
+                // the strength of a dead socket, so the crawl ends instead
+                // and the next one starts where this stopped.
+                Err(e) if provider_unreachable(&e) => return Err(e),
                 // Anything else had its turn. It is stamped with no edges,
                 // which is exactly what a node that genuinely has none
                 // looks like, so the walk moves on instead of circling.

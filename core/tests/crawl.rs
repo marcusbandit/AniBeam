@@ -391,3 +391,47 @@ fn a_seed_refetch_takes_a_node_whose_edges_are_already_known() {
     // asks about it for ever.
     assert!(crawl_state(&core, 9).unwrap().0.is_some());
 }
+
+/// AniList not answering at all is not the node having its turn. Stamping
+/// it here would mark it edgeless for good on the strength of a dead
+/// connection, so the crawl ends instead and the node keeps owing its
+/// edges.
+#[test]
+fn a_transport_failure_ends_the_crawl_and_stamps_no_node() {
+    let http = FakeHttp::new();
+    http.fail_next("connection refused");
+
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let src = fixtures::insert_source(&core, "/lib");
+    let s = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/A", "A");
+    fixtures::insert_file(&core, s, "/lib/A/01.mkv", 1.0, None, "episode", 1);
+    fixtures::insert_media(
+        &core,
+        1,
+        Some("T1"),
+        None,
+        Some(12),
+        "FINISHED",
+        "TV",
+        Some(80),
+    );
+    fixtures::match_series(&core, s, Some(1), None);
+
+    let job = crawl::start_gap_crawl(&core);
+    let done = common::wait_job(&c, job);
+    assert!(
+        matches!(
+            done.body,
+            EventBody::JobFailed {
+                error: CoreError::Provider { status: None, .. }
+            }
+        ),
+        "{done:?}"
+    );
+    assert_eq!(
+        crawl_state(&core, 1),
+        Some((None, None)),
+        "an outage stamped the node as edgeless"
+    );
+    core.shutdown();
+}

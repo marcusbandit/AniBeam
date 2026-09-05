@@ -391,9 +391,10 @@ fn start_refresh_walk(
                         ctx.changed(card);
                     }
                 }
-                // AniList saying stop ends the walk rather than counting
-                // one failed series and asking again for the next.
-                Err(e) if is_rate_limited(&e) => return Err(e),
+                // AniList saying stop, or nothing answering at all, ends
+                // the walk rather than counting one failed series and
+                // asking again for the next.
+                Err(e) if provider_stopped(&e) => return Err(e),
                 Err(e) => {
                     failed += 1;
                     ctx.emit(
@@ -530,6 +531,7 @@ async fn sweep_images(core: &Core, what: &str) {
     }
 }
 
+/// A rate limit the limiter could not ride out: the provider saying stop.
 pub(crate) fn is_rate_limited(e: &CoreError) -> bool {
     matches!(
         e,
@@ -538,6 +540,21 @@ pub(crate) fn is_rate_limited(e: &CoreError) -> bool {
             ..
         }
     )
+}
+
+/// Nothing answered at all: a dead socket, a name that did not resolve, a
+/// request that timed out. The provider never had an opinion about this
+/// item, so the item is never stamped for it.
+pub(crate) fn provider_unreachable(e: &CoreError) -> bool {
+    matches!(e, CoreError::Provider { status: None, .. })
+}
+
+/// The provider saying stop rather than this item failing. Either way the
+/// walk ends and stamps nothing: one outage is one state change, and the
+/// next run starts where this one stopped instead of walking a whole
+/// library of series it could not reach and calling each of them answered.
+pub(crate) fn provider_stopped(e: &CoreError) -> bool {
+    is_rate_limited(e) || provider_unreachable(e)
 }
 
 pub(crate) fn owner(core: &Core) -> Result<Arc<Core>, CoreError> {

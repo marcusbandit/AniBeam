@@ -273,3 +273,88 @@ fn an_exhausted_rate_limit_fails_the_job_and_stamps_nothing() {
     );
     core.shutdown();
 }
+
+/// A transport failure is AniList not answering at all, which is no more
+/// this series' fault than a rate limit is. The job ends and stamps
+/// nothing, so an outage during a launch does not cost a whole library its
+/// one attempt each.
+#[test]
+fn a_transport_failure_fails_the_job_and_stamps_nothing() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let src = fixtures::insert_source(&core, "/lib");
+    let first = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Aaa", "Aaa");
+    fixtures::insert_file(&core, first, "/lib/Aaa/01.mkv", 1.0, None, "episode", 1);
+    let second = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Bbb", "Bbb");
+    fixtures::insert_file(&core, second, "/lib/Bbb/01.mkv", 1.0, None, "episode", 1);
+
+    // A connection that never opened. The limiter does not retry one, so
+    // this is a single request and the walk never reaches the second
+    // series.
+    http.fail_next("connection refused");
+
+    let job = started(&core, Call::AutoMatch);
+    let done = common::wait_job(&c, job);
+    assert!(
+        matches!(
+            done.body,
+            EventBody::JobFailed {
+                error: CoreError::Provider { status: None, .. }
+            }
+        ),
+        "{done:?}"
+    );
+    assert!(
+        attempted_at(&core, first).is_none(),
+        "the first was stamped"
+    );
+    assert!(
+        attempted_at(&core, second).is_none(),
+        "the second was stamped"
+    );
+    assert_eq!(
+        http.requests().len(),
+        1,
+        "the walk carried on past an outage"
+    );
+    core.shutdown();
+}
+
+/// A reply the parser cannot read is this series' own answer, not the
+/// job's failure: it is stamped like any other answered error and the walk
+/// carries on. Failing the job here would wedge the library, since the
+/// unstamped series comes first again on the next run.
+#[test]
+fn a_reply_that_does_not_parse_stamps_that_series_and_the_walk_carries_on() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let src = fixtures::insert_source(&core, "/lib");
+    let broken = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Aaa", "Aaa");
+    fixtures::insert_file(&core, broken, "/lib/Aaa/01.mkv", 1.0, None, "episode", 1);
+    let after = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Bbb", "Bbb");
+    fixtures::insert_file(&core, after, "/lib/Bbb/01.mkv", 1.0, None, "episode", 1);
+
+    // An id that is a string where the schema promises a number: nothing a
+    // default can rescue, so the whole reply fails to parse.
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "Page": { "media": [ { "id": "not a number" } ] } } }),
+    );
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "Page": { "media": [] } } }),
+    );
+
+    let job = started(&core, Call::AutoMatch);
+    let done = common::wait_job(&c, job);
+    assert!(
+        matches!(done.body, EventBody::AutoMatchFinished { unmatched: 2, .. }),
+        "{done:?}"
+    );
+    assert!(
+        attempted_at(&core, broken).is_some(),
+        "a malformed reply is still this series' turn"
+    );
+    assert!(attempted_at(&core, after).is_some());
+    core.shutdown();
+}

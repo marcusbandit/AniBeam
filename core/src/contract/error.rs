@@ -93,6 +93,15 @@ impl From<serde_json::Error> for CoreError {
 }
 
 impl CoreError {
+    /// True for the `Internal` a `serde_json` failure converts into: a
+    /// reply, a row or a file whose shape was not what the code expected.
+    /// The auto-match reads it to tell a malformed provider reply, which
+    /// is that one series' problem, from a storage failure, which is the
+    /// job's.
+    pub fn is_decode_failure(&self) -> bool {
+        matches!(self, CoreError::Internal { message } if message.starts_with("json: "))
+    }
+
     pub fn io_at(path: impl Into<String>, e: std::io::Error) -> CoreError {
         CoreError::Io {
             path: Some(path.into()),
