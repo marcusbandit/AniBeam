@@ -5,6 +5,7 @@ use std::time::Duration;
 use crate::contract::*;
 use crate::events::{EventBus, Subscription};
 use crate::jobs::Jobs;
+use crate::library::reads;
 use crate::paths::CorePaths;
 use crate::prefs;
 use crate::store::Store;
@@ -42,6 +43,14 @@ impl Core {
     #[allow(dead_code)]
     pub(crate) fn arc(&self) -> Option<Arc<Core>> {
         self.me.upgrade()
+    }
+
+    /// The store itself, for the integration tests' fixtures: they build
+    /// library state with plain SQL rather than driving a scan. Not part of
+    /// the contract and not exported to any shell.
+    #[doc(hidden)]
+    pub fn store(&self) -> &Arc<Store> {
+        &self.store
     }
 }
 
@@ -110,6 +119,14 @@ impl Core {
                 self.jobs.cancel(job)?;
                 Ok(Reply::Ok)
             }
+            // `reveal_hidden` is the shell's tab visibility, not a filter:
+            // the Hidden tab always lists what it holds.
+            Call::ListSeries { tab, query, sort, direction, reveal_hidden: _ } => reads::list_series(self, tab, &query, sort, direction),
+            Call::ListAiring { offset, limit } => reads::list_airing(self, offset, limit),
+            Call::GetSeries { series } => reads::get_series(self, series),
+            Call::SetHidden { series, hidden } => reads::set_hidden(self, series, hidden),
+            Call::ListMetadata { filter, query, reveal_hidden } => reads::list_metadata(self, filter, &query, reveal_hidden),
+            Call::Lookup { path } => reads::lookup(self, &path),
             Call::GetPreferences => Ok(Reply::Preferences { preferences: self.store.read(prefs::load_preferences)? }),
             Call::SetPreferences { preferences } => {
                 let p = preferences.clone();
