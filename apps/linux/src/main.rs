@@ -3,6 +3,10 @@ mod bridge;
 mod format;
 mod paths;
 mod runtime;
+// The bridge in Task 5 is the first thing that calls into the theme model; nothing here
+// does yet, so a plain build sees the whole tree as dead code without the allow.
+#[allow(dead_code)]
+mod theme;
 
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
 
