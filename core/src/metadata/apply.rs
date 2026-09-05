@@ -15,6 +15,7 @@ use rusqlite::{OptionalExtension, params};
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::images;
 use crate::jobs::Finished;
 use crate::library::cards;
 use crate::metadata::fetch::{self, message_of};
@@ -60,7 +61,7 @@ pub fn search(core: &Core, provider: Provider, query: &str, limit: u32) -> Resul
         ));
     }
     let per_page = limit.clamp(1, MAX_RESULTS);
-    let owner = owner(core)?;
+    let owner = core.owner()?;
     Ok(owner
         .jobs
         .clone()
@@ -99,7 +100,7 @@ pub fn resolve_link(core: &Core, url: &str) -> Result<u64, CoreError> {
         Link::Mal { id } => Pasted::Mal(id),
         Link::Unknown => return Err(CoreError::invalid("url", UNREADABLE)),
     };
-    let owner = owner(core)?;
+    let owner = core.owner()?;
     Ok(owner
         .jobs
         .clone()
@@ -136,7 +137,7 @@ pub fn resolve_link(core: &Core, url: &str) -> Result<u64, CoreError> {
 /// with its `title` field.
 pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64, CoreError> {
     let folder = folder_name(core, series)?;
-    let owner = owner(core)?;
+    let owner = core.owner()?;
     Ok(owner
         .jobs
         .clone()
@@ -273,7 +274,7 @@ pub fn refresh_series(core: &Core, series: u64) -> Result<u64, CoreError> {
             what: "refresh of a MAL-only or TMDB match".to_string(),
         });
     };
-    let owner = owner(core)?;
+    let owner = core.owner()?;
     Ok(owner
         .jobs
         .clone()
@@ -309,7 +310,7 @@ pub fn refresh_series(core: &Core, series: u64) -> Result<u64, CoreError> {
                     (0, 1)
                 }
             };
-            sweep_images(&owner, "a refresh").await;
+            images::sweep_after(&owner, "a refresh").await;
             Ok(Finished {
                 level: Level::Info,
                 message: if failed == 0 {
@@ -408,7 +409,7 @@ fn start_refresh_walk(
         // Both walks write records, so both bring covers, banners and
         // portraits in, and both owe the sweep that keeps the directory
         // from only ever growing.
-        sweep_images(&owner, label).await;
+        images::sweep_after(&owner, label).await;
         Ok(Finished {
             level: Level::Info,
             message: format!("{label}: {refreshed} refreshed, {failed} failed"),
@@ -515,23 +516,6 @@ pub(crate) async fn card_for(core: &Core, series: u64) -> Result<Option<SeriesCa
     Ok(cards.into_iter().next())
 }
 
-/// A refresh brings covers, banners and portraits in; the sweep is what
-/// keeps the directory from only ever growing. Its report is bookkeeping,
-/// so it goes to the trace log rather than the activity log.
-async fn sweep_images(core: &Core, what: &str) {
-    let cache = core.images.clone();
-    let now = time::now_secs();
-    match core.store.write_async(move |c| cache.sweep(c, now)).await {
-        Ok(report) => tracing::debug!(
-            "image sweep after {what}: {} rows removed, {} evicted, {} files removed",
-            report.removed_rows,
-            report.evicted,
-            report.removed_files
-        ),
-        Err(e) => tracing::debug!("the image sweep after {what} failed: {e}"),
-    }
-}
-
 /// A rate limit the limiter could not ride out: the provider saying stop.
 pub(crate) fn is_rate_limited(e: &CoreError) -> bool {
     matches!(
@@ -556,9 +540,4 @@ pub(crate) fn provider_unreachable(e: &CoreError) -> bool {
 /// library of series it could not reach and calling each of them answered.
 pub(crate) fn provider_stopped(e: &CoreError) -> bool {
     is_rate_limited(e) || provider_unreachable(e)
-}
-
-pub(crate) fn owner(core: &Core) -> Result<Arc<Core>, CoreError> {
-    core.arc()
-        .ok_or_else(|| CoreError::internal("core is shutting down"))
 }

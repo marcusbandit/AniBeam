@@ -9,6 +9,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::contract::*;
 use crate::events::EventBus;
+use crate::sync::recover;
 use crate::time;
 
 /// The throttle window for both `JobProgress` and batched `SeriesChanged`:
@@ -112,8 +113,8 @@ impl JobCtx {
             total,
             label: label.to_string(),
         };
-        *self.progress.lock().unwrap() = Some(p.clone());
-        let mut t = self.throttle.lock().unwrap();
+        *recover(&self.progress) = Some(p.clone());
+        let mut t = recover(&self.throttle);
         let due = t.last_emit.is_none_or(|l| l.elapsed() >= PROGRESS_INTERVAL);
         if due {
             t.last_emit = Some(Instant::now());
@@ -133,7 +134,7 @@ impl JobCtx {
                     // lock first completes entirely, emit included, before
                     // the other can start, so a flush from here can never
                     // land after the terminal event.
-                    let mut t = me.throttle.lock().unwrap();
+                    let mut t = recover(&me.throttle);
                     t.flush_scheduled = false;
                     if me.finished.load(Ordering::SeqCst) {
                         return;
@@ -164,7 +165,7 @@ impl JobCtx {
     /// nothing is pending. Holds the throttle lock through the emit for
     /// the same reason the scheduled flush above does.
     pub fn flush_progress(&self) {
-        let mut t = self.throttle.lock().unwrap();
+        let mut t = recover(&self.throttle);
         if let Some(p) = t.pending.take() {
             t.last_emit = Some(Instant::now());
             self.emit_progress(p);
@@ -186,7 +187,7 @@ impl JobCtx {
         if cards.is_empty() {
             return;
         }
-        let mut t = self.changed.lock().unwrap();
+        let mut t = recover(&self.changed);
         let due = t.last_emit.is_none_or(|l| l.elapsed() >= PROGRESS_INTERVAL);
         if due {
             t.last_emit = Some(Instant::now());
@@ -212,7 +213,7 @@ impl JobCtx {
                     tokio::time::sleep(wait).await;
                     // Held for the whole check-drain-emit, for the same
                     // reason `progress`'s scheduled flush holds it.
-                    let mut t = me.changed.lock().unwrap();
+                    let mut t = recover(&me.changed);
                     t.flush_scheduled = false;
                     if me.finished.load(Ordering::SeqCst) {
                         return;
@@ -233,7 +234,7 @@ impl JobCtx {
     /// Holds the lock through the emit for the same reason the scheduled
     /// flush above does.
     pub fn flush_changed(&self) {
-        let mut t = self.changed.lock().unwrap();
+        let mut t = recover(&self.changed);
         let cards: Vec<SeriesCard> = std::mem::take(&mut t.pending).into_values().collect();
         if !cards.is_empty() {
             t.last_emit = Some(Instant::now());
@@ -282,7 +283,7 @@ impl Drop for JobGuard {
         // No further scheduled flush should emit for a job ending this way
         // either.
         self.ctx.finished.store(true, Ordering::SeqCst);
-        self.jobs.running.lock().unwrap().remove(&self.id);
+        recover(&self.jobs.running).remove(&self.id);
         let finished = JobRef {
             id: self.id,
             kind: self.kind,
@@ -357,7 +358,7 @@ impl Jobs {
         F: FnOnce(Arc<JobCtx>) -> Fut + Send + 'static,
         Fut: Future<Output = Result<Finished, CoreError>> + Send + 'static,
     {
-        let mut running = self.running.lock().unwrap();
+        let mut running = recover(&self.running);
         if kind.one_at_a_time()
             && let Some((id, _)) = running.iter().find(|(_, r)| r.kind == kind)
         {
@@ -418,7 +419,7 @@ impl Jobs {
                 r = f(ctx.clone()) => Some(r),
             };
             guard.done = true;
-            jobs.running.lock().unwrap().remove(&id);
+            recover(&jobs.running).remove(&id);
             ctx.finish();
             let finished = JobRef {
                 id,
@@ -468,7 +469,7 @@ impl Jobs {
     }
 
     pub fn cancel(&self, id: u64) -> Result<(), CoreError> {
-        match self.running.lock().unwrap().get(&id) {
+        match recover(&self.running).get(&id) {
             Some(r) => {
                 r.cancel.cancel();
                 Ok(())
@@ -481,7 +482,7 @@ impl Jobs {
     }
 
     pub fn cancel_all(&self) {
-        for r in self.running.lock().unwrap().values() {
+        for r in recover(&self.running).values() {
             r.cancel.cancel();
         }
     }
@@ -496,7 +497,7 @@ impl Jobs {
                 id: *id,
                 kind: r.kind,
                 started_at: r.started_at,
-                progress: r.progress.lock().unwrap().clone(),
+                progress: recover(&r.progress).clone(),
             })
             .collect();
         out.sort_by_key(|j| j.id);

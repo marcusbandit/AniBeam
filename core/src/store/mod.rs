@@ -1,5 +1,6 @@
 pub mod migrations;
 pub mod settings;
+pub mod sql;
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Sender};

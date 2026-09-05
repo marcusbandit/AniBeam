@@ -61,9 +61,45 @@ impl CorePaths {
     }
 }
 
+/// Path containment: a path is under a root when it is the root or sits
+/// below it. String prefixes are not enough, or `/lib2` would count as
+/// inside `/lib`. The rule the scan reconciles with and the import
+/// attaches a series with.
+pub(crate) fn under(path: &str, root: &str) -> bool {
+    path == root || path.starts_with(&format!("{}/", root.trim_end_matches('/')))
+}
+
+/// A trailing separator is not part of a path's identity, so it never
+/// reaches a column: `/lib/` and `/lib` are one path, not two. A bare root
+/// stays itself. Every path a source or an import writes goes through
+/// this, so the two always agree about what one path is.
+pub(crate) fn normalise(path: &str) -> String {
+    let trimmed = path.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        "/".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn under_is_a_path_prefix_not_a_string_prefix() {
+        assert!(under("/lib/Show", "/lib"));
+        assert!(under("/lib", "/lib"));
+        assert!(!under("/lib2/Show", "/lib"));
+        assert!(under("/lib/Show", "/lib/"));
+    }
+
+    #[test]
+    fn a_trailing_separator_is_not_part_of_a_path() {
+        assert_eq!(normalise("/lib/"), "/lib");
+        assert_eq!(normalise("/lib"), "/lib");
+        assert_eq!(normalise("/"), "/");
+        assert_eq!(normalise("  /lib/anime/  "), "/lib/anime");
+    }
 
     #[test]
     fn xdg_paths_end_in_anibeam() {

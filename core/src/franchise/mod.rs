@@ -16,6 +16,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::contract::*;
 use crate::core::Core;
+pub(crate) use crate::store::sql::{as_i64, as_u64};
 use crate::time;
 
 pub mod closure;
@@ -183,19 +184,6 @@ pub fn has_graph(conn: &Connection, anilist_id: u64) -> Result<bool, CoreError> 
         |r| r.get(0),
     )?;
     Ok(found)
-}
-
-/// An AniList id as SQLite stores it. Ids never come near the ceiling, so
-/// the saturating fallback is unreachable; it is here because a cast that
-/// can lose a value should say what it does with it.
-pub(crate) fn as_i64(v: u64) -> i64 {
-    i64::try_from(v).unwrap_or(i64::MAX)
-}
-
-/// An id back out of a column. A negative id is not a thing the schema can
-/// hold, so it reads as nought rather than wrapping around.
-pub(crate) fn as_u64(v: i64) -> u64 {
-    u64::try_from(v).unwrap_or(0)
 }
 
 #[cfg(test)]

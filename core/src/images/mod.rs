@@ -26,6 +26,7 @@ use crate::jobs::Finished;
 use crate::library::cards;
 use crate::net::{Http, HttpRequest, Method};
 use crate::store::Store;
+use crate::store::sql::placeholders;
 use crate::time;
 
 /// Fetches in flight at once.
@@ -134,18 +135,6 @@ pub fn extension(url: &str, content_type: Option<&str>) -> &'static str {
         "image/avif" => "avif",
         _ => "jpg",
     }
-}
-
-/// `?,?,?` for an `IN` list, the values always bound rather than formatted.
-fn placeholders(n: usize) -> String {
-    let mut out = String::with_capacity(n * 2);
-    for i in 0..n {
-        if i > 0 {
-            out.push(',');
-        }
-        out.push('?');
-    }
-    out
 }
 
 /// A fetch that failed. The CDN is AniList's, so that is the provider a
@@ -748,6 +737,25 @@ pub fn start_clear(core: &Arc<Core>) -> u64 {
                 body: EventBody::ImagesCleared { removed },
             })
         })
+}
+
+/// The sweep every job that wrote records owes, and the launch owes once.
+/// A record brings covers, banners and portraits in, and this is what keeps
+/// the directory from only ever growing. Its report is bookkeeping rather
+/// than a state change, so it goes to the trace log and never to the
+/// activity log, and a failure costs nothing but disk.
+pub(crate) async fn sweep_after(core: &Core, what: &str) {
+    let cache = core.images.clone();
+    let now = crate::time::now_secs();
+    match core.store.write_async(move |c| cache.sweep(c, now)).await {
+        Ok(report) => tracing::debug!(
+            "image sweep after {what}: {} rows removed, {} evicted, {} files removed",
+            report.removed_rows,
+            report.evicted,
+            report.removed_files
+        ),
+        Err(e) => tracing::debug!("the image sweep after {what} failed: {e}"),
+    }
 }
 
 #[cfg(test)]

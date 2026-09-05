@@ -22,7 +22,6 @@ use rusqlite::{Connection, OptionalExtension, params};
 use crate::contract::*;
 use crate::core::Core;
 use crate::jobs::{Finished, JobCtx};
-use crate::metadata::apply::owner;
 use crate::metadata::fetch::message_of;
 use crate::playback::session::{self, Session};
 use crate::time;
@@ -188,7 +187,7 @@ pub fn start(
         ));
     }
     session::report_chapters(core, session, duration, None);
-    let owner = owner(core)?;
+    let owner = core.owner()?;
     Ok(owner
         .jobs
         .clone()

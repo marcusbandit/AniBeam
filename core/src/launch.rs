@@ -21,7 +21,6 @@ use crate::franchise::crawl;
 use crate::images;
 use crate::library::scan::{self, ScanScope};
 use crate::metadata::{airing, apply, automatch};
-use crate::time;
 use crate::trackers::cache;
 
 /// The catch-up walk, and the one-shot listener that turns its end into the
@@ -120,19 +119,9 @@ fn after_scan(core: &Arc<Core>) {
 
     // The sweep is bookkeeping rather than a job: one transaction over the
     // rows and one walk of the image directory, so it goes on the runtime
-    // with nothing waiting on it and reports to the trace log.
+    // with nothing waiting on it.
     let owner = core.clone();
-    let now = time::now_secs();
     core.handle.spawn(async move {
-        let cache = owner.images.clone();
-        match owner.store.write_async(move |c| cache.sweep(c, now)).await {
-            Ok(report) => tracing::debug!(
-                "image sweep at launch: {} rows removed, {} evicted, {} files removed",
-                report.removed_rows,
-                report.evicted,
-                report.removed_files
-            ),
-            Err(e) => tracing::warn!("the image sweep at launch failed: {e}"),
-        }
+        images::sweep_after(&owner, "a launch").await;
     });
 }

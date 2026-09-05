@@ -16,6 +16,7 @@ use crate::core::Core;
 use crate::metadata::automatch::AUTO_MATCH_VERSION;
 use crate::metadata::record;
 use crate::net::anilist::{Enrichment, Media};
+use crate::store::sql::as_i64;
 
 /// The whole record behind `anilist_id`, written against `series`.
 ///
@@ -161,10 +162,4 @@ pub fn message_of(e: &CoreError) -> String {
         CoreError::Provider { message, .. } => message.clone(),
         other => other.to_string(),
     }
-}
-
-/// An id on its way to an INTEGER column, saturating rather than wrapping
-/// an absurd value round to a negative one.
-fn as_i64(v: u64) -> i64 {
-    i64::try_from(v).unwrap_or(i64::MAX)
 }

@@ -25,9 +25,9 @@ use crate::jobs::{Finished, JobCtx};
 use crate::library::cards;
 use crate::net::anilist::MEDIA_LIST_COLLECTION_QUERY;
 use crate::time;
-use crate::trackers::TRACKER_TIMEOUT;
 use crate::trackers::accounts;
 use crate::trackers::writes;
+use crate::trackers::{NO_TOKEN, TRACKER_TIMEOUT, as_count};
 
 /// How long a fetched list is taken to be current. Electron's
 /// `PROGRESS_FRESHNESS_MS`.
@@ -39,11 +39,6 @@ pub const PROGRESS_FRESH: Duration = Duration::from_secs(5 * 60);
 /// what keeps a malformed cursor from looping for ever.
 const MAL_PAGE: u64 = 1000;
 const MAL_MAX_PAGES: u32 = 50;
-
-/// The account says it is connected but there is no token behind it: a
-/// keyring that lost the entry, or a MAL session whose refresh has failed
-/// and already said so.
-const NO_TOKEN: &str = "no access token stored, reconnect in Settings";
 
 /// One anime on one tracker's list. `progress` and `repeat` are counts, so
 /// nothing there is optional; `score` and `status` are absent when the
@@ -458,12 +453,6 @@ fn is_fresh(fetched_at: Option<SystemTime>, now: SystemTime) -> bool {
 
 fn refreshed_line(t: Tracker, count: usize) -> String {
     format!("{} progress cache refreshed ({count} entries)", t.as_str())
-}
-
-/// A count off a provider's JSON, which is unsigned and small: anything
-/// missing or absurd is nought rather than a wrap-around.
-fn as_count(value: Option<u64>) -> u32 {
-    value.and_then(|v| u32::try_from(v).ok()).unwrap_or(0)
 }
 
 #[cfg(test)]

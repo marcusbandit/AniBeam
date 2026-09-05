@@ -15,6 +15,9 @@ use crate::core::Core;
 use crate::jobs::{Finished, JobCtx};
 use crate::library::cards;
 use crate::library::walk::{self, ScannedSeries};
+use crate::paths::{normalise, under};
+use crate::store::sql::placeholders;
+use crate::sync::recover;
 use crate::time;
 
 /// How long a folder has to sit still before the core believes the copying
@@ -51,13 +54,6 @@ struct PendingScopes {
     all: bool,
     sources: HashSet<u64>,
     series: HashSet<u64>,
-}
-
-/// A panicking job must never wedge one of these for the rest of the
-/// process; everything inside them is plain data, so a poisoned lock is
-/// recovered rather than propagated.
-fn recover<T>(lock: &Mutex<T>) -> MutexGuard<'_, T> {
-    lock.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 impl LibraryState {
@@ -160,10 +156,6 @@ pub struct Reconciled {
     pub added: Vec<u64>,
     pub changed: Vec<u64>,
     pub removed: Vec<u64>,
-}
-
-fn under(path: &str, root: &str) -> bool {
-    path == root || path.starts_with(&format!("{}/", root.trim_end_matches('/')))
 }
 
 /// Writes one source's walk into the tables. `only_under` limits the work to
@@ -407,11 +399,6 @@ pub fn arm_settle(core: &Arc<Core>, series_id: u64) {
     settle.insert(series_id, handle);
 }
 
-/// `?,?,?` for an `IN` list. Ids are bound, never formatted into the SQL.
-fn placeholders(n: usize) -> String {
-    std::iter::repeat_n("?", n).collect::<Vec<_>>().join(",")
-}
-
 /// Which of these series have never been matched and never been attempted:
 /// the ones a settled folder is worth an auto-match for. A MAL-only
 /// confirmed match has a `provider` and is left alone.
@@ -522,13 +509,6 @@ pub fn list_sources(conn: &Connection, state: &LibraryState) -> Result<Vec<Sourc
     Ok(out)
 }
 
-/// A job needs an `Arc<Core>` of its own; a core already shutting down has
-/// none to give.
-fn owner(core: &Core) -> Result<Arc<Core>, CoreError> {
-    core.arc()
-        .ok_or_else(|| CoreError::internal("core is shutting down"))
-}
-
 fn is_unique_violation(e: &rusqlite::Error) -> bool {
     matches!(e, rusqlite::Error::SqliteFailure(f, _) if f.code == ErrorCode::ConstraintViolation)
 }
@@ -541,18 +521,6 @@ pub fn list_sources_call(core: &Core) -> Result<Reply, CoreError> {
     })
 }
 
-/// A trailing separator is not part of a path's identity, so it never
-/// reaches the column: `/lib/` and `/lib` are one source, not two. A bare
-/// root stays itself.
-fn normalise_source_path(path: &str) -> String {
-    let trimmed = path.trim_end_matches('/');
-    if trimmed.is_empty() {
-        "/".to_string()
-    } else {
-        trimmed.to_string()
-    }
-}
-
 /// Inserts the row, says so, and starts a scan scoped to it. A path that
 /// is not a directory right now is still a source, just an unavailable
 /// one; the job leaves everything under it alone.
@@ -560,8 +528,8 @@ pub fn add_source(core: &Core, path: &str) -> Result<Reply, CoreError> {
     if !Path::new(path).is_absolute() {
         return Err(CoreError::invalid("path", "a source path must be absolute"));
     }
-    let owner = owner(core)?;
-    let path = normalise_source_path(path);
+    let owner = core.owner()?;
+    let path = normalise(path);
     let available = Path::new(&path).is_dir();
     let now = time::now_secs();
     let insert = path.clone();
@@ -704,7 +672,7 @@ pub fn scan(core: &Core, source: Option<u64>) -> Result<Reply, CoreError> {
         None => ScanScope::All,
     };
     Ok(Reply::Started {
-        job: start(&owner(core)?, scope),
+        job: start(&core.owner()?, scope),
     })
 }
 
@@ -728,7 +696,7 @@ pub fn rescan_series(core: &Core, series: u64) -> Result<Reply, CoreError> {
         return Err(CoreError::Unavailable { path });
     }
     Ok(Reply::Started {
-        job: start(&owner(core)?, ScanScope::Series(series)),
+        job: start(&core.owner()?, ScanScope::Series(series)),
     })
 }
 

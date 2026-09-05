@@ -30,12 +30,7 @@ use crate::net::HttpResponse;
 use crate::net::anilist::{MEDIA_LIST_ENTRY_QUERY, SAVE_PROGRESS_MUTATION, SAVE_SCORE_MUTATION};
 use crate::prefs;
 use crate::time;
-use crate::trackers::{TRACKER_TIMEOUT, accounts, cache};
-
-/// The account says it is connected but there is no token behind it: a
-/// keyring that lost the entry, or a MAL session whose refresh has failed
-/// and already said so.
-const NO_TOKEN: &str = "no access token stored, reconnect in Settings";
+use crate::trackers::{NO_TOKEN, TRACKER_TIMEOUT, accounts, as_count, cache};
 
 /// MAL's list API. AniList's address lives with its queries.
 const MAL_API: &str = "https://api.myanimelist.net/v2";
@@ -613,7 +608,7 @@ async fn read_entry(
                 .await
             {
                 Ok(data) => Ok(as_count(data["MediaList"]["progress"].as_u64())),
-                Err(e) if is_not_found(&e) => Ok(0),
+                Err(e) if e.is_provider_not_found() => Ok(0),
                 Err(e) => Err(e),
             }
         }
@@ -817,22 +812,6 @@ fn mal_status(status: ListStatus) -> &'static str {
         ListStatus::Paused => "on_hold",
         ListStatus::Dropped => "dropped",
     }
-}
-
-fn is_not_found(e: &CoreError) -> bool {
-    matches!(
-        e,
-        CoreError::Provider {
-            status: Some(404),
-            ..
-        }
-    )
-}
-
-/// A count off a provider's JSON, which is unsigned and small: anything
-/// missing or absurd is nought rather than a wrap-around.
-fn as_count(value: Option<u64>) -> u32 {
-    value.and_then(|v| u32::try_from(v).ok()).unwrap_or(0)
 }
 
 #[cfg(test)]

@@ -102,6 +102,19 @@ impl CoreError {
         matches!(self, CoreError::Internal { message } if message.starts_with("json: "))
     }
 
+    /// True for a provider that answered 404. An entry the user has never
+    /// added reads as one, so a first mark and a link that resolves to
+    /// nothing both go through this rather than through a failure.
+    pub fn is_provider_not_found(&self) -> bool {
+        matches!(
+            self,
+            CoreError::Provider {
+                status: Some(404),
+                ..
+            }
+        )
+    }
+
     pub fn io_at(path: impl Into<String>, e: std::io::Error) -> CoreError {
         CoreError::Io {
             path: Some(path.into()),

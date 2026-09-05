@@ -17,6 +17,7 @@ use super::closure::{self, Closure};
 use super::{as_i64, as_u64};
 use crate::contract::*;
 use crate::core::Core;
+use crate::images;
 use crate::jobs::{Finished, JobCtx};
 use crate::metadata::apply::{is_rate_limited, provider_unreachable};
 use crate::metadata::fetch::message_of;
@@ -186,20 +187,7 @@ async fn run(
         }
     }
 
-    // The crawl brought covers in; the sweep is what keeps the directory
-    // from only ever growing. Its report is bookkeeping, so it goes to the
-    // trace log rather than the activity log.
-    let cache = core.images.clone();
-    let now = time::now_secs();
-    match core.store.write_async(move |c| cache.sweep(c, now)).await {
-        Ok(report) => tracing::debug!(
-            "image sweep after a crawl: {} rows removed, {} evicted, {} files removed",
-            report.removed_rows,
-            report.evicted,
-            report.removed_files
-        ),
-        Err(e) => tracing::debug!("the image sweep after a crawl failed: {e}"),
-    }
+    images::sweep_after(core, "a crawl").await;
 
     // One line for every node that failed, ahead of the terminal event, so
     // an outage says so once and names what it looked like.

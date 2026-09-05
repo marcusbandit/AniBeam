@@ -232,6 +232,13 @@ impl Core {
         self.me.upgrade()
     }
 
+    /// The `Arc<Core>` a job body needs of its own. A core already shutting
+    /// down has none to give, and says so rather than panicking.
+    pub(crate) fn owner(&self) -> Result<Arc<Core>, CoreError> {
+        self.arc()
+            .ok_or_else(|| CoreError::internal("core is shutting down"))
+    }
+
     /// Moves the OAuth listener off the registered port, so two tests
     /// driving a flow at once do not fight over one socket. Not part of
     /// the contract and not exported to any shell.

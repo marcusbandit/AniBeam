@@ -66,6 +66,19 @@ pub fn match_sidecars(video_path: &Path, candidates: &[String]) -> Vec<Sidecar> 
     out
 }
 
+/// A file's sidecar subtitles, off the JSON column they live in. A row that
+/// does not parse is a file with no sidecars rather than a card or a
+/// session that cannot be built.
+pub(crate) fn sidecars_of(raw: &str) -> Vec<Sidecar> {
+    match serde_json::from_str::<Vec<Sidecar>>(raw) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!("a file's sidecars did not parse, treating it as none: {e}");
+            Vec::new()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

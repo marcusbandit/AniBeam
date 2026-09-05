@@ -17,7 +17,7 @@ use tokio::process::Command;
 use crate::contract::*;
 use crate::core::Core;
 use crate::jobs::Finished;
-use crate::metadata::apply::owner;
+use crate::percent;
 
 /// How long `anirss -Qj` gets before the job gives up and reports Timeout.
 const ANIRSS_TIMEOUT: Duration = Duration::from_secs(15);
@@ -31,7 +31,7 @@ pub fn start(core: &Core) -> Result<u64, CoreError> {
             what: "anirss on this platform".to_string(),
         });
     }
-    let owner = owner(core)?;
+    let owner = core.owner()?;
     Ok(owner
         .jobs
         .clone()
@@ -185,7 +185,7 @@ pub fn decode_nyaa_query(url: &str) -> Option<String> {
     for pair in query.split('&') {
         let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
         if key == "q" {
-            let decoded = percent_decode(value);
+            let decoded = percent::decode(value);
             return if decoded.is_empty() {
                 None
             } else {
@@ -194,49 +194,6 @@ pub fn decode_nyaa_query(url: &str) -> Option<String> {
         }
     }
     None
-}
-
-/// The form-encoded reading: `+` is a space, `%XX` is a byte, and anything
-/// that is not a complete escape stands for itself rather than failing. A
-/// hand parser rather than a dependency, in the same shape as the query
-/// decoder in `trackers::oauth`.
-fn percent_decode(value: &str) -> String {
-    let bytes = value.as_bytes();
-    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        match bytes[i] {
-            b'+' => {
-                out.push(b' ');
-                i += 1;
-            }
-            b'%' if i + 2 < bytes.len() => match (hex_digit(bytes[i + 1]), hex_digit(bytes[i + 2]))
-            {
-                (Some(high), Some(low)) => {
-                    out.push((high << 4) | low);
-                    i += 3;
-                }
-                _ => {
-                    out.push(b'%');
-                    i += 1;
-                }
-            },
-            byte => {
-                out.push(byte);
-                i += 1;
-            }
-        }
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
-
-fn hex_digit(byte: u8) -> Option<u8> {
-    match byte {
-        b'0'..=b'9' => Some(byte - b'0'),
-        b'a'..=b'f' => Some(byte - b'a' + 10),
-        b'A'..=b'F' => Some(byte - b'A' + 10),
-        _ => None,
-    }
 }
 
 /// A non-zero exit's stderr into `NeedsAuth` or a hard job failure.

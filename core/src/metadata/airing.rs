@@ -27,7 +27,7 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use crate::contract::*;
 use crate::core::Core;
 use crate::jobs::{Finished, JobCtx};
-use crate::metadata::apply::{card_for, owner, provider_stopped};
+use crate::metadata::apply::{card_for, provider_stopped};
 use crate::metadata::fetch::message_of;
 use crate::metadata::record;
 use crate::time;
@@ -245,7 +245,7 @@ pub fn start_refresh(core: &Core, series: u64) -> Result<u64, CoreError> {
             id: series,
         });
     }
-    let owner = owner(core)?;
+    let owner = core.owner()?;
     Ok(owner
         .jobs
         .clone()

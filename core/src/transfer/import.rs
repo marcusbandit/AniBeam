@@ -20,20 +20,22 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::images;
 use crate::jobs::{Finished, JobCtx};
 use crate::library::cards;
 use crate::library::classifier;
 use crate::library::scan;
 use crate::metadata::fetch;
 use crate::metadata::record;
+use crate::paths::{normalise, under};
 use crate::prefs;
 use crate::time;
 use crate::trackers::accounts::{self, access_key, refresh_key, secret_key};
 use crate::trackers::secrets::StoreKind;
+use crate::transfer::file_name;
 use crate::transfer::format::{
     self, Account, Document, MatchEntry, ResumeEntry, SeriesEntry, TrackerName,
 };
-use crate::transfer::{file_name, normalise, under};
 
 /// The five sections a `JobProgress` counts through.
 const SECTIONS: u64 = 5;
@@ -160,7 +162,7 @@ async fn run(
             EventBody::PreferencesChanged { preferences },
         );
     }
-    sweep_images(&core).await;
+    images::sweep_after(&core, "an import").await;
 
     let message = format!(
         "imported: {} sources, {} series, {} matches, {} views, {} completed, {} resume points, {} accounts, {} fields ignored",
@@ -752,22 +754,6 @@ async fn import_preferences(
             Ok(preferences)
         })
         .await
-}
-
-/// An import brings in matches whose images the jobs will fetch; the sweep
-/// is what keeps the directory from only ever growing. Bookkeeping, so its
-/// report goes to the trace log rather than the activity log.
-async fn sweep_images(core: &Arc<Core>) {
-    let cache = core.images.clone();
-    let now = time::now_secs();
-    match core.store.write_async(move |c| cache.sweep(c, now)).await {
-        Ok(report) => tracing::debug!(
-            "image sweep after an import: {} rows removed, {} files removed",
-            report.removed_rows,
-            report.removed_files
-        ),
-        Err(e) => tracing::debug!("the image sweep after an import failed: {e}"),
-    }
 }
 
 #[cfg(test)]

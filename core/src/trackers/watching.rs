@@ -31,14 +31,10 @@ use crate::net::anilist::WATCHING_LIST_QUERY;
 use crate::prefs;
 use crate::store::settings;
 use crate::time;
-use crate::trackers::TRACKER_TIMEOUT;
 use crate::trackers::accounts;
 use crate::trackers::cache::normalize_status;
 use crate::trackers::writes;
-
-/// The account says it is connected but there is no token behind it,
-/// which for AniList's implicit grant means the keyring lost the entry.
-const NO_TOKEN: &str = "no access token stored, reconnect in Settings";
+use crate::trackers::{NO_TOKEN, TRACKER_TIMEOUT, as_count, as_u32};
 
 /// The title of last resort. A stub the store has only ever seen on this
 /// list still draws a card, and an id reads better than an empty one.
@@ -425,16 +421,6 @@ fn media_title(value: &serde_json::Value) -> Option<String> {
         .as_str()
         .filter(|t| !t.trim().is_empty())
         .map(str::to_string)
-}
-
-/// A count off a provider's JSON, which is unsigned and small: anything
-/// missing or absurd is nought rather than a wrap-around.
-fn as_count(value: Option<u64>) -> u32 {
-    as_u32(value).unwrap_or(0)
-}
-
-fn as_u32(value: Option<u64>) -> Option<u32> {
-    value.and_then(|v| u32::try_from(v).ok())
 }
 
 #[cfg(test)]

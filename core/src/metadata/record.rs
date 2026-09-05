@@ -26,6 +26,7 @@ use crate::net::anilist::{
     StudioEdge, TagNode,
 };
 use crate::net::jikan::JikanEpisode;
+use crate::store::sql::{as_i64, placeholders};
 
 /// AniList answers with twelve characters and twelve recommendations; the
 /// series page shows these many, so these many are what the row keeps.
@@ -751,24 +752,6 @@ pub fn write_episodes(
     );
     tx.execute(&sql, params_from_iter(binds))?;
     Ok(())
-}
-
-fn placeholders(n: usize) -> String {
-    let mut out = String::with_capacity(n * 2);
-    for i in 0..n {
-        if i > 0 {
-            out.push(',');
-        }
-        out.push('?');
-    }
-    out
-}
-
-/// An id, a rank or a count on its way to an INTEGER column. A cast would
-/// wrap an absurd value round to a negative id; saturating keeps it
-/// absurd and visible.
-fn as_i64(v: u64) -> i64 {
-    i64::try_from(v).unwrap_or(i64::MAX)
 }
 
 #[cfg(test)]

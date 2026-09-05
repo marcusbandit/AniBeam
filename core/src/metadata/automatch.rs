@@ -15,12 +15,13 @@
 //! change to these rules earns the whole library a second look.
 
 use std::collections::HashSet;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::Arc;
 
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 
 use crate::contract::*;
 use crate::core::Core;
+use crate::images;
 use crate::jobs::Finished;
 use crate::library::cards;
 use crate::library::scan::LibraryState;
@@ -29,6 +30,8 @@ use crate::metadata::fetch::{self, message_of};
 use crate::metadata::similarity::best_title_score;
 use crate::net::anilist::Media;
 use crate::store::settings;
+use crate::store::sql::placeholders;
+use crate::sync::recover;
 use crate::time;
 
 /// Accept at this score or better. Electron's bar, and it is a "pretty
@@ -107,22 +110,11 @@ impl Drop for InFlight<'_> {
     }
 }
 
-/// Nothing behind these locks is worth poisoning for the rest of the
-/// process: they hold plain sets and join handles.
-fn recover<T>(lock: &Mutex<T>) -> MutexGuard<'_, T> {
-    lock.lock().unwrap_or_else(|e| e.into_inner())
-}
-
 /// The series with a settle timer still armed. Their folders are still
 /// being copied into, so a match now would be a match against a half
 /// arrived folder; the timer's own firing is what brings them here.
 fn armed(core: &Core) -> Vec<u64> {
     recover(&core.library.settle).keys().copied().collect()
-}
-
-/// `?,?,?` for an `IN` list. Ids are bound, never formatted into the SQL.
-fn placeholders(n: usize) -> String {
-    std::iter::repeat_n("?", n).collect::<Vec<_>>().join(",")
 }
 
 /// The next series worth a search: never matched, never attempted, its
@@ -296,21 +288,7 @@ pub fn start(core: &Arc<Core>) -> u64 {
             }
         }
 
-        // The match brought covers, banners and portraits in; the sweep is
-        // what keeps the directory from only ever growing. Its report is
-        // bookkeeping, so it goes to the trace log rather than the
-        // activity log.
-        let cache = owner.images.clone();
-        let now = time::now_secs();
-        match owner.store.write_async(move |c| cache.sweep(c, now)).await {
-            Ok(report) => tracing::debug!(
-                "image sweep after auto-match: {} rows removed, {} evicted, {} files removed",
-                report.removed_rows,
-                report.evicted,
-                report.removed_files
-            ),
-            Err(e) => tracing::debug!("the image sweep after auto-match failed: {e}"),
-        }
+        images::sweep_after(&owner, "auto-match").await;
 
         Ok(Finished {
             level: Level::Info,

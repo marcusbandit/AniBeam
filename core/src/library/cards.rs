@@ -14,8 +14,10 @@ use rusqlite::{Connection, params_from_iter};
 use serde_json::Value;
 
 use crate::contract::*;
+use crate::library::sidecar::sidecars_of;
 use crate::library::{labels, titles};
 use crate::prefs;
+use crate::store::sql::placeholders;
 use crate::time;
 
 // ---------------------------------------------------------------------------
@@ -244,21 +246,6 @@ pub struct Snapshot {
     pub gaps: Vec<u64>,
 }
 
-/// `?,?,?` for an `IN` list of `n` values. Ids go in as bound parameters,
-/// never formatted into the SQL. SQLite accepts an empty `IN ()` and reads
-/// it as false, so a scope that matches no series loads nothing rather than
-/// failing to parse.
-fn placeholders(n: usize) -> String {
-    let mut out = String::with_capacity(n * 2);
-    for i in 0..n {
-        if i > 0 {
-            out.push(',');
-        }
-        out.push('?');
-    }
-    out
-}
-
 fn ids_as_i64(ids: &[u64]) -> Vec<i64> {
     ids.iter().map(|i| *i as i64).collect()
 }
@@ -279,16 +266,6 @@ fn json_value(raw: &str) -> Value {
 
 fn json_array(v: &Value) -> &[Value] {
     v.as_array().map(Vec::as_slice).unwrap_or(&[])
-}
-
-fn sidecars_of(raw: &str) -> Vec<Sidecar> {
-    match serde_json::from_str::<Vec<Sidecar>>(raw) {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::warn!("a file's sidecars did not parse, treating it as none: {e}");
-            Vec::new()
-        }
-    }
 }
 
 impl Snapshot {

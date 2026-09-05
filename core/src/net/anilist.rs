@@ -711,7 +711,7 @@ impl AnilistClient {
             .await
         {
             Ok(data) => Ok(data["Media"]["id"].as_u64()),
-            Err(e) if is_not_found(&e) => Ok(None),
+            Err(e) if e.is_provider_not_found() => Ok(None),
             Err(e) => Err(e),
         }
     }
@@ -763,16 +763,6 @@ fn provider_error(status: Option<u32>, message: impl Into<String>) -> CoreError 
         message: message.into(),
         retry_after: None,
     }
-}
-
-fn is_not_found(e: &CoreError) -> bool {
-    matches!(
-        e,
-        CoreError::Provider {
-            status: Some(404),
-            ..
-        }
-    )
 }
 
 fn parse_media(value: &serde_json::Value) -> Result<Option<Media>, CoreError> {
