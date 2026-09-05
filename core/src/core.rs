@@ -9,7 +9,7 @@ use crate::jobs::Jobs;
 use crate::library::reads;
 use crate::library::scan::{self, LibraryState, ScanScope};
 use crate::library::watcher::{self, Trigger, Watcher};
-use crate::metadata::{automatch, OUTAGE_WINDOW};
+use crate::metadata::{apply, automatch, OUTAGE_WINDOW};
 use crate::net::anilist::AnilistClient;
 use crate::net::aniskip::AniSkipClient;
 use crate::net::jikan::JikanClient;
@@ -314,6 +314,14 @@ impl Core {
             Call::ClearImages => {
                 let core = self.arc().ok_or_else(|| CoreError::internal("core is shutting down"))?;
                 Ok(Reply::Started { job: images::start_clear(&core) })
+            }
+            Call::SearchProvider { provider, query, limit } => Ok(Reply::Started { job: apply::search(self, provider, &query, limit)? }),
+            Call::ResolveLink { url } => Ok(Reply::Started { job: apply::resolve_link(self, &url)? }),
+            Call::ApplyMatch { series, target } => Ok(Reply::Started { job: apply::apply_match(self, series, target)? }),
+            Call::RefreshSeries { series } => Ok(Reply::Started { job: apply::refresh_series(self, series)? }),
+            Call::RefreshAll => {
+                let core = self.arc().ok_or_else(|| CoreError::internal("core is shutting down"))?;
+                Ok(Reply::Started { job: apply::refresh_all(&core) })
             }
             Call::AutoMatch => {
                 let core = self.arc().ok_or_else(|| CoreError::internal("core is shutting down"))?;

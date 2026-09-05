@@ -4,8 +4,10 @@
 
 use std::time::Duration;
 
+pub mod apply;
 pub mod automatch;
 pub mod fetch;
+pub mod link;
 pub mod record;
 pub mod similarity;
 
