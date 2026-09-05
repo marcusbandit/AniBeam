@@ -22,6 +22,7 @@ use crate::net::{Http, ReqwestHttp, Upstream};
 use crate::paths::CorePaths;
 use crate::prefs;
 use crate::store::Store;
+use crate::subscriptions;
 use crate::time;
 use crate::trackers::accounts;
 use crate::trackers::cache;
@@ -459,6 +460,7 @@ impl Core {
                 let core = self.arc().ok_or_else(|| CoreError::internal("core is shutting down"))?;
                 Ok(Reply::Graph { layout: franchise::graph(&core, series)? })
             }
+            Call::ListSubscriptions => Ok(Reply::Started { job: subscriptions::start(self)? }),
             other => Err(CoreError::Unsupported { what: format!("{} is not built yet", call_name(&other)) }),
         }
     }

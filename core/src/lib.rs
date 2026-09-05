@@ -18,6 +18,7 @@ pub mod net;
 pub mod paths;
 pub mod prefs;
 pub mod store;
+pub mod subscriptions;
 pub mod time;
 pub mod trackers;
 
