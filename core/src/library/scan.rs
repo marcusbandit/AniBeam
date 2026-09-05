@@ -398,15 +398,6 @@ fn all_targets(conn: &Connection) -> Result<Vec<Target>, CoreError> {
     Ok(rows)
 }
 
-/// The sources a watch can be installed on right now, for `Core::start`.
-pub fn available_source_paths(conn: &Connection) -> Result<Vec<String>, CoreError> {
-    let mut stmt = conn.prepare("SELECT path FROM sources WHERE available = 1 ORDER BY id")?;
-    let rows = stmt
-        .query_map([], |r| r.get::<_, String>(0))?
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(rows)
-}
-
 fn series_count(conn: &Connection, source: u64) -> Result<u64, CoreError> {
     let n: i64 = conn.query_row(
         "SELECT count(*) FROM series WHERE source_id = ?1 AND missing_since IS NULL",

@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::{self, Sender};
 
+use anibeam_core::trackers::Secrets;
 use anibeam_core::{
     Call, Core, CorePaths, Direction, Event, EventListener, JobPhase, Level, Reply, Sort, Tab,
 };
@@ -57,6 +58,23 @@ enum Command {
     },
     /// One series page as JSON.
     Show { series: u64 },
+    /// The jobs running right now: id, kind, started, progress.
+    Jobs,
+    /// Read an anibeam-export document into this library.
+    Import {
+        file: String,
+        #[arg(long)]
+        wait: bool,
+    },
+    /// Write this library out as an anibeam-export document.
+    Export {
+        file: String,
+        /// Also carry the accounts, the keys, the history and the preferences.
+        #[arg(long)]
+        private: bool,
+        #[arg(long)]
+        wait: bool,
+    },
 }
 
 /// Builds a Call from its variant name and an optional JSON object of fields.
@@ -85,15 +103,27 @@ impl EventListener for ChannelListener {
     }
 }
 
+/// A run under `--root` keeps its secrets in that root's own
+/// `secrets.json` and never probes the machine's keyring: a sandbox is
+/// asked for precisely so it touches nothing outside itself, and a keyring
+/// prompt on the owner's screen is the opposite of that. Without a root the
+/// core makes the choice itself, keyring first.
 fn open(root: Option<PathBuf>) -> Arc<Core> {
-    let paths = match root {
-        Some(r) => CorePaths::under(&r),
-        None => CorePaths::xdg().unwrap_or_else(|e| {
-            eprintln!("{e}");
-            std::process::exit(2);
-        }),
+    let opened = match root {
+        Some(r) => {
+            let paths = CorePaths::under(&r);
+            let secrets = Secrets::file_only(paths.secrets_path());
+            Core::open_with_secrets(paths, secrets)
+        }
+        None => {
+            let paths = CorePaths::xdg().unwrap_or_else(|e| {
+                eprintln!("{e}");
+                std::process::exit(2);
+            });
+            Core::open(paths)
+        }
     };
-    Core::open(paths).unwrap_or_else(|e| {
+    opened.unwrap_or_else(|e| {
         eprintln!("{e}");
         std::process::exit(2);
     })
@@ -190,6 +220,29 @@ fn run_list(core: &Core, tab: &str, sort: &str, direction: &str, query: &str) {
     }
 }
 
+/// One line per running job. `started` is unix seconds, the same shape the
+/// events carry, and a job with nothing to report yet has a dash for its
+/// progress rather than an empty column.
+fn run_jobs(core: &Core) {
+    if let Reply::Jobs { jobs } = ask(core, Call::ListJobs) {
+        for j in jobs {
+            let progress = j.progress.map_or_else(
+                || "-".to_string(),
+                |p| {
+                    let total = dash(p.total.map(|t| t.to_string()));
+                    format!("{}/{total} {}", p.done, p.label)
+                },
+            );
+            println!(
+                "{}\t{}\t{}\t{progress}",
+                j.id,
+                j.kind.as_str(),
+                anibeam_core::time::to_secs(j.started_at)
+            );
+        }
+    }
+}
+
 fn run_show(core: &Core, series: u64) {
     if let Reply::SeriesDetail { detail } = ask(core, Call::GetSeries { series }) {
         println!("{}", serde_json::to_string_pretty(&detail).unwrap());
@@ -232,6 +285,20 @@ fn main() {
             query,
         } => run_list(&core, &tab, &sort, &direction, &query),
         Command::Show { series } => run_show(&core, series),
+        Command::Jobs => run_jobs(&core),
+        Command::Import { file, wait } => send(&core, Call::Import { path: file }, wait),
+        Command::Export {
+            file,
+            private,
+            wait,
+        } => send(
+            &core,
+            Call::Export {
+                path: file,
+                private,
+            },
+            wait,
+        ),
     }
     core.shutdown();
 }

@@ -8,6 +8,7 @@ pub mod feed;
 pub mod franchise;
 pub mod images;
 pub mod jobs;
+pub mod launch;
 pub mod library;
 pub mod metadata;
 /// The network layer. Not part of the contract and not exported to any

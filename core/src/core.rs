@@ -9,6 +9,7 @@ use crate::feed;
 use crate::franchise;
 use crate::images::{self, ImageCache};
 use crate::jobs::Jobs;
+use crate::launch;
 use crate::library::reads;
 use crate::library::scan::{self, LibraryState, ScanScope};
 use crate::library::watcher::{self, Trigger, Watcher};
@@ -54,6 +55,11 @@ pub struct Core {
     /// `start` and after `shutdown`, so a call that arrives on either side
     /// of the core's life finds nothing to watch with rather than failing.
     pub(crate) watcher: Mutex<Option<Watcher>>,
+    /// The launch's one-shot listener, held here so it lives as long as it
+    /// is waiting and no longer: it takes itself out the moment the
+    /// catch-up scan finishes, and `shutdown` takes it out if it never
+    /// does. Dropping the handle unsubscribes.
+    launch: Mutex<Option<Arc<Subscription>>>,
     /// Taken out and shut down exactly once, in `shutdown`. `None` after
     /// that: a plain `tokio::runtime::Runtime` panics if dropped from
     /// inside its own worker threads, so ownership lives behind a mutex
@@ -110,6 +116,10 @@ pub struct Core {
 /// own futures in a shorter `tokio::time::timeout` where a slow list read
 /// should give up sooner than a slow image fetch.
 const HTTP_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// How long `shutdown` waits for the runtime's tasks to observe the
+/// cancellation before it stops waiting and closes the store anyway.
+const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
 
 /// The loopback port both providers redirect back to. Registered on their
 /// developer panels, so it is a constant rather than a preference.
@@ -195,6 +205,7 @@ impl Core {
             images,
             library: LibraryState::default(),
             watcher: Mutex::new(None),
+            launch: Mutex::new(None),
             runtime: Mutex::new(Some(runtime)),
             handle,
             secrets,
@@ -253,10 +264,31 @@ impl Core {
         self.watcher.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    fn launch(&self) -> MutexGuard<'_, Option<Arc<Subscription>>> {
+        self.launch.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    pub(crate) fn set_launch_listener(&self, sub: Arc<Subscription>) {
+        *self.launch() = Some(sub);
+    }
+
+    /// Takes the launch listener out and drops it, which unsubscribes it.
+    /// Called by the listener itself once it has fired, and by `shutdown`
+    /// for the launch that never got its scan.
+    pub(crate) fn take_launch_listener(&self) {
+        // Taken out of the mutex and dropped by this `let` rather than
+        // inside the lock's own statement: the drop unsubscribes, which
+        // takes the bus's listener lock, and that should never happen with
+        // this one held.
+        let sub = self.launch().take();
+        drop(sub);
+    }
+
     /// Installs the recursive watch on a source. Called by the Scan job,
     /// off the runtime's blocking pool, because notify installs one by
     /// walking every directory under the root. Nothing to do before `start`
-    /// has built the watcher: `start` watches every source itself.
+    /// has built the watcher: the launch's catch-up scan is what puts the
+    /// first watch on every source.
     pub(crate) fn install_watch(&self, path: &str) -> Result<(), CoreError> {
         match self.watcher().as_mut() {
             Some(watcher) => watcher.watch(path),
@@ -350,12 +382,17 @@ impl Core {
         Core::open_with_http(paths, http)
     }
 
-    /// Watcher up, launch jobs queued. Task 31 fills this in. A second call
-    /// is `Ok` and does nothing.
+    /// Watcher up, launch jobs queued. A second call is `Ok` and does
+    /// nothing: the launch happens once per run of the core.
     pub fn start(&self) -> Result<(), CoreError> {
         if self.started.swap(true, Ordering::SeqCst) {
             return Ok(());
         }
+        self.bus.info(
+            Stage::System,
+            format!("AniBeam core {} ready", crate::VERSION),
+            EventBody::Ready,
+        );
         // Asking the Secret Service whether it exists is a D-Bus round
         // trip that can put a prompt on the screen, so it happens here
         // rather than in `open`, and off this thread: by the time a shell
@@ -370,22 +407,13 @@ impl Core {
         // A machine at its inotify limit still has a working library, just
         // one that only changes when a scan is asked for, so a watcher that
         // cannot be built is a warning rather than a failure to start.
+        //
+        // It goes into the field empty. Installing a watch means walking
+        // every directory under a root, which is disk work at library
+        // scale, so it belongs to the scan below and to every scan after
+        // it rather than to this thread.
         match Watcher::new(self.me.clone()) {
-            Ok(watcher) => {
-                // In the field before the first watch goes on, so a source
-                // added while this is running installs its own rather than
-                // finding nothing there and waiting for the next scan.
-                *self.watcher() = Some(watcher);
-                for path in self.store.read(scan::available_source_paths)? {
-                    if let Err(e) = self.install_watch(&path) {
-                        self.bus.warn(
-                            Stage::Library,
-                            format!("cannot watch {path}: {e}"),
-                            EventBody::Notice,
-                        );
-                    }
-                }
-            }
+            Ok(watcher) => *self.watcher() = Some(watcher),
             Err(e) => {
                 self.bus.warn(
                     Stage::Library,
@@ -394,12 +422,10 @@ impl Core {
                 );
             }
         }
-        self.bus.info(
-            Stage::System,
-            format!("AniBeam core {} ready", crate::VERSION),
-            EventBody::Ready,
-        );
-        Ok(())
+        let core = self
+            .arc()
+            .ok_or_else(|| CoreError::internal("core is shutting down"))?;
+        launch::start(&core)
     }
 
     /// Returns fast, always. Every call after `shutdown` fails the same
@@ -677,15 +703,21 @@ impl Core {
         if let Some(mut watcher) = watcher {
             watcher.stop();
         }
+        // A launch whose scan never finished has no list left to run.
+        self.take_launch_listener();
         self.jobs.cancel_all();
         // Taken out of the mutex and dropped by this `let` before the
         // blocking shutdown call, rather than matched straight off the
         // lock expression: `if let Some(x) = mutex.lock().unwrap().take()`
         // keeps the guard alive for the whole `if let` body, which would
-        // hold this lock for up to five seconds.
+        // hold this lock for as long as the wait below.
         let runtime = self.runtime.lock().unwrap().take();
         if let Some(runtime) = runtime {
-            runtime.shutdown_timeout(Duration::from_secs(5));
+            // Two seconds is the whole budget for the tasks to observe the
+            // cancellation above. A shell is on its way out by now, and an
+            // ffprobe or a keyring call that will not stop must not be the
+            // reason the window hangs around.
+            runtime.shutdown_timeout(SHUTDOWN_GRACE);
         }
         self.store.checkpoint();
         self.store.close();
