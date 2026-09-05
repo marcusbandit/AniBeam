@@ -56,6 +56,15 @@ fn first_scan(c: &events::Collector) -> u64 {
     .id
 }
 
+/// How many `SourceChanged` events the collector has seen. A pass over a
+/// source that did not change its availability emits none.
+fn source_changes(c: &events::Collector) -> usize {
+    c.bodies()
+        .iter()
+        .filter(|b| matches!(b, EventBody::SourceChanged { .. }))
+        .count()
+}
+
 fn started(reply: Reply) -> u64 {
     match reply {
         Reply::Started { job } => job,
@@ -544,6 +553,19 @@ fn an_unreadable_root_is_unavailable_and_marks_nothing_missing() {
         "the source never went unavailable"
     );
 
+    // A second pass over the same unreadable root says nothing new. The
+    // availability used to be decided twice, before the walk off `is_dir`
+    // and again after it off the read, so a drive that never came back was
+    // announced as back and then gone again, every pass.
+    let quiet = source_changes(&c);
+    let job = started(core.call(Call::Scan { source: None }).unwrap());
+    common::wait_job(&c, job);
+    assert_eq!(
+        source_changes(&c),
+        quiet,
+        "an unreadable root flipped its availability again"
+    );
+
     fs::set_permissions(&lib, fs::Permissions::from_mode(0o755)).unwrap();
     let both = match core
         .call(Call::ListSeries {
@@ -561,10 +583,18 @@ fn an_unreadable_root_is_unavailable_and_marks_nothing_missing() {
     assert_eq!(both.len(), 2);
     assert!(both.iter().all(|s| !s.missing), "{both:?}");
 
-    // Readable again: the pass finds both series where it left them and
-    // the source says so.
+    // Readable again: the pass finds both series where it left them, and
+    // says the source is back exactly once.
+    let before = source_changes(&c);
     let job = started(core.call(Call::Scan { source: None }).unwrap());
     let done = common::wait_job(&c, job);
+    assert_eq!(source_changes(&c), before + 1);
+    assert!(
+        c.bodies()
+            .iter()
+            .any(|b| matches!(b, EventBody::SourceChanged { source } if source.available)),
+        "the source never came back"
+    );
     assert!(
         matches!(
             done.body,

@@ -755,8 +755,28 @@ async fn set_available(
 /// its id is not an answer to this question.
 pub fn start(core: &Arc<Core>, scope: ScanScope) -> u64 {
     let requested = scope.clone();
+    let (id, started) = spawn(core, scope);
+    if started {
+        return id;
+    }
+    core.library.remember_scope(requested);
+    // A job is registered until its own task takes it out, which happens
+    // after its last look at the queue. So the scan this call was handed the
+    // id of may have finished asking by the time the scope above was
+    // written, and nobody would ever drain it. Asking again once the slot is
+    // free is what closes that window; the queued scope is what the new job
+    // walks.
+    if core.jobs.running(JobKind::Scan).is_none() {
+        return spawn(core, ScanScope::Paths(Vec::new())).0;
+    }
+    id
+}
+
+/// The job body itself, handed to the registry. Separate from `start` so
+/// the call above can hand it over twice without recursion.
+fn spawn(core: &Arc<Core>, scope: ScanScope) -> (u64, bool) {
     let owner = core.clone();
-    let (id, started) = owner.jobs.clone().start_reporting(JobKind::Scan, {
+    owner.jobs.clone().start_reporting(JobKind::Scan, {
         let core = owner.clone();
         move |ctx| async move {
             let (mut added, mut changed, mut removed) = (0u64, 0u64, 0u64);
@@ -801,11 +821,18 @@ pub fn start(core: &Arc<Core>, scope: ScanScope) -> u64 {
 
                     let source_id = target.id;
                     let path = target.path;
-                    let available = Path::new(&path).is_dir();
-                    if available != target.available {
-                        set_available(&core, &ctx, source_id, &path, available).await?;
-                    }
-                    if !available {
+                    // The cheap half of the question, and only the cheap
+                    // half: a path that is not a directory at all is gone,
+                    // and there is nothing to read. Whether a directory
+                    // that is there can actually be read is the walk's
+                    // answer, below, and the row is not flipped back to
+                    // available until it says yes. Deciding here instead
+                    // announced a drive as back and then gone again, twice
+                    // a pass, for a drive that never came back.
+                    if !Path::new(&path).is_dir() {
+                        if target.available {
+                            set_available(&core, &ctx, source_id, &path, false).await?;
+                        }
                         continue;
                     }
 
@@ -846,7 +873,9 @@ pub fn start(core: &Arc<Core>, scope: ScanScope) -> u64 {
                                 format!("cannot read {path}: {e}"),
                                 EventBody::Notice,
                             );
-                            set_available(&core, &ctx, source_id, &path, false).await?;
+                            if target.available {
+                                set_available(&core, &ctx, source_id, &path, false).await?;
+                            }
                             continue;
                         }
                     };
@@ -867,9 +896,15 @@ pub fn start(core: &Arc<Core>, scope: ScanScope) -> u64 {
                                 format!("{path} read as empty while it holds {held} series"),
                                 EventBody::Notice,
                             );
-                            set_available(&core, &ctx, source_id, &path, false).await?;
+                            if target.available {
+                                set_available(&core, &ctx, source_id, &path, false).await?;
+                            }
                             continue;
                         }
+                    }
+                    // The read worked, so now the source really is back.
+                    if !target.available {
+                        set_available(&core, &ctx, source_id, &path, true).await?;
                     }
                     let root = path.clone();
                     let movie_folders = tokio::task::spawn_blocking(move || {
@@ -970,11 +1005,7 @@ pub fn start(core: &Arc<Core>, scope: ScanScope) -> u64 {
                 },
             })
         }
-    });
-    if !started {
-        owner.library.remember_scope(requested);
-    }
-    id
+    })
 }
 
 /// Whether this run is going to look at `path` anyway: some target contains
