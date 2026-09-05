@@ -48,10 +48,7 @@ impl ShellPaths {
     }
 }
 
-// This task's own test is the only caller until Task 5 reads theme.toml and the theme
-// directories and Task 6 reads the mpv.conf layers and the lock file; a plain build sees
-// every accessor below as dead code without the allow.
-#[allow(dead_code)]
+/// What the theme engine reads: theme.toml and the two theme directories.
 impl ShellPaths {
     pub fn config_dir(&self) -> PathBuf {
         PathBuf::from(&self.core.config_dir)
@@ -59,14 +56,20 @@ impl ShellPaths {
     pub fn theme_toml(&self) -> PathBuf {
         self.config_dir().join("theme.toml")
     }
-    pub fn player_toml(&self) -> PathBuf {
-        self.config_dir().join("player.toml")
-    }
     pub fn user_themes_dir(&self) -> PathBuf {
         self.config_dir().join("themes")
     }
     pub fn builtin_themes_dir(&self) -> PathBuf {
         self.builtin_themes.clone()
+    }
+}
+
+// Task 6 reads player.toml and the mpv.conf layers, Task 13 the lock file; this file's own
+// test is the only caller until then, so a plain build sees these as dead code.
+#[allow(dead_code)]
+impl ShellPaths {
+    pub fn player_toml(&self) -> PathBuf {
+        self.config_dir().join("player.toml")
     }
     pub fn anibeam_mpv_conf(&self) -> PathBuf {
         self.config_dir().join("mpv.conf")

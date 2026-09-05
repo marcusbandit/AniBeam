@@ -3,9 +3,6 @@ mod bridge;
 mod format;
 mod paths;
 mod runtime;
-// The bridge in Task 5 is the first thing that calls into the theme model; nothing here
-// does yet, so a plain build sees the whole tree as dead code without the allow.
-#[allow(dead_code)]
 mod theme;
 
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
@@ -33,7 +30,8 @@ fn main() {
             std::process::exit(2);
         }
     };
-    let _ = &paths; // Task 6 opens the core on these; Task 13 takes the lock first.
+    // Task 6 opens the core on these; Task 13 takes the lock first.
+    runtime::install_paths(paths);
     runtime::install_args(args);
 
     bridge::helpers::ffi::set_render_loop_env();

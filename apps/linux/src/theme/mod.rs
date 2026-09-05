@@ -127,9 +127,7 @@ pub struct Palette {
 }
 
 impl Palette {
-    // Task 5's QML bridge walks this to expose the token set by name; nothing in this
-    // task's tests iterates it.
-    #[allow(dead_code)]
+    /// The bridge walks this to expose the token set to QML by name.
     pub const NAMES: [&'static str; 23] = [
         "bg",
         "surface",
@@ -156,8 +154,6 @@ impl Palette {
         "brown",
     ];
 
-    // Task 5's QML bridge looks tokens up by name; nothing calls this until then.
-    #[allow(dead_code)]
     pub fn get(&self, name: &str) -> Option<Rgb> {
         Some(match name {
             "bg" => self.bg,

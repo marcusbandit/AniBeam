@@ -7,20 +7,138 @@ fn main() {
     CxxQtBuilder::new_qml_module(
         QmlModule::new("com.marcusrosado.AniBeam")
             .version(1, 0)
-            .qml_file("qml/Main.qml"),
+            .qml_file("qml/Main.qml")
+            .qml_file("qml/Tokens.qml")
+            .qml_file("qml/TokensPage.qml")
+            .qml_file("qml/Corner.qml")
+            .qml_file("qml/Icon.qml")
+            .qml_file("qml/Chip.qml")
+            .qml_file("qml/Seg.qml")
+            .qml_file("qml/Switch.qml")
+            .qml_file("qml/Button.qml")
+            .qml_file("qml/Field.qml")
+            .qml_file("qml/Dropdown.qml")
+            .qml_file("qml/Swatches.qml")
+            .qml_file("qml/SliderRow.qml")
+            .qml_file("qml/SettingRow.qml")
+            .qml_file("qml/Panel.qml"),
     )
     .qt_module("Quick")
     .files([
         "src/bridge/fmt.rs",
         "src/bridge/helpers.rs",
         "src/bridge/shell.rs",
+        "src/bridge/theme.rs",
     ])
     .include_dir("cpp")
     // mpvqt_export.h includes mpvqt_version.h bare; CMake's target used to supply this.
     .include_dir("/usr/include/MpvQt")
     .cpp_files(["cpp/helpers.cpp"])
-    // qrc:/qt/qml/com/marcusrosado/AniBeam/assets/icon.png
-    .qrc_resources(["assets/icon.png"])
+    // qrc:/qt/qml/com/marcusrosado/AniBeam/assets/...; a name left out of this list is a
+    // blank icon at runtime, not a build error, so it is generated:
+    // ls apps/linux/assets/icons/*.svg | sed 's|apps/linux/||;s|.*|        "&",|'
+    .qrc_resources([
+        "assets/icon.png",
+        "assets/icons/activity.svg",
+        "assets/icons/archive.svg",
+        "assets/icons/arrow-down.svg",
+        "assets/icons/arrow-left.svg",
+        "assets/icons/arrow-right.svg",
+        "assets/icons/arrow-up-right.svg",
+        "assets/icons/arrow-up.svg",
+        "assets/icons/audio-lines.svg",
+        "assets/icons/badge-check.svg",
+        "assets/icons/ban.svg",
+        "assets/icons/bell.svg",
+        "assets/icons/book-open.svg",
+        "assets/icons/bookmark.svg",
+        "assets/icons/calendar-clock.svg",
+        "assets/icons/captions.svg",
+        "assets/icons/case-sensitive.svg",
+        "assets/icons/chart-pie.svg",
+        "assets/icons/check-check.svg",
+        "assets/icons/check.svg",
+        "assets/icons/chevron-down.svg",
+        "assets/icons/chevron-left.svg",
+        "assets/icons/chevron-right.svg",
+        "assets/icons/chevron-up.svg",
+        "assets/icons/chevrons-right.svg",
+        "assets/icons/circle-alert.svg",
+        "assets/icons/circle-check.svg",
+        "assets/icons/circle-play.svg",
+        "assets/icons/circle-question-mark.svg",
+        "assets/icons/circle-x.svg",
+        "assets/icons/clapperboard.svg",
+        "assets/icons/clock.svg",
+        "assets/icons/copy.svg",
+        "assets/icons/database.svg",
+        "assets/icons/download.svg",
+        "assets/icons/external-link.svg",
+        "assets/icons/eye-off.svg",
+        "assets/icons/eye.svg",
+        "assets/icons/file-down.svg",
+        "assets/icons/file-up.svg",
+        "assets/icons/film.svg",
+        "assets/icons/folder-open.svg",
+        "assets/icons/folder-plus.svg",
+        "assets/icons/folder-search.svg",
+        "assets/icons/folder-x.svg",
+        "assets/icons/folder.svg",
+        "assets/icons/git-branch.svg",
+        "assets/icons/globe.svg",
+        "assets/icons/hard-drive.svg",
+        "assets/icons/heart.svg",
+        "assets/icons/house.svg",
+        "assets/icons/image.svg",
+        "assets/icons/info.svg",
+        "assets/icons/keyboard.svg",
+        "assets/icons/languages.svg",
+        "assets/icons/layers.svg",
+        "assets/icons/link.svg",
+        "assets/icons/list-filter.svg",
+        "assets/icons/list-video.svg",
+        "assets/icons/log-in.svg",
+        "assets/icons/log-out.svg",
+        "assets/icons/maximize.svg",
+        "assets/icons/minimize.svg",
+        "assets/icons/monitor.svg",
+        "assets/icons/moon.svg",
+        "assets/icons/palette.svg",
+        "assets/icons/pause.svg",
+        "assets/icons/pencil.svg",
+        "assets/icons/play.svg",
+        "assets/icons/plus.svg",
+        "assets/icons/radio.svg",
+        "assets/icons/refresh-cw.svg",
+        "assets/icons/rotate-ccw.svg",
+        "assets/icons/rotate-cw.svg",
+        "assets/icons/rss.svg",
+        "assets/icons/scan.svg",
+        "assets/icons/search.svg",
+        "assets/icons/settings.svg",
+        "assets/icons/shapes.svg",
+        "assets/icons/skip-back.svg",
+        "assets/icons/skip-forward.svg",
+        "assets/icons/sliders-horizontal.svg",
+        "assets/icons/sparkles.svg",
+        "assets/icons/square-check.svg",
+        "assets/icons/square.svg",
+        "assets/icons/star.svg",
+        "assets/icons/step-back.svg",
+        "assets/icons/step-forward.svg",
+        "assets/icons/sun.svg",
+        "assets/icons/trash-2.svg",
+        "assets/icons/trash.svg",
+        "assets/icons/triangle-alert.svg",
+        "assets/icons/tv.svg",
+        "assets/icons/type.svg",
+        "assets/icons/upload.svg",
+        "assets/icons/user-check.svg",
+        "assets/icons/users.svg",
+        "assets/icons/volume-2.svg",
+        "assets/icons/volume-x.svg",
+        "assets/icons/x.svg",
+    ])
     .build();
 
     println!("cargo:rustc-link-lib=MpvQt");

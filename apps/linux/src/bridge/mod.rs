@@ -5,3 +5,4 @@
 pub mod fmt;
 pub mod helpers;
 pub mod shell;
+pub mod theme;

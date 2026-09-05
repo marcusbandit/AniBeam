@@ -11,7 +11,11 @@ Window {
     height: Shell.shootHeight > 0 ? Shell.shootHeight : 800
     visible: true
     title: "AniBeam"
-    color: "#101216"                                        // Task 5 binds this to theme.bg
+
+    // The tokens every component below reaches through the context chain. A plain Window
+    // has no font property, so the face and the size are set per Text from these tokens.
+    Tokens { id: theme }
+    color: theme.bg
 
     // Window.color is the clear colour the compositor paints with; grabToImage renders only
     // painted items, so without this the offscreen capture below comes back transparent.
@@ -25,16 +29,23 @@ Window {
     Timer { id: settle; interval: 200; onTriggered: window.settled = true }
 
     // Task 7 replaces this with Frame { anchors.fill: parent; visible: window.settled }
-    Text {
-        visible: window.settled
-        anchors.centerIn: parent
-        text: "AniBeam " + Shell.version
-        color: "#e4e7ee"
+    Loader {
+        anchors.fill: parent
+        active: window.settled && Theme.ready
+        sourceComponent: Shell.page === "tokens" ? tokensPage : placeholder
     }
+    Component { id: tokensPage; TokensPage {} }
+    Component { id: placeholder; Text { anchors.centerIn: parent; text: "AniBeam " + Shell.version; color: theme.text } }
 
     // --shoot <png>: one capture of the frame after settle, then quit. grabToImage renders
-    // the scene into an image, so it works under QT_QPA_PLATFORM=offscreen.
-    onSettledChanged: if (settled && Shell.shoot !== "") shootTimer.start()
+    // the scene into an image, so it works under QT_QPA_PLATFORM=offscreen. The colours are
+    // the engine's first push, so the shot waits for Theme.ready as well as for settle.
+    function maybeShoot() {
+        if (window.settled && Theme.ready && Shell.shoot !== "")
+            shootTimer.start()
+    }
+    onSettledChanged: window.maybeShoot()
+    Connections { target: Theme; function onReadyChanged() { window.maybeShoot() } }
     Timer {
         id: shootTimer
         interval: 400

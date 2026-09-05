@@ -6,6 +6,8 @@ pub mod ffi {
     unsafe extern "C++" {
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
+        include!("cxx-qt-lib/qcolor.h");
+        type QColor = cxx_qt_lib::QColor;
     }
 
     unsafe extern "C++" {
@@ -16,5 +18,15 @@ pub mod ffi {
         fn set_desktop_file_name(name: &QString);
         /// The two environment variables the spikes settled, before QGuiApplication reads them.
         fn set_render_loop_env();
+        /// The resolved tokens into QGuiApplication's palette, so a stock control matches.
+        fn set_app_palette(
+            window: &QColor,
+            text: &QColor,
+            base: &QColor,
+            highlight: &QColor,
+            highlighted_text: &QColor,
+            button: &QColor,
+            button_text: &QColor,
+        );
     }
 }

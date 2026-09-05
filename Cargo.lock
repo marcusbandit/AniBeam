@@ -50,6 +50,7 @@ dependencies = [
  "cxx-qt",
  "cxx-qt-build",
  "cxx-qt-lib",
+ "futures-util",
  "material-colors",
  "mpris-server",
  "notify",
