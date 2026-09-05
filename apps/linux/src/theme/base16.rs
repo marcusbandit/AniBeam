@@ -96,22 +96,7 @@ impl Theme {
 }
 
 fn kitty_theme(stem: &str, text: &str) -> Option<TerminalPalette> {
-    let conf = kitty::parse_conf(text);
-    let colour = |k: &str| conf.values.get(k).and_then(|v| Rgb::hex(v));
-    let mut colors = [Rgb {
-        r: 0.0,
-        g: 0.0,
-        b: 0.0,
-    }; 16];
-    for (i, slot) in colors.iter_mut().enumerate() {
-        *slot = colour(&format!("color{i}"))?;
-    }
-    Some(TerminalPalette {
-        foreground: colour("foreground")?,
-        background: colour("background")?,
-        colors,
-        source: stem.to_string(),
-    })
+    kitty::palette_from(&kitty::parse_conf(text).values, stem)
 }
 
 pub fn load_dir(dir: &Path) -> Vec<Theme> {

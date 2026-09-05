@@ -62,10 +62,20 @@ impl Env for HashMap<String, String> {
     }
 }
 
+/// One line of a config file that matters to us, in file order: `walk` replays these in
+/// sequence so a line after an include wins over anything the include set, exactly as
+/// kitty itself would apply them.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Entry {
+    Assign(String, String),
+    Directive(String, String),
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Conf {
     pub values: HashMap<String, String>,
     pub directives: Vec<(String, String)>,
+    pub entries: Vec<Entry>,
 }
 
 pub fn parse_conf(text: &str) -> Conf {
@@ -81,10 +91,14 @@ pub fn parse_conf(text: &str) -> Conf {
         let value = rest.trim();
         match key {
             "include" | "globinclude" | "envinclude" => {
-                c.directives.push((key.to_string(), value.to_string()))
+                c.directives.push((key.to_string(), value.to_string()));
+                c.entries
+                    .push(Entry::Directive(key.to_string(), value.to_string()));
             }
             k if KEYS.contains(&k) => {
                 c.values.insert(k.to_string(), value.to_string());
+                c.entries
+                    .push(Entry::Assign(k.to_string(), value.to_string()));
             }
             _ => {}
         }
@@ -149,65 +163,69 @@ fn walk(
         return;
     };
     let conf = parse_conf(&text);
-    for (k, v) in conf.values {
-        values.insert(k, v);
-    }
     let base = path.parent().unwrap_or(Path::new("/"));
-    for (kind, arg) in conf.directives {
-        match kind.as_str() {
-            "include" => walk(&expand(&arg, base, env), depth + 1, values, files, env),
-            "globinclude" => {
-                for p in glob_paths(&expand(&arg, base, env)) {
-                    walk(&p, depth + 1, values, files, env);
-                }
+    // Replayed in file order, not batched: a plain assignment applies immediately, and a
+    // directive recurses right where it sits, so a line after an include still wins.
+    for entry in conf.entries {
+        match entry {
+            Entry::Assign(k, v) => {
+                values.insert(k, v);
             }
-            "envinclude" => {
-                let prefix = arg.trim_end_matches('*');
-                let mut names: Vec<String> = env
-                    .names()
-                    .into_iter()
-                    .filter(|k| k.starts_with(prefix))
-                    .collect();
-                names.sort();
-                for name in names {
-                    if let Some(text) = env.get(&name) {
-                        for (k, v) in parse_conf(&text).values {
-                            values.insert(k, v);
+            Entry::Directive(kind, arg) => match kind.as_str() {
+                "include" => walk(&expand(&arg, base, env), depth + 1, values, files, env),
+                "globinclude" => {
+                    for p in glob_paths(&expand(&arg, base, env)) {
+                        walk(&p, depth + 1, values, files, env);
+                    }
+                }
+                "envinclude" => {
+                    let prefix = arg.trim_end_matches('*');
+                    let mut names: Vec<String> = env
+                        .names()
+                        .into_iter()
+                        .filter(|k| k.starts_with(prefix))
+                        .collect();
+                    names.sort();
+                    for name in names {
+                        if let Some(text) = env.get(&name) {
+                            for (k, v) in parse_conf(&text).values {
+                                values.insert(k, v);
+                            }
                         }
                     }
                 }
-            }
-            _ => {}
+                _ => {}
+            },
         }
     }
 }
 
-pub fn read_chain(root: &Path, env: &dyn Env) -> Chain {
-    let mut values = HashMap::new();
-    let mut files = Vec::new();
-    walk(root, 0, &mut values, &mut files, env);
+/// Foreground, background and all sixteen `colorN` slots from a resolved key/value map,
+/// or `None` if any of the eighteen is missing. Shared with `base16::kitty_theme`, which
+/// builds the same shape from a standalone kitty `.conf` theme file.
+pub fn palette_from(values: &HashMap<String, String>, source: &str) -> Option<TerminalPalette> {
     let colour = |k: &str| values.get(k).and_then(|v| Rgb::hex(v));
     let mut colors = [Rgb {
         r: 0.0,
         g: 0.0,
         b: 0.0,
     }; 16];
-    let mut complete = true;
     for (i, slot) in colors.iter_mut().enumerate() {
-        match colour(&format!("color{i}")) {
-            Some(c) => *slot = c,
-            None => complete = false,
-        }
+        *slot = colour(&format!("color{i}"))?;
     }
-    let palette = match (colour("foreground"), colour("background"), complete) {
-        (Some(foreground), Some(background), true) => Some(TerminalPalette {
-            foreground,
-            background,
-            colors,
-            source: "kitty".into(),
-        }),
-        _ => None,
-    };
+    Some(TerminalPalette {
+        foreground: colour("foreground")?,
+        background: colour("background")?,
+        colors,
+        source: source.to_string(),
+    })
+}
+
+pub fn read_chain(root: &Path, env: &dyn Env) -> Chain {
+    let mut values = HashMap::new();
+    let mut files = Vec::new();
+    walk(root, 0, &mut values, &mut files, env);
+    let palette = palette_from(&values, "kitty");
     Chain { files, palette }
 }
 
@@ -324,6 +342,33 @@ mod tests {
         assert_eq!(p.colors[15].to_hex(), "#ffffff");
         assert_eq!(chain.files.len(), 3);
         assert_eq!(chain.files[0], root);
+    }
+
+    #[test]
+    fn a_line_after_an_include_wins_over_the_include() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("kitty.conf");
+        std::fs::write(
+            dir.path().join("other.conf"),
+            "background #bbbbbb\nforeground #eeeeee\n",
+        )
+        .unwrap();
+        std::fs::write(
+            &root,
+            "background #aaaaaa\ninclude other.conf\nbackground #cccccc\n",
+        )
+        .unwrap();
+        let mut colours = String::new();
+        for i in 0..16 {
+            colours.push_str(&format!("color{i} #{:02x}{:02x}{:02x}\n", i, i, i));
+        }
+        std::fs::write(
+            dir.path().join("other.conf"),
+            format!("background #bbbbbb\nforeground #eeeeee\n{colours}"),
+        )
+        .unwrap();
+        let chain = read_chain(&root, &std::collections::HashMap::new());
+        assert_eq!(chain.palette.unwrap().background.to_hex(), "#cccccc");
     }
 
     #[test]
