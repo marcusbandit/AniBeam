@@ -17,6 +17,7 @@ pub mod paths;
 pub mod prefs;
 pub mod store;
 pub mod time;
+pub mod trackers;
 
 pub use contract::*;
 pub use core::Core;

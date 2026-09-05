@@ -19,6 +19,7 @@ use crate::net::{Http, ReqwestHttp, Upstream};
 use crate::paths::CorePaths;
 use crate::prefs;
 use crate::store::Store;
+use crate::trackers::secrets::{Secrets, KEYRING_UNAVAILABLE};
 
 /// The core is one object. A shell opens it once, starts it once, subscribes
 /// once, and from then on sends calls and receives events.
@@ -48,8 +49,11 @@ pub struct Core {
     pub(crate) runtime: Mutex<Option<tokio::runtime::Runtime>>,
     /// Cloned from `runtime` at `open`, so later tasks can spawn work
     /// through it even while the runtime itself sits behind the mutex.
-    #[allow(dead_code)]
     pub(crate) handle: tokio::runtime::Handle,
+    /// Where the tracker tokens live: the desktop keyring when there is
+    /// one, `secrets.json` when there is not. Built by `open` without any
+    /// I/O; which store it uses is settled on first use, warmed by `start`.
+    pub(crate) secrets: Arc<Secrets>,
     /// One transport for every provider, so a test swaps the whole network
     /// out with one `FakeHttp`. The clients below each hold their own
     /// limiter over it.
@@ -94,6 +98,24 @@ impl Core {
     /// off canned replies. Not part of the contract and not exported.
     #[doc(hidden)]
     pub fn open_with_http(paths: CorePaths, http: Arc<dyn Http>) -> Result<Arc<Core>, CoreError> {
+        let secrets = Secrets::init(paths.secrets_path());
+        Core::open_with_http_and_secrets(paths, http, secrets)
+    }
+
+    /// `open` with the secrets facade handed in, so a caller that must not
+    /// reach the machine's keyring, a test or a run rooted somewhere of its
+    /// own, gets the file store alone. Not part of the contract and not
+    /// exported.
+    #[doc(hidden)]
+    pub fn open_with_secrets(paths: CorePaths, secrets: Arc<Secrets>) -> Result<Arc<Core>, CoreError> {
+        let http = Arc::new(ReqwestHttp::new(HTTP_TIMEOUT)?);
+        Core::open_with_http_and_secrets(paths, http, secrets)
+    }
+
+    /// Both of the above at once, and where the core is actually built.
+    /// Not part of the contract and not exported.
+    #[doc(hidden)]
+    pub fn open_with_http_and_secrets(paths: CorePaths, http: Arc<dyn Http>, secrets: Arc<Secrets>) -> Result<Arc<Core>, CoreError> {
         let store = Store::open(&paths.db_path())?;
         let bus = EventBus::new(store.clone())?;
         // Creating the cache directory is opening, the same as creating the
@@ -123,6 +145,7 @@ impl Core {
             watcher: Mutex::new(None),
             runtime: Mutex::new(Some(runtime)),
             handle,
+            secrets,
             http,
             anilist,
             jikan,
@@ -147,6 +170,20 @@ impl Core {
     #[doc(hidden)]
     pub fn store(&self) -> &Arc<Store> {
         &self.store
+    }
+
+    /// The secrets facade, with the store choice settled. `start` warms
+    /// that choice on a blocking thread, so a call arriving after launch
+    /// finds it made; a call that beats the warm-up makes it here, on the
+    /// shell's calling thread, which is where keyring work belongs. Either
+    /// way the "no keyring" line is written once, by whoever finished the
+    /// probe.
+    #[allow(dead_code)]
+    pub(crate) fn secrets(&self) -> &Arc<Secrets> {
+        if self.secrets.warm() {
+            self.bus.info(Stage::System, KEYRING_UNAVAILABLE, EventBody::Notice);
+        }
+        &self.secrets
     }
 
     fn watcher(&self) -> MutexGuard<'_, Option<Watcher>> {
@@ -242,6 +279,17 @@ impl Core {
         if self.started.swap(true, Ordering::SeqCst) {
             return Ok(());
         }
+        // Asking the Secret Service whether it exists is a D-Bus round
+        // trip that can put a prompt on the screen, so it happens here
+        // rather than in `open`, and off this thread: by the time a shell
+        // asks which trackers are connected, the answer is waiting.
+        let secrets = self.secrets.clone();
+        let bus = self.bus.clone();
+        self.handle.spawn_blocking(move || {
+            if secrets.warm() {
+                bus.info(Stage::System, KEYRING_UNAVAILABLE, EventBody::Notice);
+            }
+        });
         // A machine at its inotify limit still has a working library, just
         // one that only changes when a scan is asked for, so a watcher that
         // cannot be built is a warning rather than a failure to start.

@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use anibeam_core::events::{Collector, Subscription};
 use anibeam_core::net::FakeHttp;
+use anibeam_core::trackers::Secrets;
 use anibeam_core::{Core, CorePaths, Event, JobPhase};
 
 /// Owns the test's temp directory and the subscription collecting its
@@ -24,9 +25,15 @@ impl Deref for Dir {
     }
 }
 
+/// Every core a test opens keeps its secrets in the temp directory's own
+/// `secrets.json`: the file store is chosen here rather than probed for, so
+/// no test ever reaches the machine's real keyring or puts a prompt on the
+/// owner's screen.
 pub fn open_core() -> (Dir, Arc<Core>, Arc<Collector>) {
     let dir = tempfile::tempdir().unwrap();
-    let core = Core::open(CorePaths::under(dir.path())).unwrap();
+    let paths = CorePaths::under(dir.path());
+    let secrets = Secrets::file_only(paths.secrets_path());
+    let core = Core::open_with_secrets(paths, secrets).unwrap();
     let collector = Arc::new(Collector::default());
     let sub = core.subscribe(collector.clone());
     (Dir { dir, _sub: sub }, core, collector)
@@ -37,7 +44,9 @@ pub fn open_core() -> (Dir, Arc<Core>, Arc<Collector>) {
 /// replies and read back the requests.
 pub fn open_core_with_http(http: Arc<FakeHttp>) -> (Dir, Arc<Core>, Arc<Collector>) {
     let dir = tempfile::tempdir().unwrap();
-    let core = Core::open_with_http(CorePaths::under(dir.path()), http).unwrap();
+    let paths = CorePaths::under(dir.path());
+    let secrets = Secrets::file_only(paths.secrets_path());
+    let core = Core::open_with_http_and_secrets(paths, http, secrets).unwrap();
     let collector = Arc::new(Collector::default());
     let sub = core.subscribe(collector.clone());
     (Dir { dir, _sub: sub }, core, collector)
