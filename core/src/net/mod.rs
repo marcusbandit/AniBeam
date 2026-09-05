@@ -53,12 +53,17 @@ pub struct HttpResponse {
 
 impl HttpResponse {
     pub fn json<T: DeserializeOwned>(&self) -> Result<T, CoreError> {
-        serde_json::from_slice(&self.body).map_err(|e| CoreError::Internal { message: format!("json: {e}") })
+        serde_json::from_slice(&self.body).map_err(|e| CoreError::Internal {
+            message: format!("json: {e}"),
+        })
     }
 
     /// Header names are case-insensitive on the wire, so they are here too.
     pub fn header(&self, name: &str) -> Option<&str> {
-        self.headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str())
+        self.headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(name))
+            .map(|(_, v)| v.as_str())
     }
 
     /// The body as text, for a message. Truncated, since a provider that
@@ -159,15 +164,32 @@ impl Http for ReqwestHttp {
                 Some(Body::Form(pairs)) => builder.form(pairs),
                 None => builder,
             };
-            let response = builder.send().await.map_err(|e| HttpError { message: e.to_string() })?;
+            let response = builder.send().await.map_err(|e| HttpError {
+                message: e.to_string(),
+            })?;
             let status = response.status().as_u16();
             let headers = response
                 .headers()
                 .iter()
-                .map(|(name, value)| (name.as_str().to_string(), value.to_str().unwrap_or_default().to_string()))
+                .map(|(name, value)| {
+                    (
+                        name.as_str().to_string(),
+                        value.to_str().unwrap_or_default().to_string(),
+                    )
+                })
                 .collect();
-            let body = response.bytes().await.map_err(|e| HttpError { message: e.to_string() })?.to_vec();
-            Ok(HttpResponse { status, headers, body })
+            let body = response
+                .bytes()
+                .await
+                .map_err(|e| HttpError {
+                    message: e.to_string(),
+                })?
+                .to_vec();
+            Ok(HttpResponse {
+                status,
+                headers,
+                body,
+            })
         })
     }
 }
@@ -199,7 +221,12 @@ impl FakeHttp {
     }
 
     pub fn push_json(&self, status: u16, body: serde_json::Value) {
-        self.queue(None, status, vec![("content-type".to_string(), "application/json".to_string())], body.to_string().into_bytes());
+        self.queue(
+            None,
+            status,
+            vec![("content-type".to_string(), "application/json".to_string())],
+            body.to_string().into_bytes(),
+        );
     }
 
     /// A reply that only answers a url containing `url_contains`, so a test
@@ -209,7 +236,12 @@ impl FakeHttp {
         self.queue(Some(url_contains.to_string()), status, vec![], body.into());
     }
 
-    pub fn push_with_headers(&self, status: u16, body: impl Into<Vec<u8>>, headers: Vec<(String, String)>) {
+    pub fn push_with_headers(
+        &self,
+        status: u16,
+        body: impl Into<Vec<u8>>,
+        headers: Vec<(String, String)>,
+    ) {
         self.queue(None, status, headers, body.into());
     }
 
@@ -223,8 +255,19 @@ impl FakeHttp {
         self.requests.lock().unwrap().clone()
     }
 
-    fn queue(&self, matcher: Option<String>, status: u16, headers: Vec<(String, String)>, body: Vec<u8>) {
-        self.replies.lock().unwrap().push(Canned { matcher, status, headers, body });
+    fn queue(
+        &self,
+        matcher: Option<String>,
+        status: u16,
+        headers: Vec<(String, String)>,
+        body: Vec<u8>,
+    ) {
+        self.replies.lock().unwrap().push(Canned {
+            matcher,
+            status,
+            headers,
+            body,
+        });
     }
 }
 
@@ -235,17 +278,25 @@ impl Http for FakeHttp {
             {
                 let mut failures = self.failures.lock().unwrap();
                 if !failures.is_empty() {
-                    return Err(HttpError { message: failures.remove(0) });
+                    return Err(HttpError {
+                        message: failures.remove(0),
+                    });
                 }
             }
             let mut replies = self.replies.lock().unwrap();
-            let found = replies
-                .iter()
-                .position(|c| c.matcher.as_ref().is_none_or(|m| req.url.contains(m.as_str())));
+            let found = replies.iter().position(|c| {
+                c.matcher
+                    .as_ref()
+                    .is_none_or(|m| req.url.contains(m.as_str()))
+            });
             match found {
                 Some(index) => {
                     let canned = replies.remove(index);
-                    Ok(HttpResponse { status: canned.status, headers: canned.headers, body: canned.body })
+                    Ok(HttpResponse {
+                        status: canned.status,
+                        headers: canned.headers,
+                        body: canned.body,
+                    })
                 }
                 None => Ok(HttpResponse {
                     status: 500,
@@ -262,7 +313,12 @@ mod tests {
     use super::*;
 
     fn get(url: &str) -> HttpRequest {
-        HttpRequest { method: Method::Get, url: url.into(), headers: vec![], body: None }
+        HttpRequest {
+            method: Method::Get,
+            url: url.into(),
+            headers: vec![],
+            body: None,
+        }
     }
 
     #[tokio::test]
@@ -284,7 +340,10 @@ mod tests {
         let r = http.send(get("https://graphql.anilist.co")).await.unwrap();
         assert_eq!(r.status, 200);
         // The matched reply is still queued and answers its own url.
-        let r = http.send(get("https://api.aniskip.com/v2/skip-times/1/1")).await.unwrap();
+        let r = http
+            .send(get("https://api.aniskip.com/v2/skip-times/1/1"))
+            .await
+            .unwrap();
         assert_eq!(r.status, 404);
         // With the queue empty every url gets the same explanatory 500.
         let r = http.send(get("https://x/")).await.unwrap();

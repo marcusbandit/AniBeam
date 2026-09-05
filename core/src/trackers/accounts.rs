@@ -13,7 +13,7 @@
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::contract::*;
 use crate::core::Core;
@@ -129,9 +129,13 @@ pub fn load_row(conn: &Connection, t: Tracker) -> Result<Option<Row>, CoreError>
 /// the client secrets, so this belongs on a calling thread; a job asks
 /// through `state_async`.
 pub fn state(core: &Core) -> Result<TrackerState, CoreError> {
-    let (main, anilist, mal) = core
-        .store
-        .read(|c| Ok((prefs::load_main_tracker(c)?, load_row(c, Tracker::Anilist)?, load_row(c, Tracker::Mal)?)))?;
+    let (main, anilist, mal) = core.store.read(|c| {
+        Ok((
+            prefs::load_main_tracker(c)?,
+            load_row(c, Tracker::Anilist)?,
+            load_row(c, Tracker::Mal)?,
+        ))
+    })?;
     Ok(TrackerState {
         main,
         anilist: account(core, Tracker::Anilist, anilist),
@@ -158,7 +162,10 @@ fn account(core: &Core, t: Tracker, row: Option<Row>) -> TrackerAccount {
         user_id: row.user_id,
         expires_at: row.expires_at,
         last_sync: row.synced_at,
-        client_id: row.stored_client_id().or_else(|| bundled_id.map(str::to_string)).unwrap_or_default(),
+        client_id: row
+            .stored_client_id()
+            .or_else(|| bundled_id.map(str::to_string))
+            .unwrap_or_default(),
         has_client_secret: core.secrets().has(&secret_key(t)) || bundled_secret.is_some(),
         // Whether this build can sign in with nothing pasted at all, which
         // for MAL means both halves.
@@ -172,12 +179,17 @@ fn account(core: &Core, t: Tracker, row: Option<Row>) -> TrackerAccount {
 /// What a flow actually signs in with: the pasted credentials if there are
 /// any, the bundled ones otherwise. Fails on its own preconditions, so a
 /// connect with nothing to connect with never becomes a job.
-pub fn effective_credentials(core: &Core, t: Tracker) -> Result<(String, Option<String>), CoreError> {
+pub fn effective_credentials(
+    core: &Core,
+    t: Tracker,
+) -> Result<(String, Option<String>), CoreError> {
     let row = core.store.read(|c| load_row(c, t))?.unwrap_or_default();
     let client_id = row
         .stored_client_id()
         .or_else(|| bundled_client_id(t).map(str::to_string))
-        .ok_or_else(|| CoreError::invalid("client_id", format!("No client ID set for {}.", t.label())))?;
+        .ok_or_else(|| {
+            CoreError::invalid("client_id", format!("No client ID set for {}.", t.label()))
+        })?;
     let client_secret = core
         .secrets()
         .get(&secret_key(t), row.secret_store)?
@@ -191,9 +203,16 @@ pub fn effective_credentials(core: &Core, t: Tracker) -> Result<(String, Option<
 
 /// `effective_credentials` from inside a job, on the blocking pool for the
 /// keyring's sake.
-pub(crate) async fn credentials_async(core: &Arc<Core>, t: Tracker) -> Result<(String, Option<String>), CoreError> {
+pub(crate) async fn credentials_async(
+    core: &Arc<Core>,
+    t: Tracker,
+) -> Result<(String, Option<String>), CoreError> {
     let owner = core.clone();
-    joined(core.handle.spawn_blocking(move || effective_credentials(&owner, t)).await)?
+    joined(
+        core.handle
+            .spawn_blocking(move || effective_credentials(&owner, t))
+            .await,
+    )?
 }
 
 // The calls ------------------------------------------------------------------
@@ -201,7 +220,12 @@ pub(crate) async fn credentials_async(core: &Arc<Core>, t: Tracker) -> Result<(S
 /// The Trackers tab's Save. The id is stored whether or not the tracker is
 /// connected; an empty or absent secret keeps whatever is already stored,
 /// so a user re-saving an id does not have to paste the secret again.
-pub fn set_credentials(core: &Core, t: Tracker, client_id: &str, client_secret: Option<&str>) -> Result<Reply, CoreError> {
+pub fn set_credentials(
+    core: &Core,
+    t: Tracker,
+    client_id: &str,
+    client_secret: Option<&str>,
+) -> Result<Reply, CoreError> {
     let client_id = client_id.trim().to_string();
     let secret = client_secret.map(str::trim).filter(|s| !s.is_empty());
     let store = match secret {
@@ -218,7 +242,10 @@ pub fn set_credentials(core: &Core, t: Tracker, client_id: &str, client_secret: 
         // record of where this tracker's secrets are, and a save that
         // wrote none must not claim to have moved them.
         if let Some(store) = store {
-            tx.execute("UPDATE tracker_accounts SET secret_store = ?2 WHERE tracker = ?1", params![t.as_str(), store.as_str()])?;
+            tx.execute(
+                "UPDATE tracker_accounts SET secret_store = ?2 WHERE tracker = ?1",
+                params![t.as_str(), store.as_str()],
+            )?;
         }
         Ok(())
     })?;
@@ -271,22 +298,33 @@ pub fn set_main(core: &Core, t: Tracker) -> Result<Reply, CoreError> {
 /// Async because a job is the only caller: the keyring reads and writes go
 /// through the blocking pool.
 pub async fn access_token(core: &Arc<Core>, t: Tracker) -> Result<Option<String>, CoreError> {
-    let row = core.store.write_async(move |c| load_row(c, t)).await?.unwrap_or_default();
+    let row = core
+        .store
+        .write_async(move |c| load_row(c, t))
+        .await?
+        .unwrap_or_default();
     let hint = row.secret_store;
-    let token = with_secrets(core, move |s| s.get(&access_key(t), hint)).await?.map(|(value, _)| value);
+    let token = with_secrets(core, move |s| s.get(&access_key(t), hint))
+        .await?
+        .map(|(value, _)| value);
     let Some(token) = token else { return Ok(None) };
     // AniList's implicit-grant tokens cannot be refreshed at all; they are
     // good for a year and the flow is run again after that.
     if t != Tracker::Mal || !due_for_refresh(row.expires_at, time::now()) {
         return Ok(Some(token));
     }
-    let refresh = with_secrets(core, move |s| s.get(&refresh_key(t), hint)).await?.map(|(value, _)| value);
-    let Some(refresh) = refresh else { return Ok(Some(token)) };
+    let refresh = with_secrets(core, move |s| s.get(&refresh_key(t), hint))
+        .await?
+        .map(|(value, _)| value);
+    let Some(refresh) = refresh else {
+        return Ok(Some(token));
+    };
     match refresh_mal(core, &refresh).await {
         Ok(fresh) => Ok(Some(fresh)),
         Err(e) => {
             tracing::debug!("the MAL refresh failed: {e}");
-            core.bus.warn(Stage::Trackers, MAL_EXPIRED, EventBody::Notice);
+            core.bus
+                .warn(Stage::Trackers, MAL_EXPIRED, EventBody::Notice);
             Ok(None)
         }
     }
@@ -305,7 +343,10 @@ async fn refresh_mal(core: &Arc<Core>, refresh: &str) -> Result<String, CoreErro
     let (client_id, client_secret) = credentials_async(core, Tracker::Mal).await?;
     let form = vec![
         ("client_id".to_string(), client_id),
-        ("client_secret".to_string(), client_secret.unwrap_or_default()),
+        (
+            "client_secret".to_string(),
+            client_secret.unwrap_or_default(),
+        ),
         ("grant_type".to_string(), "refresh_token".to_string()),
         ("refresh_token".to_string(), refresh.to_string()),
     ];
@@ -346,7 +387,8 @@ pub(crate) struct Tokens {
 /// A token reply. `expires_in` is seconds from now, so it is turned into
 /// the instant the row stores while the reply is still fresh.
 pub(crate) fn parse_tokens(body: &[u8], now: SystemTime) -> Result<Tokens, CoreError> {
-    let value: serde_json::Value = serde_json::from_slice(body).map_err(|e| tracker_error(Tracker::Mal, format!("unreadable token reply: {e}")))?;
+    let value: serde_json::Value = serde_json::from_slice(body)
+        .map_err(|e| tracker_error(Tracker::Mal, format!("unreadable token reply: {e}")))?;
     let access_token = value["access_token"]
         .as_str()
         .filter(|t| !t.is_empty())
@@ -354,14 +396,23 @@ pub(crate) fn parse_tokens(body: &[u8], now: SystemTime) -> Result<Tokens, CoreE
         .to_string();
     Ok(Tokens {
         access_token,
-        refresh_token: value["refresh_token"].as_str().filter(|t| !t.is_empty()).map(str::to_string),
-        expires_at: value["expires_in"].as_u64().map(|seconds| now + Duration::from_secs(seconds)),
+        refresh_token: value["refresh_token"]
+            .as_str()
+            .filter(|t| !t.is_empty())
+            .map(str::to_string),
+        expires_at: value["expires_in"]
+            .as_u64()
+            .map(|seconds| now + Duration::from_secs(seconds)),
     })
 }
 
 /// Both tokens into the keyring, and where the access token landed, which
 /// is what the row's `secret_store` records.
-pub(crate) async fn save_tokens(core: &Arc<Core>, t: Tracker, tokens: &Tokens) -> Result<StoreKind, CoreError> {
+pub(crate) async fn save_tokens(
+    core: &Arc<Core>,
+    t: Tracker,
+    tokens: &Tokens,
+) -> Result<StoreKind, CoreError> {
     let access = tokens.access_token.clone();
     let store = with_secrets(core, move |s| s.set(&access_key(t), &access)).await?;
     match tokens.refresh_token.clone() {
@@ -444,7 +495,11 @@ pub(crate) fn tracker_error(t: Tracker, message: impl Into<String>) -> CoreError
 /// The whole tracker state, after anything that changed a part of it.
 pub(crate) fn emit_trackers_changed(core: &Core) -> Result<(), CoreError> {
     let state = state(core)?;
-    core.bus.debug(Stage::Trackers, "trackers changed", EventBody::TrackersChanged { state });
+    core.bus.debug(
+        Stage::Trackers,
+        "trackers changed",
+        EventBody::TrackersChanged { state },
+    );
     Ok(())
 }
 
@@ -459,7 +514,11 @@ fn emit_series_changed(core: &Core, t: Option<Tracker>, message: String) -> Resu
     if cards.is_empty() {
         return Ok(());
     }
-    core.bus.debug(Stage::Trackers, message, EventBody::SeriesChanged { series: cards });
+    core.bus.debug(
+        Stage::Trackers,
+        message,
+        EventBody::SeriesChanged { series: cards },
+    );
     Ok(())
 }
 
@@ -470,7 +529,9 @@ fn matched_ids(conn: &Connection, t: Option<Tracker>) -> Result<Vec<u64>, CoreEr
         None => "SELECT id FROM series WHERE provider IS NOT NULL ORDER BY id",
     };
     let mut stmt = conn.prepare(sql)?;
-    let ids = stmt.query_map([], |r| r.get::<_, i64>(0))?.collect::<Result<Vec<i64>, _>>()?;
+    let ids = stmt
+        .query_map([], |r| r.get::<_, i64>(0))?
+        .collect::<Result<Vec<i64>, _>>()?;
     Ok(ids.into_iter().map(|id| id as u64).collect())
 }
 
@@ -493,7 +554,10 @@ mod tests {
         let tokens = parse_tokens(body, now).unwrap();
         assert_eq!(tokens.access_token, "mtok");
         assert_eq!(tokens.refresh_token.as_deref(), Some("mref"));
-        assert_eq!(tokens.expires_at, Some(now + Duration::from_secs(2_415_600)));
+        assert_eq!(
+            tokens.expires_at,
+            Some(now + Duration::from_secs(2_415_600))
+        );
     }
 
     /// A reply with no token is the provider's failure, not a token of
@@ -518,16 +582,28 @@ mod tests {
     fn a_token_inside_the_window_or_past_it_is_due_for_a_refresh() {
         let now = UNIX_EPOCH + Duration::from_secs(1_000_000);
         assert!(!due_for_refresh(None, now));
-        assert!(!due_for_refresh(Some(now + Duration::from_secs(60 * 60 * 24)), now));
-        assert!(due_for_refresh(Some(now + Duration::from_secs(59 * 60)), now));
+        assert!(!due_for_refresh(
+            Some(now + Duration::from_secs(60 * 60 * 24)),
+            now
+        ));
+        assert!(due_for_refresh(
+            Some(now + Duration::from_secs(59 * 60)),
+            now
+        ));
         assert!(due_for_refresh(Some(now - Duration::from_secs(1)), now));
     }
 
     #[test]
     fn an_empty_stored_client_id_is_no_client_id() {
-        let row = Row { client_id: Some(String::new()), ..Row::default() };
+        let row = Row {
+            client_id: Some(String::new()),
+            ..Row::default()
+        };
         assert_eq!(row.stored_client_id(), None);
-        let row = Row { client_id: Some("123".into()), ..Row::default() };
+        let row = Row {
+            client_id: Some("123".into()),
+            ..Row::default()
+        };
         assert_eq!(row.stored_client_id().as_deref(), Some("123"));
     }
 }

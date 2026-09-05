@@ -56,7 +56,11 @@ pub fn sort_cards(cards: &mut [SeriesCard], sort: Sort, direction: Direction) {
         if sort == Sort::Progress {
             let (ia, ib) = (progress_inactive(a), progress_inactive(b));
             if ia != ib {
-                return if ia { Ordering::Greater } else { Ordering::Less };
+                return if ia {
+                    Ordering::Greater
+                } else {
+                    Ordering::Less
+                };
             }
             if ia && ib {
                 return title_of(a).cmp(&title_of(b));
@@ -71,7 +75,9 @@ pub fn sort_cards(cards: &mut [SeriesCard], sort: Sort, direction: Direction) {
             (None, Some(_)) => Ordering::Greater,
             (Some(_), None) => Ordering::Less,
             (Some(va), Some(vb)) if va == vb => title_of(a).cmp(&title_of(b)),
-            (Some(va), Some(vb)) => ((va - vb) * dir).partial_cmp(&0.0).unwrap_or(Ordering::Equal),
+            (Some(va), Some(vb)) => ((va - vb) * dir)
+                .partial_cmp(&0.0)
+                .unwrap_or(Ordering::Equal),
         }
     });
 }
@@ -115,7 +121,12 @@ mod tests {
             kind: SeriesKind::Show,
             path: String::new(),
             title: title.into(),
-            titles: Titles { romaji: Some(title.into()), english: None, native: None, folder: title.into() },
+            titles: Titles {
+                romaji: Some(title.into()),
+                english: None,
+                native: None,
+                folder: title.into(),
+            },
             poster: None,
             format: None,
             status: None,
@@ -129,7 +140,11 @@ mod tests {
             code: None,
             watched,
             watched_state: WatchedState::Unknown,
-            strip: Strip { watched: 0.0, aired_unwatched: 0.0, unknown: 0.0 },
+            strip: Strip {
+                watched: 0.0,
+                aired_unwatched: 0.0,
+                unknown: 0.0,
+            },
             community_score: score,
             my_score: my,
             list_status: status,
@@ -179,12 +194,26 @@ mod tests {
             card("never", None, Some(12), None, None, None, None),
             card("zero", Some(0), Some(12), None, None, None, None),
             card("early", Some(2), Some(12), None, None, None, None),
-            card("dropped-complete", Some(3), Some(12), None, None, None, Some(ListStatus::Completed)),
+            card(
+                "dropped-complete",
+                Some(3),
+                Some(12),
+                None,
+                None,
+                None,
+                Some(ListStatus::Completed),
+            ),
         ];
         sort_cards(&mut cards, Sort::Progress, Direction::Desc);
-        assert_eq!(titles(&cards), vec!["mid", "early", "done", "dropped-complete", "never", "zero"]);
+        assert_eq!(
+            titles(&cards),
+            vec!["mid", "early", "done", "dropped-complete", "never", "zero"]
+        );
         sort_cards(&mut cards, Sort::Progress, Direction::Asc);
-        assert_eq!(titles(&cards), vec!["early", "mid", "done", "dropped-complete", "never", "zero"]);
+        assert_eq!(
+            titles(&cards),
+            vec!["early", "mid", "done", "dropped-complete", "never", "zero"]
+        );
     }
 
     #[test]

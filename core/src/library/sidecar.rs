@@ -23,7 +23,10 @@ pub fn parse_suffix(suffix: &str) -> (Option<String>, Option<String>) {
     let is_lang = (2..=3).contains(&first.len()) && first.chars().all(|c| c.is_ascii_alphabetic());
     if is_lang {
         let title = parts[1..].join(" ");
-        (Some(first.to_lowercase()), if title.is_empty() { None } else { Some(title) })
+        (
+            Some(first.to_lowercase()),
+            if title.is_empty() { None } else { Some(title) },
+        )
     } else {
         (None, Some(parts.join(" ")))
     }
@@ -33,16 +36,30 @@ pub fn parse_suffix(suffix: &str) -> (Option<String>, Option<String>) {
 /// belongs to the video when its stem equals the video's stem, or starts with
 /// the video's stem followed by a dot.
 pub fn match_sidecars(video_path: &Path, candidates: &[String]) -> Vec<Sidecar> {
-    let stem = video_path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let stem = video_path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
     let mut out = Vec::new();
     for c in candidates {
         let cp = Path::new(c);
-        let cstem = cp.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        let cstem = cp
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
         if cstem == stem {
-            out.push(Sidecar { path: c.clone(), language: None, title: None });
+            out.push(Sidecar {
+                path: c.clone(),
+                language: None,
+                title: None,
+            });
         } else if let Some(rest) = cstem.strip_prefix(&format!("{stem}.")) {
             let (language, title) = parse_suffix(rest);
-            out.push(Sidecar { path: c.clone(), language, title });
+            out.push(Sidecar {
+                path: c.clone(),
+                language,
+                title,
+            });
         }
     }
     out.sort_by(|a, b| a.path.cmp(&b.path));
@@ -56,9 +73,18 @@ mod tests {
     #[test]
     fn parses_the_lang_title_suffix() {
         assert_eq!(parse_suffix("en"), (Some("en".to_string()), None));
-        assert_eq!(parse_suffix("en.forced"), (Some("en".to_string()), Some("forced".to_string())));
-        assert_eq!(parse_suffix("eng.Full"), (Some("eng".to_string()), Some("Full".to_string())));
-        assert_eq!(parse_suffix("en.forced.subs"), (Some("en".to_string()), Some("forced subs".to_string())));
+        assert_eq!(
+            parse_suffix("en.forced"),
+            (Some("en".to_string()), Some("forced".to_string()))
+        );
+        assert_eq!(
+            parse_suffix("eng.Full"),
+            (Some("eng".to_string()), Some("Full".to_string()))
+        );
+        assert_eq!(
+            parse_suffix("en.forced.subs"),
+            (Some("en".to_string()), Some("forced subs".to_string()))
+        );
         assert_eq!(parse_suffix("forced"), (None, Some("forced".to_string())));
         assert_eq!(parse_suffix("english"), (None, Some("english".to_string())));
         assert_eq!(parse_suffix(""), (None, None));
@@ -77,8 +103,16 @@ mod tests {
         assert_eq!(
             out,
             vec![
-                Sidecar { path: "/x/Show - 01.en.forced.srt".to_string(), language: Some("en".to_string()), title: Some("forced".to_string()) },
-                Sidecar { path: "/x/Show - 01.srt".to_string(), language: None, title: None },
+                Sidecar {
+                    path: "/x/Show - 01.en.forced.srt".to_string(),
+                    language: Some("en".to_string()),
+                    title: Some("forced".to_string())
+                },
+                Sidecar {
+                    path: "/x/Show - 01.srt".to_string(),
+                    language: None,
+                    title: None
+                },
             ]
         );
     }

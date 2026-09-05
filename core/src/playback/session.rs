@@ -22,7 +22,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard};
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::contract::*;
 use crate::core::Core;
@@ -226,7 +226,10 @@ fn file_row(conn: &Connection, file: u64) -> Result<FileRow, CoreError> {
             },
         )
         .optional()?;
-    row.ok_or(CoreError::NotFound { what: Entity::File, id: file })
+    row.ok_or(CoreError::NotFound {
+        what: Entity::File,
+        id: file,
+    })
 }
 
 fn series_row(conn: &Connection, series: u64, images_dir: &Path) -> Result<SeriesRow, CoreError> {
@@ -241,7 +244,8 @@ fn series_row(conn: &Connection, series: u64, images_dir: &Path) -> Result<Serie
             params![series as i64],
             |r| {
                 Ok(SeriesRow {
-                    kind: SeriesKind::from_column(&r.get::<_, String>(0)?).unwrap_or(SeriesKind::Show),
+                    kind: SeriesKind::from_column(&r.get::<_, String>(0)?)
+                        .unwrap_or(SeriesKind::Show),
                     folder_name: r.get(1)?,
                     anilist_id: r.get::<_, Option<i64>>(2)?.map(|v| v as u64),
                     mal_id: r.get::<_, Option<i64>>(3)?.map(|v| v as u64),
@@ -250,13 +254,21 @@ fn series_row(conn: &Connection, series: u64, images_dir: &Path) -> Result<Serie
                     title_english: r.get(6)?,
                     // A published total of nought is AniList saying it does
                     // not know yet, so it never makes an episode the last.
-                    total: r.get::<_, Option<i64>>(7)?.map(|v| v as u32).filter(|t| *t > 0),
-                    poster: r.get::<_, Option<String>>(8)?.map(|p| images_dir.join(p).to_string_lossy().into_owned()),
+                    total: r
+                        .get::<_, Option<i64>>(7)?
+                        .map(|v| v as u32)
+                        .filter(|t| *t > 0),
+                    poster: r
+                        .get::<_, Option<String>>(8)?
+                        .map(|p| images_dir.join(p).to_string_lossy().into_owned()),
                 })
             },
         )
         .optional()?;
-    row.ok_or(CoreError::NotFound { what: Entity::Series, id: series })
+    row.ok_or(CoreError::NotFound {
+        what: Entity::Series,
+        id: series,
+    })
 }
 
 /// A file's sidecar subtitles. A row that does not parse is a file with no
@@ -272,7 +284,9 @@ fn sidecars_of(raw: &str) -> Vec<Sidecar> {
 }
 
 fn track_choice_of(raw: Option<&str>) -> TrackChoice {
-    let Some(raw) = raw else { return TrackChoice::default() };
+    let Some(raw) = raw else {
+        return TrackChoice::default();
+    };
     match serde_json::from_str::<TrackChoice>(raw) {
         Ok(v) => v,
         Err(e) => {
@@ -285,10 +299,16 @@ fn track_choice_of(raw: Option<&str>) -> TrackChoice {
 /// The episodes either side of this one on disk. Only whole-numbered
 /// episodes are neighbours, so a 12.5 recap sits between twelve and thirteen
 /// rather than in the running order, and Next from it opens thirteen.
-fn neighbours(conn: &Connection, series: u64, number: f64) -> Result<(Option<u64>, Option<u64>), CoreError> {
+fn neighbours(
+    conn: &Connection,
+    series: u64,
+    number: f64,
+) -> Result<(Option<u64>, Option<u64>), CoreError> {
     let mut stmt =
         conn.prepare("SELECT id, number FROM files WHERE series_id = ?1 AND kind = 'episode' AND number IS NOT NULL ORDER BY number, id")?;
-    let rows = stmt.query_map(params![series as i64], |r| Ok((r.get::<_, i64>(0)? as u64, r.get::<_, f64>(1)?)))?;
+    let rows = stmt.query_map(params![series as i64], |r| {
+        Ok((r.get::<_, i64>(0)? as u64, r.get::<_, f64>(1)?))
+    })?;
     let (mut prev, mut next) = (None, None);
     for row in rows {
         let (id, n) = row?;
@@ -314,49 +334,64 @@ fn cached_windows(conn: &Connection, series: u64, key: &str) -> Result<Vec<SkipW
             |r| r.get(0),
         )
         .optional()?;
-    let Some(raw) = raw else { return Ok(Vec::new()) };
-    Ok(serde_json::from_str::<Vec<SkipWindow>>(&raw).unwrap_or_else(|e| {
-        tracing::warn!("cached skip windows did not parse, asking again: {e}");
-        Vec::new()
-    }))
+    let Some(raw) = raw else {
+        return Ok(Vec::new());
+    };
+    Ok(
+        serde_json::from_str::<Vec<SkipWindow>>(&raw).unwrap_or_else(|e| {
+            tracing::warn!("cached skip windows did not parse, asking again: {e}");
+            Vec::new()
+        }),
+    )
 }
 
 /// Everything the player needs before the first frame, and the session the
 /// ticks that follow belong to.
 pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
     let images_dir = core.paths.images_dir();
-    let (f, s, resume_from, skip_windows, prev, next, episode_title, subtitle_defaults, lang) = core.store.read(|c| {
-        let f = file_row(c, file)?;
-        let s = series_row(c, f.series, &images_dir)?;
-        let resume_from: Option<f64> = c
-            .query_row(
-                "SELECT position FROM resume_points WHERE series_id = ?1 AND episode_key = ?2",
-                params![f.series as i64, f.episode_key],
-                |r| r.get(0),
-            )
-            .optional()?;
-        let skip_windows = cached_windows(c, f.series, &f.episode_key)?;
-        // An extra stands outside the running order, and a film is its own
-        // series, so neither has an episode either side of it.
-        let (prev, next) = match (f.is_extra, s.kind) {
-            (false, SeriesKind::Show) => neighbours(c, f.series, f.number)?,
-            _ => (None, None),
-        };
-        let episode_title: Option<String> = match (s.anilist_id, f.is_extra) {
-            (Some(id), false) => c
+    let (f, s, resume_from, skip_windows, prev, next, episode_title, subtitle_defaults, lang) =
+        core.store.read(|c| {
+            let f = file_row(c, file)?;
+            let s = series_row(c, f.series, &images_dir)?;
+            let resume_from: Option<f64> = c
                 .query_row(
-                    "SELECT title FROM anilist_episodes WHERE anilist_id = ?1 AND number = ?2",
-                    params![id as i64, f.number],
+                    "SELECT position FROM resume_points WHERE series_id = ?1 AND episode_key = ?2",
+                    params![f.series as i64, f.episode_key],
                     |r| r.get(0),
                 )
-                .optional()?
-                .flatten(),
-            _ => None,
-        };
-        let subtitle_defaults = prefs::load_settings(c)?.subtitle_defaults;
-        let lang = prefs::load_preferences(c)?.title_language;
-        Ok((f, s, resume_from, skip_windows, prev, next, episode_title, subtitle_defaults, lang))
-    })?;
+                .optional()?;
+            let skip_windows = cached_windows(c, f.series, &f.episode_key)?;
+            // An extra stands outside the running order, and a film is its own
+            // series, so neither has an episode either side of it.
+            let (prev, next) = match (f.is_extra, s.kind) {
+                (false, SeriesKind::Show) => neighbours(c, f.series, f.number)?,
+                _ => (None, None),
+            };
+            let episode_title: Option<String> = match (s.anilist_id, f.is_extra) {
+                (Some(id), false) => c
+                    .query_row(
+                        "SELECT title FROM anilist_episodes WHERE anilist_id = ?1 AND number = ?2",
+                        params![id as i64, f.number],
+                        |r| r.get(0),
+                    )
+                    .optional()?
+                    .flatten(),
+                _ => None,
+            };
+            let subtitle_defaults = prefs::load_settings(c)?.subtitle_defaults;
+            let lang = prefs::load_preferences(c)?.title_language;
+            Ok((
+                f,
+                s,
+                resume_from,
+                skip_windows,
+                prev,
+                next,
+                episode_title,
+                subtitle_defaults,
+                lang,
+            ))
+        })?;
 
     let is_film = s.kind == SeriesKind::Movie;
     let code = if f.is_extra {
@@ -406,7 +441,12 @@ pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
         file,
         path: f.path,
         series: f.series,
-        series_title: titles::resolve(lang, s.title_romaji.as_deref(), s.title_english.as_deref(), &s.folder_name),
+        series_title: titles::resolve(
+            lang,
+            s.title_romaji.as_deref(),
+            s.title_english.as_deref(),
+            &s.folder_name,
+        ),
         episode_title,
         code,
         is_extra: f.is_extra,
@@ -449,7 +489,10 @@ pub fn tick(core: &Core, session: u64, position: f64, paused: bool) -> Result<()
     let (s, fired) = {
         let mut map = core.sessions.lock();
         let Some(s) = map.get_mut(&session) else {
-            return Err(CoreError::NotFound { what: Entity::Session, id: session });
+            return Err(CoreError::NotFound {
+                what: Entity::Session,
+                id: session,
+            });
         };
         let fired = effects(s, position, paused);
         (s.clone(), fired)
@@ -460,14 +503,21 @@ pub fn tick(core: &Core, session: u64, position: f64, paused: bool) -> Result<()
 /// The end of a session: a last tick, the completion the end of the file
 /// implies, and the session gone. Closing one that is already closed is the
 /// same as closing it once, so a shell that says goodbye twice is fine.
-pub fn close(core: &Core, session: u64, position: f64, reason: CloseReason) -> Result<(), CoreError> {
+pub fn close(
+    core: &Core,
+    session: u64,
+    position: f64,
+    reason: CloseReason,
+) -> Result<(), CoreError> {
     let taken = core.sessions.lock().remove(&session);
     let Some(mut s) = taken else {
         tracing::debug!("close for session {session}, which is already closed");
         return Ok(());
     };
     let mut fired = effects(&mut s, position, false);
-    if reason == CloseReason::Ended && let Some(effect) = ended(&mut s) {
+    if reason == CloseReason::Ended
+        && let Some(effect) = ended(&mut s)
+    {
         // The resume point this tick was about to write is one completion
         // would delete in the same breath.
         fired.retain(|e| !matches!(e, Effect::Resume(_)));
@@ -506,7 +556,10 @@ fn record_view(core: &Core, s: &Session) -> Result<(), CoreError> {
     core.bus.info(
         Stage::Playback,
         format!("viewed {folder} {code}"),
-        EventBody::Viewed { series: s.series, episode: s.episode_key.clone() },
+        EventBody::Viewed {
+            series: s.series,
+            episode: s.episode_key.clone(),
+        },
     );
     Ok(())
 }
@@ -517,7 +570,11 @@ fn record_view(core: &Core, s: &Session) -> Result<(), CoreError> {
 fn mark(core: &Core, s: &Session) {
     let Some(number) = s.number else { return };
     if s.anilist_id.is_none() && s.mal_id.is_none() {
-        let folder = core.store.read(|c| line_labels(c, s)).map(|(folder, _)| folder).unwrap_or_default();
+        let folder = core
+            .store
+            .read(|c| line_labels(c, s))
+            .map(|(folder, _)| folder)
+            .unwrap_or_default();
         core.bus.warn(
             Stage::Playback,
             format!("watched to the end but {folder} has no AniList or MAL id"),
@@ -552,9 +609,17 @@ fn mark(core: &Core, s: &Session) {
 /// and the card behind the player is pushed so Next up moves on. An extra
 /// only forgets where it was, since it is not an episode of anything.
 fn complete(core: &Core, s: &Session) -> Result<(), CoreError> {
-    let (series, key, now, record) = (s.series, s.episode_key.clone(), time::now_secs(), !s.is_extra);
+    let (series, key, now, record) = (
+        s.series,
+        s.episode_key.clone(),
+        time::now_secs(),
+        !s.is_extra,
+    );
     core.store.tx(move |tx| {
-        tx.execute("DELETE FROM resume_points WHERE series_id = ?1 AND episode_key = ?2", params![series as i64, key])?;
+        tx.execute(
+            "DELETE FROM resume_points WHERE series_id = ?1 AND episode_key = ?2",
+            params![series as i64, key],
+        )?;
         if record {
             tx.execute(
                 "INSERT INTO completed (series_id, episode_key, at) VALUES (?1, ?2, ?3)
@@ -564,16 +629,28 @@ fn complete(core: &Core, s: &Session) -> Result<(), CoreError> {
         }
         Ok(())
     })?;
-    core.bus
-        .debug(Stage::Playback, "resume point cleared", EventBody::ResumePointChanged { file: s.file, position: None });
+    core.bus.debug(
+        Stage::Playback,
+        "resume point cleared",
+        EventBody::ResumePointChanged {
+            file: s.file,
+            position: None,
+        },
+    );
     if s.is_extra {
         return Ok(());
     }
     let images_dir = core.paths.images_dir();
-    let cards = core.store.read(|c| cards::cards_for(c, &images_dir, &[s.series]))?;
+    let cards = core
+        .store
+        .read(|c| cards::cards_for(c, &images_dir, &[s.series]))?;
     let title = cards.first().map_or_else(String::new, |c| c.title.clone());
     let what = if s.is_film { "film" } else { "episode" };
-    core.bus.debug(Stage::Playback, format!("{title} finished a {what}"), EventBody::SeriesChanged { series: cards });
+    core.bus.debug(
+        Stage::Playback,
+        format!("{title} finished a {what}"),
+        EventBody::SeriesChanged { series: cards },
+    );
     Ok(())
 }
 
@@ -591,8 +668,14 @@ fn write_resume(core: &Core, s: &Session, position: f64) -> Result<(), CoreError
         )?;
         Ok(())
     })?;
-    core.bus
-        .debug(Stage::Playback, "resume point saved", EventBody::ResumePointChanged { file: s.file, position: Some(position) });
+    core.bus.debug(
+        Stage::Playback,
+        "resume point saved",
+        EventBody::ResumePointChanged {
+            file: s.file,
+            position: Some(position),
+        },
+    );
     Ok(())
 }
 
@@ -611,7 +694,9 @@ fn line_labels(conn: &Connection, s: &Session) -> Result<(String, String), CoreE
                 let is_extra: bool = r.get::<_, String>(1)? == "extra";
                 let number: f64 = r.get::<_, Option<f64>>(2)?.unwrap_or(0.0);
                 let season: Option<u32> = r.get::<_, Option<i64>>(3)?.map(|v| v as u32);
-                let kind = r.get::<_, Option<String>>(4)?.and_then(|k| ExtraKind::from_column(&k));
+                let kind = r
+                    .get::<_, Option<String>>(4)?
+                    .and_then(|k| ExtraKind::from_column(&k));
                 let index: Option<u32> = r.get::<_, Option<i64>>(5)?.map(|v| v as u32);
                 let code = if is_extra {
                     labels::extra_code_with_index(kind.unwrap_or(ExtraKind::Other), index)
@@ -633,13 +718,24 @@ fn line_labels(conn: &Connection, s: &Session) -> Result<(String, String), CoreE
 
 /// The series' playback memory: which audio and which subtitles the last
 /// episode was watched with, so the next one opens on the same pair.
-pub fn set_track_choice(core: &Core, series: u64, audio: Option<TrackRef>, subtitle: Option<SubtitleChoice>) -> Result<Reply, CoreError> {
+pub fn set_track_choice(
+    core: &Core,
+    series: u64,
+    audio: Option<TrackRef>,
+    subtitle: Option<SubtitleChoice>,
+) -> Result<Reply, CoreError> {
     let json = serde_json::to_string(&TrackChoice { audio, subtitle })?;
-    let changed = core
-        .store
-        .write(move |c| Ok(c.execute("UPDATE series SET track_choice = ?1 WHERE id = ?2", params![json, series as i64])?))?;
+    let changed = core.store.write(move |c| {
+        Ok(c.execute(
+            "UPDATE series SET track_choice = ?1 WHERE id = ?2",
+            params![json, series as i64],
+        )?)
+    })?;
     if changed == 0 {
-        return Err(CoreError::NotFound { what: Entity::Series, id: series });
+        return Err(CoreError::NotFound {
+            what: Entity::Series,
+            id: series,
+        });
     }
     Ok(Reply::Ok)
 }
@@ -716,18 +812,27 @@ mod tests {
     fn the_mark_takes_the_earlier_of_the_outro_and_85_percent() {
         let mut s = session(false, Some(1400.0));
         assert_eq!(effects(&mut s, 1189.0, false), vec![Effect::Resume(1189.0)]);
-        assert_eq!(effects(&mut s, 1190.0, false), vec![Effect::Mark, Effect::Resume(1190.0)]);
+        assert_eq!(
+            effects(&mut s, 1190.0, false),
+            vec![Effect::Mark, Effect::Resume(1190.0)]
+        );
         assert_eq!(effects(&mut s, 1200.0, false), vec![Effect::Resume(1200.0)]);
 
         let mut s = session(false, Some(1400.0));
         s.outro_start = Some(1100.0);
         assert_eq!(effects(&mut s, 1099.0, false), vec![Effect::Resume(1099.0)]);
-        assert_eq!(effects(&mut s, 1100.0, false), vec![Effect::Mark, Effect::Complete]);
+        assert_eq!(
+            effects(&mut s, 1100.0, false),
+            vec![Effect::Mark, Effect::Complete]
+        );
 
         // An outro with no duration still carries a mark line of its own.
         let mut s = session(false, None);
         s.outro_start = Some(300.0);
-        assert_eq!(effects(&mut s, 300.0, false), vec![Effect::Mark, Effect::Complete]);
+        assert_eq!(
+            effects(&mut s, 300.0, false),
+            vec![Effect::Mark, Effect::Complete]
+        );
     }
 
     /// Completion is the tail or the outro, and it replaces the resume point

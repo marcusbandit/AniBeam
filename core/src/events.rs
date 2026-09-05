@@ -27,7 +27,9 @@ impl EventBus {
     /// Reads the ring's highest `seq` so numbering continues across
     /// launches instead of restarting at zero.
     pub fn new(store: Arc<Store>) -> Result<Arc<EventBus>, CoreError> {
-        let last: i64 = store.write(|c| Ok(c.query_row("SELECT coalesce(max(seq), 0) FROM events", [], |r| r.get(0))?))?;
+        let last: i64 = store.write(|c| {
+            Ok(c.query_row("SELECT coalesce(max(seq), 0) FROM events", [], |r| r.get(0))?)
+        })?;
         Ok(Arc::new(EventBus {
             seq: AtomicU64::new(last as u64),
             next_listener: AtomicU64::new(1),
@@ -38,7 +40,14 @@ impl EventBus {
 
     /// Stamps `seq` and `at`, persists Info and above to the ring, then
     /// calls every listener with the finished event.
-    pub fn emit(&self, level: Level, stage: Stage, message: impl Into<String>, job: Option<JobRef>, body: EventBody) -> Event {
+    pub fn emit(
+        &self,
+        level: Level,
+        stage: Stage,
+        message: impl Into<String>,
+        job: Option<JobRef>,
+        body: EventBody,
+    ) -> Event {
         let event = Event {
             seq: self.seq.fetch_add(1, Ordering::SeqCst) + 1,
             at: time::now(),
@@ -54,7 +63,13 @@ impl EventBus {
         // Snapshot the listener list and drop the lock before calling out,
         // so a listener that turns around and subscribes or unsubscribes
         // never deadlocks on `listeners`.
-        let listeners: Vec<Arc<dyn EventListener>> = self.listeners.read().unwrap().iter().map(|(_, l)| l.clone()).collect();
+        let listeners: Vec<Arc<dyn EventListener>> = self
+            .listeners
+            .read()
+            .unwrap()
+            .iter()
+            .map(|(_, l)| l.clone())
+            .collect();
         for l in listeners {
             l.on_event(event.clone());
         }
@@ -196,7 +211,11 @@ pub struct Subscription {
 impl Subscription {
     pub fn new(bus: Arc<EventBus>, listener: Arc<dyn EventListener>) -> Arc<Subscription> {
         let id = bus.subscribe(listener);
-        Arc::new(Subscription { bus, id, active: AtomicBool::new(true) })
+        Arc::new(Subscription {
+            bus,
+            id,
+            active: AtomicBool::new(true),
+        })
     }
 }
 
@@ -277,7 +296,15 @@ mod tests {
     fn info_persists_debug_does_not() {
         let (_d, bus) = bus();
         bus.info(Stage::System, "hello", EventBody::Notice);
-        bus.debug(Stage::Library, "progress", EventBody::JobProgress { done: 1, total: None, label: "".into() });
+        bus.debug(
+            Stage::Library,
+            "progress",
+            EventBody::JobProgress {
+                done: 1,
+                total: None,
+                label: "".into(),
+            },
+        );
         let recent = bus.recent(100).unwrap();
         assert_eq!(recent.len(), 1);
         assert_eq!(recent[0].message, "hello");
@@ -353,7 +380,10 @@ mod tests {
         let handle = std::thread::spawn(move || {
             emitter.info(Stage::System, "from another thread", EventBody::Notice);
         });
-        let arrived = c.wait_for(|events| events.iter().any(|e| e.message == "from another thread"), Duration::from_secs(2));
+        let arrived = c.wait_for(
+            |events| events.iter().any(|e| e.message == "from another thread"),
+            Duration::from_secs(2),
+        );
         handle.join().unwrap();
         assert!(arrived);
     }

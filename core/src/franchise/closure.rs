@@ -10,7 +10,7 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use super::{as_i64, as_u64};
 use crate::contract::CoreError;
@@ -122,8 +122,12 @@ pub fn close(conn: &Connection, seed: u64, cap: usize, now: i64) -> Result<Closu
         if !nodes[&id].relations_fetched {
             owed.push(id);
         }
-        let mut stmt = conn.prepare_cached("SELECT to_id, relation FROM relations WHERE from_id = ?1 ORDER BY to_id")?;
-        let rows = stmt.query_map(params![as_i64(id)], |r| Ok((as_u64(r.get::<_, i64>(0)?), r.get::<_, String>(1)?)))?;
+        let mut stmt = conn.prepare_cached(
+            "SELECT to_id, relation FROM relations WHERE from_id = ?1 ORDER BY to_id",
+        )?;
+        let rows = stmt.query_map(params![as_i64(id)], |r| {
+            Ok((as_u64(r.get::<_, i64>(0)?), r.get::<_, String>(1)?))
+        })?;
         let rels: Vec<(u64, String)> = rows.collect::<Result<Vec<_>, _>>()?;
         for (to, relation) in rels {
             if !nodes.contains_key(&to) {
@@ -135,7 +139,11 @@ pub fn close(conn: &Connection, seed: u64, cap: usize, now: i64) -> Result<Closu
                 order.push(to);
             }
             if seen_edges.insert((id, to, relation.clone())) {
-                edges.push(Edge { from: id, to, relation: relation.clone() });
+                edges.push(Edge {
+                    from: id,
+                    to,
+                    relation: relation.clone(),
+                });
             }
             // A traversable edge makes the target a member even if it was
             // already drawn as a boundary node; only a member not yet
@@ -149,11 +157,23 @@ pub fn close(conn: &Connection, seed: u64, cap: usize, now: i64) -> Result<Closu
         }
     }
 
-    let boundary: HashSet<u64> = nodes.keys().filter(|id| !members.contains(id)).copied().collect();
+    let boundary: HashSet<u64> = nodes
+        .keys()
+        .filter(|id| !members.contains(id))
+        .copied()
+        .collect();
     let root = members.iter().copied().min().unwrap_or(seed);
     let complete = !hit_cap && owed.is_empty();
     let nodes: Vec<Node> = order.iter().map(|id| nodes[id].clone()).collect();
-    Ok(Closure { root, nodes, edges, members, boundary, complete, owed })
+    Ok(Closure {
+        root,
+        nodes,
+        edges,
+        members,
+        boundary,
+        complete,
+        owed,
+    })
 }
 
 /// One node off `anilist_media`. A row that is not there at all is a node
@@ -183,7 +203,10 @@ fn load(conn: &Connection, id: u64, now: i64) -> Result<Node, CoreError> {
             },
         )
         .optional()?;
-    Ok(row.unwrap_or(Node { anilist_id: id, ..Node::default() }))
+    Ok(row.unwrap_or(Node {
+        anilist_id: id,
+        ..Node::default()
+    }))
 }
 
 #[cfg(test)]
@@ -206,7 +229,11 @@ mod tests {
 
     /// The relation of an edge, as `from->to:relation`.
     fn edges(closure: &Closure) -> Vec<String> {
-        let mut v: Vec<String> = closure.edges.iter().map(|e| format!("{}->{}:{}", e.from, e.to, e.relation)).collect();
+        let mut v: Vec<String> = closure
+            .edges
+            .iter()
+            .map(|e| format!("{}->{}:{}", e.from, e.to, e.relation))
+            .collect();
         v.sort();
         v
     }
@@ -258,7 +285,10 @@ mod tests {
 
         let g = close(&c, 10, CAP, 0).unwrap();
         assert_eq!(ids(&g), vec![5, 10, 11]);
-        assert_eq!(g.root, 10, "the root is the smallest member, not the smaller boundary id");
+        assert_eq!(
+            g.root, 10,
+            "the root is the smallest member, not the smaller boundary id"
+        );
         assert_eq!(sorted(&g.boundary), vec![5]);
     }
 
@@ -307,7 +337,10 @@ mod tests {
         let g = close(&c, 1, 2, 0).unwrap();
         assert_eq!(ids(&g), vec![1, 2]);
         assert!(!g.complete);
-        assert!(g.owed.is_empty(), "nothing owes its edges; the cap alone is why this is incomplete");
+        assert!(
+            g.owed.is_empty(),
+            "nothing owes its edges; the cap alone is why this is incomplete"
+        );
     }
 
     /// The primary key already forbids a duplicate row, so what this pins
@@ -324,7 +357,10 @@ mod tests {
 
         let g = close(&c, 1, CAP, 0).unwrap();
         assert_eq!(ids(&g), vec![1, 2]);
-        assert_eq!(edges(&g), vec!["1->2:SEQUEL".to_string(), "2->1:PREQUEL".to_string()]);
+        assert_eq!(
+            edges(&g),
+            vec!["1->2:SEQUEL".to_string(), "2->1:PREQUEL".to_string()]
+        );
     }
 
     /// A member whose edges the crawl has never taken is owed, and a
@@ -342,7 +378,11 @@ mod tests {
         let g = close(&c, 1, CAP, 0).unwrap();
         assert_eq!(g.owed, vec![2]);
         assert!(!g.complete);
-        assert_eq!(sorted(&g.boundary), vec![3], "the boundary node owes nothing: it is never expanded");
+        assert_eq!(
+            sorted(&g.boundary),
+            vec![3],
+            "the boundary node owes nothing: it is never expanded"
+        );
     }
 
     /// A deferral in the future rides along on the node so the crawl can
@@ -354,7 +394,11 @@ mod tests {
         media(&c, 1, true);
         media(&c, 2, false);
         edge(&c, 1, 2, "SEQUEL");
-        c.execute("UPDATE anilist_media SET crawl_deferred_until = 500 WHERE id = 2", []).unwrap();
+        c.execute(
+            "UPDATE anilist_media SET crawl_deferred_until = 500 WHERE id = 2",
+            [],
+        )
+        .unwrap();
 
         let g = close(&c, 1, CAP, 100).unwrap();
         let two = g.nodes.iter().find(|n| n.anilist_id == 2).unwrap();
@@ -365,7 +409,10 @@ mod tests {
 
         let g = close(&c, 1, CAP, 900).unwrap();
         let two = g.nodes.iter().find(|n| n.anilist_id == 2).unwrap();
-        assert_eq!(two.deferred_until, None, "a deferral already past is no deferral");
+        assert_eq!(
+            two.deferred_until, None,
+            "a deferral already past is no deferral"
+        );
     }
 
     /// A seed with no media row at all is still drawn, as a stub carrying
@@ -376,7 +423,13 @@ mod tests {
         let g = close(&c, 999, CAP, 0).unwrap();
         assert_eq!(ids(&g), vec![999]);
         assert_eq!(g.root, 999);
-        assert_eq!(g.nodes[0], Node { anilist_id: 999, ..Node::default() });
+        assert_eq!(
+            g.nodes[0],
+            Node {
+                anilist_id: 999,
+                ..Node::default()
+            }
+        );
         assert_eq!(g.owed, vec![999]);
         assert!(!g.complete);
     }

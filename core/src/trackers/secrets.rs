@@ -149,7 +149,9 @@ impl Secrets {
         if self.was_probed(key) {
             return false;
         }
-        let Some(store) = self.primary() else { return false };
+        let Some(store) = self.primary() else {
+            return false;
+        };
         let found = matches!(read_in(store.as_ref(), key), Ok(Some(_)));
         self.probed().insert(key.to_string());
         if found {
@@ -162,14 +164,24 @@ impl Secrets {
     /// the other, so a token written before the keyring appeared is still
     /// found. A locked or absent keyring is not this read's failure: it
     /// falls through and the file store's answer stands.
-    pub fn get(&self, key: &str, hint: Option<StoreKind>) -> Result<Option<(String, StoreKind)>, CoreError> {
+    pub fn get(
+        &self,
+        key: &str,
+        hint: Option<StoreKind>,
+    ) -> Result<Option<(String, StoreKind)>, CoreError> {
         for kind in order(hint) {
-            let Some(store) = self.store(kind) else { continue };
+            let Some(store) = self.store(kind) else {
+                continue;
+            };
             match read_in(store, key) {
                 Ok(Some(value)) => return Ok(Some((value, kind))),
                 Ok(None) => {}
-                Err(e @ (KeyringError::PlatformFailure(_) | KeyringError::NoStorageAccess(_))) if kind == StoreKind::Keyring => {
-                    tracing::debug!("keyring read of {key} failed, falling through to the file store: {e}");
+                Err(e @ (KeyringError::PlatformFailure(_) | KeyringError::NoStorageAccess(_)))
+                    if kind == StoreKind::Keyring =>
+                {
+                    tracing::debug!(
+                        "keyring read of {key} failed, falling through to the file store: {e}"
+                    );
                 }
                 Err(e) => return Err(keyring_error(key, e)),
             }
@@ -195,7 +207,9 @@ impl Secrets {
                     self.known().insert(key.to_string());
                     return Ok(StoreKind::Keyring);
                 }
-                Err(e) => tracing::debug!("keyring write of {key} failed, using the file store: {e}"),
+                Err(e) => {
+                    tracing::debug!("keyring write of {key} failed, using the file store: {e}")
+                }
             }
         }
         write_in(self.file.as_ref(), key, value).map_err(|e| keyring_error(key, e))?;
@@ -253,7 +267,9 @@ impl Secrets {
     /// The store of a kind, or `None` when this machine has no keyring.
     fn store(&self, kind: StoreKind) -> Option<&dyn CredentialStoreApi> {
         match kind {
-            StoreKind::Keyring => self.primary().map(|store| store.as_ref() as &dyn CredentialStoreApi),
+            StoreKind::Keyring => self
+                .primary()
+                .map(|store| store.as_ref() as &dyn CredentialStoreApi),
             StoreKind::File => Some(self.file.as_ref()),
         }
     }
@@ -320,7 +336,9 @@ fn clear_loser(store: &dyn CredentialStoreApi, key: &str) {
 
 /// The key never carries the secret, so it is safe in a message.
 fn keyring_error(key: &str, e: KeyringError) -> CoreError {
-    CoreError::Keyring { message: format!("{key}: {e}") }
+    CoreError::Keyring {
+        message: format!("{key}: {e}"),
+    }
 }
 
 fn platform(e: std::io::Error) -> KeyringError {
@@ -346,7 +364,11 @@ pub(crate) struct FileStore {
 
 impl FileStore {
     fn new(path: PathBuf) -> Arc<FileStore> {
-        let store = Arc::new(FileStore { path, writes: Mutex::new(()), me: OnceLock::new() });
+        let store = Arc::new(FileStore {
+            path,
+            writes: Mutex::new(()),
+            me: OnceLock::new(),
+        });
         let _ = store.me.set(Arc::downgrade(&store));
         store
     }
@@ -367,7 +389,8 @@ impl FileStore {
     fn read_all(&self) -> keyring_core::Result<BTreeMap<String, String>> {
         match std::fs::read_to_string(&self.path) {
             Ok(text) if text.trim().is_empty() => Ok(BTreeMap::new()),
-            Ok(text) => serde_json::from_str(&text).map_err(|e| KeyringError::BadStoreFormat(format!("{}: {e}", self.path.display()))),
+            Ok(text) => serde_json::from_str(&text)
+                .map_err(|e| KeyringError::BadStoreFormat(format!("{}: {e}", self.path.display()))),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(BTreeMap::new()),
             Err(e) => Err(platform(e)),
         }
@@ -376,12 +399,19 @@ impl FileStore {
     /// The whole file again, atomically: a reader either sees the file as
     /// it was or as it is, never half of a write.
     fn write_all(&self, map: &BTreeMap<String, String>) -> keyring_core::Result<()> {
-        let text = serde_json::to_string_pretty(map).map_err(|e| KeyringError::PlatformFailure(Box::new(e)))?;
+        let text = serde_json::to_string_pretty(map)
+            .map_err(|e| KeyringError::PlatformFailure(Box::new(e)))?;
         if let Some(parent) = self.path.parent() {
             std::fs::create_dir_all(parent).map_err(platform)?;
         }
         let tmp = self.tmp_path();
-        let mut file = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&tmp).map_err(platform)?;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&tmp)
+            .map_err(platform)?;
         file.write_all(text.as_bytes()).map_err(platform)?;
         file.sync_all().map_err(platform)?;
         drop(file);
@@ -394,7 +424,11 @@ impl FileStore {
     }
 
     fn tmp_path(&self) -> PathBuf {
-        let mut name = self.path.file_name().map(OsString::from).unwrap_or_else(|| OsString::from("secrets.json"));
+        let mut name = self
+            .path
+            .file_name()
+            .map(OsString::from)
+            .unwrap_or_else(|| OsString::from("secrets.json"));
         name.push(".tmp");
         self.path.with_file_name(name)
     }
@@ -415,9 +449,20 @@ impl CredentialStoreApi for FileStore {
 
     /// Modifiers are ignored: this store has none, and refusing them would
     /// only break a caller that passed one meant for another store.
-    fn build(&self, service: &str, user: &str, _modifiers: Option<&HashMap<&str, &str>>) -> keyring_core::Result<Entry> {
-        let store = self.arc().ok_or_else(|| KeyringError::PlatformFailure(Box::from("the file store is gone")))?;
-        Ok(Entry::new_with_credential(Arc::new(FileCredential { store, service: service.to_string(), user: user.to_string() })))
+    fn build(
+        &self,
+        service: &str,
+        user: &str,
+        _modifiers: Option<&HashMap<&str, &str>>,
+    ) -> keyring_core::Result<Entry> {
+        let store = self
+            .arc()
+            .ok_or_else(|| KeyringError::PlatformFailure(Box::from("the file store is gone")))?;
+        Ok(Entry::new_with_credential(Arc::new(FileCredential {
+            store,
+            service: service.to_string(),
+            user: user.to_string(),
+        })))
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -441,7 +486,8 @@ impl FileCredential {
 
 impl CredentialApi for FileCredential {
     fn set_secret(&self, secret: &[u8]) -> keyring_core::Result<()> {
-        let value = std::str::from_utf8(secret).map_err(|e| KeyringError::Invalid("secret".to_string(), e.to_string()))?;
+        let value = std::str::from_utf8(secret)
+            .map_err(|e| KeyringError::Invalid("secret".to_string(), e.to_string()))?;
         let _guard = self.store.writes.lock().unwrap_or_else(|e| e.into_inner());
         let mut map = self.store.read_all()?;
         map.insert(self.key(), value.to_string());
@@ -511,7 +557,12 @@ mod tests {
             self.inner.id()
         }
 
-        fn build(&self, service: &str, user: &str, modifiers: Option<&HashMap<&str, &str>>) -> keyring_core::Result<Entry> {
+        fn build(
+            &self,
+            service: &str,
+            user: &str,
+            modifiers: Option<&HashMap<&str, &str>>,
+        ) -> keyring_core::Result<Entry> {
             self.builds.fetch_add(1, Ordering::SeqCst);
             self.inner.build(service, user, modifiers)
         }
@@ -537,8 +588,15 @@ mod tests {
             self.inner.id()
         }
 
-        fn build(&self, service: &str, user: &str, modifiers: Option<&HashMap<&str, &str>>) -> keyring_core::Result<Entry> {
-            Ok(Entry::new_with_credential(Arc::new(LockedCredential { inner: self.inner.build(service, user, modifiers)? })))
+        fn build(
+            &self,
+            service: &str,
+            user: &str,
+            modifiers: Option<&HashMap<&str, &str>>,
+        ) -> keyring_core::Result<Entry> {
+            Ok(Entry::new_with_credential(Arc::new(LockedCredential {
+                inner: self.inner.build(service, user, modifiers)?,
+            })))
         }
 
         fn as_any(&self) -> &dyn Any {
@@ -552,7 +610,9 @@ mod tests {
 
     impl CredentialApi for LockedCredential {
         fn set_secret(&self, _secret: &[u8]) -> keyring_core::Result<()> {
-            Err(KeyringError::NoStorageAccess(Box::from("the collection is locked")))
+            Err(KeyringError::NoStorageAccess(Box::from(
+                "the collection is locked",
+            )))
         }
 
         fn get_secret(&self) -> keyring_core::Result<Vec<u8>> {
@@ -588,11 +648,24 @@ mod tests {
         let path = dir.path().join("secrets.json");
         let s = Secrets::file_only(path.clone());
         assert_eq!(s.get("anilist.access_token", None).unwrap(), None);
-        assert_eq!(s.set("anilist.access_token", "tok").unwrap(), StoreKind::File);
-        assert_eq!(s.get("anilist.access_token", Some(StoreKind::File)).unwrap(), Some(("tok".into(), StoreKind::File)));
-        assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        assert_eq!(
+            s.set("anilist.access_token", "tok").unwrap(),
+            StoreKind::File
+        );
+        assert_eq!(
+            s.get("anilist.access_token", Some(StoreKind::File))
+                .unwrap(),
+            Some(("tok".into(), StoreKind::File))
+        );
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
         s.set("anilist.access_token", "tok2").unwrap();
-        assert_eq!(s.get("anilist.access_token", None).unwrap().unwrap().0, "tok2");
+        assert_eq!(
+            s.get("anilist.access_token", None).unwrap().unwrap().0,
+            "tok2"
+        );
         s.delete("anilist.access_token").unwrap();
         assert_eq!(s.get("anilist.access_token", None).unwrap(), None);
         assert!(!dir.path().join("secrets.json.tmp").exists());
@@ -614,7 +687,11 @@ mod tests {
     fn known_keys_come_back_from_the_file_without_a_store_read() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("secrets.json");
-        std::fs::write(&path, r#"{"anibeam/anilist.client_secret": "cs", "other/thing": "x"}"#).unwrap();
+        std::fs::write(
+            &path,
+            r#"{"anibeam/anilist.client_secret": "cs", "other/thing": "x"}"#,
+        )
+        .unwrap();
         let s = Secrets::file_only(path);
         assert!(s.has("anilist.client_secret"));
         assert!(!s.has("thing"));
@@ -656,14 +733,31 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let file_path = dir.path().join("secrets.json");
         let keyring_path = dir.path().join("keyring.json");
-        write_in(FileStore::new(file_path.clone()).as_ref(), "anilist.access_token", "old").unwrap();
-        let keyring = Arc::new(CountingStore { inner: FileStore::new(keyring_path.clone()), builds: Arc::new(AtomicUsize::new(0)) });
+        write_in(
+            FileStore::new(file_path.clone()).as_ref(),
+            "anilist.access_token",
+            "old",
+        )
+        .unwrap();
+        let keyring = Arc::new(CountingStore {
+            inner: FileStore::new(keyring_path.clone()),
+            builds: Arc::new(AtomicUsize::new(0)),
+        });
         let s = with_stores(keyring, file_path.clone());
 
-        assert_eq!(s.set("anilist.access_token", "new").unwrap(), StoreKind::Keyring);
-        assert_eq!(stored(&keyring_path, "anilist.access_token"), Some("new".to_string()));
+        assert_eq!(
+            s.set("anilist.access_token", "new").unwrap(),
+            StoreKind::Keyring
+        );
+        assert_eq!(
+            stored(&keyring_path, "anilist.access_token"),
+            Some("new".to_string())
+        );
         assert_eq!(stored(&file_path, "anilist.access_token"), None);
-        assert_eq!(s.get("anilist.access_token", None).unwrap(), Some(("new".to_string(), StoreKind::Keyring)));
+        assert_eq!(
+            s.get("anilist.access_token", None).unwrap(),
+            Some(("new".to_string(), StoreKind::Keyring))
+        );
     }
 
     /// The collection is locked, so the write falls through to the file.
@@ -674,14 +768,30 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let file_path = dir.path().join("secrets.json");
         let keyring_path = dir.path().join("keyring.json");
-        write_in(FileStore::new(keyring_path.clone()).as_ref(), "anilist.access_token", "old").unwrap();
-        let keyring = Arc::new(LockedStore { inner: FileStore::new(keyring_path.clone()) });
+        write_in(
+            FileStore::new(keyring_path.clone()).as_ref(),
+            "anilist.access_token",
+            "old",
+        )
+        .unwrap();
+        let keyring = Arc::new(LockedStore {
+            inner: FileStore::new(keyring_path.clone()),
+        });
         let s = with_stores(keyring, file_path.clone());
 
-        assert_eq!(s.set("anilist.access_token", "new").unwrap(), StoreKind::File);
-        assert_eq!(stored(&file_path, "anilist.access_token"), Some("new".to_string()));
+        assert_eq!(
+            s.set("anilist.access_token", "new").unwrap(),
+            StoreKind::File
+        );
+        assert_eq!(
+            stored(&file_path, "anilist.access_token"),
+            Some("new".to_string())
+        );
         assert_eq!(stored(&keyring_path, "anilist.access_token"), None);
-        assert_eq!(s.get("anilist.access_token", None).unwrap(), Some(("new".to_string(), StoreKind::File)));
+        assert_eq!(
+            s.get("anilist.access_token", None).unwrap(),
+            Some(("new".to_string(), StoreKind::File))
+        );
     }
 
     /// A key that is not there is asked of the keyring once. Every `has`
@@ -692,9 +802,17 @@ mod tests {
     fn a_key_the_keyring_does_not_have_is_asked_for_once() {
         let dir = tempfile::tempdir().unwrap();
         let file_path = dir.path().join("secrets.json");
-        write_in(FileStore::new(file_path.clone()).as_ref(), "anilist.client_secret", "cs").unwrap();
+        write_in(
+            FileStore::new(file_path.clone()).as_ref(),
+            "anilist.client_secret",
+            "cs",
+        )
+        .unwrap();
         let builds = Arc::new(AtomicUsize::new(0));
-        let keyring = Arc::new(CountingStore { inner: FileStore::new(dir.path().join("keyring.json")), builds: builds.clone() });
+        let keyring = Arc::new(CountingStore {
+            inner: FileStore::new(dir.path().join("keyring.json")),
+            builds: builds.clone(),
+        });
         let s = with_stores(keyring, file_path);
 
         // A key the file store had at init needs no look at all.

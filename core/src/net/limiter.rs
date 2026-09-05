@@ -46,7 +46,9 @@ fn is_rate_limited(r: &HttpResponse) -> bool {
 /// The provider's own wait in seconds. A header that does not parse is
 /// ignored rather than guessed at.
 fn retry_after(r: &HttpResponse) -> Option<f64> {
-    r.header("retry-after").and_then(|s| s.trim().parse::<f64>().ok()).filter(|s| s.is_finite())
+    r.header("retry-after")
+        .and_then(|s| s.trim().parse::<f64>().ok())
+        .filter(|s| s.is_finite())
 }
 
 /// What one attempt can go wrong with. `Limited` is retried, `Transport`
@@ -118,7 +120,9 @@ impl ProviderClient {
                 match e {
                     Attempt::Limited(r) => Some(
                         retry_after(r)
-                            .map(|s| Duration::from_secs_f64(s.clamp(0.0, MAX_RETRY_DELAY.as_secs_f64())))
+                            .map(|s| {
+                                Duration::from_secs_f64(s.clamp(0.0, MAX_RETRY_DELAY.as_secs_f64()))
+                            })
                             .unwrap_or(planned),
                     ),
                     Attempt::Transport(_) => Some(planned),
@@ -151,7 +155,12 @@ mod tests {
     use std::time::Instant;
 
     fn get(url: &str) -> HttpRequest {
-        HttpRequest { method: Method::Get, url: url.into(), headers: vec![], body: None }
+        HttpRequest {
+            method: Method::Get,
+            url: url.into(),
+            headers: vec![],
+            body: None,
+        }
     }
 
     #[tokio::test]
@@ -160,12 +169,17 @@ mod tests {
         http.push(200, "a");
         http.push(200, "b");
         http.push(200, "c");
-        let client = ProviderClient::new(Upstream::Anilist, http.clone(), Duration::from_millis(120));
+        let client =
+            ProviderClient::new(Upstream::Anilist, http.clone(), Duration::from_millis(120));
         let start = Instant::now();
         for _ in 0..3 {
             client.send(get("https://x/")).await.unwrap();
         }
-        assert!(start.elapsed() >= Duration::from_millis(240), "{:?}", start.elapsed());
+        assert!(
+            start.elapsed() >= Duration::from_millis(240),
+            "{:?}",
+            start.elapsed()
+        );
     }
 
     #[tokio::test]
@@ -177,7 +191,11 @@ mod tests {
         let start = Instant::now();
         let r = client.send(get("https://x/")).await.unwrap();
         assert_eq!(r.status, 200);
-        assert!(start.elapsed() >= Duration::from_millis(900), "{:?}", start.elapsed());
+        assert!(
+            start.elapsed() >= Duration::from_millis(900),
+            "{:?}",
+            start.elapsed()
+        );
         assert_eq!(http.requests().len(), 2);
     }
 
@@ -190,7 +208,17 @@ mod tests {
         let client = ProviderClient::new(Upstream::Anilist, http.clone(), Duration::from_millis(1))
             .with_min_delay(Duration::from_millis(1));
         let err = client.send(get("https://x/")).await.err().unwrap();
-        assert!(matches!(err, CoreError::Provider { provider: Provider::Anilist, status: Some(429), .. }), "{err:?}");
+        assert!(
+            matches!(
+                err,
+                CoreError::Provider {
+                    provider: Provider::Anilist,
+                    status: Some(429),
+                    ..
+                }
+            ),
+            "{err:?}"
+        );
         assert_eq!(http.requests().len(), 7);
     }
 
@@ -198,7 +226,8 @@ mod tests {
     async fn one_attempt_exhausts_at_once_and_reports_the_upstream_as_mal() {
         let http = FakeHttp::new();
         http.push_with_headers(429, "no", vec![("Retry-After".into(), "9".into())]);
-        let client = ProviderClient::new(Upstream::Jikan, http.clone(), Duration::from_millis(1)).with_max_attempts(0);
+        let client = ProviderClient::new(Upstream::Jikan, http.clone(), Duration::from_millis(1))
+            .with_max_attempts(0);
         let err = client.send(get("https://x/")).await.err().unwrap();
         assert!(
             matches!(err, CoreError::Provider { provider: Provider::Mal, status: Some(429), retry_after: Some(w), .. } if w == 9.0),
@@ -210,11 +239,17 @@ mod tests {
     #[tokio::test]
     async fn a_429_inside_a_200_body_counts_as_rate_limited() {
         let http = FakeHttp::new();
-        http.push(200, r#"{"data":null,"errors":[{"message":"Too Many Requests.","status":429}]}"#);
+        http.push(
+            200,
+            r#"{"data":null,"errors":[{"message":"Too Many Requests.","status":429}]}"#,
+        );
         http.push(200, r#"{"data":{"Media":{"id":1}}}"#);
         let client = ProviderClient::new(Upstream::Anilist, http.clone(), Duration::from_millis(1))
             .with_min_delay(Duration::from_millis(1));
-        let r = client.send(get("https://graphql.anilist.co")).await.unwrap();
+        let r = client
+            .send(get("https://graphql.anilist.co"))
+            .await
+            .unwrap();
         assert!(String::from_utf8_lossy(&r.body).contains("Media"));
         assert_eq!(http.requests().len(), 2);
     }
@@ -229,7 +264,10 @@ mod tests {
         let http = FakeHttp::new();
         http.fail_next("connection refused");
         let client = ProviderClient::new(Upstream::Anilist, http.clone(), Duration::from_millis(1));
-        assert!(matches!(client.send(get("https://x/")).await, Err(CoreError::Provider { status: None, .. })));
+        assert!(matches!(
+            client.send(get("https://x/")).await,
+            Err(CoreError::Provider { status: None, .. })
+        ));
         assert_eq!(http.requests().len(), 1);
     }
 }

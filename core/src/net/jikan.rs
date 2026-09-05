@@ -81,7 +81,12 @@ impl JikanClient {
             let number = raw.episode as u32;
             by_number.insert(
                 number,
-                JikanEpisode { number, title: raw.title, aired: raw.aired, synopsis: raw.synopsis },
+                JikanEpisode {
+                    number,
+                    title: raw.title,
+                    aired: raw.aired,
+                    synopsis: raw.synopsis,
+                },
             );
         }
         Ok(by_number.into_values().collect())
@@ -97,7 +102,11 @@ mod tests {
     use std::time::Duration;
 
     fn client(http: Arc<FakeHttp>) -> JikanClient {
-        JikanClient::new(ProviderClient::new(Upstream::Jikan, http, Duration::from_millis(1)))
+        JikanClient::new(ProviderClient::new(
+            Upstream::Jikan,
+            http,
+            Duration::from_millis(1),
+        ))
     }
 
     #[tokio::test]
@@ -118,7 +127,10 @@ mod tests {
         assert_eq!(eps[0].aired.as_deref(), Some("2023-09-29T00:00:00+00:00"));
         assert_eq!(eps[1].number, 2);
         assert_eq!(eps[1].synopsis.as_deref(), Some("a synopsis"));
-        assert_eq!(http.requests()[0].url, "https://api.jikan.moe/v4/anime/52991/episodes");
+        assert_eq!(
+            http.requests()[0].url,
+            "https://api.jikan.moe/v4/anime/52991/episodes"
+        );
     }
 
     #[tokio::test]
@@ -130,6 +142,16 @@ mod tests {
         let http = FakeHttp::new();
         http.push(500, "boom");
         let err = client(http).episodes(1).await.err().unwrap();
-        assert!(matches!(err, CoreError::Provider { provider: Provider::Mal, status: Some(500), .. }), "{err:?}");
+        assert!(
+            matches!(
+                err,
+                CoreError::Provider {
+                    provider: Provider::Mal,
+                    status: Some(500),
+                    ..
+                }
+            ),
+            "{err:?}"
+        );
     }
 }

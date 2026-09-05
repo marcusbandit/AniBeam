@@ -26,10 +26,35 @@ fn library(core: &Core) -> Library {
     let now = anibeam_core::time::now_secs();
     let src = fixtures::insert_source(core, "/lib");
     let series = fixtures::insert_series(core, src, SeriesKind::Show, "/lib/Bebop", "Cowboy Bebop");
-    fixtures::insert_file(core, series, "/lib/Bebop/Episode 1.mkv", 1.0, None, "episode", now);
-    let ep2 = fixtures::insert_file(core, series, "/lib/Bebop/Episode 2.mkv", 2.0, None, "episode", now);
+    fixtures::insert_file(
+        core,
+        series,
+        "/lib/Bebop/Episode 1.mkv",
+        1.0,
+        None,
+        "episode",
+        now,
+    );
+    let ep2 = fixtures::insert_file(
+        core,
+        series,
+        "/lib/Bebop/Episode 2.mkv",
+        2.0,
+        None,
+        "episode",
+        now,
+    );
     let extra = fixtures::insert_file(core, series, "/lib/Bebop/OP1.mkv", 1.0, None, "extra", now);
-    fixtures::insert_media(core, 1, Some("Cowboy Bebop"), None, Some(26), "FINISHED", "TV", Some(86));
+    fixtures::insert_media(
+        core,
+        1,
+        Some("Cowboy Bebop"),
+        None,
+        Some(26),
+        "FINISHED",
+        "TV",
+        Some(86),
+    );
     fixtures::match_series(core, series, Some(1), Some(21));
     Library { series, ep2, extra }
 }
@@ -42,11 +67,21 @@ fn open(core: &Core, file: u64) -> PlaybackSession {
 }
 
 fn chapter(title: &str, start: f64) -> Chapter {
-    Chapter { title: title.to_string(), start }
+    Chapter {
+        title: title.to_string(),
+        start,
+    }
 }
 
 fn report(core: &Core, session: u64, chapters: Vec<Chapter>, duration: f64) -> u64 {
-    match core.call(Call::ReportChapters { session, chapters, duration }).unwrap() {
+    match core
+        .call(Call::ReportChapters {
+            session,
+            chapters,
+            duration,
+        })
+        .unwrap()
+    {
         Reply::Started { job } => job,
         other => panic!("{other:?}"),
     }
@@ -55,7 +90,11 @@ fn report(core: &Core, session: u64, chapters: Vec<Chapter>, duration: f64) -> u
 /// The terminal event of the SkipWindows job `job`, waited for.
 fn ready(c: &Collector, job: u64) -> Event {
     let e = common::wait_job(c, job);
-    assert!(matches!(e.body, EventBody::SkipWindowsReady { .. }), "{:?}", e.body);
+    assert!(
+        matches!(e.body, EventBody::SkipWindowsReady { .. }),
+        "{:?}",
+        e.body
+    );
     e
 }
 
@@ -85,7 +124,9 @@ fn cache_row(core: &Core, series: u64, key: &str) -> Option<(String, String)> {
 fn completed_keys(core: &Core, series: u64) -> Vec<String> {
     core.store()
         .read(|c| {
-            let mut stmt = c.prepare("SELECT episode_key FROM completed WHERE series_id = ?1 ORDER BY episode_key")?;
+            let mut stmt = c.prepare(
+                "SELECT episode_key FROM completed WHERE series_id = ?1 ORDER BY episode_key",
+            )?;
             let rows = stmt.query_map([series as i64], |r| r.get::<_, String>(0))?;
             Ok(rows.collect::<Result<Vec<_>, _>>()?)
         })
@@ -111,8 +152,18 @@ fn chapters_answer_without_a_request_and_cache_themselves() {
     assert_eq!(
         windows_of(&e),
         vec![
-            SkipWindow { kind: SkipKind::Intro, start: 0.0, end: 90.0, source: SkipSource::Chapters },
-            SkipWindow { kind: SkipKind::Outro, start: 1300.0, end: 1390.0, source: SkipSource::Chapters },
+            SkipWindow {
+                kind: SkipKind::Intro,
+                start: 0.0,
+                end: 90.0,
+                source: SkipSource::Chapters
+            },
+            SkipWindow {
+                kind: SkipKind::Outro,
+                start: 1300.0,
+                end: 1390.0,
+                source: SkipSource::Chapters
+            },
         ]
     );
     assert_eq!(e.message, "skip windows: intro, outro");
@@ -121,15 +172,33 @@ fn chapters_answer_without_a_request_and_cache_themselves() {
 
     let (json, source) = cache_row(&core, lib.series, "2").expect("the chapters answer is cached");
     assert_eq!(source, "chapters");
-    assert_eq!(serde_json::from_str::<Vec<SkipWindow>>(&json).unwrap(), windows_of(&e));
+    assert_eq!(
+        serde_json::from_str::<Vec<SkipWindow>>(&json).unwrap(),
+        windows_of(&e)
+    );
 
     // The call's own arguments are the only thing it fails on.
     assert_eq!(
-        core.call(Call::ReportChapters { session: 9999, chapters: vec![], duration: 1400.0 }).unwrap_err(),
-        CoreError::NotFound { what: Entity::Session, id: 9999 }
+        core.call(Call::ReportChapters {
+            session: 9999,
+            chapters: vec![],
+            duration: 1400.0
+        })
+        .unwrap_err(),
+        CoreError::NotFound {
+            what: Entity::Session,
+            id: 9999
+        }
     );
     for duration in [0.0, -3.0, f64::NAN] {
-        match core.call(Call::ReportChapters { session: s.session, chapters: vec![], duration }).unwrap_err() {
+        match core
+            .call(Call::ReportChapters {
+                session: s.session,
+                chapters: vec![],
+                duration,
+            })
+            .unwrap_err()
+        {
             CoreError::Invalid { field, .. } => assert_eq!(field, "duration"),
             other => panic!("{other:?}"),
         }
@@ -157,8 +226,18 @@ fn aniskip_answers_when_the_file_has_no_chapters_and_its_outro_completes_the_epi
     assert_eq!(
         windows_of(&e),
         vec![
-            SkipWindow { kind: SkipKind::Intro, start: 85.0, end: 175.0, source: SkipSource::AniSkip },
-            SkipWindow { kind: SkipKind::Outro, start: 1320.0, end: 1410.0, source: SkipSource::AniSkip },
+            SkipWindow {
+                kind: SkipKind::Intro,
+                start: 85.0,
+                end: 175.0,
+                source: SkipSource::AniSkip
+            },
+            SkipWindow {
+                kind: SkipKind::Outro,
+                start: 1320.0,
+                end: 1410.0,
+                source: SkipSource::AniSkip
+            },
         ]
     );
     assert_eq!(e.message, "skip windows: intro, outro");
@@ -168,11 +247,22 @@ fn aniskip_answers_when_the_file_has_no_chapters_and_its_outro_completes_the_epi
         requests[0].url,
         "https://api.aniskip.com/v2/skip-times/21/2?types[]=op&types[]=ed&episodeLength=1440"
     );
-    assert_eq!(cache_row(&core, lib.series, "2").map(|(_, source)| source), Some("aniskip".to_string()));
+    assert_eq!(
+        cache_row(&core, lib.series, "2").map(|(_, source)| source),
+        Some("aniskip".to_string())
+    );
 
     // The outro is the earlier of the two completion lines: 1320 is inside
     // it but nowhere near the last thirty seconds of 1440.
-    assert_eq!(core.call(Call::Tick { session: s.session, position: 1320.0, paused: false }).unwrap(), Reply::Ok);
+    assert_eq!(
+        core.call(Call::Tick {
+            session: s.session,
+            position: 1320.0,
+            paused: false
+        })
+        .unwrap(),
+        Reply::Ok
+    );
     assert_eq!(completed_keys(&core, lib.series), vec!["2".to_string()]);
     let cleared = common::wait_for(
         &c,
@@ -198,7 +288,10 @@ fn a_miss_is_cached_and_the_next_session_sends_no_request() {
     let e = ready(&c, report(&core, s.session, vec![], 1400.0));
     assert!(windows_of(&e).is_empty(), "{:?}", windows_of(&e));
     assert_eq!(e.message, "skip windows: none");
-    assert_eq!(cache_row(&core, lib.series, "2"), Some(("[]".to_string(), "none".to_string())));
+    assert_eq!(
+        cache_row(&core, lib.series, "2"),
+        Some(("[]".to_string(), "none".to_string()))
+    );
     assert_eq!(http.requests().len(), 1);
 
     let again = ready(&c, report(&core, s.session, vec![], 1400.0));
@@ -230,11 +323,19 @@ fn a_miss_older_than_the_retry_window_is_asked_about_again() {
     let e = ready(&c, report(&core, s.session, vec![], 1400.0));
     assert_eq!(
         windows_of(&e),
-        vec![SkipWindow { kind: SkipKind::Intro, start: 0.0, end: 90.0, source: SkipSource::AniSkip }]
+        vec![SkipWindow {
+            kind: SkipKind::Intro,
+            start: 0.0,
+            end: 90.0,
+            source: SkipSource::AniSkip
+        }]
     );
     assert_eq!(e.message, "skip windows: intro");
     assert_eq!(http.requests().len(), 2);
-    assert_eq!(cache_row(&core, lib.series, "2").map(|(_, source)| source), Some("aniskip".to_string()));
+    assert_eq!(
+        cache_row(&core, lib.series, "2").map(|(_, source)| source),
+        Some("aniskip".to_string())
+    );
 }
 
 /// (5) An extra has no episode number, so AniSkip has nothing to be asked
@@ -253,11 +354,27 @@ fn an_extra_uses_its_chapters_alone() {
     assert_eq!(cache_row(&core, lib.series, "OP1.mkv"), None);
 
     // Its own chapters still answer, and those are cached like any other.
-    let e = ready(&c, report(&core, s.session, vec![chapter("Opening", 0.0), chapter("Part A", 60.0)], 90.0));
+    let e = ready(
+        &c,
+        report(
+            &core,
+            s.session,
+            vec![chapter("Opening", 0.0), chapter("Part A", 60.0)],
+            90.0,
+        ),
+    );
     assert_eq!(
         windows_of(&e),
-        vec![SkipWindow { kind: SkipKind::Intro, start: 0.0, end: 60.0, source: SkipSource::Chapters }]
+        vec![SkipWindow {
+            kind: SkipKind::Intro,
+            start: 0.0,
+            end: 60.0,
+            source: SkipSource::Chapters
+        }]
     );
     assert!(http.requests().is_empty(), "{:?}", http.requests());
-    assert_eq!(cache_row(&core, lib.series, "OP1.mkv").map(|(_, source)| source), Some("chapters".to_string()));
+    assert_eq!(
+        cache_row(&core, lib.series, "OP1.mkv").map(|(_, source)| source),
+        Some("chapters".to_string())
+    );
 }

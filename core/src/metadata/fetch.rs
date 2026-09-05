@@ -9,7 +9,7 @@
 //! last and are waited for, so by the time the job reports the match the
 //! record draws correctly with the network unplugged.
 
-use rusqlite::{params, Transaction};
+use rusqlite::{Transaction, params};
 
 use crate::contract::{CoreError, Provider};
 use crate::core::Core;
@@ -70,7 +70,12 @@ pub async fn fetch_and_write(
     let write = record::build(&media, Some(&enrichment));
     let titles = record::streaming_titles(&enrichment.streaming_episodes);
     let episodes = record::merge_episodes(Some(&schedule), &titles, &jikan);
-    let raw = record::raw_bundle(media_raw.as_ref(), Some(&enrichment_raw), Some(&schedule_raw), None);
+    let raw = record::raw_bundle(
+        media_raw.as_ref(),
+        Some(&enrichment_raw),
+        Some(&schedule_raw),
+        None,
+    );
     let urls = record::image_urls(&write);
     let row_mal_id = write.mal_id;
 
@@ -79,9 +84,20 @@ pub async fn fetch_and_write(
             record::write_media(tx, &write, &raw, now)?;
             // The schedule was just fetched, so the airing refresh has
             // nothing left to owe this row either.
-            tx.execute("UPDATE anilist_media SET airing_refreshed_at = ?2 WHERE id = ?1", params![as_i64(anilist_id), now])?;
+            tx.execute(
+                "UPDATE anilist_media SET airing_refreshed_at = ?2 WHERE id = ?1",
+                params![as_i64(anilist_id), now],
+            )?;
             record::write_episodes(tx, anilist_id, &episodes, false, now)?;
-            write_match_only(tx, series, Provider::Anilist, Some(anilist_id), row_mal_id, confirmed, now)
+            write_match_only(
+                tx,
+                series,
+                Provider::Anilist,
+                Some(anilist_id),
+                row_mal_id,
+                confirmed,
+                now,
+            )
         })
         .await?;
 

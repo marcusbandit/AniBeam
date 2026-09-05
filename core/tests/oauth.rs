@@ -23,7 +23,10 @@ fn http_get(port: u16, path: &str) -> String {
 fn ready_url(c: &anibeam_core::events::Collector, job: u64) -> String {
     let ready = common::wait_for(
         c,
-        |e| matches!(e.body, EventBody::AuthUrlReady { .. }) && e.job.as_ref().is_some_and(|j| j.id == job),
+        |e| {
+            matches!(e.body, EventBody::AuthUrlReady { .. })
+                && e.job.as_ref().is_some_and(|j| j.id == job)
+        },
         Duration::from_secs(5),
     );
     match ready.body {
@@ -42,7 +45,13 @@ fn started(reply: Reply) -> u64 {
 /// The value of one query parameter of an authorize url.
 fn param(url: &str, name: &str) -> String {
     let needle = format!("{name}=");
-    url.split(&needle).nth(1).unwrap().split('&').next().unwrap().to_string()
+    url.split(&needle)
+        .nth(1)
+        .unwrap()
+        .split('&')
+        .next()
+        .unwrap()
+        .to_string()
 }
 
 #[test]
@@ -50,9 +59,16 @@ fn anilist_implicit_grant_through_the_forwarder_connects() {
     let http = anibeam_core::net::FakeHttp::new();
     let (_dir, core, c) = common::open_core_with_http(http.clone());
     core.set_oauth_port(53690);
-    core.call(Call::SetTrackerCredentials { tracker: Tracker::Anilist, client_id: "123".into(), client_secret: None })
-        .unwrap();
-    http.push_json(200, serde_json::json!({ "data": { "Viewer": { "id": 42, "name": "bandit" } } }));
+    core.call(Call::SetTrackerCredentials {
+        tracker: Tracker::Anilist,
+        client_id: "123".into(),
+        client_secret: None,
+    })
+    .unwrap();
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "Viewer": { "id": 42, "name": "bandit" } } }),
+    );
     // The list the connection just gave access to: a finished connect
     // starts a forced refresh of its own, and this is what it reads.
     http.push_json(
@@ -61,15 +77,30 @@ fn anilist_implicit_grant_through_the_forwarder_connects() {
             { "entries": [{ "progress": 5, "status": "CURRENT", "score": 8.5, "repeat": 0, "media": { "id": 154587 } }] }
         ] } } }),
     );
-    let job = started(core.call(Call::ConnectTracker { tracker: Tracker::Anilist }).unwrap());
+    let job = started(
+        core.call(Call::ConnectTracker {
+            tracker: Tracker::Anilist,
+        })
+        .unwrap(),
+    );
     let ready = common::wait_for(
         &c,
-        |e| matches!(e.body, EventBody::AuthUrlReady { .. }) && e.job.as_ref().is_some_and(|j| j.id == job),
+        |e| {
+            matches!(e.body, EventBody::AuthUrlReady { .. })
+                && e.job.as_ref().is_some_and(|j| j.id == job)
+        },
         Duration::from_secs(5),
     );
     match ready.body {
-        EventBody::AuthUrlReady { open_url, redirect_url, .. } => {
-            assert_eq!(open_url, "https://anilist.co/api/v2/oauth/authorize?client_id=123&response_type=token");
+        EventBody::AuthUrlReady {
+            open_url,
+            redirect_url,
+            ..
+        } => {
+            assert_eq!(
+                open_url,
+                "https://anilist.co/api/v2/oauth/authorize?client_id=123&response_type=token"
+            );
             assert_eq!(redirect_url, "http://127.0.0.1:53690/callback");
         }
         other => panic!("{other:?}"),
@@ -82,10 +113,15 @@ fn anilist_implicit_grant_through_the_forwarder_connects() {
         Reply::Events { events } => {
             for event in &events {
                 let json = serde_json::to_string(event).unwrap();
-                assert!(!json.contains("response_type"), "an authorize url was persisted: {json}");
+                assert!(
+                    !json.contains("response_type"),
+                    "an authorize url was persisted: {json}"
+                );
             }
             assert!(
-                events.iter().any(|e| e.message == "AniList sign-in: waiting for the browser"),
+                events
+                    .iter()
+                    .any(|e| e.message == "AniList sign-in: waiting for the browser"),
                 "{events:#?}"
             );
         }
@@ -97,7 +133,10 @@ fn anilist_implicit_grant_through_the_forwarder_connects() {
     // first hit is answered with the page that re-issues it as a query.
     let first = http_get(53690, "/callback");
     assert!(first.contains("window.location.hash"), "{first}");
-    let second = http_get(53690, "/callback?access_token=tok&expires_in=3600&token_type=Bearer");
+    let second = http_get(
+        53690,
+        "/callback?access_token=tok&expires_in=3600&token_type=Bearer",
+    );
     assert!(second.contains("AniList connected"), "{second}");
 
     let done = common::wait_job(&c, job);
@@ -116,17 +155,36 @@ fn anilist_implicit_grant_through_the_forwarder_connects() {
         other => panic!("{other:?}"),
     }
     let viewer = &http.requests()[0];
-    assert!(viewer.headers.iter().any(|(k, v)| k == "Authorization" && v == "Bearer tok"), "{viewer:?}");
+    assert!(
+        viewer
+            .headers
+            .iter()
+            .any(|(k, v)| k == "Authorization" && v == "Bearer tok"),
+        "{viewer:?}"
+    );
 
     // The connect ends with a forced progress refresh, so the account's
     // list is cached before any page asks for a number.
     common::wait_for(
         &c,
-        |e| matches!(e.body, EventBody::ProgressRefreshed { tracker: Tracker::Anilist }),
+        |e| {
+            matches!(
+                e.body,
+                EventBody::ProgressRefreshed {
+                    tracker: Tracker::Anilist
+                }
+            )
+        },
         Duration::from_secs(5),
     );
 
-    assert!(matches!(core.call(Call::DisconnectTracker { tracker: Tracker::Anilist }).unwrap(), Reply::Ok));
+    assert!(matches!(
+        core.call(Call::DisconnectTracker {
+            tracker: Tracker::Anilist
+        })
+        .unwrap(),
+        Reply::Ok
+    ));
     match core.call(Call::GetTrackers).unwrap() {
         Reply::Trackers { state } => {
             assert!(!state.anilist.connected);
@@ -155,7 +213,11 @@ fn mal_pkce_flow_checks_state_and_exchanges_the_code() {
         200,
         serde_json::json!({ "access_token": "mtok", "refresh_token": "mref", "expires_in": 2_415_600 }).to_string(),
     );
-    http.push_for("users/@me", 200, serde_json::json!({ "id": 7, "name": "bandit" }).to_string());
+    http.push_for(
+        "users/@me",
+        200,
+        serde_json::json!({ "id": 7, "name": "bandit" }).to_string(),
+    );
     // The forced refresh the connect ends with. Matched on the list path,
     // since `myanimelist.net` carries `animelist` in the host itself.
     http.push_for(
@@ -165,7 +227,12 @@ fn mal_pkce_flow_checks_state_and_exchanges_the_code() {
             .to_string(),
     );
 
-    let job = started(core.call(Call::ConnectTracker { tracker: Tracker::Mal }).unwrap());
+    let job = started(
+        core.call(Call::ConnectTracker {
+            tracker: Tracker::Mal,
+        })
+        .unwrap(),
+    );
     let open_url = ready_url(&c, job);
     assert!(
         open_url.starts_with(
@@ -173,31 +240,64 @@ fn mal_pkce_flow_checks_state_and_exchanges_the_code() {
         ),
         "{open_url}"
     );
-    assert!(open_url.contains("&code_challenge_method=plain"), "{open_url}");
+    assert!(
+        open_url.contains("&code_challenge_method=plain"),
+        "{open_url}"
+    );
 
     // A state that is not the one sent is a CSRF attempt, not a callback.
     let bad = http_get(53691, "/callback?code=abc&state=wrong");
     assert!(bad.contains("state mismatch"), "{bad}");
     let failed = common::wait_job(&c, job);
-    assert!(matches!(failed.body, EventBody::JobFailed { .. }), "{failed:?}");
+    assert!(
+        matches!(failed.body, EventBody::JobFailed { .. }),
+        "{failed:?}"
+    );
 
-    let job = started(core.call(Call::ConnectTracker { tracker: Tracker::Mal }).unwrap());
+    let job = started(
+        core.call(Call::ConnectTracker {
+            tracker: Tracker::Mal,
+        })
+        .unwrap(),
+    );
     let open_url = ready_url(&c, job);
     let state = param(&open_url, "state");
     let verifier = param(&open_url, "code_challenge");
     let ok = http_get(53691, &format!("/callback?code=abc&state={state}"));
     assert!(ok.contains("MyAnimeList connected"), "{ok}");
     let done = common::wait_job(&c, job);
-    assert!(matches!(done.body, EventBody::TrackerConnected { tracker: Tracker::Mal, .. }), "{done:?}");
+    assert!(
+        matches!(
+            done.body,
+            EventBody::TrackerConnected {
+                tracker: Tracker::Mal,
+                ..
+            }
+        ),
+        "{done:?}"
+    );
 
-    let exchange = http.requests().into_iter().find(|r| r.url.contains("oauth2/token")).unwrap();
+    let exchange = http
+        .requests()
+        .into_iter()
+        .find(|r| r.url.contains("oauth2/token"))
+        .unwrap();
     match exchange.body {
         Some(anibeam_core::net::Body::Form(f)) => {
             assert!(f.contains(&("code_verifier".into(), verifier)), "{f:?}");
             assert!(f.contains(&("code".into(), "abc".into())), "{f:?}");
-            assert!(f.contains(&("grant_type".into(), "authorization_code".into())), "{f:?}");
+            assert!(
+                f.contains(&("grant_type".into(), "authorization_code".into())),
+                "{f:?}"
+            );
             assert!(f.contains(&("client_secret".into(), "sec".into())), "{f:?}");
-            assert!(f.contains(&("redirect_uri".into(), "http://127.0.0.1:53691/callback".into())), "{f:?}");
+            assert!(
+                f.contains(&(
+                    "redirect_uri".into(),
+                    "http://127.0.0.1:53691/callback".into()
+                )),
+                "{f:?}"
+            );
         }
         other => panic!("{other:?}"),
     }
@@ -209,5 +309,16 @@ fn mal_pkce_flow_checks_state_and_exchanges_the_code() {
         }
         other => panic!("{other:?}"),
     }
-    common::wait_for(&c, |e| matches!(e.body, EventBody::ProgressRefreshed { tracker: Tracker::Mal }), Duration::from_secs(5));
+    common::wait_for(
+        &c,
+        |e| {
+            matches!(
+                e.body,
+                EventBody::ProgressRefreshed {
+                    tracker: Tracker::Mal
+                }
+            )
+        },
+        Duration::from_secs(5),
+    );
 }

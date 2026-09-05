@@ -17,7 +17,7 @@
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use rusqlite::{params, params_from_iter, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 
 use crate::contract::*;
 use crate::core::Core;
@@ -52,7 +52,11 @@ const RESULTS: u32 = 10;
 pub fn pick<'a>(query: &str, results: &'a [Media]) -> Option<(&'a Media, f64)> {
     let mut best: Option<(&Media, f64)> = None;
     for r in results {
-        let mut titles: Vec<Option<&str>> = vec![r.title.romaji.as_deref(), r.title.english.as_deref(), r.title.native.as_deref()];
+        let mut titles: Vec<Option<&str>> = vec![
+            r.title.romaji.as_deref(),
+            r.title.english.as_deref(),
+            r.title.native.as_deref(),
+        ];
         titles.extend(r.synonyms.iter().map(|s| Some(s.as_str())));
         let score = best_title_score(query, &titles);
         // Strict, so a tie keeps the earlier and more relevant result.
@@ -64,13 +68,20 @@ pub fn pick<'a>(query: &str, results: &'a [Media]) -> Option<(&'a Media, f64)> {
     if score < THRESHOLD {
         return None;
     }
-    let cover = m.cover_image.as_ref().and_then(|c| c.extra_large.clone().or_else(|| c.large.clone()));
+    let cover = m
+        .cover_image
+        .as_ref()
+        .and_then(|c| c.extra_large.clone().or_else(|| c.large.clone()));
     cover.map(|_| (m, score))
 }
 
 /// The title a log line names the match by.
 fn matched_title(m: &Media) -> String {
-    m.title.romaji.clone().or_else(|| m.title.english.clone()).unwrap_or_else(|| "?".to_string())
+    m.title
+        .romaji
+        .clone()
+        .or_else(|| m.title.english.clone())
+        .unwrap_or_else(|| "?".to_string())
 }
 
 /// Marks a series as being matched right now for as long as this lives.
@@ -159,13 +170,23 @@ struct Hit {
 /// One series: the search, the pick, and, on a hit, the whole record.
 async fn attempt(core: &Core, series: u64, folder: &str) -> Result<Option<Hit>, CoreError> {
     let results = core.anilist.search(folder, RESULTS).await?;
-    let Some((media, score)) = pick(folder, &results) else { return Ok(None) };
+    let Some((media, score)) = pick(folder, &results) else {
+        return Ok(None);
+    };
     let title = matched_title(media);
     let anilist_id = media.id;
     let media = media.clone();
     // An auto-match is never confirmed: the user has not seen it, and only
     // their own pick or an import earns that flag.
-    fetch::fetch_and_write(core, series, anilist_id, Some(media), false, time::now_secs()).await?;
+    fetch::fetch_and_write(
+        core,
+        series,
+        anilist_id,
+        Some(media),
+        false,
+        time::now_secs(),
+    )
+    .await?;
     Ok(Some(Hit { score, title }))
 }
 
@@ -306,12 +327,21 @@ pub fn clear_match(core: &Core, series: u64) -> Result<Reply, CoreError> {
         )?)
     })?;
     if changed == 0 {
-        return Err(CoreError::NotFound { what: Entity::Series, id: series });
+        return Err(CoreError::NotFound {
+            what: Entity::Series,
+            id: series,
+        });
     }
     let images_dir = core.paths.images_dir();
-    let cards = core.store.read(|c| cards::cards_for(c, &images_dir, &[series]))?;
+    let cards = core
+        .store
+        .read(|c| cards::cards_for(c, &images_dir, &[series]))?;
     let title = cards.first().map_or_else(String::new, |c| c.title.clone());
-    core.bus.debug(Stage::Metadata, format!("match cleared: {title}"), EventBody::SeriesChanged { series: cards });
+    core.bus.debug(
+        Stage::Metadata,
+        format!("match cleared: {title}"),
+        EventBody::SeriesChanged { series: cards },
+    );
     Ok(Reply::Ok)
 }
 
@@ -323,8 +353,14 @@ mod tests {
     fn media(id: u64, romaji: &str, cover: bool) -> Media {
         Media {
             id,
-            title: Title { romaji: Some(romaji.to_string()), ..Default::default() },
-            cover_image: cover.then(|| CoverImage { large: None, extra_large: Some(format!("https://img/{id}.jpg")) }),
+            title: Title {
+                romaji: Some(romaji.to_string()),
+                ..Default::default()
+            },
+            cover_image: cover.then(|| CoverImage {
+                large: None,
+                extra_large: Some(format!("https://img/{id}.jpg")),
+            }),
             ..Default::default()
         }
     }
@@ -335,7 +371,11 @@ mod tests {
     fn pick_takes_the_best_over_the_threshold_and_needs_a_cover() {
         let query = "one two three four";
         // 0.4, 0.75 with no cover, 0.5 with one.
-        let results = vec![media(1, "one alpha beta gamma", true), media(2, "one two three zzz", false), media(3, "one two yy zz", true)];
+        let results = vec![
+            media(1, "one alpha beta gamma", true),
+            media(2, "one two three zzz", false),
+            media(3, "one two yy zz", true),
+        ];
         // Electron's order: the best-scoring candidate is chosen first and
         // then has to have a cover, so the coverless winner is not replaced
         // by the runner-up.
@@ -343,13 +383,19 @@ mod tests {
 
         // With a cover on it, that same best candidate wins.
         let mut with_cover = results.clone();
-        with_cover[1].cover_image = Some(CoverImage { large: Some("https://img/2.jpg".into()), extra_large: None });
+        with_cover[1].cover_image = Some(CoverImage {
+            large: Some("https://img/2.jpg".into()),
+            extra_large: None,
+        });
         let (m, score) = pick(query, &with_cover).unwrap();
         assert_eq!(m.id, 2);
         assert!((score - 0.75).abs() < 1e-9, "{score}");
 
         // A tie keeps the earlier result: strict `>` never displaces it.
-        let tie = vec![media(4, "one two yy zz", true), media(5, "one two aa bb", true)];
+        let tie = vec![
+            media(4, "one two yy zz", true),
+            media(5, "one two aa bb", true),
+        ];
         assert_eq!(pick(query, &tie).unwrap().0.id, 4);
 
         // Nothing clears the bar.
@@ -363,9 +409,15 @@ mod tests {
     fn a_synonym_can_win_the_match() {
         let m = Media {
             id: 1,
-            title: Title { romaji: Some("Sousou no Frieren".into()), ..Default::default() },
+            title: Title {
+                romaji: Some("Sousou no Frieren".into()),
+                ..Default::default()
+            },
             synonyms: vec!["Frieren at the Funeral".into()],
-            cover_image: Some(CoverImage { large: Some("https://img/1.jpg".into()), extra_large: None }),
+            cover_image: Some(CoverImage {
+                large: Some("https://img/1.jpg".into()),
+                extra_large: None,
+            }),
             ..Default::default()
         };
         let (picked, score) = pick("Frieren at the Funeral", std::slice::from_ref(&m)).unwrap();

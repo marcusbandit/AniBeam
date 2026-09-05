@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::time::SystemTime;
 
-use rusqlite::{params_from_iter, Connection};
+use rusqlite::{Connection, params_from_iter};
 use serde_json::Value;
 
 use crate::contract::*;
@@ -63,7 +63,11 @@ pub fn strip(
 
     let extent = released.max(watched.unwrap_or(0));
     if extent == 0 {
-        return Strip { watched: 0.0, aired_unwatched: 0.0, unknown: 0.0 };
+        return Strip {
+            watched: 0.0,
+            aired_unwatched: 0.0,
+            unknown: 0.0,
+        };
     }
     let usable = 1.0 - UNKNOWN_TAIL;
     let pct = |n: u32| (f64::from(n) / f64::from(extent) * usable).clamp(0.0, usable);
@@ -77,8 +81,15 @@ pub fn strip(
 /// The port of `classifyWatchProgress`. Reachable is the highest episode
 /// that could be played today: the later of the latest aired one and the
 /// latest one on disk, because plenty of shows carry no air dates at all.
-pub fn watched_state(watched: Option<u32>, total: Option<u32>, latest_aired: u32, latest_downloaded: u32) -> WatchedState {
-    let Some(w) = watched else { return WatchedState::Unknown };
+pub fn watched_state(
+    watched: Option<u32>,
+    total: Option<u32>,
+    latest_aired: u32,
+    latest_downloaded: u32,
+) -> WatchedState {
+    let Some(w) = watched else {
+        return WatchedState::Unknown;
+    };
     let known_total = total.filter(|t| *t > 0);
     if known_total.is_some_and(|t| w >= t) {
         return WatchedState::CaughtUp;
@@ -95,7 +106,11 @@ pub fn watched_state(watched: Option<u32>, total: Option<u32>, latest_aired: u32
 
 /// The known total, else the aired estimate (the later of aired and
 /// watched) marked as one. The port of `formatWatchedLabel`'s denominator.
-pub fn total_with_estimate(total: Option<u32>, latest_aired: u32, watched: Option<u32>) -> (Option<u32>, bool) {
+pub fn total_with_estimate(
+    total: Option<u32>,
+    latest_aired: u32,
+    watched: Option<u32>,
+) -> (Option<u32>, bool) {
     if let Some(t) = total.filter(|t| *t > 0) {
         return (Some(t), false);
     }
@@ -109,8 +124,14 @@ pub fn total_with_estimate(total: Option<u32>, latest_aired: u32, watched: Optio
 /// most recently completed episode's number. With something watched, the
 /// episode after it; with nothing watched, the first one on disk, above zero
 /// when a tracker entry says the series has been started at all.
-pub fn next_up(episodes: &[(u64, f64)], last_completed: Option<f64>, tracker_progress: Option<u32>) -> Option<u64> {
-    let last = last_completed.unwrap_or(0.0).max(f64::from(tracker_progress.unwrap_or(0)));
+pub fn next_up(
+    episodes: &[(u64, f64)],
+    last_completed: Option<f64>,
+    tracker_progress: Option<u32>,
+) -> Option<u64> {
+    let last = last_completed
+        .unwrap_or(0.0)
+        .max(f64::from(tracker_progress.unwrap_or(0)));
     if last > 0.0 {
         return episodes
             .iter()
@@ -244,7 +265,10 @@ fn ids_as_i64(ids: &[u64]) -> Vec<i64> {
 
 fn json_strings(raw: &str) -> Vec<String> {
     match serde_json::from_str::<Value>(raw) {
-        Ok(Value::Array(a)) => a.into_iter().filter_map(|v| v.as_str().map(str::to_string)).collect(),
+        Ok(Value::Array(a)) => a
+            .into_iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect(),
         _ => Vec::new(),
     }
 }
@@ -270,7 +294,12 @@ fn sidecars_of(raw: &str) -> Vec<Sidecar> {
 impl Snapshot {
     /// Loads the whole library with `scope` None, or exactly the named
     /// series with `scope` Some. An empty scope loads nothing at all.
-    pub fn load(conn: &Connection, images_dir: &Path, now: SystemTime, scope: Option<&[u64]>) -> Result<Snapshot, CoreError> {
+    pub fn load(
+        conn: &Connection,
+        images_dir: &Path,
+        now: SystemTime,
+        scope: Option<&[u64]>,
+    ) -> Result<Snapshot, CoreError> {
         let mut snap = Snapshot {
             now,
             lang: prefs::load_preferences(conn)?.title_language,
@@ -311,7 +340,12 @@ impl Snapshot {
         Ok(snap)
     }
 
-    fn load_series(&mut self, conn: &Connection, scope: Option<&[u64]>, images_dir: &Path) -> Result<(), CoreError> {
+    fn load_series(
+        &mut self,
+        conn: &Connection,
+        scope: Option<&[u64]>,
+        images_dir: &Path,
+    ) -> Result<(), CoreError> {
         let where_sql = match scope {
             Some(ids) => format!(" WHERE s.id IN ({})", placeholders(ids.len())),
             None => String::new(),
@@ -329,7 +363,9 @@ impl Snapshot {
              {where_sql}
              ORDER BY s.id"
         );
-        let local = |relative: Option<String>| relative.map(|p| images_dir.join(p).to_string_lossy().into_owned());
+        let local = |relative: Option<String>| {
+            relative.map(|p| images_dir.join(p).to_string_lossy().into_owned())
+        };
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map(params_from_iter(ids_as_i64(scope.unwrap_or(&[]))), |r| {
             let id: i64 = r.get(0)?;
@@ -368,11 +404,15 @@ impl Snapshot {
                 hidden: r.get::<_, i64>(5)? != 0,
                 missing: r.get::<_, Option<i64>>(6)?.is_some(),
                 added_at: r.get(7)?,
-                provider: r.get::<_, Option<String>>(8)?.and_then(|s| Provider::from_column(&s)),
+                provider: r
+                    .get::<_, Option<String>>(8)?
+                    .and_then(|s| Provider::from_column(&s)),
                 anilist_id: r.get::<_, Option<i64>>(9)?.map(|v| v as u64),
                 mal_id: r.get::<_, Option<i64>>(10)?.map(|v| v as u64),
                 tmdb_id: r.get::<_, Option<i64>>(11)?.map(|v| v as u64),
-                tmdb_kind: r.get::<_, Option<String>>(12)?.and_then(|s| TmdbKind::from_column(&s)),
+                tmdb_kind: r
+                    .get::<_, Option<String>>(12)?
+                    .and_then(|s| TmdbKind::from_column(&s)),
                 confirmed: r.get::<_, i64>(13)? != 0,
                 track_choice: r.get(14)?,
                 media,
@@ -385,7 +425,9 @@ impl Snapshot {
                 // The LEFT JOIN above already answered this: a cover the
                 // series names with no path beside it is an image nobody
                 // has fetched yet.
-                if row.poster_path.is_none() && row.media.as_ref().is_some_and(|m| m.cover_url.is_some()) {
+                if row.poster_path.is_none()
+                    && row.media.as_ref().is_some_and(|m| m.cover_url.is_some())
+                {
                     self.gaps.push(row.id);
                 }
                 self.index.insert(row.id, self.series.len());
@@ -418,7 +460,9 @@ impl Snapshot {
                 is_episode: kind != "extra",
                 number: r.get::<_, Option<f64>>(5)?.unwrap_or(0.0),
                 season: r.get::<_, Option<i64>>(6)?.map(|v| v as u32),
-                extra_kind: r.get::<_, Option<String>>(7)?.and_then(|s| ExtraKind::from_column(&s)),
+                extra_kind: r
+                    .get::<_, Option<String>>(7)?
+                    .and_then(|s| ExtraKind::from_column(&s)),
                 extra_index: r.get::<_, Option<i64>>(8)?.map(|v| v as u32),
                 label: r.get(9)?,
                 episode_key: r.get(10)?,
@@ -438,14 +482,21 @@ impl Snapshot {
         }
         let where_sql = match scope {
             Some(ids) => format!("anilist_id IN ({})", placeholders(ids.len())),
-            None => "anilist_id IN (SELECT anilist_id FROM series WHERE anilist_id IS NOT NULL)".to_string(),
+            None => "anilist_id IN (SELECT anilist_id FROM series WHERE anilist_id IS NOT NULL)"
+                .to_string(),
         };
-        let sql = format!("SELECT anilist_id, number, title, aired_at FROM anilist_episodes WHERE {where_sql} ORDER BY number");
+        let sql = format!(
+            "SELECT anilist_id, number, title, aired_at FROM anilist_episodes WHERE {where_sql} ORDER BY number"
+        );
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map(params_from_iter(ids_as_i64(scope.unwrap_or(&[]))), |r| {
             Ok((
                 r.get::<_, i64>(0)? as u64,
-                AiringRow { number: r.get::<_, i64>(1)? as u32, title: r.get(2)?, aired_at: r.get(3)? },
+                AiringRow {
+                    number: r.get::<_, i64>(1)? as u32,
+                    title: r.get(2)?,
+                    aired_at: r.get(3)?,
+                },
             ))
         })?;
         for row in rows {
@@ -455,7 +506,11 @@ impl Snapshot {
         Ok(())
     }
 
-    fn load_tracker_entries(&mut self, conn: &Connection, scope: Option<&[u64]>) -> Result<(), CoreError> {
+    fn load_tracker_entries(
+        &mut self,
+        conn: &Connection,
+        scope: Option<&[u64]>,
+    ) -> Result<(), CoreError> {
         if scope.is_some_and(<[u64]>::is_empty) {
             return Ok(());
         }
@@ -463,7 +518,9 @@ impl Snapshot {
             Some(ids) => format!(" WHERE media_id IN ({})", placeholders(ids.len())),
             None => String::new(),
         };
-        let sql = format!("SELECT tracker, media_id, progress, status, score, repeat FROM tracker_entries{where_sql}");
+        let sql = format!(
+            "SELECT tracker, media_id, progress, status, score, repeat FROM tracker_entries{where_sql}"
+        );
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map(params_from_iter(ids_as_i64(scope.unwrap_or(&[]))), |r| {
             Ok((
@@ -471,7 +528,9 @@ impl Snapshot {
                 r.get::<_, i64>(1)? as u64,
                 TrackerRow {
                     progress: r.get::<_, i64>(2)? as u32,
-                    status: r.get::<_, Option<String>>(3)?.and_then(|s| ListStatus::from_column(&s)),
+                    status: r
+                        .get::<_, Option<String>>(3)?
+                        .and_then(|s| ListStatus::from_column(&s)),
                     score: r.get(4)?,
                     repeat: r.get::<_, i64>(5)? as u32,
                 },
@@ -499,27 +558,46 @@ impl Snapshot {
         };
         let ids = ids_as_i64(scope.unwrap_or(&[]));
 
-        let mut stmt = conn.prepare(&format!("SELECT series_id, episode_key, at FROM views{where_sql}"))?;
+        let mut stmt = conn.prepare(&format!(
+            "SELECT series_id, episode_key, at FROM views{where_sql}"
+        ))?;
         let rows = stmt.query_map(params_from_iter(ids.iter()), |r| {
-            Ok((r.get::<_, i64>(0)? as u64, r.get::<_, String>(1)?, r.get::<_, i64>(2)?))
+            Ok((
+                r.get::<_, i64>(0)? as u64,
+                r.get::<_, String>(1)?,
+                r.get::<_, i64>(2)?,
+            ))
         })?;
         for row in rows {
             let (series_id, key, at) = row?;
             self.views.insert(series_id, (key, at));
         }
 
-        let mut stmt = conn.prepare(&format!("SELECT series_id, episode_key, at FROM completed{where_sql}"))?;
+        let mut stmt = conn.prepare(&format!(
+            "SELECT series_id, episode_key, at FROM completed{where_sql}"
+        ))?;
         let rows = stmt.query_map(params_from_iter(ids.iter()), |r| {
-            Ok((r.get::<_, i64>(0)? as u64, r.get::<_, String>(1)?, r.get::<_, i64>(2)?))
+            Ok((
+                r.get::<_, i64>(0)? as u64,
+                r.get::<_, String>(1)?,
+                r.get::<_, i64>(2)?,
+            ))
         })?;
         for row in rows {
             let (series_id, key, at) = row?;
             self.completed.entry(series_id).or_default().push((key, at));
         }
 
-        let mut stmt = conn.prepare(&format!("SELECT series_id, episode_key, position, duration FROM resume_points{where_sql}"))?;
+        let mut stmt = conn.prepare(&format!(
+            "SELECT series_id, episode_key, position, duration FROM resume_points{where_sql}"
+        ))?;
         let rows = stmt.query_map(params_from_iter(ids.iter()), |r| {
-            Ok((r.get::<_, i64>(0)? as u64, r.get::<_, String>(1)?, r.get::<_, f64>(2)?, r.get::<_, f64>(3)?))
+            Ok((
+                r.get::<_, i64>(0)? as u64,
+                r.get::<_, String>(1)?,
+                r.get::<_, f64>(2)?,
+                r.get::<_, f64>(3)?,
+            ))
         })?;
         for row in rows {
             let (series_id, key, position, duration) = row?;
@@ -528,7 +606,11 @@ impl Snapshot {
         Ok(())
     }
 
-    fn load_graph_seeds(&mut self, conn: &Connection, scope: Option<&[u64]>) -> Result<(), CoreError> {
+    fn load_graph_seeds(
+        &mut self,
+        conn: &Connection,
+        scope: Option<&[u64]>,
+    ) -> Result<(), CoreError> {
         if scope.is_some_and(<[u64]>::is_empty) {
             return Ok(());
         }
@@ -536,14 +618,22 @@ impl Snapshot {
             Some(ids) => {
                 let list = placeholders(ids.len());
                 (
-                    format!("SELECT DISTINCT from_id FROM relations WHERE from_id IN ({list}) UNION SELECT DISTINCT to_id FROM relations WHERE to_id IN ({list})"),
+                    format!(
+                        "SELECT DISTINCT from_id FROM relations WHERE from_id IN ({list}) UNION SELECT DISTINCT to_id FROM relations WHERE to_id IN ({list})"
+                    ),
                     [ids_as_i64(ids), ids_as_i64(ids)].concat(),
                 )
             }
-            None => ("SELECT DISTINCT from_id FROM relations UNION SELECT DISTINCT to_id FROM relations".to_string(), Vec::new()),
+            None => (
+                "SELECT DISTINCT from_id FROM relations UNION SELECT DISTINCT to_id FROM relations"
+                    .to_string(),
+                Vec::new(),
+            ),
         };
         let mut stmt = conn.prepare(&sql)?;
-        let rows = stmt.query_map(params_from_iter(ids.iter()), |r| Ok(r.get::<_, i64>(0)? as u64))?;
+        let rows = stmt.query_map(params_from_iter(ids.iter()), |r| {
+            Ok(r.get::<_, i64>(0)? as u64)
+        })?;
         for row in rows {
             self.graph_seeds.insert(row?);
         }
@@ -562,8 +652,18 @@ impl Snapshot {
     /// tracker's. The port of `TrackerProgressContext.lookupEntry`.
     pub fn tracker(&self, row: &SeriesRow) -> Option<&TrackerRow> {
         let (primary, primary_id, secondary, secondary_id) = match self.main_tracker {
-            Tracker::Anilist => (&self.anilist_entries, row.anilist_id, &self.mal_entries, row.mal_id),
-            Tracker::Mal => (&self.mal_entries, row.mal_id, &self.anilist_entries, row.anilist_id),
+            Tracker::Anilist => (
+                &self.anilist_entries,
+                row.anilist_id,
+                &self.mal_entries,
+                row.mal_id,
+            ),
+            Tracker::Mal => (
+                &self.mal_entries,
+                row.mal_id,
+                &self.anilist_entries,
+                row.anilist_id,
+            ),
         };
         primary_id
             .and_then(|id| primary.get(&id))
@@ -584,7 +684,12 @@ impl Snapshot {
     /// The episodes on disk, sorted by number, as (file id, number).
     fn episodes_on_disk(&self, id: u64) -> Vec<&FileRow> {
         let mut eps: Vec<&FileRow> = self.files_of(id).iter().filter(|f| f.is_episode).collect();
-        eps.sort_by(|a, b| a.number.partial_cmp(&b.number).unwrap_or(Ordering::Equal).then_with(|| a.path.cmp(&b.path)));
+        eps.sort_by(|a, b| {
+            a.number
+                .partial_cmp(&b.number)
+                .unwrap_or(Ordering::Equal)
+                .then_with(|| a.path.cmp(&b.path))
+        });
         eps
     }
 
@@ -605,7 +710,9 @@ impl Snapshot {
 
         let latest_downloaded = episodes.last().map_or(0.0, |f| f.number).max(0.0) as u32;
         let (latest_aired, next_scheduled) = aired_and_scheduled(airing, now);
-        let status = media.and_then(|m| m.status.as_deref()).and_then(AiringStatus::from_provider);
+        let status = media
+            .and_then(|m| m.status.as_deref())
+            .and_then(AiringStatus::from_provider);
         let total = media.and_then(|m| m.episodes);
         let entry = self.tracker(row);
         let watched = entry.map(|e| e.progress);
@@ -613,7 +720,9 @@ impl Snapshot {
 
         let code = match row.kind {
             SeriesKind::Movie => Some("Movie".to_string()),
-            SeriesKind::Show => episodes.last().map(|f| labels::episode_code(f.season, f.number)),
+            SeriesKind::Show => episodes
+                .last()
+                .map(|f| labels::episode_code(f.season, f.number)),
         };
 
         SeriesCard {
@@ -647,13 +756,27 @@ impl Snapshot {
             code,
             watched,
             watched_state: watched_state(watched, total, latest_aired, latest_downloaded),
-            strip: strip(watched, total, latest_aired, next_scheduled.map(|(n, _)| n), latest_downloaded, status),
-            community_score: media.and_then(|m| m.average_score).map(|s| f64::from(s) / 10.0),
+            strip: strip(
+                watched,
+                total,
+                latest_aired,
+                next_scheduled.map(|(n, _)| n),
+                latest_downloaded,
+                status,
+            ),
+            community_score: media
+                .and_then(|m| m.average_score)
+                .map(|s| f64::from(s) / 10.0),
             my_score: entry.and_then(|e| e.score),
             list_status: entry.and_then(|e| e.status),
-            next_airing: next_scheduled.map(|(episode, at)| Airing { episode, at: time::from_secs(at) }),
+            next_airing: next_scheduled.map(|(episode, at)| Airing {
+                episode,
+                at: time::from_secs(at),
+            }),
             last_viewed_at: self.views.get(&row.id).map(|(_, at)| time::from_secs(*at)),
-            latest_activity_at: time::from_secs(self.latest_activity(row, &episodes, airing, files, now)),
+            latest_activity_at: time::from_secs(
+                self.latest_activity(row, &episodes, airing, files, now),
+            ),
         }
     }
 
@@ -670,7 +793,14 @@ impl Snapshot {
     /// The port of `getAiringSortInfo`: the shown episode's own past air
     /// date, else the latest past-aired on-disk episode's, else the newest
     /// file's mtime, else the day the series was added.
-    fn latest_activity(&self, row: &SeriesRow, episodes: &[&FileRow], airing: &[AiringRow], files: &[FileRow], now: i64) -> i64 {
+    fn latest_activity(
+        &self,
+        row: &SeriesRow,
+        episodes: &[&FileRow],
+        airing: &[AiringRow],
+        files: &[FileRow],
+        now: i64,
+    ) -> i64 {
         let mut best_aired: Option<(i64, u32)> = None;
         for a in airing {
             let Some(at) = a.aired_at else { continue };
@@ -683,7 +813,10 @@ impl Snapshot {
         }
         let highest_on_disk = episodes.last().map_or(0.0, |f| f.number).max(0.0) as u32;
         let shown = highest_on_disk.max(best_aired.map_or(0, |(_, e)| e));
-        let shown_air = airing.iter().find(|a| a.number == shown).and_then(|a| a.aired_at);
+        let shown_air = airing
+            .iter()
+            .find(|a| a.number == shown)
+            .and_then(|a| a.aired_at);
         match shown_air.filter(|t| *t <= now) {
             Some(t) => t,
             None => match best_aired {
@@ -728,7 +861,9 @@ impl Snapshot {
     /// and the recommendations are one query each, and neither belongs in a
     /// whole-library snapshot.
     pub fn detail(&self, conn: &Connection, id: u64) -> Result<Option<SeriesDetail>, CoreError> {
-        let Some(row) = self.row(id) else { return Ok(None) };
+        let Some(row) = self.row(id) else {
+            return Ok(None);
+        };
         let card = self.card_of(row);
         let media = row.media.as_ref();
         let now = time::to_secs(self.now);
@@ -795,16 +930,27 @@ impl Snapshot {
 
         Ok(Some(SeriesDetail {
             banner: row.banner_path.clone(),
-            synopsis: media.and_then(|m| m.description.clone()).unwrap_or_default(),
+            synopsis: media
+                .and_then(|m| m.description.clone())
+                .unwrap_or_default(),
             year: media.and_then(|m| m.year),
             studio: media.and_then(|m| m.studio.clone()),
             genres: media.map(|m| m.genres.clone()).unwrap_or_default(),
             tags: media.map(|m| tags_of(&m.tags)).unwrap_or_default(),
             rewatch_count: entry.map(|e| e.repeat).filter(|r| *r > 0),
             site_url: media.and_then(|m| m.site_url.clone()),
-            progress: ProgressLine { watched: card.watched, total: progress_total, estimate, on_disk },
+            progress: ProgressLine {
+                watched: card.watched,
+                total: progress_total,
+                estimate,
+                on_disk,
+            },
             next_up: next,
-            episodes: episodes.iter().filter(|f| !unmatched.contains(&f.id)).map(|f| episode(f)).collect(),
+            episodes: episodes
+                .iter()
+                .filter(|f| !unmatched.contains(&f.id))
+                .map(|f| episode(f))
+                .collect(),
             extras: extras
                 .iter()
                 .map(|f| {
@@ -820,10 +966,16 @@ impl Snapshot {
                     }
                 })
                 .collect(),
-            unmatched_files: episodes.iter().filter(|f| unmatched.contains(&f.id)).map(|f| episode(f)).collect(),
+            unmatched_files: episodes
+                .iter()
+                .filter(|f| unmatched.contains(&f.id))
+                .map(|f| episode(f))
+                .collect(),
             characters: self.characters(conn, media)?,
             recommendations: self.recommendations(conn, row.anilist_id)?,
-            has_graph: row.anilist_id.is_some_and(|a| self.graph_seeds.contains(&a)),
+            has_graph: row
+                .anilist_id
+                .is_some_and(|a| self.graph_seeds.contains(&a)),
             card,
         }))
     }
@@ -831,7 +983,10 @@ impl Snapshot {
     fn resume_of(&self, series: u64, key: &str) -> Option<ResumePoint> {
         self.resume
             .get(&(series, key.to_string()))
-            .map(|(position, duration)| ResumePoint { position: *position, duration: *duration })
+            .map(|(position, duration)| ResumePoint {
+                position: *position,
+                duration: *duration,
+            })
     }
 
     /// The number of the most recently completed episode, resolved through
@@ -847,21 +1002,36 @@ impl Snapshot {
 
     /// The top characters, their portraits resolved through the image cache
     /// in one query. A portrait that has not been fetched yet is None.
-    fn characters(&self, conn: &Connection, media: Option<&MediaRow>) -> Result<Vec<Person>, CoreError> {
-        let Some(media) = media else { return Ok(Vec::new()) };
+    fn characters(
+        &self,
+        conn: &Connection,
+        media: Option<&MediaRow>,
+    ) -> Result<Vec<Person>, CoreError> {
+        let Some(media) = media else {
+            return Ok(Vec::new());
+        };
         let people = json_array(&media.characters);
         if people.is_empty() {
             return Ok(Vec::new());
         }
         let urls: Vec<String> = people
             .iter()
-            .filter_map(|c| c.get("image_url").and_then(Value::as_str).map(str::to_string))
+            .filter_map(|c| {
+                c.get("image_url")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
             .collect();
         let mut cached: HashMap<String, String> = HashMap::new();
         if !urls.is_empty() {
-            let sql = format!("SELECT url, path FROM images WHERE url IN ({})", placeholders(urls.len()));
+            let sql = format!(
+                "SELECT url, path FROM images WHERE url IN ({})",
+                placeholders(urls.len())
+            );
             let mut stmt = conn.prepare(&sql)?;
-            let rows = stmt.query_map(params_from_iter(urls.iter()), |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+            let rows = stmt.query_map(params_from_iter(urls.iter()), |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+            })?;
             for row in rows {
                 let (url, path) = row?;
                 cached.insert(url, path);
@@ -870,13 +1040,26 @@ impl Snapshot {
         Ok(people
             .iter()
             .map(|c| Person {
-                name: c.get("name").and_then(Value::as_str).unwrap_or_default().to_string(),
+                name: c
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
                 image: c
                     .get("image_url")
                     .and_then(Value::as_str)
                     .and_then(|u| cached.get(u))
-                    .map(|p| Path::new(&self.images_dir).join(p).to_string_lossy().into_owned()),
-                role: c.get("role").and_then(Value::as_str).unwrap_or_default().to_string(),
+                    .map(|p| {
+                        Path::new(&self.images_dir)
+                            .join(p)
+                            .to_string_lossy()
+                            .into_owned()
+                    }),
+                role: c
+                    .get("role")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
             })
             .collect())
     }
@@ -884,8 +1067,14 @@ impl Snapshot {
     /// AniList's recommendations for this series, in AniList's own order,
     /// each one told whether the library owns it and where it sits on the
     /// list.
-    fn recommendations(&self, conn: &Connection, anilist_id: Option<u64>) -> Result<Vec<Recommendation>, CoreError> {
-        let Some(anilist_id) = anilist_id else { return Ok(Vec::new()) };
+    fn recommendations(
+        &self,
+        conn: &Connection,
+        anilist_id: Option<u64>,
+    ) -> Result<Vec<Recommendation>, CoreError> {
+        let Some(anilist_id) = anilist_id else {
+            return Ok(Vec::new());
+        };
         let mut stmt = conn.prepare(
             "SELECT r.recommended_id, m.title_romaji, m.title_english, i.path,
                     (SELECT s.id FROM series s WHERE s.anilist_id = m.id ORDER BY s.id LIMIT 1),
@@ -909,9 +1098,12 @@ impl Snapshot {
             Ok(Recommendation {
                 anilist_id: r.get::<_, i64>(0)? as u64,
                 title: titles::resolve(self.lang, romaji.as_deref(), english.as_deref(), ""),
-                poster: r
-                    .get::<_, Option<String>>(3)?
-                    .map(|p| Path::new(&self.images_dir).join(p).to_string_lossy().into_owned()),
+                poster: r.get::<_, Option<String>>(3)?.map(|p| {
+                    Path::new(&self.images_dir)
+                        .join(p)
+                        .to_string_lossy()
+                        .into_owned()
+                }),
                 owned: r.get::<_, Option<i64>>(4)?.map(|v| v as u64),
                 list_status: main.or(other).and_then(|s| ListStatus::from_column(&s)),
             })
@@ -950,7 +1142,11 @@ fn tags_of(raw: &Value) -> Vec<Tag> {
     json_array(raw)
         .iter()
         .map(|t| Tag {
-            name: t.get("name").and_then(Value::as_str).unwrap_or_default().to_string(),
+            name: t
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
             rank: t.get("rank").and_then(Value::as_u64).unwrap_or(0) as u32,
             spoiler: t.get("spoiler").and_then(Value::as_bool).unwrap_or(false),
             adult: t.get("adult").and_then(Value::as_bool).unwrap_or(false),
@@ -960,7 +1156,11 @@ fn tags_of(raw: &Value) -> Vec<Tag> {
 
 /// What every job uses to build a `SeriesChanged` batch: the cards for
 /// exactly these series, in the order asked for.
-pub fn cards_for(conn: &Connection, images_dir: &Path, ids: &[u64]) -> Result<Vec<SeriesCard>, CoreError> {
+pub fn cards_for(
+    conn: &Connection,
+    images_dir: &Path,
+    ids: &[u64],
+) -> Result<Vec<SeriesCard>, CoreError> {
     let snap = Snapshot::load(conn, images_dir, time::now(), Some(ids))?;
     Ok(ids.iter().filter_map(|id| snap.card(*id)).collect())
 }
@@ -975,13 +1175,27 @@ mod tests {
 
     #[test]
     fn strip_matches_electrons_cases() {
-        let s = strip(Some(5), Some(12), 8, Some(9), 0, Some(AiringStatus::Releasing));
+        let s = strip(
+            Some(5),
+            Some(12),
+            8,
+            Some(9),
+            0,
+            Some(AiringStatus::Releasing),
+        );
         near(s.watched, 5.0 / 12.0);
         near(s.aired_unwatched, 8.0 / 12.0);
         near(s.unknown, 0.0);
         let s = strip(Some(5), Some(12), 12, None, 0, Some(AiringStatus::Finished));
         near(s.aired_unwatched, 0.0);
-        let s = strip(Some(3), Some(12), 12, None, 0, Some(AiringStatus::Releasing));
+        let s = strip(
+            Some(3),
+            Some(12),
+            12,
+            None,
+            0,
+            Some(AiringStatus::Releasing),
+        );
         near(s.aired_unwatched, 0.0);
         let s = strip(Some(5), None, 8, None, 0, Some(AiringStatus::Releasing));
         near(s.watched, 5.0 / 8.0 * 0.85);
@@ -997,9 +1211,23 @@ mod tests {
         let s = strip(None, Some(12), 8, None, 0, Some(AiringStatus::Releasing));
         near(s.watched, 0.0);
         near(s.aired_unwatched, 0.0);
-        let s = strip(Some(6), Some(12), 0, Some(9), 0, Some(AiringStatus::Releasing));
+        let s = strip(
+            Some(6),
+            Some(12),
+            0,
+            Some(9),
+            0,
+            Some(AiringStatus::Releasing),
+        );
         near(s.aired_unwatched, 8.0 / 12.0);
-        let s = strip(Some(0), Some(12), 0, Some(5), 0, Some(AiringStatus::Releasing));
+        let s = strip(
+            Some(0),
+            Some(12),
+            0,
+            Some(5),
+            0,
+            Some(AiringStatus::Releasing),
+        );
         near(s.aired_unwatched, 4.0 / 12.0);
         let s = strip(Some(2), Some(12), 0, None, 7, Some(AiringStatus::Releasing));
         near(s.aired_unwatched, 7.0 / 12.0);
@@ -1009,7 +1237,14 @@ mod tests {
         near(s.watched, 0.0);
         near(s.aired_unwatched, 0.0);
         near(s.unknown, 0.0);
-        let s = strip(Some(0), Some(12), 0, Some(1), 0, Some(AiringStatus::NotYetReleased));
+        let s = strip(
+            Some(0),
+            Some(12),
+            0,
+            Some(1),
+            0,
+            Some(AiringStatus::NotYetReleased),
+        );
         near(s.watched, 0.0);
         near(s.aired_unwatched, 0.0);
     }
@@ -1018,9 +1253,15 @@ mod tests {
     fn watched_state_rules() {
         assert_eq!(watched_state(None, Some(12), 8, 0), WatchedState::Unknown);
         assert_eq!(watched_state(Some(4), Some(12), 8, 0), WatchedState::Behind);
-        assert_eq!(watched_state(Some(8), Some(12), 8, 0), WatchedState::CaughtUp);
+        assert_eq!(
+            watched_state(Some(8), Some(12), 8, 0),
+            WatchedState::CaughtUp
+        );
         assert_eq!(watched_state(Some(4), Some(12), 0, 8), WatchedState::Behind);
-        assert_eq!(watched_state(Some(12), Some(12), 8, 0), WatchedState::CaughtUp);
+        assert_eq!(
+            watched_state(Some(12), Some(12), 8, 0),
+            WatchedState::CaughtUp
+        );
         assert_eq!(watched_state(Some(3), None, 0, 0), WatchedState::Unknown);
         assert_eq!(watched_state(Some(3), None, 5, 0), WatchedState::Behind);
     }

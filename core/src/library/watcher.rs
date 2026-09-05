@@ -12,7 +12,9 @@ use std::time::Duration;
 
 use notify::event::{AccessKind, AccessMode, CreateKind, EventKind, Flag, ModifyKind, RenameMode};
 use notify::{RecommendedWatcher, RecursiveMode};
-use notify_debouncer_full::{DebounceEventResult, DebouncedEvent, Debouncer, RecommendedCache, new_debouncer};
+use notify_debouncer_full::{
+    DebounceEventResult, DebouncedEvent, Debouncer, RecommendedCache, new_debouncer,
+};
 
 use crate::contract::*;
 use crate::core::Core;
@@ -47,11 +49,15 @@ fn ignored(p: &Path, roots: &[String]) -> bool {
         .filter_map(|r| p.strip_prefix(r).ok().map(|rel| (r.len(), rel)))
         .max_by_key(|(len, _)| *len)
         .map_or(p, |(_, rel)| rel);
-    below.components().any(|c| is_ignored_name(&c.as_os_str().to_string_lossy()))
+    below
+        .components()
+        .any(|c| is_ignored_name(&c.as_os_str().to_string_lossy()))
 }
 
 fn name(p: &Path) -> String {
-    p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+    p.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 fn text(p: &Path) -> String {
@@ -73,14 +79,21 @@ pub fn classify(event: &DebouncedEvent, roots: &[String]) -> Vec<Trigger> {
         // The write is finished: this, and the rename below, are the only
         // two ways a file becomes ready. `Create` never is, since the file
         // it announces is usually still being filled.
-        EventKind::Access(AccessKind::Close(AccessMode::Write)) | EventKind::Modify(ModifyKind::Name(RenameMode::To)) => {
-            kept.into_iter().filter(|p| is_video(&name(p))).map(|p| Trigger::Ingest(text(p))).collect()
-        }
+        EventKind::Access(AccessKind::Close(AccessMode::Write))
+        | EventKind::Modify(ModifyKind::Name(RenameMode::To)) => kept
+            .into_iter()
+            .filter(|p| is_video(&name(p)))
+            .map(|p| Trigger::Ingest(text(p)))
+            .collect(),
         // Both halves of a rename in one event: the old path leaves the
         // library and the new one joins it, so it is two triggers.
         EventKind::Modify(ModifyKind::Name(RenameMode::Both)) => {
             let mut out = Vec::new();
-            if let Some(from) = event.paths.first().filter(|p| !ignored(p, roots) && is_video(&name(p))) {
+            if let Some(from) = event
+                .paths
+                .first()
+                .filter(|p| !ignored(p, roots) && is_video(&name(p)))
+            {
                 out.push(Trigger::Removed(text(from)));
             }
             if let Some(to) = event.paths.get(1).filter(|p| !ignored(p, roots)) {
@@ -95,13 +108,22 @@ pub fn classify(event: &DebouncedEvent, roots: &[String]) -> Vec<Trigger> {
         // A gone path can no longer be stat'd, so a directory is told apart
         // from a file by having no extension rather than by asking the
         // filesystem; either way the series above it wants a look.
-        EventKind::Modify(ModifyKind::Name(RenameMode::From)) | EventKind::Remove(_) => {
-            kept.into_iter().filter(|p| is_video(&name(p)) || p.extension().is_none()).map(|p| Trigger::Removed(text(p))).collect()
-        }
-        EventKind::Create(CreateKind::Folder) => kept.into_iter().map(|p| Trigger::NewDirectory(text(p))).collect(),
+        EventKind::Modify(ModifyKind::Name(RenameMode::From)) | EventKind::Remove(_) => kept
+            .into_iter()
+            .filter(|p| is_video(&name(p)) || p.extension().is_none())
+            .map(|p| Trigger::Removed(text(p)))
+            .collect(),
+        EventKind::Create(CreateKind::Folder) => kept
+            .into_iter()
+            .map(|p| Trigger::NewDirectory(text(p)))
+            .collect(),
         // A backend that does not say what it created: only a directory is
         // worth walking, and a directory is still there to be asked.
-        EventKind::Create(_) => kept.into_iter().filter(|p| p.is_dir()).map(|p| Trigger::NewDirectory(text(p))).collect(),
+        EventKind::Create(_) => kept
+            .into_iter()
+            .filter(|p| p.is_dir())
+            .map(|p| Trigger::NewDirectory(text(p)))
+            .collect(),
         _ => Vec::new(),
     }
 }
@@ -109,7 +131,10 @@ pub fn classify(event: &DebouncedEvent, roots: &[String]) -> Vec<Trigger> {
 /// The series a file belongs to is its folder, so a file event is reported
 /// against the directory above it. A path with no parent speaks for itself.
 pub fn parent_series_path(p: &str) -> String {
-    Path::new(p).parent().map(text).unwrap_or_else(|| p.to_string())
+    Path::new(p)
+        .parent()
+        .map(text)
+        .unwrap_or_else(|| p.to_string())
 }
 
 /// The macOS fallback for a backend with no close-write. Not built on Linux,
@@ -152,7 +177,8 @@ impl Watcher {
             match result {
                 Ok(events) => {
                     let roots = roots_of(&handler_roots).clone();
-                    let triggers: Vec<Trigger> = events.iter().flat_map(|e| classify(e, &roots)).collect();
+                    let triggers: Vec<Trigger> =
+                        events.iter().flat_map(|e| classify(e, &roots)).collect();
                     if triggers.is_empty() {
                         return;
                     }
@@ -160,7 +186,11 @@ impl Watcher {
                 }
                 Err(errors) => {
                     for e in errors {
-                        core.bus.warn(Stage::Library, format!("watcher error: {e}"), EventBody::Notice);
+                        core.bus.warn(
+                            Stage::Library,
+                            format!("watcher error: {e}"),
+                            EventBody::Notice,
+                        );
                         // Out of inotify watches: what is watched from here
                         // on is arbitrary, so the library is re-read once
                         // and the user has the warning above to act on.
@@ -172,7 +202,10 @@ impl Watcher {
             }
         })
         .map_err(|e| CoreError::internal(format!("watcher: {e}")))?;
-        Ok(Watcher { debouncer: Some(debouncer), roots })
+        Ok(Watcher {
+            debouncer: Some(debouncer),
+            roots,
+        })
     }
 
     /// Installs one recursive watch on a source. Idempotent per root, which
@@ -186,7 +219,10 @@ impl Watcher {
         };
         debouncer
             .watch(Path::new(path), RecursiveMode::Recursive)
-            .map_err(|e| CoreError::Io { path: Some(path.to_string()), message: e.to_string() })?;
+            .map_err(|e| CoreError::Io {
+                path: Some(path.to_string()),
+                message: e.to_string(),
+            })?;
         roots_of(&self.roots).push(path.to_string());
         Ok(())
     }
@@ -228,32 +264,59 @@ mod tests {
 
     #[test]
     fn a_finished_write_of_a_video_is_an_ingest() {
-        let e = event(EventKind::Access(AccessKind::Close(AccessMode::Write)), &["/lib/a/ep.mkv"]);
-        assert_eq!(classify(&e, &[]), vec![Trigger::Ingest("/lib/a/ep.mkv".into())]);
+        let e = event(
+            EventKind::Access(AccessKind::Close(AccessMode::Write)),
+            &["/lib/a/ep.mkv"],
+        );
+        assert_eq!(
+            classify(&e, &[]),
+            vec![Trigger::Ingest("/lib/a/ep.mkv".into())]
+        );
     }
 
     #[test]
     fn an_unfinished_download_is_not_an_ingest() {
-        let e = event(EventKind::Access(AccessKind::Close(AccessMode::Write)), &["/lib/a/ep.mkv.part"]);
+        let e = event(
+            EventKind::Access(AccessKind::Close(AccessMode::Write)),
+            &["/lib/a/ep.mkv.part"],
+        );
         assert!(classify(&e, &[]).is_empty());
     }
 
     #[test]
     fn a_rename_of_a_video_removes_the_old_path_and_ingests_the_new_one() {
-        let e = event(EventKind::Modify(ModifyKind::Name(RenameMode::Both)), &["/lib/a/from.mkv", "/lib/a/to.mkv"]);
-        assert_eq!(classify(&e, &[]), vec![Trigger::Removed("/lib/a/from.mkv".into()), Trigger::Ingest("/lib/a/to.mkv".into())]);
+        let e = event(
+            EventKind::Modify(ModifyKind::Name(RenameMode::Both)),
+            &["/lib/a/from.mkv", "/lib/a/to.mkv"],
+        );
+        assert_eq!(
+            classify(&e, &[]),
+            vec![
+                Trigger::Removed("/lib/a/from.mkv".into()),
+                Trigger::Ingest("/lib/a/to.mkv".into())
+            ]
+        );
     }
 
     #[test]
     fn a_rename_into_the_library_is_an_ingest_on_its_own() {
-        let e = event(EventKind::Modify(ModifyKind::Name(RenameMode::To)), &["/lib/a/ep.mkv"]);
-        assert_eq!(classify(&e, &[]), vec![Trigger::Ingest("/lib/a/ep.mkv".into())]);
+        let e = event(
+            EventKind::Modify(ModifyKind::Name(RenameMode::To)),
+            &["/lib/a/ep.mkv"],
+        );
+        assert_eq!(
+            classify(&e, &[]),
+            vec![Trigger::Ingest("/lib/a/ep.mkv".into())]
+        );
     }
 
     #[test]
     fn a_deleted_video_is_a_removal() {
         let e = event(EventKind::Remove(RemoveKind::File), &["/lib/a/ep.mkv"]);
-        assert_eq!(classify(&e, &[]), vec![Trigger::Removed("/lib/a/ep.mkv".into())]);
+        assert_eq!(
+            classify(&e, &[]),
+            vec![Trigger::Removed("/lib/a/ep.mkv".into())]
+        );
     }
 
     /// A gone directory has no extension to go by and cannot be stat'd, so
@@ -267,7 +330,10 @@ mod tests {
     #[test]
     fn a_new_folder_is_walked() {
         let e = event(EventKind::Create(CreateKind::Folder), &["/lib/b"]);
-        assert_eq!(classify(&e, &[]), vec![Trigger::NewDirectory("/lib/b".into())]);
+        assert_eq!(
+            classify(&e, &[]),
+            vec![Trigger::NewDirectory("/lib/b".into())]
+        );
     }
 
     #[test]
@@ -278,15 +344,24 @@ mod tests {
 
     #[test]
     fn the_rescan_flag_is_a_full_scan() {
-        let e = DebouncedEvent::new(RawEvent::new(EventKind::Other).set_flag(Flag::Rescan), Instant::now());
+        let e = DebouncedEvent::new(
+            RawEvent::new(EventKind::Other).set_flag(Flag::Rescan),
+            Instant::now(),
+        );
         assert_eq!(classify(&e, &[]), vec![Trigger::Rescan]);
     }
 
     #[test]
     fn a_dot_entry_below_a_watched_root_is_dropped_but_a_dotted_root_is_not() {
-        let hidden = event(EventKind::Access(AccessKind::Close(AccessMode::Write)), &["/tmp/.tmpXY/lib/.trash/ep.mkv"]);
+        let hidden = event(
+            EventKind::Access(AccessKind::Close(AccessMode::Write)),
+            &["/tmp/.tmpXY/lib/.trash/ep.mkv"],
+        );
         assert!(classify(&hidden, &["/tmp/.tmpXY/lib".to_string()]).is_empty());
-        let under_a_dotted_root = event(EventKind::Access(AccessKind::Close(AccessMode::Write)), &["/tmp/.tmpXY/lib/a/ep.mkv"]);
+        let under_a_dotted_root = event(
+            EventKind::Access(AccessKind::Close(AccessMode::Write)),
+            &["/tmp/.tmpXY/lib/a/ep.mkv"],
+        );
         assert_eq!(
             classify(&under_a_dotted_root, &["/tmp/.tmpXY/lib".to_string()]),
             vec![Trigger::Ingest("/tmp/.tmpXY/lib/a/ep.mkv".into())]

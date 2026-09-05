@@ -11,7 +11,11 @@ use rusqlite::params;
 /// One media row with everything the graph draws with, and its edges
 /// already taken, so nothing in these tests is owed or pending.
 fn media(core: &Core, id: u64, media_type: &str, format: &str, status: &str, year: i64) {
-    let (media_type, format, status) = (media_type.to_string(), format.to_string(), status.to_string());
+    let (media_type, format, status) = (
+        media_type.to_string(),
+        format.to_string(),
+        status.to_string(),
+    );
     core.store()
         .write(move |c| {
             c.execute(
@@ -55,12 +59,20 @@ fn layout_of(core: &Core, series: u64) -> Option<FranchiseLayout> {
 }
 
 fn node_of(layout: &FranchiseLayout, id: u64) -> &GraphNode {
-    layout.nodes.iter().find(|n| n.anilist_id == id).unwrap_or_else(|| panic!("no node {id} in the layout"))
+    layout
+        .nodes
+        .iter()
+        .find(|n| n.anilist_id == id)
+        .unwrap_or_else(|| panic!("no node {id} in the layout"))
 }
 
 /// The edges the layout drew, as `from->to:relation`, smallest first.
 fn edges_of(layout: &FranchiseLayout) -> Vec<String> {
-    let mut v: Vec<String> = layout.edges.iter().map(|e| format!("{}->{}:{}", e.from, e.to, e.relation)).collect();
+    let mut v: Vec<String> = layout
+        .edges
+        .iter()
+        .map(|e| format!("{}->{}:{}", e.from, e.to, e.relation))
+        .collect();
     v.sort();
     v
 }
@@ -86,7 +98,11 @@ fn a_series_page_reads_its_chain_on_one_row_and_its_cameo_on_another() {
     assert_eq!(layout.root, 1);
     assert_eq!(layout.nodes.len(), 4);
     assert!(layout.complete);
-    assert_eq!(edges_of(&layout), vec!["1->2:SEQUEL", "1->50:CHARACTER", "2->3:SEQUEL"], "the cameo is drawn, never walked");
+    assert_eq!(
+        edges_of(&layout),
+        vec!["1->2:SEQUEL", "1->50:CHARACTER", "2->3:SEQUEL"],
+        "the cameo is drawn, never walked"
+    );
 
     let one = node_of(&layout, 1);
     assert!(one.current, "the series' own node is the current one");
@@ -101,7 +117,10 @@ fn a_series_page_reads_its_chain_on_one_row_and_its_cameo_on_another() {
     assert_eq!(one.site_url.as_deref(), Some("https://anilist.co/anime/1"));
 
     let cameo = node_of(&layout, 50);
-    assert!(!cameo.pending, "its edges are in the table, so nothing is owed");
+    assert!(
+        !cameo.pending,
+        "its edges are in the table, so nothing is owed"
+    );
     assert_eq!(cameo.owned, None);
     assert_eq!(cameo.relation.as_deref(), Some("Shared characters"));
 
@@ -109,14 +128,23 @@ fn a_series_page_reads_its_chain_on_one_row_and_its_cameo_on_another() {
     // the end of the graph on a row of its own.
     let row = |id: u64| node_of(&layout, id).y;
     assert_eq!((row(1), row(2), row(3)), (0.0, 0.0, 0.0));
-    assert_eq!((node_of(&layout, 1).x, node_of(&layout, 2).x, node_of(&layout, 3).x), (0.0, 320.0, 640.0));
+    assert_eq!(
+        (
+            node_of(&layout, 1).x,
+            node_of(&layout, 2).x,
+            node_of(&layout, 3).x
+        ),
+        (0.0, 320.0, 640.0)
+    );
     assert_ne!(row(50), 0.0, "a node in no chain takes a row of its own");
 
     assert_eq!(node_of(&layout, 2).relation.as_deref(), Some("Sequel"));
     assert_eq!(node_of(&layout, 3).relation.as_deref(), Some("Sequel"));
 
     // The detail page's own flag agrees with the graph it links to.
-    let Reply::SeriesDetail { detail } = core.call(Call::GetSeries { series }).unwrap() else { panic!("expected a detail") };
+    let Reply::SeriesDetail { detail } = core.call(Call::GetSeries { series }).unwrap() else {
+        panic!("expected a detail")
+    };
     assert!(detail.has_graph);
 }
 
@@ -133,8 +161,13 @@ fn a_series_whose_node_stands_alone_has_no_layout() {
 
     assert!(layout_of(&core, series).is_none());
 
-    let Reply::SeriesDetail { detail } = core.call(Call::GetSeries { series }).unwrap() else { panic!("expected a detail") };
-    assert!(!detail.has_graph, "the detail page agrees there is nothing to open");
+    let Reply::SeriesDetail { detail } = core.call(Call::GetSeries { series }).unwrap() else {
+        panic!("expected a detail")
+    };
+    assert!(
+        !detail.has_graph,
+        "the detail page agrees there is nothing to open"
+    );
 }
 
 /// An unmatched series has no AniList id to close a graph around, and a
@@ -148,6 +181,9 @@ fn an_unmatched_series_has_no_layout_and_an_unknown_one_is_not_found() {
     assert!(layout_of(&core, series).is_none());
     assert!(matches!(
         core.call(Call::GetFranchiseGraph { series: 9_999 }),
-        Err(CoreError::NotFound { what: Entity::Series, id: 9_999 })
+        Err(CoreError::NotFound {
+            what: Entity::Series,
+            id: 9_999
+        })
     ));
 }

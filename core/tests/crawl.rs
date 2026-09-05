@@ -72,9 +72,15 @@ fn asked(http: &FakeHttp) -> Vec<u64> {
 fn relation_rows(core: &Core) -> Vec<(u64, u64, String)> {
     core.store()
         .read(|c| {
-            let mut stmt = c.prepare("SELECT from_id, to_id, relation FROM relations ORDER BY from_id, to_id")?;
+            let mut stmt = c.prepare(
+                "SELECT from_id, to_id, relation FROM relations ORDER BY from_id, to_id",
+            )?;
             let rows = stmt.query_map([], |r| {
-                Ok((u64::try_from(r.get::<_, i64>(0)?).unwrap_or(0), u64::try_from(r.get::<_, i64>(1)?).unwrap_or(0), r.get::<_, String>(2)?))
+                Ok((
+                    u64::try_from(r.get::<_, i64>(0)?).unwrap_or(0),
+                    u64::try_from(r.get::<_, i64>(1)?).unwrap_or(0),
+                    r.get::<_, String>(2)?,
+                ))
             })?;
             Ok(rows.collect::<Result<Vec<_>, _>>()?)
         })
@@ -107,11 +113,18 @@ fn cached_images(core: &Core) -> Vec<String> {
 }
 
 fn graph_changed(c: &events::Collector, root: u64) -> usize {
-    c.bodies().iter().filter(|b| matches!(b, EventBody::GraphChanged { root: r } if *r == root)).count()
+    c.bodies()
+        .iter()
+        .filter(|b| matches!(b, EventBody::GraphChanged { root: r } if *r == root))
+        .count()
 }
 
 fn warnings(c: &events::Collector) -> Vec<String> {
-    c.events().iter().filter(|e| e.level == Level::Warn).map(|e| e.message.clone()).collect()
+    c.events()
+        .iter()
+        .filter(|e| e.level == Level::Warn)
+        .map(|e| e.message.clone())
+        .collect()
 }
 
 /// The deferral the crawl wrote, taken back out again. A test uses this to
@@ -120,7 +133,10 @@ fn warnings(c: &events::Collector) -> Vec<String> {
 fn clear_deferral(core: &Core, id: u64) {
     core.store()
         .write(move |c| {
-            c.execute("UPDATE anilist_media SET crawl_deferred_until = NULL WHERE id = ?1", [i64::try_from(id).unwrap_or(i64::MAX)])?;
+            c.execute(
+                "UPDATE anilist_media SET crawl_deferred_until = NULL WHERE id = ?1",
+                [i64::try_from(id).unwrap_or(i64::MAX)],
+            )?;
             Ok(())
         })
         .unwrap();
@@ -134,8 +150,19 @@ fn the_crawl_walks_traversable_edges_stops_at_a_cameo_and_defers_a_rate_limit() 
     // limiter's whole schedule spent in one go. Nodes 4 and 5 answer after
     // it, so the walk carries on past the deferral and closes the graph
     // twice more with node 3 still in the table.
-    http.push_for("graphql.anilist.co", 200, enrichment(1, &[("SEQUEL", 2), ("CHARACTER", 50)]));
-    http.push_for("graphql.anilist.co", 200, enrichment(2, &[("PREQUEL", 1), ("SEQUEL", 3), ("SEQUEL", 4), ("SEQUEL", 5)]));
+    http.push_for(
+        "graphql.anilist.co",
+        200,
+        enrichment(1, &[("SEQUEL", 2), ("CHARACTER", 50)]),
+    );
+    http.push_for(
+        "graphql.anilist.co",
+        200,
+        enrichment(
+            2,
+            &[("PREQUEL", 1), ("SEQUEL", 3), ("SEQUEL", 4), ("SEQUEL", 5)],
+        ),
+    );
     http.push_for("img/1.jpg", 200, vec![0xFF, 0xD8, 0xFF, 0xE0]);
     http.push_for("img/2.jpg", 200, vec![0xFF, 0xD8, 0xFF, 0xE0]);
     for _ in 0..7 {
@@ -150,7 +177,16 @@ fn the_crawl_walks_traversable_edges_stops_at_a_cameo_and_defers_a_rate_limit() 
     let src = fixtures::insert_source(&core, "/lib");
     let s = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/A", "A");
     fixtures::insert_file(&core, s, "/lib/A/01.mkv", 1.0, None, "episode", 1);
-    fixtures::insert_media(&core, 1, Some("T1"), None, Some(12), "FINISHED", "TV", Some(80));
+    fixtures::insert_media(
+        &core,
+        1,
+        Some("T1"),
+        None,
+        Some(12),
+        "FINISHED",
+        "TV",
+        Some(80),
+    );
     fixtures::match_series(&core, s, Some(1), None);
 
     let job = crawl::start_gap_crawl(&core);
@@ -160,11 +196,30 @@ fn the_crawl_walks_traversable_edges_stops_at_a_cameo_and_defers_a_rate_limit() 
     // taken away while the same job is still walking: what keeps the job
     // from asking about 3 again is its own record of having parked it, and
     // there are two more closures to come in which it could get it wrong.
-    assert!(c.wait_for(|events| events.iter().filter(|e| matches!(e.body, EventBody::GraphChanged { root: 1 })).count() >= 3, Duration::from_secs(30)));
+    assert!(c.wait_for(
+        |events| {
+            events
+                .iter()
+                .filter(|e| matches!(e.body, EventBody::GraphChanged { root: 1 }))
+                .count()
+                >= 3
+        },
+        Duration::from_secs(30)
+    ));
     clear_deferral(&core, 3);
 
     let finished = common::wait_job(&c, job);
-    assert!(matches!(finished.body, EventBody::CrawlFinished { fetched: 4, deferred: 1 }), "{:?}", finished.body);
+    assert!(
+        matches!(
+            finished.body,
+            EventBody::CrawlFinished {
+                fetched: 4,
+                deferred: 1
+            }
+        ),
+        "{:?}",
+        finished.body
+    );
     assert_eq!(finished.message, "crawl finished: 4 fetched, 1 deferred");
 
     // The cameo is drawn and stopped at: node 50 keeps its edge and its
@@ -194,7 +249,10 @@ fn the_crawl_walks_traversable_edges_stops_at_a_cameo_and_defers_a_rate_limit() 
         assert!(crawl_state(&core, id).is_some(), "no stub row for {id}");
     }
     for id in [1, 2, 4, 5] {
-        assert!(crawl_state(&core, id).unwrap().0.is_some(), "node {id} owes nothing now");
+        assert!(
+            crawl_state(&core, id).unwrap().0.is_some(),
+            "node {id} owes nothing now"
+        );
     }
 
     // The rate limit parked node 3 rather than losing it: it still owes its
@@ -214,15 +272,33 @@ fn the_crawl_walks_traversable_edges_stops_at_a_cameo_and_defers_a_rate_limit() 
             "https://img/5.jpg".to_string(),
         ]
     );
-    assert!(warnings(&c).is_empty(), "a rate limit is the terminal event's count, not a log line: {:?}", warnings(&c));
+    assert!(
+        warnings(&c).is_empty(),
+        "a rate limit is the terminal event's count, not a log line: {:?}",
+        warnings(&c)
+    );
 
     // Node 1 owes nothing now, so the gap crawl has no seed at all: node 3
     // owes its edges but no series is matched to it, so it is nobody's seed.
     let before = http.requests().len();
     let job = crawl::start_gap_crawl(&core);
     let finished = common::wait_job(&c, job);
-    assert!(matches!(finished.body, EventBody::CrawlFinished { fetched: 0, deferred: 0 }), "{:?}", finished.body);
-    assert_eq!(http.requests().len(), before, "a second gap crawl asked for nothing");
+    assert!(
+        matches!(
+            finished.body,
+            EventBody::CrawlFinished {
+                fetched: 0,
+                deferred: 0
+            }
+        ),
+        "{:?}",
+        finished.body
+    );
+    assert_eq!(
+        http.requests().len(),
+        before,
+        "a second gap crawl asked for nothing"
+    );
 }
 
 /// The refetch flag is the only thing that can make a node whose edges are
@@ -236,14 +312,30 @@ fn a_seed_refetch_takes_a_node_whose_edges_are_already_known() {
     let http = FakeHttp::new();
     http.push_for("graphql.anilist.co", 200, enrichment(7, &[("SEQUEL", 8)]));
     http.push_for("img/7.jpg", 200, vec![0xFF, 0xD8, 0xFF, 0xE0]);
-    http.push_for("graphql.anilist.co", 200, enrichment(8, &[("PREQUEL", 7), ("SEQUEL", 9)]));
+    http.push_for(
+        "graphql.anilist.co",
+        200,
+        enrichment(8, &[("PREQUEL", 7), ("SEQUEL", 9)]),
+    );
     http.push_for("img/8.jpg", 200, vec![0xFF, 0xD8, 0xFF, 0xE0]);
 
     let (_dir, core, c) = common::open_core_with_http(http.clone());
-    fixtures::insert_media(&core, 7, Some("T7"), None, Some(12), "FINISHED", "TV", Some(80));
+    fixtures::insert_media(
+        &core,
+        7,
+        Some("T7"),
+        None,
+        Some(12),
+        "FINISHED",
+        "TV",
+        Some(80),
+    );
     core.store()
         .write(|conn| {
-            conn.execute("UPDATE anilist_media SET relations_fetched_at = 1000 WHERE id = 7", [])?;
+            conn.execute(
+                "UPDATE anilist_media SET relations_fetched_at = 1000 WHERE id = 7",
+                [],
+            )?;
             Ok(())
         })
         .unwrap();
@@ -251,13 +343,37 @@ fn a_seed_refetch_takes_a_node_whose_edges_are_already_known() {
     // Nothing owes anything, so the gap crawl has no seed and does no work.
     let job = crawl::start_gap_crawl(&core);
     let finished = common::wait_job(&c, job);
-    assert!(matches!(finished.body, EventBody::CrawlFinished { fetched: 0, deferred: 0 }), "{:?}", finished.body);
+    assert!(
+        matches!(
+            finished.body,
+            EventBody::CrawlFinished {
+                fetched: 0,
+                deferred: 0
+            }
+        ),
+        "{:?}",
+        finished.body
+    );
     assert!(asked(&http).is_empty());
 
     let job = crawl::start(&core, vec![7], true);
     let finished = common::wait_job(&c, job);
-    assert!(matches!(finished.body, EventBody::CrawlFinished { fetched: 2, deferred: 0 }), "{:?}", finished.body);
-    assert_eq!(asked(&http), vec![7, 8, 9], "the seed is taken again, then the members it turned up");
+    assert!(
+        matches!(
+            finished.body,
+            EventBody::CrawlFinished {
+                fetched: 2,
+                deferred: 0
+            }
+        ),
+        "{:?}",
+        finished.body
+    );
+    assert_eq!(
+        asked(&http),
+        vec![7, 8, 9],
+        "the seed is taken again, then the members it turned up"
+    );
     assert_eq!(graph_changed(&c, 7), 2);
 
     // One Warn for the whole job, naming the count and what the first
@@ -265,7 +381,11 @@ fn a_seed_refetch_takes_a_node_whose_edges_are_already_known() {
     // have filled the log on a walk of any size.
     let warned = warnings(&c);
     assert_eq!(warned.len(), 1, "{warned:?}");
-    assert!(warned[0].starts_with("crawl: 1 nodes failed, first: "), "{}", warned[0]);
+    assert!(
+        warned[0].starts_with("crawl: 1 nodes failed, first: "),
+        "{}",
+        warned[0]
+    );
 
     // The node that failed is stamped rather than left owing, so nothing
     // asks about it for ever.

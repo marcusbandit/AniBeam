@@ -17,7 +17,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use rusqlite::{params, Connection, Transaction};
+use rusqlite::{Connection, Transaction, params};
 
 use crate::contract::*;
 use crate::core::Core;
@@ -96,17 +96,31 @@ pub fn normalize_status(t: Tracker, raw: Option<&str>, is_rewatching: bool) -> O
 /// a match carries. `score(format: POINT_10_DECIMAL)` is what makes the
 /// number comparable whatever display format the user picked, and a score
 /// of 0 is AniList's unrated rather than a rating.
-pub async fn fetch_anilist(core: &Arc<Core>, user_id: u64, token: &str) -> Result<Vec<Entry>, CoreError> {
+pub async fn fetch_anilist(
+    core: &Arc<Core>,
+    user_id: u64,
+    token: &str,
+) -> Result<Vec<Entry>, CoreError> {
     let data = tokio::time::timeout(
         FETCH_TIMEOUT,
-        core.anilist.graphql(MEDIA_LIST_COLLECTION_QUERY, serde_json::json!({ "userId": user_id }), Some(token)),
+        core.anilist.graphql(
+            MEDIA_LIST_COLLECTION_QUERY,
+            serde_json::json!({ "userId": user_id }),
+            Some(token),
+        ),
     )
     .await
     .map_err(|_| timed_out(Tracker::Anilist, "AniList MediaListCollection"))??;
     let mut entries = Vec::new();
-    for list in data["MediaListCollection"]["lists"].as_array().into_iter().flatten() {
+    for list in data["MediaListCollection"]["lists"]
+        .as_array()
+        .into_iter()
+        .flatten()
+    {
         for entry in list["entries"].as_array().into_iter().flatten() {
-            let Some(media_id) = entry["media"]["id"].as_u64() else { continue };
+            let Some(media_id) = entry["media"]["id"].as_u64() else {
+                continue;
+            };
             entries.push(Entry {
                 media_id,
                 progress: as_count(entry["progress"].as_u64()),
@@ -147,12 +161,18 @@ pub async fn fetch_mal(core: &Arc<Core>, token: &str) -> Result<Vec<Entry>, Core
         let body: serde_json::Value = response.json()?;
         let page_entries = body["data"].as_array().cloned().unwrap_or_default();
         for item in &page_entries {
-            let Some(media_id) = item["node"]["id"].as_u64() else { continue };
+            let Some(media_id) = item["node"]["id"].as_u64() else {
+                continue;
+            };
             let status = &item["list_status"];
             entries.push(Entry {
                 media_id,
                 progress: as_count(status["num_episodes_watched"].as_u64()),
-                status: normalize_status(Tracker::Mal, status["status"].as_str(), status["is_rewatching"].as_bool().unwrap_or(false)),
+                status: normalize_status(
+                    Tracker::Mal,
+                    status["status"].as_str(),
+                    status["is_rewatching"].as_bool().unwrap_or(false),
+                ),
                 score: status["score"].as_f64().filter(|s| *s > 0.0),
                 repeat: as_count(status["num_times_rewatched"].as_u64()),
                 updated_at: None,
@@ -176,13 +196,18 @@ pub fn replace(tx: &Transaction, t: Tracker, entries: &[Entry], now: i64) -> Res
     let mut kept: HashMap<u64, i64> = HashMap::new();
     {
         let mut stmt = tx.prepare("SELECT media_id, updated_at FROM tracker_entries WHERE tracker = ?1 AND updated_at IS NOT NULL")?;
-        let rows = stmt.query_map(params![t.as_str()], |r| Ok((r.get::<_, i64>(0)? as u64, r.get::<_, i64>(1)?)))?;
+        let rows = stmt.query_map(params![t.as_str()], |r| {
+            Ok((r.get::<_, i64>(0)? as u64, r.get::<_, i64>(1)?))
+        })?;
         for row in rows {
             let (media_id, at) = row?;
             kept.insert(media_id, at);
         }
     }
-    tx.execute("DELETE FROM tracker_entries WHERE tracker = ?1", params![t.as_str()])?;
+    tx.execute(
+        "DELETE FROM tracker_entries WHERE tracker = ?1",
+        params![t.as_str()],
+    )?;
     {
         // `OR REPLACE` rather than a plain insert: a list that named one
         // media twice is the provider's business, and the last word wins
@@ -199,12 +224,17 @@ pub fn replace(tx: &Transaction, t: Tracker, entries: &[Entry], now: i64) -> Res
                 i64::from(entry.progress),
                 entry.score,
                 i64::from(entry.repeat),
-                entry.updated_at.or_else(|| kept.get(&entry.media_id).copied()),
+                entry
+                    .updated_at
+                    .or_else(|| kept.get(&entry.media_id).copied()),
                 now,
             ])?;
         }
     }
-    tx.execute("UPDATE tracker_accounts SET progress_fetched_at = ?2 WHERE tracker = ?1", params![t.as_str(), now])?;
+    tx.execute(
+        "UPDATE tracker_accounts SET progress_fetched_at = ?2 WHERE tracker = ?1",
+        params![t.as_str(), now],
+    )?;
     Ok(())
 }
 
@@ -261,10 +291,19 @@ pub fn patch_score(
 /// connection wants and what a page opening does not.
 pub fn start_refresh(core: &Arc<Core>, tracker: Option<Tracker>, force: bool) -> u64 {
     let owner = core.clone();
-    core.jobs.clone().start(JobKind::RefreshProgress, move |ctx| async move { run(owner, ctx, tracker, force).await })
+    core.jobs
+        .clone()
+        .start(JobKind::RefreshProgress, move |ctx| async move {
+            run(owner, ctx, tracker, force).await
+        })
 }
 
-async fn run(core: Arc<Core>, ctx: Arc<JobCtx>, tracker: Option<Tracker>, force: bool) -> Result<Finished, CoreError> {
+async fn run(
+    core: Arc<Core>,
+    ctx: Arc<JobCtx>,
+    tracker: Option<Tracker>,
+    force: bool,
+) -> Result<Finished, CoreError> {
     let wanted: Vec<Tracker> = match tracker {
         Some(t) => vec![t],
         None => vec![Tracker::Anilist, Tracker::Mal],
@@ -278,20 +317,32 @@ async fn run(core: Arc<Core>, ctx: Arc<JobCtx>, tracker: Option<Tracker>, force:
 
     for t in wanted {
         ctx.checkpoint()?;
-        let row = core.store.write_async(move |c| accounts::load_row(c, t)).await?.unwrap_or_default();
+        let row = core
+            .store
+            .write_async(move |c| accounts::load_row(c, t))
+            .await?
+            .unwrap_or_default();
         // Not connected is nothing to fetch, whether the tracker was asked
         // for by name or swept up by a refresh of everything.
         if row.connected_at.is_none() {
             continue;
         }
         if !force && is_fresh(row.progress_fetched_at, time::now()) {
-            ctx.emit(Level::Debug, format!("{} progress is fresh", t.as_str()), EventBody::Notice);
+            ctx.emit(
+                Level::Debug,
+                format!("{} progress is fresh", t.as_str()),
+                EventBody::Notice,
+            );
             continue;
         }
         match fetch_and_replace(&core, t, row.user_id).await {
             Ok(count) => {
                 if let Some((previous, n)) = pending.replace((t, count)) {
-                    ctx.emit(Level::Info, refreshed_line(previous, n), EventBody::ProgressRefreshed { tracker: previous });
+                    ctx.emit(
+                        Level::Info,
+                        refreshed_line(previous, n),
+                        EventBody::ProgressRefreshed { tracker: previous },
+                    );
                 }
                 refreshed.push(t);
             }
@@ -299,7 +350,15 @@ async fn run(core: Arc<Core>, ctx: Arc<JobCtx>, tracker: Option<Tracker>, force:
                 // The rows stay: a list that could not be fetched is still
                 // the best answer there is, and a card with yesterday's
                 // progress reads better than a card with none.
-                ctx.emit(Level::Warn, format!("{} progress refresh failed: {}", t.as_str(), writes::sanitize_error(t, &e)), EventBody::Notice);
+                ctx.emit(
+                    Level::Warn,
+                    format!(
+                        "{} progress refresh failed: {}",
+                        t.as_str(),
+                        writes::sanitize_error(t, &e)
+                    ),
+                    EventBody::Notice,
+                );
                 failure = Some(e);
             }
         }
@@ -310,19 +369,31 @@ async fn run(core: Arc<Core>, ctx: Arc<JobCtx>, tracker: Option<Tracker>, force:
         ctx.changed_all(cards);
     }
     match pending {
-        Some((t, count)) => Ok(Finished { level: Level::Info, message: refreshed_line(t, count), body: EventBody::ProgressRefreshed { tracker: t } }),
+        Some((t, count)) => Ok(Finished {
+            level: Level::Info,
+            message: refreshed_line(t, count),
+            body: EventBody::ProgressRefreshed { tracker: t },
+        }),
         // Nothing was refreshed, so a failure here is every tracker that
         // was asked for: the job failed. One failure among several never
         // gets this far, since the one that worked ends the job.
         None => match failure {
             Some(e) => Err(e),
-            None => Ok(Finished { level: Level::Debug, message: "nothing to refresh".to_string(), body: EventBody::Notice }),
+            None => Ok(Finished {
+                level: Level::Debug,
+                message: "nothing to refresh".to_string(),
+                body: EventBody::Notice,
+            }),
         },
     }
 }
 
 /// One tracker's list into the table, and how many entries it held.
-async fn fetch_and_replace(core: &Arc<Core>, t: Tracker, user_id: Option<u64>) -> Result<usize, CoreError> {
+async fn fetch_and_replace(
+    core: &Arc<Core>,
+    t: Tracker,
+    user_id: Option<u64>,
+) -> Result<usize, CoreError> {
     let token = accounts::access_token(core, t)
         .await?
         .ok_or_else(|| accounts::tracker_error(t, NO_TOKEN))?;
@@ -330,21 +401,27 @@ async fn fetch_and_replace(core: &Arc<Core>, t: Tracker, user_id: Option<u64>) -
         Tracker::Anilist => {
             // AniList's collection is asked for by user id, so an account
             // whose profile never carried one cannot be read at all.
-            let user_id = user_id.ok_or_else(|| accounts::tracker_error(t, "the account carries no user id"))?;
+            let user_id = user_id
+                .ok_or_else(|| accounts::tracker_error(t, "the account carries no user id"))?;
             fetch_anilist(core, user_id, &token).await?
         }
         Tracker::Mal => fetch_mal(core, &token).await?,
     };
     let count = entries.len();
     let now = time::now_secs();
-    core.store.tx_async(move |tx| replace(tx, t, &entries, now)).await?;
+    core.store
+        .tx_async(move |tx| replace(tx, t, &entries, now))
+        .await?;
     Ok(count)
 }
 
 /// Every matched series whose match carries a refreshed tracker's id, as
 /// cards: the numbers on all of them just changed, so they leave in one
 /// batch rather than one event each.
-async fn matched_cards(core: &Arc<Core>, refreshed: &[Tracker]) -> Result<Vec<SeriesCard>, CoreError> {
+async fn matched_cards(
+    core: &Arc<Core>,
+    refreshed: &[Tracker],
+) -> Result<Vec<SeriesCard>, CoreError> {
     let images_dir = core.paths.images_dir();
     let refreshed = refreshed.to_vec();
     core.store
@@ -385,7 +462,10 @@ fn refreshed_line(t: Tracker, count: usize) -> String {
 /// A list read that ran out of time. The provider never answered, so there
 /// is no status to carry.
 fn timed_out(t: Tracker, label: &str) -> CoreError {
-    accounts::tracker_error(t, format!("{label} timed out after {}ms", FETCH_TIMEOUT.as_millis()))
+    accounts::tracker_error(
+        t,
+        format!("{label} timed out after {}ms", FETCH_TIMEOUT.as_millis()),
+    )
 }
 
 /// A count off a provider's JSON, which is unsigned and small: anything
@@ -420,9 +500,15 @@ mod tests {
         assert_eq!(map("completed"), Some(ListStatus::Completed));
         assert_eq!(map("on_hold"), Some(ListStatus::Paused));
         assert_eq!(map("dropped"), Some(ListStatus::Dropped));
-        assert_eq!(normalize_status(Tracker::Mal, Some("watching"), true), Some(ListStatus::Repeating));
+        assert_eq!(
+            normalize_status(Tracker::Mal, Some("watching"), true),
+            Some(ListStatus::Repeating)
+        );
         // The flag only promotes what is being watched.
-        assert_eq!(normalize_status(Tracker::Mal, Some("completed"), true), Some(ListStatus::Completed));
+        assert_eq!(
+            normalize_status(Tracker::Mal, Some("completed"), true),
+            Some(ListStatus::Completed)
+        );
     }
 
     /// Nothing, and nothing either tracker has ever sent, is no status
@@ -435,7 +521,10 @@ mod tests {
             assert_eq!(normalize_status(t, Some(""), false), None);
             assert_eq!(normalize_status(t, Some("REWATCHING"), false), None);
         }
-        assert_eq!(normalize_status(Tracker::Anilist, Some("watching"), false), None);
+        assert_eq!(
+            normalize_status(Tracker::Anilist, Some("watching"), false),
+            None
+        );
         assert_eq!(normalize_status(Tracker::Mal, Some("CURRENT"), false), None);
     }
 
@@ -444,7 +533,10 @@ mod tests {
         let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
         assert!(!is_fresh(None, now));
         assert!(is_fresh(Some(now - Duration::from_secs(1)), now));
-        assert!(is_fresh(Some(now - PROGRESS_FRESH + Duration::from_secs(1)), now));
+        assert!(is_fresh(
+            Some(now - PROGRESS_FRESH + Duration::from_secs(1)),
+            now
+        ));
         assert!(!is_fresh(Some(now - PROGRESS_FRESH), now));
         assert!(!is_fresh(Some(now - Duration::from_secs(600)), now));
         // A clock that moved back is not a reason to fetch again.

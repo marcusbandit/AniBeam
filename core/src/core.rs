@@ -12,7 +12,7 @@ use crate::jobs::Jobs;
 use crate::library::reads;
 use crate::library::scan::{self, LibraryState, ScanScope};
 use crate::library::watcher::{self, Trigger, Watcher};
-use crate::metadata::{airing, apply, automatch, OUTAGE_WINDOW};
+use crate::metadata::{OUTAGE_WINDOW, airing, apply, automatch};
 use crate::net::anilist::AnilistClient;
 use crate::net::aniskip::AniSkipClient;
 use crate::net::jikan::JikanClient;
@@ -29,7 +29,7 @@ use crate::time;
 use crate::trackers::accounts;
 use crate::trackers::cache;
 use crate::trackers::oauth;
-use crate::trackers::secrets::{Secrets, KEYRING_UNAVAILABLE};
+use crate::trackers::secrets::{KEYRING_UNAVAILABLE, Secrets};
 use crate::trackers::watching;
 use crate::trackers::writes;
 use crate::transfer;
@@ -135,7 +135,10 @@ impl Core {
     /// own, gets the file store alone. Not part of the contract and not
     /// exported.
     #[doc(hidden)]
-    pub fn open_with_secrets(paths: CorePaths, secrets: Arc<Secrets>) -> Result<Arc<Core>, CoreError> {
+    pub fn open_with_secrets(
+        paths: CorePaths,
+        secrets: Arc<Secrets>,
+    ) -> Result<Arc<Core>, CoreError> {
         let http = Arc::new(ReqwestHttp::new(HTTP_TIMEOUT)?);
         Core::open_with_http_and_secrets(paths, http, secrets)
     }
@@ -143,13 +146,18 @@ impl Core {
     /// Both of the above at once, and where the core is actually built.
     /// Not part of the contract and not exported.
     #[doc(hidden)]
-    pub fn open_with_http_and_secrets(paths: CorePaths, http: Arc<dyn Http>, secrets: Arc<Secrets>) -> Result<Arc<Core>, CoreError> {
+    pub fn open_with_http_and_secrets(
+        paths: CorePaths,
+        http: Arc<dyn Http>,
+        secrets: Arc<Secrets>,
+    ) -> Result<Arc<Core>, CoreError> {
         let store = Store::open(&paths.db_path())?;
         let bus = EventBus::new(store.clone())?;
         // Creating the cache directory is opening, the same as creating the
         // data directory the database file lives in.
         let images_dir = paths.images_dir();
-        std::fs::create_dir_all(&images_dir).map_err(|e| CoreError::io_at(images_dir.to_string_lossy(), e))?;
+        std::fs::create_dir_all(&images_dir)
+            .map_err(|e| CoreError::io_at(images_dir.to_string_lossy(), e))?;
         let images = ImageCache::new(store.clone(), images_dir, http.clone());
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(4)
@@ -159,10 +167,26 @@ impl Core {
             .map_err(|e| CoreError::internal(format!("runtime: {e}")))?;
         let handle = runtime.handle().clone();
         let jobs = Jobs::new(handle.clone(), bus.clone());
-        let anilist = Arc::new(AnilistClient::new(ProviderClient::new(Upstream::Anilist, http.clone(), ANILIST_GAP)));
-        let jikan = Arc::new(JikanClient::new(ProviderClient::new(Upstream::Jikan, http.clone(), JIKAN_GAP)));
-        let aniskip = Arc::new(AniSkipClient::new(ProviderClient::new(Upstream::AniSkip, http.clone(), ANISKIP_GAP)));
-        let mal = Arc::new(MalClient::new(ProviderClient::new(Upstream::Mal, http.clone(), MAL_GAP)));
+        let anilist = Arc::new(AnilistClient::new(ProviderClient::new(
+            Upstream::Anilist,
+            http.clone(),
+            ANILIST_GAP,
+        )));
+        let jikan = Arc::new(JikanClient::new(ProviderClient::new(
+            Upstream::Jikan,
+            http.clone(),
+            JIKAN_GAP,
+        )));
+        let aniskip = Arc::new(AniSkipClient::new(ProviderClient::new(
+            Upstream::AniSkip,
+            http.clone(),
+            ANISKIP_GAP,
+        )));
+        let mal = Arc::new(MalClient::new(ProviderClient::new(
+            Upstream::Mal,
+            http.clone(),
+            MAL_GAP,
+        )));
         Ok(Arc::new_cyclic(|me| Core {
             paths,
             store,
@@ -219,7 +243,8 @@ impl Core {
     /// probe.
     pub(crate) fn secrets(&self) -> &Arc<Secrets> {
         if self.secrets.warm() {
-            self.bus.info(Stage::System, KEYRING_UNAVAILABLE, EventBody::Notice);
+            self.bus
+                .info(Stage::System, KEYRING_UNAVAILABLE, EventBody::Notice);
         }
         &self.secrets
     }
@@ -261,14 +286,20 @@ impl Core {
                 // A file speaks for the folder it is in: that is the series
                 // the reconcile has to look at, whether the file arrived or
                 // went away.
-                Trigger::Ingest(p) | Trigger::Removed(p) => paths.push(watcher::parent_series_path(&p)),
+                Trigger::Ingest(p) | Trigger::Removed(p) => {
+                    paths.push(watcher::parent_series_path(&p))
+                }
                 Trigger::NewDirectory(p) => paths.push(p),
             }
         }
         self.library.push_pending(paths);
         // A full scan covers every queued path, so the job takes them off
         // the queue itself rather than being asked for them twice.
-        let scope = if rescan { ScanScope::All } else { ScanScope::Paths(Vec::new()) };
+        let scope = if rescan {
+            ScanScope::All
+        } else {
+            ScanScope::Paths(Vec::new())
+        };
         scan::start(self, scope);
     }
 
@@ -277,7 +308,11 @@ impl Core {
     /// job already running picks this series up on its next time round the
     /// loop precisely because it no longer is.
     pub(crate) fn settle_fired(&self, series_id: u64) {
-        self.library.settle.lock().unwrap_or_else(|e| e.into_inner()).remove(&series_id);
+        self.library
+            .settle
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&series_id);
         let Some(core) = self.arc() else { return };
         automatch::start(&core);
     }
@@ -294,7 +329,11 @@ impl Core {
         // Dropped before the emit: a listener runs on this thread, and
         // nothing it does should be able to deadlock on this gate.
         drop(last);
-        self.bus.warn(Stage::Metadata, format!("Jikan is not answering: {message}"), EventBody::Notice);
+        self.bus.warn(
+            Stage::Metadata,
+            format!("Jikan is not answering: {message}"),
+            EventBody::Notice,
+        );
     }
 }
 
@@ -339,15 +378,27 @@ impl Core {
                 *self.watcher() = Some(watcher);
                 for path in self.store.read(scan::available_source_paths)? {
                     if let Err(e) = self.install_watch(&path) {
-                        self.bus.warn(Stage::Library, format!("cannot watch {path}: {e}"), EventBody::Notice);
+                        self.bus.warn(
+                            Stage::Library,
+                            format!("cannot watch {path}: {e}"),
+                            EventBody::Notice,
+                        );
                     }
                 }
             }
             Err(e) => {
-                self.bus.warn(Stage::Library, format!("the watcher could not start: {e}"), EventBody::Notice);
+                self.bus.warn(
+                    Stage::Library,
+                    format!("the watcher could not start: {e}"),
+                    EventBody::Notice,
+                );
             }
         }
-        self.bus.info(Stage::System, format!("AniBeam core {} ready", crate::VERSION), EventBody::Ready);
+        self.bus.info(
+            Stage::System,
+            format!("AniBeam core {} ready", crate::VERSION),
+            EventBody::Ready,
+        );
         Ok(())
     }
 
@@ -355,7 +406,9 @@ impl Core {
     /// way, without touching anything else.
     pub fn call(&self, call: Call) -> Result<Reply, CoreError> {
         if self.closed.load(Ordering::SeqCst) {
-            return Err(CoreError::Internal { message: "core is shut down".to_string() });
+            return Err(CoreError::Internal {
+                message: "core is shut down".to_string(),
+            });
         }
         match call {
             Call::About => Ok(Reply::About {
@@ -367,12 +420,16 @@ impl Core {
                     db_path: self.paths.db_path().to_string_lossy().into_owned(),
                 },
             }),
-            Call::RecentEvents { limit } => Ok(Reply::Events { events: self.bus.recent(limit)? }),
+            Call::RecentEvents { limit } => Ok(Reply::Events {
+                events: self.bus.recent(limit)?,
+            }),
             Call::ClearEvents => {
                 self.bus.clear()?;
                 Ok(Reply::Ok)
             }
-            Call::ListJobs => Ok(Reply::Jobs { jobs: self.jobs.list() }),
+            Call::ListJobs => Ok(Reply::Jobs {
+                jobs: self.jobs.list(),
+            }),
             Call::CancelJob { job } => {
                 self.jobs.cancel(job)?;
                 Ok(Reply::Ok)
@@ -385,78 +442,153 @@ impl Core {
             Call::RescanSeries { series } => scan::rescan_series(self, series),
             // `reveal_hidden` is the shell's tab visibility, not a filter:
             // the Hidden tab always lists what it holds.
-            Call::ListSeries { tab, query, sort, direction, reveal_hidden: _ } => reads::list_series(self, tab, &query, sort, direction),
+            Call::ListSeries {
+                tab,
+                query,
+                sort,
+                direction,
+                reveal_hidden: _,
+            } => reads::list_series(self, tab, &query, sort, direction),
             Call::ListAiring { offset, limit } => reads::list_airing(self, offset, limit),
             // Pure over one snapshot load, scope None: nothing to write and
             // no job. The shell's own sort preference is saved separately
             // through SetPreferences.
             Call::ListFeed { sort } => {
                 let images_dir = self.paths.images_dir();
-                let cards = self.store.read(|c| feed::list(c, &images_dir, sort, time::now()))?;
+                let cards = self
+                    .store
+                    .read(|c| feed::list(c, &images_dir, sort, time::now()))?;
                 Ok(Reply::Feed { cards })
             }
             Call::GetSeries { series } => reads::get_series(self, series),
             Call::SetHidden { series, hidden } => reads::set_hidden(self, series, hidden),
-            Call::ListMetadata { filter, query, reveal_hidden } => reads::list_metadata(self, filter, &query, reveal_hidden),
+            Call::ListMetadata {
+                filter,
+                query,
+                reveal_hidden,
+            } => reads::list_metadata(self, filter, &query, reveal_hidden),
             Call::Lookup { path } => reads::lookup(self, &path),
             // Two counts off one table, so this answers off the reader
             // connection rather than becoming a job.
             Call::GetStorage => {
                 let (image_count, image_bytes) = self.store.read(|c| self.images.storage(c))?;
-                Ok(Reply::Storage { image_count, image_bytes })
+                Ok(Reply::Storage {
+                    image_count,
+                    image_bytes,
+                })
             }
             Call::ClearImages => {
-                let core = self.arc().ok_or_else(|| CoreError::internal("core is shutting down"))?;
-                Ok(Reply::Started { job: images::start_clear(&core) })
+                let core = self
+                    .arc()
+                    .ok_or_else(|| CoreError::internal("core is shutting down"))?;
+                Ok(Reply::Started {
+                    job: images::start_clear(&core),
+                })
             }
-            Call::SearchProvider { provider, query, limit } => Ok(Reply::Started { job: apply::search(self, provider, &query, limit)? }),
-            Call::ResolveLink { url } => Ok(Reply::Started { job: apply::resolve_link(self, &url)? }),
-            Call::ApplyMatch { series, target } => Ok(Reply::Started { job: apply::apply_match(self, series, target)? }),
-            Call::RefreshSeries { series } => Ok(Reply::Started { job: apply::refresh_series(self, series)? }),
+            Call::SearchProvider {
+                provider,
+                query,
+                limit,
+            } => Ok(Reply::Started {
+                job: apply::search(self, provider, &query, limit)?,
+            }),
+            Call::ResolveLink { url } => Ok(Reply::Started {
+                job: apply::resolve_link(self, &url)?,
+            }),
+            Call::ApplyMatch { series, target } => Ok(Reply::Started {
+                job: apply::apply_match(self, series, target)?,
+            }),
+            Call::RefreshSeries { series } => Ok(Reply::Started {
+                job: apply::refresh_series(self, series)?,
+            }),
             Call::RefreshAll => {
-                let core = self.arc().ok_or_else(|| CoreError::internal("core is shutting down"))?;
-                Ok(Reply::Started { job: apply::refresh_all(&core) })
+                let core = self
+                    .arc()
+                    .ok_or_else(|| CoreError::internal("core is shutting down"))?;
+                Ok(Reply::Started {
+                    job: apply::refresh_all(&core),
+                })
             }
             Call::AutoMatch => {
-                let core = self.arc().ok_or_else(|| CoreError::internal("core is shutting down"))?;
-                Ok(Reply::Started { job: automatch::start(&core) })
+                let core = self
+                    .arc()
+                    .ok_or_else(|| CoreError::internal("core is shutting down"))?;
+                Ok(Reply::Started {
+                    job: automatch::start(&core),
+                })
             }
-            Call::RefreshAiring { series } => Ok(Reply::Started { job: airing::start_refresh(self, series)? }),
+            Call::RefreshAiring { series } => Ok(Reply::Started {
+                job: airing::start_refresh(self, series)?,
+            }),
             Call::ClearMatch { series } => automatch::clear_match(self, series),
-            Call::GetPreferences => Ok(Reply::Preferences { preferences: self.store.read(prefs::load_preferences)? }),
+            Call::GetPreferences => Ok(Reply::Preferences {
+                preferences: self.store.read(prefs::load_preferences)?,
+            }),
             Call::SetPreferences { preferences } => {
                 let p = preferences.clone();
                 self.store.write(move |c| prefs::save_preferences(c, &p))?;
-                self.bus.debug(Stage::Store, "preferences changed", EventBody::PreferencesChanged { preferences });
+                self.bus.debug(
+                    Stage::Store,
+                    "preferences changed",
+                    EventBody::PreferencesChanged { preferences },
+                );
                 Ok(Reply::Ok)
             }
-            Call::GetSettings => Ok(Reply::Settings { settings: self.store.read(prefs::load_settings)? }),
+            Call::GetSettings => Ok(Reply::Settings {
+                settings: self.store.read(prefs::load_settings)?,
+            }),
             Call::SetSubtitleDefaults { defaults } => {
                 prefs::validate_subtitle_defaults(&defaults)?;
-                self.store.write(move |c| prefs::save_subtitle_defaults(c, &defaults))?;
-                self.bus.debug(Stage::Store, "subtitle defaults changed", EventBody::SettingsChanged);
+                self.store
+                    .write(move |c| prefs::save_subtitle_defaults(c, &defaults))?;
+                self.bus.debug(
+                    Stage::Store,
+                    "subtitle defaults changed",
+                    EventBody::SettingsChanged,
+                );
                 Ok(Reply::Ok)
             }
             Call::SetAutoSkip { intro, outro } => {
-                self.store.write(move |c| prefs::save_auto_skip(c, &AutoSkip { intro, outro }))?;
-                self.bus.debug(Stage::Store, "auto-skip changed", EventBody::SettingsChanged);
+                self.store
+                    .write(move |c| prefs::save_auto_skip(c, &AutoSkip { intro, outro }))?;
+                self.bus.debug(
+                    Stage::Store,
+                    "auto-skip changed",
+                    EventBody::SettingsChanged,
+                );
                 Ok(Reply::Ok)
             }
-            Call::GetTrackers => Ok(Reply::Trackers { state: accounts::state(self)? }),
-            Call::SetTrackerCredentials { tracker, client_id, client_secret } => {
-                accounts::set_credentials(self, tracker, &client_id, client_secret.as_deref())
-            }
-            Call::ConnectTracker { tracker } => Ok(Reply::Started { job: oauth::connect(self, tracker)? }),
+            Call::GetTrackers => Ok(Reply::Trackers {
+                state: accounts::state(self)?,
+            }),
+            Call::SetTrackerCredentials {
+                tracker,
+                client_id,
+                client_secret,
+            } => accounts::set_credentials(self, tracker, &client_id, client_secret.as_deref()),
+            Call::ConnectTracker { tracker } => Ok(Reply::Started {
+                job: oauth::connect(self, tracker)?,
+            }),
             Call::DisconnectTracker { tracker } => accounts::disconnect(self, tracker),
             Call::SetMainTracker { tracker } => accounts::set_main(self, tracker),
-            Call::MarkEpisode { series, episode } => Ok(Reply::Started { job: writes::mark(self, series, episode)? }),
-            Call::SetProgress { series, progress } => Ok(Reply::Started { job: writes::set_progress(self, series, progress)? }),
-            Call::SetScore { series, score } => Ok(Reply::Started { job: writes::set_score(self, series, score)? }),
+            Call::MarkEpisode { series, episode } => Ok(Reply::Started {
+                job: writes::mark(self, series, episode)?,
+            }),
+            Call::SetProgress { series, progress } => Ok(Reply::Started {
+                job: writes::set_progress(self, series, progress)?,
+            }),
+            Call::SetScore { series, score } => Ok(Reply::Started {
+                job: writes::set_score(self, series, score)?,
+            }),
             // Nothing to check up front: an unconnected or a fresh tracker
             // is the job's own skip, not a refusal.
             Call::RefreshProgress { tracker } => {
-                let core = self.arc().ok_or_else(|| CoreError::internal("core is shutting down"))?;
-                Ok(Reply::Started { job: cache::start_refresh(&core, tracker, false) })
+                let core = self
+                    .arc()
+                    .ok_or_else(|| CoreError::internal("core is shutting down"))?;
+                Ok(Reply::Started {
+                    job: cache::start_refresh(&core, tracker, false),
+                })
             }
             // The cached list leaves at once and the refresh runs behind
             // it, the way the Electron page did on every visit.
@@ -464,37 +596,67 @@ impl Core {
             // The graph is drawn off the tables as they stand, and the
             // crawl behind it fills in whatever the walk found missing.
             Call::GetFranchiseGraph { series } => {
-                let core = self.arc().ok_or_else(|| CoreError::internal("core is shutting down"))?;
-                Ok(Reply::Graph { layout: franchise::graph(&core, series)? })
+                let core = self
+                    .arc()
+                    .ok_or_else(|| CoreError::internal("core is shutting down"))?;
+                Ok(Reply::Graph {
+                    layout: franchise::graph(&core, series)?,
+                })
             }
-            Call::ListSubscriptions => Ok(Reply::Started { job: subscriptions::start(self)? }),
-            Call::OpenPlayback { file } => Ok(Reply::Playback { session: Box::new(session::open(self, file)?) }),
+            Call::ListSubscriptions => Ok(Reply::Started {
+                job: subscriptions::start(self)?,
+            }),
+            Call::OpenPlayback { file } => Ok(Reply::Playback {
+                session: Box::new(session::open(self, file)?),
+            }),
             // The duration reaches the session at once, so the mark and
             // the completion rules have it from this tick on; the windows
             // themselves are the job's, and the outro follows it.
-            Call::ReportChapters { session, chapters, duration } => {
-                Ok(Reply::Started { job: skip::start(self, session, chapters, duration)? })
-            }
+            Call::ReportChapters {
+                session,
+                chapters,
+                duration,
+            } => Ok(Reply::Started {
+                job: skip::start(self, session, chapters, duration)?,
+            }),
             // The tick's reply is `Ok` and nothing else; every outcome the
             // rules decide arrives as an event.
-            Call::Tick { session, position, paused } => {
+            Call::Tick {
+                session,
+                position,
+                paused,
+            } => {
                 session::tick(self, session, position, paused)?;
                 Ok(Reply::Ok)
             }
-            Call::ClosePlayback { session, position, reason } => {
+            Call::ClosePlayback {
+                session,
+                position,
+                reason,
+            } => {
                 session::close(self, session, position, reason)?;
                 Ok(Reply::Ok)
             }
-            Call::SetTrackChoice { series, audio, subtitle } => session::set_track_choice(self, series, audio, subtitle),
+            Call::SetTrackChoice {
+                series,
+                audio,
+                subtitle,
+            } => session::set_track_choice(self, series, audio, subtitle),
             Call::Export { path, private } => {
-                let core = self.arc().ok_or_else(|| CoreError::internal("core is shutting down"))?;
-                Ok(Reply::Started { job: transfer::export::start(&core, path, private) })
+                let core = self
+                    .arc()
+                    .ok_or_else(|| CoreError::internal("core is shutting down"))?;
+                Ok(Reply::Started {
+                    job: transfer::export::start(&core, path, private),
+                })
             }
             // The file is read and its version checked here rather than in
             // the job, so a document this core is too old to read is
             // refused at once instead of failing a job the shell already
             // thinks is running.
-            Call::Import { path } => Ok(Reply::Started { job: transfer::import::start(self, &path)? }),
+            Call::Import { path } => Ok(Reply::Started {
+                job: transfer::import::start(self, &path)?,
+            }),
         }
     }
 

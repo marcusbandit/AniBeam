@@ -13,12 +13,12 @@
 //! the token is validated or exchanged, so the tab finishes cleanly
 //! whatever the provider says next.
 
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use std::time::{Duration, SystemTime};
 
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use rand::Rng;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -91,17 +91,27 @@ pub fn connect(core: &Core, t: Tracker) -> Result<u64, CoreError> {
     if let Some(running) = core.jobs.running(JobKind::ConnectTracker) {
         let _ = core.jobs.cancel(running);
     }
-    let owner = core.arc().ok_or_else(|| CoreError::internal("core is shutting down"))?;
+    let owner = core
+        .arc()
+        .ok_or_else(|| CoreError::internal("core is shutting down"))?;
     let port = core.oauth_port.load(Ordering::SeqCst);
-    Ok(owner.jobs.clone().start(JobKind::ConnectTracker, move |ctx| async move {
-        run(owner, ctx, t, client_id, client_secret, port).await
-    }))
+    Ok(owner
+        .jobs
+        .clone()
+        .start(JobKind::ConnectTracker, move |ctx| async move {
+            run(owner, ctx, t, client_id, client_secret, port).await
+        }))
 }
 
 /// What the browser came back with, once the pages have been served.
 enum Callback {
-    Anilist { access_token: String, expires_at: Option<SystemTime> },
-    Mal { code: String },
+    Anilist {
+        access_token: String,
+        expires_at: Option<SystemTime>,
+    },
+    Mal {
+        code: String,
+    },
 }
 
 async fn run(
@@ -120,7 +130,11 @@ async fn run(
     let redirect_url = format!("http://127.0.0.1:{port}{CALLBACK_PATH}");
     let open_url = auth_url(t, &client_id, &state, &verifier, &redirect_url);
     // The line the activity log keeps, with no url in it.
-    ctx.emit(Level::Info, format!("{} sign-in: waiting for the browser", site_name(t)), EventBody::Notice);
+    ctx.emit(
+        Level::Info,
+        format!("{} sign-in: waiting for the browser", site_name(t)),
+        EventBody::Notice,
+    );
     // Debug on purpose: the bus persists the body of every event above
     // Debug, and MAL's authorize url carries the PKCE verifier as its
     // `code_challenge`, so an Info event here would write a secret into
@@ -128,8 +142,15 @@ async fn run(
     // the shell that has to open the url is subscribed live.
     ctx.emit(
         Level::Debug,
-        format!("{} authorize url ready, waiting on {redirect_url}", site_name(t)),
-        EventBody::AuthUrlReady { tracker: t, open_url, redirect_url: redirect_url.clone() },
+        format!(
+            "{} authorize url ready, waiting on {redirect_url}",
+            site_name(t)
+        ),
+        EventBody::AuthUrlReady {
+            tracker: t,
+            open_url,
+            redirect_url: redirect_url.clone(),
+        },
     );
 
     let callback = tokio::time::timeout(FLOW_TIMEOUT, serve(&listener, t, &state))
@@ -137,17 +158,39 @@ async fn run(
         .map_err(|_| accounts::tracker_error(t, TIMED_OUT))??;
 
     let (user_id, username, tokens) = match callback {
-        Callback::Anilist { access_token, expires_at } => {
-            let profile = core.anilist.graphql(VIEWER_QUERY, serde_json::json!({}), Some(&access_token)).await?;
+        Callback::Anilist {
+            access_token,
+            expires_at,
+        } => {
+            let profile = core
+                .anilist
+                .graphql(VIEWER_QUERY, serde_json::json!({}), Some(&access_token))
+                .await?;
             let username = profile["Viewer"]["name"]
                 .as_str()
                 .filter(|name| !name.is_empty())
                 .ok_or_else(|| accounts::tracker_error(t, "the profile came back without a name"))?
                 .to_string();
-            (profile["Viewer"]["id"].as_u64(), username, Tokens { access_token, refresh_token: None, expires_at })
+            (
+                profile["Viewer"]["id"].as_u64(),
+                username,
+                Tokens {
+                    access_token,
+                    refresh_token: None,
+                    expires_at,
+                },
+            )
         }
         Callback::Mal { code } => {
-            let tokens = exchange(&core, &code, &verifier, &client_id, client_secret.as_deref(), &redirect_url).await?;
+            let tokens = exchange(
+                &core,
+                &code,
+                &verifier,
+                &client_id,
+                client_secret.as_deref(),
+                &redirect_url,
+            )
+            .await?;
             let profile = core.mal.get(MAL_ME, &tokens.access_token).await?;
             if !profile.is_success() {
                 return Err(CoreError::Provider {
@@ -168,9 +211,22 @@ async fn run(
     };
 
     let store = accounts::save_tokens(&core, t, &tokens).await?;
-    accounts::save_connection(&core, t, user_id, &username, &client_id, tokens.expires_at, store).await?;
+    accounts::save_connection(
+        &core,
+        t,
+        user_id,
+        &username,
+        &client_id,
+        tokens.expires_at,
+        store,
+    )
+    .await?;
     let trackers = accounts::state_async(&core).await?;
-    ctx.emit(Level::Debug, "trackers changed", EventBody::TrackersChanged { state: trackers });
+    ctx.emit(
+        Level::Debug,
+        "trackers changed",
+        EventBody::TrackersChanged { state: trackers },
+    );
     // The account has a list and the core has none of it, so the fetch is
     // started here rather than waited for by the first page that wants a
     // number. Forced, because a connection that has just happened cannot
@@ -179,7 +235,10 @@ async fn run(
     Ok(Finished {
         level: Level::Info,
         message: format!("{} connected as {username}", site_name(t)),
-        body: EventBody::TrackerConnected { tracker: t, username },
+        body: EventBody::TrackerConnected {
+            tracker: t,
+            username,
+        },
     })
 }
 
@@ -196,7 +255,10 @@ async fn exchange(
 ) -> Result<Tokens, CoreError> {
     let form = vec![
         ("client_id".to_string(), client_id.to_string()),
-        ("client_secret".to_string(), client_secret.unwrap_or_default().to_string()),
+        (
+            "client_secret".to_string(),
+            client_secret.unwrap_or_default().to_string(),
+        ),
         ("code".to_string(), code.to_string()),
         ("code_verifier".to_string(), verifier.to_string()),
         ("grant_type".to_string(), "authorization_code".to_string()),
@@ -225,7 +287,10 @@ fn bind(port: u16) -> Result<TcpListener, CoreError> {
         tracing::debug!("the loopback listener could not bind {port}: {e}");
         // In practice this is always the port being taken, and by the time
         // a user sees it the useful half is what to do about it.
-        CoreError::Io { path: None, message: format!("port {port} is in use, another AniBeam is mid-connect") }
+        CoreError::Io {
+            path: None,
+            message: format!("port {port} is in use, another AniBeam is mid-connect"),
+        }
     })?;
     listener.set_nonblocking(true).map_err(io_error)?;
     TcpListener::from_std(listener).map_err(io_error)
@@ -252,7 +317,12 @@ async fn serve(listener: &TcpListener, t: Tracker, state: &str) -> Result<Callba
             continue;
         }
         let params = query_pairs(query);
-        let get = |name: &str| params.iter().find(|(k, _)| k == name).map(|(_, v)| v.clone());
+        let get = |name: &str| {
+            params
+                .iter()
+                .find(|(k, _)| k == name)
+                .map(|(_, v)| v.clone())
+        };
 
         // AniList lands here first with the token still in the fragment.
         // Neither parameter present is that hop, and the page below reissues
@@ -263,7 +333,10 @@ async fn serve(listener: &TcpListener, t: Tracker, state: &str) -> Result<Callba
         }
         if let Some(error) = get("error") {
             reply(&mut stream, BAD_REQUEST, &error_page(&error)).await;
-            return Err(accounts::tracker_error(t, format!("{} returned an error: {error}", site_name(t))));
+            return Err(accounts::tracker_error(
+                t,
+                format!("{} returned an error: {error}", site_name(t)),
+            ));
         }
         if t == Tracker::Mal {
             // MAL carries the state back; AniList is never sent one, so it
@@ -289,7 +362,10 @@ async fn serve(listener: &TcpListener, t: Tracker, state: &str) -> Result<Callba
         let expires_at = get("expires_in")
             .and_then(|seconds| seconds.parse::<u64>().ok())
             .map(|seconds| time::now() + Duration::from_secs(seconds));
-        return Ok(Callback::Anilist { access_token, expires_at });
+        return Ok(Callback::Anilist {
+            access_token,
+            expires_at,
+        });
     }
 }
 
@@ -368,14 +444,26 @@ async fn write_all(stream: &mut TcpStream, head: &str, body: &str) -> Result<(),
 }
 
 fn io_error(e: std::io::Error) -> CoreError {
-    CoreError::Io { path: None, message: e.to_string() }
+    CoreError::Io {
+        path: None,
+        message: e.to_string(),
+    }
 }
 
 // Urls and encoding ----------------------------------------------------------
 
-fn auth_url(t: Tracker, client_id: &str, state: &str, verifier: &str, redirect_url: &str) -> String {
+fn auth_url(
+    t: Tracker,
+    client_id: &str,
+    state: &str,
+    verifier: &str,
+    redirect_url: &str,
+) -> String {
     match t {
-        Tracker::Anilist => format!("{ANILIST_AUTHORIZE}?client_id={}&response_type=token", encode(client_id)),
+        Tracker::Anilist => format!(
+            "{ANILIST_AUTHORIZE}?client_id={}&response_type=token",
+            encode(client_id)
+        ),
         // Plain PKCE: MAL does not support S256, so the challenge is the
         // verifier, which is what their own documentation shows.
         Tracker::Mal => format!(
@@ -404,7 +492,9 @@ fn encode(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for byte in value.bytes() {
         match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(byte as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char)
+            }
             other => out.push_str(&format!("%{other:02X}")),
         }
     }
@@ -508,7 +598,10 @@ const FRAGMENT_FORWARDER: &str = "<!doctype html><html><head><meta charset=\"utf
 </script></body></html>";
 
 fn escape(text: &str) -> String {
-    text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 #[cfg(test)]
@@ -517,13 +610,28 @@ mod tests {
 
     #[test]
     fn the_anilist_url_carries_two_parameters_and_no_more() {
-        let url = auth_url(Tracker::Anilist, "123", "st", "vf", "http://127.0.0.1:53682/callback");
-        assert_eq!(url, "https://anilist.co/api/v2/oauth/authorize?client_id=123&response_type=token");
+        let url = auth_url(
+            Tracker::Anilist,
+            "123",
+            "st",
+            "vf",
+            "http://127.0.0.1:53682/callback",
+        );
+        assert_eq!(
+            url,
+            "https://anilist.co/api/v2/oauth/authorize?client_id=123&response_type=token"
+        );
     }
 
     #[test]
     fn the_mal_url_encodes_the_redirect_and_sends_a_plain_challenge() {
-        let url = auth_url(Tracker::Mal, "mid", "st-1", "vf_2", "http://127.0.0.1:53682/callback");
+        let url = auth_url(
+            Tracker::Mal,
+            "mid",
+            "st-1",
+            "vf_2",
+            "http://127.0.0.1:53682/callback",
+        );
         assert_eq!(
             url,
             "https://myanimelist.net/v1/oauth2/authorize?response_type=code&client_id=mid\

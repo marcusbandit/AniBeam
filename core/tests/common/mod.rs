@@ -60,11 +60,22 @@ pub fn wait_for(c: &Collector, pred: impl Fn(&Event) -> bool, timeout: Duration)
     if !arrived {
         panic!("timed out waiting; saw {:#?}", c.events());
     }
-    c.events().into_iter().find(|e| pred(e)).expect("just confirmed present")
+    c.events()
+        .into_iter()
+        .find(|e| pred(e))
+        .expect("just confirmed present")
 }
 
 /// The contract's "await job N": the first event of that job whose phase is
 /// Finished.
 pub fn wait_job(c: &Collector, job: u64) -> Event {
-    wait_for(c, |e| e.job.as_ref().is_some_and(|j| j.id == job && j.phase == JobPhase::Finished), Duration::from_secs(30))
+    wait_for(
+        c,
+        |e| {
+            e.job
+                .as_ref()
+                .is_some_and(|j| j.id == job && j.phase == JobPhase::Finished)
+        },
+        Duration::from_secs(30),
+    )
 }

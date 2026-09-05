@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 
 use super::closure::{self, Closure};
 use super::{as_i64, as_u64};
@@ -42,7 +42,11 @@ const REFRESH_THROTTLE: Duration = Duration::from_secs(60);
 /// handed the running job's id and starts nothing.
 pub fn start(core: &Arc<Core>, seeds: Vec<u64>, refetch_seeds: bool) -> u64 {
     let owner = core.clone();
-    core.jobs.clone().start(JobKind::Crawl, move |ctx| async move { run(&owner, &ctx, seeds, refetch_seeds).await })
+    core.jobs
+        .clone()
+        .start(JobKind::Crawl, move |ctx| async move {
+            run(&owner, &ctx, seeds, refetch_seeds).await
+        })
 }
 
 /// Starts the Crawl job over every owned series whose node still owes its
@@ -50,10 +54,12 @@ pub fn start(core: &Arc<Core>, seeds: Vec<u64>, refetch_seeds: bool) -> u64 {
 /// owes anything by the time its turn comes, so it costs nothing.
 pub fn start_gap_crawl(core: &Arc<Core>) -> u64 {
     let owner = core.clone();
-    core.jobs.clone().start(JobKind::Crawl, move |ctx| async move {
-        let seeds = owner.store.write_async(gap_seeds).await?;
-        run(&owner, &ctx, seeds, false).await
-    })
+    core.jobs
+        .clone()
+        .start(JobKind::Crawl, move |ctx| async move {
+            let seeds = owner.store.write_async(gap_seeds).await?;
+            run(&owner, &ctx, seeds, false).await
+        })
 }
 
 /// The read path's crawl: a series page asks for its franchise, and this
@@ -73,7 +79,10 @@ pub fn maybe_crawl_for_read(core: &Arc<Core>, seed: u64, root: u64) {
 /// Whether this root is due a read-driven crawl, recording the instant when
 /// it is. False means the last one was inside the minute.
 fn record_crawl(recent: &mut HashMap<u64, Instant>, root: u64, at: Instant) -> bool {
-    if recent.get(&root).is_some_and(|last| at.duration_since(*last) < REFRESH_THROTTLE) {
+    if recent
+        .get(&root)
+        .is_some_and(|last| at.duration_since(*last) < REFRESH_THROTTLE)
+    {
         return false;
     }
     recent.insert(root, at);
@@ -83,7 +92,12 @@ fn record_crawl(recent: &mut HashMap<u64, Instant>, root: u64, at: Instant) -> b
 /// The body both entry points share. Every seed is closed, the closure says
 /// what it is owed, one node is fetched, and the closure is taken again so
 /// a member the fetch turned up joins the same walk.
-async fn run(core: &Core, ctx: &Arc<JobCtx>, seeds: Vec<u64>, refetch_seeds: bool) -> Result<Finished, CoreError> {
+async fn run(
+    core: &Core,
+    ctx: &Arc<JobCtx>,
+    seeds: Vec<u64>,
+    refetch_seeds: bool,
+) -> Result<Finished, CoreError> {
     let (mut fetched, mut deferred) = (0u64, 0u64);
     // Every node this run has already parked. The database deferral is
     // what governs the next job, but reading it back is not enough to end
@@ -104,7 +118,10 @@ async fn run(core: &Core, ctx: &Arc<JobCtx>, seeds: Vec<u64>, refetch_seeds: boo
         loop {
             ctx.checkpoint()?;
             let now = time::now_secs();
-            let graph = core.store.write_async(move |c| closure::close(c, seed, closure::CAP, now)).await?;
+            let graph = core
+                .store
+                .write_async(move |c| closure::close(c, seed, closure::CAP, now))
+                .await?;
             let next = if force {
                 force = false;
                 Some(seed)
@@ -125,7 +142,11 @@ async fn run(core: &Core, ctx: &Arc<JobCtx>, seeds: Vec<u64>, refetch_seeds: boo
                     write_node(core, id, &enrichment, time::now_secs()).await?;
                     fetch_cover(core, &enrichment).await;
                     fetched += 1;
-                    ctx.emit(Level::Debug, format!("franchise {} changed", graph.root), EventBody::GraphChanged { root: graph.root });
+                    ctx.emit(
+                        Level::Debug,
+                        format!("franchise {} changed", graph.root),
+                        EventBody::GraphChanged { root: graph.root },
+                    );
                 }
                 // AniList answered, and the answer was that it carries no
                 // entry. Nothing more will ever come of asking again.
@@ -178,7 +199,11 @@ async fn run(core: &Core, ctx: &Arc<JobCtx>, seeds: Vec<u64>, refetch_seeds: boo
     // One line for every node that failed, ahead of the terminal event, so
     // an outage says so once and names what it looked like.
     if let Some(first) = first_failure {
-        ctx.emit(Level::Warn, format!("crawl: {failed} nodes failed, first: {first}"), EventBody::Notice);
+        ctx.emit(
+            Level::Warn,
+            format!("crawl: {failed} nodes failed, first: {first}"),
+            EventBody::Notice,
+        );
     }
 
     Ok(Finished {
@@ -215,7 +240,10 @@ fn next_to_fetch(graph: &Closure, parked: &HashSet<u64>) -> Option<u64> {
 /// nonsense value must not become a nonsense instant.
 fn retry_after(e: &CoreError) -> i64 {
     let asked = match e {
-        CoreError::Provider { retry_after: Some(seconds), .. } => *seconds,
+        CoreError::Provider {
+            retry_after: Some(seconds),
+            ..
+        } => *seconds,
         _ => 0.0,
     };
     let seconds = asked.clamp(0.0, f64::from(u32::MAX));
@@ -226,12 +254,23 @@ fn retry_after(e: &CoreError) -> i64 {
 /// from the reply (blanks filled, values kept, `fetched_at` untouched: a
 /// crawl is not a metadata fetch), its outgoing edges are replaced, and
 /// every neighbour gets the stub row the edge needs to point at.
-async fn write_node(core: &Core, id: u64, enrichment: &Enrichment, now: i64) -> Result<(), CoreError> {
+async fn write_node(
+    core: &Core,
+    id: u64,
+    enrichment: &Enrichment,
+    now: i64,
+) -> Result<(), CoreError> {
     let own = own_stub(id, enrichment);
     let edges: Vec<(String, RelatedNode)> = enrichment
         .relations
         .as_ref()
-        .map(|r| r.edges.iter().filter(|e| e.node.id != 0).map(|e| (e.relation_type.clone(), e.node.clone())).collect())
+        .map(|r| {
+            r.edges
+                .iter()
+                .filter(|e| e.node.id != 0)
+                .map(|e| (e.relation_type.clone(), e.node.clone()))
+                .collect()
+        })
         .unwrap_or_default();
     core.store
         .tx_async(move |tx| {
@@ -266,7 +305,9 @@ fn own_stub(id: u64, e: &Enrichment) -> StubWrite {
         title_english: e.title.as_ref().and_then(|t| t.english.clone()),
         format: e.format.clone(),
         status: e.status.clone(),
-        year: e.season_year.or_else(|| e.start_date.as_ref().and_then(|d| d.year)),
+        year: e
+            .season_year
+            .or_else(|| e.start_date.as_ref().and_then(|d| d.year)),
         cover_url: e.cover_image.as_ref().and_then(|c| c.large.clone()),
         site_url: e.site_url.clone(),
         episodes: None,
@@ -277,7 +318,13 @@ fn own_stub(id: u64, e: &Enrichment) -> StubWrite {
 /// The node's poster, so the graph draws with pictures rather than gaps.
 /// A failure is that one url's own and is bookkeeping, not a state change.
 async fn fetch_cover(core: &Core, enrichment: &Enrichment) {
-    let Some(url) = enrichment.cover_image.as_ref().and_then(|c| c.large.clone()) else { return };
+    let Some(url) = enrichment
+        .cover_image
+        .as_ref()
+        .and_then(|c| c.large.clone())
+    else {
+        return;
+    };
     for (url, outcome) in core.images.ensure(std::slice::from_ref(&url)).await {
         if let Err(e) = outcome {
             tracing::debug!("the crawl could not fetch {url}: {e}");
@@ -310,8 +357,17 @@ async fn stamp_empty(core: &Core, id: u64, now: i64) -> Result<(), CoreError> {
 async fn defer(core: &Core, id: u64, until: i64) -> Result<(), CoreError> {
     core.store
         .tx_async(move |tx| {
-            record::write_stub(tx, &StubWrite { id, ..StubWrite::default() })?;
-            tx.execute("UPDATE anilist_media SET crawl_deferred_until = ?2 WHERE id = ?1", params![as_i64(id), until])?;
+            record::write_stub(
+                tx,
+                &StubWrite {
+                    id,
+                    ..StubWrite::default()
+                },
+            )?;
+            tx.execute(
+                "UPDATE anilist_media SET crawl_deferred_until = ?2 WHERE id = ?1",
+                params![as_i64(id), until],
+            )?;
             Ok(())
         })
         .await
@@ -349,7 +405,10 @@ mod tests {
     use crate::franchise::closure::Node;
 
     fn owing(id: u64) -> Node {
-        Node { anilist_id: id, ..Node::default() }
+        Node {
+            anilist_id: id,
+            ..Node::default()
+        }
     }
 
     /// The three reasons a node is not the next request: it is a boundary
@@ -361,8 +420,14 @@ mod tests {
         let graph = Closure {
             root: 1,
             nodes: vec![
-                Node { relations_fetched: true, ..owing(1) },
-                Node { deferred_until: Some(9_999), ..owing(2) },
+                Node {
+                    relations_fetched: true,
+                    ..owing(1)
+                },
+                Node {
+                    deferred_until: Some(9_999),
+                    ..owing(2)
+                },
                 owing(3),
                 owing(50),
             ],
@@ -373,7 +438,11 @@ mod tests {
             owed: vec![2, 3],
         };
 
-        assert_eq!(next_to_fetch(&graph, &HashSet::new()), Some(3), "1 is done, 2 is deferred, 50 is a boundary node");
+        assert_eq!(
+            next_to_fetch(&graph, &HashSet::new()),
+            Some(3),
+            "1 is done, 2 is deferred, 50 is a boundary node"
+        );
 
         // The same closure a moment later, with node 3's deferral written
         // but already expired: the column no longer holds it back, and only
@@ -390,9 +459,15 @@ mod tests {
         let t0 = Instant::now();
         assert!(record_crawl(&mut recent, 1, t0));
         assert!(!record_crawl(&mut recent, 1, t0 + Duration::from_secs(59)));
-        assert!(record_crawl(&mut recent, 2, t0), "another root has its own minute");
+        assert!(
+            record_crawl(&mut recent, 2, t0),
+            "another root has its own minute"
+        );
         assert!(record_crawl(&mut recent, 1, t0 + Duration::from_secs(61)));
-        assert!(!record_crawl(&mut recent, 1, t0 + Duration::from_secs(70)), "the minute runs from the last crawl");
+        assert!(
+            !record_crawl(&mut recent, 1, t0 + Duration::from_secs(70)),
+            "the minute runs from the last crawl"
+        );
     }
 
     /// A minute is the floor, whatever AniList asked for, and its own
@@ -409,6 +484,10 @@ mod tests {
         assert_eq!(retry_after(&limited(Some(0.0))), 60);
         assert_eq!(retry_after(&limited(Some(30.0))), 60);
         assert_eq!(retry_after(&limited(Some(90.5))), 91);
-        assert_eq!(retry_after(&limited(Some(f64::NAN))), 60, "a header that makes no sense costs the floor");
+        assert_eq!(
+            retry_after(&limited(Some(f64::NAN))),
+            60,
+            "a header that makes no sense costs the floor"
+        );
     }
 }

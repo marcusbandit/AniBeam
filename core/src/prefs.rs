@@ -43,7 +43,10 @@ fn range(field: &str, v: f64, lo: f64, hi: f64) -> Result<(), CoreError> {
     if v.is_finite() && (lo..=hi).contains(&v) {
         Ok(())
     } else {
-        Err(CoreError::invalid(field, format!("{v} is outside {lo} to {hi}")))
+        Err(CoreError::invalid(
+            field,
+            format!("{v} is outside {lo} to {hi}"),
+        ))
     }
 }
 

@@ -40,7 +40,11 @@ pub fn dice(a: &[String], b: &[String]) -> f64 {
     let sb: HashSet<&String> = b.iter().collect();
     let inter = sa.iter().filter(|t| sb.contains(*t)).count();
     let denom = sa.len() + sb.len();
-    if denom == 0 { 0.0 } else { 2.0 * inter as f64 / denom as f64 }
+    if denom == 0 {
+        0.0
+    } else {
+        2.0 * inter as f64 / denom as f64
+    }
 }
 
 /// The best Dice score of the query against every candidate title. 0 means
@@ -51,7 +55,11 @@ pub fn best_title_score(query: &str, candidates: &[Option<&str>]) -> f64 {
     if q.is_empty() {
         return 0.0;
     }
-    candidates.iter().flatten().map(|t| dice(&q, &tokenize(t))).fold(0.0, f64::max)
+    candidates
+        .iter()
+        .flatten()
+        .map(|t| dice(&q, &tokenize(t)))
+        .fold(0.0, f64::max)
 }
 
 #[cfg(test)]
@@ -60,10 +68,22 @@ mod tests {
 
     #[test]
     fn tokens_and_dice() {
-        assert_eq!(tokenize("Sousou no Frieren (2023)"), vec!["sousou", "no", "frieren", "2023"]);
-        let s = best_title_score("Frieren", &[Some("Sousou no Frieren"), Some("Frieren: Beyond Journey's End")]);
+        assert_eq!(
+            tokenize("Sousou no Frieren (2023)"),
+            vec!["sousou", "no", "frieren", "2023"]
+        );
+        let s = best_title_score(
+            "Frieren",
+            &[
+                Some("Sousou no Frieren"),
+                Some("Frieren: Beyond Journey's End"),
+            ],
+        );
         assert!((s - 0.5).abs() < 1e-9, "{s}");
-        let s = best_title_score("Otaku ni Yasashii Gal wa Inai", &[Some("Wotaku ni Koi wa Muzukashii")]);
+        let s = best_title_score(
+            "Otaku ni Yasashii Gal wa Inai",
+            &[Some("Wotaku ni Koi wa Muzukashii")],
+        );
         assert!(s < 0.4, "{s}");
         assert_eq!(best_title_score("", &[Some("x")]), 0.0);
         assert_eq!(best_title_score("x", &[None]), 0.0);

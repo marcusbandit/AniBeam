@@ -68,7 +68,10 @@ fn subscriptions_through_a_fake_anirss() {
         // `~/.local/bin` on this constructed `PATH` and always prepends
         // it; that directory does not exist, so the OS skips straight
         // past it on its way to the fake, wherever the fake sits behind it.
-        std::env::set_var("PATH", format!("{}:{}", bin.path().display(), original_path));
+        std::env::set_var(
+            "PATH",
+            format!("{}:{}", bin.path().display(), original_path),
+        );
     }
 
     let (_dir, core, c) = common::open_core();
@@ -78,8 +81,12 @@ fn subscriptions_through_a_fake_anirss() {
     write_fake(&anirss_path, OK_SCRIPT);
     let job = started(&core, Call::ListSubscriptions);
     let done = common::wait_job(&c, job);
-    let EventBody::SubscriptionsListed { result } = &done.body else { panic!("{:?}", done.body) };
-    let SubscriptionsResult::Ok { feeds } = result else { panic!("{result:?}") };
+    let EventBody::SubscriptionsListed { result } = &done.body else {
+        panic!("{:?}", done.body)
+    };
+    let SubscriptionsResult::Ok { feeds } = result else {
+        panic!("{result:?}")
+    };
     assert_eq!(feeds.len(), 1);
     assert_eq!(feeds[0].name, "Frieren");
     assert_eq!(feeds[0].query, "Frieren 1080p");
@@ -93,10 +100,16 @@ fn subscriptions_through_a_fake_anirss() {
     let job = started(&core, Call::ListSubscriptions);
     let done = common::wait_for(
         &c,
-        |e| e.job.as_ref().is_some_and(|j| j.id == job && j.phase == JobPhase::Finished),
+        |e| {
+            e.job
+                .as_ref()
+                .is_some_and(|j| j.id == job && j.phase == JobPhase::Finished)
+        },
         Duration::from_secs(16),
     );
-    let EventBody::SubscriptionsListed { result } = &done.body else { panic!("{:?}", done.body) };
+    let EventBody::SubscriptionsListed { result } = &done.body else {
+        panic!("{:?}", done.body)
+    };
     assert_eq!(*result, SubscriptionsResult::Timeout);
 
     // Case 3: no fake on `PATH` at all gives `Missing`.
@@ -106,7 +119,9 @@ fn subscriptions_through_a_fake_anirss() {
     }
     let job = started(&core, Call::ListSubscriptions);
     let done = common::wait_job(&c, job);
-    let EventBody::SubscriptionsListed { result } = &done.body else { panic!("{:?}", done.body) };
+    let EventBody::SubscriptionsListed { result } = &done.body else {
+        panic!("{:?}", done.body)
+    };
     assert_eq!(*result, SubscriptionsResult::Missing);
 
     // Case 4: present but not executable is a permission error, which is
@@ -119,7 +134,9 @@ fn subscriptions_through_a_fake_anirss() {
     let job = started(&core, Call::ListSubscriptions);
     let done = common::wait_job(&c, job);
     match &done.body {
-        EventBody::JobFailed { error: CoreError::Io { .. } } => {}
+        EventBody::JobFailed {
+            error: CoreError::Io { .. },
+        } => {}
         other => panic!("{other:?}"),
     }
 

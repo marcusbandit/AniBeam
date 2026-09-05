@@ -262,18 +262,26 @@ pub struct SortEntry {
 /// The version check reads the raw value first, so a document from a later
 /// core is refused by version rather than by whichever field it added.
 pub fn parse(bytes: &[u8]) -> Result<(Document, Vec<String>), CoreError> {
-    let value: Value = serde_json::from_slice(bytes).map_err(|e| CoreError::invalid("format", format!("not JSON: {e}")))?;
+    let value: Value = serde_json::from_slice(bytes)
+        .map_err(|e| CoreError::invalid("format", format!("not JSON: {e}")))?;
     if value.get("format").and_then(Value::as_str) != Some(FORMAT) {
-        return Err(CoreError::invalid("format", format!("not an {FORMAT} document")));
+        return Err(CoreError::invalid(
+            "format",
+            format!("not an {FORMAT} document"),
+        ));
     }
     let found = value.get("version").and_then(Value::as_u64).unwrap_or(0);
     let found = u32::try_from(found).unwrap_or(u32::MAX);
     if found > VERSION {
-        return Err(CoreError::Version { found, supported: VERSION });
+        return Err(CoreError::Version {
+            found,
+            supported: VERSION,
+        });
     }
     // Version 1 migrates here by doing nothing: the fields version 2 added
     // are absent, so they read as None and the merge leaves them alone.
-    let doc: Document = serde_json::from_value(value).map_err(|e| CoreError::invalid("format", e.to_string()))?;
+    let doc: Document =
+        serde_json::from_value(value).map_err(|e| CoreError::invalid("format", e.to_string()))?;
     let ignored = doc.unknown_fields();
     Ok((doc, ignored))
 }
@@ -283,9 +291,12 @@ pub fn parse(bytes: &[u8]) -> Result<(Document, Vec<String>), CoreError> {
 /// else is no instant rather than a failure.
 pub fn parse_instant(value: &Value) -> Option<i64> {
     match value {
-        Value::String(s) => ::time::OffsetDateTime::parse(s.trim(), &::time::format_description::well_known::Rfc3339)
-            .ok()
-            .map(|t| t.unix_timestamp()),
+        Value::String(s) => ::time::OffsetDateTime::parse(
+            s.trim(),
+            &::time::format_description::well_known::Rfc3339,
+        )
+        .ok()
+        .map(|t| t.unix_timestamp()),
         Value::Number(_) => value.as_f64().map(|ms| (ms / 1000.0) as i64),
         _ => None,
     }
@@ -309,7 +320,11 @@ fn names(prefix: &str, extra: &HashMap<String, Value>, out: &mut Vec<String>) {
     let mut keys: Vec<&str> = extra.keys().map(String::as_str).collect();
     keys.sort_unstable();
     for key in keys {
-        out.push(if prefix.is_empty() { key.to_string() } else { format!("{prefix}.{key}") });
+        out.push(if prefix.is_empty() {
+            key.to_string()
+        } else {
+            format!("{prefix}.{key}")
+        });
     }
 }
 
@@ -343,7 +358,11 @@ impl Document {
         }
         if let Some(preferences) = &self.preferences {
             names("preferences", &preferences.extra, &mut out);
-            names("preferences.librarySort", &preferences.library_sort.extra, &mut out);
+            names(
+                "preferences.librarySort",
+                &preferences.library_sort.extra,
+                &mut out,
+            );
         }
         out
     }
@@ -364,49 +383,104 @@ mod tests {
         assert_eq!(doc.sources.len(), 1);
         assert_eq!(doc.series.len(), 3);
         assert!(doc.series.iter().all(|s| s.track_choice.is_none()));
-        assert_eq!(doc.keys.as_ref().and_then(|k| k.get("tmdb")).and_then(Value::as_str), Some("0123abcd"));
+        assert_eq!(
+            doc.keys
+                .as_ref()
+                .and_then(|k| k.get("tmdb"))
+                .and_then(Value::as_str),
+            Some("0123abcd")
+        );
         let history = doc.history.as_ref().unwrap();
-        assert_eq!((history.views.len(), history.completed.len(), history.resume_points.len()), (1, 1, 2));
+        assert_eq!(
+            (
+                history.views.len(),
+                history.completed.len(),
+                history.resume_points.len()
+            ),
+            (1, 1, 2)
+        );
         assert!(doc.preferences.as_ref().unwrap().auto_skip.is_none());
         assert!(ignored.is_empty(), "{ignored:?}");
 
         // The three matches, one of each shape the format has.
-        assert!(matches!(doc.series[0].match_, Some(MatchEntry::Tracker { provider: TrackerName::Anilist, anilist_id: Some(154587), mal_id: Some(52991) })));
-        assert!(matches!(doc.series[1].match_, Some(MatchEntry::Tmdb { tmdb_id: 10494, .. })));
+        assert!(matches!(
+            doc.series[0].match_,
+            Some(MatchEntry::Tracker {
+                provider: TrackerName::Anilist,
+                anilist_id: Some(154587),
+                mal_id: Some(52991)
+            })
+        ));
+        assert!(matches!(
+            doc.series[1].match_,
+            Some(MatchEntry::Tmdb { tmdb_id: 10494, .. })
+        ));
         assert!(doc.series[2].match_.is_none());
         // And the two resume points, one of each shape.
-        assert!(matches!(history.resume_points[0], ResumeEntry::Series { episode, .. } if episode == 13.0));
-        assert!(matches!(&history.resume_points[1], ResumeEntry::File { file, .. } if file.ends_with("NCOP1.mkv")));
+        assert!(
+            matches!(history.resume_points[0], ResumeEntry::Series { episode, .. } if episode == 13.0)
+        );
+        assert!(
+            matches!(&history.resume_points[1], ResumeEntry::File { file, .. } if file.ends_with("NCOP1.mkv"))
+        );
     }
 
     #[test]
     fn a_newer_document_is_refused_by_version() {
         let text = FIXTURE.replace("\"version\": 1", "\"version\": 3");
-        assert!(matches!(parse(text.as_bytes()), Err(CoreError::Version { found: 3, supported: VERSION })));
+        assert!(matches!(
+            parse(text.as_bytes()),
+            Err(CoreError::Version {
+                found: 3,
+                supported: VERSION
+            })
+        ));
     }
 
     #[test]
     fn a_document_of_another_format_is_invalid() {
         let text = FIXTURE.replace("anibeam-export", "something-else");
-        assert!(matches!(parse(text.as_bytes()), Err(CoreError::Invalid { field, .. }) if field == "format"));
-        assert!(matches!(parse(b"not json at all"), Err(CoreError::Invalid { field, .. }) if field == "format"));
+        assert!(
+            matches!(parse(text.as_bytes()), Err(CoreError::Invalid { field, .. }) if field == "format")
+        );
+        assert!(
+            matches!(parse(b"not json at all"), Err(CoreError::Invalid { field, .. }) if field == "format")
+        );
     }
 
     #[test]
     fn unknown_fields_come_back_by_name() {
         let text = FIXTURE
-            .replace("\"format\": \"anibeam-export\",", "\"format\": \"anibeam-export\",\n  \"foo\": 1,")
-            .replace("\"kind\": \"series\",\n      \"path\"", "\"kind\": \"series\",\n      \"bar\": true,\n      \"path\"");
+            .replace(
+                "\"format\": \"anibeam-export\",",
+                "\"format\": \"anibeam-export\",\n  \"foo\": 1,",
+            )
+            .replace(
+                "\"kind\": \"series\",\n      \"path\"",
+                "\"kind\": \"series\",\n      \"bar\": true,\n      \"path\"",
+            );
         let (_, ignored) = parse(text.as_bytes()).unwrap();
         assert!(ignored.contains(&"foo".to_string()), "{ignored:?}");
-        assert!(ignored.contains(&"series[0].bar".to_string()), "{ignored:?}");
+        assert!(
+            ignored.contains(&"series[0].bar".to_string()),
+            "{ignored:?}"
+        );
     }
 
     #[test]
     fn an_instant_reads_from_a_string_or_a_millisecond_number() {
-        assert_eq!(parse_instant(&Value::from("1970-01-01T00:00:10Z")), Some(10));
-        assert_eq!(parse_instant(&Value::from("2026-08-30T21:04:11Z")), Some(1_788_123_851));
-        assert_eq!(parse_instant(&Value::from(1_788_123_851_000i64)), Some(1_788_123_851));
+        assert_eq!(
+            parse_instant(&Value::from("1970-01-01T00:00:10Z")),
+            Some(10)
+        );
+        assert_eq!(
+            parse_instant(&Value::from("2026-08-30T21:04:11Z")),
+            Some(1_788_123_851)
+        );
+        assert_eq!(
+            parse_instant(&Value::from(1_788_123_851_000i64)),
+            Some(1_788_123_851)
+        );
         assert_eq!(parse_instant(&Value::Null), None);
         assert_eq!(parse_instant(&Value::from("not a date")), None);
     }

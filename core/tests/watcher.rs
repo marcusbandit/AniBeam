@@ -18,15 +18,26 @@ use std::time::Duration;
 fn a_file_landing_in_a_watched_source_is_ingested_after_close_write() {
     let http = anibeam_core::net::FakeHttp::new();
     for _ in 0..6 {
-        http.push_for("graphql.anilist.co", 200, serde_json::json!({ "data": { "Page": { "media": [] } } }).to_string());
+        http.push_for(
+            "graphql.anilist.co",
+            200,
+            serde_json::json!({ "data": { "Page": { "media": [] } } }).to_string(),
+        );
     }
     let (dir, core, c) = common::open_core_with_http(http);
     let lib = dir.path().join("lib");
     fs::create_dir_all(lib.join("Show")).unwrap();
     fs::write(lib.join("Show").join("Show - 01.mkv"), b"x").unwrap();
-    core.call(Call::AddSource { path: lib.to_string_lossy().into_owned() }).unwrap();
+    core.call(Call::AddSource {
+        path: lib.to_string_lossy().into_owned(),
+    })
+    .unwrap();
     core.start().unwrap();
-    common::wait_for(&c, |e| matches!(e.body, EventBody::ScanFinished { .. }), Duration::from_secs(10));
+    common::wait_for(
+        &c,
+        |e| matches!(e.body, EventBody::ScanFinished { .. }),
+        Duration::from_secs(10),
+    );
 
     // Written in two goes with a pause between them: only the close, not
     // either write, may be taken as the file being ready.
@@ -57,7 +68,14 @@ fn a_file_landing_in_a_watched_source_is_ingested_after_close_write() {
     // changing and has never been matched is handed to the auto-match.
     common::wait_for(
         &c,
-        |e| matches!(&e.body, EventBody::JobStarted { kind: JobKind::AutoMatch }),
+        |e| {
+            matches!(
+                &e.body,
+                EventBody::JobStarted {
+                    kind: JobKind::AutoMatch
+                }
+            )
+        },
         Duration::from_secs(10),
     );
 
@@ -81,15 +99,36 @@ fn a_file_landing_in_a_watched_source_is_ingested_after_close_write() {
         },
         Duration::from_secs(10),
     );
-    let listed = match core.call(Call::ListSeries { tab: Tab::All, query: String::new(), sort: Sort::Alpha, direction: Direction::Asc, reveal_hidden: false }).unwrap() {
+    let listed = match core
+        .call(Call::ListSeries {
+            tab: Tab::All,
+            query: String::new(),
+            sort: Sort::Alpha,
+            direction: Direction::Asc,
+            reveal_hidden: false,
+        })
+        .unwrap()
+    {
         Reply::Series { series } => series,
         other => panic!("{other:?}"),
     };
     assert!(!listed.iter().any(|s| s.title == "Other"), "{listed:?}");
-    let missing = match core.call(Call::ListMetadata { filter: MetadataFilter::MissingFiles, query: String::new(), reveal_hidden: false }).unwrap() {
+    let missing = match core
+        .call(Call::ListMetadata {
+            filter: MetadataFilter::MissingFiles,
+            query: String::new(),
+            reveal_hidden: false,
+        })
+        .unwrap()
+    {
         Reply::Metadata { rows, .. } => rows,
         other => panic!("{other:?}"),
     };
-    assert!(missing.iter().any(|r| r.series.title == "Other" && r.series.missing), "{missing:?}");
+    assert!(
+        missing
+            .iter()
+            .any(|r| r.series.title == "Other" && r.series.missing),
+        "{missing:?}"
+    );
     core.shutdown();
 }

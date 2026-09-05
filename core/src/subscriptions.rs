@@ -27,14 +27,23 @@ const ANIRSS_TIMEOUT: Duration = Duration::from_secs(15);
 /// other kind `JobKind::one_at_a_time` names.
 pub fn start(core: &Core) -> Result<u64, CoreError> {
     if cfg!(windows) {
-        return Err(CoreError::Unsupported { what: "anirss on this platform".to_string() });
+        return Err(CoreError::Unsupported {
+            what: "anirss on this platform".to_string(),
+        });
     }
     let owner = owner(core)?;
-    Ok(owner.jobs.clone().start(JobKind::Subscriptions, move |_ctx| async move {
-        let result = run().await?;
-        let message = message_of(&result);
-        Ok(Finished { level: Level::Debug, message, body: EventBody::SubscriptionsListed { result } })
-    }))
+    Ok(owner
+        .jobs
+        .clone()
+        .start(JobKind::Subscriptions, move |_ctx| async move {
+            let result = run().await?;
+            let message = message_of(&result);
+            Ok(Finished {
+                level: Level::Debug,
+                message,
+                body: EventBody::SubscriptionsListed { result },
+            })
+        }))
 }
 
 /// Runs `anirss -Qj` to completion, or gives up on it. `kill_on_drop`
@@ -44,7 +53,12 @@ pub fn start(core: &Core) -> Result<u64, CoreError> {
 /// way.
 async fn run() -> Result<SubscriptionsResult, CoreError> {
     let mut command = Command::new("anirss");
-    command.arg("-Qj").stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
+    command
+        .arg("-Qj")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
     if let Some(path) = child_path() {
         command.env("PATH", path);
     }
@@ -75,7 +89,9 @@ async fn run() -> Result<SubscriptionsResult, CoreError> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     match parse_output(&stdout) {
         Ok(feeds) => Ok(SubscriptionsResult::Ok { feeds }),
-        Err(message) => Err(CoreError::Unsupported { what: format!("anirss returned unreadable JSON: {message}") }),
+        Err(message) => Err(CoreError::Unsupported {
+            what: format!("anirss returned unreadable JSON: {message}"),
+        }),
     }
 }
 
@@ -109,7 +125,11 @@ fn child_path() -> Option<String> {
     if path.split(':').any(|segment| segment == user_bin) {
         return None;
     }
-    Some(if path.is_empty() { user_bin } else { format!("{user_bin}:{path}") })
+    Some(if path.is_empty() {
+        user_bin
+    } else {
+        format!("{user_bin}:{path}")
+    })
 }
 
 /// A JSON array of `{ name, feed_url, save_path, rule_enabled,
@@ -121,15 +141,37 @@ pub fn parse_output(stdout: &str) -> Result<Vec<Feed>, String> {
     let raw: Vec<serde_json::Value> = serde_json::from_str(stdout).map_err(|e| e.to_string())?;
     let mut feeds = Vec::with_capacity(raw.len());
     for item in raw {
-        let Some(name) = item.get("name").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) else {
+        let Some(name) = item
+            .get("name")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+        else {
             continue;
         };
-        let feed_url = item.get("feed_url").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-        let save_path = item.get("save_path").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let feed_url = item
+            .get("feed_url")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let save_path = item
+            .get("save_path")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
         let active = item.get("rule_enabled").and_then(|v| v.as_bool()) != Some(false);
-        let torrents = item.get("torrent_count").and_then(|v| v.as_u64()).unwrap_or(0);
+        let torrents = item
+            .get("torrent_count")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
         let query = decode_nyaa_query(&feed_url).unwrap_or_default();
-        feeds.push(Feed { name: name.to_string(), active, torrents, query, save_path, url: feed_url });
+        feeds.push(Feed {
+            name: name.to_string(),
+            active,
+            torrents,
+            query,
+            save_path,
+            url: feed_url,
+        });
     }
     Ok(feeds)
 }
@@ -144,7 +186,11 @@ pub fn decode_nyaa_query(url: &str) -> Option<String> {
         let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
         if key == "q" {
             let decoded = percent_decode(value);
-            return if decoded.is_empty() { None } else { Some(decoded) };
+            return if decoded.is_empty() {
+                None
+            } else {
+                Some(decoded)
+            };
         }
     }
     None
@@ -164,7 +210,8 @@ fn percent_decode(value: &str) -> String {
                 out.push(b' ');
                 i += 1;
             }
-            b'%' if i + 2 < bytes.len() => match (hex_digit(bytes[i + 1]), hex_digit(bytes[i + 2])) {
+            b'%' if i + 2 < bytes.len() => match (hex_digit(bytes[i + 1]), hex_digit(bytes[i + 2]))
+            {
                 (Some(high), Some(low)) => {
                     out.push((high << 4) | low);
                     i += 3;
@@ -204,7 +251,9 @@ pub fn classify_failure(stderr: &str) -> Result<SubscriptionsResult, CoreError> 
     if lower.contains("cancelled") || lower.contains("can't reach qbittorrent") {
         Ok(SubscriptionsResult::NeedsAuth)
     } else {
-        Err(CoreError::Unsupported { what: format!("anirss exited: {trimmed}") })
+        Err(CoreError::Unsupported {
+            what: format!("anirss exited: {trimmed}"),
+        })
     }
 }
 
@@ -239,7 +288,10 @@ mod tests {
 
     #[test]
     fn decode_nyaa_query_reads_the_q_parameter() {
-        assert_eq!(decode_nyaa_query("https://nyaa.si/?page=rss&q=Frieren+1080p&c=1_2"), Some("Frieren 1080p".to_string()));
+        assert_eq!(
+            decode_nyaa_query("https://nyaa.si/?page=rss&q=Frieren+1080p&c=1_2"),
+            Some("Frieren 1080p".to_string())
+        );
     }
 
     #[test]
@@ -274,7 +326,9 @@ mod tests {
     fn classify_failure_fails_the_job_for_anything_else() {
         let err = classify_failure("boom, disk on fire").unwrap_err();
         match err {
-            CoreError::Unsupported { what } => assert_eq!(what, "anirss exited: boom, disk on fire"),
+            CoreError::Unsupported { what } => {
+                assert_eq!(what, "anirss exited: boom, disk on fire")
+            }
             other => panic!("{other:?}"),
         }
     }

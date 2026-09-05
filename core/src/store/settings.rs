@@ -1,5 +1,5 @@
-use rusqlite::{params, Connection, OptionalExtension};
-use serde::{de::DeserializeOwned, Serialize};
+use rusqlite::{Connection, OptionalExtension, params};
+use serde::{Serialize, de::DeserializeOwned};
 
 use crate::contract::CoreError;
 
@@ -12,7 +12,11 @@ pub const WATCHING_FETCHED_AT: &str = "watching_fetched_at";
 
 pub fn get<T: DeserializeOwned>(conn: &Connection, key: &str) -> Result<Option<T>, CoreError> {
     let raw: Option<String> = conn
-        .query_row("SELECT value FROM settings WHERE key = ?1", params![key], |r| r.get(0))
+        .query_row(
+            "SELECT value FROM settings WHERE key = ?1",
+            params![key],
+            |r| r.get(0),
+        )
         .optional()?;
     match raw {
         Some(s) => Ok(Some(serde_json::from_str(&s)?)),
@@ -29,6 +33,9 @@ pub fn set<T: Serialize>(conn: &Connection, key: &str, value: &T) -> Result<(), 
     Ok(())
 }
 
-pub fn get_or_default<T: DeserializeOwned + Default>(conn: &Connection, key: &str) -> Result<T, CoreError> {
+pub fn get_or_default<T: DeserializeOwned + Default>(
+    conn: &Connection,
+    key: &str,
+) -> Result<T, CoreError> {
     Ok(get(conn, key)?.unwrap_or_default())
 }

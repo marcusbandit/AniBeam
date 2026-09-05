@@ -41,7 +41,14 @@ fn ensure_fetches_once_and_clear_images_empties_everything() {
     assert!(cards[0].poster.is_none());
     let fill = common::wait_for(
         &c,
-        |e| matches!(e.body, EventBody::JobStarted { kind: JobKind::FillImages }),
+        |e| {
+            matches!(
+                e.body,
+                EventBody::JobStarted {
+                    kind: JobKind::FillImages
+                }
+            )
+        },
         Duration::from_secs(5),
     )
     .job
@@ -51,10 +58,19 @@ fn ensure_fetches_once_and_clear_images_empties_everything() {
 
     let cards = list(&core);
     let poster = cards[0].poster.clone().unwrap();
-    assert!(poster.starts_with(dir.path().join("cache").join("images").to_str().unwrap()), "{poster}");
+    assert!(
+        poster.starts_with(dir.path().join("cache").join("images").to_str().unwrap()),
+        "{poster}"
+    );
     assert!(std::path::Path::new(&poster).exists());
     assert_eq!(http.requests().len(), 1);
-    assert!(matches!(core.call(Call::GetStorage).unwrap(), Reply::Storage { image_count: 1, image_bytes: 4 }));
+    assert!(matches!(
+        core.call(Call::GetStorage).unwrap(),
+        Reply::Storage {
+            image_count: 1,
+            image_bytes: 4
+        }
+    ));
 
     // The second read had no gap, so it started no second fill, and the
     // fetched url is never asked for twice.
@@ -66,10 +82,19 @@ fn ensure_fetches_once_and_clear_images_empties_everything() {
     };
     common::wait_job(&c, clear);
     assert!(!std::path::Path::new(&poster).exists());
-    assert!(matches!(core.call(Call::GetStorage).unwrap(), Reply::Storage { image_count: 0, .. }));
-    assert!(c.bodies().iter().any(|b| matches!(b, EventBody::ImagesCleared { removed: 1 })));
+    assert!(matches!(
+        core.call(Call::GetStorage).unwrap(),
+        Reply::Storage { image_count: 0, .. }
+    ));
+    assert!(
+        c.bodies()
+            .iter()
+            .any(|b| matches!(b, EventBody::ImagesCleared { removed: 1 }))
+    );
     // Clearing tells every matched series its poster is gone.
-    assert!(c.bodies().iter().any(|b| matches!(b, EventBody::SeriesChanged { series } if series.iter().any(|c| c.id == s))));
+    assert!(c.bodies().iter().any(
+        |b| matches!(b, EventBody::SeriesChanged { series } if series.iter().any(|c| c.id == s))
+    ));
 }
 
 #[test]
@@ -89,18 +114,43 @@ fn a_failed_fetch_is_reported_per_url_and_the_batch_still_finishes() {
     let _ = list(&core);
     let fill = common::wait_for(
         &c,
-        |e| matches!(e.body, EventBody::JobStarted { kind: JobKind::FillImages }),
+        |e| {
+            matches!(
+                e.body,
+                EventBody::JobStarted {
+                    kind: JobKind::FillImages
+                }
+            )
+        },
         Duration::from_secs(5),
     )
     .job
     .unwrap()
     .id;
     let finished = common::wait_job(&c, fill);
-    assert_eq!(finished.body, EventBody::Notice, "the fill ends in a notice, not a failure");
-    assert!(finished.message.contains("1 fetched"), "{}", finished.message);
-    assert!(finished.message.contains("1 failed"), "{}", finished.message);
+    assert_eq!(
+        finished.body,
+        EventBody::Notice,
+        "the fill ends in a notice, not a failure"
+    );
+    assert!(
+        finished.message.contains("1 fetched"),
+        "{}",
+        finished.message
+    );
+    assert!(
+        finished.message.contains("1 failed"),
+        "{}",
+        finished.message
+    );
 
     // The one that answered is cached; the one that 404ed is not, and no
     // row was written for it.
-    assert!(matches!(core.call(Call::GetStorage).unwrap(), Reply::Storage { image_count: 1, image_bytes: 3 }));
+    assert!(matches!(
+        core.call(Call::GetStorage).unwrap(),
+        Reply::Storage {
+            image_count: 1,
+            image_bytes: 3
+        }
+    ));
 }

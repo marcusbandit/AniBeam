@@ -47,7 +47,9 @@ impl AniSkipClient {
         episode: u32,
         duration_secs: u64,
     ) -> Result<Option<Vec<SkipWindow>>, CoreError> {
-        let url = format!("{ANISKIP_API}/skip-times/{mal_id}/{episode}?types[]=op&types[]=ed&episodeLength={duration_secs}");
+        let url = format!(
+            "{ANISKIP_API}/skip-times/{mal_id}/{episode}?types[]=op&types[]=ed&episodeLength={duration_secs}"
+        );
         let response = self
             .client
             .send(HttpRequest {
@@ -98,7 +100,11 @@ mod tests {
     use std::time::Duration;
 
     fn client(http: Arc<FakeHttp>) -> AniSkipClient {
-        AniSkipClient::new(ProviderClient::new(Upstream::AniSkip, http, Duration::from_millis(1)))
+        AniSkipClient::new(ProviderClient::new(
+            Upstream::AniSkip,
+            http,
+            Duration::from_millis(1),
+        ))
     }
 
     #[tokio::test]
@@ -112,12 +118,26 @@ mod tests {
                 { "interval": { "startTime": 0.0, "endTime": 60.0 }, "skipType": "recap" }
             ] }),
         );
-        let windows = client(http.clone()).skip_times(52991, 3, 1440).await.unwrap().unwrap();
+        let windows = client(http.clone())
+            .skip_times(52991, 3, 1440)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(
             windows,
             vec![
-                SkipWindow { kind: SkipKind::Intro, start: 85.0, end: 175.0, source: SkipSource::AniSkip },
-                SkipWindow { kind: SkipKind::Outro, start: 1320.0, end: 1410.0, source: SkipSource::AniSkip },
+                SkipWindow {
+                    kind: SkipKind::Intro,
+                    start: 85.0,
+                    end: 175.0,
+                    source: SkipSource::AniSkip
+                },
+                SkipWindow {
+                    kind: SkipKind::Outro,
+                    start: 1320.0,
+                    end: 1410.0,
+                    source: SkipSource::AniSkip
+                },
             ]
         );
         assert_eq!(

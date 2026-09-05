@@ -58,7 +58,13 @@ fn started(core: &Core, call: Call) -> u64 {
 
 fn list_cards(core: &Core) -> Vec<SeriesCard> {
     match core
-        .call(Call::ListSeries { tab: Tab::All, query: String::new(), sort: Sort::Alpha, direction: Direction::Asc, reveal_hidden: false })
+        .call(Call::ListSeries {
+            tab: Tab::All,
+            query: String::new(),
+            sort: Sort::Alpha,
+            direction: Direction::Asc,
+            reveal_hidden: false,
+        })
         .unwrap()
     {
         Reply::Series { series } => series,
@@ -81,14 +87,44 @@ fn a_search_answers_from_anilist_and_refuses_every_other_provider() {
     let http = anibeam_core::net::FakeHttp::new();
     let (_dir, core, c) = common::open_core_with_http(http.clone());
 
-    let err = core.call(Call::SearchProvider { provider: Provider::Tmdb, query: "Frieren".into(), limit: 12 }).err().unwrap();
-    assert!(matches!(&err, CoreError::Unsupported { what } if what == "search on tmdb"), "{err:?}");
-    let err = core.call(Call::SearchProvider { provider: Provider::Mal, query: "Frieren".into(), limit: 12 }).err().unwrap();
-    assert!(matches!(&err, CoreError::Unsupported { what } if what == "search on mal"), "{err:?}");
+    let err = core
+        .call(Call::SearchProvider {
+            provider: Provider::Tmdb,
+            query: "Frieren".into(),
+            limit: 12,
+        })
+        .err()
+        .unwrap();
+    assert!(
+        matches!(&err, CoreError::Unsupported { what } if what == "search on tmdb"),
+        "{err:?}"
+    );
+    let err = core
+        .call(Call::SearchProvider {
+            provider: Provider::Mal,
+            query: "Frieren".into(),
+            limit: 12,
+        })
+        .err()
+        .unwrap();
+    assert!(
+        matches!(&err, CoreError::Unsupported { what } if what == "search on mal"),
+        "{err:?}"
+    );
 
     // A query too short to be worth a request never becomes a job.
-    let err = core.call(Call::SearchProvider { provider: Provider::Anilist, query: " a ".into(), limit: 12 }).err().unwrap();
-    assert!(matches!(&err, CoreError::Invalid { field, .. } if field == "query"), "{err:?}");
+    let err = core
+        .call(Call::SearchProvider {
+            provider: Provider::Anilist,
+            query: " a ".into(),
+            limit: 12,
+        })
+        .err()
+        .unwrap();
+    assert!(
+        matches!(&err, CoreError::Invalid { field, .. } if field == "query"),
+        "{err:?}"
+    );
     assert!(http.requests().is_empty());
 
     http.push_json(
@@ -113,20 +149,35 @@ fn a_search_answers_from_anilist_and_refuses_every_other_provider() {
             }
         ] } } }),
     );
-    let job = started(&core, Call::SearchProvider { provider: Provider::Anilist, query: "Frieren".into(), limit: 12 });
+    let job = started(
+        &core,
+        Call::SearchProvider {
+            provider: Provider::Anilist,
+            query: "Frieren".into(),
+            limit: 12,
+        },
+    );
     let done = common::wait_job(&c, job);
     assert_eq!(done.message, "search: 2 results for \"Frieren\"");
     assert_eq!(done.level, Level::Debug);
-    let EventBody::SearchFinished { results } = done.body else { panic!("{done:?}") };
+    let EventBody::SearchFinished { results } = done.body else {
+        panic!("{done:?}")
+    };
     assert_eq!(results.len(), 2);
     assert_eq!(results[0].provider, Provider::Anilist);
     assert_eq!(results[0].id, 1);
     assert_eq!(results[0].title, "Sousou no Frieren");
-    assert_eq!(results[0].alt_title.as_deref(), Some("Frieren: Beyond Journey's End"));
+    assert_eq!(
+        results[0].alt_title.as_deref(),
+        Some("Frieren: Beyond Journey's End")
+    );
     assert_eq!(results[0].format.as_deref(), Some("TV"));
     assert_eq!(results[0].year, Some(2023));
     assert_eq!(results[0].episodes, Some(28));
-    assert_eq!(results[0].cover_url.as_deref(), Some("https://img/1-xl.jpg"));
+    assert_eq!(
+        results[0].cover_url.as_deref(),
+        Some("https://img/1-xl.jpg")
+    );
     // No romaji and no english: the native title is the fallback, the year
     // comes off the start date, and the large cover stands in for the
     // extra large one.
@@ -138,8 +189,18 @@ fn a_search_answers_from_anilist_and_refuses_every_other_provider() {
     assert_eq!(per_page(&http.requests()[0]), 12);
 
     // The shell asks for what it wants, inside the provider's bounds.
-    http.push_json(200, serde_json::json!({ "data": { "Page": { "media": [] } } }));
-    let job = started(&core, Call::SearchProvider { provider: Provider::Anilist, query: "Frieren".into(), limit: 0 });
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "Page": { "media": [] } } }),
+    );
+    let job = started(
+        &core,
+        Call::SearchProvider {
+            provider: Provider::Anilist,
+            query: "Frieren".into(),
+            limit: 0,
+        },
+    );
     common::wait_job(&c, job);
     assert_eq!(per_page(&http.requests()[1]), 1);
 
@@ -155,9 +216,22 @@ fn a_mal_link_anilist_cannot_resolve_fails_the_job_with_a_message() {
     let (_dir, core, c) = common::open_core_with_http(http.clone());
 
     // Not a link at all, and a link with nothing behind it.
-    let err = core.call(Call::ResolveLink { url: "Frieren".into() }).err().unwrap();
-    assert!(matches!(&err, CoreError::Invalid { field, message } if field == "url" && message == "not a link"), "{err:?}");
-    let err = core.call(Call::ResolveLink { url: "https://www.themoviedb.org/movie/550".into() }).err().unwrap();
+    let err = core
+        .call(Call::ResolveLink {
+            url: "Frieren".into(),
+        })
+        .err()
+        .unwrap();
+    assert!(
+        matches!(&err, CoreError::Invalid { field, message } if field == "url" && message == "not a link"),
+        "{err:?}"
+    );
+    let err = core
+        .call(Call::ResolveLink {
+            url: "https://www.themoviedb.org/movie/550".into(),
+        })
+        .err()
+        .unwrap();
     assert!(
         matches!(&err, CoreError::Invalid { field, message }
             if field == "url" && message == "Couldn't read that link. Paste an AniList or MyAnimeList page URL."),
@@ -165,15 +239,35 @@ fn a_mal_link_anilist_cannot_resolve_fails_the_job_with_a_message() {
     );
 
     // An AniList link needs no request at all.
-    let job = started(&core, Call::ResolveLink { url: "https://anilist.co/anime/21/One-Piece".into() });
+    let job = started(
+        &core,
+        Call::ResolveLink {
+            url: "https://anilist.co/anime/21/One-Piece".into(),
+        },
+    );
     let done = common::wait_job(&c, job);
-    assert_eq!(done.body, EventBody::LinkResolved { target: MatchTarget::Anilist { id: 21, season: None } });
+    assert_eq!(
+        done.body,
+        EventBody::LinkResolved {
+            target: MatchTarget::Anilist {
+                id: 21,
+                season: None
+            }
+        }
+    );
     assert!(http.requests().is_empty());
 
     http.push_json(200, not_found());
-    let job = started(&core, Call::ResolveLink { url: "https://myanimelist.net/anime/9999/Nothing".into() });
+    let job = started(
+        &core,
+        Call::ResolveLink {
+            url: "https://myanimelist.net/anime/9999/Nothing".into(),
+        },
+    );
     let done = common::wait_job(&c, job);
-    let EventBody::JobFailed { error } = done.body else { panic!("{done:?}") };
+    let EventBody::JobFailed { error } = done.body else {
+        panic!("{done:?}")
+    };
     assert!(
         matches!(&error, CoreError::Provider { message, .. } if message == "AniList has no entry for that MyAnimeList id."),
         "{error:?}"
@@ -190,22 +284,58 @@ fn apply_match_writes_the_match_first_and_the_record_after() {
     let http = anibeam_core::net::FakeHttp::new();
     let (_dir, core, c) = common::open_core_with_http(http.clone());
     let src = fixtures::insert_source(&core, "/lib");
-    let series = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Sousou no Frieren", "Sousou no Frieren");
-    fixtures::insert_file(&core, series, "/lib/Sousou no Frieren/01.mkv", 1.0, None, "episode", 1);
+    let series = fixtures::insert_series(
+        &core,
+        src,
+        SeriesKind::Show,
+        "/lib/Sousou no Frieren",
+        "Sousou no Frieren",
+    );
+    fixtures::insert_file(
+        &core,
+        series,
+        "/lib/Sousou no Frieren/01.mkv",
+        1.0,
+        None,
+        "episode",
+        1,
+    );
 
     assert!(matches!(
-        core.call(Call::ApplyMatch { series: 9999, target: MatchTarget::Anilist { id: 1, season: None } }),
-        Err(CoreError::NotFound { what: Entity::Series, id: 9999 })
+        core.call(Call::ApplyMatch {
+            series: 9999,
+            target: MatchTarget::Anilist {
+                id: 1,
+                season: None
+            }
+        }),
+        Err(CoreError::NotFound {
+            what: Entity::Series,
+            id: 9999
+        })
     ));
 
     // Media by id, enrichment, schedule, Jikan, then the cover.
     http.push_json(200, serde_json::json!({ "data": { "Media": media_json(1, "Sousou no Frieren", Some(1001), true) } }));
     http.push_json(200, bare_enrichment(1, Some(1001)));
     http.push_json(200, empty_schedule(1));
-    http.push_for("jikan.moe", 200, serde_json::json!({ "data": [] }).to_string());
+    http.push_for(
+        "jikan.moe",
+        200,
+        serde_json::json!({ "data": [] }).to_string(),
+    );
     http.push_for("img/1-xl.jpg", 200, vec![1, 2, 3]);
 
-    let job = started(&core, Call::ApplyMatch { series, target: MatchTarget::Anilist { id: 1, season: None } });
+    let job = started(
+        &core,
+        Call::ApplyMatch {
+            series,
+            target: MatchTarget::Anilist {
+                id: 1,
+                season: None,
+            },
+        },
+    );
     let done = common::wait_job(&c, job);
     assert_eq!(done.level, Level::Info, "{done:#?}");
     assert_eq!(done.message, "matched Sousou no Frieren to AniList 1");
@@ -218,15 +348,22 @@ fn apply_match_writes_the_match_first_and_the_record_after() {
         .iter()
         .position(|e| matches!(&e.body, EventBody::SeriesChanged { series } if series.iter().any(|s| s.match_info.as_ref().is_some_and(|m| m.confirmed))))
         .expect("a confirmed card before the fetch");
-    let applied = events.iter().position(|e| matches!(e.body, EventBody::MatchApplied { .. })).unwrap();
+    let applied = events
+        .iter()
+        .position(|e| matches!(e.body, EventBody::MatchApplied { .. }))
+        .unwrap();
     assert!(first < applied, "{:#?}", events);
-    let EventBody::SeriesChanged { series: early } = &events[first].body else { unreachable!() };
+    let EventBody::SeriesChanged { series: early } = &events[first].body else {
+        unreachable!()
+    };
     assert!(early[0].poster.is_none(), "{early:?}");
 
     let cards = list_cards(&core);
     let card = cards.iter().find(|s| s.id == series).unwrap();
     assert_eq!(
-        card.match_info.as_ref().map(|m| (m.provider, m.anilist_id, m.mal_id, m.confirmed)),
+        card.match_info
+            .as_ref()
+            .map(|m| (m.provider, m.anilist_id, m.mal_id, m.confirmed)),
         Some((Provider::Anilist, Some(1), Some(1001), true))
     );
     assert!(card.poster.is_some(), "{card:?}");
@@ -236,7 +373,17 @@ fn apply_match_writes_the_match_first_and_the_record_after() {
     let before = http.requests().len();
     let job = started(&core, Call::AutoMatch);
     let done = common::wait_job(&c, job);
-    assert!(matches!(done.body, EventBody::AutoMatchFinished { matched: 0, unmatched: 0, .. }), "{done:?}");
+    assert!(
+        matches!(
+            done.body,
+            EventBody::AutoMatchFinished {
+                matched: 0,
+                unmatched: 0,
+                ..
+            }
+        ),
+        "{done:?}"
+    );
     assert_eq!(http.requests().len(), before);
 
     core.shutdown();
@@ -252,11 +399,31 @@ fn refresh_refuses_an_unmatched_series_and_refetches_a_matched_one() {
     let src = fixtures::insert_source(&core, "/lib");
     let bare = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Unmatched", "Unmatched");
     let matched = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Matched", "Matched");
-    fixtures::insert_media(&core, 7, Some("Old title"), None, Some(12), "FINISHED", "TV", Some(80));
+    fixtures::insert_media(
+        &core,
+        7,
+        Some("Old title"),
+        None,
+        Some(12),
+        "FINISHED",
+        "TV",
+        Some(80),
+    );
     fixtures::match_series(&core, matched, Some(7), None);
 
-    assert!(matches!(core.call(Call::RefreshSeries { series: 9999 }), Err(CoreError::NotFound { what: Entity::Series, id: 9999 })));
-    assert!(matches!(core.call(Call::RefreshSeries { series: bare }), Err(CoreError::Refused { reason: Refusal::Unmatched })));
+    assert!(matches!(
+        core.call(Call::RefreshSeries { series: 9999 }),
+        Err(CoreError::NotFound {
+            what: Entity::Series,
+            id: 9999
+        })
+    ));
+    assert!(matches!(
+        core.call(Call::RefreshSeries { series: bare }),
+        Err(CoreError::Refused {
+            reason: Refusal::Unmatched
+        })
+    ));
     assert!(http.requests().is_empty());
 
     // No MAL id and no cover, so the fetch is exactly the three AniList
@@ -280,12 +447,21 @@ fn refresh_refuses_an_unmatched_series_and_refetches_a_matched_one() {
 
     let job = started(&core, Call::RefreshSeries { series: matched });
     let done = common::wait_job(&c, job);
-    assert_eq!(done.body, EventBody::RefreshFinished { refreshed: 1, failed: 0 });
+    assert_eq!(
+        done.body,
+        EventBody::RefreshFinished {
+            refreshed: 1,
+            failed: 0
+        }
+    );
     assert_eq!(done.level, Level::Info);
     assert_eq!(http.requests().len(), 3);
 
     let cards = list_cards(&core);
-    assert_eq!(cards.iter().find(|s| s.id == matched).unwrap().title, "New title");
+    assert_eq!(
+        cards.iter().find(|s| s.id == matched).unwrap().title,
+        "New title"
+    );
 
     core.shutdown();
 }
@@ -298,11 +474,31 @@ fn a_mal_target_anilist_cannot_resolve_becomes_a_mal_only_match() {
     let http = anibeam_core::net::FakeHttp::new();
     let (_dir, core, c) = common::open_core_with_http(http.clone());
     let src = fixtures::insert_source(&core, "/lib");
-    let series = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Obscure OVA", "Obscure OVA");
-    fixtures::insert_file(&core, series, "/lib/Obscure OVA/01.mkv", 1.0, None, "episode", 1);
+    let series = fixtures::insert_series(
+        &core,
+        src,
+        SeriesKind::Show,
+        "/lib/Obscure OVA",
+        "Obscure OVA",
+    );
+    fixtures::insert_file(
+        &core,
+        series,
+        "/lib/Obscure OVA/01.mkv",
+        1.0,
+        None,
+        "episode",
+        1,
+    );
 
     http.push_json(200, not_found());
-    let job = started(&core, Call::ApplyMatch { series, target: MatchTarget::Mal { id: 5 } });
+    let job = started(
+        &core,
+        Call::ApplyMatch {
+            series,
+            target: MatchTarget::Mal { id: 5 },
+        },
+    );
     let done = common::wait_job(&c, job);
     assert_eq!(done.body, EventBody::MatchApplied { series });
     assert_eq!(http.requests().len(), 1);
@@ -310,7 +506,9 @@ fn a_mal_target_anilist_cannot_resolve_becomes_a_mal_only_match() {
     let cards = list_cards(&core);
     let card = cards.iter().find(|s| s.id == series).unwrap();
     assert_eq!(
-        card.match_info.as_ref().map(|m| (m.provider, m.anilist_id, m.mal_id, m.confirmed)),
+        card.match_info
+            .as_ref()
+            .map(|m| (m.provider, m.anilist_id, m.mal_id, m.confirmed)),
         Some((Provider::Mal, None, Some(5), true))
     );
     assert_eq!(card.title, "Obscure OVA");
@@ -319,11 +517,24 @@ fn a_mal_target_anilist_cannot_resolve_becomes_a_mal_only_match() {
     // There is no AniList id to refetch, so a refresh says so rather than
     // guessing at one.
     let err = core.call(Call::RefreshSeries { series }).err().unwrap();
-    assert!(matches!(&err, CoreError::Unsupported { what } if what == "refresh of a MAL-only or TMDB match"), "{err:?}");
+    assert!(
+        matches!(&err, CoreError::Unsupported { what } if what == "refresh of a MAL-only or TMDB match"),
+        "{err:?}"
+    );
 
     let job = started(&core, Call::AutoMatch);
     let done = common::wait_job(&c, job);
-    assert!(matches!(done.body, EventBody::AutoMatchFinished { matched: 0, unmatched: 0, .. }), "{done:?}");
+    assert!(
+        matches!(
+            done.body,
+            EventBody::AutoMatchFinished {
+                matched: 0,
+                unmatched: 0,
+                ..
+            }
+        ),
+        "{done:?}"
+    );
     assert_eq!(http.requests().len(), 1);
 
     core.shutdown();
@@ -339,7 +550,16 @@ fn the_backfill_walks_the_stubs_and_refresh_all_walks_every_match() {
     let src = fixtures::insert_source(&core, "/lib");
     let fetched = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Fetched", "Fetched");
     let stub = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Stub", "Stub");
-    fixtures::insert_media(&core, 10, Some("Fetched"), None, Some(12), "FINISHED", "TV", Some(80));
+    fixtures::insert_media(
+        &core,
+        10,
+        Some("Fetched"),
+        None,
+        Some(12),
+        "FINISHED",
+        "TV",
+        Some(80),
+    );
     // A row known from an edge, a list or an import: an id and a title,
     // and `fetched_at` still NULL.
     core.store()
@@ -352,36 +572,73 @@ fn the_backfill_walks_the_stubs_and_refresh_all_walks_every_match() {
     fixtures::match_series(&core, stub, Some(11), None);
 
     // The backfill takes the stub and nothing else.
-    http.push_json(200, serde_json::json!({ "data": { "Media": media_json(11, "Stub filled in", None, false) } }));
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "Media": media_json(11, "Stub filled in", None, false) } }),
+    );
     http.push_json(200, bare_enrichment(11, None));
     http.push_json(200, empty_schedule(11));
     let job = anibeam_core::metadata::apply::backfill_stubs(&core);
     let done = common::wait_job(&c, job);
-    assert_eq!(done.body, EventBody::RefreshFinished { refreshed: 1, failed: 0 });
+    assert_eq!(
+        done.body,
+        EventBody::RefreshFinished {
+            refreshed: 1,
+            failed: 0
+        }
+    );
     assert_eq!(done.message, "backfill: 1 refreshed, 0 failed");
     assert_eq!(http.requests().len(), 3);
-    assert_eq!(list_cards(&core).iter().find(|s| s.id == stub).unwrap().title, "Stub filled in");
+    assert_eq!(
+        list_cards(&core)
+            .iter()
+            .find(|s| s.id == stub)
+            .unwrap()
+            .title,
+        "Stub filled in"
+    );
 
     // Nothing is a stub any more, so a second backfill has no work at all.
     let job = anibeam_core::metadata::apply::backfill_stubs(&core);
     let done = common::wait_job(&c, job);
-    assert_eq!(done.body, EventBody::RefreshFinished { refreshed: 0, failed: 0 });
+    assert_eq!(
+        done.body,
+        EventBody::RefreshFinished {
+            refreshed: 0,
+            failed: 0
+        }
+    );
     assert_eq!(http.requests().len(), 3);
 
     // RefreshAll takes both, in id order.
     for (anilist_id, romaji) in [(10, "Fetched again"), (11, "Stub again")] {
-        http.push_json(200, serde_json::json!({ "data": { "Media": media_json(anilist_id, romaji, None, false) } }));
+        http.push_json(
+            200,
+            serde_json::json!({ "data": { "Media": media_json(anilist_id, romaji, None, false) } }),
+        );
         http.push_json(200, bare_enrichment(anilist_id, None));
         http.push_json(200, empty_schedule(anilist_id));
     }
     let job = started(&core, Call::RefreshAll);
     let done = common::wait_job(&c, job);
-    assert_eq!(done.body, EventBody::RefreshFinished { refreshed: 2, failed: 0 });
+    assert_eq!(
+        done.body,
+        EventBody::RefreshFinished {
+            refreshed: 2,
+            failed: 0
+        }
+    );
     assert_eq!(done.message, "refresh: 2 refreshed, 0 failed");
     assert_eq!(http.requests().len(), 9);
     let cards = list_cards(&core);
-    assert_eq!(cards.iter().find(|s| s.id == fetched).unwrap().title, "Fetched again");
-    assert_eq!(cards.iter().find(|s| s.id == stub).unwrap().title, "Stub again");
+    assert_eq!(
+        cards.iter().find(|s| s.id == fetched).unwrap().title,
+        "Fetched again"
+    );
+    assert_eq!(
+        cards.iter().find(|s| s.id == stub).unwrap().title,
+        "Stub again"
+    );
 
     core.shutdown();
 }

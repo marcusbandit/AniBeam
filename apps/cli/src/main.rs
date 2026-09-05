@@ -1,8 +1,10 @@
 use std::path::PathBuf;
-use std::sync::mpsc::{self, Sender};
 use std::sync::Arc;
+use std::sync::mpsc::{self, Sender};
 
-use anibeam_core::{Call, Core, CorePaths, Direction, Event, EventListener, JobPhase, Level, Reply, Sort, Tab};
+use anibeam_core::{
+    Call, Core, CorePaths, Direction, Event, EventListener, JobPhase, Level, Reply, Sort, Tab,
+};
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
@@ -61,7 +63,8 @@ enum Command {
 pub fn parse_call(name: &str, json: Option<&str>) -> Result<Call, String> {
     let value = match json {
         Some(j) => {
-            let fields: serde_json::Value = serde_json::from_str(j).map_err(|e| format!("bad --json: {e}"))?;
+            let fields: serde_json::Value =
+                serde_json::from_str(j).map_err(|e| format!("bad --json: {e}"))?;
             serde_json::json!({ name: fields })
         }
         None => serde_json::Value::String(name.to_string()),
@@ -107,15 +110,17 @@ fn send(core: &Core, call: Call, wait: bool) {
     match core.call(call) {
         Ok(reply) => {
             println!("{}", serde_json::to_string_pretty(&reply).unwrap());
-            if wait
-                && let Reply::Started { job } = reply
-            {
+            if wait && let Reply::Started { job } = reply {
                 for event in rx {
                     if !event.job.as_ref().is_some_and(|j| j.id == job) {
                         continue;
                     }
                     println!("{}", serde_json::to_string(&event).unwrap());
-                    if event.job.as_ref().is_some_and(|j| j.phase == JobPhase::Finished) {
+                    if event
+                        .job
+                        .as_ref()
+                        .is_some_and(|j| j.phase == JobPhase::Finished)
+                    {
                         break;
                     }
                 }
@@ -167,8 +172,15 @@ fn run_sources(core: &Core) {
 fn run_list(core: &Core, tab: &str, sort: &str, direction: &str, query: &str) {
     let tab = Tab::from_column(tab).unwrap_or_else(|| bad("tab", tab));
     let sort = Sort::from_column(sort).unwrap_or_else(|| bad("sort", sort));
-    let direction = Direction::from_column(direction).unwrap_or_else(|| bad("direction", direction));
-    let call = Call::ListSeries { tab, query: query.to_string(), sort, direction, reveal_hidden: false };
+    let direction =
+        Direction::from_column(direction).unwrap_or_else(|| bad("direction", direction));
+    let call = Call::ListSeries {
+        tab,
+        query: query.to_string(),
+        sort,
+        direction,
+        reveal_hidden: false,
+    };
     if let Reply::Series { series } = ask(core, call) {
         for c in series {
             let watched = dash(c.watched.map(|w| w.to_string()));
@@ -213,7 +225,12 @@ fn main() {
         Command::Events { follow, level } => run_events(&core, follow, &level),
         Command::Sources => run_sources(&core),
         Command::Scan { source, wait } => send(&core, Call::Scan { source }, wait),
-        Command::List { tab, sort, direction, query } => run_list(&core, &tab, &sort, &direction, &query),
+        Command::List {
+            tab,
+            sort,
+            direction,
+            query,
+        } => run_list(&core, &tab, &sort, &direction, &query),
         Command::Show { series } => run_show(&core, series),
     }
     core.shutdown();
@@ -227,7 +244,10 @@ mod tests {
     #[test]
     fn parse_call_builds_unit_and_field_variants() {
         assert_eq!(parse_call("ListSources", None).unwrap(), Call::ListSources);
-        assert_eq!(parse_call("Scan", Some(r#"{"source": null}"#)).unwrap(), Call::Scan { source: None });
+        assert_eq!(
+            parse_call("Scan", Some(r#"{"source": null}"#)).unwrap(),
+            Call::Scan { source: None }
+        );
         assert!(parse_call("Nope", None).is_err());
     }
 }

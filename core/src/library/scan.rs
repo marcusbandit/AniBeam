@@ -8,7 +8,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
-use rusqlite::{params, params_from_iter, Connection, ErrorCode, OptionalExtension, Transaction};
+use rusqlite::{Connection, ErrorCode, OptionalExtension, Transaction, params, params_from_iter};
 
 use crate::contract::*;
 use crate::core::Core;
@@ -111,7 +111,8 @@ pub fn reconcile_source(
     now: i64,
 ) -> Result<Reconciled, CoreError> {
     let mut out = Reconciled::default();
-    let in_scope = |p: &str| only_under.is_none_or(|roots| roots.iter().any(|r| under(p, r) || under(r, p)));
+    let in_scope =
+        |p: &str| only_under.is_none_or(|roots| roots.iter().any(|r| under(p, r) || under(r, p)));
 
     struct Existing {
         id: u64,
@@ -119,11 +120,15 @@ pub fn reconcile_source(
     }
     let mut existing: HashMap<(String, String), Existing> = HashMap::new();
     {
-        let mut stmt = tx.prepare("SELECT id, kind, path, missing_since FROM series WHERE source_id = ?1")?;
+        let mut stmt =
+            tx.prepare("SELECT id, kind, path, missing_since FROM series WHERE source_id = ?1")?;
         let rows = stmt.query_map(params![source_id as i64], |r| {
             Ok((
                 (r.get::<_, String>(1)?, r.get::<_, String>(2)?),
-                Existing { id: r.get::<_, i64>(0)? as u64, missing: r.get::<_, Option<i64>>(3)?.is_some() },
+                Existing {
+                    id: r.get::<_, i64>(0)? as u64,
+                    missing: r.get::<_, Option<i64>>(3)?.is_some(),
+                },
             ))
         })?;
         for row in rows {
@@ -142,7 +147,10 @@ pub fn reconcile_source(
         let key = (s.kind.as_str().to_string(), s.path.clone());
         let (id, was_missing, is_new) = match existing.get(&key) {
             Some(e) => {
-                tx.execute("UPDATE series SET folder_name = ?2, missing_since = NULL WHERE id = ?1", params![e.id as i64, s.name])?;
+                tx.execute(
+                    "UPDATE series SET folder_name = ?2, missing_since = NULL WHERE id = ?1",
+                    params![e.id as i64, s.name],
+                )?;
                 (e.id, e.missing, false)
             }
             None => {
@@ -157,8 +165,14 @@ pub fn reconcile_source(
 
         let mut old: HashMap<String, (u64, i64)> = HashMap::new();
         {
-            let mut stmt = tx.prepare_cached("SELECT id, path, mtime FROM files WHERE series_id = ?1")?;
-            let rows = stmt.query_map(params![id as i64], |r| Ok((r.get::<_, String>(1)?, (r.get::<_, i64>(0)? as u64, r.get::<_, i64>(2)?))))?;
+            let mut stmt =
+                tx.prepare_cached("SELECT id, path, mtime FROM files WHERE series_id = ?1")?;
+            let rows = stmt.query_map(params![id as i64], |r| {
+                Ok((
+                    r.get::<_, String>(1)?,
+                    (r.get::<_, i64>(0)? as u64, r.get::<_, i64>(2)?),
+                ))
+            })?;
             for row in rows {
                 let (path, value) = row?;
                 old.insert(path, value);
@@ -174,7 +188,11 @@ pub fn reconcile_source(
             }
         }
         for f in &s.files {
-            let kind = if f.classified.extra.is_some() { "extra" } else { "episode" };
+            let kind = if f.classified.extra.is_some() {
+                "extra"
+            } else {
+                "episode"
+            };
             let sidecars = serde_json::to_string(&f.sidecars)?;
             match old.get(&f.path) {
                 Some((file_id, mtime)) => {
@@ -205,7 +223,8 @@ pub fn reconcile_source(
                     // another series is stale by definition, whichever
                     // order the two series come in. Take it.
                     let owner: Option<i64> = {
-                        let mut stmt = tx.prepare_cached("SELECT series_id FROM files WHERE path = ?1")?;
+                        let mut stmt =
+                            tx.prepare_cached("SELECT series_id FROM files WHERE path = ?1")?;
                         stmt.query_row(params![f.path], |r| r.get(0)).optional()?
                     };
                     if let Some(other) = owner.map(|v| v as u64).filter(|other| *other != id) {
@@ -254,13 +273,19 @@ pub fn reconcile_source(
         .collect();
     vanished.sort_unstable();
     for id in vanished {
-        tx.execute("UPDATE series SET missing_since = ?2 WHERE id = ?1", params![id as i64, now])?;
+        tx.execute(
+            "UPDATE series SET missing_since = ?2 WHERE id = ?1",
+            params![id as i64, now],
+        )?;
         tx.execute("DELETE FROM files WHERE series_id = ?1", params![id as i64])?;
         out.removed.push(id);
     }
     // Only a full walk can claim the source was scanned in full.
     if only_under.is_none() {
-        tx.execute("UPDATE sources SET scanned_at = ?2 WHERE id = ?1", params![source_id as i64, now])?;
+        tx.execute(
+            "UPDATE sources SET scanned_at = ?2 WHERE id = ?1",
+            params![source_id as i64, now],
+        )?;
     }
 
     // A series that lost a file to another one is changed too, even when
@@ -271,7 +296,10 @@ pub fn reconcile_source(
     let mut lost: Vec<u64> = lost_a_file.into_iter().collect();
     lost.sort_unstable();
     for other in lost {
-        if !out.added.contains(&other) && !out.changed.contains(&other) && !out.removed.contains(&other) {
+        if !out.added.contains(&other)
+            && !out.changed.contains(&other)
+            && !out.removed.contains(&other)
+        {
             out.changed.push(other);
         }
     }
@@ -321,9 +349,14 @@ fn never_attempted(conn: &Connection, ids: &[u64]) -> Result<Vec<u64>, CoreError
     if ids.is_empty() {
         return Ok(Vec::new());
     }
-    let sql = format!("SELECT id FROM series WHERE attempted_at IS NULL AND provider IS NULL AND id IN ({})", placeholders(ids.len()));
+    let sql = format!(
+        "SELECT id FROM series WHERE attempted_at IS NULL AND provider IS NULL AND id IN ({})",
+        placeholders(ids.len())
+    );
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(params_from_iter(ids.iter().map(|id| *id as i64)), |r| r.get::<_, i64>(0).map(|v| v as u64))?;
+    let rows = stmt.query_map(params_from_iter(ids.iter().map(|id| *id as i64)), |r| {
+        r.get::<_, i64>(0).map(|v| v as u64)
+    })?;
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
 }
 
@@ -354,7 +387,13 @@ struct Plan {
 fn all_targets(conn: &Connection) -> Result<Vec<Target>, CoreError> {
     let mut stmt = conn.prepare("SELECT id, path, available FROM sources ORDER BY id")?;
     let rows = stmt
-        .query_map([], |r| Ok(Target { id: r.get::<_, i64>(0)? as u64, path: r.get(1)?, available: r.get::<_, i64>(2)? == 1 }))?
+        .query_map([], |r| {
+            Ok(Target {
+                id: r.get::<_, i64>(0)? as u64,
+                path: r.get(1)?,
+                available: r.get::<_, i64>(2)? == 1,
+            })
+        })?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rows)
 }
@@ -362,12 +401,18 @@ fn all_targets(conn: &Connection) -> Result<Vec<Target>, CoreError> {
 /// The sources a watch can be installed on right now, for `Core::start`.
 pub fn available_source_paths(conn: &Connection) -> Result<Vec<String>, CoreError> {
     let mut stmt = conn.prepare("SELECT path FROM sources WHERE available = 1 ORDER BY id")?;
-    let rows = stmt.query_map([], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
+    let rows = stmt
+        .query_map([], |r| r.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
     Ok(rows)
 }
 
 fn series_count(conn: &Connection, source: u64) -> Result<u64, CoreError> {
-    let n: i64 = conn.query_row("SELECT count(*) FROM series WHERE source_id = ?1 AND missing_since IS NULL", params![source as i64], |r| r.get(0))?;
+    let n: i64 = conn.query_row(
+        "SELECT count(*) FROM series WHERE source_id = ?1 AND missing_since IS NULL",
+        params![source as i64],
+        |r| r.get(0),
+    )?;
     Ok(n as u64)
 }
 
@@ -375,22 +420,37 @@ fn series_count(conn: &Connection, source: u64) -> Result<u64, CoreError> {
 /// live in memory.
 fn source_row(conn: &Connection, id: u64) -> Result<Option<(String, bool)>, CoreError> {
     let row = conn
-        .query_row("SELECT path, available FROM sources WHERE id = ?1", params![id as i64], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? == 1)))
+        .query_row(
+            "SELECT path, available FROM sources WHERE id = ?1",
+            params![id as i64],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? == 1)),
+        )
         .optional()?;
     Ok(row)
 }
 
-pub fn load_source(conn: &Connection, state: &LibraryState, id: u64) -> Result<Option<Source>, CoreError> {
+pub fn load_source(
+    conn: &Connection,
+    state: &LibraryState,
+    id: u64,
+) -> Result<Option<Source>, CoreError> {
     let Some((path, available)) = source_row(conn, id)? else {
         return Ok(None);
     };
-    Ok(Some(Source { id, path, available, series_count: series_count(conn, id)?, movie_folders: state.movie_folders_for(id) }))
+    Ok(Some(Source {
+        id,
+        path,
+        available,
+        series_count: series_count(conn, id)?,
+        movie_folders: state.movie_folders_for(id),
+    }))
 }
 
 pub fn list_sources(conn: &Connection, state: &LibraryState) -> Result<Vec<Source>, CoreError> {
     let ids: Vec<u64> = {
         let mut stmt = conn.prepare("SELECT id FROM sources ORDER BY id")?;
-        stmt.query_map([], |r| r.get::<_, i64>(0).map(|v| v as u64))?.collect::<Result<Vec<_>, _>>()?
+        stmt.query_map([], |r| r.get::<_, i64>(0).map(|v| v as u64))?
+            .collect::<Result<Vec<_>, _>>()?
     };
     let mut out = Vec::with_capacity(ids.len());
     for id in ids {
@@ -404,7 +464,8 @@ pub fn list_sources(conn: &Connection, state: &LibraryState) -> Result<Vec<Sourc
 /// A job needs an `Arc<Core>` of its own; a core already shutting down has
 /// none to give.
 fn owner(core: &Core) -> Result<Arc<Core>, CoreError> {
-    core.arc().ok_or_else(|| CoreError::internal("core is shutting down"))
+    core.arc()
+        .ok_or_else(|| CoreError::internal("core is shutting down"))
 }
 
 fn is_unique_violation(e: &rusqlite::Error) -> bool {
@@ -414,7 +475,9 @@ fn is_unique_violation(e: &rusqlite::Error) -> bool {
 // The calls -------------------------------------------------------------
 
 pub fn list_sources_call(core: &Core) -> Result<Reply, CoreError> {
-    Ok(Reply::Sources { sources: core.store.read(|c| list_sources(c, &core.library))? })
+    Ok(Reply::Sources {
+        sources: core.store.read(|c| list_sources(c, &core.library))?,
+    })
 }
 
 /// A trailing separator is not part of a path's identity, so it never
@@ -450,26 +513,47 @@ pub fn add_source(core: &Core, path: &str) -> Result<Reply, CoreError> {
         // way. Refuse the overlap at the door instead.
         let existing: Vec<String> = {
             let mut stmt = tx.prepare("SELECT path FROM sources")?;
-            stmt.query_map([], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?
+            stmt.query_map([], |r| r.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?
         };
         for other in &existing {
             if *other == insert {
                 return Err(CoreError::invalid("path", "already a source"));
             }
             if under(&insert, other) || under(other, &insert) {
-                return Err(CoreError::invalid("path", "nested inside an existing source"));
+                return Err(CoreError::invalid(
+                    "path",
+                    "nested inside an existing source",
+                ));
             }
         }
-        match tx.execute("INSERT INTO sources (path, available, added_at) VALUES (?1, ?2, ?3)", params![insert, i64::from(available), now]) {
+        match tx.execute(
+            "INSERT INTO sources (path, available, added_at) VALUES (?1, ?2, ?3)",
+            params![insert, i64::from(available), now],
+        ) {
             Ok(_) => Ok(tx.last_insert_rowid() as u64),
             // The check above is the real guard; the column's own
             // constraint stays the backstop.
-            Err(e) if is_unique_violation(&e) => Err(CoreError::invalid("path", "already a source")),
+            Err(e) if is_unique_violation(&e) => {
+                Err(CoreError::invalid("path", "already a source"))
+            }
             Err(e) => Err(e.into()),
         }
     })?;
-    let source = Source { id, path: path.clone(), available, series_count: 0, movie_folders: Vec::new() };
-    core.bus.info(Stage::Library, format!("source added: {path}"), EventBody::SourceChanged { source: source.clone() });
+    let source = Source {
+        id,
+        path: path.clone(),
+        available,
+        series_count: 0,
+        movie_folders: Vec::new(),
+    };
+    core.bus.info(
+        Stage::Library,
+        format!("source added: {path}"),
+        EventBody::SourceChanged {
+            source: source.clone(),
+        },
+    );
     // A scan already running knows nothing about this source and the
     // one-at-a-time rule means the call below starts nothing. Queued here,
     // the running job comes back for it before it finishes; when no scan is
@@ -484,11 +568,23 @@ pub fn add_source(core: &Core, path: &str) -> Result<Reply, CoreError> {
 /// cascade, and both removals are announced.
 pub fn remove_source(core: &Core, source: u64) -> Result<Reply, CoreError> {
     let (path, ids) = core.store.tx(move |tx| {
-        let path: Option<String> = tx.query_row("SELECT path FROM sources WHERE id = ?1", params![source as i64], |r| r.get(0)).optional()?;
-        let path = path.ok_or(CoreError::NotFound { what: Entity::Source, id: source })?;
+        let path: Option<String> = tx
+            .query_row(
+                "SELECT path FROM sources WHERE id = ?1",
+                params![source as i64],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let path = path.ok_or(CoreError::NotFound {
+            what: Entity::Source,
+            id: source,
+        })?;
         let ids: Vec<u64> = {
             let mut stmt = tx.prepare("SELECT id FROM series WHERE source_id = ?1 ORDER BY id")?;
-            stmt.query_map(params![source as i64], |r| r.get::<_, i64>(0).map(|v| v as u64))?.collect::<Result<Vec<_>, _>>()?
+            stmt.query_map(params![source as i64], |r| {
+                r.get::<_, i64>(0).map(|v| v as u64)
+            })?
+            .collect::<Result<Vec<_>, _>>()?
         };
         tx.execute("DELETE FROM sources WHERE id = ?1", params![source as i64])?;
         Ok((path, ids))
@@ -496,9 +592,17 @@ pub fn remove_source(core: &Core, source: u64) -> Result<Reply, CoreError> {
     core.library.forget_source(source);
     core.unwatch_source(&path);
     if !ids.is_empty() {
-        core.bus.info(Stage::Library, format!("source removed with {} series", ids.len()), EventBody::SeriesRemoved { ids });
+        core.bus.info(
+            Stage::Library,
+            format!("source removed with {} series", ids.len()),
+            EventBody::SeriesRemoved { ids },
+        );
     }
-    core.bus.info(Stage::Library, format!("source removed: {path}"), EventBody::SourceRemoved { source });
+    core.bus.info(
+        Stage::Library,
+        format!("source removed: {path}"),
+        EventBody::SourceRemoved { source },
+    );
     Ok(Reply::Ok)
 }
 
@@ -507,16 +611,29 @@ pub fn remove_source(core: &Core, source: u64) -> Result<Reply, CoreError> {
 pub fn forget_series(core: &Core, series: u64) -> Result<Reply, CoreError> {
     let name = core.store.tx(move |tx| {
         let row: Option<(String, Option<i64>)> = tx
-            .query_row("SELECT folder_name, missing_since FROM series WHERE id = ?1", params![series as i64], |r| Ok((r.get(0)?, r.get(1)?)))
+            .query_row(
+                "SELECT folder_name, missing_since FROM series WHERE id = ?1",
+                params![series as i64],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
             .optional()?;
-        let (name, missing_since) = row.ok_or(CoreError::NotFound { what: Entity::Series, id: series })?;
+        let (name, missing_since) = row.ok_or(CoreError::NotFound {
+            what: Entity::Series,
+            id: series,
+        })?;
         if missing_since.is_none() {
-            return Err(CoreError::Refused { reason: Refusal::OnDisk });
+            return Err(CoreError::Refused {
+                reason: Refusal::OnDisk,
+            });
         }
         tx.execute("DELETE FROM series WHERE id = ?1", params![series as i64])?;
         Ok(name)
     })?;
-    core.bus.info(Stage::Library, format!("forgot {name}"), EventBody::SeriesRemoved { ids: vec![series] });
+    core.bus.info(
+        Stage::Library,
+        format!("forgot {name}"),
+        EventBody::SeriesRemoved { ids: vec![series] },
+    );
     Ok(Reply::Ok)
 }
 
@@ -525,7 +642,9 @@ pub fn scan(core: &Core, source: Option<u64>) -> Result<Reply, CoreError> {
         Some(id) => ScanScope::Source(id),
         None => ScanScope::All,
     };
-    Ok(Reply::Started { job: start(&owner(core)?, scope) })
+    Ok(Reply::Started {
+        job: start(&owner(core)?, scope),
+    })
 }
 
 /// Rescans one series in its source's context. A source that is not there
@@ -540,11 +659,16 @@ pub fn rescan_series(core: &Core, series: u64) -> Result<Reply, CoreError> {
         )
         .optional()?)
     })?;
-    let (path, available) = row.ok_or(CoreError::NotFound { what: Entity::Series, id: series })?;
+    let (path, available) = row.ok_or(CoreError::NotFound {
+        what: Entity::Series,
+        id: series,
+    })?;
     if !available {
         return Err(CoreError::Unavailable { path });
     }
-    Ok(Reply::Started { job: start(&owner(core)?, ScanScope::Series(series)) })
+    Ok(Reply::Started {
+        job: start(&owner(core)?, ScanScope::Series(series)),
+    })
 }
 
 // The job ---------------------------------------------------------------
@@ -553,141 +677,197 @@ pub fn rescan_series(core: &Core, series: u64) -> Result<Reply, CoreError> {
 /// second call while one is running returns the running job's id.
 pub fn start(core: &Arc<Core>, scope: ScanScope) -> u64 {
     let core = core.clone();
-    core.jobs.clone().start(JobKind::Scan, move |ctx| async move {
-        let (mut added, mut changed, mut removed) = (0u64, 0u64, 0u64);
-        let mut reply_source = None;
-        let mut scope = scope;
-        let mut first_pass = true;
+    core.jobs
+        .clone()
+        .start(JobKind::Scan, move |ctx| async move {
+            let (mut added, mut changed, mut removed) = (0u64, 0u64, 0u64);
+            let mut reply_source = None;
+            let mut scope = scope;
+            let mut first_pass = true;
 
-        loop {
-            // A `Paths` scan is the drain: it takes the whole queue, both
-            // the paths it was handed and whatever the watcher reported
-            // while an earlier scan was walking. An empty list means "just
-            // the queue", which is how the watcher asks for one.
-            if let ScanScope::Paths(handed) = &scope {
-                let mut all = core.library.take_pending();
-                all.extend(handed.iter().cloned());
-                all.sort_unstable();
-                all.dedup();
-                scope = ScanScope::Paths(all);
-            }
-            let plan = resolve(&core, &scope).await?;
-            // Any other scope takes off the queue only what its own walk
-            // covers anyway, so a scan of a source does not leave a
-            // redundant follow-up pass behind it. What it does not cover
-            // stays queued for the drain.
-            if !matches!(scope, ScanScope::Paths(_)) {
-                recover(&core.library.pending_paths).retain(|p| !covered_by(&plan, p));
-            }
-            if first_pass {
-                reply_source = plan.reply_source;
-                first_pass = false;
-            }
-            let Plan { targets, only_under, .. } = plan;
-            let total = targets.len() as u64;
+            loop {
+                // A `Paths` scan is the drain: it takes the whole queue, both
+                // the paths it was handed and whatever the watcher reported
+                // while an earlier scan was walking. An empty list means "just
+                // the queue", which is how the watcher asks for one.
+                if let ScanScope::Paths(handed) = &scope {
+                    let mut all = core.library.take_pending();
+                    all.extend(handed.iter().cloned());
+                    all.sort_unstable();
+                    all.dedup();
+                    scope = ScanScope::Paths(all);
+                }
+                let plan = resolve(&core, &scope).await?;
+                // Any other scope takes off the queue only what its own walk
+                // covers anyway, so a scan of a source does not leave a
+                // redundant follow-up pass behind it. What it does not cover
+                // stays queued for the drain.
+                if !matches!(scope, ScanScope::Paths(_)) {
+                    recover(&core.library.pending_paths).retain(|p| !covered_by(&plan, p));
+                }
+                if first_pass {
+                    reply_source = plan.reply_source;
+                    first_pass = false;
+                }
+                let Plan {
+                    targets,
+                    only_under,
+                    ..
+                } = plan;
+                let total = targets.len() as u64;
 
-            for (i, target) in targets.into_iter().enumerate() {
-                ctx.checkpoint()?;
-                ctx.progress(i as u64, Some(total), &target.path);
+                for (i, target) in targets.into_iter().enumerate() {
+                    ctx.checkpoint()?;
+                    ctx.progress(i as u64, Some(total), &target.path);
 
-                let source_id = target.id;
-                let path = target.path;
-                let available = Path::new(&path).is_dir();
-                if available != target.available {
-                    core.store
-                        .write_async(move |c| {
-                            c.execute("UPDATE sources SET available = ?2 WHERE id = ?1", params![source_id as i64, i64::from(available)])?;
-                            Ok(())
-                        })
-                        .await?;
-                    if let Some((row_path, row_available)) = core.store.write_async(move |c| source_row(c, source_id)).await? {
-                        let count = core.store.write_async(move |c| series_count(c, source_id)).await?;
-                        let source = Source {
-                            id: source_id,
-                            path: row_path,
-                            available: row_available,
-                            series_count: count,
-                            movie_folders: core.library.movie_folders_for(source_id),
-                        };
-                        let message = if available { format!("source available again: {path}") } else { format!("source unavailable: {path}") };
-                        ctx.emit(Level::Info, message, EventBody::SourceChanged { source });
+                    let source_id = target.id;
+                    let path = target.path;
+                    let available = Path::new(&path).is_dir();
+                    if available != target.available {
+                        core.store
+                            .write_async(move |c| {
+                                c.execute(
+                                    "UPDATE sources SET available = ?2 WHERE id = ?1",
+                                    params![source_id as i64, i64::from(available)],
+                                )?;
+                                Ok(())
+                            })
+                            .await?;
+                        if let Some((row_path, row_available)) = core
+                            .store
+                            .write_async(move |c| source_row(c, source_id))
+                            .await?
+                        {
+                            let count = core
+                                .store
+                                .write_async(move |c| series_count(c, source_id))
+                                .await?;
+                            let source = Source {
+                                id: source_id,
+                                path: row_path,
+                                available: row_available,
+                                series_count: count,
+                                movie_folders: core.library.movie_folders_for(source_id),
+                            };
+                            let message = if available {
+                                format!("source available again: {path}")
+                            } else {
+                                format!("source unavailable: {path}")
+                            };
+                            ctx.emit(Level::Info, message, EventBody::SourceChanged { source });
+                        }
                     }
-                }
-                if !available {
-                    continue;
-                }
+                    if !available {
+                        continue;
+                    }
 
-                // The recursive watch is installed here rather than by
-                // `AddSource`, because notify installs one by walking every
-                // directory under the root: that is disk work at library
-                // scale and belongs to a job. Idempotent per root, so every
-                // later scan asking again costs a string compare.
-                let owner = core.clone();
-                let root = path.clone();
-                let watched = tokio::task::spawn_blocking(move || owner.install_watch(&root)).await.map_err(|e| CoreError::internal(e.to_string()))?;
-                if let Err(e) = watched {
-                    ctx.emit(Level::Warn, format!("cannot watch {path}: {e}"), EventBody::Notice);
-                }
+                    // The recursive watch is installed here rather than by
+                    // `AddSource`, because notify installs one by walking every
+                    // directory under the root: that is disk work at library
+                    // scale and belongs to a job. Idempotent per root, so every
+                    // later scan asking again costs a string compare.
+                    let owner = core.clone();
+                    let root = path.clone();
+                    let watched = tokio::task::spawn_blocking(move || owner.install_watch(&root))
+                        .await
+                        .map_err(|e| CoreError::internal(e.to_string()))?;
+                    if let Err(e) = watched {
+                        ctx.emit(
+                            Level::Warn,
+                            format!("cannot watch {path}: {e}"),
+                            EventBody::Notice,
+                        );
+                    }
 
-                let root = path.clone();
-                let scanned = tokio::task::spawn_blocking(move || walk::scan_source(Path::new(&root)))
-                    .await
-                    .map_err(|e| CoreError::internal(e.to_string()))??;
-                let root = path.clone();
-                let movie_folders = tokio::task::spawn_blocking(move || walk::find_movie_folders(Path::new(&root)))
+                    let root = path.clone();
+                    let scanned =
+                        tokio::task::spawn_blocking(move || walk::scan_source(Path::new(&root)))
+                            .await
+                            .map_err(|e| CoreError::internal(e.to_string()))??;
+                    let root = path.clone();
+                    let movie_folders = tokio::task::spawn_blocking(move || {
+                        walk::find_movie_folders(Path::new(&root))
+                    })
                     .await
                     .map_err(|e| CoreError::internal(e.to_string()))?;
-                core.library.set_movie_folders(source_id, movie_folders);
+                    core.library.set_movie_folders(source_id, movie_folders);
 
-                let only = only_under.clone();
-                let now = time::now_secs();
-                let r = core.store.tx_async(move |tx| reconcile_source(tx, source_id, &scanned, only.as_deref(), now)).await?;
-                added += r.added.len() as u64;
-                changed += r.changed.len() as u64;
-                removed += r.removed.len() as u64;
+                    let only = only_under.clone();
+                    let now = time::now_secs();
+                    let r = core
+                        .store
+                        .tx_async(move |tx| {
+                            reconcile_source(tx, source_id, &scanned, only.as_deref(), now)
+                        })
+                        .await?;
+                    added += r.added.len() as u64;
+                    changed += r.changed.len() as u64;
+                    removed += r.removed.len() as u64;
 
-                // The batch carries what went missing too: those cards say
-                // `missing: true`, which is how a shell patching its grid
-                // from events knows to drop them. `SeriesRemoved` stays
-                // what it was, the answer to Forget and RemoveSource.
-                let touched: Vec<u64> = r.added.iter().chain(r.changed.iter()).chain(r.removed.iter()).copied().collect();
-                if !touched.is_empty() {
-                    let dir = core.paths.images_dir();
-                    let cards = core.store.write_async(move |c| cards::cards_for(c, &dir, &touched)).await?;
-                    ctx.changed_all(cards);
-                }
+                    // The batch carries what went missing too: those cards say
+                    // `missing: true`, which is how a shell patching its grid
+                    // from events knows to drop them. `SeriesRemoved` stays
+                    // what it was, the answer to Forget and RemoveSource.
+                    let touched: Vec<u64> = r
+                        .added
+                        .iter()
+                        .chain(r.changed.iter())
+                        .chain(r.removed.iter())
+                        .copied()
+                        .collect();
+                    if !touched.is_empty() {
+                        let dir = core.paths.images_dir();
+                        let cards = core
+                            .store
+                            .write_async(move |c| cards::cards_for(c, &dir, &touched))
+                            .await?;
+                        ctx.changed_all(cards);
+                    }
 
-                // A folder that changed is a folder still being copied
-                // into, so every series this pass added or changed has its
-                // settle timer pushed out again. Only one that has never
-                // been matched and is not being matched right now is worth
-                // a timer at all, and a folder that just vanished is worth
-                // none.
-                let ids: Vec<u64> = r.added.iter().chain(r.changed.iter()).copied().collect();
-                if !ids.is_empty() {
-                    let unmatched = core.store.write_async(move |c| never_attempted(c, &ids)).await?;
-                    for id in unmatched.into_iter().filter(|id| !core.library.is_matching(*id)) {
-                        arm_settle(&core, id);
+                    // A folder that changed is a folder still being copied
+                    // into, so every series this pass added or changed has its
+                    // settle timer pushed out again. Only one that has never
+                    // been matched and is not being matched right now is worth
+                    // a timer at all, and a folder that just vanished is worth
+                    // none.
+                    let ids: Vec<u64> = r.added.iter().chain(r.changed.iter()).copied().collect();
+                    if !ids.is_empty() {
+                        let unmatched = core
+                            .store
+                            .write_async(move |c| never_attempted(c, &ids))
+                            .await?;
+                        for id in unmatched
+                            .into_iter()
+                            .filter(|id| !core.library.is_matching(*id))
+                        {
+                            arm_settle(&core, id);
+                        }
                     }
                 }
+
+                // A trigger that arrived while this pass was walking is not in
+                // it. Going round again inside this job is the only way to
+                // reach it: Scan runs one at a time, so asking for a new job
+                // from here would only be handed this one's own id back.
+                if core.library.pending_is_empty() {
+                    break;
+                }
+                scope = ScanScope::Paths(Vec::new());
             }
 
-            // A trigger that arrived while this pass was walking is not in
-            // it. Going round again inside this job is the only way to
-            // reach it: Scan runs one at a time, so asking for a new job
-            // from here would only be handed this one's own id back.
-            if core.library.pending_is_empty() {
-                break;
-            }
-            scope = ScanScope::Paths(Vec::new());
-        }
-
-        Ok(Finished {
-            level: Level::Info,
-            message: format!("scan finished: {added} added, {changed} changed, {removed} missing"),
-            body: EventBody::ScanFinished { source: reply_source, added, changed, removed },
+            Ok(Finished {
+                level: Level::Info,
+                message: format!(
+                    "scan finished: {added} added, {changed} changed, {removed} missing"
+                ),
+                body: EventBody::ScanFinished {
+                    source: reply_source,
+                    added,
+                    changed,
+                    removed,
+                },
+            })
         })
-    })
 }
 
 /// Whether this run is going to look at `path` anyway: some target contains
@@ -695,7 +875,10 @@ pub fn start(core: &Arc<Core>, scope: ScanScope) -> u64 {
 /// its scope both ways round, the same test `reconcile_source` applies.
 fn covered_by(plan: &Plan, path: &str) -> bool {
     plan.targets.iter().any(|t| under(path, &t.path))
-        && plan.only_under.as_ref().is_none_or(|roots| roots.iter().any(|r| under(path, r) || under(r, path)))
+        && plan
+            .only_under
+            .as_ref()
+            .is_none_or(|roots| roots.iter().any(|r| under(path, r) || under(r, path)))
 }
 
 /// Turns a scope into the sources to walk and the paths to limit the work
@@ -704,33 +887,56 @@ fn covered_by(plan: &Plan, path: &str) -> bool {
 async fn resolve(core: &Arc<Core>, scope: &ScanScope) -> Result<Plan, CoreError> {
     let sources = core.store.write_async(|c| all_targets(c)).await?;
     let plan = match scope {
-        ScanScope::All => Plan { targets: sources, only_under: None, reply_source: None },
+        ScanScope::All => Plan {
+            targets: sources,
+            only_under: None,
+            reply_source: None,
+        },
         ScanScope::Source(id) => {
             let id = *id;
-            Plan { targets: sources.into_iter().filter(|s| s.id == id).collect(), only_under: None, reply_source: Some(id) }
+            Plan {
+                targets: sources.into_iter().filter(|s| s.id == id).collect(),
+                only_under: None,
+                reply_source: Some(id),
+            }
         }
         ScanScope::Series(id) => {
             let id = *id;
             let row: Option<(u64, String)> = core
                 .store
                 .write_async(move |c| {
-                    Ok(c.query_row("SELECT source_id, path FROM series WHERE id = ?1", params![id as i64], |r| {
-                        Ok((r.get::<_, i64>(0)? as u64, r.get::<_, String>(1)?))
-                    })
+                    Ok(c.query_row(
+                        "SELECT source_id, path FROM series WHERE id = ?1",
+                        params![id as i64],
+                        |r| Ok((r.get::<_, i64>(0)? as u64, r.get::<_, String>(1)?)),
+                    )
                     .optional()?)
                 })
                 .await?;
             match row {
-                Some((source_id, path)) => {
-                    Plan { targets: sources.into_iter().filter(|s| s.id == source_id).collect(), only_under: Some(vec![path]), reply_source: None }
-                }
+                Some((source_id, path)) => Plan {
+                    targets: sources.into_iter().filter(|s| s.id == source_id).collect(),
+                    only_under: Some(vec![path]),
+                    reply_source: None,
+                },
                 // The series went away between the call and the job.
-                None => Plan { targets: Vec::new(), only_under: None, reply_source: None },
+                None => Plan {
+                    targets: Vec::new(),
+                    only_under: None,
+                    reply_source: None,
+                },
             }
         }
         ScanScope::Paths(paths) => {
-            let targets: Vec<Target> = sources.into_iter().filter(|s| paths.iter().any(|p| under(p, &s.path))).collect();
-            Plan { targets, only_under: Some(paths.clone()), reply_source: None }
+            let targets: Vec<Target> = sources
+                .into_iter()
+                .filter(|s| paths.iter().any(|p| under(p, &s.path)))
+                .collect();
+            Plan {
+                targets,
+                only_under: Some(paths.clone()),
+                reply_source: None,
+            }
         }
     };
     Ok(plan)
@@ -750,13 +956,27 @@ mod tests {
                 path: (*p).to_string(),
                 size: 1,
                 mtime: 1,
-                classified: Classified { extra: None, number: (i + 1) as f64, season: None, extra_index: None, extra_variant: None, raw_label: None },
+                classified: Classified {
+                    extra: None,
+                    number: (i + 1) as f64,
+                    season: None,
+                    extra_index: None,
+                    extra_variant: None,
+                    raw_label: None,
+                },
                 label: format!("Episode {}", i + 1),
                 episode_key: format!("{}", i + 1),
                 sidecars: Vec::new(),
             })
             .collect();
-        ScannedSeries { kind, path: path.to_string(), name: name.to_string(), season_hint: None, part_hint: None, files }
+        ScannedSeries {
+            kind,
+            path: path.to_string(),
+            name: name.to_string(),
+            season_hint: None,
+            part_hint: None,
+            files,
+        }
     }
 
     /// A file belongs to one series. A second source nested inside the
@@ -771,17 +991,37 @@ mod tests {
 
         let (show_id, inner_source) = store
             .tx(move |tx| {
-                tx.execute("INSERT INTO sources (path, available, added_at) VALUES ('/lib', 1, 0)", [])?;
+                tx.execute(
+                    "INSERT INTO sources (path, available, added_at) VALUES ('/lib', 1, 0)",
+                    [],
+                )?;
                 let outer_source = tx.last_insert_rowid() as u64;
-                tx.execute("INSERT INTO sources (path, available, added_at) VALUES ('/lib/A', 1, 0)", [])?;
+                tx.execute(
+                    "INSERT INTO sources (path, available, added_at) VALUES ('/lib/A', 1, 0)",
+                    [],
+                )?;
                 let inner_source = tx.last_insert_rowid() as u64;
-                let r = reconcile_source(tx, outer_source, &[scanned(SeriesKind::Show, "/lib/A", "A", &[file])], None, 10)?;
+                let r = reconcile_source(
+                    tx,
+                    outer_source,
+                    &[scanned(SeriesKind::Show, "/lib/A", "A", &[file])],
+                    None,
+                    10,
+                )?;
                 Ok((r.added[0], inner_source))
             })
             .unwrap();
 
         let r = store
-            .tx(move |tx| reconcile_source(tx, inner_source, &[scanned(SeriesKind::Movie, file, "ep01", &[file])], None, 20))
+            .tx(move |tx| {
+                reconcile_source(
+                    tx,
+                    inner_source,
+                    &[scanned(SeriesKind::Movie, file, "ep01", &[file])],
+                    None,
+                    20,
+                )
+            })
             .unwrap();
         assert_eq!(r.added.len(), 1);
         assert_eq!(r.changed, vec![show_id]);
@@ -790,7 +1030,11 @@ mod tests {
         // Exactly one row for that path, and it is the new series'.
         let (rows, owner): (i64, i64) = store
             .write(move |c| {
-                Ok(c.query_row("SELECT count(*), max(series_id) FROM files WHERE path = ?1", params![file], |r| Ok((r.get(0)?, r.get(1)?)))?)
+                Ok(c.query_row(
+                    "SELECT count(*), max(series_id) FROM files WHERE path = ?1",
+                    params![file],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )?)
             })
             .unwrap();
         assert_eq!(rows, 1);

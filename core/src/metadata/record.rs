@@ -17,12 +17,13 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 use rusqlite::types::Value;
-use rusqlite::{params, params_from_iter, Transaction};
+use rusqlite::{Transaction, params, params_from_iter};
 use serde::{Deserialize, Serialize};
 
 use crate::contract::CoreError;
 use crate::net::anilist::{
-    CharacterEdge, Enrichment, FuzzyDate, Media, RelatedNode, Schedule, StreamingEpisode, StudioEdge, TagNode,
+    CharacterEdge, Enrichment, FuzzyDate, Media, RelatedNode, Schedule, StreamingEpisode,
+    StudioEdge, TagNode,
 };
 use crate::net::jikan::JikanEpisode;
 
@@ -34,7 +35,8 @@ const RECOMMENDATION_CAP: usize = 8;
 /// The first one to three digit number bounded by non-digits. The prefix
 /// in front of it is whatever the streaming site felt like: "Episode ",
 /// "S2E", nothing at all.
-static STREAM_NUMBER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?:^|[^\d])(\d{1,3})(?:\D|$)").unwrap());
+static STREAM_NUMBER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?:^|[^\d])(\d{1,3})(?:\D|$)").unwrap());
 
 /// What both providers write when they have no title: AniList in a
 /// streaming entry, Jikan in its episode list.
@@ -188,7 +190,12 @@ fn studio_rank(e: &StudioEdge) -> u8 {
 /// rather than persisted as a placeholder.
 pub fn parse_streaming_title(raw: &str) -> Option<(u32, String)> {
     let trimmed = raw.trim();
-    let number: u32 = STREAM_NUMBER.captures(trimmed)?.get(1)?.as_str().parse().ok()?;
+    let number: u32 = STREAM_NUMBER
+        .captures(trimmed)?
+        .get(1)?
+        .as_str()
+        .parse()
+        .ok()?;
     if number == 0 {
         return None;
     }
@@ -209,7 +216,9 @@ pub fn streaming_titles(episodes: &[StreamingEpisode]) -> Vec<(u32, String)> {
     let mut seen: HashSet<u32> = HashSet::new();
     let mut out = Vec::new();
     for e in episodes {
-        let Some((number, title)) = e.title.as_deref().and_then(parse_streaming_title) else { continue };
+        let Some((number, title)) = e.title.as_deref().and_then(parse_streaming_title) else {
+            continue;
+        };
         if seen.insert(number) {
             out.push((number, title));
         }
@@ -225,22 +234,45 @@ pub fn streaming_titles(episodes: &[StreamingEpisode]) -> Vec<(u32, String)> {
 /// next broadcast folds in last and wins its own episode's date: the
 /// schedule is one page of 25, so for a long runner the episode actually
 /// airing next is missing from every list above it.
-pub fn merge_episodes(schedule: Option<&Schedule>, titles: &[(u32, String)], jikan: &[JikanEpisode]) -> Vec<EpisodeRow> {
+pub fn merge_episodes(
+    schedule: Option<&Schedule>,
+    titles: &[(u32, String)],
+    jikan: &[JikanEpisode],
+) -> Vec<EpisodeRow> {
     let mut by_number: BTreeMap<u32, EpisodeRow> = BTreeMap::new();
 
-    for node in schedule.iter().filter_map(|s| s.airing_schedule.as_ref()).flat_map(|s| s.nodes.iter()) {
+    for node in schedule
+        .iter()
+        .filter_map(|s| s.airing_schedule.as_ref())
+        .flat_map(|s| s.nodes.iter())
+    {
         if node.episode == 0 || node.airing_at <= 0 {
             continue;
         }
-        by_number.insert(node.episode, EpisodeRow { number: node.episode, title: None, aired_at: Some(node.airing_at) });
+        by_number.insert(
+            node.episode,
+            EpisodeRow {
+                number: node.episode,
+                title: None,
+                aired_at: Some(node.airing_at),
+            },
+        );
     }
 
     for e in jikan {
         if e.number == 0 {
             continue;
         }
-        let row = by_number.entry(e.number).or_insert_with(|| EpisodeRow { number: e.number, ..Default::default() });
-        row.title = e.title.as_deref().map(str::trim).filter(|t| !t.is_empty() && !PLACEHOLDER.is_match(t)).map(str::to_string);
+        let row = by_number.entry(e.number).or_insert_with(|| EpisodeRow {
+            number: e.number,
+            ..Default::default()
+        });
+        row.title = e
+            .title
+            .as_deref()
+            .map(str::trim)
+            .filter(|t| !t.is_empty() && !PLACEHOLDER.is_match(t))
+            .map(str::to_string);
         if row.aired_at.is_none() {
             row.aired_at = e.aired.as_deref().and_then(parse_aired);
         }
@@ -250,7 +282,10 @@ pub fn merge_episodes(schedule: Option<&Schedule>, titles: &[(u32, String)], jik
         if *number == 0 {
             continue;
         }
-        let row = by_number.entry(*number).or_insert_with(|| EpisodeRow { number: *number, ..Default::default() });
+        let row = by_number.entry(*number).or_insert_with(|| EpisodeRow {
+            number: *number,
+            ..Default::default()
+        });
         row.title = Some(title.clone());
     }
 
@@ -258,7 +293,10 @@ pub fn merge_episodes(schedule: Option<&Schedule>, titles: &[(u32, String)], jik
         && next.episode > 0
         && next.airing_at > 0
     {
-        let row = by_number.entry(next.episode).or_insert_with(|| EpisodeRow { number: next.episode, ..Default::default() });
+        let row = by_number.entry(next.episode).or_insert_with(|| EpisodeRow {
+            number: next.episode,
+            ..Default::default()
+        });
         row.aired_at = Some(next.airing_at);
     }
 
@@ -270,7 +308,9 @@ pub fn merge_episodes(schedule: Option<&Schedule>, titles: &[(u32, String)], jik
 /// string must not cost the series its whole episode list.
 fn parse_aired(raw: &str) -> Option<i64> {
     let raw = raw.trim();
-    if let Ok(t) = ::time::OffsetDateTime::parse(raw, &::time::format_description::well_known::Rfc3339) {
+    if let Ok(t) =
+        ::time::OffsetDateTime::parse(raw, &::time::format_description::well_known::Rfc3339)
+    {
         return Some(t.unix_timestamp());
     }
     let ymd = ::time::macros::format_description!("[year]-[month]-[day]");
@@ -313,13 +353,29 @@ pub fn build(media: &Media, enrichment: Option<&Enrichment>) -> MediaWrite {
         // Every `Media` query filters on `type: ANIME`, so a reply with no
         // enrichment beside it is an anime by construction. Manga only
         // ever arrives as a relation's other end, through a stub.
-        media_type: enrichment.and_then(|e| e.type_.clone()).or_else(|| Some("ANIME".to_string())),
-        title_romaji: media.title.romaji.clone().or_else(|| enrichment_title.and_then(|t| t.romaji.clone())),
-        title_english: media.title.english.clone().or_else(|| enrichment_title.and_then(|t| t.english.clone())),
+        media_type: enrichment
+            .and_then(|e| e.type_.clone())
+            .or_else(|| Some("ANIME".to_string())),
+        title_romaji: media
+            .title
+            .romaji
+            .clone()
+            .or_else(|| enrichment_title.and_then(|t| t.romaji.clone())),
+        title_english: media
+            .title
+            .english
+            .clone()
+            .or_else(|| enrichment_title.and_then(|t| t.english.clone())),
         title_native: media.title.native.clone(),
         synonyms: media.synonyms.clone(),
-        format: media.format.clone().or_else(|| enrichment.and_then(|e| e.format.clone())),
-        status: media.status.clone().or_else(|| enrichment.and_then(|e| e.status.clone())),
+        format: media
+            .format
+            .clone()
+            .or_else(|| enrichment.and_then(|e| e.format.clone())),
+        status: media
+            .status
+            .clone()
+            .or_else(|| enrichment.and_then(|e| e.status.clone())),
         season: media.season.clone(),
         year: year_of(media, enrichment),
         start_date: format_date(media.start_date.as_ref()),
@@ -331,16 +387,28 @@ pub fn build(media: &Media, enrichment: Option<&Enrichment>) -> MediaWrite {
         genres: media.genres.clone(),
         studios,
         studio,
-        tags: enrichment.map(|e| e.tags.iter().map(tag_json).collect()).unwrap_or_default(),
+        tags: enrichment
+            .map(|e| e.tags.iter().map(tag_json).collect())
+            .unwrap_or_default(),
         characters: enrichment
             .and_then(|e| e.characters.as_ref())
-            .map(|c| c.edges.iter().take(CHARACTER_CAP).map(character_json).collect())
+            .map(|c| {
+                c.edges
+                    .iter()
+                    .take(CHARACTER_CAP)
+                    .map(character_json)
+                    .collect()
+            })
             .unwrap_or_default(),
         cover_url: media
             .cover_image
             .as_ref()
             .and_then(|c| c.extra_large.clone().or_else(|| c.large.clone()))
-            .or_else(|| enrichment.and_then(|e| e.cover_image.as_ref()).and_then(|c| c.large.clone())),
+            .or_else(|| {
+                enrichment
+                    .and_then(|e| e.cover_image.as_ref())
+                    .and_then(|c| c.large.clone())
+            }),
         banner_url: media.banner_image.clone(),
         site_url: enrichment.and_then(|e| e.site_url.clone()),
         recommendations: top_recommendations(enrichment),
@@ -363,7 +431,11 @@ fn year_of(media: &Media, enrichment: Option<&Enrichment>) -> Option<u32> {
         .season_year
         .or_else(|| media.start_date.as_ref().and_then(|d| d.year))
         .or_else(|| enrichment.and_then(|e| e.season_year))
-        .or_else(|| enrichment.and_then(|e| e.start_date.as_ref()).and_then(|d| d.year))
+        .or_else(|| {
+            enrichment
+                .and_then(|e| e.start_date.as_ref())
+                .and_then(|d| d.year)
+        })
 }
 
 fn tag_json(t: &TagNode) -> TagJson {
@@ -384,7 +456,11 @@ fn character_json(e: &CharacterEdge) -> CharacterJson {
         id: e.node.id,
         name: e.node.name.as_ref().and_then(|n| n.full.clone()),
         role: e.role.clone(),
-        image_url: e.node.image.as_ref().and_then(|i| i.large.clone().or_else(|| i.medium.clone())),
+        image_url: e
+            .node
+            .image
+            .as_ref()
+            .and_then(|i| i.large.clone().or_else(|| i.medium.clone())),
     }
 }
 
@@ -392,11 +468,18 @@ fn character_json(e: &CharacterEdge) -> CharacterJson {
 /// target AniList has since deleted arrives with a null media and is
 /// dropped rather than stored as an id nothing answers.
 fn top_recommendations(enrichment: Option<&Enrichment>) -> Vec<(u64, RelatedNode, i64)> {
-    let Some(edges) = enrichment.and_then(|e| e.recommendations.as_ref()) else { return Vec::new() };
+    let Some(edges) = enrichment.and_then(|e| e.recommendations.as_ref()) else {
+        return Vec::new();
+    };
     let mut picks: Vec<(RelatedNode, i64)> = edges
         .edges
         .iter()
-        .filter_map(|e| e.node.media_recommendation.as_ref().map(|m| (m.clone(), e.node.rating.unwrap_or(0))))
+        .filter_map(|e| {
+            e.node
+                .media_recommendation
+                .as_ref()
+                .map(|m| (m.clone(), e.node.rating.unwrap_or(0)))
+        })
         .filter(|(m, _)| m.id != 0)
         .collect();
     // The query already asks for RATING_DESC; sorting again costs nothing
@@ -499,7 +582,12 @@ const STUB_UPSERT: &str = "INSERT INTO anilist_media (
 /// The whole row, its neighbours as stubs, and its two edge tables
 /// replaced. One call, inside the caller's transaction: a half-written
 /// series would draw a page with recommendations and no relations.
-pub fn write_media(tx: &Transaction, w: &MediaWrite, raw: &serde_json::Value, now: i64) -> Result<(), CoreError> {
+pub fn write_media(
+    tx: &Transaction,
+    w: &MediaWrite,
+    raw: &serde_json::Value,
+    now: i64,
+) -> Result<(), CoreError> {
     let id = as_i64(w.id);
     tx.execute(
         MEDIA_UPSERT,
@@ -536,13 +624,21 @@ pub fn write_media(tx: &Transaction, w: &MediaWrite, raw: &serde_json::Value, no
 
     // Both edge tables reference `anilist_media`, so every neighbour needs
     // its row before the edge can point at it.
-    for node in w.recommendations.iter().map(|(_, n, _)| n).chain(w.relations.iter().map(|(_, n)| n)) {
+    for node in w
+        .recommendations
+        .iter()
+        .map(|(_, n, _)| n)
+        .chain(w.relations.iter().map(|(_, n)| n))
+    {
         if node.id != w.id {
             write_stub(tx, &stub_from_node(node))?;
         }
     }
 
-    tx.execute("DELETE FROM recommendations WHERE anilist_id = ?1", params![id])?;
+    tx.execute(
+        "DELETE FROM recommendations WHERE anilist_id = ?1",
+        params![id],
+    )?;
     for (rank, node, rating) in &w.recommendations {
         tx.execute(
             "INSERT OR REPLACE INTO recommendations (anilist_id, recommended_id, rank, rating) VALUES (?1, ?2, ?3, ?4)",
@@ -595,7 +691,9 @@ pub fn stub_from_node(node: &RelatedNode) -> StubWrite {
         title_english: node.title.as_ref().and_then(|t| t.english.clone()),
         format: node.format.clone(),
         status: node.status.clone(),
-        year: node.season_year.or_else(|| node.start_date.as_ref().and_then(|d| d.year)),
+        year: node
+            .season_year
+            .or_else(|| node.start_date.as_ref().and_then(|d| d.year)),
         cover_url: node.cover_image.as_ref().and_then(|c| c.large.clone()),
         site_url: node.site_url.clone(),
         episodes: None,
@@ -603,12 +701,14 @@ pub fn stub_from_node(node: &RelatedNode) -> StubWrite {
     }
 }
 
-const EPISODE_UPSERT_KEEP: &str = "INSERT INTO anilist_episodes (anilist_id, number, title, aired_at) VALUES (?1, ?2, ?3, ?4)
+const EPISODE_UPSERT_KEEP: &str =
+    "INSERT INTO anilist_episodes (anilist_id, number, title, aired_at) VALUES (?1, ?2, ?3, ?4)
      ON CONFLICT(anilist_id, number) DO UPDATE SET
         title = coalesce(anilist_episodes.title, excluded.title),
         aired_at = coalesce(excluded.aired_at, anilist_episodes.aired_at)";
 
-const EPISODE_UPSERT_FRESH: &str = "INSERT INTO anilist_episodes (anilist_id, number, title, aired_at) VALUES (?1, ?2, ?3, ?4)
+const EPISODE_UPSERT_FRESH: &str =
+    "INSERT INTO anilist_episodes (anilist_id, number, title, aired_at) VALUES (?1, ?2, ?3, ?4)
      ON CONFLICT(anilist_id, number) DO UPDATE SET
         title = coalesce(excluded.title, anilist_episodes.title),
         aired_at = coalesce(excluded.aired_at, anilist_episodes.aired_at)";
@@ -630,7 +730,11 @@ pub fn write_episodes(
     now: i64,
 ) -> Result<(), CoreError> {
     let id = as_i64(anilist_id);
-    let sql = if keep_titles { EPISODE_UPSERT_KEEP } else { EPISODE_UPSERT_FRESH };
+    let sql = if keep_titles {
+        EPISODE_UPSERT_KEEP
+    } else {
+        EPISODE_UPSERT_FRESH
+    };
     for r in rows {
         tx.execute(sql, params![id, i64::from(r.number), r.title, r.aired_at])?;
     }
@@ -676,62 +780,160 @@ mod tests {
     #[test]
     fn dates_pad_missing_parts() {
         assert_eq!(
-            format_date(Some(&FuzzyDate { year: Some(2023), month: Some(9), day: Some(29) })),
+            format_date(Some(&FuzzyDate {
+                year: Some(2023),
+                month: Some(9),
+                day: Some(29)
+            })),
             Some("2023-09-29".into())
         );
-        assert_eq!(format_date(Some(&FuzzyDate { year: Some(2023), month: None, day: None })), Some("2023-01-01".into()));
-        assert_eq!(format_date(Some(&FuzzyDate { year: None, month: Some(9), day: None })), None);
+        assert_eq!(
+            format_date(Some(&FuzzyDate {
+                year: Some(2023),
+                month: None,
+                day: None
+            })),
+            Some("2023-01-01".into())
+        );
+        assert_eq!(
+            format_date(Some(&FuzzyDate {
+                year: None,
+                month: Some(9),
+                day: None
+            })),
+            None
+        );
         assert_eq!(format_date(None), None);
     }
 
     #[test]
     fn studio_priority() {
         let edges = vec![
-            StudioEdge { is_main: false, node: StudioNode { id: 1, name: "Aniplex".into(), is_animation_studio: false } },
-            StudioEdge { is_main: false, node: StudioNode { id: 2, name: "Madhouse".into(), is_animation_studio: true } },
-            StudioEdge { is_main: true, node: StudioNode { id: 3, name: "Main Anim".into(), is_animation_studio: true } },
+            StudioEdge {
+                is_main: false,
+                node: StudioNode {
+                    id: 1,
+                    name: "Aniplex".into(),
+                    is_animation_studio: false,
+                },
+            },
+            StudioEdge {
+                is_main: false,
+                node: StudioNode {
+                    id: 2,
+                    name: "Madhouse".into(),
+                    is_animation_studio: true,
+                },
+            },
+            StudioEdge {
+                is_main: true,
+                node: StudioNode {
+                    id: 3,
+                    name: "Main Anim".into(),
+                    is_animation_studio: true,
+                },
+            },
         ];
         let (studio, list) = pick_studio(&edges);
         assert_eq!(studio.as_deref(), Some("Main Anim"));
-        assert_eq!(list.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), vec!["Main Anim", "Madhouse", "Aniplex"]);
+        assert_eq!(
+            list.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(),
+            vec!["Main Anim", "Madhouse", "Aniplex"]
+        );
         assert_eq!(pick_studio(&[]).0, None);
     }
 
     #[test]
     fn streaming_titles_parse_and_first_wins() {
-        assert_eq!(parse_streaming_title("Episode 1 - Ordinary Person"), Some((1, "Ordinary Person".into())));
-        assert_eq!(parse_streaming_title("1 - Ordinary Person"), Some((1, "Ordinary Person".into())));
+        assert_eq!(
+            parse_streaming_title("Episode 1 - Ordinary Person"),
+            Some((1, "Ordinary Person".into()))
+        );
+        assert_eq!(
+            parse_streaming_title("1 - Ordinary Person"),
+            Some((1, "Ordinary Person".into()))
+        );
         assert_eq!(parse_streaming_title("Episode 1"), None);
-        assert_eq!(parse_streaming_title("S2 Episode 3 - The Heroine"), Some((2, "The Heroine".into())));
+        assert_eq!(
+            parse_streaming_title("S2 Episode 3 - The Heroine"),
+            Some((2, "The Heroine".into()))
+        );
         assert_eq!(parse_streaming_title("Episode 5 - Episode 5"), None);
         let eps = vec![
-            StreamingEpisode { title: Some("Episode 1 - A".into()), thumbnail: None, url: None, site: None },
-            StreamingEpisode { title: Some("Episode 1 - A (HiDive)".into()), thumbnail: None, url: None, site: None },
-            StreamingEpisode { title: Some("Episode 2 - B".into()), thumbnail: None, url: None, site: None },
+            StreamingEpisode {
+                title: Some("Episode 1 - A".into()),
+                thumbnail: None,
+                url: None,
+                site: None,
+            },
+            StreamingEpisode {
+                title: Some("Episode 1 - A (HiDive)".into()),
+                thumbnail: None,
+                url: None,
+                site: None,
+            },
+            StreamingEpisode {
+                title: Some("Episode 2 - B".into()),
+                thumbnail: None,
+                url: None,
+                site: None,
+            },
         ];
-        assert_eq!(streaming_titles(&eps), vec![(1, "A".into()), (2, "B".into())]);
+        assert_eq!(
+            streaming_titles(&eps),
+            vec![(1, "A".into()), (2, "B".into())]
+        );
     }
 
     #[test]
     fn episodes_merge_anilist_dates_win_jikan_fills_next_broadcast_last() {
         let schedule = Schedule {
-            next_airing_episode: Some(AiringNode { episode: 4, airing_at: 4000 }),
+            next_airing_episode: Some(AiringNode {
+                episode: 4,
+                airing_at: 4000,
+            }),
             airing_schedule: Some(AiringNodes {
                 nodes: vec![
-                    AiringNode { episode: 1, airing_at: 1000 },
-                    AiringNode { episode: 2, airing_at: 2000 },
-                    AiringNode { episode: 4, airing_at: 3999 },
+                    AiringNode {
+                        episode: 1,
+                        airing_at: 1000,
+                    },
+                    AiringNode {
+                        episode: 2,
+                        airing_at: 2000,
+                    },
+                    AiringNode {
+                        episode: 4,
+                        airing_at: 3999,
+                    },
                 ],
             }),
         };
         let jikan = vec![
-            JikanEpisode { number: 1, title: Some("One".into()), aired: Some("1970-01-01T00:16:40+00:00".into()), synopsis: None },
-            JikanEpisode { number: 2, title: Some("Episode 2".into()), aired: None, synopsis: None },
-            JikanEpisode { number: 3, title: Some("Three".into()), aired: Some("1970-01-01T00:50:00+00:00".into()), synopsis: None },
+            JikanEpisode {
+                number: 1,
+                title: Some("One".into()),
+                aired: Some("1970-01-01T00:16:40+00:00".into()),
+                synopsis: None,
+            },
+            JikanEpisode {
+                number: 2,
+                title: Some("Episode 2".into()),
+                aired: None,
+                synopsis: None,
+            },
+            JikanEpisode {
+                number: 3,
+                title: Some("Three".into()),
+                aired: Some("1970-01-01T00:50:00+00:00".into()),
+                synopsis: None,
+            },
         ];
         let rows = merge_episodes(Some(&schedule), &[(2, "Two (AniList)".into())], &jikan);
         assert_eq!(
-            rows.iter().map(|r| (r.number, r.title.clone(), r.aired_at)).collect::<Vec<_>>(),
+            rows.iter()
+                .map(|r| (r.number, r.title.clone(), r.aired_at))
+                .collect::<Vec<_>>(),
             vec![
                 (1, Some("One".into()), Some(1000)),
                 (2, Some("Two (AniList)".into()), Some(2000)),
@@ -747,16 +949,38 @@ mod tests {
     #[test]
     fn episodes_merge_with_no_schedule_and_a_blank_jikan_title() {
         let jikan = vec![
-            JikanEpisode { number: 1, title: Some("   ".into()), aired: Some("2023-09-29".into()), synopsis: None },
-            JikanEpisode { number: 2, title: None, aired: None, synopsis: None },
+            JikanEpisode {
+                number: 1,
+                title: Some("   ".into()),
+                aired: Some("2023-09-29".into()),
+                synopsis: None,
+            },
+            JikanEpisode {
+                number: 2,
+                title: None,
+                aired: None,
+                synopsis: None,
+            },
         ];
         let rows = merge_episodes(None, &[(3, "Streaming only".into())], &jikan);
         assert_eq!(
             rows,
             vec![
-                EpisodeRow { number: 1, title: None, aired_at: Some(1_695_945_600) },
-                EpisodeRow { number: 2, title: None, aired_at: None },
-                EpisodeRow { number: 3, title: Some("Streaming only".into()), aired_at: None },
+                EpisodeRow {
+                    number: 1,
+                    title: None,
+                    aired_at: Some(1_695_945_600)
+                },
+                EpisodeRow {
+                    number: 2,
+                    title: None,
+                    aired_at: None
+                },
+                EpisodeRow {
+                    number: 3,
+                    title: Some("Streaming only".into()),
+                    aired_at: None
+                },
             ]
         );
     }
@@ -764,14 +988,23 @@ mod tests {
     #[test]
     fn a_bare_date_parses_and_nonsense_is_no_date() {
         assert_eq!(parse_aired("2023-09-29"), Some(1_695_945_600));
-        assert_eq!(parse_aired("2023-09-29T00:00:00+00:00"), Some(1_695_945_600));
+        assert_eq!(
+            parse_aired("2023-09-29T00:00:00+00:00"),
+            Some(1_695_945_600)
+        );
         assert_eq!(parse_aired("not a date"), None);
         assert_eq!(parse_aired(""), None);
     }
 
     #[test]
     fn an_empty_reply_still_builds_a_row() {
-        let w = build(&Media { id: 7, ..Default::default() }, None);
+        let w = build(
+            &Media {
+                id: 7,
+                ..Default::default()
+            },
+            None,
+        );
         assert_eq!(w.id, 7);
         assert_eq!(w.media_type.as_deref(), Some("ANIME"));
         assert!(w.studios.is_empty());
@@ -789,23 +1022,40 @@ mod tests {
         let edge = |id: u64, rating: i64| RecommendationEdge {
             node: RecommendationNode {
                 rating: Some(rating),
-                media_recommendation: Some(RelatedNode { id, ..Default::default() }),
+                media_recommendation: Some(RelatedNode {
+                    id,
+                    ..Default::default()
+                }),
             },
         };
         let mut edges: Vec<RecommendationEdge> = (1..=12u64).map(|i| edge(i, as_i64(i))).collect();
-        edges.push(RecommendationEdge { node: RecommendationNode { rating: Some(999), media_recommendation: None } });
-        let enrichment = Enrichment { recommendations: Some(RecommendationEdges { edges }), ..Default::default() };
+        edges.push(RecommendationEdge {
+            node: RecommendationNode {
+                rating: Some(999),
+                media_recommendation: None,
+            },
+        });
+        let enrichment = Enrichment {
+            recommendations: Some(RecommendationEdges { edges }),
+            ..Default::default()
+        };
         let w = build(&Media::default(), Some(&enrichment));
-        assert_eq!(w.recommendations.iter().map(|(rank, n, _)| (*rank, n.id)).collect::<Vec<_>>(), vec![
-            (0, 12),
-            (1, 11),
-            (2, 10),
-            (3, 9),
-            (4, 8),
-            (5, 7),
-            (6, 6),
-            (7, 5),
-        ]);
+        assert_eq!(
+            w.recommendations
+                .iter()
+                .map(|(rank, n, _)| (*rank, n.id))
+                .collect::<Vec<_>>(),
+            vec![
+                (0, 12),
+                (1, 11),
+                (2, 10),
+                (3, 9),
+                (4, 8),
+                (5, 7),
+                (6, 6),
+                (7, 5),
+            ]
+        );
     }
 
     /// A relation type the crawl will not walk is still a relation the
@@ -814,17 +1064,28 @@ mod tests {
     fn every_relation_edge_is_kept() {
         let edge = |relation: &str, id: u64| RelationEdge {
             relation_type: relation.to_string(),
-            node: RelatedNode { id, ..Default::default() },
+            node: RelatedNode {
+                id,
+                ..Default::default()
+            },
         };
         let enrichment = Enrichment {
             relations: Some(RelationEdges {
-                edges: vec![edge("SEQUEL", 2), edge("CHARACTER", 3), edge("OTHER", 4), edge("", 5)],
+                edges: vec![
+                    edge("SEQUEL", 2),
+                    edge("CHARACTER", 3),
+                    edge("OTHER", 4),
+                    edge("", 5),
+                ],
             }),
             ..Default::default()
         };
         let w = build(&Media::default(), Some(&enrichment));
         assert_eq!(
-            w.relations.iter().map(|(r, n)| (r.as_str(), n.id)).collect::<Vec<_>>(),
+            w.relations
+                .iter()
+                .map(|(r, n)| (r.as_str(), n.id))
+                .collect::<Vec<_>>(),
             vec![("SEQUEL", 2), ("CHARACTER", 3), ("OTHER", 4), ("", 5)]
         );
     }

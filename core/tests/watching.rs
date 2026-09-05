@@ -86,15 +86,43 @@ fn reply(frieren_airs: i64, one_piece_airs: i64) -> serde_json::Value {
 /// a full fetch would already have left behind for the owned one.
 fn library(core: &Core) -> u64 {
     let src = fixtures::insert_source(core, "/lib");
-    let frieren = fixtures::insert_series(core, src, SeriesKind::Show, "/lib/Frieren", "Sousou no Frieren");
-    fixtures::insert_media(core, 154587, Some("Sousou no Frieren"), None, Some(28), "RELEASING", "TV", Some(91));
+    let frieren = fixtures::insert_series(
+        core,
+        src,
+        SeriesKind::Show,
+        "/lib/Frieren",
+        "Sousou no Frieren",
+    );
+    fixtures::insert_media(
+        core,
+        154587,
+        Some("Sousou no Frieren"),
+        None,
+        Some(28),
+        "RELEASING",
+        "TV",
+        Some(91),
+    );
     fixtures::match_series(core, frieren, Some(154587), Some(52991));
     fixtures::insert_episode(core, 154587, 29, Some("Aureole"), None);
 
     let bebop = fixtures::insert_series(core, src, SeriesKind::Show, "/lib/Bebop", "Cowboy Bebop");
-    fixtures::insert_media(core, 1, Some("Cowboy Bebop"), None, Some(26), "FINISHED", "TV", Some(86));
+    fixtures::insert_media(
+        core,
+        1,
+        Some("Cowboy Bebop"),
+        None,
+        Some(26),
+        "FINISHED",
+        "TV",
+        Some(86),
+    );
     fixtures::match_series(core, bebop, Some(1), Some(1));
-    core.call(Call::SetHidden { series: bebop, hidden: true }).unwrap();
+    core.call(Call::SetHidden {
+        series: bebop,
+        hidden: true,
+    })
+    .unwrap();
     frieren
 }
 
@@ -121,13 +149,21 @@ fn the_page_paints_the_cache_and_the_refresh_fills_it_behind() {
 
     let query = &http.requests()[0];
     assert_eq!(query.url, "https://graphql.anilist.co");
-    assert!(query.headers.iter().any(|(k, v)| k == "Authorization" && v == "Bearer tok"), "{query:?}");
+    assert!(
+        query
+            .headers
+            .iter()
+            .any(|(k, v)| k == "Authorization" && v == "Bearer tok"),
+        "{query:?}"
+    );
     let sent = format!("{:?}", query.body);
     assert!(sent.contains("userId") && sent.contains("42"), "{sent}");
     assert!(sent.contains("nextAiringEpisode"), "{sent}");
 
     // The terminal event carries the same list the page reads back.
-    let EventBody::WatchingRefreshed { list } = done.body.clone() else { panic!("{done:?}") };
+    let EventBody::WatchingRefreshed { list } = done.body.clone() else {
+        panic!("{done:?}")
+    };
     assert_eq!(done.level, Level::Debug);
     assert_eq!(done.message, "watching list refreshed: 2 entries");
     let (cached, again) = watching(&core);
@@ -150,10 +186,22 @@ fn the_page_paints_the_cache_and_the_refresh_fills_it_behind() {
     assert_eq!(frieren_entry.progress, 5);
     assert_eq!(frieren_entry.score, Some(8.5));
     assert!(!frieren_entry.repeating);
-    assert_eq!(frieren_entry.updated_at, anibeam_core::time::from_secs(2000));
+    assert_eq!(
+        frieren_entry.updated_at,
+        anibeam_core::time::from_secs(2000)
+    );
     assert_eq!(frieren_entry.owned, Some(frieren));
-    assert_eq!(frieren_entry.site_url.as_deref(), Some("https://anilist.co/anime/154587"));
-    assert_eq!(frieren_entry.next_airing, Some(Airing { episode: 29, at: anibeam_core::time::from_secs(frieren_airs) }));
+    assert_eq!(
+        frieren_entry.site_url.as_deref(),
+        Some("https://anilist.co/anime/154587")
+    );
+    assert_eq!(
+        frieren_entry.next_airing,
+        Some(Airing {
+            episode: 29,
+            at: anibeam_core::time::from_secs(frieren_airs)
+        })
+    );
 
     // A media the store had never heard of arrives as a stub, and a
     // rewatch is on the page like anything else being watched.
@@ -164,19 +212,35 @@ fn the_page_paints_the_cache_and_the_refresh_fills_it_behind() {
     assert_eq!(one_piece.score, None);
     assert!(one_piece.repeating);
     assert_eq!(one_piece.owned, None);
-    assert_eq!(one_piece.site_url.as_deref(), Some("https://anilist.co/anime/21"));
-    assert_eq!(one_piece.next_airing, Some(Airing { episode: 1124, at: anibeam_core::time::from_secs(one_piece_airs) }));
+    assert_eq!(
+        one_piece.site_url.as_deref(),
+        Some("https://anilist.co/anime/21")
+    );
+    assert_eq!(
+        one_piece.next_airing,
+        Some(Airing {
+            episode: 1124,
+            at: anibeam_core::time::from_secs(one_piece_airs)
+        })
+    );
 
     // Every cover was fetched before the job reported, so a poster is a
     // local file rather than a url the shell has to go and get.
     let images = dir.path().join("cache").join("images");
     for entry in &list.entries {
-        let poster = entry.poster.clone().unwrap_or_else(|| panic!("no poster on {}", entry.title));
+        let poster = entry
+            .poster
+            .clone()
+            .unwrap_or_else(|| panic!("no poster on {}", entry.title));
         assert!(poster.starts_with(images.to_str().unwrap()), "{poster}");
         assert!(std::path::Path::new(&poster).exists(), "{poster}");
     }
     let urls: Vec<String> = http.requests().iter().map(|r| r.url.clone()).collect();
-    for cover in ["https://img/frieren.jpg", "https://img/onepiece.jpg", "https://img/bebop.jpg"] {
+    for cover in [
+        "https://img/frieren.jpg",
+        "https://img/onepiece.jpg",
+        "https://img/bebop.jpg",
+    ] {
         assert!(urls.iter().any(|u| u == cover), "{urls:?}");
     }
     // The completed entry never became a row, so its cover was never asked
@@ -227,7 +291,14 @@ fn a_failed_refresh_leaves_the_cached_list_standing() {
     assert_eq!(cached.entries.len(), 2);
     let failed = common::wait_job(&c, refreshing.unwrap());
     match &failed.body {
-        EventBody::JobFailed { error: CoreError::Provider { provider: Provider::Anilist, message, .. } } => {
+        EventBody::JobFailed {
+            error:
+                CoreError::Provider {
+                    provider: Provider::Anilist,
+                    message,
+                    ..
+                },
+        } => {
             assert_eq!(message, "connection refused");
         }
         other => panic!("{other:?}"),

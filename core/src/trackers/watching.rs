@@ -20,7 +20,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
 
-use rusqlite::{params, Connection, Transaction};
+use rusqlite::{Connection, Transaction, params};
 
 use crate::contract::*;
 use crate::core::Core;
@@ -82,20 +82,38 @@ pub fn list(conn: &Connection, images_dir: &Path) -> Result<WatchingList, CoreEr
     {
         let mut stmt = conn.prepare(AIRING_SQL)?;
         let rows = stmt.query_map(
-            params![now, Tracker::Anilist.as_str(), ListStatus::Watching.as_str(), ListStatus::Repeating.as_str()],
-            |r| Ok((r.get::<_, i64>(0)? as u64, r.get::<_, i64>(1)? as u32, r.get::<_, i64>(2)?)),
+            params![
+                now,
+                Tracker::Anilist.as_str(),
+                ListStatus::Watching.as_str(),
+                ListStatus::Repeating.as_str()
+            ],
+            |r| {
+                Ok((
+                    r.get::<_, i64>(0)? as u64,
+                    r.get::<_, i64>(1)? as u32,
+                    r.get::<_, i64>(2)?,
+                ))
+            },
         )?;
         for row in rows {
             let (anilist_id, episode, at) = row?;
             // The query is in date order, so the first row for a media is
             // its next broadcast.
-            next_airing.entry(anilist_id).or_insert(Airing { episode, at: time::from_secs(at) });
+            next_airing.entry(anilist_id).or_insert(Airing {
+                episode,
+                at: time::from_secs(at),
+            });
         }
     }
 
     let mut stmt = conn.prepare(LIST_SQL)?;
     let rows = stmt.query_map(
-        params![Tracker::Anilist.as_str(), ListStatus::Watching.as_str(), ListStatus::Repeating.as_str()],
+        params![
+            Tracker::Anilist.as_str(),
+            ListStatus::Watching.as_str(),
+            ListStatus::Repeating.as_str()
+        ],
         |r| {
             let anilist_id = r.get::<_, i64>(0)? as u64;
             let updated_at: Option<i64> = r.get(4)?;
@@ -106,7 +124,9 @@ pub fn list(conn: &Connection, images_dir: &Path) -> Result<WatchingList, CoreEr
                 updated_at,
                 WatchingEntry {
                     anilist_id,
-                    title: present(romaji).or_else(|| present(english)).unwrap_or_else(|| fallback_title(anilist_id)),
+                    title: present(romaji)
+                        .or_else(|| present(english))
+                        .unwrap_or_else(|| fallback_title(anilist_id)),
                     poster: local_path(images_dir, poster),
                     progress: r.get::<_, i64>(1)? as u32,
                     total: r.get::<_, Option<i64>>(7)?.map(|e| e as u32),
@@ -114,7 +134,11 @@ pub fn list(conn: &Connection, images_dir: &Path) -> Result<WatchingList, CoreEr
                     // last and the shell shows nothing for the epoch.
                     updated_at: updated_at.map_or(UNIX_EPOCH, time::from_secs),
                     owned: r.get::<_, Option<i64>>(10)?.map(|id| id as u64),
-                    repeating: r.get::<_, Option<String>>(2)?.as_deref().and_then(ListStatus::from_column) == Some(ListStatus::Repeating),
+                    repeating: r
+                        .get::<_, Option<String>>(2)?
+                        .as_deref()
+                        .and_then(ListStatus::from_column)
+                        == Some(ListStatus::Repeating),
                     site_url: r.get(8)?,
                     next_airing: next_airing.get(&anilist_id).cloned(),
                     score: r.get(3)?,
@@ -141,12 +165,16 @@ pub fn list(conn: &Connection, images_dir: &Path) -> Result<WatchingList, CoreEr
 /// a refresh is already under way.
 pub fn list_call(core: &Core) -> Result<Reply, CoreError> {
     let images_dir = core.paths.images_dir();
-    let (list, connected) = core.store.read(|c| Ok((list(c, &images_dir)?, is_connected(c)?)))?;
+    let (list, connected) = core
+        .store
+        .read(|c| Ok((list(c, &images_dir)?, is_connected(c)?)))?;
     // The row is checked here rather than in `start_refresh`, so a page
     // opened with no account sees an answer instead of a refusal.
     let refreshing = match connected {
         true => {
-            let owner = core.arc().ok_or_else(|| CoreError::internal("core is shutting down"))?;
+            let owner = core
+                .arc()
+                .ok_or_else(|| CoreError::internal("core is shutting down"))?;
             Some(start_refresh(&owner)?)
         }
         false => None,
@@ -191,10 +219,17 @@ struct Row {
 /// is no account to ask, which the call itself has already ruled out.
 pub fn start_refresh(core: &Arc<Core>) -> Result<u64, CoreError> {
     if !core.store.read(is_connected)? {
-        return Err(CoreError::NotConnected { tracker: Tracker::Anilist });
+        return Err(CoreError::NotConnected {
+            tracker: Tracker::Anilist,
+        });
     }
     let owner = core.clone();
-    Ok(core.jobs.clone().start(JobKind::RefreshWatching, move |_| async move { run(owner).await }))
+    Ok(core
+        .jobs
+        .clone()
+        .start(JobKind::RefreshWatching, move |_| async move {
+            run(owner).await
+        }))
 }
 
 async fn run(core: Arc<Core>) -> Result<Finished, CoreError> {
@@ -202,14 +237,25 @@ async fn run(core: Arc<Core>) -> Result<Finished, CoreError> {
 }
 
 async fn refresh(core: &Arc<Core>) -> Result<Finished, CoreError> {
-    let account = core.store.write_async(move |c| accounts::load_row(c, Tracker::Anilist)).await?.unwrap_or_default();
+    let account = core
+        .store
+        .write_async(move |c| accounts::load_row(c, Tracker::Anilist))
+        .await?
+        .unwrap_or_default();
     // The collection is asked for by user id, so an account whose profile
     // never carried one cannot be read at all.
-    let user_id = account.user_id.ok_or_else(|| tracker_error("the account carries no user id"))?;
-    let token = accounts::access_token(core, Tracker::Anilist).await?.ok_or_else(|| tracker_error(NO_TOKEN))?;
+    let user_id = account
+        .user_id
+        .ok_or_else(|| tracker_error("the account carries no user id"))?;
+    let token = accounts::access_token(core, Tracker::Anilist)
+        .await?
+        .ok_or_else(|| tracker_error(NO_TOKEN))?;
     let rows = fetch(core, user_id, &token).await?;
 
-    let covers: Vec<String> = rows.iter().filter_map(|row| row.media.cover_url.clone()).collect();
+    let covers: Vec<String> = rows
+        .iter()
+        .filter_map(|row| row.media.cover_url.clone())
+        .collect();
     let now = time::now_secs();
     core.store.tx_async(move |tx| write(tx, &rows, now)).await?;
     // Every cover before the job reports, so the page's posters are local
@@ -221,7 +267,10 @@ async fn refresh(core: &Arc<Core>) -> Result<Finished, CoreError> {
     }
 
     let images_dir = core.paths.images_dir();
-    let list = core.store.write_async(move |c| list(c, &images_dir)).await?;
+    let list = core
+        .store
+        .write_async(move |c| list(c, &images_dir))
+        .await?;
     Ok(Finished {
         level: Level::Debug,
         message: format!("watching list refreshed: {} entries", list.entries.len()),
@@ -235,17 +284,32 @@ async fn refresh(core: &Arc<Core>) -> Result<Finished, CoreError> {
 async fn fetch(core: &Arc<Core>, user_id: u64, token: &str) -> Result<Vec<Row>, CoreError> {
     let data = tokio::time::timeout(
         FETCH_TIMEOUT,
-        core.anilist.graphql(WATCHING_LIST_QUERY, serde_json::json!({ "userId": user_id }), Some(token)),
+        core.anilist.graphql(
+            WATCHING_LIST_QUERY,
+            serde_json::json!({ "userId": user_id }),
+            Some(token),
+        ),
     )
     .await
-    .map_err(|_| tracker_error(format!("AniList watching list timed out after {}ms", FETCH_TIMEOUT.as_millis())))??;
+    .map_err(|_| {
+        tracker_error(format!(
+            "AniList watching list timed out after {}ms",
+            FETCH_TIMEOUT.as_millis()
+        ))
+    })??;
 
     let mut seen: HashSet<u64> = HashSet::new();
     let mut rows: Vec<Row> = Vec::new();
-    for list in data["MediaListCollection"]["lists"].as_array().into_iter().flatten() {
+    for list in data["MediaListCollection"]["lists"]
+        .as_array()
+        .into_iter()
+        .flatten()
+    {
         for entry in list["entries"].as_array().into_iter().flatten() {
             let media = &entry["media"];
-            let Some(media_id) = media["id"].as_u64() else { continue };
+            let Some(media_id) = media["id"].as_u64() else {
+                continue;
+            };
             // Anything else on the account is another page's entry.
             let Some(status @ (ListStatus::Watching | ListStatus::Repeating)) =
                 normalize_status(Tracker::Anilist, entry["status"].as_str(), false)
@@ -301,7 +365,8 @@ const ENTRY_UPSERT: &str = "INSERT INTO tracker_entries (tracker, media_id, stat
 /// The next broadcast as an episode row. The list carries no titles at
 /// all, so a title already in the table is the best one there will ever
 /// be and this must never replace it.
-const AIRING_UPSERT: &str = "INSERT INTO anilist_episodes (anilist_id, number, title, aired_at) VALUES (?1, ?2, NULL, ?3)
+const AIRING_UPSERT: &str =
+    "INSERT INTO anilist_episodes (anilist_id, number, title, aired_at) VALUES (?1, ?2, NULL, ?3)
      ON CONFLICT(anilist_id, number) DO UPDATE SET aired_at = excluded.aired_at";
 
 /// The whole list in one transaction: a half-written page would draw
@@ -325,7 +390,10 @@ fn write(tx: &Transaction, rows: &[Row], now: i64) -> Result<(), CoreError> {
         // thinner copy of a title must not replace it.
         record::write_stub(tx, &row.media)?;
         if let Some((episode, at)) = row.next_airing {
-            tx.execute(AIRING_UPSERT, params![row.media_id as i64, i64::from(episode), at])?;
+            tx.execute(
+                AIRING_UPSERT,
+                params![row.media_id as i64, i64::from(episode), at],
+            )?;
         }
     }
     settings::set(tx, settings::WATCHING_FETCHED_AT, &now)?;
@@ -337,7 +405,17 @@ fn write(tx: &Transaction, rows: &[Row], now: i64) -> Result<(), CoreError> {
 fn failed(e: CoreError) -> CoreError {
     let message = writes::sanitize_error(Tracker::Anilist, &e);
     match e {
-        CoreError::Provider { provider, status, retry_after, .. } => CoreError::Provider { provider, status, message, retry_after },
+        CoreError::Provider {
+            provider,
+            status,
+            retry_after,
+            ..
+        } => CoreError::Provider {
+            provider,
+            status,
+            message,
+            retry_after,
+        },
         _ => tracker_error(message),
     }
 }
@@ -349,7 +427,10 @@ fn tracker_error(message: impl Into<String>) -> CoreError {
 /// A title off the reply, treating an empty string as absent: the stub
 /// must not fill a blank column with nothing.
 fn media_title(value: &serde_json::Value) -> Option<String> {
-    value.as_str().filter(|t| !t.trim().is_empty()).map(str::to_string)
+    value
+        .as_str()
+        .filter(|t| !t.trim().is_empty())
+        .map(str::to_string)
 }
 
 /// A count off a provider's JSON, which is unsigned and small: anything
@@ -370,7 +451,10 @@ mod tests {
     fn a_media_with_no_titles_at_all_is_named_by_its_id() {
         assert_eq!(fallback_title(154587), "AniList 154587");
         assert_eq!(present(Some("  ".to_string())), None);
-        assert_eq!(present(Some("Frieren".to_string())).as_deref(), Some("Frieren"));
+        assert_eq!(
+            present(Some("Frieren".to_string())).as_deref(),
+            Some("Frieren")
+        );
     }
 
     #[test]
@@ -400,6 +484,15 @@ mod tests {
             "{out:?}"
         );
         let internal = failed(CoreError::internal("the writer thread is gone"));
-        assert!(matches!(&internal, CoreError::Provider { provider: Provider::Anilist, .. }), "{internal:?}");
+        assert!(
+            matches!(
+                &internal,
+                CoreError::Provider {
+                    provider: Provider::Anilist,
+                    ..
+                }
+            ),
+            "{internal:?}"
+        );
     }
 }

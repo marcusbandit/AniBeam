@@ -25,19 +25,35 @@ use crate::time;
 /// (`Aired`), else no entry at all. A film always reads `Downloaded` from
 /// its newest file's `mtime`, this plan's decision, since a film's single
 /// file is never usefully described as "aired".
-pub fn recent_entry(snapshot: &Snapshot, series_id: u64, now: SystemTime) -> Option<(FeedReason, f64, i64)> {
+pub fn recent_entry(
+    snapshot: &Snapshot,
+    series_id: u64,
+    now: SystemTime,
+) -> Option<(FeedReason, f64, i64)> {
     let row = snapshot.row(series_id)?;
-    let files = snapshot.files.get(&series_id).map(Vec::as_slice).unwrap_or(&[]);
+    let files = snapshot
+        .files
+        .get(&series_id)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
     if files.is_empty() {
         return None;
     }
     let now_secs = time::to_secs(now);
     let newest_mtime = files.iter().map(|f| f.mtime).max();
 
-    let on_disk_numbers: Vec<f64> = files.iter().filter(|f| f.is_episode).map(|f| f.number).collect();
+    let on_disk_numbers: Vec<f64> = files
+        .iter()
+        .filter(|f| f.is_episode)
+        .map(|f| f.number)
+        .collect();
     let highest_on_disk = on_disk_numbers.iter().copied().fold(0.0_f64, f64::max);
 
-    let airing = row.anilist_id.and_then(|id| snapshot.airing.get(&id)).map(Vec::as_slice).unwrap_or(&[]);
+    let airing = row
+        .anilist_id
+        .and_then(|id| snapshot.airing.get(&id))
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
     let mut best_aired: Option<(i64, u32)> = None;
     for a in airing {
         let Some(at) = a.aired_at else { continue };
@@ -53,18 +69,48 @@ pub fn recent_entry(snapshot: &Snapshot, series_id: u64, now: SystemTime) -> Opt
 
     if row.kind == SeriesKind::Movie {
         let at = newest_mtime?;
-        return Some((FeedReason::Downloaded { at: time::from_secs(at) }, highest, at));
+        return Some((
+            FeedReason::Downloaded {
+                at: time::from_secs(at),
+            },
+            highest,
+            at,
+        ));
     }
 
-    let shown_air = airing.iter().find(|a| f64::from(a.number) == highest).and_then(|a| a.aired_at).filter(|t| *t <= now_secs);
+    let shown_air = airing
+        .iter()
+        .find(|a| f64::from(a.number) == highest)
+        .and_then(|a| a.aired_at)
+        .filter(|t| *t <= now_secs);
     if let Some(at) = shown_air {
-        return Some((FeedReason::Aired { episode: highest as u32, at: time::from_secs(at) }, highest, at));
+        return Some((
+            FeedReason::Aired {
+                episode: highest as u32,
+                at: time::from_secs(at),
+            },
+            highest,
+            at,
+        ));
     }
     if let Some(at) = newest_mtime {
-        return Some((FeedReason::Downloaded { at: time::from_secs(at) }, highest, at));
+        return Some((
+            FeedReason::Downloaded {
+                at: time::from_secs(at),
+            },
+            highest,
+            at,
+        ));
     }
     if let Some((at, episode)) = best_aired {
-        return Some((FeedReason::Aired { episode, at: time::from_secs(at) }, highest, at));
+        return Some((
+            FeedReason::Aired {
+                episode,
+                at: time::from_secs(at),
+            },
+            highest,
+            at,
+        ));
     }
     None
 }
@@ -76,15 +122,28 @@ pub fn upcoming(snapshot: &Snapshot, series_id: u64, now: SystemTime) -> Option<
     let anilist_id = row.anilist_id?;
     let airing = snapshot.airing.get(&anilist_id)?;
     let now_secs = time::to_secs(now);
-    airing.iter().filter_map(|a| a.aired_at.map(|at| (a.number, at))).filter(|(_, at)| *at > now_secs).min_by_key(|(_, at)| *at)
+    airing
+        .iter()
+        .filter_map(|a| a.aired_at.map(|at| (a.number, at)))
+        .filter(|(_, at)| *at > now_secs)
+        .min_by_key(|(_, at)| *at)
 }
 
 /// A `FeedCard` for one series, or `None` when the id somehow no longer
 /// resolves against the snapshot (never happens for an id taken from the
 /// snapshot's own series list, but a lookup beats an `unwrap`).
-fn feed_card(snapshot: &Snapshot, series_id: u64, reason: FeedReason, highest: f64) -> Option<FeedCard> {
+fn feed_card(
+    snapshot: &Snapshot,
+    series_id: u64,
+    reason: FeedReason,
+    highest: f64,
+) -> Option<FeedCard> {
     let series = snapshot.card(series_id)?;
-    Some(FeedCard { series, reason, highest_on_disk: (highest > 0.0).then_some(highest) })
+    Some(FeedCard {
+        series,
+        reason,
+        highest_on_disk: (highest > 0.0).then_some(highest),
+    })
 }
 
 /// One series's Recent entry, kept alongside its id so the Upcoming sort
@@ -103,7 +162,12 @@ struct Recent {
 /// highest episode on disk; the rest follow in Recent order with their
 /// Recent reason. The shell draws its divider at the first non-`Scheduled`
 /// card, so the two groups are simply concatenated here.
-pub fn list(conn: &Connection, images_dir: &Path, sort: FeedSort, now: SystemTime) -> Result<Vec<FeedCard>, CoreError> {
+pub fn list(
+    conn: &Connection,
+    images_dir: &Path,
+    sort: FeedSort,
+    now: SystemTime,
+) -> Result<Vec<FeedCard>, CoreError> {
     let snap = Snapshot::load(conn, images_dir, now, None)?;
 
     // `snap.series` is loaded `ORDER BY s.id`, so building straight off it
@@ -118,14 +182,26 @@ pub fn list(conn: &Connection, images_dir: &Path, sort: FeedSort, now: SystemTim
             continue;
         }
         if let Some((reason, highest, instant)) = recent_entry(&snap, row.id, now) {
-            recents.push(Recent { series_id: row.id, reason, highest, instant });
+            recents.push(Recent {
+                series_id: row.id,
+                reason,
+                highest,
+                instant,
+            });
         }
     }
 
     let cards = match sort {
         FeedSort::Recent => {
-            recents.sort_by(|a, b| b.instant.cmp(&a.instant).then_with(|| a.series_id.cmp(&b.series_id)));
-            recents.into_iter().filter_map(|r| feed_card(&snap, r.series_id, r.reason, r.highest)).collect()
+            recents.sort_by(|a, b| {
+                b.instant
+                    .cmp(&a.instant)
+                    .then_with(|| a.series_id.cmp(&b.series_id))
+            });
+            recents
+                .into_iter()
+                .filter_map(|r| feed_card(&snap, r.series_id, r.reason, r.highest))
+                .collect()
         }
         FeedSort::Upcoming => {
             let mut scheduled: Vec<(u64, u32, i64, f64)> = Vec::new();
@@ -137,14 +213,29 @@ pub fn list(conn: &Connection, images_dir: &Path, sort: FeedSort, now: SystemTim
                 }
             }
             scheduled.sort_by(|a, b| a.2.cmp(&b.2).then_with(|| a.0.cmp(&b.0)));
-            rest.sort_by(|a, b| b.instant.cmp(&a.instant).then_with(|| a.series_id.cmp(&b.series_id)));
+            rest.sort_by(|a, b| {
+                b.instant
+                    .cmp(&a.instant)
+                    .then_with(|| a.series_id.cmp(&b.series_id))
+            });
 
             scheduled
                 .into_iter()
                 .filter_map(|(series_id, episode, at, highest)| {
-                    feed_card(&snap, series_id, FeedReason::Scheduled { episode, at: time::from_secs(at) }, highest)
+                    feed_card(
+                        &snap,
+                        series_id,
+                        FeedReason::Scheduled {
+                            episode,
+                            at: time::from_secs(at),
+                        },
+                        highest,
+                    )
                 })
-                .chain(rest.into_iter().filter_map(|r| feed_card(&snap, r.series_id, r.reason, r.highest)))
+                .chain(
+                    rest.into_iter()
+                        .filter_map(|r| feed_card(&snap, r.series_id, r.reason, r.highest)),
+                )
                 .collect()
         }
     };

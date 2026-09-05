@@ -22,7 +22,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use rusqlite::{params, Connection, OptionalExtension, Transaction};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use crate::contract::*;
 use crate::core::Core;
@@ -51,7 +51,8 @@ pub struct Candidate {
 /// The join a candidate is decided from. The `anilist_media` join is what
 /// makes an unmatched series and a MAL-only match disappear from it: a
 /// NULL `anilist_id` matches no row.
-const ELIGIBILITY_SQL: &str = "SELECT s.id, s.anilist_id, s.mal_id, s.folder_name, m.status, m.airing_refreshed_at,
+const ELIGIBILITY_SQL: &str =
+    "SELECT s.id, s.anilist_id, s.mal_id, s.folder_name, m.status, m.airing_refreshed_at,
        EXISTS (SELECT 1 FROM files f WHERE f.series_id = s.id) AS has_files
 FROM series s JOIN anilist_media m ON m.id = s.anilist_id";
 
@@ -85,10 +86,14 @@ fn eligible(row: &Row, now: i64, force: bool) -> bool {
     if !row.has_files {
         return false;
     }
-    if row.status.as_deref().and_then(AiringStatus::from_provider) != Some(AiringStatus::Releasing) {
+    if row.status.as_deref().and_then(AiringStatus::from_provider) != Some(AiringStatus::Releasing)
+    {
         return false;
     }
-    force || row.refreshed_at.is_none_or(|at| now.saturating_sub(at) >= ttl_secs())
+    force
+        || row
+            .refreshed_at
+            .is_none_or(|at| now.saturating_sub(at) >= ttl_secs())
 }
 
 fn ttl_secs() -> i64 {
@@ -96,10 +101,19 @@ fn ttl_secs() -> i64 {
 }
 
 /// Whether this one series is worth a fetch right now.
-pub fn candidate(conn: &Connection, series: u64, now: i64, force: bool) -> Result<Option<Candidate>, CoreError> {
+pub fn candidate(
+    conn: &Connection,
+    series: u64,
+    now: i64,
+    force: bool,
+) -> Result<Option<Candidate>, CoreError> {
     let sql = format!("{ELIGIBILITY_SQL} WHERE s.id = ?1");
-    let row = conn.query_row(&sql, params![series as i64], read_row).optional()?;
-    Ok(row.filter(|row| eligible(row, now, force)).map(|row| row.candidate))
+    let row = conn
+        .query_row(&sql, params![series as i64], read_row)
+        .optional()?;
+    Ok(row
+        .filter(|row| eligible(row, now, force))
+        .map(|row| row.candidate))
 }
 
 /// Every series worth a fetch right now, in id order, which is what the
@@ -107,8 +121,14 @@ pub fn candidate(conn: &Connection, series: u64, now: i64, force: bool) -> Resul
 pub fn candidates(conn: &Connection, now: i64) -> Result<Vec<Candidate>, CoreError> {
     let sql = format!("{ELIGIBILITY_SQL} ORDER BY s.id");
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map([], read_row)?.collect::<Result<Vec<_>, _>>()?;
-    Ok(rows.into_iter().filter(|row| eligible(row, now, false)).map(|row| row.candidate).collect())
+    let rows = stmt
+        .query_map([], read_row)?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows
+        .into_iter()
+        .filter(|row| eligible(row, now, false))
+        .map(|row| row.candidate)
+        .collect())
 }
 
 /// One series' fetch and write. The schedule is the point of it; Jikan
@@ -152,7 +172,9 @@ type StoredRow = (i64, Option<String>, Option<i64>);
 /// The rows behind one media id, in episode order.
 fn stored(tx: &Transaction, anilist_id: u64) -> Result<Vec<StoredRow>, CoreError> {
     let mut stmt = tx.prepare("SELECT number, title, aired_at FROM anilist_episodes WHERE anilist_id = ?1 ORDER BY number")?;
-    let rows = stmt.query_map(params![anilist_id as i64], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+    let rows = stmt.query_map(params![anilist_id as i64], |r| {
+        Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+    })?;
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
 }
 
@@ -160,24 +182,42 @@ fn stored(tx: &Transaction, anilist_id: u64) -> Result<Vec<StoredRow>, CoreError
 /// this a series AniList holds no schedule for would be asked about again
 /// every time the sweep runs.
 fn stamp(tx: &Transaction, anilist_id: u64, now: i64) -> Result<(), CoreError> {
-    tx.execute("UPDATE anilist_media SET airing_refreshed_at = ?2 WHERE id = ?1", params![anilist_id as i64, now])?;
+    tx.execute(
+        "UPDATE anilist_media SET airing_refreshed_at = ?2 WHERE id = ?1",
+        params![anilist_id as i64, now],
+    )?;
     Ok(())
 }
 
 async fn stamp_async(core: &Core, anilist_id: u64, now: i64) -> Result<(), CoreError> {
-    core.store.tx_async(move |tx| stamp(tx, anilist_id, now)).await
+    core.store
+        .tx_async(move |tx| stamp(tx, anilist_id, now))
+        .await
 }
 
 /// What one series' turn produced. A failure that is the provider's rather
 /// than the core's still counts as the turn having happened.
-async fn refresh_reported(core: &Core, ctx: &JobCtx, cand: &Candidate, now: i64) -> Result<bool, CoreError> {
+async fn refresh_reported(
+    core: &Core,
+    ctx: &JobCtx,
+    cand: &Candidate,
+    now: i64,
+) -> Result<bool, CoreError> {
     match refresh_one(core, cand, now).await {
         Ok(updated) => Ok(updated),
         // A rate limit the limiter could not ride out is AniList saying
         // stop, not this series failing.
         Err(e) if is_rate_limited(&e) => Err(e),
         Err(e) => {
-            ctx.emit(Level::Warn, format!("airing refresh failed for {}: {}", cand.folder_name, message_of(&e)), EventBody::Notice);
+            ctx.emit(
+                Level::Warn,
+                format!(
+                    "airing refresh failed for {}: {}",
+                    cand.folder_name,
+                    message_of(&e)
+                ),
+                EventBody::Notice,
+            );
             stamp_async(core, cand.anilist_id, now).await?;
             Ok(false)
         }
@@ -190,34 +230,53 @@ async fn refresh_reported(core: &Core, ctx: &JobCtx, cand: &Candidate, now: i64)
 /// rather than an error.
 pub fn start_refresh(core: &Core, series: u64) -> Result<u64, CoreError> {
     let known: Option<i64> = core.store.read(|c| {
-        Ok(c.query_row("SELECT 1 FROM series WHERE id = ?1", params![series as i64], |r| r.get(0)).optional()?)
+        Ok(c.query_row(
+            "SELECT 1 FROM series WHERE id = ?1",
+            params![series as i64],
+            |r| r.get(0),
+        )
+        .optional()?)
     })?;
     if known.is_none() {
-        return Err(CoreError::NotFound { what: Entity::Series, id: series });
+        return Err(CoreError::NotFound {
+            what: Entity::Series,
+            id: series,
+        });
     }
     let owner = owner(core)?;
-    Ok(owner.jobs.clone().start(JobKind::RefreshAiring, move |ctx| async move {
-        let now = time::now_secs();
-        let cand = owner.store.write_async(move |c| candidate(c, series, now, false)).await?;
-        let Some(cand) = cand else {
-            return Ok(Finished {
+    Ok(owner
+        .jobs
+        .clone()
+        .start(JobKind::RefreshAiring, move |ctx| async move {
+            let now = time::now_secs();
+            let cand = owner
+                .store
+                .write_async(move |c| candidate(c, series, now, false))
+                .await?;
+            let Some(cand) = cand else {
+                return Ok(Finished {
+                    level: Level::Debug,
+                    message: format!("airing: series {series} needs no refresh"),
+                    body: EventBody::AiringRefreshed {
+                        series,
+                        updated: false,
+                    },
+                });
+            };
+            let updated = refresh_reported(&owner, &ctx, &cand, now).await?;
+            if updated && let Some(card) = card_for(&owner, series).await? {
+                ctx.changed(card);
+            }
+            Ok(Finished {
                 level: Level::Debug,
-                message: format!("airing: series {series} needs no refresh"),
-                body: EventBody::AiringRefreshed { series, updated: false },
-            });
-        };
-        let updated = refresh_reported(&owner, &ctx, &cand, now).await?;
-        if updated
-            && let Some(card) = card_for(&owner, series).await?
-        {
-            ctx.changed(card);
-        }
-        Ok(Finished {
-            level: Level::Debug,
-            message: if updated { format!("airing refreshed for {}", cand.folder_name) } else { format!("airing unchanged for {}", cand.folder_name) },
-            body: EventBody::AiringRefreshed { series, updated },
-        })
-    }))
+                message: if updated {
+                    format!("airing refreshed for {}", cand.folder_name)
+                } else {
+                    format!("airing unchanged for {}", cand.folder_name)
+                },
+                body: EventBody::AiringRefreshed { series, updated },
+            })
+        }))
 }
 
 /// Starts the launch sweep: every releasing series whose schedule is older
@@ -228,28 +287,30 @@ pub fn start_refresh(core: &Core, series: u64) -> Result<u64, CoreError> {
 /// fetches write back.
 pub fn start_refresh_library(core: &Arc<Core>) -> u64 {
     let owner = core.clone();
-    core.jobs.clone().start(JobKind::RefreshAiring, move |ctx| async move {
-        let now = time::now_secs();
-        let work = owner.store.write_async(move |c| candidates(c, now)).await?;
-        let total = work.len() as u64;
-        let mut updated = 0u64;
-        for (done, cand) in work.into_iter().enumerate() {
-            ctx.checkpoint()?;
-            ctx.progress(done as u64, Some(total), &cand.folder_name);
-            // Each series is stamped with the time its own turn came, not
-            // the time the sweep started: a long walk would otherwise
-            // stamp the last series hours before it was actually fetched.
-            if refresh_reported(&owner, &ctx, &cand, time::now_secs()).await? {
-                updated += 1;
-                if let Some(card) = card_for(&owner, cand.series).await? {
-                    ctx.changed(card);
+    core.jobs
+        .clone()
+        .start(JobKind::RefreshAiring, move |ctx| async move {
+            let now = time::now_secs();
+            let work = owner.store.write_async(move |c| candidates(c, now)).await?;
+            let total = work.len() as u64;
+            let mut updated = 0u64;
+            for (done, cand) in work.into_iter().enumerate() {
+                ctx.checkpoint()?;
+                ctx.progress(done as u64, Some(total), &cand.folder_name);
+                // Each series is stamped with the time its own turn came, not
+                // the time the sweep started: a long walk would otherwise
+                // stamp the last series hours before it was actually fetched.
+                if refresh_reported(&owner, &ctx, &cand, time::now_secs()).await? {
+                    updated += 1;
+                    if let Some(card) = card_for(&owner, cand.series).await? {
+                        ctx.changed(card);
+                    }
                 }
             }
-        }
-        Ok(Finished {
-            level: Level::Info,
-            message: format!("airing refreshed for {updated} series"),
-            body: EventBody::Notice,
+            Ok(Finished {
+                level: Level::Info,
+                message: format!("airing refreshed for {updated} series"),
+                body: EventBody::Notice,
+            })
         })
-    })
 }

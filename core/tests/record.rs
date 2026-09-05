@@ -6,9 +6,10 @@ use std::sync::Arc;
 
 use anibeam_core::metadata::record::{self, EpisodeRow, StubWrite};
 use anibeam_core::net::anilist::{
-    CharacterEdge, CharacterEdges, CharacterName, CharacterNode, CoverImage, CoverLarge, Enrichment, FuzzyDate, Image,
-    Media, RecommendationEdge, RecommendationEdges, RecommendationNode, RelatedNode, RelationEdge, RelationEdges,
-    StudioEdge, StudioEdges, StudioNode, TagNode, Title,
+    CharacterEdge, CharacterEdges, CharacterName, CharacterNode, CoverImage, CoverLarge,
+    Enrichment, FuzzyDate, Image, Media, RecommendationEdge, RecommendationEdges,
+    RecommendationNode, RelatedNode, RelationEdge, RelationEdges, StudioEdge, StudioEdges,
+    StudioNode, TagNode, Title,
 };
 use anibeam_core::store::Store;
 use rusqlite::Connection;
@@ -30,8 +31,14 @@ fn node(id: u64, romaji: &str, cover: Option<&str>) -> RelatedNode {
         status: Some("FINISHED".into()),
         season_year: Some(2020),
         site_url: Some(format!("https://anilist.co/anime/{id}")),
-        title: Some(Title { romaji: Some(romaji.into()), english: Some(format!("{romaji} EN")), native: None }),
-        cover_image: Some(CoverLarge { large: cover.map(str::to_string) }),
+        title: Some(Title {
+            romaji: Some(romaji.into()),
+            english: Some(format!("{romaji} EN")),
+            native: None,
+        }),
+        cover_image: Some(CoverLarge {
+            large: cover.map(str::to_string),
+        }),
         ..Default::default()
     }
 }
@@ -59,8 +66,16 @@ fn canned_media() -> Media {
         season_year: Some(2023),
         status: Some("FINISHED".into()),
         format: Some("TV".into()),
-        start_date: Some(FuzzyDate { year: Some(2023), month: Some(9), day: Some(29) }),
-        end_date: Some(FuzzyDate { year: Some(2024), month: Some(3), day: None }),
+        start_date: Some(FuzzyDate {
+            year: Some(2023),
+            month: Some(9),
+            day: Some(29),
+        }),
+        end_date: Some(FuzzyDate {
+            year: Some(2024),
+            month: Some(3),
+            day: None,
+        }),
         average_score: Some(91),
         studios: None,
     }
@@ -69,10 +84,16 @@ fn canned_media() -> Media {
 fn canned_enrichment() -> Enrichment {
     let characters = (1..=12u64)
         .map(|i| CharacterEdge {
-            role: Some(if i == 1 { "MAIN".into() } else { "SUPPORTING".into() }),
+            role: Some(if i == 1 {
+                "MAIN".into()
+            } else {
+                "SUPPORTING".into()
+            }),
             node: CharacterNode {
                 id: i,
-                name: Some(CharacterName { full: Some(format!("Character {i}")) }),
+                name: Some(CharacterName {
+                    full: Some(format!("Character {i}")),
+                }),
                 image: Some(Image {
                     large: Some(format!("https://img/c{i}-l.jpg")),
                     medium: Some(format!("https://img/c{i}-m.jpg")),
@@ -84,7 +105,11 @@ fn canned_enrichment() -> Enrichment {
     let recommendation = |id: u64, rating: i64| RecommendationEdge {
         node: RecommendationNode {
             rating: Some(rating),
-            media_recommendation: Some(node(id, &format!("Rec {id}"), Some(&format!("https://img/rec{id}.jpg")))),
+            media_recommendation: Some(node(
+                id,
+                &format!("Rec {id}"),
+                Some(&format!("https://img/rec{id}.jpg")),
+            )),
         },
     };
     Enrichment {
@@ -112,22 +137,46 @@ fn canned_enrichment() -> Enrichment {
         ],
         studios: Some(StudioEdges {
             edges: vec![
-                StudioEdge { is_main: false, node: StudioNode { id: 1, name: "Aniplex".into(), is_animation_studio: false } },
-                StudioEdge { is_main: true, node: StudioNode { id: 2, name: "Madhouse".into(), is_animation_studio: true } },
+                StudioEdge {
+                    is_main: false,
+                    node: StudioNode {
+                        id: 1,
+                        name: "Aniplex".into(),
+                        is_animation_studio: false,
+                    },
+                },
+                StudioEdge {
+                    is_main: true,
+                    node: StudioNode {
+                        id: 2,
+                        name: "Madhouse".into(),
+                        is_animation_studio: true,
+                    },
+                },
             ],
         }),
         characters: Some(CharacterEdges { edges: characters }),
         // Deliberately out of rating order: the top eight are the top eight
         // by rating whatever order AniList sent them in.
         recommendations: Some(RecommendationEdges {
-            edges: vec![recommendation(11, 100), recommendation(12, 300), recommendation(13, 200)],
+            edges: vec![
+                recommendation(11, 100),
+                recommendation(12, 300),
+                recommendation(13, 200),
+            ],
         }),
         // A CHARACTER edge is kept like any other. The crawl is what
         // refuses to walk one, not the write.
         relations: Some(RelationEdges {
             edges: vec![
-                RelationEdge { relation_type: "SEQUEL".into(), node: node(2, "Sequel", Some("https://img/seq.jpg")) },
-                RelationEdge { relation_type: "CHARACTER".into(), node: node(3, "Cameo", None) },
+                RelationEdge {
+                    relation_type: "SEQUEL".into(),
+                    node: node(2, "Sequel", Some("https://img/seq.jpg")),
+                },
+                RelationEdge {
+                    relation_type: "CHARACTER".into(),
+                    node: node(3, "Cameo", None),
+                },
             ],
         }),
         ..Default::default()
@@ -135,11 +184,13 @@ fn canned_enrichment() -> Enrichment {
 }
 
 fn text(conn: &Connection, sql: &str) -> Option<String> {
-    conn.query_row(sql, [], |r| r.get::<_, Option<String>>(0)).unwrap()
+    conn.query_row(sql, [], |r| r.get::<_, Option<String>>(0))
+        .unwrap()
 }
 
 fn number(conn: &Connection, sql: &str) -> Option<i64> {
-    conn.query_row(sql, [], |r| r.get::<_, Option<i64>>(0)).unwrap()
+    conn.query_row(sql, [], |r| r.get::<_, Option<i64>>(0))
+        .unwrap()
 }
 
 fn json(conn: &Connection, sql: &str) -> serde_json::Value {
@@ -154,7 +205,13 @@ fn a_media_and_its_enrichment_become_a_row_its_stubs_its_recommendations_and_its
     assert_eq!(w.studio.as_deref(), Some("Madhouse"));
     assert_eq!(w.cover_url.as_deref(), Some("https://img/xl.jpg"));
     assert_eq!(w.characters.len(), 10, "the top ten of twelve");
-    assert_eq!(w.recommendations.iter().map(|(_, n, _)| n.id).collect::<Vec<_>>(), vec![12, 13, 11]);
+    assert_eq!(
+        w.recommendations
+            .iter()
+            .map(|(_, n, _)| n.id)
+            .collect::<Vec<_>>(),
+        vec![12, 13, 11]
+    );
     assert_eq!(w.relations.len(), 2);
 
     // Every picture the row names, in one list for the image cache.
@@ -164,8 +221,15 @@ fn a_media_and_its_enrichment_become_a_row_its_stubs_its_recommendations_and_its
     assert!(urls.contains(&"https://img/c1-l.jpg".to_string()));
     assert!(urls.contains(&"https://img/rec12.jpg".to_string()));
 
-    let raw = record::raw_bundle(Some(&serde_json::json!({ "id": 154587 })), None, None, Some(&serde_json::json!([])));
-    store.tx(move |tx| record::write_media(tx, &w, &raw, NOW)).unwrap();
+    let raw = record::raw_bundle(
+        Some(&serde_json::json!({ "id": 154587 })),
+        None,
+        None,
+        Some(&serde_json::json!([])),
+    );
+    store
+        .tx(move |tx| record::write_media(tx, &w, &raw, NOW))
+        .unwrap();
 
     store
         .read(|c| {
@@ -253,7 +317,9 @@ fn a_stub_fills_blanks_and_never_overwrites_a_value_with_null() {
     let (_dir, store) = open();
     let w = record::build(&canned_media(), Some(&canned_enrichment()));
     let raw = record::raw_bundle(None, None, None, None);
-    store.tx(move |tx| record::write_media(tx, &w, &raw, NOW)).unwrap();
+    store
+        .tx(move |tx| record::write_media(tx, &w, &raw, NOW))
+        .unwrap();
 
     let stub = StubWrite {
         id: 2,
@@ -273,11 +339,26 @@ fn a_stub_fills_blanks_and_never_overwrites_a_value_with_null() {
 
     store
         .read(|c| {
-            assert_eq!(text(c, "SELECT title_romaji FROM anilist_media WHERE id = 2").as_deref(), Some("Sequel"));
-            assert_eq!(text(c, "SELECT title_english FROM anilist_media WHERE id = 2").as_deref(), Some("Sequel EN"));
-            assert_eq!(number(c, "SELECT episodes FROM anilist_media WHERE id = 2"), Some(12));
-            assert_eq!(number(c, "SELECT average_score FROM anilist_media WHERE id = 2"), Some(77));
-            assert_eq!(number(c, "SELECT fetched_at FROM anilist_media WHERE id = 2"), None);
+            assert_eq!(
+                text(c, "SELECT title_romaji FROM anilist_media WHERE id = 2").as_deref(),
+                Some("Sequel")
+            );
+            assert_eq!(
+                text(c, "SELECT title_english FROM anilist_media WHERE id = 2").as_deref(),
+                Some("Sequel EN")
+            );
+            assert_eq!(
+                number(c, "SELECT episodes FROM anilist_media WHERE id = 2"),
+                Some(12)
+            );
+            assert_eq!(
+                number(c, "SELECT average_score FROM anilist_media WHERE id = 2"),
+                Some(77)
+            );
+            assert_eq!(
+                number(c, "SELECT fetched_at FROM anilist_media WHERE id = 2"),
+                None
+            );
             Ok(())
         })
         .unwrap();
@@ -288,13 +369,18 @@ fn a_refresh_promotes_a_deferred_stub_and_replaces_the_edges_it_used_to_have() {
     let (_dir, store) = open();
     let w = record::build(&canned_media(), Some(&canned_enrichment()));
     let raw = record::raw_bundle(None, None, None, None);
-    store.tx(move |tx| record::write_media(tx, &w, &raw, NOW)).unwrap();
+    store
+        .tx(move |tx| record::write_media(tx, &w, &raw, NOW))
+        .unwrap();
 
     // The crawl had reached this node as a neighbour, been rate limited on
     // it, and put it off until later.
     store
         .tx(|tx| {
-            tx.execute("UPDATE anilist_media SET crawl_deferred_until = ?1 WHERE id = 2", [NOW + 3600])?;
+            tx.execute(
+                "UPDATE anilist_media SET crawl_deferred_until = ?1 WHERE id = 2",
+                [NOW + 3600],
+            )?;
             Ok(())
         })
         .unwrap();
@@ -307,18 +393,42 @@ fn a_refresh_promotes_a_deferred_stub_and_replaces_the_edges_it_used_to_have() {
     let mut enrichment = canned_enrichment();
     enrichment.id = 2;
     enrichment.relations = Some(RelationEdges {
-        edges: vec![RelationEdge { relation_type: "PREQUEL".into(), node: node(154_587, "Frieren", None) }],
+        edges: vec![RelationEdge {
+            relation_type: "PREQUEL".into(),
+            node: node(154_587, "Frieren", None),
+        }],
     });
     let w = record::build(&media, Some(&enrichment));
     let raw = record::raw_bundle(None, None, None, None);
-    store.tx(move |tx| record::write_media(tx, &w, &raw, NOW + 60)).unwrap();
+    store
+        .tx(move |tx| record::write_media(tx, &w, &raw, NOW + 60))
+        .unwrap();
 
     store
         .read(|c| {
-            assert_eq!(text(c, "SELECT title_romaji FROM anilist_media WHERE id = 2").as_deref(), Some("Sequel, fetched"));
-            assert_eq!(number(c, "SELECT fetched_at FROM anilist_media WHERE id = 2"), Some(NOW + 60));
-            assert_eq!(number(c, "SELECT relations_fetched_at FROM anilist_media WHERE id = 2"), Some(NOW + 60));
-            assert_eq!(number(c, "SELECT crawl_deferred_until FROM anilist_media WHERE id = 2"), None, "the deferral is spent");
+            assert_eq!(
+                text(c, "SELECT title_romaji FROM anilist_media WHERE id = 2").as_deref(),
+                Some("Sequel, fetched")
+            );
+            assert_eq!(
+                number(c, "SELECT fetched_at FROM anilist_media WHERE id = 2"),
+                Some(NOW + 60)
+            );
+            assert_eq!(
+                number(
+                    c,
+                    "SELECT relations_fetched_at FROM anilist_media WHERE id = 2"
+                ),
+                Some(NOW + 60)
+            );
+            assert_eq!(
+                number(
+                    c,
+                    "SELECT crawl_deferred_until FROM anilist_media WHERE id = 2"
+                ),
+                None,
+                "the deferral is spent"
+            );
 
             let relations: Vec<(i64, String)> = c
                 .prepare("SELECT to_id, relation FROM relations WHERE from_id = 2")
@@ -331,8 +441,13 @@ fn a_refresh_promotes_a_deferred_stub_and_replaces_the_edges_it_used_to_have() {
 
             // The edges the other series drew to this one are that series'
             // rows, and this write leaves them alone.
-            let inbound: i64 =
-                c.query_row("SELECT count(*) FROM relations WHERE from_id = 154587", [], |r| r.get(0)).unwrap();
+            let inbound: i64 = c
+                .query_row(
+                    "SELECT count(*) FROM relations WHERE from_id = 154587",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
             assert_eq!(inbound, 2);
             Ok(())
         })
@@ -344,25 +459,59 @@ fn episodes_upsert_and_the_airing_refresh_keeps_the_titles_it_has() {
     let (_dir, store) = open();
     let w = record::build(&canned_media(), Some(&canned_enrichment()));
     let raw = record::raw_bundle(None, None, None, None);
-    store.tx(move |tx| record::write_media(tx, &w, &raw, NOW)).unwrap();
+    store
+        .tx(move |tx| record::write_media(tx, &w, &raw, NOW))
+        .unwrap();
 
     let first = vec![
-        EpisodeRow { number: 1, title: Some("The Journey's End".into()), aired_at: Some(NOW - 1000) },
-        EpisodeRow { number: 2, title: Some("It Didn't Have to Be Magic".into()), aired_at: Some(NOW - 500) },
-        EpisodeRow { number: 3, title: None, aired_at: Some(NOW + 500) },
-        EpisodeRow { number: 4, title: None, aired_at: Some(NOW + 1000) },
+        EpisodeRow {
+            number: 1,
+            title: Some("The Journey's End".into()),
+            aired_at: Some(NOW - 1000),
+        },
+        EpisodeRow {
+            number: 2,
+            title: Some("It Didn't Have to Be Magic".into()),
+            aired_at: Some(NOW - 500),
+        },
+        EpisodeRow {
+            number: 3,
+            title: None,
+            aired_at: Some(NOW + 500),
+        },
+        EpisodeRow {
+            number: 4,
+            title: None,
+            aired_at: Some(NOW + 1000),
+        },
     ];
-    store.tx(move |tx| record::write_episodes(tx, 154_587, &first, false, NOW)).unwrap();
+    store
+        .tx(move |tx| record::write_episodes(tx, 154_587, &first, false, NOW))
+        .unwrap();
 
     // The airing refresh: fresh dates, no titles, and episode 4 has slipped
     // off the schedule page. A future row nobody claims goes; a past row is
     // never touched by the rewrite.
     let second = vec![
-        EpisodeRow { number: 1, title: None, aired_at: Some(NOW - 900) },
-        EpisodeRow { number: 2, title: None, aired_at: None },
-        EpisodeRow { number: 3, title: None, aired_at: Some(NOW + 600) },
+        EpisodeRow {
+            number: 1,
+            title: None,
+            aired_at: Some(NOW - 900),
+        },
+        EpisodeRow {
+            number: 2,
+            title: None,
+            aired_at: None,
+        },
+        EpisodeRow {
+            number: 3,
+            title: None,
+            aired_at: Some(NOW + 600),
+        },
     ];
-    store.tx(move |tx| record::write_episodes(tx, 154_587, &second, true, NOW)).unwrap();
+    store
+        .tx(move |tx| record::write_episodes(tx, 154_587, &second, true, NOW))
+        .unwrap();
 
     store
         .read(|c| {
@@ -388,20 +537,40 @@ fn episodes_upsert_and_the_airing_refresh_keeps_the_titles_it_has() {
 
     // An empty list is a fetch that found nothing, never an instruction to
     // delete the schedule.
-    store.tx(move |tx| record::write_episodes(tx, 154_587, &[], true, NOW)).unwrap();
-    let kept: i64 = store.read(|c| Ok(c.query_row("SELECT count(*) FROM anilist_episodes", [], |r| r.get(0))?)).unwrap();
+    store
+        .tx(move |tx| record::write_episodes(tx, 154_587, &[], true, NOW))
+        .unwrap();
+    let kept: i64 = store
+        .read(|c| Ok(c.query_row("SELECT count(*) FROM anilist_episodes", [], |r| r.get(0))?))
+        .unwrap();
     assert_eq!(kept, 3);
 
     // Without keep_titles a fresh title wins.
-    let third = vec![EpisodeRow { number: 1, title: Some("A better title".into()), aired_at: None }];
-    store.tx(move |tx| record::write_episodes(tx, 154_587, &third, false, NOW)).unwrap();
+    let third = vec![EpisodeRow {
+        number: 1,
+        title: Some("A better title".into()),
+        aired_at: None,
+    }];
+    store
+        .tx(move |tx| record::write_episodes(tx, 154_587, &third, false, NOW))
+        .unwrap();
     store
         .read(|c| {
             assert_eq!(
-                text(c, "SELECT title FROM anilist_episodes WHERE anilist_id = 154587 AND number = 1").as_deref(),
+                text(
+                    c,
+                    "SELECT title FROM anilist_episodes WHERE anilist_id = 154587 AND number = 1"
+                )
+                .as_deref(),
                 Some("A better title")
             );
-            assert_eq!(number(c, "SELECT aired_at FROM anilist_episodes WHERE anilist_id = 154587 AND number = 1"), Some(NOW - 900));
+            assert_eq!(
+                number(
+                    c,
+                    "SELECT aired_at FROM anilist_episodes WHERE anilist_id = 154587 AND number = 1"
+                ),
+                Some(NOW - 900)
+            );
             Ok(())
         })
         .unwrap();

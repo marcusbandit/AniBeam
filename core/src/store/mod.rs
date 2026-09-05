@@ -32,7 +32,11 @@ pub struct Store {
 fn apply_pragmas(conn: &Connection) -> Result<(), CoreError> {
     let mode: String = conn.pragma_update_and_check(None, "journal_mode", "WAL", |r| r.get(0))?;
     if mode.to_lowercase() != "wal" {
-        return Err(CoreError::Storage { message: format!("journal_mode is {mode}, not wal; is the data directory on a network filesystem?") });
+        return Err(CoreError::Storage {
+            message: format!(
+                "journal_mode is {mode}, not wal; is the data directory on a network filesystem?"
+            ),
+        });
     }
     conn.pragma_update(None, "synchronous", "NORMAL")?;
     conn.pragma_update(None, "foreign_keys", "ON")?;
@@ -43,7 +47,8 @@ fn apply_pragmas(conn: &Connection) -> Result<(), CoreError> {
 impl Store {
     pub fn open(db_path: &Path) -> Result<Arc<Store>, CoreError> {
         if let Some(parent) = db_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| CoreError::io_at(parent.to_string_lossy(), e))?;
+            std::fs::create_dir_all(parent)
+                .map_err(|e| CoreError::io_at(parent.to_string_lossy(), e))?;
         }
         let mut conn = Connection::open(db_path)?;
         apply_pragmas(&conn)?;
@@ -52,7 +57,10 @@ impl Store {
         // Same flags and pragmas as `reader()`, kept open for the life of
         // the store behind a mutex so `read` never opens a fresh file
         // handle per call.
-        let reader_conn = Connection::open_with_flags(db_path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)?;
+        let reader_conn = Connection::open_with_flags(
+            db_path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
         reader_conn.pragma_update(None, "foreign_keys", "ON")?;
         reader_conn.busy_timeout(Duration::from_secs(5))?;
 
@@ -81,8 +89,15 @@ impl Store {
     }
 
     fn send_task(&self, task: Task) -> Result<(), CoreError> {
-        let sender = self.tx.lock().unwrap().clone().ok_or_else(|| CoreError::internal("store is closed"))?;
-        sender.send(task).map_err(|_| CoreError::internal("store thread is gone"))
+        let sender = self
+            .tx
+            .lock()
+            .unwrap()
+            .clone()
+            .ok_or_else(|| CoreError::internal("store is closed"))?;
+        sender
+            .send(task)
+            .map_err(|_| CoreError::internal("store thread is gone"))
     }
 
     /// Runs `f` on the writer thread and blocks the calling thread for the
@@ -98,7 +113,8 @@ impl Store {
         self.send_task(Box::new(move |conn| {
             let _ = rtx.send(f(conn));
         }))?;
-        rrx.blocking_recv().map_err(|_| CoreError::internal("store thread dropped the reply"))?
+        rrx.blocking_recv()
+            .map_err(|_| CoreError::internal("store thread dropped the reply"))?
     }
 
     /// The `write` a job body on the tokio runtime calls instead: same
@@ -112,7 +128,8 @@ impl Store {
         self.send_task(Box::new(move |conn| {
             let _ = rtx.send(f(conn));
         }))?;
-        rrx.await.map_err(|_| CoreError::internal("store thread dropped the reply"))?
+        rrx.await
+            .map_err(|_| CoreError::internal("store thread dropped the reply"))?
     }
 
     pub fn tx<T, F>(&self, f: F) -> Result<T, CoreError>
@@ -171,7 +188,10 @@ impl Store {
     }
 
     pub fn reader(&self) -> Result<Connection, CoreError> {
-        let conn = Connection::open_with_flags(&self.path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)?;
+        let conn = Connection::open_with_flags(
+            &self.path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
         conn.busy_timeout(Duration::from_secs(5))?;
         Ok(conn)
@@ -207,9 +227,13 @@ mod tests {
     fn open_creates_the_directory_and_sets_wal() {
         let (dir, store) = open_temp();
         assert!(dir.path().join("data").join("anibeam.db").exists());
-        let mode: String = store.write(|c| Ok(c.query_row("PRAGMA journal_mode", [], |r| r.get(0))?)).unwrap();
+        let mode: String = store
+            .write(|c| Ok(c.query_row("PRAGMA journal_mode", [], |r| r.get(0))?))
+            .unwrap();
         assert_eq!(mode, "wal");
-        let fk: i64 = store.write(|c| Ok(c.query_row("PRAGMA foreign_keys", [], |r| r.get(0))?)).unwrap();
+        let fk: i64 = store
+            .write(|c| Ok(c.query_row("PRAGMA foreign_keys", [], |r| r.get(0))?))
+            .unwrap();
         assert_eq!(fk, 1);
     }
 
@@ -217,7 +241,9 @@ mod tests {
     fn migrations_validate_and_reach_the_latest_version() {
         migrations::MIGRATIONS.validate().unwrap();
         let (_dir, store) = open_temp();
-        let v: i64 = store.write(|c| Ok(c.query_row("PRAGMA user_version", [], |r| r.get(0))?)).unwrap();
+        let v: i64 = store
+            .write(|c| Ok(c.query_row("PRAGMA user_version", [], |r| r.get(0))?))
+            .unwrap();
         assert_eq!(v as usize, migrations::SCHEMA_VERSION);
         let tables: i64 = store
             .write(|c| Ok(c.query_row("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name IN ('sources','series','files','anilist_media','anilist_episodes','recommendations','relations','tracker_accounts','tracker_entries','views','completed','resume_points','skip_windows','settings','images','events')", [], |r| r.get(0))?))
@@ -237,7 +263,10 @@ mod tests {
         match err {
             CoreError::Storage { message } => {
                 assert!(message.contains("99"), "{message}");
-                assert!(message.contains(&migrations::SCHEMA_VERSION.to_string()), "{message}");
+                assert!(
+                    message.contains(&migrations::SCHEMA_VERSION.to_string()),
+                    "{message}"
+                );
             }
             other => panic!("{other:?}"),
         }
@@ -251,27 +280,47 @@ mod tests {
             Err::<(), _>(CoreError::internal("boom"))
         });
         assert!(err.is_err());
-        let n: i64 = store.write(|c| Ok(c.query_row("SELECT count(*) FROM sources", [], |r| r.get(0))?)).unwrap();
+        let n: i64 = store
+            .write(|c| Ok(c.query_row("SELECT count(*) FROM sources", [], |r| r.get(0))?))
+            .unwrap();
         assert_eq!(n, 0);
-        store.tx(|t| { t.execute("INSERT INTO sources (path, added_at) VALUES ('/a', 1)", [])?; Ok(()) }).unwrap();
-        let n: i64 = store.write(|c| Ok(c.query_row("SELECT count(*) FROM sources", [], |r| r.get(0))?)).unwrap();
+        store
+            .tx(|t| {
+                t.execute("INSERT INTO sources (path, added_at) VALUES ('/a', 1)", [])?;
+                Ok(())
+            })
+            .unwrap();
+        let n: i64 = store
+            .write(|c| Ok(c.query_row("SELECT count(*) FROM sources", [], |r| r.get(0))?))
+            .unwrap();
         assert_eq!(n, 1);
     }
 
     #[test]
     fn readers_see_committed_writes() {
         let (_dir, store) = open_temp();
-        store.tx(|t| { t.execute("INSERT INTO sources (path, added_at) VALUES ('/b', 1)", [])?; Ok(()) }).unwrap();
+        store
+            .tx(|t| {
+                t.execute("INSERT INTO sources (path, added_at) VALUES ('/b', 1)", [])?;
+                Ok(())
+            })
+            .unwrap();
         let reader = store.reader().unwrap();
-        let n: i64 = reader.query_row("SELECT count(*) FROM sources", [], |r| r.get(0)).unwrap();
+        let n: i64 = reader
+            .query_row("SELECT count(*) FROM sources", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(n, 1);
     }
 
     #[test]
     fn settings_round_trip_json() {
         let (_dir, store) = open_temp();
-        store.write(|c| settings::set(c, settings::AUTO_MATCH_VERSION, &3u32)).unwrap();
-        let v: Option<u32> = store.write(|c| settings::get(c, settings::AUTO_MATCH_VERSION)).unwrap();
+        store
+            .write(|c| settings::set(c, settings::AUTO_MATCH_VERSION, &3u32))
+            .unwrap();
+        let v: Option<u32> = store
+            .write(|c| settings::get(c, settings::AUTO_MATCH_VERSION))
+            .unwrap();
         assert_eq!(v, Some(3));
         let missing: Option<u32> = store.write(|c| settings::get(c, "nope")).unwrap();
         assert_eq!(missing, None);
@@ -281,21 +330,33 @@ mod tests {
     fn post_is_seen_by_a_write_queued_after_it() {
         let (_dir, store) = open_temp();
         store.post(|c| {
-            if let Err(e) = c.execute("INSERT INTO sources (path, added_at) VALUES ('/posted', 1)", []) {
+            if let Err(e) = c.execute(
+                "INSERT INTO sources (path, added_at) VALUES ('/posted', 1)",
+                [],
+            ) {
                 tracing::warn!("posted write failed: {e}");
             }
         });
         // The writer thread runs tasks in the order they were queued, so
         // this write only sees the posted row if post really ran first.
-        let n: i64 = store.write(|c| Ok(c.query_row("SELECT count(*) FROM sources", [], |r| r.get(0))?)).unwrap();
+        let n: i64 = store
+            .write(|c| Ok(c.query_row("SELECT count(*) FROM sources", [], |r| r.get(0))?))
+            .unwrap();
         assert_eq!(n, 1);
     }
 
     #[test]
     fn read_sees_a_committed_write() {
         let (_dir, store) = open_temp();
-        store.tx(|t| { t.execute("INSERT INTO sources (path, added_at) VALUES ('/c', 1)", [])?; Ok(()) }).unwrap();
-        let n: i64 = store.read(|c| Ok(c.query_row("SELECT count(*) FROM sources", [], |r| r.get(0))?)).unwrap();
+        store
+            .tx(|t| {
+                t.execute("INSERT INTO sources (path, added_at) VALUES ('/c', 1)", [])?;
+                Ok(())
+            })
+            .unwrap();
+        let n: i64 = store
+            .read(|c| Ok(c.query_row("SELECT count(*) FROM sources", [], |r| r.get(0))?))
+            .unwrap();
         assert_eq!(n, 1);
     }
 
@@ -312,7 +373,9 @@ mod tests {
 
         // The mutex would be poisoned here without the recovery in `read`;
         // this must not panic at the lock.
-        let n: i64 = store.read(|c| Ok(c.query_row("SELECT count(*) FROM sources", [], |r| r.get(0))?)).unwrap();
+        let n: i64 = store
+            .read(|c| Ok(c.query_row("SELECT count(*) FROM sources", [], |r| r.get(0))?))
+            .unwrap();
         assert_eq!(n, 0);
     }
 
@@ -320,10 +383,15 @@ mod tests {
     fn write_async_runs_from_a_tokio_runtime() {
         let (_dir, store) = open_temp();
         let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(store.write_async(|c| { c.execute("INSERT INTO sources (path, added_at) VALUES ('/d', 1)", [])?; Ok(()) }))
-            .unwrap();
+        rt.block_on(store.write_async(|c| {
+            c.execute("INSERT INTO sources (path, added_at) VALUES ('/d', 1)", [])?;
+            Ok(())
+        }))
+        .unwrap();
         let n: i64 = rt
-            .block_on(store.write_async(|c| Ok(c.query_row("SELECT count(*) FROM sources", [], |r| r.get(0))?)))
+            .block_on(store.write_async(|c| {
+                Ok(c.query_row("SELECT count(*) FROM sources", [], |r| r.get(0))?)
+            }))
             .unwrap();
         assert_eq!(n, 1);
     }

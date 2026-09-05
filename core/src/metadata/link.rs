@@ -22,8 +22,9 @@ static HAS_SCHEME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^https?:/
 /// People paste from the address bar, which drops the scheme. Only the
 /// hosts that can be looked up get that leniency; `example.com/anime/21`
 /// stays a search.
-static KNOWN_HOST_PREFIX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)^(www\.)?(anilist\.co|myanimelist\.net|themoviedb\.org)/").unwrap());
+static KNOWN_HOST_PREFIX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^(www\.)?(anilist\.co|myanimelist\.net|themoviedb\.org)/").unwrap()
+});
 
 /// Digits only and above zero. `21abc`, `-21` and `0` are all links with
 /// nothing behind them rather than search queries, so the caller reports
@@ -46,7 +47,11 @@ pub fn parse(text: &str) -> Option<Link> {
     if !has_scheme && !KNOWN_HOST_PREFIX.is_match(trimmed) {
         return None;
     }
-    let full = if has_scheme { trimmed.to_string() } else { format!("https://{trimmed}") };
+    let full = if has_scheme {
+        trimmed.to_string()
+    } else {
+        format!("https://{trimmed}")
+    };
     let rest = full.split_once("://")?.1;
     let (host_port, path_query) = match rest.find('/') {
         Some(i) => (&rest[..i], &rest[i..]),
@@ -84,16 +89,31 @@ mod tests {
 
     #[test]
     fn an_anilist_link_carries_its_id_with_or_without_the_scheme() {
-        assert_eq!(parse("https://anilist.co/anime/21/One-Piece"), Some(Link::Anilist { id: 21 }));
+        assert_eq!(
+            parse("https://anilist.co/anime/21/One-Piece"),
+            Some(Link::Anilist { id: 21 })
+        );
         assert_eq!(parse("anilist.co/anime/21"), Some(Link::Anilist { id: 21 }));
-        assert_eq!(parse("www.anilist.co/anime/21"), Some(Link::Anilist { id: 21 }));
-        assert_eq!(parse("  https://ANILIST.co/anime/21  "), Some(Link::Anilist { id: 21 }));
+        assert_eq!(
+            parse("www.anilist.co/anime/21"),
+            Some(Link::Anilist { id: 21 })
+        );
+        assert_eq!(
+            parse("  https://ANILIST.co/anime/21  "),
+            Some(Link::Anilist { id: 21 })
+        );
     }
 
     #[test]
     fn both_myanimelist_shapes_carry_their_id() {
-        assert_eq!(parse("https://myanimelist.net/anime/21/One_Piece"), Some(Link::Mal { id: 21 }));
-        assert_eq!(parse("https://myanimelist.net/anime.php?id=21"), Some(Link::Mal { id: 21 }));
+        assert_eq!(
+            parse("https://myanimelist.net/anime/21/One_Piece"),
+            Some(Link::Mal { id: 21 })
+        );
+        assert_eq!(
+            parse("https://myanimelist.net/anime.php?id=21"),
+            Some(Link::Mal { id: 21 })
+        );
     }
 
     /// A known host with nothing usable behind it is a link the core
@@ -104,7 +124,10 @@ mod tests {
         assert_eq!(parse("https://anilist.co/anime/21abc"), Some(Link::Unknown));
         assert_eq!(parse("https://anilist.co/anime/0"), Some(Link::Unknown));
         assert_eq!(parse("https://anilist.co/user/x"), Some(Link::Unknown));
-        assert_eq!(parse("https://www.themoviedb.org/movie/550"), Some(Link::Unknown));
+        assert_eq!(
+            parse("https://www.themoviedb.org/movie/550"),
+            Some(Link::Unknown)
+        );
     }
 
     #[test]

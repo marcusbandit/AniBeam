@@ -7,20 +7,29 @@
 use std::collections::BTreeMap;
 
 use anibeam_core::library::{classifier, labels};
-use anibeam_core::{time, Call, Core, ExtraKind, Reply, SeriesKind, Tracker};
+use anibeam_core::{Call, Core, ExtraKind, Reply, SeriesKind, Tracker, time};
 use rusqlite::params;
 
 pub fn insert_source(core: &Core, path: &str) -> u64 {
     let path = path.to_string();
     core.store()
         .write(move |c| {
-            c.execute("INSERT INTO sources (path, available, added_at) VALUES (?1, 1, ?2)", params![path, time::now_secs()])?;
+            c.execute(
+                "INSERT INTO sources (path, available, added_at) VALUES (?1, 1, ?2)",
+                params![path, time::now_secs()],
+            )?;
             Ok(c.last_insert_rowid() as u64)
         })
         .unwrap()
 }
 
-pub fn insert_series(core: &Core, source: u64, kind: SeriesKind, path: &str, folder_name: &str) -> u64 {
+pub fn insert_series(
+    core: &Core,
+    source: u64,
+    kind: SeriesKind,
+    path: &str,
+    folder_name: &str,
+) -> u64 {
     let (path, folder_name) = (path.to_string(), folder_name.to_string());
     core.store()
         .write(move |c| {
@@ -36,21 +45,46 @@ pub fn insert_series(core: &Core, source: u64, kind: SeriesKind, path: &str, fol
 /// The file row a scan would write: the classifier fills in the extra's
 /// kind, index and label, and the history key, so a fixture only has to say
 /// where the file is and which episode it is.
-pub fn insert_file(core: &Core, series: u64, path: &str, number: f64, season: Option<u32>, kind: &str, mtime: i64) -> u64 {
+pub fn insert_file(
+    core: &Core,
+    series: u64,
+    path: &str,
+    number: f64,
+    season: Option<u32>,
+    kind: &str,
+    mtime: i64,
+) -> u64 {
     let name = std::path::Path::new(path)
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.to_string());
     let classified = classifier::classify(&name);
     let is_extra = kind == "extra";
-    let extra_kind = if is_extra { Some(classified.extra.unwrap_or(ExtraKind::Other)) } else { None };
+    let extra_kind = if is_extra {
+        Some(classified.extra.unwrap_or(ExtraKind::Other))
+    } else {
+        None
+    };
     let label = match extra_kind {
-        Some(k) => labels::extra_label(k, classified.extra_index, classified.extra_variant.as_deref(), classified.raw_label.as_deref()),
+        Some(k) => labels::extra_label(
+            k,
+            classified.extra_index,
+            classified.extra_variant.as_deref(),
+            classified.raw_label.as_deref(),
+        ),
         None => labels::episode_code(season, number),
     };
-    let episode_key = if is_extra { name } else { classifier::format_number(number) };
+    let episode_key = if is_extra {
+        name
+    } else {
+        classifier::format_number(number)
+    };
     let (path, kind) = (path.to_string(), kind.to_string());
-    let extra_index = if is_extra { classified.extra_index } else { None };
+    let extra_index = if is_extra {
+        classified.extra_index
+    } else {
+        None
+    };
     core.store()
         .write(move |c| {
             c.execute(
@@ -113,7 +147,12 @@ pub fn insert_media(
 /// A media row that names the pictures the image cache would go and get.
 /// The cover is what a card draws, so a series matched to one of these has
 /// a gap until the fill runs.
-pub fn insert_media_with_cover(core: &Core, anilist_id: u64, cover_url: &str, banner_url: Option<&str>) {
+pub fn insert_media_with_cover(
+    core: &Core,
+    anilist_id: u64,
+    cover_url: &str,
+    banner_url: Option<&str>,
+) {
     let (cover_url, banner_url) = (cover_url.to_string(), banner_url.map(str::to_string));
     core.store()
         .write(move |c| {
@@ -128,7 +167,11 @@ pub fn insert_media_with_cover(core: &Core, anilist_id: u64, cover_url: &str, ba
 }
 
 pub fn match_series(core: &Core, series: u64, anilist_id: Option<u64>, mal_id: Option<u64>) {
-    let provider = if anilist_id.is_some() { "anilist" } else { "mal" };
+    let provider = if anilist_id.is_some() {
+        "anilist"
+    } else {
+        "mal"
+    };
     core.store()
         .write(move |c| {
             c.execute(
@@ -155,7 +198,13 @@ pub fn insert_airing(core: &Core, anilist_id: u64, number: i64, aired_at: i64) {
 /// One `anilist_episodes` row as a full metadata fetch would have left
 /// it: the title is what the airing refresh must never replace, since the
 /// schedule it fetches carries none.
-pub fn insert_episode(core: &Core, anilist_id: u64, number: i64, title: Option<&str>, aired_at: Option<i64>) {
+pub fn insert_episode(
+    core: &Core,
+    anilist_id: u64,
+    number: i64,
+    title: Option<&str>,
+    aired_at: Option<i64>,
+) {
     let title = title.map(str::to_string);
     core.store()
         .write(move |c| {
@@ -173,13 +222,23 @@ pub fn insert_episode(core: &Core, anilist_id: u64, number: i64, title: Option<&
 pub fn set_airing_refreshed_at(core: &Core, anilist_id: u64, at: Option<i64>) {
     core.store()
         .write(move |c| {
-            c.execute("UPDATE anilist_media SET airing_refreshed_at = ?2 WHERE id = ?1", params![anilist_id as i64, at])?;
+            c.execute(
+                "UPDATE anilist_media SET airing_refreshed_at = ?2 WHERE id = ?1",
+                params![anilist_id as i64, at],
+            )?;
             Ok(())
         })
         .unwrap();
 }
 
-pub fn insert_tracker_entry(core: &Core, tracker: &str, media_id: u64, progress: u32, status: &str, score: Option<f64>) {
+pub fn insert_tracker_entry(
+    core: &Core,
+    tracker: &str,
+    media_id: u64,
+    progress: u32,
+    status: &str,
+    score: Option<f64>,
+) {
     let (tracker, status) = (tracker.to_string(), status.to_string());
     core.store()
         .write(move |c| {
@@ -198,7 +257,10 @@ pub fn insert_completed(core: &Core, series: u64, key: &str, at: i64) {
     let key = key.to_string();
     core.store()
         .write(move |c| {
-            c.execute("INSERT OR REPLACE INTO completed (series_id, episode_key, at) VALUES (?1, ?2, ?3)", params![series as i64, key, at])?;
+            c.execute(
+                "INSERT OR REPLACE INTO completed (series_id, episode_key, at) VALUES (?1, ?2, ?3)",
+                params![series as i64, key, at],
+            )?;
             Ok(())
         })
         .unwrap()
@@ -208,7 +270,10 @@ pub fn insert_view(core: &Core, series: u64, key: &str, at: i64) {
     let key = key.to_string();
     core.store()
         .write(move |c| {
-            c.execute("INSERT OR REPLACE INTO views (series_id, episode_key, at) VALUES (?1, ?2, ?3)", params![series as i64, key, at])?;
+            c.execute(
+                "INSERT OR REPLACE INTO views (series_id, episode_key, at) VALUES (?1, ?2, ?3)",
+                params![series as i64, key, at],
+            )?;
             Ok(())
         })
         .unwrap()
@@ -257,8 +322,11 @@ pub fn age_progress(core: &Core, tracker: Tracker, secs: i64) {
 fn write_secret(core: &Core, key: &str, value: &str) {
     let path = std::path::Path::new(&data_dir(core)).join("secrets.json");
     let text = std::fs::read_to_string(&path).unwrap_or_default();
-    let mut map: BTreeMap<String, String> =
-        if text.trim().is_empty() { BTreeMap::new() } else { serde_json::from_str(&text).unwrap() };
+    let mut map: BTreeMap<String, String> = if text.trim().is_empty() {
+        BTreeMap::new()
+    } else {
+        serde_json::from_str(&text).unwrap()
+    };
     map.insert(format!("anibeam/{key}"), value.to_string());
     std::fs::write(&path, serde_json::to_string_pretty(&map).unwrap()).unwrap();
 }
@@ -290,8 +358,14 @@ pub fn age_skip_cache(core: &Core, series: u64, key: &str, secs: i64) {
 pub fn mark_missing(core: &Core, series: u64) {
     core.store()
         .write(move |c| {
-            c.execute("UPDATE series SET missing_since = ?1 WHERE id = ?2", params![time::now_secs(), series as i64])?;
-            c.execute("DELETE FROM files WHERE series_id = ?1", params![series as i64])?;
+            c.execute(
+                "UPDATE series SET missing_since = ?1 WHERE id = ?2",
+                params![time::now_secs(), series as i64],
+            )?;
+            c.execute(
+                "DELETE FROM files WHERE series_id = ?1",
+                params![series as i64],
+            )?;
             Ok(())
         })
         .unwrap()

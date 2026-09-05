@@ -1,14 +1,14 @@
+pub mod calls;
 pub mod enums;
 pub mod error;
-pub mod records;
-pub mod calls;
 pub mod events;
+pub mod records;
 
+pub use calls::*;
 pub use enums::*;
 pub use error::*;
-pub use records::*;
-pub use calls::*;
 pub use events::*;
+pub use records::*;
 
 #[cfg(test)]
 mod tests {
@@ -30,9 +30,15 @@ mod tests {
 
     #[test]
     fn calls_round_trip_through_json_externally_tagged() {
-        let call = Call::MarkEpisode { series: 3, episode: 12.0 };
+        let call = Call::MarkEpisode {
+            series: 3,
+            episode: 12.0,
+        };
         let json = serde_json::to_value(&call).unwrap();
-        assert_eq!(json, serde_json::json!({ "MarkEpisode": { "series": 3, "episode": 12.0 } }));
+        assert_eq!(
+            json,
+            serde_json::json!({ "MarkEpisode": { "series": 3, "episode": 12.0 } })
+        );
         let back: Call = serde_json::from_value(json).unwrap();
         assert_eq!(back, call);
         let unit: Call = serde_json::from_value(serde_json::json!("ListSources")).unwrap();
@@ -42,7 +48,10 @@ mod tests {
     #[test]
     fn replies_have_named_fields() {
         let reply = Reply::Started { job: 9 };
-        assert_eq!(serde_json::to_value(&reply).unwrap(), serde_json::json!({ "Started": { "job": 9 } }));
+        assert_eq!(
+            serde_json::to_value(&reply).unwrap(),
+            serde_json::json!({ "Started": { "job": 9 } })
+        );
     }
 
     #[test]
@@ -53,8 +62,17 @@ mod tests {
             level: Level::Info,
             stage: Stage::Library,
             message: "scan finished".into(),
-            job: Some(JobRef { id: 4, kind: JobKind::Scan, phase: JobPhase::Finished }),
-            body: EventBody::ScanFinished { source: None, added: 2, changed: 0, removed: 1 },
+            job: Some(JobRef {
+                id: 4,
+                kind: JobKind::Scan,
+                phase: JobPhase::Finished,
+            }),
+            body: EventBody::ScanFinished {
+                source: None,
+                added: 2,
+                changed: 0,
+                removed: 1,
+            },
         };
         let json = serde_json::to_string(&event).unwrap();
         let back: Event = serde_json::from_str(&json).unwrap();
@@ -78,9 +96,25 @@ mod tests {
         assert_eq!(d.scale, 1.0);
         assert_eq!(d.ass_override, AssOverride::ScaleOnly);
         assert_eq!(d.text_style.font, "sans-serif");
-        assert_eq!(d.text_style.colour, Colour { r: 255, g: 255, b: 255, a: 255 });
+        assert_eq!(
+            d.text_style.colour,
+            Colour {
+                r: 255,
+                g: 255,
+                b: 255,
+                a: 255
+            }
+        );
         assert_eq!(d.text_style.outline_size, 1.65);
-        assert_eq!(d.text_style.outline_colour, Colour { r: 0, g: 0, b: 0, a: 255 });
+        assert_eq!(
+            d.text_style.outline_colour,
+            Colour {
+                r: 0,
+                g: 0,
+                b: 0,
+                a: 255
+            }
+        );
         assert_eq!(d.text_style.position, 100.0);
     }
 

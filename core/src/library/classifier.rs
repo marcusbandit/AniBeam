@@ -30,16 +30,30 @@ static TRAILING_DASH: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s*[-_]\s*
 /// so "Operations" and "Edge" never fire.
 static EXTRA_PATTERNS: LazyLock<Vec<(ExtraKind, Regex)>> = LazyLock::new(|| {
     vec![
-        (ExtraKind::Op, Regex::new(r"(?i)^(?:NCOP|OP)([0-9]+)([a-z])?$").unwrap()),
-        (ExtraKind::Ed, Regex::new(r"(?i)^(?:NCED|ED)([0-9]+)([a-z])?$").unwrap()),
-        (ExtraKind::Pv, Regex::new(r"(?i)^(?:PV|Trailer|Teaser)([0-9]+)?([a-z])?$").unwrap()),
-        (ExtraKind::Sp, Regex::new(r"(?i)^(?:SP|Special|Specials)([0-9]+)?([a-z])?$").unwrap()),
+        (
+            ExtraKind::Op,
+            Regex::new(r"(?i)^(?:NCOP|OP)([0-9]+)([a-z])?$").unwrap(),
+        ),
+        (
+            ExtraKind::Ed,
+            Regex::new(r"(?i)^(?:NCED|ED)([0-9]+)([a-z])?$").unwrap(),
+        ),
+        (
+            ExtraKind::Pv,
+            Regex::new(r"(?i)^(?:PV|Trailer|Teaser)([0-9]+)?([a-z])?$").unwrap(),
+        ),
+        (
+            ExtraKind::Sp,
+            Regex::new(r"(?i)^(?:SP|Special|Specials)([0-9]+)?([a-z])?$").unwrap(),
+        ),
     ]
 });
 const OTHER_TOKENS: [&str; 5] = ["menu", "cm", "bonus", "extra", "extras"];
 
-static SEASON_EPISODE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\bS([0-9]+)E([0-9]+)\b").unwrap());
-static DECIMAL_EPISODE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)Episode\s*([0-9]+)\.([0-9]+)").unwrap());
+static SEASON_EPISODE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)\bS([0-9]+)E([0-9]+)\b").unwrap());
+static DECIMAL_EPISODE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)Episode\s*([0-9]+)\.([0-9]+)").unwrap());
 static EPISODE_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     vec![
         Regex::new(r"(?i)Episode\s*([0-9]+)").unwrap(),
@@ -54,7 +68,10 @@ static ANY_NUMBER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[0-9]+").unwr
 /// Extension and every [bracketed] group gone, whitespace collapsed,
 /// separators kept so `Episode 6.5` and `Show.Name.S02E07` still anchor.
 pub fn strip_brackets_and_ext(file_name: &str) -> String {
-    let stem = Path::new(file_name).file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let stem = Path::new(file_name)
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
     let no_brackets = BRACKETS.replace_all(&stem, " ");
     SPACES.replace_all(&no_brackets, " ").trim().to_string()
 }
@@ -67,7 +84,12 @@ fn normalise_for_tokens(file_name: &str) -> String {
     SPACES.replace_all(&flat, " ").trim().to_string()
 }
 
-struct ExtraHit { kind: ExtraKind, index: Option<u32>, variant: Option<String>, raw_label: String }
+struct ExtraHit {
+    kind: ExtraKind,
+    index: Option<u32>,
+    variant: Option<String>,
+    raw_label: String,
+}
 
 fn find_extra_token(file_name: &str) -> Option<ExtraHit> {
     for token in normalise_for_tokens(file_name).split_whitespace() {
@@ -82,14 +104,23 @@ fn find_extra_token(file_name: &str) -> Option<ExtraHit> {
             }
         }
         if OTHER_TOKENS.contains(&token.to_lowercase().as_str()) {
-            return Some(ExtraHit { kind: ExtraKind::Other, index: None, variant: None, raw_label: token.to_string() });
+            return Some(ExtraHit {
+                kind: ExtraKind::Other,
+                index: None,
+                variant: None,
+                raw_label: token.to_string(),
+            });
         }
     }
     None
 }
 
 fn finalize(season: Option<u32>, episode: f64) -> (Option<u32>, f64) {
-    if episode == 0.0 { (Some(0), 0.0) } else { (season, episode) }
+    if episode == 0.0 {
+        (Some(0), 0.0)
+    } else {
+        (season, episode)
+    }
 }
 
 fn extract_episode(file_name: &str) -> (Option<u32>, f64) {
@@ -124,19 +155,34 @@ pub fn classify(file_name: &str) -> Classified {
         return Classified {
             extra: Some(hit.kind),
             number,
-            season: if hit.kind == ExtraKind::Sp { Some(0) } else { None },
+            season: if hit.kind == ExtraKind::Sp {
+                Some(0)
+            } else {
+                None
+            },
             extra_index: hit.index,
             extra_variant: hit.variant,
             raw_label: Some(hit.raw_label),
         };
     }
     let (season, number) = extract_episode(file_name);
-    Classified { extra: None, number, season, extra_index: None, extra_variant: None, raw_label: None }
+    Classified {
+        extra: None,
+        number,
+        season,
+        extra_index: None,
+        extra_variant: None,
+        raw_label: None,
+    }
 }
 
 /// `12` or `12.5`, never `12.0`.
 pub fn format_number(n: f64) -> String {
-    if n.fract() == 0.0 { format!("{}", n as i64) } else { format!("{n}") }
+    if n.fract() == 0.0 {
+        format!("{}", n as i64)
+    } else {
+        format!("{n}")
+    }
 }
 
 /// The history key: the number for an episode, the file name for an extra.
@@ -158,7 +204,9 @@ mod tests {
     use super::*;
     use crate::contract::ExtraKind;
 
-    fn ep(name: &str) -> Classified { classify(name) }
+    fn ep(name: &str) -> Classified {
+        classify(name)
+    }
 
     #[test]
     fn bakemonogatari_episodes_and_extras() {
@@ -167,17 +215,39 @@ mod tests {
         let c = ep("[Coalgirls]_Bakemonogatari_15_(1920x1080_Blu-ray_FLAC)_[256D3923].mkv");
         assert_eq!((c.extra, c.number), (None, 15.0));
         let c = ep("[Coalgirls]_Bakemonogatari_ED1_(1920x1080_Blu-ray_FLAC)_[7EE4E478].mkv");
-        assert_eq!((c.extra, c.extra_index, c.extra_variant.as_deref(), c.raw_label.as_deref()), (Some(ExtraKind::Ed), Some(1), None, Some("ED1")));
+        assert_eq!(
+            (
+                c.extra,
+                c.extra_index,
+                c.extra_variant.as_deref(),
+                c.raw_label.as_deref()
+            ),
+            (Some(ExtraKind::Ed), Some(1), None, Some("ED1"))
+        );
         let c = ep("[Coalgirls]_Bakemonogatari_ED3_(1920x1080_Blu-ray_FLAC)_[8F8AC7AF].mkv");
         assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Ed), Some(3)));
         let c = ep("[Coalgirls]_Bakemonogatari_OP2_(1920x1080_Blu-ray_FLAC)_[57D95944].mkv");
         assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Op), Some(2)));
         let c = ep("[Coalgirls]_Bakemonogatari_OP4a_(1920x1080_Blu-ray_FLAC)_[AF4FF3CC].mkv");
-        assert_eq!((c.extra, c.extra_index, c.extra_variant.as_deref(), c.raw_label.as_deref()), (Some(ExtraKind::Op), Some(4), Some("a"), Some("OP4a")));
+        assert_eq!(
+            (
+                c.extra,
+                c.extra_index,
+                c.extra_variant.as_deref(),
+                c.raw_label.as_deref()
+            ),
+            (Some(ExtraKind::Op), Some(4), Some("a"), Some("OP4a"))
+        );
         let c = ep("[Coalgirls]_Bakemonogatari_OP4b_(1920x1080_Blu-ray_FLAC)_[63162685].mkv");
-        assert_eq!((c.extra, c.extra_index, c.extra_variant.as_deref()), (Some(ExtraKind::Op), Some(4), Some("b")));
+        assert_eq!(
+            (c.extra, c.extra_index, c.extra_variant.as_deref()),
+            (Some(ExtraKind::Op), Some(4), Some("b"))
+        );
         let c = ep("[Coalgirls]_Bakemonogatari_OP5b_(1920x1080_Blu-ray_FLAC)_[7B7B859A].mkv");
-        assert_eq!((c.extra, c.extra_index, c.extra_variant.as_deref()), (Some(ExtraKind::Op), Some(5), Some("b")));
+        assert_eq!(
+            (c.extra, c.extra_index, c.extra_variant.as_deref()),
+            (Some(ExtraKind::Op), Some(5), Some("b"))
+        );
         let c = ep("[Coalgirls]_Bakemonogatari_PV01_(1920x1080_Blu-ray_FLAC)_[8924213A].mkv");
         assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Pv), Some(1)));
         let c = ep("[Coalgirls]_Bakemonogatari_PV12_(1920x1080_Blu-ray_FLAC)_[17C508BF].mkv");
@@ -191,16 +261,55 @@ mod tests {
         assert_eq!((c.number, c.season), (7.0, Some(2)));
         assert_eq!(ep("Show Name - Episode 12.mkv").number, 12.0);
         assert_eq!(ep("Show Name Episode 6.5.mkv").number, 6.5);
-        assert_eq!((ep("Show Name NCOP1 [1080p].mkv").extra, ep("Show Name NCOP1 [1080p].mkv").extra_index), (Some(ExtraKind::Op), Some(1)));
-        assert_eq!((ep("Show Name NCED2 [1080p].mkv").extra, ep("Show Name NCED2 [1080p].mkv").extra_index), (Some(ExtraKind::Ed), Some(2)));
+        assert_eq!(
+            (
+                ep("Show Name NCOP1 [1080p].mkv").extra,
+                ep("Show Name NCOP1 [1080p].mkv").extra_index
+            ),
+            (Some(ExtraKind::Op), Some(1))
+        );
+        assert_eq!(
+            (
+                ep("Show Name NCED2 [1080p].mkv").extra,
+                ep("Show Name NCED2 [1080p].mkv").extra_index
+            ),
+            (Some(ExtraKind::Ed), Some(2))
+        );
         let c = ep("Show Name SP1 [1080p].mkv");
         assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Sp), Some(1)));
         let c = ep("Show Name Special [1080p].mkv");
-        assert_eq!((c.extra, c.extra_index, c.number, c.season), (Some(ExtraKind::Sp), None, 0.0, Some(0)));
-        assert_eq!((ep("Show Name Trailer1.mkv").extra, ep("Show Name Trailer1.mkv").extra_index), (Some(ExtraKind::Pv), Some(1)));
-        assert_eq!((ep("Show Name Trailer.mkv").extra, ep("Show Name Trailer.mkv").extra_index), (Some(ExtraKind::Pv), None));
-        assert_eq!((ep("Show Name - 03 - Operations of Hope.mkv").extra, ep("Show Name - 03 - Operations of Hope.mkv").number), (None, 3.0));
-        assert_eq!((ep("Show Name - 04 - Edge of Tomorrow.mkv").extra, ep("Show Name - 04 - Edge of Tomorrow.mkv").number), (None, 4.0));
+        assert_eq!(
+            (c.extra, c.extra_index, c.number, c.season),
+            (Some(ExtraKind::Sp), None, 0.0, Some(0))
+        );
+        assert_eq!(
+            (
+                ep("Show Name Trailer1.mkv").extra,
+                ep("Show Name Trailer1.mkv").extra_index
+            ),
+            (Some(ExtraKind::Pv), Some(1))
+        );
+        assert_eq!(
+            (
+                ep("Show Name Trailer.mkv").extra,
+                ep("Show Name Trailer.mkv").extra_index
+            ),
+            (Some(ExtraKind::Pv), None)
+        );
+        assert_eq!(
+            (
+                ep("Show Name - 03 - Operations of Hope.mkv").extra,
+                ep("Show Name - 03 - Operations of Hope.mkv").number
+            ),
+            (None, 3.0)
+        );
+        assert_eq!(
+            (
+                ep("Show Name - 04 - Edge of Tomorrow.mkv").extra,
+                ep("Show Name - 04 - Edge of Tomorrow.mkv").number
+            ),
+            (None, 4.0)
+        );
     }
 
     #[test]
@@ -216,9 +325,15 @@ mod tests {
     #[test]
     fn other_tokens_are_extras_of_kind_other() {
         let c = ep("Show Name Menu.mkv");
-        assert_eq!((c.extra, c.raw_label.as_deref(), c.number), (Some(ExtraKind::Other), Some("Menu"), 0.0));
+        assert_eq!(
+            (c.extra, c.raw_label.as_deref(), c.number),
+            (Some(ExtraKind::Other), Some("Menu"), 0.0)
+        );
         let c = ep("Show_Name_CM_01.mkv");
-        assert_eq!((c.extra, c.raw_label.as_deref()), (Some(ExtraKind::Other), Some("CM")));
+        assert_eq!(
+            (c.extra, c.raw_label.as_deref()),
+            (Some(ExtraKind::Other), Some("CM"))
+        );
     }
 
     #[test]
@@ -231,7 +346,10 @@ mod tests {
         assert_eq!(episode_key(&c, "Show OP1.mkv"), "Show OP1.mkv");
         assert_eq!(format_number(12.0), "12");
         assert_eq!(format_number(12.5), "12.5");
-        assert_eq!(clean_episode_title("[Group] Show - 01 - [ABCD1234].mkv"), "Show - 01");
+        assert_eq!(
+            clean_episode_title("[Group] Show - 01 - [ABCD1234].mkv"),
+            "Show - 01"
+        );
         assert_eq!(clean_episode_title("Show_Name_03_.mkv"), "Show_Name_03");
         assert_eq!(strip_brackets_and_ext("[A] Show [B] 01 [C].mkv"), "Show 01");
     }

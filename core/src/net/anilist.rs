@@ -255,8 +255,7 @@ pub const VIEWER_QUERY: &str = r"query { Viewer { id name } }";
 /// Electron's current-entry query, trackerHandler.ts:430. `userId` is not
 /// optional in practice: `MediaList(mediaId)` without it ignores the
 /// bearer token and answers with some other user's entry.
-pub const MEDIA_LIST_ENTRY_QUERY: &str =
-    r"query ($userId: Int, $mediaId: Int) { MediaList(userId: $userId, mediaId: $mediaId) { progress status } }";
+pub const MEDIA_LIST_ENTRY_QUERY: &str = r"query ($userId: Int, $mediaId: Int) { MediaList(userId: $userId, mediaId: $mediaId) { progress status } }";
 
 /// Electron's progress mutation, trackerHandler.ts:445-449.
 pub const SAVE_PROGRESS_MUTATION: &str = r"mutation ($mediaId: Int, $progress: Int, $status: MediaListStatus) {
@@ -593,7 +592,9 @@ impl AnilistClient {
                 method: Method::Post,
                 url: ANILIST_API.to_string(),
                 headers,
-                body: Some(Body::Json(serde_json::json!({ "query": query, "variables": variables }))),
+                body: Some(Body::Json(
+                    serde_json::json!({ "query": query, "variables": variables }),
+                )),
             })
             .await?;
         // AniList answers a GraphQL failure with a 200 and an `errors`
@@ -605,16 +606,25 @@ impl AnilistClient {
                 if response.is_success() {
                     return Err(e);
                 }
-                return Err(provider_error(Some(u32::from(response.status)), response.text()));
+                return Err(provider_error(
+                    Some(u32::from(response.status)),
+                    response.text(),
+                ));
             }
         };
         if let Some(first) = value["errors"].as_array().and_then(|errors| errors.first()) {
             let status = first["status"].as_u64().map(|s| s as u32);
-            let message = first["message"].as_str().unwrap_or("AniList error").to_string();
+            let message = first["message"]
+                .as_str()
+                .unwrap_or("AniList error")
+                .to_string();
             return Err(provider_error(status, message));
         }
         if !response.is_success() {
-            return Err(provider_error(Some(u32::from(response.status)), response.text()));
+            return Err(provider_error(
+                Some(u32::from(response.status)),
+                response.text(),
+            ));
         }
         match value.get("data") {
             Some(data) if !data.is_null() => Ok(data.clone()),
@@ -624,7 +634,11 @@ impl AnilistClient {
 
     pub async fn search(&self, query: &str, per_page: u32) -> Result<Vec<Media>, CoreError> {
         let data = self
-            .graphql(SEARCH_QUERY, serde_json::json!({ "search": query, "page": 1, "perPage": per_page }), None)
+            .graphql(
+                SEARCH_QUERY,
+                serde_json::json!({ "search": query, "page": 1, "perPage": per_page }),
+                None,
+            )
             .await?;
         let media = &data["Page"]["media"];
         if media.is_null() {
@@ -641,8 +655,13 @@ impl AnilistClient {
     /// keeps the second half verbatim in `anilist_media.raw`, so a later
     /// migration can mine a field this schema has no column for without
     /// asking AniList again.
-    pub async fn media_by_id_raw(&self, id: u64) -> Result<(Option<Media>, serde_json::Value), CoreError> {
-        let data = self.graphql(MEDIA_BY_ID_QUERY, serde_json::json!({ "id": id }), None).await?;
+    pub async fn media_by_id_raw(
+        &self,
+        id: u64,
+    ) -> Result<(Option<Media>, serde_json::Value), CoreError> {
+        let data = self
+            .graphql(MEDIA_BY_ID_QUERY, serde_json::json!({ "id": id }), None)
+            .await?;
         let raw = data["Media"].clone();
         Ok((parse_media(&raw)?, raw))
     }
@@ -650,7 +669,14 @@ impl AnilistClient {
     /// The MAL id to its AniList id. AniList answers a MAL id it has never
     /// heard of with a 404 error, which is a miss rather than a failure.
     pub async fn resolve_by_mal(&self, mal_id: u64) -> Result<Option<u64>, CoreError> {
-        match self.graphql(RESOLVE_ID_BY_MAL_QUERY, serde_json::json!({ "idMal": mal_id }), None).await {
+        match self
+            .graphql(
+                RESOLVE_ID_BY_MAL_QUERY,
+                serde_json::json!({ "idMal": mal_id }),
+                None,
+            )
+            .await
+        {
             Ok(data) => Ok(data["Media"]["id"].as_u64()),
             Err(e) if is_not_found(&e) => Ok(None),
             Err(e) => Err(e),
@@ -666,7 +692,9 @@ impl AnilistClient {
     /// The schedule and the JSON behind it, for the same reason
     /// `media_by_id_raw` exists.
     pub async fn schedule_raw(&self, id: u64) -> Result<(Schedule, serde_json::Value), CoreError> {
-        let data = self.graphql(AIRING_SCHEDULE_QUERY, serde_json::json!({ "id": id }), None).await?;
+        let data = self
+            .graphql(AIRING_SCHEDULE_QUERY, serde_json::json!({ "id": id }), None)
+            .await?;
         let raw = data["Media"].clone();
         if raw.is_null() {
             return Ok((Schedule::default(), raw));
@@ -680,8 +708,13 @@ impl AnilistClient {
 
     /// The series page and the JSON behind it, for the same reason
     /// `media_by_id_raw` exists.
-    pub async fn enrichment_raw(&self, id: u64) -> Result<(Option<Enrichment>, serde_json::Value), CoreError> {
-        let data = self.graphql(ENRICHMENT_QUERY, serde_json::json!({ "id": id }), None).await?;
+    pub async fn enrichment_raw(
+        &self,
+        id: u64,
+    ) -> Result<(Option<Enrichment>, serde_json::Value), CoreError> {
+        let data = self
+            .graphql(ENRICHMENT_QUERY, serde_json::json!({ "id": id }), None)
+            .await?;
         let raw = data["Media"].clone();
         if raw.is_null() {
             return Ok((None, raw));
@@ -691,11 +724,22 @@ impl AnilistClient {
 }
 
 fn provider_error(status: Option<u32>, message: impl Into<String>) -> CoreError {
-    CoreError::Provider { provider: Provider::Anilist, status, message: message.into(), retry_after: None }
+    CoreError::Provider {
+        provider: Provider::Anilist,
+        status,
+        message: message.into(),
+        retry_after: None,
+    }
 }
 
 fn is_not_found(e: &CoreError) -> bool {
-    matches!(e, CoreError::Provider { status: Some(404), .. })
+    matches!(
+        e,
+        CoreError::Provider {
+            status: Some(404),
+            ..
+        }
+    )
 }
 
 fn parse_media(value: &serde_json::Value) -> Result<Option<Media>, CoreError> {
@@ -714,7 +758,11 @@ mod tests {
     use std::time::Duration;
 
     fn client(http: Arc<FakeHttp>) -> AnilistClient {
-        AnilistClient::new(ProviderClient::new(Upstream::Anilist, http, Duration::from_millis(1)))
+        AnilistClient::new(ProviderClient::new(
+            Upstream::Anilist,
+            http,
+            Duration::from_millis(1),
+        ))
     }
 
     #[tokio::test]
@@ -749,8 +797,16 @@ mod tests {
             Some(Body::Json(v)) => v.clone(),
             other => panic!("expected a json body, got {other:?}"),
         };
-        assert_eq!(body["variables"], serde_json::json!({ "search": "Frieren", "page": 1, "perPage": 10 }));
-        assert!(body["query"].as_str().unwrap().contains("Page(page: $page, perPage: $perPage)"));
+        assert_eq!(
+            body["variables"],
+            serde_json::json!({ "search": "Frieren", "page": 1, "perPage": 10 })
+        );
+        assert!(
+            body["query"]
+                .as_str()
+                .unwrap()
+                .contains("Page(page: $page, perPage: $perPage)")
+        );
     }
 
     #[tokio::test]
@@ -758,7 +814,16 @@ mod tests {
         let http = FakeHttp::new();
         http.push_json(200, serde_json::json!({ "data": null, "errors": [ { "message": "Not Found.", "status": 404 } ] }));
         let err = client(http).media_by_id(1).await.err().unwrap();
-        assert!(matches!(err, CoreError::Provider { status: Some(404), .. }), "{err:?}");
+        assert!(
+            matches!(
+                err,
+                CoreError::Provider {
+                    status: Some(404),
+                    ..
+                }
+            ),
+            "{err:?}"
+        );
     }
 
     #[tokio::test]
@@ -766,13 +831,19 @@ mod tests {
         let http = FakeHttp::new();
         http.push_json(200, serde_json::json!({ "nothing": true }));
         let err = client(http).media_by_id(1).await.err().unwrap();
-        assert!(matches!(&err, CoreError::Provider { status: None, message, .. } if message == "no data"), "{err:?}");
+        assert!(
+            matches!(&err, CoreError::Provider { status: None, message, .. } if message == "no data"),
+            "{err:?}"
+        );
     }
 
     #[tokio::test]
     async fn resolve_by_mal_returns_the_id_or_none() {
         let http = FakeHttp::new();
-        http.push_json(200, serde_json::json!({ "data": { "Media": { "id": 21 } } }));
+        http.push_json(
+            200,
+            serde_json::json!({ "data": { "Media": { "id": 21 } } }),
+        );
         http.push_json(200, serde_json::json!({ "data": null, "errors": [ { "message": "Not Found.", "status": 404 } ] }));
         let c = client(http);
         assert_eq!(c.resolve_by_mal(21).await.unwrap(), Some(21));
@@ -785,9 +856,18 @@ mod tests {
         http.push_json(200, serde_json::json!({ "data": { "Media": null } }));
         let c = client(http.clone());
         assert!(c.media_by_id(7).await.unwrap().is_none());
-        c.graphql(VIEWER_QUERY, serde_json::json!({}), Some("t0ken")).await.ok();
-        let auth = http.requests()[1].headers.iter().find(|(k, _)| k == "Authorization").cloned();
-        assert_eq!(auth, Some(("Authorization".to_string(), "Bearer t0ken".to_string())));
+        c.graphql(VIEWER_QUERY, serde_json::json!({}), Some("t0ken"))
+            .await
+            .ok();
+        let auth = http.requests()[1]
+            .headers
+            .iter()
+            .find(|(k, _)| k == "Authorization")
+            .cloned();
+        assert_eq!(
+            auth,
+            Some(("Authorization".to_string(), "Bearer t0ken".to_string()))
+        );
     }
 
     #[tokio::test]
@@ -825,7 +905,16 @@ mod tests {
         assert_eq!(e.type_.as_deref(), Some("ANIME"));
         assert_eq!(e.tags[0].rank, Some(90));
         assert!(e.studios.unwrap().edges[0].is_main);
-        assert_eq!(e.characters.unwrap().edges[0].node.name.as_ref().unwrap().full.as_deref(), Some("Frieren"));
+        assert_eq!(
+            e.characters.unwrap().edges[0]
+                .node
+                .name
+                .as_ref()
+                .unwrap()
+                .full
+                .as_deref(),
+            Some("Frieren")
+        );
         assert_eq!(e.recommendations.unwrap().edges[0].node.rating, Some(42));
         assert_eq!(e.relations.unwrap().edges[0].relation_type, "SEQUEL");
         assert_eq!(e.streaming_episodes[0].site.as_deref(), Some("Crunchyroll"));

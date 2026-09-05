@@ -2,8 +2,8 @@
 //! series page and the player header through the records, so the two never
 //! drift. Carried from src/shared/extraLabels.ts.
 
-use crate::contract::ExtraKind;
 use super::classifier::format_number;
+use crate::contract::ExtraKind;
 
 pub fn extra_code(kind: ExtraKind) -> &'static str {
     match kind {
@@ -23,7 +23,12 @@ pub fn extra_code_with_index(kind: ExtraKind, index: Option<u32>) -> String {
     }
 }
 
-pub fn extra_label(kind: ExtraKind, index: Option<u32>, variant: Option<&str>, raw_label: Option<&str>) -> String {
+pub fn extra_label(
+    kind: ExtraKind,
+    index: Option<u32>,
+    variant: Option<&str>,
+    raw_label: Option<&str>,
+) -> String {
     let idx_part = match (index, variant) {
         (Some(i), Some(v)) => format!(" {i}{v}"),
         (Some(i), None) => format!(" {i}"),
@@ -50,7 +55,11 @@ pub fn extra_label(kind: ExtraKind, index: Option<u32>, variant: Option<&str>, r
 pub fn episode_code(season: Option<u32>, number: f64) -> String {
     match season {
         Some(s) => {
-            let n = if number.fract() == 0.0 { format!("{:02}", number as i64) } else { format_number(number) };
+            let n = if number.fract() == 0.0 {
+                format!("{:02}", number as i64)
+            } else {
+                format_number(number)
+            };
             format!("S{s:02}E{n}")
         }
         None => format!("EP {}", format_number(number)),
@@ -68,12 +77,30 @@ mod tests {
         assert_eq!(extra_code(ExtraKind::Other), "EXTRA");
         assert_eq!(extra_code_with_index(ExtraKind::Op, Some(1)), "OP1");
         assert_eq!(extra_code_with_index(ExtraKind::Sp, None), "SP");
-        assert_eq!(extra_label(ExtraKind::Op, Some(4), Some("a"), Some("OP4a")), "Opening 4a");
-        assert_eq!(extra_label(ExtraKind::Ed, Some(1), None, Some("ED1")), "Ending 1");
-        assert_eq!(extra_label(ExtraKind::Pv, Some(12), None, Some("PV12")), "Preview 12");
-        assert_eq!(extra_label(ExtraKind::Sp, None, None, Some("Special")), "Special");
-        assert_eq!(extra_label(ExtraKind::Sp, Some(2), None, Some("SP2")), "Special 2");
-        assert_eq!(extra_label(ExtraKind::Other, None, None, Some("BONUS")), "Bonus");
+        assert_eq!(
+            extra_label(ExtraKind::Op, Some(4), Some("a"), Some("OP4a")),
+            "Opening 4a"
+        );
+        assert_eq!(
+            extra_label(ExtraKind::Ed, Some(1), None, Some("ED1")),
+            "Ending 1"
+        );
+        assert_eq!(
+            extra_label(ExtraKind::Pv, Some(12), None, Some("PV12")),
+            "Preview 12"
+        );
+        assert_eq!(
+            extra_label(ExtraKind::Sp, None, None, Some("Special")),
+            "Special"
+        );
+        assert_eq!(
+            extra_label(ExtraKind::Sp, Some(2), None, Some("SP2")),
+            "Special 2"
+        );
+        assert_eq!(
+            extra_label(ExtraKind::Other, None, None, Some("BONUS")),
+            "Bonus"
+        );
         assert_eq!(extra_label(ExtraKind::Other, None, None, Some("cm")), "Cm");
         assert_eq!(extra_label(ExtraKind::Other, None, None, None), "Bonus");
         assert_eq!(episode_code(Some(1), 3.0), "S01E03");

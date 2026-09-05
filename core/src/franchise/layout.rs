@@ -52,7 +52,10 @@ pub struct Chain {
 
 fn is_print(n: Option<&&Node>) -> bool {
     let Some(n) = n else { return false };
-    n.format.as_deref().is_some_and(|f| PRINT_FORMATS.contains(&f)) || n.media_type.as_deref() == Some("MANGA")
+    n.format
+        .as_deref()
+        .is_some_and(|f| PRINT_FORMATS.contains(&f))
+        || n.media_type.as_deref() == Some("MANGA")
 }
 
 /// How structural a relation is. AniList tags one link two ways often
@@ -80,7 +83,11 @@ fn priority(relation: &str) -> u8 {
 /// already there the other way round, and several relations on one ordered
 /// pair collapse to the most structural of them.
 pub fn canonical_edges(edges: &[Edge], nodes: &HashMap<u64, &Node>) -> Vec<Edge> {
-    let e = |from, to, relation: &str| Edge { from, to, relation: relation.to_string() };
+    let e = |from, to, relation: &str| Edge {
+        from,
+        to,
+        relation: relation.to_string(),
+    };
     let normalized: Vec<Edge> = edges
         .iter()
         .map(|x| match x.relation.as_str() {
@@ -95,20 +102,34 @@ pub fn canonical_edges(edges: &[Edge], nodes: &HashMap<u64, &Node>) -> Vec<Edge>
             }
             "ADAPTATION" => {
                 let (fp, tp) = (is_print(nodes.get(&x.from)), is_print(nodes.get(&x.to)));
-                if !fp && tp { e(x.to, x.from, "ADAPTATION") } else { x.clone() }
+                if !fp && tp {
+                    e(x.to, x.from, "ADAPTATION")
+                } else {
+                    x.clone()
+                }
             }
             "SOURCE" => {
                 let (fp, tp) = (is_print(nodes.get(&x.from)), is_print(nodes.get(&x.to)));
-                if !fp && tp { e(x.to, x.from, "ADAPTATION") } else { e(x.from, x.to, "ADAPTATION") }
+                if !fp && tp {
+                    e(x.to, x.from, "ADAPTATION")
+                } else {
+                    e(x.from, x.to, "ADAPTATION")
+                }
             }
             _ => x.clone(),
         })
         .collect();
 
     let mut seen = HashSet::new();
-    let uniqued: Vec<Edge> = normalized.into_iter().filter(|x| seen.insert((x.from, x.to, x.relation.clone()))).collect();
+    let uniqued: Vec<Edge> = normalized
+        .into_iter()
+        .filter(|x| seen.insert((x.from, x.to, x.relation.clone())))
+        .collect();
 
-    let present: HashSet<(u64, u64, String)> = uniqued.iter().map(|x| (x.from, x.to, x.relation.clone())).collect();
+    let present: HashSet<(u64, u64, String)> = uniqued
+        .iter()
+        .map(|x| (x.from, x.to, x.relation.clone()))
+        .collect();
     let drops = |r: &str| match r {
         "SOURCE" => Some("ADAPTATION"),
         "PARENT" => Some("SIDE_STORY"),
@@ -117,7 +138,10 @@ pub fn canonical_edges(edges: &[Edge], nodes: &HashMap<u64, &Node>) -> Vec<Edge>
     };
     let after: Vec<Edge> = uniqued
         .into_iter()
-        .filter(|x| !drops(&x.relation).is_some_and(|keep| present.contains(&(x.to, x.from, keep.to_string()))))
+        .filter(|x| {
+            !drops(&x.relation)
+                .is_some_and(|keep| present.contains(&(x.to, x.from, keep.to_string())))
+        })
         .collect();
 
     let mut best: Vec<Edge> = Vec::new();
@@ -141,7 +165,10 @@ pub fn canonical_edges(edges: &[Edge], nodes: &HashMap<u64, &Node>) -> Vec<Edge>
 /// The year a node sorts by. No year sorts last, which is where an entry
 /// that has not been dated yet belongs.
 fn year_of(nodes: &HashMap<u64, &Node>, id: u64) -> u64 {
-    nodes.get(&id).and_then(|n| n.year).map_or(u64::MAX, u64::from)
+    nodes
+        .get(&id)
+        .and_then(|n| n.year)
+        .map_or(u64::MAX, u64::from)
 }
 
 /// Every run of two or more nodes joined by SEQUEL edges, each in watch
@@ -187,8 +214,10 @@ pub fn chains(nodes: &[Node], edges: &[Edge]) -> Vec<Chain> {
 /// branches still reads chronologically. Data saying a show is its own
 /// sequel has no topological order at all, and falls back to the years.
 fn watch_order(members: &HashSet<u64>, edges: &[Edge], nodes: &HashMap<u64, &Node>) -> Vec<u64> {
-    let internal: Vec<&Edge> =
-        edges.iter().filter(|x| x.relation == "SEQUEL" && members.contains(&x.from) && members.contains(&x.to)).collect();
+    let internal: Vec<&Edge> = edges
+        .iter()
+        .filter(|x| x.relation == "SEQUEL" && members.contains(&x.from) && members.contains(&x.to))
+        .collect();
 
     let mut in_degree: HashMap<u64, usize> = members.iter().map(|id| (*id, 0)).collect();
     let mut out: HashMap<u64, Vec<u64>> = HashMap::new();
@@ -201,7 +230,11 @@ fn watch_order(members: &HashSet<u64>, edges: &[Edge], nodes: &HashMap<u64, &Nod
     let mut sorted: Vec<u64> = members.iter().copied().collect();
     sorted.sort_by(by_year);
 
-    let mut ready: Vec<u64> = sorted.iter().copied().filter(|id| in_degree.get(id) == Some(&0)).collect();
+    let mut ready: Vec<u64> = sorted
+        .iter()
+        .copied()
+        .filter(|id| in_degree.get(id) == Some(&0))
+        .collect();
     let mut ordered: Vec<u64> = Vec::new();
     while !ready.is_empty() {
         let next = ready.remove(0);
@@ -215,14 +248,20 @@ fn watch_order(members: &HashSet<u64>, edges: &[Edge], nodes: &HashMap<u64, &Nod
             }
         }
     }
-    if ordered.len() == members.len() { ordered } else { sorted }
+    if ordered.len() == members.len() {
+        ordered
+    } else {
+        sorted
+    }
 }
 
 /// How far apart two nodes read: a different medium first, then a
 /// different format, then the years between them. Lower is closer, and an
 /// id with no node at all is as far away as anything gets.
 fn affinity(nodes: &HashMap<u64, &Node>, from: u64, to: u64) -> u64 {
-    let (Some(src), Some(tgt)) = (nodes.get(&from), nodes.get(&to)) else { return u64::MAX };
+    let (Some(src), Some(tgt)) = (nodes.get(&from), nodes.get(&to)) else {
+        return u64::MAX;
+    };
     let mut score = 0u64;
     if src.media_type != tgt.media_type {
         score += 1_000_000;
@@ -230,7 +269,10 @@ fn affinity(nodes: &HashMap<u64, &Node>, from: u64, to: u64) -> u64 {
     if src.format != tgt.format {
         score += 1_000;
     }
-    let (sy, ty) = (u64::from(src.year.unwrap_or(0)), u64::from(tgt.year.unwrap_or(0)));
+    let (sy, ty) = (
+        u64::from(src.year.unwrap_or(0)),
+        u64::from(tgt.year.unwrap_or(0)),
+    );
     score + sy.abs_diff(ty)
 }
 
@@ -249,7 +291,13 @@ struct Link {
 ///
 /// With no root chain, because the root is a lone node, the chain the
 /// reader is looking at anchors the rows instead.
-pub fn order_rows(chains: Vec<Chain>, edges: &[Edge], nodes: &HashMap<u64, &Node>, root: u64, current: u64) -> Vec<Chain> {
+pub fn order_rows(
+    chains: Vec<Chain>,
+    edges: &[Edge],
+    nodes: &HashMap<u64, &Node>,
+    root: u64,
+    current: u64,
+) -> Vec<Chain> {
     let mut chain_of: HashMap<u64, usize> = HashMap::new();
     for (i, c) in chains.iter().enumerate() {
         for id in &c.ordered {
@@ -272,13 +320,26 @@ pub fn order_rows(chains: Vec<Chain>, edges: &[Edge], nodes: &HashMap<u64, &Node
         if x.relation == "SEQUEL" || x.relation == "PREQUEL" {
             continue;
         }
-        let (Some(&from), Some(&to)) = (chain_of.get(&x.from), chain_of.get(&x.to)) else { continue };
-        if from == to || seen.contains(&(to, from, x.relation.clone())) || !seen.insert((from, to, x.relation.clone())) {
+        let (Some(&from), Some(&to)) = (chain_of.get(&x.from), chain_of.get(&x.to)) else {
+            continue;
+        };
+        if from == to
+            || seen.contains(&(to, from, x.relation.clone()))
+            || !seen.insert((from, to, x.relation.clone()))
+        {
             continue;
         }
         let alternative = x.relation == "ALTERNATIVE";
-        links[from].push(Link { chain: to, alternative, weight: affinity(nodes, x.from, x.to) });
-        links[to].push(Link { chain: from, alternative, weight: affinity(nodes, x.to, x.from) });
+        links[from].push(Link {
+            chain: to,
+            alternative,
+            weight: affinity(nodes, x.from, x.to),
+        });
+        links[to].push(Link {
+            chain: from,
+            alternative,
+            weight: affinity(nodes, x.to, x.from),
+        });
     }
 
     // What the root was made from goes above it. The second pair of
@@ -291,7 +352,9 @@ pub fn order_rows(chains: Vec<Chain>, edges: &[Edge], nodes: &HashMap<u64, &Node
     let mut placed: Vec<usize> = Vec::new();
     for x in edges.iter().filter(|x| is_parent_edge(x)) {
         let other = if x.from == root { x.to } else { x.from };
-        let Some(&chain) = chain_of.get(&other) else { continue };
+        let Some(&chain) = chain_of.get(&other) else {
+            continue;
+        };
         if chain != root_chain && !placed.contains(&chain) {
             placed.push(chain);
         }
@@ -330,7 +393,10 @@ pub fn order_rows(chains: Vec<Chain>, edges: &[Edge], nodes: &HashMap<u64, &Node
     }
 
     let mut slots: Vec<Option<Chain>> = chains.into_iter().map(Some).collect();
-    placed.into_iter().filter_map(|i| slots.get_mut(i).and_then(Option::take)).collect()
+    placed
+        .into_iter()
+        .filter_map(|i| slots.get_mut(i).and_then(Option::take))
+        .collect()
 }
 
 /// Everything the chains left over, put where it belongs.
@@ -344,7 +410,12 @@ pub fn order_rows(chains: Vec<Chain>, edges: &[Edge], nodes: &HashMap<u64, &Node
 /// A node joined to nothing placed takes a last row of its own, one node
 /// per column: it is in the graph because something reached it, and the
 /// reader should still see it.
-pub fn satellites(nodes: &[Node], edges: &[Edge], chains: &[Chain], positions: &mut HashMap<u64, Cell>) {
+pub fn satellites(
+    nodes: &[Node],
+    edges: &[Edge],
+    chains: &[Chain],
+    positions: &mut HashMap<u64, Cell>,
+) {
     struct Plan {
         id: u64,
         target: u64,
@@ -359,7 +430,8 @@ pub fn satellites(nodes: &[Node], edges: &[Edge], chains: &[Chain], positions: &
             chain_of.insert(*id, i);
         }
     }
-    let occupied = |positions: &HashMap<u64, Cell>, row: i64| positions.values().any(|(_, r)| *r == row);
+    let occupied =
+        |positions: &HashMap<u64, Cell>, row: i64| positions.values().any(|(_, r)| *r == row);
 
     let mut plans: Vec<Plan> = Vec::new();
     let mut loose: Vec<u64> = Vec::new();
@@ -395,18 +467,42 @@ pub fn satellites(nodes: &[Node], edges: &[Edge], chains: &[Chain], positions: &
                 *counts.entry(c).or_insert(0) += 1;
             }
         }
-        let primary = counts.iter().max_by_key(|(chain, count)| (**count, std::cmp::Reverse(**chain))).map(|(chain, _)| *chain);
-        let mut mine: Vec<u64> = targets.iter().copied().filter(|t| chain_of.get(t).copied() == primary).collect();
+        let primary = counts
+            .iter()
+            .max_by_key(|(chain, count)| (**count, std::cmp::Reverse(**chain)))
+            .map(|(chain, _)| *chain);
+        let mut mine: Vec<u64> = targets
+            .iter()
+            .copied()
+            .filter(|t| chain_of.get(t).copied() == primary)
+            .collect();
         mine.sort_by_key(|t| positions.get(t).map_or(i64::MAX, |(c, _)| *c));
-        let Some(&target) = mine.first() else { continue };
-        let Some(&(_, row)) = positions.get(&target) else { continue };
+        let Some(&target) = mine.first() else {
+            continue;
+        };
+        let Some(&(_, row)) = positions.get(&target) else {
+            continue;
+        };
 
-        let columns: Vec<i64> = mine.iter().filter_map(|t| positions.get(t)).map(|(c, _)| *c).collect();
-        let (low, high) = (columns.iter().copied().min().unwrap_or(0), columns.iter().copied().max().unwrap_or(0));
+        let columns: Vec<i64> = mine
+            .iter()
+            .filter_map(|t| positions.get(t))
+            .map(|(c, _)| *c)
+            .collect();
+        let (low, high) = (
+            columns.iter().copied().min().unwrap_or(0),
+            columns.iter().copied().max().unwrap_or(0),
+        );
         // The midpoint of an odd span lands between two columns; it takes
         // the higher of the two rather than half a column.
         let column = low + (high - low + 1) / 2;
-        plans.push(Plan { id, target, row, above: !occupied(positions, row - 1), column });
+        plans.push(Plan {
+            id,
+            target,
+            row,
+            above: !occupied(positions, row - 1),
+            column,
+        });
     }
 
     // One band per row per side, then every row shifted by the bands above
@@ -418,14 +514,24 @@ pub fn satellites(nodes: &[Node], edges: &[Edge], chains: &[Chain], positions: &
         band.insert(p.row, 1);
     }
     for (_, row) in positions.values_mut() {
-        let shift: i64 = above.iter().filter(|(band, _)| *row >= **band).map(|(_, u)| *u).sum::<i64>()
-            + below.iter().filter(|(band, _)| *row > **band).map(|(_, u)| *u).sum::<i64>();
+        let shift: i64 = above
+            .iter()
+            .filter(|(band, _)| *row >= **band)
+            .map(|(_, u)| *u)
+            .sum::<i64>()
+            + below
+                .iter()
+                .filter(|(band, _)| *row > **band)
+                .map(|(_, u)| *u)
+                .sum::<i64>();
         *row += shift;
     }
 
     let mut taken: HashSet<Cell> = positions.values().copied().collect();
     for p in &plans {
-        let Some(&(_, row)) = positions.get(&p.target) else { continue };
+        let Some(&(_, row)) = positions.get(&p.target) else {
+            continue;
+        };
         let row = if p.above { row - 1 } else { row + 1 };
         let cell = free_column(&taken, p.column, row);
         taken.insert(cell);
@@ -433,7 +539,11 @@ pub fn satellites(nodes: &[Node], edges: &[Edge], chains: &[Chain], positions: &
     }
 
     if !loose.is_empty() {
-        let row = positions.values().map(|(_, r)| *r).max().map_or(0, |r| r + 1);
+        let row = positions
+            .values()
+            .map(|(_, r)| *r)
+            .max()
+            .map_or(0, |r| r + 1);
         for (column, id) in loose.into_iter().enumerate() {
             positions.insert(id, (i64::try_from(column).unwrap_or(i64::MAX), row));
         }
@@ -505,15 +615,28 @@ fn canonical_relation(relation: &str, target: Option<&&Node>) -> String {
 /// chain read by their place in it; otherwise the edge between them is
 /// turned to face the reader and named. Nothing joining them at all is
 /// None, and the walk's own discovery label is the caller's fallback.
-pub fn relation_label(current: u64, node: u64, chains: &[Chain], edges: &[Edge], nodes: &HashMap<u64, &Node>) -> Option<String> {
+pub fn relation_label(
+    current: u64,
+    node: u64,
+    chains: &[Chain],
+    edges: &[Edge],
+    nodes: &HashMap<u64, &Node>,
+) -> Option<String> {
     if node == current {
         return None;
     }
-    if let Some(chain) = chains.iter().find(|c| c.members.contains(&current) && c.members.contains(&node)) {
+    if let Some(chain) = chains
+        .iter()
+        .find(|c| c.members.contains(&current) && c.members.contains(&node))
+    {
         let mine = chain.ordered.iter().position(|id| *id == current);
         let theirs = chain.ordered.iter().position(|id| *id == node);
         if let (Some(mine), Some(theirs)) = (mine, theirs) {
-            return Some(if theirs < mine { "Prequel".to_string() } else { "Sequel".to_string() });
+            return Some(if theirs < mine {
+                "Prequel".to_string()
+            } else {
+                "Sequel".to_string()
+            });
         }
     }
     let target = nodes.get(&node);
@@ -543,12 +666,24 @@ pub fn layout(closure: &Closure, current: u64) -> Vec<(u64, f64, f64)> {
 pub(crate) fn plan(closure: &Closure, current: u64) -> Plan {
     let by_id: HashMap<u64, &Node> = closure.nodes.iter().map(|n| (n.anilist_id, n)).collect();
     let edges = canonical_edges(&closure.edges, &by_id);
-    let rows = order_rows(chains(&closure.nodes, &edges), &edges, &by_id, closure.root, current);
+    let rows = order_rows(
+        chains(&closure.nodes, &edges),
+        &edges,
+        &by_id,
+        closure.root,
+        current,
+    );
 
     let mut cells: HashMap<u64, Cell> = HashMap::new();
     for (row, chain) in rows.iter().enumerate() {
         for (column, id) in chain.ordered.iter().enumerate() {
-            cells.insert(*id, (i64::try_from(column).unwrap_or(i64::MAX), i64::try_from(row).unwrap_or(i64::MAX)));
+            cells.insert(
+                *id,
+                (
+                    i64::try_from(column).unwrap_or(i64::MAX),
+                    i64::try_from(row).unwrap_or(i64::MAX),
+                ),
+            );
         }
     }
     satellites(&closure.nodes, &edges, &rows, &mut cells);
@@ -558,20 +693,34 @@ pub(crate) fn plan(closure: &Closure, current: u64) -> Plan {
         .iter()
         .filter_map(|n| {
             let (column, row) = cells.get(&n.anilist_id)?;
-            Some((n.anilist_id, *column as f64 * SPINE_X_GAP, *row as f64 * V_GAP))
+            Some((
+                n.anilist_id,
+                *column as f64 * SPINE_X_GAP,
+                *row as f64 * V_GAP,
+            ))
         })
         .collect();
     positions.sort_by_key(|(id, _, _)| *id);
 
     let labels = labels(closure, current, &rows, &edges, &by_id);
-    Plan { positions, edges, labels }
+    Plan {
+        positions,
+        edges,
+        labels,
+    }
 }
 
 /// A label for every node the reader is not standing on. What the edges
 /// say comes first; a node with no edge to the current series takes the
 /// label of the edge that discovered it in a walk outwards from there, so
 /// a card three hops away still says what it is doing in the graph.
-fn labels(closure: &Closure, current: u64, rows: &[Chain], edges: &[Edge], nodes: &HashMap<u64, &Node>) -> HashMap<u64, String> {
+fn labels(
+    closure: &Closure,
+    current: u64,
+    rows: &[Chain],
+    edges: &[Edge],
+    nodes: &HashMap<u64, &Node>,
+) -> HashMap<u64, String> {
     let mut out: HashMap<u64, String> = HashMap::new();
     for n in &closure.nodes {
         if let Some(label) = relation_label(current, n.anilist_id, rows, edges, nodes) {
@@ -593,7 +742,8 @@ fn labels(closure: &Closure, current: u64, rows: &[Chain], edges: &[Edge], nodes
             if !seen.insert(far) {
                 continue;
             }
-            out.entry(far).or_insert_with(|| label_of(&canonical_relation(relation, nodes.get(&far))));
+            out.entry(far)
+                .or_insert_with(|| label_of(&canonical_relation(relation, nodes.get(&far))));
             queue.push_back(far);
         }
     }
@@ -626,7 +776,11 @@ mod tests {
     }
 
     fn e(from: u64, to: u64, relation: &str) -> Edge {
-        Edge { from, to, relation: relation.to_string() }
+        Edge {
+            from,
+            to,
+            relation: relation.to_string(),
+        }
     }
 
     fn by_id(nodes: &[Node]) -> HashMap<u64, &Node> {
@@ -635,7 +789,10 @@ mod tests {
 
     /// The edges a pass produced, as `from->to:relation`, smallest first.
     fn shown(edges: &[Edge]) -> Vec<String> {
-        let mut v: Vec<String> = edges.iter().map(|x| format!("{}->{}:{}", x.from, x.to, x.relation)).collect();
+        let mut v: Vec<String> = edges
+            .iter()
+            .map(|x| format!("{}->{}:{}", x.from, x.to, x.relation))
+            .collect();
         v.sort();
         v
     }
@@ -672,8 +829,14 @@ mod tests {
         let nodes = [anime(1, 2005), manga(5, 2000)];
         let map = by_id(&nodes);
 
-        assert_eq!(shown(&canonical_edges(&[e(1, 5, "ADAPTATION")], &map)), vec!["5->1:ADAPTATION".to_string()]);
-        assert_eq!(shown(&canonical_edges(&[e(1, 5, "SOURCE")], &map)), vec!["5->1:ADAPTATION".to_string()]);
+        assert_eq!(
+            shown(&canonical_edges(&[e(1, 5, "ADAPTATION")], &map)),
+            vec!["5->1:ADAPTATION".to_string()]
+        );
+        assert_eq!(
+            shown(&canonical_edges(&[e(1, 5, "SOURCE")], &map)),
+            vec!["5->1:ADAPTATION".to_string()]
+        );
         assert_eq!(
             shown(&canonical_edges(&[e(5, 1, "SOURCE")], &map)),
             vec!["5->1:ADAPTATION".to_string()],
@@ -696,7 +859,10 @@ mod tests {
     #[test]
     fn several_edges_on_one_pair_collapse_to_the_most_structural() {
         let nodes = [anime(1, 2000), anime(3, 2001)];
-        let out = canonical_edges(&[e(1, 3, "SPIN_OFF"), e(1, 3, "SIDE_STORY")], &by_id(&nodes));
+        let out = canonical_edges(
+            &[e(1, 3, "SPIN_OFF"), e(1, 3, "SIDE_STORY")],
+            &by_id(&nodes),
+        );
         assert_eq!(shown(&out), vec!["1->3:SIDE_STORY".to_string()]);
     }
 
@@ -709,7 +875,11 @@ mod tests {
         let backwards = chains(&nodes, &[e(2, 3, "SEQUEL"), e(1, 2, "SEQUEL")]);
 
         assert_eq!(chain_ids(&forwards), vec![vec![1, 2, 3]]);
-        assert_eq!(chain_ids(&backwards), vec![vec![1, 2, 3]], "the years disagree with the sequels; the sequels win");
+        assert_eq!(
+            chain_ids(&backwards),
+            vec![vec![1, 2, 3]],
+            "the years disagree with the sequels; the sequels win"
+        );
         assert_eq!(forwards[0].members, HashSet::from([1, 2, 3]));
     }
 
@@ -723,7 +893,10 @@ mod tests {
     #[test]
     fn a_cycle_falls_back_to_year_then_id() {
         let nodes = [anime(1, 2005), anime(2, 2001), anime(3, 2003)];
-        let out = chains(&nodes, &[e(1, 2, "SEQUEL"), e(2, 3, "SEQUEL"), e(3, 1, "SEQUEL")]);
+        let out = chains(
+            &nodes,
+            &[e(1, 2, "SEQUEL"), e(2, 3, "SEQUEL"), e(3, 1, "SEQUEL")],
+        );
         assert_eq!(chain_ids(&out), vec![vec![2, 3, 1]]);
     }
 
@@ -731,7 +904,14 @@ mod tests {
 
     #[test]
     fn the_root_chain_leads_with_its_source_above_and_its_alternative_below() {
-        let nodes = [anime(1, 2005), anime(2, 2006), manga(10, 2000), manga(11, 2001), anime(20, 2008), anime(21, 2009)];
+        let nodes = [
+            anime(1, 2005),
+            anime(2, 2006),
+            manga(10, 2000),
+            manga(11, 2001),
+            anime(20, 2008),
+            anime(21, 2009),
+        ];
         let map = by_id(&nodes);
         let edges = canonical_edges(
             &[
@@ -744,12 +924,20 @@ mod tests {
             &map,
         );
         let rows = order_rows(chains(&nodes, &edges), &edges, &map, 1, 1);
-        assert_eq!(chain_ids(&rows), vec![vec![10, 11], vec![1, 2], vec![20, 21]]);
+        assert_eq!(
+            chain_ids(&rows),
+            vec![vec![10, 11], vec![1, 2], vec![20, 21]]
+        );
     }
 
     #[test]
     fn with_no_root_chain_the_current_series_chain_is_the_anchor() {
-        let nodes = [anime(1, 2000), anime(2, 2001), anime(3, 2002), anime(4, 2003)];
+        let nodes = [
+            anime(1, 2000),
+            anime(2, 2001),
+            anime(3, 2002),
+            anime(4, 2003),
+        ];
         let map = by_id(&nodes);
         let edges = [e(1, 2, "SEQUEL"), e(3, 4, "SEQUEL")];
         let rows = order_rows(chains(&nodes, &edges), &edges, &map, 99, 3);
@@ -765,9 +953,19 @@ mod tests {
         let edges = [e(1, 2, "SEQUEL"), e(2, 3, "SEQUEL")];
         let cs = chains(&nodes, &edges);
 
-        assert_eq!(relation_label(2, 1, &cs, &edges, &map).as_deref(), Some("Prequel"));
-        assert_eq!(relation_label(2, 3, &cs, &edges, &map).as_deref(), Some("Sequel"));
-        assert_eq!(relation_label(2, 2, &cs, &edges, &map), None, "a node has no relation to itself");
+        assert_eq!(
+            relation_label(2, 1, &cs, &edges, &map).as_deref(),
+            Some("Prequel")
+        );
+        assert_eq!(
+            relation_label(2, 3, &cs, &edges, &map).as_deref(),
+            Some("Sequel")
+        );
+        assert_eq!(
+            relation_label(2, 2, &cs, &edges, &map),
+            None,
+            "a node has no relation to itself"
+        );
     }
 
     #[test]
@@ -776,27 +974,49 @@ mod tests {
         let map = by_id(&nodes);
 
         let to_print = [e(1, 5, "ADAPTATION")];
-        assert_eq!(relation_label(1, 5, &[], &to_print, &map).as_deref(), Some("Source"));
+        assert_eq!(
+            relation_label(1, 5, &[], &to_print, &map).as_deref(),
+            Some("Source")
+        );
 
         let to_screen = [e(1, 7, "SOURCE")];
-        assert_eq!(relation_label(1, 7, &[], &to_screen, &map).as_deref(), Some("Adaptation"));
+        assert_eq!(
+            relation_label(1, 7, &[], &to_screen, &map).as_deref(),
+            Some("Adaptation")
+        );
     }
 
     #[test]
     fn a_reverse_edge_is_turned_round_first() {
         let nodes = [anime(1, 2005), anime(7, 2007)];
         let map = by_id(&nodes);
-        assert_eq!(relation_label(1, 7, &[], &[e(7, 1, "PARENT")], &map).as_deref(), Some("Side story"));
-        assert_eq!(relation_label(1, 7, &[], &[e(7, 1, "SIDE_STORY")], &map).as_deref(), Some("Parent story"));
+        assert_eq!(
+            relation_label(1, 7, &[], &[e(7, 1, "PARENT")], &map).as_deref(),
+            Some("Side story")
+        );
+        assert_eq!(
+            relation_label(1, 7, &[], &[e(7, 1, "SIDE_STORY")], &map).as_deref(),
+            Some("Parent story")
+        );
     }
 
     #[test]
     fn an_unknown_relation_reads_as_its_own_words() {
         let nodes = [anime(1, 2005), anime(7, 2007)];
         let map = by_id(&nodes);
-        assert_eq!(relation_label(1, 7, &[], &[e(1, 7, "WEIRD_NEW_TYPE")], &map).as_deref(), Some("weird new type"));
-        assert_eq!(relation_label(1, 7, &[], &[e(1, 7, "CHARACTER")], &map).as_deref(), Some("Shared characters"));
-        assert_eq!(relation_label(1, 7, &[], &[], &map), None, "nothing joins them at all");
+        assert_eq!(
+            relation_label(1, 7, &[], &[e(1, 7, "WEIRD_NEW_TYPE")], &map).as_deref(),
+            Some("weird new type")
+        );
+        assert_eq!(
+            relation_label(1, 7, &[], &[e(1, 7, "CHARACTER")], &map).as_deref(),
+            Some("Shared characters")
+        );
+        assert_eq!(
+            relation_label(1, 7, &[], &[], &map),
+            None,
+            "nothing joins them at all"
+        );
     }
 
     // -- 5. Positions -------------------------------------------------------
@@ -805,28 +1025,61 @@ mod tests {
     /// `edges` say, with every node a member and nothing owed.
     fn closure_of(root: u64, nodes: Vec<Node>, edges: Vec<Edge>, boundary: &[u64]) -> Closure {
         let boundary: HashSet<u64> = boundary.iter().copied().collect();
-        let members: HashSet<u64> = nodes.iter().map(|n| n.anilist_id).filter(|id| !boundary.contains(id)).collect();
-        Closure { root, nodes, edges, members, boundary, complete: true, owed: Vec::new() }
+        let members: HashSet<u64> = nodes
+            .iter()
+            .map(|n| n.anilist_id)
+            .filter(|id| !boundary.contains(id))
+            .collect();
+        Closure {
+            root,
+            nodes,
+            edges,
+            members,
+            boundary,
+            complete: true,
+            owed: Vec::new(),
+        }
     }
 
     #[test]
     fn positions_step_by_the_column_and_the_row_gap() {
         let closure = closure_of(
             1,
-            vec![anime(1, 2000), anime(2, 2001), anime(3, 2002), anime(50, 1999)],
+            vec![
+                anime(1, 2000),
+                anime(2, 2001),
+                anime(3, 2002),
+                anime(50, 1999),
+            ],
             vec![e(1, 2, "SEQUEL"), e(2, 3, "SEQUEL"), e(1, 50, "CHARACTER")],
             &[50],
         );
         let mut placed = layout(&closure, 1);
         placed.sort_by_key(|(id, _, _)| *id);
-        assert_eq!(placed, vec![(1, 0.0, 0.0), (2, 320.0, 0.0), (3, 640.0, 0.0), (50, 0.0, 500.0)]);
+        assert_eq!(
+            placed,
+            vec![
+                (1, 0.0, 0.0),
+                (2, 320.0, 0.0),
+                (3, 640.0, 0.0),
+                (50, 0.0, 500.0)
+            ]
+        );
     }
 
     #[test]
     fn every_node_in_the_closure_gets_exactly_one_position() {
         let closure = closure_of(
             1,
-            vec![anime(1, 2000), anime(2, 2001), manga(10, 1998), anime(20, 2004), anime(21, 2005), anime(30, 2006), anime(40, 2007)],
+            vec![
+                anime(1, 2000),
+                anime(2, 2001),
+                manga(10, 1998),
+                anime(20, 2004),
+                anime(21, 2005),
+                anime(30, 2006),
+                anime(40, 2007),
+            ],
             vec![
                 e(1, 2, "SEQUEL"),
                 e(20, 21, "SEQUEL"),
@@ -840,23 +1093,53 @@ mod tests {
 
         let mut ids: Vec<u64> = placed.iter().map(|(id, _, _)| *id).collect();
         ids.sort_unstable();
-        assert_eq!(ids, vec![1, 2, 10, 20, 21, 30, 40], "every node once: 30 is a satellite, 40 hangs off nothing");
-        let cells: HashSet<(i64, i64)> = placed.iter().map(|(_, x, y)| ((x / SPINE_X_GAP) as i64, (y / V_GAP) as i64)).collect();
+        assert_eq!(
+            ids,
+            vec![1, 2, 10, 20, 21, 30, 40],
+            "every node once: 30 is a satellite, 40 hangs off nothing"
+        );
+        let cells: HashSet<(i64, i64)> = placed
+            .iter()
+            .map(|(_, x, y)| ((x / SPINE_X_GAP) as i64, (y / V_GAP) as i64))
+            .collect();
         assert_eq!(cells.len(), placed.len(), "no two nodes share a cell");
     }
 
     #[test]
     fn a_satellite_takes_the_row_beside_its_chain_and_shares_no_column() {
-        let mut positions: HashMap<u64, Cell> = HashMap::from([(1, (0, 0)), (2, (1, 0)), (3, (0, 1)), (4, (1, 1))]);
-        let nodes = [anime(1, 2000), anime(2, 2001), anime(3, 2002), anime(4, 2003), anime(10, 2004), anime(11, 2005), anime(12, 2006)];
-        let edges = [e(1, 10, "SIDE_STORY"), e(1, 11, "SIDE_STORY"), e(3, 12, "SIDE_STORY")];
+        let mut positions: HashMap<u64, Cell> =
+            HashMap::from([(1, (0, 0)), (2, (1, 0)), (3, (0, 1)), (4, (1, 1))]);
+        let nodes = [
+            anime(1, 2000),
+            anime(2, 2001),
+            anime(3, 2002),
+            anime(4, 2003),
+            anime(10, 2004),
+            anime(11, 2005),
+            anime(12, 2006),
+        ];
+        let edges = [
+            e(1, 10, "SIDE_STORY"),
+            e(1, 11, "SIDE_STORY"),
+            e(3, 12, "SIDE_STORY"),
+        ];
         let cs = chains(&nodes, &[e(1, 2, "SEQUEL"), e(3, 4, "SEQUEL")]);
         satellites(&nodes, &edges, &cs, &mut positions);
 
-        assert_eq!(positions[&10].1, 0, "the row above the top chain is free, so the satellite takes it");
+        assert_eq!(
+            positions[&10].1, 0,
+            "the row above the top chain is free, so the satellite takes it"
+        );
         assert_eq!(positions[&1].1, 1, "the chain shifted down to make room");
         assert_eq!(positions[&11].1, 0);
-        assert_ne!(positions[&10].0, positions[&11].0, "two satellites on one target spread across columns");
-        assert_eq!(positions[&12].1, positions[&3].1 + 1, "the row above the second chain is taken, so it hangs below");
+        assert_ne!(
+            positions[&10].0, positions[&11].0,
+            "two satellites on one target spread across columns"
+        );
+        assert_eq!(
+            positions[&12].1,
+            positions[&3].1 + 1,
+            "the row above the second chain is taken, so it hangs below"
+        );
     }
 }

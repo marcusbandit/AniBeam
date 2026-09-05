@@ -21,10 +21,19 @@ fn started(reply: Reply) -> u64 {
 /// One series' card, off the list every page reads.
 fn card(core: &Core, series: u64) -> SeriesCard {
     match core
-        .call(Call::ListSeries { tab: Tab::All, query: String::new(), sort: Sort::Alpha, direction: Direction::Asc, reveal_hidden: false })
+        .call(Call::ListSeries {
+            tab: Tab::All,
+            query: String::new(),
+            sort: Sort::Alpha,
+            direction: Direction::Asc,
+            reveal_hidden: false,
+        })
         .unwrap()
     {
-        Reply::Series { series: cards } => cards.into_iter().find(|c| c.id == series).expect("the series is listed"),
+        Reply::Series { series: cards } => cards
+            .into_iter()
+            .find(|c| c.id == series)
+            .expect("the series is listed"),
         other => panic!("{other:?}"),
     }
 }
@@ -34,13 +43,45 @@ fn card(core: &Core, series: u64) -> SeriesCard {
 fn library(core: &Core) -> (u64, u64) {
     let now = anibeam_core::time::now_secs();
     let src = fixtures::insert_source(core, "/lib");
-    let frieren = fixtures::insert_series(core, src, SeriesKind::Show, "/lib/Frieren", "Sousou no Frieren");
-    fixtures::insert_file(core, frieren, "/lib/Frieren/01.mkv", 1.0, None, "episode", now);
-    fixtures::insert_media(core, 154587, Some("Sousou no Frieren"), None, Some(28), "RELEASING", "TV", Some(91));
+    let frieren = fixtures::insert_series(
+        core,
+        src,
+        SeriesKind::Show,
+        "/lib/Frieren",
+        "Sousou no Frieren",
+    );
+    fixtures::insert_file(
+        core,
+        frieren,
+        "/lib/Frieren/01.mkv",
+        1.0,
+        None,
+        "episode",
+        now,
+    );
+    fixtures::insert_media(
+        core,
+        154587,
+        Some("Sousou no Frieren"),
+        None,
+        Some(28),
+        "RELEASING",
+        "TV",
+        Some(91),
+    );
     fixtures::match_series(core, frieren, Some(154587), Some(52991));
     let bebop = fixtures::insert_series(core, src, SeriesKind::Show, "/lib/Bebop", "Cowboy Bebop");
     fixtures::insert_file(core, bebop, "/lib/Bebop/01.mkv", 1.0, None, "episode", now);
-    fixtures::insert_media(core, 1, Some("Cowboy Bebop"), None, Some(26), "FINISHED", "TV", Some(86));
+    fixtures::insert_media(
+        core,
+        1,
+        Some("Cowboy Bebop"),
+        None,
+        Some(26),
+        "FINISHED",
+        "TV",
+        Some(86),
+    );
     fixtures::match_series(core, bebop, Some(1), Some(1));
     (frieren, bebop)
 }
@@ -72,10 +113,24 @@ fn the_anilist_list_fills_the_cache_and_the_five_minute_rule_holds_it() {
     // alone.
     let job = started(core.call(Call::RefreshProgress { tracker: None }).unwrap());
     let done = common::wait_job(&c, job);
-    assert!(matches!(done.body, EventBody::ProgressRefreshed { tracker: Tracker::Anilist }), "{done:?}");
+    assert!(
+        matches!(
+            done.body,
+            EventBody::ProgressRefreshed {
+                tracker: Tracker::Anilist
+            }
+        ),
+        "{done:?}"
+    );
 
     let request = &http.requests()[0];
-    assert!(request.headers.iter().any(|(k, v)| k == "Authorization" && v == "Bearer tok"), "{request:?}");
+    assert!(
+        request
+            .headers
+            .iter()
+            .any(|(k, v)| k == "Authorization" && v == "Bearer tok"),
+        "{request:?}"
+    );
     let sent = format!("{:?}", request.body);
     assert!(sent.contains("userId"), "{sent}");
     assert!(sent.contains("42"), "{sent}");
@@ -97,17 +152,35 @@ fn the_anilist_list_fills_the_cache_and_the_five_minute_rule_holds_it() {
     assert_eq!(notice.message, "nothing to refresh");
     assert_eq!(http.requests().len(), 1);
     assert!(
-        c.events().iter().any(|e| e.message == "anilist progress is fresh"),
+        c.events()
+            .iter()
+            .any(|e| e.message == "anilist progress is fresh"),
         "{:#?}",
-        c.events().iter().map(|e| e.message.clone()).collect::<Vec<_>>()
+        c.events()
+            .iter()
+            .map(|e| e.message.clone())
+            .collect::<Vec<_>>()
     );
 
     // Past the window it fetches again, and the new numbers land.
     fixtures::age_progress(&core, Tracker::Anilist, 600);
     http.push_json(200, collection(6));
-    let third = started(core.call(Call::RefreshProgress { tracker: Some(Tracker::Anilist) }).unwrap());
+    let third = started(
+        core.call(Call::RefreshProgress {
+            tracker: Some(Tracker::Anilist),
+        })
+        .unwrap(),
+    );
     let refreshed = common::wait_job(&c, third);
-    assert!(matches!(refreshed.body, EventBody::ProgressRefreshed { tracker: Tracker::Anilist }), "{refreshed:?}");
+    assert!(
+        matches!(
+            refreshed.body,
+            EventBody::ProgressRefreshed {
+                tracker: Tracker::Anilist
+            }
+        ),
+        "{refreshed:?}"
+    );
     assert_eq!(http.requests().len(), 2);
     assert_eq!(card(&core, frieren).watched, Some(6));
 }
@@ -145,16 +218,37 @@ fn the_mal_list_pages_until_a_short_page_and_promotes_a_rewatch() {
         .to_string(),
     );
 
-    let job = started(core.call(Call::RefreshProgress { tracker: Some(Tracker::Mal) }).unwrap());
+    let job = started(
+        core.call(Call::RefreshProgress {
+            tracker: Some(Tracker::Mal),
+        })
+        .unwrap(),
+    );
     let done = common::wait_job(&c, job);
-    assert!(matches!(done.body, EventBody::ProgressRefreshed { tracker: Tracker::Mal }), "{done:?}");
+    assert!(
+        matches!(
+            done.body,
+            EventBody::ProgressRefreshed {
+                tracker: Tracker::Mal
+            }
+        ),
+        "{done:?}"
+    );
 
     let urls: Vec<String> = http.requests().iter().map(|r| r.url.clone()).collect();
     assert_eq!(urls.len(), 2, "{urls:?}");
-    assert!(urls[0].contains("offset=0") && urls[0].contains("limit=1000"), "{urls:?}");
+    assert!(
+        urls[0].contains("offset=0") && urls[0].contains("limit=1000"),
+        "{urls:?}"
+    );
     assert!(urls[0].contains("fields=list_status{status,num_episodes_watched,is_rewatching,num_times_rewatched,score}"), "{urls:?}");
     assert!(urls[1].contains("offset=1000"), "{urls:?}");
-    assert!(http.requests()[1].headers.iter().any(|(k, v)| k == "Authorization" && v == "Bearer mtok"));
+    assert!(
+        http.requests()[1]
+            .headers
+            .iter()
+            .any(|(k, v)| k == "Authorization" && v == "Bearer mtok")
+    );
 
     // Watching plus the rewatch flag is AniList's Repeating.
     let rewatching = card(&core, frieren);
@@ -182,13 +276,23 @@ fn a_failed_fetch_keeps_the_rows_and_fails_a_job_with_nothing_else_to_do() {
 
     fixtures::age_progress(&core, Tracker::Anilist, 600);
     http.fail_next("connection refused");
-    let failed = started(core.call(Call::RefreshProgress { tracker: Some(Tracker::Anilist) }).unwrap());
+    let failed = started(
+        core.call(Call::RefreshProgress {
+            tracker: Some(Tracker::Anilist),
+        })
+        .unwrap(),
+    );
     let done = common::wait_job(&c, failed);
     assert!(matches!(done.body, EventBody::JobFailed { .. }), "{done:?}");
     assert!(
-        c.events().iter().any(|e| e.level == Level::Warn && e.message.contains("anilist progress refresh failed")),
+        c.events().iter().any(
+            |e| e.level == Level::Warn && e.message.contains("anilist progress refresh failed")
+        ),
         "{:#?}",
-        c.events().iter().map(|e| (e.level, e.message.clone())).collect::<Vec<_>>()
+        c.events()
+            .iter()
+            .map(|e| (e.level, e.message.clone()))
+            .collect::<Vec<_>>()
     );
     assert_eq!(card(&core, frieren).watched, Some(5));
 }
@@ -199,10 +303,19 @@ fn a_disconnected_tracker_is_skipped() {
     let http = FakeHttp::new();
     let (_dir, core, c) = common::open_core_with_http(http.clone());
     library(&core);
-    let job = started(core.call(Call::RefreshProgress { tracker: Some(Tracker::Mal) }).unwrap());
+    let job = started(
+        core.call(Call::RefreshProgress {
+            tracker: Some(Tracker::Mal),
+        })
+        .unwrap(),
+    );
     let done = common::wait_for(
         &c,
-        |e| e.job.as_ref().is_some_and(|j| j.id == job && j.phase == JobPhase::Finished),
+        |e| {
+            e.job
+                .as_ref()
+                .is_some_and(|j| j.id == job && j.phase == JobPhase::Finished)
+        },
         Duration::from_secs(10),
     );
     assert!(matches!(done.body, EventBody::Notice), "{done:?}");

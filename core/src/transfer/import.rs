@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
-use rusqlite::{params, Connection, OptionalExtension, Transaction};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use crate::contract::*;
 use crate::core::Core;
@@ -30,7 +30,9 @@ use crate::prefs;
 use crate::time;
 use crate::trackers::accounts::{self, access_key, refresh_key, secret_key};
 use crate::trackers::secrets::StoreKind;
-use crate::transfer::format::{self, Account, Document, MatchEntry, ResumeEntry, SeriesEntry, TrackerName};
+use crate::transfer::format::{
+    self, Account, Document, MatchEntry, ResumeEntry, SeriesEntry, TrackerName,
+};
 use crate::transfer::{file_name, normalise, under};
 
 /// The five sections a `JobProgress` counts through.
@@ -42,15 +44,38 @@ const SECTIONS: u64 = 5;
 pub fn start(core: &Core, path: &str) -> Result<u64, CoreError> {
     // The spec lists no synchronous `Io` for this call, and the argument
     // that failed is the path, so an unreadable file is refused as one.
-    let bytes = std::fs::read(path).map_err(|e| CoreError::Invalid { field: "path".to_string(), message: e.to_string() })?;
+    let bytes = std::fs::read(path).map_err(|e| CoreError::Invalid {
+        field: "path".to_string(),
+        message: e.to_string(),
+    })?;
     let (doc, ignored) = format::parse(&bytes)?;
-    let owner = core.arc().ok_or_else(|| CoreError::internal("core is shutting down"))?;
+    let owner = core
+        .arc()
+        .ok_or_else(|| CoreError::internal("core is shutting down"))?;
     let started = owner.clone();
-    Ok(started.jobs.clone().start(JobKind::Import, move |ctx| async move { run(owner, ctx, doc, ignored).await }))
+    Ok(started
+        .jobs
+        .clone()
+        .start(JobKind::Import, move |ctx| async move {
+            run(owner, ctx, doc, ignored).await
+        }))
 }
 
-async fn run(core: Arc<Core>, ctx: Arc<JobCtx>, doc: Document, ignored: Vec<String>) -> Result<Finished, CoreError> {
-    let Document { sources, series, accounts, keys, history, preferences, .. } = doc;
+async fn run(
+    core: Arc<Core>,
+    ctx: Arc<JobCtx>,
+    doc: Document,
+    ignored: Vec<String>,
+) -> Result<Finished, CoreError> {
+    let Document {
+        sources,
+        series,
+        accounts,
+        keys,
+        history,
+        preferences,
+        ..
+    } = doc;
     let mut summary = ImportSummary {
         sources_added: 0,
         sources_unavailable: 0,
@@ -100,21 +125,40 @@ async fn run(core: Arc<Core>, ctx: Arc<JobCtx>, doc: Document, ignored: Vec<Stri
     // import itself starts none.
     for id in sources {
         let state = core.clone();
-        if let Some(source) = core.store.write_async(move |c| scan::load_source(c, &state.library, id)).await? {
-            ctx.emit(Level::Debug, format!("source imported: {}", source.path), EventBody::SourceChanged { source });
+        if let Some(source) = core
+            .store
+            .write_async(move |c| scan::load_source(c, &state.library, id))
+            .await?
+        {
+            ctx.emit(
+                Level::Debug,
+                format!("source imported: {}", source.path),
+                EventBody::SourceChanged { source },
+            );
         }
     }
     if !touched.is_empty() {
         let images_dir = core.paths.images_dir();
-        let cards = core.store.write_async(move |c| cards::cards_for(c, &images_dir, &touched)).await?;
+        let cards = core
+            .store
+            .write_async(move |c| cards::cards_for(c, &images_dir, &touched))
+            .await?;
         ctx.changed_all(cards);
     }
     if imported_accounts {
         let state = accounts::state_async(&core).await?;
-        ctx.emit(Level::Debug, "trackers changed", EventBody::TrackersChanged { state });
+        ctx.emit(
+            Level::Debug,
+            "trackers changed",
+            EventBody::TrackersChanged { state },
+        );
     }
     if let Some(preferences) = imported_preferences {
-        ctx.emit(Level::Debug, "preferences changed", EventBody::PreferencesChanged { preferences });
+        ctx.emit(
+            Level::Debug,
+            "preferences changed",
+            EventBody::PreferencesChanged { preferences },
+        );
     }
     sweep_images(&core).await;
 
@@ -129,7 +173,11 @@ async fn run(core: Arc<Core>, ctx: Arc<JobCtx>, doc: Document, ignored: Vec<Stri
         summary.accounts_imported,
         summary.fields_ignored.len(),
     );
-    Ok(Finished { level: Level::Info, message, body: EventBody::ImportFinished { summary } })
+    Ok(Finished {
+        level: Level::Info,
+        message,
+        body: EventBody::ImportFinished { summary },
+    })
 }
 
 // Sources --------------------------------------------------------------------
@@ -157,13 +205,20 @@ async fn import_sources(
             let (mut ids, mut added, mut unavailable) = (Vec::new(), 0u64, 0u64);
             for (path, available) in &wanted {
                 let existing: Option<(i64, i64)> = tx
-                    .query_row("SELECT id, available FROM sources WHERE path = ?1", params![path], |r| Ok((r.get(0)?, r.get(1)?)))
+                    .query_row(
+                        "SELECT id, available FROM sources WHERE path = ?1",
+                        params![path],
+                        |r| Ok((r.get(0)?, r.get(1)?)),
+                    )
                     .optional()?;
                 let (id, changed) = match existing {
                     Some((id, was)) => {
                         let changed = (was == 1) != *available;
                         if changed {
-                            tx.execute("UPDATE sources SET available = ?2 WHERE id = ?1", params![id, i64::from(*available)])?;
+                            tx.execute(
+                                "UPDATE sources SET available = ?2 WHERE id = ?1",
+                                params![id, i64::from(*available)],
+                            )?;
                         }
                         (id as u64, changed)
                     }
@@ -196,7 +251,12 @@ async fn import_sources(
 /// A series whose path is unknown is created anyway, so its match, its
 /// flag and its history have a home; the scanner fills in the files when
 /// the path appears.
-async fn import_series(core: &Arc<Core>, entries: Vec<SeriesEntry>, now: i64, summary: &mut ImportSummary) -> Result<Vec<u64>, CoreError> {
+async fn import_series(
+    core: &Arc<Core>,
+    entries: Vec<SeriesEntry>,
+    now: i64,
+    summary: &mut ImportSummary,
+) -> Result<Vec<u64>, CoreError> {
     let (touched, created, matched, ignored) = core
         .store
         .tx_async(move |tx| {
@@ -262,7 +322,9 @@ async fn import_series(core: &Arc<Core>, entries: Vec<SeriesEntry>, now: i64, su
 fn all_sources(conn: &Connection) -> Result<Vec<(u64, String)>, CoreError> {
     let mut stmt = conn.prepare("SELECT id, path FROM sources ORDER BY id")?;
     let rows = stmt
-        .query_map([], |r| Ok((r.get::<_, i64>(0)? as u64, r.get::<_, String>(1)?)))?
+        .query_map([], |r| {
+            Ok((r.get::<_, i64>(0)? as u64, r.get::<_, String>(1)?))
+        })?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rows)
 }
@@ -281,9 +343,18 @@ fn owning_source(sources: &[(u64, String)], path: &str) -> Option<u64> {
 /// already carries: an imported match is user-confirmed, and a second
 /// import of the same file must change nothing at all. Answers whether it
 /// wrote.
-fn apply_match(tx: &Transaction, series: u64, entry: &MatchEntry, now: i64) -> Result<bool, CoreError> {
+fn apply_match(
+    tx: &Transaction,
+    series: u64,
+    entry: &MatchEntry,
+    now: i64,
+) -> Result<bool, CoreError> {
     let wanted = match entry {
-        MatchEntry::Tracker { provider, anilist_id, mal_id } => {
+        MatchEntry::Tracker {
+            provider,
+            anilist_id,
+            mal_id,
+        } => {
             // A tracker match with neither id is nothing to write. The
             // declared provider stands unless it has no id behind it.
             let provider = match (provider, anilist_id, mal_id) {
@@ -292,9 +363,17 @@ fn apply_match(tx: &Transaction, series: u64, entry: &MatchEntry, now: i64) -> R
                 (TrackerName::Anilist, _, _) => Provider::Anilist,
                 (TrackerName::Mal, _, _) => Provider::Mal,
             };
-            Wanted { provider, anilist_id: *anilist_id, mal_id: *mal_id, tmdb_id: None, tmdb_kind: None }
+            Wanted {
+                provider,
+                anilist_id: *anilist_id,
+                mal_id: *mal_id,
+                tmdb_id: None,
+                tmdb_kind: None,
+            }
         }
-        MatchEntry::Tmdb { tmdb_id, tmdb_kind, .. } => Wanted {
+        MatchEntry::Tmdb {
+            tmdb_id, tmdb_kind, ..
+        } => Wanted {
             provider: Provider::Tmdb,
             anilist_id: None,
             mal_id: None,
@@ -322,9 +401,24 @@ fn apply_match(tx: &Transaction, series: u64, entry: &MatchEntry, now: i64) -> R
             // honest shape: the id is known and nothing else is yet, and
             // the backfill is what comes for it.
             if let Some(id) = wanted.anilist_id {
-                record::write_stub(tx, &record::StubWrite { id, mal_id: wanted.mal_id, ..Default::default() })?;
+                record::write_stub(
+                    tx,
+                    &record::StubWrite {
+                        id,
+                        mal_id: wanted.mal_id,
+                        ..Default::default()
+                    },
+                )?;
             }
-            fetch::write_match_only(tx, series, provider, wanted.anilist_id, wanted.mal_id, true, now)?;
+            fetch::write_match_only(
+                tx,
+                series,
+                provider,
+                wanted.anilist_id,
+                wanted.mal_id,
+                true,
+                now,
+            )?;
         }
     }
     Ok(true)
@@ -358,13 +452,17 @@ fn current_match(tx: &Transaction, series: u64) -> Result<Option<Wanted>, CoreEr
             },
         )
         .optional()?;
-    let Some((provider, anilist_id, mal_id, tmdb_id, tmdb_kind, confirmed)) = row else { return Ok(None) };
+    let Some((provider, anilist_id, mal_id, tmdb_id, tmdb_kind, confirmed)) = row else {
+        return Ok(None);
+    };
     // An unconfirmed match is one the auto-match wrote, and the file's is
     // the user's own, so it is always worth writing over.
     if confirmed != 1 {
         return Ok(None);
     }
-    let Some(provider) = provider.as_deref().and_then(Provider::from_column) else { return Ok(None) };
+    let Some(provider) = provider.as_deref().and_then(Provider::from_column) else {
+        return Ok(None);
+    };
     Ok(Some(Wanted {
         provider,
         anilist_id: anilist_id.map(|v| v as u64),
@@ -379,7 +477,11 @@ fn current_match(tx: &Transaction, series: u64) -> Result<Option<Wanted>, CoreEr
 /// Views, completed episodes and resume points, all keyed by the series'
 /// path and the episode's number. The newer `at` wins on every one of
 /// them, so a re-import never rewinds what the library already knows.
-async fn import_history(core: &Arc<Core>, history: format::History, summary: &mut ImportSummary) -> Result<(), CoreError> {
+async fn import_history(
+    core: &Arc<Core>,
+    history: format::History,
+    summary: &mut ImportSummary,
+) -> Result<(), CoreError> {
     let (views, completed, resume) = core
         .store
         .tx_async(move |tx| {
@@ -460,16 +562,45 @@ fn series_by_path(conn: &Connection) -> Result<HashMap<String, HistorySeries>, C
 /// Where a resume point lands: on the series and episode it names, or on
 /// the series that owns the file, its folder for a show and the file
 /// itself for a film, with the file name as the key.
-fn resume_target(series: &HashMap<String, HistorySeries>, entry: &ResumeEntry) -> Option<(u64, String, f64, f64, i64)> {
+fn resume_target(
+    series: &HashMap<String, HistorySeries>,
+    entry: &ResumeEntry,
+) -> Option<(u64, String, f64, f64, i64)> {
     match entry {
-        ResumeEntry::Series { series: path, episode, position, duration, at } => {
+        ResumeEntry::Series {
+            series: path,
+            episode,
+            position,
+            duration,
+            at,
+        } => {
             let row = series.get(&normalise(path))?;
-            Some((row.id, row.key(*episode), *position, *duration, format::parse_instant(at)?))
+            Some((
+                row.id,
+                row.key(*episode),
+                *position,
+                *duration,
+                format::parse_instant(at)?,
+            ))
         }
-        ResumeEntry::File { file, position, duration, at } => {
+        ResumeEntry::File {
+            file,
+            position,
+            duration,
+            at,
+        } => {
             let file = normalise(file);
-            let row = series.values().filter(|r| under(&file, &r.path)).max_by_key(|r| r.path.len())?;
-            Some((row.id, file_name(&file), *position, *duration, format::parse_instant(at)?))
+            let row = series
+                .values()
+                .filter(|r| under(&file, &r.path))
+                .max_by_key(|r| r.path.len())?;
+            Some((
+                row.id,
+                file_name(&file),
+                *position,
+                *duration,
+                format::parse_instant(at)?,
+            ))
         }
     }
 }
@@ -480,11 +611,19 @@ fn resume_target(series: &HashMap<String, HistorySeries>, entry: &ResumeEntry) -
 /// and the main provider to the settings. The keyring writes happen before
 /// the transaction: a keyring that will not take a token should fail the
 /// section before it has changed a row.
-async fn import_accounts(core: &Arc<Core>, accounts: format::Accounts, now: i64, summary: &mut ImportSummary) -> Result<(), CoreError> {
+async fn import_accounts(
+    core: &Arc<Core>,
+    accounts: format::Accounts,
+    now: i64,
+    summary: &mut ImportSummary,
+) -> Result<(), CoreError> {
     let main = Tracker::from_column(&accounts.main);
     let mut imported = 0u64;
     let mut rows: Vec<(Tracker, Account, Option<StoreKind>)> = Vec::new();
-    for (t, account) in [(Tracker::Anilist, accounts.anilist), (Tracker::Mal, accounts.mal)] {
+    for (t, account) in [
+        (Tracker::Anilist, accounts.anilist),
+        (Tracker::Mal, accounts.mal),
+    ] {
         let Some(account) = account else { continue };
         let (store, wrote) = write_secrets(core, t, &account).await?;
         if wrote {
@@ -535,8 +674,16 @@ async fn import_accounts(core: &Arc<Core>, accounts: format::Accounts, now: i64,
 ///
 /// Every call goes through the blocking pool: the keyring is synchronous
 /// zbus underneath and a tokio worker must never block on it.
-async fn write_secrets(core: &Arc<Core>, t: Tracker, account: &Account) -> Result<(Option<StoreKind>, bool), CoreError> {
-    let hint = core.store.write_async(move |c| accounts::load_row(c, t)).await?.and_then(|r| r.secret_store);
+async fn write_secrets(
+    core: &Arc<Core>,
+    t: Tracker,
+    account: &Account,
+) -> Result<(Option<StoreKind>, bool), CoreError> {
+    let hint = core
+        .store
+        .write_async(move |c| accounts::load_row(c, t))
+        .await?
+        .and_then(|r| r.secret_store);
     let mut store = None;
     let mut wrote = false;
     if !account.access_token.is_empty() {
@@ -546,8 +693,13 @@ async fn write_secrets(core: &Arc<Core>, t: Tracker, account: &Account) -> Resul
             wrote = true;
         }
     }
-    for (key, value) in [(refresh_key(t), account.refresh_token.clone()), (secret_key(t), account.client_secret.clone())] {
-        let Some(value) = value.filter(|v| !v.is_empty()) else { continue };
+    for (key, value) in [
+        (refresh_key(t), account.refresh_token.clone()),
+        (secret_key(t), account.client_secret.clone()),
+    ] {
+        let Some(value) = value.filter(|v| !v.is_empty()) else {
+            continue;
+        };
         write_secret(core, key, value, hint).await?;
     }
     Ok((store, wrote))
@@ -555,13 +707,20 @@ async fn write_secrets(core: &Arc<Core>, t: Tracker, account: &Account) -> Resul
 
 /// One secret, written only when the store holds something else. `None`
 /// when it already held exactly this, so nothing is counted as imported.
-async fn write_secret(core: &Arc<Core>, key: String, value: String, hint: Option<StoreKind>) -> Result<Option<StoreKind>, CoreError> {
+async fn write_secret(
+    core: &Arc<Core>,
+    key: String,
+    value: String,
+    hint: Option<StoreKind>,
+) -> Result<Option<StoreKind>, CoreError> {
     let read = key.clone();
     let held = accounts::with_secrets(core, move |s| s.get(&read, hint)).await?;
     if held.as_ref().map(|(v, _)| v.as_str()) == Some(value.as_str()) {
         return Ok(None);
     }
-    accounts::with_secrets(core, move |s| s.set(&key, &value)).await.map(Some)
+    accounts::with_secrets(core, move |s| s.set(&key, &value))
+        .await
+        .map(Some)
 }
 
 // Preferences ----------------------------------------------------------------
@@ -569,15 +728,21 @@ async fn write_secret(core: &Arc<Core>, key: String, value: String, hint: Option
 /// The library and feed view state, and the two auto-skip toggles with it.
 /// A value this core does not know keeps whatever the library had, rather
 /// than resetting the whole record over one word.
-async fn import_preferences(core: &Arc<Core>, entry: format::PrefsEntry) -> Result<Preferences, CoreError> {
+async fn import_preferences(
+    core: &Arc<Core>,
+    entry: format::PrefsEntry,
+) -> Result<Preferences, CoreError> {
     core.store
         .tx_async(move |tx| {
             let current = prefs::load_preferences(tx)?;
             let preferences = Preferences {
-                title_language: TitleLanguage::from_column(&entry.title_language).unwrap_or(current.title_language),
+                title_language: TitleLanguage::from_column(&entry.title_language)
+                    .unwrap_or(current.title_language),
                 library_tab: Tab::from_column(&entry.library_tab).unwrap_or(current.library_tab),
-                library_sort: Sort::from_column(&entry.library_sort.key).unwrap_or(current.library_sort),
-                library_direction: Direction::from_column(&entry.library_sort.direction).unwrap_or(current.library_direction),
+                library_sort: Sort::from_column(&entry.library_sort.key)
+                    .unwrap_or(current.library_sort),
+                library_direction: Direction::from_column(&entry.library_sort.direction)
+                    .unwrap_or(current.library_direction),
                 feed_sort: FeedSort::from_column(&entry.feed_sort).unwrap_or(current.feed_sort),
             };
             prefs::save_preferences(tx, &preferences)?;
@@ -596,7 +761,11 @@ async fn sweep_images(core: &Arc<Core>) {
     let cache = core.images.clone();
     let now = time::now_secs();
     match core.store.write_async(move |c| cache.sweep(c, now)).await {
-        Ok(report) => tracing::debug!("image sweep after an import: {} rows removed, {} files removed", report.removed_rows, report.removed_files),
+        Ok(report) => tracing::debug!(
+            "image sweep after an import: {} rows removed, {} files removed",
+            report.removed_rows,
+            report.removed_files
+        ),
         Err(e) => tracing::debug!("the image sweep after an import failed: {e}"),
     }
 }
@@ -606,7 +775,11 @@ mod tests {
     use super::*;
 
     fn sources() -> Vec<(u64, String)> {
-        vec![(1, "/lib".to_string()), (2, "/lib/anime".to_string()), (3, "/other".to_string())]
+        vec![
+            (1, "/lib".to_string()),
+            (2, "/lib/anime".to_string()),
+            (3, "/other".to_string()),
+        ]
     }
 
     /// Longest prefix wins, so a source nested inside another claims what
@@ -621,9 +794,17 @@ mod tests {
 
     #[test]
     fn a_film_keys_its_history_by_its_file_name() {
-        let film = HistorySeries { id: 1, kind: SeriesKind::Movie, path: "/lib/Movies/Film (2001).mkv".to_string() };
+        let film = HistorySeries {
+            id: 1,
+            kind: SeriesKind::Movie,
+            path: "/lib/Movies/Film (2001).mkv".to_string(),
+        };
         assert_eq!(film.key(0.0), "Film (2001).mkv");
-        let show = HistorySeries { id: 2, kind: SeriesKind::Show, path: "/lib/Show".to_string() };
+        let show = HistorySeries {
+            id: 2,
+            kind: SeriesKind::Show,
+            path: "/lib/Show".to_string(),
+        };
         assert_eq!(show.key(12.0), "12");
         assert_eq!(show.key(12.5), "12.5");
     }
@@ -633,13 +814,29 @@ mod tests {
     #[test]
     fn a_resume_point_by_file_finds_the_series_that_owns_it() {
         let mut series = HashMap::new();
-        series.insert("/lib/Show".to_string(), HistorySeries { id: 2, kind: SeriesKind::Show, path: "/lib/Show".to_string() });
+        series.insert(
+            "/lib/Show".to_string(),
+            HistorySeries {
+                id: 2,
+                kind: SeriesKind::Show,
+                path: "/lib/Show".to_string(),
+            },
+        );
         series.insert(
             "/lib/Movies/Film.mkv".to_string(),
-            HistorySeries { id: 3, kind: SeriesKind::Movie, path: "/lib/Movies/Film.mkv".to_string() },
+            HistorySeries {
+                id: 3,
+                kind: SeriesKind::Movie,
+                path: "/lib/Movies/Film.mkv".to_string(),
+            },
         );
         let at = serde_json::Value::from("1970-01-01T00:00:10Z");
-        let by_file = |file: &str| ResumeEntry::File { file: file.to_string(), position: 1.0, duration: 2.0, at: at.clone() };
+        let by_file = |file: &str| ResumeEntry::File {
+            file: file.to_string(),
+            position: 1.0,
+            duration: 2.0,
+            at: at.clone(),
+        };
 
         let (id, key, ..) = resume_target(&series, &by_file("/lib/Show/NCOP1.mkv")).unwrap();
         assert_eq!((id, key.as_str()), (2, "NCOP1.mkv"));
@@ -648,7 +845,13 @@ mod tests {
         assert!(resume_target(&series, &by_file("/elsewhere/x.mkv")).is_none());
 
         // And one keyed by series and episode lands on the number.
-        let by_series = ResumeEntry::Series { series: "/lib/Show".to_string(), episode: 13.0, position: 1.0, duration: 2.0, at };
+        let by_series = ResumeEntry::Series {
+            series: "/lib/Show".to_string(),
+            episode: 13.0,
+            position: 1.0,
+            duration: 2.0,
+            at,
+        };
         let (id, key, ..) = resume_target(&series, &by_series).unwrap();
         assert_eq!((id, key.as_str()), (2, "13"));
     }

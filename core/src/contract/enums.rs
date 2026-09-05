@@ -120,9 +120,13 @@ impl AiringStatus {
     pub fn from_provider(s: &str) -> Option<AiringStatus> {
         let normalised = normalise_status(s);
         match normalised.as_str() {
-            "releasing" | "currently_airing" | "airing" | "ongoing" => Some(AiringStatus::Releasing),
+            "releasing" | "currently_airing" | "airing" | "ongoing" => {
+                Some(AiringStatus::Releasing)
+            }
             "finished" | "finished_airing" | "ended" | "completed" => Some(AiringStatus::Finished),
-            "not_yet_released" | "not_yet_aired" | "upcoming" | "tba" => Some(AiringStatus::NotYetReleased),
+            "not_yet_released" | "not_yet_aired" | "upcoming" | "tba" => {
+                Some(AiringStatus::NotYetReleased)
+            }
             "cancelled" | "canceled" => Some(AiringStatus::Cancelled),
             "hiatus" | "on_hiatus" => Some(AiringStatus::Hiatus),
             _ => None,
@@ -410,7 +414,9 @@ pub enum CloseReason {
     Switched,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, uniffi::Enum)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, uniffi::Enum,
+)]
 pub enum Level {
     Debug,
     Info,
@@ -505,9 +511,27 @@ impl JobPhase {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
 pub enum JobKind {
-    Scan, AutoMatch, Search, ResolveLink, ApplyMatch, Refresh, RefreshAll, RefreshAiring,
-    ClearImages, FillImages, ConnectTracker, Mark, SetProgress, Score, RefreshProgress,
-    RefreshWatching, Crawl, SkipWindows, Export, Import, Subscriptions,
+    Scan,
+    AutoMatch,
+    Search,
+    ResolveLink,
+    ApplyMatch,
+    Refresh,
+    RefreshAll,
+    RefreshAiring,
+    ClearImages,
+    FillImages,
+    ConnectTracker,
+    Mark,
+    SetProgress,
+    Score,
+    RefreshProgress,
+    RefreshWatching,
+    Crawl,
+    SkipWindows,
+    Export,
+    Import,
+    Subscriptions,
 }
 
 impl JobKind {
@@ -515,9 +539,11 @@ impl JobKind {
         use JobKind::*;
         match self {
             Scan | Subscriptions => Stage::Library,
-            AutoMatch | Search | ResolveLink | ApplyMatch | Refresh | RefreshAll | RefreshAiring
-            | ClearImages | FillImages => Stage::Metadata,
-            ConnectTracker | Mark | SetProgress | Score | RefreshProgress | RefreshWatching => Stage::Trackers,
+            AutoMatch | Search | ResolveLink | ApplyMatch | Refresh | RefreshAll
+            | RefreshAiring | ClearImages | FillImages => Stage::Metadata,
+            ConnectTracker | Mark | SetProgress | Score | RefreshProgress | RefreshWatching => {
+                Stage::Trackers
+            }
             Crawl => Stage::Franchise,
             SkipWindows => Stage::Playback,
             Export | Import => Stage::Store,
@@ -527,7 +553,16 @@ impl JobKind {
     /// Kinds that run one at a time: a second call replies Started with the running id.
     pub fn one_at_a_time(self) -> bool {
         use JobKind::*;
-        matches!(self, Scan | AutoMatch | RefreshAll | Crawl | RefreshProgress | RefreshWatching | FillImages | Subscriptions)
+        matches!(
+            self,
+            Scan | AutoMatch
+                | RefreshAll
+                | Crawl
+                | RefreshProgress
+                | RefreshWatching
+                | FillImages
+                | Subscriptions
+        )
     }
 
     /// The variant name, verbatim.
