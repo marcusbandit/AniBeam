@@ -149,10 +149,19 @@ pub fn watched_chip(watched: Option<u32>, total: Option<u32>, estimate: bool) ->
 }
 
 /// `{x:.1}` alone ties to even at an exact half (7.25 -> "7.2"); Electron's `toFixed` ties
-/// away from zero, so the half is broken on the scaled integer first.
+/// away from zero instead. Scaling by 10 or 100 to find the tie is unreliable: `0.15 * 100.0`
+/// lands on the exact integer 15 too, even though 0.15 isn't a real binary tie, so that test
+/// misclassifies ordinary values `{x:.1}` already gets right. A real tie is instead an exact
+/// quarter with an odd numerator: `x * 4.0` is exact (a pure exponent shift, no rounding), and
+/// `.25`/`.75` are ties while `.0`/`.5` are not.
 pub fn score(x: f64) -> String {
-    let rounded = (x * 10.0).round() / 10.0;
-    format!("{rounded:.1}")
+    let quarters = x * 4.0;
+    let is_tie = quarters.fract() == 0.0 && (quarters as i64).rem_euclid(2) != 0;
+    if is_tie {
+        format!("{:.1}", (x * 10.0).round() / 10.0)
+    } else {
+        format!("{x:.1}")
+    }
 }
 
 #[cfg(test)]
@@ -214,6 +223,25 @@ mod tests {
         assert_eq!(watched_chip(Some(120), Some(1100), false), "0120/1100");
         assert_eq!(plural(1, "file", "files"), "1 file");
         assert_eq!(plural(3, "file", "files"), "3 files");
+    }
+
+    #[test]
+    fn score_rounds_only_a_genuine_tie_away_from_zero() {
+        // Adjacent non-tie hundredths: `x * 100.0` lands on an exact integer for several of
+        // these even though the value isn't a real binary tie, so `{x:.1}` alone must be
+        // trusted here.
+        assert_eq!(score(0.15), "0.1");
+        assert_eq!(score(0.35), "0.3");
+        assert_eq!(score(6.85), "6.8");
+        assert_eq!(score(7.05), "7.0");
+        assert_eq!(score(7.35), "7.3");
+        assert_eq!(score(7.85), "7.8");
+        // Genuine ties: exact quarters, where Rust's default formatting ties to even.
+        assert_eq!(score(0.25), "0.3");
+        assert_eq!(score(1.25), "1.3");
         assert_eq!(score(7.25), "7.3");
+        // Not a tie, and not exactly n.95 either; the surrounding non-tie cases.
+        assert_eq!(score(9.95), "9.9");
+        assert_eq!(score(10.0), "10.0");
     }
 }
