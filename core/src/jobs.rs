@@ -149,20 +149,35 @@ impl JobCtx {
     /// card pushed in between. A card for the same series id pushed twice
     /// in one window keeps only the latest.
     pub fn changed(self: &Arc<Self>, card: SeriesCard) {
+        self.changed_all(vec![card]);
+    }
+
+    /// The batch form of `changed`, for a job step that produced several
+    /// cards at once: they leave together as one event, rather than the
+    /// first immediately and the rest on the next flush. Same window and
+    /// same guarantees.
+    pub fn changed_all(self: &Arc<Self>, cards: Vec<SeriesCard>) {
+        if cards.is_empty() {
+            return;
+        }
         let mut t = self.changed.lock().unwrap();
         let due = t.last_emit.is_none_or(|l| l.elapsed() >= PROGRESS_INTERVAL);
         if due {
             t.last_emit = Some(Instant::now());
             // Drain whatever is already buffered into the same batch as
-            // the new card (the new card winning on a same-id collision),
+            // the new cards (the new ones winning on a same-id collision),
             // so a due emission never leaves an older card behind for a
             // scheduled flush to deliver stale, after this one.
             let mut batch = std::mem::take(&mut t.pending);
-            batch.insert(card.id, card);
+            for card in cards {
+                batch.insert(card.id, card);
+            }
             drop(t);
             self.emit_changed(batch.into_values().collect());
         } else {
-            t.pending.insert(card.id, card);
+            for card in cards {
+                t.pending.insert(card.id, card);
+            }
             if !t.flush_scheduled {
                 t.flush_scheduled = true;
                 let wait = PROGRESS_INTERVAL.saturating_sub(t.last_emit.unwrap().elapsed());

@@ -21,6 +21,7 @@ pub mod cards;
 pub mod classifier;
 pub mod labels;
 pub mod reads;
+pub mod scan;
 pub mod sidecar;
 pub mod sort;
 pub mod titles;

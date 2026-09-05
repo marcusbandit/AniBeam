@@ -6,6 +6,7 @@ use crate::contract::*;
 use crate::events::{EventBus, Subscription};
 use crate::jobs::Jobs;
 use crate::library::reads;
+use crate::library::scan::{self, LibraryState};
 use crate::paths::CorePaths;
 use crate::prefs;
 use crate::store::Store;
@@ -18,6 +19,10 @@ pub struct Core {
     pub(crate) store: Arc<Store>,
     pub(crate) bus: Arc<EventBus>,
     pub(crate) jobs: Arc<Jobs>,
+    /// The library's in-memory state: the movie folders each source's walk
+    /// found, and from Task 12 the watcher's settle timers. The core is
+    /// already the `Arc`, so this is a plain field.
+    pub(crate) library: LibraryState,
     /// Taken out and shut down exactly once, in `shutdown`. `None` after
     /// that: a plain `tokio::runtime::Runtime` panics if dropped from
     /// inside its own worker threads, so ownership lives behind a mutex
@@ -40,7 +45,6 @@ pub struct Core {
 impl Core {
     /// `None` once the core is shutting down; callers treat that as "the
     /// core is going away" and end quietly rather than panicking.
-    #[allow(dead_code)]
     pub(crate) fn arc(&self) -> Option<Arc<Core>> {
         self.me.upgrade()
     }
@@ -75,6 +79,7 @@ impl Core {
             store,
             bus,
             jobs,
+            library: LibraryState::default(),
             runtime: Mutex::new(Some(runtime)),
             handle,
             me: me.clone(),
@@ -119,6 +124,12 @@ impl Core {
                 self.jobs.cancel(job)?;
                 Ok(Reply::Ok)
             }
+            Call::ListSources => scan::list_sources_call(self),
+            Call::AddSource { path } => scan::add_source(self, &path),
+            Call::RemoveSource { source } => scan::remove_source(self, source),
+            Call::ForgetSeries { series } => scan::forget_series(self, series),
+            Call::Scan { source } => scan::scan(self, source),
+            Call::RescanSeries { series } => scan::rescan_series(self, series),
             // `reveal_hidden` is the shell's tab visibility, not a filter:
             // the Hidden tab always lists what it holds.
             Call::ListSeries { tab, query, sort, direction, reveal_hidden: _ } => reads::list_series(self, tab, &query, sort, direction),

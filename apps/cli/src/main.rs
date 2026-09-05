@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::{self, Sender};
 use std::sync::Arc;
 
-use anibeam_core::{Call, Core, CorePaths, Event, EventListener, JobPhase, Level, Reply};
+use anibeam_core::{Call, Core, CorePaths, Direction, Event, EventListener, JobPhase, Level, Reply, Sort, Tab};
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
@@ -33,6 +33,28 @@ enum Command {
         #[arg(long, default_value = "info")]
         level: String,
     },
+    /// The sources: id, path, available, series count.
+    Sources,
+    /// Start a scan; with --wait, print its events until it finishes.
+    Scan {
+        #[arg(long)]
+        source: Option<u64>,
+        #[arg(long)]
+        wait: bool,
+    },
+    /// One line per card: id, code, title, watched/total.
+    List {
+        #[arg(long, default_value = "all")]
+        tab: String,
+        #[arg(long, default_value = "alpha")]
+        sort: String,
+        #[arg(long, default_value = "asc")]
+        direction: String,
+        #[arg(long, default_value = "")]
+        query: String,
+    },
+    /// One series page as JSON.
+    Show { series: u64 },
 }
 
 /// Builds a Call from its variant name and an optional JSON object of fields.
@@ -74,15 +96,9 @@ fn open(root: Option<PathBuf>) -> Arc<Core> {
     })
 }
 
-/// Sends `name`/`json` as a call, prints the reply, and with `wait` set,
-/// stays attached to a `Started` job's own events until its `Finished`
-/// phase.
-fn run_call(core: &Core, name: &str, json: Option<&str>, wait: bool) {
-    let call = parse_call(name, json).unwrap_or_else(|e| {
-        eprintln!("{e}");
-        std::process::exit(2);
-    });
-
+/// Sends one call, prints the reply as JSON, and with `wait` set, stays
+/// attached to a `Started` job's own events until its `Finished` phase.
+fn send(core: &Core, call: Call, wait: bool) {
     // Subscribed before the call goes in, so a fast job's first events are
     // never missed racing the reply.
     let (tx, rx) = mpsc::channel::<Event>();
@@ -109,6 +125,62 @@ fn run_call(core: &Core, name: &str, json: Option<&str>, wait: bool) {
             eprintln!("{}", serde_json::to_string_pretty(&e).unwrap());
             std::process::exit(1);
         }
+    }
+}
+
+fn run_call(core: &Core, name: &str, json: Option<&str>, wait: bool) {
+    let call = parse_call(name, json).unwrap_or_else(|e| {
+        eprintln!("{e}");
+        std::process::exit(2);
+    });
+    send(core, call, wait);
+}
+
+/// A call whose reply the view formats itself. An error ends the process
+/// the same way `send` does.
+fn ask(core: &Core, call: Call) -> Reply {
+    core.call(call).unwrap_or_else(|e| {
+        eprintln!("{}", serde_json::to_string_pretty(&e).unwrap());
+        std::process::exit(1);
+    })
+}
+
+/// A column with nothing in it reads as a dash, so every line has the same
+/// shape and splits on tabs.
+fn dash(value: Option<String>) -> String {
+    value.unwrap_or_else(|| "-".to_string())
+}
+
+fn bad(what: &str, value: &str) -> ! {
+    eprintln!("unknown {what}: {value}");
+    std::process::exit(2);
+}
+
+fn run_sources(core: &Core) {
+    if let Reply::Sources { sources } = ask(core, Call::ListSources) {
+        for s in sources {
+            println!("{}\t{}\t{}\t{}", s.id, s.path, s.available, s.series_count);
+        }
+    }
+}
+
+fn run_list(core: &Core, tab: &str, sort: &str, direction: &str, query: &str) {
+    let tab = Tab::from_column(tab).unwrap_or_else(|| bad("tab", tab));
+    let sort = Sort::from_column(sort).unwrap_or_else(|| bad("sort", sort));
+    let direction = Direction::from_column(direction).unwrap_or_else(|| bad("direction", direction));
+    let call = Call::ListSeries { tab, query: query.to_string(), sort, direction, reveal_hidden: false };
+    if let Reply::Series { series } = ask(core, call) {
+        for c in series {
+            let watched = dash(c.watched.map(|w| w.to_string()));
+            let total = dash(c.total_episodes.map(|t| t.to_string()));
+            println!("{}\t{}\t{}\t{watched}/{total}", c.id, dash(c.code), c.title);
+        }
+    }
+}
+
+fn run_show(core: &Core, series: u64) {
+    if let Reply::SeriesDetail { detail } = ask(core, Call::GetSeries { series }) {
+        println!("{}", serde_json::to_string_pretty(&detail).unwrap());
     }
 }
 
@@ -139,6 +211,10 @@ fn main() {
     match cli.command {
         Command::Call { name, json, wait } => run_call(&core, &name, json.as_deref(), wait),
         Command::Events { follow, level } => run_events(&core, follow, &level),
+        Command::Sources => run_sources(&core),
+        Command::Scan { source, wait } => send(&core, Call::Scan { source }, wait),
+        Command::List { tab, sort, direction, query } => run_list(&core, &tab, &sort, &direction, &query),
+        Command::Show { series } => run_show(&core, series),
     }
     core.shutdown();
 }
