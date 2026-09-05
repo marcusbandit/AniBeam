@@ -4,7 +4,7 @@
 use serde::Deserialize;
 
 use super::limiter::ProviderClient;
-use super::{HttpRequest, Method};
+use super::{HttpRequest, Method, null_to_default};
 use crate::contract::{CoreError, Provider, SkipKind, SkipSource, SkipWindow};
 
 pub const ANISKIP_API: &str = "https://api.aniskip.com/v2";
@@ -19,6 +19,7 @@ struct Interval {
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 struct SkipResult {
+    #[serde(default, deserialize_with = "null_to_default")]
     interval: Interval,
     skip_type: String,
 }
@@ -26,6 +27,7 @@ struct SkipResult {
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 struct SkipReply {
+    #[serde(default, deserialize_with = "null_to_default")]
     results: Vec<SkipResult>,
 }
 
@@ -105,6 +107,16 @@ mod tests {
             http,
             Duration::from_millis(1),
         ))
+    }
+
+    /// A null list is not a list that failed to parse: it is an episode
+    /// AniSkip holds nothing for.
+    #[tokio::test]
+    async fn a_null_results_list_is_an_empty_answer_not_a_failure() {
+        let http = FakeHttp::new();
+        http.push_json(200, serde_json::json!({ "found": true, "results": null }));
+        let windows = client(http).skip_times(1, 1, 1440).await.unwrap().unwrap();
+        assert!(windows.is_empty());
     }
 
     #[tokio::test]

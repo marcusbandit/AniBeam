@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 use super::limiter::ProviderClient;
-use super::{HttpRequest, Method};
+use super::{HttpRequest, Method, null_to_default};
 use crate::contract::{CoreError, Provider};
 
 pub const JIKAN_API: &str = "https://api.jikan.moe/v4";
@@ -26,6 +26,7 @@ struct RawEpisode {
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default)]
 struct EpisodesReply {
+    #[serde(default, deserialize_with = "null_to_default")]
     data: Vec<RawEpisode>,
 }
 
@@ -107,6 +108,16 @@ mod tests {
             http,
             Duration::from_millis(1),
         ))
+    }
+
+    /// Jikan answering with a null `data` is a series it holds no episodes
+    /// for, which is an empty list rather than a reply that failed to
+    /// parse.
+    #[tokio::test]
+    async fn a_null_data_list_is_an_empty_answer_not_a_failure() {
+        let http = FakeHttp::new();
+        http.push_json(200, serde_json::json!({ "data": null }));
+        assert!(client(http).episodes(1).await.unwrap().is_empty());
     }
 
     #[tokio::test]

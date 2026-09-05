@@ -21,6 +21,21 @@ pub mod mal;
 /// client can be swapped behind one `Arc<dyn Http>`.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
+/// Reads an explicit `null` as the type's default.
+///
+/// A struct-level `#[serde(default)]` covers a field the reply left out and
+/// nothing else: a field present and null still fails, and one failed field
+/// fails the whole reply. Providers send null where the schema promises a
+/// list or an object often enough that every such field on a reply struct
+/// goes through this, so one null costs the value rather than the series.
+pub(crate) fn null_to_default<'de, D, T>(d: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Default + serde::Deserialize<'de>,
+{
+    Ok(<Option<T> as serde::Deserialize>::deserialize(d)?.unwrap_or_default())
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Method {
     Get,

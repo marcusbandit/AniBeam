@@ -6,7 +6,7 @@
 use serde::Deserialize;
 
 use super::limiter::ProviderClient;
-use super::{Body, HttpRequest, Method};
+use super::{Body, HttpRequest, Method, null_to_default};
 use crate::contract::{CoreError, Provider};
 
 pub const ANILIST_API: &str = "https://graphql.anilist.co";
@@ -305,19 +305,11 @@ pub const WATCHING_LIST_QUERY: &str = r"query ($userId: Int) {
           }
         }";
 
-/// AniList's schema marks a good many scalars nullable that read as
+/// AniList's schema marks a good many things nullable that read as
 /// required: a tag's spoiler flags, a relation's type, a studio edge's
-/// `isMain`. A bare `bool` or `String` field would fail the whole reply on
-/// one of those nulls, so the fields that are not `Option` deserialise
-/// through `Option` and fall back to the default instead.
-fn null_to_default<'de, D, T>(d: D) -> Result<T, D::Error>
-where
-    D: serde::Deserializer<'de>,
-    T: Default + Deserialize<'de>,
-{
-    Ok(Option::<T>::deserialize(d)?.unwrap_or_default())
-}
-
+/// `isMain`, and every list and edge object on a series page. A bare field
+/// would fail the whole reply on one of those nulls, so nothing here that
+/// is not an `Option` is read without `null_to_default`.
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Title {
@@ -357,6 +349,7 @@ pub struct Named {
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct StudioNodes {
+    #[serde(default, deserialize_with = "null_to_default")]
     pub nodes: Vec<Named>,
 }
 
@@ -367,9 +360,12 @@ pub struct StudioNodes {
 pub struct Media {
     pub id: u64,
     pub id_mal: Option<u64>,
+    #[serde(default, deserialize_with = "null_to_default")]
     pub title: Title,
+    #[serde(default, deserialize_with = "null_to_default")]
     pub synonyms: Vec<String>,
     pub description: Option<String>,
+    #[serde(default, deserialize_with = "null_to_default")]
     pub genres: Vec<String>,
     pub cover_image: Option<CoverImage>,
     pub banner_image: Option<String>,
@@ -425,12 +421,14 @@ pub struct StudioNode {
 pub struct StudioEdge {
     #[serde(default, deserialize_with = "null_to_default")]
     pub is_main: bool,
+    #[serde(default, deserialize_with = "null_to_default")]
     pub node: StudioNode,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct StudioEdges {
+    #[serde(default, deserialize_with = "null_to_default")]
     pub edges: Vec<StudioEdge>,
 }
 
@@ -460,12 +458,14 @@ pub struct CharacterNode {
 #[serde(default, rename_all = "camelCase")]
 pub struct CharacterEdge {
     pub role: Option<String>,
+    #[serde(default, deserialize_with = "null_to_default")]
     pub node: CharacterNode,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct CharacterEdges {
+    #[serde(default, deserialize_with = "null_to_default")]
     pub edges: Vec<CharacterEdge>,
 }
 
@@ -496,12 +496,14 @@ pub struct RecommendationNode {
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct RecommendationEdge {
+    #[serde(default, deserialize_with = "null_to_default")]
     pub node: RecommendationNode,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct RecommendationEdges {
+    #[serde(default, deserialize_with = "null_to_default")]
     pub edges: Vec<RecommendationEdge>,
 }
 
@@ -510,12 +512,14 @@ pub struct RecommendationEdges {
 pub struct RelationEdge {
     #[serde(default, deserialize_with = "null_to_default")]
     pub relation_type: String,
+    #[serde(default, deserialize_with = "null_to_default")]
     pub node: RelatedNode,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct RelationEdges {
+    #[serde(default, deserialize_with = "null_to_default")]
     pub edges: Vec<RelationEdge>,
 }
 
@@ -534,7 +538,9 @@ pub struct Enrichment {
     pub site_url: Option<String>,
     pub title: Option<Title>,
     pub cover_image: Option<CoverLarge>,
+    #[serde(default, deserialize_with = "null_to_default")]
     pub streaming_episodes: Vec<StreamingEpisode>,
+    #[serde(default, deserialize_with = "null_to_default")]
     pub tags: Vec<TagNode>,
     pub studios: Option<StudioEdges>,
     pub characters: Option<CharacterEdges>,
@@ -552,6 +558,7 @@ pub struct AiringNode {
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct AiringNodes {
+    #[serde(default, deserialize_with = "null_to_default")]
     pub nodes: Vec<AiringNode>,
 }
 
@@ -807,6 +814,64 @@ mod tests {
                 .unwrap()
                 .contains("Page(page: $page, perPage: $perPage)")
         );
+    }
+
+    /// AniList sends null where its own schema promises a list or an
+    /// object, and a struct-level `#[serde(default)]` covers a missing
+    /// field, never a null one. Every list and every nested object on
+    /// these replies reads a null as its default, so one null costs that
+    /// value rather than the whole reply.
+    #[tokio::test]
+    async fn an_explicit_null_reads_as_the_default_rather_than_failing() {
+        let http = FakeHttp::new();
+        http.push_json(
+            200,
+            serde_json::json!({ "data": { "Page": { "media": [ {
+                "id": 1,
+                "title": null,
+                "synonyms": null,
+                "genres": null,
+                "studios": { "nodes": null }
+            } ] } } }),
+        );
+        let media = client(http).search("x", 10).await.unwrap();
+        assert_eq!(media[0].id, 1);
+        assert_eq!(media[0].title.romaji, None);
+        assert!(media[0].synonyms.is_empty());
+        assert!(media[0].genres.is_empty());
+        assert!(media[0].studios.as_ref().unwrap().nodes.is_empty());
+
+        let http = FakeHttp::new();
+        http.push_json(
+            200,
+            serde_json::json!({ "data": { "Media": {
+                "id": 2,
+                "streamingEpisodes": null,
+                "tags": null,
+                "studios": { "edges": null },
+                "characters": { "edges": null },
+                "recommendations": { "edges": null },
+                "relations": { "edges": [ { "relationType": null, "node": null } ] }
+            } } }),
+        );
+        let enrichment = client(http).enrichment(2).await.unwrap().unwrap();
+        assert!(enrichment.streaming_episodes.is_empty());
+        assert!(enrichment.tags.is_empty());
+        assert!(enrichment.studios.unwrap().edges.is_empty());
+        assert!(enrichment.characters.unwrap().edges.is_empty());
+        assert!(enrichment.recommendations.unwrap().edges.is_empty());
+        let edges = enrichment.relations.unwrap().edges;
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0].relation_type, "");
+        assert_eq!(edges[0].node.id, 0);
+
+        let http = FakeHttp::new();
+        http.push_json(
+            200,
+            serde_json::json!({ "data": { "Media": { "id": 3, "nextAiringEpisode": null, "airingSchedule": { "nodes": null } } } }),
+        );
+        let schedule = client(http).schedule(3).await.unwrap();
+        assert!(schedule.airing_schedule.unwrap().nodes.is_empty());
     }
 
     #[tokio::test]
