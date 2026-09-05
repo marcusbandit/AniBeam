@@ -3,6 +3,7 @@
 
 pub mod contract;
 pub mod paths;
+pub mod store;
 pub mod time;
 
 pub use contract::*;
