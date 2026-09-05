@@ -6,6 +6,11 @@ pub mod core;
 pub mod events;
 pub mod jobs;
 pub mod library;
+/// The network layer. Not part of the contract and not exported to any
+/// shell; it is public only so the integration tests can reach `FakeHttp`
+/// and `Core::open_with_http`.
+#[doc(hidden)]
+pub mod net;
 pub mod paths;
 pub mod prefs;
 pub mod store;

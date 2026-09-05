@@ -10,6 +10,12 @@ use crate::jobs::Jobs;
 use crate::library::reads;
 use crate::library::scan::{self, LibraryState, ScanScope};
 use crate::library::watcher::{self, Trigger, Watcher};
+use crate::net::anilist::AnilistClient;
+use crate::net::aniskip::AniSkipClient;
+use crate::net::jikan::JikanClient;
+use crate::net::limiter::ProviderClient;
+use crate::net::mal::MalClient;
+use crate::net::{Http, ReqwestHttp, Upstream};
 use crate::paths::CorePaths;
 use crate::prefs;
 use crate::store::Store;
@@ -40,7 +46,21 @@ pub struct Core {
     /// through it even while the runtime itself sits behind the mutex.
     #[allow(dead_code)]
     pub(crate) handle: tokio::runtime::Handle,
-    // Task 13 adds `http: Arc<dyn Http>` here.
+    /// One transport for every provider, so a test swaps the whole network
+    /// out with one `FakeHttp`. The clients below each hold their own
+    /// limiter over it.
+    #[allow(dead_code)]
+    pub(crate) http: Arc<dyn Http>,
+    /// The provider clients. Tasks 16 onwards are the callers; the fields
+    /// are built here so every job shares one limiter per upstream.
+    #[allow(dead_code)]
+    pub(crate) anilist: Arc<AnilistClient>,
+    #[allow(dead_code)]
+    pub(crate) jikan: Arc<JikanClient>,
+    #[allow(dead_code)]
+    pub(crate) aniskip: Arc<AniSkipClient>,
+    #[allow(dead_code)]
+    pub(crate) mal: Arc<MalClient>,
     /// Jobs need an `Arc<Core>` of their own; exported methods take `&self`,
     /// so the core keeps a `Weak` to itself from `Arc::new_cyclic` and
     /// upgrades it.
@@ -49,7 +69,56 @@ pub struct Core {
     closed: AtomicBool,
 }
 
+/// One client, one timeout, every provider. The tracker calls wrap their
+/// own futures in a shorter `tokio::time::timeout` where a slow list read
+/// should give up sooner than a slow image fetch.
+const HTTP_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// The gap each upstream is paced to, from its published limit.
+const ANILIST_GAP: Duration = Duration::from_millis(800);
+const JIKAN_GAP: Duration = Duration::from_millis(1100);
+const ANISKIP_GAP: Duration = Duration::from_millis(250);
+const MAL_GAP: Duration = Duration::from_millis(500);
+
 impl Core {
+    /// `open` with the transport handed in, so a test drives every provider
+    /// off canned replies. Not part of the contract and not exported.
+    #[doc(hidden)]
+    pub fn open_with_http(paths: CorePaths, http: Arc<dyn Http>) -> Result<Arc<Core>, CoreError> {
+        let store = Store::open(&paths.db_path())?;
+        let bus = EventBus::new(store.clone())?;
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(4)
+            .thread_name("anibeam-core")
+            .enable_all()
+            .build()
+            .map_err(|e| CoreError::internal(format!("runtime: {e}")))?;
+        let handle = runtime.handle().clone();
+        let jobs = Jobs::new(handle.clone(), bus.clone());
+        let anilist = Arc::new(AnilistClient::new(ProviderClient::new(Upstream::Anilist, http.clone(), ANILIST_GAP)));
+        let jikan = Arc::new(JikanClient::new(ProviderClient::new(Upstream::Jikan, http.clone(), JIKAN_GAP)));
+        let aniskip = Arc::new(AniSkipClient::new(ProviderClient::new(Upstream::AniSkip, http.clone(), ANISKIP_GAP)));
+        let mal = Arc::new(MalClient::new(ProviderClient::new(Upstream::Mal, http.clone(), MAL_GAP)));
+        Ok(Arc::new_cyclic(|me| Core {
+            paths,
+            store,
+            bus,
+            jobs,
+            library: LibraryState::default(),
+            watcher: Mutex::new(None),
+            runtime: Mutex::new(Some(runtime)),
+            handle,
+            http,
+            anilist,
+            jikan,
+            aniskip,
+            mal,
+            me: me.clone(),
+            started: AtomicBool::new(false),
+            closed: AtomicBool::new(false),
+        }))
+    }
+
     /// `None` once the core is shutting down; callers treat that as "the
     /// core is going away" and end quietly rather than panicking.
     pub(crate) fn arc(&self) -> Option<Arc<Core>> {
@@ -128,33 +197,15 @@ impl Core {
 
 #[uniffi::export]
 impl Core {
-    /// Opens and migrates the database, builds the runtime, the bus and the
-    /// jobs registry. Nothing else.
+    /// Opens and migrates the database, builds the runtime, the bus, the
+    /// jobs registry and the provider clients. Nothing else, and nothing
+    /// that touches the network.
     #[uniffi::constructor]
     pub fn open(paths: CorePaths) -> Result<Arc<Core>, CoreError> {
-        let store = Store::open(&paths.db_path())?;
-        let bus = EventBus::new(store.clone())?;
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(4)
-            .thread_name("anibeam-core")
-            .enable_all()
-            .build()
-            .map_err(|e| CoreError::internal(format!("runtime: {e}")))?;
-        let handle = runtime.handle().clone();
-        let jobs = Jobs::new(handle.clone(), bus.clone());
-        Ok(Arc::new_cyclic(|me| Core {
-            paths,
-            store,
-            bus,
-            jobs,
-            library: LibraryState::default(),
-            watcher: Mutex::new(None),
-            runtime: Mutex::new(Some(runtime)),
-            handle,
-            me: me.clone(),
-            started: AtomicBool::new(false),
-            closed: AtomicBool::new(false),
-        }))
+        // Building the client opens no socket, so this stays inside the
+        // "nothing else" `open` promises.
+        let http = Arc::new(ReqwestHttp::new(HTTP_TIMEOUT)?);
+        Core::open_with_http(paths, http)
     }
 
     /// Watcher up, launch jobs queued. Task 31 fills this in. A second call

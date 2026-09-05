@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anibeam_core::events::{Collector, Subscription};
+use anibeam_core::net::FakeHttp;
 use anibeam_core::{Core, CorePaths, Event, JobPhase};
 
 /// Owns the test's temp directory and the subscription collecting its
@@ -26,6 +27,17 @@ impl Deref for Dir {
 pub fn open_core() -> (Dir, Arc<Core>, Arc<Collector>) {
     let dir = tempfile::tempdir().unwrap();
     let core = Core::open(CorePaths::under(dir.path())).unwrap();
+    let collector = Arc::new(Collector::default());
+    let sub = core.subscribe(collector.clone());
+    (Dir { dir, _sub: sub }, core, collector)
+}
+
+/// The same core with the network swapped for canned replies. A test that
+/// drives a provider job keeps its own handle on the `FakeHttp` to queue
+/// replies and read back the requests.
+pub fn open_core_with_http(http: Arc<FakeHttp>) -> (Dir, Arc<Core>, Arc<Collector>) {
+    let dir = tempfile::tempdir().unwrap();
+    let core = Core::open_with_http(CorePaths::under(dir.path()), http).unwrap();
     let collector = Arc::new(Collector::default());
     let sub = core.subscribe(collector.clone());
     (Dir { dir, _sub: sub }, core, collector)
