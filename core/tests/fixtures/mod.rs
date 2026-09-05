@@ -270,6 +270,21 @@ fn data_dir(core: &Core) -> String {
     }
 }
 
+/// Moves a cached skip answer back by `secs`, so a test can put the seven
+/// day retry window behind a miss without waiting for it.
+pub fn age_skip_cache(core: &Core, series: u64, key: &str, secs: i64) {
+    let key = key.to_string();
+    core.store()
+        .write(move |c| {
+            c.execute(
+                "UPDATE skip_windows SET fetched_at = fetched_at - ?3 WHERE series_id = ?1 AND episode_key = ?2",
+                params![series as i64, key, secs],
+            )?;
+            Ok(())
+        })
+        .unwrap()
+}
+
 /// The path went away: the series lingers with its match and its history,
 /// its files do not.
 pub fn mark_missing(core: &Core, series: u64) {

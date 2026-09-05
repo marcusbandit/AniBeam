@@ -91,6 +91,13 @@ impl Sessions {
     fn next_id(&self) -> u64 {
         self.next.fetch_add(1, Ordering::SeqCst) + 1
     }
+
+    /// One session as it stands, cloned so the caller holds no lock while
+    /// it works. The skip windows job validates through this and then
+    /// carries the clone across its awaits.
+    pub(crate) fn get(&self, id: u64) -> Option<Session> {
+        self.lock().get(&id).cloned()
+    }
 }
 
 // ---------------------------------------------------------------------------

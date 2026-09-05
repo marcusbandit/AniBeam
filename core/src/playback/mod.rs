@@ -4,3 +4,4 @@
 //! here is the history the library reads back.
 
 pub mod session;
+pub mod skip;

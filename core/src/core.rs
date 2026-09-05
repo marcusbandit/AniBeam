@@ -21,6 +21,7 @@ use crate::net::mal::MalClient;
 use crate::net::{Http, ReqwestHttp, Upstream};
 use crate::paths::CorePaths;
 use crate::playback::session::{self, Sessions};
+use crate::playback::skip;
 use crate::prefs;
 use crate::store::Store;
 use crate::subscriptions;
@@ -75,7 +76,6 @@ pub struct Core {
     pub(crate) anilist: Arc<AnilistClient>,
     #[allow(dead_code)]
     pub(crate) jikan: Arc<JikanClient>,
-    #[allow(dead_code)]
     pub(crate) aniskip: Arc<AniSkipClient>,
     pub(crate) mal: Arc<MalClient>,
     /// The loopback port the OAuth listener binds while a connect is in
@@ -468,6 +468,12 @@ impl Core {
             }
             Call::ListSubscriptions => Ok(Reply::Started { job: subscriptions::start(self)? }),
             Call::OpenPlayback { file } => Ok(Reply::Playback { session: Box::new(session::open(self, file)?) }),
+            // The duration reaches the session at once, so the mark and
+            // the completion rules have it from this tick on; the windows
+            // themselves are the job's, and the outro follows it.
+            Call::ReportChapters { session, chapters, duration } => {
+                Ok(Reply::Started { job: skip::start(self, session, chapters, duration)? })
+            }
             // The tick's reply is `Ok` and nothing else; every outcome the
             // rules decide arrives as an event.
             Call::Tick { session, position, paused } => {
