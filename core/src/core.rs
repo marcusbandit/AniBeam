@@ -1,0 +1,762 @@
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, Weak};
+use std::time::{Duration, Instant};
+
+use crate::contract::*;
+use crate::events::{EventBus, Subscription};
+use crate::feed;
+use crate::franchise;
+use crate::images::{self, ImageCache};
+use crate::jobs::Jobs;
+use crate::launch;
+use crate::library::reads;
+use crate::library::scan::{self, LibraryState, ScanScope};
+use crate::library::watcher::{self, Trigger, Watcher};
+use crate::metadata::{OUTAGE_WINDOW, airing, apply, automatch};
+use crate::net::anilist::AnilistClient;
+use crate::net::aniskip::AniSkipClient;
+use crate::net::jikan::JikanClient;
+use crate::net::limiter::ProviderClient;
+use crate::net::mal::MalClient;
+use crate::net::{Http, ReqwestHttp, Upstream};
+use crate::paths::CorePaths;
+use crate::playback::session::{self, Sessions};
+use crate::playback::skip;
+use crate::prefs;
+use crate::store::Store;
+use crate::subscriptions;
+use crate::time;
+use crate::trackers::accounts;
+use crate::trackers::cache;
+use crate::trackers::oauth;
+use crate::trackers::secrets::{KEYRING_UNAVAILABLE, Secrets};
+use crate::trackers::watching;
+use crate::trackers::writes;
+use crate::transfer;
+
+/// The core is one object. A shell opens it once, starts it once, subscribes
+/// once, and from then on sends calls and receives events.
+#[derive(uniffi::Object)]
+pub struct Core {
+    pub(crate) paths: CorePaths,
+    pub(crate) store: Arc<Store>,
+    pub(crate) bus: Arc<EventBus>,
+    pub(crate) jobs: Arc<Jobs>,
+    /// The poster, banner and portrait files under `<cache_dir>/images`,
+    /// and the row per file that says what is there. Reads consult it,
+    /// jobs fill it, and the sweep keeps it from growing without end.
+    pub(crate) images: Arc<ImageCache>,
+    /// The library's in-memory state: the movie folders each source's walk
+    /// found, the watcher's queue of paths, and the settle timers. The core
+    /// is already the `Arc`, so this is a plain field.
+    pub(crate) library: LibraryState,
+    /// Built by `start` and dropped first by `shutdown`. `None` before
+    /// `start` and after `shutdown`, so a call that arrives on either side
+    /// of the core's life finds nothing to watch with rather than failing.
+    pub(crate) watcher: Mutex<Option<Arc<Watcher>>>,
+    /// The launch's one-shot listener, held here so it lives as long as it
+    /// is waiting and no longer: it takes itself out the moment the
+    /// catch-up scan finishes, and `shutdown` takes it out if it never
+    /// does. Dropping the handle unsubscribes.
+    launch: Mutex<Option<Arc<Subscription>>>,
+    /// Taken out and shut down exactly once, in `shutdown`. `None` after
+    /// that: a plain `tokio::runtime::Runtime` panics if dropped from
+    /// inside its own worker threads, so ownership lives behind a mutex
+    /// rather than as a bare field, and `Drop` below hands it to
+    /// `shutdown_background` if `shutdown` was never called.
+    pub(crate) runtime: Mutex<Option<tokio::runtime::Runtime>>,
+    /// Cloned from `runtime` at `open`, so later tasks can spawn work
+    /// through it even while the runtime itself sits behind the mutex.
+    pub(crate) handle: tokio::runtime::Handle,
+    /// Where the tracker tokens live: the desktop keyring when there is
+    /// one, `secrets.json` when there is not. Built by `open` without any
+    /// I/O; which store it uses is settled on first use, warmed by `start`.
+    pub(crate) secrets: Arc<Secrets>,
+    /// One transport for every provider, so a test swaps the whole network
+    /// out with one `FakeHttp`. The clients below each hold their own
+    /// limiter over it.
+    #[allow(dead_code)]
+    pub(crate) http: Arc<dyn Http>,
+    /// The provider clients. Tasks 16 onwards are the callers; the fields
+    /// are built here so every job shares one limiter per upstream.
+    pub(crate) anilist: Arc<AnilistClient>,
+    pub(crate) jikan: Arc<JikanClient>,
+    pub(crate) aniskip: Arc<AniSkipClient>,
+    pub(crate) mal: Arc<MalClient>,
+    /// The loopback port the OAuth listener binds while a connect is in
+    /// flight. Fixed rather than ephemeral: both providers only redirect
+    /// to a URL registered on their developer panel, so the port is part
+    /// of that registration. A test moves it out of the way.
+    pub(crate) oauth_port: AtomicU16,
+    /// When the core last said out loud that Jikan was not answering.
+    /// Jikan is the episode-title side-fetch, so an outage costs a series
+    /// its titles rather than its match, and a job walking a whole library
+    /// through one must not write a warning per series into the log.
+    pub(crate) jikan_outage: Mutex<Option<Instant>>,
+    /// Every open playback session, and the counter that names the next
+    /// one. A session lives in memory for one run of the player: the rows
+    /// its rules write are the record, and none of it survives a restart.
+    pub(crate) sessions: Arc<Sessions>,
+    /// When each franchise root was last crawled on a page's behalf. A
+    /// series page asks for its franchise every time it opens, and the
+    /// crawl behind that read runs at most once a minute per root, so
+    /// opening the same page twice costs AniList nothing the second time.
+    pub(crate) crawl_recent: Mutex<HashMap<u64, Instant>>,
+    /// Jobs need an `Arc<Core>` of their own; exported methods take `&self`,
+    /// so the core keeps a `Weak` to itself from `Arc::new_cyclic` and
+    /// upgrades it.
+    me: Weak<Core>,
+    started: AtomicBool,
+    closed: AtomicBool,
+}
+
+/// One client, one timeout, every provider. This is the ceiling on a
+/// single request; a tracker call caps itself tighter than an image fetch
+/// through the limiter's own per-attempt timeout.
+const HTTP_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// How long `shutdown` waits for the runtime's tasks to observe the
+/// cancellation before it stops waiting and closes the store anyway.
+const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
+
+/// The loopback port both providers redirect back to. Registered on their
+/// developer panels, so it is a constant rather than a preference.
+const DEFAULT_OAUTH_PORT: u16 = 53682;
+
+/// The gap each upstream is paced to, from its published limit.
+const ANILIST_GAP: Duration = Duration::from_millis(800);
+const JIKAN_GAP: Duration = Duration::from_millis(1100);
+const ANISKIP_GAP: Duration = Duration::from_millis(250);
+const MAL_GAP: Duration = Duration::from_millis(500);
+
+impl Core {
+    /// `open` with the transport handed in, so a test drives every provider
+    /// off canned replies. Not part of the contract and not exported.
+    #[doc(hidden)]
+    pub fn open_with_http(paths: CorePaths, http: Arc<dyn Http>) -> Result<Arc<Core>, CoreError> {
+        let secrets = Secrets::init(paths.secrets_path());
+        Core::open_with_http_and_secrets(paths, http, secrets)
+    }
+
+    /// `open` with the secrets facade handed in, so a caller that must not
+    /// reach the machine's keyring, a test or a run rooted somewhere of its
+    /// own, gets the file store alone. Not part of the contract and not
+    /// exported.
+    #[doc(hidden)]
+    pub fn open_with_secrets(
+        paths: CorePaths,
+        secrets: Arc<Secrets>,
+    ) -> Result<Arc<Core>, CoreError> {
+        let http = Arc::new(ReqwestHttp::new(HTTP_TIMEOUT)?);
+        Core::open_with_http_and_secrets(paths, http, secrets)
+    }
+
+    /// Both of the above at once, and where the core is actually built.
+    /// Not part of the contract and not exported.
+    #[doc(hidden)]
+    pub fn open_with_http_and_secrets(
+        paths: CorePaths,
+        http: Arc<dyn Http>,
+        secrets: Arc<Secrets>,
+    ) -> Result<Arc<Core>, CoreError> {
+        let store = Store::open(&paths.db_path())?;
+        let bus = EventBus::new(store.clone())?;
+        // Creating the cache directory is opening, the same as creating the
+        // data directory the database file lives in.
+        let images_dir = paths.images_dir();
+        std::fs::create_dir_all(&images_dir)
+            .map_err(|e| CoreError::io_at(images_dir.to_string_lossy(), e))?;
+        let images = ImageCache::new(store.clone(), images_dir, http.clone());
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(4)
+            .thread_name("anibeam-core")
+            .enable_all()
+            .build()
+            .map_err(|e| CoreError::internal(format!("runtime: {e}")))?;
+        let handle = runtime.handle().clone();
+        let jobs = Jobs::new(handle.clone(), bus.clone());
+        let anilist = Arc::new(AnilistClient::new(ProviderClient::new(
+            Upstream::Anilist,
+            http.clone(),
+            ANILIST_GAP,
+        )));
+        let jikan = Arc::new(JikanClient::new(ProviderClient::new(
+            Upstream::Jikan,
+            http.clone(),
+            JIKAN_GAP,
+        )));
+        let aniskip = Arc::new(AniSkipClient::new(ProviderClient::new(
+            Upstream::AniSkip,
+            http.clone(),
+            ANISKIP_GAP,
+        )));
+        // Every MAL call is a tracker call with a user waiting on it, so
+        // this client caps each request rather than each call site doing
+        // it; AniList is shared with the metadata jobs and takes its cap
+        // per call instead.
+        let mal = Arc::new(MalClient::new(
+            ProviderClient::new(Upstream::Mal, http.clone(), MAL_GAP)
+                .with_attempt_timeout(crate::trackers::TRACKER_TIMEOUT),
+        ));
+        Ok(Arc::new_cyclic(|me| Core {
+            paths,
+            store,
+            bus,
+            jobs,
+            images,
+            library: LibraryState::default(),
+            watcher: Mutex::new(None),
+            launch: Mutex::new(None),
+            runtime: Mutex::new(Some(runtime)),
+            handle,
+            secrets,
+            http,
+            anilist,
+            jikan,
+            aniskip,
+            mal,
+            oauth_port: AtomicU16::new(DEFAULT_OAUTH_PORT),
+            jikan_outage: Mutex::new(None),
+            sessions: Arc::new(Sessions::default()),
+            crawl_recent: Mutex::new(HashMap::new()),
+            me: me.clone(),
+            started: AtomicBool::new(false),
+            closed: AtomicBool::new(false),
+        }))
+    }
+
+    /// `None` once the core is shutting down; callers treat that as "the
+    /// core is going away" and end quietly rather than panicking.
+    pub(crate) fn arc(&self) -> Option<Arc<Core>> {
+        self.me.upgrade()
+    }
+
+    /// The `Arc<Core>` a job body needs of its own. A core already shutting
+    /// down has none to give, and says so rather than panicking.
+    pub(crate) fn owner(&self) -> Result<Arc<Core>, CoreError> {
+        self.arc()
+            .ok_or_else(|| CoreError::internal("core is shutting down"))
+    }
+
+    /// Moves the OAuth listener off the registered port, so two tests
+    /// driving a flow at once do not fight over one socket. Not part of
+    /// the contract and not exported to any shell.
+    #[doc(hidden)]
+    pub fn set_oauth_port(&self, port: u16) {
+        self.oauth_port.store(port, Ordering::SeqCst);
+    }
+
+    /// The store itself, for the integration tests' fixtures: they build
+    /// library state with plain SQL rather than driving a scan. Not part of
+    /// the contract and not exported to any shell.
+    #[doc(hidden)]
+    pub fn store(&self) -> &Arc<Store> {
+        &self.store
+    }
+
+    /// The secrets facade, with the store choice settled. `start` warms
+    /// that choice on a blocking thread, so a call arriving after launch
+    /// finds it made; a call that beats the warm-up makes it here, on the
+    /// shell's calling thread, which is where keyring work belongs. Either
+    /// way the "no keyring" line is written once, by whoever finished the
+    /// probe.
+    pub(crate) fn secrets(&self) -> &Arc<Secrets> {
+        if self.secrets.warm() {
+            self.bus
+                .info(Stage::System, KEYRING_UNAVAILABLE, EventBody::Notice);
+        }
+        &self.secrets
+    }
+
+    fn watcher(&self) -> MutexGuard<'_, Option<Arc<Watcher>>> {
+        self.watcher.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn launch(&self) -> MutexGuard<'_, Option<Arc<Subscription>>> {
+        self.launch.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    pub(crate) fn set_launch_listener(&self, sub: Arc<Subscription>) {
+        *self.launch() = Some(sub);
+    }
+
+    /// Takes the launch listener out and drops it, which unsubscribes it.
+    /// Called by the listener itself once it has fired, and by `shutdown`
+    /// for the launch that never got its scan.
+    pub(crate) fn take_launch_listener(&self) {
+        // Taken out of the mutex and dropped by this `let` rather than
+        // inside the lock's own statement: the drop unsubscribes, which
+        // takes the bus's listener lock, and that should never happen with
+        // this one held.
+        let sub = self.launch().take();
+        drop(sub);
+    }
+
+    /// Installs the recursive watch on a source. Called by the Scan job,
+    /// off the runtime's blocking pool, because notify installs one by
+    /// walking every directory under the root. Nothing to do before `start`
+    /// has built the watcher: the launch's catch-up scan is what puts the
+    /// first watch on every source.
+    pub(crate) fn install_watch(&self, path: &str) -> Result<(), CoreError> {
+        // Cloned out of the slot and the guard dropped before the walk:
+        // the watcher keeps its own lock around the notify call, so this
+        // one is held for a clone and nothing more.
+        let watcher = self.watcher().clone();
+        match watcher {
+            Some(watcher) => watcher.watch(path),
+            None => Ok(()),
+        }
+    }
+
+    pub(crate) fn unwatch_source(&self, path: &str) {
+        let watcher = self.watcher().clone();
+        if let Some(watcher) = watcher {
+            watcher.unwatch(path);
+        }
+    }
+
+    /// The watcher's whole reach into the core, called on notify's own
+    /// thread: it queues the paths and asks for a scan, both of which are
+    /// a lock and a spawn. Everything that touches the disk happens in the
+    /// job that comes out of it.
+    pub(crate) fn on_watch_triggers(self: &Arc<Self>, triggers: Vec<Trigger>) {
+        if self.closed.load(Ordering::SeqCst) {
+            return;
+        }
+        let mut paths: Vec<String> = Vec::new();
+        let mut rescan = false;
+        for trigger in triggers {
+            match trigger {
+                Trigger::Rescan => rescan = true,
+                // A file speaks for the folder it is in: that is the series
+                // the reconcile has to look at, whether the file arrived or
+                // went away.
+                Trigger::Ingest(p) | Trigger::Removed(p) => {
+                    paths.push(watcher::parent_series_path(&p))
+                }
+                Trigger::NewDirectory(p) => paths.push(p),
+            }
+        }
+        self.library.push_pending(paths);
+        // A full scan covers every queued path, so the job takes them off
+        // the queue itself rather than being asked for them twice.
+        let scope = if rescan {
+            ScanScope::All
+        } else {
+            ScanScope::Paths(Vec::new())
+        };
+        scan::start(self, scope);
+    }
+
+    /// A folder has stopped changing, so it is worth a match. The entry
+    /// goes first: the candidate query skips whatever is still armed, so a
+    /// job already running picks this series up on its next time round the
+    /// loop precisely because it no longer is.
+    pub(crate) fn settle_fired(&self, series_id: u64) {
+        self.library
+            .settle
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&series_id);
+        let Some(core) = self.arc() else { return };
+        automatch::start(&core);
+    }
+
+    /// Warns that Jikan is not answering, at most once every ten minutes.
+    /// Every caller reports every failure; this is what decides which of
+    /// them the user is told about.
+    pub(crate) fn report_jikan_outage(&self, message: &str) {
+        let mut last = self.jikan_outage.lock().unwrap_or_else(|e| e.into_inner());
+        if last.is_some_and(|at| at.elapsed() < OUTAGE_WINDOW) {
+            return;
+        }
+        *last = Some(Instant::now());
+        // Dropped before the emit: a listener runs on this thread, and
+        // nothing it does should be able to deadlock on this gate.
+        drop(last);
+        self.bus.warn(
+            Stage::Metadata,
+            format!("Jikan is not answering: {message}"),
+            EventBody::Notice,
+        );
+    }
+}
+
+#[uniffi::export]
+impl Core {
+    /// Opens and migrates the database, builds the runtime, the bus, the
+    /// jobs registry and the provider clients. Nothing else, and nothing
+    /// that touches the network.
+    #[uniffi::constructor]
+    pub fn open(paths: CorePaths) -> Result<Arc<Core>, CoreError> {
+        // Building the client opens no socket, so this stays inside the
+        // "nothing else" `open` promises.
+        let http = Arc::new(ReqwestHttp::new(HTTP_TIMEOUT)?);
+        Core::open_with_http(paths, http)
+    }
+
+    /// Watcher up, launch jobs queued. A second call is `Ok` and does
+    /// nothing: the launch happens once per run of the core.
+    pub fn start(&self) -> Result<(), CoreError> {
+        if self.started.swap(true, Ordering::SeqCst) {
+            return Ok(());
+        }
+        self.bus.info(
+            Stage::System,
+            format!("AniBeam core {} ready", crate::VERSION),
+            EventBody::Ready,
+        );
+        // Asking the Secret Service whether it exists is a D-Bus round
+        // trip that can put a prompt on the screen, so it happens here
+        // rather than in `open`, and off this thread: by the time a shell
+        // asks which trackers are connected, the answer is waiting.
+        let secrets = self.secrets.clone();
+        let bus = self.bus.clone();
+        self.handle.spawn_blocking(move || {
+            if secrets.warm() {
+                bus.info(Stage::System, KEYRING_UNAVAILABLE, EventBody::Notice);
+            }
+        });
+        // A machine at its inotify limit still has a working library, just
+        // one that only changes when a scan is asked for, so a watcher that
+        // cannot be built is a warning rather than a failure to start.
+        //
+        // It goes into the field empty. Installing a watch means walking
+        // every directory under a root, which is disk work at library
+        // scale, so it belongs to the scan below and to every scan after
+        // it rather than to this thread.
+        match Watcher::new(self.me.clone()) {
+            Ok(watcher) => *self.watcher() = Some(Arc::new(watcher)),
+            Err(e) => {
+                self.bus.warn(
+                    Stage::Library,
+                    format!("the watcher could not start: {e}"),
+                    EventBody::Notice,
+                );
+            }
+        }
+        let core = self
+            .arc()
+            .ok_or_else(|| CoreError::internal("core is shutting down"))?;
+        launch::start(&core)
+    }
+
+    /// Returns fast, always. Every call after `shutdown` fails the same
+    /// way, without touching anything else.
+    pub fn call(&self, call: Call) -> Result<Reply, CoreError> {
+        if self.closed.load(Ordering::SeqCst) {
+            return Err(CoreError::Internal {
+                message: "core is shut down".to_string(),
+            });
+        }
+        match call {
+            Call::About => Ok(Reply::About {
+                about: About {
+                    version: crate::VERSION.to_string(),
+                    data_dir: self.paths.data_dir.clone(),
+                    config_dir: self.paths.config_dir.clone(),
+                    cache_dir: self.paths.cache_dir.clone(),
+                    db_path: self.paths.db_path().to_string_lossy().into_owned(),
+                },
+            }),
+            Call::RecentEvents { limit } => Ok(Reply::Events {
+                events: self.bus.recent(limit)?,
+            }),
+            Call::ClearEvents => {
+                self.bus.clear()?;
+                Ok(Reply::Ok)
+            }
+            Call::ListJobs => Ok(Reply::Jobs {
+                jobs: self.jobs.list(),
+            }),
+            Call::CancelJob { job } => {
+                self.jobs.cancel(job)?;
+                Ok(Reply::Ok)
+            }
+            Call::ListSources => scan::list_sources_call(self),
+            Call::AddSource { path } => scan::add_source(self, &path),
+            Call::RemoveSource { source } => scan::remove_source(self, source),
+            Call::ForgetSeries { series } => scan::forget_series(self, series),
+            Call::Scan { source } => scan::scan(self, source),
+            Call::RescanSeries { series } => scan::rescan_series(self, series),
+            // `reveal_hidden` is the shell's tab visibility, not a filter:
+            // the Hidden tab always lists what it holds.
+            Call::ListSeries {
+                tab,
+                query,
+                sort,
+                direction,
+                reveal_hidden: _,
+            } => reads::list_series(self, tab, &query, sort, direction),
+            Call::ListAiring { offset, limit } => reads::list_airing(self, offset, limit),
+            // Pure over one snapshot load, scope None: nothing to write and
+            // no job. The shell's own sort preference is saved separately
+            // through SetPreferences.
+            Call::ListFeed { sort } => {
+                let images_dir = self.paths.images_dir();
+                let cards = self
+                    .store
+                    .read(|c| feed::list(c, &images_dir, sort, time::now()))?;
+                Ok(Reply::Feed { cards })
+            }
+            Call::GetSeries { series } => reads::get_series(self, series),
+            Call::SetHidden { series, hidden } => reads::set_hidden(self, series, hidden),
+            Call::ListMetadata {
+                filter,
+                query,
+                reveal_hidden,
+            } => reads::list_metadata(self, filter, &query, reveal_hidden),
+            Call::Lookup { path } => reads::lookup(self, &path),
+            // Two counts off one table, so this answers off the reader
+            // connection rather than becoming a job.
+            Call::GetStorage => {
+                let (image_count, image_bytes) = self.store.read(|c| self.images.storage(c))?;
+                Ok(Reply::Storage {
+                    image_count,
+                    image_bytes,
+                })
+            }
+            Call::ClearImages => {
+                let core = self
+                    .arc()
+                    .ok_or_else(|| CoreError::internal("core is shutting down"))?;
+                Ok(Reply::Started {
+                    job: images::start_clear(&core),
+                })
+            }
+            Call::SearchProvider {
+                provider,
+                query,
+                limit,
+            } => Ok(Reply::Started {
+                job: apply::search(self, provider, &query, limit)?,
+            }),
+            Call::ResolveLink { url } => Ok(Reply::Started {
+                job: apply::resolve_link(self, &url)?,
+            }),
+            Call::ApplyMatch { series, target } => Ok(Reply::Started {
+                job: apply::apply_match(self, series, target)?,
+            }),
+            Call::RefreshSeries { series } => Ok(Reply::Started {
+                job: apply::refresh_series(self, series)?,
+            }),
+            Call::RefreshAll => {
+                let core = self
+                    .arc()
+                    .ok_or_else(|| CoreError::internal("core is shutting down"))?;
+                Ok(Reply::Started {
+                    job: apply::refresh_all(&core),
+                })
+            }
+            Call::AutoMatch => {
+                let core = self
+                    .arc()
+                    .ok_or_else(|| CoreError::internal("core is shutting down"))?;
+                Ok(Reply::Started {
+                    job: automatch::start(&core),
+                })
+            }
+            Call::RefreshAiring { series } => Ok(Reply::Started {
+                job: airing::start_refresh(self, series)?,
+            }),
+            Call::ClearMatch { series } => automatch::clear_match(self, series),
+            Call::GetPreferences => Ok(Reply::Preferences {
+                preferences: self.store.read(prefs::load_preferences)?,
+            }),
+            Call::SetPreferences { preferences } => {
+                let p = preferences.clone();
+                self.store.write(move |c| prefs::save_preferences(c, &p))?;
+                self.bus.debug(
+                    Stage::Store,
+                    "preferences changed",
+                    EventBody::PreferencesChanged { preferences },
+                );
+                Ok(Reply::Ok)
+            }
+            Call::GetSettings => Ok(Reply::Settings {
+                settings: self.store.read(prefs::load_settings)?,
+            }),
+            Call::SetSubtitleDefaults { defaults } => {
+                prefs::validate_subtitle_defaults(&defaults)?;
+                self.store
+                    .write(move |c| prefs::save_subtitle_defaults(c, &defaults))?;
+                self.bus.debug(
+                    Stage::Store,
+                    "subtitle defaults changed",
+                    EventBody::SettingsChanged,
+                );
+                Ok(Reply::Ok)
+            }
+            Call::SetAutoSkip { intro, outro } => {
+                self.store
+                    .write(move |c| prefs::save_auto_skip(c, &AutoSkip { intro, outro }))?;
+                self.bus.debug(
+                    Stage::Store,
+                    "auto-skip changed",
+                    EventBody::SettingsChanged,
+                );
+                Ok(Reply::Ok)
+            }
+            Call::GetTrackers => Ok(Reply::Trackers {
+                state: accounts::state(self)?,
+            }),
+            Call::SetTrackerCredentials {
+                tracker,
+                client_id,
+                client_secret,
+            } => accounts::set_credentials(self, tracker, &client_id, client_secret.as_deref()),
+            Call::ConnectTracker { tracker } => Ok(Reply::Started {
+                job: oauth::connect(self, tracker)?,
+            }),
+            Call::DisconnectTracker { tracker } => accounts::disconnect(self, tracker),
+            Call::SetMainTracker { tracker } => accounts::set_main(self, tracker),
+            Call::MarkEpisode { series, episode } => Ok(Reply::Started {
+                job: writes::mark(self, series, episode)?,
+            }),
+            Call::SetProgress { series, progress } => Ok(Reply::Started {
+                job: writes::set_progress(self, series, progress)?,
+            }),
+            Call::SetScore { series, score } => Ok(Reply::Started {
+                job: writes::set_score(self, series, score)?,
+            }),
+            // Nothing to check up front: an unconnected or a fresh tracker
+            // is the job's own skip, not a refusal.
+            Call::RefreshProgress { tracker } => {
+                let core = self
+                    .arc()
+                    .ok_or_else(|| CoreError::internal("core is shutting down"))?;
+                Ok(Reply::Started {
+                    job: cache::start_refresh(&core, tracker, false),
+                })
+            }
+            // The cached list leaves at once and the refresh runs behind
+            // it, the way the Electron page did on every visit.
+            Call::ListWatching => watching::list_call(self),
+            // The graph is drawn off the tables as they stand, and the
+            // crawl behind it fills in whatever the walk found missing.
+            Call::GetFranchiseGraph { series } => {
+                let core = self
+                    .arc()
+                    .ok_or_else(|| CoreError::internal("core is shutting down"))?;
+                Ok(Reply::Graph {
+                    layout: franchise::graph(&core, series)?,
+                })
+            }
+            Call::ListSubscriptions => Ok(Reply::Started {
+                job: subscriptions::start(self)?,
+            }),
+            Call::OpenPlayback { file } => Ok(Reply::Playback {
+                session: Box::new(session::open(self, file)?),
+            }),
+            // The duration reaches the session at once, so the mark and
+            // the completion rules have it from this tick on; the windows
+            // themselves are the job's, and the outro follows it.
+            Call::ReportChapters {
+                session,
+                chapters,
+                duration,
+            } => Ok(Reply::Started {
+                job: skip::start(self, session, chapters, duration)?,
+            }),
+            // The tick's reply is `Ok` and nothing else; every outcome the
+            // rules decide arrives as an event.
+            Call::Tick {
+                session,
+                position,
+                paused,
+            } => {
+                session::tick(self, session, position, paused)?;
+                Ok(Reply::Ok)
+            }
+            Call::ClosePlayback {
+                session,
+                position,
+                reason,
+            } => {
+                session::close(self, session, position, reason)?;
+                Ok(Reply::Ok)
+            }
+            Call::SetTrackChoice {
+                series,
+                audio,
+                subtitle,
+            } => session::set_track_choice(self, series, audio, subtitle),
+            Call::Export { path, private } => {
+                let core = self
+                    .arc()
+                    .ok_or_else(|| CoreError::internal("core is shutting down"))?;
+                Ok(Reply::Started {
+                    job: transfer::export::start(&core, path, private),
+                })
+            }
+            // The file is read and its version checked here rather than in
+            // the job, so a document this core is too old to read is
+            // refused at once instead of failing a job the shell already
+            // thinks is running.
+            Call::Import { path } => Ok(Reply::Started {
+                job: transfer::import::start(self, &path)?,
+            }),
+        }
+    }
+
+    pub fn subscribe(&self, listener: Arc<dyn EventListener>) -> Arc<Subscription> {
+        Subscription::new(self.bus.clone(), listener)
+    }
+
+    /// Stops the watcher, cancels every job, checkpoints and closes the
+    /// store. Idempotent: a second call does nothing.
+    pub fn shutdown(&self) {
+        if self.closed.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        // First, and taken out of the mutex before it is stopped: the
+        // debouncer's thread dispatches into this core, so it has to be
+        // gone before the runtime and the store are.
+        let watcher = self.watcher().take();
+        if let Some(watcher) = watcher {
+            watcher.stop();
+        }
+        // A launch whose scan never finished has no list left to run.
+        self.take_launch_listener();
+        self.jobs.cancel_all();
+        // Taken out of the mutex and dropped by this `let` before the
+        // blocking shutdown call, rather than matched straight off the
+        // lock expression: `if let Some(x) = mutex.lock().unwrap().take()`
+        // keeps the guard alive for the whole `if let` body, which would
+        // hold this lock for as long as the wait below.
+        let runtime = self.runtime.lock().unwrap().take();
+        if let Some(runtime) = runtime {
+            // Two seconds is the whole budget for the tasks to observe the
+            // cancellation above. A shell is on its way out by now, and an
+            // ffprobe or a keyring call that will not stop must not be the
+            // reason the window hangs around.
+            runtime.shutdown_timeout(SHUTDOWN_GRACE);
+        }
+        self.store.checkpoint();
+        self.store.close();
+    }
+}
+
+impl Drop for Core {
+    fn drop(&mut self) {
+        // A plain drop of a `Runtime` from inside a runtime context panics,
+        // and a shell that forgets to call `shutdown` should still exit
+        // cleanly; hand any runtime still present to the background path
+        // instead. Taken out of the mutex before that call, for the same
+        // reason `shutdown` above does.
+        let runtime = self.runtime.lock().unwrap().take();
+        if let Some(runtime) = runtime {
+            runtime.shutdown_background();
+        }
+    }
+}
+
+/// The variant name of a call, for messages: the externally tagged JSON key.
+pub fn call_name(call: &Call) -> String {
+    match serde_json::to_value(call) {
+        Ok(serde_json::Value::String(s)) => s,
+        Ok(serde_json::Value::Object(m)) => m.keys().next().cloned().unwrap_or_default(),
+        _ => "?".into(),
+    }
+}

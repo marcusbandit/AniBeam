@@ -43,6 +43,61 @@ bun run lint         # eslint + typecheck
 
 Tests are plain bun scripts under `scripts/verify-*.mjs`, wired as `bun run verify:<name>` (see package.json). API client IDs are configured via `ANIBEAM_`-prefixed env vars; see `.env.example`.
 
+## Native line
+
+The Rust core and its terminal shell live beside the Electron app, in `core/`
+and `apps/cli/`. They are the successor line; the Electron tree above is
+frozen. Cargo builds them, not Bun.
+
+```bash
+cargo build --release -p anibeam-cli   # target/release/anibeam-cli
+cargo test --workspace                 # unit tests plus core/tests/
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all --check
+```
+
+The CLI is the core's door: `sources`, `scan`, `list`, `show`, `jobs`,
+`import`, `export`, `events --follow`, and `call <Name> --json '{...}'` for
+anything else. `--root <dir>` puts the database, the config, the cache and
+the secrets under one directory instead of the XDG ones, which is how you
+drive it against a real library without touching the app's own data.
+
+```bash
+anibeam-cli call AddSource --json '{"path": "/mnt/media/anime"}'
+anibeam-cli scan --wait
+anibeam-cli list --tab all --sort alpha --direction asc
+```
+
+### The phase 1 exit check
+
+The core is finished for phase 1 when it lists the same library the Electron
+app does. Both sides are read from a terminal:
+
+```bash
+bun scripts/electron-export.mjs ~/anibeam-export.json   # what Settings > Export writes
+bun scripts/electron-list.mjs > /tmp/electron-list.txt  # the Home grid, All tab
+```
+
+```bash
+CLI="target/release/anibeam-cli --root /tmp/anibeam-exit-check"
+$CLI import ~/anibeam-export.json --wait
+$CLI scan --wait
+$CLI call RefreshAll --wait
+$CLI list --tab all --sort alpha --direction asc | awk -F'\t' '{ print $3 }' > /tmp/native-list.txt
+diff /tmp/electron-list.txt /tmp/native-list.txt && echo "phase 1 exit: identical"
+```
+
+The import carries the matches as provider ids, so the AniList records behind
+them still have to be fetched: in the app that is the backfill the launch
+queues behind its catch-up scan, and from the terminal it is the `RefreshAll`
+above. A series whose fetch failed keeps its folder name as its title until
+the next run, so run it again if AniList was having a bad day.
+
+Both lists are the same titles in the same order when the two sides agree.
+Titles can drift apart without either side being wrong: AniList's romaji is
+edited from time to time, so an Electron entry that has not been refreshed in
+months holds an older string for the same id.
+
 ## Releasing
 
 Push a version tag and CI builds the Linux zip and attaches it to a GitHub Release:
