@@ -39,3 +39,6 @@ src/data/
 # Stray build/lock cruft (project uses bun.lockb, not npm)
 /main.js
 /package-lock.json
+
+/target/
+!core/tests/fixtures/*.json
