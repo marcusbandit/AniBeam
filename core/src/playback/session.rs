@@ -42,6 +42,11 @@ pub const MAX_TICK_DELTA: f64 = 1.5;
 pub const MARK_FRACTION: f64 = 0.85;
 /// A position under this is not worth resuming to.
 pub const RESUME_HEAD: f64 = 5.0;
+/// How far the playhead has to move before another resume point is worth
+/// writing. Electron's `VideoPlayer.tsx` saves on the same four second
+/// rule; a write per tick is about 1400 writer round trips per episode,
+/// each of them queued behind whatever transaction the writer is running.
+pub const RESUME_INTERVAL: f64 = 4.0;
 /// A position within this of the end is a completion, not a resume point.
 pub const RESUME_TAIL: f64 = 30.0;
 
@@ -71,6 +76,9 @@ pub struct Session {
     pub viewed: bool,
     pub marked: bool,
     pub completed: bool,
+    /// The position the last resume point was written at, which is what the
+    /// four second throttle measures against.
+    pub resume_written_at: Option<f64>,
 }
 
 /// Every open session, and the counter that names the next one. Ids are per
@@ -114,10 +122,21 @@ pub enum Effect {
     Resume(f64),
 }
 
+/// How a tick arrived. A paused tick and a session's last tick both write
+/// their resume point whatever the throttle says, since either could be the
+/// last word on where the playhead was.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum TickKind {
+    Playing,
+    Paused,
+    Closing,
+}
+
 /// The four rules over one tick. Pure but for the session's own flags, each
 /// of which latches the first time its rule fires, so no rule can happen
 /// twice in one session.
-pub fn effects(s: &mut Session, position: f64, paused: bool) -> Vec<Effect> {
+pub fn effects(s: &mut Session, position: f64, kind: TickKind) -> Vec<Effect> {
+    let paused = kind == TickKind::Paused;
     let mut out = Vec::new();
     // A player that reports nonsense says nothing about where the playhead
     // is. Nothing is written and nothing is remembered, so the next real
@@ -159,7 +178,16 @@ pub fn effects(s: &mut Session, position: f64, paused: bool) -> Vec<Effect> {
         s.completed = true;
         out.push(Effect::Complete);
     } else if !s.completed && position >= RESUME_HEAD {
-        out.push(Effect::Resume(position));
+        // Throttled by position, not by the clock: a tick that moved the
+        // playhead less than the interval says nothing new, and a seek in
+        // either direction says a great deal.
+        let moved = s
+            .resume_written_at
+            .is_none_or(|last| (position - last).abs() >= RESUME_INTERVAL);
+        if moved || kind != TickKind::Playing {
+            s.resume_written_at = Some(position);
+            out.push(Effect::Resume(position));
+        }
     }
     out
 }
@@ -433,6 +461,7 @@ pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
             viewed: false,
             marked: false,
             completed: false,
+            resume_written_at: None,
         },
     );
 
@@ -494,7 +523,15 @@ pub fn tick(core: &Core, session: u64, position: f64, paused: bool) -> Result<()
                 id: session,
             });
         };
-        let fired = effects(s, position, paused);
+        let fired = effects(
+            s,
+            position,
+            if paused {
+                TickKind::Paused
+            } else {
+                TickKind::Playing
+            },
+        );
         (s.clone(), fired)
     };
     apply(core, &s, &fired)
@@ -514,7 +551,7 @@ pub fn close(
         tracing::debug!("close for session {session}, which is already closed");
         return Ok(());
     };
-    let mut fired = effects(&mut s, position, false);
+    let mut fired = effects(&mut s, position, TickKind::Closing);
     if reason == CloseReason::Ended
         && let Some(effect) = ended(&mut s)
     {
@@ -532,7 +569,7 @@ fn apply(core: &Core, s: &Session, fired: &[Effect]) -> Result<(), CoreError> {
             Effect::View => record_view(core, s)?,
             Effect::Mark => mark(core, s),
             Effect::Complete => complete(core, s)?,
-            Effect::Resume(position) => write_resume(core, s, *position)?,
+            Effect::Resume(position) => write_resume(core, s, *position),
         }
     }
     Ok(())
@@ -654,20 +691,26 @@ fn complete(core: &Core, s: &Session) -> Result<(), CoreError> {
     Ok(())
 }
 
-fn write_resume(core: &Core, s: &Session, position: f64) -> Result<(), CoreError> {
+/// Posted rather than written: a tick comes in on the shell's own thread,
+/// and what it needs back is the event, which goes out at once. The row is
+/// queued behind whatever the writer is doing, and the queue is FIFO, so a
+/// completion that deletes the row still runs after the upsert before it.
+fn write_resume(core: &Core, s: &Session, position: f64) {
     let (series, key, now) = (s.series, s.episode_key.clone(), time::now_secs());
     // A duration is only known once the shell has reported the chapters, and
     // the row wants a number either way; nought reads as "not known yet" to
     // every fraction drawn off it.
     let duration = s.duration.unwrap_or(0.0);
-    core.store.write(move |c| {
-        c.execute(
+    let named = key.clone();
+    core.store.post(move |c| {
+        if let Err(e) = c.execute(
             "INSERT INTO resume_points (series_id, episode_key, position, duration, at) VALUES (?1, ?2, ?3, ?4, ?5)
              ON CONFLICT(series_id, episode_key) DO UPDATE SET position = excluded.position, duration = excluded.duration, at = excluded.at",
             params![series as i64, key, position, duration, now],
-        )?;
-        Ok(())
-    })?;
+        ) {
+            tracing::warn!("the resume point for series {series} {named} was not written: {e}");
+        }
+    });
     core.bus.debug(
         Stage::Playback,
         "resume point saved",
@@ -676,7 +719,6 @@ fn write_resume(core: &Core, s: &Session, position: f64) -> Result<(), CoreError
             position: Some(position),
         },
     );
-    Ok(())
 }
 
 /// What the lines these rules write call the file: the series' folder name
@@ -762,18 +804,19 @@ mod tests {
             viewed: false,
             marked: false,
             completed: false,
+            resume_written_at: None,
         }
     }
 
-    /// One tick a second from nought: the view lands at thirty, and every
-    /// tick from the fifth second on offers a resume point.
+    /// One tick a second from nought: the view lands at thirty, and a
+    /// resume point comes every four seconds from the fifth second on.
     #[test]
     fn a_view_needs_thirty_seconds_of_forward_movement() {
         let mut s = session(false, None);
         let mut views = 0;
         let mut resumes = Vec::new();
         for step in 0..40 {
-            for effect in effects(&mut s, f64::from(step), false) {
+            for effect in effects(&mut s, f64::from(step), TickKind::Playing) {
                 match effect {
                     Effect::View => views += 1,
                     Effect::Resume(p) => resumes.push(p),
@@ -782,9 +825,42 @@ mod tests {
             }
         }
         assert_eq!(views, 1);
-        assert_eq!(resumes.first(), Some(&5.0));
-        assert_eq!(resumes.last(), Some(&39.0));
+        assert_eq!(
+            resumes,
+            vec![5.0, 9.0, 13.0, 17.0, 21.0, 25.0, 29.0, 33.0, 37.0]
+        );
         assert_eq!(s.watched_secs, 39.0);
+    }
+
+    /// Electron's four second rule, carried over: a tick that barely moved
+    /// the playhead says nothing new, and one write per tick is about 1400
+    /// writer round trips per episode. A pause and the session's last tick
+    /// write whatever the throttle says, since either could be the last
+    /// word on where the playhead was, and so does a seek.
+    #[test]
+    fn a_resume_point_waits_four_seconds_unless_the_tick_is_the_last_word() {
+        let mut s = session(false, Some(1400.0));
+        let mut resumes = Vec::new();
+        for step in 0..20 {
+            for effect in effects(&mut s, f64::from(step), TickKind::Playing) {
+                if let Effect::Resume(p) = effect {
+                    resumes.push(p);
+                }
+            }
+        }
+        assert_eq!(resumes, vec![5.0, 9.0, 13.0, 17.0]);
+        assert_eq!(
+            effects(&mut s, 20.0, TickKind::Paused),
+            vec![Effect::Resume(20.0)]
+        );
+        assert_eq!(
+            effects(&mut s, 21.0, TickKind::Closing),
+            vec![Effect::Resume(21.0)]
+        );
+        assert_eq!(
+            effects(&mut s, 8.0, TickKind::Playing),
+            vec![Effect::Resume(8.0)]
+        );
     }
 
     /// A seek carries no watch time, in either direction, and neither does a
@@ -792,18 +868,18 @@ mod tests {
     #[test]
     fn a_seek_and_a_pause_count_nothing() {
         let mut s = session(false, None);
-        effects(&mut s, 0.0, false);
-        effects(&mut s, 1.0, false);
+        effects(&mut s, 0.0, TickKind::Playing);
+        effects(&mut s, 1.0, TickKind::Playing);
         assert_eq!(s.watched_secs, 1.0);
-        effects(&mut s, 600.0, false);
-        effects(&mut s, 10.0, false);
+        effects(&mut s, 600.0, TickKind::Playing);
+        effects(&mut s, 10.0, TickKind::Playing);
         assert_eq!(s.watched_secs, 1.0);
-        effects(&mut s, 11.0, true);
+        effects(&mut s, 11.0, TickKind::Paused);
         assert_eq!(s.watched_secs, 1.0);
         // Exactly one and a half times the tick still reads as playing.
-        effects(&mut s, 12.5, false);
+        effects(&mut s, 12.5, TickKind::Playing);
         assert_eq!(s.watched_secs, 2.5);
-        effects(&mut s, 14.1, false);
+        effects(&mut s, 14.1, TickKind::Playing);
         assert_eq!(s.watched_secs, 2.5);
     }
 
@@ -811,18 +887,29 @@ mod tests {
     #[test]
     fn the_mark_takes_the_earlier_of_the_outro_and_85_percent() {
         let mut s = session(false, Some(1400.0));
-        assert_eq!(effects(&mut s, 1189.0, false), vec![Effect::Resume(1189.0)]);
         assert_eq!(
-            effects(&mut s, 1190.0, false),
-            vec![Effect::Mark, Effect::Resume(1190.0)]
+            effects(&mut s, 1189.0, TickKind::Playing),
+            vec![Effect::Resume(1189.0)]
         );
-        assert_eq!(effects(&mut s, 1200.0, false), vec![Effect::Resume(1200.0)]);
+        // One second on from the last resume point, so the mark is all
+        // this tick has to say.
+        assert_eq!(
+            effects(&mut s, 1190.0, TickKind::Playing),
+            vec![Effect::Mark]
+        );
+        assert_eq!(
+            effects(&mut s, 1200.0, TickKind::Playing),
+            vec![Effect::Resume(1200.0)]
+        );
 
         let mut s = session(false, Some(1400.0));
         s.outro_start = Some(1100.0);
-        assert_eq!(effects(&mut s, 1099.0, false), vec![Effect::Resume(1099.0)]);
         assert_eq!(
-            effects(&mut s, 1100.0, false),
+            effects(&mut s, 1099.0, TickKind::Playing),
+            vec![Effect::Resume(1099.0)]
+        );
+        assert_eq!(
+            effects(&mut s, 1100.0, TickKind::Playing),
             vec![Effect::Mark, Effect::Complete]
         );
 
@@ -830,7 +917,7 @@ mod tests {
         let mut s = session(false, None);
         s.outro_start = Some(300.0);
         assert_eq!(
-            effects(&mut s, 300.0, false),
+            effects(&mut s, 300.0, TickKind::Playing),
             vec![Effect::Mark, Effect::Complete]
         );
     }
@@ -841,10 +928,16 @@ mod tests {
     fn completion_takes_the_tail_and_never_writes_a_resume_point() {
         let mut s = session(false, Some(1400.0));
         s.marked = true;
-        assert_eq!(effects(&mut s, 1369.0, false), vec![Effect::Resume(1369.0)]);
-        assert_eq!(effects(&mut s, 1370.0, false), vec![Effect::Complete]);
-        assert_eq!(effects(&mut s, 1380.0, false), Vec::new());
-        assert_eq!(effects(&mut s, 1399.0, false), Vec::new());
+        assert_eq!(
+            effects(&mut s, 1369.0, TickKind::Playing),
+            vec![Effect::Resume(1369.0)]
+        );
+        assert_eq!(
+            effects(&mut s, 1370.0, TickKind::Playing),
+            vec![Effect::Complete]
+        );
+        assert_eq!(effects(&mut s, 1380.0, TickKind::Playing), Vec::new());
+        assert_eq!(effects(&mut s, 1399.0, TickKind::Playing), Vec::new());
     }
 
     /// An extra shares its number with a real episode, so it never records a
@@ -854,10 +947,13 @@ mod tests {
         let mut s = session(true, Some(100.0));
         let mut fired = Vec::new();
         for step in 0..40 {
-            fired.extend(effects(&mut s, f64::from(step), false));
+            fired.extend(effects(&mut s, f64::from(step), TickKind::Playing));
         }
         assert!(fired.iter().all(|e| matches!(e, Effect::Resume(_))));
-        assert_eq!(effects(&mut s, 90.0, false), vec![Effect::Complete]);
+        assert_eq!(
+            effects(&mut s, 90.0, TickKind::Playing),
+            vec![Effect::Complete]
+        );
     }
 
     /// A player reporting nonsense says nothing about where the playhead is,
@@ -865,15 +961,19 @@ mod tests {
     #[test]
     fn a_bad_position_changes_nothing() {
         let mut s = session(false, Some(1400.0));
-        effects(&mut s, 10.0, false);
-        effects(&mut s, 11.0, false);
-        assert_eq!(effects(&mut s, f64::NAN, false), Vec::new());
-        assert_eq!(effects(&mut s, f64::INFINITY, false), Vec::new());
-        assert_eq!(effects(&mut s, -5.0, false), Vec::new());
+        effects(&mut s, 10.0, TickKind::Playing);
+        effects(&mut s, 11.0, TickKind::Playing);
+        assert_eq!(effects(&mut s, f64::NAN, TickKind::Playing), Vec::new());
+        assert_eq!(
+            effects(&mut s, f64::INFINITY, TickKind::Playing),
+            Vec::new()
+        );
+        assert_eq!(effects(&mut s, -5.0, TickKind::Playing), Vec::new());
         assert_eq!(s.last_position, Some(11.0));
         assert_eq!(s.watched_secs, 1.0);
-        // The next real tick still measures against the last real one.
-        assert_eq!(effects(&mut s, 12.0, false), vec![Effect::Resume(12.0)]);
+        // The next real tick still measures against the last real one. It
+        // writes no resume point, being two seconds on from the one at ten.
+        assert_eq!(effects(&mut s, 12.0, TickKind::Playing), Vec::new());
         assert_eq!(s.watched_secs, 2.0);
     }
 

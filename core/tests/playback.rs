@@ -132,6 +132,10 @@ fn completed_keys(core: &Core, series: u64) -> Vec<String> {
 
 fn resume_row(core: &Core, series: u64, key: &str) -> Option<(f64, f64)> {
     let key = key.to_string();
+    // The resume upsert is posted, not written, so a read straight after a
+    // tick can beat it to the connection. An empty write is the barrier:
+    // the writer thread runs its queue in order, so this one lands last.
+    core.store().write(|_| Ok(())).unwrap();
     core.store()
         .read(|c| {
             Ok(c.query_row(
@@ -339,11 +343,14 @@ fn a_session_views_marks_completes_and_clears_its_resume_point() {
     );
     assert_eq!(line.message, "viewed Cowboy Bebop EP 2");
     assert_eq!(line.level, Level::Info);
+    // Every four seconds from the fifth, not every tick.
     assert_eq!(
         resume_positions(&c),
-        (5..35).map(|p| Some(f64::from(p))).collect::<Vec<_>>()
+        [5.0, 9.0, 13.0, 17.0, 21.0, 25.0, 29.0, 33.0]
+            .map(Some)
+            .to_vec()
     );
-    assert_eq!(resume_row(&core, lib.series, "2"), Some((34.0, 0.0)));
+    assert_eq!(resume_row(&core, lib.series, "2"), Some((33.0, 0.0)));
     let ep2 = |d: &SeriesDetail| {
         d.episodes
             .iter()
@@ -354,7 +361,7 @@ fn a_session_views_marks_completes_and_clears_its_resume_point() {
     assert_eq!(
         ep2(&detail(&core, lib.series)).resume,
         Some(ResumePoint {
-            position: 34.0,
+            position: 33.0,
             duration: 0.0
         })
     );
@@ -462,7 +469,7 @@ fn an_extras_session_records_no_view_and_no_mark() {
     );
     assert_eq!(
         resume_row(&core, lib.series, "OP1.mkv"),
-        Some((39.0, 100.0))
+        Some((37.0, 100.0))
     );
 
     // Past 85 percent and inside the last thirty seconds at once: the extra
@@ -576,4 +583,43 @@ fn a_track_choice_round_trips_through_open_playback() {
             id: 4242
         }
     );
+}
+
+/// (9) The resume upsert is throttled to Electron's four seconds, so a
+/// forty minute episode costs a few hundred writes rather than one per
+/// tick. A pause and the close still write where the playhead actually
+/// stopped, which is the number the shell resumes from.
+#[test]
+fn the_resume_point_is_throttled_but_a_pause_and_the_close_are_not() {
+    let (_dir, core, c) = common::open_core();
+    let lib = library(&core);
+
+    let s = open(&core, lib.ep2);
+    session::report_chapters(&core, s.session, 1400.0, None);
+    for step in 0..12 {
+        tick(&core, s.session, f64::from(step));
+    }
+    assert_eq!(
+        resume_positions(&c),
+        [5.0, 9.0].map(Some).to_vec(),
+        "a write per tick is back"
+    );
+
+    // A pause one second on writes anyway: it could be the last word.
+    core.call(Call::Tick {
+        session: s.session,
+        position: 12.0,
+        paused: true,
+    })
+    .unwrap();
+    assert_eq!(resume_row(&core, lib.series, "2"), Some((12.0, 1400.0)));
+
+    // And so does the close, whatever the throttle says.
+    core.call(Call::ClosePlayback {
+        session: s.session,
+        position: 13.0,
+        reason: CloseReason::Stopped,
+    })
+    .unwrap();
+    assert_eq!(resume_row(&core, lib.series, "2"), Some((13.0, 1400.0)));
 }
