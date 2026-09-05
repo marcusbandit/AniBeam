@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::{Duration, Instant};
 
@@ -19,6 +19,8 @@ use crate::net::{Http, ReqwestHttp, Upstream};
 use crate::paths::CorePaths;
 use crate::prefs;
 use crate::store::Store;
+use crate::trackers::accounts;
+use crate::trackers::oauth;
 use crate::trackers::secrets::{Secrets, KEYRING_UNAVAILABLE};
 
 /// The core is one object. A shell opens it once, starts it once, subscribes
@@ -61,14 +63,17 @@ pub struct Core {
     pub(crate) http: Arc<dyn Http>,
     /// The provider clients. Tasks 16 onwards are the callers; the fields
     /// are built here so every job shares one limiter per upstream.
-    #[allow(dead_code)]
     pub(crate) anilist: Arc<AnilistClient>,
     #[allow(dead_code)]
     pub(crate) jikan: Arc<JikanClient>,
     #[allow(dead_code)]
     pub(crate) aniskip: Arc<AniSkipClient>,
-    #[allow(dead_code)]
     pub(crate) mal: Arc<MalClient>,
+    /// The loopback port the OAuth listener binds while a connect is in
+    /// flight. Fixed rather than ephemeral: both providers only redirect
+    /// to a URL registered on their developer panel, so the port is part
+    /// of that registration. A test moves it out of the way.
+    pub(crate) oauth_port: AtomicU16,
     /// When the core last said out loud that Jikan was not answering.
     /// Jikan is the episode-title side-fetch, so an outage costs a series
     /// its titles rather than its match, and a job walking a whole library
@@ -86,6 +91,10 @@ pub struct Core {
 /// own futures in a shorter `tokio::time::timeout` where a slow list read
 /// should give up sooner than a slow image fetch.
 const HTTP_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// The loopback port both providers redirect back to. Registered on their
+/// developer panels, so it is a constant rather than a preference.
+const DEFAULT_OAUTH_PORT: u16 = 53682;
 
 /// The gap each upstream is paced to, from its published limit.
 const ANILIST_GAP: Duration = Duration::from_millis(800);
@@ -151,6 +160,7 @@ impl Core {
             jikan,
             aniskip,
             mal,
+            oauth_port: AtomicU16::new(DEFAULT_OAUTH_PORT),
             jikan_outage: Mutex::new(None),
             me: me.clone(),
             started: AtomicBool::new(false),
@@ -162,6 +172,14 @@ impl Core {
     /// core is going away" and end quietly rather than panicking.
     pub(crate) fn arc(&self) -> Option<Arc<Core>> {
         self.me.upgrade()
+    }
+
+    /// Moves the OAuth listener off the registered port, so two tests
+    /// driving a flow at once do not fight over one socket. Not part of
+    /// the contract and not exported to any shell.
+    #[doc(hidden)]
+    pub fn set_oauth_port(&self, port: u16) {
+        self.oauth_port.store(port, Ordering::SeqCst);
     }
 
     /// The store itself, for the integration tests' fixtures: they build
@@ -178,7 +196,6 @@ impl Core {
     /// shell's calling thread, which is where keyring work belongs. Either
     /// way the "no keyring" line is written once, by whoever finished the
     /// probe.
-    #[allow(dead_code)]
     pub(crate) fn secrets(&self) -> &Arc<Secrets> {
         if self.secrets.warm() {
             self.bus.info(Stage::System, KEYRING_UNAVAILABLE, EventBody::Notice);
@@ -396,6 +413,13 @@ impl Core {
                 self.bus.debug(Stage::Store, "auto-skip changed", EventBody::SettingsChanged);
                 Ok(Reply::Ok)
             }
+            Call::GetTrackers => Ok(Reply::Trackers { state: accounts::state(self)? }),
+            Call::SetTrackerCredentials { tracker, client_id, client_secret } => {
+                accounts::set_credentials(self, tracker, &client_id, client_secret.as_deref())
+            }
+            Call::ConnectTracker { tracker } => Ok(Reply::Started { job: oauth::connect(self, tracker)? }),
+            Call::DisconnectTracker { tracker } => accounts::disconnect(self, tracker),
+            Call::SetMainTracker { tracker } => accounts::set_main(self, tracker),
             other => Err(CoreError::Unsupported { what: format!("{} is not built yet", call_name(&other)) }),
         }
     }
