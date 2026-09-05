@@ -14,8 +14,10 @@ Window {
 
     // The tokens every component below reaches through the context chain. A plain Window
     // has no font property, so the face and the size are set per Text from these tokens.
+    // Until the engine's first push every token is absent, so the ground is the neutral one
+    // until Theme.ready rather than Tokens' missing-token magenta.
     Tokens { id: theme }
-    color: theme.bg
+    color: Theme.ready ? theme.bg : "#101216"
 
     // Window.color is the clear colour the compositor paints with; grabToImage renders only
     // painted items, so without this the offscreen capture below comes back transparent.

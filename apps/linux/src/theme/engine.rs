@@ -3,7 +3,6 @@
 //! settings the Theme singleton writes. Nothing here is a rule about the library.
 
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::Duration;
 
 use notify::RecursiveMode;
@@ -105,57 +104,93 @@ pub fn read_inputs(paths: &ShellPaths, portal: Portal) -> Inputs {
     }
 }
 
+/// A wedged portal must not leave the shell without colours: every bus call is bounded and
+/// a timeout counts as "the portal said nothing".
+const BUS_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// The two directories under config the engine watches. A directory that does not exist
+/// cannot be watched, and nothing else creates them before the first pick, so `run` makes
+/// them once. The built-in directory belongs to the package and is never created here.
+fn ensure_dirs(paths: &ShellPaths) {
+    for d in [paths.config_dir(), paths.user_themes_dir()] {
+        if let Err(e) = std::fs::create_dir_all(&d) {
+            eprintln!("anibeam: {}: {e}", d.display());
+        }
+    }
+}
+
+/// Every directory the engine watches, sorted and deduped: the config directory (theme.toml
+/// is replaced by rename on save, so the directory is the watch), both theme directories,
+/// and the directory of every file the kitty chain touched.
+fn watch_dirs(paths: &ShellPaths, inputs: &Inputs) -> Vec<PathBuf> {
+    let mut wanted = vec![
+        paths.config_dir(),
+        paths.user_themes_dir(),
+        paths.builtin_themes_dir(),
+    ];
+    wanted.extend(
+        inputs
+            .terminal_files
+            .iter()
+            .filter_map(|f| f.parent().map(PathBuf::from)),
+    );
+    wanted.sort();
+    wanted.dedup();
+    wanted
+}
+
 /// The engine's loop. `push` receives every new resolution on whatever thread produced it;
 /// the bridge hops it to the Qt thread. `commands` carries settings the singleton wrote.
+///
+/// The first push happens before the bus is touched: xdg-desktop-portal may need D-Bus
+/// activation, and the window's ground must not wait on it. The portal's answer, bounded by
+/// `BUS_TIMEOUT`, arrives as a second push when it changes anything.
 pub async fn run(
     paths: ShellPaths,
     push: impl Fn(Resolved) + Send + Sync + 'static,
     mut commands: mpsc::UnboundedReceiver<ThemeSettings>,
 ) {
-    let push = Arc::new(push);
-    let conn = zbus::Connection::session().await.ok();
-    let portal_state = match &conn {
-        Some(c) => portal::read(c).await,
-        None => Portal::default(),
-    };
+    ensure_dirs(&paths);
     let (wake_tx, mut wake_rx) = mpsc::unbounded_channel::<()>();
 
-    // Files: the chain, both theme directories, theme.toml's directory (the file is replaced
-    // by rename on save). The debouncer's own thread sends a wake; the loop re-reads.
+    // Files: the chain, both theme directories, theme.toml's directory. The debouncer's own
+    // thread sends a wake; the loop re-reads. Rewatching is unconditional, because a
+    // directory that did not exist at start-up becomes watchable the moment it appears.
     let mut watched: Vec<PathBuf> = Vec::new();
     let wake = wake_tx.clone();
     let mut debouncer = new_debouncer(Duration::from_millis(200), None, move |_res| {
         let _ = wake.send(());
     })
     .ok();
-    let mut inputs = read_inputs(&paths, portal_state);
     let rewatch =
         |debouncer: &mut Option<Watchers>, watched: &mut Vec<PathBuf>, inputs: &Inputs| {
             let Some(d) = debouncer else { return };
             for p in watched.drain(..) {
                 let _ = d.unwatch(&p);
             }
-            let mut wanted = vec![
-                paths.config_dir(),
-                paths.user_themes_dir(),
-                paths.builtin_themes_dir(),
-            ];
-            wanted.extend(
-                inputs
-                    .terminal_files
-                    .iter()
-                    .filter_map(|f| f.parent().map(PathBuf::from)),
-            );
-            wanted.sort();
-            wanted.dedup();
-            for p in wanted {
+            for p in watch_dirs(&paths, inputs) {
                 if p.is_dir() && d.watch(&p, RecursiveMode::NonRecursive).is_ok() {
                     watched.push(p);
                 }
             }
         };
+    let mut inputs = read_inputs(&paths, Portal::default());
     rewatch(&mut debouncer, &mut watched, &inputs);
     push(resolve(inputs.clone()));
+
+    let conn = tokio::time::timeout(BUS_TIMEOUT, zbus::Connection::session())
+        .await
+        .ok()
+        .and_then(Result::ok);
+    if let Some(c) = &conn {
+        let state = tokio::time::timeout(BUS_TIMEOUT, portal::read(c))
+            .await
+            .unwrap_or_default();
+        if state != inputs.portal {
+            inputs.portal = state;
+            push(resolve(inputs.clone()));
+        }
+    }
 
     if let Some(c) = conn.clone() {
         let wake = wake_tx.clone();
@@ -171,18 +206,21 @@ pub async fn run(
                     eprintln!("anibeam: theme.toml: {e}");
                 }
                 inputs.settings = settings;
+                rewatch(&mut debouncer, &mut watched, &inputs);
                 push(resolve(inputs.clone()));
             }
             Some(()) = wake_rx.recv() => {
-                let portal_state = match &conn { Some(c) => portal::read(c).await, None => Portal::default() };
+                let portal_state = match &conn {
+                    Some(c) => tokio::time::timeout(BUS_TIMEOUT, portal::read(c)).await.unwrap_or_default(),
+                    None => Portal::default(),
+                };
                 let fresh = read_inputs(&paths, portal_state);
+                rewatch(&mut debouncer, &mut watched, &fresh);
                 if fresh != inputs {
                     inputs = fresh;
-                    rewatch(&mut debouncer, &mut watched, &inputs);
                     push(resolve(inputs.clone()));
                 }
             }
-            else => break,
         }
     }
 }
@@ -190,6 +228,7 @@ pub async fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::paths::ShellPaths;
     use crate::theme::base16::Theme as ThemeFile;
     use crate::theme::colour::Rgb;
     use crate::theme::config::{ModeSetting, Source, ThemeSettings};
@@ -291,5 +330,36 @@ mod tests {
         let r = resolve(i);
         assert_eq!(r.dark.source_label, "terminal rose");
         assert_eq!(r.dark.bg.to_hex(), "#191724");
+    }
+
+    #[test]
+    fn the_watch_set_covers_config_and_the_chain_once_the_directories_exist() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = ShellPaths::resolve(Some(dir.path())).unwrap();
+        assert!(!paths.config_dir().is_dir(), "nothing has made it yet");
+        ensure_dirs(&paths);
+        assert!(
+            paths.config_dir().is_dir(),
+            "theme.toml's directory is watchable"
+        );
+        assert!(paths.user_themes_dir().is_dir());
+
+        let mut i = inputs();
+        i.terminal_files = vec![
+            PathBuf::from("/home/x/.config/kitty/kitty.conf"),
+            PathBuf::from("/home/x/.config/kitty/theme.conf"),
+        ];
+        let dirs = watch_dirs(&paths, &i);
+        assert!(dirs.contains(&paths.config_dir()));
+        assert!(dirs.contains(&paths.user_themes_dir()));
+        assert!(dirs.contains(&paths.builtin_themes_dir()));
+        assert_eq!(
+            dirs.iter().filter(|p| p.ends_with("kitty")).count(),
+            1,
+            "one entry per directory, not per file of the chain"
+        );
+        let mut sorted = dirs.clone();
+        sorted.sort();
+        assert_eq!(dirs, sorted, "sorted, so the watch set is stable");
     }
 }
