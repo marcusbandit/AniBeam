@@ -7,6 +7,7 @@ pub mod events;
 pub mod jobs;
 pub mod library;
 pub mod paths;
+pub mod prefs;
 pub mod store;
 pub mod time;
 

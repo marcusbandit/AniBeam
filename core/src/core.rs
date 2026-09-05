@@ -6,6 +6,7 @@ use crate::contract::*;
 use crate::events::{EventBus, Subscription};
 use crate::jobs::Jobs;
 use crate::paths::CorePaths;
+use crate::prefs;
 use crate::store::Store;
 
 /// The core is one object. A shell opens it once, starts it once, subscribes
@@ -107,6 +108,25 @@ impl Core {
             Call::ListJobs => Ok(Reply::Jobs { jobs: self.jobs.list() }),
             Call::CancelJob { job } => {
                 self.jobs.cancel(job)?;
+                Ok(Reply::Ok)
+            }
+            Call::GetPreferences => Ok(Reply::Preferences { preferences: self.store.read(prefs::load_preferences)? }),
+            Call::SetPreferences { preferences } => {
+                let p = preferences.clone();
+                self.store.write(move |c| prefs::save_preferences(c, &p))?;
+                self.bus.debug(Stage::Store, "preferences changed", EventBody::PreferencesChanged { preferences });
+                Ok(Reply::Ok)
+            }
+            Call::GetSettings => Ok(Reply::Settings { settings: self.store.read(prefs::load_settings)? }),
+            Call::SetSubtitleDefaults { defaults } => {
+                prefs::validate_subtitle_defaults(&defaults)?;
+                self.store.write(move |c| prefs::save_subtitle_defaults(c, &defaults))?;
+                self.bus.debug(Stage::Store, "subtitle defaults changed", EventBody::SettingsChanged);
+                Ok(Reply::Ok)
+            }
+            Call::SetAutoSkip { intro, outro } => {
+                self.store.write(move |c| prefs::save_auto_skip(c, &AutoSkip { intro, outro }))?;
+                self.bus.debug(Stage::Store, "auto-skip changed", EventBody::SettingsChanged);
                 Ok(Reply::Ok)
             }
             other => Err(CoreError::Unsupported { what: format!("{} is not built yet", call_name(&other)) }),
