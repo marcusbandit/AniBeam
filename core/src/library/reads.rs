@@ -10,7 +10,8 @@ use rusqlite::{Connection, OptionalExtension, params};
 use crate::contract::*;
 use crate::core::Core;
 use crate::images;
-use crate::library::cards::{self, Snapshot};
+use crate::library::cards;
+use crate::library::snapshot::Snapshot;
 use crate::library::sort;
 use crate::time;
 

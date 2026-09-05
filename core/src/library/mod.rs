@@ -22,10 +22,12 @@ pub(crate) fn has_extension(name: &str, list: &[&str]) -> bool {
 
 pub mod cards;
 pub mod classifier;
+pub mod detail;
 pub mod labels;
 pub mod reads;
 pub mod scan;
 pub mod sidecar;
+pub mod snapshot;
 pub mod sort;
 pub mod titles;
 pub mod walk;

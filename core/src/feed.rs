@@ -11,7 +11,7 @@ use std::time::SystemTime;
 use rusqlite::Connection;
 
 use crate::contract::*;
-use crate::library::cards::Snapshot;
+use crate::library::snapshot::Snapshot;
 use crate::time;
 
 /// One series's place on the Recent feed: the reason it is there, the
