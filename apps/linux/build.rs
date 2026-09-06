@@ -52,7 +52,19 @@ fn main() {
             .qml_file("qml/PlayerChrome.qml")
             .qml_file("qml/PlayerKeys.qml")
             .qml_file("qml/PlayerPage.qml")
-            .qml_file("qml/ActivityDrawer.qml"),
+            .qml_file("qml/ActivityDrawer.qml")
+            .qml_file("qml/Note.qml")
+            .qml_file("qml/Tiles.qml")
+            .qml_file("qml/UsageBar.qml")
+            .qml_file("qml/SettingsTab.qml")
+            .qml_file("qml/SettingsPair.qml")
+            .qml_file("qml/SourceRow.qml")
+            .qml_file("qml/TrackerRow.qml")
+            .qml_file("qml/SettingsPage.qml")
+            .qml_file("qml/SettingsLibraryTab.qml")
+            .qml_file("qml/SettingsAppearanceTab.qml")
+            .qml_file("qml/SettingsPlaybackTab.qml")
+            .qml_file("qml/SettingsDataTab.qml"),
     )
     .qt_module("Quick")
     .files([

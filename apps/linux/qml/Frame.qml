@@ -44,8 +44,14 @@ FocusScope {
     // Pages by name; a page task swaps its placeholder for the real file
     readonly property var pages: ({
         library: "LibraryPage.qml", feed: "PagePlaceholder.qml", watching: "PagePlaceholder.qml", metadata: "PagePlaceholder.qml",
-        settings: "PagePlaceholder.qml", subscriptions: "PagePlaceholder.qml", series: "SeriesPage.qml", player: "PlayerPage.qml"
+        settings: "SettingsPage.qml", subscriptions: "PagePlaceholder.qml", series: "SeriesPage.qml", player: "PlayerPage.qml"
     })
+
+    // The settings page's own session state: the current tab and each tab's scroll
+    // position, kept here rather than on the page itself so they survive the page being
+    // torn down and rebuilt on every navigation away and back.
+    property int settingsTab: 0
+    property var settingsScroll: [0, 0, 0, 0]
 
     function leavingScroll() { return page.item && page.item.scrollY !== undefined ? page.item.scrollY : 0 }
     function go(name, props, label) { nav.open(name, props, label, leavingScroll()) }
