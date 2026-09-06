@@ -10,6 +10,7 @@ Corner {
     id: pane
     property string mode: "dark"
     property var samples: []             // SeriesCard records, most telling first
+    property real nowMs: Date.now()      // refreshed by the tab's own tick, not a one-shot
 
     Tokens { id: theme; mode: pane.mode }
 
@@ -114,7 +115,7 @@ Corner {
                     required property int index
                     item: pane.samples.length ? pane.samples[index % pane.samples.length] : pane.fallback
                     posterWidth: theme.posterWidth
-                    nowMs: Date.now()
+                    nowMs: pane.nowMs
                 }
             }
         }

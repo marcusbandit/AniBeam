@@ -12,6 +12,12 @@ SettingsTab {
     readonly property var lightThemes: Theme.themes.filter(function(t) { return t.mode === "light" })
     function indexOf(list, stem) { for (var i = 0; i < list.length; i++) if (list[i].stem === stem) return i; return 0 }
 
+    // The preview's sample cards carry relative labels (last-viewed, countdowns); this
+    // tick keeps them fresh, the same 30 second idiom LibraryPage.qml uses. It only runs
+    // while this tab exists, since the Loader that owns it destroys it on tab switch.
+    property real nowMs: Date.now()
+    Timer { interval: 30000; running: true; repeat: true; onTriggered: tab.nowMs = Date.now() }
+
     Component {
         id: cornerGlyph
         Corner {
@@ -23,7 +29,7 @@ SettingsTab {
     }
 
     SettingsPair {
-        split: 2 / 5
+        split: 1 / 3
         leftPanels: [ coloursPanel, shapePanel, footNote ]
         rightPanels: [ previewPanel ]
     }
@@ -49,7 +55,7 @@ SettingsTab {
     Component {
         id: shapePanel
         Panel {
-            title: "Shape"; icon: "shapes"
+            title: "Shape"; icon: "shapes"; grows: true
             SettingRow { label: "Density"
                 Seg { options: ["Compact", "Normal", "Comfortable"]; index: ["compact", "normal", "comfortable"].indexOf(Theme.density); onPicked: function(i) { Theme.pickDensity(["compact", "normal", "comfortable"][i]) } } }
             SettingRow { label: "Poster size"
@@ -64,7 +70,7 @@ SettingsTab {
         id: previewPanel
         Panel {
             title: "Preview"; icon: "eye"; grows: true
-            stretch: LookPreview {}
+            stretch: LookPreview { nowMs: tab.nowMs }
         }
     }
 }

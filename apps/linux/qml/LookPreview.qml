@@ -3,13 +3,16 @@
 // the width holds two of theme.space(90) and the gap, stacked otherwise. The sample cards
 // are the library's own first eight with a poster, in-progress ones first, so every corner
 // of a card has something real to show; an empty library falls back to LookPane's own
-// placeholder record instead of leaving the panes blank.
+// placeholder record instead of leaving the panes blank. Reloads, debounced, whenever the
+// core says a series or a scan changed, the same idiom SettingsLibraryTab.qml uses for its
+// own Door-driven stats.
 import QtQuick
 import com.marcusrosado.AniBeam
 
 Item {
     id: root
     anchors.fill: parent
+    property real nowMs: Date.now()
 
     readonly property var modes: ["dark", "light"]
     readonly property real gap: theme.space(4)
@@ -27,6 +30,12 @@ Item {
         root.samples = going.concat(rest).slice(0, 8)
     }
     Component.onCompleted: reload()
+    Timer { id: debounce; interval: 250; onTriggered: root.reload() }
+    Connections {
+        target: Door
+        function onSeriesChanged(c) { debounce.restart() }
+        function onScanFinished(s, a, c, r) { debounce.restart() }
+    }
 
     Repeater {
         model: root.modes
@@ -49,6 +58,7 @@ Item {
                 width: parent.width
                 mode: modelData
                 samples: root.samples
+                nowMs: root.nowMs
             }
         }
     }
