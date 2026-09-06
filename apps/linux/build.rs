@@ -47,6 +47,10 @@ fn main() {
             .qml_file("qml/PlayerButton.qml")
             .qml_file("qml/SeekBar.qml")
             .qml_file("qml/TrackPicker.qml")
+            .qml_file("qml/Notice.qml")
+            .qml_file("qml/KeyHelp.qml")
+            .qml_file("qml/PlayerChrome.qml")
+            .qml_file("qml/PlayerKeys.qml")
             .qml_file("qml/PlayerPage.qml"),
     )
     .qt_module("Quick")

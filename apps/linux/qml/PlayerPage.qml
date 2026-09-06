@@ -1,6 +1,11 @@
 // Spec 4.4: the player. The one page that takes the whole window. libmpv draws through
 // VideoItem; the shell draws every overlay and handles every key. The core owns the
 // rules; the shell sends ticks and shows what comes back.
+//
+// The page holds the session, the mpv wiring, the rules and the keys; PlayerChrome.qml holds
+// the header, the island, the auto-next pill and the replay button, and reads its state from
+// here. The page contract the frame relies on (props, fullWindow, title, escapePressed,
+// scrollY) stays on this object.
 import QtQuick
 import QtQuick.Window
 import com.marcusrosado.AniBeam
@@ -30,13 +35,13 @@ FocusScope {
     // rather than on the file's first track.
     property int lastSid: -1
     property real subDelay: 0
-    // Task 12 wires SkipWindowsReady onto the same property; until then the session's own
-    // windows are the ones the chapters gave.
-    property var windows: session ? session.skip_windows : []
+    // Seeded by the observation and refreshed at each step, since mpv notifies this one only
+    // once. See the frame step section.
+    property real frameNumber: 0
 
     // Chrome
     property bool chromeVisible: true
-    property int openMenus: 0            // pickers and the help list hold the chrome
+    property int openMenus: 0            // pickers, the rating picker and the key list
     // A menu holds the chrome: the timer runs again rather than falling through, so the
     // chrome hides 2.5 s after the menu closes instead of staying up until the next move.
     Timer { id: hideTimer; interval: 2500; onTriggered: { if (page.openMenus > 0) restart(); else page.chromeVisible = false } }
@@ -47,9 +52,27 @@ FocusScope {
         var r = Door.openPlayback(props.file)
         if (r.error) { frame.toast(r.error.message); Qt.callLater(frame.nav.back); return }
         session = r.reply.session
+        readSeries()
         if (video.isReady) start()
         showChrome()
         forceActiveFocus()
+    }
+    // The session carries the series and the file, not the episode number and not the
+    // tracker ids, so the detail is read once here. A failure costs the mark button and the
+    // rating prompt and nothing else, so it warns rather than leaving the page.
+    // `seriesTitles` is for Task 13's MPRIS metadata, which wants the untranslated titles.
+    property bool trackerKnown: false
+    property var seriesTitles: ({})
+    property real episodeNumber: -1
+    readonly property bool canMark: trackerKnown && !!session && !session.is_extra && episodeNumber >= 0
+    function readSeries() {
+        var d = Door.getSeries(session.series)
+        if (d.error) { console.warn("anibeam: series detail:", d.error.message); return }
+        var card = d.reply.detail.card
+        trackerKnown = !!(card.match_info && (card.match_info.anilist_id || card.match_info.mal_id))
+        seriesTitles = card.titles || {}
+        var ep = d.reply.detail.episodes.find(function(e) { return e.file === session.file })
+        episodeNumber = ep ? ep.number : -1
     }
     Component.onDestruction: close("Stopped")
     property bool closed: false
@@ -57,6 +80,9 @@ FocusScope {
         if (!session || closed) return
         closed = true
         tickTimer.stop()
+        // The auto-next countdown is deliberately not stopped here: the end of the file
+        // closes the session and the countdown is what carries us into the next episode.
+        // Every other caller destroys the page, and the timer goes with it.
         Door.closePlayback(session.session, timePos, reason)
     }
     function leave() { close("Stopped"); frame.nav.back() }
@@ -72,7 +98,7 @@ FocusScope {
         for (var i = 0; i < layers.length; i++) video.include(layers[i])
         var owned = Player.ownedOptions
         for (var j = 0; j < owned.length; j++) video.setProperty(owned[j][0], owned[j][1])
-        applyDefaults()                                          // Task 11 fills this
+        applyDefaults()
         video.setProperty("volume", Player.volume)
         video.setProperty("mute", Player.mute)
         video.setProperty("start", session.resume_from ? String(session.resume_from) : "none")
@@ -145,7 +171,7 @@ FocusScope {
                 var rc = Door.reportChapters(page.session.session, list, page.duration)
                 if (rc.error) console.warn("anibeam: chapters:", rc.error.message)
             }
-            page.onFileLoaded()                                  // Task 11 picks the tracks here
+            page.onFileLoaded()
             tickTimer.start()
         }
         onChanged: function(name, value) {
@@ -156,7 +182,7 @@ FocusScope {
             else if (name === "eof-reached") { if (value && !page.ended) { page.ended = true; page.onEnded() } }
             else if (name === "hwdec-current") page.hwdec = value ? String(value) : ""
             else if (name === "frame-drop-count") page.drops = Number(value || 0)
-            else page.onObserved(name, value)                   // Tasks 11 and 12 read the rest
+            else page.onObserved(name, value)
         }
         MouseArea { anchors.fill: parent; onClicked: page.togglePause(); hoverEnabled: true; onPositionChanged: page.showChrome(); cursorShape: page.chromeVisible ? Qt.ArrowCursor : Qt.BlankCursor }
     }
@@ -177,11 +203,16 @@ FocusScope {
         else if (name === "aid") aid = value === "no" || value === null ? -1 : Number(value)
         else if (name === "sid") { sid = value === "no" || value === null ? -1 : Number(value); if (sid >= 0) lastSid = sid }
         else if (name === "sub-delay") { subDelay = Number(value || 0); hud.update(delayLine(subDelay), "subDelay") }
+        // mpv sends this one exactly once, when the observation is registered: it is not on
+        // mpv's tick change list, so an observed value alone would read the number the file
+        // opened on for the whole session. Kept because the spec's observe list has it and
+        // it seeds the value; the number the HUD shows is read at the step. See readFrame().
+        else if (name === "estimated-frame-number") frameNumber = Number(value || 0)
         else if (name === "chapter-list") {}
-        else onObservedMore(name, value)                      // Task 12
     }
-    function onObservedMore(name, value) {}
-    function onEnded() { close("Ended") }                        // Task 12 adds the replay and the pill
+    // The last frame is still on screen, because keep-open holds it: the replay button sits
+    // on it, unless the countdown is already taking us to the next episode.
+    function onEnded() { close("Ended"); if (!nextCounting) replayVisible = true }
 
     // ---- Tracks
     // mpv hands the list back as a QVariantList, which QML wraps in a sequence object:
@@ -262,119 +293,142 @@ FocusScope {
     function setMute(m) { video.setProperty("mute", m); Player.setMute(m); showChrome() }
     function toggleFullscreen() { frame.hostWindow.visibility = frame.hostWindow.visibility === Window.FullScreen ? Window.Windowed : Window.FullScreen }
 
-    // ---- Header
-    Rectangle {
-        id: header
-        anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
-        // The bar is as tall as its three lines and one padding step either side, so a
-        // larger system font or a denser scale grows it instead of clipping inside it.
-        height: headerRow.implicitHeight + theme.space(4) * 2
-        color: theme.scrim
-        opacity: page.chromeVisible ? 1 : 0
-        // Zero opacity still takes clicks, so the hidden chrome has to leave the scene.
-        visible: opacity > 0
-        Behavior on opacity { NumberAnimation { duration: theme.motionNormal } }
-        Row {
-            id: headerRow
-            anchors.left: parent.left; anchors.leftMargin: theme.space(4); anchors.verticalCenter: parent.verticalCenter
-            spacing: theme.space(4)
-            PlayerButton { glyph: "arrow-left"; tip: "Back"; onClicked: page.leave() }
-            Column {
-                id: headerText
-                anchors.verticalCenter: parent.verticalCenter
-                width: header.width - parent.x - x - theme.space(4)
-                Text { width: parent.width; elide: Text.ElideRight; text: page.session ? page.session.series_title : ""; color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeSmall }
-                Text { width: parent.width; elide: Text.ElideRight; text: page.session ? (page.session.episode_title || page.session.path.split("/").pop()) : ""; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeNormal; font.weight: Font.DemiBold }
-                Text { width: parent.width; elide: Text.ElideRight; text: page.session ? page.session.code : ""; color: theme.textFaint; font.family: theme.fontMono; font.pointSize: theme.typeSmall }
-            }
+    // ---- Skip windows and auto-skip
+    // The session opens with whatever the file's chapters gave; SkipWindowsReady replaces
+    // the list when AniSkip answers for this episode, which breaks the binding on purpose.
+    property var windows: session ? session.skip_windows : []
+    Connections { target: Door; function onSkipWindowsReady(session, ws) { if (page.session && session === page.session.session) page.windows = page.asArray(ws) } }
+    function windowOf(kind) { return windows.find(function(w) { return w.kind === kind }) || null }
+    readonly property var intro: windowOf("Intro")
+    readonly property var outro: windowOf("Outro")
+    function inside(w, t) { return !!w && t >= w.start && t < w.end }
+    function skipWindow(w) { if (w) seekTo(w.end + 1) }
+    function skipForward() {
+        if (inside(intro, timePos)) skipWindow(intro)
+        else if (inside(outro, timePos)) skipWindow(outro)
+        else seekTo(timePos + 90)
+    }
+
+    // Armed per kind for the length of the session; Undo disarms its kind for good, and a
+    // new session on the same episode is armed again. `landed` says a seek put the position
+    // inside the window: the user asked to be there, so the frames that follow must not
+    // skip back out. Keyed by SkipKind so the two kinds share one rule.
+    property var armed: ({ Intro: true, Outro: true })
+    property var landed: ({ Intro: false, Outro: false })
+    property real lastPos: -1
+    // Read once per settings change rather than once per observed frame: Door.settings is a
+    // QJsonObject and every read of it rebuilds the JavaScript object behind it.
+    readonly property var autoSkip: Door.settings.auto_skip || ({})
+    property var noticeUndo: null
+    // Entering a window by playback or by the session's opening resume point fires the
+    // auto-skip; a seek into it does not, and does not fire on the frame after either.
+    function autoSkipWindow(w, on, jumped) {
+        if (!inside(w, timePos)) { if (w) landed[w.kind] = false; return }
+        if (jumped) { landed[w.kind] = true; return }
+        if (!on || !armed[w.kind] || landed[w.kind]) return
+        armed[w.kind] = false
+        skipWindow(w)
+        noticeUndo = function() { seekTo(w.start); armed[w.kind] = false }
+        notice.show(w.kind === "Intro" ? "Skipped intro" : "Skipped outro", "Undo")
+    }
+    onTimePosChanged: {
+        var jumped = lastPos >= 0 && Math.abs(timePos - lastPos) > 2
+        autoSkipWindow(intro, !!autoSkip.intro, jumped)
+        autoSkipWindow(outro, !!autoSkip.outro, jumped)
+        lastPos = timePos
+        // A step has landed: the line is rewritten with where mpv actually went. While
+        // playing this branch is never taken, since stepping only holds on a paused core.
+        if (stepping) { readFrame(); hud.flash(frameLine(), "frame") }
+        updateNext()
+    }
+
+    // ---- Auto-next and the replay. The pill appears when the outro starts, or eight
+    // seconds from the end when there is no outro, and the countdown starts at the outro's
+    // end when the outro runs to the end of the file, else three seconds from the end.
+    property bool nextVisible: false
+    property bool nextCounting: false
+    property bool nextDismissed: false
+    property bool replayVisible: false
+    readonly property int nextCountMs: 5000
+    Timer { id: nextTimer; interval: page.nextCountMs; onTriggered: page.openNeighbour(page.session.next) }
+    function updateNext() {
+        if (!session || !session.next || session.is_extra || nextDismissed || !loaded || duration <= 0) { nextVisible = false; return }
+        var remaining = duration - timePos
+        nextVisible = outro ? timePos >= outro.start : remaining <= 8
+        var count = (outro && (duration - outro.end) < 20 && timePos >= outro.end) || remaining <= 3
+        if (count && !nextCounting) { nextCounting = true; nextTimer.start() }
+    }
+    function stay() { nextDismissed = true; nextVisible = false; nextCounting = false; nextTimer.stop() }
+
+    // ---- The tracker: Mark watched, the outcomes, and the rating prompt on the last
+    // episode. The mark the core fires by itself at the outro or 85 percent arrives on the
+    // same signal, so the notice and the prompt read the same either way.
+    readonly property var trackerNames: ({ Anilist: "AniList", Mal: "MAL" })
+    function trackerName(t) { return trackerNames[t] || t }
+    function markWatched() {
+        if (!canMark) return
+        var r = Door.markEpisode(session.series, episodeNumber)
+        if (r.error) notice.show(r.error.message)
+    }
+    function outcomeLine(outcomes) {
+        var ok = outcomes.filter(function(o) { return o.ok }).map(function(o) { return trackerName(o.tracker) + " " + (o.progress === null || o.progress === undefined ? "ok" : "at " + o.progress) })
+        var bad = outcomes.filter(function(o) { return !o.ok }).map(function(o) { return trackerName(o.tracker) + " " + (o.reason || o.message || "failed") })
+        return ok.length ? "Tracked  " + ok.concat(bad).join("  ") : "Tracker error  " + bad.join("  ")
+    }
+    function markOutcome(outcomes) {
+        var list = asArray(outcomes)
+        notice.show(outcomeLine(list))
+        if (session && session.is_last_episode && list.some(function(o) { return o.ok })) rating.visible = true
+    }
+    Connections {
+        target: Door
+        function onMarked(series, episode, outcomes) { if (page.session && series === page.session.series) page.markOutcome(outcomes) }
+        function onScored(series, score, outcomes) {
+            if (!page.session || series !== page.session.series) return
+            notice.show(page.asArray(outcomes).every(function(o) { return o.ok }) ? "Rated " + Fmt.score(score) : "Score failed")
         }
     }
 
-    // ---- The seek preview: a second mpv core, nothing audible, moved by time-pos. It is
-    // its own core rather than a thumbnail file, so it costs nothing on disk and answers
-    // any position; it is declared above the video and below the island so it can never
-    // cover the controls it sits over.
-    Corner {
-        id: preview
-        // It hides with the chrome as well as on exit: the island can go while the pointer
-        // rests on the bar, and the bar goes with it, so no exit would ever arrive.
-        property bool shown: false
-        visible: shown && page.chromeVisible
-        width: theme.space(60); height: width * 9 / 16 + theme.space(6)
-        radius: theme.radiusMd; smoothing: theme.cornerSmoothing
-        color: theme.scrim; borderColor: theme.line; borderWidth: 1
-        y: controls.y - height - theme.space(2)
-        property bool loaded: false
-        function show(secs, centerX) {
-            x = Math.max(theme.space(2), Math.min(centerX - width / 2, page.width - width - theme.space(2)))
-            stamp.text = Fmt.clock(secs)
-            shown = true
-            if (loaded) previewVideo.setPropertyAsync("time-pos", secs)
-        }
-        function hide() { shown = false }
-        VideoItem {
-            id: previewVideo
-            anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: theme.space(1)
-            height: width * 9 / 16
-            onReady: {
-                var o = Player.previewOptions
-                for (var i = 0; i < o.length; i++) setProperty(o[i][0], o[i][1])
-                if (page.session) command(["loadfile", page.session.path])
-            }
-            onLoaded: preview.loaded = true
-        }
-        Text { id: stamp; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(1); anchors.horizontalCenter: parent.horizontalCenter; color: theme.text; font.family: theme.fontMono; font.pointSize: theme.typeSmall }
+    // ---- Frame step: mpv's own frame-step and frame-back-step on the paused core. Nothing
+    // is anchored or predicted; the timestamp is the observed time-pos and the number is
+    // mpv's own estimated-frame-number, read at the step (see readFrame).
+    property bool stepping: false
+    // mpv's own frame-step unpauses the core for one frame, so the observed `pause` dips to
+    // false about a millisecond after the command and back about 40 ms later. Measured on
+    // this box: frame-step dips, frame-back-step does not touch pause at all, so waiting for
+    // pause to come back would hang on a backward step. A short guard after each step is what
+    // separates that dip from the play the viewer asked for.
+    Timer { id: stepGuard; interval: 300 }
+    function frameLine() { return Fmt.clockMs(timePos) + "  frame " + frameNumber }
+    // One read per key press and one per landed step, both on an event, never on a timer:
+    // mpv does not notify this property, so there is nothing to observe after the first value.
+    function readFrame() { frameNumber = Number(video.getProperty("estimated-frame-number") || 0) }
+    function step(dir) {
+        if (!paused) video.setProperty("pause", true)
+        stepping = true
+        stepGuard.restart()
+        readFrame()
+        hud.flash(frameLine(), "frame")               // the frame still on screen
+        video.command([dir > 0 ? "frame-step" : "frame-back-step"])
+    }
+    // Play clears the frame line at once, and only the frame line: a subtitle delay put on
+    // screen while paused is a different message and keeps its own 1.2 s. A step's own dip
+    // through unpaused is not a play, so it clears nothing.
+    onPausedChanged: {
+        if (paused || stepGuard.running) return
+        stepping = false
+        if (hud.kind === "frame") hud.clear()
     }
 
-    // ---- Controls island
-    Corner {
-        id: controls
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(6)
-        width: Math.min(parent.width - theme.space(12), theme.space(220))
-        height: bottomRow.height + seekSlot.height + theme.space(9)
-        radius: theme.radiusLg; smoothing: theme.cornerSmoothing
-        color: theme.scrim; borderColor: theme.line; borderWidth: 1
-        opacity: page.chromeVisible ? 1 : 0
-        visible: opacity > 0
-        Behavior on opacity { NumberAnimation { duration: theme.motionNormal } }
-        MouseArea { anchors.fill: parent; hoverEnabled: true; onPositionChanged: page.showChrome() }
-        // The bar is above the island's own hover MouseArea, so the hover that keeps the
-        // chrome up while the pointer sits on the bar comes from the bar itself.
-        Item { id: seekSlot; anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: theme.space(3); height: seek.height
-            SeekBar { id: seek; width: parent.width; position: page.timePos; duration: page.duration; windows: page.windows
-                onSeeked: function(s) { page.seekTo(s) }
-                onHovered: function(s) { page.showChrome(); preview.show(s, seek.mapToItem(page, page.duration > 0 ? s / page.duration * seek.width : 0, 0).x) }
-                onUnhovered: preview.hide() } }
-        Row {
-            id: bottomRow
-            anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: theme.space(3)
-            // No height: a Row is as tall as its tallest child, so the island follows the
-            // buttons and the readout rather than a number that has to be kept in step.
-            spacing: theme.space(1)
-            PlayerButton { glyph: "skip-back"; interactive: !!(page.session && page.session.prev && !page.session.is_extra); tip: interactive ? "Previous episode" : "No previous episode"; onClicked: page.openNeighbour(page.session.prev) }
-            PlayerButton { glyph: page.paused ? "play" : "pause"; tip: page.paused ? "Play" : "Pause"; onClicked: page.togglePause() }
-            PlayerButton { glyph: "skip-forward"; interactive: !!(page.session && page.session.next && !page.session.is_extra); tip: interactive ? "Next episode" : "No next episode"; onClicked: page.openNeighbour(page.session.next) }
-            Text { anchors.verticalCenter: parent.verticalCenter; text: Fmt.clock(page.timePos) + " / " + Fmt.clock(page.duration); color: theme.text; font.family: theme.fontMono; font.pointSize: theme.typeSmall; leftPadding: theme.space(2); rightPadding: theme.space(2) }
-            PlayerButton { glyph: Player.mute || Player.volume === 0 ? "volume-x" : "volume-2"; tip: Player.mute ? "Unmute" : "Mute"; onClicked: page.setMute(!Player.mute) }
-            SliderRow { anchors.verticalCenter: parent.verticalCenter; from: 0; to: 100; value: Player.mute ? 0 : Player.volume; stepSize: 1; trackWidth: theme.space(24); onMoved: function(v) { page.setVolume(v) } }
-            // The slot takes its height from what it holds, not from the row: the row now
-            // takes its own height from its children, and parent.height here would be a loop.
-            Item { id: rightSlot; width: parent.width - x - theme.space(1); height: rightGroup.height   // Task 11 and 12 add the pickers, mark, help
-                anchors.verticalCenter: parent.verticalCenter
-                Row { id: rightGroup; anchors.right: parent.right; spacing: theme.space(1)
-                    PlayerButton { id: audioBtn; glyph: "audio-lines"; tip: "Audio track"; visible: page.audioTracks.length > 1; onClicked: audioPicker.openAt(audioBtn) }
-                    PlayerButton { id: subBtn; glyph: "captions"; tip: page.sid >= 0 ? "Subtitles" : "Subtitles off"; active: page.sid >= 0; visible: page.subTracks.length > 0; onClicked: subPicker.openAt(subBtn) }
-                    PlayerButton { glyph: frame.hostWindow.visibility === Window.FullScreen ? "minimize" : "maximize"; tip: "Fullscreen"; onClicked: page.toggleFullscreen() } } }
-        }
-    }
+    // ---- The chrome: header, preview, island, the auto-next pill and the replay button
+    PlayerChrome { id: chrome }
 
     // ---- The pickers. They fill the page and hold the chrome while they are up.
     TrackPicker { id: audioPicker; title: "Audio"; tracks: page.audioTracks; selected: page.aid; onPicked: function(id) { page.pickAudio(id) } }
     TrackPicker { id: subPicker; title: "Subtitles"; tracks: page.subTracks; selected: page.sid; offRow: true; onPicked: function(id) { page.pickSubtitle(id) } }
 
-    // ---- The HUD line: one message over the picture, gone after 1.2 s. Task 12's frame
-    // step shares it.
+    // ---- The HUD line: one message over the picture, gone after 1.2 s. The subtitle delay
+    // and the frame step share it, each owning the line through its own kind.
     Corner {
         id: hud
         visible: false
@@ -392,37 +446,40 @@ FocusScope {
         function clear() { visible = false; hud.kind = ""; hudTimer.stop() }
     }
 
-    // ---- Keys (the base set; Task 12 completes the map)
-    // The keys a held press repeats: the seeks and the volume ramp, as every player does.
-    // Task 12 adds the two frame step keys, which repeat as well.
-    readonly property var repeatKeys: [Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down]
-    Keys.onPressed: function(e) {
-        // Escape swallows its own repeat rather than falling through: unaccepted, the frame
-        // would take the second press and leave the player on a key that was held, not hit.
-        if (e.isAutoRepeat && e.key === Qt.Key_Escape) { e.accepted = true; return }
-        if (e.isAutoRepeat && page.repeatKeys.indexOf(e.key) < 0) { e.accepted = false; return }
-        // Ctrl, Alt and Meta belong to the frame's shortcuts, so every branch below is the
-        // plain key. Shift passes through: Task 12's z and Z differ by it. The one
-        // combination the player claims, Ctrl+Right, is Task 12's and goes above this line.
-        if (e.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) { e.accepted = false; return }
-        e.accepted = true
-        if (e.key === Qt.Key_Space || e.key === Qt.Key_K) page.togglePause()
-        else if (e.key === Qt.Key_Left) page.seekTo(page.timePos - 5)
-        else if (e.key === Qt.Key_Right) page.seekTo(page.timePos + 5)
-        else if (e.key === Qt.Key_M) page.setMute(!Player.mute)
-        else if (e.key === Qt.Key_F) page.toggleFullscreen()
-        else if (e.key === Qt.Key_Up) page.setVolume(Player.volume + 5)
-        else if (e.key === Qt.Key_Down) page.setVolume(Player.volume - 5)
-        else if (e.key === Qt.Key_C) page.toggleSubtitles()
-        else if (e.key === Qt.Key_Z && !(e.modifiers & Qt.ShiftModifier)) page.nudgeDelay(-0.1)
-        else if (e.key === Qt.Key_Z) page.nudgeDelay(0.1)
-        // A picker is open: the press belongs to the frame's escape stack, which closes it.
-        // Accepting it here would leave the player and take the picker with it.
-        else if (e.key === Qt.Key_Escape) {
-            if (page.openMenus > 0) e.accepted = false
-            else if (frame.hostWindow.visibility === Window.FullScreen) frame.hostWindow.visibility = Window.Windowed
-            else page.leave()
+    // ---- The passing notice: Skipped intro and its Undo, and the tracker outcomes
+    Notice { id: notice; onActed: if (page.noticeUndo) page.noticeUndo() }
+
+    // ---- The rating prompt, on the last episode of a series once a mark has landed
+    Corner {
+        id: rating
+        visible: false
+        anchors.horizontalCenter: parent.horizontalCenter; anchors.top: parent.top; anchors.topMargin: theme.space(24)
+        width: ratingRow.implicitWidth + theme.space(8); height: theme.space(14)
+        radius: theme.radiusMd; smoothing: theme.cornerSmoothing
+        color: theme.scrim; borderColor: theme.line; borderWidth: 1
+        Row {
+            id: ratingRow
+            anchors.centerIn: parent; spacing: theme.space(3)
+            Icon { glyph: "check-check"; size: theme.space(4); anchors.verticalCenter: parent.verticalCenter }
+            Text { anchors.verticalCenter: parent.verticalCenter; text: "Tracked  final episode  rate this show?"; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeNormal }
+            Button { id: rateBtn; anchors.verticalCenter: parent.verticalCenter; text: "Submit"; small: true; onClicked: ratingPicker.openAt(rateBtn, -1) }
+            Button { anchors.verticalCenter: parent.verticalCenter; text: "Skip"; small: true; flat: true; onClicked: rating.visible = false }
         }
-        else e.accepted = false
     }
+    // ScorePicker pushes itself on the frame's escape stack and pops on destruction, but it
+    // knows nothing about the player's chrome, so the count that holds the chrome up while
+    // it is open is kept here.
+    ScorePicker {
+        id: ratingPicker
+        onOpenChanged: page.openMenus += open ? 1 : -1
+        onSaved: function(v) { rating.visible = false; var r = Door.setScore(page.session.series, v); if (r.error) notice.show(r.error.message) }
+    }
+
+    // ---- The key list
+    KeyHelp { id: help }
+
+    // ---- Keys. The attached property stays here, on the item that holds focus; the map
+    // itself is PlayerKeys.qml, beside the list KeyHelp.qml draws from it.
+    PlayerKeys { id: keys }
+    Keys.onPressed: function(e) { keys.handle(e) }
 }
