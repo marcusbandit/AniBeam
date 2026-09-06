@@ -16,11 +16,16 @@ Item {
 
     readonly property var tabs: ["All", "Series", "Movies"]
     readonly property var sorts: [["Alpha", "A to Z"], ["LastViewed", "Last viewed"], ["Progress", "Progress"], ["CommunityScore", "Score"], ["MyScore", "My score"]]
-    readonly property var prefs: Door.preferences
-    property string tab: prefs.library_tab || "All"
-    property string sort: prefs.library_sort || "Alpha"
-    property string direction: prefs.library_direction || "Asc"
-    property string titleLanguage: prefs.title_language || "Romaji"
+    // Loaded-with copies, not bindings on Door.preferences: a plain property bound to
+    // prefs.xxx keeps tracking Door.preferences on its own, ahead of the Connections
+    // handler below that means to compare "what changed" against it, so the very first
+    // preferences-changed event of a fresh instance always sees no difference (the binding
+    // already applied the new value before the handler's own body runs). Seeded once in
+    // Component.onCompleted instead, they are ordinary state from that point on.
+    property string tab: "All"
+    property string sort: "Alpha"
+    property string direction: "Asc"
+    property string titleLanguage: "Romaji"
     property string query: props.q || ""
     property bool hiddenExist: false
     property real nowMs: Date.now()
@@ -103,34 +108,47 @@ Item {
         }
         function onRevealHiddenChanged() { if (page.tab === "Hidden" && !Door.revealHidden) page.tab = "All"; debounce.restart() }
     }
-    Component.onCompleted: reload()
-    // Frame assigns props in the Loader's onLoaded, which runs after this page's own
-    // Component.onCompleted, so props.q is never here yet at construction; react to the
-    // assignment instead. This also carries the trail's search text back in through the
-    // same debounce a keystroke uses, so the filtered grid and the empty-state copy both
-    // follow it.
-    onPropsChanged: search.text = props.q || ""
+    // Frame now sets props before this fires (a Loader.setSource initial property, not a
+    // later Loader.onLoaded assignment), so query already reads the trail's real value and
+    // one reload here is the only core round trip a fresh navigation costs.
+    Component.onCompleted: {
+        var p = Door.preferences
+        tab = p.library_tab || "All"
+        sort = p.library_sort || "Alpha"
+        direction = p.library_direction || "Asc"
+        titleLanguage = p.title_language || "Romaji"
+        // search.text starts "" (SearchField's own default), so setting it to a real
+        // trail query is a genuine text change and queryDebounce.restart() fires from
+        // SearchField's own onTextChanged; stop it right back so this one reload is the
+        // only core round trip a fresh navigation costs, not a second one 150 ms later.
+        search.text = query
+        queryDebounce.stop()
+        reload()
+    }
     // GridView positions itself at its own top once, at construction, using whatever
     // headerItem.height reads at that instant. The Airing header's real height comes from
     // a Flow of Repeater-built Cards, which settles a few ticks late, so that one-time
-    // position is taken against a too-small height and never corrected on its own. Keep
-    // reasserting it, event-driven rather than timed, until the initial position is taken
-    // for real: a genuine drag, or any other write to contentY that is not this very
-    // correction (the frame's Back restore through the scrollY alias, reload()'s own
-    // keep-the-scroll clamp). After that, a later legitimate resize (a search hiding the
-    // section, a tab switch) is left alone rather than fought.
-    property bool positionTaken: false
-    property bool correctingHeaderPosition: false
-    function correctHeaderPosition() {
-        correctingHeaderPosition = true
-        grid.positionViewAtBeginning()
-        correctingHeaderPosition = false
-    }
-    Connections { target: grid; function onMovementStarted() { page.positionTaken = true } }
-    Connections { target: grid; function onContentYChanged() { if (!page.correctingHeaderPosition) page.positionTaken = true } }
+    // position is taken against a too-small height and never corrected on its own; a search
+    // hiding or a tab switch losing the section collapses it again later, and it needs to
+    // be chased back too when the section returns. Rather than latch a single "has the
+    // position been taken" flag (which round 1 did, and which then refused to chase the
+    // section back once a search that briefly hid it had forced one real contentY write),
+    // this compares the current position against where the last known header edge put it:
+    // sitting exactly there means nothing has moved contentY on its own since, so following
+    // the header's new height is still the right call; sitting anywhere else, a drag or a
+    // deliberate restore (the frame's Back restore, reload()'s own keep-the-scroll clamp)
+    // has taken over and this never touches it again. userScrolled alone is permanent,
+    // for "never once the visitor has actually dragged", per the same rule.
+    property bool userScrolled: false
+    property real priorHeaderHeight: 0
+    Connections { target: grid; function onMovementStarted() { page.userScrolled = true } }
     Connections {
         target: grid.headerItem
-        function onHeightChanged() { if (!page.positionTaken) page.correctHeaderPosition() }
+        function onHeightChanged() {
+            var wasAtTop = !page.userScrolled && Math.abs(grid.contentY + page.priorHeaderHeight) < 1
+            page.priorHeaderHeight = grid.headerItem.height
+            if (wasAtTop) grid.positionViewAtBeginning()
+        }
     }
 
     Column {

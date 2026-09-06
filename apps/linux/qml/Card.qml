@@ -169,7 +169,7 @@ Item {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: root.opened()
+        onClicked: { tipIntent.stop(); frame.hideTip(); root.opened() }
         onEntered: if (root.folderName !== "") tipIntent.start()
         onExited: { tipIntent.stop(); frame.hideTip() }
         Timer { id: tipIntent; interval: 600; onTriggered: frame.showTip(titleText, root.folderName) }

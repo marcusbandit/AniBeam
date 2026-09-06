@@ -14,6 +14,8 @@ Environment the shell sets for itself: QSG_RENDER_LOOP=threaded, QT_XCB_GL_INTEG
 ANIBEAM_THEMES_DIR and ANIBEAM_MPV_CONF point a dev run at the checkout's themes/ and mpv.conf.
 
 `shoot.sh` forces the RHI backend (QT_QUICK_BACKEND=rhi, QSG_RHI_BACKEND=opengl) under the offscreen
-platform, because Qt's software scene graph cannot paint a Shapes `fillItem` and every poster comes
-back white without it; that needs a DISPLAY for the GL context. Without one the software backend
-still captures, just with white poster frames.
+platform when a DISPLAY is set, because Qt's software scene graph cannot paint a Shapes `fillItem`
+and every poster comes back white without it, and RHI's GL backend needs GLX for its context. With a
+DISPLAY the capture paints through the GPU; without one, forcing RHI aborts instead of falling back
+(no context, no PNG), so `shoot.sh` leaves the software backend running instead, and poster frames
+come back white.

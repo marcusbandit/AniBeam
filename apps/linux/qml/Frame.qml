@@ -42,14 +42,31 @@ FocusScope {
 
     // Pages by name; a page task swaps its placeholder for the real file
     readonly property var pages: ({
-        library: libraryPage, feed: placeholder, watching: placeholder, metadata: placeholder, settings: placeholder,
-        subscriptions: placeholder, series: placeholder, player: placeholder
+        library: "LibraryPage.qml", feed: "PagePlaceholder.qml", watching: "PagePlaceholder.qml", metadata: "PagePlaceholder.qml",
+        settings: "PagePlaceholder.qml", subscriptions: "PagePlaceholder.qml", series: "PagePlaceholder.qml", player: "PagePlaceholder.qml"
     })
-    Component { id: placeholder; PagePlaceholder {} }
-    Component { id: libraryPage; LibraryPage {} }
 
     function leavingScroll() { return page.item && page.item.scrollY !== undefined ? page.item.scrollY : 0 }
     function go(name, props, label) { nav.open(name, props, label, leavingScroll()) }
+    // Loaded by URL with props as an initial property, not a Component swapped onto a
+    // standing Loader, so a page's own Component.onCompleted sees nav.current.props from
+    // its very first tick rather than through a later Loader.onLoaded assignment. Clearing
+    // source first forces a real rebuild even when navigating between two uses of the same
+    // file (this page map has none yet, but a future series-to-series move would). The
+    // Qt.callLater is load-bearing, not tidiness: a GridView's cache-buffer delegates
+    // incubate a little behind the page itself even under a synchronous Loader, and
+    // clearing source immediately after the very first load (the startup library-then-
+    // correct-to-the-requested-page sequence --page runs through Main.qml) tore that
+    // incubation down mid-flight and logged "Object or context destroyed during
+    // incubation"; deferring one tick gives it room to settle first.
+    function loadPage() {
+        Qt.callLater(function() {
+            page.source = ""
+            page.setSource(Qt.resolvedUrl(frame.pages[nav.current.page] || "PagePlaceholder.qml"), { props: nav.current.props })
+        })
+    }
+    Component.onCompleted: frame.loadPage()
+    Connections { target: nav; function onChanged() { frame.loadPage() } }
 
     Rail {
         id: rail
@@ -69,16 +86,11 @@ FocusScope {
             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
             anchors.bottom: frame.fullWindow ? parent.bottom : strip.top
             focus: true
-            sourceComponent: frame.pages[nav.current.page] || placeholder
+            asynchronous: false
             onLoaded: {
-                item.props = nav.current.props
                 if (nav.pendingScroll > 0 && item.scrollY !== undefined) Qt.callLater(function() { if (page.item) page.item.scrollY = nav.pendingScroll })
                 item.forceActiveFocus()
             }
-        }
-        Connections {
-            target: nav
-            function onChanged() { page.active = false; page.active = true }
         }
 
         // Right-click anywhere outside the player: a menu that always offers Back
