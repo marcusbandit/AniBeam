@@ -62,11 +62,14 @@ Item {
     function levelColor(l) { return l === "Error" ? theme.red : l === "Warn" ? theme.yellow : theme.text }
 
     // Filter, then fold runs of identical consecutive lines; an expanded run is laid out again.
-    // A run's key is the seq of its first entry, not its position in entries: every live event
-    // is prepended (see onEvent above), which shifts every index by one, so an index-keyed
-    // expanded[] would re-collapse an already-expanded row on the very next event and could
-    // later pre-expand a fresh, unrelated run that happened to land on the same old index. seq
-    // is the core's own monotonic id for the event and never changes under it.
+    // A run's key is the seq of its OLDEST member, not its position in entries and not the seq
+    // it was first created with. entries is newest first, so the loop meets a run's newest
+    // member first and its oldest member last; every live event is prepended (see onEvent
+    // above), which only ever adds a new newest member in front of an existing run, so keying
+    // on the newest member (or on the array index, the first attempt at this fix) still changes
+    // under growth and re-collapses an already-expanded row. Keying on the oldest member, kept
+    // up to date on every merge below, never changes as the run grows at the top: seq is the
+    // core's own monotonic id for the event and is never reused or altered under it.
     readonly property var rows: {
         var sAny = anyOn(stageOn), lAny = anyOn(levelOn)
         var out = []
@@ -78,6 +81,7 @@ Item {
             if (run && run.stage === e.stage && run.level === e.level && run.msg === e.msg) {
                 run.count += 1
                 run.items.push(e)
+                run.key = e.seq
                 continue
             }
             run = { time: e.time, stage: e.stage, level: e.level, msg: e.msg, count: 1, key: e.seq, items: [e] }
