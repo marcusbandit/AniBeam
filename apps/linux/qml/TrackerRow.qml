@@ -152,10 +152,13 @@ Item {
             Text {
                 text: "Redirect URL"
                 color: theme.textDim
+                height: redirectChip.height
+                verticalAlignment: Text.AlignVCenter
                 font.family: theme.fontSans
                 font.pointSize: theme.typeSmall
             }
             Chip {
+                id: redirectChip
                 text: root.redirectUrl
                 clickable: true
                 icon: copied.running ? "check" : "copy"

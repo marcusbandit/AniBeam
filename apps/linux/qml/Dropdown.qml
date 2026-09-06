@@ -1,5 +1,9 @@
 // A pill showing the current value and a chevron; opens a list under it. Up and Down move
 // the highlight, Return picks, Escape closes. Picking emits `picked`; the owner sets `index`.
+// `interactive`, not the root's own `enabled`: `enabled` cascades to every child, so turning
+// it off would take the popup's own focus and hover handling with it for no visual gain
+// beyond what the caller's own row opacity already gives, exactly as PlayerButton's own
+// `interactive` avoids disabling its Tooltip's MouseArea.
 import QtQuick
 import QtQuick.Controls.Basic as QC
 
@@ -8,6 +12,7 @@ Corner {
     property var options: []
     property int index: 0
     property real minWidth: theme.space(40)
+    property bool interactive: true
     signal picked(int i)
 
     readonly property string current: options.length > index && index >= 0 ? String(options[index]) : ""
@@ -18,9 +23,9 @@ Corner {
     color: theme.surfaceSunken
     borderColor: activeFocus || pop.opened ? theme.focusRing : (hover.containsMouse ? theme.lineStrong : theme.line)
     borderWidth: activeFocus || pop.opened ? theme.space(0.5) : 1
-    activeFocusOnTab: true
+    activeFocusOnTab: root.interactive
 
-    function open() { pop.hi = index; pop.open() }
+    function open() { if (!root.interactive) return; pop.hi = index; pop.open() }
     Keys.onSpacePressed: open()
     Keys.onReturnPressed: open()
     Keys.onDownPressed: open()
@@ -54,7 +59,8 @@ Corner {
     MouseArea {
         id: hover
         anchors.fill: parent
-        hoverEnabled: true
+        enabled: root.interactive
+        hoverEnabled: root.interactive
         cursorShape: Qt.PointingHandCursor
         onClicked: { root.forceActiveFocus(); pop.opened ? pop.close() : root.open() }
     }
