@@ -46,7 +46,7 @@ FocusScope {
         subscriptions: placeholder, series: placeholder, player: placeholder
     })
     Component { id: placeholder; PagePlaceholder {} }
-    Component { id: libraryPage; PagePlaceholder {} }
+    Component { id: libraryPage; LibraryPage {} }
 
     function leavingScroll() { return page.item && page.item.scrollY !== undefined ? page.item.scrollY : 0 }
     function go(name, props, label) { nav.open(name, props, label, leavingScroll()) }
