@@ -6,5 +6,6 @@ pub mod door;
 pub mod fmt;
 pub mod helpers;
 pub mod model;
+pub mod player;
 pub mod shell;
 pub mod theme;

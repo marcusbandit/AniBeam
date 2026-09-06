@@ -43,7 +43,9 @@ fn main() {
             .qml_file("qml/EpisodeRow.qml")
             .qml_file("qml/PersonCard.qml")
             .qml_file("qml/RecommendationCard.qml")
-            .qml_file("qml/SeriesPage.qml"),
+            .qml_file("qml/SeriesPage.qml")
+            .qml_file("qml/PlayerButton.qml")
+            .qml_file("qml/PlayerPage.qml"),
     )
     .qt_module("Quick")
     .files([
@@ -51,13 +53,14 @@ fn main() {
         "src/bridge/fmt.rs",
         "src/bridge/helpers.rs",
         "src/bridge/model.rs",
+        "src/bridge/player.rs",
         "src/bridge/shell.rs",
         "src/bridge/theme.rs",
     ])
     .include_dir("cpp")
     // mpvqt_export.h includes mpvqt_version.h bare; CMake's target used to supply this.
     .include_dir("/usr/include/MpvQt")
-    .cpp_files(["cpp/helpers.cpp"])
+    .cpp_files(["cpp/helpers.cpp", "cpp/videoitem.h", "cpp/videoitem.cpp"])
     // qrc:/qt/qml/com/marcusrosado/AniBeam/assets/...; a name left out of this list is a
     // blank icon at runtime, not a build error, so it is generated:
     // ls apps/linux/assets/icons/*.svg | sed 's|apps/linux/||;s|.*|        "&",|'

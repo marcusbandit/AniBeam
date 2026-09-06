@@ -3,6 +3,7 @@ mod bridge;
 mod format;
 mod json;
 mod paths;
+mod player_config;
 mod runtime;
 mod theme;
 

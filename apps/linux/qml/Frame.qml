@@ -44,7 +44,7 @@ FocusScope {
     // Pages by name; a page task swaps its placeholder for the real file
     readonly property var pages: ({
         library: "LibraryPage.qml", feed: "PagePlaceholder.qml", watching: "PagePlaceholder.qml", metadata: "PagePlaceholder.qml",
-        settings: "PagePlaceholder.qml", subscriptions: "PagePlaceholder.qml", series: "SeriesPage.qml", player: "PagePlaceholder.qml"
+        settings: "PagePlaceholder.qml", subscriptions: "PagePlaceholder.qml", series: "SeriesPage.qml", player: "PlayerPage.qml"
     })
 
     function leavingScroll() { return page.item && page.item.scrollY !== undefined ? page.item.scrollY : 0 }
