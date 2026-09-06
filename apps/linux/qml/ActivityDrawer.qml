@@ -61,7 +61,12 @@ Item {
     function flip(o, k) { var n = {}; for (var j in o) n[j] = o[j]; n[k] = !n[k]; return n }
     function levelColor(l) { return l === "Error" ? theme.red : l === "Warn" ? theme.yellow : theme.text }
 
-    // Filter, then fold runs of identical consecutive lines; an expanded run is laid out again
+    // Filter, then fold runs of identical consecutive lines; an expanded run is laid out again.
+    // A run's key is the seq of its first entry, not its position in entries: every live event
+    // is prepended (see onEvent above), which shifts every index by one, so an index-keyed
+    // expanded[] would re-collapse an already-expanded row on the very next event and could
+    // later pre-expand a fresh, unrelated run that happened to land on the same old index. seq
+    // is the core's own monotonic id for the event and never changes under it.
     readonly property var rows: {
         var sAny = anyOn(stageOn), lAny = anyOn(levelOn)
         var out = []
@@ -75,7 +80,7 @@ Item {
                 run.items.push(e)
                 continue
             }
-            run = { time: e.time, stage: e.stage, level: e.level, msg: e.msg, count: 1, key: i, items: [e] }
+            run = { time: e.time, stage: e.stage, level: e.level, msg: e.msg, count: 1, key: e.seq, items: [e] }
             out.push(run)
         }
         var flat = []
@@ -169,7 +174,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: theme.space(1)
                 Button { text: "Copy"; icon: "copy"; flat: true; small: true; onClicked: root.copyAll() }
-                Button { text: "Clear"; icon: "trash-2"; flat: true; small: true; onClicked: { Door.clearEvents(); root.entries = [] } }
+                Button { text: "Clear"; icon: "trash-2"; flat: true; small: true; onClicked: { Door.clearEvents(); root.entries = []; root.expanded = ({}) } }
                 Button { text: "Close"; icon: "x"; flat: true; small: true; onClicked: root.close() }
             }
         }
