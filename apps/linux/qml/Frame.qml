@@ -43,7 +43,7 @@ FocusScope {
     // Pages by name; a page task swaps its placeholder for the real file
     readonly property var pages: ({
         library: "LibraryPage.qml", feed: "PagePlaceholder.qml", watching: "PagePlaceholder.qml", metadata: "PagePlaceholder.qml",
-        settings: "PagePlaceholder.qml", subscriptions: "PagePlaceholder.qml", series: "PagePlaceholder.qml", player: "PagePlaceholder.qml"
+        settings: "PagePlaceholder.qml", subscriptions: "PagePlaceholder.qml", series: "SeriesPage.qml", player: "PagePlaceholder.qml"
     })
 
     function leavingScroll() { return page.item && page.item.scrollY !== undefined ? page.item.scrollY : 0 }
@@ -52,21 +52,28 @@ FocusScope {
     // standing Loader, so a page's own Component.onCompleted sees nav.current.props from
     // its very first tick rather than through a later Loader.onLoaded assignment. Clearing
     // source first forces a real rebuild even when navigating between two uses of the same
-    // file (this page map has none yet, but a future series-to-series move would). The
-    // Qt.callLater is load-bearing, not tidiness: a GridView's cache-buffer delegates
-    // incubate a little behind the page itself even under a synchronous Loader, and
-    // clearing source immediately after the very first load (the startup library-then-
-    // correct-to-the-requested-page sequence --page runs through Main.qml) tore that
-    // incubation down mid-flight and logged "Object or context destroyed during
-    // incubation"; deferring one tick gives it room to settle first.
-    function loadPage() {
-        Qt.callLater(function() {
-            page.source = ""
-            page.setSource(Qt.resolvedUrl(frame.pages[nav.current.page] || "PagePlaceholder.qml"), { props: nav.current.props })
-        })
+    // file (this page map has none yet, but a future series-to-series move would).
+    //
+    // Scheduled through Qt.callLater(frame.loadPageNow), a bound method reference, not an
+    // inline closure: Qt.callLater only dedups a repeat call to the very same function, and
+    // two `Qt.callLater(function() { ... })` calls each build a fresh, distinct closure, so
+    // it never saw them as the same request. The startup `--page X` path fires two
+    // navigations in one tick (Frame's own Component.onCompleted opens the default
+    // "library", then Main.qml's Loader.onLoaded immediately corrects to the requested
+    // page), and with two distinct closures queued, both ran: the destination page was
+    // built twice, and the first build was torn down mid-incubation, logging "Object or
+    // context destroyed during incubation". A shared method reference lets Qt.callLater
+    // collapse the two calls into one, so loadPageNow runs once per tick and still reads
+    // nav.current fresh at execution time.
+    function loadPage() { Qt.callLater(frame.loadPageNow) }
+    function loadPageNow() {
+        page.source = ""
+        page.setSource(Qt.resolvedUrl(frame.pages[nav.current.page] || "PagePlaceholder.qml"), { props: nav.current.props })
     }
     Component.onCompleted: frame.loadPage()
-    Connections { target: nav; function onChanged() { frame.loadPage() } }
+    // A hovered item destroyed by the navigation never fires its own exit handler, so a
+    // tip or a menu opened on the leaving page would otherwise survive onto the next one.
+    Connections { target: nav; function onChanged() { frame.loadPage(); frame.hideTip(); frame.closeMenu() } }
 
     Rail {
         id: rail

@@ -1,6 +1,8 @@
 //! The command line. Nothing here opens a window: `--version` prints and leaves, `--shoot`
 //! renders one page offscreen and leaves, `--root` sandboxes every path, `--action` is what
-//! a second launch forwards as ActivateAction (Task 13).
+//! a second launch forwards as ActivateAction (Task 13), `--props` is the JSON object a
+//! `--shoot`'d page opens with, for pages that need more than a bare page name (a series
+//! id, a metadata query).
 
 use std::path::PathBuf;
 
@@ -9,6 +11,7 @@ pub struct Args {
     pub version: bool,
     pub shoot: Option<String>,
     pub page: Option<String>,
+    pub props: Option<String>,
     pub width: u32,
     pub height: u32,
     pub root: Option<PathBuf>,
@@ -21,6 +24,7 @@ impl Default for Args {
             version: false,
             shoot: None,
             page: None,
+            props: None,
             width: 1280,
             height: 800,
             root: None,
@@ -42,6 +46,7 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
             "--version" | "-V" => a.version = true,
             "--shoot" => a.shoot = Some(value("--shoot")?),
             "--page" => a.page = Some(value("--page")?),
+            "--props" => a.props = Some(value("--props")?),
             "--width" => {
                 a.width = value("--width")?
                     .parse()
@@ -74,11 +79,12 @@ mod tests {
     fn defaults_and_every_flag() {
         assert_eq!(parse(&argv("")).unwrap(), Args::default());
         let a = parse(&argv(
-            "--shoot out.png --page library --width 1600 --height 1000 --root /tmp/x --action open",
+            "--shoot out.png --page library --props {\"id\":5} --width 1600 --height 1000 --root /tmp/x --action open",
         ))
         .unwrap();
         assert_eq!(a.shoot.as_deref(), Some("out.png"));
         assert_eq!(a.page.as_deref(), Some("library"));
+        assert_eq!(a.props.as_deref(), Some("{\"id\":5}"));
         assert_eq!((a.width, a.height), (1600, 1000));
         assert_eq!(a.root.as_deref(), Some(std::path::Path::new("/tmp/x")));
         assert_eq!(a.action.as_deref(), Some("open"));

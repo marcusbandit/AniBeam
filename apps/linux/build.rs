@@ -37,7 +37,13 @@ fn main() {
             .qml_file("qml/SearchField.qml")
             .qml_file("qml/Pager.qml")
             .qml_file("qml/Card.qml")
-            .qml_file("qml/LibraryPage.qml"),
+            .qml_file("qml/LibraryPage.qml")
+            .qml_file("qml/StatusDot.qml")
+            .qml_file("qml/ScorePicker.qml")
+            .qml_file("qml/EpisodeRow.qml")
+            .qml_file("qml/PersonCard.qml")
+            .qml_file("qml/RecommendationCard.qml")
+            .qml_file("qml/SeriesPage.qml"),
     )
     .qt_module("Quick")
     .files([

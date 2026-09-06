@@ -35,7 +35,17 @@ Window {
         active: window.settled && Theme.ready && Door.ready
         sourceComponent: Shell.page === "tokens" ? tokensPage : frameComponent
         onLoaded: {
-            if (Shell.page !== "tokens" && Shell.page !== "library" && item.nav) item.nav.replace(Shell.page, {}, undefined)
+            if (Shell.page !== "tokens" && Shell.page !== "library" && item.nav) {
+                var props = {}
+                if (Shell.props !== "") { try { props = JSON.parse(Shell.props) } catch (e) { props = {} } }
+                // A --shoot of the series page with no id in --props opens the first
+                // series alphabetically, so the page has something real to draw.
+                if (Shell.page === "series" && props.id === undefined) {
+                    var r = Door.listSeries("All", "", "Alpha", "Asc", false)
+                    if (!r.error && r.reply.series.length) props = { id: r.reply.series[0].id }
+                }
+                item.nav.replace(Shell.page, props, undefined)
+            }
             window.maybeShoot()
         }
     }
