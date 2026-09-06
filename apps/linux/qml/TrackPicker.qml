@@ -15,7 +15,10 @@ Item {
     visible: open
     z: 900
 
+    // Guarded the same way close() is: a second openAt on a picker already up would count
+    // itself twice into page.openMenus and the chrome would never hide again.
     function openAt(anchor) {
+        if (open) return
         var p = anchor.mapToItem(root, anchor.width / 2, 0)
         panel.x = Math.max(theme.space(2), Math.min(p.x - panel.width / 2, root.width - panel.width - theme.space(2)))
         panel.y = Math.max(theme.space(2), p.y - panel.height - theme.space(2))

@@ -62,22 +62,30 @@ const PAIRS: [(&str, &str); 14] = [
     ("ar", "ara"),
 ];
 
-/// One code down to its two letter form, with the region suffix and mpv's "und" gone.
+/// One code down to its two letter form, with the region suffix gone and mpv's "und",
+/// undetermined, down to nothing.
 fn canon(l: &str) -> String {
     let l = l.to_ascii_lowercase();
-    let base = l.split(['-', '_']).next().unwrap_or(&l).to_string();
+    let base = l.split(['-', '_']).next().unwrap_or(&l);
+    // The whole code, not a substring: a replace would reach inside any code that happened
+    // to spell those three letters, and it left an undetermined track unable to match even
+    // the ref taken from itself.
+    if base == "und" {
+        return String::new();
+    }
     PAIRS
         .iter()
         .find(|(_, three)| base == *three)
         .map(|(two, _)| (*two).to_string())
-        .unwrap_or(base)
-        .replace("und", "")
+        .unwrap_or_else(|| base.to_string())
 }
 
-/// Two and three letter codes are the same to mpv, so they are the same here.
+/// Two and three letter codes are the same to mpv, so they are the same here. An
+/// undetermined tag is no language, so it is the same as another undetermined tag and as
+/// nothing else: a language order never reaches for it, but a choice stored on one still
+/// finds it again.
 pub fn same_lang(a: &str, b: &str) -> bool {
-    let (a, b) = (canon(a), canon(b));
-    !a.is_empty() && a == b
+    canon(a) == canon(b)
 }
 
 fn lang_matches(t: &Track, lang: &str) -> bool {
@@ -339,6 +347,38 @@ mod tests {
                 && same_lang("ja", "jpn")
                 && same_lang("EN", "en")
                 && !same_lang("en", "es")
+        );
+    }
+
+    #[test]
+    fn an_undetermined_tag_is_no_language_but_still_finds_its_own_ref() {
+        let tracks = parse(&json!([
+            { "id": 1, "type": "sub", "lang": "und", "title": "Unknown" },
+            { "id": 2, "type": "sub", "lang": "eng", "title": "English" }
+        ]));
+        assert!(
+            same_lang("und", "und") && !same_lang("und", "en"),
+            "an undetermined tag is only ever itself"
+        );
+        assert!(
+            !same_lang("sund", "s"),
+            "the whole code is tested, so a code that spells und inside itself is left alone"
+        );
+        let stored = TrackChoice {
+            audio: None,
+            subtitle: Some(SubtitleChoice::Track {
+                track: track_ref(&tracks[0]),
+            }),
+        };
+        assert_eq!(
+            pick(&tracks, &stored, &defaults()).sid,
+            Some(1),
+            "a choice stored on an undetermined track finds it again"
+        );
+        assert_eq!(
+            pick(&tracks, &TrackChoice::default(), &defaults()).sid,
+            Some(2),
+            "but the en order never reaches for it"
         );
     }
 }

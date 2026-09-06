@@ -8,7 +8,6 @@ Item {
     property real position: 0
     property real duration: 0
     property var windows: []
-    property real hoverAt: -1
     signal seeked(real secs)
     signal hovered(real secs)
     signal unhovered()
@@ -35,8 +34,8 @@ Item {
         id: mouse
         anchors.fill: parent
         hoverEnabled: true
-        onPositionChanged: function(m) { root.hoverAt = root.at(m.x); root.hovered(root.hoverAt) }
-        onExited: { root.hoverAt = -1; root.unhovered() }
+        onPositionChanged: function(m) { root.hovered(root.at(m.x)) }
+        onExited: root.unhovered()
         onClicked: function(m) { root.seeked(root.at(m.x)) }
     }
 }

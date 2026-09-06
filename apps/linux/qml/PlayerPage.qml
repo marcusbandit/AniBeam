@@ -92,8 +92,18 @@ FocusScope {
     function addSidecars() {
         for (var j = 0; j < session.sidecars.length; j++) {
             var s = session.sidecars[j]
-            var r = video.commandBlocking(["sub-add", s.path, "auto", s.title || "", s.language || ""])
-            if (r < 0) console.warn("anibeam: sub-add", s.path, "failed:", r)
+            video.commandBlocking(["sub-add", s.path, "auto", s.title || "", s.language || ""])
+        }
+    }
+    // commandBlocking's own answer says nothing usable: mpv returns an empty node on
+    // success, which reaches JS as undefined, and MpvQt wraps a failure in an ErrorReturn
+    // struct, which reaches JS as NaN, so no comparison against it can be true. The list
+    // mpv ended up with is the answer, so the check is made against that instead.
+    function checkSidecars(list) {
+        for (var j = 0; j < session.sidecars.length; j++) {
+            var p = session.sidecars[j].path
+            var on = list.some(function(t) { return t.type === "sub" && t.external && t["external-filename"] === p })
+            if (!on) console.warn("anibeam: sub-add did not load", p)
         }
     }
     // A settings change reaches a file already playing: the styling options are re-set on
@@ -101,11 +111,12 @@ FocusScope {
     Connections {
         target: Door
         function onSettingsChanged() {
-            if (!page.session) return
-            var r = Door.getSettings()
-            if (r.error) return
-            page.session.subtitle_defaults = r.reply.settings.subtitle_defaults
-            var opts = Player.subtitleOptions(page.session.subtitle_defaults)
+            // The door writes its own settings property before it emits, so the new value
+            // is already here and a second GetSettings would only ask for what we hold.
+            var d = page.session ? Door.settings.subtitle_defaults : null
+            if (!d) return
+            page.session.subtitle_defaults = d
+            var opts = Player.subtitleOptions(d)
             for (var i = 0; i < opts.length; i++) video.setProperty(opts[i][0], opts[i][1])
         }
     }
@@ -155,6 +166,7 @@ FocusScope {
     function onFileLoaded() {
         addSidecars()
         trackList = asArray(video.getProperty("track-list"))
+        checkSidecars(trackList)
         var p = Player.pickTracks(trackList, session.track_choice, session.subtitle_defaults)
         video.setProperty("aid", p.aid >= 0 ? String(p.aid) : "no")
         video.setProperty("sid", p.sid >= 0 ? String(p.sid) : "no")
@@ -164,7 +176,7 @@ FocusScope {
         if (name === "track-list") trackList = asArray(value)
         else if (name === "aid") aid = value === "no" || value === null ? -1 : Number(value)
         else if (name === "sid") { sid = value === "no" || value === null ? -1 : Number(value); if (sid >= 0) lastSid = sid }
-        else if (name === "sub-delay") subDelay = Number(value || 0)
+        else if (name === "sub-delay") { subDelay = Number(value || 0); hud.update(delayLine(subDelay), "subDelay") }
         else if (name === "chapter-list") {}
         else onObservedMore(name, value)                      // Task 12
     }
@@ -226,12 +238,14 @@ FocusScope {
         showChrome()
     }
     // z and Z. The page's own value moves first so a second press within the round trip
-    // adds to the first rather than repeating it; the observation confirms it.
+    // adds to the first rather than repeating it; the observation then rewrites the line
+    // with what mpv actually settled on, so the HUD reports the player, not the intent.
+    function delayLine(v) { return "subtitle delay " + (v >= 0 ? "+" : "") + v.toFixed(1) + " s" }
     function nudgeDelay(d) {
         var v = Math.round((subDelay + d) * 10) / 10
         subDelay = v
         video.setProperty("sub-delay", v)
-        hud.flash("subtitle delay " + (v >= 0 ? "+" : "") + v.toFixed(1) + " s")
+        hud.flash(delayLine(v), "subDelay")
         showChrome()
     }
 
@@ -367,10 +381,15 @@ FocusScope {
         anchors.top: parent.top; anchors.topMargin: theme.space(20); anchors.horizontalCenter: parent.horizontalCenter
         width: hudText.implicitWidth + theme.space(6); height: theme.controlHeight
         radius: height / 2; smoothing: theme.cornerSmoothing; color: theme.scrim; borderColor: theme.line; borderWidth: 1
+        // Which key owns the line on screen, so an observation that lands afterwards can
+        // rewrite its own line and no other. An omitted kind belongs to nobody.
+        property string kind: ""
         Text { id: hudText; anchors.centerIn: parent; color: theme.text; font.family: theme.fontMono; font.pointSize: theme.typeNormal }
-        Timer { id: hudTimer; interval: 1200; onTriggered: hud.visible = false }
-        function flash(text) { hudText.text = text; visible = true; hudTimer.restart() }
-        function clear() { visible = false; hudTimer.stop() }
+        Timer { id: hudTimer; interval: 1200; onTriggered: hud.clear() }
+        function flash(text, kind) { hud.kind = kind || ""; hudText.text = text; visible = true; hudTimer.restart() }
+        // The text alone, with the countdown left alone: a confirmation is not a new message.
+        function update(text, kind) { if (visible && hud.kind === (kind || "")) hudText.text = text }
+        function clear() { visible = false; hud.kind = ""; hudTimer.stop() }
     }
 
     // ---- Keys (the base set; Task 12 completes the map)
