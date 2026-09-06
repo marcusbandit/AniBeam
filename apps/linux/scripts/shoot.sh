@@ -8,7 +8,7 @@ name="$1"; shift
 out="$here/captures"; mkdir -p "$out"
 root="${ANIBEAM_ROOT:-$out/root}"; mkdir -p "$root"
 cargo build -p anibeam --quiet
-QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 ANIBEAM_THEMES_DIR="$here/themes" ANIBEAM_MPV_CONF="$here/mpv.conf" \
+QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=rhi QSG_RHI_BACKEND=opengl QT_FORCE_STDERR_LOGGING=1 ANIBEAM_THEMES_DIR="$here/themes" ANIBEAM_MPV_CONF="$here/mpv.conf" \
   "$here/../../target/debug/anibeam" --root "$root" --shoot "$out/$name.png" --width "${W:-1600}" --height "${H:-1000}" "$@" \
   2> "$out/$name.log" || { echo "anibeam exited $?; see $out/$name.log"; exit 1; }
 file "$out/$name.png" | grep -q PNG && echo "$name ok" || { echo "no PNG written; see $out/$name.log"; exit 1; }

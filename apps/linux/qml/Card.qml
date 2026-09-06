@@ -34,13 +34,13 @@ Item {
         onTriggered: root.lift += (root.liftTarget - root.lift) * (1 - Math.exp(-12 * frameTime))
     }
 
-    // The poster, laid out at the frame's size and cropped to it; the frame paints it as
+    // The poster, laid out at the shape's size and cropped to it; the shape paints it as
     // laid out through Corner.fillItem
     Image {
         id: poster
         visible: false
-        width: frame.width
-        height: frame.height
+        width: shape.width
+        height: shape.height
         source: item.poster ? "file://" + item.poster : ""
         sourceSize.width: 480
         fillMode: Image.PreserveAspectCrop
@@ -50,8 +50,11 @@ Item {
         cache: true
     }
 
+    // Named shape, not frame: an id may not reuse a context-chain name (frame, theme,
+    // page, window, nav), or everything below it in this file resolves that name to this
+    // shape instead of the shell's own Frame, including a Tooltip's own internal script.
     Corner {
-        id: frame
+        id: shape
         x: 0
         y: root.lift
         width: root.posterWidth
@@ -120,11 +123,12 @@ Item {
 
     Column {
         id: info
-        anchors.top: frame.bottom
+        anchors.top: shape.bottom
         anchors.topMargin: theme.space(2) - root.lift
         width: root.posterWidth
         spacing: theme.space(0.5)
         Text {
+            id: titleText
             width: parent.width
             text: root.displayTitle
             color: hover.containsMouse ? theme.accent : theme.text
@@ -134,7 +138,6 @@ Item {
             elide: Text.ElideRight
             maximumLineCount: 2
             wrapMode: Text.Wrap
-            Tooltip { text: root.folderName }
         }
         Item {
             width: parent.width
@@ -157,11 +160,19 @@ Item {
         }
     }
 
+    // The folder-name tip rides this MouseArea rather than a nested Tooltip: this one
+    // covers the whole card, on top of the title text in paint order, so a second hover
+    // area stacked under it would never see the pointer at all. Same 600 ms intent as the
+    // Tooltip primitive.
     MouseArea {
         id: hover
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
         onClicked: root.opened()
+        onEntered: if (root.folderName !== "") tipIntent.start()
+        onExited: { tipIntent.stop(); frame.hideTip() }
+        Timer { id: tipIntent; interval: 600; onTriggered: frame.showTip(titleText, root.folderName) }
     }
+    onFolderNameChanged: if (hover.containsMouse && folderName === "") frame.hideTip()
 }

@@ -12,17 +12,7 @@ Flickable {
     contentHeight: inner.implicitHeight + footInset
     clip: true
     boundsBehavior: Flickable.StopAtBounds
-    QC.ScrollBar.vertical: QC.ScrollBar {
-        policy: QC.ScrollBar.AsNeeded
-        visible: size < 1
-        contentItem: Corner {
-            implicitWidth: theme.space(1)
-            radius: height / 2
-            smoothing: theme.cornerSmoothing
-            color: theme.lineStrong
-            opacity: parent.active ? 1 : 0.4
-        }
-    }
+    QC.ScrollBar.vertical: ThinScrollBar {}
     MouseArea { anchors.fill: parent; onPressed: function(m) { root.forceActiveFocus(); m.accepted = false } }
     Column {
         id: inner

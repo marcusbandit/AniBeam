@@ -9,8 +9,7 @@ import com.marcusrosado.AniBeam
 Item {
     id: page
     property var props: ({})
-    property real scrollY: grid.contentY
-    onScrollYChanged: if (Math.abs(grid.contentY - scrollY) > 1) grid.contentY = scrollY
+    property alias scrollY: grid.contentY
     function focusSearch() { search.focusInput() }
     // "escape" is reserved by the QML compiler; the frame's hook is named escapePressed.
     function escapePressed() { return false }
@@ -21,10 +20,12 @@ Item {
     property string tab: prefs.library_tab || "All"
     property string sort: prefs.library_sort || "Alpha"
     property string direction: prefs.library_direction || "Asc"
+    property string titleLanguage: prefs.title_language || "Romaji"
     property string query: props.q || ""
     property bool hiddenExist: false
     property real nowMs: Date.now()
     property int airingPage: 0
+    readonly property int airingPageSize: 10
     property bool airingMore: false
     property bool libraryEmpty: false
 
@@ -37,7 +38,7 @@ Item {
         p.library_sort = sort; p.library_direction = direction
         Door.setPreferences(p)
     }
-    function pickTab(i) { var names = tabs.concat(showHidden ? ["Hidden"] : []); tab = names[i]; persist(); reload() }
+    function pickTab(i) { tab = tabNames[i]; persist(); reload() }
     function pickSort(key) { sort = key; direction = key === "Alpha" ? "Asc" : "Desc"; persist(); reload() }
     function flipDirection() { direction = direction === "Asc" ? "Desc" : "Asc"; persist(); reload() }
     readonly property bool showHidden: Door.revealHidden && hiddenExist
@@ -54,42 +55,82 @@ Item {
         // negative offset and the grid opens on an empty gap instead of its own top.
         var floor = -(grid.headerItem && grid.headerItem.visible ? grid.headerItem.height : 0)
         grid.contentY = Math.max(floor, Math.min(keep, Math.max(0, grid.contentHeight - grid.height)))
-        var all = query === "" && tab === "All" ? r.reply.series.length : Door.listSeries("All", "", "Alpha", "Asc", false).reply.series.length
-        libraryEmpty = all === 0 && !Door.revealHidden
-        hiddenExist = Door.revealHidden ? Door.listSeries("Hidden", "", "Alpha", "Asc", true).reply.series.length > 0 : false
+        if (query === "" && tab === "All") {
+            libraryEmpty = r.reply.series.length === 0 && !Door.revealHidden
+        } else {
+            var all = Door.listSeries("All", "", "Alpha", "Asc", false)
+            if (!all.error) libraryEmpty = all.reply.series.length === 0 && !Door.revealHidden
+        }
+        if (Door.revealHidden) {
+            var hidden = Door.listSeries("Hidden", "", "Alpha", "Asc", true)
+            if (!hidden.error) hiddenExist = hidden.reply.series.length > 0
+        } else {
+            hiddenExist = false
+        }
         reloadAiring()
     }
     function reloadAiring() {
-        var r = Door.listAiring(airingPage * 10, 11)
+        var r = Door.listAiring(airingPage * airingPageSize, airingPageSize + 1)
         if (r.error) return
         var rows = r.reply.series
-        airingMore = rows.length > 10
-        airing.reset(rows.slice(0, 10))
+        airingMore = rows.length > airingPageSize
+        airing.reset(rows.slice(0, airingPageSize))
         if (rows.length === 0 && airingPage > 0) { airingPage = 0; reloadAiring() }
     }
     Timer { id: debounce; interval: 250; onTriggered: page.reload() }
     Timer { id: queryDebounce; interval: 150; onTriggered: { page.query = search.text; frame.nav.current.props = { q: page.query }; page.reload() } }
-    Timer { interval: 30000; running: true; repeat: true; onTriggered: page.nowMs = Date.now() }
+    Timer { interval: 30000; running: cards.count > 0 || airing.count > 0; repeat: true; onTriggered: page.nowMs = Date.now() }
     Connections {
         target: Door
-        function onSeriesChanged(cards) { debounce.restart() }
-        function onSeriesRemoved(ids) { debounce.restart() }
-        function onPreferencesChanged(p) { if (page.tab !== "Hidden") page.tab = p.library_tab; page.sort = p.library_sort; page.direction = p.library_direction; debounce.restart() }
+        function onSeriesChanged() { debounce.restart() }
+        function onSeriesRemoved() { debounce.restart() }
+        // Door always reports a preference write, even one that changes nothing (the
+        // core's own tab/sort/direction clicks already reload once, directly, for instant
+        // feedback), so only restart the debounce when something this page cares about
+        // actually moved: reloading twice on every click would otherwise double every
+        // core round trip for no visible benefit. A title language switch does not touch
+        // tab/sort/direction, so it still falls through and reloads, which is what
+        // repaints every card's title in the new language.
+        function onPreferencesChanged(p) {
+            var newTab = page.tab === "Hidden" ? page.tab : p.library_tab
+            var changed = newTab !== page.tab || p.library_sort !== page.sort
+                || p.library_direction !== page.direction || p.title_language !== page.titleLanguage
+            page.tab = newTab
+            page.sort = p.library_sort
+            page.direction = p.library_direction
+            page.titleLanguage = p.title_language
+            if (changed) debounce.restart()
+        }
         function onRevealHiddenChanged() { if (page.tab === "Hidden" && !Door.revealHidden) page.tab = "All"; debounce.restart() }
     }
-    Component.onCompleted: { search.text = query; reload() }
+    Component.onCompleted: reload()
+    // Frame assigns props in the Loader's onLoaded, which runs after this page's own
+    // Component.onCompleted, so props.q is never here yet at construction; react to the
+    // assignment instead. This also carries the trail's search text back in through the
+    // same debounce a keystroke uses, so the filtered grid and the empty-state copy both
+    // follow it.
+    onPropsChanged: search.text = props.q || ""
     // GridView positions itself at its own top once, at construction, using whatever
     // headerItem.height reads at that instant. The Airing header's real height comes from
     // a Flow of Repeater-built Cards, which settles a few ticks late, so that one-time
     // position is taken against a too-small height and never corrected on its own. Keep
-    // reasserting it, event-driven rather than timed, until either it stops changing or
-    // the visitor has taken the scroll themselves, so a later legitimate resize (a search
-    // hiding the section, a tab switch) is never fought once someone is actually scrolling.
-    property bool userScrolled: false
-    Connections { target: grid; function onMovementStarted() { page.userScrolled = true } }
+    // reasserting it, event-driven rather than timed, until the initial position is taken
+    // for real: a genuine drag, or any other write to contentY that is not this very
+    // correction (the frame's Back restore through the scrollY alias, reload()'s own
+    // keep-the-scroll clamp). After that, a later legitimate resize (a search hiding the
+    // section, a tab switch) is left alone rather than fought.
+    property bool positionTaken: false
+    property bool correctingHeaderPosition: false
+    function correctHeaderPosition() {
+        correctingHeaderPosition = true
+        grid.positionViewAtBeginning()
+        correctingHeaderPosition = false
+    }
+    Connections { target: grid; function onMovementStarted() { page.positionTaken = true } }
+    Connections { target: grid; function onContentYChanged() { if (!page.correctingHeaderPosition) page.positionTaken = true } }
     Connections {
         target: grid.headerItem
-        function onHeightChanged() { if (!page.userScrolled) grid.positionViewAtBeginning() }
+        function onHeightChanged() { if (!page.positionTaken) page.correctHeaderPosition() }
     }
 
     Column {
@@ -150,17 +191,7 @@ Item {
         readonly property bool airingMore: page.airingMore
         function pagerPrev() { page.airingPage--; page.reloadAiring() }
         function pagerNext() { page.airingPage++; page.reloadAiring() }
-        QC.ScrollBar.vertical: QC.ScrollBar {
-            policy: QC.ScrollBar.AsNeeded
-            visible: size < 1
-            contentItem: Corner {
-                implicitWidth: theme.space(1)
-                radius: height / 2
-                smoothing: theme.cornerSmoothing
-                color: theme.lineStrong
-                opacity: parent.active ? 1 : 0.4
-            }
-        }
+        QC.ScrollBar.vertical: ThinScrollBar {}
         header: Column {
             width: grid.width
             spacing: theme.space(4)

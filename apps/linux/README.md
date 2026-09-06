@@ -12,3 +12,8 @@ Qt 6.11 QML over the Rust core through cxx-qt 0.10, built with Cargo alone. Spec
 
 Environment the shell sets for itself: QSG_RENDER_LOOP=threaded, QT_XCB_GL_INTEGRATION=xcb_egl.
 ANIBEAM_THEMES_DIR and ANIBEAM_MPV_CONF point a dev run at the checkout's themes/ and mpv.conf.
+
+`shoot.sh` forces the RHI backend (QT_QUICK_BACKEND=rhi, QSG_RHI_BACKEND=opengl) under the offscreen
+platform, because Qt's software scene graph cannot paint a Shapes `fillItem` and every poster comes
+back white without it; that needs a DISPLAY for the GL context. Without one the software backend
+still captures, just with white poster frames.
