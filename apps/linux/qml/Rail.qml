@@ -108,10 +108,16 @@ Item {
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
+            width: root.width - theme.space(3)
+            horizontalAlignment: Text.AlignHCenter
+            elide: Text.ElideMiddle
             text: Shell.version
             color: theme.textFaint
             font.family: theme.fontMono
             font.pointSize: theme.typeSmall
+            // Elided in the rail; the full string on hover through the frame's own tip,
+            // never a native ToolTip.
+            Tooltip { text: Shell.version }
         }
     }
 }
