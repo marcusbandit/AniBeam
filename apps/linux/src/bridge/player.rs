@@ -3,8 +3,10 @@
 
 use core::pin::Pin;
 
+use anibeam_core::{SubtitleDefaults, TrackChoice};
 use cxx_qt::CxxQtType;
-use cxx_qt_lib::{QJsonArray, QJsonValue, QString, QStringList};
+use cxx_qt_lib::{QJsonArray, QJsonObject, QJsonValue, QString, QStringList};
+use serde_json::Value;
 
 use crate::player_config::{self, PlayerSettings};
 
@@ -17,6 +19,8 @@ pub mod qobject {
         type QStringList = cxx_qt_lib::QStringList;
         include!("cxx-qt-lib/qjsonarray.h");
         type QJsonArray = cxx_qt_lib::QJsonArray;
+        include!("cxx-qt-lib/qjsonobject.h");
+        type QJsonObject = cxx_qt_lib::QJsonObject;
     }
 
     #[auto_cxx_name]
@@ -51,6 +55,23 @@ pub mod qobject {
         fn set_mute(self: Pin<&mut Self>, mute: bool);
         #[qinvokable]
         fn set_use_my_mpv_conf(self: Pin<&mut Self>, on: bool);
+
+        /// The pure helpers the player page calls into Rust for. None of them touches the
+        /// core or this object's state, so they take `&Player` and are safe to call from a
+        /// binding. Each is total, and `guard` is the barrier for the day one is not.
+        #[qinvokable]
+        fn pick_tracks(
+            self: &Player,
+            track_list: &QJsonArray,
+            track_choice: &QJsonObject,
+            defaults: &QJsonObject,
+        ) -> QJsonObject;
+        #[qinvokable]
+        fn track_label(self: &Player, track: &QJsonObject) -> QString;
+        #[qinvokable]
+        fn track_ref(self: &Player, track: &QJsonObject) -> QJsonObject;
+        #[qinvokable]
+        fn subtitle_options(self: &Player, defaults: &QJsonObject) -> QJsonArray;
 
         #[qsignal]
         fn volume_changed(self: Pin<&mut Player>);
@@ -176,5 +197,76 @@ impl qobject::Player {
         self.as_mut().use_my_mpv_conf_changed();
         self.as_mut().config_layers_changed();
         self.persist();
+    }
+
+    /// A panic crossing the FFI aborts the process, so it stops here instead. The four
+    /// helpers below are total, which makes this belt and braces rather than a net.
+    fn guard<T: Default>(what: &str, f: impl FnOnce() -> T) -> T {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).unwrap_or_else(|_| {
+            eprintln!("anibeam: player: {what} panicked");
+            T::default()
+        })
+    }
+
+    /// mpv's `track-list` and the series' stored choice in; the `aid` and `sid` to set out,
+    /// `-1` for off, because QML has no null number.
+    pub fn pick_tracks(
+        &self,
+        track_list: &QJsonArray,
+        track_choice: &QJsonObject,
+        defaults: &QJsonObject,
+    ) -> QJsonObject {
+        Self::guard("pickTracks", || {
+            let list = crate::tracks::parse(&Value::Array(
+                track_list
+                    .iter()
+                    .map(|v| crate::json::from_qjson(&v))
+                    .collect(),
+            ));
+            let choice: TrackChoice =
+                serde_json::from_value(crate::json::from_qjson_object(track_choice))
+                    .unwrap_or_default();
+            let d: SubtitleDefaults =
+                serde_json::from_value(crate::json::from_qjson_object(defaults))
+                    .unwrap_or_default();
+            let p = crate::tracks::pick(&list, &choice, &d);
+            crate::json::to_qjson_object(&serde_json::json!({
+                "aid": p.aid.unwrap_or(-1),
+                "sid": p.sid.unwrap_or(-1),
+            }))
+        })
+    }
+
+    /// One entry of `track-list` as the line a picker draws.
+    pub fn track_label(&self, track: &QJsonObject) -> QString {
+        Self::guard("trackLabel", || {
+            let list =
+                crate::tracks::parse(&Value::Array(vec![crate::json::from_qjson_object(track)]));
+            QString::from(&list.first().map(crate::tracks::label).unwrap_or_default())
+        })
+    }
+
+    /// One entry of `track-list` as the `TrackRef` the core stores.
+    pub fn track_ref(&self, track: &QJsonObject) -> QJsonObject {
+        Self::guard("trackRef", || {
+            let list =
+                crate::tracks::parse(&Value::Array(vec![crate::json::from_qjson_object(track)]));
+            let r = list.first().map(crate::tracks::track_ref);
+            crate::json::to_qjson_object(&serde_json::to_value(r).unwrap_or(Value::Null))
+        })
+    }
+
+    /// The settings' subtitle defaults as the mpv options that carry them.
+    pub fn subtitle_options(&self, defaults: &QJsonObject) -> QJsonArray {
+        Self::guard("subtitleOptions", || {
+            let d: SubtitleDefaults =
+                serde_json::from_value(crate::json::from_qjson_object(defaults))
+                    .unwrap_or_default();
+            pairs(
+                player_config::subtitle_options(&d)
+                    .into_iter()
+                    .map(|(k, v)| (k.to_string(), v)),
+            )
+        })
     }
 }

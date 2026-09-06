@@ -23,6 +23,16 @@ FocusScope {
     property bool loaded: false
     property string hwdec: ""
     property int drops: 0
+    property var trackList: []
+    property int aid: -1
+    property int sid: -1
+    // The subtitle track C turns back on, so switching off and on again lands where it was
+    // rather than on the file's first track.
+    property int lastSid: -1
+    property real subDelay: 0
+    // Task 12 wires SkipWindowsReady onto the same property; until then the session's own
+    // windows are the ones the chapters gave.
+    property var windows: session ? session.skip_windows : []
 
     // Chrome
     property bool chromeVisible: true
@@ -68,7 +78,37 @@ FocusScope {
         video.setProperty("start", session.resume_from ? String(session.resume_from) : "none")
         video.command(["loadfile", session.path])
     }
-    function applyDefaults() {}
+    // Spec 4.4's subtitle table as mpv options. These are set before the file, so they are
+    // in force for its first frame.
+    function applyDefaults() {
+        var opts = Player.subtitleOptions(session.subtitle_defaults)
+        for (var i = 0; i < opts.length; i++) video.setProperty(opts[i][0], opts[i][1])
+    }
+    // Every sidecar the core found beside the file. `sub-auto=no` is one of the owned
+    // options, so mpv adds none of its own and the list the core reports is the list.
+    // These go on after the file is loaded, not with the options before it: sub-add acts
+    // on the file mpv is playing, and before loadfile there is none, so mpv answers
+    // MPV_ERROR_COMMAND and the sidecar never reaches the list the pick reads.
+    function addSidecars() {
+        for (var j = 0; j < session.sidecars.length; j++) {
+            var s = session.sidecars[j]
+            var r = video.commandBlocking(["sub-add", s.path, "auto", s.title || "", s.language || ""])
+            if (r < 0) console.warn("anibeam: sub-add", s.path, "failed:", r)
+        }
+    }
+    // A settings change reaches a file already playing: the styling options are re-set on
+    // the running core. The language orders only decide the next pick, so nothing re-picks.
+    Connections {
+        target: Door
+        function onSettingsChanged() {
+            if (!page.session) return
+            var r = Door.getSettings()
+            if (r.error) return
+            page.session.subtitle_defaults = r.reply.settings.subtitle_defaults
+            var opts = Player.subtitleOptions(page.session.subtitle_defaults)
+            for (var i = 0; i < opts.length; i++) video.setProperty(opts[i][0], opts[i][1])
+        }
+    }
 
     VideoItem {
         id: video
@@ -109,9 +149,91 @@ FocusScope {
         }
         MouseArea { anchors.fill: parent; onClicked: page.togglePause(); hoverEnabled: true; onPositionChanged: page.showChrome(); cursorShape: page.chromeVisible ? Qt.ArrowCursor : Qt.BlankCursor }
     }
-    function onFileLoaded() {}
-    function onObserved(name, value) {}
+    // The one place the track list is asked for rather than observed: the pick has to be
+    // made before the first frame, and the observation for `track-list` may not have
+    // arrived yet. Everything after this comes from `changed`.
+    function onFileLoaded() {
+        addSidecars()
+        trackList = asArray(video.getProperty("track-list"))
+        var p = Player.pickTracks(trackList, session.track_choice, session.subtitle_defaults)
+        video.setProperty("aid", p.aid >= 0 ? String(p.aid) : "no")
+        video.setProperty("sid", p.sid >= 0 ? String(p.sid) : "no")
+        if (p.sid >= 0) lastSid = p.sid
+    }
+    function onObserved(name, value) {
+        if (name === "track-list") trackList = asArray(value)
+        else if (name === "aid") aid = value === "no" || value === null ? -1 : Number(value)
+        else if (name === "sid") { sid = value === "no" || value === null ? -1 : Number(value); if (sid >= 0) lastSid = sid }
+        else if (name === "sub-delay") subDelay = Number(value || 0)
+        else if (name === "chapter-list") {}
+        else onObservedMore(name, value)                      // Task 12
+    }
+    function onObservedMore(name, value) {}
     function onEnded() { close("Ended") }                        // Task 12 adds the replay and the pill
+
+    // ---- Tracks
+    // mpv hands the list back as a QVariantList, which QML wraps in a sequence object:
+    // Array.isArray says no and every element read converts a QVariant afresh. One copy
+    // here and every reader after this point works on a plain array, and a null becomes
+    // an empty one rather than a crash at the first filter.
+    function asArray(v) {
+        if (!v) return []
+        var out = []
+        for (var i = 0; i < v.length; i++) out.push(v[i])
+        return out
+    }
+    readonly property var audioTracks: trackList.filter(function(t) { return t.type === "audio" }).map(function(t) { return { id: t.id, label: Player.trackLabel(t), track: t } })
+    readonly property var subTracks: trackList.filter(function(t) { return t.type === "sub" }).map(function(t) { return { id: t.id, label: Player.trackLabel(t), track: t } })
+    // The session's own track_choice keeps serde's shape, the string "Off" or
+    // { Track: { track } }; the door takes {} for none and { off: true } for Off.
+    function subtitleArg() {
+        var s = session.track_choice.subtitle
+        if (!s) return ({})
+        return s === "Off" ? { off: true } : s
+    }
+    function audioArg() { return session.track_choice.audio ? session.track_choice.audio : ({}) }
+    function storeChoice(audio, subtitle) {
+        var r = Door.setTrackChoice(session.series, audio, subtitle)
+        if (r.error) console.warn("anibeam: track choice:", r.error.message)
+        return !r.error
+    }
+    // The id comes off a list that mpv can have replaced since the picker drew it, so a
+    // track that is no longer there changes nothing rather than storing an empty choice.
+    function pickAudio(id) {
+        var t = trackList.find(function(x) { return x.type === "audio" && x.id === id })
+        if (!t) return
+        video.setProperty("aid", String(id))
+        var ref = Player.trackRef(t)
+        storeChoice(ref, subtitleArg())
+        session.track_choice.audio = ref
+        showChrome()
+    }
+    function pickSubtitle(id) {
+        var t = id < 0 ? null : trackList.find(function(x) { return x.type === "sub" && x.id === id })
+        if (id >= 0 && !t) return
+        video.setProperty("sid", id < 0 ? "no" : String(id))
+        var choice = id < 0 ? { off: true } : { Track: { track: Player.trackRef(t) } }
+        storeChoice(audioArg(), choice)
+        session.track_choice.subtitle = id < 0 ? "Off" : choice
+        showChrome()
+    }
+    // C: off, then back to the track it was on. The choice is not stored, because a key
+    // pressed to read one sign is not a decision about the series.
+    function toggleSubtitles() {
+        if (sid >= 0) video.setProperty("sid", "no")
+        else if (lastSid >= 0) video.setProperty("sid", String(lastSid))
+        else if (subTracks.length) video.setProperty("sid", String(subTracks[0].id))
+        showChrome()
+    }
+    // z and Z. The page's own value moves first so a second press within the round trip
+    // adds to the first rather than repeating it; the observation confirms it.
+    function nudgeDelay(d) {
+        var v = Math.round((subDelay + d) * 10) / 10
+        subDelay = v
+        video.setProperty("sub-delay", v)
+        hud.flash("subtitle delay " + (v >= 0 ? "+" : "") + v.toFixed(1) + " s")
+        showChrome()
+    }
 
     // ---- Ticks: once a second while playing, once on pause, once after a seek, once on
     // close. The timer never asks mpv for anything: it sends the last observed time-pos,
@@ -154,20 +276,62 @@ FocusScope {
         }
     }
 
+    // ---- The seek preview: a second mpv core, nothing audible, moved by time-pos. It is
+    // its own core rather than a thumbnail file, so it costs nothing on disk and answers
+    // any position; it is declared above the video and below the island so it can never
+    // cover the controls it sits over.
+    Corner {
+        id: preview
+        // It hides with the chrome as well as on exit: the island can go while the pointer
+        // rests on the bar, and the bar goes with it, so no exit would ever arrive.
+        property bool shown: false
+        visible: shown && page.chromeVisible
+        width: theme.space(60); height: width * 9 / 16 + theme.space(6)
+        radius: theme.radiusMd; smoothing: theme.cornerSmoothing
+        color: theme.scrim; borderColor: theme.line; borderWidth: 1
+        y: controls.y - height - theme.space(2)
+        property bool loaded: false
+        function show(secs, centerX) {
+            x = Math.max(theme.space(2), Math.min(centerX - width / 2, page.width - width - theme.space(2)))
+            stamp.text = Fmt.clock(secs)
+            shown = true
+            if (loaded) previewVideo.setPropertyAsync("time-pos", secs)
+        }
+        function hide() { shown = false }
+        VideoItem {
+            id: previewVideo
+            anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: theme.space(1)
+            height: width * 9 / 16
+            onReady: {
+                var o = Player.previewOptions
+                for (var i = 0; i < o.length; i++) setProperty(o[i][0], o[i][1])
+                if (page.session) command(["loadfile", page.session.path])
+            }
+            onLoaded: preview.loaded = true
+        }
+        Text { id: stamp; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(1); anchors.horizontalCenter: parent.horizontalCenter; color: theme.text; font.family: theme.fontMono; font.pointSize: theme.typeSmall }
+    }
+
     // ---- Controls island
     Corner {
         id: controls
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(6)
         width: Math.min(parent.width - theme.space(12), theme.space(220))
-        height: bottomRow.height + theme.space(6)                // Task 11 adds the seek row above
+        height: bottomRow.height + seekSlot.height + theme.space(9)
         radius: theme.radiusLg; smoothing: theme.cornerSmoothing
         color: theme.scrim; borderColor: theme.line; borderWidth: 1
         opacity: page.chromeVisible ? 1 : 0
         visible: opacity > 0
         Behavior on opacity { NumberAnimation { duration: theme.motionNormal } }
         MouseArea { anchors.fill: parent; hoverEnabled: true; onPositionChanged: page.showChrome() }
-        Item { id: seekSlot; anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: theme.space(3); height: 0 }
+        // The bar is above the island's own hover MouseArea, so the hover that keeps the
+        // chrome up while the pointer sits on the bar comes from the bar itself.
+        Item { id: seekSlot; anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: theme.space(3); height: seek.height
+            SeekBar { id: seek; width: parent.width; position: page.timePos; duration: page.duration; windows: page.windows
+                onSeeked: function(s) { page.seekTo(s) }
+                onHovered: function(s) { page.showChrome(); preview.show(s, seek.mapToItem(page, page.duration > 0 ? s / page.duration * seek.width : 0, 0).x) }
+                onUnhovered: preview.hide() } }
         Row {
             id: bottomRow
             anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: theme.space(3)
@@ -185,8 +349,28 @@ FocusScope {
             Item { id: rightSlot; width: parent.width - x - theme.space(1); height: rightGroup.height   // Task 11 and 12 add the pickers, mark, help
                 anchors.verticalCenter: parent.verticalCenter
                 Row { id: rightGroup; anchors.right: parent.right; spacing: theme.space(1)
+                    PlayerButton { id: audioBtn; glyph: "audio-lines"; tip: "Audio track"; visible: page.audioTracks.length > 1; onClicked: audioPicker.openAt(audioBtn) }
+                    PlayerButton { id: subBtn; glyph: "captions"; tip: page.sid >= 0 ? "Subtitles" : "Subtitles off"; active: page.sid >= 0; visible: page.subTracks.length > 0; onClicked: subPicker.openAt(subBtn) }
                     PlayerButton { glyph: frame.hostWindow.visibility === Window.FullScreen ? "minimize" : "maximize"; tip: "Fullscreen"; onClicked: page.toggleFullscreen() } } }
         }
+    }
+
+    // ---- The pickers. They fill the page and hold the chrome while they are up.
+    TrackPicker { id: audioPicker; title: "Audio"; tracks: page.audioTracks; selected: page.aid; onPicked: function(id) { page.pickAudio(id) } }
+    TrackPicker { id: subPicker; title: "Subtitles"; tracks: page.subTracks; selected: page.sid; offRow: true; onPicked: function(id) { page.pickSubtitle(id) } }
+
+    // ---- The HUD line: one message over the picture, gone after 1.2 s. Task 12's frame
+    // step shares it.
+    Corner {
+        id: hud
+        visible: false
+        anchors.top: parent.top; anchors.topMargin: theme.space(20); anchors.horizontalCenter: parent.horizontalCenter
+        width: hudText.implicitWidth + theme.space(6); height: theme.controlHeight
+        radius: height / 2; smoothing: theme.cornerSmoothing; color: theme.scrim; borderColor: theme.line; borderWidth: 1
+        Text { id: hudText; anchors.centerIn: parent; color: theme.text; font.family: theme.fontMono; font.pointSize: theme.typeNormal }
+        Timer { id: hudTimer; interval: 1200; onTriggered: hud.visible = false }
+        function flash(text) { hudText.text = text; visible = true; hudTimer.restart() }
+        function clear() { visible = false; hudTimer.stop() }
     }
 
     // ---- Keys (the base set; Task 12 completes the map)
@@ -210,7 +394,16 @@ FocusScope {
         else if (e.key === Qt.Key_F) page.toggleFullscreen()
         else if (e.key === Qt.Key_Up) page.setVolume(Player.volume + 5)
         else if (e.key === Qt.Key_Down) page.setVolume(Player.volume - 5)
-        else if (e.key === Qt.Key_Escape) { if (frame.hostWindow.visibility === Window.FullScreen) frame.hostWindow.visibility = Window.Windowed; else page.leave() }
+        else if (e.key === Qt.Key_C) page.toggleSubtitles()
+        else if (e.key === Qt.Key_Z && !(e.modifiers & Qt.ShiftModifier)) page.nudgeDelay(-0.1)
+        else if (e.key === Qt.Key_Z) page.nudgeDelay(0.1)
+        // A picker is open: the press belongs to the frame's escape stack, which closes it.
+        // Accepting it here would leave the player and take the picker with it.
+        else if (e.key === Qt.Key_Escape) {
+            if (page.openMenus > 0) e.accepted = false
+            else if (frame.hostWindow.visibility === Window.FullScreen) frame.hostWindow.visibility = Window.Windowed
+            else page.leave()
+        }
         else e.accepted = false
     }
 }

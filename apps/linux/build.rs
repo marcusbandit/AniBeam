@@ -45,6 +45,8 @@ fn main() {
             .qml_file("qml/RecommendationCard.qml")
             .qml_file("qml/SeriesPage.qml")
             .qml_file("qml/PlayerButton.qml")
+            .qml_file("qml/SeekBar.qml")
+            .qml_file("qml/TrackPicker.qml")
             .qml_file("qml/PlayerPage.qml"),
     )
     .qt_module("Quick")
