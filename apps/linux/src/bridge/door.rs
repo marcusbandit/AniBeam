@@ -388,13 +388,102 @@ fn parse_option<T: DeserializeOwned>(field: &str, o: &QJsonObject) -> Result<Opt
     }
 }
 
+/// What a panic carried, for the two payload shapes `panic!` produces.
+fn panic_text(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "panicked".to_string()
+    }
+}
+
+/// One running job as QML reads it. A job seeded from `ListJobs` before it has reported
+/// progress takes the same shape as one that has just started, so a delegate never has to
+/// tell the two apart.
+fn job_entry(id: &Value, kind: &Value, progress: &Value) -> Value {
+    json!({
+        "id": id,
+        "kind": kind,
+        "done": progress.get("done").cloned().unwrap_or_else(|| json!(0)),
+        "total": progress.get("total").cloned().unwrap_or(Value::Null),
+        "label": progress.get("label").cloned().unwrap_or_else(|| json!("")),
+    })
+}
+
+/// The `ListJobs` reply as the running-jobs list.
+fn seed_jobs(reply: &Value) -> Vec<Value> {
+    reply["jobs"]
+        .as_array()
+        .map(|jobs| {
+            jobs.iter()
+                .map(|j| job_entry(&j["id"], &j["kind"], &j["progress"]))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// One event's effect on the running-jobs list; true when the list actually changed.
+///
+/// `JobStarted` is an upsert rather than a push: `Core::start` files the launch job before
+/// it emits, so the `ListJobs` the door reads while initialising can already hold that id,
+/// and a blind push would leave two copies of one job with only the first ever taking its
+/// progress.
+fn apply_job(jobs: &mut Vec<Value>, id: u64, finished: bool, body: &EventBody) -> bool {
+    let at = jobs.iter().position(|e| e["id"] == id);
+    match body {
+        EventBody::JobStarted { kind } => {
+            let entry = job_entry(
+                &json!(id),
+                &serde_json::to_value(kind).unwrap_or(Value::Null),
+                &Value::Null,
+            );
+            match at {
+                Some(i) if jobs[i] == entry => false,
+                Some(i) => {
+                    jobs[i] = entry;
+                    true
+                }
+                None => {
+                    jobs.push(entry);
+                    true
+                }
+            }
+        }
+        EventBody::JobProgress { done, total, label } => {
+            let Some(i) = at else { return false };
+            jobs[i]["done"] = json!(done);
+            jobs[i]["total"] = json!(total);
+            jobs[i]["label"] = json!(label);
+            true
+        }
+        _ if finished => {
+            let Some(i) = at else { return false };
+            jobs.remove(i);
+            true
+        }
+        _ => false,
+    }
+}
+
 impl qobject::Door {
+    /// Every invokable goes through here, so this is where a panic stops: one crossing the
+    /// FFI boundary aborts the process, and QML asking for something the core is unhappy
+    /// about should not take the window with it. A caught panic comes back as the ordinary
+    /// `Internal` error shape.
     fn dispatch(&self, call: Result<Call, CoreError>) -> QJsonObject {
-        let v = match call {
-            Ok(c) => json::dispatch(crate::runtime::core(), c),
-            Err(e) => json!({ "error": json::error_json(&e) }),
-        };
-        to_qjson_object(&v)
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let v = match call {
+                Ok(c) => json::dispatch(crate::runtime::core(), c),
+                Err(e) => json!({ "error": json::error_json(&e) }),
+            };
+            to_qjson_object(&v)
+        }))
+        .unwrap_or_else(|payload| {
+            let e = CoreError::internal(panic_text(&*payload));
+            to_qjson_object(&json!({ "error": json::error_json(&e) }))
+        })
     }
 
     fn reply_of(&self, call: Call) -> Option<Value> {
@@ -451,67 +540,53 @@ impl qobject::Door {
             self.as_mut().set_about(to_qjson_object(&a["about"]));
         }
         if let Some(j) = self.as_ref().reply_of(Call::ListJobs) {
-            let jobs: Vec<Value> = j["jobs"]
-                .as_array()
-                .cloned()
-                .unwrap_or_default()
-                .into_iter()
-                .map(|job| {
-                    json!({
-                        "id": job["id"],
-                        "kind": job["kind"],
-                        "done": job["progress"]["done"],
-                        "total": job["progress"]["total"],
-                        "label": job["progress"]["label"],
-                    })
-                })
-                .collect();
+            let jobs = seed_jobs(&j);
             self.as_mut().rust_mut().jobs = jobs.clone();
             self.as_mut()
                 .set_running_jobs(to_qjson_array(&Value::Array(jobs)));
         }
     }
 
+    /// The other half of the panic barrier: an event is not worth the process. A panic here
+    /// drops that one event and says so; the core has no shell-facing logger, so stderr is
+    /// where it goes.
+    pub fn receive(self: Pin<&mut Self>, event: Event, envelope: Value) {
+        let seq = event.seq;
+        let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+            self.deliver(event, envelope)
+        }));
+        if let Err(payload) = caught {
+            eprintln!("anibeam: event {seq} dropped: {}", panic_text(&*payload));
+        }
+    }
+
     /// On the Qt thread: the shared state, then the envelope, then the body's own signal.
-    pub fn receive(mut self: Pin<&mut Self>, event: Event, envelope: Value) {
+    fn deliver(mut self: Pin<&mut Self>, event: Event, envelope: Value) {
         let job = event.job.clone();
         let finished = job.as_ref().is_some_and(|j| j.phase == JobPhase::Finished);
-        {
-            let mut rust = self.as_mut().rust_mut();
-            if let Some(j) = &job {
-                match (&event.body, finished) {
-                    (EventBody::JobStarted { kind }, _) => {
-                        rust.jobs.push(json!({
-                            "id": j.id,
-                            "kind": serde_json::to_value(kind).unwrap_or(Value::Null),
-                            "done": 0,
-                            "total": null,
-                            "label": "",
-                        }));
-                    }
-                    (EventBody::JobProgress { done, total, label }, _) => {
-                        if let Some(entry) = rust.jobs.iter_mut().find(|e| e["id"] == j.id) {
-                            entry["done"] = json!(done);
-                            entry["total"] = json!(total);
-                            entry["label"] = json!(label);
-                        }
-                    }
-                    (_, true) => rust.jobs.retain(|e| e["id"] != j.id),
-                    _ => {}
-                }
+        // The borrow ends here, before any signal goes out.
+        let jobs_changed = match &job {
+            Some(j) => {
+                let mut rust = self.as_mut().rust_mut();
+                apply_job(&mut rust.jobs, j.id, finished, &event.body)
             }
+            None => false,
+        };
+        if jobs_changed {
+            let jobs = self.as_ref().jobs.clone();
+            self.as_mut()
+                .set_running_jobs(to_qjson_array(&Value::Array(jobs)));
         }
-        let jobs = self.as_ref().jobs.clone();
-        self.as_mut()
-            .set_running_jobs(to_qjson_array(&Value::Array(jobs)));
+        // One walk of the envelope; the copy Qt makes of a QJsonObject is shared, not deep.
+        let wire = to_qjson_object(&envelope);
         if event.level >= Level::Info {
-            self.as_mut().set_latest_line(to_qjson_object(&envelope));
+            self.as_mut().set_latest_line(wire.clone());
         }
         if event.level == Level::Error {
             let n = *self.as_ref().unseen_errors() + 1;
             self.as_mut().set_unseen_errors(n);
         }
-        self.as_mut().event(to_qjson_object(&envelope));
+        self.as_mut().event(wire);
         if let Some(j) = &job
             && finished
         {
@@ -727,11 +802,21 @@ impl qobject::Door {
     }
     // Metadata
     pub fn search_provider(&self, query: &QString, limit: i32) -> QJsonObject {
-        self.dispatch(Ok(Call::SearchProvider {
-            provider: Provider::Anilist,
-            query: query.to_string(),
-            limit: limit.max(1) as u32,
-        }))
+        // A limit of zero is a caller's mistake, not a request for one result; it comes
+        // back as the same Invalid every other bad argument does.
+        let call = if limit < 1 {
+            Err(CoreError::invalid(
+                "limit",
+                format!("must be at least 1, got {limit}"),
+            ))
+        } else {
+            Ok(Call::SearchProvider {
+                provider: Provider::Anilist,
+                query: query.to_string(),
+                limit: limit as u32,
+            })
+        };
+        self.dispatch(call)
     }
     pub fn resolve_link(&self, url: &QString) -> QJsonObject {
         self.dispatch(Ok(Call::ResolveLink {
@@ -885,8 +970,9 @@ impl qobject::Door {
         subtitle: &QJsonObject,
     ) -> QJsonObject {
         // `{ off: true }` from QML is SubtitleChoice::Off; an empty object is none; anything
-        // else is `{ Track: { track: TrackRef } }`.
-        let subtitle = if subtitle.contains(&QString::from("off")) {
+        // else, `{ off: false }` included, is `{ Track: { track: TrackRef } }`. The value is
+        // what decides, not the presence of the key.
+        let subtitle = if subtitle.value(&QString::from("off")).to_bool() {
             Ok(Some(SubtitleChoice::Off))
         } else {
             parse_option::<SubtitleChoice>("subtitle", subtitle)
@@ -952,5 +1038,89 @@ impl qobject::Door {
             json::call_from(&name.to_string(), from_qjson_object(args))
                 .map_err(|e| CoreError::invalid("call", e)),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anibeam_core::JobKind;
+
+    fn started(kind: JobKind) -> EventBody {
+        EventBody::JobStarted { kind }
+    }
+
+    #[test]
+    fn a_job_seeded_from_list_jobs_and_one_that_starts_take_the_same_shape() {
+        // ListJobs before the job has reported anything: progress is null.
+        let seeded = seed_jobs(&json!({"jobs": [
+            {"id": 4, "kind": "Scan", "started_at": 1.0, "progress": null},
+            {"id": 5, "kind": "Crawl", "started_at": 1.0, "progress": {"done": 3, "total": 9, "label": "one"}},
+        ]}));
+        assert_eq!(
+            seeded[0],
+            json!({"id": 4, "kind": "Scan", "done": 0, "total": null, "label": ""}),
+            "a job with no progress reads like a job that just started"
+        );
+        assert_eq!(
+            seeded[1],
+            json!({"id": 5, "kind": "Crawl", "done": 3, "total": 9, "label": "one"})
+        );
+
+        let mut fresh = vec![];
+        assert!(apply_job(&mut fresh, 4, false, &started(JobKind::Scan)));
+        assert_eq!(fresh, vec![seeded[0].clone()]);
+    }
+
+    #[test]
+    fn job_started_upserts_so_the_launch_scan_is_never_counted_twice() {
+        // Core::start files the launch job before it emits, so ListJobs already has it.
+        let mut jobs = seed_jobs(&json!({"jobs": [{"id": 4, "kind": "Scan", "progress": null}]}));
+        assert!(
+            !apply_job(&mut jobs, 4, false, &started(JobKind::Scan)),
+            "the same job started again is not a change"
+        );
+        assert_eq!(jobs.len(), 1, "one scan, one row");
+
+        // And the progress lands on that one row rather than on a stale first copy.
+        let progress = EventBody::JobProgress {
+            done: 12,
+            total: Some(46),
+            label: "Frieren".into(),
+        };
+        assert!(apply_job(&mut jobs, 4, false, &progress));
+        assert_eq!(jobs[0]["done"], 12);
+        assert_eq!(jobs[0]["total"], 46);
+        assert_eq!(jobs[0]["label"], "Frieren");
+    }
+
+    #[test]
+    fn a_finished_job_leaves_and_an_unknown_id_changes_nothing() {
+        let mut jobs = vec![];
+        assert!(apply_job(&mut jobs, 7, false, &started(JobKind::Search)));
+        assert!(!apply_job(
+            &mut jobs,
+            9,
+            false,
+            &EventBody::JobProgress {
+                done: 1,
+                total: None,
+                label: String::new()
+            }
+        ));
+        assert!(apply_job(&mut jobs, 7, true, &EventBody::JobCancelled));
+        assert!(jobs.is_empty());
+        assert!(
+            !apply_job(&mut jobs, 7, true, &EventBody::JobCancelled),
+            "a job that already left is not a change"
+        );
+    }
+
+    #[test]
+    fn a_panic_payload_gives_up_its_message() {
+        let caught = std::panic::catch_unwind(|| panic!("the door fell off")).unwrap_err();
+        assert_eq!(panic_text(&*caught), "the door fell off");
+        let owned = std::panic::catch_unwind(|| panic!("{}", "and again".to_string())).unwrap_err();
+        assert_eq!(panic_text(&*owned), "and again");
     }
 }

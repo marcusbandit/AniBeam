@@ -181,19 +181,52 @@ fn to_variant(v: &QJsonValue) -> QVariant {
 }
 
 impl cxx_qt::Initialize for qobject::RecordModel {
-    fn initialize(self: Pin<&mut Self>) {
-        self.on_roles_changed(|mut model| {
-            let keys: Vec<String> = QList::<QString>::from(model.as_ref().roles())
-                .iter()
-                .map(|s| s.to_string())
-                .collect();
-            model.as_mut().rust_mut().keys = keys;
-        })
-        .release();
+    fn initialize(mut self: Pin<&mut Self>) {
+        self.as_mut()
+            .on_roles_changed(|model| model.reload_roles())
+            .release();
+        self.on_id_key_changed(|model| model.reload_ids()).release();
     }
 }
 
 impl qobject::RecordModel {
+    /// A role id is a position in `keys`, so a view still holding the old ids would read
+    /// the wrong column. Swapping the keys under it is not enough: the whole model resets
+    /// and `roleNames` is asked again.
+    fn reload_roles(mut self: Pin<&mut Self>) {
+        let keys: Vec<String> = QList::<QString>::from(self.as_ref().roles())
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        unsafe {
+            self.as_mut().begin_reset_model();
+            self.as_mut().rust_mut().keys = keys;
+            self.as_mut().end_reset_model();
+        }
+    }
+
+    /// The key that identifies a row changed, so every cached id is stale. Recomputed
+    /// inside a reset, since `at`, `indexOf` and every later upsert read those ids.
+    fn reload_ids(mut self: Pin<&mut Self>) {
+        let key = self.as_ref().id_key().to_string();
+        let ids: Vec<f64> = self
+            .as_ref()
+            .rows
+            .iter()
+            .map(|(_, o)| id_of(o, &key))
+            .collect();
+        unsafe {
+            self.as_mut().begin_reset_model();
+            {
+                let mut rust = self.as_mut().rust_mut();
+                for (row, id) in rust.rows.iter_mut().zip(ids) {
+                    row.0 = id;
+                }
+            }
+            self.as_mut().end_reset_model();
+        }
+    }
+
     pub fn data(&self, index: &QModelIndex, role: i32) -> QVariant {
         let (Some((_, row)), Some(key)) = (
             self.rows.get(index.row() as usize),

@@ -35,6 +35,11 @@ fn main() {
     runtime::install_paths(paths);
     runtime::install_args(args);
 
+    // Both of these have to run before the core does: set_render_loop_env is a setenv, and
+    // setenv is not safe once another thread exists, which the core's tokio runtime is.
+    bridge::helpers::ffi::set_render_loop_env();
+    bridge::helpers::ffi::use_opengl_scene_graph();
+
     // The core is open before the engine, so the Door singleton the first QML file names
     // finds it already there. A run under --root keeps its secrets in that root's own
     // secrets.json and never probes the machine's keyring: a sandbox is asked for
@@ -58,8 +63,6 @@ fn main() {
     };
     runtime::install_core(core);
 
-    bridge::helpers::ffi::set_render_loop_env();
-    bridge::helpers::ffi::use_opengl_scene_graph();
     let mut app = QGuiApplication::new();
     bridge::helpers::ffi::set_desktop_file_name(&QString::from(APP_ID));
 

@@ -295,6 +295,44 @@ mod tests {
     }
 
     #[test]
+    fn qjson_round_trips_and_keeps_whole_numbers_whole() {
+        let v = json!({
+            "id": 42,
+            "series": 1_700_000_000u64,
+            "score": 7.5,
+            "hidden": false,
+            "title": "Frieren",
+            "poster": null,
+            "watched": { "done": 3, "total": null },
+            "cards": [1, 2.5, "x", { "a": 1 }, [true], null],
+        });
+        let back = from_qjson_object(&to_qjson_object(&v));
+        assert_eq!(back, v, "an object survives the walk out and back");
+        // Qt has one number type, so the way back has to decide; an id must not come back
+        // as 42.0, which QML would render "42" but Rust would refuse as a u64.
+        assert!(back["id"].is_i64(), "a whole number comes back an integer");
+        assert!(back["series"].is_i64());
+        assert!(back["watched"]["done"].is_i64(), "nested, too");
+        assert!(back["cards"][0].is_i64(), "and inside an array");
+        assert!(
+            back["score"].is_f64() && !back["score"].is_i64(),
+            "a real number stays a real number"
+        );
+
+        // An array round-trips as itself, and a value that is not an object is wrapped
+        // rather than lost, because a QJsonObject is the only shape the bridge carries.
+        assert_eq!(from_qjson(&to_qjson(&json!([1, "two"]))), json!([1, "two"]));
+        assert_eq!(
+            from_qjson_object(&to_qjson_object(&json!(5))),
+            json!({"value": 5})
+        );
+        assert_eq!(
+            from_qjson_object(&to_qjson_object(&Value::Null)),
+            json!({"value": null})
+        );
+    }
+
+    #[test]
     fn dispatch_answers_from_a_real_core() {
         let dir = tempfile::tempdir().unwrap();
         let paths = CorePaths::under(dir.path());
