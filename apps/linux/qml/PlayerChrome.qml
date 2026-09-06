@@ -118,10 +118,10 @@ Item {
             Item { id: rightSlot; width: parent.width - x - theme.space(1); height: rightGroup.height
                 anchors.verticalCenter: parent.verticalCenter
                 Row { id: rightGroup; anchors.right: parent.right; spacing: theme.space(1)
-                    PlayerButton { id: audioBtn; glyph: "audio-lines"; tip: "Audio track"; visible: page.audioTracks.length > 1; onClicked: audioPicker.openAt(audioBtn) }
-                    PlayerButton { id: subBtn; glyph: "captions"; tip: page.sid >= 0 ? "Subtitles" : "Subtitles off"; active: page.sid >= 0; visible: page.subTracks.length > 0; onClicked: subPicker.openAt(subBtn) }
+                    PlayerButton { id: audioBtn; glyph: "audio-lines"; tip: "Audio track"; visible: page.audioTracks.length > 1; onClicked: page.openAudioPicker(audioBtn) }
+                    PlayerButton { id: subBtn; glyph: "captions"; tip: page.sid >= 0 ? "Subtitles" : "Subtitles off"; active: page.sid >= 0; visible: page.subTracks.length > 0; onClicked: page.openSubPicker(subBtn) }
                     PlayerButton { glyph: "check-check"; tip: "Mark watched"; visible: page.canMark; onClicked: page.markWatched() }
-                    PlayerButton { glyph: "circle-question-mark"; tip: "Keyboard shortcuts"; onClicked: help.show() }
+                    PlayerButton { glyph: "circle-question-mark"; tip: "Keyboard shortcuts"; onClicked: page.showHelp() }
                     PlayerButton { glyph: frame.hostWindow.visibility === Window.FullScreen ? "minimize" : "maximize"; tip: "Fullscreen"; onClicked: page.toggleFullscreen() } } }
         }
     }
@@ -132,14 +132,20 @@ Item {
         visible: page.nextVisible
         anchors.right: parent.right; anchors.bottom: controls.top; anchors.margins: theme.space(6)
         spacing: theme.space(2)
-        Button { anchors.verticalCenter: parent.verticalCenter; text: "Stay"; flat: true; onClicked: page.stay() }
+        // Not flat: this button stands on the picture rather than on the island's scrim, and
+        // a flat one is unreadable over a bright frame. Button says "a fill at rest" by not
+        // being flat, which is the same treatment the replay button's restColor gives.
+        Button { anchors.verticalCenter: parent.verticalCenter; text: "Stay"; onClicked: page.stay() }
         Corner {
             anchors.verticalCenter: parent.verticalCenter
             width: nextLabel.implicitWidth + theme.space(8); height: theme.controlHeight
             radius: height / 2; smoothing: theme.cornerSmoothing
             color: theme.surfaceRaised; borderColor: theme.accent; borderWidth: 1
             Corner { id: countFill; width: 0; height: parent.height; radius: height / 2; smoothing: theme.cornerSmoothing; color: theme.accentSoft
-                NumberAnimation on width { running: page.nextCounting; from: 0; to: countFill.parent.width; duration: page.nextCountMs } }
+                // The animation owns the width while it runs and leaves it wherever it
+                // stopped, so a countdown cancelled part way would keep a half filled pill.
+                NumberAnimation on width { running: page.nextCounting; from: 0; to: countFill.parent.width; duration: page.nextCountMs
+                    onRunningChanged: if (!running) countFill.width = 0 } }
             Text { id: nextLabel; anchors.centerIn: parent; text: "Next"; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeNormal; font.weight: Font.DemiBold }
             MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.openNeighbour(page.session.next) }
         }

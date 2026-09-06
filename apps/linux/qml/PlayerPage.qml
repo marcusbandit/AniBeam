@@ -287,7 +287,9 @@ FocusScope {
     function tick() { if (session && !closed) Door.tick(session.session, timePos, paused) }
 
     // ---- Transport
-    function togglePause() { video.setProperty("pause", !paused); showChrome() }
+    // The resume the viewer asked for ends the step here rather than waiting on the pause
+    // observation, which the step guard may still be swallowing.
+    function togglePause() { if (paused) endStepping(); video.setProperty("pause", !paused); showChrome() }
     function seekTo(secs) { var t = Math.max(0, Math.min(duration > 0 ? duration : secs, secs)); video.command(["seek", String(t), "absolute"]); showChrome() }
     function setVolume(v) { v = Math.max(0, Math.min(100, v)); video.setProperty("volume", v); if (v > 0 && Player.mute) setMute(false); Player.setVolume(v); showChrome() }
     function setMute(m) { video.setProperty("mute", m); Player.setMute(m); showChrome() }
@@ -352,28 +354,50 @@ FocusScope {
     readonly property int nextCountMs: 5000
     Timer { id: nextTimer; interval: page.nextCountMs; onTriggered: page.openNeighbour(page.session.next) }
     function updateNext() {
-        if (!session || !session.next || session.is_extra || nextDismissed || !loaded || duration <= 0) { nextVisible = false; return }
+        if (!session || !session.next || session.is_extra || nextDismissed || !loaded || duration <= 0) { cancelNext(); nextVisible = false; return }
         var remaining = duration - timePos
-        nextVisible = outro ? timePos >= outro.start : remaining <= 8
         var count = (outro && (duration - outro.end) < 20 && timePos >= outro.end) || remaining <= 3
-        if (count && !nextCounting) { nextCounting = true; nextTimer.start() }
+        // A seek back out of the counting zone stops the countdown: someone who rewinds off
+        // the end of the episode is not done with it, and it starts again if they play back
+        // into the zone. The pill also stays up for as long as the countdown runs, so the
+        // shell can never switch episodes with no Stay on screen.
+        if (count && !nextCounting) { nextCounting = true; nextTimer.restart() }
+        else if (!count && nextCounting) cancelNext()
+        nextVisible = nextCounting || (outro ? timePos >= outro.start : remaining <= 8)
     }
-    function stay() { nextDismissed = true; nextVisible = false; nextCounting = false; nextTimer.stop() }
+    function cancelNext() { nextCounting = false; nextTimer.stop() }
+    function stay() { nextDismissed = true; nextVisible = false; cancelNext() }
 
     // ---- The tracker: Mark watched, the outcomes, and the rating prompt on the last
     // episode. The mark the core fires by itself at the outro or 85 percent arrives on the
     // same signal, so the notice and the prompt read the same either way.
     readonly property var trackerNames: ({ Anilist: "AniList", Mal: "MAL" })
     function trackerName(t) { return trackerNames[t] || t }
+    // A refusal is a rule the core applied, not something that went wrong, so it reads as a
+    // sentence and the line it lands in does not say error. The bare enum name is what the
+    // core sends and is not for anyone to read.
+    readonly property var refusalWords: ({
+        Hidden: "the show is hidden",
+        NoMatch: "the show has no tracker match",
+        NotNewer: "the tracker is already past this episode",
+        Extra: "this is an extra",
+        Unmatched: "the file is not matched to an episode",
+        OnDisk: "the file is only on disk"
+    })
+    function refusalWord(r) { return refusalWords[r] || String(r) }
+    function errorLine(e) { return e.kind === "Refused" ? "Not tracked  " + refusalWord(e.reason) : e.message }
     function markWatched() {
         if (!canMark) return
         var r = Door.markEpisode(session.series, episodeNumber)
-        if (r.error) notice.show(r.error.message)
+        if (r.error) notice.show(errorLine(r.error))
     }
+    function outcomeText(o) { return trackerName(o.tracker) + " " + (o.reason ? refusalWord(o.reason) : (o.message || "failed")) }
     function outcomeLine(outcomes) {
         var ok = outcomes.filter(function(o) { return o.ok }).map(function(o) { return trackerName(o.tracker) + " " + (o.progress === null || o.progress === undefined ? "ok" : "at " + o.progress) })
-        var bad = outcomes.filter(function(o) { return !o.ok }).map(function(o) { return trackerName(o.tracker) + " " + (o.reason || o.message || "failed") })
-        return ok.length ? "Tracked  " + ok.concat(bad).join("  ") : "Tracker error  " + bad.join("  ")
+        var bad = outcomes.filter(function(o) { return !o.ok })
+        var head = ok.length ? "Tracked" : (bad.every(function(o) { return !!o.reason }) ? "Not tracked" : "Tracker error")
+        var all = ok.concat(bad.map(outcomeText))
+        return all.length ? head + "  " + all.join("  ") : head
     }
     function markOutcome(outcomes) {
         var list = asArray(outcomes)
@@ -398,7 +422,12 @@ FocusScope {
     // this box: frame-step dips, frame-back-step does not touch pause at all, so waiting for
     // pause to come back would hang on a backward step. A short guard after each step is what
     // separates that dip from the play the viewer asked for.
-    Timer { id: stepGuard; interval: 300 }
+    // The guard's own expiry re-decides what it deferred: a play that landed inside the
+    // 300 ms would otherwise leave `stepping` true for the rest of playback, and every
+    // observed time-pos after it would read a property and rewrite a HUD line that never
+    // cleared.
+    Timer { id: stepGuard; interval: 300; onTriggered: if (!page.paused) page.endStepping() }
+    function endStepping() { stepping = false; if (hud.kind === "frame") hud.clear() }
     function frameLine() { return Fmt.clockMs(timePos) + "  frame " + frameNumber }
     // One read per key press and one per landed step, both on an event, never on a timer:
     // mpv does not notify this property, so there is nothing to observe after the first value.
@@ -416,14 +445,19 @@ FocusScope {
     // through unpaused is not a play, so it clears nothing.
     onPausedChanged: {
         if (paused || stepGuard.running) return
-        stepping = false
-        if (hud.kind === "frame") hud.clear()
+        endStepping()
     }
 
     // ---- The chrome: header, preview, island, the auto-next pill and the replay button
     PlayerChrome { id: chrome }
 
-    // ---- The pickers. They fill the page and hold the chrome while they are up.
+    // ---- The pickers. They fill the page and hold the chrome while they are up. The chrome
+    // and the key map open them through these three functions rather than by id, so what the
+    // page offers its own parts is a contract rather than a reach up the context chain.
+    function openAudioPicker(anchor) { audioPicker.openAt(anchor) }
+    function openSubPicker(anchor) { subPicker.openAt(anchor) }
+    function showHelp() { help.show() }
+    function toggleHelp() { if (help.open) help.close(); else help.show() }
     TrackPicker { id: audioPicker; title: "Audio"; tracks: page.audioTracks; selected: page.aid; onPicked: function(id) { page.pickAudio(id) } }
     TrackPicker { id: subPicker; title: "Subtitles"; tracks: page.subTracks; selected: page.sid; offRow: true; onPicked: function(id) { page.pickSubtitle(id) } }
 
@@ -472,7 +506,7 @@ FocusScope {
     ScorePicker {
         id: ratingPicker
         onOpenChanged: page.openMenus += open ? 1 : -1
-        onSaved: function(v) { rating.visible = false; var r = Door.setScore(page.session.series, v); if (r.error) notice.show(r.error.message) }
+        onSaved: function(v) { rating.visible = false; var r = Door.setScore(page.session.series, v); if (r.error) notice.show(page.errorLine(r.error)) }
     }
 
     // ---- The key list

@@ -44,7 +44,7 @@ QtObject {
         else if (e.key === Qt.Key_C) page.toggleSubtitles()
         else if (e.key === Qt.Key_Z && !(e.modifiers & Qt.ShiftModifier)) page.nudgeDelay(-0.1)
         else if (e.key === Qt.Key_Z) page.nudgeDelay(0.1)
-        else if (e.key === Qt.Key_Question) help.show()
+        else if (e.key === Qt.Key_Question) page.toggleHelp()          // R33: a second press closes it
         // A popover is open: the press belongs to the frame's escape stack, which closes the
         // topmost one, the key list before a track picker. Accepting it here would leave the
         // player and take the popover with it.
