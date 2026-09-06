@@ -34,6 +34,7 @@ fn main() {
             .qml_file("qml/PageScroll.qml")
             .qml_file("qml/Rail.qml")
             .qml_file("qml/StatusStrip.qml")
+            .qml_file("qml/ActivityDrawer.qml")
             .qml_file("qml/SearchField.qml")
             .qml_file("qml/Pager.qml")
             .qml_file("qml/Card.qml")

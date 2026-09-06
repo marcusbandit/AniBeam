@@ -8,6 +8,7 @@ Qt 6.11 QML over the Rust core through cxx-qt 0.10, built with Cargo alone. Spec
     target/debug/anibeam --version
     scripts/shoot.sh library --page library         # one offscreen capture into captures/
     scripts/shoot.sh series --page series --props '{"id":5}'   # a specific series, not the first alphabetically
+    scripts/shoot.sh drawer --page library:drawer   # the activity drawer open over a page
     scripts/bench.sh player 2 keep                  # the real window on the main monitor's workspace 2
     packaging/package.sh                            # build, package, install (Task 25)
 
@@ -26,3 +27,9 @@ and every poster comes back white without it, and RHI's GL backend needs GLX for
 DISPLAY the capture paints through the GPU; without one, forcing RHI aborts instead of falling back
 (no context, no PNG), so `shoot.sh` leaves the software backend running instead, and poster frames
 come back white.
+
+`--page` takes an optional `:<action>` suffix for a shoot that needs the frame in a state a bare
+page name cannot reach on its own. `library:drawer` opens the library page as usual, then calls
+`frame.toggleDrawer()` once the page is up and before the grab, so the shoot's own settle delay
+doubles as the drawer's rise time. `Main.qml` splits the suffix off before ever comparing against a
+page name, so `--page library:drawer` still opens `library`, not a page literally named that.

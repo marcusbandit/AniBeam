@@ -42,23 +42,32 @@ Window {
     onHeightChanged: if (firstFrame && !settled) settled = true
     Timer { id: settle; interval: 200; onTriggered: window.settled = true }
 
+    // --page takes an optional ":<action>" suffix for a shoot capture that needs the frame
+    // in a state a bare page name cannot reach, such as the activity drawer open over it;
+    // pageName is the page nav opens, pageAction the part after the colon.
+    readonly property string pageName: Shell.page.indexOf(":") >= 0 ? Shell.page.slice(0, Shell.page.indexOf(":")) : Shell.page
+    readonly property string pageAction: Shell.page.indexOf(":") >= 0 ? Shell.page.slice(Shell.page.indexOf(":") + 1) : ""
+
     Loader {
         id: frame
         anchors.fill: parent
         active: window.settled && Theme.ready && Door.ready
-        sourceComponent: Shell.page === "tokens" ? tokensPage : frameComponent
+        sourceComponent: window.pageName === "tokens" ? tokensPage : frameComponent
         onLoaded: {
-            if (Shell.page !== "tokens" && Shell.page !== "library" && item.nav) {
+            if (window.pageName !== "tokens" && window.pageName !== "library" && item.nav) {
                 var props = {}
                 if (Shell.props !== "") { try { props = JSON.parse(Shell.props) } catch (e) { console.warn("--props is not valid JSON:", e.message); props = {} } }
                 // A --shoot of the series page with no id in --props opens the first
                 // series alphabetically, so the page has something real to draw.
-                if (Shell.page === "series" && props.id === undefined) {
+                if (window.pageName === "series" && props.id === undefined) {
                     var r = Door.listSeries("All", "", "Alpha", "Asc", false)
                     if (!r.error && r.reply.series.length) props = { id: r.reply.series[0].id }
                 }
-                item.nav.replace(Shell.page, props, undefined)
+                item.nav.replace(window.pageName, props, undefined)
             }
+            // The suffix action runs once the page is up and before the grab, so the
+            // drawer's rise has the whole shoot delay to settle at its open height.
+            if (window.pageAction === "drawer" && item.toggleDrawer) item.toggleDrawer()
             window.maybeShoot()
         }
     }

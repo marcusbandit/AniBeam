@@ -78,7 +78,12 @@ FocusScope {
     // owns (a score picker, an inline confirm) is destroyed with it, and any entry it
     // pushed is now a zombie whose closer is gone, so the next escapePressed() would try
     // to call close() on a destroyed object and throw before ever reaching the new page.
-    Connections { target: nav; function onChanged() { frame.loadPage(); frame.hideTip(); frame.closeMenu(); frame.escapeStack.clear() } }
+    // The drawer is the one exception: it is not owned by the leaving page, so it is not
+    // destroyed and stays open across a navigation. Re-push it right after the clear, in
+    // this same handler, so it stays first in line for the next Escape; a second
+    // Connections on nav.changed would race this one with no ordering guarantee between
+    // them.
+    Connections { target: nav; function onChanged() { frame.loadPage(); frame.hideTip(); frame.closeMenu(); frame.escapeStack.clear(); if (drawer.open) frame.escapeStack.push("drawer", drawer) } }
 
     Rail {
         id: rail
@@ -119,8 +124,12 @@ FocusScope {
             }
         }
 
-        // Task 14 fills the drawer; the strip is wired now
-        Item { id: drawerSlot; anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: strip.top }
+        ActivityDrawer {
+            id: drawer
+            visible: !frame.fullWindow && openness > 0.001
+            anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: strip.top
+            maxHeight: Math.round(page.height * 0.6)
+        }
         StatusStrip {
             id: strip
             visible: !frame.fullWindow
@@ -137,7 +146,7 @@ FocusScope {
             onClicked: frame.toggleDrawer()
         }
     }
-    function toggleDrawer() {}   // Task 14
+    function toggleDrawer() { drawer.toggle() }
 
     // Overlay: menus, tips, toasts
     Item {
