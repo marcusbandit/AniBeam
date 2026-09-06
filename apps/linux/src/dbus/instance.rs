@@ -5,6 +5,7 @@
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::path::Path;
+use std::time::Duration;
 
 use cxx_qt::CxxQtThread;
 use cxx_qt_lib::QString;
@@ -13,8 +14,49 @@ use zbus::zvariant::{OwnedValue, Value};
 
 use crate::bridge::shell::qobject::Shell;
 
-pub const BUS_NAME: &str = "com.marcusrosado.AniBeam";
-pub const OBJECT_PATH: &str = "/com/marcusrosado/AniBeam";
+/// The element a run under --root adds to every well known name it owns (R35). A sandbox
+/// exists so a dev run touches nothing outside itself, and the desktop's idea of which
+/// process is AniBeam is outside itself: without this a sandbox takes the real app's names,
+/// because zbus asks for a name with ReplaceExisting set.
+const SANDBOX: &str = "Sandbox";
+
+/// The application name: the app id, plus the sandbox element under --root.
+fn app_name(sandboxed: bool) -> String {
+    match sandboxed {
+        true => format!("{}.{SANDBOX}", crate::APP_ID),
+        false => crate::APP_ID.to_string(),
+    }
+}
+
+/// The object path is the name with its dots as slashes, the convention every D-Bus
+/// service follows, so a reader who has the name can guess the path.
+fn app_path(sandboxed: bool) -> String {
+    format!("/{}", app_name(sandboxed).replace('.', "/"))
+}
+
+/// What follows org.mpris.MediaPlayer2. in the media player's name. Lowercase, because
+/// that half of the name is the binary's, and the sandbox adds its element the same way.
+fn mpris_suffix(sandboxed: bool) -> String {
+    match sandboxed {
+        true => format!("anibeam.{}", SANDBOX.to_lowercase()),
+        false => "anibeam".to_string(),
+    }
+}
+
+/// A run under --root keeps its names to itself.
+fn sandboxed() -> bool {
+    crate::runtime::args().root.is_some()
+}
+
+pub fn bus_name() -> String {
+    app_name(sandboxed())
+}
+pub fn object_path() -> String {
+    app_path(sandboxed())
+}
+pub fn mpris_bus_suffix() -> String {
+    mpris_suffix(sandboxed())
+}
 
 /// The open file is the lock: closing it releases the flock, so this is held in `main` for
 /// the life of the process and never read from.
@@ -47,28 +89,53 @@ pub fn platform_data(token: Option<&str>) -> HashMap<String, Value<'static>> {
     m
 }
 
+/// The token out of the a{sv} that arrived, empty when there is none. zvariant's
+/// OwnedValue borrows out as &str rather than String, so the token is copied here and the
+/// copy is what the Qt thread's closure takes.
+fn token_of(platform_data: &HashMap<String, OwnedValue>) -> String {
+    platform_data
+        .get("activation-token")
+        .and_then(|v| <&str>::try_from(v).ok())
+        .unwrap_or_default()
+        .to_string()
+}
+
+/// A bus that accepted the connection but never answers must not hold the launch open: two
+/// seconds is far longer than a running window needs and far shorter than zbus's own
+/// timeout, which would leave a launcher's spinner up for 25 seconds with nothing to show.
+const HAND_OFF_TIMEOUT: Duration = Duration::from_secs(2);
+
 /// The second launch's whole job: raise the running window, then exit 0.
 pub async fn hand_off(action: Option<&str>) -> Result<(), String> {
+    match tokio::time::timeout(HAND_OFF_TIMEOUT, reach(action)).await {
+        Ok(result) => result,
+        Err(_) => Err("did not answer within two seconds".to_string()),
+    }
+}
+
+async fn reach(action: Option<&str>) -> Result<(), String> {
     let conn = zbus::Connection::session()
         .await
         .map_err(|e| format!("no session bus: {e}"))?;
     let token = std::env::var("XDG_ACTIVATION_TOKEN").ok();
     let data = platform_data(token.as_deref());
+    let name = bus_name();
+    let path = object_path();
     let result = match action {
-        Some(name) => {
+        Some(action_name) => {
             conn.call_method(
-                Some(BUS_NAME),
-                OBJECT_PATH,
+                Some(name.as_str()),
+                path.as_str(),
                 Some("org.freedesktop.Application"),
                 "ActivateAction",
-                &(name, Vec::<Value<'_>>::new(), &data),
+                &(action_name, Vec::<Value<'_>>::new(), &data),
             )
             .await
         }
         None => {
             conn.call_method(
-                Some(BUS_NAME),
-                OBJECT_PATH,
+                Some(name.as_str()),
+                path.as_str(),
                 Some("org.freedesktop.Application"),
                 "Activate",
                 &(&data,),
@@ -87,13 +154,7 @@ pub struct AppInterface {
 
 impl AppInterface {
     fn raise(&self, platform_data: &HashMap<String, OwnedValue>) {
-        // zvariant's OwnedValue borrows out as &str rather than String, so the token is
-        // copied here and moved into the closure the Qt thread runs.
-        let token = platform_data
-            .get("activation-token")
-            .and_then(|v| <&str>::try_from(v).ok())
-            .unwrap_or_default()
-            .to_string();
+        let token = token_of(platform_data);
         self.shell
             .queue(move |shell| shell.activate_requested(QString::from(&token)))
             .ok();
@@ -123,9 +184,9 @@ impl AppInterface {
 
 pub async fn serve(conn: &zbus::Connection, shell: CxxQtThread<Shell>) -> zbus::Result<()> {
     conn.object_server()
-        .at(OBJECT_PATH, AppInterface { shell })
+        .at(object_path(), AppInterface { shell })
         .await?;
-    conn.request_name(BUS_NAME).await?;
+    conn.request_name(bus_name()).await?;
     Ok(())
 }
 
@@ -153,5 +214,27 @@ mod tests {
             Some("tok123".to_string())
         );
         assert!(platform_data(None).is_empty());
+    }
+
+    /// The wire turns every Value into an OwnedValue on the way in, and the interface reads
+    /// the token back out of that. This is both halves against each other.
+    #[test]
+    fn the_token_survives_the_trip_the_interface_takes_it_on() {
+        let sent: HashMap<String, OwnedValue> = platform_data(Some("tok123"))
+            .into_iter()
+            .map(|(k, v)| (k, OwnedValue::try_from(v).unwrap()))
+            .collect();
+        assert_eq!(token_of(&sent), "tok123");
+        assert_eq!(token_of(&HashMap::new()), "", "no token is the empty one");
+    }
+
+    #[test]
+    fn a_sandbox_owns_its_own_names_and_nothing_else_moves() {
+        assert_eq!(app_name(false), "com.marcusrosado.AniBeam");
+        assert_eq!(app_path(false), "/com/marcusrosado/AniBeam");
+        assert_eq!(mpris_suffix(false), "anibeam");
+        assert_eq!(app_name(true), "com.marcusrosado.AniBeam.Sandbox");
+        assert_eq!(app_path(true), "/com/marcusrosado/AniBeam/Sandbox");
+        assert_eq!(mpris_suffix(true), "anibeam.sandbox");
     }
 }

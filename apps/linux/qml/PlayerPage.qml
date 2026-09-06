@@ -294,7 +294,10 @@ FocusScope {
     // The resume the viewer asked for ends the step here rather than waiting on the pause
     // observation, which the step guard may still be swallowing.
     function togglePause() { if (paused) endStepping(); video.setProperty("pause", !paused); showChrome() }
-    function seekTo(secs) { var t = Math.max(0, Math.min(duration > 0 ? duration : secs, secs)); video.command(["seek", String(t), "absolute"]); showChrome() }
+    // Every seek announces itself: MPRIS's Seeked is what tells a widget the position moved
+    // for a reason other than playing, and a key, the bar, a skip chip and a D-Bus call are
+    // all that same reason. The clamped target is what is announced, not what was asked for.
+    function seekTo(secs) { var t = Math.max(0, Math.min(duration > 0 ? duration : secs, secs)); video.command(["seek", String(t), "absolute"]); Player.mprisSeeked(t); showChrome() }
     function setVolume(v) { v = Math.max(0, Math.min(100, v)); video.setProperty("volume", v); if (v > 0 && Player.mute) setMute(false); Player.setVolume(v); showChrome() }
     function setMute(m) { video.setProperty("mute", m); Player.setMute(m); showChrome() }
     function toggleFullscreen() { frame.hostWindow.visibility = frame.hostWindow.visibility === Window.FullScreen ? Window.Windowed : Window.FullScreen }
@@ -485,8 +488,8 @@ FocusScope {
             else if (name === "pause") { if (!page.paused) page.togglePause() }
             else if (name === "playPause") page.togglePause()
             else if (name === "stop") page.leave()
-            else if (name === "seek") { page.seekTo(page.timePos + value); Player.mprisSeeked(page.timePos + value) }
-            else if (name === "setPosition") { page.seekTo(value); Player.mprisSeeked(value) }
+            else if (name === "seek") page.seekTo(page.timePos + value)     // seekTo announces
+            else if (name === "setPosition") page.seekTo(value)
             else if (name === "setVolume") page.setVolume(value)   // volumeChanged republishes
         }
     }

@@ -51,6 +51,26 @@ fn time(secs: f64) -> Time {
     })
 }
 
+/// Whether a player page is on screen. The page publishes Playing or Paused for as long as
+/// it lives and Stopped as it goes, so the status is the whole answer; a widget that reads
+/// it knows not to offer transport controls that would do nothing.
+fn mounted(state: &State) -> bool {
+    state.status != PlaybackStatus::Stopped
+}
+
+/// The page publishes no position with its state, so an update carries the one already
+/// held: the next real position arrives with the next observed frame, which never comes
+/// while playback is paused. A stop is the one update that does mean zero, which is what
+/// the spec says Position reads with nothing playing, and a position the caller did send
+/// is the newest thing anyone knows.
+fn carry_position(prev: &State, next: &mut State) {
+    if !mounted(next) {
+        next.position_secs = 0.0;
+    } else if next.position_secs == 0.0 {
+        next.position_secs = prev.position_secs;
+    }
+}
+
 pub struct MprisPlayer {
     state: Arc<Mutex<State>>,
     shell: CxxQtThread<Shell>,
@@ -211,16 +231,16 @@ impl PlayerInterface for MprisPlayer {
         Ok(self.state().can_prev)
     }
     async fn can_play(&self) -> fdo::Result<bool> {
-        Ok(true)
+        Ok(mounted(&self.state()))
     }
     async fn can_pause(&self) -> fdo::Result<bool> {
-        Ok(true)
+        Ok(mounted(&self.state()))
     }
     async fn can_seek(&self) -> fdo::Result<bool> {
         Ok(self.state().length_secs > 0.0)
     }
     async fn can_control(&self) -> fdo::Result<bool> {
-        Ok(true)
+        Ok(mounted(&self.state()))
     }
 }
 
@@ -231,17 +251,13 @@ pub struct Handle {
 }
 
 impl Handle {
-    /// Everything but the position: the page publishes no position here, and taking the
-    /// zero the caller sends would report the start of the file for as long as playback is
-    /// paused, since the next position only arrives with the next observed frame. A stop
-    /// is the one update that does mean zero, which is what the spec says Position reads
-    /// with nothing playing.
+    /// Everything the page knows, with the position carried forward. CanControl is left
+    /// out of the signal on purpose: the spec marks it as emitting no change, so a widget
+    /// re-reads it rather than being told.
     pub fn update(&self, next: State) {
         let mut next = next;
         if let Ok(mut s) = self.state.lock() {
-            if next.status != PlaybackStatus::Stopped {
-                next.position_secs = s.position_secs;
-            }
+            carry_position(&s, &mut next);
             *s = next.clone();
         }
         let server = self.server.clone();
@@ -255,6 +271,8 @@ impl Handle {
                     Property::CanGoNext(next.can_next),
                     Property::CanGoPrevious(next.can_prev),
                     Property::CanSeek(next.length_secs > 0.0),
+                    Property::CanPlay(mounted(&next)),
+                    Property::CanPause(mounted(&next)),
                 ])
                 .await
                 .ok();
@@ -290,15 +308,17 @@ pub fn handle() -> Option<Handle> {
 }
 
 /// Builds the MPRIS server, then serves org.freedesktop.Application on its connection and
-/// requests the app id there. None means the MPRIS name never came: no session bus, or a
-/// sandboxed run beside a real one that already holds it. One line on stderr either way.
+/// requests the app id there. Both names carry the sandbox element under --root, so a dev
+/// run never takes the real app's; two sandboxes still share one pair of names, since the
+/// element says sandbox and not which root. None means the MPRIS name never came, from no
+/// session bus or from a second sandbox: one line on stderr, no media keys.
 pub async fn start(shell: CxxQtThread<Shell>) -> Option<Handle> {
     let state = Arc::new(Mutex::new(State::default()));
     let imp = MprisPlayer {
         state: state.clone(),
         shell: shell.clone(),
     };
-    let server = match Server::new("anibeam", imp).await {
+    let server = match Server::new(&super::instance::mpris_bus_suffix(), imp).await {
         Ok(s) => Arc::new(s),
         Err(e) => {
             eprintln!("anibeam: MPRIS and media keys are off: {e}");
@@ -306,7 +326,64 @@ pub async fn start(shell: CxxQtThread<Shell>) -> Option<Handle> {
         }
     };
     if let Err(e) = super::instance::serve(server.connection(), shell).await {
-        eprintln!("anibeam: could not own {}: {e}", super::instance::BUS_NAME);
+        eprintln!(
+            "anibeam: could not own {}: {e}",
+            super::instance::bus_name()
+        );
     }
     Some(Handle { state, server })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_position_carries_forward_and_a_stop_resets_it() {
+        let prev = State {
+            position_secs: 42.0,
+            ..State::default()
+        };
+
+        let mut paused = State {
+            status: PlaybackStatus::Paused,
+            ..State::default()
+        };
+        carry_position(&prev, &mut paused);
+        assert_eq!(paused.position_secs, 42.0, "a pause holds where it is");
+
+        let mut stopped = State {
+            position_secs: 7.0,
+            ..State::default()
+        };
+        carry_position(&prev, &mut stopped);
+        assert_eq!(
+            stopped.position_secs, 0.0,
+            "nothing playing is position zero"
+        );
+
+        let mut seeked = State {
+            status: PlaybackStatus::Playing,
+            position_secs: 5.0,
+            ..State::default()
+        };
+        carry_position(&prev, &mut seeked);
+        assert_eq!(seeked.position_secs, 5.0, "a position that was sent wins");
+    }
+
+    #[test]
+    fn the_transport_is_offered_only_while_a_page_is_up() {
+        assert!(
+            !mounted(&State::default()),
+            "nothing playing, nothing to do"
+        );
+        assert!(mounted(&State {
+            status: PlaybackStatus::Playing,
+            ..State::default()
+        }));
+        assert!(mounted(&State {
+            status: PlaybackStatus::Paused,
+            ..State::default()
+        }));
+    }
 }

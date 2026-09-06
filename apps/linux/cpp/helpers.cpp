@@ -29,6 +29,13 @@ void raise_window(QObject *window, const QString &token)
     auto *w = qobject_cast<QWindow *>(window);
     if (!w)
         return;
+    // The only setenv in the shell that runs with other threads alive, and it runs there
+    // because Qt's Wayland plugin reads the xdg-activation token from the environment and
+    // offers no API to hand it one. The plugin takes the value and unsets it as part of
+    // requestActivate, so the window is the only reader and the variable is gone by the
+    // time this returns. On xcb nothing reads it and the value lingers, harmlessly: an
+    // xdg-activation token means nothing to an X11 server. Everything else that sets the
+    // environment does so in main, before the core's runtime exists.
     if (!token.isEmpty())
         qputenv("XDG_ACTIVATION_TOKEN", token.toUtf8());
     w->show();

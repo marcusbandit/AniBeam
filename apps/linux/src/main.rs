@@ -35,15 +35,22 @@ fn main() {
             std::process::exit(2);
         }
     };
+    // Installed before the lock, because the names the hand-off targets are the sandbox's
+    // under --root and the arguments are where that is read from. Nothing else looks at
+    // either until the engine loads.
+    runtime::install_paths(paths);
+    runtime::install_args(args);
+
     // Spec 4.5: the flock is the single-instance guarantee and it is taken before
     // anything else opens. A second launch that loses it hands its activation token to the
     // running window and leaves; the bus is only how the raise travels, so a hand-off that
     // cannot reach the bus still exits rather than opening a second window.
-    let lock = match dbus::instance::try_lock(&paths.lock_path()) {
+    let lock_path = runtime::paths().lock_path();
+    let lock = match dbus::instance::try_lock(&lock_path) {
         Ok(Some(lock)) => lock,
         Ok(None) => {
-            let result =
-                runtime::runtime().block_on(dbus::instance::hand_off(args.action.as_deref()));
+            let result = runtime::runtime()
+                .block_on(dbus::instance::hand_off(runtime::args().action.as_deref()));
             match result {
                 Ok(()) => std::process::exit(0),
                 Err(e) => {
@@ -53,16 +60,15 @@ fn main() {
             }
         }
         Err(e) => {
-            eprintln!("anibeam: lock {}: {e}", paths.lock_path().display());
+            eprintln!("anibeam: lock {}: {e}", lock_path.display());
             std::process::exit(2);
         }
     };
 
-    runtime::install_paths(paths);
-    runtime::install_args(args);
-
     // Both of these have to run before the core does: set_render_loop_env is a setenv, and
     // setenv is not safe once another thread exists, which the core's tokio runtime is.
+    // The one setenv that cannot obey this rule is raise_window's, in cpp/helpers.cpp;
+    // the comment there says why Qt leaves no other way and what the risk comes to.
     bridge::helpers::ffi::set_render_loop_env();
     bridge::helpers::ffi::use_opengl_scene_graph();
 
