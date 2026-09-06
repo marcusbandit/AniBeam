@@ -74,7 +74,11 @@ FocusScope {
         var ep = d.reply.detail.episodes.find(function(e) { return e.file === session.file })
         episodeNumber = ep ? ep.number : -1
     }
-    Component.onDestruction: close("Stopped")
+    Component.onDestruction: {
+        close("Stopped")
+        // The page is the only thing that ever publishes; leaving it leaves nothing playing.
+        Player.mprisUpdate("Stopped", "", "", "", 0, false, false)
+    }
     property bool closed: false
     function close(reason) {
         if (!session || closed) return
@@ -342,6 +346,9 @@ FocusScope {
         // playing this branch is never taken, since stepping only holds on a paused core.
         if (stepping) { readFrame(); hud.flash(frameLine(), "frame") }
         updateNext()
+        // Not a signal: MPRIS's Position emits no PropertiesChanged, so this only keeps the
+        // value a Get answers with. Seeked is emitted where a seek happens.
+        Player.mprisPosition(timePos)
     }
 
     // ---- Auto-next and the replay. The pill appears when the outro starts, or eight
@@ -442,10 +449,46 @@ FocusScope {
     }
     // Play clears the frame line at once, and only the frame line: a subtitle delay put on
     // screen while paused is a different message and keeps its own 1.2 s. A step's own dip
-    // through unpaused is not a play, so it clears nothing.
+    // through unpaused is not a play, so it clears nothing. A pause also stops the auto-next
+    // countdown: the pill keeps Next and Stay, and playing back into the counting zone
+    // starts it again through updateNext().
     onPausedChanged: {
-        if (paused || stepGuard.running) return
-        endStepping()
+        if (paused) cancelNext()
+        else if (!stepGuard.running) endStepping()
+        publishNowPlaying()
+    }
+
+    // ---- MPRIS: the two now-playing lines out, one command signal in. The show name is the
+    // untranslated romaji first, because that is how the library and the trackers name a
+    // series; the language switch is a shell preference and says nothing about D-Bus.
+    function episodeNumberOf() { return session.is_extra || episodeNumber < 0 ? -1 : Math.round(episodeNumber) }
+    function publishNowPlaying() {
+        if (!session) return
+        var show = seriesTitles.romaji || seriesTitles.english || seriesTitles.folder || session.series_title
+        var lines = Player.nowPlaying(show, episodeNumberOf(), session.episode_title || "", session.is_extra ? session.episode_title || session.code : "")
+        Player.mprisUpdate(paused ? "Paused" : "Playing", lines[0], lines[1], session.artwork ? Player.artUrl(session.artwork) : "",
+                           duration, !!session.next && !session.is_extra, !!session.prev && !session.is_extra)
+    }
+    onDurationChanged: publishNowPlaying()
+    onSessionChanged: publishNowPlaying()
+    Connections {
+        target: Player
+        // A volume change from anywhere, the keys, the slider or the desktop, republishes,
+        // so the desktop's own slider follows rather than snapping back at the next publish.
+        function onVolumeChanged() { page.publishNowPlaying() }
+        // Every command goes through the page's own transport, never at the mpv property:
+        // that is what clears the frame-step guard on a resume and what persists a volume.
+        function onMprisCommand(name, value) {
+            if (name === "next") page.openNeighbour(page.session.next)
+            else if (name === "previous") page.openNeighbour(page.session.prev)
+            else if (name === "play") { if (page.paused) page.togglePause() }
+            else if (name === "pause") { if (!page.paused) page.togglePause() }
+            else if (name === "playPause") page.togglePause()
+            else if (name === "stop") page.leave()
+            else if (name === "seek") { page.seekTo(page.timePos + value); Player.mprisSeeked(page.timePos + value) }
+            else if (name === "setPosition") { page.seekTo(value); Player.mprisSeeked(value) }
+            else if (name === "setVolume") page.setVolume(value)   // volumeChanged republishes
+        }
     }
 
     // ---- The chrome: header, preview, island, the auto-next pill and the replay button

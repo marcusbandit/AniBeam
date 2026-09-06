@@ -18,6 +18,19 @@ Window {
     Tokens { id: theme }
     color: Theme.ready ? theme.bg : "#101216"
 
+    // Touching the Player singleton here is what constructs it, and constructing it is what
+    // registers the Qt thread an MPRIS command is queued on. Without this the first media
+    // key before a file plays would have nowhere to go.
+    readonly property real bootVolume: Player.volume
+
+    // A second launch, or an MPRIS Raise, asks for this window; Quit closes it. The token
+    // is the launcher's, and it goes into the environment before the activation request.
+    Connections {
+        target: Shell
+        function onActivateRequested(token) { Shell.raiseWindow(window, token) }
+        function onQuitRequested() { Qt.quit() }
+    }
+
     // Window.color is the clear colour the compositor paints with; grabToImage renders only
     // painted items, so without this the offscreen capture below comes back transparent.
     Rectangle { anchors.fill: parent; color: window.color }

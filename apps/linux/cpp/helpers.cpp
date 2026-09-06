@@ -3,6 +3,7 @@
 #include <QtCore/qglobal.h>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QPalette>
+#include <QtGui/QWindow>
 #include <QtQuick/QQuickWindow>
 
 void use_opengl_scene_graph()
@@ -21,6 +22,18 @@ void set_render_loop_env()
         qputenv("QSG_RENDER_LOOP", QByteArrayLiteral("threaded"));
     if (qgetenv("QT_XCB_GL_INTEGRATION").isEmpty())
         qputenv("QT_XCB_GL_INTEGRATION", QByteArrayLiteral("xcb_egl"));
+}
+
+void raise_window(QObject *window, const QString &token)
+{
+    auto *w = qobject_cast<QWindow *>(window);
+    if (!w)
+        return;
+    if (!token.isEmpty())
+        qputenv("XDG_ACTIVATION_TOKEN", token.toUtf8());
+    w->show();
+    w->raise();
+    w->requestActivate();
 }
 
 void set_app_palette(const QColor &window, const QColor &text, const QColor &base, const QColor &highlight,

@@ -22,7 +22,9 @@ serde_json.workspace = true
 tokio.workspace = true
 zbus = { version = "5", default-features = false, features = ["tokio"] }
 futures-util = "0.3"
-mpris-server = { version = "=0.10.0", features = ["tokio"] }
+# `unstable` is the one gate on Server::connection(), which is how the application
+# name and MPRIS end up on one connection rather than two.
+mpris-server = { version = "=0.10.0", features = ["tokio", "unstable"] }
 notify = "8.2"
 notify-debouncer-full = "0.7"
 material-colors = { version = "=0.4.2", default-features = false, features = ["std"] }

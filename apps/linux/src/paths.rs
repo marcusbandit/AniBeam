@@ -64,9 +64,8 @@ impl ShellPaths {
     }
 }
 
-// Task 6 reads player.toml and the mpv.conf layers, Task 13 the lock file; this file's own
-// test is the only caller until then, so a plain build sees these as dead code.
-#[allow(dead_code)]
+/// What the player reads: player.toml, the three mpv.conf layers, and the lock file the
+/// single instance is held by.
 impl ShellPaths {
     pub fn player_toml(&self) -> PathBuf {
         self.config_dir().join("player.toml")

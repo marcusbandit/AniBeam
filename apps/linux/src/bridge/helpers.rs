@@ -8,6 +8,8 @@ pub mod ffi {
         type QString = cxx_qt_lib::QString;
         include!("cxx-qt-lib/qcolor.h");
         type QColor = cxx_qt_lib::QColor;
+        include!("cxx-qt-lib/qobject.h");
+        type QObject = cxx_qt::QObject;
     }
 
     unsafe extern "C++" {
@@ -18,6 +20,9 @@ pub mod ffi {
         fn set_desktop_file_name(name: &QString);
         /// The two environment variables the spikes settled, before QGuiApplication reads them.
         fn set_render_loop_env();
+        /// Shows, raises and activates a window, with the launcher's xdg-activation token
+        /// in the environment first. The pointer is a QML Window, so it outlives the call.
+        unsafe fn raise_window(window: *mut QObject, token: &QString);
         /// The resolved tokens into QGuiApplication's palette, so a stock control matches.
         fn set_app_palette(
             window: &QColor,

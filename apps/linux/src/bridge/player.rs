@@ -2,12 +2,15 @@
 //! helpers the player page calls into Rust for.
 
 use core::pin::Pin;
+use std::sync::OnceLock;
 
 use anibeam_core::{SubtitleDefaults, TrackChoice};
-use cxx_qt::CxxQtType;
+use cxx_qt::{CxxQtThread, CxxQtType, Threading};
 use cxx_qt_lib::{QJsonArray, QJsonObject, QJsonValue, QString, QStringList};
+use mpris_server::PlaybackStatus;
 use serde_json::Value;
 
+use crate::dbus::mpris::State;
 use crate::player_config::{self, PlayerSettings};
 
 #[cxx_qt::bridge]
@@ -73,6 +76,44 @@ pub mod qobject {
         #[qinvokable]
         fn subtitle_options(self: &Player, defaults: &QJsonObject) -> QJsonArray;
 
+        /// The two now-playing lines, `[title, artist]`, and the artwork as a file URL.
+        /// A negative `episode_number` is no number, since QML has no null number.
+        #[qinvokable]
+        fn now_playing(
+            self: &Player,
+            show: &QString,
+            episode_number: i32,
+            episode_title: &QString,
+            extra_label: &QString,
+        ) -> QStringList;
+        #[qinvokable]
+        fn art_url(self: &Player, path: &QString) -> QString;
+
+        /// What the player page publishes to MPRIS. Nothing here reaches the core; each
+        /// writes the state the D-Bus interface answers from and, for the first two,
+        /// signals what changed.
+        #[qinvokable]
+        fn mpris_update(
+            self: &Player,
+            status: &QString,
+            title: &QString,
+            artist: &QString,
+            art_url: &QString,
+            length_secs: f64,
+            can_next: bool,
+            can_prev: bool,
+        );
+        #[qinvokable]
+        fn mpris_position(self: &Player, secs: f64);
+        #[qinvokable]
+        fn mpris_seeked(self: &Player, secs: f64);
+
+        /// One MPRIS command for the page to act on: `next`, `previous`, `play`, `pause`,
+        /// `playPause`, `stop`, `seek` (value: the offset in seconds), `setPosition`
+        /// (value: seconds) and `setVolume` (value: 0 to 100).
+        #[qsignal]
+        fn mpris_command(self: Pin<&mut Player>, name: QString, value: f64);
+
         #[qsignal]
         fn volume_changed(self: Pin<&mut Player>);
         #[qsignal]
@@ -81,6 +122,23 @@ pub mod qobject {
         fn use_my_mpv_conf_changed(self: Pin<&mut Player>);
         #[qsignal]
         fn config_layers_changed(self: Pin<&mut Player>);
+    }
+
+    impl cxx_qt::Threading for Player {}
+    impl cxx_qt::Initialize for Player {}
+}
+
+/// The Qt thread handle an MPRIS command is queued on. The singleton is constructed once,
+/// by the QML engine, and lives for the life of the engine, so one slot is enough.
+static THREAD: OnceLock<CxxQtThread<qobject::Player>> = OnceLock::new();
+
+pub fn thread() -> Option<CxxQtThread<qobject::Player>> {
+    THREAD.get().cloned()
+}
+
+impl cxx_qt::Initialize for qobject::Player {
+    fn initialize(self: Pin<&mut Self>) {
+        THREAD.set(self.qt_thread()).ok();
     }
 }
 
@@ -267,6 +325,88 @@ impl qobject::Player {
                     .into_iter()
                     .map(|(k, v)| (k.to_string(), v)),
             )
+        })
+    }
+
+    /// The two lines a media widget shows, as `[title, artist]`.
+    pub fn now_playing(
+        &self,
+        show: &QString,
+        episode_number: i32,
+        episode_title: &QString,
+        extra_label: &QString,
+    ) -> QStringList {
+        Self::guard("nowPlaying", || {
+            let title = episode_title.to_string();
+            let extra = extra_label.to_string();
+            let (t, a) = crate::nowplaying::lines(
+                &show.to_string(),
+                if episode_number >= 0 {
+                    Some(episode_number as u32)
+                } else {
+                    None
+                },
+                Some(title.as_str()).filter(|s| !s.is_empty()),
+                Some(extra.as_str()).filter(|s| !s.is_empty()),
+            );
+            QStringList::from_iter([QString::from(&t), QString::from(&a)])
+        })
+    }
+
+    pub fn art_url(&self, path: &QString) -> QString {
+        Self::guard("artUrl", || {
+            QString::from(&crate::nowplaying::art_url(&path.to_string()))
+        })
+    }
+
+    pub fn mpris_update(
+        &self,
+        status: &QString,
+        title: &QString,
+        artist: &QString,
+        art_url: &QString,
+        length_secs: f64,
+        can_next: bool,
+        can_prev: bool,
+    ) {
+        Self::guard("mprisUpdate", || {
+            let Some(h) = crate::dbus::mpris::handle() else {
+                return;
+            };
+            let status = match status.to_string().as_str() {
+                "Playing" => PlaybackStatus::Playing,
+                "Paused" => PlaybackStatus::Paused,
+                _ => PlaybackStatus::Stopped,
+            };
+            let art = art_url.to_string();
+            // The position is left at zero on purpose: mprisPosition owns that field, and
+            // the handle keeps the value it already has rather than taking this one.
+            h.update(State {
+                status,
+                title: title.to_string(),
+                artist: artist.to_string(),
+                art_url: if art.is_empty() { None } else { Some(art) },
+                length_secs,
+                position_secs: 0.0,
+                // MPRIS volume is 0 to 1; the shell keeps it as mpv does, 0 to 100.
+                volume: self.volume() / 100.0,
+                can_next,
+                can_prev,
+            });
+        })
+    }
+    pub fn mpris_position(&self, secs: f64) {
+        Self::guard("mprisPosition", || {
+            if let Some(h) = crate::dbus::mpris::handle() {
+                h.position(secs)
+            }
+        })
+    }
+    pub fn mpris_seeked(&self, secs: f64) {
+        Self::guard("mprisSeeked", || {
+            if let Some(h) = crate::dbus::mpris::handle() {
+                h.seeked(secs)
+            }
         })
     }
 }

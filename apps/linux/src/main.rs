@@ -1,7 +1,9 @@
 mod args;
 mod bridge;
+mod dbus;
 mod format;
 mod json;
+mod nowplaying;
 mod paths;
 mod player_config;
 mod runtime;
@@ -33,7 +35,29 @@ fn main() {
             std::process::exit(2);
         }
     };
-    // Task 13 takes the lock first.
+    // Spec 4.5: the flock is the single-instance guarantee and it is taken before
+    // anything else opens. A second launch that loses it hands its activation token to the
+    // running window and leaves; the bus is only how the raise travels, so a hand-off that
+    // cannot reach the bus still exits rather than opening a second window.
+    let lock = match dbus::instance::try_lock(&paths.lock_path()) {
+        Ok(Some(lock)) => lock,
+        Ok(None) => {
+            let result =
+                runtime::runtime().block_on(dbus::instance::hand_off(args.action.as_deref()));
+            match result {
+                Ok(()) => std::process::exit(0),
+                Err(e) => {
+                    eprintln!("anibeam: another AniBeam is running and {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("anibeam: lock {}: {e}", paths.lock_path().display());
+            std::process::exit(2);
+        }
+    };
+
     runtime::install_paths(paths);
     runtime::install_args(args);
 
@@ -80,5 +104,8 @@ fn main() {
     };
     drop(engine);
     runtime::core().shutdown();
+    // Held until here on purpose: the lock is released by closing the file, so this is the
+    // line that says the process is done being the one instance.
+    drop(lock);
     std::process::exit(code);
 }
