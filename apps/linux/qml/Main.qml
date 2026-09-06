@@ -37,7 +37,7 @@ Window {
         onLoaded: {
             if (Shell.page !== "tokens" && Shell.page !== "library" && item.nav) {
                 var props = {}
-                if (Shell.props !== "") { try { props = JSON.parse(Shell.props) } catch (e) { props = {} } }
+                if (Shell.props !== "") { try { props = JSON.parse(Shell.props) } catch (e) { console.warn("--props is not valid JSON:", e.message); props = {} } }
                 // A --shoot of the series page with no id in --props opens the first
                 // series alphabetically, so the page has something real to draw.
                 if (Shell.page === "series" && props.id === undefined) {

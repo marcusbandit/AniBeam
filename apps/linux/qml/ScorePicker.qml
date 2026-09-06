@@ -26,6 +26,10 @@ Item {
         list.positionViewAtIndex(Math.round(draft * 10), ListView.Center)
     }
     function close() { if (!open) return; open = false; frame.escapeStack.pop(root) }
+    // A keyboard navigation (Alt+Left, Ctrl+K, Ctrl+comma) while open destroys the page,
+    // and this picker with it, without ever calling close(); close() is already guarded
+    // for the never-opened case, so this is safe to call unconditionally on destruction.
+    Component.onDestruction: root.close()
 
     MouseArea { anchors.fill: parent; onPressed: root.close() }
     Corner {

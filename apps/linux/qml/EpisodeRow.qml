@@ -36,7 +36,7 @@ Corner {
             Tooltip { text: root.hasTracker && !root.extra ? (root.watched ? "untrack to here" : "track to here") : "" }
         }
         Text { anchors.verticalCenter: parent.verticalCenter; text: episode.code || ""; color: theme.textDim; font.family: theme.fontMono; font.pointSize: theme.typeSmall; width: theme.space(16) }
-        Text { anchors.verticalCenter: parent.verticalCenter; text: root.title; color: root.nextUp ? theme.text : (root.watched ? theme.textDim : theme.text); font.family: theme.fontSans; font.pointSize: theme.typeNormal; elide: Text.ElideRight; width: parent.width - mark.width - theme.space(16) - theme.space(6) }
+        Text { anchors.verticalCenter: parent.verticalCenter; text: root.title; color: root.nextUp ? theme.text : (root.watched ? theme.textDim : theme.text); font.family: theme.fontSans; font.pointSize: theme.typeNormal; elide: Text.ElideRight; width: parent.width - mark.width - theme.space(16) - theme.space(3) * 2 }
     }
     Row {
         id: pills

@@ -24,6 +24,7 @@ FocusScope {
         readonly property var rank: ({ drawer: 3, confirm: 2, popover: 1 })
         function push(kind, closer) { pop(closer); entries = entries.concat([{ kind: kind, closer: closer }]) }
         function pop(closer) { entries = entries.filter(function(e) { return e.closer !== closer }) }
+        function clear() { entries = [] }
         function top() {
             var best = null
             entries.forEach(function(e) { if (!best || rank[e.kind] >= rank[best.kind]) best = e })
@@ -73,7 +74,11 @@ FocusScope {
     Component.onCompleted: frame.loadPage()
     // A hovered item destroyed by the navigation never fires its own exit handler, so a
     // tip or a menu opened on the leaving page would otherwise survive onto the next one.
-    Connections { target: nav; function onChanged() { frame.loadPage(); frame.hideTip(); frame.closeMenu() } }
+    // The escape stack is cleared for the identical reason: a popover the leaving page
+    // owns (a score picker, an inline confirm) is destroyed with it, and any entry it
+    // pushed is now a zombie whose closer is gone, so the next escapePressed() would try
+    // to call close() on a destroyed object and throw before ever reaching the new page.
+    Connections { target: nav; function onChanged() { frame.loadPage(); frame.hideTip(); frame.closeMenu(); frame.escapeStack.clear() } }
 
     Rail {
         id: rail

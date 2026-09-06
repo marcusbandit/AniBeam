@@ -25,6 +25,8 @@ PageScroll {
     property bool tagsOpen: false
     property real nowMs: Date.now()
     property real optimisticProgress: -1
+    property var optimisticFile: -1
+    property bool optimisticWatched: false
     readonly property bool isMovie: card.kind === "Movie"
     readonly property bool hasTracker: !!(card.match_info && (card.match_info.anilist_id || card.match_info.mal_id))
     readonly property string altTitle: {
@@ -34,7 +36,7 @@ PageScroll {
     }
     function contextItems() {
         return [
-            { text: "Rescan show", icon: "refresh-cw", action: function() { var r = Door.rescanSeries(props.id); frame.toast(r.error ? r.error.message : "Rescan started") } },
+            { text: "Rescan show", icon: "refresh-cw", action: function() { var r = Door.rescanSeries(page.props.id); frame.toast(r.error ? r.error.message : "Rescan started") } },
             { text: "To Metadata", icon: "database", action: function() { frame.go("metadata", { q: page.title }) } }
         ]
     }
@@ -43,9 +45,10 @@ PageScroll {
         if (r.error) { frame.toast(r.error.message); return }
         detail = r.reply.detail
         optimisticProgress = -1
+        optimisticFile = -1
     }
     Component.onCompleted: { load(); Door.refreshAiring(props.id) }
-    Timer { interval: 1000; running: !!(card.next_airing); repeat: true; onTriggered: page.nowMs = Date.now() }
+    Timer { interval: 1000; running: !!card.next_airing && card.next_airing.at * 1000 > page.nowMs; repeat: true; onTriggered: page.nowMs = Date.now() }
     Timer { id: reloadDebounce; interval: 200; onTriggered: page.load() }
     Connections {
         target: Door
@@ -54,6 +57,11 @@ PageScroll {
         function onProgressSet(series, progress, outcomes) { if (series === page.props.id) reloadDebounce.restart() }
         function onScored(series, score, outcomes) { if (series === page.props.id) { reloadDebounce.restart(); frame.toast(outcomes.every(function(o) { return o.ok }) ? "Rated " + (score < 0 ? "cleared" : Fmt.score(score)) : "Score failed") } }
         function onMarked(series, episode, outcomes) { if (series === page.props.id) reloadDebounce.restart() }
+        // The core resolves card.title (and every other localised field) at query time,
+        // so a title-language flip from the rail's JP/EN switch needs a fresh GetSeries;
+        // Door reports every preference write here regardless of what changed, exactly
+        // like LibraryPage.qml's own onPreferencesChanged, so there is nothing to diff.
+        function onPreferencesChanged() { reloadDebounce.restart() }
     }
     function openFile(file) { frame.go("player", { file: file }, page.title) }
     function status(s) { return { Releasing: "Airing", Finished: "Finished", NotYetReleased: "Upcoming", Cancelled: "Cancelled", Hiatus: "Hiatus" }[s] || s }
@@ -65,30 +73,51 @@ PageScroll {
         var width = p.total ? String(p.total).length : 2
         return String(p.watched).padStart(width, "0") + " / " + denom + (p.estimate ? "+" : "")
     }
-    // Track to here / untrack to here, optimistic; the core confirms through progressSet
+    // Track to here / untrack to here, optimistic; the core confirms through progressSet.
+    // The progress sent to the core is always the floor of ep.number (progress counts
+    // whole episodes), but a half-numbered episode (a split cour, a Part 2) then sits on
+    // the wrong side of that integral cutoff for its own row: marking 12.5 floors to a
+    // target of 12, and 12.5 <= 12 is false, so the row just clicked would not flip.
+    // optimisticFile pins the clicked row to the intended state regardless of the number
+    // comparison; every other row still reads the integral target normally.
     function marker(ep) {
         var watched = ep.watched
         var target = watched ? Math.max(0, Math.floor(ep.number) - 1) : Math.floor(ep.number)
         optimisticProgress = target
+        optimisticFile = ep.file
+        optimisticWatched = !watched
         var r = Door.setProgress(props.id, target)
-        if (r.error) { optimisticProgress = -1; frame.toast(r.error.message) }
+        if (r.error) { optimisticProgress = -1; optimisticFile = -1; frame.toast(r.error.message) }
     }
-    function watchedWithOptimism(ep) { return optimisticProgress >= 0 ? ep.number <= optimisticProgress : ep.watched }
+    function watchedWithOptimism(ep) {
+        if (optimisticProgress < 0) return ep.watched
+        if (ep.file === optimisticFile) return optimisticWatched
+        return ep.number <= optimisticProgress
+    }
 
     // Hero
     Item {
+        id: hero
         width: parent.width; height: theme.space(60)
+        readonly property bool hasBanner: !!(detail && detail.banner)
         Corner {
             anchors.fill: parent
             radius: theme.radiusXl; smoothing: theme.cornerSmoothing; color: theme.surface
-            fillItem: art.status === Image.Ready ? art : null
+            // No banner: the fill is the blurred copy, not the sharp one. A sharp fillItem
+            // with a separate rectangular MultiEffect blurred on top of it at 0.6 opacity
+            // (the previous shape) reads as a sharp image with a ghost, and that rectangle
+            // is not clipped to this Corner's rounded corners, so the blur also bled past
+            // them; feeding the blur straight into fillItem fixes both at once.
+            fillItem: art.status === Image.Ready ? (hero.hasBanner ? art : blurredArt) : null
             Image { id: art; visible: false; width: parent.width; height: parent.height; fillMode: Image.PreserveAspectCrop; asynchronous: true
-                source: detail && detail.banner ? "file://" + detail.banner : (card.poster ? "file://" + card.poster : "") }
+                source: hero.hasBanner ? "file://" + detail.banner : (card.poster ? "file://" + card.poster : "") }
+            MultiEffect { id: blurredArt; visible: false; anchors.fill: art; source: art; blurEnabled: true; blur: 1.0; blurMax: 64 }
         }
-        // No banner: the poster blown up and blurred behind a scrim
-        MultiEffect { visible: detail && !detail.banner && !!card.poster; anchors.fill: parent; source: art; blurEnabled: true; blur: 1.0; blurMax: 64; opacity: 0.6 }
         Rectangle { anchors.fill: parent; color: theme.scrim; opacity: 0.55 }
-        Chip { x: theme.space(4); y: theme.space(4); text: frame.nav.backLabel; icon: "arrow-left"; mono: false; clickable: true; onClicked: frame.nav.back() }
+        // z: 1: declared before the poster Row below, so without this it paints under the
+        // poster's corner (same child-order stacking, both at the default z) and never
+        // shows at all.
+        Chip { z: 1; x: theme.space(4); y: theme.space(4); text: frame.nav.backLabel; icon: "arrow-left"; mono: false; clickable: true; onClicked: frame.nav.back() }
         Row {
             anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: theme.space(6)
             spacing: theme.space(5)
@@ -127,8 +156,15 @@ PageScroll {
         Chip { visible: !!card.status; text: page.status(card.status); mono: false }
         Chip { visible: !!card.next_airing && card.next_airing.at * 1000 > page.nowMs; icon: "clock"; textColor: theme.accent
             text: card.next_airing ? "EP " + String(card.next_airing.episode).padStart(2, "0") + " in " + Fmt.countdownSeconds(card.next_airing.at - page.nowMs / 1000) : "" }
-        Chip { visible: !!card.list_status; mono: false; text: card.list_status === "Repeating" ? "Rewatching" : (card.list_status || "")
-            Row { anchors.left: parent.left; anchors.leftMargin: theme.space(1); anchors.verticalCenter: parent.verticalCenter; StatusDot { status: card.list_status || "" } } }
+        // Chip has no content slot of its own, so the dot sits beside it, not inside it:
+        // a Row injected as a child of Chip painted over its own centred label instead of
+        // widening it.
+        Row {
+            visible: !!card.list_status
+            spacing: theme.space(1)
+            StatusDot { anchors.verticalCenter: parent.verticalCenter; status: card.list_status || "" }
+            Chip { mono: false; text: card.list_status === "Repeating" ? "Rewatching" : (card.list_status || "") }
+        }
         Chip { visible: !!(detail && detail.rewatch_count > 0); icon: "rotate-cw"; text: detail ? detail.rewatch_count + "x rewatched" : ""; textColor: theme.purple }
     }
 
@@ -154,6 +190,13 @@ PageScroll {
         visible: detail && detail.tags.length > 0
         readonly property var tags: detail ? detail.tags.filter(function(t) { return page.spoilers || (!t.spoiler && !t.adult) }).sort(function(a, b) { return b.rank - a.rank }) : []
         readonly property bool anySpoiler: detail ? detail.tags.some(function(t) { return t.spoiler || t.adult }) : false
+        // A hidden reference chip, never shown: real chip height depends on font metrics
+        // (system font, point size, density), so it cannot be a constant. Measuring one
+        // lets the collapsed clip below land on a whole number of rows instead of slicing
+        // through one, at every density.
+        Chip { id: rowRuler; visible: false; text: "0"; mono: false }
+        readonly property int collapsedRows: 3
+        readonly property real collapsedHeight: collapsedRows * rowRuler.height + (collapsedRows - 1) * tagFlow.spacing
         Row {
             spacing: theme.space(2)
             Text { text: "Tags"; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeNormal; font.weight: Font.Bold; anchors.verticalCenter: parent.verticalCenter }
@@ -163,7 +206,7 @@ PageScroll {
         Item {
             id: tagClip
             width: parent.width
-            height: page.tagsOpen ? tagFlow.implicitHeight : Math.min(tagFlow.implicitHeight, theme.space(30))
+            height: page.tagsOpen ? tagFlow.implicitHeight : Math.min(tagFlow.implicitHeight, parent.collapsedHeight)
             clip: true
             Flow {
                 id: tagFlow
@@ -266,7 +309,8 @@ PageScroll {
         visible: detail && detail.has_graph
         SectionHeader { title: "Related" }
         Loader { id: related; width: parent.width; height: theme.space(120); active: detail && detail.has_graph; sourceComponent: relatedPlaceholder }
-        Component { id: relatedPlaceholder; Rectangle { color: theme.surfaceSunken; Text { anchors.centerIn: parent; text: "Franchise graph, Task 24"; color: theme.textFaint } } }
+        Component { id: relatedPlaceholder; Corner { radius: theme.radiusMd; smoothing: theme.cornerSmoothing; color: theme.surfaceSunken
+            Text { anchors.centerIn: parent; text: "Franchise graph, Task 24"; color: theme.textFaint; font.family: theme.fontSans; font.pointSize: theme.typeSmall } } }
     }
 
     ScorePicker { id: scorePicker; parent: frame.overlay
