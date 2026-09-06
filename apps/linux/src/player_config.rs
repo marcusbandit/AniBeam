@@ -186,6 +186,26 @@ pub fn config_layers(paths: &ShellPaths, use_my_conf: bool) -> Vec<PathBuf> {
     out.into_iter().filter(|p| p.is_file()).collect()
 }
 
+/// The subtitle preview's fallback source: a black lavfi picture with one sample line,
+/// through a generated SRT under the cache directory. The file is written once and reused
+/// after that, so a preview opened twice does not rewrite it.
+pub fn sample_preview(paths: &ShellPaths) -> (String, PathBuf) {
+    let dir = paths.cache_dir();
+    let srt = dir.join("sample.srt");
+    if !srt.exists() {
+        std::fs::create_dir_all(&dir).ok();
+        std::fs::write(
+            &srt,
+            "1\n00:00:00,000 --> 01:00:00,000\nSample subtitle line\n",
+        )
+        .ok();
+    }
+    (
+        "av://lavfi:color=c=0x101216:s=1280x720:d=3600".to_string(),
+        srt,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -335,5 +355,25 @@ mod tests {
         assert_eq!(get("sub-back-color"), "#80000000");
         assert_eq!(get("sub-ass-override"), "force");
         assert_eq!(get("slang"), "en,ja");
+    }
+
+    #[test]
+    fn the_sample_preview_writes_its_srt_once_under_the_cache_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = ShellPaths::resolve(Some(dir.path())).unwrap();
+        let (source, srt) = sample_preview(&paths);
+        assert_eq!(source, "av://lavfi:color=c=0x101216:s=1280x720:d=3600");
+        assert_eq!(srt, paths.cache_dir().join("sample.srt"));
+        let contents = std::fs::read_to_string(&srt).unwrap();
+        assert_eq!(
+            contents,
+            "1\n00:00:00,000 --> 01:00:00,000\nSample subtitle line\n"
+        );
+        // A second call finds the file already there and leaves it alone rather than
+        // rewriting it on every preview open.
+        std::fs::write(&srt, "already here\n").unwrap();
+        let (_, srt_again) = sample_preview(&paths);
+        assert_eq!(srt_again, srt);
+        assert_eq!(std::fs::read_to_string(&srt).unwrap(), "already here\n");
     }
 }

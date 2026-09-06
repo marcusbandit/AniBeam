@@ -75,6 +75,10 @@ pub mod qobject {
         fn track_ref(self: &Player, track: &QJsonObject) -> QJsonObject;
         #[qinvokable]
         fn subtitle_options(self: &Player, defaults: &QJsonObject) -> QJsonArray;
+        /// The subtitle preview's fallback source when there is no view history: a black
+        /// lavfi picture and the one-line sample SRT that goes with it.
+        #[qinvokable]
+        fn sample_preview(self: &Player) -> QJsonObject;
 
         /// The two now-playing lines, `[title, artist]`, and the artwork as a file URL.
         /// A negative `episode_number` is no number, since QML has no null number.
@@ -325,6 +329,17 @@ impl qobject::Player {
                     .into_iter()
                     .map(|(k, v)| (k.to_string(), v)),
             )
+        })
+    }
+
+    /// `{ path, subtitle }`: the lavfi source and the sample SRT beside it, written once.
+    pub fn sample_preview(&self) -> QJsonObject {
+        Self::guard("samplePreview", || {
+            let (path, subtitle) = player_config::sample_preview(crate::runtime::paths());
+            crate::json::to_qjson_object(&serde_json::json!({
+                "path": path,
+                "subtitle": subtitle.to_string_lossy(),
+            }))
         })
     }
 

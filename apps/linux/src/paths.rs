@@ -88,6 +88,11 @@ impl ShellPaths {
     pub fn lock_path(&self) -> PathBuf {
         self.runtime_dir.join("anibeam.lock")
     }
+    /// Where the subtitle preview writes its generated sample.srt: the same directory the
+    /// core's own image cache lives under.
+    pub fn cache_dir(&self) -> PathBuf {
+        PathBuf::from(&self.core.cache_dir)
+    }
 }
 
 #[cfg(test)]
@@ -125,5 +130,6 @@ mod tests {
             p.bundled_mpv_conf(),
             PathBuf::from("/usr/share/anibeam/mpv.conf")
         );
+        assert_eq!(p.cache_dir(), PathBuf::from("/tmp/sandbox/cache"));
     }
 }

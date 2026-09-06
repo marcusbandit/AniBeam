@@ -65,6 +65,7 @@ fn main() {
             .qml_file("qml/LookPane.qml")
             .qml_file("qml/LookPreview.qml")
             .qml_file("qml/SettingsAppearanceTab.qml")
+            .qml_file("qml/SubtitlePreview.qml")
             .qml_file("qml/SettingsPlaybackTab.qml")
             .qml_file("qml/SettingsDataTab.qml"),
     )
