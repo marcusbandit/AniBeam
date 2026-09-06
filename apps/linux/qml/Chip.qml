@@ -1,5 +1,8 @@
 // A pill of text on a scrim or a surface, with an optional Lucide glyph before the text.
-// Numbers set in the fixed face.
+// Numbers set in the fixed face. `maxLabelWidth` is opt-in (-1, the default, leaves the
+// label at its natural width exactly as before): set it to cap the label and elide the
+// middle instead of growing the chip past whatever room the caller actually has, a URL
+// or path being the case that needs it.
 import QtQuick
 
 Corner {
@@ -11,6 +14,7 @@ Corner {
     property bool mono: true
     property bool selected: false
     property bool clickable: false
+    property real maxLabelWidth: -1
     signal clicked()
 
     implicitWidth: content.implicitWidth + theme.space(small ? 2 : 2.5) * 2
@@ -41,6 +45,8 @@ Corner {
             font.family: root.mono ? theme.fontMono : theme.fontSans
             font.pointSize: root.small ? theme.typeSmall : theme.typeNormal
             font.weight: Font.Medium
+            width: root.maxLabelWidth >= 0 ? Math.min(implicitWidth, root.maxLabelWidth) : implicitWidth
+            elide: root.maxLabelWidth >= 0 ? Text.ElideMiddle : Text.ElideNone
         }
     }
     MouseArea {

@@ -17,9 +17,15 @@ SettingsTab {
         if (!all.error) {
             var s = all.reply.series
             var eps = 0; s.forEach(function(c) { eps += c.episodes_on_disk || 0 })
+            // Source carries no last-scan time of its own (core/src/contract/records.rs), so
+            // this reads it off the event history instead: recentEvents' Reply::Events serialises
+            // each Event.body through plain serde, externally tagged as { ScanFinished: {...} },
+            // not through the door.rs event_json helper that flattens a live-pushed envelope to
+            // a top-level "kind"; there is no e.kind here.
             var ev = Door.recentEvents(2000)
-            var last = "never"
-            if (!ev.error) ev.reply.events.forEach(function(e) { if (e.kind === "ScanFinished") last = Qt.formatTime(new Date(e.at * 1000), "hh:mm") })
+            var lastAt = null
+            if (!ev.error) ev.reply.events.forEach(function(e) { if (e.body && e.body.ScanFinished !== undefined && (lastAt === null || e.at > lastAt)) lastAt = e.at })
+            var last = lastAt === null ? "never" : Fmt.relative(lastAt, Date.now() / 1000)
             stats = { series: s.filter(function(c) { return c.kind === "Show" }).length, films: s.filter(function(c) { return c.kind === "Movie" }).length, episodes: eps, lastScan: last }
         }
     }
@@ -88,7 +94,7 @@ SettingsTab {
     Component {
         id: trackersPanel
         Panel {
-            title: "Trackers"; icon: "user-check"
+            title: "Trackers"; icon: "user-check"; grows: true
             helper: "Episodes are marked on every connected tracker when you reach the outro or mark them by hand. Counts only go up."
             TrackerRow { tracker: "Anilist"; account: Door.trackers.anilist || ({}); waiting: tab.waitingJob["Anilist"] !== undefined
                 onLogin: function(id, secret) { tab.login("Anilist", id, secret) }

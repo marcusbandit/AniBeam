@@ -1,7 +1,6 @@
 // The Appearance tab, not built yet: Task 16 replaces this body.
 import QtQuick
-import QtQuick.Layouts
 
 SettingsTab {
-    Note { Layout.fillWidth: true; text: "Task 16" }
+    Note { text: "Task 16" }
 }

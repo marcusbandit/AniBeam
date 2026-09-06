@@ -139,20 +139,27 @@ Item {
                 ? "Create a new client. Paste the redirect URL below into AniList's \"Redirect URL\" field exactly, port and trailing /callback included."
                 : "Create an app (App Type: \"Web\"). Paste the redirect URL below into MAL's \"App Redirect URL\" field."
         }
-        Row {
+        // A Flow, not a Row: at a narrow window (W=1000 is the brief's own probe) the label
+        // and the full callback URL do not fit on one line, and an unbound Row just runs
+        // the chip past the panel's edge instead of wrapping. Bound to the column's width
+        // so Flow knows when to wrap the chip to its own line, and the chip's own
+        // maxLabelWidth keeps it from overflowing even alone on that line, eliding the
+        // middle rather than clipping mid-character; the full URL still goes to the
+        // clipboard regardless of what is shown.
+        Flow {
+            width: parent.width
             spacing: theme.space(2)
             Text {
-                anchors.verticalCenter: parent.verticalCenter
                 text: "Redirect URL"
                 color: theme.textDim
                 font.family: theme.fontSans
                 font.pointSize: theme.typeSmall
             }
             Chip {
-                anchors.verticalCenter: parent.verticalCenter
                 text: root.redirectUrl
                 clickable: true
                 icon: copied.running ? "check" : "copy"
+                maxLabelWidth: parent.width - theme.space(14)
                 onClicked: { clipboard.text = root.redirectUrl; clipboard.selectAll(); clipboard.copy(); copied.restart() }
             }
         }
