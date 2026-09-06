@@ -3,6 +3,7 @@
 
 use core::pin::Pin;
 
+use cxx_qt::CxxQtType;
 use cxx_qt_lib::{QJsonArray, QJsonValue, QString, QStringList};
 
 use crate::player_config::{self, PlayerSettings};
@@ -23,23 +24,42 @@ pub mod qobject {
         #[qobject]
         #[qml_element]
         #[qml_singleton]
-        #[qproperty(f64, volume)]
-        #[qproperty(bool, mute)]
-        #[qproperty(bool, use_my_mpv_conf)]
-        #[qproperty(QStringList, config_layers)]
-        #[qproperty(QJsonArray, owned_options)]
-        #[qproperty(QJsonArray, preview_options)]
+        // The three settings read only, so the one way to change them is the invokable
+        // beside them, which writes player.toml as well. A generated WRITE would have
+        // taken the setter's name and let QML change the value without persisting it.
+        #[qproperty(f64, volume, READ = volume, NOTIFY = volume_changed)]
+        #[qproperty(bool, mute, READ = mute, NOTIFY = mute_changed)]
+        #[qproperty(bool, use_my_mpv_conf, READ = use_my_mpv_conf, NOTIFY = use_my_mpv_conf_changed)]
+        #[qproperty(QStringList, config_layers, READ = config_layers, NOTIFY = config_layers_changed)]
+        #[qproperty(QJsonArray, owned_options, READ = owned_options, CONSTANT)]
+        #[qproperty(QJsonArray, preview_options, READ = preview_options, CONSTANT)]
         type Player = super::PlayerRust;
 
-        /// The three writes that reach player.toml. The property setters cxx-qt generates,
-        /// `setVolume`, `setMute` and `setUseMyMpvConf`, change the value and nothing else;
-        /// anything that should survive the next launch goes through these.
+        // Read through these rather than a generated `getX`, so QML sees one name per
+        // property and the setters below keep theirs.
+        fn volume(self: &Player) -> f64;
+        fn mute(self: &Player) -> bool;
+        fn use_my_mpv_conf(self: &Player) -> bool;
+        fn config_layers(self: &Player) -> QStringList;
+        fn owned_options(self: &Player) -> QJsonArray;
+        fn preview_options(self: &Player) -> QJsonArray;
+
+        /// The three writes. Each sets the value, reports it and saves player.toml.
         #[qinvokable]
-        fn save_volume(self: Pin<&mut Self>, volume: f64);
+        fn set_volume(self: Pin<&mut Self>, volume: f64);
         #[qinvokable]
-        fn save_mute(self: Pin<&mut Self>, mute: bool);
+        fn set_mute(self: Pin<&mut Self>, mute: bool);
         #[qinvokable]
-        fn save_use_my_mpv_conf(self: Pin<&mut Self>, on: bool);
+        fn set_use_my_mpv_conf(self: Pin<&mut Self>, on: bool);
+
+        #[qsignal]
+        fn volume_changed(self: Pin<&mut Player>);
+        #[qsignal]
+        fn mute_changed(self: Pin<&mut Player>);
+        #[qsignal]
+        fn use_my_mpv_conf_changed(self: Pin<&mut Player>);
+        #[qsignal]
+        fn config_layers_changed(self: Pin<&mut Player>);
     }
 }
 
@@ -97,30 +117,64 @@ impl Default for PlayerRust {
 }
 
 impl qobject::Player {
+    pub fn volume(&self) -> f64 {
+        self.volume
+    }
+    pub fn mute(&self) -> bool {
+        self.mute
+    }
+    pub fn use_my_mpv_conf(&self) -> bool {
+        self.use_my_mpv_conf
+    }
+    pub fn config_layers(&self) -> QStringList {
+        self.config_layers.clone()
+    }
+    pub fn owned_options(&self) -> QJsonArray {
+        self.owned_options.clone()
+    }
+    pub fn preview_options(&self) -> QJsonArray {
+        self.preview_options.clone()
+    }
+
     fn persist(&self) {
         let s = PlayerSettings {
-            volume: *self.volume(),
-            mute: *self.mute(),
-            use_my_mpv_conf: *self.use_my_mpv_conf(),
+            volume: self.volume,
+            mute: self.mute,
+            use_my_mpv_conf: self.use_my_mpv_conf,
         };
         if let Err(e) = player_config::save(&crate::runtime::paths().player_toml(), &s) {
             eprintln!("anibeam: player.toml: {e}");
         }
     }
-    pub fn save_volume(mut self: Pin<&mut Self>, volume: f64) {
-        self.as_mut().set_volume(volume.clamp(0.0, 100.0));
+
+    pub fn set_volume(mut self: Pin<&mut Self>, volume: f64) {
+        let v = volume.clamp(0.0, 100.0);
+        if self.volume == v {
+            return;
+        }
+        self.as_mut().rust_mut().volume = v;
+        self.as_mut().volume_changed();
         self.persist();
     }
-    pub fn save_mute(mut self: Pin<&mut Self>, mute: bool) {
-        self.as_mut().set_mute(mute);
+    pub fn set_mute(mut self: Pin<&mut Self>, mute: bool) {
+        if self.mute == mute {
+            return;
+        }
+        self.as_mut().rust_mut().mute = mute;
+        self.as_mut().mute_changed();
         self.persist();
     }
-    pub fn save_use_my_mpv_conf(mut self: Pin<&mut Self>, on: bool) {
-        self.as_mut().set_use_my_mpv_conf(on);
+    pub fn set_use_my_mpv_conf(mut self: Pin<&mut Self>, on: bool) {
+        if self.use_my_mpv_conf == on {
+            return;
+        }
+        self.as_mut().rust_mut().use_my_mpv_conf = on;
         // The layer list follows the toggle at once, so the next session includes the
         // user's file without waiting for a relaunch.
         let l = layers(on);
-        self.as_mut().set_config_layers(l);
+        self.as_mut().rust_mut().config_layers = l;
+        self.as_mut().use_my_mpv_conf_changed();
+        self.as_mut().config_layers_changed();
         self.persist();
     }
 }

@@ -153,34 +153,43 @@ mod tests {
         let s = load(&p);
         assert_eq!((s.volume, s.mute, s.use_my_mpv_conf), (42.5, true, true));
         std::fs::write(&p, "volume = 900\n").unwrap();
-        assert_eq!(load(&p).volume, 100.0, "out of range clamps");
+        assert_eq!(
+            load(&p).volume,
+            100.0,
+            "out of range falls back to the default"
+        );
     }
 
     #[test]
     fn the_owned_options_end_with_what_the_spec_lists() {
         let o = owned_options();
         let names: Vec<&str> = o.iter().map(|(n, _)| *n).collect();
-        for expected in [
-            "osc",
-            "osd-level",
-            "input-default-bindings",
-            "input-vo-keyboard",
-            "input-media-keys",
-            "resume-playback",
-            "save-position-on-quit",
-            "keep-open",
-            "pause",
-            "fullscreen",
-            "loop-file",
-            "loop-playlist",
-            "ytdl",
-            "sub-auto",
-            "audio-file-auto",
-            "reset-on-next-file",
-            "volume-max",
-        ] {
-            assert!(names.contains(&expected), "{expected}");
-        }
+        // The order is the point, not the membership: these are set after the config
+        // layers, in this sequence, and `vo=libmpv` is the first of them.
+        assert_eq!(
+            names,
+            vec![
+                "vo",
+                "osc",
+                "osd-level",
+                "input-default-bindings",
+                "input-vo-keyboard",
+                "input-media-keys",
+                "resume-playback",
+                "save-position-on-quit",
+                "keep-open",
+                "pause",
+                "fullscreen",
+                "loop-file",
+                "loop-playlist",
+                "ytdl",
+                "sub-auto",
+                "audio-file-auto",
+                "reset-on-next-file",
+                "volume-max",
+            ]
+        );
+        assert_eq!(o.iter().find(|(n, _)| *n == "vo").unwrap().1, "libmpv");
         assert_eq!(
             o.iter().find(|(n, _)| *n == "keep-open").unwrap().1,
             "always"

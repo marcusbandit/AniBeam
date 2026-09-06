@@ -1,5 +1,6 @@
 #include "videoitem.h"
 #include <MpvQt/MpvController>
+#include <QtCore/QDebug>
 
 VideoItem::VideoItem(QQuickItem *parent)
     : MpvAbstractItem(parent)
@@ -19,5 +20,9 @@ void VideoItem::observe(const QString &name, int format)
 
 void VideoItem::include(const QString &path)
 {
-    setPropertyBlocking(QStringLiteral("include"), path);
+    // A layer mpv rejects is the user's own mpv.conf far more often than ours, and the
+    // only sign of it otherwise is options that quietly did not apply, so it is reported.
+    const int code = setPropertyBlocking(QStringLiteral("include"), path);
+    if (code < 0)
+        qWarning("anibeam: mpv refused the config layer %s: %s", qUtf8Printable(path), qUtf8Printable(MpvController::getError(code)));
 }

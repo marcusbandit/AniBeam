@@ -27,7 +27,9 @@ FocusScope {
     // Chrome
     property bool chromeVisible: true
     property int openMenus: 0            // pickers and the help list hold the chrome
-    Timer { id: hideTimer; interval: 2500; onTriggered: if (page.openMenus === 0) page.chromeVisible = false }
+    // A menu holds the chrome: the timer runs again rather than falling through, so the
+    // chrome hides 2.5 s after the menu closes instead of staying up until the next move.
+    Timer { id: hideTimer; interval: 2500; onTriggered: { if (page.openMenus > 0) restart(); else page.chromeVisible = false } }
     function showChrome() { chromeVisible = true; hideTimer.restart() }
 
     // ---- Session
@@ -120,27 +122,34 @@ FocusScope {
     // ---- Transport
     function togglePause() { video.setProperty("pause", !paused); showChrome() }
     function seekTo(secs) { var t = Math.max(0, Math.min(duration > 0 ? duration : secs, secs)); video.command(["seek", String(t), "absolute"]); showChrome() }
-    function setVolume(v) { v = Math.max(0, Math.min(100, v)); video.setProperty("volume", v); if (v > 0 && Player.mute) setMute(false); Player.saveVolume(v); showChrome() }
-    function setMute(m) { video.setProperty("mute", m); Player.saveMute(m); showChrome() }
+    function setVolume(v) { v = Math.max(0, Math.min(100, v)); video.setProperty("volume", v); if (v > 0 && Player.mute) setMute(false); Player.setVolume(v); showChrome() }
+    function setMute(m) { video.setProperty("mute", m); Player.setMute(m); showChrome() }
     function toggleFullscreen() { frame.hostWindow.visibility = frame.hostWindow.visibility === Window.FullScreen ? Window.Windowed : Window.FullScreen }
 
     // ---- Header
     Rectangle {
         id: header
         anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
-        height: theme.space(16)
+        // The bar is as tall as its three lines and one padding step either side, so a
+        // larger system font or a denser scale grows it instead of clipping inside it.
+        height: headerRow.implicitHeight + theme.space(4) * 2
         color: theme.scrim
         opacity: page.chromeVisible ? 1 : 0
+        // Zero opacity still takes clicks, so the hidden chrome has to leave the scene.
+        visible: opacity > 0
         Behavior on opacity { NumberAnimation { duration: theme.motionNormal } }
         Row {
+            id: headerRow
             anchors.left: parent.left; anchors.leftMargin: theme.space(4); anchors.verticalCenter: parent.verticalCenter
             spacing: theme.space(4)
             PlayerButton { glyph: "arrow-left"; tip: "Back"; onClicked: page.leave() }
             Column {
+                id: headerText
                 anchors.verticalCenter: parent.verticalCenter
-                Text { text: page.session ? page.session.series_title : ""; color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeSmall }
-                Text { text: page.session ? (page.session.episode_title || page.session.path.split("/").pop()) : ""; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeNormal; font.weight: Font.DemiBold }
-                Text { text: page.session ? page.session.code : ""; color: theme.textFaint; font.family: theme.fontMono; font.pointSize: theme.typeSmall }
+                width: header.width - parent.x - x - theme.space(4)
+                Text { width: parent.width; elide: Text.ElideRight; text: page.session ? page.session.series_title : ""; color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeSmall }
+                Text { width: parent.width; elide: Text.ElideRight; text: page.session ? (page.session.episode_title || page.session.path.split("/").pop()) : ""; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeNormal; font.weight: Font.DemiBold }
+                Text { width: parent.width; elide: Text.ElideRight; text: page.session ? page.session.code : ""; color: theme.textFaint; font.family: theme.fontMono; font.pointSize: theme.typeSmall }
             }
         }
     }
@@ -155,33 +164,48 @@ FocusScope {
         radius: theme.radiusLg; smoothing: theme.cornerSmoothing
         color: theme.scrim; borderColor: theme.line; borderWidth: 1
         opacity: page.chromeVisible ? 1 : 0
+        visible: opacity > 0
         Behavior on opacity { NumberAnimation { duration: theme.motionNormal } }
         MouseArea { anchors.fill: parent; hoverEnabled: true; onPositionChanged: page.showChrome() }
         Item { id: seekSlot; anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: theme.space(3); height: 0 }
         Row {
             id: bottomRow
             anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: theme.space(3)
-            height: theme.space(9)
+            // No height: a Row is as tall as its tallest child, so the island follows the
+            // buttons and the readout rather than a number that has to be kept in step.
             spacing: theme.space(1)
-            PlayerButton { glyph: "skip-back"; enabled: !!(page.session && page.session.prev && !page.session.is_extra); tip: enabled ? "Previous episode" : "No previous episode"; onClicked: page.openNeighbour(page.session.prev) }
+            PlayerButton { glyph: "skip-back"; interactive: !!(page.session && page.session.prev && !page.session.is_extra); tip: interactive ? "Previous episode" : "No previous episode"; onClicked: page.openNeighbour(page.session.prev) }
             PlayerButton { glyph: page.paused ? "play" : "pause"; tip: page.paused ? "Play" : "Pause"; onClicked: page.togglePause() }
-            PlayerButton { glyph: "skip-forward"; enabled: !!(page.session && page.session.next && !page.session.is_extra); tip: enabled ? "Next episode" : "No next episode"; onClicked: page.openNeighbour(page.session.next) }
+            PlayerButton { glyph: "skip-forward"; interactive: !!(page.session && page.session.next && !page.session.is_extra); tip: interactive ? "Next episode" : "No next episode"; onClicked: page.openNeighbour(page.session.next) }
             Text { anchors.verticalCenter: parent.verticalCenter; text: Fmt.clock(page.timePos) + " / " + Fmt.clock(page.duration); color: theme.text; font.family: theme.fontMono; font.pointSize: theme.typeSmall; leftPadding: theme.space(2); rightPadding: theme.space(2) }
             PlayerButton { glyph: Player.mute || Player.volume === 0 ? "volume-x" : "volume-2"; tip: Player.mute ? "Unmute" : "Mute"; onClicked: page.setMute(!Player.mute) }
             SliderRow { anchors.verticalCenter: parent.verticalCenter; from: 0; to: 100; value: Player.mute ? 0 : Player.volume; stepSize: 1; trackWidth: theme.space(24); onMoved: function(v) { page.setVolume(v) } }
-            Item { id: rightSlot; width: parent.width - x - theme.space(1); height: parent.height   // Task 11 and 12 add the pickers, mark, help
-                Row { id: rightGroup; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; spacing: theme.space(1)
+            // The slot takes its height from what it holds, not from the row: the row now
+            // takes its own height from its children, and parent.height here would be a loop.
+            Item { id: rightSlot; width: parent.width - x - theme.space(1); height: rightGroup.height   // Task 11 and 12 add the pickers, mark, help
+                anchors.verticalCenter: parent.verticalCenter
+                Row { id: rightGroup; anchors.right: parent.right; spacing: theme.space(1)
                     PlayerButton { glyph: frame.hostWindow.visibility === Window.FullScreen ? "minimize" : "maximize"; tip: "Fullscreen"; onClicked: page.toggleFullscreen() } } }
         }
     }
 
     // ---- Keys (the base set; Task 12 completes the map)
+    // The keys a held press repeats: the seeks and the volume ramp, as every player does.
+    // Task 12 adds the two frame step keys, which repeat as well.
+    readonly property var repeatKeys: [Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down]
     Keys.onPressed: function(e) {
-        if (e.isAutoRepeat) { e.accepted = false; return }
+        // Escape swallows its own repeat rather than falling through: unaccepted, the frame
+        // would take the second press and leave the player on a key that was held, not hit.
+        if (e.isAutoRepeat && e.key === Qt.Key_Escape) { e.accepted = true; return }
+        if (e.isAutoRepeat && page.repeatKeys.indexOf(e.key) < 0) { e.accepted = false; return }
+        // Ctrl, Alt and Meta belong to the frame's shortcuts, so every branch below is the
+        // plain key. Shift passes through: Task 12's z and Z differ by it. The one
+        // combination the player claims, Ctrl+Right, is Task 12's and goes above this line.
+        if (e.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) { e.accepted = false; return }
         e.accepted = true
         if (e.key === Qt.Key_Space || e.key === Qt.Key_K) page.togglePause()
         else if (e.key === Qt.Key_Left) page.seekTo(page.timePos - 5)
-        else if (e.key === Qt.Key_Right && !(e.modifiers & Qt.ControlModifier)) page.seekTo(page.timePos + 5)
+        else if (e.key === Qt.Key_Right) page.seekTo(page.timePos + 5)
         else if (e.key === Qt.Key_M) page.setMute(!Player.mute)
         else if (e.key === Qt.Key_F) page.toggleFullscreen()
         else if (e.key === Qt.Key_Up) page.setVolume(Player.volume + 5)
