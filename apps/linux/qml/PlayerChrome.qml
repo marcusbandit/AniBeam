@@ -8,7 +8,7 @@ import QtQuick.Window
 import com.marcusrosado.AniBeam
 
 Item {
-    id: chrome
+    id: root
     anchors.fill: parent
 
     // ---- Header

@@ -7,7 +7,7 @@ import QtQuick.Window
 import com.marcusrosado.AniBeam
 
 QtObject {
-    id: keys
+    id: root
     // The keys a held press repeats: the seeks, the volume ramp and the two frame steps, as
     // every player does. Everything else acts once however long it is held.
     readonly property var repeatKeys: [Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down]
@@ -23,7 +23,7 @@ QtObject {
         // Escape swallows its own repeat rather than falling through: unaccepted, the frame
         // would take the second press and leave the player on a key that was held, not hit.
         if (e.isAutoRepeat && e.key === Qt.Key_Escape) { e.accepted = true; return }
-        if (e.isAutoRepeat && keys.repeatKeys.indexOf(e.key) < 0) { e.accepted = false; return }
+        if (e.isAutoRepeat && root.repeatKeys.indexOf(e.key) < 0) { e.accepted = false; return }
         // Ctrl+Right is the one combination the player claims, and it repeats like Right.
         if (e.key === Qt.Key_Right && (e.modifiers & Qt.ControlModifier) && !(e.modifiers & (Qt.AltModifier | Qt.MetaModifier))) {
             e.accepted = true
