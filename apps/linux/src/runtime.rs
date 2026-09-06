@@ -10,9 +10,6 @@ use crate::args::Args;
 use crate::paths::ShellPaths;
 
 static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
-// Task 6 opens the core on this runtime and installs it here; nothing calls `install_core()`
-// or `core()` until then, so a plain build sees them as dead code.
-#[allow(dead_code)]
 static CORE: OnceLock<Arc<Core>> = OnceLock::new();
 static ARGS: OnceLock<Args> = OnceLock::new();
 static PATHS: OnceLock<ShellPaths> = OnceLock::new();
@@ -28,12 +25,10 @@ pub fn runtime() -> &'static tokio::runtime::Runtime {
     })
 }
 
-#[allow(dead_code)]
 pub fn install_core(core: Arc<Core>) {
     CORE.set(core).ok();
 }
 
-#[allow(dead_code)]
 pub fn core() -> &'static Arc<Core> {
     CORE.get()
         .expect("the core is installed before the QML engine loads")

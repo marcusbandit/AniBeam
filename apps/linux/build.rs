@@ -25,8 +25,10 @@ fn main() {
     )
     .qt_module("Quick")
     .files([
+        "src/bridge/door.rs",
         "src/bridge/fmt.rs",
         "src/bridge/helpers.rs",
+        "src/bridge/model.rs",
         "src/bridge/shell.rs",
         "src/bridge/theme.rs",
     ])

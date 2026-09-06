@@ -1,6 +1,7 @@
 mod args;
 mod bridge;
 mod format;
+mod json;
 mod paths;
 mod runtime;
 mod theme;
@@ -30,9 +31,32 @@ fn main() {
             std::process::exit(2);
         }
     };
-    // Task 6 opens the core on these; Task 13 takes the lock first.
+    // Task 13 takes the lock first.
     runtime::install_paths(paths);
     runtime::install_args(args);
+
+    // The core is open before the engine, so the Door singleton the first QML file names
+    // finds it already there. A run under --root keeps its secrets in that root's own
+    // secrets.json and never probes the machine's keyring: a sandbox is asked for
+    // precisely so it touches nothing outside itself.
+    let core = {
+        let core_paths = runtime::paths().core.clone();
+        let opened = match runtime::args().root.as_deref() {
+            Some(_) => {
+                let secrets = anibeam_core::trackers::Secrets::file_only(core_paths.secrets_path());
+                anibeam_core::Core::open_with_secrets(core_paths, secrets)
+            }
+            None => anibeam_core::Core::open(core_paths),
+        };
+        match opened {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("anibeam: {e}");
+                std::process::exit(2);
+            }
+        }
+    };
+    runtime::install_core(core);
 
     bridge::helpers::ffi::set_render_loop_env();
     bridge::helpers::ffi::use_opengl_scene_graph();
@@ -43,7 +67,13 @@ fn main() {
     if let Some(engine) = engine.as_mut() {
         engine.load(&QUrl::from(MAIN_QML));
     }
-    if let Some(app) = app.as_mut() {
-        std::process::exit(app.exec());
-    }
+    // The engine goes first: dropping it destroys the Door, which drops the event
+    // subscription, so nothing is still listening when the core closes its store.
+    let code = match app.as_mut() {
+        Some(app) => app.exec(),
+        None => 1,
+    };
+    drop(engine);
+    runtime::core().shutdown();
+    std::process::exit(code);
 }
