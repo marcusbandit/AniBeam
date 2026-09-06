@@ -10,7 +10,6 @@ Window {
     width: Shell.shootWidth > 0 ? Shell.shootWidth : 1280   // a hint; the compositor sizes the window
     height: Shell.shootHeight > 0 ? Shell.shootHeight : 800
     visible: true
-    title: "AniBeam"
 
     // The tokens every component below reaches through the context chain. A plain Window
     // has no font property, so the face and the size are set per Text from these tokens.
@@ -30,20 +29,26 @@ Window {
     onHeightChanged: if (firstFrame && !settled) settled = true
     Timer { id: settle; interval: 200; onTriggered: window.settled = true }
 
-    // Task 7 replaces this with Frame { anchors.fill: parent; visible: window.settled }
     Loader {
+        id: frame
         anchors.fill: parent
-        active: window.settled && Theme.ready
-        sourceComponent: Shell.page === "tokens" ? tokensPage : placeholder
+        active: window.settled && Theme.ready && Door.ready
+        sourceComponent: Shell.page === "tokens" ? tokensPage : frameComponent
+        onLoaded: {
+            if (Shell.page !== "tokens" && Shell.page !== "library" && item.nav) item.nav.replace(Shell.page, {}, undefined)
+            window.maybeShoot()
+        }
     }
+    Component { id: frameComponent; Frame { hostWindow: window } }
     Component { id: tokensPage; TokensPage {} }
-    Component { id: placeholder; Text { anchors.centerIn: parent; text: "AniBeam " + Shell.version; color: theme.text } }
+    title: frame.item && frame.item.windowTitle ? frame.item.windowTitle : "AniBeam"
 
     // --shoot <png>: one capture of the frame after settle, then quit. grabToImage renders
     // the scene into an image, so it works under QT_QPA_PLATFORM=offscreen. The colours are
-    // the engine's first push, so the shot waits for Theme.ready as well as for settle.
+    // the engine's first push, so the shot waits for Theme.ready and the frame's item as
+    // well as for settle.
     function maybeShoot() {
-        if (window.settled && Theme.ready && Shell.shoot !== "")
+        if (window.settled && Theme.ready && frame.item && Shell.shoot !== "")
             shootTimer.start()
     }
     onSettledChanged: window.maybeShoot()

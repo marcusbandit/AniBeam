@@ -21,7 +21,18 @@ fn main() {
             .qml_file("qml/Swatches.qml")
             .qml_file("qml/SliderRow.qml")
             .qml_file("qml/SettingRow.qml")
-            .qml_file("qml/Panel.qml"),
+            .qml_file("qml/Panel.qml")
+            .qml_file("qml/Frame.qml")
+            .qml_file("qml/Nav.qml")
+            .qml_file("qml/Menu.qml")
+            .qml_file("qml/Tooltip.qml")
+            .qml_file("qml/InlineConfirm.qml")
+            .qml_file("qml/EmptyState.qml")
+            .qml_file("qml/SectionHeader.qml")
+            .qml_file("qml/PagePlaceholder.qml")
+            .qml_file("qml/PageScroll.qml")
+            .qml_file("qml/Rail.qml")
+            .qml_file("qml/StatusStrip.qml"),
     )
     .qt_module("Quick")
     .files([

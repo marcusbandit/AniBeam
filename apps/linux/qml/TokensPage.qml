@@ -13,8 +13,6 @@ Flickable {
         spacing: theme.space(4)
         Text { text: "Tokens"; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeLarge; font.weight: Font.Bold }
         Text { text: theme.sourceLabel + ", " + theme.mode; color: theme.textDim; font.family: theme.fontMono; font.pointSize: theme.typeSmall }
-        // Task 6 smoke line; Task 7 removes it with the rest of this page.
-        Text { text: "core " + (Door.ready ? "ready, " + Door.about.version + ", " + Door.runningJobs.length + " jobs" : "starting"); color: theme.textDim; font.family: theme.fontMono; font.pointSize: theme.typeSmall }
         Flow {
             width: parent.width
             spacing: theme.space(2)
