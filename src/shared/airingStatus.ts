@@ -52,12 +52,17 @@ export function isWatchedThrough(w: WatchedInputs): boolean {
 }
 
 /**
- * Done with it, full stop: watched-through AND nothing more coming. A
- * still-releasing series is never done — caught up is current, not
- * finished — so it stays in the grid and the airing rail however current
- * the user is. This is the rule that files a series into the Watched tab.
+ * Done with it, full stop. The tracker's own COMPLETED outranks
+ * everything — the user said done, and a stale stored status that still
+ * says releasing must not second-guess them (the status write that would
+ * correct it may not have landed yet). Without that word, watched-through
+ * AND nothing more coming decides: a still-releasing series is never done
+ * — caught up is current, not finished — so a weekly show stays in the
+ * grid and the airing rail. This is the rule that files a series into the
+ * Watched tab and out of the airing section.
  */
 export function isWatchedOut(w: WatchedInputs): boolean {
+  if (w.listStatus === "completed") return true;
   return normalizeStatus(w.status) !== "releasing" && isWatchedThrough(w);
 }
 

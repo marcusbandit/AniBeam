@@ -21,16 +21,18 @@ assert.equal(isWatchedThrough({ watched: null, totalEpisodes: 12 }), false, 'unt
 // A zero total is no total.
 assert.equal(isWatchedThrough({ watched: 1, totalEpisodes: 0 }), false, 'a zero total is no total');
 
-// --- the out rule: the Watched tab and the airing rail's gate ---
+// --- the out rule: the Watched tab and the airing section's gate ---
 
-// A still-releasing series is never done, however current the user is —
-// caught up is current, not finished. Even the tracker's own COMPLETED
-// waits for the end: while it says releasing, it stays among the living.
-assert.equal(isWatchedOut({ status: 'RELEASING', listStatus: 'completed', watched: 12, totalEpisodes: 12 }), false, 'releasing is never watched out');
+// The tracker's own COMPLETED outranks everything: the user said done,
+// and a stale stored status that still says releasing must not
+// second-guess them.
+assert.equal(isWatchedOut({ status: 'RELEASING', listStatus: 'completed', watched: 12, totalEpisodes: 12 }), true, 'tracker completed outranks a stale releasing status');
+assert.equal(isWatchedOut({ status: 'Currently Airing', listStatus: 'completed' }), true, 'tracker completed is out whatever the status and however little was seen');
+// Caught up on a releasing show without the completed mark: current, not done.
+assert.equal(isWatchedOut({ status: 'RELEASING', watched: 12, totalEpisodes: 12 }), false, 'caught up on a releasing show is not out');
 assert.equal(isWatchedOut({ status: 'Currently Airing', watched: 8, totalEpisodes: null }), false, 'releasing with no total is not out either');
 // Finished and fully seen: out.
 assert.equal(isWatchedOut({ status: 'FINISHED', watched: 12, totalEpisodes: 12 }), true, 'finished and seen is out');
-assert.equal(isWatchedOut({ status: 'FINISHED', listStatus: 'completed', watched: 12, totalEpisodes: 12 }), true, 'tracker completed and finished is out');
 // Finished but midway: not out.
 assert.equal(isWatchedOut({ status: 'FINISHED', watched: 5, totalEpisodes: 12 }), false, 'finished but midway is not out');
 // Finished, no total, some watch: with nothing published to reach, the
