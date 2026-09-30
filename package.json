@@ -1,7 +1,7 @@
 {
   "name": "anibeam",
   "private": true,
-  "version": "2026.9.6+g0c4b015",
+  "version": "2026.9.30+g8f98033",
   "main": ".vite/build/main.js",
   "type": "module",
   "scripts": {
@@ -9,6 +9,7 @@
     "build": "bun run typecheck && vite build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . && bun run typecheck",
+    "verify:airing-status": "bun --bun scripts/verify-airing-status.mjs",
     "verify:logger": "bun --bun scripts/verify-logger.mjs",
     "verify:mal-purge": "bun --bun scripts/verify-mal-purge.mjs",
     "verify:metadata-matcher": "bun --bun scripts/verify-metadata-matcher.mjs",

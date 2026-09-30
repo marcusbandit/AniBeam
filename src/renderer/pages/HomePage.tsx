@@ -11,9 +11,11 @@ import {
   PieChart,
   Star,
   CaseSensitive,
+  CheckCheck,
 } from "lucide-react";
 import type { LibraryItem } from "../../types/electron";
 import { findNextUpcomingEpisode, normalizeStatus } from "../utils/airingUtils";
+import { isWatchedOut, isWatchedThrough } from "../../shared/airingStatus";
 import { fmtShort } from "../utils/relativeTime";
 import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
 import { useGridFlipReorder } from "../hooks/useGridFlipReorder";
@@ -29,13 +31,14 @@ const AIRING_PAGE_COLS = 5;
 const AIRING_PAGE_ROWS = 2;
 const AIRING_PAGE_SIZE = AIRING_PAGE_COLS * AIRING_PAGE_ROWS;
 
-type LibraryTab = "all" | "series" | "movies" | "hidden";
+type LibraryTab = "all" | "series" | "movies" | "watched" | "hidden";
 type SortKey = "alpha" | "lastViewed" | "progress" | "score" | "myScore";
 type SortDir = "asc" | "desc";
 
 const LS_TAB = "anibeam.libraryTab";
 const LS_SORT_KEY = "anibeam.librarySortKey";
 const LS_SORT_DIR = "anibeam.librarySortDir";
+const LS_SHOW_WATCHED = "anibeam.libraryShowWatched";
 
 // Each sort key has a "natural" direction so the first time the user picks
 // one they see the result they'd expect (newest first for recency, highest
@@ -196,13 +199,19 @@ function HomePage() {
   );
 
   const [tab, setTab] = useState<LibraryTab>(() =>
-    readStored<LibraryTab>(LS_TAB, ["all", "series", "movies"], "all"),
+    readStored<LibraryTab>(LS_TAB, ["all", "series", "movies", "watched"], "all"),
   );
   const [sortKey, setSortKey] = useState<SortKey>(() =>
     readStored<SortKey>(LS_SORT_KEY, ["alpha", "lastViewed", "progress", "score", "myScore"], "alpha"),
   );
   const [sortDir, setSortDir] = useState<SortDir>(() =>
     readStored<SortDir>(LS_SORT_DIR, ["asc", "desc"], NATURAL_DIR.alpha),
+  );
+  // Whether watched-out series also sit in the main tabs. A standing
+  // preference like the sort: a non-rewatcher's finished series stays
+  // sectioned away across launches until they flip it.
+  const [showWatched, setShowWatched] = useState<boolean>(
+    () => window.localStorage.getItem(LS_SHOW_WATCHED) === "true",
   );
 
   // Ref to the .show-grid wrapper so the FLIP reorder hook can read each
@@ -214,6 +223,7 @@ function HomePage() {
   useEffect(() => { window.localStorage.setItem(LS_TAB, tab); }, [tab]);
   useEffect(() => { window.localStorage.setItem(LS_SORT_KEY, sortKey); }, [sortKey]);
   useEffect(() => { window.localStorage.setItem(LS_SORT_DIR, sortDir); }, [sortDir]);
+  useEffect(() => { window.localStorage.setItem(LS_SHOW_WATCHED, String(showWatched)); }, [showWatched]);
 
   // Reloads triggered by metadata pings update items in place - no
   // setLoading(true), so the page doesn't flash through a "Reading
@@ -269,33 +279,86 @@ function HomePage() {
     return () => unsubscribe?.();
   }, [debouncedReload]);
 
+  // True when the user has finished the show - either marked completed on
+  // the tracker, or watched count has reached the (known) total. Used by
+  // the Progress sort to always pin completed shows to the bottom of the
+  // list regardless of direction, so they don't pollute the "what should I
+  // pick up next?" view. The shared rule is the single copy the library's
+  // Watched tab and the airing rail also go by.
+  const isWatchedThroughItem = useCallback(
+    (i: LibraryItem): boolean =>
+      isWatchedThrough({
+        status: i.status,
+        listStatus: getListStatus({ anilistId: i.anilistId ?? undefined, malId: i.malId }),
+        watched: getWatched({ anilistId: i.anilistId ?? undefined, malId: i.malId }),
+        totalEpisodes: i.totalEpisodes,
+      }),
+    [getListStatus, getWatched],
+  );
+
+  // Done with it, full stop: watched through AND nothing more coming - a
+  // show still airing is never done, however current the user is.
+  const isWatchedOutItem = useCallback(
+    (i: LibraryItem): boolean =>
+      isWatchedOut({
+        status: i.status,
+        listStatus: getListStatus({ anilistId: i.anilistId ?? undefined, malId: i.malId }),
+        watched: getWatched({ anilistId: i.anilistId ?? undefined, malId: i.malId }),
+        totalEpisodes: i.totalEpisodes,
+      }),
+    [getListStatus, getWatched],
+  );
+
   // Currently-airing shows the user has on disk, sorted by latest aired
-  // (or downloaded) episode. Empty array if nothing is airing yet.
+  // (or downloaded) episode. Empty array if nothing is airing yet. A
+  // watched-out series is out of here even while a stale stored status
+  // still says releasing — the tracker is the firmer answer, and the
+  // airing refresh's status write clears the rest.
   const airing = useMemo(() => {
     const out: Array<{ item: LibraryItem; when: number; episode: number | null }> = [];
     for (const item of items) {
       if (item.files.length === 0) continue;
       if (normalizeStatus(item.status) !== "releasing") continue;
+      if (isWatchedOutItem(item)) continue;
       const info = getAiringSortInfo(item);
       if (!info) continue;
       out.push({ item, when: info.when, episode: info.episode });
     }
     out.sort((a, b) => b.when - a.when);
     return out;
-  }, [items]);
+  }, [items, isWatchedOutItem]);
 
   // Hidden series are segregated into their own tab - never mixed into
   // All/Series/Movies. When reveal is off they vanish from every tab.
   const visibleItems = useMemo(() => items.filter((i) => !i.hidden), [items]);
   const hiddenItems = useMemo(() => items.filter((i) => i.hidden), [items]);
-  const seriesItems = useMemo(() => visibleItems.filter((i) => i.type !== "movie"), [visibleItems]);
-  const movieItems = useMemo(() => visibleItems.filter((i) => i.type === "movie"), [visibleItems]);
+  // Watched-out series are segregated the same way: out of the main tabs
+  // (unless the show-watched toggle mixes them back in) and into a Watched
+  // tab of their own. The tab exists whenever any watched series do - the
+  // toggle governs the main tabs, not the section.
+  const unwatchedItems = useMemo(
+    () => visibleItems.filter((i) => !isWatchedOutItem(i)),
+    [visibleItems, isWatchedOutItem],
+  );
+  const watchedItems = useMemo(
+    () => visibleItems.filter(isWatchedOutItem),
+    [visibleItems, isWatchedOutItem],
+  );
+  const seriesItems = useMemo(
+    () => (showWatched ? visibleItems : unwatchedItems).filter((i) => i.type !== "movie"),
+    [showWatched, visibleItems, unwatchedItems],
+  );
+  const movieItems = useMemo(
+    () => (showWatched ? visibleItems : unwatchedItems).filter((i) => i.type === "movie"),
+    [showWatched, visibleItems, unwatchedItems],
+  );
 
   const activeItems =
+    tab === "watched" ? watchedItems :
     tab === "series" ? seriesItems :
     tab === "movies" ? movieItems :
     tab === "hidden" ? hiddenItems :
-    visibleItems;
+    showWatched ? visibleItems : unwatchedItems;
 
   // Page-level search. Filters the library grid; the Airing rail steps aside
   // while a query is active so matches are the only thing on screen. No `q`
@@ -322,10 +385,18 @@ function HomePage() {
   }, [activeItems, query]);
 
   const tabOptions = useMemo<SegmentedOption<LibraryTab>[]>(
-    () => (showHidden && hiddenItems.length > 0
-      ? [...BASE_TAB_OPTIONS, { value: "hidden", label: "Hidden" }]
-      : BASE_TAB_OPTIONS),
-    [showHidden, hiddenItems.length],
+    () => [
+      ...BASE_TAB_OPTIONS,
+      // The Watched tab exists whenever watched series do: it is the
+      // section they move to, whatever the show-watched toggle says.
+      ...(watchedItems.length > 0
+        ? [{ value: "watched" as const, label: "Watched" }]
+        : []),
+      ...(showHidden && hiddenItems.length > 0
+        ? [{ value: "hidden" as const, label: "Hidden" }]
+        : []),
+    ],
+    [showHidden, hiddenItems.length, watchedItems.length],
   );
 
   // If reveal flips off (or the app booted with a persisted "hidden" tab),
@@ -334,31 +405,15 @@ function HomePage() {
     if (!tabOptions.some((o) => o.value === tab)) setTab("all");
   }, [tabOptions, tab]);
 
-  // True when the user has finished the show - either marked completed on
-  // the tracker, or watched count has reached the (known) total. Used by
-  // the Progress sort to always pin completed shows to the bottom of the
-  // list regardless of direction, so they don't pollute the "what should I
-  // pick up next?" view.
-  const isWatchedThrough = useCallback((i: LibraryItem): boolean => {
-    const ids = { anilistId: i.anilistId ?? undefined, malId: i.malId };
-    if (getListStatus(ids) === "completed") return true;
-    const watched = getWatched(ids);
-    const total = i.totalEpisodes;
-    if (watched == null) return false;
-    if (total == null) return watched > 0;  // movies: any watched = done
-    if (total <= 0) return false;
-    return watched >= total;
-  }, [getListStatus, getWatched]);
-
   // "Inactive" for the Progress sort = a show the user is NOT mid-way
   // through: either finished (watched-through) or never started (no tracker
   // entry, or zero watched). Both sink to the bottom so Progress answers
   // "what am I in the middle of?" - completed and untouched shows are noise.
   const isProgressInactive = useCallback((i: LibraryItem): boolean => {
-    if (isWatchedThrough(i)) return true;
+    if (isWatchedThroughItem(i)) return true;
     const watched = getWatched({ anilistId: i.anilistId ?? undefined, malId: i.malId });
     return watched == null || watched <= 0;
-  }, [isWatchedThrough, getWatched]);
+  }, [isWatchedThroughItem, getWatched]);
 
   // Comparator factory keyed by sort + direction. Items missing a value
   // (no score, no progress, no view history) sort to the end so the
@@ -585,6 +640,23 @@ function HomePage() {
             <span className="chip chip--sm section__count">{searchedItems.length}</span>
             <span className="section__rule" aria-hidden="true" />
             <div className="section__action">
+              <Tooltip
+                label={
+                  showWatched
+                    ? "Watched series are mixed into the tabs. Click to section them away"
+                    : "Watched series live in their own tab. Click to mix them back in"
+                }
+              >
+                <button
+                  type="button"
+                  className={`sort-dir-toggle${showWatched ? " is-on" : ""}`}
+                  aria-pressed={showWatched}
+                  aria-label="Show watched series in the tabs"
+                  onClick={() => setShowWatched((v) => !v)}
+                >
+                  <CheckCheck size={14} aria-hidden="true" />
+                </button>
+              </Tooltip>
               <span className="library-head__sort-label">Sort</span>
               <SegmentedSwitch<SortKey>
                 value={sortKey}
@@ -613,7 +685,9 @@ function HomePage() {
                 <div className="empty-text">
                   {query.trim()
                     ? `No matches for "${query.trim()}".`
-                    : `No ${tab === "series" ? "series" : tab === "movies" ? "movies" : "items"} in your library yet.`}
+                    : tab === "all" && !showWatched && unwatchedItems.length === 0 && watchedItems.length > 0
+                      ? "Everything here is watched. The Watched tab holds it all — the checkmark toggle mixes it back in."
+                      : `No ${tab === "series" ? "series" : tab === "movies" ? "movies" : tab === "watched" ? "watched items" : "items"} in your library yet.`}
                 </div>
               </div>
             ) : (

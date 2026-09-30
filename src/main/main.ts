@@ -18,7 +18,7 @@ import { isMalRegistered, stripMalRegistration } from './utils/malPurge';
 import { logger } from './services/logger';
 import type { FileStatus } from '../shared/fileStatus';
 import { findFileEpisode, type FileEpisodeEntry } from '../shared/fileEpisode';
-import { normalizeStatus } from '../shared/airingStatus';
+import { normalizeStatus, statusDiffers } from '../shared/airingStatus';
 import videoProbeHandler from './handlers/videoProbeHandler';
 import transcodeCacheHandler from './handlers/transcodeCacheHandler';
 import { fileWatcher } from './services/watcher';
@@ -387,7 +387,7 @@ async function matchPosterForSeries(seriesId: string, folderName: string): Promi
       const anilistTitleByEp = new Map(
         enrichment.episodeTitles.map((e) => [e.episodeNumber, e.title]),
       );
-      const slimEpisodes = episodeDates.map((e) => {
+      const slimEpisodes = episodeDates.episodes.map((e) => {
         const title = anilistTitleByEp.get(e.episodeNumber) ?? e.title ?? null;
         return {
           episodeNumber: e.episodeNumber,
@@ -648,25 +648,36 @@ async function refreshAiringForSeries(seriesId: string, opts?: { force?: boolean
 
   const primaryId = candidate.anilistId ?? candidate.malId!;
   const source = candidate.anilistId != null ? 'anilist' : 'mal';
-  const fresh = await fetchEpisodeAirDates(source, primaryId, candidate.totalEpisodes ?? null, candidate.malId ?? null);
+  const { episodes: fresh, status: freshStatus } = await fetchEpisodeAirDates(source, primaryId, candidate.totalEpisodes ?? null, candidate.malId ?? null);
   if (fresh.length === 0) {
     // Nothing came back (AniList has no schedule, or both providers failed).
     // Still stamp the attempt so a dead series isn't retried on every open.
+    // A series that ENDED is the important case here: its schedule is empty
+    // precisely because it finished, and the status the reply carried is
+    // the only notice of that we will ever get.
+    let statusChanged = false;
     await metadataHandler.transaction(async (current) => {
       const existing = (current[seriesId] ?? {}) as Record<string, unknown>;
       if (!existing.posterMatched) return { updated: null };
-      current[seriesId] = { ...existing, airingRefreshedAt: Date.now() };
+      statusChanged = statusDiffers(existing.status as string | null | undefined, freshStatus);
+      current[seriesId] = {
+        ...existing,
+        ...(statusChanged ? { status: freshStatus } : {}),
+        airingRefreshedAt: Date.now(),
+      };
       return { updated: current };
     });
-    return false;
+    return statusChanged;
   }
 
   const freshByEp = new Map(fresh.map((e) => [e.episodeNumber, e]));
   await metadataHandler.transaction(async (current) => {
     const existing = (current[seriesId] ?? {}) as Record<string, unknown> & {
+      status?: string | null;
       episodes?: Array<{ episodeNumber: number; airDate?: string | null; title?: string | null }>;
     };
     if (!existing.posterMatched) return { updated: null };
+    const statusChanged = statusDiffers(existing.status, freshStatus);
     const stored = Array.isArray(existing.episodes) ? existing.episodes : [];
     const merged = stored.map((ep) => {
       const f = freshByEp.get(ep.episodeNumber);
@@ -686,7 +697,12 @@ async function refreshAiringForSeries(seriesId: string, opts?: { force?: boolean
       });
     }
     merged.sort((a, b) => a.episodeNumber - b.episodeNumber);
-    current[seriesId] = { ...existing, episodes: merged, airingRefreshedAt: Date.now() };
+    current[seriesId] = {
+      ...existing,
+      ...(statusChanged ? { status: freshStatus } : {}),
+      episodes: merged,
+      airingRefreshedAt: Date.now(),
+    };
     return { updated: current };
   });
   return true;
@@ -1502,7 +1518,7 @@ ipcMain.handle('metadata:apply-anilist-match', async (
   // (getEpisodes hardcodes airDate: null), so applying a match would null
   // out every date and destroy the series' next-episode countdown. Pull the
   // schedule separately and merge it in by episode number.
-  const appliedAirDates = await fetchEpisodeAirDates(
+  const { episodes: appliedAirDates } = await fetchEpisodeAirDates(
     'anilist',
     anilistId,
     fetched.totalEpisodes ?? null,
