@@ -14,8 +14,11 @@ SettingsTab {
         var r = Door.listSources()
         if (!r.error) sources = r.reply.sources
         var all = Door.listSeries("All", "", "Alpha", "Asc", Door.revealHidden)
+        // The stats describe the library, not what the watched toggle
+        // currently leaves visible, so the Watched tab rides along.
+        var watched = Door.listSeries("Watched", "", "Alpha", "Asc", Door.revealHidden)
         if (!all.error) {
-            var s = all.reply.series
+            var s = all.reply.series.concat(watched.error ? [] : watched.reply.series)
             var eps = 0; s.forEach(function(c) { eps += c.episodes_on_disk || 0 })
             // Source carries no last-scan time of its own (core/src/contract/records.rs), so
             // this reads it off the event history instead: recentEvents' Reply::Events serialises

@@ -114,6 +114,26 @@ pub fn total_with_estimate(
     (None, false)
 }
 
+/// Done with it: nothing left to see and nothing more coming — the state a
+/// non-rewatcher files a series away under. The tracker's own COMPLETED
+/// says it outright; otherwise the watched count has to reach the card's
+/// total, whose estimate already means "everything knowable has been
+/// seen" (it is the later of aired and watched when no total is
+/// published). A still-releasing series is never done with: caught up is
+/// current, not finished, however little there is left to wait for.
+pub fn watched_out(c: &SeriesCard) -> bool {
+    if c.status == Some(AiringStatus::Releasing) {
+        return false;
+    }
+    if c.list_status == Some(ListStatus::Completed) {
+        return true;
+    }
+    let Some(w) = c.watched else {
+        return false;
+    };
+    w > 0 && c.total_episodes.is_some_and(|t| w >= t)
+}
+
 /// `episodes` is (file id, number) sorted by number. `last_completed` is the
 /// most recently completed episode's number. With something watched, the
 /// episode after it; with nothing watched, the first one on disk, above zero
@@ -449,5 +469,97 @@ mod tests {
         assert_eq!(next_up(&disk, None, None), Some(10));
         assert_eq!(next_up(&disk, Some(5.0), Some(5)), None);
         assert_eq!(next_up(&[], Some(1.0), None), None);
+    }
+
+    #[cfg(test)]
+    fn card() -> SeriesCard {
+        use std::time::UNIX_EPOCH;
+        SeriesCard {
+            id: 1,
+            kind: SeriesKind::Show,
+            path: String::new(),
+            title: String::new(),
+            titles: Titles {
+                romaji: None,
+                english: None,
+                native: None,
+                folder: String::new(),
+            },
+            poster: None,
+            format: None,
+            status: Some(AiringStatus::Finished),
+            hidden: false,
+            missing: false,
+            match_info: None,
+            episodes_on_disk: 12,
+            extras_on_disk: 0,
+            total_episodes: Some(12),
+            total_is_estimate: false,
+            code: None,
+            watched: Some(12),
+            watched_state: WatchedState::CaughtUp,
+            strip: Strip {
+                watched: 1.0,
+                aired_unwatched: 0.0,
+                unknown: 0.0,
+            },
+            community_score: None,
+            my_score: None,
+            list_status: None,
+            next_airing: None,
+            last_viewed_at: None,
+            latest_activity_at: UNIX_EPOCH,
+        }
+    }
+
+    #[test]
+    fn watched_out_rules() {
+        let mut c = card();
+        assert!(watched_out(&c));
+
+        // Mid-way or untracked is not done, whatever the status says.
+        c.watched = Some(5);
+        assert!(!watched_out(&c));
+        c.watched = None;
+        assert!(!watched_out(&c));
+
+        // Caught up on a releasing show is current, not finished with —
+        // even the tracker's own COMPLETED waits for the end.
+        c.watched = Some(12);
+        c.status = Some(AiringStatus::Releasing);
+        assert!(!watched_out(&c));
+        c.list_status = Some(ListStatus::Completed);
+        assert!(!watched_out(&c));
+
+        // No published total: the estimate (the later of aired and
+        // watched) is the bar, so only reaching it counts.
+        let mut c = card();
+        c.total_episodes = Some(8);
+        c.total_is_estimate = true;
+        c.watched = Some(5);
+        assert!(!watched_out(&c));
+        c.watched = Some(8);
+        assert!(watched_out(&c));
+
+        // Nothing knowable at all is not done, short of the tracker's word.
+        let mut c = card();
+        c.total_episodes = None;
+        c.watched = Some(3);
+        assert!(!watched_out(&c));
+        c.list_status = Some(ListStatus::Completed);
+        assert!(watched_out(&c));
+
+        // A film seen once is done with.
+        let mut c = card();
+        c.kind = SeriesKind::Movie;
+        c.format = Some("MOVIE".to_string());
+        c.total_episodes = Some(1);
+        c.watched = Some(1);
+        assert!(watched_out(&c));
+
+        // Hidden is a separate drawer; watched does not decide for it.
+        let mut c = card();
+        c.hidden = true;
+        assert!(watched_out(&c));
     }
 }

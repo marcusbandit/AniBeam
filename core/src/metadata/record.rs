@@ -871,6 +871,7 @@ mod tests {
     #[test]
     fn episodes_merge_anilist_dates_win_jikan_fills_next_broadcast_last() {
         let schedule = Schedule {
+            status: None,
             next_airing_episode: Some(AiringNode {
                 episode: 4,
                 airing_at: 4000,

@@ -120,6 +120,7 @@ pub const AIRING_SCHEDULE_QUERY: &str = r"
   query ($id: Int, $idMal: Int) {
     Media(id: $id, idMal: $idMal, type: ANIME) {
       id
+      status
       nextAiringEpisode {
         episode
         airingAt
@@ -567,6 +568,10 @@ pub struct AiringNodes {
 pub struct Schedule {
     pub next_airing_episode: Option<AiringNode>,
     pub airing_schedule: Option<AiringNodes>,
+    /// The media's own status, riding along at no extra cost. The airing
+    /// refresh is what notices a series stopped airing, since it is the
+    /// only fetch a releasing series sees again once it is matched.
+    pub status: Option<String>,
 }
 
 pub struct AnilistClient {

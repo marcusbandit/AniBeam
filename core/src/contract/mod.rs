@@ -126,5 +126,6 @@ mod tests {
         assert_eq!(p.library_sort, Sort::Alpha);
         assert_eq!(p.library_direction, Direction::Asc);
         assert_eq!(p.feed_sort, FeedSort::Recent);
+        assert!(!p.library_show_watched);
     }
 }

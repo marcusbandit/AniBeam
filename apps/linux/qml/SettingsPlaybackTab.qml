@@ -14,12 +14,21 @@ SettingsTab {
     function hexOf(c) { function h(n) { return ("0" + n.toString(16)).slice(-2) } return "#" + h(c.r) + h(c.g) + h(c.b) }
     function colourOf(hex) { return { r: parseInt(hex.substr(1, 2), 16), g: parseInt(hex.substr(3, 2), 16), b: parseInt(hex.substr(5, 2), 16), a: 255 } }
     Component.onCompleted: {
-        // The episode watched last, at its resume point; else the sample source.
+        // The episode watched last, at its resume point; else the sample
+        // source. The Watched tab rides along: the episode seen last is
+        // often watched-out, and the two tabs' rows are each sorted, not
+        // the pair of them, so the newest view wins explicitly.
+        var rows = []
         var recent = Door.listSeries("All", "", "LastViewed", "Desc", false)
+        if (!recent.error) rows = rows.concat(recent.reply.series)
+        var watched = Door.listSeries("Watched", "", "LastViewed", "Desc", false)
+        if (!watched.error) rows = rows.concat(watched.reply.series)
+        var viewed = function(s) { return s.last_viewed_at && s.last_viewed_at.secs_since_epoch !== undefined ? s.last_viewed_at.secs_since_epoch : 0 }
+        rows.sort(function(a, b) { return viewed(b) - viewed(a) })
         var chosen = null
-        if (!recent.error) for (var i = 0; i < recent.reply.series.length && !chosen; i++) {
-            if (!recent.reply.series[i].last_viewed_at) break
-            var d = Door.getSeries(recent.reply.series[i].id)
+        for (var i = 0; i < rows.length && !chosen; i++) {
+            if (!rows[i].last_viewed_at) break
+            var d = Door.getSeries(rows[i].id)
             if (d.error) continue
             var eps = d.reply.detail.episodes
             var withResume = eps.filter(function(e) { return e.resume })

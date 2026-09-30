@@ -22,9 +22,14 @@ Item {
 
     property var samples: []
     function reload() {
+        // Samples describe the library, so the Watched tab rides along:
+        // a finished-heavy library still has posters to preview with.
         var r = Door.listSeries("All", "", "LastViewed", "Desc", false)
         if (r.error) return
-        var list = r.reply.series.filter(function(i) { return !!i.poster })
+        var list = r.reply.series
+        var w = Door.listSeries("Watched", "", "LastViewed", "Desc", false)
+        if (!w.error) list = list.concat(w.reply.series)
+        list = list.filter(function(i) { return !!i.poster })
         var going = list.filter(function(i) { return i.watched !== null && i.watched !== undefined && i.total_episodes && i.watched < i.total_episodes })
         var rest = list.filter(function(i) { return going.indexOf(i) < 0 })
         root.samples = going.concat(rest).slice(0, 8)

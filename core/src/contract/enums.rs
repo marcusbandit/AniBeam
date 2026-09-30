@@ -198,6 +198,7 @@ pub enum Tab {
     All,
     Series,
     Movies,
+    Watched,
     Hidden,
 }
 
@@ -207,6 +208,7 @@ impl Tab {
             Tab::All => "all",
             Tab::Series => "series",
             Tab::Movies => "movies",
+            Tab::Watched => "watched",
             Tab::Hidden => "hidden",
         }
     }
@@ -216,6 +218,7 @@ impl Tab {
             "all" => Some(Tab::All),
             "series" => Some(Tab::Series),
             "movies" => Some(Tab::Movies),
+            "watched" => Some(Tab::Watched),
             "hidden" => Some(Tab::Hidden),
             _ => None,
         }

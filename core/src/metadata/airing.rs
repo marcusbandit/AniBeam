@@ -155,12 +155,14 @@ pub async fn refresh_one(core: &Core, cand: &Candidate, now: i64) -> Result<bool
     // from, and an empty list is not an instruction to clear anything.
     let rows = record::merge_episodes(Some(&schedule), &[], &jikan);
     let anilist_id = cand.anilist_id;
+    let status = schedule.status.clone();
     core.store
         .tx_async(move |tx| {
             let before = stored(tx, anilist_id)?;
             record::write_episodes(tx, anilist_id, &rows, true, now)?;
+            let status_changed = write_status(tx, anilist_id, status.as_deref())?;
             stamp(tx, anilist_id, now)?;
-            Ok(before != stored(tx, anilist_id)?)
+            Ok(status_changed || before != stored(tx, anilist_id)?)
         })
         .await
 }
@@ -187,6 +189,37 @@ fn stamp(tx: &Transaction, anilist_id: u64, now: i64) -> Result<(), CoreError> {
         params![anilist_id as i64, now],
     )?;
     Ok(())
+}
+
+/// The one field this cheap fetch may write besides episodes: the media's
+/// own status, which is how a series that stopped airing ever leaves the
+/// airing rail — the full fetch that would normally carry it ran once,
+/// when the series was matched, and never runs again on its own. Only a
+/// status AniList actually sent and the row's state disagrees with is
+/// written, and nothing here may clear one.
+fn write_status(
+    tx: &Transaction,
+    anilist_id: u64,
+    status: Option<&str>,
+) -> Result<bool, CoreError> {
+    let Some(s) = status.filter(|s| AiringStatus::from_provider(s).is_some()) else {
+        return Ok(false);
+    };
+    let current: Option<String> = tx
+        .query_row(
+            "SELECT status FROM anilist_media WHERE id = ?1",
+            params![anilist_id as i64],
+            |r| r.get(0),
+        )
+        .optional()?;
+    if current.as_deref().and_then(AiringStatus::from_provider) == AiringStatus::from_provider(s) {
+        return Ok(false);
+    }
+    tx.execute(
+        "UPDATE anilist_media SET status = ?2 WHERE id = ?1",
+        params![anilist_id as i64, s],
+    )?;
+    Ok(true)
 }
 
 async fn stamp_async(core: &Core, anilist_id: u64, now: i64) -> Result<(), CoreError> {

@@ -389,6 +389,12 @@ pub struct Preferences {
     pub library_sort: Sort,
     pub library_direction: Direction,
     pub feed_sort: FeedSort,
+    /// Whether series that are done with (`cards::watched_out`) also sit in
+    /// the main tabs, or only in the Watched tab. Default off: a
+    /// non-rewatcher's finished series leaves the grid and the airing rail
+    /// behind. `serde(default)` because older blobs predate it.
+    #[serde(default)]
+    pub library_show_watched: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
@@ -492,6 +498,7 @@ impl Default for Preferences {
             library_sort: Sort::Alpha,
             library_direction: Direction::Asc,
             feed_sort: FeedSort::Recent,
+            library_show_watched: false,
         }
     }
 }
