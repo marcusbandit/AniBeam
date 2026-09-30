@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=AniBeam
+Comment=Browse, play, and track your local anime library
+Exec=anibeam
+Icon=com.marcusrosado.AniBeam
+Terminal=false
+Categories=AudioVideo;Video;Player;
+Keywords=anibeam;anime;media;video;
+StartupWMClass=com.marcusrosado.AniBeam
+StartupNotify=true
