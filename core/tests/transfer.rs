@@ -221,6 +221,7 @@ fn the_spec_document_imports_and_a_second_import_changes_nothing() {
                 library_sort: Sort::Alpha,
                 library_direction: Direction::Asc,
                 feed_sort: FeedSort::Recent,
+                library_show_watched: false,
             }
         ),
         other => panic!("{other:?}"),
@@ -274,6 +275,7 @@ fn a_private_export_round_trips_into_a_fresh_core() {
         library_sort: Sort::MyScore,
         library_direction: Direction::Desc,
         feed_sort: FeedSort::Upcoming,
+        library_show_watched: false,
     };
     core.call(Call::SetPreferences {
         preferences: preferences.clone(),

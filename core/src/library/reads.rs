@@ -13,6 +13,7 @@ use crate::images;
 use crate::library::cards;
 use crate::library::snapshot::Snapshot;
 use crate::library::sort;
+use crate::prefs;
 use crate::time;
 
 /// A film to the tabs: the folder was classified as one, or the match says
@@ -22,16 +23,21 @@ fn is_movie(c: &SeriesCard) -> bool {
 }
 
 /// Hidden series live in their own tab and are never mixed into the others;
-/// a missing series appears under no tab at all.
-fn in_tab(c: &SeriesCard, tab: Tab) -> bool {
+/// a missing series appears under no tab at all. Watched series (`cards::
+/// watched_out`) sit in their own tab too, and only rejoin the main tabs
+/// when the preference says so — the Watched and Hidden tabs themselves
+/// always list what they hold.
+fn in_tab(c: &SeriesCard, tab: Tab, show_watched: bool) -> bool {
     if c.missing {
         return false;
     }
+    let done = cards::watched_out(c);
     match tab {
         Tab::Hidden => c.hidden,
-        Tab::All => !c.hidden,
-        Tab::Series => !c.hidden && !is_movie(c),
-        Tab::Movies => !c.hidden && is_movie(c),
+        Tab::Watched => !c.hidden && done,
+        Tab::All => !c.hidden && (show_watched || !done),
+        Tab::Series => !c.hidden && !is_movie(c) && (show_watched || !done),
+        Tab::Movies => !c.hidden && is_movie(c) && (show_watched || !done),
     }
 }
 
@@ -90,12 +96,15 @@ pub fn list_series(
     sort_key: Sort,
     direction: Direction,
 ) -> Result<Reply, CoreError> {
+    let show_watched = core
+        .store
+        .read(|c| prefs::load_preferences(c).map(|p| p.library_show_watched))?;
     let Loaded {
         mut cards,
         gaps,
         posters,
     } = load_all(core)?;
-    cards.retain(|c| in_tab(c, tab) && sort::matches_query(c, query));
+    cards.retain(|c| in_tab(c, tab, show_watched) && sort::matches_query(c, query));
     sort::sort_cards(&mut cards, sort_key, direction);
     after_read(
         core,
@@ -109,7 +118,9 @@ pub fn list_series(
 }
 
 /// The airing rail: what is still releasing and has something on disk,
-/// freshest first.
+/// freshest first. A series the core counts as watched-out is out of here
+/// even while a stale status still says releasing — the tracker is the
+/// firmer answer, and the airing refresh's status write clears the rest.
 pub fn list_airing(core: &Core, offset: u64, limit: u64) -> Result<Reply, CoreError> {
     let mut cards = load_cards(core)?;
     cards.retain(|c| {
@@ -117,6 +128,7 @@ pub fn list_airing(core: &Core, offset: u64, limit: u64) -> Result<Reply, CoreEr
             && c.episodes_on_disk > 0
             && !c.hidden
             && !c.missing
+            && !cards::watched_out(c)
     });
     cards.sort_by_key(|c| std::cmp::Reverse(c.latest_activity_at));
     let series = cards

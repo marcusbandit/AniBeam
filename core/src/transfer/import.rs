@@ -746,6 +746,9 @@ async fn import_preferences(
                 library_direction: Direction::from_column(&entry.library_sort.direction)
                     .unwrap_or(current.library_direction),
                 feed_sort: FeedSort::from_column(&entry.feed_sort).unwrap_or(current.feed_sort),
+                // The export format predates the toggle, so an import never
+                // changes it: it keeps whatever was already set.
+                library_show_watched: current.library_show_watched,
             };
             prefs::save_preferences(tx, &preferences)?;
             if let Some(auto_skip) = &entry.auto_skip {

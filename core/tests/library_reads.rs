@@ -268,3 +268,117 @@ fn list_series_tabs_cards_detail_and_metadata() {
     assert!(c.bodies().iter().any(|b| matches!(b, EventBody::SeriesChanged { series } if series[0].id == hidden && series[0].hidden)));
     drop(dir);
 }
+
+/// A series the user is done with moves to its own tab and out of the
+/// main results, comes back when the preference says so, and a show
+/// caught up but still airing stays among the living and in the airing
+/// rail: current is not finished.
+#[test]
+fn watched_series_move_to_their_own_tab_until_shown_again() {
+    let (dir, core, _c) = common::open_core();
+    let src = fixtures::insert_source(&core, "/lib");
+    let now = anibeam_core::time::now_secs();
+
+    // Finished, fully watched, tracker says completed.
+    let done = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/K-On!", "K-On!");
+    for n in 1..=12 {
+        fixtures::insert_file(
+            &core,
+            done,
+            &format!("/lib/K-On!/{n:02}.mkv"),
+            n as f64,
+            None,
+            "episode",
+            now - 86_400 * n,
+        );
+    }
+    fixtures::insert_media(&core, 11000, Some("K-On!"), None, Some(12), "FINISHED", "TV", Some(80));
+    fixtures::match_series(&core, done, Some(11000), None);
+    fixtures::insert_tracker_entry(&core, "anilist", 11000, 12, "completed", None);
+
+    // A film seen once.
+    let film = fixtures::insert_series(
+        &core,
+        src,
+        SeriesKind::Movie,
+        "/lib/Perfect Blue (1997).mkv",
+        "Perfect Blue",
+    );
+    fixtures::insert_file(
+        &core,
+        film,
+        "/lib/Perfect Blue (1997).mkv",
+        1.0,
+        None,
+        "episode",
+        now,
+    );
+    fixtures::insert_media(&core, 11001, Some("Perfect Blue"), None, Some(1), "FINISHED", "MOVIE", Some(86));
+    fixtures::match_series(&core, film, Some(11001), None);
+    fixtures::insert_tracker_entry(&core, "anilist", 11001, 1, "completed", None);
+
+    // Caught up on a show that is still airing: current, not done.
+    let current = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Frieren", "Frieren");
+    for n in 1..=8 {
+        fixtures::insert_file(
+            &core,
+            current,
+            &format!("/lib/Frieren/{n:02}.mkv"),
+            n as f64,
+            None,
+            "episode",
+            now - 86_400 * (9 - n),
+        );
+    }
+    fixtures::insert_media(&core, 11002, Some("Frieren"), None, Some(28), "RELEASING", "TV", Some(91));
+    fixtures::match_series(&core, current, Some(11002), None);
+    fixtures::insert_tracker_entry(&core, "anilist", 11002, 8, "watching", None);
+
+    let list = |tab: Tab| match core
+        .call(Call::ListSeries {
+            tab,
+            query: String::new(),
+            sort: Sort::Alpha,
+            direction: Direction::Asc,
+            reveal_hidden: false,
+        })
+        .unwrap()
+    {
+        Reply::Series { series } => series,
+        other => panic!("{other:?}"),
+    };
+    let ids = |tab: Tab| list(tab).iter().map(|s| s.id).collect::<Vec<_>>();
+
+    // With the default preferences the finished ones are sectioned away.
+    assert_eq!(ids(Tab::All), vec![current], "{:?}", ids(Tab::All));
+    assert_eq!(ids(Tab::Series), vec![current]);
+    assert!(ids(Tab::Movies).is_empty());
+    assert_eq!(ids(Tab::Watched), vec![done, film]);
+
+    // The airing rail keeps what is current and never the finished.
+    let rail = match core.call(Call::ListAiring { offset: 0, limit: 10 }).unwrap() {
+        Reply::Series { series } => series.iter().map(|s| s.id).collect::<Vec<_>>(),
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(rail, vec![current]);
+
+    // The toggle puts them back among the results — and the airing rail
+    // still leaves them out, since nothing about them is airing.
+    core.call(Call::SetPreferences {
+        preferences: Preferences {
+            library_show_watched: true,
+            ..Default::default()
+        },
+    })
+    .unwrap();
+    assert_eq!(ids(Tab::All), vec![current, done, film]);
+    assert_eq!(ids(Tab::Movies), vec![film]);
+    assert_eq!(ids(Tab::Watched), vec![done, film]);
+    let rail = match core.call(Call::ListAiring { offset: 0, limit: 10 }).unwrap() {
+        Reply::Series { series } => series.iter().map(|s| s.id).collect::<Vec<_>>(),
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(rail, vec![current]);
+
+    drop(dir);
+}

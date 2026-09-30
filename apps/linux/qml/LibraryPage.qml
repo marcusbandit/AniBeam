@@ -26,8 +26,10 @@ Item {
     property string sort: "Alpha"
     property string direction: "Asc"
     property string titleLanguage: "Romaji"
+    property bool showWatched: false
     property string query: props.q || ""
     property bool hiddenExist: false
+    property bool watchedExist: false
     property real nowMs: Date.now()
     property int airingPage: 0
     readonly property int airingPageSize: 10
@@ -46,8 +48,16 @@ Item {
     function pickTab(i) { tab = tabNames[i]; persist(); reload() }
     function pickSort(key) { sort = key; direction = key === "Alpha" ? "Asc" : "Desc"; persist(); reload() }
     function flipDirection() { direction = direction === "Asc" ? "Desc" : "Asc"; persist(); reload() }
+    // The toggle is a preference, not session state: a non-rewatcher's
+    // finished series stays out of the grid across launches. The reload
+    // itself comes from the preferences-changed event's handler below.
+    function pickShowWatched(on) {
+        var p = JSON.parse(JSON.stringify(Door.preferences))
+        p.library_show_watched = on
+        Door.setPreferences(p)
+    }
     readonly property bool showHidden: Door.revealHidden && hiddenExist
-    readonly property var tabNames: tabs.concat(showHidden ? ["Hidden"] : [])
+    readonly property var tabNames: tabs.concat(watchedExist ? ["Watched"] : []).concat(showHidden ? ["Hidden"] : [])
 
     function reload() {
         var keep = grid.contentY
@@ -72,6 +82,11 @@ Item {
         } else {
             hiddenExist = false
         }
+        // The Watched tab exists while watched series do, whatever the
+        // toggle says: the section is where they live, the toggle is only
+        // about joining them back into the others.
+        var watched = Door.listSeries("Watched", "", "Alpha", "Asc", false)
+        if (!watched.error) watchedExist = watched.reply.series.length > 0
         reloadAiring()
     }
     function reloadAiring() {
@@ -100,10 +115,12 @@ Item {
             var newTab = page.tab === "Hidden" ? page.tab : p.library_tab
             var changed = newTab !== page.tab || p.library_sort !== page.sort
                 || p.library_direction !== page.direction || p.title_language !== page.titleLanguage
+                || p.library_show_watched !== page.showWatched
             page.tab = newTab
             page.sort = p.library_sort
             page.direction = p.library_direction
             page.titleLanguage = p.title_language
+            page.showWatched = p.library_show_watched === true
             if (changed) debounce.restart()
         }
         function onRevealHiddenChanged() { if (page.tab === "Hidden" && !Door.revealHidden) page.tab = "All"; debounce.restart() }
@@ -117,6 +134,7 @@ Item {
         sort = p.library_sort || "Alpha"
         direction = p.library_direction || "Asc"
         titleLanguage = p.title_language || "Romaji"
+        showWatched = p.library_show_watched === true
         // search.text starts "" (SearchField's own default), so setting it to a real
         // trail query is a genuine text change and queryDebounce.restart() fires from
         // SearchField's own onTextChanged; stop it right back so this one reload is the
@@ -181,6 +199,14 @@ Item {
                 }
             }
             Chip { anchors.verticalCenter: parent.verticalCenter; text: page.direction === "Desc" ? "Desc" : "Asc"; clickable: true; color: theme.surface; textColor: theme.textDim; onClicked: page.flipDirection() }
+            Item { width: theme.space(2); height: 1 }
+            Chip {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Show watched"; mono: false; clickable: true
+                selected: Door.preferences.library_show_watched === true
+                color: selected ? theme.accentSoft : theme.surface; textColor: theme.textDim
+                onClicked: page.pickShowWatched(Door.preferences.library_show_watched !== true)
+            }
         }
     }
 
@@ -244,7 +270,7 @@ Item {
             visible: cards.count === 0 && !page.libraryEmpty
             icon: "search"
             title: page.query !== "" ? "No matches for \"" + page.query + "\"." : "Nothing here"
-            body: page.query !== "" ? "" : "No " + (page.tab === "Series" ? "series" : page.tab === "Movies" ? "films" : "items") + " in your library yet."
+            body: page.query !== "" ? "" : "No " + (page.tab === "Series" ? "series" : page.tab === "Movies" ? "films" : page.tab === "Watched" ? "watched items" : "items") + " in your library yet."
         }
     }
 

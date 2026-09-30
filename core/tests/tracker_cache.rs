@@ -18,11 +18,12 @@ fn started(reply: Reply) -> u64 {
     }
 }
 
-/// One series' card, off the list every page reads.
+/// One series' card, off the list every page reads. Watched-out series
+/// sit in their own tab by default, so both places are looked in.
 fn card(core: &Core, series: u64) -> SeriesCard {
-    match core
+    let cards = |tab: Tab| match core
         .call(Call::ListSeries {
-            tab: Tab::All,
+            tab,
             query: String::new(),
             sort: Sort::Alpha,
             direction: Direction::Asc,
@@ -30,12 +31,14 @@ fn card(core: &Core, series: u64) -> SeriesCard {
         })
         .unwrap()
     {
-        Reply::Series { series: cards } => cards
-            .into_iter()
-            .find(|c| c.id == series)
-            .expect("the series is listed"),
+        Reply::Series { series: cards } => cards,
         other => panic!("{other:?}"),
-    }
+    };
+    cards(Tab::All)
+        .into_iter()
+        .find(|c| c.id == series)
+        .or_else(|| cards(Tab::Watched).into_iter().find(|c| c.id == series))
+        .expect("the series is listed")
 }
 
 /// A library of two matched series, one per tracker id, and the file each

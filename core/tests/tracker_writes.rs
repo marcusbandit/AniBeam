@@ -37,11 +37,12 @@ fn library(core: &Core) -> u64 {
     series
 }
 
-/// One series' card, off the list every page reads.
+/// One series' card, off the list every page reads. Completing a series
+/// files it into the Watched tab by default, so both places are looked in.
 fn card(core: &Core, series: u64) -> SeriesCard {
-    match core
+    let cards = |tab: Tab| match core
         .call(Call::ListSeries {
-            tab: Tab::All,
+            tab,
             query: String::new(),
             sort: Sort::Alpha,
             direction: Direction::Asc,
@@ -49,12 +50,14 @@ fn card(core: &Core, series: u64) -> SeriesCard {
         })
         .unwrap()
     {
-        Reply::Series { series: cards } => cards
-            .into_iter()
-            .find(|c| c.id == series)
-            .expect("the series is listed"),
+        Reply::Series { series: cards } => cards,
         other => panic!("{other:?}"),
-    }
+    };
+    cards(Tab::All)
+        .into_iter()
+        .find(|c| c.id == series)
+        .or_else(|| cards(Tab::Watched).into_iter().find(|c| c.id == series))
+        .expect("the series is listed")
 }
 
 /// Every GraphQL request whose query names `operation`, newest last, as the
