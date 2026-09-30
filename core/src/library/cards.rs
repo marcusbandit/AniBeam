@@ -116,17 +116,21 @@ pub fn total_with_estimate(
 
 /// Done with it: nothing left to see and nothing more coming — the state a
 /// non-rewatcher files a series away under. The tracker's own COMPLETED
-/// says it outright; otherwise the watched count has to reach the card's
-/// total, whose estimate already means "everything knowable has been
-/// seen" (it is the later of aired and watched when no total is
-/// published). A still-releasing series is never done with: caught up is
-/// current, not finished, however little there is left to wait for.
+/// outranks everything: the user said done, and a stale stored status that
+/// still says releasing must not second-guess them (the airing refresh's
+/// status write may not have landed yet), so a completed series leaves the
+/// grid and the airing rail the same day they mark it. Otherwise the
+/// watched count has to reach the card's total, whose estimate already
+/// means "everything knowable has been seen" (it is the later of aired and
+/// watched when no total is published). Without the tracker's word, a
+/// still-releasing series is never done with: caught up is current, not
+/// finished, however little there is left to wait for.
 pub fn watched_out(c: &SeriesCard) -> bool {
-    if c.status == Some(AiringStatus::Releasing) {
-        return false;
-    }
     if c.list_status == Some(ListStatus::Completed) {
         return true;
+    }
+    if c.status == Some(AiringStatus::Releasing) {
+        return false;
     }
     let Some(w) = c.watched else {
         return false;
@@ -523,13 +527,16 @@ mod tests {
         c.watched = None;
         assert!(!watched_out(&c));
 
-        // Caught up on a releasing show is current, not finished with —
-        // even the tracker's own COMPLETED waits for the end.
+        // Caught up on a releasing show without the completed mark is
+        // current, not finished with.
         c.watched = Some(12);
         c.status = Some(AiringStatus::Releasing);
         assert!(!watched_out(&c));
+        // But the tracker's word outranks a stale status: the user said
+        // done, and the airing refresh's status write may not have
+        // landed yet.
         c.list_status = Some(ListStatus::Completed);
-        assert!(!watched_out(&c));
+        assert!(watched_out(&c));
 
         // No published total: the estimate (the later of aired and
         // watched) is the bar, so only reaching it counts.
