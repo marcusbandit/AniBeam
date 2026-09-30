@@ -304,6 +304,13 @@
     color var(--transition-fast);
 }
 .sort-dir-toggle:hover { border-color: var(--border-hover); }
+/* The "show watched" flip shares the pill; its on-state tints it so the
+   mixed-in state is visible at a glance, same tokens as a selected tab. */
+.sort-dir-toggle.is-on {
+  color: var(--accent-primary);
+  border-color: var(--accent-secondary);
+  background: color-mix(in srgb, var(--accent-primary) 12%, var(--bg-secondary));
+}
 .sort-dir-toggle:focus-visible {
   outline: none;
   border-color: var(--accent-secondary);

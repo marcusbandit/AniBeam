@@ -387,6 +387,7 @@ const AIRING_SCHEDULE_QUERY = gql`
   query ($id: Int, $idMal: Int) {
     Media(id: $id, idMal: $idMal, type: ANIME) {
       id
+      status
       nextAiringEpisode {
         episode
         airingAt
@@ -407,6 +408,11 @@ const AIRING_SCHEDULE_QUERY = gql`
 export interface AiringScheduleResult {
   nodes: Array<{ episode: number; airingAt: number }>;
   nextAiringEpisode: { episode: number; airingAt: number } | null;
+  /** The media's own release status, riding along at no extra cost. The
+   *  airing refresh is the only fetch a releasing series ever sees again,
+   *  so it is the only one that can notice the series stopped airing —
+   *  the full fetch that normally carries this ran once, at match time. */
+  status: string | null;
 }
 
 // Enrichment bundle — one query returns the franchise graph plus the
@@ -655,7 +661,7 @@ const anilistHandler = {
   },
 
   async getAiringSchedule(opts: { anilistId?: number; malId?: number }): Promise<AiringScheduleResult> {
-    const empty: AiringScheduleResult = { nodes: [], nextAiringEpisode: null };
+    const empty: AiringScheduleResult = { nodes: [], nextAiringEpisode: null, status: null };
     const variables: { id?: number; idMal?: number } = {};
     if (opts.anilistId) variables.id = opts.anilistId;
     if (opts.malId) variables.idMal = opts.malId;
@@ -664,6 +670,7 @@ const anilistHandler = {
       const data = await limiter.run(() =>
         request<{
           Media: {
+            status: string | null;
             nextAiringEpisode: { episode: number; airingAt: number } | null;
             airingSchedule: { nodes: Array<{ episode: number; airingAt: number }> };
           } | null;
@@ -676,6 +683,7 @@ const anilistHandler = {
       return {
         nodes: data?.Media?.airingSchedule?.nodes ?? [],
         nextAiringEpisode: data?.Media?.nextAiringEpisode ?? null,
+        status: data?.Media?.status ?? null,
       };
     } catch (error) {
       if (isRateLimitError(error)) logRateLimitWarning('AniList');

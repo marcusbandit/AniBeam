@@ -49,6 +49,16 @@ export interface EpisodeAirDate {
   title: string | null;
 }
 
+/** The air dates and, riding along from the same AniList request, the
+ *  media's own release status. Both matter to the caller: the dates are
+ *  the point, and the status is the only news that a series stopped
+ *  airing, since this is the only fetch a releasing series ever sees
+ *  again. */
+export interface EpisodeAirDates {
+  episodes: EpisodeAirDate[];
+  status: string | null;
+}
+
 function aniListDate(
   d:
     | { year: number | null; month: number | null; day: number | null }
@@ -145,7 +155,7 @@ export async function fetchEpisodeAirDates(
   externalId: number,
   totalEpisodes: number | null,
   malIdForTitles?: number | null,
-): Promise<EpisodeAirDate[]> {
+): Promise<EpisodeAirDates> {
   // 1. AniList airingSchedule (preferred for dates).
   let fromAnilist: Array<{
     episodeNumber: number;
@@ -154,10 +164,14 @@ export async function fetchEpisodeAirDates(
   // The next broadcast, kept separate so it survives even when the schedule
   // page itself is empty or stale (see below).
   let nextAiring: { episodeNumber: number; airDate: string } | null = null;
+  // The media's own status from the same request — null when AniList
+  // failed outright, so the caller writes nothing rather than guessing.
+  let mediaStatus: string | null = null;
   try {
     const schedule = await anilistHandler.getAiringSchedule(
       source === "anilist" ? { anilistId: externalId } : { malId: externalId },
     );
+    mediaStatus = schedule.status ?? null;
     if (schedule.nodes.length > 0) {
       fromAnilist = schedule.nodes
         .filter((n) => Number.isFinite(n.airingAt) && n.airingAt > 0)
@@ -254,7 +268,10 @@ export async function fetchEpisodeAirDates(
     }
   }
 
-  return Array.from(byEp.values()).sort(
-    (a, b) => a.episodeNumber - b.episodeNumber,
-  );
+  return {
+    episodes: Array.from(byEp.values()).sort(
+      (a, b) => a.episodeNumber - b.episodeNumber,
+    ),
+    status: mediaStatus,
+  };
 }
