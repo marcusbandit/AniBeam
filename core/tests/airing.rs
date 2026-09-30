@@ -21,6 +21,19 @@ fn schedule_json(id: u64, next: Option<(u32, i64)>, nodes: &[(u32, i64)]) -> ser
     serde_json::json!({ "data": { "Media": { "id": id, "nextAiringEpisode": next, "airingSchedule": { "nodes": nodes } } } })
 }
 
+/// The same reply with the media's own status in it, which is how the
+/// cheap fetch learns a series stopped airing.
+fn schedule_json_status(
+    id: u64,
+    status: &str,
+    next: Option<(u32, i64)>,
+    nodes: &[(u32, i64)],
+) -> serde_json::Value {
+    let mut v = schedule_json(id, next, nodes);
+    v["data"]["Media"]["status"] = serde_json::Value::String(status.into());
+    v
+}
+
 /// Jikan's episode list, which is where a title would come from if this
 /// job were allowed to write one.
 fn jikan_json(episodes: &[(u32, &str)]) -> String {
@@ -248,6 +261,58 @@ fn a_finished_series_is_never_a_candidate() {
         }
     );
     assert!(http.requests().is_empty());
+
+    core.shutdown();
+}
+
+/// The status rides the schedule reply, and writing it is the only way a
+/// series that stopped airing ever leaves the airing rail: the full fetch
+/// that normally carries it ran once, when the series was matched. A
+/// series that ends has its status written and drops out of the
+/// candidates the same turn.
+#[test]
+fn a_refresh_that_learns_the_series_ended_writes_the_status() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let src = fixtures::insert_source(&core, "/lib");
+    let series = releasing(&core, src, "Sousou no Frieren", 1, 1001);
+
+    // The show ended: no next broadcast, no schedule left, status finished.
+    http.push_for(
+        "anilist",
+        200,
+        schedule_json_status(1, "FINISHED", None, &[]).to_string(),
+    );
+    http.push_for("jikan.moe", 200, jikan_json(&[]));
+    let job = started(&core, Call::RefreshAiring { series });
+    let done = common::wait_job(&c, job);
+    assert_eq!(
+        done.body,
+        EventBody::AiringRefreshed {
+            series,
+            updated: true
+        }
+    );
+
+    let status: Option<String> = core
+        .store()
+        .read(|conn| {
+            Ok(conn.query_row(
+                "SELECT status FROM anilist_media WHERE id = 1",
+                [],
+                |r| r.get(0),
+            )?)
+        })
+        .unwrap();
+    assert_eq!(status.as_deref(), Some("FINISHED"));
+
+    // Finished, it is no longer a candidate: the sweep has nothing to ask.
+    let now = time::now_secs();
+    let work = core
+        .store()
+        .read(|conn| Ok(anibeam_core::metadata::airing::candidates(conn, now)?))
+        .unwrap();
+    assert!(work.is_empty(), "{work:?}");
 
     core.shutdown();
 }
