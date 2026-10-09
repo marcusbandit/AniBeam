@@ -12,7 +12,7 @@ Item {
         { text: "Library", icon: "house" }, { text: "Feed", icon: "rss" }, { text: "Watching", icon: "eye" },
         { text: "Metadata", icon: "database" }, { text: "Settings", icon: "settings" }
     ]
-    width: theme.space(30)
+    width: theme.space(34)
 
     Rectangle {
         anchors.fill: parent
@@ -29,12 +29,13 @@ Item {
         anchors.top: parent.top
         anchors.topMargin: theme.space(5)
         anchors.horizontalCenter: parent.horizontalCenter
-        spacing: theme.space(1)
+        spacing: 0
+        width: parent.width
 
         Corner {
             width: theme.space(11); height: width
-            radius: theme.radiusMd
-            smoothing: theme.cornerSmoothing
+            radius: theme.radiusSm
+            smoothing: 0
             color: theme.accentSoft
             anchors.horizontalCenter: parent.horizontalCenter
             Image {
@@ -45,7 +46,7 @@ Item {
                 smooth: true
             }
         }
-        Item { width: 1; height: theme.space(4) }
+        Item { width: 1; height: theme.space(5) }
 
         Repeater {
             model: root.pages
@@ -54,40 +55,39 @@ Item {
                 required property int index
                 required property var modelData
                 readonly property bool on: index === root.active
-                width: root.width - theme.space(3)
+                width: parent.width
                 height: theme.controlHeight
-                anchors.horizontalCenter: parent.horizontalCenter
-                radius: theme.radiusMd
-                smoothing: theme.cornerSmoothing
+                radius: 0
+                smoothing: 0
                 color: on ? theme.surfaceRaised : (m.containsMouse ? theme.surface : "transparent")
                 borderColor: entry.activeFocus ? theme.focusRing : "transparent"
                 borderWidth: entry.activeFocus ? theme.space(0.5) : 0
                 activeFocusOnTab: true
                 Keys.onReturnPressed: root.picked(entry.index)
                 Keys.onSpacePressed: root.picked(entry.index)
-                Row {
+                // The active row's accent edge, the Diablo way
+                Rectangle {
+                    visible: entry.on
+                    anchors.left: parent.left
+                    width: 2
+                    height: parent.height
+                    color: theme.accent
+                }
+                Text {
                     anchors.left: parent.left
                     anchors.leftMargin: theme.space(3)
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: theme.space(2)
-                    Icon {
-                        anchors.verticalCenter: parent.verticalCenter
-                        glyph: entry.modelData.icon
-                        color: entry.on ? theme.text : theme.textDim
-                        size: theme.space(4.5)
-                    }
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: entry.modelData.text
-                        color: entry.on ? theme.text : theme.textDim
-                        font.family: theme.fontSans
-                        font.pointSize: theme.typeNormal
-                        font.weight: entry.on ? Font.DemiBold : Font.Normal
-                    }
+                    text: "0" + (entry.index + 1) + " / " + entry.modelData.text.toUpperCase()
+                    color: entry.on ? theme.text : theme.textDim
+                    font.family: theme.fontMono
+                    font.pointSize: theme.typeSmall
+                    font.letterSpacing: theme.typeSmall * 0.14
                 }
                 MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.picked(entry.index) }
             }
         }
+        Rectangle { width: parent.width - theme.space(6); height: 1; color: theme.line; anchors.horizontalCenter: parent.horizontalCenter }
+        Item { width: 1; height: theme.space(3) }
     }
 
     Column {

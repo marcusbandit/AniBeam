@@ -54,7 +54,7 @@ Item {
     // Spacing, radii, type, motion
     readonly property real densityFactor: Theme.densityFactor
     function space(n) { return Math.round(4 * densityFactor * n) }
-    readonly property real cornerBase: 14
+    readonly property real cornerBase: 4
     readonly property real cornerSmoothing: Theme.smoothing
     readonly property real radiusSm: cornerBase * densityFactor
     readonly property real radiusMd: cornerBase * 1.4 * densityFactor
@@ -66,6 +66,9 @@ Item {
     readonly property real typeSmall: systemPointSize * 0.85
     readonly property real typeLarge: systemPointSize * 1.4
     readonly property string fontSans: Qt.application.font.family
+    // The Diablo reading face: serif for titles and prose, the system sans for controls,
+    // mono for numbers and the letter-spaced caps labels.
+    readonly property string fontSerif: "Georgia, \"Times New Roman\", serif"
     readonly property string fontMono: "monospace"
     readonly property int motionFast: 120
     readonly property int motionNormal: 200

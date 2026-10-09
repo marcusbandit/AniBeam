@@ -54,7 +54,10 @@ Window {
         active: window.settled && Theme.ready && Door.ready
         sourceComponent: window.pageName === "tokens" ? tokensPage : frameComponent
         onLoaded: {
-            if (window.pageName !== "tokens" && window.pageName !== "library" && item.nav) {
+            // The library is the default page, so its props ride only when a launch
+            // actually handed some over; every other page always replaces.
+            var libraryWithProps = window.pageName === "library" && Shell.props !== ""
+            if (window.pageName !== "tokens" && (libraryWithProps || (window.pageName !== "library" && item.nav))) {
                 var props = {}
                 if (Shell.props !== "") { try { props = JSON.parse(Shell.props) } catch (e) { console.warn("--props is not valid JSON:", e.message); props = {} } }
                 // A --shoot of the series page with no id in --props opens the first

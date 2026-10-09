@@ -514,7 +514,7 @@ FocusScope {
         visible: false
         anchors.top: parent.top; anchors.topMargin: theme.space(20); anchors.horizontalCenter: parent.horizontalCenter
         width: hudText.implicitWidth + theme.space(6); height: theme.controlHeight
-        radius: height / 2; smoothing: theme.cornerSmoothing; color: theme.scrim; borderColor: theme.line; borderWidth: 1
+        radius: theme.radiusSm; smoothing: 0; color: theme.scrim; borderColor: theme.line; borderWidth: 1
         // Which key owns the line on screen, so an observation that lands afterwards can
         // rewrite its own line and no other. An omitted kind belongs to nobody.
         property string kind: ""

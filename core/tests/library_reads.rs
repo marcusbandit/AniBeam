@@ -292,7 +292,16 @@ fn watched_series_move_to_their_own_tab_until_shown_again() {
             now - 86_400 * n,
         );
     }
-    fixtures::insert_media(&core, 11000, Some("K-On!"), None, Some(12), "FINISHED", "TV", Some(80));
+    fixtures::insert_media(
+        &core,
+        11000,
+        Some("K-On!"),
+        None,
+        Some(12),
+        "FINISHED",
+        "TV",
+        Some(80),
+    );
     fixtures::match_series(&core, done, Some(11000), None);
     fixtures::insert_tracker_entry(&core, "anilist", 11000, 12, "completed", None);
 
@@ -313,7 +322,16 @@ fn watched_series_move_to_their_own_tab_until_shown_again() {
         "episode",
         now,
     );
-    fixtures::insert_media(&core, 11001, Some("Perfect Blue"), None, Some(1), "FINISHED", "MOVIE", Some(86));
+    fixtures::insert_media(
+        &core,
+        11001,
+        Some("Perfect Blue"),
+        None,
+        Some(1),
+        "FINISHED",
+        "MOVIE",
+        Some(86),
+    );
     fixtures::match_series(&core, film, Some(11001), None);
     fixtures::insert_tracker_entry(&core, "anilist", 11001, 1, "completed", None);
 
@@ -330,7 +348,16 @@ fn watched_series_move_to_their_own_tab_until_shown_again() {
             now - 86_400 * (9 - n),
         );
     }
-    fixtures::insert_media(&core, 11002, Some("Frieren"), None, Some(28), "RELEASING", "TV", Some(91));
+    fixtures::insert_media(
+        &core,
+        11002,
+        Some("Frieren"),
+        None,
+        Some(28),
+        "RELEASING",
+        "TV",
+        Some(91),
+    );
     fixtures::match_series(&core, current, Some(11002), None);
     fixtures::insert_tracker_entry(&core, "anilist", 11002, 8, "watching", None);
 
@@ -356,7 +383,13 @@ fn watched_series_move_to_their_own_tab_until_shown_again() {
     assert_eq!(ids(Tab::Watched), vec![done, film]);
 
     // The airing rail keeps what is current and never the finished.
-    let rail = match core.call(Call::ListAiring { offset: 0, limit: 10 }).unwrap() {
+    let rail = match core
+        .call(Call::ListAiring {
+            offset: 0,
+            limit: 10,
+        })
+        .unwrap()
+    {
         Reply::Series { series } => series.iter().map(|s| s.id).collect::<Vec<_>>(),
         other => panic!("{other:?}"),
     };
@@ -374,7 +407,13 @@ fn watched_series_move_to_their_own_tab_until_shown_again() {
     assert_eq!(ids(Tab::All), vec![current, done, film]);
     assert_eq!(ids(Tab::Movies), vec![film]);
     assert_eq!(ids(Tab::Watched), vec![done, film]);
-    let rail = match core.call(Call::ListAiring { offset: 0, limit: 10 }).unwrap() {
+    let rail = match core
+        .call(Call::ListAiring {
+            offset: 0,
+            limit: 10,
+        })
+        .unwrap()
+    {
         Reply::Series { series } => series.iter().map(|s| s.id).collect::<Vec<_>>(),
         other => panic!("{other:?}"),
     };

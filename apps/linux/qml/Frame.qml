@@ -55,6 +55,21 @@ FocusScope {
 
     function leavingScroll() { return page.item && page.item.scrollY !== undefined ? page.item.scrollY : 0 }
     function go(name, props, label) { nav.open(name, props, label, leavingScroll()) }
+
+    property alias frostSource: frostTex
+
+    // The one texture the glass samples: the content layer at half resolution — frost
+    // reads as blur, so the finer half of the picture is wasted texels. In the player the
+    // glass floats over the video alone, so the sample is the video item, not the page:
+    // the chrome sits inside the page and must not see its own reflection.
+    ShaderEffectSource {
+        id: frostTex
+        sourceItem: frame.fullWindow && page.item && page.item.video ? page.item.video : content
+        live: true
+        recursive: false
+        smooth: true
+        textureSize: Qt.size(Math.round(content.width / 2), Math.round(content.height / 2))
+    }
     // Loaded by URL with props as an initial property, not a Component swapped onto a
     // standing Loader, so a page's own Component.onCompleted sees nav.current.props from
     // its very first tick rather than through a later Loader.onLoaded assignment. Clearing
@@ -130,12 +145,9 @@ FocusScope {
             }
         }
 
-        ActivityDrawer {
-            id: drawer
-            visible: !frame.fullWindow && openness > 0.001
-            anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: strip.top
-            maxHeight: Math.round(page.height * 0.6)
-        }
+        // The drawer is a floating glass panel over the page, not part of the layer the
+        // glass samples — it lives outside content, above it in z, and rises from the
+        // strip's top edge, which is content's bottom edge.
         StatusStrip {
             id: strip
             visible: !frame.fullWindow
@@ -152,6 +164,13 @@ FocusScope {
             onClicked: frame.toggleDrawer()
         }
     }
+    ActivityDrawer {
+        id: drawer
+        visible: !frame.fullWindow && openness > 0.001
+        anchors.left: content.left; anchors.right: content.right; anchors.bottom: content.bottom
+        maxHeight: Math.round(page.height * 0.6)
+        z: 500
+    }
     function toggleDrawer() { drawer.toggle() }
 
     // Overlay: menus, tips, toasts
@@ -159,21 +178,21 @@ FocusScope {
         id: overlay
         anchors.fill: parent
         Menu { id: menu }
-        Corner {
+        Frost {
             id: tip
             visible: false
-            radius: theme.radiusSm; smoothing: theme.cornerSmoothing
-            color: theme.surfaceRaised; borderColor: theme.lineStrong; borderWidth: 1
+            sourceItem: frostTex
+            radius: theme.radiusSm
             width: tipText.implicitWidth + theme.space(4); height: tipText.implicitHeight + theme.space(2)
             Text { id: tipText; anchors.centerIn: parent; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeSmall }
         }
-        Corner {
+        Frost {
             id: toastBox
             visible: false
+            sourceItem: frostTex
+            radius: theme.radiusSm
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(10)
-            radius: height / 2; smoothing: theme.cornerSmoothing
-            color: theme.surfaceRaised; borderColor: theme.lineStrong; borderWidth: 1
             width: toastText.implicitWidth + theme.space(6); height: theme.controlHeight
             Text { id: toastText; anchors.centerIn: parent; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeNormal }
             Timer { id: toastTimer; onTriggered: toastBox.visible = false }

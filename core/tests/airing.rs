@@ -297,11 +297,11 @@ fn a_refresh_that_learns_the_series_ended_writes_the_status() {
     let status: Option<String> = core
         .store()
         .read(|conn| {
-            Ok(conn.query_row(
-                "SELECT status FROM anilist_media WHERE id = 1",
-                [],
-                |r| r.get(0),
-            )?)
+            Ok(
+                conn.query_row("SELECT status FROM anilist_media WHERE id = 1", [], |r| {
+                    r.get(0)
+                })?,
+            )
         })
         .unwrap();
     assert_eq!(status.as_deref(), Some("FINISHED"));

@@ -1,7 +1,7 @@
 {
   "name": "anibeam",
   "private": true,
-  "version": "2026.9.30+g8f98033",
+  "version": "2026.9.30+gb400083",
   "main": ".vite/build/main.js",
   "type": "module",
   "scripts": {

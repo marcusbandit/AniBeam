@@ -59,8 +59,8 @@ Item {
         y: root.lift
         width: root.posterWidth
         height: width * 1.5
-        radius: theme.radiusLg
-        smoothing: theme.cornerSmoothing
+        radius: theme.radiusSm
+        smoothing: 0
         color: theme.surface
         fillItem: poster.status === Image.Ready ? poster : null
         borderColor: hover.containsMouse ? theme.lineStrong : theme.line
@@ -114,10 +114,10 @@ Item {
             height: Math.max(2, theme.space(0.75))
             anchors.bottom: parent.bottom
             anchors.bottomMargin: theme.space(2)
-            Corner { width: parent.width; height: parent.height; radius: height / 2; smoothing: theme.cornerSmoothing; color: root.totalKnown ? theme.scrim : theme.line }
-            Corner { anchors.right: parent.right; width: parent.width * root.unknownPct; height: parent.height; radius: height / 2; smoothing: theme.cornerSmoothing; color: theme.line; visible: root.unknownPct > 0 }
-            Corner { width: parent.width * root.airedPct; height: parent.height; radius: height / 2; smoothing: theme.cornerSmoothing; color: theme.behind }
-            Corner { width: parent.width * root.watchedPct; height: parent.height; radius: height / 2; smoothing: theme.cornerSmoothing; color: theme.caughtUp }
+            Corner { width: parent.width; height: parent.height; radius: 0; smoothing: 0; color: root.totalKnown ? theme.scrim : theme.line }
+            Corner { anchors.right: parent.right; width: parent.width * root.unknownPct; height: parent.height; radius: 0; smoothing: 0; color: theme.line; visible: root.unknownPct > 0 }
+            Corner { width: parent.width * root.airedPct; height: parent.height; radius: 0; smoothing: 0; color: theme.behind }
+            Corner { width: parent.width * root.watchedPct; height: parent.height; radius: 0; smoothing: 0; color: theme.caughtUp }
         }
     }
 
@@ -132,7 +132,7 @@ Item {
             width: parent.width
             text: root.displayTitle
             color: hover.containsMouse ? theme.accent : theme.text
-            font.family: theme.fontSans
+            font.family: theme.fontSerif
             font.pointSize: theme.typeNormal
             font.weight: Font.DemiBold
             elide: Text.ElideRight

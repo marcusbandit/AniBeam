@@ -19,7 +19,7 @@ Corner {
 
     implicitWidth: content.implicitWidth + theme.space(small ? 2 : 2.5) * 2
     implicitHeight: label.implicitHeight + theme.space(small ? 0.75 : 1.25) * 2
-    radius: height / 2
+    radius: theme.radiusSm
     smoothing: theme.cornerSmoothing
     color: selected ? theme.accentSoft : theme.scrim
     borderColor: hover.containsMouse ? theme.lineStrong : "transparent"

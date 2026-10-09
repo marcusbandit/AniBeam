@@ -12,7 +12,7 @@ Corner {
     signal marker()
     width: parent ? parent.width : implicitWidth
     height: theme.space(11)
-    radius: theme.radiusSm; smoothing: theme.cornerSmoothing
+    radius: 0; smoothing: 0
     color: hover.containsMouse ? theme.surface : "transparent"
 
     property bool watched: !!episode.watched
@@ -36,7 +36,7 @@ Corner {
             Tooltip { text: root.hasTracker && !root.extra ? (root.watched ? "untrack to here" : "track to here") : "" }
         }
         Text { anchors.verticalCenter: parent.verticalCenter; text: episode.code || ""; color: theme.textDim; font.family: theme.fontMono; font.pointSize: theme.typeSmall; width: theme.space(16) }
-        Text { anchors.verticalCenter: parent.verticalCenter; text: root.title; color: root.nextUp ? theme.text : (root.watched ? theme.textDim : theme.text); font.family: theme.fontSans; font.pointSize: theme.typeNormal; elide: Text.ElideRight; width: parent.width - mark.width - theme.space(16) - theme.space(3) * 2 }
+        Text { anchors.verticalCenter: parent.verticalCenter; text: root.title; color: root.nextUp ? theme.text : (root.watched ? theme.textDim : theme.text); font.family: theme.fontSerif; font.pointSize: theme.typeNormal; elide: Text.ElideRight; width: parent.width - mark.width - theme.space(16) - theme.space(3) * 2 }
     }
     Row {
         id: pills
@@ -51,7 +51,7 @@ Corner {
         visible: root.resumeFraction > 0 && hover.containsMouse
         x: theme.space(11); width: (parent.width - theme.space(14)) * root.resumeFraction; height: theme.space(0.5)
         anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(1)
-        radius: height / 2; smoothing: theme.cornerSmoothing; color: theme.accent
+        radius: 0; smoothing: 0; color: theme.accent
     }
     MouseArea { id: hover; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; z: -1; onClicked: root.play() }
 }

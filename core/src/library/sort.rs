@@ -129,6 +129,7 @@ mod tests {
             },
             poster: None,
             format: None,
+            genres: Vec::new(),
             status: None,
             hidden: false,
             missing: false,

@@ -13,6 +13,7 @@ Flickable {
     clip: true
     boundsBehavior: Flickable.StopAtBounds
     QC.ScrollBar.vertical: ThinScrollBar {}
+    WheelStep { flick: root }
     MouseArea { anchors.fill: parent; onPressed: function(m) { root.forceActiveFocus(); m.accepted = false } }
     Column {
         id: inner

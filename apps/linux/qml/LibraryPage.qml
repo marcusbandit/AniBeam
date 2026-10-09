@@ -1,6 +1,8 @@
-// Spec 4.1 unit 2: the grid of every series, the search, the tabs, the sort, the Airing
-// section and the count chip. The core searches and sorts; the page keeps the list in a
-// RecordModel and reloads it, debounced, when the core says a series changed.
+// Spec 4.1 unit 2, in the demo's language: a breadcrumb bar, a controls band, and the
+// poster grid as numbered sections — Airing first, then everything, grouped by genre or
+// viewed state on demand. The core searches and sorts; the page partitions the sorted
+// list into sections client-side and keeps it in a RecordModel, reloaded, debounced,
+// when the core says a series changed.
 import QtQuick
 import QtQuick.Controls.Basic as QC
 import QtQuick.Dialogs
@@ -15,7 +17,7 @@ Item {
     function escapePressed() { return false }
 
     readonly property var tabs: ["All", "Series", "Movies"]
-    readonly property var sorts: [["Alpha", "A to Z"], ["LastViewed", "Last viewed"], ["Progress", "Progress"], ["CommunityScore", "Score"], ["MyScore", "My score"]]
+    readonly property var sorts: [["Alpha", "A TO Z"], ["LastViewed", "LAST VIEWED"], ["Progress", "PROGRESS"], ["CommunityScore", "SCORE"], ["MyScore", "MY SCORE"]]
     // Loaded-with copies, not bindings on Door.preferences: a plain property bound to
     // prefs.xxx keeps tracking Door.preferences on its own, ahead of the Connections
     // handler below that means to compare "what changed" against it, so the very first
@@ -31,13 +33,10 @@ Item {
     property bool hiddenExist: false
     property bool watchedExist: false
     property real nowMs: Date.now()
-    property int airingPage: 0
-    readonly property int airingPageSize: 10
-    property bool airingMore: false
     property bool libraryEmpty: false
+    property string groupBy: "None"   // None | Genre | Viewed
 
-    RecordModel { id: cards; roles: ["id", "title", "titles", "poster", "code", "watched", "watched_state", "total_episodes", "total_is_estimate", "strip", "community_score", "my_score", "hidden", "next_airing", "last_viewed_at", "episodes_on_disk", "kind"] }
-    RecordModel { id: airing; roles: cards.roles }
+    RecordModel { id: cards; roles: ["id", "title", "titles", "poster", "code", "watched", "watched_state", "total_episodes", "total_is_estimate", "strip", "community_score", "my_score", "hidden", "next_airing", "last_viewed_at", "episodes_on_disk", "kind", "format", "genres"] }
 
     function persist() {
         var p = JSON.parse(JSON.stringify(Door.preferences))
@@ -59,17 +58,67 @@ Item {
     readonly property bool showHidden: Door.revealHidden && hiddenExist
     readonly property var tabNames: tabs.concat(watchedExist ? ["Watched"] : []).concat(showHidden ? ["Hidden"] : [])
 
+    // ---- The sections: one entry per numbered section, carrying its cards. Airing
+    // The section string IS the header — "02 / AIRING  ·  3" — identical for every
+    // member of its section, numbered by position, genre and viewed groups by size
+    // descending. The airing rail is capped high; its own pager lived on the old grid
+    // and the stream replaces it.
+    function groupLabel(c) {
+        if (groupBy === "Genre") {
+            var g = c.genres
+            return g && g.length ? g[0].toUpperCase() : "UNMATCHED"
+        }
+        if (groupBy === "Viewed") {
+            var w = c.watched
+            if (c.watched_state === "CaughtUp") return "CAUGHT UP"
+            if (c.watched_state === "Behind") return "WATCHING"
+            return w !== null && w !== undefined && w > 0 ? "WATCHING" : "NOT STARTED"
+        }
+        return "EVERYTHING"
+    }
+    readonly property bool airingShows: page.query === "" && !page.libraryEmpty
+    readonly property var groups: {
+        var airingRows = []
+        if (airingShows) {
+            var r = Door.listAiring(0, 60)
+            if (!r.error) airingRows = r.reply.series
+        }
+        var main = page.tab === "All" ? "EVERYTHING" : page.tab.toUpperCase()
+        var buckets = {}
+        var order = []
+        for (var i = 0; i < cards.count; i++) {
+            var c = cards.at(i)
+            var label = groupBy === "None" ? main : groupLabel(c)
+            if (!buckets[label]) { buckets[label] = []; order.push(label) }
+            buckets[label].push(c)
+        }
+        // Section order: first appearance, but grouped views put the biggest shelf
+        // first; ties A to Z.
+        if (groupBy !== "None") order.sort(function(a, b) {
+            var d = buckets[b].length - buckets[a].length
+            return d !== 0 ? d : (a < b ? -1 : a > b ? 1 : 0)
+        })
+        var n = 1
+        var headers = {}
+        if (airingShows) {
+            n++
+            headers["AIRING"] = "02 / AIRING  ·  " + airingRows.length
+        }
+        for (var h = 0; h < order.length; h++) {
+            n++
+            headers[order[h]] = (n < 10 ? "0" : "") + n + " / " + order[h] + "  ·  " + buckets[order[h]].length
+        }
+        var out = []
+        if (airingShows) out.push({ header: headers["AIRING"], cards: airingRows })
+        for (var s = 0; s < order.length; s++) out.push({ header: headers[order[s]], cards: buckets[order[s]] })
+        return out
+    }
+
     function reload() {
         var keep = grid.contentY
         var r = Door.listSeries(tab, query, sort, direction, Door.revealHidden)
         if (r.error) { frame.toast(r.error.message); return }
         cards.reset(r.reply.series)
-        // The lower bound keeps a scroll position that used to sit inside the Airing
-        // header sane once that header shrinks or disappears (a search hides it, a tab
-        // switch loses it): without it, contentY stays at the old, now out-of-range
-        // negative offset and the grid opens on an empty gap instead of its own top.
-        var floor = -(grid.headerItem && grid.headerItem.visible ? grid.headerItem.height : 0)
-        grid.contentY = Math.max(floor, Math.min(keep, Math.max(0, grid.contentHeight - grid.height)))
         if (query === "" && tab === "All") {
             libraryEmpty = r.reply.series.length === 0 && !Door.revealHidden
         } else {
@@ -87,19 +136,11 @@ Item {
         // about joining them back into the others.
         var watched = Door.listSeries("Watched", "", "Alpha", "Asc", false)
         if (!watched.error) watchedExist = watched.reply.series.length > 0
-        reloadAiring()
-    }
-    function reloadAiring() {
-        var r = Door.listAiring(airingPage * airingPageSize, airingPageSize + 1)
-        if (r.error) return
-        var rows = r.reply.series
-        airingMore = rows.length > airingPageSize
-        airing.reset(rows.slice(0, airingPageSize))
-        if (rows.length === 0 && airingPage > 0) { airingPage = 0; reloadAiring() }
+        grid.contentY = Math.max(0, Math.min(keep, Math.max(0, grid.contentHeight - grid.height)))
     }
     Timer { id: debounce; interval: 250; onTriggered: page.reload() }
     Timer { id: queryDebounce; interval: 150; onTriggered: { page.query = search.text; frame.nav.current.props = { q: page.query }; page.reload() } }
-    Timer { interval: 30000; running: cards.count > 0 || airing.count > 0; repeat: true; onTriggered: page.nowMs = Date.now() }
+    Timer { interval: 30000; running: cards.count > 0; repeat: true; onTriggered: page.nowMs = Date.now() }
     Connections {
         target: Door
         function onSeriesChanged() { debounce.restart() }
@@ -125,9 +166,6 @@ Item {
         }
         function onRevealHiddenChanged() { if (page.tab === "Hidden" && !Door.revealHidden) page.tab = "All"; debounce.restart() }
     }
-    // Frame now sets props before this fires (a Loader.setSource initial property, not a
-    // later Loader.onLoaded assignment), so query already reads the trail's real value and
-    // one reload here is the only core round trip a fresh navigation costs.
     Component.onCompleted: {
         var p = Door.preferences
         tab = p.library_tab || "All"
@@ -140,138 +178,160 @@ Item {
         // SearchField's own onTextChanged; stop it right back so this one reload is the
         // only core round trip a fresh navigation costs, not a second one 150 ms later.
         search.text = query
+        // The trail can open the page with a grouping already set.
+        if (["Genre", "Viewed"].indexOf(props.group) >= 0) groupBy = props.group
         queryDebounce.stop()
         reload()
     }
-    // GridView positions itself at its own top once, at construction, using whatever
-    // headerItem.height reads at that instant. The Airing header's real height comes from
-    // a Flow of Repeater-built Cards, which settles a few ticks late, so that one-time
-    // position is taken against a too-small height and never corrected on its own; a search
-    // hiding or a tab switch losing the section collapses it again later, and it needs to
-    // be chased back too when the section returns. Rather than latch a single "has the
-    // position been taken" flag (which round 1 did, and which then refused to chase the
-    // section back once a search that briefly hid it had forced one real contentY write),
-    // this compares the current position against where the last known header edge put it:
-    // sitting exactly there means nothing has moved contentY on its own since, so following
-    // the header's new height is still the right call; sitting anywhere else, a drag or a
-    // deliberate restore (the frame's Back restore, reload()'s own keep-the-scroll clamp)
-    // has taken over and this never touches it again. userScrolled alone is permanent,
-    // for "never once the visitor has actually dragged", per the same rule.
-    property bool userScrolled: false
-    property real priorHeaderHeight: 0
-    Connections { target: grid; function onMovementStarted() { page.userScrolled = true } }
-    Connections {
-        target: grid.headerItem
-        function onHeightChanged() {
-            var wasAtTop = !page.userScrolled && Math.abs(grid.contentY + page.priorHeaderHeight) < 1
-            page.priorHeaderHeight = grid.headerItem.height
-            if (wasAtTop) grid.positionViewAtBeginning()
+
+    // ---- The breadcrumb bar: "01 / LIBRARY" and the live counts on the right
+    Item {
+        id: crumbBar
+        anchors.left: parent.left; anchors.leftMargin: theme.space(8)
+        // The right margin carries the scroll bar: the column pulls in two extra units so
+        // the bar floats in the page's margin instead of over the cards' edge.
+        anchors.right: parent.right; anchors.rightMargin: theme.space(10)
+        anchors.top: parent.top; anchors.topMargin: theme.space(7)
+        height: crumb.height
+        visible: !page.libraryEmpty
+        Text {
+            id: crumb
+            anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
+            text: "01 / LIBRARY"
+            color: theme.text
+            font.family: theme.fontMono
+            font.pointSize: theme.typeLarge
+            font.letterSpacing: theme.typeLarge * 0.12
+        }
+        Text {
+            anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+            text: cards.count + " SERIES"
+            color: theme.textDim
+            font.family: theme.fontMono
+            font.pointSize: theme.typeSmall
+            font.letterSpacing: theme.typeSmall * 0.14
         }
     }
 
-    Column {
-        id: header
-        anchors.top: parent.top; anchors.topMargin: theme.space(7)
-        anchors.left: parent.left; anchors.leftMargin: theme.space(8)
-        anchors.right: parent.right; anchors.rightMargin: theme.space(8)
-        spacing: theme.space(4)
+    // ---- Controls band: the tabs and the search on one edge-aligned row, the sorts and
+    // the group switch under them, a hairline closing the band.
+    Item {
+        id: controls
+        anchors.left: crumbBar.left; anchors.right: crumbBar.right
+        anchors.top: crumbBar.bottom; anchors.topMargin: theme.space(5)
+        height: tabsRow.height + sortsRow.height + theme.space(5)
         visible: !page.libraryEmpty
-        Row {
-            spacing: theme.space(3)
-            Text { text: "Library"; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeLarge; font.weight: Font.Bold; anchors.verticalCenter: parent.verticalCenter }
-            Chip { anchors.verticalCenter: parent.verticalCenter; text: cards.count + (page.tab === "Movies" ? " films" : " series"); small: true; color: theme.surface; textColor: theme.textDim }
+        Seg {
+            id: tabsRow
+            anchors.left: parent.left; anchors.top: parent.top
+            options: page.tabNames
+            index: Math.max(0, page.tabNames.indexOf(page.tab))
+            onPicked: function(i) { page.pickTab(i) }
         }
-        SearchField { id: search; onTextChanged: queryDebounce.restart(); onCleared: { queryDebounce.stop(); page.query = ""; frame.nav.current.props = {}; page.reload() } }
+        SearchField {
+            id: search; width: theme.space(100)
+            anchors.right: parent.right; anchors.top: parent.top
+            onTextChanged: queryDebounce.restart()
+            onCleared: { queryDebounce.stop(); page.query = ""; frame.nav.current.props = {}; page.reload() }
+        }
         Row {
-            width: parent.width
-            spacing: theme.space(3)
-            Seg { options: page.tabNames; index: Math.max(0, page.tabNames.indexOf(page.tab)); onPicked: function(i) { page.pickTab(i) } }
-            Item { width: theme.space(2); height: 1 }
+            id: sortsRow
+            anchors.left: parent.left; anchors.bottom: parent.bottom
+            spacing: theme.space(4)
             Repeater {
                 model: page.sorts
-                Chip {
+                Text {
                     required property var modelData
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: modelData[1]; mono: false; clickable: true
-                    selected: page.sort === modelData[0]
-                    color: selected ? theme.accentSoft : theme.surface; textColor: theme.textDim
-                    onClicked: page.pickSort(modelData[0])
+                    readonly property bool on: page.sort === modelData[0]
+                    text: modelData[1] + (on && page.direction === "Desc" && modelData[0] !== "Alpha" ? " ↓" : on ? " ↑" : "")
+                    color: on ? theme.text : theme.textFaint
+                    font.family: theme.fontMono
+                    font.pointSize: theme.typeSmall
+                    font.letterSpacing: theme.typeSmall * 0.12
+                    Rectangle { visible: parent.on; anchors.bottom: parent.bottom; width: parent.width; height: 2; color: theme.accent }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.pickSort(parent.modelData[0]) }
                 }
             }
-            Chip { anchors.verticalCenter: parent.verticalCenter; text: page.direction === "Desc" ? "Desc" : "Asc"; clickable: true; color: theme.surface; textColor: theme.textDim; onClicked: page.flipDirection() }
-            Item { width: theme.space(2); height: 1 }
-            Chip {
+        }
+        Row {
+            anchors.right: parent.right; anchors.bottom: parent.bottom
+            spacing: theme.space(3)
+            Text {
+                text: "GROUP"
+                color: theme.textFaint
+                font.family: theme.fontMono
+                font.pointSize: theme.typeSmall
+                font.letterSpacing: theme.typeSmall * 0.12
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Show watched"; mono: false; clickable: true
-                selected: Door.preferences.library_show_watched === true
-                color: selected ? theme.accentSoft : theme.surface; textColor: theme.textDim
-                onClicked: page.pickShowWatched(Door.preferences.library_show_watched !== true)
+            }
+            Seg {
+                small: true
+                options: ["None", "Genre", "Viewed"]
+                index: ["None", "Genre", "Viewed"].indexOf(page.groupBy)
+                onPicked: function(i) { page.groupBy = ["None", "Genre", "Viewed"][i] }
             }
         }
     }
+    Rectangle {
+        anchors.left: crumbBar.left; anchors.right: crumbBar.right
+        anchors.top: controls.bottom; anchors.topMargin: theme.space(4)
+        height: 1; color: theme.line
+        visible: !page.libraryEmpty
+    }
 
-    GridView {
+    // ---- The sectioned grid: one block per section, a numbered caps header over a Flow
+    // of cards. The ListView builds a block only when it scrolls near, so a big library
+    // never decodes its whole shelf at open.
+    ListView {
         id: grid
-        anchors.top: header.visible ? header.bottom : parent.top
-        anchors.topMargin: theme.space(6)
-        anchors.left: parent.left; anchors.leftMargin: theme.space(8)
-        anchors.right: parent.right; anchors.rightMargin: theme.space(8)
+        anchors.left: crumbBar.left; anchors.right: crumbBar.right
+        anchors.top: controls.bottom; anchors.topMargin: theme.space(6)
         anchors.bottom: parent.bottom
         visible: !page.libraryEmpty
         clip: true
+        boundsBehavior: Flickable.StopAtBounds
         readonly property real gapX: theme.space(5)
-        readonly property real gapY: theme.space(6)
-        readonly property int columns: Math.max(1, Math.floor((width + gapX) / (theme.posterWidth + gapX)))
-        cellWidth: Math.floor((width + gapX) / columns)
-        readonly property real cardWidth: cellWidth - gapX
-        cellHeight: Math.ceil(cardWidth * 1.5 + theme.space(2) + theme.typeNormal * 2 * 1.5 + theme.typeSmall * 1.5 + theme.space(1)) + gapY
-        model: cards
-        cacheBuffer: 1200
-        // header is a Component-typed property, so Pager, the one child here with its own
-        // "page" property, would shadow the page id with itself inside it (the same trap
-        // Frame.qml's hostWindow comment names for "window: window"). grid owns no such
-        // property, so these proxies reach page safely from inside that boundary.
-        readonly property int airingPage: page.airingPage
-        readonly property bool airingMore: page.airingMore
-        function pagerPrev() { page.airingPage--; page.reloadAiring() }
-        function pagerNext() { page.airingPage++; page.reloadAiring() }
+        readonly property real cardWidth: {
+            var columns = Math.max(1, Math.floor((width + gapX) / (theme.posterWidth + gapX)))
+            return Math.floor((width + gapX) / columns) - gapX
+        }
+        model: page.groups
+        cacheBuffer: 600
         QC.ScrollBar.vertical: ThinScrollBar {}
-        header: Column {
+        WheelStep { flick: grid }
+        spacing: theme.space(7)
+        delegate: Column {
+            required property var modelData
             width: grid.width
             spacing: theme.space(4)
-            visible: airing.count > 0 && page.query === ""
-            height: visible ? implicitHeight + theme.space(6) : 0
-            SectionHeader {
-                title: "Airing"; count: airing.count
-                Pager {
-                    page: grid.airingPage
-                    hasMore: grid.airingMore
-                    onPrev: grid.pagerPrev()
-                    onNext: grid.pagerNext()
-                }
+            Text {
+                text: modelData.header
+                color: theme.textDim
+                font.family: theme.fontMono
+                font.pointSize: theme.typeSmall
+                font.letterSpacing: theme.typeSmall * 0.14
             }
             Flow {
                 width: parent.width
                 spacing: grid.gapX
                 Repeater {
-                    model: airing
-                    Card { required property int index; item: airing.at(index); posterWidth: grid.cardWidth; nowMs: page.nowMs; onOpened: frame.go("series", { id: item.id }, item.title) }
+                    model: modelData.cards
+                    Card {
+                        required property var modelData
+                        item: modelData
+                        posterWidth: grid.cardWidth; nowMs: page.nowMs
+                        onOpened: frame.go("series", { id: modelData.id }, modelData.title)
+                    }
                 }
             }
-            Rectangle { width: parent.width; height: 1; color: theme.line }
         }
-        delegate: Item {
-            required property int index
-            width: grid.cellWidth; height: grid.cellHeight
-            Card { item: cards.at(index); posterWidth: grid.cardWidth; nowMs: page.nowMs; onOpened: frame.go("series", { id: item.id }, item.title) }
-        }
-        footer: Item { width: 1; height: theme.space(10) }
         EmptyState {
             visible: cards.count === 0 && !page.libraryEmpty
             icon: "search"
             title: page.query !== "" ? "No matches for \"" + page.query + "\"." : "Nothing here"
             body: page.query !== "" ? "" : "No " + (page.tab === "Series" ? "series" : page.tab === "Movies" ? "films" : page.tab === "Watched" ? "watched items" : "items") + " in your library yet."
         }
+        footer: Item { width: 1; height: theme.space(10) }
     }
 
     // The empty home: Import, and a pointer at Settings

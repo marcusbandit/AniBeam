@@ -130,8 +130,8 @@ PageScroll {
             Column {
                 anchors.bottom: parent.bottom
                 spacing: theme.space(2)
-                Text { text: page.title; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeLarge; font.weight: Font.Bold; width: page.width - theme.space(64); elide: Text.ElideRight; wrapMode: Text.Wrap; maximumLineCount: 2 }
-                Text { visible: page.altTitle !== ""; text: page.altTitle; color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeNormal }
+                Text { text: page.title; color: theme.text; font.family: theme.fontSerif; font.pointSize: theme.typeLarge; font.weight: Font.Bold; width: page.width - theme.space(64); elide: Text.ElideRight; wrapMode: Text.Wrap; maximumLineCount: 2 }
+                Text { visible: page.altTitle !== ""; text: page.altTitle; color: theme.textDim; font.family: theme.fontSerif; font.pointSize: theme.typeNormal }
                 Row {
                     spacing: theme.space(2)
                     Chip { visible: card.community_score !== null && card.community_score !== undefined; icon: "star"; text: Fmt.score(card.community_score || 0); textColor: theme.yellow; Tooltip { text: "Average rating" } }
@@ -176,7 +176,7 @@ PageScroll {
             id: synopsis
             width: parent.width
             text: detail ? detail.synopsis.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() : ""
-            color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeNormal
+            color: theme.textDim; font.family: theme.fontSerif; font.pointSize: theme.typeNormal
             wrapMode: Text.Wrap; elide: Text.ElideRight
             maximumLineCount: page.synopsisOpen ? 1000 : 5
         }

@@ -29,7 +29,7 @@ Item {
         }
     }
     Corner { anchors.verticalCenter: parent.verticalCenter; width: track.width * root.played; height: track.height; radius: height / 2; smoothing: theme.cornerSmoothing; color: theme.accent }
-    Corner { x: track.width * root.played - width / 2; anchors.verticalCenter: parent.verticalCenter; width: theme.space(3.5); height: width; radius: width / 2; smoothing: theme.cornerSmoothing; color: theme.accent; borderColor: theme.bg; borderWidth: theme.space(0.5); visible: mouse.containsMouse || mouse.pressed }
+    Corner { x: track.width * root.played - width / 2; anchors.verticalCenter: parent.verticalCenter; width: theme.space(3.5); height: width; radius: 2; smoothing: 0; color: theme.accent; borderColor: theme.bg; borderWidth: theme.space(0.5); visible: mouse.containsMouse || mouse.pressed }
     MouseArea {
         id: mouse
         anchors.fill: parent

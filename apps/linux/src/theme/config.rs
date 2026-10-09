@@ -72,7 +72,7 @@ impl Default for ThemeSettings {
             accent: 4,
             density: Density::Normal,
             poster: Poster::M,
-            corners: Corners::Smooth,
+            corners: Corners::Plain,
             theme_dark: "anibeam-dark".into(),
             theme_light: "anibeam-light".into(),
         }

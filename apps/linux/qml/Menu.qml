@@ -19,17 +19,14 @@ Item {
     function close() { if (!open) return; open = false; frame.escapeStack.pop(root) }
 
     MouseArea { anchors.fill: parent; acceptedButtons: Qt.LeftButton | Qt.RightButton; onPressed: root.close() }
-    Corner {
+    Frost {
         readonly property real margin: theme.space(2)
         x: Math.min(root.originX, root.width - width - margin)
         y: Math.min(root.originY, root.height - height - margin)
         width: column.implicitWidth + theme.space(2) * 2
         height: column.implicitHeight + theme.space(2) * 2
         radius: theme.radiusMd
-        smoothing: theme.cornerSmoothing
-        color: theme.surfaceRaised
-        borderColor: theme.lineStrong
-        borderWidth: 1
+        sourceItem: frame.frostSource
         Column {
             id: column
             x: theme.space(2); y: theme.space(2)
@@ -40,7 +37,6 @@ Item {
                     width: Math.max(theme.space(40), row.implicitWidth + theme.space(6))
                     height: theme.controlHeight
                     radius: theme.radiusSm
-                    smoothing: theme.cornerSmoothing
                     color: m.containsMouse ? theme.surfacePressed : "transparent"
                     Row {
                         id: row

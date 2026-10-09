@@ -110,7 +110,7 @@ Item {
         height: root.maxHeight
         anchors.bottom: parent.bottom
 
-        Rectangle { anchors.fill: parent; color: theme.surface }
+        Frost { anchors.fill: parent; sourceItem: frame.frostSource; radius: theme.radiusMd; frostTint: 0.72 }
         Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: theme.line }
 
         Item {

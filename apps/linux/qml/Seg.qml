@@ -16,7 +16,7 @@ Corner {
     readonly property real pad: theme.space(0.75)
     implicitHeight: (small ? theme.space(6) : theme.controlHeight)
     implicitWidth: row.implicitWidth + pad * 2
-    radius: height / 2
+    radius: theme.radiusSm
     smoothing: theme.cornerSmoothing
     color: theme.surfaceSunken
     borderColor: theme.line
@@ -43,7 +43,7 @@ Corner {
         y: root.pad
         width: root.thumbW
         height: root.height - root.pad * 2
-        radius: height / 2
+        radius: theme.radiusSm
         smoothing: theme.cornerSmoothing
         color: theme.surfaceRaised
         borderColor: theme.lineStrong

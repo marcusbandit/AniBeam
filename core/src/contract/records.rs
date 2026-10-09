@@ -52,6 +52,7 @@ pub struct SeriesCard {
     pub poster: Option<String>,
     pub format: Option<String>,
     pub status: Option<AiringStatus>,
+    pub genres: Vec<String>,
     pub hidden: bool,
     pub missing: bool,
     pub match_info: Option<MatchInfo>,

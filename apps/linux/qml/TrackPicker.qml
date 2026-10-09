@@ -40,10 +40,12 @@ Item {
         color: theme.surfaceRaised; borderColor: theme.lineStrong; borderWidth: 1
         MouseArea { anchors.fill: parent }
         Flickable {
+            id: trackList
             anchors.fill: parent; anchors.margins: theme.space(2); clip: true
             contentWidth: width; contentHeight: column.implicitHeight
             boundsBehavior: Flickable.StopAtBounds
             QC.ScrollBar.vertical: ThinScrollBar {}
+            WheelStep { flick: trackList }
             Column {
                 id: column
                 width: parent.width

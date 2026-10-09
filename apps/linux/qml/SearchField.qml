@@ -10,8 +10,8 @@ Corner {
     signal cleared()
     width: Math.min(parent ? parent.width : theme.space(120), theme.space(120))
     height: theme.controlHeight
-    radius: height / 2
-    smoothing: theme.cornerSmoothing
+    radius: 0
+    smoothing: 0
     color: theme.surfaceSunken
     borderColor: input.activeFocus ? theme.focusRing : theme.line
     borderWidth: 1

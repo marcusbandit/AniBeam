@@ -12,13 +12,15 @@ Item {
     anchors.fill: parent
 
     // ---- Header
-    Rectangle {
+    Frost {
         id: header
+        sourceItem: frame.frostSource
+        frostTint: 0.62
         anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
         // The bar is as tall as its three lines and one padding step either side, so a
         // larger system font or a denser scale grows it instead of clipping inside it.
         height: headerRow.implicitHeight + theme.space(4) * 2
-        color: theme.scrim
+        radius: 0
         opacity: page.chromeVisible ? 1 : 0
         // Zero opacity still takes clicks, so the hidden chrome has to leave the scene.
         visible: opacity > 0
@@ -76,14 +78,15 @@ Item {
     }
 
     // ---- Controls island
-    Corner {
+    Frost {
         id: controls
+        sourceItem: frame.frostSource
+        frostTint: 0.62
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(6)
         width: Math.min(parent.width - theme.space(12), theme.space(220))
         height: bottomRow.height + seekSlot.height + theme.space(9)
-        radius: theme.radiusLg; smoothing: theme.cornerSmoothing
-        color: theme.scrim; borderColor: theme.line; borderWidth: 1
+        radius: theme.radiusMd
         opacity: page.chromeVisible ? 1 : 0
         visible: opacity > 0
         Behavior on opacity { NumberAnimation { duration: theme.motionNormal } }
