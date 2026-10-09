@@ -8,6 +8,15 @@ Item {
     property var item: ({})
     property real posterWidth: 180
     property real nowMs: Date.now()
+    // Overrides for the pages that own the card's story: the feed says what
+    // brought a series here ("Episode aired 3d ago") and when its next
+    // episode lands; the watching page dates an entry from AniList. Empty
+    // leaves the library's own readouts standing.
+    property string metaOverride: ""
+    property string countdownOverride: ""
+    // An external card: the series is not in the library (the watching page's
+    // AniList-only entries), so the frame reads quieter and a chip names where it lives.
+    property bool ghost: false
     signal opened()
 
     width: posterWidth
@@ -23,8 +32,8 @@ Item {
     readonly property real airedPct: item.strip ? item.strip.watched + item.strip.aired_unwatched : 0
     readonly property real unknownPct: item.strip ? item.strip.unknown : 0
     readonly property string epBadge: item.code || ""
-    readonly property string metaLeft: item.last_viewed_at ? Fmt.relative(item.last_viewed_at, nowMs / 1000) : Fmt.plural(item.episodes_on_disk || 0, "file", "files")
-    readonly property string countdown: item.next_airing && item.next_airing.at * 1000 > nowMs ? Fmt.countdown(item.next_airing.at - nowMs / 1000) : ""
+    readonly property string metaText: metaOverride !== "" ? metaOverride : (item.last_viewed_at ? Fmt.relative(item.last_viewed_at, nowMs / 1000) : Fmt.plural(item.episodes_on_disk || 0, "file", "files"))
+    readonly property string countdownText: countdownOverride !== "" ? countdownOverride : (item.next_airing && item.next_airing.at * 1000 > nowMs ? Fmt.countdown(item.next_airing.at - nowMs / 1000) : "")
 
     // Lift: exponential smoothing toward the hover target, and the glow the lift turns
     // on — the poster is a lobby lightbox, lit from behind while the pointer is on it
@@ -92,7 +101,7 @@ Item {
         smoothing: 0
         color: theme.surface
         fillItem: poster.status === Image.Ready ? poster : null
-        borderColor: hover.containsMouse ? theme.accent : theme.line
+        borderColor: hover.containsMouse ? theme.accent : (root.ghost ? theme.lineStrong : theme.line)
         borderWidth: 1
 
         Text {
@@ -102,6 +111,15 @@ Item {
             color: theme.textFaint
             font.family: theme.fontSans
             font.pointSize: theme.typeSmall
+        }
+
+        Chip {
+            visible: root.ghost
+            x: theme.space(2); anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(2) + (strip.visible ? strip.height + theme.space(1.5) : 0)
+            text: item.site_url ? "AniList" : ""
+            small: true
+            color: theme.scrim
+            textColor: theme.text
         }
 
         Chip {
@@ -174,14 +192,15 @@ Item {
             Text {
                 id: metaLeftText
                 anchors.left: parent.left
-                text: root.metaLeft
+                text: root.metaText
                 color: theme.textFaint
                 font.family: theme.fontUi
                 font.pointSize: theme.typeSmall
+                elide: Text.ElideRight
             }
             Text {
                 anchors.right: parent.right
-                text: root.countdown
+                text: root.countdownText
                 color: theme.accent
                 font.family: theme.fontUi
                 font.pointSize: theme.typeSmall

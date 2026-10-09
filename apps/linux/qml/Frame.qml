@@ -43,8 +43,8 @@ FocusScope {
 
     // Pages by name; a page task swaps its placeholder for the real file
     readonly property var pages: ({
-        library: "LibraryPage.qml", feed: "PagePlaceholder.qml", watching: "PagePlaceholder.qml", metadata: "PagePlaceholder.qml",
-        settings: "SettingsPage.qml", subscriptions: "PagePlaceholder.qml", series: "SeriesPage.qml", player: "PlayerPage.qml"
+        library: "LibraryPage.qml", feed: "FeedPage.qml", watching: "WatchingPage.qml", metadata: "MetadataPage.qml",
+        settings: "SettingsPage.qml", subscriptions: "SubscriptionsPage.qml", series: "SeriesPage.qml", player: "PlayerPage.qml"
     })
 
     // The settings page's own session state: the current tab and each tab's scroll
