@@ -18,6 +18,28 @@ Window {
     Tokens { id: theme }
     color: Theme.ready ? theme.bg : "#101216"
 
+    // The poster pool: every poster decoded once and held, so a page's first
+    // paint finds its pictures in the engine's cache instead of on the disk.
+    // Filled the way the pages show them — airing soonest, then recently
+    // viewed, then the shelf — and refilled (debounced) when the library says
+    // a series changed, only ever replacing the pool when the path set moved.
+    PosterPool { id: posterPool }
+    function fillPool() {
+        var airing = Door.listAiring(0, 100)
+        var r = Door.listSeries("All", "", "LastViewed", "Desc", false)
+        if (r.error) return
+        var out = [], seen = {}
+        function push(c) { if (c.poster && !seen[c.poster]) { seen[c.poster] = true; out.push(c.poster) } }
+        if (!airing.error) airing.reply.series.forEach(function(c) { if (c.next_airing) push(c) })
+        r.reply.series.forEach(push)
+        var paths = out.slice(0, posterPool.capacity)
+        if (paths.length !== posterPool.paths.length || paths.join("\u0001") !== posterPool.paths.join("\u0001"))
+            posterPool.paths = paths
+    }
+    Timer { id: poolDebounce; interval: 2000; onTriggered: window.fillPool() }
+    Connections { target: Door; function onSeriesChanged(cards) { poolDebounce.restart() } }
+    Connections { target: Door; function onReadyChanged() { if (Door.ready) Qt.callLater(window.fillPool) } }
+
     // Touching the Player singleton here is what constructs it, and constructing it is what
     // registers the Qt thread an MPRIS command is queued on. Without this the first media
     // key before a file plays would have nowhere to go.
@@ -71,6 +93,7 @@ Window {
             // The suffix action runs once the page is up and before the grab, so the
             // drawer's rise has the whole shoot delay to settle at its open height.
             if (window.pageAction === "drawer" && item.toggleDrawer) item.toggleDrawer()
+            if (window.pageAction === "connect" && item.openConnect) item.openConnect("Anilist")
             window.maybeShoot()
         }
     }

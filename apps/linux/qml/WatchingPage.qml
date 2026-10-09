@@ -94,8 +94,8 @@ PageScroll {
             visible: page.anilistConnected === false
             icon: "log-in"
             title: "AniList is not connected"
-            body: "Connect AniList in Settings, under Trackers, to see your watching list here."
-            Button { text: "Open Settings"; icon: "settings"; flat: true; onClicked: frame.go("settings") }
+            body: "Connect AniList and your list lives here — what you are watching, what is next, updated as you watch."
+            Button { text: "Connect AniList"; icon: "log-in"; onClicked: frame.openConnect("Anilist") }
         }
     }
 

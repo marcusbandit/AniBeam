@@ -99,7 +99,8 @@ SettingsTab {
         Panel {
             title: "Trackers"; icon: "user-check"; grows: true
             helper: "Episodes are marked on every connected tracker when you reach the outro or mark them by hand. Counts only go up."
-            TrackerRow { tracker: "Anilist"; account: Door.trackers.anilist || ({}); waiting: tab.waitingJob["Anilist"] !== undefined
+            TrackerRow { tracker: "Anilist"; account: Door.trackers.anilist || ({}); waiting: tab.waitingJob["Anilist"] !== undefined; guided: true
+                onSetup: frame.openConnect("Anilist")
                 onLogin: function(id, secret) { tab.login("Anilist", id, secret) }
                 onDisconnect: { var r = Door.disconnectTracker("Anilist"); if (r.error) frame.toast(r.error.message) }
                 onCancel: Door.cancelJob(tab.waitingJob["Anilist"]) }

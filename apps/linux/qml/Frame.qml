@@ -173,6 +173,15 @@ FocusScope {
     }
     function toggleDrawer() { drawer.toggle() }
 
+    // The tracker connect sheet, over everything: the Watching page's empty
+    // list and the Trackers panel both send the user here.
+    ConnectSheet {
+        id: connectSheet
+        parent: overlay
+        z: 10
+    }
+    function openConnect(tracker) { connectSheet.openFor(tracker || "Anilist") }
+
     // Overlay: menus, tips, toasts
     Item {
         id: overlay

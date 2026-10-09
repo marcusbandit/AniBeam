@@ -224,7 +224,7 @@ PageScroll {
             Image {
                 width: thumb.width; height: thumb.height
                 source: metaRow.card.poster ? "file://" + metaRow.card.poster : ""
-                sourceSize: Qt.size(thumb.width * 2, thumb.height * 2)
+                sourceSize.width: 480
                 fillMode: Image.PreserveAspectCrop
                 smooth: true
                 asynchronous: true

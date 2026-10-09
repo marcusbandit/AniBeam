@@ -11,8 +11,12 @@ Item {
     property var account: ({})
     property bool waiting: false
     property bool confirming: false
+    // Guided: nobody has run this tracker's OAuth app yet, so the row hands
+    // the flow to the connect sheet instead of showing the paste-a-form.
+    property bool guided: false
     property string redirectUrl: "http://127.0.0.1:53682/callback"
     signal login(string clientId, string clientSecret)
+    signal setup()
     signal disconnect()
     signal cancel()
 
@@ -25,9 +29,10 @@ Item {
     readonly property bool hasCredentials: account.bundled_credentials === true || (account.client_id || "") !== ""
     readonly property bool showLogin: !waiting && !connected && hasCredentials
     readonly property bool showCreds: !waiting && !connected && !hasCredentials
+    readonly property bool showSetup: showCreds && guided
 
     width: parent ? parent.width : theme.space(100)
-    implicitHeight: top.height + (showCreds ? theme.space(3) + creds.implicitHeight : 0)
+    implicitHeight: top.height + (showSetup ? theme.space(3) + setup.implicitHeight : showCreds ? theme.space(3) + creds.implicitHeight : 0)
 
     Item {
         id: top
@@ -124,11 +129,35 @@ Item {
         Button { text: "Log in to " + root.name; icon: "log-in"; onClicked: root.login("", "") }
     }
 
+    // The guided path: one line and the button that opens the sheet, which
+    // walks the create-client, paste-id, connect sequence with the state
+    // each step leaves behind.
+    Column {
+        id: setup
+        visible: root.showSetup
+        anchors.top: top.bottom
+        anchors.topMargin: theme.space(3)
+        anchors.left: parent.left
+        anchors.right: parent.right
+        spacing: theme.space(2)
+        Text {
+            width: parent.width
+            text: root.tracker === "Anilist"
+                ? "AniList signs AniBeam in through an app of your own. The set-up walks it: create the client, paste the id, connect."
+                : "Create an app (App Type: \"Web\") on MyAnimeList with the redirect URL below, then paste its id and secret here."
+            color: theme.textDim
+            wrapMode: Text.Wrap
+            font.family: theme.fontUi
+            font.pointSize: theme.typeSmall
+        }
+        Button { text: "Set up " + root.name; icon: "log-in"; onClicked: root.setup() }
+    }
+
     // Nobody has run this tracker's OAuth app yet: the register help, the redirect URL to
     // paste into it, and the client id (and, for MAL, the secret) to paste back here.
     Column {
         id: creds
-        visible: root.showCreds
+        visible: root.showCreds && !root.guided
         anchors.top: top.bottom
         anchors.topMargin: theme.space(3)
         anchors.left: parent.left
