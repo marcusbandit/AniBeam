@@ -45,7 +45,7 @@ Row {
         width: theme.space(9)
         text: Number(s.value).toFixed(root.decimals)
         color: theme.textDim
-        font.family: theme.fontMono
+        font.family: theme.fontUi
         font.pointSize: theme.typeSmall
     }
 }

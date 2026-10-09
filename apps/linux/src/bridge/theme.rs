@@ -101,13 +101,13 @@ impl Default for ThemeRust {
     fn default() -> Self {
         ThemeRust {
             mode: QString::from("system"),
-            source: QString::from("system"),
+            source: QString::from("theme"),
             accent: 4,
             density: QString::from("normal"),
             poster: QString::from("m"),
             corners: QString::from("smooth"),
-            theme_dark: QString::from("anibeam-dark"),
-            theme_light: QString::from("anibeam-light"),
+            theme_dark: QString::from("lobby-dark"),
+            theme_light: QString::from("lobby-light"),
             resolved_mode: QString::from("dark"),
             source_label: QString::default(),
             contrast: false,

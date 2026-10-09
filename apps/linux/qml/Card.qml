@@ -26,12 +26,41 @@ Item {
     readonly property string metaLeft: item.last_viewed_at ? Fmt.relative(item.last_viewed_at, nowMs / 1000) : Fmt.plural(item.episodes_on_disk || 0, "file", "files")
     readonly property string countdown: item.next_airing && item.next_airing.at * 1000 > nowMs ? Fmt.countdown(item.next_airing.at - nowMs / 1000) : ""
 
-    // Lift: exponential smoothing toward the hover target
+    // Lift: exponential smoothing toward the hover target, and the glow the lift turns
+    // on — the poster is a lobby lightbox, lit from behind while the pointer is on it
     property real lift: 0
+    property real glow: 0
     readonly property real liftTarget: hover.containsMouse ? -3 : 0
+    readonly property real glowTarget: hover.containsMouse ? 1 : 0
     FrameAnimation {
-        running: Math.abs(root.lift - root.liftTarget) > 0.05
-        onTriggered: root.lift += (root.liftTarget - root.lift) * (1 - Math.exp(-12 * frameTime))
+        running: Math.abs(root.lift - root.liftTarget) > 0.05 || Math.abs(root.glow - root.glowTarget) > 0.02
+        onTriggered: {
+            root.lift += (root.liftTarget - root.lift) * (1 - Math.exp(-12 * frameTime))
+            root.glow += (root.glowTarget - root.glow) * (1 - Math.exp(-10 * frameTime))
+        }
+    }
+
+    // The light spill: two warm halos behind the poster, seen only while lit. The one
+    // bold spend of the design; everything else on the card stays quiet.
+    Corner {
+        visible: root.glow > 0.02
+        x: shape.x - theme.space(3) * root.glow
+        y: shape.y - theme.space(3) * root.glow + root.lift
+        width: shape.width + theme.space(6) * root.glow
+        height: shape.height + theme.space(6) * root.glow
+        radius: theme.radiusMd
+        smoothing: theme.cornerSmoothing
+        color: Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, 0.10 * root.glow)
+    }
+    Corner {
+        visible: root.glow > 0.02
+        x: shape.x - theme.space(1.5) * root.glow
+        y: shape.y - theme.space(1.5) * root.glow + root.lift
+        width: shape.width + theme.space(3) * root.glow
+        height: shape.height + theme.space(3) * root.glow
+        radius: theme.radiusSm
+        smoothing: theme.cornerSmoothing
+        color: Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, 0.12 * root.glow)
     }
 
     // The poster, laid out at the shape's size and cropped to it; the shape paints it as
@@ -63,7 +92,7 @@ Item {
         smoothing: 0
         color: theme.surface
         fillItem: poster.status === Image.Ready ? poster : null
-        borderColor: hover.containsMouse ? theme.lineStrong : theme.line
+        borderColor: hover.containsMouse ? theme.accent : theme.line
         borderWidth: 1
 
         Text {
@@ -147,15 +176,16 @@ Item {
                 anchors.left: parent.left
                 text: root.metaLeft
                 color: theme.textFaint
-                font.family: theme.fontMono
+                font.family: theme.fontUi
                 font.pointSize: theme.typeSmall
             }
             Text {
                 anchors.right: parent.right
                 text: root.countdown
                 color: theme.accent
-                font.family: theme.fontMono
+                font.family: theme.fontUi
                 font.pointSize: theme.typeSmall
+                font.weight: Font.DemiBold
             }
         }
     }

@@ -208,7 +208,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         text: modelData.time
                         color: theme.textFaint
-                        font.family: theme.fontMono
+                        font.family: theme.fontUi
                         font.pointSize: theme.typeSmall
                     }
                     Chip {

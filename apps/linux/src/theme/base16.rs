@@ -223,7 +223,7 @@ palette:
     fn every_shipped_theme_parses() {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("themes");
         let all = load_dir(&dir);
-        assert_eq!(all.len(), 31, "thirty built-ins plus Diablo");
+        assert_eq!(all.len(), 33, "thirty built-ins plus Diablo and the lobby pair");
         assert!(
             all.iter()
                 .any(|t| t.stem() == "anibeam-dark" && t.mode() == Mode::Dark)
@@ -234,5 +234,7 @@ palette:
         );
         assert!(all.iter().any(|t| t.stem() == "kanagawa-dragon"));
         assert!(all.iter().any(|t| t.stem() == "diablo-dark" && t.mode() == Mode::Dark));
+        assert!(all.iter().any(|t| t.stem() == "lobby-dark" && t.mode() == Mode::Dark));
+        assert!(all.iter().any(|t| t.stem() == "lobby-light" && t.mode() == Mode::Light));
     }
 }

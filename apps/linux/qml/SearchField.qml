@@ -31,7 +31,7 @@ Corner {
     Text {
         anchors.right: parent.right; anchors.rightMargin: theme.space(4); anchors.verticalCenter: parent.verticalCenter
         visible: !input.activeFocus && !input.text
-        text: root.hint; color: theme.textFaint; font.family: theme.fontMono; font.pointSize: theme.typeSmall
+        text: root.hint; color: theme.textFaint; font.family: theme.fontUi; font.pointSize: theme.typeSmall
     }
     Icon {
         visible: input.text !== ""

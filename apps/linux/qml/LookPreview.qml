@@ -52,12 +52,11 @@ Item {
             width: root.paneWidth
             spacing: theme.space(2)
             Text {
-                text: modelData
+                text: modelData === "dark" ? "Dark" : "Light"
                 color: theme.textDim
-                font.family: theme.fontSans
+                font.family: theme.fontUi
                 font.pointSize: theme.typeSmall
-                font.capitalization: Font.AllUppercase
-                font.letterSpacing: 1
+                font.weight: Font.DemiBold
             }
             LookPane {
                 width: parent.width

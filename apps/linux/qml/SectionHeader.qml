@@ -1,5 +1,5 @@
-// The Diablo section idiom: a numbered label in letter-spaced caps mono — "02 / AIRING" —
-// with the count in the accent and an action slot on the right.
+// The section idiom: a title in the voice (Fraunces) with its count beside it, and an
+// action slot on the right.
 import QtQuick
 
 Item {
@@ -13,18 +13,18 @@ Item {
         anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
         spacing: theme.space(2)
         Text {
-            text: (index !== "" ? index + " / " : "") + title.toUpperCase()
-            color: theme.textDim
-            font.family: theme.fontMono
-            font.pointSize: theme.typeSmall
-            font.letterSpacing: theme.typeSmall * 0.14
+            text: title
+            color: theme.text
+            font.family: theme.fontDisplay
+            font.pointSize: theme.typeNormal * 1.15
+            font.weight: Font.DemiBold
             anchors.verticalCenter: parent.verticalCenter
         }
         Text {
             visible: count >= 0
             text: count.toString()
-            color: theme.accent
-            font.family: theme.fontMono
+            color: theme.textFaint
+            font.family: theme.fontUi
             font.pointSize: theme.typeSmall
             anchors.verticalCenter: parent.verticalCenter
         }

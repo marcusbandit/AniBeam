@@ -12,6 +12,12 @@ Item {
     readonly property var set: dark ? Theme.dark : Theme.light
     function token(name) { var v = set[name.replace(".", "_")]; return v === undefined ? "#ff00ff" : v }
 
+    // The lobby's two faces, from the qrc. Multiple Tokens instances share the engine's
+    // font cache, so a second loader on the same URL costs nothing.
+    FontLoader { id: displayFace; source: "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/fonts/Fraunces-Variable.ttf" }
+    FontLoader { id: uiFace; source: "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/fonts/SchibstedGrotesk-Variable.ttf" }
+    readonly property string fontDisplay: displayFace.name !== "" ? displayFace.name : "Georgia, serif"
+
     // Colours
     readonly property color bg: token("bg")
     readonly property color surface: token("surface")
@@ -62,14 +68,19 @@ Item {
     readonly property real radiusXl: cornerBase * 1.4 * 1.4 * 1.4 * densityFactor
     readonly property int posterWidth: Theme.posterWidth
     readonly property real systemPointSize: Qt.application.font.pointSize > 0 ? Qt.application.font.pointSize : 10
+    // The lobby's two faces: Fraunces is the voice (titles, display lines, its optical
+    // sizing settling as point size climbs), Schibsted Grotesk is the worker (controls,
+    // meta, counts). Loaded from the qrc so the packaged binary is self-contained; until
+    // a loader resolves, each falls back to a stock family for a frame at most.
+    readonly property string fontSans: uiFace.name !== "" ? uiFace.name : Qt.application.font.family
+    // Shims kept while the surfaces are restyled: old names resolve to the lobby pair.
+    readonly property string fontUi: fontSans
+    readonly property string fontSerif: fontDisplay
+    readonly property string fontMono: fontSans
+    readonly property real typeDisplay: systemPointSize * 2.2
     readonly property real typeNormal: systemPointSize
     readonly property real typeSmall: systemPointSize * 0.85
-    readonly property real typeLarge: systemPointSize * 1.4
-    readonly property string fontSans: Qt.application.font.family
-    // The Diablo reading face: serif for titles and prose, the system sans for controls,
-    // mono for numbers and the letter-spaced caps labels.
-    readonly property string fontSerif: "Georgia, \"Times New Roman\", serif"
-    readonly property string fontMono: "monospace"
+    readonly property real typeLarge: systemPointSize * 1.5
     readonly property int motionFast: 120
     readonly property int motionNormal: 200
     readonly property int motionSlow: 320

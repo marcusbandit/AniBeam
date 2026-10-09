@@ -24,9 +24,9 @@ Item {
     readonly property string countdown: item.next_airing && item.next_airing.at * 1000 > nowMs ? Fmt.countdown(item.next_airing.at - nowMs / 1000) : ""
     readonly property string subline: {
         var parts = []
-        parts.push(item.format ? item.format.toUpperCase() : (item.kind === "Movie" ? "FILM" : "TV"))
-        parts.push(Fmt.plural(item.episodes_on_disk || 0, "file", "files").toUpperCase())
-        return parts.join("  ·  ")
+        parts.push(item.format ? item.format.replace(/_/g, " ") : (item.kind === "Movie" ? "Film" : "TV"))
+        parts.push(Fmt.plural(item.episodes_on_disk || 0, "file", "files"))
+        return parts.join(", ")
     }
 
     Rectangle { anchors.fill: parent; color: m.containsMouse ? theme.surfaceRaised : "transparent" }
@@ -63,7 +63,7 @@ Item {
                 visible: poster.status !== Image.Ready
                 text: "—"
                 color: theme.textFaint
-                font.family: theme.fontMono
+                font.family: theme.fontUi
                 font.pointSize: theme.typeSmall
             }
         }
@@ -81,9 +81,8 @@ Item {
             Text {
                 text: root.subline
                 color: theme.textFaint
-                font.family: theme.fontMono
+                font.family: theme.fontUi
                 font.pointSize: theme.typeSmall
-                font.letterSpacing: theme.typeSmall * 0.1
             }
         }
     }
@@ -96,14 +95,15 @@ Item {
             visible: root.countdown !== ""
             text: root.countdown
             color: theme.accent
-            font.family: theme.fontMono
+            font.family: theme.fontUi
             font.pointSize: theme.typeSmall
+            font.weight: Font.DemiBold
             anchors.verticalCenter: parent.verticalCenter
         }
         Text {
             text: root.readout
             color: root.caughtUp ? theme.accent : (root.hasWatched ? theme.textDim : theme.textFaint)
-            font.family: theme.fontMono
+            font.family: theme.fontUi
             font.pointSize: theme.typeNormal
             anchors.verticalCenter: parent.verticalCenter
         }

@@ -91,6 +91,8 @@ fn main() {
     // ls apps/linux/assets/icons/*.svg | sed 's|apps/linux/||;s|.*|        "&",|'
     .qrc_resources([
         "assets/icon.png",
+        "assets/fonts/Fraunces-Variable.ttf",
+        "assets/fonts/SchibstedGrotesk-Variable.ttf",
         "assets/icons/activity.svg",
         "assets/icons/archive.svg",
         "assets/icons/arrow-down.svg",

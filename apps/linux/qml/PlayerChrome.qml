@@ -36,7 +36,7 @@ Item {
                 width: header.width - parent.x - x - theme.space(4)
                 Text { width: parent.width; elide: Text.ElideRight; text: page.session ? page.session.series_title : ""; color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeSmall }
                 Text { width: parent.width; elide: Text.ElideRight; text: page.session ? (page.session.episode_title || page.session.path.split("/").pop()) : ""; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeNormal; font.weight: Font.DemiBold }
-                Text { width: parent.width; elide: Text.ElideRight; text: page.session ? page.session.code : ""; color: theme.textFaint; font.family: theme.fontMono; font.pointSize: theme.typeSmall }
+                Text { width: parent.width; elide: Text.ElideRight; text: page.session ? page.session.code : ""; color: theme.textFaint; font.family: theme.fontUi; font.pointSize: theme.typeSmall }
             }
         }
     }
@@ -74,7 +74,7 @@ Item {
             }
             onLoaded: preview.loaded = true
         }
-        Text { id: stamp; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(1); anchors.horizontalCenter: parent.horizontalCenter; color: theme.text; font.family: theme.fontMono; font.pointSize: theme.typeSmall }
+        Text { id: stamp; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(1); anchors.horizontalCenter: parent.horizontalCenter; color: theme.text; font.family: theme.fontUi; font.pointSize: theme.typeSmall }
     }
 
     // ---- Controls island
@@ -107,7 +107,7 @@ Item {
             PlayerButton { glyph: "skip-back"; interactive: !!(page.session && page.session.prev && !page.session.is_extra); tip: interactive ? "Previous episode" : "No previous episode"; onClicked: page.openNeighbour(page.session.prev) }
             PlayerButton { glyph: page.paused ? "play" : "pause"; tip: page.paused ? "Play" : "Pause"; onClicked: page.togglePause() }
             PlayerButton { glyph: "skip-forward"; interactive: !!(page.session && page.session.next && !page.session.is_extra); tip: interactive ? "Next episode" : "No next episode"; onClicked: page.openNeighbour(page.session.next) }
-            Text { anchors.verticalCenter: parent.verticalCenter; text: Fmt.clock(page.timePos) + " / " + Fmt.clock(page.duration); color: theme.text; font.family: theme.fontMono; font.pointSize: theme.typeSmall; leftPadding: theme.space(2); rightPadding: theme.space(2) }
+            Text { anchors.verticalCenter: parent.verticalCenter; text: Fmt.clock(page.timePos) + " / " + Fmt.clock(page.duration); color: theme.text; font.family: theme.fontUi; font.pointSize: theme.typeSmall; leftPadding: theme.space(2); rightPadding: theme.space(2) }
             PlayerButton { glyph: Player.mute || Player.volume === 0 ? "volume-x" : "volume-2"; tip: Player.mute ? "Unmute" : "Mute"; onClicked: page.setMute(!Player.mute) }
             SliderRow { anchors.verticalCenter: parent.verticalCenter; from: 0; to: 100; value: Player.mute ? 0 : Player.volume; stepSize: 1; trackWidth: theme.space(24); onMoved: function(v) { page.setVolume(v) } }
             // The two skip buttons, each up only while the position is inside its own

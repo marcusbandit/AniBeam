@@ -20,7 +20,7 @@ Item {
     readonly property string initials: tracker === "Anilist" ? "AL" : "MAL"
     readonly property bool connected: account.connected === true
     readonly property string line: connected
-        ? "Connected as " + (account.username || "?") + " · synced " + (account.last_sync ? Fmt.relative(account.last_sync, Date.now() / 1000) : "never")
+        ? "Connected as " + (account.username || "?") + ", synced " + (account.last_sync ? Fmt.relative(account.last_sync, Date.now() / 1000) : "never")
         : "Not connected"
     readonly property bool hasCredentials: account.bundled_credentials === true || (account.client_id || "") !== ""
     readonly property bool showLogin: !waiting && !connected && hasCredentials
@@ -48,7 +48,7 @@ Item {
                 anchors.centerIn: parent
                 text: root.initials
                 color: root.connected ? theme.accent : theme.textDim
-                font.family: theme.fontMono
+                font.family: theme.fontUi
                 font.pointSize: theme.typeSmall
                 font.weight: Font.Bold
             }
@@ -74,7 +74,7 @@ Item {
                 text: root.line
                 color: theme.textDim
                 wrapMode: Text.Wrap
-                font.family: theme.fontMono
+                font.family: theme.fontUi
                 font.pointSize: theme.typeSmall
             }
         }

@@ -17,7 +17,7 @@ Item {
     function escapePressed() { return false }
 
     readonly property var tabs: ["All", "Series", "Movies"]
-    readonly property var sorts: [["Alpha", "A TO Z"], ["LastViewed", "LAST VIEWED"], ["Progress", "PROGRESS"], ["CommunityScore", "SCORE"], ["MyScore", "MY SCORE"]]
+    readonly property var sorts: [["Alpha", "A to Z"], ["LastViewed", "Last viewed"], ["Progress", "Progress"], ["CommunityScore", "Score"], ["MyScore", "My score"]]
     // Loaded-with copies, not bindings on Door.preferences: a plain property bound to
     // prefs.xxx keeps tracking Door.preferences on its own, ahead of the Connections
     // handler below that means to compare "what changed" against it, so the very first
@@ -58,23 +58,22 @@ Item {
     readonly property bool showHidden: Door.revealHidden && hiddenExist
     readonly property var tabNames: tabs.concat(watchedExist ? ["Watched"] : []).concat(showHidden ? ["Hidden"] : [])
 
-    // ---- The sections: one entry per numbered section, carrying its cards. Airing
-    // The section string IS the header — "02 / AIRING  ·  3" — identical for every
-    // member of its section, numbered by position, genre and viewed groups by size
-    // descending. The airing rail is capped high; its own pager lived on the old grid
-    // and the stream replaces it.
+    // ---- The sections: one entry per section, carrying its cards. The section label is
+    // the header — "Airing" with its count beside it — grouped views by size descending.
+    // The airing rail is capped high; its own pager lived on the old grid and the stream
+    // replaces it.
     function groupLabel(c) {
         if (groupBy === "Genre") {
             var g = c.genres
-            return g && g.length ? g[0].toUpperCase() : "UNMATCHED"
+            return g && g.length ? g[0] : "Unmatched"
         }
         if (groupBy === "Viewed") {
             var w = c.watched
-            if (c.watched_state === "CaughtUp") return "CAUGHT UP"
-            if (c.watched_state === "Behind") return "WATCHING"
-            return w !== null && w !== undefined && w > 0 ? "WATCHING" : "NOT STARTED"
+            if (c.watched_state === "CaughtUp") return "Caught up"
+            if (c.watched_state === "Behind") return "Watching"
+            return w !== null && w !== undefined && w > 0 ? "Watching" : "Not started"
         }
-        return "EVERYTHING"
+        return "Everything"
     }
     readonly property bool airingShows: page.query === "" && !page.libraryEmpty
     readonly property var groups: {
@@ -83,7 +82,7 @@ Item {
             var r = Door.listAiring(0, 60)
             if (!r.error) airingRows = r.reply.series
         }
-        var main = page.tab === "All" ? "EVERYTHING" : page.tab.toUpperCase()
+        var main = page.tab === "All" ? "Everything" : page.tab
         var buckets = {}
         var order = []
         for (var i = 0; i < cards.count; i++) {
@@ -98,19 +97,9 @@ Item {
             var d = buckets[b].length - buckets[a].length
             return d !== 0 ? d : (a < b ? -1 : a > b ? 1 : 0)
         })
-        var n = 1
-        var headers = {}
-        if (airingShows) {
-            n++
-            headers["AIRING"] = "02 / AIRING  ·  " + airingRows.length
-        }
-        for (var h = 0; h < order.length; h++) {
-            n++
-            headers[order[h]] = (n < 10 ? "0" : "") + n + " / " + order[h] + "  ·  " + buckets[order[h]].length
-        }
         var out = []
-        if (airingShows) out.push({ header: headers["AIRING"], cards: airingRows })
-        for (var s = 0; s < order.length; s++) out.push({ header: headers[order[s]], cards: buckets[order[s]] })
+        if (airingShows) out.push({ label: "Airing", count: airingRows.length, cards: airingRows })
+        for (var s = 0; s < order.length; s++) out.push({ label: order[s], count: buckets[order[s]].length, cards: buckets[order[s]] })
         return out
     }
 
@@ -184,7 +173,7 @@ Item {
         reload()
     }
 
-    // ---- The breadcrumb bar: "01 / LIBRARY" and the live counts on the right
+    // ---- The page header: the title in the voice, the live count on the right
     Item {
         id: crumbBar
         anchors.left: parent.left; anchors.leftMargin: theme.space(8)
@@ -197,19 +186,18 @@ Item {
         Text {
             id: crumb
             anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
-            text: "01 / LIBRARY"
+            text: "Library"
             color: theme.text
-            font.family: theme.fontMono
+            font.family: theme.fontDisplay
             font.pointSize: theme.typeLarge
-            font.letterSpacing: theme.typeLarge * 0.12
+            font.weight: Font.DemiBold
         }
         Text {
             anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-            text: cards.count + " SERIES"
+            text: cards.count + " series"
             color: theme.textDim
-            font.family: theme.fontMono
+            font.family: theme.fontUi
             font.pointSize: theme.typeSmall
-            font.letterSpacing: theme.typeSmall * 0.14
         }
     }
 
@@ -245,9 +233,9 @@ Item {
                     readonly property bool on: page.sort === modelData[0]
                     text: modelData[1] + (on && page.direction === "Desc" && modelData[0] !== "Alpha" ? " ↓" : on ? " ↑" : "")
                     color: on ? theme.text : theme.textFaint
-                    font.family: theme.fontMono
+                    font.family: theme.fontUi
                     font.pointSize: theme.typeSmall
-                    font.letterSpacing: theme.typeSmall * 0.12
+                    font.weight: on ? Font.DemiBold : Font.Normal
                     Rectangle { visible: parent.on; anchors.bottom: parent.bottom; width: parent.width; height: 2; color: theme.accent }
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.pickSort(parent.modelData[0]) }
                 }
@@ -257,11 +245,10 @@ Item {
             anchors.right: parent.right; anchors.bottom: parent.bottom
             spacing: theme.space(3)
             Text {
-                text: "GROUP"
+                text: "Group"
                 color: theme.textFaint
-                font.family: theme.fontMono
+                font.family: theme.fontUi
                 font.pointSize: theme.typeSmall
-                font.letterSpacing: theme.typeSmall * 0.12
                 anchors.verticalCenter: parent.verticalCenter
             }
             Seg {
@@ -304,12 +291,22 @@ Item {
             required property var modelData
             width: grid.width
             spacing: theme.space(4)
-            Text {
-                text: modelData.header
-                color: theme.textDim
-                font.family: theme.fontMono
-                font.pointSize: theme.typeSmall
-                font.letterSpacing: theme.typeSmall * 0.14
+            Row {
+                spacing: theme.space(2)
+                Text {
+                    text: modelData.label
+                    color: theme.text
+                    font.family: theme.fontDisplay
+                    font.pointSize: theme.typeNormal * 1.15
+                    font.weight: Font.DemiBold
+                }
+                Text {
+                    text: modelData.count
+                    color: theme.textFaint
+                    font.family: theme.fontUi
+                    font.pointSize: theme.typeSmall
+                    anchors.verticalCenter: parent.verticalCenter
+                }
             }
             Flow {
                 width: parent.width

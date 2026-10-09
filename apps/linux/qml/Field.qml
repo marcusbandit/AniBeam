@@ -33,7 +33,7 @@ Corner {
         anchors.rightMargin: theme.space(4)
         verticalAlignment: TextInput.AlignVCenter
         color: theme.text
-        font.family: root.mono ? theme.fontMono : theme.fontSans
+        font.family: root.mono ? theme.fontUi : theme.fontSans
         font.pointSize: theme.typeNormal
         selectionColor: theme.accentSoft
         selectedTextColor: theme.text

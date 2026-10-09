@@ -156,7 +156,7 @@ FocusScope {
             readonly property var job: Door.runningJobs.length ? Door.runningJobs[0] : null
             readonly property var line: Door.latestLine
             stage: job ? String(job.kind).toLowerCase() : (line && line.stage ? String(line.stage).toLowerCase() : "system")
-            message: job ? (job.label || job.kind) + (job.total > 0 ? " · " + job.done + " of " + job.total : "") : (line && line.message ? line.message : "")
+            message: job ? (job.label || job.kind) + (job.total > 0 ? ", " + job.done + " of " + job.total : "") : (line && line.message ? line.message : "")
             time: job || !line || !line.at ? "" : Qt.formatTime(new Date(line.at * 1000), "hh:mm")
             running: job !== null
             fraction: job && job.total > 0 ? job.done / job.total : 0

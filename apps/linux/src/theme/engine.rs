@@ -281,7 +281,9 @@ mod tests {
 
     #[test]
     fn system_mode_follows_the_terminal_before_the_portal() {
-        let r = resolve(inputs());
+        let mut i = inputs();
+        i.settings.source = Source::System;
+        let r = resolve(i.clone());
         assert_eq!(
             r.mode,
             Mode::Dark,
@@ -293,11 +295,28 @@ mod tests {
             Mode::Light,
             "the other mode is still resolved for the preview"
         );
-        let mut no_terminal = inputs();
+        let mut no_terminal = i;
         no_terminal.terminal = None;
         let r = resolve(no_terminal);
         assert_eq!(r.mode, Mode::Light, "with no terminal the portal decides");
         assert!(r.light.source_label.starts_with("portal"));
+    }
+
+    #[test]
+    fn a_fresh_install_without_theme_toml_lands_on_the_lobby_pair() {
+        // No terminal, no portal state: the shell's own pair is the identity a new user
+        // sees. The built-in dir must carry it, and the resolution must be the lobby ink.
+        let dir = tempfile::tempdir().unwrap();
+        let paths = ShellPaths {
+            core: anibeam_core::CorePaths::under(dir.path()),
+            runtime_dir: dir.path().join("runtime"),
+            builtin_themes: std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("themes"),
+            bundled_mpv_conf_override: None,
+        };
+        let inputs = read_inputs(&paths, Portal::default());
+        let r = resolve(inputs);
+        assert_eq!(r.dark.bg.to_hex(), "#1a1511", "the lobby ink");
+        assert_eq!(r.dark.source_label, "theme Lobby Dark");
     }
 
     #[test]
@@ -363,3 +382,4 @@ mod tests {
         assert_eq!(dirs, sorted, "sorted, so the watch set is stable");
     }
 }
+

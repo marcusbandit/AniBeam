@@ -55,7 +55,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             text: root.time
             color: theme.textFaint
-            font.family: theme.fontMono
+            font.family: theme.fontUi
             font.pointSize: theme.typeSmall
         }
     }

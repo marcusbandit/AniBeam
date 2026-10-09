@@ -18,7 +18,7 @@ macro_rules! choice {
 }
 
 choice!(ModeSetting { Dark = "dark", Light = "light", System = "system" }, default System);
-choice!(Source { System = "system", Theme = "theme" }, default System);
+choice!(Source { System = "system", Theme = "theme" }, default Theme);
 choice!(Density { Compact = "compact", Normal = "normal", Comfortable = "comfortable" }, default Normal);
 choice!(Poster { S = "s", M = "m", L = "l" }, default M);
 choice!(Corners { Smooth = "smooth", Plain = "plain" }, default Smooth);
@@ -68,13 +68,13 @@ impl Default for ThemeSettings {
     fn default() -> Self {
         ThemeSettings {
             mode: ModeSetting::System,
-            source: Source::System,
+            source: Source::Theme,
             accent: 4,
             density: Density::Normal,
             poster: Poster::M,
             corners: Corners::Plain,
-            theme_dark: "anibeam-dark".into(),
-            theme_light: "anibeam-light".into(),
+            theme_dark: "lobby-dark".into(),
+            theme_light: "lobby-light".into(),
         }
     }
 }
@@ -165,7 +165,7 @@ mod tests {
         assert_eq!(s.accent, 4, "an out of range accent falls back");
         assert_eq!(s.density, Density::Compact);
         assert_eq!(s.theme_dark, "gruvbox-dark-medium");
-        assert_eq!(s.theme_light, "anibeam-light");
+        assert_eq!(s.theme_light, "lobby-light");
     }
 
     #[test]

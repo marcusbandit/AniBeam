@@ -42,7 +42,7 @@ Corner {
             anchors.verticalCenter: parent.verticalCenter
             text: root.text
             color: root.ink
-            font.family: root.mono ? theme.fontMono : theme.fontSans
+            font.family: root.mono ? theme.fontUi : theme.fontSans
             font.pointSize: root.small ? theme.typeSmall : theme.typeNormal
             font.weight: Font.Medium
             width: root.maxLabelWidth >= 0 ? Math.min(implicitWidth, root.maxLabelWidth) : implicitWidth

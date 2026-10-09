@@ -130,8 +130,8 @@ PageScroll {
             Column {
                 anchors.bottom: parent.bottom
                 spacing: theme.space(2)
-                Text { text: page.title; color: theme.text; font.family: theme.fontSerif; font.pointSize: theme.typeLarge; font.weight: Font.Bold; width: page.width - theme.space(64); elide: Text.ElideRight; wrapMode: Text.Wrap; maximumLineCount: 2 }
-                Text { visible: page.altTitle !== ""; text: page.altTitle; color: theme.textDim; font.family: theme.fontSerif; font.pointSize: theme.typeNormal }
+                Text { text: page.title; color: theme.text; font.family: theme.fontDisplay; font.pointSize: theme.typeDisplay; font.weight: Font.DemiBold; width: page.width - theme.space(64); elide: Text.ElideRight; wrapMode: Text.Wrap; maximumLineCount: 2 }
+                Text { visible: page.altTitle !== ""; text: page.altTitle; color: theme.textDim; font.family: theme.fontDisplay; font.pointSize: theme.typeNormal }
                 Row {
                     spacing: theme.space(2)
                     Chip { visible: card.community_score !== null && card.community_score !== undefined; icon: "star"; text: Fmt.score(card.community_score || 0); textColor: theme.yellow; Tooltip { text: "Average rating" } }
@@ -233,7 +233,7 @@ PageScroll {
             Row { width: parent.width
                 Text { text: detail && detail.progress.watched !== null ? "Tracked" : "Not tracked"; color: theme.textFaint; font.family: theme.fontSans; font.pointSize: theme.typeSmall }
                 Item { width: parent.width - trackedText.width - untrackedLabel.width; height: 1; Text { id: untrackedLabel; visible: false } }
-                Text { id: trackedText; text: detail ? page.progressText() : ""; color: theme.textDim; font.family: theme.fontMono; font.pointSize: theme.typeSmall } }
+                Text { id: trackedText; text: detail ? page.progressText() : ""; color: theme.textDim; font.family: theme.fontUi; font.pointSize: theme.typeSmall } }
             Corner { width: parent.width; height: theme.space(1.5); radius: height / 2; smoothing: theme.cornerSmoothing; color: theme.surfaceSunken; borderColor: theme.line; borderWidth: 1
                 Corner { readonly property real f: detail && detail.progress.watched !== null && detail.progress.total ? Math.min(1, detail.progress.watched / detail.progress.total) : 0
                     width: parent.width * f; height: parent.height; radius: height / 2; smoothing: theme.cornerSmoothing; color: theme.accent } }

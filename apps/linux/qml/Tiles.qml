@@ -35,7 +35,7 @@ Grid {
                 Text {
                     text: modelData.value
                     color: theme.text
-                    font.family: theme.fontMono
+                    font.family: theme.fontUi
                     font.pointSize: theme.typeLarge
                     font.weight: Font.Bold
                 }

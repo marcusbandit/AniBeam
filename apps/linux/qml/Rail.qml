@@ -65,7 +65,7 @@ Item {
                 activeFocusOnTab: true
                 Keys.onReturnPressed: root.picked(entry.index)
                 Keys.onSpacePressed: root.picked(entry.index)
-                // The active row's accent edge, the Diablo way
+                // The active row's lit edge: the state marker, the one accent use on chrome
                 Rectangle {
                     visible: entry.on
                     anchors.left: parent.left
@@ -73,15 +73,25 @@ Item {
                     height: parent.height
                     color: theme.accent
                 }
-                Text {
+                Row {
                     anchors.left: parent.left
                     anchors.leftMargin: theme.space(3)
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "0" + (entry.index + 1) + " / " + entry.modelData.text.toUpperCase()
-                    color: entry.on ? theme.text : theme.textDim
-                    font.family: theme.fontMono
-                    font.pointSize: theme.typeSmall
-                    font.letterSpacing: theme.typeSmall * 0.14
+                    spacing: theme.space(2.5)
+                    Icon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        glyph: entry.modelData.icon
+                        size: theme.space(4.5)
+                        color: entry.on ? theme.accent : theme.textFaint
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: entry.modelData.text
+                        color: entry.on ? theme.text : theme.textDim
+                        font.family: theme.fontUi
+                        font.pointSize: theme.typeNormal
+                        font.weight: entry.on ? Font.DemiBold : Font.Normal
+                    }
                 }
                 MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.picked(entry.index) }
             }
@@ -113,7 +123,7 @@ Item {
             elide: Text.ElideMiddle
             text: Shell.version
             color: theme.textFaint
-            font.family: theme.fontMono
+            font.family: theme.fontUi
             font.pointSize: theme.typeSmall
             // Elided in the rail; the full string on hover through the frame's own tip,
             // never a native ToolTip.

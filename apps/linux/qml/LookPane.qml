@@ -55,9 +55,9 @@ Corner {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Library"
                 color: theme.text
-                font.family: theme.fontSans
+                font.family: theme.fontDisplay
                 font.pointSize: theme.typeLarge
-                font.weight: Font.Bold
+                font.weight: Font.DemiBold
             }
             Chip {
                 anchors.verticalCenter: parent.verticalCenter
@@ -134,9 +134,9 @@ Corner {
             text: "Large"
             color: theme.text
             wrapMode: Text.Wrap
-            font.family: theme.fontSans
+            font.family: theme.fontDisplay
             font.pointSize: theme.typeLarge
-            font.weight: Font.Bold
+            font.weight: Font.DemiBold
         }
         Text {
             width: parent.width
@@ -189,7 +189,7 @@ Corner {
                     font.family: theme.fontSans
                     font.pointSize: theme.typeSmall
                 }
-                Text { id: stripStamp; anchors.verticalCenter: parent.verticalCenter; text: "12:04"; color: theme.textFaint; font.family: theme.fontMono; font.pointSize: theme.typeSmall }
+                Text { id: stripStamp; anchors.verticalCenter: parent.verticalCenter; text: "12:04"; color: theme.textFaint; font.family: theme.fontUi; font.pointSize: theme.typeSmall }
             }
             Chip {
                 id: stripErrors

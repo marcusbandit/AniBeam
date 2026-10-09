@@ -55,7 +55,7 @@ Item {
             Column {
                 id: column
                 spacing: theme.space(2)
-                Text { text: "Keyboard shortcuts"; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeLarge; font.weight: Font.DemiBold; bottomPadding: theme.space(2) }
+                Text { text: "Keyboard shortcuts"; color: theme.text; font.family: theme.fontDisplay; font.pointSize: theme.typeLarge; font.weight: Font.DemiBold; bottomPadding: theme.space(2) }
                 Repeater {
                     model: root.keys
                     Row {

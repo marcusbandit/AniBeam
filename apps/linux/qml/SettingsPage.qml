@@ -26,7 +26,7 @@ FocusScope {
         anchors.top: parent.top; anchors.topMargin: theme.space(7)
         x: content.item ? content.item.blockX + theme.space(8) : theme.space(8)
         spacing: theme.space(4)
-        Text { text: "Settings"; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeLarge; font.weight: Font.Bold }
+        Text { text: "Settings"; color: theme.text; font.family: theme.fontDisplay; font.pointSize: theme.typeLarge; font.weight: Font.DemiBold }
         Seg {
             options: page.tabNames.map(function(n, i) { return { text: n, icon: page.tabIcons[i] } })
             index: page.tab

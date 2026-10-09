@@ -518,7 +518,7 @@ FocusScope {
         // Which key owns the line on screen, so an observation that lands afterwards can
         // rewrite its own line and no other. An omitted kind belongs to nobody.
         property string kind: ""
-        Text { id: hudText; anchors.centerIn: parent; color: theme.text; font.family: theme.fontMono; font.pointSize: theme.typeNormal }
+        Text { id: hudText; anchors.centerIn: parent; color: theme.text; font.family: theme.fontUi; font.pointSize: theme.typeNormal }
         Timer { id: hudTimer; interval: 1200; onTriggered: hud.clear() }
         function flash(text, kind) { hud.kind = kind || ""; hudText.text = text; visible = true; hudTimer.restart() }
         // The text alone, with the countdown left alone: a confirmation is not a new message.

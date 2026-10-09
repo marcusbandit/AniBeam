@@ -11,8 +11,8 @@ Flickable {
         x: theme.space(8); y: theme.space(7)
         width: parent.width - theme.space(16)
         spacing: theme.space(4)
-        Text { text: "Tokens"; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeLarge; font.weight: Font.Bold }
-        Text { text: theme.sourceLabel + ", " + theme.mode; color: theme.textDim; font.family: theme.fontMono; font.pointSize: theme.typeSmall }
+        Text { text: "Tokens"; color: theme.text; font.family: theme.fontDisplay; font.pointSize: theme.typeLarge; font.weight: Font.DemiBold }
+        Text { text: theme.sourceLabel + ", " + theme.mode; color: theme.textDim; font.family: theme.fontUi; font.pointSize: theme.typeSmall }
         Flow {
             width: parent.width
             spacing: theme.space(2)
@@ -23,7 +23,7 @@ Flickable {
                     required property string modelData
                     spacing: theme.space(1)
                     Corner { width: theme.space(16); height: theme.space(10); radius: theme.radiusSm; smoothing: theme.cornerSmoothing; color: theme.token(modelData); borderColor: theme.line; borderWidth: 1 }
-                    Text { text: modelData; color: theme.textDim; font.family: theme.fontMono; font.pointSize: theme.typeSmall }
+                    Text { text: modelData; color: theme.textDim; font.family: theme.fontUi; font.pointSize: theme.typeSmall }
                 }
             }
         }
@@ -55,10 +55,10 @@ Flickable {
         }
         Column {
             spacing: theme.space(1)
-            Text { text: "Large " + theme.typeLarge.toFixed(1); color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeLarge; font.weight: Font.Bold }
+            Text { text: "Large " + theme.typeLarge.toFixed(1); color: theme.text; font.family: theme.fontDisplay; font.pointSize: theme.typeLarge; font.weight: Font.DemiBold }
             Text { text: "Normal " + theme.typeNormal.toFixed(1); color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeNormal }
             Text { text: "Small, dim " + theme.typeSmall.toFixed(1); color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeSmall }
-            Text { text: "0123456789 in the fixed face"; color: theme.textDim; font.family: theme.fontMono; font.pointSize: theme.typeNormal }
+            Text { text: "0123456789 in the fixed face"; color: theme.textDim; font.family: theme.fontUi; font.pointSize: theme.typeNormal }
         }
     }
 }

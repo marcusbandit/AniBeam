@@ -49,7 +49,7 @@ Item {
                 width: list.width; height: theme.space(6)
                 radius: theme.radiusSm; smoothing: theme.cornerSmoothing
                 color: Number(modelData) === Number(root.draft.toFixed(1)) ? theme.accentSoft : (m.containsMouse ? theme.surfacePressed : "transparent")
-                Text { anchors.centerIn: parent; text: modelData; color: Number(modelData) === Number(root.draft.toFixed(1)) ? theme.accent : theme.text; font.family: theme.fontMono; font.pointSize: theme.typeNormal }
+                Text { anchors.centerIn: parent; text: modelData; color: Number(modelData) === Number(root.draft.toFixed(1)) ? theme.accent : theme.text; font.family: theme.fontUi; font.pointSize: theme.typeNormal }
                 MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; onClicked: root.draft = Number(modelData) }
             }
             QC.ScrollBar.vertical: ThinScrollBar {}
