@@ -95,8 +95,8 @@ Item {
     readonly property var headerLayout: Mosaic.header([
         { key: "title", span: Math.max(2, spanFor(titleLabel.implicitWidth)), flex: true },
         { key: "filter", span: spanFor(filterSeg.implicitWidth) },
-        { key: "search", span: Math.max(2, spanFor(theme.space(56))), flex: false },
-        { key: "actions", span: spanFor(actionsRow.implicitWidth) }
+        { key: "actions", span: spanFor(actionsRow.implicitWidth) },
+        { key: "search", span: Math.max(2, spanFor(theme.space(56))), flex: true }
     ].concat(crawling ? [{ key: "crawl", span: spanFor(theme.space(60)) }] : []), cols)
     function headerTile(key) {
         var t = headerLayout.tiles
@@ -105,9 +105,9 @@ Item {
     }
     readonly property real headerHeight: px(headerLayout.rows)
 
-    // The rows: as many row tiles to a line as hold at least five columns each, the line's
-    // columns shared out from the left
-    readonly property int perLine: Math.max(1, Math.floor(cols / 6))
+    // The rows: as many row tiles to a line as hold their words at theme.space(170) or more,
+    // each a whole number of columns, the line's columns shared out from the left
+    readonly property int perLine: Math.max(1, Math.min(cols, Math.floor((width - grout + grout) / (theme.space(170) + grout))))
     function rowCol(i) { var k = i % perLine; return Math.floor(k * cols / perLine) }
     function rowSpan(i) { var k = i % perLine; return Math.floor((k + 1) * cols / perLine) - Math.floor(k * cols / perLine) }
     readonly property int rowLines: Math.ceil(rows.length / perLine)

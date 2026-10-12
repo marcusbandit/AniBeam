@@ -191,7 +191,7 @@ Item {
         if (card.community_score !== null && card.community_score !== undefined) add("score", "Average score", Fmt.score(card.community_score))
         add("mine", "Your score", card.my_score !== null && card.my_score !== undefined ? Fmt.score(card.my_score) : "Rate", 0)
         if (!isMovie) add("episodes", "Episodes", card.total_episodes ? String(card.total_episodes) + (card.total_is_estimate ? "+" : "") : "?")
-        add("disk", isMovie ? "On disk" : "On disk", isMovie ? "Film" : Fmt.plural(detail.progress.on_disk, "file", "files"))
+        if (!isMovie) add("disk", "On disk", Fmt.plural(detail.progress.on_disk, "file", "files"))
         if (card.status) add("status", "Status", status(card.status))
         add("format", "Format", formatLabel(card.format))
         if (detail.year) add("year", "Year", String(detail.year))
@@ -212,8 +212,12 @@ Item {
     // a column's last tile down to the taller column's foot and to the viewport's
     function colNatural(tiles) { var h = 0, n = 0; for (var i = 0; i < tiles.length; i++) if (tiles[i].visible && tiles[i].inColumn) { h += tiles[i].snapped; n++ } return n ? h + (n - 1) * grout : 0 }
     function lastShown(tiles) { for (var i = tiles.length - 1; i >= 0; i--) if (tiles[i].visible && tiles[i].inColumn) return tiles[i]; return null }
-    readonly property var ledgerTiles: [continueTile, episodesTile, extrasTile, strayTile]
-    readonly property var sideTiles: [synopsisTile, tagsTile, relationsTile, recommendationsTile, charactersTile]
+    // Recommendations and characters go under the shorter of the two columns' own tiles
+    // (measured without them), so a film's one-row ledger is not left beside a tall side
+    // column. Their own heights never feed the choice, so their width can follow it.
+    readonly property bool peopleLeft: twoCol && colNatural([continueTile, episodesTile, extrasTile, strayTile]) < colNatural([synopsisTile, tagsTile, relationsTile])
+    readonly property var ledgerTiles: peopleLeft ? [continueTile, episodesTile, extrasTile, strayTile, recommendationsTile, charactersTile] : [continueTile, episodesTile, extrasTile, strayTile]
+    readonly property var sideTiles: peopleLeft ? [synopsisTile, tagsTile, relationsTile] : [synopsisTile, tagsTile, relationsTile, recommendationsTile, charactersTile]
     readonly property real ledgerNatural: colNatural(ledgerTiles)
     readonly property real sideNatural: colNatural(sideTiles)
     readonly property real bodyTop: bandHeight + grout
@@ -456,11 +460,10 @@ Item {
                             width: parent.width - continueButton.width - parent.spacing
                             Label {
                                 width: parent.width
-                                text: page.playEpisode ? (page.isMovie && page.episodes.length === 1 ? page.title : page.playEpisode.code) : ""
+                                text: page.playEpisode ? (page.isMovie && page.episodes.length === 1 ? "Film" : page.playEpisode.code) : ""
                                 role: "ledger"; color: theme.textDim; elide: Text.ElideRight
                             }
                             Label {
-                                visible: !(page.isMovie && page.episodes.length === 1)
                                 width: parent.width
                                 text: page.playEpisode ? page.episodeName(page.playEpisode) : ""
                                 role: "title"; font.pointSize: theme.typeNormal; elide: Text.ElideRight
@@ -469,12 +472,12 @@ Item {
                     }
                     // Tracked: "3 of 12 watched" over the bar. Untracked says so, no empty bar.
                     Item {
-                        visible: !page.isMovie || page.tracked
+                        visible: !!page.detail
                         width: parent.width
                         height: progressLine.implicitHeight + (page.tracked && page.detail.progress.total ? theme.space(2.5) : 0)
                         Label {
                             id: progressLine
-                            text: page.tracked ? page.progressText : "Not tracked, " + Fmt.plural(page.detail ? page.detail.progress.on_disk : 0, "episode", "episodes") + " on disk"
+                            text: page.tracked ? page.progressText : page.isMovie ? "Not tracked" : "Not tracked, " + Fmt.plural(page.detail ? page.detail.progress.on_disk : 0, "episode", "episodes") + " on disk"
                             role: "ledger"; color: theme.textDim
                         }
                         Corner {
@@ -692,9 +695,10 @@ Item {
 
             Stone {
                 id: recommendationsTile
+                parent: page.peopleLeft ? ledgerCol : sideCol
                 visible: !!page.detail && page.detail.recommendations.length > 0
                 natural: recCol.implicitHeight
-                stretch: page.sideLast === recommendationsTile ? page.sideStretch : 0
+                stretch: page.sideLast === recommendationsTile ? page.sideStretch : page.ledgerLast === recommendationsTile ? page.ledgerStretch : 0
                 Column {
                     id: recCol
                     width: parent.width
@@ -709,9 +713,10 @@ Item {
 
             Stone {
                 id: charactersTile
+                parent: page.peopleLeft ? ledgerCol : sideCol
                 visible: !!page.detail && page.detail.characters.length > 0
                 natural: charCol.implicitHeight
-                stretch: page.sideLast === charactersTile ? page.sideStretch : 0
+                stretch: page.sideLast === charactersTile ? page.sideStretch : page.ledgerLast === charactersTile ? page.ledgerStretch : 0
                 Column {
                     id: charCol
                     width: parent.width

@@ -77,7 +77,7 @@ SettingsTab {
         Panel {
             title: "Images"; icon: "image"
             helper: "Posters, banners and portraits are kept on disk so the library works offline. Clearing them frees the space; they download again as pages need them."
-            Tiles { tiles: [{ value: String(tab.storage.image_count), caption: "Images" }, { value: Fmt.bytes(tab.storage.image_bytes || 0), caption: "On disk" }] }
+            Tiles { stone: theme.raised; tiles: [{ value: String(tab.storage.image_count), caption: "Images" }, { value: Fmt.bytes(tab.storage.image_bytes || 0), caption: "On disk" }] }
             Item {
                 width: parent.width
                 height: tab.confirmingClear ? confirm.implicitHeight : clearBtn.height

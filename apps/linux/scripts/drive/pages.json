@@ -54,7 +54,6 @@
   {"eval": "frame.item.escapeStack.entries.length", "expect": 1},
   {"shot": "pages-05-match-panel"},
   {"log": "a click inside the panel leaves it open"},
-  {"eval": "var p = driver.item.findItem('match-panel'); var q = p.mapToItem(null, p.width / 2, 12); [Math.round(q.x), Math.round(q.y)]", "as": "inside"},
   {"click": "match-panel"},
   {"wait": 300},
   {"eval": "driver.item.findItem('match-panel') !== null", "expect": true},

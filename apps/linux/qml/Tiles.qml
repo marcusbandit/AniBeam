@@ -8,6 +8,8 @@ import QtQuick.Layouts
 Grid {
     id: root
     property var tiles: []                 // [{ value, caption }]
+    // The stone's colour: the resting tile on the grout, raised when set inside a tile
+    property color stone: theme.tile
     readonly property real gap: theme.grout
     readonly property real minTile: theme.space(44)
     readonly property int fit: Math.max(1, Math.floor((width + gap) / (minTile + gap)))
@@ -26,7 +28,7 @@ Grid {
             height: theme.space(26)
             radius: theme.radiusTile
             smoothing: theme.cornerSmoothing
-            color: theme.tile
+            color: root.stone
             Label {
                 x: theme.space(4); y: theme.space(4)
                 width: parent.width - theme.space(8)
