@@ -1,5 +1,5 @@
 // The seek bar: a square groove cut into the controls pane, the played portion in the accent,
-// a gilt intro band (gilt is "waiting, skippable") and a quiet outro band where skip windows
+// a brighter glass intro band and a quieter outro band where skip windows
 // are known, a hover position for the preview. The knob is a square of the
 // accent. Dragging seeks on release, since a
 // MouseArea's click is its release and the drag only moves the hover.
@@ -26,8 +26,8 @@ Item {
             x: root.duration > 0 ? modelData.start / root.duration * root.width : 0
             width: root.duration > 0 ? Math.max(2, (modelData.end - modelData.start) / root.duration * root.width) : 0
             height: track.height
-            color: modelData.kind === "Intro" ? theme.yellow : theme.textDim
-            opacity: modelData.kind === "Intro" ? 0.75 : 0.6
+            color: "#ffffff"
+            opacity: modelData.kind === "Intro" ? 0.38 : 0.24
         }
     }
     Corner { anchors.verticalCenter: parent.verticalCenter; width: track.width * root.played; height: track.height; color: theme.accent }

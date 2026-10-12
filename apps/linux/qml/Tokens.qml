@@ -68,11 +68,11 @@ Item {
     readonly property color glassEdge: glassOf(dark ? 0.08 : 0.12)
     readonly property color glassEdgeStrong: glassOf(dark ? 0.16 : 0.22)
     readonly property color glassHighlight: dark ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(1, 1, 1, 0.75)
-    // A floating pane (menus, tips, sheets, popups) sits over arbitrary content, so it is
-    // nearly opaque: the ground lifted one glass step, at 0.96.
+    // A floating pane (menus, tips, sheets, popups, the drawer) sits over arbitrary content,
+    // so it is opaque: the ground lifted one glass step (any alpha let text ghost through).
     function lifted(t, a) { var c = tone(bg, ink, t); return Qt.rgba(c.r, c.g, c.b, a) }
-    readonly property color glassFloat: lifted(dark ? 0.07 : 0.06, 0.96)
-    readonly property color glassFloatHover: lifted(dark ? 0.12 : 0.11, 0.98)
+    readonly property color glassFloat: lifted(dark ? 0.07 : 0.06, 1)
+    readonly property color glassFloatHover: lifted(dark ? 0.12 : 0.11, 1)
     // The player's islands: glass over video, dark in both modes so the picture never
     // washes the controls out
     readonly property color glassVideo: Qt.rgba(0.03, 0.035, 0.045, 0.55)
@@ -85,7 +85,7 @@ Item {
     readonly property color onPosterDim: "#aab2bb"
     // The accent where it is text on the scrim: itself on dark, lifted toward white on light
     // (the light theme's accent is a deep blue that would sink into the near-black scrim)
-    readonly property color accentOnPoster: dark ? accent : tone(accent, "#ffffff", 0.5)
+    readonly property color accentOnPoster: dark ? accent : tone(accent, Qt.rgba(1, 1, 1, 1), 0.5)
 
     // The mosaic's names for the ramp: the ground is the grout every tile is set in, a tile
     // is a pane of glass on it, a raised tile is hovered or selected, a sunken tile takes
