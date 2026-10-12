@@ -38,5 +38,8 @@ pub mod ffi {
         unsafe fn drive_mouse(window: *mut QObject, kind: i32, x: f64, y: f64, button: i32, modifiers: i32);
         unsafe fn drive_wheel(window: *mut QObject, x: f64, y: f64, dx: i32, dy: i32, modifiers: i32);
         unsafe fn drive_key(window: *mut QObject, press: bool, key: i32, modifiers: i32, text: &QString);
+        /// A poster's average colour, saturation-weighted, decoded at 8x12 and cached per
+        /// path; invalid for a file that cannot be read.
+        fn poster_tone(path: &QString) -> QColor;
     }
 }

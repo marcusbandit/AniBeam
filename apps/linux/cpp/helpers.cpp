@@ -8,6 +8,11 @@
 #include <QtCore/QElapsedTimer>
 #include <QtCore/QPointF>
 #include <QtCore/QPoint>
+#include <QtCore/QHash>
+#include <QtCore/QMutex>
+#include <QtCore/QMutexLocker>
+#include <QtGui/QImage>
+#include <QtGui/QImageReader>
 
 // Exported by QtGui for QtTest's benefit and declared nowhere else public; the declarations
 // are QtTest's own (qtestmouse.h, qtestkeyboard.h, qtestwheel.h). Using them rather than
@@ -75,6 +80,43 @@ void set_app_palette(const QColor &window, const QColor &text, const QColor &bas
     p.setColor(QPalette::ButtonText, buttonText);
     p.setColor(QPalette::Accent, highlight);
     QGuiApplication::setPalette(p);
+}
+
+QColor poster_tone(const QString &path)
+{
+    static QMutex lock;
+    static QHash<QString, QColor> cache;
+    {
+        QMutexLocker held(&lock);
+        auto hit = cache.constFind(path);
+        if (hit != cache.constEnd())
+            return *hit;
+    }
+    QColor tone;
+    if (!path.isEmpty()) {
+        QImageReader reader(path);
+        reader.setAutoTransform(false);
+        reader.setScaledSize(QSize(8, 12));
+        const QImage image = reader.read().convertToFormat(QImage::Format_RGB32);
+        double r = 0, g = 0, b = 0, total = 0;
+        for (int y = 0; y < image.height(); ++y) {
+            const QRgb *line = reinterpret_cast<const QRgb *>(image.constScanLine(y));
+            for (int x = 0; x < image.width(); ++x) {
+                const QColor c = QColor::fromRgb(line[x]);
+                // A grey pixel counts once; a fully saturated, bright one five times.
+                const double weight = 1.0 + 4.0 * c.hsvSaturationF() * c.valueF();
+                r += c.redF() * weight;
+                g += c.greenF() * weight;
+                b += c.blueF() * weight;
+                total += weight;
+            }
+        }
+        if (total > 0)
+            tone = QColor::fromRgbF(float(r / total), float(g / total), float(b / total));
+    }
+    QMutexLocker held(&lock);
+    cache.insert(path, tone);
+    return tone;
 }
 
 namespace {
