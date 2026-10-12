@@ -181,7 +181,8 @@ Item {
         Row {
             visible: root.addingSecret
             spacing: theme.space(2)
-            Button {
+            ConnectButton {
+                tracker: root.tracker
                 text: "Save and connect"; icon: "log-in"; primary: true
                 enabled: secret.text.trim() !== ""
                 onClicked: {

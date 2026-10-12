@@ -240,11 +240,12 @@ FocusScope {
         if (value !== undefined) out[key] = value
         return out
     }
-    // The core's error message reads "Mal: ..." or "invalid client_id: ...", the shape the
-    // log wants; a person reading why their sign-in stopped wants the sentence after it.
+    // The core's error message reads "MyAnimeList did not respond: ..." or "Invalid client
+    // id: ...", the shape the log wants; a person reading why their sign-in stopped wants
+    // the sentence after it.
     function errorText(e) {
         var m = String(e && e.message ? e.message : "")
-        m = m.replace(/^(Anilist|Mal|Jikan|Tmdb): /, "").replace(/^(io|internal|invalid [a-z_]+): /, "")
+        m = m.replace(/^(AniList|MyAnimeList|TMDB|Anilist|Mal|Jikan|Tmdb)( did not respond)?: /, "").replace(/^(io|internal|[Ii]nvalid [a-z_ ]+): /, "")
         return m === "" ? "The sign-in did not finish." : m.charAt(0).toUpperCase() + m.slice(1)
     }
     // Starts the flow; the browser opens when the core says the listener is up. True when

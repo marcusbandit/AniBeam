@@ -250,8 +250,9 @@ Item {
                 Flow {
                     width: parent.width
                     spacing: theme.space(2)
-                    Button {
+                    ConnectButton {
                         visible: root.needsSecret
+                        tracker: root.tracker
                         text: "Save and try again"; icon: "log-in"; primary: true
                         enabled: secretRetry.text.trim() !== ""
                         onClicked: root.saveAndConnect(root.account.client_id || "", secretRetry.text.trim())
@@ -343,7 +344,8 @@ Item {
                         title: "Connect"
                         body: "The browser opens, " + root.name + " asks you to sign in and approve AniBeam, and AniBeam catches the reply."
                     }
-                    Button {
+                    ConnectButton {
+                        tracker: root.tracker
                         text: "Connect"; icon: "log-in"; primary: root.hasId
                         enabled: root.hasId
                         onClicked: root.saveAndConnect(accountId.text.trim(), root.anilist ? "" : accountSecret.text.trim())
