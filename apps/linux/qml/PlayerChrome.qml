@@ -14,8 +14,7 @@ Item {
     // ---- Header
     Frost {
         id: header
-        sourceItem: frame.frostSource
-        frostTint: 0.62
+        fillOpacity: 0.92
         anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
         // The bar is as tall as its three lines and one padding step either side, so a
         // larger system font or a denser scale grows it instead of clipping inside it.
@@ -80,8 +79,7 @@ Item {
     // ---- Controls island
     Frost {
         id: controls
-        sourceItem: frame.frostSource
-        frostTint: 0.62
+        fillOpacity: 0.92
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(6)
         width: Math.min(parent.width - theme.space(12), theme.space(220))

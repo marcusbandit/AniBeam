@@ -26,7 +26,6 @@ Item {
         width: column.implicitWidth + theme.space(2) * 2
         height: column.implicitHeight + theme.space(2) * 2
         radius: theme.radiusMd
-        sourceItem: frame.frostSource
         Column {
             id: column
             x: theme.space(2); y: theme.space(2)

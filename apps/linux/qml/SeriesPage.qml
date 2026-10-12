@@ -1,7 +1,6 @@
 // Spec 4.1 unit 3: the hero, the chips, the synopsis and tags, Continue, the episodes,
 // the extras, characters, recommendations and Related. One GetSeries draws it all.
 import QtQuick
-import QtQuick.Effects
 import com.marcusrosado.AniBeam
 
 PageScroll {
@@ -102,16 +101,13 @@ PageScroll {
         readonly property bool hasBanner: !!(detail && detail.banner)
         Corner {
             anchors.fill: parent
-            radius: theme.radiusXl; smoothing: theme.cornerSmoothing; color: theme.surface
-            // No banner: the fill is the blurred copy, not the sharp one. A sharp fillItem
-            // with a separate rectangular MultiEffect blurred on top of it at 0.6 opacity
-            // (the previous shape) reads as a sharp image with a ghost, and that rectangle
-            // is not clipped to this Corner's rounded corners, so the blur also bled past
-            // them; feeding the blur straight into fillItem fixes both at once.
-            fillItem: art.status === Image.Ready ? (hero.hasBanner ? art : blurredArt) : null
+            radius: theme.radiusXl; smoothing: theme.cornerSmoothing
+            // No banner: no blurred poster (the mosaic has no blur), the poster's own tone
+            // as a plate instead
+            color: card.poster ? theme.plate(Fmt.posterTone(card.poster)) : theme.surface
+            fillItem: hero.hasBanner && art.status === Image.Ready ? art : null
             Image { id: art; visible: false; width: parent.width; height: parent.height; fillMode: Image.PreserveAspectCrop; asynchronous: true
-                source: hero.hasBanner ? "file://" + detail.banner : (card.poster ? "file://" + card.poster : "") }
-            MultiEffect { id: blurredArt; visible: false; anchors.fill: art; source: art; blurEnabled: true; blur: 1.0; blurMax: 64 }
+                source: hero.hasBanner ? "file://" + detail.banner : "" }
         }
         Rectangle { anchors.fill: parent; color: theme.scrim; opacity: 0.55 }
         // z: 1: declared before the poster Row below, so without this it paints under the

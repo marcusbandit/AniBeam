@@ -56,20 +56,6 @@ FocusScope {
     function leavingScroll() { return page.item && page.item.scrollY !== undefined ? page.item.scrollY : 0 }
     function go(name, props, label) { nav.open(name, props, label, leavingScroll()) }
 
-    property alias frostSource: frostTex
-
-    // The one texture the glass samples: the content layer at half resolution — frost
-    // reads as blur, so the finer half of the picture is wasted texels. In the player the
-    // glass floats over the video alone, so the sample is the video item, not the page:
-    // the chrome sits inside the page and must not see its own reflection.
-    ShaderEffectSource {
-        id: frostTex
-        sourceItem: frame.fullWindow && page.item && page.item.video ? page.item.video : content
-        live: true
-        recursive: false
-        smooth: true
-        textureSize: Qt.size(Math.round(content.width / 2), Math.round(content.height / 2))
-    }
     // Loaded by URL with props as an initial property, not a Component swapped onto a
     // standing Loader, so a page's own Component.onCompleted sees nav.current.props from
     // its very first tick rather than through a later Loader.onLoaded assignment. Clearing
@@ -145,9 +131,8 @@ FocusScope {
             }
         }
 
-        // The drawer is a floating glass panel over the page, not part of the layer the
-        // glass samples — it lives outside content, above it in z, and rises from the
-        // strip's top edge, which is content's bottom edge.
+        // The drawer is a floating panel over the page: it lives outside content, above it
+        // in z, and rises from the strip's top edge, which is content's bottom edge.
         StatusStrip {
             id: strip
             visible: !frame.fullWindow
@@ -190,20 +175,18 @@ FocusScope {
         Frost {
             id: tip
             visible: false
-            sourceItem: frostTex
-            radius: theme.radiusSm
+            radius: theme.radiusInner(theme.space(1))
             width: tipText.implicitWidth + theme.space(4); height: tipText.implicitHeight + theme.space(2)
-            Text { id: tipText; anchors.centerIn: parent; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeSmall }
+            Label { id: tipText; anchors.centerIn: parent; role: "ui"; font.pointSize: theme.typeSmall }
         }
         Frost {
             id: toastBox
             visible: false
-            sourceItem: frostTex
-            radius: theme.radiusSm
+            radius: theme.radiusTile
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(10)
             width: toastText.implicitWidth + theme.space(6); height: theme.controlHeight
-            Text { id: toastText; anchors.centerIn: parent; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeNormal }
+            Label { id: toastText; anchors.centerIn: parent; role: "ui" }
             Timer { id: toastTimer; onTriggered: toastBox.visible = false }
         }
     }
