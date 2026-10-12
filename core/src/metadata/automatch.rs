@@ -188,9 +188,10 @@ struct Hit {
 }
 
 /// One series: each provider in the order, until one of them matches.
-/// Any error ends the walk for this series: a provider that answered with
-/// an error had its turn, and handing the series on to the next provider
-/// would let it claim a series the first one may well have matched.
+/// Any error ends the walk for this series: handing the series on to the
+/// next provider would let it claim a series the first one may well have
+/// matched, so TVmaze never grabs an anime during a brief AniList outage.
+/// Only `Ok(None)` means every provider answered with a miss.
 async fn attempt(
     core: &Core,
     series: u64,
@@ -298,10 +299,10 @@ pub fn start(core: &Arc<Core>) -> u64 {
         }
         let order = owner.store.write_async(|c| prefs::load_provider_order(c)).await?;
 
-        // 3. The loop, one series at a time. `seen` is the belt to the
-        //    stamping's braces: every turn that ends short of a match
-        //    stamps its series, but one that somehow stayed a candidate
-        //    would otherwise come back round for ever.
+        // 3. The loop, one series at a time. `seen` keeps a series this run
+        //    has already had a turn at from coming back round: a miss is
+        //    stamped, but a turn a provider's error ended is left unstamped
+        //    for the next run, and would otherwise be asked again at once.
         let (mut matched, mut unmatched) = (0u64, 0u64);
         let mut seen: HashSet<u64> = HashSet::new();
         let images_dir = owner.paths.images_dir();
@@ -344,22 +345,20 @@ pub fn start(core: &Arc<Core>) -> u64 {
                 // attempt for a reason that had nothing to do with them,
                 // and one outage is one state change.
                 Err((_, e)) if provider_stopped(&e) => return Err(e),
-                // The provider answered, and the answer was an error. It
-                // had its turn, so it is stamped and the run moves on.
-                Err((provider, e)) if matches!(&e, CoreError::Provider { status: Some(_), .. }) => {
+                // The provider answered with an error, or with something
+                // that did not parse. That is this series' own reply, so
+                // the run moves on rather than failing: failing the job
+                // would wedge the library behind it, since the same series
+                // comes first again next run. It is not stamped, though:
+                // only every provider answering with a miss is a miss, and
+                // any provider after this one never had its turn. The next
+                // run asks again; `seen` keeps it out for the rest of this
+                // one.
+                Err((provider, e))
+                    if matches!(&e, CoreError::Provider { status: Some(_), .. }) || e.is_decode_failure() =>
+                {
                     unmatched += 1;
                     ctx.emit(Level::Warn, format!("{} search failed for {folder}: {}", provider.label(), message_of(&e)), EventBody::Notice);
-                    stamp_attempt(&owner, series, time::now_secs()).await?;
-                }
-                // The provider answered with something that did not parse.
-                // That is this series' own reply and no one else's, so it
-                // is stamped like any other answered error: failing the job
-                // here would wedge the library behind one malformed reply,
-                // since the same series comes first again next run.
-                Err((provider, e)) if e.is_decode_failure() => {
-                    unmatched += 1;
-                    ctx.emit(Level::Warn, format!("{} search failed for {folder}: {}", provider.label(), message_of(&e)), EventBody::Notice);
-                    stamp_attempt(&owner, series, time::now_secs()).await?;
                 }
                 // A storage or an internal failure is the core's own, not
                 // the provider's, and it is not this series' fault either.
