@@ -1,6 +1,7 @@
 // The match popover: a raised tile over a Blocker (the owning page puts one under it), to
-// search AniList for the series's real record or look up a pasted AniList or MyAnimeList
-// link, and apply. Search and look-up are jobs whose replies come back as events
+// search a metadata provider (AniList for anime, TVmaze for other television; the switch
+// opens on the first in the Settings order) for the series's real record, or look up a
+// pasted AniList, MyAnimeList, TVmaze or IMDb link, and apply. Search and look-up are jobs whose replies come back as events
 // (SearchFinished, LinkResolved), matched here by job id. Applying writes the match
 // confirmed at once; the assets follow and SeriesChanged re-lists the page behind. It opens
 // onto the frame's escape stack and closes through close(), so Escape, the X, a press on
@@ -20,6 +21,10 @@ Corner {
     property int searchJob: -1
     property int resolveJob: -1
     property bool searching: false
+    // The provider the search runs on, as the core names it: "Anilist" or "Tvmaze"
+    property string provider: "Anilist"
+    readonly property var providers: ["Anilist", "Tvmaze"]
+    readonly property string providerName: frame.providerName(provider)
 
     function openFor(id, title, matchInfo) {
         root.seriesId = id
@@ -27,6 +32,8 @@ Corner {
         root.currentMatch = matchInfo || null
         root.results = []
         root.resolved = null
+        var order = Door.settings && Door.settings.provider_order ? Door.settings.provider_order : []
+        root.provider = order.length && root.providers.indexOf(order[0]) >= 0 ? order[0] : "Anilist"
         search.text = title
         searchDebounce.stop()
         visible = true
@@ -43,7 +50,7 @@ Corner {
     function runSearch(q) {
         q = String(q || "").trim()
         if (q.length < 2) { root.searching = false; root.results = []; root.searchJob = -1; return }
-        var r = Door.searchProvider(q, 12)
+        var r = Door.searchOn(root.provider, q, 12)
         if (r.error) { frame.toast(r.error.message); return }
         root.searchJob = r.reply.job
         root.searching = true
@@ -53,8 +60,17 @@ Corner {
         if (r.error) { frame.toast(r.error.message); return }
         root.close()
     }
+    // A new provider drops the other's rows and asks again for the same words
+    function pickProvider(p) {
+        if (p === root.provider) return
+        root.provider = p
+        root.results = []
+        searchDebounce.stop()
+        root.runSearch(search.text)
+    }
     function targetText(t) {
         if (!t) return ""
+        if (t.Tvmaze !== undefined) return "TVmaze " + t.Tvmaze.id
         if (t.Anilist !== undefined) return "AniList " + t.Anilist.id + (t.Anilist.season !== null && t.Anilist.season !== undefined ? ", season " + t.Anilist.season : "")
         return "MyAnimeList " + t.Mal.id
     }
@@ -62,8 +78,16 @@ Corner {
         var bits = []
         if (m.anilist_id !== null && m.anilist_id !== undefined) bits.push("AniList " + m.anilist_id)
         if (m.mal_id !== null && m.mal_id !== undefined) bits.push("MyAnimeList " + m.mal_id)
+        if (m.tvmaze_id !== null && m.tvmaze_id !== undefined) bits.push("TVmaze " + m.tvmaze_id)
         return bits.length ? "Matched to " + bits.join(" and ") : ""
     }
+    // A result's year, then its format (AniList) or its network (TVmaze), then its length
+    function resultMeta(r) {
+        return [r.year ? String(r.year) : "",
+                r.provider === "Tvmaze" ? (r.format || "") : root.formatLabel(r.format),
+                r.episodes ? Fmt.plural(r.episodes, "episode", "episodes") : ""].filter(Boolean).join(", ")
+    }
+    function resultTarget(r) { return r.provider === "Tvmaze" ? { "Tvmaze": { "id": r.id } } : { "Anilist": { "id": r.id, "season": null } } }
     function formatLabel(f) { return !f ? "" : ({ TV: "TV", TV_SHORT: "TV short", OVA: "OVA", ONA: "ONA", SPECIAL: "Special", MOVIE: "Film", MUSIC: "Music" })[f] || f.replace(/_/g, " ") }
 
     readonly property real pad: theme.space(5)
@@ -84,6 +108,12 @@ Corner {
             root.results = res || []
         }
         function onLinkResolved(job, target) { if (job === root.resolveJob) root.resolved = target }
+        // A search or look-up the provider refused (a rate limit, no network) stops waiting
+        function onJobFailed(job, kind, error) {
+            if (job === root.searchJob) { root.searching = false; root.searchJob = -1 }
+            else if (job !== root.resolveJob) return
+            frame.toast(error && error.message ? error.message : root.providerName + " did not answer")
+        }
     }
 
     // The panel's own press sink: a press on its padding never reaches the shield under it
@@ -133,13 +163,26 @@ Corner {
             }
         }
 
-        SearchField {
-            id: search
-            objectName: "match-search"
+        // Where the search runs, then the words
+        Row {
             width: parent.width
-            placeholder: "Search AniList"
-            hint: ""
-            onTextChanged: if (root.visible) searchDebounce.restart()
+            spacing: theme.space(2)
+            Seg {
+                id: providerSeg
+                objectName: "match-provider"
+                anchors.verticalCenter: parent.verticalCenter
+                options: ["AniList", "TVmaze"]
+                index: root.providers.indexOf(root.provider)
+                onPicked: function(i) { root.pickProvider(root.providers[i]) }
+            }
+            SearchField {
+                id: search
+                objectName: "match-search"
+                width: parent.width - providerSeg.width - parent.spacing
+                placeholder: "Search " + root.providerName
+                hint: ""
+                onTextChanged: if (root.visible) searchDebounce.restart()
+            }
         }
         Timer { id: searchDebounce; interval: 300; onTriggered: root.runSearch(search.text) }
 
@@ -150,7 +193,7 @@ Corner {
             Field {
                 id: linkField
                 width: parent.width - lookUp.width - parent.spacing
-                placeholder: "Paste an AniList or MyAnimeList link"
+                placeholder: root.provider === "Tvmaze" ? "Paste a TVmaze or IMDb link" : "Paste an AniList or MyAnimeList link"
                 mono: true
             }
             Button {
@@ -179,7 +222,7 @@ Corner {
 
         Label {
             visible: root.results.length === 0
-            text: root.searching ? "Searching AniList" : search.text.trim().length < 2 ? "Type at least two letters to search AniList." : "No titles found."
+            text: root.searching ? "Searching " + root.providerName : search.text.trim().length < 2 ? "Type at least two letters to search " + root.providerName + "." : "No titles found on " + root.providerName + "."
             role: "ui"; color: theme.textDim
         }
     }
@@ -233,7 +276,7 @@ Corner {
                 Label { visible: !!result.modelData.alt_title; width: parent.width; text: result.modelData.alt_title || ""; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim; elide: Text.ElideRight }
                 Label {
                     width: parent.width
-                    text: [result.modelData.year ? String(result.modelData.year) : "", root.formatLabel(result.modelData.format), result.modelData.episodes ? Fmt.plural(result.modelData.episodes, "episode", "episodes") : ""].filter(Boolean).join(", ")
+                    text: root.resultMeta(result.modelData)
                     role: "ledger"; color: theme.textDim; elide: Text.ElideRight
                 }
             }
@@ -244,7 +287,7 @@ Corner {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Apply"
                 small: true
-                onClicked: root.apply({ "Anilist": { "id": result.modelData.id, "season": null } })
+                onClicked: root.apply(root.resultTarget(result.modelData))
             }
         }
     }

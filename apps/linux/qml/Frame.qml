@@ -220,6 +220,8 @@ FocusScope {
     property var latestJob: ({})       // tracker -> the job id of its most recent connect
     property var expectedCancels: ({}) // job id -> true, for the cancels asked for here
     function trackerName(t) { return t === "Mal" ? "MyAnimeList" : "AniList" }
+    // A metadata provider's name as people write it: the core's enum word in, the brand out
+    function providerName(p) { return ({ Anilist: "AniList", Mal: "MyAnimeList", Tmdb: "TMDB", Tvmaze: "TVmaze" })[p] || p || "" }
     function trackerAccount(t) { return (t === "Mal" ? Door.trackers.mal : Door.trackers.anilist) || ({}) }
     // Bundled with the build or pasted earlier: either way one click is all a connect needs.
     function hasCredentials(t) { var a = trackerAccount(t); return a.bundled_credentials === true || (a.client_id || "") !== "" }
