@@ -35,6 +35,20 @@
   "log": "the subtitles lift over the controls tile while it is up and drop back when it hides"
  },
  {
+  "log": "paused at 0:01:11.5, inside a two-line dialogue cue (Swing wide, O servant's door / Ovunque Porta)"
+ },
+ {
+  "eval": "frame.item.pageItem.paused || frame.item.pageItem.togglePause(), frame.item.pageItem.seekTo(71.5), true",
+  "expect": true
+ },
+ {
+  "wait": 1500
+ },
+ {
+  "eval": "frame.item.pageItem.sid >= 0",
+  "expect": true
+ },
+ {
   "hover": [
    1290,
    700
@@ -84,6 +98,17 @@
  },
  {
   "shot": "player-01c-subs-lifted"
+ },
+ {
+  "eval": "frame.item.pageItem.togglePause(), true",
+  "expect": true
+ },
+ {
+  "wait": 400
+ },
+ {
+  "eval": "frame.item.pageItem.paused",
+  "expect": false
  },
  {
   "log": "a click on play/pause, then Space still toggles (the button never takes focus)"
@@ -221,7 +246,7 @@
   "expect": 1.5
  },
  {
-  "eval": "driver.item.findItem('player-hud') !== null",
+  "eval": "driver.item.findItem('player-speed') !== null && driver.item.findItem('player-hud') === null",
   "expect": true
  },
  {

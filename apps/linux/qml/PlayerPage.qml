@@ -241,7 +241,7 @@ FocusScope {
         // opened on for the whole session. Kept because the spec's observe list has it and
         // it seeds the value; the number the HUD shows is read at the step. See readFrame().
         else if (name === "estimated-frame-number") frameNumber = Number(value || 0)
-        else if (name === "speed") { speed = Number(value || 1); hud.update(speedLine(speed), "speed") }
+        else if (name === "speed") speed = Number(value || 1)
         else if (name === "chapter-list") {}
     }
     // The last frame is still on screen, because keep-open holds it: the replay button sits
@@ -339,7 +339,8 @@ FocusScope {
     function setMute(m) { video.setProperty("mute", m); Player.setMute(m); showChrome() }
     // Playback speed, [ and ] in quarter steps between 0.25 and 3, Backspace back to 1. The
     // page's value moves first so presses inside the round trip add up; the observation then
-    // rewrites the line with what mpv settled on. Each page is its own mpv core, so the next
+    // settles it on what mpv took. The speed shows in the controls tile's time row, which the
+    // key brings up, never as a line over the picture, where top-placed signs would be. Each page is its own mpv core, so the next
     // file starts at the configured speed again rather than inheriting this one.
     property real speed: 1
     function speedLine(v) { return "Speed " + Number(v.toFixed(2)) + "\u00d7" }
@@ -347,7 +348,6 @@ FocusScope {
         v = Math.max(0.25, Math.min(3, Math.round(v * 4) / 4))
         speed = v
         video.setProperty("speed", v)
-        hud.flash(speedLine(v), "speed")
         showChrome()
     }
     function stepSpeed(d) { setSpeed(speed + d * 0.25) }
@@ -562,8 +562,8 @@ FocusScope {
     TrackPicker { id: audioPicker; title: "Audio"; tracks: page.audioTracks; selected: page.aid; onPicked: function(id) { page.pickAudio(id) } }
     TrackPicker { id: subPicker; title: "Subtitles"; tracks: page.subTracks; selected: page.sid; offRow: true; onPicked: function(id) { page.pickSubtitle(id) } }
 
-    // ---- The HUD line: one message over the picture, gone after 1.2 s. The subtitle delay,
-    // the frame step and the speed share it, each owning the line through its own kind. A
+    // ---- The HUD line: one message over the picture, gone after 1.2 s. The subtitle delay
+    // and the frame step share it, each owning the line through its own kind. A
     // raised pill like every other stone on the player; its text is figures, so ledger.
     Corner {
         id: hud

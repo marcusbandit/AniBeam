@@ -114,7 +114,9 @@ Item {
                                     Item {
                                         anchors.verticalCenter: parent.verticalCenter
                                         width: root.capWidth; height: cap.height
-                                        Chip { id: cap; text: modelData[0]; color: theme.tile; textColor: theme.text
+                                        // Every chip is the column's width, so the gap to
+                                        // its description is the row spacing in every group.
+                                        Chip { id: cap; width: root.capWidth; text: modelData[0]; color: theme.tile; textColor: theme.text
                                             onImplicitWidthChanged: root.capWidth = Math.max(root.capWidth, implicitWidth)
                                             Component.onCompleted: root.capWidth = Math.max(root.capWidth, implicitWidth) }
                                     }
