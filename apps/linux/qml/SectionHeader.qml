@@ -1,4 +1,4 @@
-// The section idiom: a title in the voice (Fraunces) with its count beside it, and an
+// The section idiom: a title in the title cut with its count beside it in the ledger, and an
 // action slot on the right.
 import QtQuick
 
@@ -12,21 +12,18 @@ Item {
     Row {
         anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
         spacing: theme.space(2)
-        Text {
+        Label {
+            id: heading
             text: title
-            color: theme.text
-            font.family: theme.fontDisplay
-            font.pointSize: theme.typeNormal * 1.15
-            font.weight: Font.DemiBold
+            role: "title"
             anchors.verticalCenter: parent.verticalCenter
         }
-        Text {
+        Label {
             visible: count >= 0
             text: count.toString()
             color: theme.textFaint
-            font.family: theme.fontUi
-            font.pointSize: theme.typeSmall
-            anchors.verticalCenter: parent.verticalCenter
+            role: "ledger"
+            anchors.baseline: heading.baseline
         }
     }
     Row { id: right; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; spacing: theme.space(2) }

@@ -136,7 +136,7 @@ FocusScope {
         StatusStrip {
             id: strip
             visible: !frame.fullWindow
-            height: visible ? theme.space(7) : 0
+            height: visible ? theme.space(7) + theme.grout : 0
             anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
             readonly property var job: Door.runningJobs.length ? Door.runningJobs[0] : null
             readonly property var line: Door.latestLine

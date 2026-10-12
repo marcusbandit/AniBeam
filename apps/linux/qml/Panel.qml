@@ -1,4 +1,5 @@
-// A settings panel: a surface with a hairline edge, a Lucide glyph beside a bold heading,
+// A settings panel: a tile (no edge, the grout around it is the edge), a Lucide glyph beside
+// a heading in the title cut,
 // an optional helper line, then its rows. Three slots: `rows` (the default) flow from the
 // top at their natural height, `stretch` holds one item that takes whatever is left when
 // the panel is taller than its content, and `foot` pins rows to the bottom edge. The panel
@@ -33,11 +34,9 @@ Corner {
     Layout.fillHeight: grows
     Layout.minimumHeight: implicitHeight
     Layout.preferredHeight: implicitHeight
-    radius: theme.radiusLg
+    radius: theme.radiusTile
     smoothing: theme.cornerSmoothing
-    color: theme.surface
-    borderColor: theme.line
-    borderWidth: 1
+    color: theme.tile
 
     Column {
         id: head
@@ -54,22 +53,20 @@ Corner {
                 glyph: root.icon
                 color: theme.text
             }
-            Text {
+            Label {
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.title
-                color: theme.text
-                font.family: theme.fontSans
+                role: "title"
                 font.pointSize: theme.typeNormal
-                font.weight: Font.Bold
             }
         }
-        Text {
+        Label {
             visible: root.helper !== ""
             width: parent.width
             text: root.helper
             color: theme.textDim
             wrapMode: Text.Wrap
-            font.family: theme.fontSans
+            role: "ui"
             font.pointSize: theme.typeSmall
         }
     }

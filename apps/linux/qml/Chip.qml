@@ -1,8 +1,8 @@
 // A pill of text on a scrim or a surface, with an optional Lucide glyph before the text.
-// Numbers set in the fixed face. `maxLabelWidth` is opt-in (-1, the default, leaves the
-// label at its natural width exactly as before): set it to cap the label and elide the
-// middle instead of growing the chip past whatever room the caller actually has, a URL
-// or path being the case that needs it.
+// `mono` (the default) sets the label in the ledger cut, tabular figures for counts and
+// codes; off, the ui cut. `maxLabelWidth` is opt-in (-1, the default, leaves the label at
+// its natural width): set it to cap the label and elide the middle instead of growing the
+// chip past the room the caller has, a URL or path being the case that needs it.
 import QtQuick
 
 Corner {
@@ -19,11 +19,12 @@ Corner {
 
     implicitWidth: content.implicitWidth + theme.space(small ? 2 : 2.5) * 2
     implicitHeight: label.implicitHeight + theme.space(small ? 0.75 : 1.25) * 2
-    radius: theme.radiusSm
+    radius: height / 2
     smoothing: theme.cornerSmoothing
     color: selected ? theme.accentSoft : theme.scrim
-    borderColor: hover.containsMouse ? theme.lineStrong : "transparent"
-    borderWidth: clickable ? 1 : 0
+    borderColor: hover.containsMouse ? theme.line : "transparent"
+    borderWidth: clickable && hover.containsMouse ? 1 : 0
+    scale: hover.pressed ? 0.98 : 1
 
     readonly property color ink: selected ? theme.accent : textColor
     Row {
@@ -37,14 +38,13 @@ Corner {
             color: root.ink
             size: theme.space(root.small ? 3.5 : 4)
         }
-        Text {
+        Label {
             id: label
             anchors.verticalCenter: parent.verticalCenter
             text: root.text
             color: root.ink
-            font.family: root.mono ? theme.fontUi : theme.fontSans
+            role: root.mono ? "ledger" : "ui"
             font.pointSize: root.small ? theme.typeSmall : theme.typeNormal
-            font.weight: Font.Medium
             width: root.maxLabelWidth >= 0 ? Math.min(implicitWidth, root.maxLabelWidth) : implicitWidth
             elide: root.maxLabelWidth >= 0 ? Text.ElideMiddle : Text.ElideNone
         }

@@ -59,6 +59,9 @@ Item {
     readonly property color tile: surface
     readonly property color raised: surfaceRaised
     readonly property color tileSunken: surfaceSunken
+    // One hover step up from a resting tile, and from a raised one (a menu row on a menu)
+    readonly property color tileHover: tone(surface, text, 0.04)
+    readonly property color raisedHover: tone(surfaceRaised, text, 0.07)
     readonly property string sourceLabel: Theme.sourceLabel
 
     // Status and fraction colours: fixed mappings onto the hues

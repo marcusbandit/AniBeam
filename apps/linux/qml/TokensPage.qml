@@ -35,6 +35,7 @@ Flickable {
             Chip { text: "2 errors"; icon: "circle-alert"; small: true; color: theme.redSoft; textColor: theme.red }
             Seg { options: ["All", "Series", "Movies"]; index: 1 }
             Switch { checked: true }
+            Button { text: "Play"; icon: "play"; primary: true }
             Button { text: "Button"; icon: "check" }
             Button { text: "Remove"; icon: "trash-2"; danger: true }
             Button { text: "Flat"; flat: true }

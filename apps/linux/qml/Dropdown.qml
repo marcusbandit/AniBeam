@@ -1,4 +1,5 @@
-// A pill showing the current value and a chevron; opens a list under it. Up and Down move
+// A sunken pill showing the current value and a chevron glyph; opens a raised tile listing
+// the options under it, rows highlighted on hover, the current one in the accent. Up and Down move
 // the highlight, Return picks, Escape closes. Picking emits `picked`; the owner sets `index`.
 // `interactive`, not the root's own `enabled`: `enabled` cascades to every child, so turning
 // it off would take the popup's own focus and hover handling with it for no visual gain
@@ -17,10 +18,11 @@ Corner {
 
     readonly property string current: options.length > index && index >= 0 ? String(options[index]) : ""
     implicitWidth: Math.max(minWidth, label.implicitWidth + chevron.width + theme.space(4) * 2 + theme.space(2))
+    scale: hover.pressed ? 0.98 : 1
     implicitHeight: theme.controlHeight
     radius: height / 2
     smoothing: theme.cornerSmoothing
-    color: theme.surfaceSunken
+    color: hover.containsMouse ? theme.tone(theme.tileSunken, theme.text, 0.03) : theme.tileSunken
     borderColor: activeFocus || pop.opened ? theme.focusRing : (hover.containsMouse ? theme.lineStrong : theme.line)
     borderWidth: activeFocus || pop.opened ? theme.space(0.5) : 1
     activeFocusOnTab: root.interactive
@@ -30,7 +32,7 @@ Corner {
     Keys.onReturnPressed: open()
     Keys.onDownPressed: open()
 
-    Text {
+    Label {
         id: label
         anchors.left: parent.left
         anchors.leftMargin: theme.space(4)
@@ -38,23 +40,18 @@ Corner {
         anchors.rightMargin: theme.space(2)
         anchors.verticalCenter: parent.verticalCenter
         text: root.current
-        color: theme.text
+        role: "ui"
         elide: Text.ElideRight
-        font.family: theme.fontSans
-        font.pointSize: theme.typeNormal
     }
-    // The chevron is a single guillemet turned a quarter, so it comes from the same face
-    Text {
+    Icon {
         id: chevron
         anchors.right: parent.right
-        anchors.rightMargin: theme.space(4)
+        anchors.rightMargin: theme.space(3)
         anchors.verticalCenter: parent.verticalCenter
-        text: "›"
-        rotation: 90
+        glyph: "chevron-down"
+        size: theme.space(4)
         color: theme.textDim
-        font.family: theme.fontSans
-        font.pointSize: theme.typeNormal
-        font.weight: Font.Bold
+        rotation: pop.opened ? 180 : 0
     }
     MouseArea {
         id: hover
@@ -69,9 +66,10 @@ Corner {
         id: pop
         property int hi: 0
         readonly property real rowHeight: theme.controlHeight
+        readonly property real inset: theme.space(1.5)
         y: root.height + theme.space(1)
         width: root.width
-        height: Math.min(root.options.length, 8) * rowHeight + theme.space(1) * 2
+        height: Math.min(root.options.length, 8) * rowHeight + inset * 2
         padding: 0
         focus: true
         background: null
@@ -81,15 +79,15 @@ Corner {
             // A named Dropdown names its list "<name>-popup" and rows "<name>-option-<i>",
             // for a --drive script; the popup lives under the window's overlay, not here.
             objectName: root.objectName !== "" ? root.objectName + "-popup" : ""
-            radius: theme.radiusMd
+            radius: theme.radiusTile
             smoothing: theme.cornerSmoothing
-            color: theme.surfaceRaised
-            borderColor: theme.lineStrong
+            color: theme.raised
+            borderColor: theme.line
             borderWidth: 1
             ListView {
                 id: list
                 anchors.fill: parent
-                anchors.margins: theme.space(1)
+                anchors.margins: pop.inset
                 clip: true
                 model: root.options
                 currentIndex: pop.hi
@@ -105,10 +103,10 @@ Corner {
                     objectName: root.objectName !== "" ? root.objectName + "-option-" + index : ""
                     width: list.width
                     height: pop.rowHeight
-                    radius: theme.radiusSm
+                    radius: theme.radiusInner(pop.inset)
                     smoothing: theme.cornerSmoothing
-                    color: index === pop.hi ? theme.surfacePressed : "transparent"
-                    Text {
+                    color: index === pop.hi ? theme.raisedHover : "transparent"
+                    Label {
                         anchors.left: parent.left
                         anchors.leftMargin: theme.space(3)
                         anchors.right: parent.right
@@ -116,10 +114,8 @@ Corner {
                         anchors.verticalCenter: parent.verticalCenter
                         text: String(modelData)
                         elide: Text.ElideRight
+                        role: "ui"
                         color: index === root.index ? theme.accent : theme.text
-                        font.family: theme.fontSans
-                        font.pointSize: theme.typeNormal
-                        font.weight: index === root.index ? Font.DemiBold : Font.Normal
                     }
                     MouseArea {
                         anchors.fill: parent

@@ -1,5 +1,5 @@
-// A one line text field in a pill: placeholder in faint text, focus on the border,
-// `mono` sets the fixed face for numbers and codes.
+// A one line text field: a sunken tile with a hairline, placeholder in faint text, the
+// accent ring on focus. `mono` sets the ledger cut, tabular figures for numbers and codes.
 import QtQuick
 
 Corner {
@@ -11,9 +11,9 @@ Corner {
 
     implicitWidth: theme.space(40)
     implicitHeight: theme.controlHeight
-    radius: height / 2
+    radius: Math.min(theme.radiusTile, height / 2)
     smoothing: theme.cornerSmoothing
-    color: theme.surfaceSunken
+    color: theme.tileSunken
     borderColor: input.activeFocus ? theme.focusRing : (hover.containsMouse ? theme.lineStrong : theme.line)
     borderWidth: input.activeFocus ? theme.space(0.5) : 1
 
@@ -29,12 +29,15 @@ Corner {
     TextInput {
         id: input
         anchors.fill: parent
-        anchors.leftMargin: theme.space(4)
-        anchors.rightMargin: theme.space(4)
+        anchors.leftMargin: theme.space(3)
+        anchors.rightMargin: theme.space(3)
         verticalAlignment: TextInput.AlignVCenter
         color: theme.text
-        font.family: root.mono ? theme.fontUi : theme.fontSans
-        font.pointSize: theme.typeNormal
+        font.family: theme.fontFamily
+        font.pointSize: root.mono ? theme.typeSmall : theme.typeNormal
+        font.weight: theme.roleWeight(root.mono ? "ledger" : "ui")
+        font.variableAxes: theme.roleAxes(root.mono ? "ledger" : "ui")
+        font.features: theme.roleFeatures(root.mono ? "ledger" : "ui")
         selectionColor: theme.accentSoft
         selectedTextColor: theme.text
         clip: true

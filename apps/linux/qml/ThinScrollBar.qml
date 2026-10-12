@@ -12,7 +12,6 @@ QC.ScrollBar {
         implicitWidth: theme.space(1)
         radius: height / 2
         smoothing: theme.cornerSmoothing
-        color: theme.lineStrong
-        opacity: parent.active ? 1 : 0.4
+        color: parent.active ? theme.textFaint : theme.line
     }
 }

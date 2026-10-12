@@ -1,5 +1,5 @@
-// A segmented switch: options in a sunken pill, the active one carried by a raised thumb
-// that follows with exponential smoothing. Picking emits `picked`; the owner sets `index`,
+// A segmented switch: options in a sunken pill, the active one carried by a raised pill
+// thumb that follows with exponential smoothing (theme.followRate). Picking emits `picked`; the owner sets `index`,
 // so a binding on it survives. An option is a string, or a record { text, icon, delegate }:
 // `icon` names a Lucide glyph drawn before the text, `delegate` is a Component drawn before
 // it instead, which reads the option's colour and record off its parent Loader as `tint`
@@ -16,9 +16,9 @@ Corner {
     readonly property real pad: theme.space(0.75)
     implicitHeight: (small ? theme.space(6) : theme.controlHeight)
     implicitWidth: row.implicitWidth + pad * 2
-    radius: theme.radiusSm
+    radius: height / 2
     smoothing: theme.cornerSmoothing
-    color: theme.surfaceSunken
+    color: theme.tileSunken
     borderColor: theme.line
     borderWidth: 1
 
@@ -32,9 +32,8 @@ Corner {
     FrameAnimation {
         running: Math.abs(root.thumbX - root.targetX) > 0.2 || Math.abs(root.thumbW - root.targetW) > 0.2
         onTriggered: {
-            var k = 1 - Math.exp(-14 * frameTime)
-            root.thumbX += (root.targetX - root.thumbX) * k
-            root.thumbW += (root.targetW - root.thumbW) * k
+            root.thumbX = theme.follow(root.thumbX, root.targetX, frameTime)
+            root.thumbW = theme.follow(root.thumbW, root.targetW, frameTime)
         }
     }
 
@@ -43,11 +42,9 @@ Corner {
         y: root.pad
         width: root.thumbW
         height: root.height - root.pad * 2
-        radius: theme.radiusSm
+        radius: height / 2
         smoothing: theme.cornerSmoothing
-        color: theme.surfaceRaised
-        borderColor: theme.lineStrong
-        borderWidth: 1
+        color: theme.raised
     }
 
     Row {
@@ -66,7 +63,7 @@ Corner {
                 readonly property string icon: record && modelData.icon ? String(modelData.icon) : ""
                 readonly property var custom: record && modelData.delegate ? modelData.delegate : null
                 readonly property bool on: index === root.index
-                readonly property color tint: on ? theme.text : theme.textDim
+                readonly property color tint: on || cellMouse.containsMouse ? theme.text : theme.textDim
                 // A named Seg names its cells "<name>-<label>", for a --drive script
                 objectName: root.objectName !== "" ? root.objectName + "-" + label.toLowerCase() : ""
                 width: content.implicitWidth + theme.space(3) * 2
@@ -91,19 +88,20 @@ Corner {
                         color: cell.tint
                         size: theme.space(root.small ? 3.5 : 4.5)
                     }
-                    Text {
+                    Label {
                         id: t
                         visible: cell.label !== ""
                         anchors.verticalCenter: parent.verticalCenter
                         text: cell.label
                         color: cell.tint
-                        font.family: theme.fontSans
+                        role: "ui"
                         font.pointSize: root.small ? theme.typeSmall : theme.typeNormal
-                        font.weight: cell.on ? Font.DemiBold : Font.Normal
                     }
                 }
                 MouseArea {
+                    id: cellMouse
                     anchors.fill: parent
+                    hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: root.picked(cell.index)
                 }

@@ -47,7 +47,6 @@ Item {
         sourceSize: theme.posterDecodeSize
         fillMode: Image.PreserveAspectCrop
         smooth: true
-        mipmap: true
         asynchronous: true
         cache: true
     }
@@ -156,6 +155,8 @@ Item {
             Text {
                 id: metaLeftText
                 anchors.left: parent.left
+                // Elided short of the countdown, so the two never overprint
+                width: Math.min(implicitWidth, parent.width - (countdownText.text !== "" ? countdownText.implicitWidth + theme.space(2) : 0))
                 text: root.metaText
                 color: theme.textFaint
                 font.family: theme.fontUi
@@ -163,6 +164,7 @@ Item {
                 elide: Text.ElideRight
             }
             Text {
+                id: countdownText
                 anchors.right: parent.right
                 text: root.countdownText
                 color: theme.accent

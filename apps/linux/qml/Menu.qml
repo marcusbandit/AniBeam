@@ -1,5 +1,6 @@
-// The frame's menu: rows of text and a glyph on a raised surface. Opened by the frame at a
-// point; closes on a pick, a click outside, or Escape through the escape stack.
+// The frame's menu: rows of text and a glyph on a raised tile. Every row is as wide as the
+// widest one, so the hover highlight is one even column. Opened by the frame at a point;
+// closes on a pick, a click outside, or Escape through the escape stack.
 import QtQuick
 
 Item {
@@ -18,32 +19,45 @@ Item {
     }
     function close() { if (!open) return; open = false; frame.escapeStack.pop(root) }
 
+    readonly property real pad: theme.space(1.5)
+    readonly property real rowWidth: {
+        var w = theme.space(40)
+        for (var i = 0; i < rows.count; i++) {
+            var row = rows.itemAt(i)
+            if (row) w = Math.max(w, row.contentWidth + theme.space(6))
+        }
+        return w
+    }
+
     MouseArea { anchors.fill: parent; acceptedButtons: Qt.LeftButton | Qt.RightButton; onPressed: root.close() }
     Frost {
         readonly property real margin: theme.space(2)
         x: Math.min(root.originX, root.width - width - margin)
         y: Math.min(root.originY, root.height - height - margin)
-        width: column.implicitWidth + theme.space(2) * 2
-        height: column.implicitHeight + theme.space(2) * 2
-        radius: theme.radiusMd
+        width: root.rowWidth + root.pad * 2
+        height: column.implicitHeight + root.pad * 2
+        radius: theme.radiusTile
         Column {
             id: column
-            x: theme.space(2); y: theme.space(2)
+            x: root.pad; y: root.pad
             Repeater {
+                id: rows
                 model: root.items
                 Corner {
                     required property var modelData
-                    width: Math.max(theme.space(40), row.implicitWidth + theme.space(6))
+                    readonly property real contentWidth: row.implicitWidth
+                    width: root.rowWidth
                     height: theme.controlHeight
-                    radius: theme.radiusSm
-                    color: m.containsMouse ? theme.surfacePressed : "transparent"
+                    radius: theme.radiusInner(root.pad)
+                    smoothing: theme.cornerSmoothing
+                    color: m.containsMouse ? theme.raisedHover : "transparent"
                     Row {
                         id: row
                         anchors.left: parent.left; anchors.leftMargin: theme.space(3)
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: theme.space(2)
-                        Icon { visible: !!modelData.icon; glyph: modelData.icon || ""; anchors.verticalCenter: parent.verticalCenter; size: theme.space(4) }
-                        Text { text: modelData.text; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeNormal; anchors.verticalCenter: parent.verticalCenter }
+                        Icon { visible: !!modelData.icon; glyph: modelData.icon || ""; anchors.verticalCenter: parent.verticalCenter; size: theme.space(4); color: m.containsMouse ? theme.text : theme.textDim }
+                        Label { text: modelData.text; role: "ui"; anchors.verticalCenter: parent.verticalCenter }
                     }
                     MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
                         onClicked: { root.close(); if (modelData.action) modelData.action() } }
