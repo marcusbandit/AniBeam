@@ -30,6 +30,8 @@
   {"wait": 800},
   {"eval": "frame.item.nav.current.page", "expect": "watching"},
   {"shot": "walls-04-watching"},
+  {"log": "opening the page asked the core for a (stale-only) AniList refresh, once"},
+  {"eval": "driver.item.findItem('watching-page').refreshAsked", "expect": 1},
   {"eval": "driver.item.findItem('watching-page').scrollY = 37; Math.round(frame.item.leavingScroll())", "expect": 37},
   {"click": "rail-settings"},
   {"wait": 600},

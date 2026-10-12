@@ -42,8 +42,13 @@ Item {
     readonly property real pillHeight: Math.ceil(ledgerMetrics.height + theme.space(1))
     // The smallest plate that holds two title lines and the ledger line (a pill at most)
     readonly property real minPlate: Math.ceil(pad * 2 + titleMetrics.height * 2 + theme.space(1.5) + pillHeight)
-    // A hero's plate: its lines, the Play row and nothing else
-    readonly property real heroPlate: Math.ceil(pad * 2 + titleText.height + theme.space(2) + heroLines.height + theme.space(3) + theme.controlHeight)
+    // A hero's plate: room for its lines at their fullest (two title lines in the display
+    // cut, the next episode, the countdown pill, the progress) and the Play row. Fixed by
+    // the module and the type, never by the title's wrap or the poster image, so hero plates
+    // in a row start on one line.
+    readonly property real heroPlate: Math.ceil(pad * 2 + heroTitleMetrics.height * 0.95 * 2 + theme.space(2)
+                                                + uiMetrics.height + pillHeight + ledgerMetrics.height + theme.space(1) * 2
+                                                + theme.space(3) + theme.controlHeight)
     readonly property real posterHeight: hero && tileHeight > 0 ? Math.max(0, tileHeight - heroPlate) : Math.round(posterWidth * 1.5)
     readonly property real plateH: tileHeight > 0 ? tileHeight - posterHeight : hero ? heroPlate : minPlate
     width: posterWidth
@@ -52,6 +57,8 @@ Item {
     implicitHeight: posterHeight + plateH
 
     FontMetrics { id: titleMetrics; font.family: theme.fontFamily; font.pointSize: theme.typeNormal; font.weight: theme.roleWeight("title"); font.variableAxes: theme.roleAxes("title") }
+    FontMetrics { id: heroTitleMetrics; font.family: theme.fontFamily; font.pointSize: theme.typeLarge; font.weight: theme.roleWeight("display"); font.variableAxes: theme.roleAxes("display") }
+    FontMetrics { id: uiMetrics; font.family: theme.fontFamily; font.pointSize: theme.typeNormal; font.weight: theme.roleWeight("ui"); font.variableAxes: theme.roleAxes("ui") }
     FontMetrics { id: ledgerMetrics; font.family: theme.fontFamily; font.pointSize: theme.typeSmall; font.weight: theme.roleWeight("ledger"); font.variableAxes: theme.roleAxes("ledger") }
 
     readonly property string displayTitle: item.title || ""
@@ -263,6 +270,15 @@ Item {
         smoothing: theme.cornerSmoothing
         flatTop: true
         color: theme.tone(root.plateRest, root.plateLift, root.lift)
+
+        // The seam: a 1 px line one step up the plate's own tone, so a dark plate never
+        // melts into a dark poster's foot
+        Rectangle {
+            visible: !root.ghost
+            width: parent.width
+            height: 1
+            color: root.tone !== "" ? theme.plateHover(root.tone) : theme.raisedHover
+        }
 
         Label {
             id: titleText

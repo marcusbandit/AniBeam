@@ -18,6 +18,14 @@ Item {
     readonly property real pad: theme.space(2)
     readonly property real tileWidth: Math.max(theme.space(17), labels.implicitWidth + pad * 2, lang.implicitWidth + pad * 2)
     readonly property real tileHeight: Math.round(tileWidth * 0.72)
+    // A short window: the six top tiles (brand and five pages) share what the foot leaves,
+    // never overlapping it. Below the height an icon over a label needs, the label goes and
+    // the tile is the icon alone; it never gets shorter than the icon and its padding.
+    readonly property real labelledHeight: theme.space(5) + theme.space(1.5) + labelMetrics.height + pad * 2
+    readonly property real fitHeight: Math.floor((height - footHeight - theme.grout * 8) / 6)
+    readonly property real cellHeight: Math.max(theme.space(5) + pad * 2, Math.min(tileHeight, fitHeight))
+    readonly property bool showLabels: cellHeight >= labelledHeight
+    FontMetrics { id: labelMetrics; font.family: theme.fontFamily; font.pointSize: theme.typeSmall; font.weight: theme.roleWeight("title"); font.variableAxes: theme.roleAxes("title") }
     width: tileWidth + theme.grout * 2
     // The foot tile's height: the frame's status strip is cut to it, so the two sit in one
     // band along the window's foot
@@ -39,7 +47,7 @@ Item {
 
         // Brand
         Corner {
-            width: root.tileWidth; height: root.tileHeight
+            width: root.tileWidth; height: root.cellHeight
             radius: theme.radiusTile
             smoothing: theme.cornerSmoothing
             color: theme.tile
@@ -61,7 +69,7 @@ Item {
                 objectName: "rail-" + modelData.text.toLowerCase()   // a --drive target
                 readonly property bool on: index === root.active
                 width: root.tileWidth
-                height: root.tileHeight
+                height: root.cellHeight
                 radius: theme.radiusTile
                 smoothing: theme.cornerSmoothing
                 color: on ? theme.raised : theme.tile
@@ -81,6 +89,7 @@ Item {
                         color: entry.on ? theme.accent : (m.containsMouse ? theme.text : theme.textDim)
                     }
                     Label {
+                        visible: root.showLabels
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: entry.modelData.text
                         role: "title"
@@ -89,6 +98,7 @@ Item {
                     }
                 }
                 MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.picked(entry.index) }
+                Tooltip { text: root.showLabels ? "" : entry.modelData.text }
             }
         }
     }
@@ -109,17 +119,39 @@ Item {
             id: foot
             anchors.centerIn: parent
             spacing: theme.space(2)
-            Seg {
+            // The title language: one pill naming the current one; a click switches
+            Corner {
                 id: lang
+                objectName: "title-language"
+                readonly property bool english: Door.preferences.title_language === "English"
                 anchors.horizontalCenter: parent.horizontalCenter
-                small: true
-                options: ["Romaji", "English"]
-                index: Door.preferences.title_language === "English" ? 1 : 0
-                onPicked: function(i) {
-                    var p = JSON.parse(JSON.stringify(Door.preferences))
-                    p.title_language = i === 1 ? "English" : "Romaji"
-                    Door.setPreferences(p)
+                implicitWidth: langWidest.implicitWidth + theme.space(4)
+                width: implicitWidth
+                height: theme.space(6)
+                radius: height / 2
+                smoothing: theme.cornerSmoothing
+                color: langMouse.containsMouse ? theme.raisedHover : theme.raised
+                scale: langMouse.pressed ? 0.98 : 1
+                Label {
+                    anchors.centerIn: parent
+                    text: lang.english ? "English" : "Romaji"
+                    role: "ui"
+                    font.pointSize: theme.typeSmall
                 }
+                // the wider of the two, so the pill does not change width when switched
+                Label { id: langWidest; visible: false; text: "English"; role: "ui"; font.pointSize: theme.typeSmall }
+                MouseArea {
+                    id: langMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        var p = JSON.parse(JSON.stringify(Door.preferences))
+                        p.title_language = lang.english ? "Romaji" : "English"
+                        Door.setPreferences(p)
+                    }
+                }
+                Tooltip { text: "Title language. Click to switch." }
             }
             Label {
                 anchors.horizontalCenter: parent.horizontalCenter

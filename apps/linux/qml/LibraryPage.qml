@@ -241,9 +241,10 @@ Item {
 
     // ---- The header: a row of tiles on the module, one unit tall, wrapping to a second
     // row on a narrow window. Each tile's span is the whole columns its content needs; the
-    // row's spare columns go to the title (or the search on a wrapped row). A control says
-    // what it is, so no tile carries an eyebrow; only the grouping keeps a word ("Group"),
-    // since a bare "None" would not.
+    // row's spare columns go to the title (or the search on a wrapped row). A control is
+    // centred in its tile both ways, so a whole-column span's slack sits evenly around it.
+    // A control says what it is, so no tile carries an eyebrow; only the grouping keeps a
+    // word ("Group"), since a bare "None" would not.
     readonly property real hpad: theme.space(3)
     function spanFor(w) { return Math.max(1, Math.ceil((w + hpad * 2 + grout) / (geo.w + grout))) }
     readonly property var headerLayout: Mosaic.header([
@@ -335,7 +336,7 @@ Item {
                 Seg {
                     id: tabsSeg
                     objectName: "tab"
-                    x: page.hpad
+                    x: Math.max(page.hpad, (parent.width - width) / 2)
                     anchors.verticalCenter: parent.verticalCenter
                     options: page.tabNames
                     index: Math.max(0, page.tabNames.indexOf(page.tab))
@@ -348,7 +349,7 @@ Item {
                 Seg {
                     id: sortSeg
                     objectName: "sort"
-                    x: page.hpad
+                    x: Math.max(page.hpad, (parent.width - width) / 2)
                     anchors.verticalCenter: parent.verticalCenter
                     options: page.sorts.map(function(s) {
                         return { text: s[1], name: s[0], icon: s[0] === page.sort ? (page.direction === "Asc" ? "chevron-up" : "chevron-down") : "" }
@@ -361,7 +362,7 @@ Item {
                 key: "group"
                 Row {
                     id: groupRow
-                    x: page.hpad
+                    x: Math.max(page.hpad, (parent.width - width) / 2)
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: theme.space(2.5)
                     Label {
@@ -393,7 +394,7 @@ Item {
                 }
                 Row {
                     id: watchedRow
-                    x: page.hpad
+                    x: Math.max(page.hpad, (parent.width - width) / 2)
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: theme.space(2.5)
                     Label {

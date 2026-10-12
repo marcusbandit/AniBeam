@@ -67,6 +67,27 @@ Item {
         return out
     }
 
+    // The title tile's one line: what this sort has to say right now
+    readonly property string summary: {
+        var now = nowMs / 1000
+        if (sort === "Upcoming") {
+            var next = null
+            for (var i = 0; i < cards.length; i++) {
+                var sc = scheduledIn(cards[i])
+                if (sc && sc.at > now && (!next || sc.at < next.at)) next = { at: sc.at, title: cards[i].series ? cards[i].series.title : "" }
+            }
+            if (!next) return "Nothing scheduled yet."
+            var t = Math.floor(next.at - now), d = Math.floor(t / 86400), h = Math.floor(t % 86400 / 3600), m = Math.floor(t % 3600 / 60)
+            return "Next: " + next.title + " in " + (d > 0 ? d + "d " + h + "h" : h > 0 ? h + "h " + m + "m" : Math.max(1, m) + "m")
+        }
+        var fresh = 0
+        for (var j = 0; j < cards.length; j++) {
+            var at = reasonAt(cards[j].reason)
+            if (at > 0 && now - at <= 7 * 86400) fresh++
+        }
+        return fresh === 0 ? "Nothing new this week." : fresh === 1 ? "1 new episode this week." : fresh + " new episodes this week."
+    }
+
     function reload() {
         var r = Door.listFeed(page.sort)
         if (r.error) { frame.toast(r.error.message); return }
@@ -108,32 +129,18 @@ Item {
         onOpened: function(e) { frame.go("series", { id: e.id }, e.item.title) }
         onPlayed: function(e) { page.playSeries(e.item) }
 
+        // The title, this sort's one line under it, and the count at the right
         MosaicWall.HeaderTile {
-            need: feedTitle.implicitWidth
+            need: Math.max(feedTitle.implicitWidth, summaryLine.implicitWidth) + theme.space(6) + countRow.implicitWidth
             minSpan: 2
             flex: true
-            Label {
-                id: feedTitle
+            Column {
                 x: parent.pad
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Feed"
-                role: "display"
+                spacing: theme.space(1)
+                Label { id: feedTitle; text: "Feed"; role: "display" }
+                Label { id: summaryLine; objectName: "feed-summary"; text: page.summary; role: "ui"; color: theme.textDim }
             }
-        }
-        MosaicWall.HeaderTile {
-            need: sortSeg.implicitWidth
-            Seg {
-                id: sortSeg
-                objectName: "feed-sort"
-                x: parent.pad
-                anchors.verticalCenter: parent.verticalCenter
-                options: [{ text: "Recently released", icon: "clock", name: "recent" }, { text: "Coming soon", icon: "calendar-clock", name: "upcoming" }]
-                index: page.sort === "Upcoming" ? 1 : 0
-                onPicked: function(i) { page.sort = i === 1 ? "Upcoming" : "Recent"; page.persist(); page.reload() }
-            }
-        }
-        MosaicWall.HeaderTile {
-            need: countRow.implicitWidth
             Row {
                 id: countRow
                 anchors.right: parent.right; anchors.rightMargin: parent.pad
@@ -156,7 +163,18 @@ Item {
                 }
             }
         }
-
+        MosaicWall.HeaderTile {
+            need: sortSeg.implicitWidth
+            Seg {
+                id: sortSeg
+                objectName: "feed-sort"
+                x: Math.max(parent.pad, (parent.width - width) / 2)
+                anchors.verticalCenter: parent.verticalCenter
+                options: [{ text: "Recently released", icon: "clock", name: "recent" }, { text: "Coming soon", icon: "calendar-clock", name: "upcoming" }]
+                index: page.sort === "Upcoming" ? 1 : 0
+                onPicked: function(i) { page.sort = i === 1 ? "Upcoming" : "Recent"; page.persist(); page.reload() }
+            }
+        }
         // Nothing to show: one tile filling the page, saying what to do
         body: Component {
             Tile {

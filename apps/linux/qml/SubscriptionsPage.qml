@@ -237,7 +237,6 @@ Item {
                         anchors.left: parent.left
                         anchors.bottom: parent.bottom
                         text: "Open the feed"
-                        icon: "external-link"
                         flat: true
                         small: true
                         onClicked: Qt.openUrlExternally(feedTile.f.url)

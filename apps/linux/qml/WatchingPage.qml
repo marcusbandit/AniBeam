@@ -75,10 +75,12 @@ Item {
         page.entries = r.reply.list.entries || []
         if (r.reply.refreshing !== null && r.reply.refreshing !== undefined) page.refreshing = true
     }
-    // To AniList: `force` from the Refresh tile, else only when the cache is stale
+    // To AniList: `force` from the Refresh tile, else only when the cache is stale. The core
+    // answers Ok without a fetch when no account is connected, so the page always asks.
+    property int refreshAsked: 0   // for a --drive eval: the open asked once
     function refresh(force) {
-        if (!page.anilistConnected) return
-        var r = Door.refreshWatching(force)
+        refreshAsked++
+        var r = Door.refreshWatching(force === true)
         if (r.error) { page.loadFailed = page.entries.length === 0; frame.toast(r.error.message); return }
         if (r.reply && r.reply.job !== undefined) page.refreshing = true
     }
