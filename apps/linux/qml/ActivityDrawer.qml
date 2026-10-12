@@ -194,7 +194,9 @@ Item {
             anchors.leftMargin: theme.space(4)
             anchors.rightMargin: theme.space(4)
             clip: true
+            boundsBehavior: Flickable.StopAtBounds
             model: root.rows
+            WheelStep { flick: list }
             delegate: Item {
                 required property var modelData
                 width: list.width

@@ -47,11 +47,13 @@ Item {
         color: theme.surfaceRaised; borderColor: theme.lineStrong; borderWidth: 1
         MouseArea { anchors.fill: parent }
         Flickable {
+            id: keyFlick
             anchors.fill: parent; anchors.margins: theme.space(5)
             clip: true
             contentWidth: column.implicitWidth; contentHeight: column.implicitHeight
             boundsBehavior: Flickable.StopAtBounds
             QC.ScrollBar.vertical: ThinScrollBar {}
+            WheelStep { flick: keyFlick }
             Column {
                 id: column
                 spacing: theme.space(2)
