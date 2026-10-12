@@ -14,6 +14,7 @@ import "mosaic.js" as Mosaic
 
 Item {
     id: page
+    objectName: "library-page"   // a --drive target, and the evals below
     property var props: ({})
     property alias scrollY: flick.contentY
     function focusSearch() { flick.contentY = 0; search.focusInput() }
@@ -149,6 +150,11 @@ Item {
     }
     readonly property var packed: Mosaic.pack(sections, geo.cols, unitsSmall, unitsHero)
     readonly property var tiles: packed.tiles
+
+    // For a --drive script's evals
+    function packedOverlaps() { return Mosaic.overlaps(tiles) }
+    function tileCount() { return tiles.filter(function(t) { return t.kind !== "label" }).length }
+    function heroCount() { return tiles.filter(function(t) { return t.kind === "hero" }).length }
 
     function reload() {
         var keep = flick.contentY
@@ -364,6 +370,7 @@ Item {
                 Caption { text: "Search" }
                 SearchField {
                     id: search
+                    objectName: "library-search"
                     x: page.hpad
                     y: parent.height - page.hpad - height
                     width: parent.width - page.hpad * 2
@@ -424,6 +431,9 @@ Item {
                 readonly property bool hero: modelData.kind === "hero"
                 readonly property var section: page.sections[modelData.section]
                 readonly property real settle: hero ? page.heroIn : page.shelfIn
+                // Wholly inside the viewport: only such a tile answers to the generic
+                // "small-tile" / "hero-tile" names a --drive script clicks
+                readonly property bool inView: y >= flick.contentY && y + height <= flick.contentY + flick.height
                 objectName: stone ? "stone-" + section.label.toLowerCase() : "tile-" + modelData.card.id
                 x: page.spanX(modelData.col)
                 y: flick.wallTop + modelData.row * page.step + (1 - settle) * page.grout
@@ -437,6 +447,7 @@ Item {
                 Component {
                     id: seriesTile
                     Card {
+                        objectName: cell.inView ? (cell.hero ? "hero-tile" : "small-tile") : ""
                         item: cell.modelData.card
                         hero: cell.hero
                         posterWidth: cell.width

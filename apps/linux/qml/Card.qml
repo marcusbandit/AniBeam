@@ -288,13 +288,19 @@ Item {
             y: parent.height - root.pad - height
             height: theme.controlHeight
             sourceComponent: Item {
-                Button {
+                Item {
                     objectName: "tile-play-" + root.item.id
-                    primary: true
-                    icon: "play"
-                    text: "Play"
+                    width: play.width; height: play.height
                     anchors.verticalCenter: parent.verticalCenter
-                    onClicked: root.played()
+                    Button {
+                        id: play
+                        // the first hero's Play in view, for a --drive script
+                        objectName: root.objectName === "hero-tile" ? "hero-play" : ""
+                        primary: true
+                        icon: "play"
+                        text: "Play"
+                        onClicked: root.played()
+                    }
                 }
                 Label {
                     anchors.right: parent.right
