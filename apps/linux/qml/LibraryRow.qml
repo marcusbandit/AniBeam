@@ -1,8 +1,8 @@
 // The library's row, in the demo's stream idiom: a square thumbnail, the serif title over
 // a caps mono subline, and the readouts on the right — watched over total in big mono,
 // the airing countdown in the accent. Hairlines separate rows; a hover raises the row.
-// The thumb decodes at twice its display size and fades in fast, so a row scrolled into
-// view paints its picture the moment the decode lands.
+// The thumb decodes at the shared poster size (a cache hit when the pool or a card has it)
+// and fades in fast, so a row scrolled into view paints its picture the moment it lands.
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -48,7 +48,7 @@ Item {
                 visible: false
                 width: thumb.width; height: thumb.height
                 source: root.item.poster ? "file://" + root.item.poster : ""
-                sourceSize.width: 480
+                sourceSize: theme.posterDecodeSize
                 fillMode: Image.PreserveAspectCrop
                 smooth: true
                 asynchronous: true

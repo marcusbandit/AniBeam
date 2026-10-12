@@ -121,7 +121,7 @@ PageScroll {
                 width: theme.space(36); height: width * 1.5
                 radius: theme.radiusLg; smoothing: theme.cornerSmoothing; color: theme.surfaceRaised; borderColor: theme.line; borderWidth: 1
                 fillItem: poster.status === Image.Ready ? poster : null
-                Image { id: poster; visible: false; width: parent.width; height: parent.height; source: card.poster ? "file://" + card.poster : ""; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize.width: 480 }
+                Image { id: poster; visible: false; width: parent.width; height: parent.height; source: card.poster ? "file://" + card.poster : ""; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize: theme.posterDecodeSize }
             }
             Column {
                 anchors.bottom: parent.bottom
