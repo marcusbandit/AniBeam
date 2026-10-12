@@ -224,8 +224,8 @@ Item {
     // (measured without them), so a film's one-row ledger is not left beside a tall side
     // column. Their own heights never feed the choice, so their width can follow it.
     readonly property bool peopleLeft: twoCol && colNatural([continueTile, episodesTile, extrasTile, strayTile]) < colNatural([synopsisTile, tagsTile, relationsTile])
-    readonly property var ledgerTiles: peopleLeft ? [continueTile, episodesTile, extrasTile, strayTile, recommendationsTile, charactersTile] : [continueTile, episodesTile, extrasTile, strayTile]
-    readonly property var sideTiles: peopleLeft ? [synopsisTile, tagsTile, relationsTile] : [synopsisTile, tagsTile, relationsTile, recommendationsTile, charactersTile]
+    readonly property var ledgerTiles: [continueTile, episodesTile, extrasTile, strayTile, recsL, charsL]
+    readonly property var sideTiles: [synopsisTile, tagsTile, relationsTile, recsR, charsR]
     readonly property real ledgerNatural: colNatural(ledgerTiles)
     readonly property real sideNatural: colNatural(sideTiles)
     readonly property real bodyTop: bandHeight + grout
@@ -381,12 +381,12 @@ Item {
             delegate: Tile {
                 id: fact
                 required property var modelData
-                readonly property var place: modelData ? page.factSlot(modelData.key) : ({ col: 0, row: 0, colSpan: 1 })
+
                 readonly property bool clickable: modelData.key === "mine"
                 objectName: "fact-" + modelData.key
-                x: page.spanX(page.lead + place.col)
-                y: page.step * (page.bannerUnits + page.titleUnits + place.row)
-                width: page.spanW(page.lead + place.col, place.colSpan)
+                x: page.spanX(page.lead + page.factSlot(modelData ? modelData.key : "").col)
+                y: page.step * (page.bannerUnits + page.titleUnits + page.factSlot(modelData ? modelData.key : "").row)
+                width: page.spanW(page.lead + page.factSlot(modelData ? modelData.key : "").col, page.factSlot(modelData ? modelData.key : "").colSpan)
                 height: page.unit
                 padding: theme.space(3)
                 raised: clickable && factMouse.containsMouse
@@ -591,6 +591,8 @@ Item {
                         EpisodeRow { required property var modelData; episode: modelData; extra: true; title: Fmt.episodeName(modelData.title || "", modelData.number); detailText: modelData.path.split("/").pop(); onPlay: page.openFile(modelData.file) } }
                 }
             }
+            RecsStone { id: recsL; key: "recsL"; inLeft: true }
+            CharsStone { id: charsL; key: "charsL"; inLeft: true }
         }
 
         // Continue's slot beside the title on a wide window
@@ -710,40 +712,8 @@ Item {
                 }
             }
 
-            Stone {
-                id: recommendationsTile
-                key: "recommendationsTile"
-                parent: page.peopleLeft ? ledgerCol : sideCol
-                visible: !!page.detail && page.detail.recommendations.length > 0
-                natural: recCol.implicitHeight
-                stretch: page.sideLast === "recommendationsTile" ? page.sideStretch : page.ledgerLast === "recommendationsTile" ? page.ledgerStretch : 0
-                Column {
-                    id: recCol
-                    width: parent.width
-                    spacing: theme.space(3)
-                    Heading { text: "Recommendations"; count: page.detail ? page.detail.recommendations.length : 0 }
-                    Flow { width: parent.width; spacing: theme.space(3)
-                        Repeater { model: page.detail ? page.detail.recommendations : []
-                            RecommendationCard { required property var modelData; rec: modelData
-                                onOpened: modelData.owned ? frame.go("series", { id: modelData.owned }, modelData.title) : Qt.openUrlExternally("https://anilist.co/anime/" + modelData.anilist_id) } } }
-                }
-            }
-
-            Stone {
-                id: charactersTile
-                key: "charactersTile"
-                parent: page.peopleLeft ? ledgerCol : sideCol
-                visible: !!page.detail && page.detail.characters.length > 0
-                natural: charCol.implicitHeight
-                stretch: page.sideLast === "charactersTile" ? page.sideStretch : page.ledgerLast === "charactersTile" ? page.ledgerStretch : 0
-                Column {
-                    id: charCol
-                    width: parent.width
-                    spacing: theme.space(3)
-                    Heading { text: "Characters"; count: page.detail ? page.detail.characters.length : 0 }
-                    Flow { width: parent.width; spacing: theme.space(3); Repeater { model: page.detail ? page.detail.characters : []; PersonCard { required property var modelData; person: modelData } } }
-                }
-            }
+            RecsStone { id: recsR; key: "recsR"; inLeft: false }
+            CharsStone { id: charsR; key: "charsR"; inLeft: false }
         }
     }
     // The scroll bar rides the right-hand joint, not the tiles' edge
@@ -753,6 +723,38 @@ Item {
         y: flick.y
         height: flick.height
         width: Math.min(page.grout, theme.space(1))
+    }
+
+    // Recommendations and characters: one of each per column, shown in whichever column
+    // peopleLeft picks, so no tile is ever moved between columns
+    component RecsStone: Stone {
+        property bool inLeft: false
+        visible: !!page.detail && page.detail.recommendations.length > 0 && page.peopleLeft === inLeft
+        natural: recsColumn.implicitHeight
+        stretch: inLeft ? (page.ledgerLast === key ? page.ledgerStretch : 0) : (page.sideLast === key ? page.sideStretch : 0)
+        Column {
+            id: recsColumn
+            width: parent.width
+            spacing: theme.space(3)
+            Heading { text: "Recommendations"; count: page.detail ? page.detail.recommendations.length : 0 }
+            Flow { width: parent.width; spacing: theme.space(3)
+                Repeater { model: page.detail ? page.detail.recommendations : []
+                    RecommendationCard { required property var modelData; rec: modelData
+                        onOpened: modelData.owned ? frame.go("series", { id: modelData.owned }, modelData.title) : Qt.openUrlExternally("https://anilist.co/anime/" + modelData.anilist_id) } } }
+        }
+    }
+    component CharsStone: Stone {
+        property bool inLeft: false
+        visible: !!page.detail && page.detail.characters.length > 0 && page.peopleLeft === inLeft
+        natural: charsColumn.implicitHeight
+        stretch: inLeft ? (page.ledgerLast === key ? page.ledgerStretch : 0) : (page.sideLast === key ? page.sideStretch : 0)
+        Column {
+            id: charsColumn
+            width: parent.width
+            spacing: theme.space(3)
+            Heading { text: "Characters"; count: page.detail ? page.detail.characters.length : 0 }
+            Flow { width: parent.width; spacing: theme.space(3); Repeater { model: page.detail ? page.detail.characters : []; PersonCard { required property var modelData; person: modelData } } }
+        }
     }
 
     // One related entry: a poster sliver, the title, the relation and year. Owned opens its
