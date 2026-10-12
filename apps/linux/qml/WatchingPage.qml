@@ -174,9 +174,16 @@ Item {
                     visible: !page.anilistConnected
                     icon: "log-in"
                     title: "AniList is not connected"
-                    body: "Connect AniList in Settings to see your watching list."
-                    // tracker-one-click merge: ConnectButton + frame.openConnect("Anilist")
-                    Button { objectName: "watching-connect"; text: "Open Settings"; icon: "settings"; primary: true; onClicked: frame.go("settings", { tab: "Library" }) }
+                    body: "Connect AniList to see your watching list."
+                    // One click: the browser opens on it when the build carries AniList's id
+                    ConnectButton {
+                        objectName: "watching-connect"
+                        tracker: "Anilist"
+                        text: frame.connecting["Anilist"] !== undefined ? "Waiting for the browser" : "Connect AniList"
+                        icon: frame.connecting["Anilist"] !== undefined ? "clock" : "log-in"
+                        primary: true
+                        onClicked: frame.openConnect("Anilist")
+                    }
                 }
                 EmptyState {
                     visible: page.anilistConnected && page.loadFailed

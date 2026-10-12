@@ -95,6 +95,8 @@ pub enum Call {
     ClearImages,
     // Trackers
     GetTrackers,
+    /// `client_secret`: absent keeps the stored secret, empty removes it,
+    /// anything else replaces it.
     SetTrackerCredentials {
         tracker: Tracker,
         client_id: String,

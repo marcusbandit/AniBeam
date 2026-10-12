@@ -1,7 +1,11 @@
 // One tracker: a pill naming the service in full (no logo is bundled, and a caps monogram
-// is a killed idiom), lit in the accent while connected, the connection line, and a control area that walks through the
-// connect flow: idle with credentials already known, waiting on the browser, connected, or
-// the register-and-paste-credentials form when none are known yet.
+// is a killed idiom), lit in the accent while connected, the connection line, and one
+// control on the right. Not connected,
+// that control is Connect, which hands the tracker to frame.openConnect: with credentials
+// the browser opens on that click, without them the sheet walks the set-up. While the
+// browser is out it is Cancel and the sign-in page again; connected, Disconnect behind an
+// inline confirm. The flow's state is the frame's, so the row only reads it. A MAL app
+// that turned out to want its client secret gets a field for it right here.
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -10,32 +14,32 @@ Item {
     objectName: tracker !== "" ? "tracker-" + tracker : ""
     property string tracker: ""
     property var account: ({})
-    property bool waiting: false
     property bool confirming: false
-    // Guided: nobody has run this tracker's OAuth app yet, so the row hands
-    // the flow to the connect sheet instead of showing the paste-a-form.
-    property bool guided: false
-    property string redirectUrl: "http://127.0.0.1:53682/callback"
-    signal login(string clientId, string clientSecret)
-    signal setup()
+    property bool addingSecret: false
     signal disconnect()
-    signal cancel()
 
-    readonly property string name: tracker === "Anilist" ? "AniList" : "MyAnimeList"
+    readonly property string name: frame.trackerName(tracker)
     readonly property bool connected: account.connected === true
     // A confirm left up must not greet the next connection: any way the row stops being
     // connected (the confirm's own Disconnect, a revoked token) puts the question away
     onConnectedChanged: if (!connected) confirming = false
+    readonly property bool waiting: frame.connecting[tracker] !== undefined
+    readonly property string error: frame.connectErrors[tracker] || ""
+    readonly property bool needsSecret: tracker === "Mal" && !connected && !waiting && /client secret/i.test(error)
     readonly property string line: connected
         ? "Connected as " + (account.username || "?") + ", synced " + (account.last_sync ? Fmt.relative(account.last_sync, Date.now() / 1000) : "never")
+        : waiting ? "Waiting for you to approve in the browser"
+        : error !== "" ? error
         : "Not connected"
-    readonly property bool hasCredentials: account.bundled_credentials === true || (account.client_id || "") !== ""
-    readonly property bool showLogin: !waiting && !connected && hasCredentials
-    readonly property bool showCreds: !waiting && !connected && !hasCredentials
-    readonly property bool showSetup: showCreds && guided
 
     width: parent ? parent.width : theme.space(100)
-    implicitHeight: top.height + (showSetup ? theme.space(3) + setup.implicitHeight : showCreds ? theme.space(3) + creds.implicitHeight : 0)
+    // A secret is saved and nothing is asking for one: offered for removal, for the app
+    // that turned out to be "other", where MAL refuses a secret it never issued.
+    readonly property bool canRemoveSecret: tracker === "Mal" && !connected && !waiting && !needsSecret
+        && account.has_client_secret === true
+    implicitHeight: top.height + (secretForm.visible ? theme.space(1) + secretForm.implicitHeight : 0)
+        + (savedSecret.visible ? theme.space(1) + savedSecret.height : 0)
+    onNeedsSecretChanged: if (!needsSecret) addingSecret = false
 
     Item {
         id: top
@@ -75,35 +79,39 @@ Item {
                 text: root.line
                 role: "ui"
                 font.pointSize: theme.typeSmall
-                color: theme.textDim
+                color: !root.connected && !root.waiting && root.error !== "" ? theme.red : theme.textDim
                 wrapMode: Text.Wrap
             }
         }
-        // Loaders, not four plain children behind `visible`: `childrenRect`, which sizes
-        // this slot, unions every child's geometry whether or not it is visible, so an
-        // inactive branch (the wide waiting note, the long "Log in to MyAnimeList") would
-        // still widen the slot and crush the name column beside it. An inactive Loader
-        // holds no item and truly measures zero.
+        // Loaders, not plain children behind `visible`: an inactive branch (the wide
+        // confirm, the waiting buttons) would still take room it is not using and crush the
+        // name column beside it. An inactive Loader holds no item and measures zero, and the
+        // slot is the widest of the four rather than `childrenRect`, which was seen keeping
+        // a branch's old width after the branch shrank.
         Item {
             id: slot
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            width: childrenRect.width
-            height: childrenRect.height
+            width: Math.max(waitingSlot.width, disconnectSlot.width, confirmSlot.width, connectSlot.width)
+            height: Math.max(waitingSlot.height, disconnectSlot.height, confirmSlot.height, connectSlot.height)
 
-            Loader { active: root.waiting; visible: active; sourceComponent: waitingBox }
-            Loader { active: !root.waiting && root.connected && !root.confirming; visible: active; sourceComponent: disconnectButton }
-            Loader { active: !root.waiting && root.connected && root.confirming; visible: active; sourceComponent: disconnectConfirm }
-            Loader { active: root.showLogin; visible: active; sourceComponent: loginButton }
+            Loader { id: waitingSlot; anchors.right: parent.right; active: root.waiting; visible: active; sourceComponent: waitingButtons }
+            Loader { id: disconnectSlot; anchors.right: parent.right; active: !root.waiting && root.connected && !root.confirming; visible: active; sourceComponent: disconnectButton }
+            Loader { id: confirmSlot; anchors.right: parent.right; active: !root.waiting && root.connected && root.confirming; visible: active; sourceComponent: disconnectConfirm }
+            Loader { id: connectSlot; anchors.right: parent.right; active: !root.waiting && !root.connected; visible: active; sourceComponent: connectButton }
         }
     }
     Component {
-        id: waitingBox
-        Column {
-            width: theme.space(64)
-            spacing: theme.space(1.5)
-            Note { text: "Waiting for you to approve in the browser…" }
-            Button { text: "Cancel"; flat: true; onClicked: root.cancel() }
+        id: waitingButtons
+        Row {
+            spacing: theme.space(2)
+            Button {
+                text: "Open again"; icon: "external-link"; flat: true
+                enabled: (frame.signInUrls[root.tracker] || "") !== ""
+                onClicked: frame.reopenSignIn(root.tracker)
+                Tooltip { text: "Open the sign-in page again" }
+            }
+            Button { text: "Cancel"; flat: true; onClicked: frame.cancelConnect(root.tracker) }
         }
     }
     Component {
@@ -121,80 +129,69 @@ Item {
         }
     }
     Component {
-        id: loginButton
-        Button { text: "Log in to " + root.name; icon: "log-in"; onClicked: root.login("", "") }
+        id: connectButton
+        ConnectButton { objectName: "tracker-" + root.tracker + "-connect"; tracker: root.tracker; text: "Connect"; icon: "log-in"; primary: !root.needsSecret; onClicked: frame.openConnect(root.tracker) }
     }
 
-    // The guided path: one line and the button that opens the sheet, which
-    // walks the create-client, paste-id, connect sequence with the state
-    // each step leaves behind.
-    Column {
-        id: setup
-        visible: root.showSetup
+    Row {
+        id: savedSecret
+        visible: root.canRemoveSecret
         anchors.top: top.bottom
-        anchors.topMargin: theme.space(3)
+        anchors.topMargin: theme.space(1)
         anchors.left: parent.left
-        anchors.right: parent.right
+        anchors.leftMargin: avatar.width + theme.space(3)
         spacing: theme.space(2)
         Label {
-            width: parent.width
+            anchors.verticalCenter: parent.verticalCenter
+            text: "A client secret is saved for this app."
             role: "ui"
-            text: root.tracker === "Anilist"
-                ? "AniList needs an app of your own to sign AniBeam in. Setup walks you through creating it, pasting its Client ID and connecting."
-                : "Create an app (App Type: \"Web\") on MyAnimeList with the redirect URL below, then paste its Client ID and secret here."
             color: theme.textDim
-            wrapMode: Text.Wrap
             font.pointSize: theme.typeSmall
         }
-        Button { text: "Set up " + root.name; icon: "log-in"; onClicked: root.setup() }
+        // An empty secret is the contract's "remove"; an absent one would keep it.
+        Button {
+            text: "Remove it"; icon: "trash-2"; flat: true; small: true
+            onClicked: {
+                var r = Door.call("SetTrackerCredentials", { tracker: root.tracker, client_id: root.account.client_id || "", client_secret: "" })
+                frame.toast(r.error ? frame.errorText(r.error) : "Client secret removed")
+            }
+        }
     }
 
-    // Nobody has run this tracker's OAuth app yet: the register help, the redirect URL to
-    // paste into it, and the client id (and, for MAL, the secret) to paste back here.
+    // MAL answered that this app is a "web" one: its secret, saved, and the flow again.
+    // Under the row rather than beside Connect, where it would squeeze the line that says
+    // why it is needed.
     Column {
-        id: creds
-        visible: root.showCreds && !root.guided
+        id: secretForm
+        visible: root.needsSecret
         anchors.top: top.bottom
-        anchors.topMargin: theme.space(3)
+        anchors.topMargin: theme.space(1)
         anchors.left: parent.left
+        anchors.leftMargin: avatar.width + theme.space(3)
         anchors.right: parent.right
         spacing: theme.space(2)
-        Note {
-            text: root.tracker === "Anilist"
-                ? "Create a new client. Paste the redirect URL below into AniList's \"Redirect URL\" field exactly as shown, including the port and the /callback path."
-                : "Create an app (App Type: \"Web\"). Paste the redirect URL below into MAL's \"App Redirect URL\" field."
+        Button {
+            objectName: "tracker-" + root.tracker + "-add-secret"
+            visible: !root.addingSecret
+            text: "Add client secret"; icon: "plus"; primary: true
+            onClicked: { root.addingSecret = true; Qt.callLater(secret.focusInput) }
         }
-        // A Flow, not a Row: at a narrow window (W=1000 is the brief's own probe) the label
-        // and the full callback URL do not fit on one line, and an unbound Row just runs
-        // the chip past the panel's edge instead of wrapping. Bound to the column's width
-        // so Flow knows when to wrap the chip to its own line, and the chip's own
-        // maxLabelWidth keeps it from overflowing even alone on that line, eliding the
-        // middle rather than clipping mid-character; the full URL still goes to the
-        // clipboard regardless of what is shown.
-        Flow {
-            width: parent.width
+        Note { visible: root.addingSecret; text: "It is the long string under \"Client Secret\" on the app's page at myanimelist.net/apiconfig." }
+        Field { id: secret; visible: root.addingSecret; width: parent.width; placeholder: "Client secret"; mono: true }
+        Row {
+            visible: root.addingSecret
             spacing: theme.space(2)
-            Label {
-                text: "Redirect URL"
-                role: "ui"
-                color: theme.textDim
-                height: redirectChip.height
-                verticalAlignment: Text.AlignVCenter
-                font.pointSize: theme.typeSmall
+            Button {
+                text: "Save and connect"; icon: "log-in"; primary: true
+                enabled: secret.text.trim() !== ""
+                onClicked: {
+                    var r = Door.setTrackerCredentials(root.tracker, root.account.client_id || "", secret.text.trim())
+                    if (r.error) { frame.toast(frame.errorText(r.error)); return }
+                    secret.text = ""
+                    frame.connectTracker(root.tracker)
+                }
             }
-            Chip {
-                id: redirectChip
-                text: root.redirectUrl
-                clickable: true
-                icon: copied.running ? "check" : "copy"
-                maxLabelWidth: parent.width - theme.space(14)
-                onClicked: { clipboard.text = root.redirectUrl; clipboard.selectAll(); clipboard.copy(); copied.restart() }
-            }
+            Button { text: "Cancel"; flat: true; onClicked: root.addingSecret = false }
         }
-        TextEdit { id: clipboard; visible: false }
-        Timer { id: copied; interval: 1200 }
-        Field { id: clientId; width: parent.width; placeholder: "Client ID"; mono: true }
-        Field { id: secret; visible: root.tracker === "Mal"; width: parent.width; placeholder: "Client secret"; mono: true }
-        Button { text: "Connect"; icon: "log-in"; onClicked: root.login(clientId.text, secret.visible ? secret.text : "") }
     }
 }

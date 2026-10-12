@@ -279,8 +279,6 @@ Item {
     function spanFor(w) { return Math.max(1, Math.ceil((w + hpad * 2 + grout) / (geo.w + grout))) }
     readonly property var headerLayout: Mosaic.header([
         // The title tile carries the count at its right and takes the row's spare columns.
-        // tracker-one-click merge: the TrackerNudge tile goes after "search" in this list
-        // (shown while no tracker is connected); the title gives up the columns it needs.
         { key: "title", span: Math.max(2, spanFor(titleLabel.implicitWidth + theme.space(6) + countRow.implicitWidth)), flex: true },
         { key: "tabs", span: spanFor(tabsSeg.implicitWidth) },
         { key: "sorts", span: spanFor(sortSeg.implicitWidth) },
@@ -318,8 +316,9 @@ Item {
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         contentWidth: width
-        // The header tiles scroll with the wall: they are its first unit rows
-        readonly property real wallTop: page.headerHeight + page.grout
+        // The header tiles scroll with the wall: they are its first unit rows, and the
+        // tracker nudge, while it stands, the full-width row under them
+        readonly property real wallTop: page.headerHeight + page.grout + (nudge.visible ? nudge.height + page.grout : 0)
         contentHeight: wallTop + page.px(page.packed.rows)
         QC.ScrollBar.vertical: scrollBar
         WheelStep { flick: flick }
@@ -574,6 +573,21 @@ Item {
             }
         }
     }
+    // ---- The tracker nudge: first run only, until a tracker is connected or it is put off.
+    // On the wall it is a full-width stone under the header, cut to whole unit rows and
+    // scrolling with it; over the empty library, where there is no wall, it is the same
+    // stone at the top of the page, since that is exactly when a new user is here. One
+    // instance either way, reparented, so its dismissal is one setting read once.
+    TrackerNudge {
+        id: nudge
+        parent: page.libraryEmpty ? page : flick.contentItem
+        x: page.spanX(0)
+        y: page.libraryEmpty ? page.grout : page.headerHeight + page.grout
+        width: page.spanW(0, page.geo.cols)
+        height: page.px(Math.max(1, Math.ceil((implicitHeight + page.grout) / page.step)))
+        opacity: page.libraryEmpty ? 1 : page.shelfIn
+    }
+
     // The scroll bar rides the right-hand joint, not the tiles' edge
     ThinScrollBar {
         id: scrollBar

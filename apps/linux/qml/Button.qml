@@ -25,6 +25,8 @@ Corner {
     smoothing: theme.cornerSmoothing
     activeFocusOnTab: takesFocus
     scale: mouse.pressed ? 0.98 : 1
+    // A disabled button takes no clicks (its MouseArea inherits `enabled`); this says so.
+    opacity: enabled ? 1 : 0.45
 
     // 0 rest, 1 hover, 2 press
     property real lift: 0

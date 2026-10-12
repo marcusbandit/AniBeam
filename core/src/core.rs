@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::{Duration, Instant};
 
@@ -89,6 +89,10 @@ pub struct Core {
     /// to a URL registered on their developer panel, so the port is part
     /// of that registration. A test moves it out of the way.
     pub(crate) oauth_port: AtomicU16,
+    /// How long, in milliseconds, the browser's callback request is held
+    /// open for the sign-in to finish before the tab is let go. A test
+    /// shortens it.
+    pub(crate) sign_in_hold_ms: AtomicU64,
     /// When the core last said out loud that Jikan was not answering.
     /// Jikan is the episode-title side-fetch, so an outage costs a series
     /// its titles rather than its match, and a job walking a whole library
@@ -129,6 +133,9 @@ const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
 /// The loopback port both providers redirect back to. Registered on their
 /// developer panels, so it is a constant rather than a preference.
 const DEFAULT_OAUTH_PORT: u16 = 53682;
+/// A minute: long past any sign-in that is going well, and short of the
+/// point where a browser gives up on the request itself.
+const DEFAULT_SIGN_IN_HOLD_MS: u64 = 60_000;
 
 /// The gap each upstream is paced to, from its published limit.
 const ANILIST_GAP: Duration = Duration::from_millis(800);
@@ -223,6 +230,7 @@ impl Core {
             aniskip,
             mal,
             oauth_port: AtomicU16::new(DEFAULT_OAUTH_PORT),
+            sign_in_hold_ms: AtomicU64::new(DEFAULT_SIGN_IN_HOLD_MS),
             jikan_outage: Mutex::new(None),
             sessions: Arc::new(Sessions::default()),
             crawl_recent: Mutex::new(HashMap::new()),
@@ -253,6 +261,15 @@ impl Core {
     #[doc(hidden)]
     pub fn set_oauth_port(&self, port: u16) {
         self.oauth_port.store(port, Ordering::SeqCst);
+    }
+
+    /// Shortens how long the browser's callback is held for a sign-in to
+    /// finish, so a test can reach the "still finishing" page without a
+    /// minute's wait. Not part of the contract either.
+    #[doc(hidden)]
+    pub fn set_sign_in_hold(&self, hold: std::time::Duration) {
+        self.sign_in_hold_ms
+            .store(hold.as_millis() as u64, Ordering::SeqCst);
     }
 
     /// The store itself, for the integration tests' fixtures: they build

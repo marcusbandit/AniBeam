@@ -2,6 +2,9 @@
 //! the --shoot arguments and, from Task 7 on, the page a shoot opens, and from Task 9 on
 //! the JSON props that page opens with. A --drive run also carries its script's text and
 //! the directory its shots land in, and the input invokables the QML driver sends through.
+//! The url of shell.conf, in the config directory, rides along for the few things QML keeps
+//! for itself (the library's tracker nudge, once dismissed), so a --root run keeps them
+//! inside its sandbox too.
 //!
 //! It is also where the session bus starts, because this object exists exactly once and
 //! exists as soon as the engine loads Main.qml. Its thread handle is what the
@@ -33,6 +36,7 @@ pub mod qobject {
         #[qproperty(i32, shoot_height)]
         #[qproperty(QString, drive)]
         #[qproperty(QString, drive_out)]
+        #[qproperty(QString, settings_url)]
         type Shell = super::ShellRust;
 
         /// A second launch, or MPRIS Raise, asked for the window; the token is the launcher's.
@@ -72,6 +76,7 @@ pub struct ShellRust {
     shoot_height: i32,
     drive: QString,
     drive_out: QString,
+    settings_url: QString,
 }
 
 impl Default for ShellRust {
@@ -102,8 +107,20 @@ impl Default for ShellRust {
             shoot_height: if shooting { a.height as i32 } else { 0 },
             drive: QString::from(drive.as_str()),
             drive_out: QString::from(drive_out.as_str()),
+            settings_url: settings_url(&crate::runtime::paths().config_dir()),
         }
     }
+}
+
+/// shell.conf as a file url QtCore's Settings can take as its `location`. Made absolute
+/// first, since a relative --root is relative to where the shell was started, and encoded
+/// by Qt rather than by string concatenation, so a `#`, `?` or `%` in the path is part of the
+/// path and not the start of a fragment, a query or an escape.
+fn settings_url(config_dir: &std::path::Path) -> QString {
+    let file = config_dir.join("shell.conf");
+    let file = std::path::absolute(&file).unwrap_or(file);
+    let url = cxx_qt_lib::QUrl::from_local_file(&QString::from(file.to_string_lossy().as_ref()));
+    QString::from(String::from_utf8_lossy(url.to_encoded().as_slice()).as_ref())
 }
 
 /// The rail's version line: the crate's version and the short commit hash `git describe`
@@ -116,17 +133,6 @@ fn release(crate_version: &str, described: &str) -> String {
     match hash {
         Some(h) => format!("{crate_version} {}", &h[1..]),
         None => crate_version.to_string(),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn release_reads_the_crate_version_and_the_hash() {
-        assert_eq!(super::release("2.0.0-dev", "1.0.0.r166.gfcfae8c"), "2.0.0-dev fcfae8c");
-        assert_eq!(super::release("2.0.0-dev", "1.0.0.r166.gfcfae8c.dirty"), "2.0.0-dev fcfae8c");
-        assert_eq!(super::release("2.0.0-dev", "2.0.0-dev"), "2.0.0-dev");
-        assert_eq!(super::release("2.0.0", "2.0.0"), "2.0.0");
     }
 }
 
@@ -180,5 +186,32 @@ impl qobject::Shell {
 
     pub fn drive_log(&self, line: &QString) {
         eprintln!("{line}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn release_reads_the_crate_version_and_the_hash() {
+        assert_eq!(super::release("2.0.0-dev", "1.0.0.r166.gfcfae8c"), "2.0.0-dev fcfae8c");
+        assert_eq!(super::release("2.0.0-dev", "1.0.0.r166.gfcfae8c.dirty"), "2.0.0-dev fcfae8c");
+        assert_eq!(super::release("2.0.0-dev", "2.0.0-dev"), "2.0.0-dev");
+        assert_eq!(super::release("2.0.0", "2.0.0"), "2.0.0");
+    }
+
+    /// The url is absolute whatever the root was given as, and the characters a url
+    /// would read as delimiters are escaped into the path.
+    #[test]
+    fn the_settings_url_is_absolute_and_escaped() {
+        let url = super::settings_url(std::path::Path::new("/tmp/a #b?c%d/anibeam")).to_string();
+        assert_eq!(url, "file:///tmp/a%20%23b%3Fc%25d/anibeam/shell.conf");
+        let relative = super::settings_url(std::path::Path::new("rel/anibeam")).to_string();
+        let cwd = std::env::current_dir().unwrap();
+        assert!(relative.starts_with("file:///"), "{relative}");
+        assert!(relative.ends_with("/rel/anibeam/shell.conf"), "{relative}");
+        assert!(
+            relative.contains(cwd.file_name().unwrap().to_str().unwrap()),
+            "{relative}"
+        );
     }
 }

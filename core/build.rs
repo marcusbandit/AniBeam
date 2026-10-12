@@ -1,8 +1,18 @@
+use std::path::Path;
 use std::process::Command;
 
+/// The tracker credentials a build bundles. Electron's Vite read them out of the
+/// workspace's `.env.local`; Cargo has no such convention, so this does the same read
+/// itself and hands each one to `option_env!` in `trackers/accounts.rs`.
+const CREDENTIALS: [&str; 3] = [
+    "ANIBEAM_ANILIST_CLIENT_ID",
+    "ANIBEAM_MAL_CLIENT_ID",
+    "ANIBEAM_MAL_CLIENT_SECRET",
+];
+
 fn main() {
-    println!("cargo:rerun-if-changed=../.git/HEAD");
-    println!("cargo:rerun-if-changed=../.git/refs/tags");
+    credentials();
+    watch_git();
     rerun_when_head_moves();
     let fallback = std::env::var("CARGO_PKG_VERSION").unwrap_or_default();
     let describe = Command::new("git")
@@ -63,4 +73,80 @@ fn rerun_when_head_moves() {
     for path in watch.into_iter().filter(|p| p.exists()) {
         println!("cargo:rerun-if-changed={}", path.display());
     }
+}
+
+/// The version below changes with HEAD and the tags, so those are watched. Asked of git
+/// rather than spelled `../.git/HEAD`: in a worktree `.git` is a file and HEAD lives under
+/// the main checkout's `.git/worktrees/`, and a path that does not exist reads to Cargo as
+/// changed on every build. Without git there is nothing to watch.
+fn watch_git() {
+    let paths = Command::new("git")
+        .args(["rev-parse", "--git-path", "HEAD", "--git-path", "refs/tags"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .unwrap_or_default();
+    for path in paths.lines().map(str::trim).filter(|p| !p.is_empty()) {
+        if Path::new(path).exists() {
+            println!("cargo:rerun-if-changed={path}");
+        }
+    }
+}
+
+/// Each credential from the environment first, so a packaging script or CI can set one
+/// without a file, then from `.env.local` at the workspace root. A value that comes out
+/// empty is not passed on at all, which `option_env!` reads as no credential.
+fn credentials() {
+    let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("../.env.local");
+    // Watched only when it exists: Cargo reads a missing file as changed, which would rerun
+    // this script and rebuild the core on every build of a clone without one. The cost is
+    // that a newly created .env.local goes unnoticed until `touch core/build.rs`.
+    if file.exists() {
+        println!("cargo:rerun-if-changed={}", file.display());
+    }
+    let local = std::fs::read_to_string(&file).unwrap_or_default();
+    for name in CREDENTIALS {
+        println!("cargo:rerun-if-env-changed={name}");
+        let value = std::env::var(name)
+            .ok()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .or_else(|| dotenv_value(&local, name))
+            .unwrap_or_default();
+        if !value.is_empty() {
+            println!("cargo:rustc-env={name}={value}");
+        }
+    }
+}
+
+/// One `KEY=VALUE` line's value, the way a dotenv file is read: comments and blank lines
+/// skipped, an `export ` prefix allowed, whitespace trimmed, one pair of matching quotes
+/// around the value stripped, and on an unquoted value a ` #` comment after it dropped.
+/// The last line naming the key wins, as it does for Vite.
+fn dotenv_value(text: &str, name: &str) -> Option<String> {
+    let mut found = None;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let line = line.strip_prefix("export ").unwrap_or(line);
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        if key.trim() != name {
+            continue;
+        }
+        let value = value.trim();
+        let quoted = ['"', '\'']
+            .iter()
+            .find_map(|q| value.strip_prefix(*q).and_then(|v| v.strip_suffix(*q)));
+        let value = match quoted {
+            Some(inner) => inner,
+            None => value.split_once(" #").map_or(value, |(v, _)| v),
+        };
+        found = Some(value.trim().to_string());
+    }
+    found.filter(|v| !v.is_empty())
 }
