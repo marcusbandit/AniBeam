@@ -166,12 +166,20 @@ Item {
     readonly property int posterUnits: unitsFor(spanW(0, lead) * 1.5)
     readonly property int titleUnits: Math.max(2, unitsFor(titleBlock.implicitHeight + pad * 2), continueBeside ? unitsFor(continueBlock.implicitHeight + pad * 2) : 0)
     function factSpan(w) { return Math.max(1, Math.ceil((w + pad * 2 + grout) / (geo.w + grout))) }
-    readonly property var factLayout: Mosaic.header(facts.map(function(f) { return { key: f.key, span: factSpan(f.width), flex: f.flex } }), rest)
-    function factSlot(key) { var t = factLayout.tiles; for (var i = 0; i < t.length; i++) if (t[i].key === key) return t[i]; return { col: 0, row: 0, colSpan: 1 } }
+    readonly property var factLayout: facts.length ? Mosaic.header(facts.map(function(f) { return { key: f.key, span: factSpan(f.width), flex: f.flex } }), rest) : ({ tiles: [], rows: 0 })
+    function factSlot(key) {
+        var t = factLayout && factLayout.tiles ? factLayout.tiles : []
+        for (var i = 0; i < t.length; i++) if (t[i].key === key) return t[i]
+        return { col: 0, row: 0, colSpan: 1 }
+    }
     readonly property int factRows: facts.length ? factLayout.rows : 0
     readonly property int bannerMin: cols >= 10 ? 4 : 3
     readonly property int bandRows: Math.max(1 + posterUnits + 1, bannerMin + titleUnits + factRows)
     readonly property int bannerUnits: bandRows - titleUnits - factRows
+    // No banner art: the title's plate takes the banner's rows too, title at its foot
+    readonly property bool hasBanner: !!(detail && detail.banner)
+    readonly property int titleTop: hasBanner ? bannerUnits : 0
+    readonly property int titleSpanUnits: hasBanner ? titleUnits : bannerUnits + titleUnits
     readonly property real bandHeight: px(bandRows)
 
     // ---- The facts: one tile each, spanned to its words
@@ -211,7 +219,7 @@ Item {
     // Every body tile's natural height snapped to whole units, and the stretch that brings
     // a column's last tile down to the taller column's foot and to the viewport's
     function colNatural(tiles) { var h = 0, n = 0; for (var i = 0; i < tiles.length; i++) if (tiles[i].visible && tiles[i].inColumn) { h += tiles[i].snapped; n++ } return n ? h + (n - 1) * grout : 0 }
-    function lastShown(tiles) { for (var i = tiles.length - 1; i >= 0; i--) if (tiles[i].visible && tiles[i].inColumn) return tiles[i]; return null }
+    function lastShown(tiles) { for (var i = tiles.length - 1; i >= 0; i--) if (tiles[i].visible && tiles[i].inColumn) return tiles[i].key; return "" }
     // Recommendations and characters go under the shorter of the two columns' own tiles
     // (measured without them), so a film's one-row ledger is not left beside a tall side
     // column. Their own heights never feed the choice, so their width can follow it.
@@ -233,6 +241,7 @@ Item {
         property real natural: 0
         property real stretch: 0
         property bool inColumn: true
+        property string key: ""
         readonly property real snapped: page.px(page.unitsFor(natural + padding * 2))
         padding: page.pad
         width: parent ? parent.width : 0
@@ -326,7 +335,8 @@ Item {
         // ---- The banner: the art across the band, or a plate in the poster's tone
         Corner {
             id: bannerTile
-            readonly property bool hasBanner: !!(detail && detail.banner)
+            readonly property bool hasBanner: page.hasBanner
+            visible: hasBanner
             x: page.spanX(page.lead); y: 0
             width: page.spanW(page.lead, page.rest); height: page.px(page.bannerUnits)
             radius: theme.radiusTile; smoothing: theme.cornerSmoothing
@@ -343,9 +353,9 @@ Item {
         // ---- The title: display cut, then the other language and the native script
         Tile {
             id: titleTile
-            x: page.spanX(page.lead); y: page.step * page.bannerUnits
+            x: page.spanX(page.lead); y: page.step * page.titleTop
             width: page.spanW(page.lead, page.rest - page.continueSpan)
-            height: page.px(page.titleUnits)
+            height: page.px(page.titleSpanUnits)
             padding: page.pad
             tone: page.tone !== "" ? page.tone : "transparent"
             Column {
@@ -430,9 +440,10 @@ Item {
             // Continue: what plays next and how far along the series is
             Stone {
                 id: continueTile
+                key: "continueTile"
                 visible: !!page.detail && page.playEpisode !== null
                 natural: continueBlock.implicitHeight
-                stretch: page.ledgerLast === continueTile ? page.ledgerStretch : 0
+                stretch: page.ledgerLast === "continueTile" ? page.ledgerStretch : 0
                 // Beside the title on a wide window; this tile is then its parent's
                 parent: page.continueBeside ? continueSlot : ledgerCol
                 inColumn: !page.continueBeside
@@ -442,7 +453,7 @@ Item {
                 Column {
                     id: continueBlock
                     width: parent.width
-                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.bottom: parent.bottom
                     spacing: theme.space(2)
                     Row {
                         width: parent.width
@@ -499,10 +510,11 @@ Item {
             // The episodes: the ledger proper
             Stone {
                 id: episodesTile
+                key: "episodesTile"
                 objectName: "series-episodes"
                 visible: page.episodes.length > 0
                 natural: episodeCol.implicitHeight
-                stretch: page.ledgerLast === episodesTile ? page.ledgerStretch : 0
+                stretch: page.ledgerLast === "episodesTile" ? page.ledgerStretch : 0
                 Column {
                     id: episodeCol
                     width: parent.width
@@ -528,9 +540,10 @@ Item {
             // Openings, endings and the rest, grouped
             Stone {
                 id: extrasTile
+                key: "extrasTile"
                 visible: !!page.detail && page.detail.extras.length > 0
                 natural: extrasCol.implicitHeight
-                stretch: page.ledgerLast === extrasTile ? page.ledgerStretch : 0
+                stretch: page.ledgerLast === "extrasTile" ? page.ledgerStretch : 0
                 Column {
                     id: extrasCol
                     width: parent.width
@@ -555,9 +568,10 @@ Item {
             // what needs reviewing
             Stone {
                 id: strayTile
+                key: "strayTile"
                 visible: !!page.detail && page.detail.unmatched_files.length > 0
                 natural: strayCol.implicitHeight
-                stretch: page.ledgerLast === strayTile ? page.ledgerStretch : 0
+                stretch: page.ledgerLast === "strayTile" ? page.ledgerStretch : 0
                 Column {
                     id: strayCol
                     width: parent.width
@@ -583,9 +597,9 @@ Item {
         Item {
             id: continueSlot
             x: page.spanX(page.lead + page.rest - page.continueSpan)
-            y: page.step * page.bannerUnits
+            y: page.step * page.titleTop
             width: page.continueBeside ? page.spanW(page.lead + page.rest - page.continueSpan, page.continueSpan) : 0
-            height: page.px(page.titleUnits)
+            height: page.px(page.titleSpanUnits)
             visible: page.continueBeside
         }
 
@@ -599,9 +613,10 @@ Item {
 
             Stone {
                 id: synopsisTile
+                key: "synopsisTile"
                 visible: !!page.detail && synopsis.text !== ""
                 natural: synopsisCol.implicitHeight
-                stretch: page.sideLast === synopsisTile ? page.sideStretch : 0
+                stretch: page.sideLast === "synopsisTile" ? page.sideStretch : 0
                 Column {
                     id: synopsisCol
                     width: parent.width
@@ -623,11 +638,12 @@ Item {
             // Tags by rank; spoiler and adult tags behind the toggle
             Stone {
                 id: tagsTile
+                key: "tagsTile"
                 readonly property var tags: page.detail ? page.detail.tags.filter(function(t) { return page.spoilers || (!t.spoiler && !t.adult) }).sort(function(a, b) { return b.rank - a.rank }) : []
                 readonly property bool anySpoiler: page.detail ? page.detail.tags.some(function(t) { return t.spoiler || t.adult }) : false
                 visible: !!page.detail && page.detail.tags.length > 0
                 natural: tagsCol.implicitHeight
-                stretch: page.sideLast === tagsTile ? page.sideStretch : 0
+                stretch: page.sideLast === "tagsTile" ? page.sideStretch : 0
                 Column {
                     id: tagsCol
                     width: parent.width
@@ -667,11 +683,12 @@ Item {
             // Relations: the franchise as small stones, in the crawl's own order
             Stone {
                 id: relationsTile
+                key: "relationsTile"
                 objectName: "series-relations"
                 readonly property var nodes: page.graph ? page.graph.nodes.filter(function(n) { return !n.current }).sort(function(a, b) { return a.y - b.y || a.x - b.x }) : []
                 visible: nodes.length > 0
                 natural: relationsCol.implicitHeight
-                stretch: page.sideLast === relationsTile ? page.sideStretch : 0
+                stretch: page.sideLast === "relationsTile" ? page.sideStretch : 0
                 Column {
                     id: relationsCol
                     width: parent.width
@@ -695,10 +712,11 @@ Item {
 
             Stone {
                 id: recommendationsTile
+                key: "recommendationsTile"
                 parent: page.peopleLeft ? ledgerCol : sideCol
                 visible: !!page.detail && page.detail.recommendations.length > 0
                 natural: recCol.implicitHeight
-                stretch: page.sideLast === recommendationsTile ? page.sideStretch : page.ledgerLast === recommendationsTile ? page.ledgerStretch : 0
+                stretch: page.sideLast === "recommendationsTile" ? page.sideStretch : page.ledgerLast === "recommendationsTile" ? page.ledgerStretch : 0
                 Column {
                     id: recCol
                     width: parent.width
@@ -713,10 +731,11 @@ Item {
 
             Stone {
                 id: charactersTile
+                key: "charactersTile"
                 parent: page.peopleLeft ? ledgerCol : sideCol
                 visible: !!page.detail && page.detail.characters.length > 0
                 natural: charCol.implicitHeight
-                stretch: page.sideLast === charactersTile ? page.sideStretch : page.ledgerLast === charactersTile ? page.ledgerStretch : 0
+                stretch: page.sideLast === "charactersTile" ? page.sideStretch : page.ledgerLast === "charactersTile" ? page.ledgerStretch : 0
                 Column {
                     id: charCol
                     width: parent.width

@@ -24,9 +24,12 @@ Item {
 
     readonly property bool twoUp: width >= 2 * theme.space(100) + columnGap
     readonly property real leftW: twoUp ? Math.round((width - columnGap) * split) : width
-    function anyGrows(rep) { for (var i = 0; i < rep.count; i++) { var d = rep.itemAt(i); if (d && d.item && d.item.grows === true) return true } return false }
-    readonly property bool leadGrows: anyGrows(leadRep)
-    readonly property bool trailGrows: anyGrows(trailRep)
+    // Bumped as each panel loads: itemAt() is not a property, so without it the answer
+    // below would be read once, before the Loaders had their panels, and stay false
+    property int loaded: 0
+    function anyGrows(rep, n) { for (var i = 0; i < rep.count; i++) { var d = rep.itemAt(i); if (d && d.item && d.item.grows === true) return true } return false }
+    readonly property bool leadGrows: anyGrows(leadRep, loaded)
+    readonly property bool trailGrows: anyGrows(trailRep, loaded)
     readonly property bool grows: leadGrows || trailGrows
     readonly property real natural: twoUp ? Math.max(leadCol.implicitHeight, trailCol.implicitHeight)
                                           : leadCol.implicitHeight + rowGap + trailCol.implicitHeight
@@ -51,6 +54,7 @@ Item {
             Loader {
                 required property var modelData
                 sourceComponent: modelData
+                onLoaded: pair.loaded++
                 Layout.fillWidth: true
                 Layout.fillHeight: item ? item.grows === true : false
                 Layout.minimumHeight: item ? item.implicitHeight : 0
@@ -71,6 +75,7 @@ Item {
             Loader {
                 required property var modelData
                 sourceComponent: modelData
+                onLoaded: pair.loaded++
                 Layout.fillWidth: true
                 Layout.fillHeight: item ? item.grows === true : false
                 Layout.minimumHeight: item ? item.implicitHeight : 0
