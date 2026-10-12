@@ -107,6 +107,12 @@ pub struct Core {
     /// so the core keeps a `Weak` to itself from `Arc::new_cyclic` and
     /// upgrades it.
     me: Weak<Core>,
+    /// Off unless a shell turns it on: the whole-library load is kept for
+    /// the rest of its state generation (`library::reads`). Off by default
+    /// because a test that writes rows behind the core's back emits no
+    /// event and would read its own stale load.
+    pub(crate) snapshot_cache: AtomicBool,
+    pub(crate) kept_load: Mutex<Option<crate::library::reads::KeptLoad>>,
     started: AtomicBool,
     closed: AtomicBool,
 }
@@ -221,6 +227,8 @@ impl Core {
             sessions: Arc::new(Sessions::default()),
             crawl_recent: Mutex::new(HashMap::new()),
             me: me.clone(),
+            snapshot_cache: AtomicBool::new(false),
+            kept_load: Mutex::new(None),
             started: AtomicBool::new(false),
             closed: AtomicBool::new(false),
         }))
@@ -706,6 +714,16 @@ impl Core {
             Call::Import { path } => Ok(Reply::Started {
                 job: transfer::import::start(self, &path)?,
             }),
+        }
+    }
+
+    /// Keeps the whole-library load for the rest of its state generation
+    /// (at most 30 seconds), so reads in one beat share one snapshot. For a
+    /// shell whose every write goes through calls; off by default.
+    pub fn set_snapshot_cache(&self, on: bool) {
+        self.snapshot_cache.store(on, Ordering::Relaxed);
+        if !on {
+            *self.kept_load.lock().unwrap() = None;
         }
     }
 

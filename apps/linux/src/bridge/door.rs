@@ -393,6 +393,10 @@ impl cxx_qt::Initialize for qobject::Door {
             qt: self.qt_thread(),
         }));
         self.as_mut().rust_mut().subscription = Some(sub);
+        // Every write the shell makes goes through a call that emits, so the core may keep
+        // its whole-library load for the rest of a generation; the same switch as the
+        // Door's own read cache.
+        core.set_snapshot_cache(std::env::var("ANIBEAM_READ_CACHE").as_deref() != Ok("0"));
         if let Err(e) = core.start() {
             eprintln!("anibeam: core start: {e}");
         }

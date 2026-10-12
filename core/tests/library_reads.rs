@@ -461,3 +461,43 @@ fn watched_series_move_to_their_own_tab_until_shown_again() {
 
     drop(dir);
 }
+
+/// The kept snapshot: reads in one state generation share one load, and the
+/// event a write emits makes the next read load again. The fixture insert
+/// in the middle goes behind the core's back, which is exactly what the
+/// cache cannot see, so it is how the test tells a kept load from a fresh one.
+#[test]
+fn a_kept_snapshot_lasts_until_a_change_event() {
+    let (_dir, core, _c) = common::open_core();
+    core.set_snapshot_cache(true);
+    let src = fixtures::insert_source(&core, "/lib");
+    let first = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/A", "A");
+    let ids = || match core
+        .call(Call::ListSeries {
+            tab: Tab::All,
+            query: String::new(),
+            sort: Sort::Alpha,
+            direction: Direction::Asc,
+            reveal_hidden: false,
+        })
+        .unwrap()
+    {
+        Reply::Series { series } => series.iter().map(|s| s.id).collect::<Vec<_>>(),
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(ids(), vec![first]);
+
+    let second = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/B", "B");
+    assert_eq!(ids(), vec![first], "no event, so the kept load stands");
+
+    core.call(Call::SetHidden {
+        series: first,
+        hidden: true,
+    })
+    .unwrap();
+    assert_eq!(ids(), vec![second], "SetHidden's event made the read load again");
+
+    core.set_snapshot_cache(false);
+    let third = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/C", "C");
+    assert_eq!(ids(), vec![second, third], "off, every read loads");
+}

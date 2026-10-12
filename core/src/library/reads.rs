@@ -43,13 +43,50 @@ fn in_tab(c: &SeriesCard, tab: Tab, show_watched: bool) -> bool {
 
 /// One whole-library read: the cards, the series whose poster is missing,
 /// and the cover url behind each poster actually handed out.
-struct Loaded {
+#[derive(Clone)]
+pub(crate) struct Loaded {
     cards: Vec<SeriesCard>,
     gaps: Vec<u64>,
     posters: HashMap<u64, String>,
 }
 
+/// The last whole-library load, kept for the reads that follow it in the
+/// same state generation when a shell has turned the cache on
+/// (`Core::set_snapshot_cache`). A list, the rail and the pool reading in
+/// one beat with different arguments then pay for one snapshot.
+pub(crate) struct KeptLoad {
+    generation: u64,
+    at: std::time::Instant,
+    loaded: Loaded,
+}
+
+/// As long as a kept load may stand with nothing changed: the cards follow
+/// the time of day (an episode airs, the rail and the tabs move).
+const KEEP_FOR: std::time::Duration = std::time::Duration::from_secs(30);
+
 fn load_all(core: &Core) -> Result<Loaded, CoreError> {
+    if !core.snapshot_cache.load(std::sync::atomic::Ordering::Relaxed) {
+        return load_fresh(core);
+    }
+    // Read before the load, so a change that lands during it leaves the
+    // load stamped with the generation it may not have seen.
+    let generation = core.generation();
+    if let Some(kept) = core.kept_load.lock().unwrap().as_ref()
+        && kept.generation == generation
+        && kept.at.elapsed() < KEEP_FOR
+    {
+        return Ok(kept.loaded.clone());
+    }
+    let loaded = load_fresh(core)?;
+    *core.kept_load.lock().unwrap() = Some(KeptLoad {
+        generation,
+        at: std::time::Instant::now(),
+        loaded: loaded.clone(),
+    });
+    Ok(loaded)
+}
+
+fn load_fresh(core: &Core) -> Result<Loaded, CoreError> {
     let images_dir = core.paths.images_dir();
     let now = time::now();
     core.store.read(|c| {
