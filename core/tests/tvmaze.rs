@@ -1236,3 +1236,68 @@ fn a_tvmaze_match_to_a_missing_show_keeps_the_old_match() {
     assert_avatar_drawn(&core, series);
     core.shutdown();
 }
+
+/// A match the user cleared stays out of the auto-match across a version
+/// bump, while a real miss from the older version is tried again.
+#[test]
+fn a_cleared_match_survives_a_version_bump_and_a_v1_miss_does_not() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let (cleared, _) = avatar(&core);
+    push_show(&http);
+    let job = started(
+        &core,
+        Call::ApplyMatch {
+            series: cleared,
+            target: MatchTarget::Tvmaze { id: 83073 },
+        },
+    );
+    common::wait_job(&c, job);
+    core.call(Call::ClearMatch { series: cleared }).unwrap();
+
+    let src = fixtures::insert_source(&core, "/tv2");
+    let missed = fixtures::insert_series(&core, src, SeriesKind::Show, "/tv2/Zzz", "Zzz");
+    fixtures::insert_file(&core, missed, "/tv2/Zzz/01.mkv", 1.0, None, "episode", 1);
+    core.store()
+        .write(move |c| {
+            c.execute(
+                "UPDATE series SET attempted_at = 100, attempt_version = 1 WHERE id = ?1",
+                params![missed as i64],
+            )?;
+            c.execute(
+                "INSERT INTO settings (key, value) VALUES ('auto_match_version', '1')
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                [],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    let before = http.requests().len();
+    http.push_for("graphql.anilist.co", 200, anilist_search(json!([])));
+    http.push_for("search/shows?q=Zzz", 200, "[]");
+
+    let job = started(&core, Call::AutoMatch);
+    let done = common::wait_job(&c, job);
+    assert!(
+        matches!(
+            done.body,
+            EventBody::AutoMatchFinished {
+                matched: 0,
+                unmatched: 1,
+                ..
+            }
+        ),
+        "{done:?}"
+    );
+    let urls: Vec<String> = http
+        .requests()
+        .into_iter()
+        .skip(before)
+        .map(|r| r.url)
+        .collect();
+    assert_eq!(urls.len(), 2, "{urls:#?}");
+    assert!(urls.iter().all(|u| !u.contains("Avatar")), "{urls:#?}");
+    assert_eq!(match_row(&core, cleared).0, None);
+    assert!(attempted_at(&core, cleared).is_some());
+    core.shutdown();
+}

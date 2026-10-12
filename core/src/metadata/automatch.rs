@@ -13,10 +13,11 @@
 //! accepted is the match; the next is only asked when this one missed.
 //!
 //! One attempt per series, ever. A miss stamps `attempted_at` once every
-//! provider has missed, so the next run walks past it rather than asking
-//! the same questions again; the manual picker is the recovery, and
-//! `AUTO_MATCH_VERSION` is how a change to these rules earns the whole
-//! library a second look.
+//! provider has answered with a miss, so the next run walks past it rather
+//! than asking the same questions again; the manual picker is the
+//! recovery, and `AUTO_MATCH_VERSION` is how a change to these rules earns
+//! every miss a second look. A match the user cleared is stamped too, with
+//! no version beside it, so no version bump ever brings it back.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -45,8 +46,9 @@ use crate::time;
 pub const THRESHOLD: f64 = 0.5;
 
 /// Bumped when the matcher's rules change. A stored version below this one
-/// clears every failed attempt so the whole library is tried again under
-/// the new rules; a match already made is never touched. Version 2 is the
+/// clears every failed attempt stamped under an older version so the whole
+/// library is tried again under the new rules; a match already made, and a
+/// match the user cleared, are never touched. Version 2 is the
 /// provider order: every series AniList alone missed gets its TVmaze turn.
 pub const AUTO_MATCH_VERSION: u32 = 2;
 
@@ -279,8 +281,14 @@ pub fn start(core: &Arc<Core>) -> u64 {
                 if stored >= AUTO_MATCH_VERSION {
                     return Ok(0u64);
                 }
-                let cleared =
-                    tx.execute("UPDATE series SET attempted_at = NULL, attempt_version = NULL WHERE provider IS NULL AND attempted_at IS NOT NULL", [])?;
+                // A row with an attempt and no version is a match the user
+                // cleared: it stays out, whatever the version.
+                let cleared = tx.execute(
+                    "UPDATE series SET attempted_at = NULL, attempt_version = NULL
+                     WHERE provider IS NULL AND attempted_at IS NOT NULL
+                       AND attempt_version IS NOT NULL AND attempt_version < ?1",
+                    params![i64::from(AUTO_MATCH_VERSION)],
+                )?;
                 settings::set(tx, settings::AUTO_MATCH_VERSION, &AUTO_MATCH_VERSION)?;
                 Ok(cleared as u64)
             })
@@ -369,17 +377,21 @@ pub fn start(core: &Arc<Core>) -> u64 {
     })
 }
 
-/// Takes a series' identity away again. `attempted_at` deliberately stays:
-/// the user cleared the match because it was wrong, and the same search
-/// would only find the same wrong answer, so the series stays out of the
-/// auto-match's way until the manual picker gives it one.
+/// Takes a series' identity away again, and keeps the auto-match off it
+/// for good: the user cleared the match because it was wrong, and the same
+/// search would only find the same wrong answer, so the series stays out
+/// of the auto-match's way until the manual picker gives it one. That is
+/// an attempt with no version beside it, which the version guard never
+/// resets, unlike a miss, which always carries the version that made it.
 pub fn clear_match(core: &Core, series: u64) -> Result<Reply, CoreError> {
+    let now = time::now_secs();
     let changed = core.store.write(move |c| {
         Ok(c.execute(
             "UPDATE series SET provider = NULL, anilist_id = NULL, mal_id = NULL, tmdb_id = NULL, tmdb_kind = NULL,
-                    tvmaze_id = NULL, confirmed = 0, matched_at = NULL
+                    tvmaze_id = NULL, confirmed = 0, matched_at = NULL,
+                    attempted_at = COALESCE(attempted_at, ?2), attempt_version = NULL
              WHERE id = ?1",
-            params![series as i64],
+            params![series as i64, now],
         )?)
     })?;
     if changed == 0 {
