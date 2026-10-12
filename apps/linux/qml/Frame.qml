@@ -223,7 +223,7 @@ FocusScope {
         Frost {
             id: tip
             visible: false
-            radius: theme.radiusInner(theme.space(1))
+            radius: theme.radiusTile
             width: tipText.implicitWidth + theme.space(4); height: tipText.implicitHeight + theme.space(2)
             Label { id: tipText; anchors.centerIn: parent; role: "ui"; font.pointSize: theme.typeSmall }
         }

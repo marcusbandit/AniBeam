@@ -19,9 +19,14 @@ Item {
     function openAt(anchor, currentScore) {
         current = currentScore
         draft = currentScore >= 0 ? currentScore : 8.0
-        var p = anchor.mapToItem(root, 0, anchor.height)
-        panel.x = Math.min(p.x, root.width - panel.width - theme.space(2))
-        panel.y = Math.min(p.y + theme.space(1), root.height - panel.height - theme.space(2))
+        // Under the anchor, or under the whole raised tile it sits on (the player's rating
+        // prompt), so the picker never covers the tile's own foot
+        var foot = anchor
+        for (var a = anchor.parent; a; a = a.parent) if (a.raised === true) { foot = a; break }
+        var px = anchor.mapToItem(root, 0, anchor.height).x
+        var py = foot.mapToItem(root, 0, foot.height).y
+        panel.x = Math.max(theme.space(2), Math.min(px, root.width - panel.width - theme.space(2)))
+        panel.y = Math.max(theme.space(2), Math.min(py + theme.space(1), root.height - panel.height - theme.space(2)))
         if (!open) prevFocus = frame.hostWindow ? frame.hostWindow.activeFocusItem : null
         open = true
         frame.escapeStack.push("popover", root)

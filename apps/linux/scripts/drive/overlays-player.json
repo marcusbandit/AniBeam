@@ -42,6 +42,7 @@
   {"eval": "frame.item.pageItem.ratingPrompt.visible = true", "expect": true},
   {"click": "player-rate"}, {"wait": 400},
   {"eval": "driver.item.findItem('score-picker-panel').parent.draft", "expect": 8},
+  {"eval": "(function() { var p = driver.item.findItem('score-picker-panel'), t = driver.item.findItem('player-rating'); return p.mapToItem(null, 0, 0).y >= t.mapToItem(null, 0, t.height).y })()", "expect": true},
   {"key": "Down"}, {"wait": 50},
   {"eval": "driver.item.findItem('score-picker-panel').parent.draft", "expect": 8.1},
   {"key": "Up"}, {"key": "Up"}, {"wait": 50},
