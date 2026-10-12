@@ -47,8 +47,10 @@ Item {
         var y = theme.space(6) + i * theme.controlHeight
         trackList.contentY = Math.max(0, Math.min(trackList.contentHeight - trackList.height, y - (trackList.height - theme.controlHeight) / 2))
     }
-    onWidthChanged: if (open) place()
-    onHeightChanged: if (open) place()
+    // Deferred a tick: the picker resizes with the window before the chrome lays its
+    // buttons out again, so placing at once reads the anchor's old position.
+    onWidthChanged: if (open) Qt.callLater(root.place)
+    onHeightChanged: if (open) Qt.callLater(root.place)
     // Guarded the same way close() is: a second openAt on a picker already up would count
     // itself twice into page.openMenus and the chrome would never hide again.
     function openAt(anchor) {
