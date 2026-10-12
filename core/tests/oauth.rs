@@ -665,6 +665,35 @@ fn bundled_credentials_follow_the_bundled_id_alone() {
     }
 }
 
+/// The secret's three answers: absent keeps it, so re-saving the id does
+/// not mean pasting it again; empty removes it; a value replaces it.
+#[test]
+fn an_absent_secret_keeps_and_an_empty_one_removes() {
+    // A bundled secret would still report as present after the removal.
+    if accounts::bundled_client_secret(Tracker::Mal).is_some() {
+        return;
+    }
+    let (_dir, core, _c) = common::open_core();
+    let save = |secret: Option<&str>| {
+        core.call(Call::SetTrackerCredentials {
+            tracker: Tracker::Mal,
+            client_id: "mid".into(),
+            client_secret: secret.map(str::to_string),
+        })
+        .unwrap();
+        match core.call(Call::GetTrackers).unwrap() {
+            Reply::Trackers { state } => state.mal.has_client_secret,
+            other => panic!("{other:?}"),
+        }
+    };
+    assert!(save(Some("sec")));
+    assert!(save(None), "re-saving the id dropped the secret");
+    assert!(!save(Some("")), "an empty secret did not remove it");
+    assert!(!save(None));
+    assert!(save(Some("  again  ")));
+    assert!(!save(Some("   ")));
+}
+
 /// A connect whose port is still held waits for it instead of failing at
 /// once. That is not a hypothetical: a new connect cancels the flow in
 /// flight, and that flow's listener is dropped by its own task, so a

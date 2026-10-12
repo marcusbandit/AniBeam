@@ -197,12 +197,34 @@ pub fn effective_credentials(
         .ok_or_else(|| {
             CoreError::invalid("client_id", format!("No client ID set for {}.", t.label()))
         })?;
-    let client_secret = core
+    let stored_secret = core
         .secrets()
         .get(&secret_key(t), row.secret_store)?
-        .map(|(value, _)| value)
-        .or_else(|| bundled_client_secret(t).map(str::to_string));
+        .map(|(value, _)| value);
+    let client_secret = pick_secret(
+        &client_id,
+        stored_secret,
+        bundled_client_id(t),
+        bundled_client_secret(t),
+    );
     Ok((client_id, client_secret))
+}
+
+/// The secret a flow sends with `client_id`. A pasted secret always: the
+/// user put it there for the id they use. The bundled one only when the id
+/// is the bundled id as well, since a secret belongs to one app, and the
+/// project's secret sent with a user's own id is a guaranteed refusal.
+fn pick_secret(
+    client_id: &str,
+    stored: Option<String>,
+    bundled_id: Option<&str>,
+    bundled_secret: Option<&str>,
+) -> Option<String> {
+    stored.or_else(|| {
+        bundled_secret
+            .filter(|_| bundled_id == Some(client_id))
+            .map(str::to_string)
+    })
 }
 
 /// `effective_credentials` from inside a job, on the blocking pool for the
@@ -222,8 +244,11 @@ pub(crate) async fn credentials_async(
 // The calls ------------------------------------------------------------------
 
 /// The Trackers tab's Save. The id is stored whether or not the tracker is
-/// connected; an empty or absent secret keeps whatever is already stored,
-/// so a user re-saving an id does not have to paste the secret again.
+/// connected. The secret has three answers: absent keeps whatever is
+/// already stored, so a user re-saving an id does not have to paste the
+/// secret again; empty (or only whitespace) removes the stored one, which
+/// is the only way to take back a secret pasted for an app that turned out
+/// to need none; anything else is stored.
 pub fn set_credentials(
     core: &Core,
     t: Tracker,
@@ -231,8 +256,11 @@ pub fn set_credentials(
     client_secret: Option<&str>,
 ) -> Result<Reply, CoreError> {
     let client_id = client_id.trim().to_string();
-    let secret = client_secret.map(str::trim).filter(|s| !s.is_empty());
-    let store = match secret {
+    let store = match client_secret.map(str::trim) {
+        Some("") => {
+            core.secrets().delete(&secret_key(t))?;
+            None
+        }
         Some(secret) => Some(core.secrets().set(&secret_key(t), secret)?),
         None => None,
     };
@@ -682,6 +710,29 @@ mod tests {
             CoreError::Provider { message, .. } => assert!(message.contains("invalid_grant")),
             other => panic!("{other:?}"),
         }
+    }
+
+    /// A bundled secret belongs to the bundled app: it rides with the
+    /// bundled id and never with an id the user pasted. A pasted secret
+    /// always rides.
+    #[test]
+    fn the_bundled_secret_goes_only_with_the_bundled_id() {
+        let some = |s: &str| Some(s.to_string());
+        assert_eq!(
+            pick_secret("bid", None, Some("bid"), Some("bsec")),
+            some("bsec")
+        );
+        assert_eq!(pick_secret("mine", None, Some("bid"), Some("bsec")), None);
+        assert_eq!(pick_secret("mine", None, None, Some("bsec")), None);
+        assert_eq!(
+            pick_secret("mine", some("msec"), Some("bid"), Some("bsec")),
+            some("msec")
+        );
+        assert_eq!(
+            pick_secret("bid", some("msec"), Some("bid"), Some("bsec")),
+            some("msec")
+        );
+        assert_eq!(pick_secret("bid", None, Some("bid"), None), None);
     }
 
     #[test]
