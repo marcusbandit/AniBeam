@@ -50,8 +50,8 @@ Corner {
         anchors.right: parent.right; anchors.rightMargin: root.pad
         anchors.verticalCenter: parent.verticalCenter
         spacing: theme.space(2)
-        Button { objectName: "nudge-anilist"; text: "Connect AniList"; icon: "log-in"; primary: true; onClicked: frame.openConnect("Anilist") }
-        Button { objectName: "nudge-mal"; text: "Connect MyAnimeList"; icon: "log-in"; onClicked: frame.openConnect("Mal") }
+        ConnectButton { objectName: "nudge-anilist"; tracker: "Anilist"; text: "Connect AniList"; icon: "log-in"; primary: true; onClicked: frame.openConnect("Anilist") }
+        ConnectButton { objectName: "nudge-mal"; tracker: "Mal"; text: "Connect MyAnimeList"; icon: "log-in"; onClicked: frame.openConnect("Mal") }
         Button { objectName: "nudge-dismiss"; text: "Not now"; flat: true; onClicked: kept.trackerNudgeDismissed = true }
     }
 }

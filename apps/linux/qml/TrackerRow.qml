@@ -128,7 +128,7 @@ Item {
     }
     Component {
         id: connectButton
-        Button { text: "Connect"; icon: "log-in"; primary: !root.needsSecret; onClicked: frame.openConnect(root.tracker) }
+        ConnectButton { objectName: "tracker-" + root.tracker + "-connect"; tracker: root.tracker; text: "Connect"; icon: "log-in"; primary: !root.needsSecret; onClicked: frame.openConnect(root.tracker) }
     }
 
     // MAL answered that this app is a "web" one: its secret, saved, and the flow again.

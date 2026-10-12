@@ -168,19 +168,31 @@ FocusScope {
     property var signInUrls: ({})      // the authorize url, to open it again
     property var connectErrors: ({})   // why the last connect did not finish
     property var connectedAs: ({})     // who the last connect signed in as
+    // Bookkeeping by job id rather than by tracker, because the core's events are: a late
+    // event of a replaced job must never touch the job that replaced it.
+    property var jobTrackers: ({})     // job id -> tracker, for every connect started here
+    property var latestJob: ({})       // tracker -> the job id of its most recent connect
+    property var expectedCancels: ({}) // job id -> true, for the cancels asked for here
     function trackerName(t) { return t === "Mal" ? "MyAnimeList" : "AniList" }
     function trackerAccount(t) { return (t === "Mal" ? Door.trackers.mal : Door.trackers.anilist) || ({}) }
     // Bundled with the build or pasted earlier: either way one click is all a connect needs.
     function hasCredentials(t) { var a = trackerAccount(t); return a.bundled_credentials === true || (a.client_id || "") !== "" }
+    // The core runs one sign-in at a time (they share the loopback port), so starting one
+    // tracker's would cancel the other's mid-flow. Every Connect asks this first and stands
+    // disabled, with the reason as its tip, while the other tracker's browser is out.
+    function connectBlockedBy(t) {
+        var other = t === "Mal" ? "Anilist" : "Mal"
+        return connecting[other] !== undefined ? other : ""
+    }
+    function blockedTip(t) {
+        var other = connectBlockedBy(t)
+        return other === "" ? "" : "Finish the " + trackerName(other) + " sign-in first"
+    }
     function withKey(map, key, value) {
         var out = {}
-        for (var k in map) if (k !== key) out[k] = map[k]
+        for (var k in map) if (k !== String(key)) out[k] = map[k]
         if (value !== undefined) out[key] = value
         return out
-    }
-    function trackerOfJob(job) {
-        for (var k in connecting) if (connecting[k] === job) return k
-        return ""
     }
     // The core's error message reads "Mal: ..." or "invalid client_id: ...", the shape the
     // log wants; a person reading why their sign-in stopped wants the sentence after it.
@@ -190,60 +202,87 @@ FocusScope {
         return m === "" ? "The sign-in did not finish." : m.charAt(0).toUpperCase() + m.slice(1)
     }
     // Starts the flow; the browser opens when the core says the listener is up. True when
-    // a job started, false with the reason in connectErrors when the call was refused.
+    // a job started, false with the reason in connectErrors when the call was refused or
+    // the other tracker's sign-in is still out.
     function connectTracker(t) {
+        if (connectBlockedBy(t) !== "") { toast(blockedTip(t)); return false }
         connectErrors = withKey(connectErrors, t)
         connectedAs = withKey(connectedAs, t)
         signInUrls = withKey(signInUrls, t)
+        // A second connect of the same tracker replaces the first: the core cancels it,
+        // and that cancel was asked for.
+        if (connecting[t] !== undefined) expectedCancels = withKey(expectedCancels, connecting[t], true)
         var r = Door.connectTracker(t)
         if (r.error) { connectErrors = withKey(connectErrors, t, errorText(r.error)); return false }
         connecting = withKey(connecting, t, r.reply.job)
+        jobTrackers = withKey(jobTrackers, r.reply.job, t)
+        latestJob = withKey(latestJob, t, r.reply.job)
         return true
     }
     function cancelConnect(t) {
-        if (connecting[t] !== undefined) Door.cancelJob(connecting[t])
-        connecting = withKey(connecting, t)
+        if (connecting[t] === undefined) return
+        expectedCancels = withKey(expectedCancels, connecting[t], true)
+        Door.cancelJob(connecting[t])
     }
     function reopenSignIn(t) { if (signInUrls[t]) Qt.openUrlExternally(signInUrls[t]) }
     // One click: with credentials the browser opens at once and the sheet only says where
     // to finish; without them the sheet walks the set-up first.
     function openConnect(t) {
         t = t || "Anilist"
+        if (connectBlockedBy(t) !== "") { toast(blockedTip(t)); return }
         if (hasCredentials(t) && connecting[t] === undefined) connectTracker(t)
         connectSheet.openFor(t)
     }
     Connections {
         target: Door
-        function onAuthUrlReady(t, openUrl, redirectUrl) {
+        // Only the url of the job this tracker is waiting on: one from a flow since replaced
+        // would open a sign-in page whose listener is already gone.
+        function onAuthUrlReady(t, openUrl, redirectUrl, job) {
+            if (frame.connecting[t] !== job) return
             frame.signInUrls = frame.withKey(frame.signInUrls, t, openUrl)
             // A capture run draws the waiting state; it never opens the owner's browser.
             if (Shell.shoot === "" && Shell.driveOut === "") Qt.openUrlExternally(openUrl)
         }
+        // Door sends this ahead of the body's own signal for every terminal event, so it is
+        // where a finished job stops being the one a tracker waits on, by id: a replaced
+        // job's late end cannot clear the job that replaced it.
+        function onJobFinished(job, kind, ok) {
+            if (kind !== "ConnectTracker") return
+            var t = frame.jobTrackers[job]
+            if (t === undefined) return
+            if (frame.connecting[t] === job) frame.connecting = frame.withKey(frame.connecting, t)
+            if (ok) frame.jobTrackers = frame.withKey(frame.jobTrackers, job)
+        }
+        // The toast, the receipt and the raise; the bookkeeping is onJobFinished's.
         function onTrackerConnected(t, username) {
-            frame.connecting = frame.withKey(frame.connecting, t)
             frame.connectedAs = frame.withKey(frame.connectedAs, t, username || frame.trackerName(t))
             frame.toast("Connected to " + frame.trackerName(t) + " as " + (username || "?"))
             // The user is in the browser tab that just closed; bring them back to the app.
             if (frame.hostWindow) Shell.raiseWindow(frame.hostWindow, "")
         }
-        // Failed and cancelled come after the finished-job signal, so the job is looked up
-        // here, by id, rather than cleared there: a connect superseded by a newer one for
-        // the same tracker is cancelled by the core and must not clear the newer job.
         function onJobFailed(job, kind, error) {
             if (kind !== "ConnectTracker") return
-            var t = frame.trackerOfJob(job)
-            if (t === "") return
-            frame.connecting = frame.withKey(frame.connecting, t)
+            var t = frame.jobTrackers[job]
+            if (t === undefined) return
+            frame.jobTrackers = frame.withKey(frame.jobTrackers, job)
+            if (frame.latestJob[t] !== job) return
             var message = frame.errorText(error)
             frame.connectErrors = frame.withKey(frame.connectErrors, t, message)
             // The sheet says it inline when it is up for this tracker; a toast as well would
             // be the same sentence twice.
             if (!connectSheet.visible || connectSheet.tracker !== t) frame.toast(message, 6)
         }
+        // A cancel nobody here asked for is a sign-in that stopped under the user. Nothing in
+        // the shell starts a connect behind the frame's back today, so this is the guard for
+        // the day something does and replaces this one: the user is told, not left waiting.
         function onJobCancelled(job, kind) {
             if (kind !== "ConnectTracker") return
-            var t = frame.trackerOfJob(job)
-            if (t !== "") frame.connecting = frame.withKey(frame.connecting, t)
+            var t = frame.jobTrackers[job]
+            if (t === undefined) return
+            frame.jobTrackers = frame.withKey(frame.jobTrackers, job)
+            var asked = frame.expectedCancels[job] === true
+            frame.expectedCancels = frame.withKey(frame.expectedCancels, job)
+            if (!asked && frame.latestJob[t] === job) frame.toast("The " + frame.trackerName(t) + " sign-in stopped")
         }
     }
 

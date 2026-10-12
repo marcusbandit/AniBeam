@@ -218,8 +218,9 @@ Item {
                     enabled: root.signInUrl !== ""
                     onClicked: frame.reopenSignIn(root.tracker)
                 }
-                Button {
+                ConnectButton {
                     visible: !root.waiting
+                    tracker: root.tracker
                     text: "Connect"; icon: "log-in"; primary: true
                     onClicked: frame.connectTracker(root.tracker)
                 }
@@ -254,8 +255,9 @@ Item {
                         enabled: secretRetry.text.trim() !== ""
                         onClicked: root.saveAndConnect(root.account.client_id || "", secretRetry.text.trim())
                     }
-                    Button {
+                    ConnectButton {
                         visible: !root.needsSecret
+                        tracker: root.tracker
                         text: "Try again"; icon: "rotate-ccw"; primary: true
                         onClicked: frame.connectTracker(root.tracker)
                     }

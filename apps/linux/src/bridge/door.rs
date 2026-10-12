@@ -267,11 +267,14 @@ pub mod qobject {
         #[qsignal]
         fn trackers_changed(self: Pin<&mut Door>, state: QJsonObject);
         #[qsignal]
+        /// `job` is the connect job the url belongs to, so a shell can drop the url of a
+        /// flow it has since replaced instead of opening a sign-in nobody is waiting on.
         fn auth_url_ready(
             self: Pin<&mut Door>,
             tracker: QString,
             open_url: QString,
             redirect_url: QString,
+            job: f64,
         );
         #[qsignal]
         fn tracker_connected(self: Pin<&mut Door>, tracker: QString, username: QString);
@@ -671,7 +674,7 @@ impl qobject::Door {
             EventBody::TrackersChanged { .. } => self.as_mut().put_trackers(obj("state")),
             EventBody::AuthUrlReady { .. } => {
                 self.as_mut()
-                    .auth_url_ready(s("tracker"), s("open_url"), s("redirect_url"))
+                    .auth_url_ready(s("tracker"), s("open_url"), s("redirect_url"), job_id)
             }
             EventBody::TrackerConnected { .. } => {
                 self.as_mut().tracker_connected(s("tracker"), s("username"))
