@@ -56,8 +56,9 @@ Item {
 
     Blocker { anchors.fill: parent; dismissOnPress: true; onDismissed: root.close() }
 
-    // The key column is one width across every group, so the descriptions line up.
-    property real capWidth: theme.space(24)
+    // The key column is one width across every group, the widest chip's, so every
+    // description starts the same distance from its column's edge.
+    property real capWidth: 0
     readonly property real gap: theme.space(8)
     readonly property real margin: theme.space(4)
     // Side by side when the three fit inside the window, else one above the next.
@@ -112,8 +113,10 @@ Item {
                                     spacing: theme.space(3)
                                     Item {
                                         anchors.verticalCenter: parent.verticalCenter
-                                        width: Math.max(root.capWidth, cap.implicitWidth); height: cap.height
-                                        Chip { id: cap; text: modelData[0]; color: theme.tile; textColor: theme.text }
+                                        width: root.capWidth; height: cap.height
+                                        Chip { id: cap; text: modelData[0]; color: theme.tile; textColor: theme.text
+                                            onImplicitWidthChanged: root.capWidth = Math.max(root.capWidth, implicitWidth)
+                                            Component.onCompleted: root.capWidth = Math.max(root.capWidth, implicitWidth) }
                                     }
                                     Label { anchors.verticalCenter: parent.verticalCenter; role: "ui"; color: theme.textDim; text: modelData[1] }
                                 }

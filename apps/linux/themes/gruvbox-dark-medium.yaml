@@ -1,5 +1,5 @@
 system: "base16"
-name: "Gruvbox dark, medium"
+name: "Gruvbox Dark Medium"
 author: "Dawid Kurek (dawikur@gmail.com), morhetz (https://github.com/morhetz/gruvbox)"
 variant: "dark"
 palette:
