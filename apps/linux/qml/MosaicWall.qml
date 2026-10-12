@@ -165,10 +165,12 @@ Item {
                         smoothing: theme.cornerSmoothing
                         color: accent ? theme.plate(theme.accent) : theme.raised
                         Column {
+                            id: stoneCol
                             x: theme.space(4); y: theme.space(4)
                             width: parent.width - theme.space(8)
                             spacing: theme.space(2)
                             Label {
+                                id: stoneName
                                 width: parent.width
                                 text: cell.section.label
                                 role: "title"
@@ -176,9 +178,16 @@ Item {
                                 maximumLineCount: 3
                                 elide: Text.ElideRight
                             }
-                            StoneFact { width: parent.width; fact: cell.section.fact || null; nowMs: wall.nowMs }
+                            StoneFact {
+                                width: parent.width
+                                // gives way rather than run into the count on a short stone
+                                shown: stoneCol.y + stoneName.height + stoneCol.spacing + implicitHeight <= stoneCount.y - theme.space(1)
+                                fact: cell.section.fact || null
+                                nowMs: wall.nowMs
+                            }
                         }
                         Label {
+                            id: stoneCount
                             anchors.right: parent.right; anchors.rightMargin: theme.space(4)
                             anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(3)
                             text: cell.section.count

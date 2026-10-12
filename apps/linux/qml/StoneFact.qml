@@ -7,13 +7,14 @@ Column {
     id: root
     property var fact: null
     property real nowMs: Date.now()
+    property bool shown: true
     readonly property bool countdown: !!fact && fact.at !== undefined
     function shortCountdown(secs) {
         var t = Math.max(0, Math.floor(secs))
         var d = Math.floor(t / 86400), h = Math.floor(t % 86400 / 3600), m = Math.floor(t % 3600 / 60)
         return d > 0 ? d + "d " + h + "h" : h > 0 ? h + "h " + m + "m" : Math.max(1, m) + "m"
     }
-    visible: !!fact
+    visible: !!fact && shown
     spacing: theme.space(1)
     Row {
         visible: root.countdown

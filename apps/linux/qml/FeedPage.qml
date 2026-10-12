@@ -67,7 +67,8 @@ Item {
         if (head.length) out.push({ label: "Coming soon", count: head.length, accent: true, cards: head, fact: next,
                                     heroes: head.filter(function(e) { return e.at - now <= week }) })
         if (tail.length) out.push({ label: "Everything else", count: tail.length, cards: tail, heroes: [],
-                                    fact: recent > 0 ? { text: recent + " out this week" } : null })
+                                    fact: recent > 0 ? { text: recent + " out this week" }
+                                        : tail[0].at > 0 ? { text: "Latest out " + Fmt.relative(tail[0].at, now) } : null })
         return out
     }
 

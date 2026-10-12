@@ -175,7 +175,7 @@ Item {
         var out = []
         for (var i = 0; i < groups.length; i++) {
             var g = groups[i]
-            out.push({ label: g.label, count: g.count, cards: g.cards, heroes: Mosaic.pickHeroes(g.cards, now, g.cards.length, null) })
+            out.push({ label: g.label, count: g.count, cards: g.cards, fact: g.fact, heroes: Mosaic.pickHeroes(g.cards, now, g.cards.length, null) })
         }
         return out
     }
@@ -521,10 +521,12 @@ Item {
                         smoothing: theme.cornerSmoothing
                         color: airing ? theme.plate(theme.accent) : theme.raised
                         Column {
+                            id: stoneCol
                             x: theme.space(4); y: theme.space(4)
                             width: parent.width - theme.space(8)
                             spacing: theme.space(2)
                             Label {
+                                id: stoneName
                                 width: parent.width
                                 text: cell.section.label
                                 role: "title"
@@ -532,9 +534,16 @@ Item {
                                 maximumLineCount: 3
                                 elide: Text.ElideRight
                             }
-                            StoneFact { width: parent.width; fact: cell.section.fact; nowMs: page.nowMs }
+                            StoneFact {
+                                width: parent.width
+                                // gives way rather than run into the count on a short stone
+                                shown: stoneCol.y + stoneName.height + stoneCol.spacing + implicitHeight <= stoneCount.y - theme.space(1)
+                                fact: cell.section.fact || null
+                                nowMs: page.nowMs
+                            }
                         }
                         Label {
+                            id: stoneCount
                             anchors.right: parent.right; anchors.rightMargin: theme.space(4)
                             anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(3)
                             text: cell.section.count
