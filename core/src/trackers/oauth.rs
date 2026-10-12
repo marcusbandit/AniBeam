@@ -33,7 +33,7 @@ use crate::net::anilist::VIEWER_QUERY;
 use crate::percent::decode;
 use crate::time;
 use crate::trackers::accounts::{self, Tokens};
-use crate::trackers::cache;
+use crate::trackers::{TRACKER_TIMEOUT, cache};
 
 /// The one path the listener serves. Both providers redirect here.
 const CALLBACK_PATH: &str = "/callback";
@@ -157,15 +157,20 @@ async fn run(
         },
     );
 
-    let (callback, mut tab) = tokio::time::timeout(FLOW_TIMEOUT, serve(&listener, t, &state))
+    let (callback, stream) = tokio::time::timeout(FLOW_TIMEOUT, serve(&listener, t, &state))
         .await
         .map_err(|_| accounts::tracker_error(t, TIMED_OUT))??;
+    let mut tab = HeldTab(Some(stream));
 
     // The browser's request is held while this runs, so the page it gets
     // says what actually happened: a provider refusal reaches the tab as the
     // error page with the provider's own words, not as a success the app
-    // then contradicts.
-    let signed_in = sign_in(
+    // then contradicts. Held for so long and no longer: a limiter backing
+    // off a run of 429s could outlast the browser's own patience, so past
+    // the hold the tab is let go with a page that sends the user back to
+    // AniBeam, and the sign-in carries on to an outcome the app reports.
+    let hold = Duration::from_millis(core.sign_in_hold_ms.load(Ordering::SeqCst));
+    let signing_in = sign_in(
         &core,
         t,
         callback,
@@ -173,12 +178,21 @@ async fn run(
         &client_id,
         client_secret.as_deref(),
         &redirect_url,
-    )
-    .await;
-    match &signed_in {
-        Ok(_) => reply(&mut tab, OK, &success_page(site_name(t))).await,
-        Err(e) => reply(&mut tab, BAD_REQUEST, &error_page(&page_message(e))).await,
-    }
+    );
+    tokio::pin!(signing_in);
+    let signed_in = match tokio::time::timeout(hold, &mut signing_in).await {
+        Ok(signed_in) => {
+            match &signed_in {
+                Ok(_) => tab.answer(OK, &success_page(site_name(t))).await,
+                Err(e) => tab.answer(BAD_REQUEST, &error_page(&page_message(e))).await,
+            }
+            signed_in
+        }
+        Err(_) => {
+            tab.answer(OK, &finishing_page(site_name(t))).await;
+            signing_in.await
+        }
+    };
     let username = signed_in?;
     let trackers = accounts::state_async(&core).await?;
     ctx.emit(
@@ -221,7 +235,12 @@ async fn sign_in(
         } => {
             let profile = core
                 .anilist
-                .graphql(VIEWER_QUERY, serde_json::json!({}), Some(&access_token))
+                .graphql_within(
+                    VIEWER_QUERY,
+                    serde_json::json!({}),
+                    Some(&access_token),
+                    TRACKER_TIMEOUT,
+                )
                 .await?;
             let username = profile["Viewer"]["name"]
                 .as_str()
@@ -248,7 +267,10 @@ async fn sign_in(
                 redirect_url,
             )
             .await?;
-            let profile = core.mal.get(MAL_ME, &tokens.access_token).await?;
+            let profile = core
+                .mal
+                .get_within(MAL_ME, &tokens.access_token, TRACKER_TIMEOUT)
+                .await?;
             if !profile.is_success() {
                 return Err(CoreError::Provider {
                     provider: Provider::Mal,
@@ -311,7 +333,10 @@ async fn exchange(
             ("redirect_uri", redirect_url),
         ],
     );
-    let response = core.mal.post_form(accounts::MAL_TOKEN_URL, form).await?;
+    let response = core
+        .mal
+        .post_form_within(accounts::MAL_TOKEN_URL, form, TRACKER_TIMEOUT)
+        .await?;
     if !response.is_success() {
         return Err(accounts::token_failure(&response, client_secret.is_some()));
     }
@@ -501,6 +526,47 @@ async fn reply(stream: &mut TcpStream, status: &str, body: &str) {
     let _ = stream.shutdown().await;
 }
 
+/// The browser's callback request while the sign-in it carried is under
+/// way. Answered once, through `answer`. A job cancelled or superseded in
+/// the meantime is dropped mid-await and never reaches `answer`, so the
+/// drop answers instead, with the cancelled page, rather than leaving the
+/// tab with a reset connection. That write is synchronous: the page is a
+/// couple of kilobytes onto a loopback socket, which the kernel's send
+/// buffer takes whole, and a drop has no executor to await on.
+struct HeldTab(Option<TcpStream>);
+
+impl HeldTab {
+    async fn answer(&mut self, status: &str, body: &str) {
+        if let Some(mut stream) = self.0.take() {
+            reply(&mut stream, status, body).await;
+        }
+    }
+}
+
+impl Drop for HeldTab {
+    fn drop(&mut self) {
+        let Some(stream) = self.0.take() else { return };
+        let Ok(mut stream) = stream.into_std() else {
+            return;
+        };
+        let _ = stream.set_nonblocking(false);
+        let _ = stream.set_write_timeout(Some(Duration::from_millis(500)));
+        let body = cancelled_page();
+        let head = format!(
+            "HTTP/1.1 {OK}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        );
+        use std::io::Write;
+        let written = stream
+            .write_all(head.as_bytes())
+            .and_then(|_| stream.write_all(body.as_bytes()));
+        if let Err(e) = written {
+            tracing::debug!("the cancelled page could not be written: {e}");
+        }
+        let _ = stream.shutdown(std::net::Shutdown::Write);
+    }
+}
+
 async fn write_all(stream: &mut TcpStream, head: &str, body: &str) -> Result<(), std::io::Error> {
     stream.write_all(head.as_bytes()).await?;
     stream.write_all(body.as_bytes()).await?;
@@ -625,6 +691,35 @@ fn error_page(message: &str) -> String {
          <p>{}</p>\
          <p>Go back to <span class=\"brand\">AniBeam</span> and try again.</p></main></body></html>",
         escape(message)
+    )
+}
+
+/// The tab let go before the sign-in finished. Neither a success nor a
+/// failure, because neither is known yet; the app is where the outcome
+/// lands.
+fn finishing_page(site: &str) -> String {
+    format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\">\n\
+         <title>AniBeam, still finishing</title>\n\
+         <style>{PAGE_STYLE}</style></head>\n\
+         <body><main><div class=\"mark\">&#8230;</div>\
+         <h1>Still finishing</h1>\
+         <p>{site} answered and AniBeam is finishing the sign-in. \
+         Return to <span class=\"brand\">AniBeam</span>, which says when it is done.</p></main></body></html>",
+        site = escape(site)
+    )
+}
+
+/// The tab of a sign-in that was cancelled, or replaced by a newer one,
+/// while it was being finished.
+fn cancelled_page() -> String {
+    format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\">\n\
+         <title>AniBeam, sign-in cancelled</title>\n\
+         <style>{PAGE_STYLE}</style></head>\n\
+         <body><main><div class=\"mark bad\">&#215;</div>\
+         <h1>This sign-in was cancelled</h1>\
+         <p>You can close this tab. Start again from <span class=\"brand\">AniBeam</span> if you meant to.</p></main></body></html>"
     )
 }
 

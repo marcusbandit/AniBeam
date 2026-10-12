@@ -64,6 +64,49 @@ impl MalClient {
     }
 }
 
+impl MalClient {
+    /// `get` with a cap on each request, for a call a user is waiting on.
+    pub async fn get_within(
+        &self,
+        url: &str,
+        token: &str,
+        timeout: std::time::Duration,
+    ) -> Result<HttpResponse, CoreError> {
+        self.client
+            .send_within(
+                HttpRequest {
+                    method: Method::Get,
+                    url: url.to_string(),
+                    headers: bearer(token),
+                    body: None,
+                },
+                timeout,
+            )
+            .await
+    }
+
+    /// `post_form` with a cap on each request: the sign-in's exchange,
+    /// which a browser tab is held open for.
+    pub async fn post_form_within(
+        &self,
+        url: &str,
+        form: Vec<(String, String)>,
+        timeout: std::time::Duration,
+    ) -> Result<HttpResponse, CoreError> {
+        self.client
+            .send_within(
+                HttpRequest {
+                    method: Method::Post,
+                    url: url.to_string(),
+                    headers: vec![],
+                    body: Some(Body::Form(form)),
+                },
+                timeout,
+            )
+            .await
+    }
+}
+
 fn bearer(token: &str) -> Vec<(String, String)> {
     vec![("Authorization".to_string(), format!("Bearer {token}"))]
 }

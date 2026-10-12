@@ -514,6 +514,90 @@ fn an_anilist_token_that_fails_validation_gets_the_error_page() {
     }
 }
 
+/// A sign-in the provider keeps waiting does not hold the browser forever:
+/// past the hold the tab gets the "still finishing" page, and the sign-in
+/// carries on to the outcome the app reports.
+#[test]
+fn a_slow_sign_in_lets_the_tab_go_and_still_finishes() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    core.set_oauth_port(53697);
+    core.set_sign_in_hold(Duration::from_millis(200));
+    core.call(Call::SetTrackerCredentials {
+        tracker: Tracker::Anilist,
+        client_id: "123".into(),
+        client_secret: None,
+    })
+    .unwrap();
+    // The validation is rate limited once, for a second: five holds' worth.
+    http.push_with_headers(429, "{}", vec![("Retry-After".into(), "1".into())]);
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "Viewer": { "id": 42, "name": "bandit" } } }),
+    );
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "MediaListCollection": { "lists": [] } } }),
+    );
+    let job = started(
+        core.call(Call::ConnectTracker {
+            tracker: Tracker::Anilist,
+        })
+        .unwrap(),
+    );
+    ready_url(&c, job);
+    let page = http_get(53697, "/callback?access_token=tok&expires_in=3600");
+    assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+    assert!(page.contains("Still finishing"), "{page}");
+    assert!(!page.contains("is connected to"), "{page}");
+    let done = common::wait_job(&c, job);
+    assert!(
+        matches!(done.body, EventBody::TrackerConnected { .. }),
+        "{done:?}"
+    );
+}
+
+/// A sign-in cancelled while the tab is held answers the tab with the
+/// cancelled page rather than dropping the connection on it.
+#[test]
+fn a_sign_in_cancelled_while_held_tells_the_tab() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    core.set_oauth_port(53698);
+    core.call(Call::SetTrackerCredentials {
+        tracker: Tracker::Anilist,
+        client_id: "123".into(),
+        client_secret: None,
+    })
+    .unwrap();
+    // Long enough that the cancel lands while the validation waits on it.
+    http.push_with_headers(429, "{}", vec![("Retry-After".into(), "5".into())]);
+    let job = started(
+        core.call(Call::ConnectTracker {
+            tracker: Tracker::Anilist,
+        })
+        .unwrap(),
+    );
+    ready_url(&c, job);
+    let browser =
+        std::thread::spawn(|| http_get(53698, "/callback?access_token=tok&expires_in=3600"));
+    // The rate-limited validation is the only request, and nothing emits an
+    // event when it is made, so this watches the fake's own log.
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while http.requests().is_empty() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the validation never went out"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    core.call(Call::CancelJob { job }).unwrap();
+    let page = browser.join().unwrap();
+    assert!(page.contains("This sign-in was cancelled"), "{page}");
+    let done = common::wait_job(&c, job);
+    assert!(matches!(done.body, EventBody::JobCancelled), "{done:?}");
+}
+
 /// The same refusal with a secret sent is not about a missing secret, so
 /// it is passed on as MAL gave it rather than asking for one.
 #[test]
