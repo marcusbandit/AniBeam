@@ -22,7 +22,7 @@ Item {
     function escapePressed() { return false }
 
     readonly property var tabs: ["All", "Series", "Movies"]
-    readonly property var sorts: [["Alpha", "A to Z"], ["LastViewed", "Last viewed"], ["Progress", "Progress"], ["CommunityScore", "Score"], ["MyScore", "My score"]]
+    readonly property var sorts: [["Alpha", "A to Z"], ["LastViewed", "Last viewed"], ["Progress", "Progress"], ["CommunityScore", "Average score"], ["MyScore", "My score"]]
     // Loaded-with copies, not bindings on Door.preferences: a plain property bound to
     // prefs.xxx keeps tracking Door.preferences on its own, ahead of the Connections
     // handler below that means to compare "what changed" against it, so the very first
@@ -46,6 +46,8 @@ Item {
     // Bumped on every reload: the sections depend on it, so a reload that returns the same
     // number of series (a rename, a progress change) still repaints the wall
     property int revision: 0
+    // The airing rows, read once per reload (never inside a binding)
+    property var airingRows: []
 
     RecordModel { id: cards; roles: ["id", "title", "titles", "poster", "code", "watched", "watched_state", "total_episodes", "total_is_estimate", "strip", "community_score", "my_score", "hidden", "next_airing", "last_viewed_at", "episodes_on_disk", "kind", "format", "genres"] }
 
@@ -98,11 +100,7 @@ Item {
     readonly property bool airingShows: page.query === "" && !page.libraryEmpty
     readonly property var groups: {
         page.revision   // a dependency: see revision
-        var airingRows = []
-        if (airingShows) {
-            var r = Door.listAiring(0, 60)
-            if (!r.error) airingRows = r.reply.series
-        }
+        var airingRows = airingShows ? page.airingRows : []
         var main = page.tab === "All" ? "Everything" : page.tab
         var airingIds = {}
         for (var a = 0; a < airingRows.length; a++) airingIds[airingRows[a].id] = true
@@ -163,36 +161,33 @@ Item {
 
     function reload() {
         var keep = flick.contentY
-        var r = Door.listSeries(tab, query, sort, direction, Door.revealHidden)
+        // One snapshot per reload: the shelf, the airing rail and the per-tab counts
+        var r = Door.listLibrary(tab, query, sort, direction, Door.revealHidden)
         if (r.error) { frame.toast(r.error.message); return }
         cards.reset(r.reply.series)
-        // The library is empty only when nothing is anywhere: All leaves watched series
-        // out unless they are shown, and hidden ones out unless revealed.
-        var allCount = r.reply.series.length
-        if (query !== "" || tab !== "All") {
-            var all = Door.listSeries("All", "", "Alpha", "Asc", false)
-            allCount = all.error ? 1 : all.reply.series.length
-        }
-        var hidden = Door.listSeries("Hidden", "", "Alpha", "Asc", true)
-        var hiddenCount = hidden.error ? 0 : hidden.reply.series.length
-        hiddenExist = Door.revealHidden && hiddenCount > 0
-        // The Watched tab exists while watched series do, whatever the
-        // toggle says: the section is where they live, the toggle is only
-        // about joining them back into the others.
-        var watched = Door.listSeries("Watched", "", "Alpha", "Asc", false)
-        if (!watched.error) watchedExist = watched.reply.series.length > 0
-        libraryEmpty = allCount === 0 && !watchedExist && hiddenCount === 0
+        var n = r.reply.counts || {}
+        // The library is empty only when nothing is anywhere: All leaves watched series out
+        // unless they are shown, and hidden ones out unless revealed. The Watched tab
+        // exists while watched series do, whatever the toggle says.
+        watchedExist = (n.watched || 0) > 0
+        hiddenExist = Door.revealHidden && (n.hidden || 0) > 0
+        libraryEmpty = (n.all || 0) === 0 && !watchedExist && (n.hidden || 0) === 0
+        airingRows = query === "" && !libraryEmpty && r.reply.airing ? r.reply.airing : []
         packedAt = Date.now()
         revision++
         flick.contentY = Math.max(0, Math.min(keep, Math.max(0, flick.contentHeight - flick.height)))
     }
-    Timer { id: debounce; interval: 250; onTriggered: page.reload() }
+    // One reload per burst: a scan reports several changes a second, and restarting the
+    // timer on each would hold the wall stale for the whole scan, so the first event of a
+    // burst arms it and the rest ride along
+    Timer { id: debounce; interval: 400; onTriggered: page.reload() }
+    function soon() { if (!debounce.running) debounce.start() }
     Timer { id: queryDebounce; interval: 150; onTriggered: { page.query = search.text; frame.nav.current.props = { q: page.query }; page.reload() } }
     Timer { interval: 30000; running: cards.count > 0; repeat: true; onTriggered: page.nowMs = Date.now() }
     Connections {
         target: Door
-        function onSeriesChanged() { debounce.restart() }
-        function onSeriesRemoved() { debounce.restart() }
+        function onSeriesChanged() { page.soon() }
+        function onSeriesRemoved() { page.soon() }
         // Door always reports a preference write, even one that changes nothing (the
         // core's own tab/sort/direction clicks already reload once, directly, for instant
         // feedback), so only restart the debounce when something this page cares about
@@ -210,9 +205,9 @@ Item {
             page.direction = p.library_direction
             page.titleLanguage = p.title_language
             page.showWatched = p.library_show_watched === true
-            if (changed) debounce.restart()
+            if (changed) page.soon()
         }
-        function onRevealHiddenChanged() { if (page.tab === "Hidden" && !Door.revealHidden) page.tab = "All"; debounce.restart() }
+        function onRevealHiddenChanged() { if (page.tab === "Hidden" && !Door.revealHidden) page.tab = "All"; page.soon() }
     }
     Component.onCompleted: {
         var p = Door.preferences
@@ -252,13 +247,15 @@ Item {
     readonly property real hpad: theme.space(3)
     function spanFor(w) { return Math.max(1, Math.ceil((w + hpad * 2 + grout) / (geo.w + grout))) }
     readonly property var headerLayout: Mosaic.header([
-        { key: "title", span: Math.max(2, spanFor(titleLabel.implicitWidth)), flex: true },
+        // The title tile carries the count at its right and takes the row's spare columns.
+        // tracker-one-click merge: the TrackerNudge tile goes after "search" in this list
+        // (shown while no tracker is connected); the title gives up the columns it needs.
+        { key: "title", span: Math.max(2, spanFor(titleLabel.implicitWidth + theme.space(6) + countRow.implicitWidth)), flex: true },
         { key: "tabs", span: spanFor(tabsSeg.implicitWidth) },
         { key: "sorts", span: spanFor(sortSeg.implicitWidth) },
         { key: "group", span: spanFor(groupRow.implicitWidth) },
         { key: "watched", span: spanFor(watchedRow.implicitWidth) },
-        { key: "search", span: Math.max(2, spanFor(theme.space(56))), flex: true },
-        { key: "count", span: spanFor(countRow.implicitWidth) }
+        { key: "search", span: Math.max(2, spanFor(theme.space(56))), flex: true }
     ], geo.cols)
     function headerTile(key) {
         var t = headerLayout.tiles
@@ -311,6 +308,27 @@ Item {
                     text: "Library"
                     role: "display"
                 }
+                Row {
+                    id: countRow
+                    anchors.right: parent.right; anchors.rightMargin: page.hpad
+                    anchors.baseline: titleLabel.baseline
+                    spacing: theme.space(1.5)
+                    Label {
+                        id: countFigure
+                        text: cards.count
+                        role: "ledger"
+                        font.pointSize: theme.typeDisplay
+                        font.weight: 700
+                        font.variableAxes: ({ "wdth": 88, "wght": 700 })
+                    }
+                    Label {
+                        anchors.baseline: countFigure.baseline
+                        text: "series"
+                        role: "ui"
+                        font.pointSize: theme.typeSmall
+                        color: theme.textDim
+                    }
+                }
             }
             HeaderTile {
                 key: "tabs"
@@ -355,7 +373,7 @@ Item {
                     Seg {
                         id: groupSeg
                         objectName: "group"
-                        options: ["None", "Genre", "Viewed"]
+                        options: ["None", "Genre", "Watch state"]
                         index: ["None", "Genre", "Viewed"].indexOf(page.groupBy)
                         onPicked: function(i) { page.groupBy = ["None", "Genre", "Viewed"][i] }
                     }
@@ -400,33 +418,9 @@ Item {
                     x: page.hpad
                     anchors.verticalCenter: parent.verticalCenter
                     width: parent.width - page.hpad * 2
-                    placeholder: "Search by romaji, English or folder"
+                    placeholder: "Search titles or folders"
                     onTextChanged: queryDebounce.restart()
                     onCleared: { queryDebounce.stop(); page.query = ""; frame.nav.current.props = {}; page.reload() }
-                }
-            }
-            HeaderTile {
-                key: "count"
-                Row {
-                    id: countRow
-                    anchors.right: parent.right; anchors.rightMargin: page.hpad
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: theme.space(1.5)
-                    Label {
-                        id: countFigure
-                        text: cards.count
-                        role: "ledger"
-                        font.pointSize: theme.typeDisplay
-                        font.weight: 700
-                        font.variableAxes: ({ "wdth": 88, "wght": 700 })
-                    }
-                    Label {
-                        anchors.baseline: countFigure.baseline
-                        text: "series"
-                        role: "ui"
-                        font.pointSize: theme.typeSmall
-                        color: theme.textDim
-                    }
                 }
             }
         }
@@ -530,7 +524,7 @@ Item {
             visible: cards.count === 0 && !page.libraryEmpty
             EmptyState {
                 icon: "search"
-                title: page.query !== "" ? "No matches for \"" + page.query + "\"." : "Nothing here"
+                title: page.query !== "" ? "No matches for \"" + page.query + "\"" : "Nothing here"
                 body: page.query !== "" ? "" : "No " + (page.tab === "Series" ? "series" : page.tab === "Movies" ? "films" : page.tab === "Watched" ? "watched items" : "items") + " in your library yet."
             }
         }

@@ -72,33 +72,39 @@ module. The grout is the only joint: between tiles both ways, and as the page's 
 the top, right and bottom (on the left the rail's own grout is the joint).
 
 ```
-rail  header: one unit tall, whole column spans, spare columns to the title
-┌──┐ ┌───────────────┐┌ Show ─────────┐┌ Sort by ─────────────┐┌ Group by ─┐┌ Show ┐┌ Search ─────┐┌─────┐
-│▣ │ │ Library       ││ All Series .. ││ ^ A to Z  Last .. .. ││ None ..   ││  o   ││ [         ] ││ 52  │
-│▣ │ └───────────────┘└───────────────┘└──────────────────────┘└───────────┘└──────┘└─────────────┘└─────┘
-│▣ │ ┌─────┐┌────┐┌────┐┌────┐┌────┐┌────┐┌────┐┌────┐      Airing: label stone, then small
-│▣ │ │Airing││    ││    ││    ││    ││    ││    ││    │      tiles; its heroes were demoted
-│▣ │ │     6││plate││plate││ .. ││    ││    ││    ││    │      because they left a hole
-│  │ └─────┘└────┘└────┘└────┘└────┘└────┘└────┘└────┘
-│  │ ┌─────┐┌───────────┐┌───────────┐┌────┐┌────┐┌────┐
-│  │ │Series││ hero 2x2  ││ hero 2x2  ││ 1  ││ 1  ││ 1  │   label stone, heroes, then small
-│  │ │   52││ poster    ││ poster    │└────┘└────┘└────┘   tiles first-fit around them
-│  │ └─────┘│           ││           │┌────┐┌────┐┌────┐
-│  │ ┌────┐ │ plate     ││ plate     ││ 1  ││ 1  ││ 1  │
-│  │ │ 1  │ │ Play      ││ Play      ││    ││    ││    │
-└──┘ └────┘ └───────────┘└───────────┘└────┘└────┘└────┘
+rail  header: one unit tall, whole column spans, spare columns to the title (count at its right)
+┌──┐ ┌──────────────────────────┐┌──────────────┐┌─────────────────────┐┌─────────────────┐┌───────────┐┌──────────┐
+│▣ │ │ Library        52 series ││ All Series ..││ ^ A to Z  Last .. ..││ Group None .. ..││ Show  (o) ││ [Search] │
+│▣ │ └──────────────────────────┘└──────────────┘└─────────────────────┘└─────────────────┘│ watched   │└──────────┘
+│▣ │ ┌─────┐┌───────────┐┌───────────┐┌────┐┌────┐┌─────┐┌───────────┐┌────┐                one wall: each
+│▣ │ │Airing││ hero 2x2  ││ hero 2x2  ││ 1  ││ 1  ││Series││ hero 2x2  ││ 1  │                section's label
+│▣ │ │    6 ││ poster    ││ poster    ││    ││    ││   46 ││ poster    ││    │                follows the last
+│▣ │ └─────┘│           ││           │└────┘└────┘└─────┘│           │└────┘                tile before it
+│  │ ┌────┐ │ plate     ││ plate     │┌────┐┌────┐┌────┐ │ plate     │┌────┐
+│  │ │ 1  │ │ (4d 18h) Episode 2    ││ 1  ││ 1  ││ 1  │ │ Play      ││ 1  │
+│  │ └────┘ └───────────┘└───────────┘└────┘└────┘└────┘ └───────────┘└────┘
+│  │ ┌────┐┌────┐┌────┐ ...  small tiles first-fit, the last row ragged on the right only
+│▤ │ ┌────────────────────────────────────────────────────────────────────────────────┐
+└──┘ │ status strip: one tile across the content, as tall as the rail's foot tile       │
+     └────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **The header is a row of tiles**, one unit tall: the title, the tabs, the sorts (the
-  active one carries its direction as a chevron; picking it again flips it), the grouping,
-  Show watched, the search and the count. Each tile spans the whole columns its content
-  needs, the row's spare columns go to the title, and a narrow window wraps it onto a
-  second unit row. It scrolls with the wall as its first rows.
+- **The header is a row of tiles**, one unit tall, content centred: the title with the
+  count at its right, the tabs, the sorts (the active one carries its direction as a
+  chevron; picking it again flips it), the grouping, Show watched (the whole tile toggles)
+  and the search. No eyebrow captions: a control says what it is, and only the grouping
+  keeps a word ("Group"), since a bare "None" would not. Each tile spans the whole columns
+  its content needs, the row's spare columns go to the title, and a narrow window wraps it
+  onto a second unit row. It scrolls with the wall as its first rows.
 - **A series is one stone**: the poster on top (2:3) and, in the same rounded shape, a
   plate in the poster's own tone carrying the title (two lines at most) and one ledger line
-  (the airing countdown in the accent, else "3 of 12", else "12 files") with the score at
-  its right. The episode code rides the poster's top left, the progress strip its bottom
-  edge. The plate is as tall as it takes to land the tile on a whole number of units.
+  (the airing countdown, else "3 of 12", else "12 files") with the score at its right. The
+  countdown is one treatment everywhere (library, heroes, feed): a small pill in the accent
+  holding the time ("4d 18h"), its text the ground colour where that holds 4.5:1, and
+  "Episode 2" beside it in plain plate text. The episode code rides the poster's top left, the progress strip its bottom
+  edge. A small tile's plate is as tall as it takes to land the tile on a whole number of
+  units; a hero's plate is exactly as tall as its lines and Play, and the poster takes the
+  rest of the module.
   Nothing is captioned outside a tile, on any page that shows series (`Card.qml`).
 - **Size says what matters now.** A hero is 2x2 (two columns, two small tiles and the
   joint between tall) and goes to a series that is in progress and was viewed in the last
@@ -107,15 +113,22 @@ rail  header: one unit tall, whole column spans, spare columns to the title
   episode, and a Play button that starts it (or opens the series when nothing is next). A
   series is a hero once on the wall.
 - **Section labels are stones**: each section opens with a tile the size of a small one,
-  its name at the top left and its count in big figures at the bottom right; Airing's in
-  the accent's plate, the rest raised slate. Sections follow each other in the same
-  packing, each on a fresh unit row.
-- **The packer** (`qml/mosaic.js`, tested by `node apps/linux/qml/test-mosaic.mjs`) is a
-  first-fit skyline per section: the label stone at column 0, then the heroes, then the
-  small tiles, each at the lowest row its span fits, left-most on ties. A section may not
-  leave a hole: every cell above its final small row is filled and that row runs short only
-  on the right. While it would, the least important hero is set small and the section is
-  packed again.
+  its name at the top left and its count (the tiles in that section) in big figures at the
+  bottom right; Airing's in the accent's plate, the rest raised slate. A series shows once:
+  while Airing stands, its series are left out of the sections after it.
+- **The packer** (`qml/mosaic.js`, tested by `node apps/linux/qml/test-mosaic.mjs`) is one
+  first-fit skyline for the whole wall: each section's label stone goes where the previous
+  section's last tile left off (no fresh row, so no section-end gaps), then its heroes, then
+  its small tiles, each at the lowest row its span fits, left-most on ties. Sections never
+  interleave in reading order: no tile sits before the last tile of an earlier section.
+  The wall may not leave a hole: every cell above its final small row is filled and only
+  that very last row runs short, on the right. While it would, the least important hero of
+  the section that opened the hole is set small and the wall is packed again.
+- **The other walls** (Feed, Watching, Subscriptions) are `qml/MosaicWall.qml`: the same
+  module, header tiles and packer. The feed's heroes are the episodes out this week (Coming
+  soon: airing this week); Watching's are owned series airing this week. A page with
+  nothing to show is its header and one tile filling the rest of the viewport, saying what
+  to do.
 - The wall is one Flickable; a tile is built only within a screen of the viewport.
 - The rail is a column of square tiles, icon over label; the active one is raised, its
   glyph in smalt. No accent bar.

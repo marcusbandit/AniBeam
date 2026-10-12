@@ -113,7 +113,7 @@ Item {
                 id: lang
                 anchors.horizontalCenter: parent.horizontalCenter
                 small: true
-                options: ["JP", "EN"]
+                options: ["Romaji", "English"]
                 index: Door.preferences.title_language === "English" ? 1 : 0
                 onPicked: function(i) {
                     var p = JSON.parse(JSON.stringify(Door.preferences))

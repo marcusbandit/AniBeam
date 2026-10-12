@@ -1,25 +1,33 @@
-// The watching page: the user's AniList list, CURRENT and REPEATING. The core
-// owns the cache and the refresh (ListWatching replies the cached list at
-// once plus the id of a RefreshWatching job when it started one;
-// WatchingRefreshed brings the fresh list). An entry the library owns opens
-// the series in-app; the rest are ghost cards that open AniList.
+// The watching page: what the user is watching or rewatching on AniList, as a mosaic wall
+// on the library's module. The core owns the cache and the refresh (ListWatching replies
+// the cached list at once plus the id of a RefreshWatching job when it started one;
+// WatchingRefreshed brings the fresh list). An entry the library owns opens the series
+// in-app, and is a hero with Play when it airs this week; the rest are ghost cards that
+// open AniList. ListWatching reads the cache only; RefreshWatching goes to AniList, on
+// open when the cache is over five minutes old and from the Refresh tile when asked. The
+// page reads on open and on tracker and watching events, never on library changes.
 import QtQuick
 import com.marcusrosado.AniBeam
+import "mosaic.js" as Mosaic
 
-PageScroll {
+Item {
     id: page
+    objectName: "watching-page"
     property var props: ({})
     property string title: "Watching"
-    property real scrollY: 0
+    property alias scrollY: wall.scrollY
     function escapePressed() { return false }
 
     property var entries: []
     property bool anilistConnected: false
     property bool loadFailed: false
     property real nowMs: Date.now()
+    property real packedAt: Date.now()
+    property bool refreshing: false
 
     function entryItem(e) {
         return {
+            id: e.owned !== null && e.owned !== undefined ? e.owned : -e.anilist_id,
             title: e.title,
             poster: e.poster || "",
             watched: e.progress > 0 ? e.progress : null,
@@ -27,122 +35,159 @@ PageScroll {
             total_is_estimate: false,
             watched_state: "Unknown",
             strip: null,
-            code: e.progress > 0 ? "EP " + String(Math.floor(e.progress)).padStart(2, "0") : "",
-            community_score: null,
+            code: e.progress > 0 ? "Ep " + String(Math.floor(e.progress)).padStart(2, "0") : "",
+            community_score: e.score !== null && e.score !== undefined ? e.score : null,
             my_score: null,
             hidden: false,
-            next_airing: null,
-            episodes_on_disk: e.owned ? 0 : 0,
-            site_url: e.owned ? "" : "https://anilist.co/anime/" + e.anilist_id
+            next_airing: e.next_airing || null,
+            episodes_on_disk: 0,
+            site_url: e.owned ? "" : (e.site_url || "https://anilist.co/anime/" + e.anilist_id)
         }
     }
-    function updatedText(e) {
-        return e.updated_at ? "AniList updated " + Fmt.relative(e.updated_at, nowMs / 1000) : ""
+    function owned(e) { return e.owned !== null && e.owned !== undefined }
+
+    readonly property var sections: {
+        if (entries.length === 0) return []
+        var now = packedAt / 1000
+        var list = [], heroes = []
+        for (var i = 0; i < entries.length; i++) {
+            var e = entries[i]
+            var item = entryItem(e)
+            // The airing countdown says more than "updated 3d ago" when one runs
+            var airs = item.next_airing && item.next_airing.at > now
+            var x = { id: item.id, item: item, raw: e, ghost: !owned(e),
+                      meta: airs ? "" : (e.updated_at ? "AniList updated " + Fmt.relative(e.updated_at, nowMs / 1000) : "") }
+            list.push(x)
+            if (owned(e) && Mosaic.heroRank(item, now) >= 0) heroes.push(x)
+        }
+        heroes.sort(function(a, b) { return a.item.next_airing.at - b.item.next_airing.at })
+        return [{ label: "", count: list.length, cards: list, heroes: heroes }]
     }
 
     function reload() {
         var t = Door.getTrackers()
         if (!t.error) page.anilistConnected = !!(t.reply.state.anilist.connected)
+        if (!page.anilistConnected) { page.entries = []; return }
         var r = Door.listWatching()
         if (r.error) { page.loadFailed = true; frame.toast(r.error.message); return }
         page.loadFailed = false
+        page.packedAt = Date.now()
         page.entries = r.reply.list.entries || []
+        if (r.reply.refreshing !== null && r.reply.refreshing !== undefined) page.refreshing = true
     }
-    Timer { id: debounce; interval: 250; onTriggered: page.reload() }
+    // To AniList: `force` from the Refresh tile, else only when the cache is stale
+    function refresh(force) {
+        if (!page.anilistConnected) return
+        var r = Door.refreshWatching(force)
+        if (r.error) { page.loadFailed = page.entries.length === 0; frame.toast(r.error.message); return }
+        if (r.reply && r.reply.job !== undefined) page.refreshing = true
+    }
+    function playSeries(id, title) {
+        var r = Door.getSeries(id)
+        var d = !r.error ? r.reply.detail : null
+        if (d && d.next_up) frame.go("player", { file: d.next_up }, title)
+        else frame.go("series", { id: id }, title)
+    }
+    // Tracker events come in bursts (connect, then the state push): one read for them
+    Timer { id: debounce; interval: 400; onTriggered: page.reload() }
     Timer { interval: 30000; running: page.entries.length > 0; repeat: true; onTriggered: page.nowMs = Date.now() }
     Connections {
         target: Door
-        function onWatchingRefreshed(list) { page.entries = list.entries || [] }
-        function onSeriesChanged(changed) { debounce.restart() }
-        function onTrackersChanged() { page.reload() }
+        function onWatchingRefreshed(list) { page.refreshing = false; page.loadFailed = false; page.packedAt = Date.now(); page.entries = list.entries || [] }
+        function onTrackersChanged() { debounce.restart() }
+        function onJobFailed(job, kind, error) { if (kind === "RefreshWatching") { page.refreshing = false; page.loadFailed = page.entries.length === 0; frame.toast(error && error.message ? error.message : "AniList could not be reached") } }
+        function onJobCancelled(job, kind) { if (kind === "RefreshWatching") page.refreshing = false }
     }
-    Component.onCompleted: reload()
+    Component.onCompleted: { reload(); refresh(false) }
 
-    // The head
-    Item {
-        id: head
-        width: parent.width
-        height: titleText.height + sub.height + theme.space(1)
-        Text {
-            id: titleText
-            anchors.left: parent.left; anchors.top: parent.top
-            text: "Watching"
-            color: theme.text
-            font.family: theme.fontDisplay
-            font.pointSize: theme.typeLarge
-            font.weight: Font.DemiBold
+    MosaicWall {
+        id: wall
+        anchors.fill: parent
+        sections: page.sections
+        nowMs: page.nowMs
+        onOpened: function(x) {
+            if (!x.ghost) frame.go("series", { id: x.raw.owned }, x.raw.title)
+            else Qt.openUrlExternally(x.item.site_url)
         }
-        Text {
-            id: sub
-            anchors.left: parent.left; anchors.top: titleText.bottom; anchors.topMargin: theme.space(1)
-            text: "Your AniList list, CURRENT and REPEATING. A quiet card lives only there."
-            color: theme.textDim
-            font.family: theme.fontUi
-            font.pointSize: theme.typeSmall
-        }
-    }
+        onPlayed: function(x) { page.playSeries(x.raw.owned, x.raw.title) }
 
-    // EmptyState centers itself, and an anchored child inside a positioner
-    // breaks the positioner's layout, so each one sits in a plain wrapper the
-    // Column can position.
-    Item {
-        width: parent.width
-        height: emptyNotConnected.height
-        visible: emptyNotConnected.visible
-        EmptyState {
-            id: emptyNotConnected
-            visible: page.anilistConnected === false
-            icon: "log-in"
-            title: "AniList is not connected"
-            body: "Connect AniList and your list lives here — what you are watching, what is next, updated as you watch."
-            Button { text: "Connect AniList"; icon: "log-in"; onClicked: frame.openConnect("Anilist") }
+        MosaicWall.HeaderTile {
+            need: titleCol.implicitWidth
+            minSpan: 2
+            flex: true
+            Column {
+                id: titleCol
+                x: parent.pad
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: theme.space(1)
+                Label { text: "Watching"; role: "display" }
+                Label { text: "What you're watching or rewatching on AniList."; role: "ui"; color: theme.textDim }
+            }
         }
-    }
-
-    // The refresh failed and the cache is empty: the sanitised failure
-    Item {
-        width: parent.width
-        height: emptyFailed.height
-        visible: emptyFailed.visible
-        EmptyState {
-            id: emptyFailed
-            visible: page.anilistConnected && page.loadFailed && page.entries.length === 0
-            icon: "triangle-alert"
-            title: "The watching list did not load"
-            body: "AniList could not be reached. The list comes back on the next refresh."
+        MosaicWall.HeaderTile {
+            visible: page.anilistConnected
+            need: refreshBtn.implicitWidth
+            Button {
+                id: refreshBtn
+                objectName: "watching-refresh"
+                x: parent.pad
+                anchors.verticalCenter: parent.verticalCenter
+                text: page.refreshing ? "Refreshing" : "Refresh"
+                icon: "refresh-cw"
+                enabled: !page.refreshing
+                onClicked: page.refresh(true)
+            }
         }
-    }
-
-    // Connected, empty
-    Item {
-        width: parent.width
-        height: emptyNone.height
-        visible: emptyNone.visible
-        EmptyState {
-            id: emptyNone
-            visible: page.anilistConnected && !page.loadFailed && page.entries.length === 0
-            icon: "eye"
-            title: "Nothing on your watching list"
-            body: "Mark a show as Watching on AniList and it lands here."
+        MosaicWall.HeaderTile {
+            visible: page.entries.length > 0
+            need: countRow.implicitWidth
+            Row {
+                id: countRow
+                anchors.right: parent.right; anchors.rightMargin: parent.pad
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: theme.space(1.5)
+                Label {
+                    id: countFigure
+                    text: page.entries.length
+                    role: "ledger"
+                    font.pointSize: theme.typeDisplay
+                    font.weight: 700
+                    font.variableAxes: ({ "wdth": 88, "wght": 700 })
+                }
+                Label {
+                    anchors.baseline: countFigure.baseline
+                    text: "series"
+                    role: "ui"
+                    font.pointSize: theme.typeSmall
+                    color: theme.textDim
+                }
+            }
         }
-    }
 
-    Flow {
-        width: parent.width
-        spacing: theme.space(5)
-        visible: page.entries.length > 0
-        Repeater {
-            model: page.entries
-            Card {
-                required property var modelData
-                readonly property bool owned: modelData.owned !== null && modelData.owned !== undefined
-                item: page.entryItem(modelData)
-                ghost: !owned
-                nowMs: page.nowMs
-                metaOverride: page.updatedText(modelData)
-                onOpened: {
-                    if (owned) frame.go("series", { id: modelData.owned }, modelData.title)
-                    else Qt.openUrlExternally("https://anilist.co/anime/" + modelData.anilist_id)
+        // No list to show: one tile filling the page, saying why and what to do
+        body: Component {
+            Tile {
+                implicitHeight: theme.space(60)
+                EmptyState {
+                    visible: !page.anilistConnected
+                    icon: "log-in"
+                    title: "AniList is not connected"
+                    body: "Connect AniList in Settings to see your watching list."
+                    // tracker-one-click merge: ConnectButton + frame.openConnect("Anilist")
+                    Button { objectName: "watching-connect"; text: "Open Settings"; icon: "settings"; primary: true; onClicked: frame.go("settings", { tab: "Library" }) }
+                }
+                EmptyState {
+                    visible: page.anilistConnected && page.loadFailed
+                    icon: "triangle-alert"
+                    title: "The watching list did not load"
+                    body: "AniList could not be reached. The list comes back on the next refresh."
+                    Button { text: "Try again"; icon: "refresh-cw"; onClicked: { page.reload(); page.refresh(true) } }
+                }
+                EmptyState {
+                    visible: page.anilistConnected && !page.loadFailed
+                    icon: "eye"
+                    title: "Nothing on your watching list"
+                    body: "Mark a show as Watching on AniList and it lands here."
                 }
             }
         }
