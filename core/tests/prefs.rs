@@ -14,6 +14,7 @@ fn preferences_and_settings_round_trip_with_events() {
         library_direction: Direction::Desc,
         feed_sort: FeedSort::Upcoming,
         library_show_watched: true,
+        library_arrange: Arrange::WatchState,
     };
     assert!(matches!(
         core.call(Call::SetPreferences {

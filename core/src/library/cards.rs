@@ -263,6 +263,7 @@ impl Snapshot {
             latest_activity_at: time::from_secs(
                 self.latest_activity(row, &episodes, airing, files, now),
             ),
+            franchise: self.franchises.get(&row.id).cloned(),
         }
     }
 
@@ -515,6 +516,7 @@ mod tests {
             next_airing: None,
             last_viewed_at: None,
             latest_activity_at: UNIX_EPOCH,
+            franchise: None,
         }
     }
 

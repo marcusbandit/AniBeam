@@ -258,6 +258,23 @@ impl Sort {
     }
 }
 
+/// How the library page arranges its cards: one box per franchise (the
+/// default), by type, by genre, by watch state, or a flat grid. `Flat` is
+/// "None" on the wire, which keeps it clear of `Option::None` here and in
+/// every binding.
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum,
+)]
+pub enum Arrange {
+    #[default]
+    Related,
+    Type,
+    Genre,
+    WatchState,
+    #[serde(rename = "None")]
+    Flat,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
 pub enum Direction {
     Asc,
