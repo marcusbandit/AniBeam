@@ -104,12 +104,19 @@ pub mod qobject {
         #[qinvokable]
         fn list_subscriptions(self: &Door) -> QJsonObject;
         // Metadata
+        /// AniList's search, kept for the panel as it stands.
         #[qinvokable]
         fn search_provider(self: &Door, query: &QString, limit: i32) -> QJsonObject;
+        /// The search on one named provider: `Anilist` or `Tvmaze`.
+        #[qinvokable]
+        fn search_on(self: &Door, provider: &QString, query: &QString, limit: i32) -> QJsonObject;
         #[qinvokable]
         fn resolve_link(self: &Door, url: &QString) -> QJsonObject;
         #[qinvokable]
         fn apply_match(self: &Door, series: f64, target: &QJsonObject) -> QJsonObject;
+        /// `apply_match` with a TVmaze show id, so a result row needs no target object.
+        #[qinvokable]
+        fn apply_tvmaze(self: &Door, series: f64, show: f64) -> QJsonObject;
         #[qinvokable]
         fn clear_match(self: &Door, series: f64) -> QJsonObject;
         #[qinvokable]
@@ -193,6 +200,10 @@ pub mod qobject {
         fn set_subtitle_defaults(self: &Door, defaults: &QJsonObject) -> QJsonObject;
         #[qinvokable]
         fn set_auto_skip(self: &Door, intro: bool, outro: bool) -> QJsonObject;
+        /// The match providers in order, as their names: `["Tvmaze", "Anilist"]`. The
+        /// current order is `settings.provider_order`.
+        #[qinvokable]
+        fn set_provider_order(self: &Door, order: &QJsonArray) -> QJsonObject;
         #[qinvokable]
         fn export_library(self: &Door, path: &QString, private_data: bool) -> QJsonObject;
         #[qinvokable]
@@ -818,6 +829,21 @@ impl qobject::Door {
         };
         self.dispatch(call)
     }
+    pub fn search_on(&self, provider: &QString, query: &QString, limit: i32) -> QJsonObject {
+        let call = if limit < 1 {
+            Err(CoreError::invalid(
+                "limit",
+                format!("must be at least 1, got {limit}"),
+            ))
+        } else {
+            parse_enum::<Provider>("provider", provider).map(|provider| Call::SearchProvider {
+                provider,
+                query: query.to_string(),
+                limit: limit as u32,
+            })
+        };
+        self.dispatch(call)
+    }
     pub fn resolve_link(&self, url: &QString) -> QJsonObject {
         self.dispatch(Ok(Call::ResolveLink {
             url: url.to_string(),
@@ -829,6 +855,12 @@ impl qobject::Door {
                 series: id(series),
                 target,
             }
+        }))
+    }
+    pub fn apply_tvmaze(&self, series: f64, show: f64) -> QJsonObject {
+        self.dispatch(Ok(Call::ApplyMatch {
+            series: id(series),
+            target: MatchTarget::Tvmaze { id: id(show) },
         }))
     }
     pub fn clear_match(&self, series: f64) -> QJsonObject {
@@ -1009,6 +1041,13 @@ impl qobject::Door {
     }
     pub fn set_auto_skip(&self, intro: bool, outro: bool) -> QJsonObject {
         self.dispatch(Ok(Call::SetAutoSkip { intro, outro }))
+    }
+    pub fn set_provider_order(&self, order: &QJsonArray) -> QJsonObject {
+        let order: Result<Vec<Provider>, CoreError> = serde_json::from_value(Value::Array(
+            order.iter().map(|p| json::from_qjson(&p)).collect(),
+        ))
+        .map_err(|e| CoreError::invalid("order", e.to_string()));
+        self.dispatch(order.map(|order| Call::SetProviderOrder { order }))
     }
     pub fn export_library(&self, path: &QString, private_data: bool) -> QJsonObject {
         self.dispatch(Ok(Call::Export {
