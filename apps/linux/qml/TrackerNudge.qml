@@ -11,7 +11,7 @@ Corner {
     id: root
     Settings {
         id: kept
-        location: "file://" + Shell.configDir + "/shell.conf"
+        location: Shell.settingsUrl
         category: "onboarding"
         property bool trackerNudgeDismissed: false
     }
