@@ -1,19 +1,24 @@
-// The match popover: search AniList for the series's real record, or resolve a
-// pasted AniList or MAL link, and apply. Search and resolve are jobs whose
-// replies come back as events (SearchFinished, LinkResolved), matched here by
-// job id. Applying writes the match confirmed at once; the assets follow and
-// SeriesChanged re-lists the table behind this panel.
+// The match popover: a raised tile over a Blocker (the owning page puts one under it), to
+// search AniList for the series's real record or look up a pasted AniList or MyAnimeList
+// link, and apply. Search and look-up are jobs whose replies come back as events
+// (SearchFinished, LinkResolved), matched here by job id. Applying writes the match
+// confirmed at once; the assets follow and SeriesChanged re-lists the page behind. It opens
+// onto the frame's escape stack and closes through close(), so Escape, the X, a press on
+// the shield and Apply all leave the same way.
 import QtQuick
+import QtQuick.Controls.Basic as QC
 import com.marcusrosado.AniBeam
 
 Corner {
     id: root
+    objectName: "match-panel"
     property real seriesId: 0
     property string seriesTitle: ""
     property var currentMatch: null
     property var results: []
     property var resolved: null          // a MatchTarget from a pasted link, waiting to be applied
     property int searchJob: -1
+    property int resolveJob: -1
     property bool searching: false
 
     function openFor(id, title, matchInfo) {
@@ -23,20 +28,30 @@ Corner {
         root.results = []
         root.resolved = null
         search.text = title
+        searchDebounce.stop()
         visible = true
+        frame.escapeStack.push("popover", root)
         search.focusInput()
         runSearch(title)
     }
+    function close() {
+        if (!visible) return
+        visible = false
+        frame.escapeStack.pop(root)
+    }
+    Component.onDestruction: if (visible) frame.escapeStack.pop(root)
     function runSearch(q) {
+        q = String(q || "").trim()
+        if (q.length < 2) { root.searching = false; root.results = []; root.searchJob = -1; return }
         var r = Door.searchProvider(q, 12)
         if (r.error) { frame.toast(r.error.message); return }
-        root.searchJob = r.reply.Started.job
+        root.searchJob = r.reply.job
         root.searching = true
     }
     function apply(target) {
         var r = Door.applyMatch(root.seriesId, target)
         if (r.error) { frame.toast(r.error.message); return }
-        root.visible = false
+        root.close()
     }
     function targetText(t) {
         if (!t) return ""
@@ -47,19 +62,19 @@ Corner {
         var bits = []
         if (m.anilist_id !== null && m.anilist_id !== undefined) bits.push("AniList " + m.anilist_id)
         if (m.mal_id !== null && m.mal_id !== undefined) bits.push("MyAnimeList " + m.mal_id)
-        return bits.join(", ")
+        return bits.length ? "Matched to " + bits.join(" and ") : ""
     }
+    function formatLabel(f) { return !f ? "" : ({ TV: "TV", TV_SHORT: "TV short", OVA: "OVA", ONA: "ONA", SPECIAL: "Special", MOVIE: "Film", MUSIC: "Music" })[f] || f.replace(/_/g, " ") }
 
-    width: theme.space(150)
-    height: theme.space(110)
+    readonly property real pad: theme.space(5)
+    width: Math.min(theme.space(170), (parent ? parent.width : theme.space(170)) - theme.space(16))
+    height: Math.min(theme.space(160), (parent ? parent.height : theme.space(160)) - theme.space(16))
     visible: false
-    radius: theme.radiusLg
+    radius: theme.radiusTile
     smoothing: theme.cornerSmoothing
-    color: theme.surfaceRaised
-    borderColor: theme.lineStrong
-    borderWidth: 1
+    color: theme.raised
 
-    onVisibleChanged: if (!visible) { results = []; resolved = null; searching = false }
+    onVisibleChanged: if (!visible) { results = []; resolved = null; searching = false; searchDebounce.stop() }
 
     Connections {
         target: Door
@@ -68,182 +83,168 @@ Corner {
             root.searching = false
             root.results = res || []
         }
-        function onLinkResolved(job, target) { root.resolved = target }
+        function onLinkResolved(job, target) { if (job === root.resolveJob) root.resolved = target }
     }
 
+    // The panel's own press sink: a press on its padding never reaches the shield under it
+    MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons; hoverEnabled: true; onWheel: function(w) { w.accepted = true } }
+
     Column {
-        anchors.fill: parent
-        anchors.margins: theme.space(5)
+        id: head
+        x: root.pad; y: root.pad
+        width: root.width - root.pad * 2
         spacing: theme.space(3)
 
-        Row {
+        Item {
             width: parent.width
-            spacing: theme.space(3)
-            Text {
-                text: "Match"
-                color: theme.text
-                font.family: theme.fontDisplay
-                font.pointSize: theme.typeNormal * 1.15
-                font.weight: Font.DemiBold
-                anchors.verticalCenter: parent.verticalCenter
+            height: Math.max(heading.height, closeBtn.height)
+            Column {
+                id: heading
+                width: parent.width - closeBtn.width - theme.space(3)
+                Label { text: "Match"; role: "title" }
+                Label { width: parent.width; text: root.seriesTitle; role: "ui"; color: theme.textDim; elide: Text.ElideRight }
             }
-            Text {
-                text: root.seriesTitle
-                color: theme.textDim
-                font.family: theme.fontUi
-                font.pointSize: theme.typeSmall
-                elide: Text.ElideRight
-                width: parent.width - closeBtn.width - parent.spacing * 2
-                anchors.verticalCenter: parent.verticalCenter
-            }
-            Icon {
+            Button {
                 id: closeBtn
-                glyph: "x"
-                size: theme.space(4.5)
-                color: theme.textDim
-                anchors.verticalCenter: parent.verticalCenter
-                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.visible = false }
+                objectName: "match-close"
+                anchors.right: parent.right; anchors.top: parent.top
+                small: true; icon: "x"; text: "Close"
+                onClicked: root.close()
             }
         }
 
         // What the series is matched to right now, with the clear
         Row {
-            visible: root.currentMatch !== null
+            visible: root.currentMatch !== null && root.matchText(root.currentMatch) !== ""
             spacing: theme.space(3)
-            Text {
+            Label {
                 text: root.currentMatch ? root.matchText(root.currentMatch) : ""
-                color: theme.textDim
-                font.family: theme.fontUi
-                font.pointSize: theme.typeSmall
+                role: "ui"; color: theme.textDim
                 anchors.verticalCenter: parent.verticalCenter
             }
             Button {
                 text: "Clear match"
                 small: true
-                flat: true
                 onClicked: {
                     var r = Door.clearMatch(root.seriesId)
                     if (r.error) frame.toast(r.error.message)
-                    root.visible = false
+                    root.close()
                 }
             }
         }
 
         SearchField {
             id: search
+            objectName: "match-search"
             width: parent.width
             placeholder: "Search AniList"
             hint: ""
-            onTextChanged: searchDebounce.restart()
+            onTextChanged: if (root.visible) searchDebounce.restart()
         }
         Timer { id: searchDebounce; interval: 300; onTriggered: root.runSearch(search.text) }
 
-        // A pasted link, resolved into a target
+        // A pasted link, looked up into a target
         Row {
             width: parent.width
             spacing: theme.space(2)
             Field {
                 id: linkField
-                width: parent.width - resolveBtn.width - parent.spacing
-                placeholder: "Paste an AniList or MAL link"
+                width: parent.width - lookUp.width - parent.spacing
+                placeholder: "Paste an AniList or MyAnimeList link"
                 mono: true
             }
             Button {
-                id: resolveBtn
+                id: lookUp
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Resolve"
-                flat: true
+                text: "Look up"
                 onClicked: {
                     var r = Door.resolveLink(linkField.text)
-                    if (r.error) frame.toast(r.error.message)
+                    if (r.error) { frame.toast(r.error.message); return }
+                    root.resolveJob = r.reply && r.reply.job !== undefined ? r.reply.job : -1
                 }
             }
         }
 
-        // The resolved target, waiting to be applied
+        // The looked-up target, waiting to be applied
         Row {
             visible: root.resolved !== null
             spacing: theme.space(3)
-            Text {
+            Label {
                 text: root.resolved ? root.targetText(root.resolved) : ""
-                color: theme.text
-                font.family: theme.fontUi
-                font.pointSize: theme.typeNormal
+                role: "ui"
                 anchors.verticalCenter: parent.verticalCenter
             }
-            Button {
-                text: "Apply"
-                small: true
-                onClicked: root.apply(root.resolved)
-            }
+            Button { text: "Apply"; small: true; primary: true; onClicked: root.apply(root.resolved) }
         }
 
-        // The results
-        Text {
-            visible: root.results.length === 0 && !root.searching
-            text: search.text === "" ? "Type to search AniList." : "No titles found."
-            color: theme.textFaint
-            font.family: theme.fontUi
-            font.pointSize: theme.typeSmall
+        Label {
+            visible: root.results.length === 0
+            text: root.searching ? "Searching AniList" : search.text.trim().length < 2 ? "Type at least two letters to search AniList." : "No titles found."
+            role: "ui"; color: theme.textDim
         }
-        Column {
-            width: parent.width
-            spacing: theme.space(2)
-            Repeater {
-                model: root.results
-                Row {
-                    id: resultRow
-                    required property var modelData
-                    width: parent.width
-                    spacing: theme.space(3)
-                    Corner {
-                        width: theme.space(7); height: width * 1.5
-                        radius: theme.radiusSm; smoothing: 0
-                        color: theme.surfaceSunken
-                        anchors.verticalCenter: parent.verticalCenter
-                        Image {
-                            anchors.fill: parent
-                            source: modelData.cover_url || ""
-                            fillMode: Image.PreserveAspectCrop
-                            asynchronous: true
-                        }
-                        Text {
-                            visible: !modelData.cover_url
-                            anchors.centerIn: parent
-                            text: modelData.title ? modelData.title.charAt(0) : "?"
-                            color: theme.textFaint
-                            font.family: theme.fontDisplay
-                            font.pointSize: theme.typeNormal
-                        }
-                    }
-                    Column {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: resultRow.width - parent.width - applyBtn.width - theme.space(6)
-                        Text {
-                            width: parent.width
-                            text: modelData.title
-                            color: theme.text
-                            font.family: theme.fontUi
-                            font.pointSize: theme.typeNormal
-                            font.weight: Font.DemiBold
-                            elide: Text.ElideRight
-                        }
-                        Text {
-                            text: [modelData.year, modelData.format, modelData.episodes ? modelData.episodes + " ep" : ""].filter(Boolean).join(", ")
-                            color: theme.textDim
-                            font.family: theme.fontUi
-                            font.pointSize: theme.typeSmall
-                        }
-                    }
-                    Button {
-                        id: applyBtn
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "Apply"
-                        small: true
-                        flat: true
-                        onClicked: root.apply({ "Anilist": { "id": modelData.id, "season": null } })
-                    }
+    }
+
+    // The results: a list of their own, scrolling inside the panel
+    ListView {
+        id: list
+        x: root.pad
+        y: head.y + head.height + theme.space(3)
+        width: root.width - root.pad * 2
+        height: root.height - y - root.pad
+        clip: true
+        spacing: theme.space(1)
+        model: root.results
+        boundsBehavior: Flickable.StopAtBounds
+        QC.ScrollBar.vertical: ThinScrollBar {}
+        delegate: Corner {
+            id: result
+            required property var modelData
+            required property int index
+            objectName: "match-result-" + index
+            width: list.width
+            height: theme.space(18)
+            radius: theme.radiusInner(theme.space(1))
+            smoothing: theme.cornerSmoothing
+            color: resultMouse.containsMouse ? theme.raisedHover : "transparent"
+            MouseArea { id: resultMouse; anchors.fill: parent; hoverEnabled: true }
+            Corner {
+                id: cover
+                x: theme.space(2)
+                anchors.verticalCenter: parent.verticalCenter
+                height: parent.height - theme.space(2); width: Math.round(height / 1.5)
+                radius: theme.radiusSm; smoothing: theme.cornerSmoothing
+                color: theme.tileSunken
+                fillItem: coverArt.status === Image.Ready ? coverArt : null
+                Image {
+                    id: coverArt; visible: false
+                    width: cover.width; height: cover.height
+                    source: result.modelData.cover_url || ""
+                    sourceSize: Qt.size(Math.ceil(cover.width * theme.devicePixelRatio), Math.ceil(cover.height * theme.devicePixelRatio))
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true
                 }
+            }
+            Column {
+                anchors.left: cover.right; anchors.leftMargin: theme.space(3)
+                anchors.right: applyBtn.left; anchors.rightMargin: theme.space(3)
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: theme.space(0.5)
+                Label { width: parent.width; text: result.modelData.title || ""; role: "title"; font.pointSize: theme.typeNormal; elide: Text.ElideRight }
+                Label { visible: !!result.modelData.alt_title; width: parent.width; text: result.modelData.alt_title || ""; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim; elide: Text.ElideRight }
+                Label {
+                    width: parent.width
+                    text: [result.modelData.year ? String(result.modelData.year) : "", root.formatLabel(result.modelData.format), result.modelData.episodes ? Fmt.plural(result.modelData.episodes, "episode", "episodes") : ""].filter(Boolean).join(", ")
+                    role: "ledger"; color: theme.textDim; elide: Text.ElideRight
+                }
+            }
+            Button {
+                id: applyBtn
+                objectName: "match-apply-" + result.index
+                anchors.right: parent.right; anchors.rightMargin: theme.space(2)
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Apply"
+                small: true
+                onClicked: root.apply({ "Anilist": { "id": result.modelData.id, "season": null } })
             }
         }
     }
