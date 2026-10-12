@@ -934,7 +934,7 @@ mod tests {
                     reason: Refusal::Hidden
                 }
             ),
-            "refused: Hidden"
+            "Cannot do that: the show is hidden."
         );
     }
 }

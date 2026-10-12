@@ -235,7 +235,7 @@ mod tests {
         assert_eq!(err["error"]["kind"], "NotFound");
         assert_eq!(err["error"]["what"], "Series");
         assert_eq!(err["error"]["id"], 9);
-        assert_eq!(err["error"]["message"], "Series 9 not found");
+        assert_eq!(err["error"]["message"], "Could not find series 9.");
         let refused = reply_json(Err(CoreError::Refused {
             reason: Refusal::Hidden,
         }));

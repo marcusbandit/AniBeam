@@ -21,41 +21,89 @@ pub enum Refusal {
     OnDisk,
 }
 
+/// The words a toast uses for each entity, tracker, provider and refusal; the
+/// Debug names ("Anilist", "NoMatch") are for logs, not for people.
+fn entity_words(what: Entity) -> &'static str {
+    match what {
+        Entity::Source => "folder",
+        Entity::Series => "series",
+        Entity::File => "file",
+        Entity::Session => "playback session",
+        Entity::Job => "job",
+    }
+}
+
+fn tracker_name(tracker: Tracker) -> &'static str {
+    match tracker {
+        Tracker::Anilist => "AniList",
+        Tracker::Mal => "MyAnimeList",
+    }
+}
+
+fn provider_name(provider: Provider) -> &'static str {
+    match provider {
+        Provider::Anilist => "AniList",
+        Provider::Mal => "MyAnimeList",
+        Provider::Tmdb => "TMDB",
+    }
+}
+
+/// A message as a sentence: a terminal full stop, unless it already has one.
+fn sentence(message: &str) -> String {
+    if message.ends_with(['.', '!', '?']) {
+        message.to_string()
+    } else {
+        format!("{message}.")
+    }
+}
+
+/// The same sentences the player's `refusalWords` uses.
+fn refusal_words(reason: Refusal) -> &'static str {
+    match reason {
+        Refusal::Hidden => "the show is hidden",
+        Refusal::NoMatch => "the show has no tracker match",
+        Refusal::NotNewer => "the tracker is already past this episode",
+        Refusal::Extra => "this is an extra",
+        Refusal::Unmatched => "the file is not matched to an episode",
+        Refusal::OnDisk => "the file is only on disk",
+    }
+}
+
 /// One enum, every fallible call returns it, and no exported code panics on
 /// shell input. Third-party errors arrive as the message string.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, thiserror::Error, uniffi::Error)]
 pub enum CoreError {
-    #[error("{what:?} {id} not found")]
+    #[error("Could not find {} {id}.", entity_words(*.what))]
     NotFound { what: Entity, id: u64 },
-    #[error("invalid {field}: {message}")]
+    #[error("Invalid {}: {}", .field.replace('_', " "), sentence(.message))]
     Invalid { field: String, message: String },
-    #[error("source path unavailable: {path}")]
+    #[error("This folder is not available: {path}")]
     Unavailable { path: String },
-    #[error("{tracker:?} is not connected")]
+    #[error("{} is not connected.", tracker_name(*.tracker))]
     NotConnected { tracker: Tracker },
-    #[error("refused: {reason:?}")]
+    #[error("Cannot do that: {}.", refusal_words(*.reason))]
     Refused { reason: Refusal },
-    #[error("{provider:?}: {message}")]
+    #[error("{} did not respond: {message}", provider_name(*.provider))]
     Provider {
         provider: Provider,
         status: Option<u32>,
         message: String,
         retry_after: Option<f64>,
     },
-    #[error("io: {message}")]
+    #[error("Could not read or write a file: {message}")]
     Io {
         path: Option<String>,
         message: String,
     },
-    #[error("storage: {message}")]
+    #[error("Could not save your library: {message}")]
     Storage { message: String },
-    #[error("keyring: {message}")]
+    #[error("Could not reach the system password store: {message}")]
     Keyring { message: String },
-    #[error("unsupported: {what}")]
+    #[error("{what} is not supported yet.")]
     Unsupported { what: String },
-    #[error("export version {found} is newer than the supported {supported}")]
+    #[error("This export is from a newer AniBeam (format {found}). Update AniBeam to import it.")]
     Version { found: u32, supported: u32 },
-    #[error("internal: {message}")]
+    #[error("AniBeam hit an internal error: {message}")]
     Internal { message: String },
 }
 
@@ -166,6 +214,6 @@ mod tests {
         let e = CoreError::Refused {
             reason: Refusal::OnDisk,
         };
-        assert_eq!(e.to_string(), "refused: OnDisk");
+        assert_eq!(e.to_string(), "Cannot do that: the file is only on disk.");
     }
 }
