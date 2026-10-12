@@ -11,8 +11,8 @@ Flickable {
         x: theme.space(8); y: theme.space(7)
         width: parent.width - theme.space(16)
         spacing: theme.space(4)
-        Text { text: "Tokens"; color: theme.text; font.family: theme.fontDisplay; font.pointSize: theme.typeLarge; font.weight: Font.DemiBold }
-        Text { text: theme.sourceLabel + ", " + theme.mode; color: theme.textDim; font.family: theme.fontUi; font.pointSize: theme.typeSmall }
+        Label { text: "Tokens"; role: "display" }
+        Label { text: theme.sourceLabel + ", " + theme.mode; color: theme.textDim; role: "ledger" }
         Flow {
             width: parent.width
             spacing: theme.space(2)
@@ -51,6 +51,33 @@ Flickable {
             Repeater {
                 model: [theme.radiusSm, theme.radiusMd, theme.radiusLg, theme.radiusXl]
                 Corner { required property real modelData; width: theme.space(24); height: theme.space(16); radius: modelData; smoothing: theme.cornerSmoothing; color: theme.surface; borderColor: theme.lineStrong; borderWidth: 1 }
+            }
+        }
+        // The four roles of the face, then the faint and dim text on a tile
+        Column {
+            spacing: theme.space(1)
+            Label { role: "display"; text: "Display, wdth 125 wght 800" }
+            Label { role: "title"; text: "Title, wdth 112 wght 650" }
+            Label { role: "ui"; text: "UI, wdth 100 wght 450: the controls and the body" }
+            Label { role: "ledger"; text: "Ledger, wdth 88 wght 500: 1111 0000 24 of 24, 23:59" }
+            Label { role: "ledger"; color: theme.textDim; text: "Dim ledger: 12 files, 3 days ago" }
+            Label { role: "ledger"; color: theme.textFaint; text: "Faint ledger: no poster, 0 files" }
+        }
+        // Poster plates: each tile is a poster's tone, its plate and its hover plate
+        Row {
+            spacing: theme.grout
+            Repeater {
+                model: ["#d23c3c", "#f4f1ea", "#1a1a2e", "#3c7ad2", "#e8c547", "#2e8b57"]
+                Column {
+                    required property string modelData
+                    spacing: theme.grout
+                    Corner { width: theme.space(30); height: theme.space(8); radius: theme.radiusTile; smoothing: theme.cornerSmoothing; color: modelData
+                        Label { anchors.centerIn: parent; role: "ledger"; text: "tone " + modelData; color: theme.contrast(theme.text, parent.color) >= 4.5 ? theme.text : theme.bg } }
+                    Corner { width: theme.space(30); height: theme.space(8); radius: theme.radiusTile; smoothing: theme.cornerSmoothing; color: theme.plate(modelData)
+                        Label { anchors.centerIn: parent; role: "title"; font.pointSize: theme.typeNormal; text: "Plate " + theme.contrast(theme.text, parent.color).toFixed(1) } }
+                    Corner { width: theme.space(30); height: theme.space(8); radius: theme.radiusTile; smoothing: theme.cornerSmoothing; color: theme.plateHover(modelData)
+                        Label { anchors.centerIn: parent; role: "title"; font.pointSize: theme.typeNormal; text: "Hover " + theme.contrast(theme.text, parent.color).toFixed(1) } }
+                }
             }
         }
         Column {

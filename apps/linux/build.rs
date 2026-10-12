@@ -14,6 +14,7 @@ fn main() {
             .qml_file("qml/Corner.qml")
             .qml_file("qml/Frost.qml")
             .qml_file("qml/WheelStep.qml")
+            .qml_file("qml/Label.qml")
             .qml_file("qml/Icon.qml")
             .qml_file("qml/Chip.qml")
             .qml_file("qml/Seg.qml")
@@ -99,8 +100,9 @@ fn main() {
     // ls apps/linux/assets/icons/*.svg | sed 's|apps/linux/||;s|.*|        "&",|'
     .qrc_resources([
         "assets/icon.png",
-        "assets/fonts/Fraunces-Variable.ttf",
-        "assets/fonts/SchibstedGrotesk-Variable.ttf",
+        "assets/fonts/Archivo-Variable-Regular.ttf",
+        "assets/fonts/Archivo-Variable-SemiBold.ttf",
+        "assets/fonts/Archivo-Variable-ExtraBold.ttf",
         "assets/icons/activity.svg",
         "assets/icons/archive.svg",
         "assets/icons/arrow-down.svg",

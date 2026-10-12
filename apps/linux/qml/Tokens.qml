@@ -12,11 +12,20 @@ Item {
     readonly property var set: dark ? Theme.dark : Theme.light
     function token(name) { var v = set[name.replace(".", "_")]; return v === undefined ? "#ff00ff" : v }
 
-    // The lobby's two faces, from the qrc. Multiple Tokens instances share the engine's
-    // font cache, so a second loader on the same URL costs nothing.
-    FontLoader { id: displayFace; source: "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/fonts/Fraunces-Variable.ttf" }
-    FontLoader { id: uiFace; source: "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/fonts/SchibstedGrotesk-Variable.ttf" }
-    readonly property string fontDisplay: displayFace.name !== "" ? displayFace.name : "Georgia, serif"
+    // The one face, Archivo, variable in width (wdth 62 to 125) and weight (wght 100 to 900),
+    // from the qrc so the packaged binary is self-contained. It ships as three cuts of the one
+    // variable font, registered as one family: Qt registers only a variable font's default
+    // instance and never maps font.weight onto the wght axis, so a single file would set
+    // every Text without variableAxes at its default (SemiBold). Each cut keeps all of wdth
+    // and a slice of wght (100-500, 500-700, 700-900) around its default, so font.weight
+    // picks a cut and a role's axes land inside it (scripts/cut-fonts.py). Multiple Tokens
+    // instances share the engine's font cache, so a second loader on a URL costs nothing.
+    // Until the loader resolves, text falls back to the system face for a frame at most.
+    FontLoader { id: face; source: "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/fonts/Archivo-Variable-Regular.ttf" }
+    FontLoader { source: "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/fonts/Archivo-Variable-SemiBold.ttf" }
+    FontLoader { source: "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/fonts/Archivo-Variable-ExtraBold.ttf" }
+    readonly property string fontFamily: face.name !== "" ? face.name : Qt.application.font.family
+    readonly property string fontDisplay: fontFamily
 
     // Colours
     readonly property color bg: token("bg")
@@ -43,6 +52,13 @@ Item {
     readonly property color purple: token("purple")
     readonly property color brown: token("brown")
     readonly property color scrim: Qt.rgba(bg.r, bg.g, bg.b, 0.8)
+    // The mosaic's names for the ramp: the ground is the grout every tile is set in, a tile
+    // rests on it, a raised tile is hovered, selected or floating (menus, tips, sheets), a
+    // sunken tile takes input (fields), and the line is the rare hairline.
+    readonly property color ground: bg
+    readonly property color tile: surface
+    readonly property color raised: surfaceRaised
+    readonly property color tileSunken: surfaceSunken
     readonly property string sourceLabel: Theme.sourceLabel
 
     // Status and fraction colours: fixed mappings onto the hues
@@ -66,21 +82,50 @@ Item {
     readonly property real radiusMd: cornerBase * 1.4 * densityFactor
     readonly property real radiusLg: cornerBase * 1.4 * 1.4 * densityFactor
     readonly property real radiusXl: cornerBase * 1.4 * 1.4 * 1.4 * densityFactor
+    // The mosaic's geometry: one joint between every pair of tiles, one tile radius, and a
+    // radius for anything set inside a tile at `padding` from its edge so the corners nest.
+    // Pills (chips, segmented switches, buttons) are radius: height / 2.
+    readonly property real grout: Math.round(6 * densityFactor)
+    readonly property real radiusTile: 12 * densityFactor
+    function radiusInner(padding) { return Math.max(2, radiusTile - padding) }
     readonly property int posterWidth: Theme.posterWidth
     readonly property real systemPointSize: Qt.application.font.pointSize > 0 ? Qt.application.font.pointSize : 10
-    // The lobby's two faces: Fraunces is the voice (titles, display lines, its optical
-    // sizing settling as point size climbs), Schibsted Grotesk is the worker (controls,
-    // meta, counts). Loaded from the qrc so the packaged binary is self-contained; until
-    // a loader resolves, each falls back to a stock family for a frame at most.
-    readonly property string fontSans: uiFace.name !== "" ? uiFace.name : Qt.application.font.family
-    // Shims kept while the surfaces are restyled: old names resolve to the lobby pair.
-    readonly property string fontUi: fontSans
-    readonly property string fontSerif: fontDisplay
-    readonly property string fontMono: fontSans
+    readonly property string fontSans: fontFamily
+    // Shims kept while the surfaces are restyled: the old names all resolve to Archivo.
+    // There is no monospace anywhere; tabular figures come from the ledger role.
+    readonly property string fontUi: fontFamily
+    readonly property string fontSerif: fontFamily
+    readonly property string fontMono: fontFamily
+    // Four sizes only; widths and weights do the rest
     readonly property real typeDisplay: systemPointSize * 2.2
     readonly property real typeNormal: systemPointSize
     readonly property real typeSmall: systemPointSize * 0.85
     readonly property real typeLarge: systemPointSize * 1.5
+    // The four cuts of the face, by role (DESIGN.md, Type). Label.qml applies one with
+    // `role: "title"`; a plain Text can take the same through these functions:
+    //   font.variableAxes: theme.roleAxes(r)   font.weight: theme.roleWeight(r)
+    //   font.pointSize: theme.roleSize(r)      font.features: theme.roleFeatures(r)
+    //   display  page titles, the hero tile's title   wdth 125, wght 800, typeDisplay
+    //   title    tile plates, section names          wdth 112, wght 650, typeLarge or typeNormal
+    //   ui       controls, body                      wdth 100, wght 450, typeNormal
+    //   ledger   tables, episode lists, counts, times wdth 88, wght 500, tabular, typeSmall
+    readonly property var roles: ({
+        display: { wdth: 125, wght: 800 },
+        title: { wdth: 112, wght: 650 },
+        ui: { wdth: 100, wght: 450 },
+        ledger: { wdth: 88, wght: 500 }
+    })
+    function roleOf(r) { return roles[r] || roles.ui }
+    function roleAxes(r) { var c = roleOf(r); return { "wdth": c.wdth, "wght": c.wght } }
+    function roleWeight(r) { return roleOf(r).wght }
+    function roleSize(r) { return r === "display" ? typeDisplay : r === "title" ? typeLarge : r === "ledger" ? typeSmall : typeNormal }
+    function roleFeatures(r) { return r === "ledger" ? { "tnum": 1 } : {} }
+    // Exponential smoothing toward a target, bandit shell's rate: x += (target - x) * k
+    // with k = 1 - exp(-followRate * dt). follow() is one step of it.
+    readonly property real followRate: 14
+    function follow(x, target, dt) { return x + (target - x) * (1 - Math.exp(-followRate * dt)) }
+    // Reduced motion: the orchestrated moments (the library's opening sweep) are skipped
+    readonly property bool reducedMotion: Theme.reducedMotion
     readonly property int motionFast: 120
     readonly property int motionNormal: 200
     readonly property int motionSlow: 320
@@ -92,4 +137,30 @@ Item {
         t = Math.max(0, Math.min(1, t))
         return Qt.rgba(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, a.a + (b.a - a.a) * t)
     }
+
+    // WCAG relative luminance and contrast ratio of two opaque Qt colours
+    function luminance(c) {
+        function lin(v) { return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4) }
+        return 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b)
+    }
+    function contrast(a, b) {
+        var la = luminance(a), lb = luminance(b)
+        return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
+    }
+
+    // Poster plates, the one bold spend: a poster's tone (Fmt.posterTone) moved toward the
+    // ground in steps of `plateStep`. The hover plate is the first step at which the theme's
+    // text holds 4.5:1; the resting plate sits one step further toward the ground, so the
+    // hover lifts it one step back toward the tone and both stay legible. On a dark theme
+    // that darkens the tone toward the grout; on a light one it pales it toward the light
+    // ground under dark text.
+    readonly property real plateStep: 0.08
+    function plateMix(c) {
+        c = Qt.color(c)
+        for (var i = 0; i * plateStep < 1; i++)
+            if (contrast(text, tone(c, ground, i * plateStep)) >= 4.5) return i * plateStep
+        return 1
+    }
+    function plate(c) { c = Qt.color(c); return tone(c, ground, Math.min(1, plateMix(c) + plateStep)) }
+    function plateHover(c) { c = Qt.color(c); return tone(c, ground, plateMix(c)) }
 }
