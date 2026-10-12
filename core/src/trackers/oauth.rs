@@ -529,16 +529,35 @@ fn query_pairs(query: &str) -> Vec<(String, String)> {
 
 // The pages ------------------------------------------------------------------
 
-/// The three pages, carried from Electron's `trackerHandler.ts`. They are
-/// the only interface a user sees in the browser, so they look like the
-/// app rather than like a server default.
+/// The look every page shares: AniBeam Dark's ground and brand teal, the
+/// mono face, one quiet card in the middle of the tab. These pages are the
+/// only interface a user sees in the browser, so they look like the app
+/// rather than like a server default.
+const PAGE_STYLE: &str = "html,body{margin:0;height:100%;background:#07090f;color:#e6ebf5;\
+font-family:'JetBrains Mono',ui-monospace,monospace}\
+body{display:flex;align-items:center;justify-content:center}\
+main{background:#0d1119;border:1px solid #161c28;border-radius:20px;padding:2.5rem 3rem;max-width:32rem;\
+display:flex;flex-direction:column;gap:0.75rem}\
+.mark{width:2.5rem;height:2.5rem;border-radius:50%;display:flex;align-items:center;justify-content:center;\
+font-size:1.25rem;font-weight:700;background:rgba(70,224,196,0.14);color:#46e0c4}\
+.mark.bad{background:rgba(240,113,138,0.14);color:#f0718a}\
+h1{margin:0.5rem 0 0;font-weight:600;font-size:1.1rem}\
+p{margin:0;color:#a3aec5;font-size:0.875rem;line-height:1.5}\
+.brand{color:#46e0c4}";
+
+/// The tab a finished sign-in leaves. It asks the browser to close it a
+/// beat later; a browser that refuses a script closing a tab it did not
+/// open leaves the page saying the same thing in words.
 fn success_page(site: &str) -> String {
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\">\n\
-         <title>AniBeam, connected</title>\n\
-         <style>html,body{{margin:0;height:100%;background:#0b0b10;color:#f1f5f9;font-family:'JetBrains Mono',ui-monospace,monospace;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:0.5rem}}h1{{font-weight:500;font-size:1rem}}p{{color:#94a3b8;font-size:0.85rem}}</style></head>\n\
-         <body><h1>{} connected</h1><p>You can close this tab and return to AniBeam.</p></body></html>",
-        escape(site)
+         <title>{site} is connected to AniBeam</title>\n\
+         <style>{PAGE_STYLE}</style></head>\n\
+         <body><main><div class=\"mark\">&#10003;</div>\
+         <h1>{site} is connected to <span class=\"brand\">AniBeam</span></h1>\
+         <p>You can close this tab.</p></main>\n\
+         <script>setTimeout(function(){{window.close()}},1500)</script></body></html>",
+        site = escape(site)
     )
 }
 
@@ -548,9 +567,12 @@ fn success_page(site: &str) -> String {
 fn error_page(message: &str) -> String {
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\">\n\
-         <title>AniBeam, auth failed</title>\n\
-         <style>html,body{{margin:0;height:100%;background:#0b0b10;color:#f1f5f9;font-family:'JetBrains Mono',ui-monospace,monospace;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:0.5rem}}h1{{font-weight:500;font-size:1rem;color:#f43f5e}}p{{color:#94a3b8;font-size:0.85rem}}</style></head>\n\
-         <body><h1>Authentication failed</h1><p>{}</p></body></html>",
+         <title>AniBeam, sign-in failed</title>\n\
+         <style>{PAGE_STYLE}</style></head>\n\
+         <body><main><div class=\"mark bad\">!</div>\
+         <h1>The sign-in did not finish</h1>\
+         <p>{}</p>\
+         <p>Go back to <span class=\"brand\">AniBeam</span> and try again.</p></main></body></html>",
         escape(message)
     )
 }
@@ -559,7 +581,7 @@ fn error_page(message: &str) -> String {
 /// page reads it in the browser and reloads with the same parameters as a
 /// query, which the listener can read.
 const FRAGMENT_FORWARDER: &str = "<!doctype html><html><head><meta charset=\"utf-8\"><title>Connecting</title>\n\
-<style>html,body{margin:0;height:100%;background:#0b0b10;color:#94a3b8;font-family:'JetBrains Mono',ui-monospace,monospace;display:flex;align-items:center;justify-content:center}</style></head>\n\
+<style>html,body{margin:0;height:100%;background:#07090f;color:#a3aec5;font-family:'JetBrains Mono',ui-monospace,monospace;display:flex;align-items:center;justify-content:center}</style></head>\n\
 <body>Connecting<script>\n\
 (function(){\n\
   var h=window.location.hash;\n\
@@ -632,11 +654,15 @@ mod tests {
 
     #[test]
     fn the_pages_name_the_site_and_escape_what_a_provider_sent() {
-        assert!(success_page(site_name(Tracker::Mal)).contains("MyAnimeList connected"));
-        assert!(success_page(site_name(Tracker::Anilist)).contains("AniList connected"));
+        let page = success_page(site_name(Tracker::Mal));
+        assert!(page.contains("MyAnimeList is connected to"), "{page}");
+        assert!(page.contains("You can close this tab."), "{page}");
+        assert!(page.contains("window.close()"), "{page}");
+        assert!(success_page(site_name(Tracker::Anilist)).contains("AniList is connected to"));
         let page = error_page("<script>alert(1)</script>");
         assert!(!page.contains("<script>alert"));
         assert!(page.contains("&lt;script&gt;"));
+        assert!(page.contains("try again"), "{page}");
         assert!(FRAGMENT_FORWARDER.contains("window.location.hash"));
     }
 

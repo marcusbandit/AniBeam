@@ -138,7 +138,7 @@ fn anilist_implicit_grant_through_the_forwarder_connects() {
         53690,
         "/callback?access_token=tok&expires_in=3600&token_type=Bearer",
     );
-    assert!(second.contains("AniList connected"), "{second}");
+    assert!(second.contains("AniList is connected to"), "{second}");
 
     let done = common::wait_job(&c, job);
     assert!(
@@ -265,7 +265,7 @@ fn mal_pkce_flow_checks_state_and_exchanges_the_code() {
     let state = param(&open_url, "state");
     let verifier = param(&open_url, "code_challenge");
     let ok = http_get(53691, &format!("/callback?code=abc&state={state}"));
-    assert!(ok.contains("MyAnimeList connected"), "{ok}");
+    assert!(ok.contains("MyAnimeList is connected to"), "{ok}");
     let done = common::wait_job(&c, job);
     assert!(
         matches!(
@@ -383,7 +383,7 @@ fn mal_without_a_secret_signs_in_as_a_public_client() {
     let state = param(&open_url, "state");
     let verifier = param(&open_url, "code_challenge");
     let ok = http_get(53693, &format!("/callback?code=abc&state={state}"));
-    assert!(ok.contains("MyAnimeList connected"), "{ok}");
+    assert!(ok.contains("MyAnimeList is connected to"), "{ok}");
     let done = common::wait_job(&c, job);
     assert!(
         matches!(
