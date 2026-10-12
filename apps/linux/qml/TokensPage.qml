@@ -29,7 +29,7 @@ Flickable {
         }
         Row {
             spacing: theme.space(3)
-            Chip { text: "EP 12" }
+            Chip { text: "Ep 12" }
             Chip { text: "12/24"; textColor: theme.behind }
             Chip { text: "Selected"; selected: true; mono: false }
             Chip { text: "2 errors"; icon: "circle-alert"; small: true; color: theme.redSoft; textColor: theme.red }
@@ -86,7 +86,7 @@ Flickable {
             Text { text: "Large " + theme.typeLarge.toFixed(1); color: theme.text; font.family: theme.fontDisplay; font.pointSize: theme.typeLarge; font.weight: Font.DemiBold }
             Text { text: "Normal " + theme.typeNormal.toFixed(1); color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeNormal }
             Text { text: "Small, dim " + theme.typeSmall.toFixed(1); color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeSmall }
-            Text { text: "0123456789 in the fixed face"; color: theme.textDim; font.family: theme.fontUi; font.pointSize: theme.typeNormal }
+            Text { text: "0123456789 in the ledger cut"; color: theme.textDim; font.family: theme.fontUi; font.pointSize: theme.typeNormal }
         }
     }
 }

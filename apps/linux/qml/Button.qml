@@ -62,6 +62,8 @@ Corner {
         }
         Label {
             id: label
+            // An icon-only button has no label, and no spacing after its glyph either.
+            visible: root.text !== ""
             anchors.verticalCenter: parent.verticalCenter
             text: root.text
             color: root.ink

@@ -32,6 +32,60 @@
   "shot": "player-01-chrome"
  },
  {
+  "log": "the subtitles lift over the controls tile while it is up and drop back when it hides"
+ },
+ {
+  "hover": [
+   1290,
+   700
+  ]
+ },
+ {
+  "wait": 200
+ },
+ {
+  "eval": "frame.item.pageItem.chromeVisible",
+  "expect": true
+ },
+ {
+  "eval": "frame.item.pageItem.subPos < frame.item.pageItem.subPosSetting",
+  "expect": true
+ },
+ {
+  "eval": "Number(frame.item.pageItem.video.getProperty('sub-pos')) === frame.item.pageItem.subPos",
+  "expect": true
+ },
+ {
+  "eval": "frame.item.pageItem.chromeVisible = false",
+  "expect": false
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "Number(frame.item.pageItem.video.getProperty('sub-pos')) === frame.item.pageItem.subPosSetting",
+  "expect": true
+ },
+ {
+  "shot": "player-01b-chrome-hidden"
+ },
+ {
+  "hover": [
+   1300,
+   700
+  ]
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "Number(frame.item.pageItem.video.getProperty('sub-pos')) < frame.item.pageItem.subPosSetting",
+  "expect": true
+ },
+ {
+  "shot": "player-01c-subs-lifted"
+ },
+ {
   "log": "a click on play/pause, then Space still toggles (the button never takes focus)"
  },
  {

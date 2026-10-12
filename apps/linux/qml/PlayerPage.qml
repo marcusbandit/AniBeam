@@ -122,10 +122,27 @@ FocusScope {
     }
     // Spec 4.4's subtitle table as mpv options. These are set before the file, so they are
     // in force for its first frame.
-    function applyDefaults() {
-        var opts = Player.subtitleOptions(session.subtitle_defaults)
-        for (var i = 0; i < opts.length; i++) video.setProperty(opts[i][0], opts[i][1])
+    function applyDefaults() { applySubtitleOptions(session.subtitle_defaults) }
+    // The styling options, and the subtitle position they set noted for the lift below:
+    // the lift is relative to the viewer's own position, and has to be set again after
+    // them, since they would put the position back.
+    function applySubtitleOptions(d) {
+        var opts = Player.subtitleOptions(d)
+        for (var i = 0; i < opts.length; i++) {
+            if (opts[i][0] === "sub-pos") subPosSetting = Number(opts[i][1])
+            video.setProperty(opts[i][0], opts[i][1])
+        }
+        video.setProperty("sub-pos", subPos)
     }
+    // ---- The subtitle lift. While the controls tile is up it covers the foot of the
+    // picture, where the subtitles are, so mpv's sub-pos (percent of the picture's height,
+    // ASS included) is raised until the bottom line clears the tile by a grout, and put back
+    // to the viewer's own setting when the controls go.
+    property real subPosSetting: 100
+    readonly property int subPos: chromeVisible && height > 0 && chrome.controlsTop > 0
+        ? Math.max(0, Math.min(subPosSetting, Math.floor(100 * (chrome.controlsTop - theme.grout) / height)))
+        : subPosSetting
+    onSubPosChanged: if (video.isReady) video.setProperty("sub-pos", subPos)
     // Every sidecar the core found beside the file. `sub-auto=no` is one of the owned
     // options, so mpv adds none of its own and the list the core reports is the list.
     // These go on after the file is loaded, not with the options before it: sub-add acts
@@ -158,8 +175,7 @@ FocusScope {
             var d = page.session ? Door.settings.subtitle_defaults : null
             if (!d) return
             page.session.subtitle_defaults = d
-            var opts = Player.subtitleOptions(d)
-            for (var i = 0; i < opts.length; i++) video.setProperty(opts[i][0], opts[i][1])
+            page.applySubtitleOptions(d)
         }
     }
 

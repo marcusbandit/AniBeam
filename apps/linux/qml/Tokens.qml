@@ -104,7 +104,6 @@ Item {
     // There is no monospace anywhere; tabular figures come from the ledger role.
     readonly property string fontUi: fontFamily
     readonly property string fontSerif: fontFamily
-    readonly property string fontMono: fontFamily
     // Four sizes only; widths and weights do the rest
     readonly property real typeDisplay: systemPointSize * 2.2
     readonly property real typeNormal: systemPointSize

@@ -15,6 +15,9 @@ import com.marcusrosado.AniBeam
 Item {
     id: root
     anchors.fill: parent
+    // Where the controls tile starts, for the page's subtitle lift. Its geometry holds while
+    // it is hidden, so this is the same number whether or not the chrome is up.
+    readonly property real controlsTop: controls.y
 
     // ---- Header: Back, then the series, the episode and its code, in one small tile.
     Tile {

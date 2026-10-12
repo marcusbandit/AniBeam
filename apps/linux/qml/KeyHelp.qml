@@ -1,33 +1,48 @@
-// The keyboard map, shown by ?. The list is the page's handler written out: a key that
-// PlayerPage's Keys.onPressed does not act on has no line here, and every line here is a key
-// that works. Escape or a click outside closes it, and it holds the chrome open while it is
-// up. The panel is as wide as the list rather than a fixed box, so a longer line grows it.
+// The keyboard map, shown by ? or the keyboard button. The list is the keys that work in the
+// player written out: PlayerKeys.qml's handler and the frame's own shortcuts. A key neither
+// acts on has no line here, and every line here is a key that works. Escape or a press
+// outside closes it, and it holds the chrome open while it is up.
+//
+// A raised tile on a Blocker scrim, like every sheet. The groups sit side by side when the
+// window has room for them and stack when it does not; past the window's height the tile
+// scrolls rather than spilling.
 import QtQuick
 import QtQuick.Controls.Basic as QC
 
 Item {
     id: root
+    objectName: "player-keys"
     property bool open: false
     anchors.fill: parent
     visible: open
     z: 950
 
-    readonly property var keys: [
-        ["Space / K", "Play or pause"],
-        ["Left / Right", "Seek 5 s"],
-        ["J / L", "Seek 10 s"],
-        ["Ctrl+Right", "Skip the intro or outro, else 90 s"],
-        [", / .", "One frame back or forward"],
-        ["[ / ]", "Slower or faster, in steps of 0.25"],
-        ["Backspace", "Normal speed"],
-        ["N / P", "Next or previous episode"],
-        ["Up / Down", "Volume up or down by 5"],
-        ["M", "Mute"],
-        ["F", "Fullscreen"],
-        ["C", "Subtitles off and back"],
-        ["z / Z", "Subtitle delay 100 ms earlier or later"],
-        ["Escape", "Close what is open, else leave fullscreen, else leave the player"],
-        ["?", "Show or hide this list"]
+    readonly property var groups: [
+        { name: "Playback", keys: [
+            ["Space / K", "Play or pause"],
+            ["Left / Right", "Seek 5 s"],
+            ["J / L", "Seek 10 s"],
+            ["Ctrl+Right", "Skip the intro or outro, else 90 s"],
+            [", / .", "One frame back or forward"],
+            ["[ / ]", "Slower or faster, in steps of 0.25"],
+            ["Backspace", "Normal speed"],
+            ["Up / Down", "Volume up or down by 5"],
+            ["M", "Mute"],
+            ["C", "Subtitles off and back"],
+            ["z / Z", "Subtitle delay 100 ms earlier or later"]
+        ] },
+        { name: "Navigation", keys: [
+            ["N / P", "Next or previous episode"],
+            ["F", "Fullscreen"],
+            ["Escape", "Close what is open, else leave fullscreen, else leave the player"],
+            ["Alt+Left", "Back"],
+            ["?", "Show or hide this list"]
+        ] },
+        { name: "Library", keys: [
+            ["Ctrl+K", "Library and search"],
+            ["Ctrl+,", "Settings"],
+            ["Ctrl+Q", "Quit"]
+        ] }
     ]
 
     // Guarded the way TrackPicker's openAt is: a second ? on a list already up would count
@@ -39,20 +54,27 @@ Item {
     // already guarded for the never-opened case, so this is safe unconditionally.
     Component.onDestruction: root.close()
 
-    MouseArea { anchors.fill: parent; onPressed: root.close() }
-    Corner {
+    Blocker { anchors.fill: parent; dismissOnPress: true; onDismissed: root.close() }
+
+    // The key column is one width across every group, so the descriptions line up.
+    property real capWidth: theme.space(24)
+    readonly property real gap: theme.space(8)
+    readonly property real margin: theme.space(4)
+    // Side by side when the three fit inside the window, else one above the next.
+    readonly property bool wide: groupsGrid.wideWidth + panel.padding * 2 <= width - margin * 2
+
+    Tile {
+        id: panel
+        raised: true
+        padding: theme.space(6)
         anchors.centerIn: parent
-        // As wide and as tall as the list, up to what the window has room for. Past that the
-        // list scrolls rather than spilling out of the panel, which is what a small window at
-        // density 1.25 would otherwise do.
-        width: Math.min(parent.width - theme.space(8), column.implicitWidth + theme.space(10))
-        height: Math.min(parent.height - theme.space(8), column.implicitHeight + theme.space(10))
-        radius: theme.radiusLg; smoothing: theme.cornerSmoothing
-        color: theme.surfaceRaised; borderColor: theme.lineStrong; borderWidth: 1
-        MouseArea { anchors.fill: parent }
+        width: Math.min(parent.width - root.margin * 2, column.implicitWidth + padding * 2)
+        height: Math.min(parent.height - root.margin * 2, column.implicitHeight + padding * 2)
+        // The Blocker dismisses on any press; one on the panel's padding must not reach it.
+        MouseArea { anchors.fill: parent; anchors.margins: -panel.padding; acceptedButtons: Qt.AllButtons }
         Flickable {
             id: keyFlick
-            anchors.fill: parent; anchors.margins: theme.space(5)
+            anchors.fill: parent
             clip: true
             contentWidth: column.implicitWidth; contentHeight: column.implicitHeight
             boundsBehavior: Flickable.StopAtBounds
@@ -60,21 +82,43 @@ Item {
             WheelStep { flick: keyFlick }
             Column {
                 id: column
-                spacing: theme.space(2)
-                Text { text: "Keyboard shortcuts"; color: theme.text; font.family: theme.fontDisplay; font.pointSize: theme.typeLarge; font.weight: Font.DemiBold; bottomPadding: theme.space(2) }
-                Repeater {
-                    model: root.keys
-                    Row {
-                        required property var modelData
-                        spacing: theme.space(3)
-                        // One key column, so the descriptions line up; a cap wider than the
-                        // column widens its own row rather than running under the description.
-                        Item {
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: Math.max(theme.space(30), cap.implicitWidth); height: cap.height
-                            Chip { id: cap; text: modelData[0]; small: true; color: theme.surface; textColor: theme.text }
+                spacing: theme.space(5)
+                Label { role: "title"; font.pointSize: theme.typeLarge; text: "Keyboard shortcuts" }
+                Grid {
+                    id: groupsGrid
+                    columns: root.wide ? root.groups.length : 1
+                    columnSpacing: root.gap
+                    rowSpacing: theme.space(5)
+                    // What the grid would be with every group in one row.
+                    property real wideWidth: 0
+                    Component.onCompleted: measure()
+                    function measure() {
+                        var w = 0
+                        for (var i = 0; i < children.length; i++) if (children[i].implicitWidth !== undefined && children[i].isGroup) w += children[i].implicitWidth
+                        wideWidth = w + root.gap * (root.groups.length - 1)
+                    }
+                    Repeater {
+                        model: root.groups
+                        Column {
+                            required property var modelData
+                            readonly property bool isGroup: true
+                            spacing: theme.space(2)
+                            onImplicitWidthChanged: groupsGrid.measure()
+                            Label { role: "title"; color: theme.textDim; text: modelData.name; bottomPadding: theme.space(1) }
+                            Repeater {
+                                model: modelData.keys
+                                Row {
+                                    required property var modelData
+                                    spacing: theme.space(3)
+                                    Item {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: Math.max(root.capWidth, cap.implicitWidth); height: cap.height
+                                        Chip { id: cap; text: modelData[0]; color: theme.tile; textColor: theme.text }
+                                    }
+                                    Label { anchors.verticalCenter: parent.verticalCenter; role: "ui"; color: theme.textDim; text: modelData[1] }
+                                }
+                            }
                         }
-                        Text { anchors.verticalCenter: parent.verticalCenter; text: modelData[1]; color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeNormal }
                     }
                 }
             }
