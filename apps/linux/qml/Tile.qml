@@ -1,8 +1,8 @@
-// One stone of the mosaic: a G2 rounded tile in the tile colour (or a plate cut from a
-// tone), with its content set inside a padding. Every surface on a page is one of these,
-// laid out with theme.grout between tiles and as the page's own margin. Children go into
-// `content`, already inset; `tone` paints the tile as a plate of that colour (text on it
-// should read theme.contrast against `fill`). `raised` is the hovered/selected step.
+// One pane of the glass mosaic: a square tile of translucent glass over the ground, a 1 px
+// edge and a 1 px top highlight, with its content set inside a padding. Every surface on a
+// page is one of these, laid out with theme.grout (2 px) between panes and as the page's
+// own margin. Children go into `content`, already inset. `raised` is the hovered/selected
+// step. `tone` is accepted for old callers and ignored: no surface takes a poster's colour.
 import QtQuick
 
 Corner {
@@ -10,11 +10,14 @@ Corner {
     property color tone: "transparent"
     property bool raised: false
     property real padding: theme.space(4)
-    readonly property color fill: tone.a > 0 ? theme.plate(tone) : raised ? theme.raised : theme.tile
+    // False drops the top highlight (a pane flush under another, a quiet strip)
+    property bool lit: true
+    readonly property color fill: raised ? theme.raised : theme.tile
     default property alias contentData: content.data
     color: fill
-    radius: theme.radiusTile
-    smoothing: theme.cornerSmoothing
+    borderColor: theme.line
+    borderWidth: 1
+    highlight: lit ? theme.glassHighlight : "transparent"
     Item {
         id: content
         anchors.fill: parent

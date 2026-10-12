@@ -305,7 +305,7 @@ mod tests {
     #[test]
     fn a_fresh_install_without_theme_toml_lands_on_the_tesserae_pair() {
         // No terminal, no portal state: the shell's own pair is the identity a new user
-        // sees. The built-in dir must carry it, and the resolution must be the slate grout.
+        // sees. The built-in dir must carry it, and the resolution must be the glass mosaic's ground.
         let dir = tempfile::tempdir().unwrap();
         let paths = ShellPaths {
             core: anibeam_core::CorePaths::under(dir.path()),
@@ -315,11 +315,11 @@ mod tests {
         };
         let inputs = read_inputs(&paths, Portal::default());
         let r = resolve(inputs);
-        assert_eq!(r.dark.bg.to_hex(), "#181b1f", "the slate grout");
-        assert_eq!(r.dark.surface.to_hex(), "#1d2126", "the resting tile");
+        assert_eq!(r.dark.bg.to_hex(), "#0e1013", "the near-black slate ground");
+        assert_eq!(r.dark.surface.to_hex(), "#16181b", "the resting glass, composited");
         assert_eq!(r.dark.accent.to_hex(), "#7fb3d4", "smalt");
         assert_eq!(r.dark.source_label, "theme Tesserae Dark");
-        assert_eq!(r.light.bg.to_hex(), "#d9dde2", "the plaster grout");
+        assert_eq!(r.light.bg.to_hex(), "#e3e6ea", "the pale ground");
         assert_eq!(r.light.source_label, "theme Tesserae Light");
         for p in [&r.dark, &r.light] {
             // faint text is legible on the ground and the tile, the accent reads as text on
