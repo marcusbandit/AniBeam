@@ -187,6 +187,9 @@ mod tests {
         let cwd = std::env::current_dir().unwrap();
         assert!(relative.starts_with("file:///"), "{relative}");
         assert!(relative.ends_with("/rel/anibeam/shell.conf"), "{relative}");
-        assert!(relative.contains(cwd.file_name().unwrap().to_str().unwrap()), "{relative}");
+        assert!(
+            relative.contains(cwd.file_name().unwrap().to_str().unwrap()),
+            "{relative}"
+        );
     }
 }
