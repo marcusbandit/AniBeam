@@ -980,3 +980,207 @@ fn the_airing_refresh_covers_a_running_tvmaze_show() {
     );
     core.shutdown();
 }
+
+// ---------------------------------------------------------------------------
+// Shows with more than one season, written straight into the store
+// ---------------------------------------------------------------------------
+
+/// A show row and its episodes with no fetch behind it. `seasons` is each
+/// season's number and its episodes' airstamps, in episode order.
+fn insert_show(core: &Core, id: u64, status: &str, seasons: &[(u32, Vec<i64>)]) {
+    let status = status.to_string();
+    let seasons = seasons.to_vec();
+    core.store()
+        .write(move |c| {
+            c.execute(
+                "INSERT INTO tvmaze_shows (id, name, status, premiered, fetched_at) VALUES (?1, 'Two Seasons', ?2, '2024-01-01', ?3)",
+                params![id as i64, status, time::now_secs()],
+            )?;
+            for (season, stamps) in &seasons {
+                for (i, at) in stamps.iter().enumerate() {
+                    c.execute(
+                        "INSERT INTO tvmaze_episodes (show_id, season, number, name, airstamp) VALUES (?1, ?2, ?3, ?4, ?5)",
+                        params![id as i64, season, i as i64 + 1, format!("S{season}E{}", i + 1), at],
+                    )?;
+                }
+            }
+            Ok(())
+        })
+        .unwrap();
+}
+
+/// A folder holding `files` as (season, episode), matched to `show`. Each
+/// file's mtime is its episode's position, so none of them reads as new.
+fn tv_series(core: &Core, show: u64, files: &[(u32, u32)]) -> u64 {
+    let src = fixtures::insert_source(core, "/tv");
+    let series = fixtures::insert_series(
+        core,
+        src,
+        SeriesKind::Show,
+        "/tv/Two Seasons",
+        "Two Seasons",
+    );
+    for (season, number) in files {
+        fixtures::insert_file(
+            core,
+            series,
+            &format!("/tv/Two Seasons/Two.Seasons.S{season:02}E{number:02}.mkv"),
+            f64::from(*number),
+            Some(*season),
+            "episode",
+            1,
+        );
+    }
+    core.store()
+        .write(move |c| {
+            c.execute(
+                "UPDATE series SET provider = 'tvmaze', tvmaze_id = ?2 WHERE id = ?1",
+                params![series as i64, show as i64],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    series
+}
+
+fn metadata_row(core: &Core, series: u64) -> MetadataRow {
+    match core
+        .call(Call::ListMetadata {
+            filter: MetadataFilter::All,
+            query: String::new(),
+            reveal_hidden: false,
+        })
+        .unwrap()
+    {
+        Reply::Metadata { rows, .. } => rows.into_iter().find(|r| r.series.id == series).unwrap(),
+        other => panic!("{other:?}"),
+    }
+}
+
+fn feed(core: &Core, sort: FeedSort) -> Vec<FeedCard> {
+    match core.call(Call::ListFeed { sort }).unwrap() {
+        Reply::Feed { cards } => cards,
+        other => panic!("{other:?}"),
+    }
+}
+
+/// Every one of `n` episodes aired, a week apart, a year ago.
+fn long_ago(n: u32) -> Vec<i64> {
+    let start = time::now_secs() - 365 * DAY;
+    (0..i64::from(n)).map(|i| start + i * 7 * DAY).collect()
+}
+
+/// An ended show with a ten-episode season 1 and an eight-episode season
+/// 2, both whole on disk: every file is judged against its own season, so
+/// none of season 1's last two is flagged, and what is on disk and what is
+/// expected are both counted over the two seasons. A stray S01E11 is past
+/// its season's end and is the one file flagged.
+#[test]
+fn an_ended_multi_season_show_judges_each_file_against_its_own_season() {
+    let (_dir, core, _c) = common::open_core();
+    insert_show(&core, 900, "Ended", &[(1, long_ago(10)), (2, long_ago(8))]);
+    let mut files: Vec<(u32, u32)> = (1..=10).map(|n| (1, n)).collect();
+    files.extend((1..=8).map(|n| (2, n)));
+    let series = tv_series(&core, 900, &files);
+
+    let d = detail(&core, series);
+    assert!(d.unmatched_files.is_empty(), "{:#?}", d.unmatched_files);
+    assert_eq!(d.episodes.len(), 18);
+    assert_eq!(
+        (d.card.total_episodes, d.card.total_is_estimate),
+        (Some(18), false)
+    );
+    assert_eq!((d.progress.total, d.progress.on_disk), (Some(18), 18));
+    let row = metadata_row(&core, series);
+    assert_eq!(
+        (row.have, row.expected, row.extra_on_disk),
+        (18, Some(18), 0)
+    );
+
+    // A stray past season 1's end.
+    fixtures::insert_file(
+        &core,
+        series,
+        "/tv/Two Seasons/Two.Seasons.S01E11.mkv",
+        11.0,
+        Some(1),
+        "episode",
+        1,
+    );
+    let d = detail(&core, series);
+    let flagged: Vec<(Option<u32>, f64)> = d
+        .unmatched_files
+        .iter()
+        .map(|e| (e.season, e.number))
+        .collect();
+    assert_eq!(flagged, vec![(Some(1), 11.0)]);
+    let row = metadata_row(&core, series);
+    assert_eq!(
+        (row.have, row.expected, row.extra_on_disk),
+        (19, Some(18), 1)
+    );
+    core.shutdown();
+}
+
+/// A running show with season 1 whole on disk and the first three of
+/// season 2's eleven aired episodes: the estimate counts what has aired in
+/// both seasons, what is expected is both seasons' announced length, and
+/// the feed and the card's activity read season 2's own episodes, never
+/// season 1's numbers against season 2's dates.
+#[test]
+fn a_running_multi_season_show_counts_every_season_on_disk() {
+    let (_dir, core, _c) = common::open_core();
+    let now = time::now_secs();
+    // Season 2: eleven aired a day apart up to yesterday, the twelfth next
+    // week.
+    let mut s2: Vec<i64> = (0..11).map(|i| now - (11 - i) * DAY).collect();
+    s2.push(now + 7 * DAY);
+    insert_show(&core, 901, "Running", &[(1, long_ago(10)), (2, s2.clone())]);
+    let mut files: Vec<(u32, u32)> = (1..=10).map(|n| (1, n)).collect();
+    files.extend((1..=3).map(|n| (2, n)));
+    let series = tv_series(&core, 901, &files);
+
+    let d = detail(&core, series);
+    assert!(d.unmatched_files.is_empty());
+    assert_eq!(
+        (d.card.total_episodes, d.card.total_is_estimate),
+        (Some(21), true)
+    );
+    assert_eq!((d.progress.total, d.progress.estimate), (Some(21), true));
+    let row = metadata_row(&core, series);
+    assert_eq!((row.have, row.expected), (13, Some(22)));
+    let next = d.card.next_airing.as_ref().unwrap();
+    assert_eq!((next.episode, time::to_secs(next.at)), (12, s2[11]));
+    // The newest thing on disk is S02E03, aired eight days ago.
+    assert_eq!(time::to_secs(d.card.latest_activity_at), s2[2]);
+
+    let recent = feed(&core, FeedSort::Recent);
+    assert!(
+        matches!(recent[0].reason, FeedReason::Aired { episode: 3, at } if time::to_secs(at) == s2[2]),
+        "{recent:#?}"
+    );
+    assert_eq!(recent[0].highest_on_disk, Some(3.0));
+    core.shutdown();
+}
+
+/// Season 1 whole on disk and over, season 2 announced and not yet begun:
+/// the season to come is what is next, on the card and in the feed.
+#[test]
+fn an_announced_next_season_is_upcoming() {
+    let (_dir, core, _c) = common::open_core();
+    let now = time::now_secs();
+    let s2: Vec<i64> = (0..8).map(|i| now + (i + 1) * 7 * DAY).collect();
+    insert_show(&core, 902, "Running", &[(1, long_ago(10)), (2, s2.clone())]);
+    let files: Vec<(u32, u32)> = (1..=10).map(|n| (1, n)).collect();
+    let series = tv_series(&core, 902, &files);
+
+    let c = card(&core, series);
+    let next = c.next_airing.as_ref().expect("season 2 is announced");
+    assert_eq!((next.episode, time::to_secs(next.at)), (1, s2[0]));
+    let upcoming = feed(&core, FeedSort::Upcoming);
+    assert!(
+        matches!(upcoming[0].reason, FeedReason::Scheduled { episode: 1, at } if time::to_secs(at) == s2[0]),
+        "{upcoming:#?}"
+    );
+    core.shutdown();
+}

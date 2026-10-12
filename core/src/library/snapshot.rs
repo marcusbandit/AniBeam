@@ -6,7 +6,7 @@
 //! `cards` for a card, `detail` for a page.
 
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::Path;
 use std::time::SystemTime;
 
@@ -14,6 +14,7 @@ use rusqlite::{Connection, params_from_iter};
 use serde_json::Value;
 
 use crate::contract::*;
+use crate::library::cards::aired_and_scheduled;
 use crate::library::sidecar::sidecars_of;
 use crate::net::tvmaze;
 use crate::prefs;
@@ -448,8 +449,9 @@ impl Snapshot {
     }
 
     /// A TVmaze show publishes no episode count, and its list is the
-    /// whole run rather than one season's. Once a show has ended, the
-    /// season a card is about is complete, so its length is the total;
+    /// whole run rather than one season's. Once a show has ended, every
+    /// season the folder holds is complete, so the total is their lengths
+    /// added up, which is what the folder's own count is measured against;
     /// while it runs, the list is only what is announced so far, which is
     /// the aired estimate's job rather than a total's.
     fn fill_tvmaze_totals(&mut self) {
@@ -460,7 +462,7 @@ impl Snapshot {
                     == Some(AiringStatus::Finished)
             });
             if row.provider == Some(Provider::Tvmaze) && finished {
-                let n = self.airing_of(row).len() as u32;
+                let n = self.tv_span(row).count() as u32;
                 if n > 0 {
                     totals.push((i, n));
                 }
@@ -640,17 +642,13 @@ impl Snapshot {
         self.files.get(&id).map(Vec::as_slice).unwrap_or(&[])
     }
 
-    /// The episodes a card counts and schedules by. For an AniList match
-    /// that is the media's schedule; for a TVmaze match it is one season
-    /// of the show, the one `season_of` names.
+    /// The episodes a card matches its files against by number. For an
+    /// AniList match that is the media's schedule; for a TVmaze match it is
+    /// one season of the show, the one `card_season` names, since TVmaze
+    /// numbers its episodes within a season.
     pub(crate) fn airing_of(&self, row: &SeriesRow) -> &[AiringRow] {
-        if row.provider == Some(Provider::Tvmaze) {
-            return row
-                .tvmaze_id
-                .and_then(|id| self.tv_seasons.get(&id))
-                .and_then(|seasons| seasons.get(&self.season_of(row)))
-                .map(Vec::as_slice)
-                .unwrap_or(&[]);
+        if let Some(season) = self.card_season(row) {
+            return self.tv_season(row, season).unwrap_or(&[]);
         }
         row.anilist_id
             .and_then(|id| self.airing.get(&id))
@@ -661,24 +659,114 @@ impl Snapshot {
     /// The season a TVmaze card is about: the highest one on disk, since
     /// that is the one being watched, with a file that names no season
     /// read as season 1, and season 1 for a folder with no episodes yet.
-    fn season_of(&self, row: &SeriesRow) -> u32 {
-        self.files_of(row.id)
+    /// None for every other provider, whose numbers carry no season.
+    pub(crate) fn card_season(&self, row: &SeriesRow) -> Option<u32> {
+        (row.provider == Some(Provider::Tvmaze))
+            .then(|| self.seasons_on_disk(row).last().copied().unwrap_or(1))
+    }
+
+    /// One season of a TVmaze match's show, as TVmaze lists it.
+    fn tv_season(&self, row: &SeriesRow, season: u32) -> Option<&[AiringRow]> {
+        row.tvmaze_id
+            .and_then(|id| self.tv_seasons.get(&id))
+            .and_then(|seasons| seasons.get(&season))
+            .map(Vec::as_slice)
+    }
+
+    /// The seasons a TVmaze folder holds episodes of, a file naming no
+    /// season read as season 1, and season 1 alone for a folder with no
+    /// episodes yet.
+    fn seasons_on_disk(&self, row: &SeriesRow) -> BTreeSet<u32> {
+        let mut seasons: BTreeSet<u32> = self
+            .files_of(row.id)
             .iter()
             .filter(|f| f.is_episode)
             .map(|f| f.season.unwrap_or(1))
-            .max()
-            .unwrap_or(1)
+            .collect();
+        if seasons.is_empty() {
+            seasons.insert(1);
+        }
+        seasons
+    }
+
+    /// Every episode of every season a TVmaze folder holds: what its count
+    /// on disk is measured against.
+    fn tv_span<'a>(&'a self, row: &'a SeriesRow) -> impl Iterator<Item = &'a AiringRow> + 'a {
+        self.seasons_on_disk(row)
+            .into_iter()
+            .filter_map(move |s| self.tv_season(row, s))
+            .flatten()
+    }
+
+    /// How far a series has aired, and the next episode still to come.
+    ///
+    /// For an AniList match, the highest episode aired and the earliest
+    /// one scheduled. For a TVmaze match, the count aired across every
+    /// season on disk, which is the number the folder's count is measured
+    /// in, and the earliest episode still to come in any season, so an
+    /// announced next season is what is next.
+    pub(crate) fn aired_and_next(&self, row: &SeriesRow, now: i64) -> (u32, Option<(u32, i64)>) {
+        if row.provider != Some(Provider::Tvmaze) {
+            return aired_and_scheduled(self.airing_of(row), now);
+        }
+        let aired = self
+            .tv_span(row)
+            .filter(|a| a.aired_at.is_some_and(|at| at <= now))
+            .count() as u32;
+        let next = row
+            .tvmaze_id
+            .and_then(|id| self.tv_seasons.get(&id))
+            .into_iter()
+            .flat_map(|seasons| seasons.values().flatten())
+            .filter_map(|a| a.aired_at.filter(|at| *at > now).map(|at| (a.number, at)))
+            .min_by_key(|(_, at)| *at);
+        (aired, next)
+    }
+
+    /// How many episodes the provider lists for what the folder holds: an
+    /// AniList media's schedule, or every season on disk of a TVmaze show.
+    pub(crate) fn episodes_listed(&self, row: &SeriesRow) -> usize {
+        if row.provider == Some(Provider::Tvmaze) {
+            return self.tv_span(row).count();
+        }
+        self.airing_of(row).len()
+    }
+
+    /// A file numbered past the end of the list it belongs to: almost
+    /// always misnamed, a duplicate or a stray special. `total` is the
+    /// series' known episode count. An AniList count is one season's, so
+    /// only the main season is judged and a multi-season folder is never
+    /// false-flagged; a TVmaze file is judged against its own season's
+    /// length, when TVmaze lists that season at all.
+    pub(crate) fn past_the_end(&self, row: &SeriesRow, file: &FileRow, total: u32) -> bool {
+        if row.provider == Some(Provider::Tvmaze) {
+            return self
+                .tv_season(row, file.season.unwrap_or(1))
+                .is_some_and(|s| !s.is_empty() && file.number > s.len() as f64);
+        }
+        file.season.is_none_or(|s| s <= 1) && file.number > f64::from(total)
+    }
+
+    /// The episodes on disk a card matches against `airing_of` by number:
+    /// every one, or for a TVmaze card the card's season alone.
+    pub(crate) fn card_episodes<'a>(
+        &self,
+        row: &SeriesRow,
+        episodes: &[&'a FileRow],
+    ) -> Vec<&'a FileRow> {
+        let season = self.card_season(row);
+        episodes
+            .iter()
+            .copied()
+            .filter(|f| season.is_none_or(|s| f.season.unwrap_or(1) == s))
+            .collect()
     }
 
     /// One file's own episode in the provider's list: by number for an
     /// AniList match, by season and number for a TVmaze one.
     pub(crate) fn episode_airing(&self, row: &SeriesRow, file: &FileRow) -> Option<&AiringRow> {
         let rows: &[AiringRow] = if row.provider == Some(Provider::Tvmaze) {
-            row.tvmaze_id
-                .and_then(|id| self.tv_seasons.get(&id))
-                .and_then(|seasons| seasons.get(&file.season.unwrap_or(1)))
-                .map(Vec::as_slice)
-                .unwrap_or(&[])
+            self.tv_season(row, file.season.unwrap_or(1)).unwrap_or(&[])
         } else {
             self.airing_of(row)
         };

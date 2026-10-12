@@ -194,7 +194,7 @@ impl Snapshot {
         let media = row.media.as_ref();
 
         let latest_downloaded = episodes.last().map_or(0.0, |f| f.number).max(0.0) as u32;
-        let (latest_aired, next_scheduled) = aired_and_scheduled(airing, now);
+        let (latest_aired, next_scheduled) = self.aired_and_next(row, now);
         let status = media
             .and_then(|m| m.status.as_deref())
             .and_then(AiringStatus::from_provider);
@@ -260,9 +260,13 @@ impl Snapshot {
                 at: time::from_secs(at),
             }),
             last_viewed_at: self.views.get(&row.id).map(|(_, at)| time::from_secs(*at)),
-            latest_activity_at: time::from_secs(
-                self.latest_activity(row, &episodes, airing, files, now),
-            ),
+            latest_activity_at: time::from_secs(self.latest_activity(
+                row,
+                &self.card_episodes(row, &episodes),
+                airing,
+                files,
+                now,
+            )),
         }
     }
 
@@ -322,7 +326,7 @@ impl Snapshot {
             .and_then(|m| m.episodes)
             .filter(|t| *t > 0)
             .map(u64::from)
-            .or_else(|| match self.airing_of(row).len() as u64 {
+            .or_else(|| match self.episodes_listed(row) as u64 {
                 0 => None,
                 n => Some(n),
             })
