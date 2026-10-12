@@ -59,11 +59,16 @@ static EPISODE_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
         Regex::new(r"(?i)Episode\s*([0-9]+)").unwrap(),
         Regex::new(r"(?i)Ep\.?\s*([0-9]+)").unwrap(),
         Regex::new(r"(?i)\bE([0-9]{2,})\b").unwrap(),
-        Regex::new(r"\s-\s*([0-9]+)(?:\s|$)").unwrap(),
-        Regex::new(r"\s([0-9]{1,3})(?:\s|$)").unwrap(),
+        // A trailing `v2` is the release's revision, not a number: `- 17v2`
+        // is episode 17.
+        Regex::new(r"(?i)\s-\s*([0-9]+)(?:v[0-9]+)?(?:\s|$)").unwrap(),
+        Regex::new(r"(?i)\s([0-9]{1,3})(?:v[0-9]+)?(?:\s|$)").unwrap(),
     ]
 });
 static ANY_NUMBER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[0-9]+").unwrap());
+/// A revision suffix glued to a number (`07v2`), dropped before the
+/// fallback counts numbers so the `2` never reads as the episode.
+static REVISION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)([0-9])v[0-9]+\b").unwrap());
 
 /// Extension and every [bracketed] group gone, whitespace collapsed,
 /// separators kept so `Episode 6.5` and `Show.Name.S02E07` still anchor.
@@ -138,8 +143,9 @@ fn extract_episode(file_name: &str) -> (Option<u32>, f64) {
             return finalize(None, m[1].parse().unwrap_or(1.0));
         }
     }
+    let unrevised = REVISION.replace_all(&base, "$1");
     let survivors: Vec<u64> = ANY_NUMBER
-        .find_iter(&base)
+        .find_iter(&unrevised)
         .filter_map(|m| m.as_str().parse::<u64>().ok())
         .filter(|n| !(1900..=2099).contains(n) && *n < 1000)
         .collect();
@@ -320,6 +326,16 @@ mod tests {
         assert_eq!((c.number, c.season), (0.0, Some(0)));
         assert_eq!(ep("Show - E07.mkv").number, 7.0);
         assert_eq!(ep("Show Ep. 9.mkv").number, 9.0);
+    }
+
+    #[test]
+    fn a_revision_suffix_is_not_the_episode_number() {
+        let c = ep("[Erai-raws] Honzuki no Gekokujou S4 - 17v2 [1080p CR WEB-DL AVC AAC][MultiSub][BC7A5FC1].mkv");
+        assert_eq!((c.extra, c.number), (None, 17.0));
+        assert_eq!(ep("[Erai-raws] Neko to Ryuu - 07v2 [1080p].mkv").number, 7.0);
+        assert_eq!(ep("Show 05v3.mkv").number, 5.0);
+        assert_eq!(ep("Show.Name.12v2.mkv").number, 12.0);
+        assert_eq!(ep("[Erai-raws] Show Name - 02 [1080p].mkv").number, 2.0);
     }
 
     #[test]
