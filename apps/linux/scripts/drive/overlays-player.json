@@ -1,0 +1,42 @@
+[
+  {"log": "overlays in the player: the hidden drawer never takes Escape, the track picker follows a resize, tips flip above the controls island. Needs the real library (W=2560 H=1440)"},
+  {"key": "Ctrl+L"}, {"wait": 600},
+  {"eval": "frame.item.drawerPanel.open", "expect": true},
+  {"page": "player", "props": {"file": "/mnt/wd_general/media/Anime/Heroine Seijo Iie All Works Maid desu (Hokori)/[Erai-raws] Heroine Seijo Iie All Works Maid desu (Hokori) - 02 [1080p CR WEB-DL AVC AAC][MultiSub][A7DF8CD1].mkv"}},
+  {"wait": 4000},
+  {"eval": "frame.item.fullWindow", "expect": true},
+  {"log": "the drawer is still open and on the stack, but hidden, so top() skips it"},
+  {"eval": "frame.item.drawerPanel.open && frame.item.escapeStack.entries.length === 1", "expect": true},
+  {"eval": "frame.item.escapeStack.top()", "expect": null},
+
+  {"log": "the subtitle picker opens; Escape closes it, not the hidden drawer"},
+  {"hover": [1280, 700]}, {"wait": 300},
+  {"click": "player-subs"}, {"wait": 300},
+  {"eval": "frame.item.escapeStack.top().closer === frame.item.drawerPanel", "expect": false},
+  {"eval": "driver.item.findItem('track-picker-panel') !== null", "expect": true},
+  {"shot": "overlays-player-01-picker"},
+
+  {"log": "a resize with the picker up places it again, inside the window, centred on its button"},
+  {"eval": "window.width = window.width - 400"}, {"wait": 400},
+  {"eval": "(function() { var p = driver.item.findItem('track-picker-panel'); var b = driver.item.findItem('player-subs'); var pp = p.mapToItem(null, 0, 0), bp = b.mapToItem(null, b.width / 2, 0); return pp.x >= 0 && pp.x + p.width <= window.width && Math.abs(pp.x + p.width / 2 - bp.x) < 2 })()", "expect": true},
+  {"eval": "window.width = window.width + 400"}, {"wait": 400},
+  {"eval": "(function() { var p = driver.item.findItem('track-picker-panel'); var b = driver.item.findItem('player-subs'); var pp = p.mapToItem(null, 0, 0), bp = b.mapToItem(null, b.width / 2, 0); return Math.abs(pp.x + p.width / 2 - bp.x) < 2 })()", "expect": true},
+  {"key": "Escape"}, {"wait": 300},
+  {"eval": "driver.item.findItem('track-picker-panel') === null", "expect": true},
+  {"eval": "frame.item.drawerPanel.open", "expect": true},
+  {"eval": "frame.item.fullWindow", "expect": true},
+
+  {"log": "a tip on the controls island sits above its button, never over it"},
+  {"hover": "player-play"}, {"wait": 1500},
+  {"eval": "frame.item.tipShown", "expect": true},
+  {"eval": "(function() { var kids = frame.item.overlay.children, t = null; for (var i = 0; i < kids.length; i++) if (kids[i].visible && String(kids[i]).indexOf('Frost') === 0) t = kids[i]; var b = driver.item.findItem('player-play'); var top = b.mapToItem(null, 0, 0).y; return t !== null && t.y + t.height <= top && t.y >= 0 })()", "expect": true},
+  {"shot": "overlays-player-02-tip"},
+
+  {"log": "Escape with nothing open leaves the player; the drawer comes back and Escape closes it"},
+  {"hover": [1280, 500]}, {"wait": 200},
+  {"key": "Escape"}, {"wait": 1500},
+  {"eval": "frame.item.fullWindow", "expect": false},
+  {"eval": "frame.item.drawerPanel.open", "expect": true},
+  {"key": "Escape"}, {"wait": 300},
+  {"eval": "frame.item.drawerPanel.open", "expect": false}
+]
