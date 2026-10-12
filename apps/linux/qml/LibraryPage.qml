@@ -100,7 +100,7 @@ Item {
     // A label stone's one line under its name. Airing names the next episode out, with the
     // countdown pill ({ at, text }); the rest say the first of these that tells the section
     // something its name and count do not: how many are in progress, not started, or air
-    // this week, else that every one is watched.
+    // this week, that every one is watched, else how many episodes are on disk.
     function soonest(list) {
         var best = null, now = page.packedAt / 1000
         for (var i = 0; i < list.length; i++) {
@@ -110,9 +110,10 @@ Item {
         return best
     }
     function factOf(list) {
-        var now = page.packedAt / 1000, going = 0, fresh = 0, airs = 0, done = 0
+        var now = page.packedAt / 1000, going = 0, fresh = 0, airs = 0, done = 0, files = 0
         for (var i = 0; i < list.length; i++) {
             var c = list[i], w = c.watched !== null && c.watched !== undefined ? c.watched : 0
+            files += c.episodes_on_disk || 0
             if (c.watched_state === "CaughtUp") done++
             else if (w > 0 || c.watched_state === "Behind") going++
             else fresh++
@@ -123,6 +124,7 @@ Item {
         if (fresh > 0 && fresh < n) return { text: fresh + " not started" }
         if (airs > 0) return { text: airs + " airing this week" }
         if (n > 0 && done === n) return { text: "All watched" }
+        if (files > 0) return { text: Fmt.plural(files, "episode", "episodes") + " on disk" }
         return null
     }
     readonly property bool airingShows: page.query === "" && !page.libraryEmpty
