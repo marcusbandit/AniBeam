@@ -174,10 +174,15 @@ rail  header: one unit tall, whole column spans, spare columns to the title (cou
   run lets the next lone tile in first (lone tiles fill the gaps around boxes), and with
   none left the box takes the best shape the run allows. Every placement sits on a flat
   run, so nothing is left under a tile; only the bottom can come out uneven, and only the
-  very last row may run short, on the right. While it would not, lone tiles are held back
-  to level the bottom, then lone heroes are set small, least important first, then boxes
-  are laid flat (one slot row each), and the last resort stacks every box at the full
-  width, which always closes. `pack`, the section packer, is still the other walls'.
+  very last row may run short, on the right. When it would not, the greedy pass is tried
+  again with lone tiles held back to the end (they level the bottom) and lone heroes set
+  small, cheapest first, then a depth-first search goes back over the decisions, latest
+  first, with a budget. The wall is also laid in **bands** (rows of boxes sharing one
+  height, their widths summing exactly to the columns, chosen by dynamic programming; the
+  lone tiles after them), which always closes; whichever of the two has the cheaper box
+  shapes stands, the bands paying extra for moving lone tiles behind the boxes. A wall of
+  boxes only (Type, Genre, Watch state) usually comes out in bands. `pack`, the section
+  packer, is still the other walls'.
 - The live window covers the boxes too: a box is its frame plus its stone and members as
   tiles in the same flat list, positioned absolutely; the frames are bare outlines, always
   drawn, and the rest is built only within a screen of the viewport.

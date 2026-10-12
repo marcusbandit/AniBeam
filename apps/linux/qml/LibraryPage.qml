@@ -1,10 +1,12 @@
 // The library as a mosaic (DESIGN.md, Layout): one module, every element a tile on it, set
 // in one constant joint (theme.grout) that is also the page's margin. The header is a row of
-// tiles (title, tabs, sorts, group, show watched, search, count) that scrolls with the wall
-// as its first unit rows; under it, the sections packed by mosaic.js: each opens with a
-// label stone, then its hero tiles (2x2: in progress and watched this fortnight, or airing
-// this week), then the small tiles filling in around them. The core searches and sorts; the
-// page partitions the sorted list into sections client-side, keeps it in a RecordModel and
+// tiles (title, tabs, sorts, arrange, show watched, search, count) that scrolls with the
+// wall as its first unit rows; under it, the arranged wall packed by mosaic.js: the Airing
+// this week box, then the groups of the chosen arrangement (Related, Type, Genre, Watch
+// state) as framed boxes, each opened by its label stone with its members packed inside,
+// and lone series as plain tiles filling in around them. Heroes (2x2: in progress and
+// watched this fortnight, or airing this week) stand one per box. The core searches and
+// sorts; the page arranges the sorted list client-side, keeps it in a RecordModel and
 // reloads, debounced, when the core says a series changed.
 import QtQuick
 import QtQuick.Controls.Basic as QC
@@ -42,21 +44,26 @@ Item {
     // the wall is not repacked (every tile rebuilt) twice a minute
     property real packedAt: Date.now()
     property bool libraryEmpty: false
-    property string groupBy: "None"   // None | Genre | Viewed
-    // Bumped on every reload: the sections depend on it, so a reload that returns the same
+    // Related | Type | Genre | WatchState | None (Door.preferences.library_arrange)
+    property string arrange: "Related"
+    readonly property var arrangements: [["Related", "Related"], ["Type", "Type"], ["Genre", "Genre"], ["WatchState", "Watch state"], ["None", "None"]]
+    // Bumped on every reload: the groups depend on it, so a reload that returns the same
     // number of series (a rename, a progress change) still repaints the wall
     property int revision: 0
     // The airing rows, read once per reload (never inside a binding)
     property var airingRows: []
 
-    RecordModel { id: cards; roles: ["id", "title", "titles", "poster", "code", "watched", "watched_state", "total_episodes", "total_is_estimate", "strip", "community_score", "my_score", "hidden", "next_airing", "last_viewed_at", "episodes_on_disk", "kind", "format", "genres"] }
+    RecordModel { id: cards; roles: ["id", "title", "titles", "poster", "code", "watched", "watched_state", "total_episodes", "total_is_estimate", "strip", "community_score", "my_score", "hidden", "next_airing", "last_viewed_at", "episodes_on_disk", "kind", "format", "genres", "franchise"] }
 
     function persist() {
         var p = JSON.parse(JSON.stringify(Door.preferences))
         p.library_tab = tab === "Hidden" ? p.library_tab : tab
         p.library_sort = sort; p.library_direction = direction
+        p.library_arrange = arrange
         Door.setPreferences(p)
     }
+    // Arranging is the page's own work on the list it has: no reload, only a repack
+    function pickArrange(key) { arrange = key; persist() }
     function pickTab(i) { tab = tabNames[i]; persist(); reload() }
     function pickSort(key) { sort = key; direction = key === "Alpha" ? "Asc" : "Desc"; persist(); reload() }
     function flipDirection() { direction = direction === "Asc" ? "Desc" : "Asc"; persist(); reload() }
@@ -80,25 +87,44 @@ Item {
     readonly property bool showHidden: Door.revealHidden && hiddenExist
     readonly property var tabNames: tabs.concat(watchedExist ? ["Watched"] : []).concat(showHidden ? ["Hidden"] : [])
 
-    // ---- The sections: one entry per section, carrying its cards. Airing first (capped
-    // high), then everything, or the grouped shelves by size descending. A series shows
-    // once: while Airing stands, its series are left out of the sections after it, and
-    // each section's count is the tiles it holds.
-    function groupLabel(c) {
-        if (groupBy === "Genre") {
-            var g = c.genres
-            return g && g.length ? g[0] : "Unmatched"
-        }
-        if (groupBy === "Viewed") {
-            var w = c.watched
-            if (c.watched_state === "CaughtUp") return "Caught up"
-            if (c.watched_state === "Behind") return "Watching"
-            return w !== null && w !== undefined && w > 0 ? "Watching" : "Not started"
-        }
-        return "Everything"
+    // ---- The arrangement: one entry per box or lone tile, in reading order. Airing this
+    // week first (a box in every arrangement; its series also stand in their own groups, the
+    // one exception to a series showing once, like a "now" shelf), then the groups. Related
+    // groups by the core's franchise tag (a group of one is a plain tile); Type, Genre and
+    // Watch state box every group, since the label is the point. Members keep the sort's
+    // order (Related: release order when the cards carry a year), and the boxes go in the
+    // order of their best member.
+    function typeOf(c) {
+        var f = c.format || ""
+        if (f === "TV" || f === "TV_SHORT") return "TV"
+        if (f === "MOVIE" || (f === "" && c.kind === "Movie")) return "Movie"
+        if (f === "OVA" || f === "ONA" || f === "SPECIAL") return "OVA, ONA and specials"
+        if (f === "MUSIC") return "Music"
+        return "Unknown"
+    }
+    function stateOf(c) {
+        var w = c.watched
+        if (c.watched_state === "CaughtUp") return "Caught up"
+        if (c.watched_state === "Behind") return "Watching"
+        return w !== null && w !== undefined && w > 0 ? "Watching" : "Not started"
+    }
+    // A group's key and title, or null for a series that stands alone
+    function groupOf(c) {
+        if (arrange === "Related") return c.franchise ? { key: "f" + c.franchise.id, title: c.franchise.title } : null
+        if (arrange === "Type") { var t = typeOf(c); return { key: t, title: t } }
+        if (arrange === "Genre") { var g = c.genres && c.genres.length ? c.genres[0] : "Unmatched"; return { key: g, title: g } }
+        if (arrange === "WatchState") { var st = stateOf(c); return { key: st, title: st } }
+        return null
+    }
+    // Release order, when the card carries one (a year or a start date); else null
+    function releaseOf(c) {
+        if (c.start_date) return String(c.start_date)
+        if (c.year) return String(c.year)
+        if (c.season_year) return String(c.season_year)
+        return null
     }
     // A label stone's one line under its name. Airing names the next episode out, with the
-    // countdown pill ({ at, text }); the rest say the first of these that tells the section
+    // countdown pill ({ at, text }); the rest say the first of these that tells the group
     // something its name and count do not: how many are in progress, not started, or air
     // this week, that every one is watched, else how many episodes are on disk.
     function soonest(list) {
@@ -131,27 +157,26 @@ Item {
     readonly property var groups: {
         page.revision   // a dependency: see revision
         var airingRows = airingShows ? page.airingRows : []
-        var main = page.tab === "All" ? "Everything" : page.tab
-        var airingIds = {}
-        for (var a = 0; a < airingRows.length; a++) airingIds[airingRows[a].id] = true
-        var buckets = {}
-        var order = []
+        var buckets = {}, order = [], loose = 0
         for (var i = 0; i < cards.count; i++) {
             var c = cards.at(i)
-            if (airingIds[c.id]) continue
-            var label = groupBy === "None" ? main : groupLabel(c)
-            if (!buckets[label]) { buckets[label] = []; order.push(label) }
-            buckets[label].push(c)
+            var g = groupOf(c)
+            var key = g ? g.key : "\u0000" + (loose++)
+            if (!buckets[key]) { buckets[key] = { title: g ? g.title : "", boxed: !!g && arrange !== "Related", cards: [] }; order.push(key) }
+            buckets[key].cards.push(c)
         }
-        // Section order: first appearance, but grouped views put the biggest shelf
-        // first; ties A to Z.
-        if (groupBy !== "None") order.sort(function(a, b) {
-            var d = buckets[b].length - buckets[a].length
-            return d !== 0 ? d : (a < b ? -1 : a > b ? 1 : 0)
-        })
         var out = []
-        if (airingShows && airingRows.length) out.push({ label: "Airing", count: airingRows.length, cards: airingRows, fact: soonest(airingRows) })
-        for (var s = 0; s < order.length; s++) out.push({ label: order[s], count: buckets[order[s]].length, cards: buckets[order[s]], fact: factOf(buckets[order[s]]) })
+        if (airingRows.length) out.push({ title: "Airing this week", airing: true, box: true, cards: airingRows, fact: soonest(airingRows) })
+        for (var s = 0; s < order.length; s++) {
+            var b = buckets[order[s]]
+            var list = b.cards
+            if (arrange === "Related" && list.length > 1 && list.every(function(x) { return page.releaseOf(x) !== null })) {
+                var ranked = list.map(function(x, k) { return { c: x, k: k, r: page.releaseOf(x) } })
+                ranked.sort(function(p, q) { return p.r < q.r ? -1 : p.r > q.r ? 1 : p.k - q.k })
+                list = ranked.map(function(x) { return x.c })
+            }
+            out.push({ title: b.title, airing: false, box: b.boxed || list.length > 1, cards: list, fact: list.length > 1 || b.boxed ? factOf(list) : null })
+        }
         return out
     }
 
@@ -170,24 +195,52 @@ Item {
     readonly property int unitsSmall: Mosaic.unitsFor(probe.posterHeight + probe.minPlate, unit, grout)
     readonly property int unitsHero: unitsSmall * 2
 
-    readonly property var sections: {
-        // Candidates only: the packer keeps a series large once on the wall and demotes
-        // heroes that would leave a hole, so each section offers every qualifying series
+    readonly property var items: {
+        // Hero candidates: one per box (none in Airing, whose tiles stay small), and every
+        // qualifying lone series, ranked; the packer caps the lone ones and keeps a series
+        // large once on the wall
         var now = page.packedAt / 1000
-        var out = []
+        var taken = {}, out = []
         for (var i = 0; i < groups.length; i++) {
             var g = groups[i]
-            out.push({ label: g.label, count: g.count, cards: g.cards, fact: g.fact, heroes: Mosaic.pickHeroes(g.cards, now, g.cards.length, null) })
+            var hero = null, rank = 0
+            if (!g.airing) {
+                var picked = Mosaic.pickHeroes(g.cards, now, 1, taken)
+                if (picked.length) { hero = picked[0]; rank = Mosaic.heroRank(hero, now) }
+            }
+            out.push({ title: g.title, airing: g.airing, box: g.box, cards: g.cards, fact: g.fact, hero: hero, heroRank: rank })
         }
         return out
     }
-    readonly property var packed: Mosaic.pack(sections, geo.cols, unitsSmall, unitsHero)
+    readonly property var packed: Mosaic.packGroups(items, geo.cols, unitsSmall, { slotW: geo.w, slotH: px(unitsSmall), grout: grout })
     readonly property var tiles: packed.tiles
 
     // For a --drive script's evals
-    function packedOverlaps() { return Mosaic.overlaps(tiles) }
-    function tileCount() { return tiles.filter(function(t) { return t.kind !== "label" }).length }
+    function packedOverlaps() { return Mosaic.overlaps(tiles.filter(function(t) { return t.kind !== "frame" })) || Mosaic.overlaps(tiles.filter(function(t) { return t.kind === "frame" })) }
+    function packedHoles() { return Mosaic.holes(tiles.filter(function(t) { return t.kind !== "frame" }), geo.cols, 0, unitsSmall) }
+    // series tiles, the Airing box's repeats left out
+    function tileCount() { return tiles.filter(function(t) { return t.card && !t.airing }).length }
     function heroCount() { return tiles.filter(function(t) { return t.kind === "hero" }).length }
+    // the boxes on the wall: [{ title, airing, ids }]
+    function boxes() {
+        var out = []
+        for (var i = 0; i < tiles.length; i++) {
+            var t = tiles[i]
+            if (t.kind !== "frame") continue
+            var it = items[t.item]
+            out.push({ title: it.title, airing: it.airing, ids: it.cards.map(function(c) { return c.id }) })
+        }
+        return out
+    }
+    // the box a series stands in outside Airing (its title), or "" when it stands alone
+    function boxOf(id) {
+        var b = boxes()
+        for (var i = 0; i < b.length; i++) if (!b[i].airing && b[i].ids.indexOf(id) >= 0) return b[i].title
+        return ""
+    }
+    // ids in the order the core sorted them, for the evals
+    function cardIds() { var out = []; for (var i = 0; i < cards.count; i++) out.push(cards.at(i).id); return out }
+    function seriesWhere(text) { var out = []; for (var i = 0; i < cards.count; i++) { var c = cards.at(i); if (String(c.title).toLowerCase().indexOf(text) >= 0) out.push({ id: c.id, title: c.title, format: c.format, franchise: c.franchise === undefined ? "undefined" : c.franchise }) } return out }
 
     function reload() {
         var keep = flick.contentY
@@ -231,6 +284,8 @@ Item {
                 || p.library_direction !== page.direction || p.title_language !== page.titleLanguage
                 || p.library_show_watched !== page.showWatched
             page.tab = newTab
+            // arranging repacks on its own, no reload
+            if (p.library_arrange !== undefined) page.arrange = p.library_arrange
             page.sort = p.library_sort
             page.direction = p.library_direction
             page.titleLanguage = p.title_language
@@ -246,13 +301,16 @@ Item {
         direction = p.library_direction || "Asc"
         titleLanguage = p.title_language || "Romaji"
         showWatched = p.library_show_watched === true
+        arrange = p.library_arrange || "Related"
         // search.text starts "" (SearchField's own default), so setting it to a real
         // trail query is a genuine text change and queryDebounce.restart() fires from
         // SearchField's own onTextChanged; stop it right back so this one reload is the
         // only core round trip a fresh navigation costs, not a second one 150 ms later.
         search.text = query
-        // The trail can open the page with a grouping already set.
-        if (["Genre", "Viewed"].indexOf(props.group) >= 0) groupBy = props.group
+        // The trail can open the page with an arrangement already set (and the old
+        // grouping's names).
+        var asked = props.arrange || (props.group === "Viewed" ? "WatchState" : props.group)
+        if (arrangements.some(function(a) { return a[0] === asked })) arrange = asked
         queryDebounce.stop()
         reload()
         if (!theme.reducedMotion && frame.nav.pendingScroll <= 0) sweep.start()
@@ -273,8 +331,8 @@ Item {
     // row on a narrow window. Each tile's span is the whole columns its content needs; the
     // row's spare columns go to the title (or the search on a wrapped row). A control is
     // centred in its tile both ways, so a whole-column span's slack sits evenly around it.
-    // A control says what it is, so no tile carries an eyebrow; only the grouping keeps a
-    // word ("Group"), since a bare "None" would not.
+    // A control says what it is, so no tile carries an eyebrow; only the arrangement keeps
+    // a word ("Arrange"), since a bare "None" would not.
     readonly property real hpad: theme.space(3)
     function spanFor(w) { return Math.max(1, Math.ceil((w + hpad * 2 + grout) / (geo.w + grout))) }
     readonly property var headerLayout: Mosaic.header([
@@ -282,7 +340,7 @@ Item {
         { key: "title", span: Math.max(2, spanFor(titleLabel.implicitWidth + theme.space(6) + countRow.implicitWidth)), flex: true },
         { key: "tabs", span: spanFor(tabsSeg.implicitWidth) },
         { key: "sorts", span: spanFor(sortSeg.implicitWidth) },
-        { key: "group", span: spanFor(groupRow.implicitWidth) },
+        { key: "arrange", span: spanFor(arrangeRow.implicitWidth) },
         { key: "watched", span: spanFor(watchedRow.implicitWidth) },
         { key: "search", span: Math.max(2, spanFor(theme.space(56))), flex: true }
     ], geo.cols)
@@ -388,24 +446,24 @@ Item {
                 }
             }
             HeaderTile {
-                key: "group"
+                key: "arrange"
                 Row {
-                    id: groupRow
+                    id: arrangeRow
                     x: Math.max(page.hpad, (parent.width - width) / 2)
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: theme.space(2.5)
                     Label {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Group"
+                        text: "Arrange"
                         role: "ui"
                         color: theme.textDim
                     }
                     Seg {
-                        id: groupSeg
-                        objectName: "group"
-                        options: ["None", "Genre", "Watch state"]
-                        index: ["None", "Genre", "Viewed"].indexOf(page.groupBy)
-                        onPicked: function(i) { page.groupBy = ["None", "Genre", "Viewed"][i] }
+                        id: arrangeSeg
+                        objectName: "arrange"
+                        options: page.arrangements.map(function(a) { return { text: a[1], name: a[0] } })
+                        index: Math.max(0, page.arrangements.findIndex(function(a) { return a[0] === page.arrange }))
+                        onPicked: function(i) { page.pickArrange(page.arrangements[i][0]) }
                     }
                 }
             }
@@ -477,25 +535,43 @@ Item {
                 id: cell
                 required property var modelData
                 required property int index
+                readonly property bool frameKind: modelData.kind === "frame"
                 readonly property bool stone: modelData.kind === "label"
                 readonly property bool hero: modelData.kind === "hero"
-                readonly property var section: page.sections[modelData.section]
+                readonly property var group: page.items[modelData.item]
                 readonly property real settle: hero ? page.heroIn : page.shelfIn
                 // Built only within a screen of the viewport: the rest of the wall is
-                // empty positioned Items
+                // empty positioned Items. A frame is a bare outline, always drawn, since a
+                // tall box can start well above the window.
                 readonly property bool live: index >= flick.firstLive && index <= flick.lastLive
                 // Wholly inside the viewport: only such a tile answers to the generic
                 // "small-tile" / "hero-tile" names a --drive script clicks
                 readonly property bool inView: y >= flick.contentY && y + height <= flick.contentY + flick.height
-                objectName: stone ? "stone-" + section.label.toLowerCase() : "tile-" + modelData.card.id
+                readonly property string slug: group && group.title ? String(group.title).toLowerCase().replace(/[^a-z0-9]+/g, "-") : ""
+                objectName: frameKind ? "box-" + slug : stone ? "stone-" + slug : (modelData.airing ? "airing-" : "tile-") + modelData.card.id
                 x: page.spanX(modelData.col)
                 y: flick.wallTop + modelData.row * page.step + (1 - settle) * page.grout
                 width: page.spanW(modelData.col, modelData.colSpan)
                 height: page.px(modelData.rowSpan)
+                // a frame's edge lies over its members: the box is drawn last
+                z: frameKind ? 1 : 0
                 opacity: settle
+                // A box's frame: a line straddling the box's edge, one pixel in the joint
+                // and one over its members' outer pixel, so it reads against posters and
+                // against the ground alike; the members sit inside on the module and the
+                // label stone opens it. (A glass-alpha hairline vanished over posters.)
+                Rectangle {
+                    visible: cell.frameKind
+                    x: -1; y: -1
+                    width: parent.width + 2; height: parent.height + 2
+                    radius: theme.radiusTile
+                    color: "transparent"
+                    border.width: 2
+                    border.color: theme.textFaint
+                }
                 Loader {
                     anchors.fill: parent
-                    active: cell.live
+                    active: cell.live && !cell.frameKind
                     sourceComponent: cell.stone ? labelStone : seriesTile
                 }
                 Component {
@@ -512,15 +588,14 @@ Item {
                         onPlayed: page.playSeries(cell.modelData.card)
                     }
                 }
-                // A section's first cell: its name and count, cut as a stone. Airing is set
-                // in the accent's own plate, the rest in raised slate.
+                // A box's first cell, its header: the group's name, its one fact line and
+                // its count, on the box's glass. It spans the box's slack columns, so a wide
+                // one is the box's title strip.
                 Component {
                     id: labelStone
-                    Corner {
-                        readonly property bool airing: cell.section.label === "Airing"
-                        radius: theme.radiusTile
-                        smoothing: theme.cornerSmoothing
-                        color: airing ? theme.plate(theme.accent) : theme.raised
+                    Tile {
+                        raised: true
+                        padding: 0
                         Column {
                             id: stoneCol
                             x: theme.space(4); y: theme.space(4)
@@ -529,7 +604,7 @@ Item {
                             Label {
                                 id: stoneName
                                 width: parent.width
-                                text: cell.section.label
+                                text: cell.group.title
                                 role: "title"
                                 wrapMode: Text.Wrap
                                 maximumLineCount: 3
@@ -539,7 +614,7 @@ Item {
                                 width: parent.width
                                 // gives way rather than run into the count on a short stone
                                 shown: stoneCol.y + stoneName.height + stoneCol.spacing + implicitHeight <= stoneCount.y - theme.space(1)
-                                fact: cell.section.fact || null
+                                fact: cell.group.fact || null
                                 nowMs: page.nowMs
                             }
                         }
@@ -547,19 +622,19 @@ Item {
                             id: stoneCount
                             anchors.right: parent.right; anchors.rightMargin: theme.space(4)
                             anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(3)
-                            text: cell.section.count
+                            text: cell.group.cards.length
                             role: "ledger"
                             font.pointSize: theme.typeDisplay * 1.6
                             font.weight: 700
                             font.variableAxes: ({ "wdth": 88, "wght": 700 })
-                            color: parent.airing ? theme.text : theme.textDim
+                            color: theme.textDim
                         }
                     }
                 }
             }
         }
 
-        // Nothing in this shelf: under whatever the wall did place (the Airing section can
+        // Nothing in this shelf: under whatever the wall did place (the Airing box can
         // still stand over an empty tab)
         Item {
             y: flick.contentHeight

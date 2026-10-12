@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs"
 import assert from "node:assert/strict"
 
 const src = readFileSync(new URL("./mosaic.js", import.meta.url), "utf8").replace(/^\.pragma library$/m, "")
-const M = new Function(src + "\nreturn { columns, unitsToPx, unitsFor, heroCap, heroRank, pickHeroes, pack, holes, firstHole, overlaps, header }")()
+const M = new Function(src + "\nreturn { columns, unitsToPx, unitsFor, heroCap, heroRank, pickHeroes, pack, holes, firstHole, overlaps, header, boxLayout, boxShape, packGroups }")()
 
 const now = 2_000_000_000
 const day = 86400
@@ -161,6 +161,155 @@ for (const cols of [1, 2, 3, 4, 5, 7, 8, 13, 26]) {
     }
   }
   assert.equal(M.header(items, 13).tiles.find(t => t.key === "title").colSpan, 6)
+}
+
+
+// ---- packGroups: the arranged wall, boxes as rigid blocks
+const geo = { slotW: 180, slotH: 290, grout: 2 }
+// a seeded generator, so a failure names a case that reproduces
+function rng(seed) { return () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648 }
+function library(rand, n, heroShare) {
+  const items = []
+  const all = []
+  let left = n
+  while (left > 0) {
+    const r = rand()
+    const size = Math.min(left, r < 0.6 ? 1 : r < 0.85 ? 2 : r < 0.95 ? 2 + Math.floor(rand() * 4) : 5 + Math.floor(rand() * 10))
+    const cards = Array.from({ length: size }, () => card())
+    all.push(...cards)
+    const hero = rand() < heroShare ? cards[Math.floor(rand() * size)] : null
+    items.push({ cards, hero, heroRank: hero ? rand() : 0 })
+    left -= size
+  }
+  return { items, all }
+}
+function checkGroups(items, cols, us, label) {
+  const { tiles, rows } = M.packGroups(items, cols, us, geo)
+  const cells = tiles.filter(t => t.kind !== "frame")
+  const frames = tiles.filter(t => t.kind === "frame")
+  assert.equal(M.overlaps(cells), false, `${label}: no two tiles share a cell`)
+  assert.equal(M.overlaps(frames), false, `${label}: boxes do not overlap`)
+  for (const t of tiles) {
+    assert.ok(t.col >= 0 && t.col + t.colSpan <= cols, `${label}: within the columns`)
+    assert.ok(t.row + t.rowSpan <= rows, `${label}: within the rows`)
+    assert.equal(t.row % us, 0, `${label}: on the slot grid`)
+  }
+  // a box's cells stay inside its frame and fill it exactly: no hole inside a box
+  for (const f of frames) {
+    const own = cells.filter(t => t.item === f.item)
+    for (const t of own) assert.ok(t.col >= f.col && t.col + t.colSpan <= f.col + f.colSpan && t.row >= f.row && t.row + t.rowSpan <= f.row + f.rowSpan, `${label}: members inside their box`)
+    const area = own.reduce((a, t) => a + t.colSpan * t.rowSpan, 0)
+    assert.equal(area, f.colSpan * f.rowSpan, `${label}: a box is filled, no hole inside`)
+    assert.equal(own.filter(t => t.kind === "label").length, 1, `${label}: one label per box`)
+    const label0 = own.find(t => t.kind === "label")
+    assert.deepEqual([label0.col, label0.row], [f.col, f.row], `${label}: the label opens its box`)
+    assert.ok(own.filter(t => t.kind === "hero").length <= 1, `${label}: one hero per box at most`)
+    if (cols < 4) assert.equal(own.filter(t => t.kind === "hero").length, 0, `${label}: no box hero below four columns`)
+  }
+  // only lone tiles are outside boxes, and only groups of one are lone
+  for (const t of cells.filter(t => !frames.some(f => f.item === t.item)))
+    assert.equal(items[t.item].cards.length, 1, `${label}: a lone tile is a group of one`)
+  // every series exactly once outside the Airing box
+  const seen = new Map()
+  for (const t of cells) if (t.card && !t.airing) seen.set(t.card.id, (seen.get(t.card.id) || 0) + 1)
+  for (const it of items) if (!it.airing) for (const c of it.cards) assert.equal(seen.get(c.id), 1, `${label}: series ${c.id} placed once`)
+  // no hole above the final small row, which runs short only on the right
+  assert.equal(M.holes(cells, cols, 0, us), false, `${label}: the wall has a hole`)
+  // sorted by row then col, a frame before its label
+  for (let i = 1; i < tiles.length; i++) assert.ok(tiles[i - 1].row < tiles[i].row || (tiles[i - 1].row === tiles[i].row && tiles[i - 1].col <= tiles[i].col), `${label}: sorted`)
+  return { tiles, rows, cells, frames }
+}
+
+// box shape: near square in pixels, slack bounded, every width hole-free
+for (let n = 1; n <= 40; n++) {
+  for (const hero of [false, true]) {
+    for (let c = 1; c <= 13; c++) {
+      const L = M.boxLayout(n, hero, c)
+      if (!L) continue
+      assert.ok(L.s >= 1 && L.s <= c, `slack within the first row (n ${n}, c ${c})`)
+      const area = L.cells.reduce((a, t) => a + t.colSpan * t.rowSpan, 0)
+      assert.equal(area, c * L.k, `the box is filled (n ${n}, c ${c})`)
+      assert.equal(M.overlaps(L.cells), false)
+    }
+  }
+}
+{
+  // the chosen width beats every other width on squareness, give or take the header cost
+  for (const n of [2, 3, 5, 8, 13, 21]) {
+    const pick = M.boxShape(n, false, 13, geo)
+    const aspect = L => Math.abs(Math.log((L.c * geo.slotW + (L.c - 1) * geo.grout) / (L.k * geo.slotH + (L.k - 1) * geo.grout)))
+    for (let c = 1; c <= 13; c++) {
+      const L = M.boxLayout(n, false, c)
+      assert.ok(aspect(pick) <= aspect(L) + 1, `near square: ${n} members at ${pick.c} columns`)
+    }
+    assert.ok(aspect(pick) < 0.7, `${n} members come out near square, not a strip`)
+  }
+  // Youjo Senki: a series and its film side by side behind their label
+  const two = M.boxShape(2, false, 13, geo)
+  assert.deepEqual([two.c, two.k, two.s], [3, 1, 1])
+  // capped at the wall's columns
+  assert.ok(M.boxShape(30, false, 3, geo).c <= 3)
+}
+
+// random libraries at every width: the invariants hold, singles fill around boxes
+for (let seed = 1; seed <= 60; seed++) {
+  const rand = rng(seed)
+  for (const cols of [1, 2, 3, 4, 5, 7, 8, 13, 26]) {
+    id = 0
+    const { items } = library(rand, 10 + Math.floor(rand() * 120), 0.3)
+    const airing = Array.from({ length: Math.floor(rand() * 7) }, () => card())
+    if (airing.length) items.unshift({ cards: airing, box: true, airing: true, hero: null })
+    checkGroups(items, cols, 4, `seed ${seed} at ${cols} cols`)
+  }
+}
+
+// the Airing box comes first and its series also stand in their own groups
+{
+  id = 0
+  const a = card(), b = card(), c = card()
+  const items = [{ cards: [a, b], box: true, airing: true, hero: null }, { cards: [a, c], hero: null }, { cards: [b], hero: null }, ...Array.from({ length: 12 }, () => ({ cards: [card()], hero: null }))]
+  const { frames, cells } = checkGroups(items, 8, 4, "airing")
+  assert.deepEqual([frames[0].item, frames[0].row, frames[0].col], [0, 0, 0], "the Airing box opens the wall")
+  assert.equal(cells.filter(t => t.card && t.card.id === a.id).length, 2, "an airing series shows in Airing and in its box")
+  // an Airing box of one is still a box
+  const one = checkGroups([{ cards: [a], box: true, airing: true, hero: null }, { cards: [b], hero: null }], 8, 4, "airing of one")
+  assert.equal(one.frames.length, 1)
+}
+
+// singles fill the gaps around boxes: a wall of one wide box and lone tiles keeps every
+// lone tile above the box's foot that fits there
+{
+  id = 0
+  const items = [{ cards: Array.from({ length: 7 }, () => card()), hero: null }, ...Array.from({ length: 20 }, () => ({ cards: [card()], hero: null }))]
+  const { frames, cells } = checkGroups(items, 8, 4, "gaps")
+  const f = frames[0]
+  const beside = cells.filter(t => t.item > 0 && t.row < f.row + f.rowSpan)
+  assert.equal(beside.length, (8 - f.colSpan) * (f.rowSpan / 4), "lone tiles fill the columns beside the box")
+}
+
+// heroes: one per box from four columns; a lone hero is 2x2; none below four columns
+{
+  id = 0
+  const members = Array.from({ length: 4 }, () => card())
+  const items = [{ cards: members, hero: members[2] }, { cards: [card()], hero: null }]
+  const lone = card()
+  items.push({ cards: [lone], hero: lone, heroRank: 1 })
+  for (let i = 0; i < 12; i++) items.push({ cards: [card()], hero: null })
+  const wide = checkGroups(items, 8, 4, "heroes")
+  const heroes = wide.cells.filter(t => t.kind === "hero")
+  assert.ok(heroes.some(t => t.card.id === members[2].id && t.colSpan === 2), "the box's hero is 2x2")
+  assert.ok(heroes.some(t => t.card.id === lone.id), "a lone hero is 2x2")
+  const narrow = checkGroups(items, 3, 4, "heroes narrow")
+  assert.equal(narrow.cells.filter(t => t.kind === "hero" && narrow.frames.some(f => f.item === t.item)).length, 0)
+}
+
+// deterministic: the same input packs the same wall
+{
+  const rand1 = rng(7), rand2 = rng(7)
+  id = 0; const a = library(rand1, 80, 0.3).items
+  id = 0; const b = library(rand2, 80, 0.3).items
+  const pa = M.packGroups(a, 13, 4, geo), pb = M.packGroups(b, 13, 4, geo)
+  assert.deepEqual(pa.tiles.map(t => [t.kind, t.col, t.row, t.colSpan, t.rowSpan, t.card && t.card.id]), pb.tiles.map(t => [t.kind, t.col, t.row, t.colSpan, t.rowSpan, t.card && t.card.id]))
 }
 
 console.log("mosaic ok")
