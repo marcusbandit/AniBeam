@@ -158,7 +158,7 @@ fn a_search_answers_from_anilist_and_refuses_every_other_provider() {
         },
     );
     let done = common::wait_job(&c, job);
-    assert_eq!(done.message, "search: 2 results for \"Frieren\"");
+    assert_eq!(done.message, "Search: 2 results for \"Frieren\"");
     assert_eq!(done.level, Level::Debug);
     let EventBody::SearchFinished { results } = done.body else {
         panic!("{done:?}")
@@ -338,7 +338,7 @@ fn apply_match_writes_the_match_first_and_the_record_after() {
     );
     let done = common::wait_job(&c, job);
     assert_eq!(done.level, Level::Info, "{done:#?}");
-    assert_eq!(done.message, "matched Sousou no Frieren to AniList 1");
+    assert_eq!(done.message, "Matched Sousou no Frieren to AniList 1");
     assert_eq!(done.body, EventBody::MatchApplied { series });
 
     // The first card out is confirmed and has no poster yet: it was

@@ -690,7 +690,7 @@ pub fn start_fill(core: &Arc<Core>) -> u64 {
                 } else {
                     Level::Info
                 },
-                message: format!("images filled: {fetched} fetched, {failed} failed"),
+                message: format!("Images filled: {fetched} fetched, {failed} failed"),
                 body: EventBody::Notice,
             })
         });
@@ -744,7 +744,7 @@ pub fn start_clear(core: &Arc<Core>) -> u64 {
             }
             Ok(Finished {
                 level: Level::Info,
-                message: format!("images cleared: {removed} removed"),
+                message: format!("Images cleared: {removed} removed"),
                 body: EventBody::ImagesCleared { removed },
             })
         })

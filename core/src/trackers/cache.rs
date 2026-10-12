@@ -372,12 +372,12 @@ async fn run(
             Some(e) if tracker.is_some() => Err(e),
             Some(_) => Ok(Finished {
                 level: Level::Debug,
-                message: "no progress refreshed".to_string(),
+                message: "No progress refreshed".to_string(),
                 body: EventBody::Notice,
             }),
             None => Ok(Finished {
                 level: Level::Debug,
-                message: "nothing to refresh".to_string(),
+                message: "Nothing to refresh".to_string(),
                 body: EventBody::Notice,
             }),
         },

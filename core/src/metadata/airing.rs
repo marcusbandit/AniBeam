@@ -291,7 +291,7 @@ pub fn start_refresh(core: &Core, series: u64) -> Result<u64, CoreError> {
             let Some(cand) = cand else {
                 return Ok(Finished {
                     level: Level::Debug,
-                    message: format!("airing: series {series} needs no refresh"),
+                    message: format!("Airing: series {series} needs no refresh"),
                     body: EventBody::AiringRefreshed {
                         series,
                         updated: false,
@@ -305,9 +305,9 @@ pub fn start_refresh(core: &Core, series: u64) -> Result<u64, CoreError> {
             Ok(Finished {
                 level: Level::Debug,
                 message: if updated {
-                    format!("airing refreshed for {}", cand.folder_name)
+                    format!("Airing refreshed for {}", cand.folder_name)
                 } else {
-                    format!("airing unchanged for {}", cand.folder_name)
+                    format!("Airing unchanged for {}", cand.folder_name)
                 },
                 body: EventBody::AiringRefreshed { series, updated },
             })
@@ -350,7 +350,7 @@ pub fn start_refresh_library(core: &Arc<Core>) -> u64 {
                 } else {
                     Level::Info
                 },
-                message: format!("airing refreshed for {updated} series"),
+                message: format!("Airing refreshed for {updated} series"),
                 body: EventBody::Notice,
             })
         })

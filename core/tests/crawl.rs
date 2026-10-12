@@ -229,7 +229,7 @@ fn the_crawl_walks_traversable_edges_stops_at_a_cameo_and_defers_a_rate_limit() 
         "{:?}",
         finished.body
     );
-    assert_eq!(finished.message, "crawl finished: 4 fetched, 1 deferred");
+    assert_eq!(finished.message, "Crawl finished: 4 fetched, 1 deferred");
 
     // The cameo is drawn and stopped at: node 50 keeps its edge and its
     // stub row, and the crawl never asks AniList a thing about it. Node 3
@@ -394,7 +394,7 @@ fn a_seed_refetch_takes_a_node_whose_edges_are_already_known() {
     let warned = warnings(&c);
     assert_eq!(warned.len(), 1, "{warned:?}");
     assert!(
-        warned[0].starts_with("crawl: 1 nodes failed, first: "),
+        warned[0].starts_with("Crawl: 1 nodes failed, first: "),
         "{}",
         warned[0]
     );

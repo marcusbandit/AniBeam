@@ -152,7 +152,7 @@ fn the_anilist_list_fills_the_cache_and_the_five_minute_rule_holds_it() {
     let again = started(core.call(Call::RefreshProgress { tracker: None }).unwrap());
     let notice = common::wait_job(&c, again);
     assert!(matches!(notice.body, EventBody::Notice), "{notice:?}");
-    assert_eq!(notice.message, "nothing to refresh");
+    assert_eq!(notice.message, "Nothing to refresh");
     assert_eq!(http.requests().len(), 1);
     assert!(
         c.events()
@@ -322,7 +322,7 @@ fn a_disconnected_tracker_is_skipped() {
         Duration::from_secs(10),
     );
     assert!(matches!(done.body, EventBody::Notice), "{done:?}");
-    assert_eq!(done.message, "nothing to refresh");
+    assert_eq!(done.message, "Nothing to refresh");
     assert!(http.requests().is_empty());
 }
 

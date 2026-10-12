@@ -132,14 +132,14 @@ fn auto_match_matches_once_at_the_gate_and_never_rehammers() {
     assert!(
         c.events()
             .iter()
-            .any(|e| e.message == "no match for Zzz Unknown (threshold 0.5)"),
+            .any(|e| e.message == "No match for Zzz Unknown (threshold 0.5)"),
         "{:#?}",
         c.events()
     );
     assert!(
         c.events()
             .iter()
-            .any(|e| e.message == "match (AniList 1.00): Sousou no Frieren -> Sousou no Frieren"),
+            .any(|e| e.message == "Match (AniList 1.00): Sousou no Frieren -> Sousou no Frieren"),
         "{:#?}",
         c.events()
     );

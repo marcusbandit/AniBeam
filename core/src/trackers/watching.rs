@@ -292,7 +292,7 @@ async fn refresh(core: &Arc<Core>) -> Result<Finished, CoreError> {
         .await?;
     Ok(Finished {
         level: Level::Debug,
-        message: format!("watching list refreshed: {} entries", list.entries.len()),
+        message: format!("Watching list refreshed: {} entries", list.entries.len()),
         body: EventBody::WatchingRefreshed { list },
     })
 }
