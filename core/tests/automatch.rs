@@ -115,6 +115,9 @@ fn auto_match_matches_once_at_the_gate_and_never_rehammers() {
     );
     http.push_for("img/1-xl.jpg", 200, vec![1, 2, 3]);
     http.push_json(200, serde_json::json!({ "data": { "Page": { "media": [ media_json(3, "Completely Different Title", true) ] } } }));
+    // AniList missed, so TVmaze has its turn, and misses too: only then is
+    // the series stamped.
+    http.push_for("api.tvmaze.com/search/shows?q=Zzz%20Unknown", 200, "[]");
 
     let job = started(&core, Call::AutoMatch);
     let done = common::wait_job(&c, job);
@@ -344,12 +347,23 @@ fn a_reply_that_does_not_parse_stamps_that_series_and_the_walk_carries_on() {
         200,
         serde_json::json!({ "data": { "Page": { "media": [] } } }),
     );
+    http.push_for("api.tvmaze.com/search/shows?q=Bbb", 200, "[]");
 
     let job = started(&core, Call::AutoMatch);
     let done = common::wait_job(&c, job);
     assert!(
         matches!(done.body, EventBody::AutoMatchFinished { unmatched: 2, .. }),
         "{done:?}"
+    );
+    // The malformed reply ended Aaa's walk at AniList: an answered error
+    // is that provider's turn, never a hand-off to the next one.
+    assert!(
+        !http
+            .requests()
+            .iter()
+            .any(|r| r.url.contains("tvmaze.com/search/shows?q=Aaa")),
+        "{:#?}",
+        http.requests()
     );
     assert!(
         attempted_at(&core, broken).is_some(),
