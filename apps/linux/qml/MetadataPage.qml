@@ -39,7 +39,7 @@ Item {
     function filterCount(f) {
         return f === "All" ? page.counts.all : f === "Series" ? page.counts.series : f === "Movies" ? page.counts.movies : page.counts.missing_files
     }
-    function providerLabel(p) { return ({ Anilist: "AniList", Mal: "MyAnimeList", Tmdb: "TMDB" })[p] || p || "" }
+    function providerLabel(p) { return frame.providerName(p) }
     function crawlJob() {
         for (var i = 0; i < Door.runningJobs.length; i++) {
             var j = Door.runningJobs[i]
@@ -193,8 +193,8 @@ Item {
                     objectName: "metadata-match-all"
                     text: "Match unmatched"
                     icon: "link"
-                    onClicked: { var r = Door.autoMatch(); frame.toast(r.error ? r.error.message : "Looking up AniList for unmatched folders") }
-                    Tooltip { text: "Looks up AniList for every folder that has no match yet" }
+                    onClicked: { var r = Door.autoMatch(); frame.toast(r.error ? r.error.message : "Looking up a match for unmatched folders") }
+                    Tooltip { text: "Looks up every folder that has no match yet, on each metadata provider in the order Settings gives them" }
                 }
                 Button {
                     objectName: "metadata-refresh-all"
@@ -272,7 +272,7 @@ Item {
         property bool first: false
         readonly property var d: modelData || ({})
         readonly property var card: d.series || ({})
-        readonly property bool matched: !!(card.match_info && (card.match_info.anilist_id !== null || card.match_info.mal_id !== null))
+        readonly property bool matched: !!card.match_info && ["anilist_id", "mal_id", "tvmaze_id", "tmdb_id"].some(function(k) { return card.match_info[k] !== null && card.match_info[k] !== undefined })
         readonly property bool isMovie: card.kind === "Movie" || card.format === "MOVIE"
         readonly property bool missing: card.missing === true
         readonly property real expected: d.expected !== null && d.expected !== undefined ? d.expected : (isMovie ? 1 : 0)
