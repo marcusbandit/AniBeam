@@ -29,7 +29,12 @@ Item {
         : "Not connected"
 
     width: parent ? parent.width : theme.space(100)
+    // A secret is saved and nothing is asking for one: offered for removal, for the app
+    // that turned out to be "other", where MAL refuses a secret it never issued.
+    readonly property bool canRemoveSecret: tracker === "Mal" && !connected && !waiting && !needsSecret
+        && account.has_client_secret === true
     implicitHeight: top.height + (secretForm.visible ? theme.space(1) + secretForm.implicitHeight : 0)
+        + (savedSecret.visible ? theme.space(1) + savedSecret.height : 0)
     onNeedsSecretChanged: if (!needsSecret) addingSecret = false
 
     Item {
@@ -129,6 +134,31 @@ Item {
     Component {
         id: connectButton
         ConnectButton { objectName: "tracker-" + root.tracker + "-connect"; tracker: root.tracker; text: "Connect"; icon: "log-in"; primary: !root.needsSecret; onClicked: frame.openConnect(root.tracker) }
+    }
+
+    Row {
+        id: savedSecret
+        visible: root.canRemoveSecret
+        anchors.top: top.bottom
+        anchors.topMargin: theme.space(1)
+        anchors.left: parent.left
+        anchors.leftMargin: avatar.width + theme.space(3)
+        spacing: theme.space(2)
+        Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: "A client secret is saved for this app."
+            color: theme.textDim
+            font.family: theme.fontUi
+            font.pointSize: theme.typeSmall
+        }
+        // An empty secret is the contract's "remove"; an absent one would keep it.
+        Button {
+            text: "Remove it"; icon: "trash-2"; flat: true; small: true
+            onClicked: {
+                var r = Door.call("SetTrackerCredentials", { tracker: root.tracker, client_id: root.account.client_id || "", client_secret: "" })
+                frame.toast(r.error ? frame.errorText(r.error) : "Client secret removed")
+            }
+        }
     }
 
     // MAL answered that this app is a "web" one: its secret, saved, and the flow again.
