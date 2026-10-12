@@ -18,6 +18,10 @@ pub const RING_SIZE: u64 = 2000;
 /// thread.
 pub struct EventBus {
     seq: AtomicU64,
+    /// Bumped by every event that can stand for a change of state, before
+    /// any listener hears it. A shell's read cache stamps what it keeps
+    /// with this and drops it the moment the number moves.
+    generation: AtomicU64,
     next_listener: AtomicU64,
     listeners: RwLock<Vec<(u64, Arc<dyn EventListener>)>>,
     store: Arc<Store>,
@@ -32,6 +36,7 @@ impl EventBus {
         })?;
         Ok(Arc::new(EventBus {
             seq: AtomicU64::new(last as u64),
+            generation: AtomicU64::new(0),
             next_listener: AtomicU64::new(1),
             listeners: RwLock::new(Vec::new()),
             store,
@@ -57,6 +62,13 @@ impl EventBus {
             job,
             body,
         };
+        // Before the listeners, so a shell that rereads on hearing the
+        // event never finds its cache still stamped current. Progress is
+        // the one body that is never a change of state on its own: every
+        // write behind it is followed by its own event.
+        if !matches!(event.body, EventBody::JobProgress { .. }) {
+            self.generation.fetch_add(1, Ordering::SeqCst);
+        }
         if level != Level::Debug {
             self.persist(&event);
         }
@@ -120,6 +132,13 @@ impl EventBus {
                 tracing::warn!("failed to trim the events ring: {err}");
             }
         });
+    }
+
+    /// The state generation: moves on every event but a job's progress.
+    /// Two reads under the same number saw the same state, up to the time
+    /// of day.
+    pub fn generation(&self) -> u64 {
+        self.generation.load(Ordering::SeqCst)
     }
 
     pub fn subscribe(&self, listener: Arc<dyn EventListener>) -> u64 {
@@ -313,6 +332,55 @@ mod tests {
         assert_eq!(recent.len(), 1);
         assert_eq!(recent[0].message, "hello");
         assert_eq!(recent[0].level, Level::Info);
+    }
+
+    /// What a listener saw the generation as, while it was being told.
+    struct GenerationProbe {
+        bus: std::sync::Weak<EventBus>,
+        seen: Mutex<Vec<u64>>,
+    }
+
+    impl EventListener for GenerationProbe {
+        fn on_event(&self, _event: Event) {
+            if let Some(bus) = self.bus.upgrade() {
+                self.seen.lock().unwrap().push(bus.generation());
+            }
+        }
+    }
+
+    #[test]
+    fn the_generation_moves_on_every_change_before_any_listener_hears_it() {
+        let (_d, bus) = bus();
+        let probe = Arc::new(GenerationProbe {
+            bus: Arc::downgrade(&bus),
+            seen: Mutex::new(vec![]),
+        });
+        bus.subscribe(probe.clone());
+        let g0 = bus.generation();
+        bus.info(
+            Stage::Library,
+            "changed",
+            EventBody::SeriesChanged { series: vec![] },
+        );
+        let g1 = bus.generation();
+        assert!(g1 > g0, "a change moves the generation");
+        assert_eq!(
+            probe.seen.lock().unwrap().as_slice(),
+            &[g1],
+            "the listener already sees the moved generation"
+        );
+        bus.debug(
+            Stage::Library,
+            "progress",
+            EventBody::JobProgress {
+                done: 1,
+                total: None,
+                label: "".into(),
+            },
+        );
+        assert_eq!(bus.generation(), g1, "progress alone is not a change");
+        bus.debug(Stage::System, "a debug line", EventBody::Notice);
+        assert!(bus.generation() > g1, "a debug-level event still counts");
     }
 
     #[test]

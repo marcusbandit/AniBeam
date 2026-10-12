@@ -161,26 +161,49 @@ pub fn list(conn: &Connection, images_dir: &Path) -> Result<WatchingList, CoreEr
     })
 }
 
-/// The call. The cached list leaves at once; a connected AniList also
-/// leaves with the id of the job filling it, which is the running one when
-/// a refresh is already under way.
+/// The call. The cached list leaves at once and nothing is started: a read
+/// that began an AniList fetch made every page reload a network request.
+/// `refreshing` names a refresh that is already running, so a page can
+/// still say one is on its way.
 pub fn list_call(core: &Core) -> Result<Reply, CoreError> {
     let images_dir = core.paths.images_dir();
-    let (list, connected) = core
-        .store
-        .read(|c| Ok((list(c, &images_dir)?, is_connected(c)?)))?;
-    // The row is checked here rather than in `start_refresh`, so a page
-    // opened with no account sees an answer instead of a refusal.
-    let refreshing = match connected {
-        true => {
-            let owner = core
-                .arc()
-                .ok_or_else(|| CoreError::internal("core is shutting down"))?;
-            Some(start_refresh(&owner)?)
-        }
-        false => None,
-    };
+    let list = core.store.read(|c| list(c, &images_dir))?;
+    let refreshing = core
+        .jobs
+        .list()
+        .into_iter()
+        .find(|j| j.kind == JobKind::RefreshWatching)
+        .map(|j| j.id);
     Ok(Reply::Watching { list, refreshing })
+}
+
+/// How old the cached list may be before `RefreshWatching` without `force`
+/// goes back to AniList.
+pub const STALE_AFTER_SECS: i64 = 5 * 60;
+
+/// The `RefreshWatching` call: the job when the cache is stale (or never
+/// filled) or `force` says so, `Ok` when it is fresh or there is no account
+/// to ask. A refresh already running is handed back rather than doubled.
+pub fn refresh_call(core: &Core, force: bool) -> Result<Reply, CoreError> {
+    let (connected, fetched_at) = core.store.read(|c| {
+        Ok((
+            is_connected(c)?,
+            settings::get::<i64>(c, settings::WATCHING_FETCHED_AT)?,
+        ))
+    })?;
+    if !connected {
+        return Ok(Reply::Ok);
+    }
+    let fresh = fetched_at.is_some_and(|at| time::now_secs() - at < STALE_AFTER_SECS);
+    if fresh && !force {
+        return Ok(Reply::Ok);
+    }
+    let owner = core
+        .arc()
+        .ok_or_else(|| CoreError::internal("core is shutting down"))?;
+    Ok(Reply::Started {
+        job: start_refresh(&owner)?,
+    })
 }
 
 fn is_connected(conn: &Connection) -> Result<bool, CoreError> {

@@ -122,7 +122,15 @@ pub fn list_series(
 /// even while a stale status still says releasing — the tracker is the
 /// firmer answer, and the airing refresh's status write clears the rest.
 pub fn list_airing(core: &Core, offset: u64, limit: u64) -> Result<Reply, CoreError> {
-    let mut cards = load_cards(core)?;
+    let series = airing_rail(load_cards(core)?)
+        .into_iter()
+        .skip(offset as usize)
+        .take(limit as usize)
+        .collect();
+    Ok(Reply::Series { series })
+}
+
+fn airing_rail(mut cards: Vec<SeriesCard>) -> Vec<SeriesCard> {
     cards.retain(|c| {
         c.status == Some(AiringStatus::Releasing)
             && c.episodes_on_disk > 0
@@ -131,15 +139,59 @@ pub fn list_airing(core: &Core, offset: u64, limit: u64) -> Result<Reply, CoreEr
             && !cards::watched_out(c)
     });
     cards.sort_by_key(|c| std::cmp::Reverse(c.latest_activity_at));
-    let series = cards
-        .into_iter()
-        .skip(offset as usize)
-        .take(limit as usize)
-        .collect();
-    Ok(Reply::Series { series })
+    cards
 }
 
-/// One series page, loaded through a snapshot scoped to that series alone.
+/// The library page in one read: `list_series`'s answer, the whole airing
+/// rail and every tab's count, all off one snapshot rather than the four or
+/// five whole-library reads the page used to make per reload.
+pub fn list_library(
+    core: &Core,
+    tab: Tab,
+    query: &str,
+    sort_key: Sort,
+    direction: Direction,
+) -> Result<Reply, CoreError> {
+    let show_watched = core
+        .store
+        .read(|c| prefs::load_preferences(c).map(|p| p.library_show_watched))?;
+    let Loaded {
+        cards: all,
+        gaps,
+        posters,
+    } = load_all(core)?;
+    let count = |t: Tab| all.iter().filter(|c| in_tab(c, t, show_watched)).count() as u64;
+    let counts = TabCounts {
+        all: count(Tab::All),
+        series: count(Tab::Series),
+        movies: count(Tab::Movies),
+        watched: count(Tab::Watched),
+        hidden: count(Tab::Hidden),
+    };
+    let mut series: Vec<SeriesCard> = all
+        .iter()
+        .filter(|c| in_tab(c, tab, show_watched) && sort::matches_query(c, query))
+        .cloned()
+        .collect();
+    sort::sort_cards(&mut series, sort_key, direction);
+    let airing = airing_rail(all);
+    let mut used: Vec<String> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for c in series.iter().chain(airing.iter()) {
+        if seen.insert(c.id)
+            && let Some(url) = posters.get(&c.id)
+        {
+            used.push(url.clone());
+        }
+    }
+    after_read(core, &gaps, used);
+    Ok(Reply::Library {
+        series,
+        airing,
+        counts,
+    })
+}
+
 pub fn get_series(core: &Core, series: u64) -> Result<Reply, CoreError> {
     let images_dir = core.paths.images_dir();
     let now = time::now();

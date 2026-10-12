@@ -6,6 +6,7 @@ mod json;
 mod nowplaying;
 mod paths;
 mod player_config;
+mod read_cache;
 mod runtime;
 mod theme;
 mod tracks;

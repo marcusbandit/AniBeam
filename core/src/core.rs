@@ -490,6 +490,13 @@ impl Core {
                 reveal_hidden: _,
             } => reads::list_series(self, tab, &query, sort, direction),
             Call::ListAiring { offset, limit } => reads::list_airing(self, offset, limit),
+            Call::ListLibrary {
+                tab,
+                query,
+                sort,
+                direction,
+                reveal_hidden: _,
+            } => reads::list_library(self, tab, &query, sort, direction),
             // Pure over one snapshot load, scope None: nothing to write and
             // no job. The shell's own sort preference is saved separately
             // through SetPreferences.
@@ -630,9 +637,11 @@ impl Core {
                     job: cache::start_refresh(&core, tracker, false),
                 })
             }
-            // The cached list leaves at once and the refresh runs behind
-            // it, the way the Electron page did on every visit.
+            // The cached list leaves at once and starts nothing: a read
+            // with a network side effect made every library change an
+            // AniList request. The page asks for a refresh on its own.
             Call::ListWatching => watching::list_call(self),
+            Call::RefreshWatching { force } => watching::refresh_call(self, force),
             // The graph is drawn off the tables as they stand, and the
             // crawl behind it fills in whatever the walk found missing.
             Call::GetFranchiseGraph { series } => {
@@ -700,7 +709,13 @@ impl Core {
         }
     }
 
-    pub fn subscribe(&self, listener: Arc<dyn EventListener>) -> Arc<Subscription> {
+    /// The state generation (`EventBus::generation`): a shell may keep a
+    /// read for as long as this has not moved.
+    pub fn generation(&self) -> u64 {
+        self.bus.generation()
+    }
+
+        pub fn subscribe(&self, listener: Arc<dyn EventListener>) -> Arc<Subscription> {
         Subscription::new(self.bus.clone(), listener)
     }
 

@@ -189,6 +189,18 @@ pub struct MetadataRow {
     pub extra_on_disk: u64,
 }
 
+/// How many series each library tab holds, no query applied: what the
+/// page needs to decide which tabs to offer and whether the library is
+/// empty at all.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct TabCounts {
+    pub all: u64,
+    pub series: u64,
+    pub movies: u64,
+    pub watched: u64,
+    pub hidden: u64,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct FilterCounts {
     pub all: u64,

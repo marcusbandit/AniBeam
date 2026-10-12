@@ -24,13 +24,15 @@ Window {
     // viewed, then the shelf — and refilled (debounced) when the library says
     // a series changed, only ever replacing the pool when the path set moved.
     PosterPool { id: posterPool }
+    // One read for both lists: listLibrary carries the airing rail with the shelf, and
+    // the Door keeps the answer until the library changes, so a page reading the same
+    // thing in the same beat pays nothing.
     function fillPool() {
-        var airing = Door.listAiring(0, 100)
-        var r = Door.listSeries("All", "", "LastViewed", "Desc", false)
+        var r = Door.listLibrary("All", "", "LastViewed", "Desc", false)
         if (r.error) return
         var out = [], seen = {}
         function push(c) { if (c.poster && !seen[c.poster]) { seen[c.poster] = true; out.push(c.poster) } }
-        if (!airing.error) airing.reply.series.forEach(function(c) { if (c.next_airing) push(c) })
+        r.reply.airing.forEach(function(c) { if (c.next_airing) push(c) })
         r.reply.series.forEach(push)
         var paths = out.slice(0, posterPool.capacity)
         if (paths.length !== posterPool.paths.length || paths.join("\u0001") !== posterPool.paths.join("\u0001"))

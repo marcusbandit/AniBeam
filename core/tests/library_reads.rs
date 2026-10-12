@@ -395,6 +395,46 @@ fn watched_series_move_to_their_own_tab_until_shown_again() {
     };
     assert_eq!(rail, vec![current]);
 
+    // The library page's one read says what the separate reads say, off
+    // one snapshot: the tab's list, the whole rail and every tab's count.
+    let library = |tab: Tab, query: &str| match core
+        .call(Call::ListLibrary {
+            tab,
+            query: query.into(),
+            sort: Sort::Alpha,
+            direction: Direction::Asc,
+            reveal_hidden: false,
+        })
+        .unwrap()
+    {
+        Reply::Library {
+            series,
+            airing,
+            counts,
+        } => (series, airing, counts),
+        other => panic!("{other:?}"),
+    };
+    for tab in [Tab::All, Tab::Watched, Tab::Movies] {
+        let (series, airing, counts) = library(tab, "");
+        assert_eq!(series, list(tab), "{tab:?}");
+        assert_eq!(airing.iter().map(|s| s.id).collect::<Vec<_>>(), rail);
+        assert_eq!(
+            counts,
+            TabCounts {
+                all: list(Tab::All).len() as u64,
+                series: list(Tab::Series).len() as u64,
+                movies: list(Tab::Movies).len() as u64,
+                watched: list(Tab::Watched).len() as u64,
+                hidden: list(Tab::Hidden).len() as u64,
+            }
+        );
+        assert_eq!((counts.all, counts.watched, counts.hidden), (1, 2, 0));
+    }
+    // A query narrows the list but never the counts, which are the tabs'.
+    let (series, _, counts) = library(Tab::Watched, "perfect");
+    assert_eq!(series.iter().map(|s| s.id).collect::<Vec<_>>(), vec![film]);
+    assert_eq!(counts.watched, 2);
+
     // The toggle puts them back among the results — and the airing rail
     // still leaves them out, since nothing about them is airing.
     core.call(Call::SetPreferences {

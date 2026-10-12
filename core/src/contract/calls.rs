@@ -36,6 +36,17 @@ pub enum Call {
         direction: Direction,
         reveal_hidden: bool,
     },
+    /// The library page in one read: `ListSeries`'s answer, the airing
+    /// rail (`ListAiring` with no limit) and every tab's count, all off one
+    /// snapshot. `reveal_hidden` is the shell's tab visibility, as on
+    /// `ListSeries`.
+    ListLibrary {
+        tab: Tab,
+        query: String,
+        sort: Sort,
+        direction: Direction,
+        reveal_hidden: bool,
+    },
     ListAiring {
         offset: u64,
         limit: u64,
@@ -114,6 +125,14 @@ pub enum Call {
         tracker: Option<Tracker>,
     },
     ListWatching,
+    /// Starts the AniList watching refresh when the cached list is older
+    /// than five minutes, or always with `force`. `Started` with the job
+    /// (the running one if a refresh is under way), or `Ok` when the cache
+    /// is fresh or AniList is not connected. The job ends in
+    /// `WatchingRefreshed`.
+    RefreshWatching {
+        force: bool,
+    },
     // Franchise
     GetFranchiseGraph {
         series: u64,
@@ -191,6 +210,11 @@ pub enum Reply {
     },
     Series {
         series: Vec<SeriesCard>,
+    },
+    Library {
+        series: Vec<SeriesCard>,
+        airing: Vec<SeriesCard>,
+        counts: TabCounts,
     },
     SeriesDetail {
         detail: Box<SeriesDetail>,

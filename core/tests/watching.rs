@@ -20,6 +20,15 @@ fn watching(core: &Core) -> (WatchingList, Option<u64>) {
     }
 }
 
+/// `RefreshWatching`: the job it started, or `None` for its `Ok`.
+fn refresh(core: &Core, force: bool) -> Option<u64> {
+    match core.call(Call::RefreshWatching { force }).unwrap() {
+        Reply::Started { job } => Some(job),
+        Reply::Ok => None,
+        other => panic!("{other:?}"),
+    }
+}
+
 /// AniList's answer, spread over two custom lists: three entries the page
 /// wants, one it does not, and the first entry again under a second list
 /// with different numbers, which is how AniList reports a media that sits
@@ -144,7 +153,9 @@ fn the_page_paints_the_cache_and_the_refresh_fills_it_behind() {
     let (empty, refreshing) = watching(&core);
     assert!(empty.entries.is_empty());
     assert_eq!(empty.fetched_at, None);
-    let job = refreshing.expect("a connected AniList always starts a refresh");
+    assert_eq!(refreshing, None, "a read starts nothing");
+    assert!(http.requests().is_empty(), "and asks AniList nothing");
+    let job = refresh(&core, false).expect("a cache never filled is stale");
     let done = common::wait_job(&c, job);
 
     let query = &http.requests()[0];
@@ -166,10 +177,17 @@ fn the_page_paints_the_cache_and_the_refresh_fills_it_behind() {
     };
     assert_eq!(done.level, Level::Debug);
     assert_eq!(done.message, "watching list refreshed: 2 entries");
+    let asked = http.requests().len();
     let (cached, again) = watching(&core);
     assert_eq!(cached.entries, list.entries);
     assert!(cached.fetched_at.is_some());
-    assert!(again.is_some());
+    assert_eq!(again, None, "nothing is running and the read starts nothing");
+    assert_eq!(
+        refresh(&core, false),
+        None,
+        "a list fetched just now is fresh"
+    );
+    assert_eq!(http.requests().len(), asked, "so AniList is not asked again");
 
     // Two of the three watched entries: the third is owned and hidden, and
     // the completed one was never on this page at all.
@@ -283,13 +301,13 @@ fn a_failed_refresh_leaves_the_cached_list_standing() {
     library(&core);
     fixtures::connect_tracker(&core, Tracker::Anilist, 42, "tok");
 
-    let (_, refreshing) = watching(&core);
-    common::wait_job(&c, refreshing.unwrap());
+    common::wait_job(&c, refresh(&core, false).unwrap());
 
     http.fail_next("connection refused");
-    let (cached, refreshing) = watching(&core);
+    let (cached, _) = watching(&core);
     assert_eq!(cached.entries.len(), 2);
-    let failed = common::wait_job(&c, refreshing.unwrap());
+    let job = refresh(&core, true).expect("force goes back even to a fresh list");
+    let failed = common::wait_job(&c, job);
     match &failed.body {
         EventBody::JobFailed {
             error:
@@ -318,6 +336,7 @@ fn a_disconnected_anilist_starts_no_refresh() {
     assert!(list.entries.is_empty());
     assert_eq!(list.fetched_at, None);
     assert_eq!(refreshing, None);
+    assert_eq!(refresh(&core, true), None, "no account, nothing to ask");
     assert!(http.requests().is_empty());
 }
 
