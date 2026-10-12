@@ -5,13 +5,14 @@
 //! which a server never sees, so the first hit is answered with a page
 //! that re-issues the request with the fragment as a query. MAL is an
 //! authorization code with plain PKCE, which is what MAL supports: it
-//! rejects S256 outright, so the challenge is the verifier.
+//! rejects S256 outright, so the challenge is the verifier. MAL is treated
+//! as a public client, the id and the verifier and nothing else, unless a
+//! secret has been pasted or bundled for an app registered as "web".
 //!
-//! Everything here is carried from Electron's `trackerHandler.ts`: the
-//! urls character for character, the three pages, the five minute window,
-//! and the order the pages are served in. The browser is answered before
-//! the token is validated or exchanged, so the tab finishes cleanly
-//! whatever the provider says next.
+//! Carried from Electron's `trackerHandler.ts`: the urls character for
+//! character, the five minute window, and the order the pages are served
+//! in. The browser is answered before the token is validated or exchanged,
+//! so the tab finishes cleanly whatever the provider says next.
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -243,9 +244,9 @@ async fn run(
     })
 }
 
-/// The code exchange. The secret rides in the form, which is what makes
-/// MAL a confidential client; `effective_credentials` has already refused
-/// a MAL connect without one.
+/// The code exchange. The verifier is what proves this is the client that
+/// started the flow; the secret rides along only for an app registered as
+/// "web", and a refusal for want of one says so in words a user can act on.
 async fn exchange(
     core: &Arc<Core>,
     code: &str,
@@ -254,25 +255,19 @@ async fn exchange(
     client_secret: Option<&str>,
     redirect_url: &str,
 ) -> Result<Tokens, CoreError> {
-    let form = vec![
-        ("client_id".to_string(), client_id.to_string()),
-        (
-            "client_secret".to_string(),
-            client_secret.unwrap_or_default().to_string(),
-        ),
-        ("code".to_string(), code.to_string()),
-        ("code_verifier".to_string(), verifier.to_string()),
-        ("grant_type".to_string(), "authorization_code".to_string()),
-        ("redirect_uri".to_string(), redirect_url.to_string()),
-    ];
+    let form = accounts::token_form(
+        client_id,
+        client_secret,
+        [
+            ("code", code),
+            ("code_verifier", verifier),
+            ("grant_type", "authorization_code"),
+            ("redirect_uri", redirect_url),
+        ],
+    );
     let response = core.mal.post_form(accounts::MAL_TOKEN_URL, form).await?;
     if !response.is_success() {
-        return Err(CoreError::Provider {
-            provider: Provider::Mal,
-            status: Some(u32::from(response.status)),
-            message: response.text(),
-            retry_after: None,
-        });
+        return Err(accounts::token_failure(&response, client_secret.is_some()));
     }
     accounts::parse_tokens(&response.body, time::now())
 }

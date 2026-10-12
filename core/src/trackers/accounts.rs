@@ -18,6 +18,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use crate::contract::*;
 use crate::core::Core;
 use crate::library::cards;
+use crate::net::HttpResponse;
 use crate::prefs;
 use crate::time;
 use crate::trackers::secrets::{Secrets, StoreKind};
@@ -34,9 +35,13 @@ const REFRESH_WINDOW: Duration = Duration::from_secs(60 * 60);
 /// again.
 const MAL_EXPIRED: &str = "MAL auth expired, reconnect in Settings.";
 
-/// MAL is a confidential client, so it needs the secret as well as the id.
-/// AniList's implicit grant needs none.
-const MAL_NEEDS_SECRET: &str = "MyAnimeList needs a client secret. Paste it in the Trackers tab.";
+/// What a user is told when MAL refuses a token request that carried no
+/// secret. An app registered with App Type "other" is a public client and
+/// signs in with the id and the PKCE verifier alone; one registered as
+/// "web" is confidential and MAL will not hand it a token without its
+/// secret. Nothing in the id says which kind it is, so the core tries
+/// without and says this when MAL answers `invalid_client`.
+pub(crate) const MAL_WANTS_SECRET: &str = "MyAnimeList wants this app's client secret. Add it under Trackers in Settings, or register the app with App Type \"other\".";
 
 // Keys and bundled credentials ----------------------------------------------
 
@@ -66,7 +71,8 @@ pub fn bundled_client_id(t: Tracker) -> Option<&'static str> {
     .filter(|id| !id.is_empty())
 }
 
-/// The same for the client secret, which only MAL has one of.
+/// The same for the client secret, which only a MAL app registered as "web"
+/// has. Optional even there: most builds carry an "other" app and no secret.
 pub fn bundled_client_secret(t: Tracker) -> Option<&'static str> {
     match t {
         Tracker::Anilist => None,
@@ -167,18 +173,19 @@ fn account(core: &Core, t: Tracker, row: Option<Row>) -> TrackerAccount {
             .or_else(|| bundled_id.map(str::to_string))
             .unwrap_or_default(),
         has_client_secret: core.secrets().has(&secret_key(t)) || bundled_secret.is_some(),
-        // Whether this build can sign in with nothing pasted at all, which
-        // for MAL means both halves.
-        bundled_credentials: match t {
-            Tracker::Anilist => bundled_id.is_some(),
-            Tracker::Mal => bundled_id.is_some() && bundled_secret.is_some(),
-        },
+        // Whether this build can sign in with nothing pasted at all. The id
+        // is enough for both: AniList's implicit grant has no secret, and a
+        // MAL app is a public client unless it was registered as "web", in
+        // which case the bundled secret rides along when there is one.
+        bundled_credentials: bundled_id.is_some(),
     }
 }
 
 /// What a flow actually signs in with: the pasted credentials if there are
 /// any, the bundled ones otherwise. Fails on its own preconditions, so a
-/// connect with nothing to connect with never becomes a job.
+/// connect with nothing to connect with never becomes a job. A missing
+/// secret is not one of them: MAL decides whether it wanted one, and
+/// `token_failure` turns its answer into something a user can act on.
 pub fn effective_credentials(
     core: &Core,
     t: Tracker,
@@ -195,9 +202,6 @@ pub fn effective_credentials(
         .get(&secret_key(t), row.secret_store)?
         .map(|(value, _)| value)
         .or_else(|| bundled_client_secret(t).map(str::to_string));
-    if t == Tracker::Mal && client_secret.is_none() {
-        return Err(CoreError::invalid("client_secret", MAL_NEEDS_SECRET));
-    }
     Ok((client_id, client_secret))
 }
 
@@ -341,23 +345,14 @@ fn due_for_refresh(expires_at: Option<SystemTime>, now: SystemTime) -> bool {
 /// the new expiry are stored before the caller sees the access token.
 async fn refresh_mal(core: &Arc<Core>, refresh: &str) -> Result<String, CoreError> {
     let (client_id, client_secret) = credentials_async(core, Tracker::Mal).await?;
-    let form = vec![
-        ("client_id".to_string(), client_id),
-        (
-            "client_secret".to_string(),
-            client_secret.unwrap_or_default(),
-        ),
-        ("grant_type".to_string(), "refresh_token".to_string()),
-        ("refresh_token".to_string(), refresh.to_string()),
-    ];
+    let form = token_form(
+        &client_id,
+        client_secret.as_deref(),
+        [("grant_type", "refresh_token"), ("refresh_token", refresh)],
+    );
     let response = core.mal.post_form(MAL_TOKEN_URL, form).await?;
     if !response.is_success() {
-        return Err(CoreError::Provider {
-            provider: Provider::Mal,
-            status: Some(u32::from(response.status)),
-            message: response.text(),
-            retry_after: None,
-        });
+        return Err(token_failure(&response, client_secret.is_some()));
     }
     let tokens = parse_tokens(&response.body, time::now())?;
     let store = save_tokens(core, Tracker::Mal, &tokens).await?;
@@ -375,6 +370,47 @@ async fn refresh_mal(core: &Arc<Core>, refresh: &str) -> Result<String, CoreErro
 }
 
 // Tokens ---------------------------------------------------------------------
+
+/// The form both MAL token requests post: the client id, the secret only
+/// when there is one, then the grant's own fields. The field is left out
+/// entirely rather than sent empty, because a public client has no secret
+/// at all and an empty one reads to MAL as a wrong one.
+pub(crate) fn token_form<'a>(
+    client_id: &str,
+    client_secret: Option<&str>,
+    grant: impl IntoIterator<Item = (&'a str, &'a str)>,
+) -> Vec<(String, String)> {
+    let mut form = vec![("client_id".to_string(), client_id.to_string())];
+    if let Some(secret) = client_secret {
+        form.push(("client_secret".to_string(), secret.to_string()));
+    }
+    form.extend(
+        grant
+            .into_iter()
+            .map(|(name, value)| (name.to_string(), value.to_string())),
+    );
+    form
+}
+
+/// A token request MAL refused. `invalid_client` with no secret sent is
+/// the one refusal a user can fix, so it becomes `MAL_WANTS_SECRET`; every
+/// other answer is passed on as MAL gave it.
+pub(crate) fn token_failure(response: &HttpResponse, sent_secret: bool) -> CoreError {
+    let error = serde_json::from_slice::<serde_json::Value>(&response.body)
+        .ok()
+        .and_then(|v| v["error"].as_str().map(str::to_string));
+    let message = if !sent_secret && error.as_deref() == Some("invalid_client") {
+        MAL_WANTS_SECRET.to_string()
+    } else {
+        response.text()
+    };
+    CoreError::Provider {
+        provider: Provider::Mal,
+        status: Some(u32::from(response.status)),
+        message,
+        retry_after: None,
+    }
+}
 
 /// What a token endpoint hands back. AniList's implicit grant fills the
 /// same shape from the callback's query.
@@ -591,6 +627,61 @@ mod tests {
             now
         ));
         assert!(due_for_refresh(Some(now - Duration::from_secs(1)), now));
+    }
+
+    /// A public client has no secret at all, so the field is absent rather
+    /// than empty; a confidential one sends it second, after the id.
+    #[test]
+    fn the_token_form_carries_a_secret_only_when_there_is_one() {
+        let grant = [("grant_type", "refresh_token"), ("refresh_token", "r")];
+        let public = token_form("mid", None, grant);
+        assert_eq!(
+            public,
+            vec![
+                ("client_id".to_string(), "mid".to_string()),
+                ("grant_type".to_string(), "refresh_token".to_string()),
+                ("refresh_token".to_string(), "r".to_string()),
+            ]
+        );
+        let confidential = token_form("mid", Some("sec"), grant);
+        assert_eq!(
+            confidential[1],
+            ("client_secret".to_string(), "sec".to_string())
+        );
+        assert_eq!(confidential.len(), 4);
+    }
+
+    #[test]
+    fn invalid_client_without_a_secret_asks_for_one() {
+        let refused = HttpResponse {
+            status: 401,
+            headers: vec![],
+            body: br#"{"error":"invalid_client","message":"Client authentication failed"}"#
+                .to_vec(),
+        };
+        match token_failure(&refused, false) {
+            CoreError::Provider {
+                provider: Provider::Mal,
+                status: Some(401),
+                message,
+                ..
+            } => assert_eq!(message, MAL_WANTS_SECRET),
+            other => panic!("{other:?}"),
+        }
+        // With a secret sent, or for any other refusal, MAL's own words.
+        match token_failure(&refused, true) {
+            CoreError::Provider { message, .. } => assert!(message.contains("invalid_client")),
+            other => panic!("{other:?}"),
+        }
+        let other = HttpResponse {
+            status: 400,
+            headers: vec![],
+            body: br#"{"error":"invalid_grant"}"#.to_vec(),
+        };
+        match token_failure(&other, false) {
+            CoreError::Provider { message, .. } => assert!(message.contains("invalid_grant")),
+            other => panic!("{other:?}"),
+        }
     }
 
     #[test]
