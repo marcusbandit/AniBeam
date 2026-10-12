@@ -46,8 +46,10 @@ function heroRank(c, nowSecs) {
     return -1
 }
 
-// The section's heroes: the qualifying cards, best first, capped; `taken` (an object keyed
-// by id) skips series already a hero in an earlier section and records the new ones.
+// The section's hero candidates: the qualifying cards, best first, capped; `taken` (an
+// object keyed by id), when given, skips series already picked and records the new ones.
+// pack() takes them in order, sets each series large at most once on the wall, and
+// demotes the tail while the section would leave a hole.
 function pickHeroes(cards, nowSecs, cap, taken) {
     if (cap <= 0) return []
     var ranked = []
@@ -70,7 +72,8 @@ function pickHeroes(cards, nowSecs, cap, taken) {
 // where `cards` may include the heroes (they are skipped there). Each section starts on a
 // fresh row (the skyline flattened to its top), with its label stone at column 0, then its
 // heroes, then its small tiles, each at the lowest row its span fits, left-most on ties.
-// Heroes past the cap, or with fewer than two columns, are set as small tiles.
+// Heroes past the cap, or with fewer than two columns, are set as small tiles, and so are
+// the least important heroes while the section would otherwise leave a hole (see holes()).
 // Returns { tiles: [{ kind, section, card, col, row, colSpan, rowSpan }] sorted by row
 // then col, rows: the total height in units }.
 function pack(sections, cols, unitsSmall, unitsHero) {
@@ -92,13 +95,13 @@ function pack(sections, cols, unitsSmall, unitsHero) {
         tiles.push({ kind: kind, section: si, card: card, col: best, row: bestRow, colSpan: span, rowSpan: height })
     }
 
-    for (var si = 0; si < sections.length; si++) {
-        var s = sections[si]
-        var top = 0
-        for (var a = 0; a < cols; a++) top = Math.max(top, sky[a])
-        for (var b = 0; b < cols; b++) sky[b] = top
+    // A series is a hero once on the wall: the first section that sets it large keeps it
+    var heroed = {}
+    function candidates(s) { return (s.heroes || []).filter(function(c) { return !heroed[c.id] }) }
+
+    function packSection(si, s, heroCount) {
         place("label", si, null, 1, unitsSmall)
-        var heroes = (s.heroes || []).slice(0, cols >= 2 ? cap : 0)
+        var heroes = candidates(s).slice(0, heroCount)
         var heroIds = {}
         for (var h = 0; h < heroes.length; h++) {
             heroIds[heroes[h].id] = true
@@ -109,18 +112,62 @@ function pack(sections, cols, unitsSmall, unitsHero) {
             if (heroIds[cards[i].id]) continue
             place("small", si, cards[i], 1, unitsSmall)
         }
-        // demoted heroes (past the cap) that were not in cards
-        var extra = (s.heroes || []).slice(heroes.length)
+        // demoted heroes (past the cap, or to close a hole) that were not in cards
+        var extra = (s.heroes || []).filter(function(c) { return !heroIds[c.id] })
         for (var e = 0; e < extra.length; e++) {
             var inCards = false
             for (var q = 0; q < cards.length; q++) if (cards[q].id === extra[e].id) { inCards = true; break }
             if (!inCards) place("small", si, extra[e], 1, unitsSmall)
         }
     }
+
+    for (var si = 0; si < sections.length; si++) {
+        var s = sections[si]
+        var top = 0
+        for (var a = 0; a < cols; a++) top = Math.max(top, sky[a])
+        for (var b = 0; b < cols; b++) sky[b] = top
+        // Pack with every hero the cap allows; while that leaves a hole, demote the least
+        // important hero and pack again. With no heroes left it cannot leave one.
+        var start = tiles.length
+        var heroCount = Math.min(candidates(s).length, cols >= 2 ? cap : 0)
+        for (;;) {
+            packSection(si, s, heroCount)
+            if (heroCount === 0 || !holes(tiles.slice(start), cols, top, unitsSmall)) break
+            tiles.length = start
+            for (var r0 = 0; r0 < cols; r0++) sky[r0] = top
+            heroCount--
+        }
+        for (var k = start; k < tiles.length; k++) if (tiles[k].kind === "hero") heroed[tiles[k].card.id] = true
+    }
     var rows = 0
     for (var r = 0; r < cols; r++) rows = Math.max(rows, sky[r])
     tiles.sort(function(p, q) { return p.row - q.row || p.col - q.col })
     return { tiles: tiles, rows: rows }
+}
+
+// Does a packed section leave a hole? Every cell above its final small row must be
+// filled, and the final row may only run short on the right (a ragged last row, filled
+// left to right). `tiles` are the section's own, starting at unit row `top`.
+function holes(tiles, cols, top, unitsSmall) {
+    var bottom = top
+    for (var i = 0; i < tiles.length; i++) bottom = Math.max(bottom, tiles[i].row + tiles[i].rowSpan)
+    var taken = {}
+    for (var j = 0; j < tiles.length; j++) {
+        var t = tiles[j]
+        for (var x = t.col; x < t.col + t.colSpan; x++)
+            for (var y = t.row; y < t.row + t.rowSpan; y++) taken[x + ":" + y] = true
+    }
+    var finalRow = bottom - unitsSmall
+    for (var r = top; r < bottom; r++) {
+        var gap = false
+        for (var c = 0; c < cols; c++) {
+            var full = taken[c + ":" + r] === true
+            if (!full && r < finalRow) return true
+            if (!full) gap = true
+            else if (gap) return true
+        }
+    }
+    return false
 }
 
 // Do any two tiles share a cell? (the drive script's check, and the test's)

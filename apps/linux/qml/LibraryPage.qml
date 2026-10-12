@@ -138,13 +138,13 @@ Item {
     readonly property int unitsHero: unitsSmall * 2
 
     readonly property var sections: {
-        var taken = {}
-        var cap = Mosaic.heroCap(geo.cols)
+        // Candidates only: the packer keeps a series large once on the wall and demotes
+        // heroes that would leave a hole, so each section offers every qualifying series
         var now = page.packedAt / 1000
         var out = []
         for (var i = 0; i < groups.length; i++) {
             var g = groups[i]
-            out.push({ label: g.label, count: g.count, cards: g.cards, heroes: Mosaic.pickHeroes(g.cards, now, cap, taken) })
+            out.push({ label: g.label, count: g.count, cards: g.cards, heroes: Mosaic.pickHeroes(g.cards, now, g.cards.length, null) })
         }
         return out
     }

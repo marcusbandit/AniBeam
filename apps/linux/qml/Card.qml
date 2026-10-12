@@ -88,8 +88,16 @@ Item {
     readonly property color plateRest: ghost ? theme.tile : tone !== "" ? theme.plate(tone) : theme.raised
     readonly property color plateLift: ghost ? theme.tileHover : tone !== "" ? theme.plateHover(tone) : theme.raisedHover
 
-    // A colour for text on the plate: itself where it holds 4.5:1 there, else the text colour
-    function legible(c) { return theme.contrast(Qt.color(c), plate.color) >= 4.5 ? c : theme.text }
+    // A colour for text on the plate: itself where it holds 4.5:1 there, else the first step
+    // of it toward the text colour that does, so the accent stays the accent's hue
+    function legible(c) {
+        c = Qt.color(c)
+        for (var t = 0; t < 1; t += 0.1) {
+            var k = theme.tone(c, theme.text, t)
+            if (theme.contrast(k, plate.color) >= 4.5) return k
+        }
+        return theme.text
+    }
 
     // 0 rest, 1 hover; smoothed like every other tracking value
     property real lift: 0

@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs"
 import assert from "node:assert/strict"
 
 const src = readFileSync(new URL("./mosaic.js", import.meta.url), "utf8").replace(/^\.pragma library$/m, "")
-const M = new Function(src + "\nreturn { columns, unitsToPx, unitsFor, heroCap, heroRank, pickHeroes, pack, overlaps, header }")()
+const M = new Function(src + "\nreturn { columns, unitsToPx, unitsFor, heroCap, heroRank, pickHeroes, pack, holes, overlaps, header }")()
 
 const now = 2_000_000_000
 const day = 86400
@@ -74,6 +74,12 @@ function check(sections, cols, us, uh) {
     const prevBottom = Math.max(...tiles.filter(t => t.section < s).map(t => t.row + t.rowSpan))
     assert.ok(start >= prevBottom, "a section starts on a fresh row")
   }
+  // no holes: every section is solid above its final small row, ragged only on the right
+  for (let s = 0; s < sections.length; s++) {
+    const own = tiles.filter(t => t.section === s)
+    const top = Math.min(...own.map(t => t.row))
+    assert.equal(M.holes(own, cols, top, us), false, `section ${s} has no hole at ${cols} cols`)
+  }
   // sorted by row then col
   for (let i = 1; i < tiles.length; i++)
     assert.ok(tiles[i - 1].row < tiles[i].row || (tiles[i - 1].row === tiles[i].row && tiles[i - 1].col < tiles[i].col))
@@ -91,6 +97,37 @@ for (const cols of [1, 2, 3, 4, 5, 7, 8, 13, 26]) {
     { label: "Empty", heroes: [], cards: [] },
   ]
   check(sections, cols, 4, 8)
+}
+
+// a series is a hero once on the wall, and one demoted to close a hole in an earlier
+// section can still be large in a later one
+{
+  id = 0
+  const all = Array.from({ length: 30 }, () => card())
+  const airing = all.slice(0, 3)
+  const { tiles } = check([
+    { label: "Airing", heroes: airing.slice(0, 2), cards: airing },
+    { label: "Everything", heroes: all.slice(0, 4), cards: all },
+  ], 8, 4, 8)
+  const heroIds = tiles.filter(t => t.kind === "hero").map(t => t.card.id)
+  assert.equal(new Set(heroIds).size, heroIds.length, "no series is a hero twice")
+  assert.equal(tiles.filter(t => t.kind === "hero" && t.section === 0).length, 0, "three airing cards cannot hold a hero without a hole")
+  assert.deepEqual(tiles.filter(t => t.kind === "hero" && t.section === 1).map(t => t.card.id), [1, 2], "so they are large in Everything")
+}
+
+// the airing case: 6 cards, 13 columns, 4 of them hero-eligible. Four heroes would leave
+// cells empty beside them; heroes are demoted until nothing is empty above the final
+// small row and that row is ragged only on the right.
+{
+  id = 0
+  const six = Array.from({ length: 6 }, () => card({ next_airing: { episode: 2, at: now + day } }))
+  const heroes = M.pickHeroes(six, now, M.heroCap(13), {})
+  assert.equal(heroes.length, 4)
+  const { tiles, rows } = check([{ label: "Airing", heroes, cards: six }], 13, 4, 8)
+  const taken = new Set()
+  for (const t of tiles) for (let x = t.col; x < t.col + t.colSpan; x++) for (let y = t.row; y < t.row + t.rowSpan; y++) taken.add(x + ":" + y)
+  for (let y = 0; y < rows - 4; y++) for (let x = 0; x < 13; x++) assert.ok(taken.has(x + ":" + y), `no empty cell above the final small row (${x}, ${y})`)
+  assert.equal(M.holes(tiles, 13, 0, 4), false)
 }
 
 // the wireframe case: label, two heroes, small tiles filling in beside them
