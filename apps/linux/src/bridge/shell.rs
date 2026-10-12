@@ -136,33 +136,6 @@ fn release(crate_version: &str, described: &str) -> String {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn release_reads_the_crate_version_and_the_hash() {
-        assert_eq!(super::release("2.0.0-dev", "1.0.0.r166.gfcfae8c"), "2.0.0-dev fcfae8c");
-        assert_eq!(super::release("2.0.0-dev", "1.0.0.r166.gfcfae8c.dirty"), "2.0.0-dev fcfae8c");
-        assert_eq!(super::release("2.0.0-dev", "2.0.0-dev"), "2.0.0-dev");
-        assert_eq!(super::release("2.0.0", "2.0.0"), "2.0.0");
-    }
-
-    /// The url is absolute whatever the root was given as, and the characters a url
-    /// would read as delimiters are escaped into the path.
-    #[test]
-    fn the_settings_url_is_absolute_and_escaped() {
-        let url = super::settings_url(std::path::Path::new("/tmp/a #b?c%d/anibeam")).to_string();
-        assert_eq!(url, "file:///tmp/a%20%23b%3Fc%25d/anibeam/shell.conf");
-        let relative = super::settings_url(std::path::Path::new("rel/anibeam")).to_string();
-        let cwd = std::env::current_dir().unwrap();
-        assert!(relative.starts_with("file:///"), "{relative}");
-        assert!(relative.ends_with("/rel/anibeam/shell.conf"), "{relative}");
-        assert!(
-            relative.contains(cwd.file_name().unwrap().to_str().unwrap()),
-            "{relative}"
-        );
-    }
-}
-
 impl cxx_qt::Initialize for qobject::Shell {
     fn initialize(self: Pin<&mut Self>) {
         // The bus name and MPRIS start once the Shell exists, which is once the engine
@@ -216,3 +189,29 @@ impl qobject::Shell {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn release_reads_the_crate_version_and_the_hash() {
+        assert_eq!(super::release("2.0.0-dev", "1.0.0.r166.gfcfae8c"), "2.0.0-dev fcfae8c");
+        assert_eq!(super::release("2.0.0-dev", "1.0.0.r166.gfcfae8c.dirty"), "2.0.0-dev fcfae8c");
+        assert_eq!(super::release("2.0.0-dev", "2.0.0-dev"), "2.0.0-dev");
+        assert_eq!(super::release("2.0.0", "2.0.0"), "2.0.0");
+    }
+
+    /// The url is absolute whatever the root was given as, and the characters a url
+    /// would read as delimiters are escaped into the path.
+    #[test]
+    fn the_settings_url_is_absolute_and_escaped() {
+        let url = super::settings_url(std::path::Path::new("/tmp/a #b?c%d/anibeam")).to_string();
+        assert_eq!(url, "file:///tmp/a%20%23b%3Fc%25d/anibeam/shell.conf");
+        let relative = super::settings_url(std::path::Path::new("rel/anibeam")).to_string();
+        let cwd = std::env::current_dir().unwrap();
+        assert!(relative.starts_with("file:///"), "{relative}");
+        assert!(relative.ends_with("/rel/anibeam/shell.conf"), "{relative}");
+        assert!(
+            relative.contains(cwd.file_name().unwrap().to_str().unwrap()),
+            "{relative}"
+        );
+    }
+}
