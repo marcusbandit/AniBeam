@@ -218,6 +218,24 @@ mod tests {
                 }
             }
         );
+        // The two shapes issue #27 added: a TVmaze target and the provider order.
+        assert_eq!(
+            call_from(
+                "ApplyMatch",
+                json!({"series": 58, "target": {"Tvmaze": {"id": 83073}}})
+            )
+            .unwrap(),
+            Call::ApplyMatch {
+                series: 58,
+                target: MatchTarget::Tvmaze { id: 83073 }
+            }
+        );
+        assert_eq!(
+            call_from("SetProviderOrder", json!({"order": ["Tvmaze", "Anilist"]})).unwrap(),
+            Call::SetProviderOrder {
+                order: vec![Provider::Tvmaze, Provider::Anilist]
+            }
+        );
     }
 
     #[test]

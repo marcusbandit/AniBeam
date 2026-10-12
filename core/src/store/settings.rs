@@ -9,6 +9,7 @@ pub const AUTO_SKIP: &str = "auto_skip";
 pub const MAIN_TRACKER: &str = "main_tracker";
 pub const AUTO_MATCH_VERSION: &str = "auto_match_version";
 pub const WATCHING_FETCHED_AT: &str = "watching_fetched_at";
+pub const PROVIDER_ORDER: &str = "provider_order";
 
 pub fn get<T: DeserializeOwned>(conn: &Connection, key: &str) -> Result<Option<T>, CoreError> {
     let raw: Option<String> = conn

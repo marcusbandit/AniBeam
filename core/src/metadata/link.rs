@@ -4,7 +4,8 @@
 //!
 //! Carried from Electron's `src/shared/metadataLink.ts` with TMDB dropped:
 //! the native line has no TMDB client, so a themoviedb.org link is a known
-//! host with nothing behind it rather than a fourth match target.
+//! host with nothing behind it rather than a match target. TVmaze links
+//! are, and so are IMDb title links, which TVmaze can look up.
 
 use std::sync::LazyLock;
 
@@ -12,8 +13,20 @@ use regex::Regex;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Link {
-    Anilist { id: u64 },
-    Mal { id: u64 },
+    Anilist {
+        id: u64,
+    },
+    Mal {
+        id: u64,
+    },
+    Tvmaze {
+        id: u64,
+    },
+    /// An IMDb title id, `tt` and its digits, kept as the string IMDb
+    /// writes it so the leading zeros survive.
+    Imdb {
+        id: String,
+    },
     Unknown,
 }
 
@@ -23,7 +36,10 @@ static HAS_SCHEME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)^https?:/
 /// hosts that can be looked up get that leniency; `example.com/anime/21`
 /// stays a search.
 static KNOWN_HOST_PREFIX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)^(www\.)?(anilist\.co|myanimelist\.net|themoviedb\.org)/").unwrap()
+    Regex::new(
+        r"(?i)^(www\.|m\.)?(anilist\.co|myanimelist\.net|themoviedb\.org|tvmaze\.com|imdb\.com)/",
+    )
+    .unwrap()
 });
 
 /// Digits only and above zero. `21abc`, `-21` and `0` are all links with
@@ -59,6 +75,7 @@ pub fn parse(text: &str) -> Option<Link> {
     };
     let host = host_port.split(':').next().unwrap_or("").to_lowercase();
     let host = host.strip_prefix("www.").unwrap_or(&host).to_string();
+    let host = host.strip_prefix("m.").unwrap_or(&host).to_string();
     let (path, query) = match path_query.find('?') {
         Some(i) => (&path_query[..i], &path_query[i + 1..]),
         None => (path_query, ""),
@@ -79,8 +96,31 @@ pub fn parse(text: &str) -> Option<Link> {
             };
             id.map_or(Link::Unknown, |id| Link::Mal { id })
         }
+        // /shows/{id}/slug, the page a user copies the address of.
+        "tvmaze.com" => match (segments.first(), positive_int(segments.get(1).copied())) {
+            (Some(&"shows"), Some(id)) => Link::Tvmaze { id },
+            _ => Link::Unknown,
+        },
+        // /title/tt1234567/, with or without a locale in front of it.
+        "imdb.com" => {
+            let at = segments.iter().position(|s| *s == "title");
+            match at.and_then(|i| segments.get(i + 1)) {
+                Some(id) if is_imdb_title(id) => Link::Imdb {
+                    id: id.to_ascii_lowercase(),
+                },
+                _ => Link::Unknown,
+            }
+        }
         _ => Link::Unknown,
     })
+}
+
+/// `tt` and at least one digit, digits only after it.
+fn is_imdb_title(s: &str) -> bool {
+    let lower = s.to_ascii_lowercase();
+    lower
+        .strip_prefix("tt")
+        .is_some_and(|d| !d.is_empty() && d.bytes().all(|b| b.is_ascii_digit()))
 }
 
 #[cfg(test)]
@@ -128,6 +168,50 @@ mod tests {
             parse("https://www.themoviedb.org/movie/550"),
             Some(Link::Unknown)
         );
+    }
+
+    #[test]
+    fn a_tvmaze_show_link_carries_its_id() {
+        assert_eq!(
+            parse("https://www.tvmaze.com/shows/83073/avatar-seven-havens"),
+            Some(Link::Tvmaze { id: 83073 })
+        );
+        assert_eq!(
+            parse("tvmaze.com/shows/83073"),
+            Some(Link::Tvmaze { id: 83073 })
+        );
+        assert_eq!(
+            parse("https://www.tvmaze.com/episodes/3682283/x"),
+            Some(Link::Unknown)
+        );
+        assert_eq!(parse("https://tvmaze.com/shows/abc"), Some(Link::Unknown));
+    }
+
+    #[test]
+    fn an_imdb_title_link_carries_its_title_id() {
+        assert_eq!(
+            parse("https://www.imdb.com/title/tt35854736/"),
+            Some(Link::Imdb {
+                id: "tt35854736".into()
+            })
+        );
+        assert_eq!(
+            parse("imdb.com/title/tt0000001/?ref_=nv_sr_srsg_0"),
+            Some(Link::Imdb {
+                id: "tt0000001".into()
+            })
+        );
+        assert_eq!(
+            parse("https://m.imdb.com/de/title/TT35854736"),
+            Some(Link::Imdb {
+                id: "tt35854736".into()
+            })
+        );
+        assert_eq!(
+            parse("https://www.imdb.com/name/nm0000001/"),
+            Some(Link::Unknown)
+        );
+        assert_eq!(parse("https://www.imdb.com/title/tt/"), Some(Link::Unknown));
     }
 
     #[test]

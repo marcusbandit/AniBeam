@@ -155,6 +155,7 @@ fn the_spec_document_imports_and_a_second_import_changes_nothing() {
             mal_id: Some(52991),
             tmdb_id: None,
             tmdb_kind: None,
+            tvmaze_id: None,
             confirmed: true
         })
     );
@@ -173,6 +174,7 @@ fn the_spec_document_imports_and_a_second_import_changes_nothing() {
             mal_id: None,
             tmdb_id: Some(10494),
             tmdb_kind: Some(TmdbKind::Movie),
+            tvmaze_id: None,
             confirmed: true
         })
     );

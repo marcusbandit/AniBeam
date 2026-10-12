@@ -226,6 +226,9 @@ struct SeriesRow {
     folder_name: String,
     anilist_id: Option<u64>,
     mal_id: Option<u64>,
+    /// Set for a TVmaze match only. Such a series has no AniList or MAL id,
+    /// so the mark rule has nothing to write to and never fires.
+    tvmaze_id: Option<u64>,
     track_choice: TrackChoice,
     title_romaji: Option<String>,
     title_english: Option<String>,
@@ -265,10 +268,11 @@ fn series_row(conn: &Connection, series: u64, images_dir: &Path) -> Result<Serie
     let row = conn
         .query_row(
             "SELECT s.kind, s.folder_name, s.anilist_id, s.mal_id, s.track_choice,
-                    m.title_romaji, m.title_english, m.episodes, i.path
+                    COALESCE(t.name, m.title_romaji), m.title_english, m.episodes, i.path, t.id
              FROM series s
              LEFT JOIN anilist_media m ON m.id = s.anilist_id
-             LEFT JOIN images i ON i.url = m.cover_url
+             LEFT JOIN tvmaze_shows t ON t.id = s.tvmaze_id AND s.provider = 'tvmaze'
+             LEFT JOIN images i ON i.url = CASE WHEN t.id IS NOT NULL THEN t.poster_url ELSE m.cover_url END
              WHERE s.id = ?1",
             params![series as i64],
             |r| {
@@ -278,6 +282,7 @@ fn series_row(conn: &Connection, series: u64, images_dir: &Path) -> Result<Serie
                     folder_name: r.get(1)?,
                     anilist_id: r.get::<_, Option<i64>>(2)?.map(|v| v as u64),
                     mal_id: r.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+                    tvmaze_id: r.get::<_, Option<i64>>(9)?.map(|v| v as u64),
                     track_choice: track_choice_of(r.get::<_, Option<String>>(4)?.as_deref()),
                     title_romaji: r.get(5)?,
                     title_english: r.get(6)?,
@@ -384,8 +389,19 @@ pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
                 (false, SeriesKind::Show) => neighbours(c, f.series, f.number)?,
                 _ => (None, None),
             };
-            let episode_title: Option<String> = match (s.anilist_id, f.is_extra) {
-                (Some(id), false) => c
+            // TVmaze numbers within a season, so its title is looked up by
+            // both, a file that names no season being season 1.
+            let episode_title: Option<String> = match (s.tvmaze_id, s.anilist_id, f.is_extra) {
+                (_, _, true) => None,
+                (Some(show), _, false) => c
+                    .query_row(
+                        "SELECT name FROM tvmaze_episodes WHERE show_id = ?1 AND season = ?2 AND number = ?3",
+                        params![show as i64, f.season.unwrap_or(1), f.number],
+                        |r| r.get(0),
+                    )
+                    .optional()?
+                    .flatten(),
+                (None, Some(id), false) => c
                     .query_row(
                         "SELECT title FROM anilist_episodes WHERE anilist_id = ?1 AND number = ?2",
                         params![id as i64, f.number],
@@ -393,7 +409,7 @@ pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
                     )
                     .optional()?
                     .flatten(),
-                _ => None,
+                (None, None, false) => None,
             };
             let subtitle_defaults = prefs::load_settings(c)?.subtitle_defaults;
             let lang = prefs::load_preferences(c)?.title_language;

@@ -19,6 +19,7 @@ use crate::net::aniskip::AniSkipClient;
 use crate::net::jikan::JikanClient;
 use crate::net::limiter::ProviderClient;
 use crate::net::mal::MalClient;
+use crate::net::tvmaze::TvmazeClient;
 use crate::net::{Http, ReqwestHttp, Upstream};
 use crate::paths::CorePaths;
 use crate::playback::session::{self, Sessions};
@@ -84,6 +85,7 @@ pub struct Core {
     pub(crate) jikan: Arc<JikanClient>,
     pub(crate) aniskip: Arc<AniSkipClient>,
     pub(crate) mal: Arc<MalClient>,
+    pub(crate) tvmaze: Arc<TvmazeClient>,
     /// The loopback port the OAuth listener binds while a connect is in
     /// flight. Fixed rather than ephemeral: both providers only redirect
     /// to a URL registered on their developer panel, so the port is part
@@ -129,6 +131,9 @@ const ANILIST_GAP: Duration = Duration::from_millis(800);
 const JIKAN_GAP: Duration = Duration::from_millis(1100);
 const ANISKIP_GAP: Duration = Duration::from_millis(250);
 const MAL_GAP: Duration = Duration::from_millis(500);
+/// TVmaze allows 20 calls in any 10 seconds per IP, which is one every
+/// 500 ms; the extra 50 keeps a run from sitting right on the line.
+const TVMAZE_GAP: Duration = Duration::from_millis(550);
 
 impl Core {
     /// `open` with the transport handed in, so a test drives every provider
@@ -199,6 +204,11 @@ impl Core {
             ProviderClient::new(Upstream::Mal, http.clone(), MAL_GAP)
                 .with_attempt_timeout(crate::trackers::TRACKER_TIMEOUT),
         ));
+        let tvmaze = Arc::new(TvmazeClient::new(ProviderClient::new(
+            Upstream::Tvmaze,
+            http.clone(),
+            TVMAZE_GAP,
+        )));
         Ok(Arc::new_cyclic(|me| Core {
             paths,
             store,
@@ -216,6 +226,7 @@ impl Core {
             jikan,
             aniskip,
             mal,
+            tvmaze,
             oauth_port: AtomicU16::new(DEFAULT_OAUTH_PORT),
             jikan_outage: Mutex::new(None),
             sessions: Arc::new(Sessions::default()),
@@ -594,6 +605,17 @@ impl Core {
                 self.bus.debug(
                     Stage::Store,
                     "auto-skip changed",
+                    EventBody::SettingsChanged,
+                );
+                Ok(Reply::Ok)
+            }
+            Call::SetProviderOrder { order } => {
+                prefs::validate_provider_order(&order)?;
+                self.store
+                    .write(move |c| prefs::save_provider_order(c, &order))?;
+                self.bus.debug(
+                    Stage::Store,
+                    "provider order changed",
                     EventBody::SettingsChanged,
                 );
                 Ok(Reply::Ok)

@@ -41,6 +41,6 @@ src/data/
 /package-lock.json
 
 /target/
-!core/tests/fixtures/*.json
+!core/tests/fixtures/**/*.json
 apps/linux/captures/
 apps/linux/.qmlls.ini

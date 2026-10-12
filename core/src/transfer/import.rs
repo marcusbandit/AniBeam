@@ -371,6 +371,7 @@ fn apply_match(
                 mal_id: *mal_id,
                 tmdb_id: None,
                 tmdb_kind: None,
+                tvmaze_id: None,
             }
         }
         MatchEntry::Tmdb {
@@ -381,6 +382,15 @@ fn apply_match(
             mal_id: None,
             tmdb_id: Some(*tmdb_id),
             tmdb_kind: Some(tmdb_kind.clone()),
+            tvmaze_id: None,
+        },
+        MatchEntry::Tvmaze { tvmaze_id, .. } => Wanted {
+            provider: Provider::Tvmaze,
+            anilist_id: None,
+            mal_id: None,
+            tmdb_id: None,
+            tmdb_kind: None,
+            tvmaze_id: Some(*tvmaze_id),
         },
     };
     if current_match(tx, series)? == Some(wanted.clone()) {
@@ -392,10 +402,18 @@ fn apply_match(
         Provider::Tmdb => {
             tx.execute(
                 "UPDATE series SET provider = 'tmdb', anilist_id = NULL, mal_id = NULL, tmdb_id = ?2, tmdb_kind = ?3,
-                        confirmed = 1, matched_at = ?4, attempted_at = ?4
+                        tvmaze_id = NULL, confirmed = 1, matched_at = ?4, attempted_at = ?4
                  WHERE id = ?1",
                 params![series as i64, wanted.tmdb_id.map(|id| id as i64), wanted.tmdb_kind, now],
             )?;
+        }
+        // TVmaze is the id alone, with no foreign key to satisfy: the
+        // launch's backfill, or the next refresh, fetches the show behind
+        // it.
+        Provider::Tvmaze => {
+            if let Some(id) = wanted.tvmaze_id {
+                fetch::write_tvmaze_match(tx, series, id, true, now)?;
+            }
         }
         provider => {
             // `series.anilist_id` is a foreign key, so the media row has
@@ -435,12 +453,13 @@ struct Wanted {
     mal_id: Option<u64>,
     tmdb_id: Option<u64>,
     tmdb_kind: Option<String>,
+    tvmaze_id: Option<u64>,
 }
 
 fn current_match(tx: &Transaction, series: u64) -> Result<Option<Wanted>, CoreError> {
     let row = tx
         .query_row(
-            "SELECT provider, anilist_id, mal_id, tmdb_id, tmdb_kind, confirmed FROM series WHERE id = ?1",
+            "SELECT provider, anilist_id, mal_id, tmdb_id, tmdb_kind, confirmed, tvmaze_id FROM series WHERE id = ?1",
             params![series as i64],
             |r| {
                 Ok((
@@ -450,11 +469,12 @@ fn current_match(tx: &Transaction, series: u64) -> Result<Option<Wanted>, CoreEr
                     r.get::<_, Option<i64>>(3)?,
                     r.get::<_, Option<String>>(4)?,
                     r.get::<_, i64>(5)?,
+                    r.get::<_, Option<i64>>(6)?,
                 ))
             },
         )
         .optional()?;
-    let Some((provider, anilist_id, mal_id, tmdb_id, tmdb_kind, confirmed)) = row else {
+    let Some((provider, anilist_id, mal_id, tmdb_id, tmdb_kind, confirmed, tvmaze_id)) = row else {
         return Ok(None);
     };
     // An unconfirmed match is one the auto-match wrote, and the file's is
@@ -471,6 +491,7 @@ fn current_match(tx: &Transaction, series: u64) -> Result<Option<Wanted>, CoreEr
         mal_id: mal_id.map(|v| v as u64),
         tmdb_id: tmdb_id.map(|v| v as u64),
         tmdb_kind,
+        tvmaze_id: tvmaze_id.map(|v| v as u64),
     }))
 }
 

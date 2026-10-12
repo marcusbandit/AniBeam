@@ -1,18 +1,23 @@
 //! The auto-match: the background job that gives an unmatched folder its
-//! AniList identity, and the call that takes one away again.
+//! identity, and the call that takes one away again.
 //!
 //! The rules are Electron's `posterMatch.findShowMatch`, carried over one
-//! for one. The folder name goes to AniList's relevance-ordered search
-//! verbatim, the same list the manual picker shows. Every hit is scored
-//! against its romaji, english and native titles and its synonyms with
-//! tokenised Dice similarity, the best score wins with ties breaking
-//! toward AniList's own order, and the winner is accepted only if it
-//! clears the threshold and has a cover image to draw.
+//! for one and then walked across every provider in the user's order,
+//! AniList then TVmaze by default. The folder name goes to the provider's
+//! relevance-ordered search verbatim, the same list the manual picker
+//! shows. Every hit is scored against its titles with tokenised Dice
+//! similarity (AniList's romaji, english and native titles and synonyms,
+//! TVmaze's name), the best score wins with ties breaking toward the
+//! provider's own order, and the winner is accepted only if it clears the
+//! threshold and has a poster to draw. The first provider whose winner is
+//! accepted is the match; the next is only asked when this one missed.
 //!
-//! One attempt per series, ever. A miss stamps `attempted_at`, so the next
-//! run walks past it rather than asking AniList the same question again;
-//! the manual picker is the recovery, and `AUTO_MATCH_VERSION` is how a
-//! change to these rules earns the whole library a second look.
+//! One attempt per series, ever. A miss stamps `attempted_at` once every
+//! provider has answered with a miss, so the next run walks past it rather
+//! than asking the same questions again; the manual picker is the
+//! recovery, and `AUTO_MATCH_VERSION` is how a change to these rules earns
+//! every miss a second look. A match the user cleared is stamped too, with
+//! no version beside it, so no version bump ever brings it back.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -29,6 +34,8 @@ use crate::metadata::apply::provider_stopped;
 use crate::metadata::fetch::{self, message_of};
 use crate::metadata::similarity::best_title_score;
 use crate::net::anilist::Media;
+use crate::net::tvmaze::Show;
+use crate::prefs;
 use crate::store::settings;
 use crate::store::sql::placeholders;
 use crate::sync::recover;
@@ -39,9 +46,11 @@ use crate::time;
 pub const THRESHOLD: f64 = 0.5;
 
 /// Bumped when the matcher's rules change. A stored version below this one
-/// clears every failed attempt so the whole library is tried again under
-/// the new rules; a match already made is never touched.
-pub const AUTO_MATCH_VERSION: u32 = 1;
+/// clears every failed attempt stamped under an older version so the whole
+/// library is tried again under the new rules; a match already made, and a
+/// match the user cleared, are never touched. Version 2 is the
+/// provider order: every series AniList alone missed gets its TVmaze turn.
+pub const AUTO_MATCH_VERSION: u32 = 2;
 
 /// How many hits the search asks for: Electron's ten, the same page the
 /// manual picker shows.
@@ -77,6 +86,23 @@ pub fn pick<'a>(query: &str, results: &'a [Media]) -> Option<(&'a Media, f64)> {
         .as_ref()
         .and_then(|c| c.extra_large.clone().or_else(|| c.large.clone()));
     cover.map(|_| (m, score))
+}
+
+/// `pick` over TVmaze's shows: the same rule, scored on the name alone,
+/// and the same poster gate on the winner.
+pub fn pick_show<'a>(query: &str, results: &'a [Show]) -> Option<(&'a Show, f64)> {
+    let mut best: Option<(&Show, f64)> = None;
+    for r in results {
+        let score = best_title_score(query, &[r.name.as_deref()]);
+        if best.is_none_or(|(_, b)| score > b) {
+            best = Some((r, score));
+        }
+    }
+    let (show, score) = best?;
+    if score < THRESHOLD {
+        return None;
+    }
+    show.poster_url().map(|_| (show, score))
 }
 
 /// The title a log line names the match by.
@@ -153,15 +179,41 @@ async fn stamp_attempt(core: &Core, series: u64, now: i64) -> Result<(), CoreErr
         .await
 }
 
-/// What one candidate's turn produced: the score and the title, or nothing
-/// at all because no hit cleared the bar.
+/// What one candidate's turn produced: the provider, the score and the
+/// title, or nothing at all because no hit cleared the bar.
 struct Hit {
+    provider: Provider,
     score: f64,
     title: String,
 }
 
-/// One series: the search, the pick, and, on a hit, the whole record.
-async fn attempt(core: &Core, series: u64, folder: &str) -> Result<Option<Hit>, CoreError> {
+/// One series: each provider in the order, until one of them matches.
+/// Any error ends the walk for this series: handing the series on to the
+/// next provider would let it claim a series the first one may well have
+/// matched, so TVmaze never grabs an anime during a brief AniList outage.
+/// Only `Ok(None)` means every provider answered with a miss.
+async fn attempt(
+    core: &Core,
+    series: u64,
+    folder: &str,
+    order: &[Provider],
+) -> Result<Option<Hit>, (Provider, CoreError)> {
+    for &provider in order {
+        let outcome = match provider {
+            Provider::Tvmaze => attempt_tvmaze(core, series, folder).await,
+            _ => attempt_anilist(core, series, folder).await,
+        };
+        match outcome {
+            Ok(Some(hit)) => return Ok(Some(hit)),
+            Ok(None) => continue,
+            Err(e) => return Err((provider, e)),
+        }
+    }
+    Ok(None)
+}
+
+/// AniList's turn: the search, the pick, and, on a hit, the whole record.
+async fn attempt_anilist(core: &Core, series: u64, folder: &str) -> Result<Option<Hit>, CoreError> {
     let results = core.anilist.search(folder, RESULTS).await?;
     let Some((media, score)) = pick(folder, &results) else {
         return Ok(None);
@@ -180,7 +232,27 @@ async fn attempt(core: &Core, series: u64, folder: &str) -> Result<Option<Hit>, 
         time::now_secs(),
     )
     .await?;
-    Ok(Some(Hit { score, title }))
+    Ok(Some(Hit {
+        provider: Provider::Anilist,
+        score,
+        title,
+    }))
+}
+
+/// TVmaze's turn. The search hit carries no episodes or images, so a hit
+/// costs one more request for the show itself.
+async fn attempt_tvmaze(core: &Core, series: u64, folder: &str) -> Result<Option<Hit>, CoreError> {
+    let results = core.tvmaze.search(folder).await?;
+    let Some((show, score)) = pick_show(folder, &results) else {
+        return Ok(None);
+    };
+    let title = show.name.clone().unwrap_or_else(|| "?".to_string());
+    fetch::fetch_and_write_tvmaze(core, series, show.id, false, time::now_secs()).await?;
+    Ok(Some(Hit {
+        provider: Provider::Tvmaze,
+        score,
+        title,
+    }))
 }
 
 /// Starts the AutoMatch job and returns its id. It runs one at a time, so
@@ -210,8 +282,14 @@ pub fn start(core: &Arc<Core>) -> u64 {
                 if stored >= AUTO_MATCH_VERSION {
                     return Ok(0u64);
                 }
-                let cleared =
-                    tx.execute("UPDATE series SET attempted_at = NULL, attempt_version = NULL WHERE provider IS NULL AND attempted_at IS NOT NULL", [])?;
+                // A row with an attempt and no version is a match the user
+                // cleared: it stays out, whatever the version.
+                let cleared = tx.execute(
+                    "UPDATE series SET attempted_at = NULL, attempt_version = NULL
+                     WHERE provider IS NULL AND attempted_at IS NOT NULL
+                       AND attempt_version IS NOT NULL AND attempt_version < ?1",
+                    params![i64::from(AUTO_MATCH_VERSION)],
+                )?;
                 settings::set(tx, settings::AUTO_MATCH_VERSION, &AUTO_MATCH_VERSION)?;
                 Ok(cleared as u64)
             })
@@ -219,11 +297,12 @@ pub fn start(core: &Arc<Core>) -> u64 {
         if reset > 0 {
             ctx.emit(Level::Info, format!("auto-match v{AUTO_MATCH_VERSION}: re-attempting {reset} unmatched series"), EventBody::Notice);
         }
+        let order = owner.store.write_async(|c| prefs::load_provider_order(c)).await?;
 
-        // 3. The loop, one series at a time. `seen` is the belt to the
-        //    stamping's braces: every turn that ends short of a match
-        //    stamps its series, but one that somehow stayed a candidate
-        //    would otherwise come back round for ever.
+        // 3. The loop, one series at a time. `seen` keeps a series this run
+        //    has already had a turn at from coming back round: a miss is
+        //    stamped, but a turn a provider's error ended is left unstamped
+        //    for the next run, and would otherwise be asked again at once.
         let (mut matched, mut unmatched) = (0u64, 0u64);
         let mut seen: HashSet<u64> = HashSet::new();
         let images_dir = owner.paths.images_dir();
@@ -239,14 +318,15 @@ pub fn start(core: &Arc<Core>) -> u64 {
 
             let outcome = {
                 let _in_flight = InFlight::begin(&owner.library, series);
-                attempt(&owner, series, &folder).await
+                attempt(&owner, series, &folder, &order).await
             };
             match outcome {
                 Ok(Some(hit)) => {
                     matched += 1;
                     let score = hit.score;
                     let title = hit.title;
-                    ctx.emit(Level::Info, format!("match (AniList {score:.2}): {folder} -> {title}"), EventBody::Notice);
+                    let label = hit.provider.label();
+                    ctx.emit(Level::Info, format!("match ({label} {score:.2}): {folder} -> {title}"), EventBody::Notice);
                     let dir = images_dir.clone();
                     let cards = owner.store.write_async(move |c| cards::cards_for(c, &dir, &[series])).await?;
                     if let Some(card) = cards.into_iter().next() {
@@ -259,32 +339,30 @@ pub fn start(core: &Arc<Core>) -> u64 {
                     ctx.emit(Level::Info, format!("no match for {folder} (threshold {THRESHOLD})"), EventBody::Notice);
                 }
                 // A rate limit the limiter could not ride out, or nothing
-                // answering at all, is AniList saying stop rather than
-                // this series failing. Nothing is stamped and the job
+                // answering at all, is the provider saying stop rather
+                // than this series failing. Nothing is stamped and the job
                 // ends: stamping here would cost every series left its one
                 // attempt for a reason that had nothing to do with them,
                 // and one outage is one state change.
-                Err(e) if provider_stopped(&e) => return Err(e),
-                // The provider answered, and the answer was an error. It
-                // had its turn, so it is stamped and the run moves on.
-                Err(e) if matches!(&e, CoreError::Provider { status: Some(_), .. }) => {
+                Err((_, e)) if provider_stopped(&e) => return Err(e),
+                // The provider answered with an error, or with something
+                // that did not parse. That is this series' own reply, so
+                // the run moves on rather than failing: failing the job
+                // would wedge the library behind it, since the same series
+                // comes first again next run. It is not stamped, though:
+                // only every provider answering with a miss is a miss, and
+                // any provider after this one never had its turn. The next
+                // run asks again; `seen` keeps it out for the rest of this
+                // one.
+                Err((provider, e))
+                    if matches!(&e, CoreError::Provider { status: Some(_), .. }) || e.is_decode_failure() =>
+                {
                     unmatched += 1;
-                    ctx.emit(Level::Warn, format!("AniList search failed for {folder}: {}", message_of(&e)), EventBody::Notice);
-                    stamp_attempt(&owner, series, time::now_secs()).await?;
-                }
-                // The provider answered with something that did not parse.
-                // That is this series' own reply and no one else's, so it
-                // is stamped like any other answered error: failing the job
-                // here would wedge the library behind one malformed reply,
-                // since the same series comes first again next run.
-                Err(e) if e.is_decode_failure() => {
-                    unmatched += 1;
-                    ctx.emit(Level::Warn, format!("AniList search failed for {folder}: {}", message_of(&e)), EventBody::Notice);
-                    stamp_attempt(&owner, series, time::now_secs()).await?;
+                    ctx.emit(Level::Warn, format!("{} search failed for {folder}: {}", provider.label(), message_of(&e)), EventBody::Notice);
                 }
                 // A storage or an internal failure is the core's own, not
                 // the provider's, and it is not this series' fault either.
-                Err(e) => return Err(e),
+                Err((_, e)) => return Err(e),
             }
         }
 
@@ -298,17 +376,21 @@ pub fn start(core: &Arc<Core>) -> u64 {
     })
 }
 
-/// Takes a series' identity away again. `attempted_at` deliberately stays:
-/// the user cleared the match because it was wrong, and the same search
-/// would only find the same wrong answer, so the series stays out of the
-/// auto-match's way until the manual picker gives it one.
+/// Takes a series' identity away again, and keeps the auto-match off it
+/// for good: the user cleared the match because it was wrong, and the same
+/// search would only find the same wrong answer, so the series stays out
+/// of the auto-match's way until the manual picker gives it one. That is
+/// an attempt with no version beside it, which the version guard never
+/// resets, unlike a miss, which always carries the version that made it.
 pub fn clear_match(core: &Core, series: u64) -> Result<Reply, CoreError> {
+    let now = time::now_secs();
     let changed = core.store.write(move |c| {
         Ok(c.execute(
             "UPDATE series SET provider = NULL, anilist_id = NULL, mal_id = NULL, tmdb_id = NULL, tmdb_kind = NULL,
-                    confirmed = 0, matched_at = NULL
+                    tvmaze_id = NULL, confirmed = 0, matched_at = NULL,
+                    attempted_at = COALESCE(attempted_at, ?2), attempt_version = NULL
              WHERE id = ?1",
-            params![series as i64],
+            params![series as i64, now],
         )?)
     })?;
     if changed == 0 {

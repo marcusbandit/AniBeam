@@ -24,7 +24,7 @@ use crate::time;
 use crate::trackers::accounts::{self, access_key, refresh_key, secret_key};
 use crate::transfer::format::{
     self, Account, Accounts, Completed, Document, ExportedBy, History, MatchEntry, PrefsEntry,
-    ResumeEntry, SeriesEntry, SortEntry, SourceEntry, TmdbName, TrackerName, View,
+    ResumeEntry, SeriesEntry, SortEntry, SourceEntry, TmdbName, TrackerName, TvmazeName, View,
 };
 
 /// One series as the tables hold it, before it becomes a document entry.
@@ -39,6 +39,7 @@ struct Row {
     mal_id: Option<u64>,
     tmdb_id: Option<u64>,
     tmdb_kind: Option<String>,
+    tvmaze_id: Option<u64>,
     track_choice: Option<String>,
     romaji: Option<String>,
     english: Option<String>,
@@ -189,8 +190,10 @@ fn source_paths(conn: &Connection) -> Result<Vec<String>, CoreError> {
 fn series_rows(conn: &Connection) -> Result<Vec<Row>, CoreError> {
     let mut stmt = conn.prepare(
         "SELECT s.id, s.kind, s.path, s.folder_name, s.hidden, s.provider, s.anilist_id, s.mal_id, s.tmdb_id, s.tmdb_kind,
-                s.track_choice, m.title_romaji, m.title_english
-         FROM series s LEFT JOIN anilist_media m ON m.id = s.anilist_id
+                s.track_choice, COALESCE(t.name, m.title_romaji), m.title_english, s.tvmaze_id
+         FROM series s
+         LEFT JOIN anilist_media m ON m.id = s.anilist_id
+         LEFT JOIN tvmaze_shows t ON t.id = s.tvmaze_id AND s.provider = 'tvmaze'
          ORDER BY s.id",
     )?;
     let rows = stmt
@@ -212,6 +215,7 @@ fn series_rows(conn: &Connection) -> Result<Vec<Row>, CoreError> {
                 track_choice: r.get(10)?,
                 romaji: r.get(11)?,
                 english: r.get(12)?,
+                tvmaze_id: r.get::<_, Option<i64>>(13)?.map(|v| v as u64),
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -265,6 +269,10 @@ fn match_entry(row: &Row) -> Option<MatchEntry> {
                 .tmdb_kind
                 .clone()
                 .unwrap_or_else(|| TmdbKind::Movie.as_str().to_string()),
+        }),
+        Provider::Tvmaze => Some(MatchEntry::Tvmaze {
+            provider: TvmazeName::Tvmaze,
+            tvmaze_id: row.tvmaze_id?,
         }),
     }
 }
@@ -433,6 +441,7 @@ mod tests {
             mal_id: None,
             tmdb_id: None,
             tmdb_kind: None,
+            tvmaze_id: None,
             track_choice: None,
             romaji: None,
             english: None,

@@ -9,7 +9,7 @@ use rusqlite::{Connection, params_from_iter};
 use serde_json::Value;
 
 use crate::contract::*;
-use crate::library::cards::{aired_and_scheduled, next_up};
+use crate::library::cards::next_up;
 use crate::library::snapshot::{FileRow, MediaRow, Snapshot};
 use crate::library::{labels, titles};
 use crate::store::sql::placeholders;
@@ -26,8 +26,7 @@ impl Snapshot {
         let card = self.card_of(row);
         let media = row.media.as_ref();
         let now = time::to_secs(self.now);
-        let airing = self.airing_of(row);
-        let (latest_aired, _) = aired_and_scheduled(airing, now);
+        let (latest_aired, _) = self.aired_and_next(row, now);
         let files = self.files_of(id);
         let episodes = self.episodes_on_disk(id);
         let entry = self.tracker(row);
@@ -44,12 +43,12 @@ impl Snapshot {
         let next = next_up(&disk, self.last_completed_number(id), card.watched);
 
         // Files numbered past a known episode count are almost always
-        // misnamed, duplicates or stray specials; only the main season is
-        // judged, so a multi-season folder is never false-flagged.
+        // misnamed, duplicates or stray specials; `past_the_end` decides
+        // which list each file is judged against.
         let unmatched: HashSet<u64> = match (row.kind, total) {
             (SeriesKind::Show, Some(t)) => episodes
                 .iter()
-                .filter(|f| f.season.is_none_or(|s| s <= 1) && f.number > f64::from(t))
+                .filter(|f| self.past_the_end(row, f, t))
                 .map(|f| f.id)
                 .collect(),
             _ => HashSet::new(),
@@ -61,7 +60,7 @@ impl Snapshot {
             .map(|rows| rows.iter().map(|(k, _)| k.as_str()).collect())
             .unwrap_or_default();
         let episode = |f: &FileRow| {
-            let air = airing.iter().find(|a| f64::from(a.number) == f.number);
+            let air = self.episode_airing(row, f);
             Episode {
                 file: f.id,
                 number: f.number,
