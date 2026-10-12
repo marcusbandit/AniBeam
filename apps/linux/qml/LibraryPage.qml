@@ -79,7 +79,9 @@ Item {
     readonly property var tabNames: tabs.concat(watchedExist ? ["Watched"] : []).concat(showHidden ? ["Hidden"] : [])
 
     // ---- The sections: one entry per section, carrying its cards. Airing first (capped
-    // high), then everything, or the grouped shelves by size descending.
+    // high), then everything, or the grouped shelves by size descending. A series shows
+    // once: while Airing stands, its series are left out of the sections after it, and
+    // each section's count is the tiles it holds.
     function groupLabel(c) {
         if (groupBy === "Genre") {
             var g = c.genres
@@ -102,10 +104,13 @@ Item {
             if (!r.error) airingRows = r.reply.series
         }
         var main = page.tab === "All" ? "Everything" : page.tab
+        var airingIds = {}
+        for (var a = 0; a < airingRows.length; a++) airingIds[airingRows[a].id] = true
         var buckets = {}
         var order = []
         for (var i = 0; i < cards.count; i++) {
             var c = cards.at(i)
+            if (airingIds[c.id]) continue
             var label = groupBy === "None" ? main : groupLabel(c)
             if (!buckets[label]) { buckets[label] = []; order.push(label) }
             buckets[label].push(c)
@@ -241,16 +246,18 @@ Item {
 
     // ---- The header: a row of tiles on the module, one unit tall, wrapping to a second
     // row on a narrow window. Each tile's span is the whole columns its content needs; the
-    // row's spare columns go to the title (or the search on a wrapped row).
-    readonly property real hpad: theme.space(2.5)
+    // row's spare columns go to the title (or the search on a wrapped row). A control says
+    // what it is, so no tile carries an eyebrow; only the grouping keeps a word ("Group"),
+    // since a bare "None" would not.
+    readonly property real hpad: theme.space(3)
     function spanFor(w) { return Math.max(1, Math.ceil((w + hpad * 2 + grout) / (geo.w + grout))) }
     readonly property var headerLayout: Mosaic.header([
         { key: "title", span: Math.max(2, spanFor(titleLabel.implicitWidth)), flex: true },
         { key: "tabs", span: spanFor(tabsSeg.implicitWidth) },
         { key: "sorts", span: spanFor(sortSeg.implicitWidth) },
-        { key: "group", span: spanFor(groupSeg.implicitWidth) },
-        { key: "watched", span: spanFor(Math.max(watchedCaption.implicitWidth, watchedSwitch.implicitWidth)) },
-        { key: "search", span: Math.max(2, spanFor(theme.space(64))), flex: true },
+        { key: "group", span: spanFor(groupRow.implicitWidth) },
+        { key: "watched", span: spanFor(watchedRow.implicitWidth) },
+        { key: "search", span: Math.max(2, spanFor(theme.space(56))), flex: true },
         { key: "count", span: spanFor(countRow.implicitWidth) }
     ], geo.cols)
     function headerTile(key) {
@@ -270,12 +277,6 @@ Item {
         radius: theme.radiusTile
         smoothing: theme.cornerSmoothing
         color: theme.tile
-    }
-    component Caption: Label {
-        x: page.hpad; y: page.hpad
-        role: "ui"
-        font.pointSize: theme.typeSmall
-        color: theme.textDim
     }
 
     // ---- The wall
@@ -306,19 +307,18 @@ Item {
                 Label {
                     id: titleLabel
                     x: page.hpad
-                    y: parent.height - page.hpad - height
+                    anchors.verticalCenter: parent.verticalCenter
                     text: "Library"
                     role: "display"
                 }
             }
             HeaderTile {
                 key: "tabs"
-                Caption { text: "Show" }
                 Seg {
                     id: tabsSeg
                     objectName: "tab"
                     x: page.hpad
-                    y: parent.height - page.hpad - height
+                    anchors.verticalCenter: parent.verticalCenter
                     options: page.tabNames
                     index: Math.max(0, page.tabNames.indexOf(page.tab))
                     onPicked: function(i) { page.pickTab(i) }
@@ -326,13 +326,12 @@ Item {
             }
             HeaderTile {
                 key: "sorts"
-                Caption { text: "Sort by" }
                 // The active sort carries its direction as a chevron; picking it again flips it
                 Seg {
                     id: sortSeg
                     objectName: "sort"
                     x: page.hpad
-                    y: parent.height - page.hpad - height
+                    anchors.verticalCenter: parent.verticalCenter
                     options: page.sorts.map(function(s) {
                         return { text: s[1], name: s[0], icon: s[0] === page.sort ? (page.direction === "Asc" ? "chevron-up" : "chevron-down") : "" }
                     })
@@ -342,39 +341,66 @@ Item {
             }
             HeaderTile {
                 key: "group"
-                Caption { text: "Group by" }
-                Seg {
-                    id: groupSeg
-                    objectName: "group"
+                Row {
+                    id: groupRow
                     x: page.hpad
-                    y: parent.height - page.hpad - height
-                    options: ["None", "Genre", "Viewed"]
-                    index: ["None", "Genre", "Viewed"].indexOf(page.groupBy)
-                    onPicked: function(i) { page.groupBy = ["None", "Genre", "Viewed"][i] }
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: theme.space(2.5)
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Group"
+                        role: "ui"
+                        color: theme.textDim
+                    }
+                    Seg {
+                        id: groupSeg
+                        objectName: "group"
+                        options: ["None", "Genre", "Viewed"]
+                        index: ["None", "Genre", "Viewed"].indexOf(page.groupBy)
+                        onPicked: function(i) { page.groupBy = ["None", "Genre", "Viewed"][i] }
+                    }
                 }
             }
             HeaderTile {
                 key: "watched"
-                Caption { id: watchedCaption; text: "Show watched" }
-                Switch {
-                    id: watchedSwitch
-                    objectName: "show-watched"
+                id: watchedTile
+                color: watchedArea.containsMouse ? theme.tileHover : theme.tile
+                // The whole tile toggles; the switch on it takes its own clicks the same way
+                MouseArea {
+                    id: watchedArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: page.pickShowWatched(!page.showWatched)
+                }
+                Row {
+                    id: watchedRow
                     x: page.hpad
-                    y: parent.height - page.hpad - height
-                    checked: page.showWatched
-                    onToggled: function(on) { page.pickShowWatched(on); checked = Qt.binding(function() { return page.showWatched }) }
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: theme.space(2.5)
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Show watched"
+                        role: "ui"
+                    }
+                    Switch {
+                        id: watchedSwitch
+                        objectName: "show-watched"
+                        anchors.verticalCenter: parent.verticalCenter
+                        checked: page.showWatched
+                        onToggled: function(on) { page.pickShowWatched(on); checked = Qt.binding(function() { return page.showWatched }) }
+                    }
                 }
             }
             HeaderTile {
                 key: "search"
-                Caption { text: "Search" }
                 SearchField {
                     id: search
                     objectName: "library-search"
                     x: page.hpad
-                    y: parent.height - page.hpad - height
+                    anchors.verticalCenter: parent.verticalCenter
                     width: parent.width - page.hpad * 2
-                    placeholder: "Romaji, English or folder"
+                    placeholder: "Search by romaji, English or folder"
                     onTextChanged: queryDebounce.restart()
                     onCleared: { queryDebounce.stop(); page.query = ""; frame.nav.current.props = {}; page.reload() }
                 }
@@ -384,7 +410,7 @@ Item {
                 Row {
                     id: countRow
                     anchors.right: parent.right; anchors.rightMargin: page.hpad
-                    y: parent.height - page.hpad - height
+                    anchors.verticalCenter: parent.verticalCenter
                     spacing: theme.space(1.5)
                     Label {
                         id: countFigure
@@ -455,7 +481,7 @@ Item {
                         item: cell.modelData.card
                         hero: cell.hero
                         posterWidth: cell.width
-                        plateHeight: cell.height - Math.round(cell.width * 1.5)
+                        tileHeight: cell.height
                         live: true   // the cell itself is built only inside the live window
                         nowMs: page.nowMs
                         onOpened: frame.go("series", { id: cell.modelData.card.id }, cell.modelData.card.title)

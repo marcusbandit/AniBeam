@@ -4,10 +4,15 @@
 // rides the poster's top left, the progress strip its bottom edge. Nothing sits outside the
 // tile. Hover lifts the plate one step and edges the tile in the accent; press scales 0.98.
 //
-// `hero` is the 2x2 tile of the library mosaic: a taller plate with the title in the display
-// cut, the next episode, and a Play button (`played`). `plateHeight` lets the mosaic land the
-// tile on its module; 0 is the smallest plate that holds its lines (the Flow pages). `live`
-// false drops the poster (the mosaic's tiles far outside the viewport).
+// `hero` is the 2x2 tile of the library mosaic: a plate with the title in the display cut,
+// the next episode, the countdown and a Play button (`played`). `tileHeight` lands the tile
+// on the mosaic's module: a small tile keeps its 2:3 poster and takes the rest as plate, a
+// hero's plate is exactly as tall as its lines and the poster takes the rest. 0 is the
+// smallest plate that holds the lines. `live` false drops the poster (the mosaic's tiles far
+// outside the viewport).
+//
+// An airing countdown is one treatment everywhere: a small accent pill holding the time
+// ("4d 18h") with "Episode 2" beside it in plain plate text.
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -21,21 +26,26 @@ Item {
     // episode lands; the watching page dates an entry from AniList. Empty
     // leaves the library's own readouts standing.
     property string metaOverride: ""
-    property string countdownOverride: ""
+    // { episode, at } in seconds: a countdown the owning page supplies (the feed's
+    // scheduled cards); null leaves the series' own next airing
+    property var countdown: null
     // An external card: the series is not in the library (the watching page's
     // AniList-only entries), so the plate reads quieter and a chip names where it lives.
     property bool ghost: false
     property bool hero: false
-    property real plateHeight: 0
+    property real tileHeight: 0
     property bool live: true
     signal opened()
     signal played()
 
-    readonly property real posterHeight: Math.round(posterWidth * 1.5)
     readonly property real pad: theme.space(hero ? 4 : 2.5)
-    // The smallest plate that holds two title lines and the ledger line
-    readonly property real minPlate: Math.ceil(pad * 2 + titleMetrics.height * 2 + theme.space(1.5) + ledgerMetrics.height)
-    readonly property real plateH: plateHeight > 0 ? plateHeight : minPlate
+    readonly property real pillHeight: Math.ceil(ledgerMetrics.height + theme.space(1))
+    // The smallest plate that holds two title lines and the ledger line (a pill at most)
+    readonly property real minPlate: Math.ceil(pad * 2 + titleMetrics.height * 2 + theme.space(1.5) + pillHeight)
+    // A hero's plate: its lines, the Play row and nothing else
+    readonly property real heroPlate: Math.ceil(pad * 2 + titleText.height + theme.space(2) + heroLines.height + theme.space(3) + theme.controlHeight)
+    readonly property real posterHeight: hero && tileHeight > 0 ? Math.max(0, tileHeight - heroPlate) : Math.round(posterWidth * 1.5)
+    readonly property real plateH: tileHeight > 0 ? tileHeight - posterHeight : hero ? heroPlate : minPlate
     width: posterWidth
     height: posterHeight + plateH
     implicitWidth: posterWidth
@@ -64,16 +74,17 @@ Item {
         var d = Math.floor(t / 86400), h = Math.floor(t % 86400 / 3600), m = Math.floor(t % 3600 / 60)
         return d > 0 ? d + "d " + h + "h" : h > 0 ? h + "h " + m + "m" : Math.max(1, m) + "m"
     }
-    readonly property bool airsAhead: !!item.next_airing && item.next_airing.at * 1000 > nowMs
-    readonly property string airingText: airsAhead ? "Episode " + item.next_airing.episode + " in " + shortCountdown(item.next_airing.at - nowMs / 1000) : ""
+    // The countdown on the plate: the page's own, else the series' next airing while it is
+    // ahead and no page story stands in its place
+    readonly property var airing: countdown ? countdown
+                                : metaOverride === "" && !!item.next_airing && item.next_airing.at * 1000 > nowMs ? item.next_airing : null
+    readonly property string airingTime: airing ? shortCountdown(airing.at - nowMs / 1000) : ""
+    readonly property string airingEpisode: airing ? "Episode " + airing.episode : ""
     readonly property string watchedText: hasWatched ? (totalKnown ? item.watched + " of " + item.total_episodes + (item.total_is_estimate ? "+" : "") : item.watched + " watched") : ""
     readonly property string filesText: Fmt.plural(item.episodes_on_disk || 0, "file", "files")
-    // The one ledger line: what the owning page says, else the airing countdown, else the
-    // progress, else what is on disk. The countdown is the accent.
-    readonly property bool ledgerAccent: countdownOverride !== "" || (metaOverride === "" && airingText !== "")
-    readonly property string ledgerText: countdownOverride !== "" ? countdownOverride
-                                       : metaOverride !== "" ? metaOverride
-                                       : airingText !== "" ? airingText
+    // The one ledger line under the title: the countdown pill when one runs, else what the
+    // owning page says, else the progress, else what is on disk
+    readonly property string ledgerText: metaOverride !== "" ? metaOverride
                                        : watchedText !== "" ? watchedText : filesText
     // The hero's next episode: one past what was watched while the series is in progress
     readonly property string nextText: {
@@ -97,6 +108,37 @@ Item {
             if (theme.contrast(k, plate.color) >= 4.5) return k
         }
         return theme.text
+    }
+
+    // The countdown: an accent pill holding the time, the episode beside it in plate text.
+    // The pill's text is the ground where that holds 4.5:1 on the accent, else the text.
+    component Countdown: Item {
+        height: root.pillHeight
+        Rectangle {
+            id: pill
+            height: parent.height
+            width: pillText.implicitWidth + theme.space(3)
+            radius: height / 2
+            color: theme.accent
+            Label {
+                id: pillText
+                anchors.centerIn: parent
+                text: root.airingTime
+                role: "ledger"
+                font.weight: 650
+                font.variableAxes: ({ "wdth": 88, "wght": 650 })
+                color: theme.contrast(theme.ground, theme.accent) >= 4.5 ? theme.ground : theme.text
+            }
+        }
+        Label {
+            x: pill.width + theme.space(1.5)
+            anchors.verticalCenter: pill.verticalCenter
+            width: Math.max(0, parent.width - x)
+            text: root.airingEpisode
+            role: "ledger"
+            color: root.legible(theme.text)
+            elide: Text.ElideRight
+        }
     }
 
     // 0 rest, 1 hover; smoothed like every other tracking value
@@ -240,27 +282,34 @@ Item {
             visible: !root.hero
             x: root.pad
             width: parent.width - root.pad * 2
-            height: ledger.implicitHeight
+            height: root.airing ? root.pillHeight : ledger.implicitHeight
             y: parent.height - root.pad - height
+            readonly property real room: width - (score.text !== "" ? score.implicitWidth + theme.space(2) : 0)
+            Countdown { visible: root.airing !== null; width: parent.room; anchors.verticalCenter: parent.verticalCenter }
             Label {
                 id: ledger
-                width: Math.min(implicitWidth, parent.width - (score.text !== "" ? score.implicitWidth + theme.space(2) : 0))
+                visible: root.airing === null
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.min(implicitWidth, parent.room)
                 text: root.ledgerText
                 role: "ledger"
-                color: root.legible(root.ledgerAccent ? theme.accent : theme.textDim)
+                color: root.legible(theme.textDim)
                 elide: Text.ElideRight
             }
             Label {
                 id: score
                 anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
                 text: root.scoreText
                 role: "ledger"
                 color: root.legible(root.mine ? theme.accent : theme.textDim)
             }
         }
 
-        // Hero: the next episode, the airing line, and Play with the score at its right
+        // Hero: the next episode, the countdown, the progress, and Play with the score at
+        // its right
         Column {
+            id: heroLines
             visible: root.hero
             x: root.pad
             y: titleText.y + titleText.height + theme.space(2)
@@ -273,12 +322,13 @@ Item {
                 role: "ui"
                 elide: Text.ElideRight
             }
+            Countdown { visible: root.airing !== null; width: parent.width }
             Label {
                 visible: text !== ""
                 width: parent.width
-                text: root.metaOverride !== "" ? root.metaOverride : root.airingText
+                text: root.metaOverride
                 role: "ledger"
-                color: root.legible(root.airingText !== "" && root.metaOverride === "" ? theme.accent : theme.textDim)
+                color: root.legible(theme.textDim)
                 elide: Text.ElideRight
             }
             Label {
