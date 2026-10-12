@@ -18,6 +18,8 @@ FocusScope {
     property string title: session ? session.series_title : "Player"
     property real scrollY: 0
     readonly property alias video: video
+    // For the drive script: the rating prompt, which otherwise needs a tracked last episode.
+    readonly property alias ratingPrompt: rating
 
     // Observed mpv state
     property real timePos: 0
@@ -587,7 +589,7 @@ FocusScope {
             anchors.centerIn: parent; spacing: theme.space(3)
             Icon { glyph: "check-check"; size: theme.space(4); anchors.verticalCenter: parent.verticalCenter }
             Label { anchors.verticalCenter: parent.verticalCenter; role: "ui"; text: "Tracked the final episode. Rate this show?" }
-            Button { id: rateBtn; anchors.verticalCenter: parent.verticalCenter; text: "Rate"; primary: true; small: true; takesFocus: false; onClicked: ratingPicker.openAt(rateBtn, -1) }
+            Button { id: rateBtn; objectName: "player-rate"; anchors.verticalCenter: parent.verticalCenter; text: "Rate"; primary: true; small: true; takesFocus: false; onClicked: ratingPicker.openAt(rateBtn, -1) }
             Button { anchors.verticalCenter: parent.verticalCenter; text: "Not now"; flat: true; small: true; takesFocus: false; onClicked: rating.visible = false }
         }
     }
