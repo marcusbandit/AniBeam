@@ -1184,3 +1184,55 @@ fn an_announced_next_season_is_upcoming() {
     );
     core.shutdown();
 }
+
+/// A pasted link to a show TVmaze does not have leaves the series' match
+/// as it was: the fetch comes first, and only a show that arrived is
+/// written.
+#[test]
+fn a_tvmaze_match_to_a_missing_show_keeps_the_old_match() {
+    let http = FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let (series, _) = avatar(&core);
+    push_show(&http);
+    let job = started(
+        &core,
+        Call::ApplyMatch {
+            series,
+            target: MatchTarget::Tvmaze { id: 83073 },
+        },
+    );
+    common::wait_job(&c, job);
+    assert_eq!(
+        match_row(&core, series),
+        (Some("tvmaze".into()), Some(83073), None, 1)
+    );
+
+    http.push_for("api.tvmaze.com/shows/999999?embed", 404, "");
+    let job = started(
+        &core,
+        Call::ApplyMatch {
+            series,
+            target: MatchTarget::Tvmaze { id: 999_999 },
+        },
+    );
+    let done = common::wait_job(&c, job);
+    assert!(
+        matches!(
+            &done.body,
+            EventBody::JobFailed {
+                error: CoreError::Provider {
+                    provider: Provider::Tvmaze,
+                    status: Some(404),
+                    ..
+                }
+            }
+        ),
+        "{done:?}"
+    );
+    assert_eq!(
+        match_row(&core, series),
+        (Some("tvmaze".into()), Some(83073), None, 1)
+    );
+    assert_avatar_drawn(&core, series);
+    core.shutdown();
+}
