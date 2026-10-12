@@ -431,6 +431,9 @@ Item {
                 readonly property bool hero: modelData.kind === "hero"
                 readonly property var section: page.sections[modelData.section]
                 readonly property real settle: hero ? page.heroIn : page.shelfIn
+                // Built only within a screen of the viewport: the rest of the wall is
+                // empty positioned Items
+                readonly property bool live: index >= flick.firstLive && index <= flick.lastLive
                 // Wholly inside the viewport: only such a tile answers to the generic
                 // "small-tile" / "hero-tile" names a --drive script clicks
                 readonly property bool inView: y >= flick.contentY && y + height <= flick.contentY + flick.height
@@ -442,6 +445,7 @@ Item {
                 opacity: settle
                 Loader {
                     anchors.fill: parent
+                    active: cell.live
                     sourceComponent: cell.stone ? labelStone : seriesTile
                 }
                 Component {
@@ -452,7 +456,7 @@ Item {
                         hero: cell.hero
                         posterWidth: cell.width
                         plateHeight: cell.height - Math.round(cell.width * 1.5)
-                        live: cell.index >= flick.firstLive && cell.index <= flick.lastLive
+                        live: true   // the cell itself is built only inside the live window
                         nowMs: page.nowMs
                         onOpened: frame.go("series", { id: cell.modelData.card.id }, cell.modelData.card.title)
                         onPlayed: page.playSeries(cell.modelData.card)
