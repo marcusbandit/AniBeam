@@ -30,7 +30,8 @@
   {"click": "theme-dark"},
   {"wait": 250},
   {"eval": "driver.item.findItem('theme-dark-popup') !== null", "expect": true},
-  {"hover": "theme-dark-option-1"},
+  {"eval": "(function(){var d=driver.item.findItem('theme-dark'); return driver.item.findItem('theme-dark-option-' + d.index) !== null})()", "expect": true},
+  {"hover": "theme-dark-popup"},
   {"shot": "smoke-05-dropdown-open"},
 
   {"log": "Escape closes the dropdown, the colour source goes back"},

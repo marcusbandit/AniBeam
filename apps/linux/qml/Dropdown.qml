@@ -61,6 +61,20 @@ Corner {
         var up = below < pop.wanted && above > below
         pop.height = Math.max(pop.rowHeight + pop.inset * 2, Math.min(pop.wanted, up ? above : below))
         pop.y = up ? -pop.height - pop.gap : root.height + pop.gap
+        // As wide as the longest option, so no name is cut ("Tokyo Night Storm" in a pill
+        // sized for the current one); never narrower than the pill, never past the window.
+        var widest = 0
+        for (var i = 0; i < root.options.length; i++) { metrics.text = String(root.options[i]); widest = Math.max(widest, metrics.advanceWidth) }
+        var left = root.mapToItem(null, 0, 0).x
+        pop.width = Math.min(win.width - pop.edge * 2, Math.max(root.width, Math.ceil(widest) + theme.space(3) * 2 + pop.inset * 2 + 2))
+        pop.x = Math.min(0, win.width - pop.edge - (left + pop.width))
+    }
+    TextMetrics {
+        id: metrics
+        font.family: theme.fontFamily
+        font.pointSize: theme.roleSize("ui")
+        font.weight: theme.roleWeight("ui")
+        font.variableAxes: theme.roleAxes("ui")
     }
     Connections {
         target: root.Window.window
@@ -103,7 +117,6 @@ Corner {
         readonly property real edge: theme.space(2)
         readonly property real wanted: Math.min(root.options.length, 8) * rowHeight + inset * 2
         y: root.height + gap
-        width: root.width
         height: wanted
         // Qt's own positioner as the backstop for anything place() missed (x, mostly)
         margins: edge
