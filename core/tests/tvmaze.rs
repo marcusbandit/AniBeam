@@ -1301,3 +1301,32 @@ fn a_cleared_match_survives_a_version_bump_and_a_v1_miss_does_not() {
     assert!(attempted_at(&core, cleared).is_some());
     core.shutdown();
 }
+
+/// TVmaze summaries carry numeric and named entities beyond the five XML
+/// ones, and text with a bare `<` in it is text, not a tag.
+#[test]
+fn a_summary_decodes_every_entity_and_strips_only_real_tags() {
+    use anibeam_core::net::tvmaze::plain_summary;
+    assert_eq!(
+        plain_summary(
+            "<p>Wait&hellip; it&rsquo;s &ldquo;back&rdquo; &mdash; 2&ndash;3 &lsquo;x&rsquo;</p>"
+        ),
+        "Wait\u{2026} it\u{2019}s \u{201c}back\u{201d} \u{2014} 2\u{2013}3 \u{2018}x\u{2019}"
+    );
+    assert_eq!(
+        plain_summary("Caf&eacute; &#233; &#xE9; &#XE9;"),
+        "Café é é é"
+    );
+    assert_eq!(plain_summary("Tom&#8217;s"), "Tom\u{2019}s");
+    assert_eq!(plain_summary("a < b and c > d"), "a < b and c > d");
+    assert_eq!(plain_summary("1 <2 and 3> 0"), "1 <2 and 3> 0");
+    assert_eq!(plain_summary("<!-- note --><i>One</i></p>"), "One");
+    // An entity it cannot name, or a malformed one, stays as written.
+    assert_eq!(
+        plain_summary("&bogus; & &#; &#xZZ; AT&T"),
+        "&bogus; & &#; &#xZZ; AT&T"
+    );
+    // Decoding happens once: an escaped entity is not decoded twice.
+    assert_eq!(plain_summary("&amp;lt;b&amp;gt;"), "&lt;b&gt;");
+    assert_eq!(plain_summary("&lt;b&gt;bold&lt;/b&gt;"), "<b>bold</b>");
+}
