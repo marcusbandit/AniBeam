@@ -15,14 +15,18 @@ Item {
     readonly property var keys: [
         ["Space / K", "Play or pause"],
         ["Left / Right", "Seek 5 s"],
+        ["J / L", "Seek 10 s"],
         ["Ctrl+Right", "Skip the intro or outro, else 90 s"],
         [", / .", "One frame back or forward"],
+        ["[ / ]", "Slower or faster, in steps of 0.25"],
+        ["Backspace", "Normal speed"],
+        ["N / P", "Next or previous episode"],
+        ["Up / Down", "Volume up or down by 5"],
         ["M", "Mute"],
         ["F", "Fullscreen"],
         ["C", "Subtitles off and back"],
         ["z / Z", "Subtitle delay 100 ms earlier or later"],
-        ["Up / Down", "Volume 5"],
-        ["Escape", "Leave the player"],
+        ["Escape", "Close what is open, else leave fullscreen, else leave the player"],
         ["?", "Show or hide this list"]
     ]
 

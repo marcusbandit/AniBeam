@@ -13,13 +13,17 @@ Corner {
     property bool flat: false
     property bool primary: false
     property bool small: false
+    // False for a button that must never hold the keyboard: the player's, where a focused
+    // button would swallow Space and Return before the page's own keys see them, and Tab
+    // would walk a focus ring through the island.
+    property bool takesFocus: true
     signal clicked()
 
     implicitWidth: content.implicitWidth + theme.space(small ? 3 : 4) * 2
     implicitHeight: small ? theme.space(6) : theme.controlHeight
     radius: height / 2
     smoothing: theme.cornerSmoothing
-    activeFocusOnTab: true
+    activeFocusOnTab: takesFocus
     scale: mouse.pressed ? 0.98 : 1
 
     // 0 rest, 1 hover, 2 press
@@ -72,6 +76,6 @@ Corner {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: { root.forceActiveFocus(); root.clicked() }
+        onClicked: { if (root.takesFocus) root.forceActiveFocus(); root.clicked() }
     }
 }
