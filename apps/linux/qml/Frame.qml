@@ -158,14 +158,103 @@ FocusScope {
     }
     function toggleDrawer() { drawer.toggle() }
 
+    // Tracker sign-in. It lives here, not on a page, because the frame is the one thing
+    // always loaded: a connect started from the Watching page, the library's nudge or the
+    // sheet over either must still open the browser and still hear back after the page
+    // that started it is gone. Every surface that shows a connect reads these maps, keyed
+    // by tracker ("Anilist" or "Mal"), and none of them listens to Door on its own.
+    readonly property string redirectUrl: "http://127.0.0.1:53682/callback"
+    property var connecting: ({})      // the running connect job's id
+    property var signInUrls: ({})      // the authorize url, to open it again
+    property var connectErrors: ({})   // why the last connect did not finish
+    property var connectedAs: ({})     // who the last connect signed in as
+    function trackerName(t) { return t === "Mal" ? "MyAnimeList" : "AniList" }
+    function trackerAccount(t) { return (t === "Mal" ? Door.trackers.mal : Door.trackers.anilist) || ({}) }
+    // Bundled with the build or pasted earlier: either way one click is all a connect needs.
+    function hasCredentials(t) { var a = trackerAccount(t); return a.bundled_credentials === true || (a.client_id || "") !== "" }
+    function withKey(map, key, value) {
+        var out = {}
+        for (var k in map) if (k !== key) out[k] = map[k]
+        if (value !== undefined) out[key] = value
+        return out
+    }
+    function trackerOfJob(job) {
+        for (var k in connecting) if (connecting[k] === job) return k
+        return ""
+    }
+    // The core's error message reads "Mal: ..." or "invalid client_id: ...", the shape the
+    // log wants; a person reading why their sign-in stopped wants the sentence after it.
+    function errorText(e) {
+        var m = String(e && e.message ? e.message : "")
+        m = m.replace(/^(Anilist|Mal|Jikan|Tmdb): /, "").replace(/^(io|internal|invalid [a-z_]+): /, "")
+        return m === "" ? "The sign-in did not finish." : m.charAt(0).toUpperCase() + m.slice(1)
+    }
+    // Starts the flow; the browser opens when the core says the listener is up. True when
+    // a job started, false with the reason in connectErrors when the call was refused.
+    function connectTracker(t) {
+        connectErrors = withKey(connectErrors, t)
+        connectedAs = withKey(connectedAs, t)
+        signInUrls = withKey(signInUrls, t)
+        var r = Door.connectTracker(t)
+        if (r.error) { connectErrors = withKey(connectErrors, t, errorText(r.error)); return false }
+        connecting = withKey(connecting, t, r.reply.job)
+        return true
+    }
+    function cancelConnect(t) {
+        if (connecting[t] !== undefined) Door.cancelJob(connecting[t])
+        connecting = withKey(connecting, t)
+    }
+    function reopenSignIn(t) { if (signInUrls[t]) Qt.openUrlExternally(signInUrls[t]) }
+    // One click: with credentials the browser opens at once and the sheet only says where
+    // to finish; without them the sheet walks the set-up first.
+    function openConnect(t) {
+        t = t || "Anilist"
+        if (hasCredentials(t) && connecting[t] === undefined) connectTracker(t)
+        connectSheet.openFor(t)
+    }
+    Connections {
+        target: Door
+        function onAuthUrlReady(t, openUrl, redirectUrl) {
+            frame.signInUrls = frame.withKey(frame.signInUrls, t, openUrl)
+            // A capture run draws the waiting state; it never opens the owner's browser.
+            if (Shell.shoot === "" && Shell.driveOut === "") Qt.openUrlExternally(openUrl)
+        }
+        function onTrackerConnected(t, username) {
+            frame.connecting = frame.withKey(frame.connecting, t)
+            frame.connectedAs = frame.withKey(frame.connectedAs, t, username || frame.trackerName(t))
+            frame.toast("Connected to " + frame.trackerName(t) + " as " + (username || "?"))
+            // The user is in the browser tab that just closed; bring them back to the app.
+            if (frame.hostWindow) Shell.raiseWindow(frame.hostWindow, "")
+        }
+        // Failed and cancelled come after the finished-job signal, so the job is looked up
+        // here, by id, rather than cleared there: a connect superseded by a newer one for
+        // the same tracker is cancelled by the core and must not clear the newer job.
+        function onJobFailed(job, kind, error) {
+            if (kind !== "ConnectTracker") return
+            var t = frame.trackerOfJob(job)
+            if (t === "") return
+            frame.connecting = frame.withKey(frame.connecting, t)
+            var message = frame.errorText(error)
+            frame.connectErrors = frame.withKey(frame.connectErrors, t, message)
+            // The sheet says it inline when it is up for this tracker; a toast as well would
+            // be the same sentence twice.
+            if (!connectSheet.visible || connectSheet.tracker !== t) frame.toast(message, 6)
+        }
+        function onJobCancelled(job, kind) {
+            if (kind !== "ConnectTracker") return
+            var t = frame.trackerOfJob(job)
+            if (t !== "") frame.connecting = frame.withKey(frame.connecting, t)
+        }
+    }
+
     // The tracker connect sheet, over everything: the Watching page's empty
-    // list and the Trackers panel both send the user here.
+    // list, the library's nudge and the Trackers panel all send the user here.
     ConnectSheet {
         id: connectSheet
+        objectName: "connect-sheet"
         parent: overlay
         z: 10
     }
-    function openConnect(tracker) { connectSheet.openFor(tracker || "Anilist") }
 
     // Overlay: menus, tips, toasts
     Item {

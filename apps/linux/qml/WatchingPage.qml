@@ -95,7 +95,13 @@ PageScroll {
             icon: "log-in"
             title: "AniList is not connected"
             body: "Connect AniList and your list lives here — what you are watching, what is next, updated as you watch."
-            Button { text: "Connect AniList"; icon: "log-in"; onClicked: frame.openConnect("Anilist") }
+            // One click: the browser opens on it when the build carries AniList's id.
+            Button {
+                text: frame.connecting["Anilist"] !== undefined ? "Waiting for the browser" : "Connect AniList"
+                icon: frame.connecting["Anilist"] !== undefined ? "clock" : "log-in"
+                primary: true
+                onClicked: frame.openConnect("Anilist")
+            }
         }
     }
 
