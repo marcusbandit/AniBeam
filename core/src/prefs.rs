@@ -32,15 +32,36 @@ pub fn load_settings(conn: &Connection) -> Result<Settings, CoreError> {
     })
 }
 
-/// The match providers in the order the auto-match walks them. A stored
-/// order that no longer names every provider exactly once, a row from a
-/// build that knew fewer of them, reads as the default rather than
-/// leaving a provider out of every match for good.
+/// The match providers in the order the auto-match walks them. Whatever
+/// is stored, this answers with every provider exactly once and never
+/// fails: a row from a build that knew fewer providers, or a newer one
+/// that knew more, keeps the providers this build knows in their stored
+/// order, each once, and gains any missing ones in the default order; a
+/// row that is not a list at all reads as the default.
 pub fn load_provider_order(conn: &Connection) -> Result<Vec<Provider>, CoreError> {
-    let stored: Option<Vec<Provider>> = settings::get(conn, settings::PROVIDER_ORDER)?;
-    Ok(stored
-        .filter(|order| validate_provider_order(order).is_ok())
-        .unwrap_or_else(|| MATCH_PROVIDERS.to_vec()))
+    let stored = match settings::get::<Vec<serde_json::Value>>(conn, settings::PROVIDER_ORDER) {
+        Ok(stored) => stored.unwrap_or_default(),
+        Err(e) if e.is_decode_failure() => {
+            tracing::warn!("reading the provider order as the default: {e}");
+            Vec::new()
+        }
+        Err(e) => return Err(e),
+    };
+    let mut order: Vec<Provider> = Vec::with_capacity(MATCH_PROVIDERS.len());
+    for p in stored
+        .into_iter()
+        .filter_map(|v| serde_json::from_value::<Provider>(v).ok())
+    {
+        if MATCH_PROVIDERS.contains(&p) && !order.contains(&p) {
+            order.push(p);
+        }
+    }
+    for p in MATCH_PROVIDERS {
+        if !order.contains(&p) {
+            order.push(p);
+        }
+    }
+    Ok(order)
 }
 
 pub fn save_provider_order(conn: &Connection, order: &[Provider]) -> Result<(), CoreError> {

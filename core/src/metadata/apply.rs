@@ -189,22 +189,11 @@ pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64,
             // is set.
             let (anilist_id, pasted_mal) = match target {
                 MatchTarget::Anilist { id, season: _ } => (id, None),
-                // TVmaze has no stub to write first and no foreign key to
-                // satisfy: the match columns go in, the card is reported,
-                // and the one fetch fills in everything behind them.
+                // TVmaze is one fetch, so the show comes first and the
+                // match is written with it in one transaction: a show
+                // TVmaze does not have, or a fetch that never lands, leaves
+                // the series' old match exactly as it was.
                 MatchTarget::Tvmaze { id } => {
-                    let now = time::now_secs();
-                    owner
-                        .store
-                        .tx_async(move |tx| fetch::write_tvmaze_match(tx, series, id, true, now))
-                        .await?;
-                    if let Some(card) = card_for(&owner, series).await? {
-                        ctx.emit(
-                            Level::Debug,
-                            "match applied",
-                            EventBody::SeriesChanged { series: vec![card] },
-                        );
-                    }
                     fetch::fetch_and_write_tvmaze(&owner, series, id, true, time::now_secs())
                         .await?;
                     if let Some(card) = card_for(&owner, series).await? {

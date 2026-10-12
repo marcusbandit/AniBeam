@@ -54,14 +54,16 @@ const FILL_INTERVAL: Duration = Duration::from_secs(300);
 /// content type instead.
 const IMAGE_EXTENSIONS: [&str; 6] = ["jpg", "jpeg", "png", "gif", "webp", "avif"];
 
-/// Every url whose image the library would draw if it had it.
+/// Every url whose image the library would draw if it had it. A TVmaze
+/// show is drawn only by the series matched to it, so a show every series
+/// has moved off references nothing.
 const REFERENCED_SQL: &str =
     "SELECT cover_url AS url FROM anilist_media WHERE cover_url IS NOT NULL
      UNION SELECT banner_url FROM anilist_media WHERE banner_url IS NOT NULL
      UNION SELECT value ->> 'image_url' FROM anilist_media, json_each(anilist_media.characters)
            WHERE value ->> 'image_url' IS NOT NULL
-     UNION SELECT poster_url FROM tvmaze_shows WHERE poster_url IS NOT NULL
-     UNION SELECT background_url FROM tvmaze_shows WHERE background_url IS NOT NULL";
+     UNION SELECT t.poster_url FROM tvmaze_shows t JOIN series s ON s.tvmaze_id = t.id WHERE t.poster_url IS NOT NULL
+     UNION SELECT t.background_url FROM tvmaze_shows t JOIN series s ON s.tvmaze_id = t.id WHERE t.background_url IS NOT NULL";
 
 /// The urls of a series the library actually owns. These are never evicted
 /// by the cap: losing them is the one loss a user would see at once.
@@ -927,6 +929,48 @@ mod tests {
             vec!["pinned-cover".to_string(), "portrait".to_string()]
         );
         assert_eq!(b.files(), 2);
+    }
+
+    /// A TVmaze show no series points at any more, one the series moved
+    /// off or cleared, references nothing: its pictures age out like any
+    /// other orphan, while a show a series is matched to keeps its own.
+    #[test]
+    fn a_tvmaze_show_no_series_points_at_lets_its_images_go() {
+        let b = bench();
+        let (now, day) = (b.now, 86_400);
+        b.store
+            .write(move |c| {
+                c.execute(
+                    "INSERT INTO tvmaze_shows (id, poster_url, background_url, fetched_at) VALUES (1, 'owned-poster', 'owned-background', 0)",
+                    [],
+                )?;
+                c.execute(
+                    "INSERT INTO tvmaze_shows (id, poster_url, background_url, fetched_at) VALUES (2, 'left-poster', 'left-background', 0)",
+                    [],
+                )?;
+                c.execute("INSERT INTO sources (path, added_at) VALUES ('/lib', 1)", [])?;
+                c.execute(
+                    "INSERT INTO series (source_id, kind, path, folder_name, added_at, provider, tvmaze_id) VALUES (1, 'show', '/lib/A', 'A', 1, 'tvmaze', 1)",
+                    [],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        for url in [
+            "owned-poster",
+            "owned-background",
+            "left-poster",
+            "left-background",
+        ] {
+            b.add(url, now - 40 * day, true);
+        }
+        let cache = b.cache.clone();
+        let report = b.store.write(move |c| cache.sweep(c, now)).unwrap();
+        assert_eq!(report.removed_rows, 2);
+        assert_eq!(
+            b.urls(),
+            vec!["owned-background".to_string(), "owned-poster".to_string()]
+        );
     }
 
     #[test]

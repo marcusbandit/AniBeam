@@ -323,12 +323,12 @@ fn a_transport_failure_fails_the_job_and_stamps_nothing() {
     core.shutdown();
 }
 
-/// A reply the parser cannot read is this series' own answer, not the
-/// job's failure: it is stamped like any other answered error and the walk
-/// carries on. Failing the job here would wedge the library, since the
-/// unstamped series comes first again on the next run.
+/// A reply the parser cannot read ends that series' turn at the provider
+/// that sent it, and the walk carries on with the next series. Nothing is
+/// stamped: TVmaze never had its turn, so the series is no miss, and the
+/// next run asks again. Within this run it is not asked twice.
 #[test]
-fn a_reply_that_does_not_parse_stamps_that_series_and_the_walk_carries_on() {
+fn a_reply_that_does_not_parse_ends_the_turn_unstamped_and_the_walk_carries_on() {
     let http = anibeam_core::net::FakeHttp::new();
     let (_dir, core, c) = common::open_core_with_http(http.clone());
     let src = fixtures::insert_source(&core, "/lib");
@@ -365,10 +365,53 @@ fn a_reply_that_does_not_parse_stamps_that_series_and_the_walk_carries_on() {
         "{:#?}",
         http.requests()
     );
+    // Aaa was asked once, Bbb by both providers.
+    assert_eq!(http.requests().len(), 3, "{:#?}", http.requests());
     assert!(
-        attempted_at(&core, broken).is_some(),
-        "a malformed reply is still this series' turn"
+        attempted_at(&core, broken).is_none(),
+        "a series TVmaze never saw is no miss"
     );
     assert!(attempted_at(&core, after).is_some());
+
+    // The next run asks about Aaa again, and only Aaa.
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "Page": { "media": [] } } }),
+    );
+    http.push_for("api.tvmaze.com/search/shows?q=Aaa", 200, "[]");
+    let job = started(&core, Call::AutoMatch);
+    let done = common::wait_job(&c, job);
+    assert!(
+        matches!(done.body, EventBody::AutoMatchFinished { unmatched: 1, .. }),
+        "{done:?}"
+    );
+    assert_eq!(http.requests().len(), 5, "{:#?}", http.requests());
+    assert!(attempted_at(&core, broken).is_some());
+    core.shutdown();
+}
+
+/// An error from the last provider in the order, after the first missed,
+/// is no miss either: only every provider answering with a miss stamps.
+#[test]
+fn an_error_from_the_last_provider_leaves_the_series_unstamped() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let src = fixtures::insert_source(&core, "/lib");
+    let series = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Aaa", "Aaa");
+    fixtures::insert_file(&core, series, "/lib/Aaa/01.mkv", 1.0, None, "episode", 1);
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "Page": { "media": [] } } }),
+    );
+    http.push_for("api.tvmaze.com/search/shows?q=Aaa", 500, "boom");
+
+    let job = started(&core, Call::AutoMatch);
+    let done = common::wait_job(&c, job);
+    assert!(
+        matches!(done.body, EventBody::AutoMatchFinished { unmatched: 1, .. }),
+        "{done:?}"
+    );
+    assert_eq!(http.requests().len(), 2, "{:#?}", http.requests());
+    assert!(attempted_at(&core, series).is_none());
     core.shutdown();
 }

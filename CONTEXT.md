@@ -83,7 +83,7 @@ One entry in the library: a show, which is a folder, or a film, which is a singl
 _Avoid_: show, title, entry, anime, media
 
 **Match**:
-The link from a series to one provider record: AniList (carrying the MAL id when known), MAL alone, or TVmaze, which holds the series AniList has no entry for, western animation and live-action television. A TMDB match only arrives through an import and carries its ids with nothing behind them. A series has at most one match. The auto-match tries the providers in the user's provider order, AniList then TVmaze by default, and keeps the first that matches. A match the user applied or imported is confirmed, and the auto-match sweep never replaces it. A TVmaze match carries no tracker ids, so it is never marked or synced.
+The link from a series to one provider record: AniList (carrying the MAL id when known), MAL alone, or TVmaze, which holds the series AniList has no entry for, western animation and live-action television. A TMDB match only arrives through an import and carries its ids with nothing behind them. A series has at most one match. The auto-match tries the providers in the user's provider order, AniList then TVmaze by default, and keeps the first that matches. A match the user applied or imported is confirmed, and the auto-match sweep never replaces it. A match the user cleared keeps the auto-match off the series until they pick one, whatever matcher version comes later. A TVmaze match carries no tracker ids, so it is never marked or synced.
 _Avoid_: mapping, source mapping, metadata link
 
 **Provider order**:
