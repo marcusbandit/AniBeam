@@ -76,7 +76,9 @@ Item {
         objectName: root.objectName !== "" ? root.objectName + "-panel" : "track-picker-panel"
         width: theme.space(70); height: Math.min(root.maxHeight, column.implicitHeight + theme.space(4))
         radius: theme.radiusMd; smoothing: theme.cornerSmoothing
-        color: theme.surfaceRaised; borderColor: theme.lineStrong; borderWidth: 1
+        // One fill step above raised: it floats over a raised surface (the player's
+        // controls tile, the rating prompt), and the same fill would merge with it
+        color: theme.raisedFloat; borderColor: theme.lineStrong; borderWidth: 1
         // The list's length can change while open (tracks arrive late); keep the foot put
         onHeightChanged: if (root.open) root.place()
         MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons }
@@ -97,7 +99,7 @@ Item {
                         required property var modelData
                         width: column.width; height: theme.controlHeight
                         radius: theme.radiusSm; smoothing: theme.cornerSmoothing
-                        color: m.containsMouse ? theme.surfacePressed : "transparent"
+                        color: m.containsMouse ? theme.tone(theme.raisedFloat, theme.text, 0.07) : "transparent"
                         Text { anchors.left: parent.left; anchors.leftMargin: theme.space(2); anchors.verticalCenter: parent.verticalCenter; text: modelData.label; color: modelData.id === root.selected ? theme.accent : theme.text; font.family: theme.fontSans; font.pointSize: theme.typeNormal; font.weight: modelData.id === root.selected ? Font.DemiBold : Font.Normal; elide: Text.ElideRight; width: parent.width - theme.space(4) }
                         MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.picked(modelData.id); root.close() } }
                     }

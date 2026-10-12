@@ -68,6 +68,16 @@ Item {
         width: root.rowWidth + root.pad * 2
         height: column.implicitHeight + root.pad * 2
         radius: theme.radiusTile
+        // A step up from what it opens over: the strong hairline always, and the float
+        // fill when it opens over the drawer, itself a raised surface
+        readonly property bool overRaised: {
+            var d = frame.drawerPanel
+            if (!root.open || !d.open) return false
+            var p = d.mapToItem(root, 0, 0)
+            return root.originY >= p.y && root.originX >= p.x && root.originX <= p.x + d.width
+        }
+        color: overRaised ? theme.raisedFloat : theme.raised
+        borderColor: theme.lineStrong
         // Takes presses on the padding and the gaps between rows, which would otherwise
         // reach the shield and close the menu; the rows are declared after it, on top.
         MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons }
@@ -87,7 +97,7 @@ Item {
                     height: theme.controlHeight
                     radius: theme.radiusInner(root.pad)
                     smoothing: theme.cornerSmoothing
-                    color: highlighted ? theme.raisedHover : "transparent"
+                    color: highlighted ? theme.tone(panel.color, theme.text, 0.07) : "transparent"
                     Row {
                         id: row
                         anchors.left: parent.left; anchors.leftMargin: theme.space(3)

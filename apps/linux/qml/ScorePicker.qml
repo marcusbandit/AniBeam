@@ -69,7 +69,9 @@ Item {
         objectName: "score-picker-panel"
         width: theme.space(48); height: theme.space(60)
         radius: theme.radiusMd; smoothing: theme.cornerSmoothing
-        color: theme.surfaceRaised; borderColor: theme.lineStrong; borderWidth: 1
+        // One fill step above raised: it floats over a raised surface (the player's
+        // controls tile, the rating prompt), and the same fill would merge with it
+        color: theme.raisedFloat; borderColor: theme.lineStrong; borderWidth: 1
         MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons }
         ListView {
             id: list
@@ -83,8 +85,11 @@ Item {
                 objectName: "score-picker-row-" + index
                 width: list.width; height: theme.space(6)
                 radius: theme.radiusSm; smoothing: theme.cornerSmoothing
-                color: Number(modelData) === Number(root.draft.toFixed(1)) ? theme.accentSoft : (m.containsMouse ? theme.surfacePressed : "transparent")
-                Text { anchors.centerIn: parent; text: modelData; color: Number(modelData) === Number(root.draft.toFixed(1)) ? theme.accent : theme.text; font.family: theme.fontUi; font.pointSize: theme.typeNormal }
+                // The Dropdown's current-row treatment: the highlight a step up from the panel,
+                // the value in the accent
+                readonly property bool isDraft: Number(modelData) === Number(root.draft.toFixed(1))
+                color: isDraft || m.containsMouse ? theme.tone(theme.raisedFloat, theme.text, isDraft ? 0.1 : 0.07) : "transparent"
+                Text { anchors.centerIn: parent; text: modelData; color: parent.isDraft ? theme.accent : theme.text; font.family: theme.fontUi; font.pointSize: theme.typeNormal; font.weight: parent.isDraft ? Font.DemiBold : Font.Normal }
                 MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; onClicked: root.draft = Number(modelData) }
             }
             QC.ScrollBar.vertical: ThinScrollBar {}

@@ -62,6 +62,7 @@ Item {
     // One hover step up from a resting tile, and from a raised one (a menu row on a menu)
     readonly property color tileHover: tone(surface, text, 0.04)
     readonly property color raisedHover: tone(surfaceRaised, text, 0.07)
+    readonly property color raisedFloat: tone(surfaceRaised, text, 0.05)   // a floating layer over a raised surface
     readonly property string sourceLabel: Theme.sourceLabel
 
     // Status and fraction colours: fixed mappings onto the hues
