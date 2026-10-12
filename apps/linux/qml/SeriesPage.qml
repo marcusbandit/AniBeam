@@ -41,6 +41,8 @@ Item {
     property bool optimisticWatched: false
     readonly property bool isMovie: card.kind === "Movie"
     readonly property bool hasTracker: !!(card.match_info && (card.match_info.anilist_id || card.match_info.mal_id))
+    // The site the record came from, named on the button that opens it
+    readonly property string siteName: frame.providerName(card.match_info ? card.match_info.provider : "Anilist") || "AniList"
     readonly property var titles: card.titles || ({})
     // The other language's title under the display one, then the native script
     readonly property string altTitle: {
@@ -197,7 +199,8 @@ Item {
             out.push({ key: "airing", caption: "Episode " + card.next_airing.episode + " airs in", value: "",
                        width: Math.max(captionMetrics.advanceWidth("Episode 00 airs in"), pillMetrics.advanceWidth("0d 00h 00m 00s") + theme.space(6)), flex: true })
         if (card.community_score !== null && card.community_score !== undefined) add("score", "Average score", Fmt.score(card.community_score))
-        add("mine", "Your score", card.my_score !== null && card.my_score !== undefined ? Fmt.score(card.my_score) : "Rate", 0)
+        // A score is the tracker's: a series no tracker carries (a TVmaze match) has none to set
+        if (hasTracker) add("mine", "Your score", card.my_score !== null && card.my_score !== undefined ? Fmt.score(card.my_score) : "Rate", 0)
         if (!isMovie) add("episodes", "Episodes", card.total_episodes ? String(card.total_episodes) + (card.total_is_estimate ? "+" : "") : "?")
         if (!isMovie) add("disk", "On disk", Fmt.plural(detail.progress.on_disk, "file", "files"))
         if (card.status) add("status", "Status", status(card.status))
@@ -326,8 +329,8 @@ Item {
                 spacing: theme.space(2)
                 Button { objectName: "series-hide"; small: true; text: card.hidden ? "Unhide" : "Hide"; icon: card.hidden ? "eye" : "eye-off"
                     onClicked: { var r = Door.setHidden(props.id, !card.hidden); if (r.error) frame.toast(r.error.message) }
-                    Tooltip { text: "Hidden from every list, and tracker sync stops" } }
-                Button { visible: !!(detail && detail.site_url); small: true; text: "AniList"; icon: "external-link"; onClicked: Qt.openUrlExternally(detail.site_url) }
+                    Tooltip { text: page.hasTracker ? "Hidden from every list, and tracker sync stops" : "Hidden from every list" } }
+                Button { objectName: "series-site"; visible: !!(detail && detail.site_url); small: true; text: page.siteName; icon: "external-link"; onClicked: Qt.openUrlExternally(detail.site_url) }
                 Button { small: true; text: "Rescan"; icon: "refresh-cw"; onClicked: page.rescan() }
             }
         }
