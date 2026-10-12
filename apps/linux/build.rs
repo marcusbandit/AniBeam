@@ -49,6 +49,7 @@ fn main() {
             .qml_file("qml/MatchPanel.qml")
             .qml_file("qml/SubscriptionsPage.qml")
             .qml_file("qml/ConnectSheet.qml")
+            .qml_file("qml/TrackerNudge.qml")
             .qml_file("qml/PosterPool.qml")
             .qml_file("qml/StatusDot.qml")
             .qml_file("qml/ScorePicker.qml")

@@ -2,6 +2,8 @@
 //! the --shoot arguments and, from Task 7 on, the page a shoot opens, and from Task 9 on
 //! the JSON props that page opens with. A --drive run also carries its script's text and
 //! the directory its shots land in, and the input invokables the QML driver sends through.
+//! The config directory rides along for the few things QML keeps for itself (the library's
+//! tracker nudge, once dismissed), so a --root run keeps them inside its sandbox too.
 //!
 //! It is also where the session bus starts, because this object exists exactly once and
 //! exists as soon as the engine loads Main.qml. Its thread handle is what the
@@ -32,6 +34,7 @@ pub mod qobject {
         #[qproperty(i32, shoot_height)]
         #[qproperty(QString, drive)]
         #[qproperty(QString, drive_out)]
+        #[qproperty(QString, config_dir)]
         type Shell = super::ShellRust;
 
         /// A second launch, or MPRIS Raise, asked for the window; the token is the launcher's.
@@ -70,6 +73,7 @@ pub struct ShellRust {
     shoot_height: i32,
     drive: QString,
     drive_out: QString,
+    config_dir: QString,
 }
 
 impl Default for ShellRust {
@@ -99,6 +103,12 @@ impl Default for ShellRust {
             shoot_height: if shooting { a.height as i32 } else { 0 },
             drive: QString::from(drive.as_str()),
             drive_out: QString::from(drive_out.as_str()),
+            config_dir: QString::from(
+                crate::runtime::paths()
+                    .config_dir()
+                    .to_string_lossy()
+                    .as_ref(),
+            ),
         }
     }
 }

@@ -201,12 +201,21 @@ Item {
         }
     }
 
+    // ---- The tracker nudge: first run only, until a tracker is connected or it is put
+    // off. Over the empty library too, since that is exactly when a new user is here.
+    TrackerNudge {
+        id: nudge
+        anchors.left: crumbBar.left; anchors.right: crumbBar.right
+        anchors.top: page.libraryEmpty ? parent.top : crumbBar.bottom
+        anchors.topMargin: page.libraryEmpty ? theme.space(7) : theme.space(5)
+    }
+
     // ---- Controls band: the tabs and the search on one edge-aligned row, the sorts and
     // the group switch under them, a hairline closing the band.
     Item {
         id: controls
         anchors.left: crumbBar.left; anchors.right: crumbBar.right
-        anchors.top: crumbBar.bottom; anchors.topMargin: theme.space(5)
+        anchors.top: nudge.visible ? nudge.bottom : crumbBar.bottom; anchors.topMargin: theme.space(5)
         height: tabsRow.height + sortsRow.height + theme.space(5)
         visible: !page.libraryEmpty
         Seg {
