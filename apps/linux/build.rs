@@ -66,6 +66,7 @@ fn main() {
             .qml_file("qml/PlayerPage.qml")
             .qml_file("qml/ActivityDrawer.qml")
             .qml_file("qml/Note.qml")
+            .qml_file("qml/Tile.qml")
             .qml_file("qml/Tiles.qml")
             .qml_file("qml/UsageBar.qml")
             .qml_file("qml/SettingsTab.qml")
