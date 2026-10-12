@@ -1,5 +1,8 @@
-// The left rail: brand, the five pages with their Lucide glyphs, and the title-language
-// switch with the version at the foot.
+// The left rail: a column of tiles set in the grout. The brand tile at the top, one tile per
+// page (a Lucide glyph over a short label), and a foot tile with the title-language switch
+// and the version. The active page's tile is raised and its glyph is in the accent; there is
+// no accent bar. The tiles are as wide as the widest label (or the switch) needs at the
+// current density, so a label never clips.
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -12,41 +15,39 @@ Item {
         { text: "Library", icon: "house" }, { text: "Feed", icon: "rss" }, { text: "Watching", icon: "eye" },
         { text: "Metadata", icon: "database" }, { text: "Settings", icon: "settings" }
     ]
-    width: theme.space(34)
+    readonly property real pad: theme.space(2)
+    readonly property real tileWidth: Math.max(theme.space(17), labels.implicitWidth + pad * 2, lang.implicitWidth + pad * 2)
+    readonly property real tileHeight: Math.round(tileWidth * 0.72)
+    width: tileWidth + theme.grout * 2
 
-    Rectangle {
-        anchors.fill: parent
-        color: theme.surfaceSunken
+    // The labels at the size the tiles set them, never shown: their widest is the tile's
+    Column {
+        id: labels
+        visible: false
+        Repeater { model: root.pages; Label { required property var modelData; role: "title"; font.pointSize: theme.typeSmall; text: modelData.text } }
     }
-    Rectangle {
-        anchors.right: parent.right
-        width: 1
-        height: parent.height
-        color: theme.line
-    }
+
+    Rectangle { anchors.fill: parent; color: theme.ground }
 
     Column {
-        anchors.top: parent.top
-        anchors.topMargin: theme.space(5)
-        anchors.horizontalCenter: parent.horizontalCenter
-        spacing: 0
-        width: parent.width
+        x: theme.grout
+        y: theme.grout
+        spacing: theme.grout
 
+        // Brand
         Corner {
-            width: theme.space(11); height: width
-            radius: theme.radiusSm
-            smoothing: 0
-            color: theme.accentSoft
-            anchors.horizontalCenter: parent.horizontalCenter
+            width: root.tileWidth; height: root.tileHeight
+            radius: theme.radiusTile
+            smoothing: theme.cornerSmoothing
+            color: theme.tile
             Image {
                 anchors.centerIn: parent
-                width: parent.width * 0.7; height: width
+                width: Math.round(parent.height * 0.62); height: width
                 source: "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/icon.png"
                 sourceSize: Qt.size(96, 96)
                 smooth: true
             }
         }
-        Item { width: 1; height: theme.space(5) }
 
         Repeater {
             model: root.pages
@@ -56,79 +57,77 @@ Item {
                 required property var modelData
                 objectName: "rail-" + modelData.text.toLowerCase()   // a --drive target
                 readonly property bool on: index === root.active
-                width: parent.width
-                height: theme.controlHeight
-                radius: 0
-                smoothing: 0
-                color: on ? theme.surfaceRaised : (m.containsMouse ? theme.surface : "transparent")
-                borderColor: entry.activeFocus ? theme.focusRing : "transparent"
-                borderWidth: entry.activeFocus ? theme.space(0.5) : 0
+                width: root.tileWidth
+                height: root.tileHeight
+                radius: theme.radiusTile
+                smoothing: theme.cornerSmoothing
+                color: on ? theme.raised : theme.tile
+                borderColor: entry.activeFocus ? theme.focusRing : (m.containsMouse && !on ? theme.line : "transparent")
+                borderWidth: entry.activeFocus ? theme.space(0.5) : (m.containsMouse && !on ? 1 : 0)
+                scale: m.pressed ? 0.98 : 1
                 activeFocusOnTab: true
                 Keys.onReturnPressed: root.picked(entry.index)
                 Keys.onSpacePressed: root.picked(entry.index)
-                // The active row's lit edge: the state marker, the one accent use on chrome
-                Rectangle {
-                    visible: entry.on
-                    anchors.left: parent.left
-                    width: 2
-                    height: parent.height
-                    color: theme.accent
-                }
-                Row {
-                    anchors.left: parent.left
-                    anchors.leftMargin: theme.space(3)
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: theme.space(2.5)
+                Column {
+                    anchors.centerIn: parent
+                    spacing: theme.space(1.5)
                     Icon {
-                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.horizontalCenter: parent.horizontalCenter
                         glyph: entry.modelData.icon
-                        size: theme.space(4.5)
-                        color: entry.on ? theme.accent : theme.textFaint
+                        size: theme.space(5)
+                        color: entry.on ? theme.accent : (m.containsMouse ? theme.text : theme.textDim)
                     }
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
+                    Label {
+                        anchors.horizontalCenter: parent.horizontalCenter
                         text: entry.modelData.text
-                        color: entry.on ? theme.text : theme.textDim
-                        font.family: theme.fontUi
-                        font.pointSize: theme.typeNormal
-                        font.weight: entry.on ? Font.DemiBold : Font.Normal
+                        role: "title"
+                        font.pointSize: theme.typeSmall
+                        color: entry.on || m.containsMouse ? theme.text : theme.textDim
                     }
                 }
                 MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.picked(entry.index) }
             }
         }
-        Rectangle { width: parent.width - theme.space(6); height: 1; color: theme.line; anchors.horizontalCenter: parent.horizontalCenter }
-        Item { width: 1; height: theme.space(3) }
     }
 
-    Column {
+    // Foot: the title language and the version
+    Corner {
+        x: theme.grout
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: theme.space(5)
-        anchors.horizontalCenter: parent.horizontalCenter
-        spacing: theme.space(3)
-        Seg {
-            anchors.horizontalCenter: parent.horizontalCenter
-            small: true
-            options: ["JP", "EN"]
-            index: Door.preferences.title_language === "English" ? 1 : 0
-            onPicked: function(i) {
-                var p = JSON.parse(JSON.stringify(Door.preferences))
-                p.title_language = i === 1 ? "English" : "Romaji"
-                Door.setPreferences(p)
+        anchors.bottomMargin: theme.grout
+        width: root.tileWidth
+        height: foot.implicitHeight + root.pad * 2
+        radius: theme.radiusTile
+        smoothing: theme.cornerSmoothing
+        color: theme.tile
+        Column {
+            id: foot
+            anchors.centerIn: parent
+            spacing: theme.space(2)
+            Seg {
+                id: lang
+                anchors.horizontalCenter: parent.horizontalCenter
+                small: true
+                options: ["JP", "EN"]
+                index: Door.preferences.title_language === "English" ? 1 : 0
+                onPicked: function(i) {
+                    var p = JSON.parse(JSON.stringify(Door.preferences))
+                    p.title_language = i === 1 ? "English" : "Romaji"
+                    Door.setPreferences(p)
+                }
             }
-        }
-        Text {
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: root.width - theme.space(3)
-            horizontalAlignment: Text.AlignHCenter
-            elide: Text.ElideMiddle
-            text: Shell.version
-            color: theme.textFaint
-            font.family: theme.fontUi
-            font.pointSize: theme.typeSmall
-            // Elided in the rail; the full string on hover through the frame's own tip,
-            // never a native ToolTip.
-            Tooltip { text: Shell.version }
+            Label {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: root.tileWidth - root.pad * 2
+                horizontalAlignment: Text.AlignHCenter
+                elide: Text.ElideMiddle
+                text: Shell.version
+                role: "ledger"
+                color: theme.textFaint
+                // Elided in the rail; the full string on hover through the frame's own tip,
+                // never a native ToolTip.
+                Tooltip { text: Shell.version }
+            }
         }
     }
 }
