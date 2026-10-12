@@ -450,7 +450,12 @@ fn mal_invalid_client_without_a_secret_asks_for_the_secret() {
     );
     let open_url = ready_url(&c, job);
     let state = param(&open_url, "state");
-    http_get(53694, &format!("/callback?code=abc&state={state}"));
+    // The tab is answered once the exchange has an outcome, so it says what
+    // the app will say rather than "connected".
+    let page = http_get(53694, &format!("/callback?code=abc&state={state}"));
+    assert!(page.starts_with("HTTP/1.1 400"), "{page}");
+    assert!(page.contains("client secret"), "{page}");
+    assert!(page.contains("try again"), "{page}");
     let failed = common::wait_job(&c, job);
     match failed.body {
         EventBody::JobFailed {
@@ -468,6 +473,45 @@ fn mal_invalid_client_without_a_secret_asks_for_the_secret() {
         other => panic!("{other:?}"),
     }
     assert!(token_form(&http).iter().all(|(k, _)| k != "client_secret"));
+}
+
+/// A token AniList will not accept fails the job, and the tab that
+/// brought it is told so instead of being shown a success.
+#[test]
+fn an_anilist_token_that_fails_validation_gets_the_error_page() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    core.set_oauth_port(53696);
+    core.call(Call::SetTrackerCredentials {
+        tracker: Tracker::Anilist,
+        client_id: "123".into(),
+        client_secret: None,
+    })
+    .unwrap();
+    http.push_json(
+        400,
+        serde_json::json!({ "errors": [{ "message": "Invalid token", "status": 400 }], "data": null }),
+    );
+    let job = started(
+        core.call(Call::ConnectTracker {
+            tracker: Tracker::Anilist,
+        })
+        .unwrap(),
+    );
+    ready_url(&c, job);
+    let page = http_get(53696, "/callback?access_token=bogus&expires_in=60");
+    assert!(page.starts_with("HTTP/1.1 400"), "{page}");
+    assert!(!page.contains("is connected to"), "{page}");
+    assert!(page.contains("try again"), "{page}");
+    let failed = common::wait_job(&c, job);
+    assert!(
+        matches!(failed.body, EventBody::JobFailed { .. }),
+        "{failed:?}"
+    );
+    match core.call(Call::GetTrackers).unwrap() {
+        Reply::Trackers { state } => assert!(!state.anilist.connected),
+        other => panic!("{other:?}"),
+    }
 }
 
 /// The same refusal with a secret sent is not about a missing secret, so

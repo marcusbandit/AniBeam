@@ -10,9 +10,11 @@
 //! secret has been pasted or bundled for an app registered as "web".
 //!
 //! Carried from Electron's `trackerHandler.ts`: the urls character for
-//! character, the five minute window, and the order the pages are served
-//! in. The browser is answered before the token is validated or exchanged,
-//! so the tab finishes cleanly whatever the provider says next.
+//! character and the five minute window. Unlike Electron, the browser's
+//! last request is held open until the account is known, the token
+//! validated or the code exchanged and the profile read, and only then
+//! answered: a tab that says "connected" while the app says the sign-in
+//! failed is the one outcome worse than a second of waiting.
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -155,10 +157,63 @@ async fn run(
         },
     );
 
-    let callback = tokio::time::timeout(FLOW_TIMEOUT, serve(&listener, t, &state))
+    let (callback, mut tab) = tokio::time::timeout(FLOW_TIMEOUT, serve(&listener, t, &state))
         .await
         .map_err(|_| accounts::tracker_error(t, TIMED_OUT))??;
 
+    // The browser's request is held while this runs, so the page it gets
+    // says what actually happened: a provider refusal reaches the tab as the
+    // error page with the provider's own words, not as a success the app
+    // then contradicts.
+    let signed_in = sign_in(
+        &core,
+        t,
+        callback,
+        &verifier,
+        &client_id,
+        client_secret.as_deref(),
+        &redirect_url,
+    )
+    .await;
+    match &signed_in {
+        Ok(_) => reply(&mut tab, OK, &success_page(site_name(t))).await,
+        Err(e) => reply(&mut tab, BAD_REQUEST, &error_page(&page_message(e))).await,
+    }
+    let username = signed_in?;
+    let trackers = accounts::state_async(&core).await?;
+    ctx.emit(
+        Level::Debug,
+        "trackers changed",
+        EventBody::TrackersChanged { state: trackers },
+    );
+    // The account has a list and the core has none of it, so the fetch is
+    // started here rather than waited for by the first page that wants a
+    // number. Forced, because a connection that has just happened cannot
+    // be inside anybody's freshness window.
+    cache::start_refresh(&core, Some(t), true);
+    Ok(Finished {
+        level: Level::Info,
+        message: format!("{} connected as {username}", site_name(t)),
+        body: EventBody::TrackerConnected {
+            tracker: t,
+            username,
+        },
+    })
+}
+
+/// What the browser came back with, turned into a stored account: the
+/// AniList token validated with a `Viewer` query, or the MAL code exchanged
+/// and the profile read, then the tokens and the row saved. The username
+/// is what the finished job reports.
+async fn sign_in(
+    core: &Arc<Core>,
+    t: Tracker,
+    callback: Callback,
+    verifier: &str,
+    client_id: &str,
+    client_secret: Option<&str>,
+    redirect_url: &str,
+) -> Result<String, CoreError> {
     let (user_id, username, tokens) = match callback {
         Callback::Anilist {
             access_token,
@@ -185,12 +240,12 @@ async fn run(
         }
         Callback::Mal { code } => {
             let tokens = exchange(
-                &core,
+                core,
                 &code,
-                &verifier,
-                &client_id,
-                client_secret.as_deref(),
-                &redirect_url,
+                verifier,
+                client_id,
+                client_secret,
+                redirect_url,
             )
             .await?;
             let profile = core.mal.get(MAL_ME, &tokens.access_token).await?;
@@ -212,36 +267,27 @@ async fn run(
         }
     };
 
-    let store = accounts::save_tokens(&core, t, &tokens).await?;
+    let store = accounts::save_tokens(core, t, &tokens).await?;
     accounts::save_connection(
-        &core,
+        core,
         t,
         user_id,
         &username,
-        &client_id,
+        client_id,
         tokens.expires_at,
         store,
     )
     .await?;
-    let trackers = accounts::state_async(&core).await?;
-    ctx.emit(
-        Level::Debug,
-        "trackers changed",
-        EventBody::TrackersChanged { state: trackers },
-    );
-    // The account has a list and the core has none of it, so the fetch is
-    // started here rather than waited for by the first page that wants a
-    // number. Forced, because a connection that has just happened cannot
-    // be inside anybody's freshness window.
-    cache::start_refresh(&core, Some(t), true);
-    Ok(Finished {
-        level: Level::Info,
-        message: format!("{} connected as {username}", site_name(t)),
-        body: EventBody::TrackerConnected {
-            tracker: t,
-            username,
-        },
-    })
+    Ok(username)
+}
+
+/// The line the browser's error page shows for a sign-in that failed after
+/// the callback: the provider's own words without the log's prefix.
+fn page_message(e: &CoreError) -> String {
+    match e {
+        CoreError::Provider { message, .. } => message.clone(),
+        other => other.to_string(),
+    }
 }
 
 /// The code exchange. The verifier is what proves this is the client that
@@ -312,7 +358,13 @@ async fn bind_with_retry(port: u16) -> Result<TcpListener, CoreError> {
 /// One connection at a time until the flow is settled. Everything that is
 /// not the callback the core is waiting for is answered and the loop goes
 /// round again, so a favicon request or a stray reload cannot end a flow.
-async fn serve(listener: &TcpListener, t: Tracker, state: &str) -> Result<Callback, CoreError> {
+/// The callback itself is not answered here: its connection comes back
+/// with it, and the page goes out once the sign-in has an outcome.
+async fn serve(
+    listener: &TcpListener,
+    t: Tracker,
+    state: &str,
+) -> Result<(Callback, TcpStream), CoreError> {
     loop {
         let (mut stream, _) = listener.accept().await.map_err(io_error)?;
         let target = match read_target(&mut stream).await {
@@ -362,23 +414,22 @@ async fn serve(listener: &TcpListener, t: Tracker, state: &str) -> Result<Callba
                 reply(&mut stream, BAD_REQUEST, &error_page(NO_CODE)).await;
                 return Err(accounts::tracker_error(t, NO_CODE));
             };
-            // The page goes out before the exchange, so the tab is finished
-            // with whatever MAL says to the request that follows.
-            reply(&mut stream, OK, &success_page(site_name(t))).await;
-            return Ok(Callback::Mal { code });
+            return Ok((Callback::Mal { code }, stream));
         }
         let Some(access_token) = get("access_token") else {
             reply(&mut stream, BAD_REQUEST, &error_page(NO_TOKEN)).await;
             return Err(accounts::tracker_error(t, NO_TOKEN));
         };
-        reply(&mut stream, OK, &success_page(site_name(t))).await;
         let expires_at = get("expires_in")
             .and_then(|seconds| seconds.parse::<u64>().ok())
             .map(|seconds| time::now() + Duration::from_secs(seconds));
-        return Ok(Callback::Anilist {
-            access_token,
-            expires_at,
-        });
+        return Ok((
+            Callback::Anilist {
+                access_token,
+                expires_at,
+            },
+            stream,
+        ));
     }
 }
 
