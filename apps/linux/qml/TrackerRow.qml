@@ -7,6 +7,7 @@ import com.marcusrosado.AniBeam
 
 Item {
     id: root
+    objectName: tracker !== "" ? "tracker-" + tracker : ""
     property string tracker: ""
     property var account: ({})
     property bool waiting: false
@@ -23,6 +24,9 @@ Item {
     readonly property string name: tracker === "Anilist" ? "AniList" : "MyAnimeList"
     readonly property string initials: tracker === "Anilist" ? "AL" : "MAL"
     readonly property bool connected: account.connected === true
+    // A confirm left up must not greet the next connection: any way the row stops being
+    // connected (the confirm's own Disconnect, a revoked token) puts the question away
+    onConnectedChanged: if (!connected) confirming = false
     readonly property string line: connected
         ? "Connected as " + (account.username || "?") + ", synced " + (account.last_sync ? Fmt.relative(account.last_sync, Date.now() / 1000) : "never")
         : "Not connected"
@@ -32,7 +36,7 @@ Item {
     readonly property bool showSetup: showCreds && guided
 
     width: parent ? parent.width : theme.space(100)
-    implicitHeight: top.height + (showSetup ? theme.space(3) + setup.implicitHeight : showCreds ? theme.space(3) + creds.implicitHeight : 0)
+    implicitHeight: top.height + (showSetup ? theme.space(3) + setupBox.implicitHeight : showCreds ? theme.space(3) + creds.implicitHeight : 0)
 
     Item {
         id: top
@@ -49,12 +53,11 @@ Item {
             color: root.connected ? theme.accentSoft : theme.surfaceSunken
             borderColor: root.connected ? "transparent" : theme.line
             borderWidth: root.connected ? 0 : 1
-            Text {
+            Label {
                 anchors.centerIn: parent
                 text: root.initials
+                role: "ledger"
                 color: root.connected ? theme.accent : theme.textDim
-                font.family: theme.fontUi
-                font.pointSize: theme.typeSmall
                 font.weight: Font.Bold
             }
         }
@@ -66,21 +69,20 @@ Item {
             anchors.rightMargin: theme.space(6)
             anchors.verticalCenter: parent.verticalCenter
             spacing: theme.space(0.5)
-            Text {
+            Label {
                 width: parent.width
                 text: root.name
-                color: theme.text
-                wrapMode: Text.Wrap
-                font.family: theme.fontSans
+                role: "title"
                 font.pointSize: theme.typeNormal
+                wrapMode: Text.Wrap
             }
-            Text {
+            Label {
                 width: parent.width
                 text: root.line
+                role: "ui"
+                font.pointSize: theme.typeSmall
                 color: theme.textDim
                 wrapMode: Text.Wrap
-                font.family: theme.fontUi
-                font.pointSize: theme.typeSmall
             }
         }
         // Loaders, not four plain children behind `visible`: `childrenRect`, which sizes
@@ -112,7 +114,7 @@ Item {
     }
     Component {
         id: disconnectButton
-        Button { text: "Disconnect"; icon: "log-out"; onClicked: root.confirming = true }
+        Button { objectName: root.tracker + "-disconnect"; text: "Disconnect"; icon: "log-out"; onClicked: root.confirming = true }
     }
     Component {
         id: disconnectConfirm
@@ -120,7 +122,7 @@ Item {
             question: "Disconnect " + root.name + "? Your access token will be removed."
             confirmText: "Disconnect"
             confirmIcon: "log-out"
-            onAccepted: root.disconnect()
+            onAccepted: { root.confirming = false; root.disconnect() }
             onKept: root.confirming = false
         }
     }
@@ -133,21 +135,21 @@ Item {
     // walks the create-client, paste-id, connect sequence with the state
     // each step leaves behind.
     Column {
-        id: setup
+        id: setupBox
         visible: root.showSetup
         anchors.top: top.bottom
         anchors.topMargin: theme.space(3)
         anchors.left: parent.left
         anchors.right: parent.right
         spacing: theme.space(2)
-        Text {
+        Label {
             width: parent.width
+            role: "ui"
             text: root.tracker === "Anilist"
                 ? "AniList signs AniBeam in through an app of your own. The set-up walks it: create the client, paste the id, connect."
                 : "Create an app (App Type: \"Web\") on MyAnimeList with the redirect URL below, then paste its id and secret here."
             color: theme.textDim
             wrapMode: Text.Wrap
-            font.family: theme.fontUi
             font.pointSize: theme.typeSmall
         }
         Button { text: "Set up " + root.name; icon: "log-in"; onClicked: root.setup() }
@@ -178,12 +180,12 @@ Item {
         Flow {
             width: parent.width
             spacing: theme.space(2)
-            Text {
+            Label {
                 text: "Redirect URL"
+                role: "ui"
                 color: theme.textDim
                 height: redirectChip.height
                 verticalAlignment: Text.AlignVCenter
-                font.family: theme.fontSans
                 font.pointSize: theme.typeSmall
             }
             Chip {

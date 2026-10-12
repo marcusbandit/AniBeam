@@ -1,11 +1,20 @@
-// A sunken pill showing the current value and a chevron glyph; opens a raised tile listing
-// the options under it, rows highlighted on hover, the current one in the accent. Up and Down move
-// the highlight, Return picks, Escape closes. Picking emits `picked`; the owner sets `index`.
+// A sunken pill showing the current value; opens a raised tile listing the options, rows
+// highlighted on hover, the current one in the accent. No chevron: an appended arrow on a
+// control is a killed idiom (DESIGN.md), the pill's hover edge and the focus ring say it opens.
+//
+// The list opens scrolled to the current row, under the pill, or above it when the window has
+// more room there, and never taller than the room it has, so it never runs off the window.
+// Up and Down move the highlight, Return or Enter picks, Escape closes the list alone (the
+// popup takes the key, the frame never sees it). Closing hands key focus back to the pill,
+// unless the press that closed it gave focus to something else. Picking emits `picked`; the
+// owner sets `index`. While open the list is a popover on the frame's escape stack, so the
+// frame's other layers (tooltips) know a popover is up.
+//
 // `interactive`, not the root's own `enabled`: `enabled` cascades to every child, so turning
 // it off would take the popup's own focus and hover handling with it for no visual gain
-// beyond what the caller's own row opacity already gives, exactly as PlayerButton's own
-// `interactive` avoids disabling its Tooltip's MouseArea.
+// beyond what the caller's own row opacity already gives.
 import QtQuick
+import QtQuick.Window
 import QtQuick.Controls.Basic as QC
 
 Corner {
@@ -17,7 +26,8 @@ Corner {
     signal picked(int i)
 
     readonly property string current: options.length > index && index >= 0 ? String(options[index]) : ""
-    implicitWidth: Math.max(minWidth, label.implicitWidth + chevron.width + theme.space(4) * 2 + theme.space(2))
+    readonly property bool opened: pop.opened
+    implicitWidth: Math.max(minWidth, label.implicitWidth + theme.space(4) * 2)
     scale: hover.pressed ? 0.98 : 1
     implicitHeight: theme.controlHeight
     radius: height / 2
@@ -27,31 +37,52 @@ Corner {
     borderWidth: activeFocus || pop.opened ? theme.space(0.5) : 1
     activeFocusOnTab: root.interactive
 
-    function open() { if (!root.interactive) return; pop.hi = index; pop.open() }
+    function open() {
+        if (!root.interactive || root.options.length === 0) return
+        pop.hi = Math.max(0, Math.min(root.index, root.options.length - 1))
+        place()
+        pop.open()
+    }
+    function pick(i) {
+        if (i < 0 || i >= root.options.length) return
+        pop.close()
+        root.picked(i)
+    }
+
+    // Under the pill when the list fits there, else on whichever side has more room, cut to
+    // that room. Worked out on open (and on a window resize while open), not bound: the pill's
+    // window position is a mapToItem, which no binding tracks.
+    function place() {
+        var win = root.Window.window
+        if (!win) return
+        var top = root.mapToItem(null, 0, 0).y
+        var below = win.height - (top + root.height) - pop.gap - pop.edge
+        var above = top - pop.gap - pop.edge
+        var up = below < pop.wanted && above > below
+        pop.height = Math.max(pop.rowHeight + pop.inset * 2, Math.min(pop.wanted, up ? above : below))
+        pop.y = up ? -pop.height - pop.gap : root.height + pop.gap
+    }
+    Connections {
+        target: root.Window.window
+        enabled: pop.opened
+        function onHeightChanged() { root.place() }
+    }
+
     Keys.onSpacePressed: open()
     Keys.onReturnPressed: open()
+    Keys.onEnterPressed: open()
     Keys.onDownPressed: open()
 
     Label {
         id: label
         anchors.left: parent.left
         anchors.leftMargin: theme.space(4)
-        anchors.right: chevron.left
-        anchors.rightMargin: theme.space(2)
+        anchors.right: parent.right
+        anchors.rightMargin: theme.space(4)
         anchors.verticalCenter: parent.verticalCenter
         text: root.current
         role: "ui"
         elide: Text.ElideRight
-    }
-    Icon {
-        id: chevron
-        anchors.right: parent.right
-        anchors.rightMargin: theme.space(3)
-        anchors.verticalCenter: parent.verticalCenter
-        glyph: "chevron-down"
-        size: theme.space(4)
-        color: theme.textDim
-        rotation: pop.opened ? 180 : 0
     }
     MouseArea {
         id: hover
@@ -67,14 +98,39 @@ Corner {
         property int hi: 0
         readonly property real rowHeight: theme.controlHeight
         readonly property real inset: theme.space(1.5)
-        y: root.height + theme.space(1)
+        readonly property real gap: theme.space(1)
+        // Kept clear of the window's edge, the grout's width
+        readonly property real edge: theme.space(2)
+        readonly property real wanted: Math.min(root.options.length, 8) * rowHeight + inset * 2
+        y: root.height + gap
         width: root.width
-        height: Math.min(root.options.length, 8) * rowHeight + inset * 2
+        height: wanted
+        // Qt's own positioner as the backstop for anything place() missed (x, mostly)
+        margins: edge
         padding: 0
         focus: true
         background: null
         closePolicy: QC.Popup.CloseOnEscape | QC.Popup.CloseOnPressOutsideParent
-        onOpened: list.forceActiveFocus()
+
+        onOpened: {
+            list.positionViewAtIndex(pop.hi, ListView.Center)
+            list.forceActiveFocus()
+            if (typeof frame !== "undefined" && frame.escapeStack) frame.escapeStack.push("popover", pop)
+        }
+        onClosed: {
+            if (typeof frame !== "undefined" && frame.escapeStack) frame.escapeStack.pop(pop)
+            // After the press that closed it has been delivered: a field it landed in keeps
+            // the focus; focus left inside the list, on nothing, or on the window comes home.
+            Qt.callLater(function() {
+                var win = root.Window.window
+                if (!win || !root.visible) return
+                var f = win.activeFocusItem
+                for (var p = f; p; p = p.parent) if (p === list) { f = null; break }
+                if (!f || f === win.contentItem || (typeof frame !== "undefined" && f === frame)) root.forceActiveFocus()
+            })
+        }
+        Component.onDestruction: if (typeof frame !== "undefined" && frame.escapeStack) frame.escapeStack.pop(pop)
+
         contentItem: Corner {
             // A named Dropdown names its list "<name>-popup" and rows "<name>-option-<i>",
             // for a --drive script; the popup lives under the window's overlay, not here.
@@ -92,11 +148,22 @@ Corner {
                 model: root.options
                 currentIndex: pop.hi
                 keyNavigationEnabled: false
-                Keys.onUpPressed: pop.hi = Math.max(0, pop.hi - 1)
-                Keys.onDownPressed: pop.hi = Math.min(root.options.length - 1, pop.hi + 1)
-                Keys.onReturnPressed: { root.picked(pop.hi); pop.close() }
-                Keys.onEnterPressed: { root.picked(pop.hi); pop.close() }
-                Keys.onSpacePressed: { root.picked(pop.hi); pop.close() }
+                boundsBehavior: Flickable.StopAtBounds
+                function move(to) { pop.hi = Math.max(0, Math.min(root.options.length - 1, to)); positionViewAtIndex(pop.hi, ListView.Contain) }
+                Keys.onUpPressed: move(pop.hi - 1)
+                Keys.onDownPressed: move(pop.hi + 1)
+                Keys.onPressed: function(e) {
+                    if (e.key === Qt.Key_PageUp) { move(pop.hi - 8); e.accepted = true }
+                    else if (e.key === Qt.Key_PageDown) { move(pop.hi + 8); e.accepted = true }
+                    else if (e.key === Qt.Key_Home) { move(0); e.accepted = true }
+                    else if (e.key === Qt.Key_End) { move(root.options.length - 1); e.accepted = true }
+                }
+                Keys.onReturnPressed: root.pick(pop.hi)
+                Keys.onEnterPressed: root.pick(pop.hi)
+                Keys.onSpacePressed: root.pick(pop.hi)
+                // Tab out of an open list closes it rather than walking the page behind it
+                Keys.onTabPressed: pop.close()
+                Keys.onBacktabPressed: pop.close()
                 delegate: Corner {
                     required property int index
                     required property var modelData
@@ -122,7 +189,7 @@ Corner {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onEntered: pop.hi = index
-                        onClicked: { root.picked(index); pop.close() }
+                        onClicked: root.pick(index)
                     }
                 }
             }
