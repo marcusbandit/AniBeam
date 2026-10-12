@@ -132,13 +132,15 @@ SettingsTab {
                     spacing: wallBox.gap
                     Repeater {
                         model: tab.posters.slice(0, wallBox.cols * wallBox.rows)
-                        Corner {
+                        // A plain clipped Image, not a Corner fill: the Shape fill left
+                        // whole runs of these cells blank in the captures
+                        Rectangle {
                             id: cell
                             required property var modelData
                             width: wallBox.w; height: wallBox.h
-                            radius: theme.radiusMd; smoothing: theme.cornerSmoothing; color: theme.raised
-                            fillItem: art.status === Image.Ready ? art : null
-                            Image { id: art; visible: false; width: parent.width; height: parent.height; source: "file://" + cell.modelData.poster; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize: theme.posterDecodeSize }
+                            color: theme.raised
+                            clip: true
+                            Image { anchors.fill: parent; source: "file://" + cell.modelData.poster; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize: theme.posterDecodeSize }
                             MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: frame.go("series", { id: cell.modelData.id }, cell.modelData.title) }
                             Tooltip { text: cell.modelData.title }
                         }
