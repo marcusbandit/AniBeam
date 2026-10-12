@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 pub enum MatchTarget {
     Anilist { id: u64, season: Option<u32> },
     Mal { id: u64 },
+    Tvmaze { id: u64 },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Enum)]
@@ -176,6 +177,9 @@ pub enum Call {
     SetAutoSkip {
         intro: bool,
         outro: bool,
+    },
+    SetProviderOrder {
+        order: Vec<Provider>,
     },
     Export {
         path: String,

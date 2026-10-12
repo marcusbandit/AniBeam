@@ -6,6 +6,11 @@
 //! and so survives a cleared one, and `preferences.autoSkip`. A version 1
 //! document migrates in memory by leaving both None.
 //!
+//! The match also has a third shape, `{ "provider": "tvmaze", "tvmazeId" }`,
+//! added without a version bump: it is additive, a document without one
+//! reads exactly as before, and the ids behind it are filled by the next
+//! refresh rather than carried in the file.
+//!
 //! Every struct carries a flattened `extra` map, so a field this version
 //! has never heard of survives the read and is reported by name rather
 //! than dropped in silence. The two untagged enums carry none: an untagged
@@ -118,6 +123,11 @@ pub enum MatchEntry {
         #[serde(rename = "tmdbKind")]
         tmdb_kind: String,
     },
+    Tvmaze {
+        provider: TvmazeName,
+        #[serde(rename = "tvmazeId")]
+        tvmaze_id: u64,
+    },
 }
 
 /// The two tracker names, spelled as the document spells them. A typed
@@ -135,6 +145,12 @@ pub enum TrackerName {
 pub enum TmdbName {
     #[serde(rename = "tmdb")]
     Tmdb,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TvmazeName {
+    #[serde(rename = "tvmaze")]
+    Tvmaze,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -423,6 +439,31 @@ mod tests {
         assert!(
             matches!(&history.resume_points[1], ResumeEntry::File { file, .. } if file.ends_with("NCOP1.mkv"))
         );
+    }
+
+    /// The TVmaze shape reads beside the other two, and a document with
+    /// one is still version 1: the shape is additive.
+    #[test]
+    fn a_tvmaze_match_reads_as_its_own_shape() {
+        let text = FIXTURE.replacen(
+            "\"match\": null",
+            "\"match\": { \"provider\": \"tvmaze\", \"tvmazeId\": 83073 }",
+            1,
+        );
+        let (doc, ignored) = parse(text.as_bytes()).unwrap();
+        assert!(ignored.is_empty(), "{ignored:?}");
+        assert!(matches!(
+            doc.series[2].match_,
+            Some(MatchEntry::Tvmaze {
+                provider: TvmazeName::Tvmaze,
+                tvmaze_id: 83073
+            })
+        ));
+        // A tracker match is still a tracker match, not a TVmaze one.
+        assert!(matches!(
+            doc.series[0].match_,
+            Some(MatchEntry::Tracker { .. })
+        ));
     }
 
     #[test]

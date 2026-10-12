@@ -233,6 +233,7 @@ impl Snapshot {
                 mal_id: row.mal_id,
                 tmdb_id: row.tmdb_id,
                 tmdb_kind: row.tmdb_kind,
+                tvmaze_id: row.tvmaze_id,
                 confirmed: row.confirmed,
             }),
             episodes_on_disk: episodes.len() as u64,

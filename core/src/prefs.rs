@@ -1,5 +1,5 @@
 //! Preferences (the library and feed view state) and settings (subtitle
-//! defaults, auto-skip and the main tracker), both stored as JSON blobs in
+//! defaults, auto-skip, the main tracker and the provider order), both stored as JSON blobs in
 //! the settings table keyed by `store::settings`'s key constants.
 
 use rusqlite::Connection;
@@ -28,7 +28,47 @@ pub fn load_settings(conn: &Connection) -> Result<Settings, CoreError> {
         subtitle_defaults: settings::get_or_default(conn, settings::SUBTITLE_DEFAULTS)?,
         auto_skip: settings::get_or_default(conn, settings::AUTO_SKIP)?,
         main_tracker: load_main_tracker(conn)?,
+        provider_order: load_provider_order(conn)?,
     })
+}
+
+/// The match providers in the order the auto-match walks them. A stored
+/// order that no longer names every provider exactly once, a row from a
+/// build that knew fewer of them, reads as the default rather than
+/// leaving a provider out of every match for good.
+pub fn load_provider_order(conn: &Connection) -> Result<Vec<Provider>, CoreError> {
+    let stored: Option<Vec<Provider>> = settings::get(conn, settings::PROVIDER_ORDER)?;
+    Ok(stored
+        .filter(|order| validate_provider_order(order).is_ok())
+        .unwrap_or_else(|| MATCH_PROVIDERS.to_vec()))
+}
+
+pub fn save_provider_order(conn: &Connection, order: &[Provider]) -> Result<(), CoreError> {
+    settings::set(conn, settings::PROVIDER_ORDER, &order)
+}
+
+/// Every match provider exactly once, and nothing that is not one: an
+/// order is a reordering, never a way to switch a provider off.
+pub fn validate_provider_order(order: &[Provider]) -> Result<(), CoreError> {
+    if let Some(p) = order.iter().find(|p| !MATCH_PROVIDERS.contains(p)) {
+        return Err(CoreError::invalid(
+            "order",
+            format!("{} is not a match provider", p.label()),
+        ));
+    }
+    for p in MATCH_PROVIDERS {
+        let n = order.iter().filter(|o| **o == p).count();
+        if n != 1 {
+            return Err(CoreError::invalid(
+                "order",
+                format!(
+                    "{} appears {n} times; every provider appears once",
+                    p.label()
+                ),
+            ));
+        }
+    }
+    Ok(())
 }
 
 pub fn save_subtitle_defaults(conn: &Connection, d: &SubtitleDefaults) -> Result<(), CoreError> {

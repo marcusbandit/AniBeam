@@ -26,6 +26,7 @@ pub struct MatchInfo {
     pub mal_id: Option<u64>,
     pub tmdb_id: Option<u64>,
     pub tmdb_kind: Option<TmdbKind>,
+    pub tvmaze_id: Option<u64>,
     pub confirmed: bool,
 }
 
@@ -415,6 +416,10 @@ pub struct Settings {
     pub subtitle_defaults: SubtitleDefaults,
     pub auto_skip: AutoSkip,
     pub main_tracker: Tracker,
+    /// The match providers in the order the auto-match tries them and the
+    /// match panel offers them. Always every one of `MATCH_PROVIDERS`,
+    /// each exactly once.
+    pub provider_order: Vec<Provider>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
@@ -521,6 +526,7 @@ impl Default for Settings {
             subtitle_defaults: SubtitleDefaults::default(),
             auto_skip: AutoSkip::default(),
             main_tracker: Tracker::Anilist,
+            provider_order: MATCH_PROVIDERS.to_vec(),
         }
     }
 }
