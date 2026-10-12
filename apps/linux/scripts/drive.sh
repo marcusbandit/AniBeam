@@ -11,7 +11,9 @@ script="$(realpath "$1")"; shift
 out="${ANIBEAM_CAPTURES:-$here/captures}"; mkdir -p "$out"
 root="${ANIBEAM_ROOT:-$here/captures/root}"; mkdir -p "$root"
 log="$out/$(basename "$script" .json).drive.log"
-cargo build -p anibeam --quiet
+# ANIBEAM_NO_BUILD=1 skips the build and uses target/debug as it is: parallel reviewers
+# capture without queueing on the cargo lock behind running builds.
+[ -n "${ANIBEAM_NO_BUILD:-}" ] || cargo build -p anibeam --quiet
 # The RHI backend only with a DISPLAY to make its GL context against; see shoot.sh.
 rhi_env=()
 [ -n "${DISPLAY:-}" ] && rhi_env=(QT_QUICK_BACKEND=rhi QSG_RHI_BACKEND=opengl)

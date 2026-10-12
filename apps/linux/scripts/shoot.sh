@@ -7,7 +7,9 @@ here="$(cd "$(dirname "$0")/.." && pwd)"
 name="$1"; shift
 out="$here/captures"; mkdir -p "$out"
 root="${ANIBEAM_ROOT:-$out/root}"; mkdir -p "$root"
-cargo build -p anibeam --quiet
+# ANIBEAM_NO_BUILD=1 skips the build and uses target/debug as it is: parallel reviewers
+# capture without queueing on the cargo lock behind running builds.
+[ -n "${ANIBEAM_NO_BUILD:-}" ] || cargo build -p anibeam --quiet
 # The software scene graph cannot paint a Shapes fillItem, so every poster comes back white
 # under plain offscreen; forcing the RHI backend fixes that, but RHI's GL backend needs GLX,
 # which needs a DISPLAY. Without one, forcing it aborts (no context, no PNG) instead of
