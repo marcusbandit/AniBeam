@@ -1,13 +1,13 @@
 // The search field: a sunken tile with a hairline and the accent ring on focus, placeholder
-// in faint text, a "/  Ctrl K" hint at rest, an X once there is text. Escape clears and
-// leaves it.
+// in faint text, a "/ or Ctrl+K" hint at rest, an X once there is text. Escape clears and
+// leaves it, unless a layer is open, which Escape closes first.
 import QtQuick
 
 Corner {
     id: root
     property alias text: input.text
-    property string placeholder: "Search romaji, english or folder"
-    property string hint: "/  Ctrl K"
+    property string placeholder: "Search titles or folders"
+    property string hint: "/ or Ctrl+K"
     signal cleared()
     width: Math.min(parent ? parent.width : theme.space(120), theme.space(120))
     height: theme.controlHeight
@@ -33,7 +33,12 @@ Corner {
         font.weight: theme.roleWeight("ui"); font.variableAxes: theme.roleAxes("ui")
         selectionColor: theme.accentSoft; selectedTextColor: theme.text
         clip: true
-        Keys.onEscapePressed: { text = ""; focus = false; root.cleared() }
+        // With a layer open (a menu, a picker, a sheet) Escape is left to propagate up to
+        // the frame, which closes that layer; the query stays.
+        Keys.onEscapePressed: function(e) {
+            if (frame.escapeStack.top()) { e.accepted = false; return }
+            text = ""; focus = false; root.cleared()
+        }
         Text { anchors.fill: parent; verticalAlignment: Text.AlignVCenter; visible: !input.text; text: root.placeholder; color: theme.textFaint; font: input.font }
     }
     Label {

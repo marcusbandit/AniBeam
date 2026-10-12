@@ -53,9 +53,10 @@ Item {
     Component.onDestruction: root.close()
 
     // The drawer is not rebuilt on navigation, unlike a page's own popovers, so it survives
-    // a page switch on its own; Frame's own nav.changed handler re-pushes it onto the
-    // escape stack right after clearing, so Escape still closes it first after a page
-    // change. Nothing here needs to react to navigation.
+    // a page switch on its own; Frame's reclaimFrameOwned() keeps its escape-stack entry
+    // through the clear on every navigation, so Escape still reaches it after a page
+    // change. Nothing here needs to react to navigation. On close, Frame hands key focus
+    // back to the page (onClosed), since show() took it.
 
     function anyOn(o) { for (var k in o) if (o[k]) return true; return false }
     function flip(o, k) { var n = {}; for (var j in o) n[j] = o[j]; n[k] = !n[k]; return n }
@@ -111,6 +112,10 @@ Item {
         anchors.bottom: parent.bottom
 
         Frost { anchors.fill: parent; radius: theme.radiusTile }
+        // Under the header and the list (declared before them), so they keep their buttons
+        // and WheelStep; the gaps between them no longer pass a right-click, a wheel or a
+        // hover to the page beneath.
+        Blocker { anchors.fill: parent; scrim: false }
         Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: theme.line }
 
         Item {
@@ -147,7 +152,7 @@ Item {
                     Chip {
                         required property string modelData
                         anchors.verticalCenter: parent.verticalCenter
-                        text: modelData.toLowerCase()
+                        text: modelData
                         small: true
                         clickable: true
                         selected: root.stageOn[modelData] === true
@@ -162,7 +167,7 @@ Item {
                     Chip {
                         required property string modelData
                         anchors.verticalCenter: parent.verticalCenter
-                        text: modelData.toLowerCase()
+                        text: modelData === "Warn" ? "Warning" : modelData
                         small: true
                         clickable: true
                         selected: root.levelOn[modelData] === true
@@ -216,7 +221,7 @@ Item {
                     Chip {
                         id: stageChip
                         anchors.verticalCenter: parent.verticalCenter
-                        text: modelData.stage.toLowerCase()
+                        text: modelData.stage
                         small: true
                         color: theme.surfaceSunken
                         textColor: theme.textDim

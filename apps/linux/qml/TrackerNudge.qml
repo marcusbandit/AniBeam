@@ -1,5 +1,5 @@
-// The library's first-run nudge toward a tracker: one flat tile across the top of the page
-// while neither tracker is connected, with a Connect for each and Not now. Connect goes
+// The library's first-run nudge toward a tracker: one tile across the full width of the
+// wall, set under the header tiles as a stone of its own, while neither tracker is connected, with a Connect for each and Not now. Connect goes
 // through frame.openConnect, so with the build's own credentials it is the whole sign-in in
 // one click. Not now is kept in the shell's own settings file under the config directory
 // (a --root run's sandbox included), and connecting either tracker retires it as well.
@@ -7,7 +7,7 @@ import QtQuick
 import QtCore
 import com.marcusrosado.AniBeam
 
-Corner {
+Tile {
     id: root
     Settings {
         id: kept
@@ -20,15 +20,11 @@ Corner {
     readonly property bool wanted: !kept.trackerNudgeDismissed && !anyConnected
 
     visible: wanted
-    height: visible ? Math.max(words.implicitHeight, actions.height) + pad * 2 : 0
-    radius: theme.radiusTile
-    smoothing: theme.cornerSmoothing
-    color: theme.tile
-    readonly property real pad: theme.space(5)
+    // What the content needs; the page cuts the tile to the module from this.
+    implicitHeight: Math.max(words.implicitHeight, actions.height, mark.height) + padding * 2
 
     Corner {
         id: mark
-        x: root.pad
         anchors.verticalCenter: parent.verticalCenter
         width: theme.space(10); height: width
         radius: width / 2
@@ -47,7 +43,7 @@ Corner {
     }
     Row {
         id: actions
-        anchors.right: parent.right; anchors.rightMargin: root.pad
+        anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
         spacing: theme.space(2)
         ConnectButton { objectName: "nudge-anilist"; tracker: "Anilist"; text: "Connect AniList"; icon: "log-in"; primary: true; onClicked: frame.openConnect("Anilist") }

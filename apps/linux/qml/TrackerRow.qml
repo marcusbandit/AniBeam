@@ -1,5 +1,6 @@
-// One tracker: a round avatar with the provider's initials, lit in the accent while
-// connected, the name and connection line, and one control on the right. Not connected,
+// One tracker: a pill naming the service in full (no logo is bundled, and a caps monogram
+// is a killed idiom), lit in the accent while connected, the connection line, and one
+// control on the right. Not connected,
 // that control is Connect, which hands the tracker to frame.openConnect: with credentials
 // the browser opens on that click, without them the sheet walks the set-up. While the
 // browser is out it is Cancel and the sign-in page again; connected, Disconnect behind an
@@ -10,6 +11,7 @@ import com.marcusrosado.AniBeam
 
 Item {
     id: root
+    objectName: tracker !== "" ? "tracker-" + tracker : ""
     property string tracker: ""
     property var account: ({})
     property bool confirming: false
@@ -17,14 +19,16 @@ Item {
     signal disconnect()
 
     readonly property string name: frame.trackerName(tracker)
-    readonly property string initials: tracker === "Anilist" ? "AL" : "MAL"
     readonly property bool connected: account.connected === true
+    // A confirm left up must not greet the next connection: any way the row stops being
+    // connected (the confirm's own Disconnect, a revoked token) puts the question away
+    onConnectedChanged: if (!connected) confirming = false
     readonly property bool waiting: frame.connecting[tracker] !== undefined
     readonly property string error: frame.connectErrors[tracker] || ""
     readonly property bool needsSecret: tracker === "Mal" && !connected && !waiting && /client secret/i.test(error)
     readonly property string line: connected
         ? "Connected as " + (account.username || "?") + ", synced " + (account.last_sync ? Fmt.relative(account.last_sync, Date.now() / 1000) : "never")
-        : waiting ? "Waiting for the browser"
+        : waiting ? "Waiting for you to approve in the browser"
         : error !== "" ? error
         : "Not connected"
 
@@ -46,19 +50,20 @@ Item {
             id: avatar
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            width: theme.space(9); height: width
-            radius: width / 2
+            // One width for both services, so the two rows' connection lines start level
+            width: Math.max(theme.space(30), badge.implicitWidth + theme.space(3) * 2)
+            height: theme.controlHeight
+            radius: height / 2
             smoothing: theme.cornerSmoothing
             color: root.connected ? theme.accentSoft : theme.surfaceSunken
             borderColor: root.connected ? "transparent" : theme.line
             borderWidth: root.connected ? 0 : 1
-            Text {
+            Label {
+                id: badge
                 anchors.centerIn: parent
-                text: root.initials
+                text: root.name
+                role: "ledger"
                 color: root.connected ? theme.accent : theme.textDim
-                font.family: theme.fontUi
-                font.pointSize: theme.typeSmall
-                font.weight: Font.Bold
             }
         }
         Column {
@@ -69,21 +74,13 @@ Item {
             anchors.rightMargin: theme.space(6)
             anchors.verticalCenter: parent.verticalCenter
             spacing: theme.space(0.5)
-            Text {
-                width: parent.width
-                text: root.name
-                color: theme.text
-                wrapMode: Text.Wrap
-                font.family: theme.fontSans
-                font.pointSize: theme.typeNormal
-            }
-            Text {
+            Label {
                 width: parent.width
                 text: root.line
+                role: "ui"
+                font.pointSize: theme.typeSmall
                 color: !root.connected && !root.waiting && root.error !== "" ? theme.red : theme.textDim
                 wrapMode: Text.Wrap
-                font.family: theme.fontUi
-                font.pointSize: theme.typeSmall
             }
         }
         // Loaders, not plain children behind `visible`: an inactive branch (the wide
@@ -119,15 +116,15 @@ Item {
     }
     Component {
         id: disconnectButton
-        Button { text: "Disconnect"; icon: "log-out"; onClicked: root.confirming = true }
+        Button { objectName: root.tracker + "-disconnect"; text: "Disconnect"; icon: "log-out"; onClicked: root.confirming = true }
     }
     Component {
         id: disconnectConfirm
         InlineConfirm {
-            question: "Disconnect " + root.name + "? Your access token will be removed."
+            question: "Disconnect " + root.name + "? Your sign-in will be removed."
             confirmText: "Disconnect"
             confirmIcon: "log-out"
-            onAccepted: root.disconnect()
+            onAccepted: { root.confirming = false; root.disconnect() }
             onKept: root.confirming = false
         }
     }
@@ -144,11 +141,11 @@ Item {
         anchors.left: parent.left
         anchors.leftMargin: avatar.width + theme.space(3)
         spacing: theme.space(2)
-        Text {
+        Label {
             anchors.verticalCenter: parent.verticalCenter
             text: "A client secret is saved for this app."
+            role: "ui"
             color: theme.textDim
-            font.family: theme.fontUi
             font.pointSize: theme.typeSmall
         }
         // An empty secret is the contract's "remove"; an absent one would keep it.

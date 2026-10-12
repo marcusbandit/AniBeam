@@ -49,9 +49,11 @@ Item {
         if (root.guided) accountId.focusInput()
     }
     function close() {
+        if (!visible) return
         frame.escapeStack.pop(root)
         visible = false
         closed()
+        frame.focusPage(root)
     }
     // The guided step 3, and the retry after a missing secret: whatever was typed is saved
     // first, so a kill mid-flow does not lose it, then the flow starts over.
@@ -66,12 +68,9 @@ Item {
     visible: false
     z: 10
 
-    Rectangle {
-        anchors.fill: parent
-        color: theme.scrim
-        opacity: 0.6
-        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.close() }
-    }
+    // The scrim and shield: a press of any button off the sheet closes it, and nothing
+    // (a right-click, a wheel, a hover) reaches the page under it.
+    Blocker { anchors.fill: parent; dismissOnPress: true; onDismissed: root.close() }
 
     // The step's roundel: the number while pending, the check once the step's
     // fact exists, the clock while the browser is out.
@@ -138,8 +137,9 @@ Item {
         color: theme.surfaceRaised
         borderColor: theme.lineStrong
         borderWidth: 1
-        // Swallows clicks so the scrim under the sheet does not close it.
-        MouseArea { anchors.fill: parent }
+        // Takes every press on the sheet's text and padding, which would otherwise reach
+        // the shield and close it; the steps are declared after it, so their controls sit on top.
+        MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons }
         HoverHandler { id: sheetHover }
 
         Column {
@@ -283,8 +283,8 @@ Item {
                     StepText {
                         title: root.anilist ? "Create the client on AniList" : "Create the app on MyAnimeList"
                         body: root.anilist
-                            ? "Open AniList's developer settings, create a client, and give it this redirect URL exactly, the port and the trailing /callback included."
-                            : "Open MyAnimeList's API page, create an ID with App Type \"other\", and give it this redirect URL exactly, the port and the trailing /callback included."
+                            ? "Open AniList's developer settings, create a client, and give it this redirect URL exactly, including the port and the /callback path."
+                            : "Open MyAnimeList's API page, create an ID with App Type \"other\", and give it this redirect URL exactly, including the port and the /callback path."
                     }
                     Flow {
                         width: parent.width
@@ -296,10 +296,10 @@ Item {
                             clickable: true
                             icon: urlCopied.running ? "check" : "copy"
                             maxLabelWidth: parent.width - theme.space(30)
-                            onClicked: { clip.text = frame.redirectUrl; clip.selectAll(); clip.copy(); urlCopied.restart() }
+                            onClicked: { copyBuf.text = frame.redirectUrl; copyBuf.selectAll(); copyBuf.copy(); urlCopied.restart() }
                             Tooltip { text: "Copy the redirect URL" }
                         }
-                        TextEdit { id: clip; visible: false }
+                        TextEdit { id: copyBuf; visible: false }  // not "clip": that id would shadow Item.clip
                         Timer { id: urlCopied; interval: 1200 }
                     }
                 }

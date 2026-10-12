@@ -13,6 +13,7 @@ fn main() {
             .qml_file("qml/TokensPage.qml")
             .qml_file("qml/Corner.qml")
             .qml_file("qml/Frost.qml")
+            .qml_file("qml/Blocker.qml")
             .qml_file("qml/WheelStep.qml")
             .qml_file("qml/Label.qml")
             .qml_file("qml/Icon.qml")
@@ -68,6 +69,7 @@ fn main() {
             .qml_file("qml/PlayerPage.qml")
             .qml_file("qml/ActivityDrawer.qml")
             .qml_file("qml/Note.qml")
+            .qml_file("qml/Tile.qml")
             .qml_file("qml/Tiles.qml")
             .qml_file("qml/UsageBar.qml")
             .qml_file("qml/SettingsTab.qml")
@@ -100,7 +102,10 @@ fn main() {
     // qrc:/qt/qml/com/marcusrosado/AniBeam/assets/...; a name left out of this list is a
     // blank icon at runtime, not a build error, so it is generated:
     // ls apps/linux/assets/icons/*.svg | sed 's|apps/linux/||;s|.*|        "&",|'
+    // mosaic.js is a QML script library the library page imports relatively; the module
+    // builder only takes .qml files, so it rides the qrc at the same path instead.
     .qrc_resources([
+        "qml/mosaic.js",
         "assets/icon.png",
         "assets/fonts/Archivo-Variable-Regular.ttf",
         "assets/fonts/Archivo-Variable-SemiBold.ttf",

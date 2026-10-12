@@ -70,7 +70,7 @@ PageScroll {
         nowMs: page.nowMs
         readonly property var sched: page.scheduledIn(card)
         metaOverride: sched ? "" : page.reasonText(card.reason)
-        countdownOverride: sched ? "EP " + String(sched.episode).padStart(2, "0") + " in " + Fmt.countdownSeconds(sched.at - page.nowMs / 1000) : ""
+        countdownOverride: sched ? "Episode " + sched.episode + " in " + shortCountdown(sched.at - page.nowMs / 1000) : ""
         onOpened: card.series ? frame.go("series", { id: card.series.id }, card.series.title) : undefined
     }
 

@@ -1,18 +1,23 @@
-// Spec 4.1 unit 2, in the demo's language: a breadcrumb bar, a controls band, and the
-// poster grid as numbered sections — Airing first, then everything, grouped by genre or
-// viewed state on demand. The core searches and sorts; the page partitions the sorted
-// list into sections client-side and keeps it in a RecordModel, reloaded, debounced,
-// when the core says a series changed.
+// The library as a mosaic (DESIGN.md, Layout): one module, every element a tile on it, set
+// in one constant joint (theme.grout) that is also the page's margin. The header is a row of
+// tiles (title, tabs, sorts, group, show watched, search, count) that scrolls with the wall
+// as its first unit rows; under it, the sections packed by mosaic.js: each opens with a
+// label stone, then its hero tiles (2x2: in progress and watched this fortnight, or airing
+// this week), then the small tiles filling in around them. The core searches and sorts; the
+// page partitions the sorted list into sections client-side, keeps it in a RecordModel and
+// reloads, debounced, when the core says a series changed.
 import QtQuick
 import QtQuick.Controls.Basic as QC
 import QtQuick.Dialogs
 import com.marcusrosado.AniBeam
+import "mosaic.js" as Mosaic
 
 Item {
     id: page
+    objectName: "library-page"   // a --drive target, and the evals below
     property var props: ({})
-    property alias scrollY: grid.contentY
-    function focusSearch() { search.focusInput() }
+    property alias scrollY: flick.contentY
+    function focusSearch() { flick.contentY = 0; search.focusInput() }
     // "escape" is reserved by the QML compiler; the frame's hook is named escapePressed.
     function escapePressed() { return false }
 
@@ -33,8 +38,14 @@ Item {
     property bool hiddenExist: false
     property bool watchedExist: false
     property real nowMs: Date.now()
+    // The clock the heroes are picked against: set on reload, not ticking with nowMs, so
+    // the wall is not repacked (every tile rebuilt) twice a minute
+    property real packedAt: Date.now()
     property bool libraryEmpty: false
     property string groupBy: "None"   // None | Genre | Viewed
+    // Bumped on every reload: the sections depend on it, so a reload that returns the same
+    // number of series (a rename, a progress change) still repaints the wall
+    property int revision: 0
 
     RecordModel { id: cards; roles: ["id", "title", "titles", "poster", "code", "watched", "watched_state", "total_episodes", "total_is_estimate", "strip", "community_score", "my_score", "hidden", "next_airing", "last_viewed_at", "episodes_on_disk", "kind", "format", "genres"] }
 
@@ -55,13 +66,22 @@ Item {
         p.library_show_watched = on
         Door.setPreferences(p)
     }
+    // A hero's Play: the series' next episode, read only now (never during layout); a
+    // series with nothing to play next opens its page instead
+    function playSeries(c) {
+        var r = Door.getSeries(c.id)
+        var d = !r.error ? r.reply.detail : null
+        var file = d ? (d.next_up ? d.next_up : (c.kind === "Movie" && d.episodes && d.episodes.length ? d.episodes[0].file : null)) : null
+        if (file) frame.go("player", { file: file }, c.title)
+        else frame.go("series", { id: c.id }, c.title)
+    }
     readonly property bool showHidden: Door.revealHidden && hiddenExist
     readonly property var tabNames: tabs.concat(watchedExist ? ["Watched"] : []).concat(showHidden ? ["Hidden"] : [])
 
-    // ---- The sections: one entry per section, carrying its cards. The section label is
-    // the header — "Airing" with its count beside it — grouped views by size descending.
-    // The airing rail is capped high; its own pager lived on the old grid and the stream
-    // replaces it.
+    // ---- The sections: one entry per section, carrying its cards. Airing first (capped
+    // high), then everything, or the grouped shelves by size descending. A series shows
+    // once: while Airing stands, its series are left out of the sections after it, and
+    // each section's count is the tiles it holds.
     function groupLabel(c) {
         if (groupBy === "Genre") {
             var g = c.genres
@@ -77,16 +97,20 @@ Item {
     }
     readonly property bool airingShows: page.query === "" && !page.libraryEmpty
     readonly property var groups: {
+        page.revision   // a dependency: see revision
         var airingRows = []
         if (airingShows) {
             var r = Door.listAiring(0, 60)
             if (!r.error) airingRows = r.reply.series
         }
         var main = page.tab === "All" ? "Everything" : page.tab
+        var airingIds = {}
+        for (var a = 0; a < airingRows.length; a++) airingIds[airingRows[a].id] = true
         var buckets = {}
         var order = []
         for (var i = 0; i < cards.count; i++) {
             var c = cards.at(i)
+            if (airingIds[c.id]) continue
             var label = groupBy === "None" ? main : groupLabel(c)
             if (!buckets[label]) { buckets[label] = []; order.push(label) }
             buckets[label].push(c)
@@ -98,34 +122,69 @@ Item {
             return d !== 0 ? d : (a < b ? -1 : a > b ? 1 : 0)
         })
         var out = []
-        if (airingShows) out.push({ label: "Airing", count: airingRows.length, cards: airingRows })
+        if (airingShows && airingRows.length) out.push({ label: "Airing", count: airingRows.length, cards: airingRows })
         for (var s = 0; s < order.length; s++) out.push({ label: order[s], count: buckets[order[s]].length, cards: buckets[order[s]] })
         return out
     }
 
+    // ---- The module. Content runs from the rail's own joint on the left to one grout
+    // short of the page's right, top and bottom edges.
+    readonly property real grout: theme.grout
+    readonly property var geo: Mosaic.columns(Math.max(1, width - grout), theme.posterWidth, grout)
+    readonly property real unit: geo.u
+    readonly property real step: unit + grout
+    function px(units) { return Mosaic.unitsToPx(units, unit, grout) }
+    function spanX(col) { return geo.xs[Math.min(col, geo.cols - 1)] }
+    function spanW(col, span) { var last = Math.min(geo.cols - 1, col + span - 1); return geo.xs[last] + geo.ws[last] - geo.xs[col] }
+    // A small tile is the poster plus the smallest plate that holds its lines, rounded up
+    // to whole units; a hero is two of them and the joint between, both ways.
+    Card { id: probe; visible: false; live: false; posterWidth: page.geo.w }
+    readonly property int unitsSmall: Mosaic.unitsFor(probe.posterHeight + probe.minPlate, unit, grout)
+    readonly property int unitsHero: unitsSmall * 2
+
+    readonly property var sections: {
+        // Candidates only: the packer keeps a series large once on the wall and demotes
+        // heroes that would leave a hole, so each section offers every qualifying series
+        var now = page.packedAt / 1000
+        var out = []
+        for (var i = 0; i < groups.length; i++) {
+            var g = groups[i]
+            out.push({ label: g.label, count: g.count, cards: g.cards, heroes: Mosaic.pickHeroes(g.cards, now, g.cards.length, null) })
+        }
+        return out
+    }
+    readonly property var packed: Mosaic.pack(sections, geo.cols, unitsSmall, unitsHero)
+    readonly property var tiles: packed.tiles
+
+    // For a --drive script's evals
+    function packedOverlaps() { return Mosaic.overlaps(tiles) }
+    function tileCount() { return tiles.filter(function(t) { return t.kind !== "label" }).length }
+    function heroCount() { return tiles.filter(function(t) { return t.kind === "hero" }).length }
+
     function reload() {
-        var keep = grid.contentY
+        var keep = flick.contentY
         var r = Door.listSeries(tab, query, sort, direction, Door.revealHidden)
         if (r.error) { frame.toast(r.error.message); return }
         cards.reset(r.reply.series)
-        if (query === "" && tab === "All") {
-            libraryEmpty = r.reply.series.length === 0 && !Door.revealHidden
-        } else {
+        // The library is empty only when nothing is anywhere: All leaves watched series
+        // out unless they are shown, and hidden ones out unless revealed.
+        var allCount = r.reply.series.length
+        if (query !== "" || tab !== "All") {
             var all = Door.listSeries("All", "", "Alpha", "Asc", false)
-            if (!all.error) libraryEmpty = all.reply.series.length === 0 && !Door.revealHidden
+            allCount = all.error ? 1 : all.reply.series.length
         }
-        if (Door.revealHidden) {
-            var hidden = Door.listSeries("Hidden", "", "Alpha", "Asc", true)
-            if (!hidden.error) hiddenExist = hidden.reply.series.length > 0
-        } else {
-            hiddenExist = false
-        }
+        var hidden = Door.listSeries("Hidden", "", "Alpha", "Asc", true)
+        var hiddenCount = hidden.error ? 0 : hidden.reply.series.length
+        hiddenExist = Door.revealHidden && hiddenCount > 0
         // The Watched tab exists while watched series do, whatever the
         // toggle says: the section is where they live, the toggle is only
         // about joining them back into the others.
         var watched = Door.listSeries("Watched", "", "Alpha", "Asc", false)
         if (!watched.error) watchedExist = watched.reply.series.length > 0
-        grid.contentY = Math.max(0, Math.min(keep, Math.max(0, grid.contentHeight - grid.height)))
+        libraryEmpty = allCount === 0 && !watchedExist && hiddenCount === 0
+        packedAt = Date.now()
+        revision++
+        flick.contentY = Math.max(0, Math.min(keep, Math.max(0, flick.contentHeight - flick.height)))
     }
     Timer { id: debounce; interval: 250; onTriggered: page.reload() }
     Timer { id: queryDebounce; interval: 150; onTriggered: { page.query = search.text; frame.nav.current.props = { q: page.query }; page.reload() } }
@@ -171,173 +230,334 @@ Item {
         if (["Genre", "Viewed"].indexOf(props.group) >= 0) groupBy = props.group
         queryDebounce.stop()
         reload()
+        if (!theme.reducedMotion && frame.nav.pendingScroll <= 0) sweep.start()
+        else { heroIn = 1; shelfIn = 1 }
     }
 
-    // ---- The page header: the title in the voice, the live count on the right
-    Item {
-        id: crumbBar
-        anchors.left: parent.left; anchors.leftMargin: theme.space(8)
-        // The right margin carries the scroll bar: the column pulls in two extra units so
-        // the bar floats in the page's margin instead of over the cards' edge.
-        anchors.right: parent.right; anchors.rightMargin: theme.space(10)
-        anchors.top: parent.top; anchors.topMargin: theme.space(7)
-        height: crumb.height
-        visible: !page.libraryEmpty
-        Text {
-            id: crumb
-            anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
-            text: "Library"
-            color: theme.text
-            font.family: theme.fontDisplay
-            font.pointSize: theme.typeLarge
-            font.weight: Font.DemiBold
-        }
-        Text {
-            anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-            text: cards.count + " series"
-            color: theme.textDim
-            font.family: theme.fontUi
-            font.pointSize: theme.typeSmall
-        }
+    // ---- The one orchestrated moment: on open the heroes settle, then the shelf in one
+    // sweep. Opacity and a one-grout drop; no per-tile stagger.
+    property real heroIn: 0
+    property real shelfIn: 0
+    SequentialAnimation {
+        id: sweep
+        NumberAnimation { target: page; property: "heroIn"; to: 1; duration: 220; easing.type: Easing.OutCubic }
+        NumberAnimation { target: page; property: "shelfIn"; to: 1; duration: 220; easing.type: Easing.OutCubic }
     }
 
-    // ---- The tracker nudge: first run only, until a tracker is connected or it is put
-    // off. Over the empty library too, since that is exactly when a new user is here.
-    TrackerNudge {
-        id: nudge
-        anchors.left: crumbBar.left; anchors.right: crumbBar.right
-        anchors.top: page.libraryEmpty ? parent.top : crumbBar.bottom
-        anchors.topMargin: page.libraryEmpty ? theme.space(7) : theme.space(5)
+    // ---- The header: a row of tiles on the module, one unit tall, wrapping to a second
+    // row on a narrow window. Each tile's span is the whole columns its content needs; the
+    // row's spare columns go to the title (or the search on a wrapped row). A control says
+    // what it is, so no tile carries an eyebrow; only the grouping keeps a word ("Group"),
+    // since a bare "None" would not.
+    readonly property real hpad: theme.space(3)
+    function spanFor(w) { return Math.max(1, Math.ceil((w + hpad * 2 + grout) / (geo.w + grout))) }
+    readonly property var headerLayout: Mosaic.header([
+        { key: "title", span: Math.max(2, spanFor(titleLabel.implicitWidth)), flex: true },
+        { key: "tabs", span: spanFor(tabsSeg.implicitWidth) },
+        { key: "sorts", span: spanFor(sortSeg.implicitWidth) },
+        { key: "group", span: spanFor(groupRow.implicitWidth) },
+        { key: "watched", span: spanFor(watchedRow.implicitWidth) },
+        { key: "search", span: Math.max(2, spanFor(theme.space(56))), flex: true },
+        { key: "count", span: spanFor(countRow.implicitWidth) }
+    ], geo.cols)
+    function headerTile(key) {
+        var t = headerLayout.tiles
+        for (var i = 0; i < t.length; i++) if (t[i].key === key) return t[i]
+        return { col: 0, row: 0, colSpan: 1 }
+    }
+    readonly property real headerHeight: px(headerLayout.rows)
+
+    component HeaderTile: Corner {
+        property string key: ""
+        readonly property var slot: page.headerTile(key)
+        x: page.spanX(slot.col)
+        y: slot.row * page.step
+        width: page.spanW(slot.col, slot.colSpan)
+        height: page.unit
+        radius: theme.radiusTile
+        smoothing: theme.cornerSmoothing
+        color: theme.tile
     }
 
-    // ---- Controls band: the tabs and the search on one edge-aligned row, the sorts and
-    // the group switch under them, a hairline closing the band.
-    Item {
-        id: controls
-        anchors.left: crumbBar.left; anchors.right: crumbBar.right
-        anchors.top: nudge.visible ? nudge.bottom : crumbBar.bottom; anchors.topMargin: theme.space(5)
-        height: tabsRow.height + sortsRow.height + theme.space(5)
-        visible: !page.libraryEmpty
-        Seg {
-            id: tabsRow
-            anchors.left: parent.left; anchors.top: parent.top
-            options: page.tabNames
-            index: Math.max(0, page.tabNames.indexOf(page.tab))
-            onPicked: function(i) { page.pickTab(i) }
-        }
-        SearchField {
-            id: search; width: theme.space(100)
-            anchors.right: parent.right; anchors.top: parent.top
-            onTextChanged: queryDebounce.restart()
-            onCleared: { queryDebounce.stop(); page.query = ""; frame.nav.current.props = {}; page.reload() }
-        }
-        Row {
-            id: sortsRow
-            anchors.left: parent.left; anchors.bottom: parent.bottom
-            spacing: theme.space(4)
-            Repeater {
-                model: page.sorts
-                Text {
-                    required property var modelData
-                    readonly property bool on: page.sort === modelData[0]
-                    text: modelData[1] + (on && page.direction === "Desc" && modelData[0] !== "Alpha" ? " ↓" : on ? " ↑" : "")
-                    color: on ? theme.text : theme.textFaint
-                    font.family: theme.fontUi
-                    font.pointSize: theme.typeSmall
-                    font.weight: on ? Font.DemiBold : Font.Normal
-                    Rectangle { visible: parent.on; anchors.bottom: parent.bottom; width: parent.width; height: 2; color: theme.accent }
-                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.pickSort(parent.modelData[0]) }
-                }
-            }
-        }
-        Row {
-            anchors.right: parent.right; anchors.bottom: parent.bottom
-            spacing: theme.space(3)
-            Text {
-                text: "Group"
-                color: theme.textFaint
-                font.family: theme.fontUi
-                font.pointSize: theme.typeSmall
-                anchors.verticalCenter: parent.verticalCenter
-            }
-            Seg {
-                small: true
-                options: ["None", "Genre", "Viewed"]
-                index: ["None", "Genre", "Viewed"].indexOf(page.groupBy)
-                onPicked: function(i) { page.groupBy = ["None", "Genre", "Viewed"][i] }
-            }
-        }
-    }
-    Rectangle {
-        anchors.left: crumbBar.left; anchors.right: crumbBar.right
-        anchors.top: controls.bottom; anchors.topMargin: theme.space(4)
-        height: 1; color: theme.line
-        visible: !page.libraryEmpty
-    }
-
-    // ---- The sectioned grid: one block per section, a numbered caps header over a Flow
-    // of cards. The ListView builds a block only when it scrolls near, so a big library
-    // never decodes its whole shelf at open.
-    ListView {
-        id: grid
-        anchors.left: crumbBar.left; anchors.right: crumbBar.right
-        anchors.top: controls.bottom; anchors.topMargin: theme.space(6)
-        anchors.bottom: parent.bottom
+    // ---- The wall
+    Flickable {
+        id: flick
+        x: 0
+        y: page.grout
+        width: page.width - page.grout
+        height: page.height - page.grout * 2
         visible: !page.libraryEmpty
         clip: true
         boundsBehavior: Flickable.StopAtBounds
-        readonly property real gapX: theme.space(5)
-        readonly property real cardWidth: {
-            var columns = Math.max(1, Math.floor((width + gapX) / (theme.posterWidth + gapX)))
-            return Math.floor((width + gapX) / columns) - gapX
-        }
-        model: page.groups
-        cacheBuffer: 600
-        QC.ScrollBar.vertical: ThinScrollBar {}
-        WheelStep { flick: grid }
-        spacing: theme.space(7)
-        delegate: Column {
-            required property var modelData
-            width: grid.width
-            spacing: theme.space(4)
-            Row {
-                spacing: theme.space(2)
-                Text {
-                    text: modelData.label
-                    color: theme.text
-                    font.family: theme.fontDisplay
-                    font.pointSize: theme.typeNormal * 1.15
-                    font.weight: Font.DemiBold
-                }
-                Text {
-                    text: modelData.count
-                    color: theme.textFaint
-                    font.family: theme.fontUi
-                    font.pointSize: theme.typeSmall
+        contentWidth: width
+        // The header tiles scroll with the wall: they are its first unit rows, and the
+        // tracker nudge, while it stands, the full-width row under them
+        readonly property real wallTop: page.headerHeight + page.grout + (nudge.visible ? nudge.height + page.grout : 0)
+        contentHeight: wallTop + page.px(page.packed.rows)
+        QC.ScrollBar.vertical: scrollBar
+        WheelStep { flick: flick }
+
+        Item {
+            id: header
+            width: flick.width
+            height: page.headerHeight
+            opacity: page.shelfIn
+
+            HeaderTile {
+                key: "title"
+                Label {
+                    id: titleLabel
+                    x: page.hpad
                     anchors.verticalCenter: parent.verticalCenter
+                    text: "Library"
+                    role: "display"
                 }
             }
-            Flow {
-                width: parent.width
-                spacing: grid.gapX
-                Repeater {
-                    model: modelData.cards
-                    Card {
-                        required property var modelData
-                        item: modelData
-                        posterWidth: grid.cardWidth; nowMs: page.nowMs
-                        onOpened: frame.go("series", { id: modelData.id }, modelData.title)
+            HeaderTile {
+                key: "tabs"
+                Seg {
+                    id: tabsSeg
+                    objectName: "tab"
+                    x: page.hpad
+                    anchors.verticalCenter: parent.verticalCenter
+                    options: page.tabNames
+                    index: Math.max(0, page.tabNames.indexOf(page.tab))
+                    onPicked: function(i) { page.pickTab(i) }
+                }
+            }
+            HeaderTile {
+                key: "sorts"
+                // The active sort carries its direction as a chevron; picking it again flips it
+                Seg {
+                    id: sortSeg
+                    objectName: "sort"
+                    x: page.hpad
+                    anchors.verticalCenter: parent.verticalCenter
+                    options: page.sorts.map(function(s) {
+                        return { text: s[1], name: s[0], icon: s[0] === page.sort ? (page.direction === "Asc" ? "chevron-up" : "chevron-down") : "" }
+                    })
+                    index: Math.max(0, page.sorts.findIndex(function(s) { return s[0] === page.sort }))
+                    onPicked: function(i) { if (i === index) page.flipDirection(); else page.pickSort(page.sorts[i][0]) }
+                }
+            }
+            HeaderTile {
+                key: "group"
+                Row {
+                    id: groupRow
+                    x: page.hpad
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: theme.space(2.5)
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Group"
+                        role: "ui"
+                        color: theme.textDim
+                    }
+                    Seg {
+                        id: groupSeg
+                        objectName: "group"
+                        options: ["None", "Genre", "Viewed"]
+                        index: ["None", "Genre", "Viewed"].indexOf(page.groupBy)
+                        onPicked: function(i) { page.groupBy = ["None", "Genre", "Viewed"][i] }
+                    }
+                }
+            }
+            HeaderTile {
+                key: "watched"
+                id: watchedTile
+                color: watchedArea.containsMouse ? theme.tileHover : theme.tile
+                // The whole tile toggles; the switch on it takes its own clicks the same way
+                MouseArea {
+                    id: watchedArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: page.pickShowWatched(!page.showWatched)
+                }
+                Row {
+                    id: watchedRow
+                    x: page.hpad
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: theme.space(2.5)
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Show watched"
+                        role: "ui"
+                    }
+                    Switch {
+                        id: watchedSwitch
+                        objectName: "show-watched"
+                        anchors.verticalCenter: parent.verticalCenter
+                        checked: page.showWatched
+                        onToggled: function(on) { page.pickShowWatched(on); checked = Qt.binding(function() { return page.showWatched }) }
+                    }
+                }
+            }
+            HeaderTile {
+                key: "search"
+                SearchField {
+                    id: search
+                    objectName: "library-search"
+                    x: page.hpad
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width - page.hpad * 2
+                    placeholder: "Search by romaji, English or folder"
+                    onTextChanged: queryDebounce.restart()
+                    onCleared: { queryDebounce.stop(); page.query = ""; frame.nav.current.props = {}; page.reload() }
+                }
+            }
+            HeaderTile {
+                key: "count"
+                Row {
+                    id: countRow
+                    anchors.right: parent.right; anchors.rightMargin: page.hpad
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: theme.space(1.5)
+                    Label {
+                        id: countFigure
+                        text: cards.count
+                        role: "ledger"
+                        font.pointSize: theme.typeDisplay
+                        font.weight: 700
+                        font.variableAxes: ({ "wdth": 88, "wght": 700 })
+                    }
+                    Label {
+                        anchors.baseline: countFigure.baseline
+                        text: "series"
+                        role: "ui"
+                        font.pointSize: theme.typeSmall
+                        color: theme.textDim
                     }
                 }
             }
         }
-        EmptyState {
-            visible: cards.count === 0 && !page.libraryEmpty
-            icon: "search"
-            title: page.query !== "" ? "No matches for \"" + page.query + "\"." : "Nothing here"
-            body: page.query !== "" ? "" : "No " + (page.tab === "Series" ? "series" : page.tab === "Movies" ? "films" : page.tab === "Watched" ? "watched items" : "items") + " in your library yet."
+
+        // The live window: tiles within a screen above or below the viewport carry their
+        // posters. The tiles are sorted by row, so the window is two binary searches here
+        // and an integer compare per tile.
+        readonly property int firstLive: {
+            var t = page.tiles, lo = 0, hi = t.length
+            var lim = (contentY - wallTop - height - page.px(page.unitsHero)) / page.step
+            while (lo < hi) { var m = (lo + hi) >> 1; if (t[m].row < lim) lo = m + 1; else hi = m }
+            return lo
         }
-        footer: Item { width: 1; height: theme.space(10) }
+        readonly property int lastLive: {
+            var t = page.tiles, lo = 0, hi = t.length
+            var lim = (contentY - wallTop + height * 2) / page.step
+            while (lo < hi) { var m = (lo + hi) >> 1; if (t[m].row <= lim) lo = m + 1; else hi = m }
+            return lo - 1
+        }
+
+        Repeater {
+            model: page.tiles
+            delegate: Item {
+                id: cell
+                required property var modelData
+                required property int index
+                readonly property bool stone: modelData.kind === "label"
+                readonly property bool hero: modelData.kind === "hero"
+                readonly property var section: page.sections[modelData.section]
+                readonly property real settle: hero ? page.heroIn : page.shelfIn
+                // Built only within a screen of the viewport: the rest of the wall is
+                // empty positioned Items
+                readonly property bool live: index >= flick.firstLive && index <= flick.lastLive
+                // Wholly inside the viewport: only such a tile answers to the generic
+                // "small-tile" / "hero-tile" names a --drive script clicks
+                readonly property bool inView: y >= flick.contentY && y + height <= flick.contentY + flick.height
+                objectName: stone ? "stone-" + section.label.toLowerCase() : "tile-" + modelData.card.id
+                x: page.spanX(modelData.col)
+                y: flick.wallTop + modelData.row * page.step + (1 - settle) * page.grout
+                width: page.spanW(modelData.col, modelData.colSpan)
+                height: page.px(modelData.rowSpan)
+                opacity: settle
+                Loader {
+                    anchors.fill: parent
+                    active: cell.live
+                    sourceComponent: cell.stone ? labelStone : seriesTile
+                }
+                Component {
+                    id: seriesTile
+                    Card {
+                        objectName: cell.inView ? (cell.hero ? "hero-tile" : "small-tile") : ""
+                        item: cell.modelData.card
+                        hero: cell.hero
+                        posterWidth: cell.width
+                        tileHeight: cell.height
+                        live: true   // the cell itself is built only inside the live window
+                        nowMs: page.nowMs
+                        onOpened: frame.go("series", { id: cell.modelData.card.id }, cell.modelData.card.title)
+                        onPlayed: page.playSeries(cell.modelData.card)
+                    }
+                }
+                // A section's first cell: its name and count, cut as a stone. Airing is set
+                // in the accent's own plate, the rest in raised slate.
+                Component {
+                    id: labelStone
+                    Corner {
+                        readonly property bool airing: cell.section.label === "Airing"
+                        radius: theme.radiusTile
+                        smoothing: theme.cornerSmoothing
+                        color: airing ? theme.plate(theme.accent) : theme.raised
+                        Label {
+                            x: theme.space(4); y: theme.space(4)
+                            width: parent.width - theme.space(8)
+                            text: cell.section.label
+                            role: "title"
+                            wrapMode: Text.Wrap
+                            maximumLineCount: 3
+                            elide: Text.ElideRight
+                        }
+                        Label {
+                            anchors.right: parent.right; anchors.rightMargin: theme.space(4)
+                            anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(3)
+                            text: cell.section.count
+                            role: "ledger"
+                            font.pointSize: theme.typeDisplay * 1.6
+                            font.weight: 700
+                            font.variableAxes: ({ "wdth": 88, "wght": 700 })
+                            color: parent.airing ? theme.text : theme.textDim
+                        }
+                    }
+                }
+            }
+        }
+
+        // Nothing in this shelf: under whatever the wall did place (the Airing section can
+        // still stand over an empty tab)
+        Item {
+            y: flick.contentHeight
+            width: flick.width
+            height: Math.max(theme.space(60), flick.height - y)
+            visible: cards.count === 0 && !page.libraryEmpty
+            EmptyState {
+                icon: "search"
+                title: page.query !== "" ? "No matches for \"" + page.query + "\"." : "Nothing here"
+                body: page.query !== "" ? "" : "No " + (page.tab === "Series" ? "series" : page.tab === "Movies" ? "films" : page.tab === "Watched" ? "watched items" : "items") + " in your library yet."
+            }
+        }
+    }
+    // ---- The tracker nudge: first run only, until a tracker is connected or it is put off.
+    // On the wall it is a full-width stone under the header, cut to whole unit rows and
+    // scrolling with it; over the empty library, where there is no wall, it is the same
+    // stone at the top of the page, since that is exactly when a new user is here. One
+    // instance either way, reparented, so its dismissal is one setting read once.
+    TrackerNudge {
+        id: nudge
+        parent: page.libraryEmpty ? page : flick.contentItem
+        x: page.spanX(0)
+        y: page.libraryEmpty ? page.grout : page.headerHeight + page.grout
+        width: page.spanW(0, page.geo.cols)
+        height: page.px(Math.max(1, Math.ceil((implicitHeight + page.grout) / page.step)))
+        opacity: page.libraryEmpty ? 1 : page.shelfIn
+    }
+
+    // The scroll bar rides the right-hand joint, not the tiles' edge
+    ThinScrollBar {
+        id: scrollBar
+        x: page.width - page.grout + Math.max(0, (page.grout - width) / 2)
+        y: flick.y
+        height: flick.height
+        width: Math.min(page.grout, theme.space(1))
     }
 
     // The empty home: Import, and a pointer at Settings

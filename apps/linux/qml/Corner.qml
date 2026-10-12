@@ -33,10 +33,14 @@ Item {
     // A ShapeGradient (LinearGradient and friends) painted instead of `color`.
     property ShapeGradient fillGradient: null
     property int dashed: 0
+    // Square off the top or bottom pair of corners: two Corners stacked edge to edge, one
+    // flatBottom over one flatTop, read as one rounded stone (a poster over its plate).
+    property bool flatTop: false
+    property bool flatBottom: false
 
     readonly property real inset: borderWidth / 2
-    readonly property string pathData: plain ? "" : squircle(width, height, radius, smoothing, inset)
-    readonly property bool plain: smoothing <= 0 && fillItem === null && fillGradient === null && dashed === 0
+    readonly property string pathData: plain ? "" : squircle(width, height, radius, smoothing, inset, flatTop, flatBottom)
+    readonly property bool plain: smoothing <= 0 && fillItem === null && fillGradient === null && dashed === 0 && !flatTop && !flatBottom
     readonly property bool fillIsImage: fillItem !== null && fillItem.fillMode !== undefined && fillItem.implicitWidth > 0
 
     // One child, picked by what the corner has to paint: a Rectangle, a flat Shape, or a
@@ -112,7 +116,7 @@ Item {
         }
     }
 
-    function squircle(w, h, reach, s, ins) {
+    function squircle(w, h, reach, s, ins, flatTop, flatBottom) {
         var x0 = ins, y0 = ins, x1 = w - ins, y1 = h - ins
         var W = x1 - x0, H = y1 - y0
         if (W <= 0 || H <= 0) return ""
@@ -140,13 +144,19 @@ Item {
         function arc(dx, dy) {
             return arced ? " a" + f(r) + " " + f(r) + " 0 0 1 " + f(dx) + " " + f(dy) : ""
         }
-        var path = "M" + f(x1 - p) + " " + f(y0)
-        // top right, then clockwise
-        path += cc(a, 0, a + b, 0, a + b + c, d) + arc(arcSection, arcSection) + cc(d, c, d, b + c, d, a + b + c)
-        path += " L" + f(x1) + " " + f(y1 - p)
-        path += cc(0, a, 0, a + b, -d, a + b + c) + arc(-arcSection, arcSection) + cc(-c, d, -(b + c), d, -(a + b + c), d)
-        path += " L" + f(x0 + p) + " " + f(y1)
-        path += cc(-a, 0, -(a + b), 0, -(a + b + c), -d) + arc(-arcSection, -arcSection) + cc(-d, -c, -d, -(b + c), -d, -(a + b + c))
+        // top right, then clockwise; a flat pair is a plain corner point instead
+        var path = flatTop ? "M" + f(x0) + " " + f(y0) + " L" + f(x1) + " " + f(y0)
+                           : "M" + f(x1 - p) + " " + f(y0)
+                             + cc(a, 0, a + b, 0, a + b + c, d) + arc(arcSection, arcSection) + cc(d, c, d, b + c, d, a + b + c)
+        if (flatBottom) {
+            path += " L" + f(x1) + " " + f(y1) + " L" + f(x0) + " " + f(y1)
+        } else {
+            path += " L" + f(x1) + " " + f(y1 - p)
+            path += cc(0, a, 0, a + b, -d, a + b + c) + arc(-arcSection, arcSection) + cc(-c, d, -(b + c), d, -(a + b + c), d)
+            path += " L" + f(x0 + p) + " " + f(y1)
+            path += cc(-a, 0, -(a + b), 0, -(a + b + c), -d) + arc(-arcSection, -arcSection) + cc(-d, -c, -d, -(b + c), -d, -(a + b + c))
+        }
+        if (flatTop) return path + " Z"
         path += " L" + f(x0) + " " + f(y0 + p)
         path += cc(0, -a, 0, -(a + b), d, -(a + b + c)) + arc(arcSection, -arcSection) + cc(c, -d, b + c, -d, a + b + c, -d)
         return path + " Z"

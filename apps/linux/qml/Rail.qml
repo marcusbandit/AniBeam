@@ -19,6 +19,9 @@ Item {
     readonly property real tileWidth: Math.max(theme.space(17), labels.implicitWidth + pad * 2, lang.implicitWidth + pad * 2)
     readonly property real tileHeight: Math.round(tileWidth * 0.72)
     width: tileWidth + theme.grout * 2
+    // The foot tile's height: the frame's status strip is cut to it, so the two sit in one
+    // band along the window's foot
+    readonly property real footHeight: footTile.height
 
     // The labels at the size the tiles set them, never shown: their widest is the tile's
     Column {
@@ -90,8 +93,10 @@ Item {
         }
     }
 
-    // Foot: the title language and the version
+    // Foot: the title language and the version (the crate's, then the commit, on two lines
+    // when the tile is narrow)
     Corner {
+        id: footTile
         x: theme.grout
         anchors.bottom: parent.bottom
         anchors.bottomMargin: theme.grout
@@ -120,12 +125,11 @@ Item {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: root.tileWidth - root.pad * 2
                 horizontalAlignment: Text.AlignHCenter
-                elide: Text.ElideMiddle
-                text: Shell.version
+                wrapMode: Text.Wrap
+                text: Shell.release
                 role: "ledger"
-                color: theme.textFaint
-                // Elided in the rail; the full string on hover through the frame's own tip,
-                // never a native ToolTip.
+                color: theme.textDim
+                // The full git description on hover, through the frame's own tip
                 Tooltip { text: Shell.version }
             }
         }

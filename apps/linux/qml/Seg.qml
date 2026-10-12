@@ -1,7 +1,7 @@
 // A segmented switch: options in a sunken pill, the active one carried by a raised pill
 // thumb that follows with exponential smoothing (theme.followRate). Picking emits `picked`; the owner sets `index`,
 // so a binding on it survives. An option is a string, or a record { text, icon, delegate }:
-// `icon` names a Lucide glyph drawn before the text, `delegate` is a Component drawn before
+// `icon` names a Lucide glyph drawn before the text, `name` the cell's objectName suffix, `delegate` is a Component drawn before
 // it instead, which reads the option's colour and record off its parent Loader as `tint`
 // and `option`.
 import QtQuick
@@ -64,8 +64,9 @@ Corner {
                 readonly property var custom: record && modelData.delegate ? modelData.delegate : null
                 readonly property bool on: index === root.index
                 readonly property color tint: on || cellMouse.containsMouse ? theme.text : theme.textDim
-                // A named Seg names its cells "<name>-<label>", for a --drive script
-                objectName: root.objectName !== "" ? root.objectName + "-" + label.toLowerCase() : ""
+                // A named Seg names its cells "<name>-<label>" (or "<name>-<option.name>" for a
+                // record that carries one), for a --drive script
+                objectName: root.objectName !== "" ? root.objectName + "-" + (record && modelData.name ? String(modelData.name) : label.toLowerCase()) : ""
                 width: content.implicitWidth + theme.space(3) * 2
                 height: root.height - root.pad * 2
                 Row {

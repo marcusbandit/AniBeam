@@ -15,13 +15,25 @@ Item {
     visible: open
     z: 900
 
+    // The anchor is kept so the panel can be placed again on every size change while open:
+    // the F key toggles fullscreen with a picker up, and a position computed once would
+    // strand the panel away from its button. mapToItem is not a tracked binding, so the
+    // explicit size handlers below are what keep it right.
+    property var anchorItem: null
+    function place() {
+        if (!anchorItem) return
+        var p = anchorItem.mapToItem(root, anchorItem.width / 2, 0)
+        panel.x = Math.max(theme.space(2), Math.min(p.x - panel.width / 2, root.width - panel.width - theme.space(2)))
+        panel.y = Math.max(theme.space(2), p.y - panel.height - theme.space(2))
+    }
+    onWidthChanged: if (open) place()
+    onHeightChanged: if (open) place()
     // Guarded the same way close() is: a second openAt on a picker already up would count
     // itself twice into page.openMenus and the chrome would never hide again.
     function openAt(anchor) {
         if (open) return
-        var p = anchor.mapToItem(root, anchor.width / 2, 0)
-        panel.x = Math.max(theme.space(2), Math.min(p.x - panel.width / 2, root.width - panel.width - theme.space(2)))
-        panel.y = Math.max(theme.space(2), p.y - panel.height - theme.space(2))
+        anchorItem = anchor
+        place()
         open = true
         page.openMenus++
         frame.escapeStack.push("popover", root)
@@ -32,13 +44,16 @@ Item {
     // is already guarded for the never-opened case, so this is safe unconditionally.
     Component.onDestruction: root.close()
 
-    MouseArea { anchors.fill: parent; onPressed: root.close() }
+    // The shield: any press outside the panel closes the picker, and no press, wheel or
+    // hover reaches what is under it
+    Blocker { anchors.fill: parent; scrim: false; dismissOnPress: true; onDismissed: root.close() }
     Corner {
         id: panel
+        objectName: root.objectName !== "" ? root.objectName + "-panel" : "track-picker-panel"
         width: theme.space(70); height: Math.min(theme.space(80), column.implicitHeight + theme.space(4))
         radius: theme.radiusMd; smoothing: theme.cornerSmoothing
         color: theme.surfaceRaised; borderColor: theme.lineStrong; borderWidth: 1
-        MouseArea { anchors.fill: parent }
+        MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons }
         Flickable {
             id: trackList
             anchors.fill: parent; anchors.margins: theme.space(2); clip: true

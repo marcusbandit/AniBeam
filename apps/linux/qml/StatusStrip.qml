@@ -1,4 +1,5 @@
-// The one-line status strip at the foot of every page, a thin tile set in the grout: the
+// The one-line status strip at the foot of every page, a tile across the content width set
+// in the grout, as tall as the rail's foot tile beside it (Frame sets the height): the
 // latest activity line with its stage chip and time, a progress line along the tile's top
 // edge while a job runs, and the unseen error count at the right. Clicking it toggles the
 // activity drawer.
@@ -21,7 +22,7 @@ Item {
         x: 0; y: 0
         width: parent.width - theme.grout
         height: parent.height - theme.grout
-        radius: theme.radiusInner(theme.space(1))
+        radius: theme.radiusTile
         smoothing: theme.cornerSmoothing
         color: mouse.containsMouse ? theme.tileHover : theme.tile
 
@@ -37,7 +38,7 @@ Item {
         Row {
             id: line
             anchors.left: parent.left
-            anchors.leftMargin: theme.space(2)
+            anchors.leftMargin: theme.space(4)
             anchors.right: errors.left
             anchors.rightMargin: theme.space(4)
             anchors.verticalCenter: parent.verticalCenter
@@ -55,7 +56,6 @@ Item {
                 width: Math.max(0, Math.min(implicitWidth, line.width - stageChip.width - stamp.width - line.spacing * 2))
                 text: root.message
                 role: "ui"
-                font.pointSize: theme.typeSmall
                 elide: Text.ElideRight
             }
             Label {
@@ -69,7 +69,7 @@ Item {
         Chip {
             id: errors
             anchors.right: parent.right
-            anchors.rightMargin: theme.space(2)
+            anchors.rightMargin: theme.space(4)
             anchors.verticalCenter: parent.verticalCenter
             visible: root.unseenErrors > 0
             width: visible ? implicitWidth : 0

@@ -28,6 +28,7 @@ pub mod qobject {
         #[qml_element]
         #[qml_singleton]
         #[qproperty(QString, version)]
+        #[qproperty(QString, release)]
         #[qproperty(QString, shoot)]
         #[qproperty(QString, page)]
         #[qproperty(QString, props)]
@@ -67,6 +68,7 @@ pub mod qobject {
 
 pub struct ShellRust {
     version: QString,
+    release: QString,
     shoot: QString,
     page: QString,
     props: QString,
@@ -97,6 +99,7 @@ impl Default for ShellRust {
         };
         ShellRust {
             version: QString::from(anibeam_core::VERSION),
+            release: QString::from(release(env!("CARGO_PKG_VERSION"), anibeam_core::VERSION).as_str()),
             shoot: QString::from(a.shoot.as_deref().unwrap_or("")),
             page: QString::from(a.page.as_deref().unwrap_or("library")),
             props: QString::from(a.props.as_deref().unwrap_or("")),
@@ -118,6 +121,46 @@ fn settings_url(config_dir: &std::path::Path) -> QString {
     let file = std::path::absolute(&file).unwrap_or(file);
     let url = cxx_qt_lib::QUrl::from_local_file(&QString::from(file.to_string_lossy().as_ref()));
     QString::from(String::from_utf8_lossy(url.to_encoded().as_slice()).as_ref())
+}
+
+/// The rail's version line: the crate's version and the short commit hash `git describe`
+/// put in `described` ("1.0.0.r166.gfcfae8c.dirty" gives "fcfae8c"), so a build reads
+/// "2.0.0-dev fcfae8c". Without a hash (no git at build time) it is the crate version alone.
+fn release(crate_version: &str, described: &str) -> String {
+    let hash = described
+        .split('.')
+        .find(|p| p.len() > 1 && p.starts_with('g') && p[1..].chars().all(|c| c.is_ascii_hexdigit()));
+    match hash {
+        Some(h) => format!("{crate_version} {}", &h[1..]),
+        None => crate_version.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn release_reads_the_crate_version_and_the_hash() {
+        assert_eq!(super::release("2.0.0-dev", "1.0.0.r166.gfcfae8c"), "2.0.0-dev fcfae8c");
+        assert_eq!(super::release("2.0.0-dev", "1.0.0.r166.gfcfae8c.dirty"), "2.0.0-dev fcfae8c");
+        assert_eq!(super::release("2.0.0-dev", "2.0.0-dev"), "2.0.0-dev");
+        assert_eq!(super::release("2.0.0", "2.0.0"), "2.0.0");
+    }
+
+    /// The url is absolute whatever the root was given as, and the characters a url
+    /// would read as delimiters are escaped into the path.
+    #[test]
+    fn the_settings_url_is_absolute_and_escaped() {
+        let url = super::settings_url(std::path::Path::new("/tmp/a #b?c%d/anibeam")).to_string();
+        assert_eq!(url, "file:///tmp/a%20%23b%3Fc%25d/anibeam/shell.conf");
+        let relative = super::settings_url(std::path::Path::new("rel/anibeam")).to_string();
+        let cwd = std::env::current_dir().unwrap();
+        assert!(relative.starts_with("file:///"), "{relative}");
+        assert!(relative.ends_with("/rel/anibeam/shell.conf"), "{relative}");
+        assert!(
+            relative.contains(cwd.file_name().unwrap().to_str().unwrap()),
+            "{relative}"
+        );
+    }
 }
 
 impl cxx_qt::Initialize for qobject::Shell {
@@ -173,23 +216,3 @@ impl qobject::Shell {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::settings_url;
-
-    /// The url is absolute whatever the root was given as, and the characters a url
-    /// would read as delimiters are escaped into the path.
-    #[test]
-    fn the_settings_url_is_absolute_and_escaped() {
-        let url = settings_url(std::path::Path::new("/tmp/a #b?c%d/anibeam")).to_string();
-        assert_eq!(url, "file:///tmp/a%20%23b%3Fc%25d/anibeam/shell.conf");
-        let relative = settings_url(std::path::Path::new("rel/anibeam")).to_string();
-        let cwd = std::env::current_dir().unwrap();
-        assert!(relative.starts_with("file:///"), "{relative}");
-        assert!(relative.ends_with("/rel/anibeam/shell.conf"), "{relative}");
-        assert!(
-            relative.contains(cwd.file_name().unwrap().to_str().unwrap()),
-            "{relative}"
-        );
-    }
-}
