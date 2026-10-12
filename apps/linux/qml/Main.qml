@@ -105,8 +105,10 @@ Window {
     // the scene into an image, so it works under QT_QPA_PLATFORM=offscreen. The colours are
     // the engine's first push, so the shot waits for Theme.ready and the frame's item as
     // well as for settle.
+    // --drive <script.json> starts its steps at the same moment instead of grabbing; see
+    // Driver.qml. driveOut is set only on a drive run, so it is the mode flag.
     function maybeShoot() {
-        if (window.settled && Theme.ready && frame.item && Shell.shoot !== "")
+        if (window.settled && Theme.ready && frame.item && (Shell.shoot !== "" || Shell.driveOut !== ""))
             shootTimer.start()
     }
     onSettledChanged: window.maybeShoot()
@@ -114,9 +116,20 @@ Window {
     Timer {
         id: shootTimer
         interval: 400
-        onTriggered: window.contentItem.grabToImage(function(result) {
-            result.saveToFile(Shell.shoot)
-            Qt.quit()
-        })
+        onTriggered: {
+            if (Shell.driveOut !== "") { if (driver.item) driver.item.start(); return }
+            window.contentItem.grabToImage(function(result) {
+                result.saveToFile(Shell.shoot)
+                Qt.quit()
+            })
+        }
     }
+    Loader {
+        id: driver
+        active: Shell.driveOut !== ""
+        sourceComponent: Driver { hostWindow: window; hostFrame: frame; outDir: Shell.driveOut; evaluate: window.driveEval }
+    }
+    // A drive script's {"eval": ...}: direct eval here, so window, frame and theme resolve,
+    // and `vars` holds what earlier evals stored with "as".
+    function driveEval(src, vars) { return eval(src) }
 }

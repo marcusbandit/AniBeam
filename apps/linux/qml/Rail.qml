@@ -54,6 +54,7 @@ Item {
                 id: entry
                 required property int index
                 required property var modelData
+                objectName: "rail-" + modelData.text.toLowerCase()   // a --drive target
                 readonly property bool on: index === root.active
                 width: parent.width
                 height: theme.controlHeight

@@ -41,12 +41,12 @@ SettingsTab {
                 Seg { options: [{ text: "Dark", icon: "moon" }, { text: "Light", icon: "sun" }, { text: "System", icon: "monitor" }]
                     index: ["dark", "light", "system"].indexOf(Theme.mode); onPicked: function(i) { Theme.pickMode(["dark", "light", "system"][i]) } } }
             SettingRow { label: "Colour source"; helper: "System reads your terminal's colours, or the desktop's scheme and accent when it finds no terminal config."
-                Seg { options: ["System", "Theme"]; index: Theme.source === "theme" ? 1 : 0; onPicked: function(i) { Theme.pickSource(i === 1 ? "theme" : "system") } } }
+                Seg { objectName: "colour-source"; options: ["System", "Theme"]; index: Theme.source === "theme" ? 1 : 0; onPicked: function(i) { Theme.pickSource(i === 1 ? "theme" : "system") } } }
             SettingRow { label: "Dark theme"; opacity: Theme.source === "theme" ? 1 : theme.disabledOpacity
-                Dropdown { options: tab.darkThemes.map(function(t) { return t.name }); index: tab.indexOf(tab.darkThemes, Theme.themeDark); interactive: Theme.source === "theme"
+                Dropdown { objectName: "theme-dark"; options: tab.darkThemes.map(function(t) { return t.name }); index: tab.indexOf(tab.darkThemes, Theme.themeDark); interactive: Theme.source === "theme"
                     onPicked: function(i) { Theme.pickTheme("dark", tab.darkThemes[i].stem) } } }
             SettingRow { label: "Light theme"; helper: "Base16 and kitty files in ~/.config/anibeam/themes appear here."; opacity: Theme.source === "theme" ? 1 : theme.disabledOpacity
-                Dropdown { options: tab.lightThemes.map(function(t) { return t.name }); index: tab.indexOf(tab.lightThemes, Theme.themeLight); interactive: Theme.source === "theme"
+                Dropdown { objectName: "theme-light"; options: tab.lightThemes.map(function(t) { return t.name }); index: tab.indexOf(tab.lightThemes, Theme.themeLight); interactive: Theme.source === "theme"
                     onPicked: function(i) { Theme.pickTheme("light", tab.lightThemes[i].stem) } } }
             SettingRow { label: "Accent"
                 Swatches { slot: Theme.accent; onPicked: function(s) { Theme.pickAccent(s) } } }

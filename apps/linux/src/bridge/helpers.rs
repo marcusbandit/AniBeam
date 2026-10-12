@@ -33,5 +33,10 @@ pub mod ffi {
             button: &QColor,
             button_text: &QColor,
         );
+        /// The --drive input: through QtGui's window-system entry points, as QtTest does.
+        /// kind 0 move, 1 press, 2 release, 3 release ending a click. `window` is a QML Window.
+        unsafe fn drive_mouse(window: *mut QObject, kind: i32, x: f64, y: f64, button: i32, modifiers: i32);
+        unsafe fn drive_wheel(window: *mut QObject, x: f64, y: f64, dx: i32, dy: i32, modifiers: i32);
+        unsafe fn drive_key(window: *mut QObject, press: bool, key: i32, modifiers: i32, text: &QString);
     }
 }

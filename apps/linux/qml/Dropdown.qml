@@ -78,6 +78,9 @@ Corner {
         closePolicy: QC.Popup.CloseOnEscape | QC.Popup.CloseOnPressOutsideParent
         onOpened: list.forceActiveFocus()
         contentItem: Corner {
+            // A named Dropdown names its list "<name>-popup" and rows "<name>-option-<i>",
+            // for a --drive script; the popup lives under the window's overlay, not here.
+            objectName: root.objectName !== "" ? root.objectName + "-popup" : ""
             radius: theme.radiusMd
             smoothing: theme.cornerSmoothing
             color: theme.surfaceRaised
@@ -99,6 +102,7 @@ Corner {
                 delegate: Corner {
                     required property int index
                     required property var modelData
+                    objectName: root.objectName !== "" ? root.objectName + "-option-" + index : ""
                     width: list.width
                     height: pop.rowHeight
                     radius: theme.radiusSm

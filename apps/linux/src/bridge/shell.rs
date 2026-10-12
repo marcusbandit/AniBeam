@@ -1,6 +1,7 @@
 //! Shell: what QML needs to know about this run before anything else exists. The version,
 //! the --shoot arguments and, from Task 7 on, the page a shoot opens, and from Task 9 on
-//! the JSON props that page opens with.
+//! the JSON props that page opens with. A --drive run also carries its script's text and
+//! the directory its shots land in, and the input invokables the QML driver sends through.
 //!
 //! It is also where the session bus starts, because this object exists exactly once and
 //! exists as soon as the engine loads Main.qml. Its thread handle is what the
@@ -29,6 +30,8 @@ pub mod qobject {
         #[qproperty(QString, props)]
         #[qproperty(i32, shoot_width)]
         #[qproperty(i32, shoot_height)]
+        #[qproperty(QString, drive)]
+        #[qproperty(QString, drive_out)]
         type Shell = super::ShellRust;
 
         /// A second launch, or MPRIS Raise, asked for the window; the token is the launcher's.
@@ -40,6 +43,18 @@ pub mod qobject {
         /// Raises `window` (the QML Window) with the xdg-activation token.
         #[qinvokable]
         unsafe fn raise_window(self: &Self, window: *mut QObject, token: &QString);
+        /// --drive: a mouse event at window coordinates (see cpp/helpers.h for `kind`).
+        #[qinvokable]
+        unsafe fn drive_mouse(self: &Self, window: *mut QObject, kind: i32, x: f64, y: f64, button: i32, modifiers: i32);
+        /// --drive: a wheel event; 120 is one notch.
+        #[qinvokable]
+        unsafe fn drive_wheel(self: &Self, window: *mut QObject, x: f64, y: f64, dx: i32, dy: i32, modifiers: i32);
+        /// --drive: a key press or release with the text it types.
+        #[qinvokable]
+        unsafe fn drive_key(self: &Self, window: *mut QObject, press: bool, key: i32, modifiers: i32, text: &QString);
+        /// --drive: one line to stderr, bare, with none of the QML logger's prefixes.
+        #[qinvokable]
+        fn drive_log(self: &Self, line: &QString);
     }
 
     impl cxx_qt::Threading for Shell {}
@@ -53,12 +68,28 @@ pub struct ShellRust {
     props: QString,
     shoot_width: i32,
     shoot_height: i32,
+    drive: QString,
+    drive_out: QString,
 }
 
 impl Default for ShellRust {
     fn default() -> Self {
         let a = crate::runtime::args();
-        let shooting = a.shoot.is_some();
+        let shooting = a.shoot.is_some() || a.drive.is_some();
+        // main has already read and checked the script and left on a bad one, so a failure
+        // here is the file changing underfoot; the driver reports an empty script as one.
+        let drive = a
+            .drive
+            .as_deref()
+            .map(|p| crate::args::load_drive(std::path::Path::new(p)).unwrap_or_default())
+            .unwrap_or_default();
+        let drive_out = if a.drive.is_some() {
+            crate::args::drive_out(a.out.as_deref(), std::env::var("ANIBEAM_CAPTURES").ok())
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            String::new()
+        };
         ShellRust {
             version: QString::from(anibeam_core::VERSION),
             shoot: QString::from(a.shoot.as_deref().unwrap_or("")),
@@ -66,6 +97,8 @@ impl Default for ShellRust {
             props: QString::from(a.props.as_deref().unwrap_or("")),
             shoot_width: if shooting { a.width as i32 } else { 0 },
             shoot_height: if shooting { a.height as i32 } else { 0 },
+            drive: QString::from(drive.as_str()),
+            drive_out: QString::from(drive_out.as_str()),
         }
     }
 }
@@ -96,5 +129,29 @@ impl qobject::Shell {
         if result.is_err() {
             eprintln!("anibeam: shell: raiseWindow panicked");
         }
+    }
+}
+
+impl qobject::Shell {
+    /// # Safety
+    /// `window` is the live QML Window, as for `raise_window`.
+    pub unsafe fn drive_mouse(&self, window: *mut cxx_qt::QObject, kind: i32, x: f64, y: f64, button: i32, modifiers: i32) {
+        unsafe { crate::bridge::helpers::ffi::drive_mouse(window, kind, x, y, button, modifiers) }
+    }
+
+    /// # Safety
+    /// `window` is the live QML Window, as for `raise_window`.
+    pub unsafe fn drive_wheel(&self, window: *mut cxx_qt::QObject, x: f64, y: f64, dx: i32, dy: i32, modifiers: i32) {
+        unsafe { crate::bridge::helpers::ffi::drive_wheel(window, x, y, dx, dy, modifiers) }
+    }
+
+    /// # Safety
+    /// `window` is the live QML Window, as for `raise_window`.
+    pub unsafe fn drive_key(&self, window: *mut cxx_qt::QObject, press: bool, key: i32, modifiers: i32, text: &QString) {
+        unsafe { crate::bridge::helpers::ffi::drive_key(window, press, key, modifiers, text) }
+    }
+
+    pub fn drive_log(&self, line: &QString) {
+        eprintln!("{line}");
     }
 }

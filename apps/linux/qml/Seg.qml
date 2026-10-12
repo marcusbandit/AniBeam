@@ -67,6 +67,8 @@ Corner {
                 readonly property var custom: record && modelData.delegate ? modelData.delegate : null
                 readonly property bool on: index === root.index
                 readonly property color tint: on ? theme.text : theme.textDim
+                // A named Seg names its cells "<name>-<label>", for a --drive script
+                objectName: root.objectName !== "" ? root.objectName + "-" + label.toLowerCase() : ""
                 width: content.implicitWidth + theme.space(3) * 2
                 height: root.height - root.pad * 2
                 Row {

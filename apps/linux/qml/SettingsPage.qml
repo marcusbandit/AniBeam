@@ -28,6 +28,7 @@ FocusScope {
         spacing: theme.space(4)
         Text { text: "Settings"; color: theme.text; font.family: theme.fontDisplay; font.pointSize: theme.typeLarge; font.weight: Font.DemiBold }
         Seg {
+            objectName: "settings-tabs"
             options: page.tabNames.map(function(n, i) { return { text: n, icon: page.tabIcons[i] } })
             index: page.tab
             onPicked: function(i) { page.tab = i }
