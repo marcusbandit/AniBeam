@@ -67,8 +67,18 @@ const PINNED_SQL: &str = "SELECT m.cover_url AS url FROM anilist_media m JOIN se
      UNION SELECT m.banner_url FROM anilist_media m JOIN series s ON s.anilist_id = m.id WHERE m.banner_url IS NOT NULL";
 
 /// What a fill goes and gets: everything an owned series draws, the covers
-/// of what it recommends, and the covers behind the watching list.
-const MISSING_SQL: &str = "SELECT DISTINCT url FROM (
+/// of what it recommends, the covers behind the watching list, and the
+/// covers of every entry in an owned series' franchise, walked the way the
+/// graph closes it (CHARACTER and OTHER edges are never crossed), so the
+/// series page's Related stones have their art offline too.
+const MISSING_SQL: &str = "WITH RECURSIVE franchise(id) AS (
+        SELECT anilist_id FROM series WHERE anilist_id IS NOT NULL
+        UNION SELECT r.to_id FROM relations r JOIN franchise f ON r.from_id = f.id
+              WHERE r.relation NOT IN ('CHARACTER', 'OTHER')
+        UNION SELECT r.from_id FROM relations r JOIN franchise f ON r.to_id = f.id
+              WHERE r.relation NOT IN ('CHARACTER', 'OTHER')
+     )
+     SELECT DISTINCT url FROM (
         SELECT m.cover_url AS url FROM anilist_media m JOIN series s ON s.anilist_id = m.id
         UNION SELECT m.banner_url FROM anilist_media m JOIN series s ON s.anilist_id = m.id
         UNION SELECT j.value ->> 'image_url' FROM anilist_media m JOIN series s ON s.anilist_id = m.id
@@ -79,6 +89,7 @@ const MISSING_SQL: &str = "SELECT DISTINCT url FROM (
         UNION SELECT tm.cover_url FROM tracker_entries t
                      JOIN anilist_media tm ON (t.tracker = 'anilist' AND tm.id = t.media_id)
                                            OR (t.tracker = 'mal' AND tm.mal_id = t.media_id)
+        UNION SELECT fm.cover_url FROM franchise f JOIN anilist_media fm ON fm.id = f.id
      )
      WHERE url IS NOT NULL AND url NOT IN (SELECT url FROM images)
      ORDER BY url";
@@ -916,6 +927,25 @@ mod tests {
             vec!["pinned-cover".to_string(), "portrait".to_string()]
         );
         assert_eq!(b.files(), 2);
+    }
+
+    #[test]
+    fn a_fill_wants_the_covers_of_an_owned_series_franchise_but_not_across_a_cameo() {
+        let b = bench();
+        b.store
+            .write(|c| {
+                c.execute_batch(
+                    "INSERT INTO sources (id, path, added_at) VALUES (1, '/lib', 0);
+                     INSERT INTO anilist_media (id, cover_url) VALUES (1, 'own'), (2, 'sequel'), (3, 'novel'), (4, 'cameo'), (5, 'cameo-sequel');
+                     INSERT INTO series (id, source_id, kind, path, folder_name, added_at, anilist_id) VALUES (1, 1, 'show', '/lib/a', 'a', 0, 1);
+                     INSERT INTO relations (from_id, to_id, relation) VALUES (1, 2, 'SEQUEL'), (3, 2, 'ADAPTATION'), (1, 4, 'CHARACTER'), (4, 5, 'SEQUEL');",
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        b.add("sequel", b.now, true);
+        let want = b.store.read(|c| missing_urls(c)).unwrap();
+        assert_eq!(want, vec!["novel".to_string(), "own".to_string()]);
     }
 
     #[test]
