@@ -271,6 +271,56 @@ mod tests {
             .write(|c| Ok(c.query_row("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name IN ('sources','series','files','anilist_media','anilist_episodes','recommendations','relations','tracker_accounts','tracker_entries','views','completed','resume_points','skip_windows','settings','images','events')", [], |r| r.get(0))?))
             .unwrap();
         assert_eq!(tables, 16);
+        let tvmaze: i64 = store
+            .write(|c| Ok(c.query_row("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name IN ('tvmaze_shows','tvmaze_episodes')", [], |r| r.get(0))?))
+            .unwrap();
+        assert_eq!(tvmaze, 2);
+    }
+
+    /// A version 1 database, the one every install has today, takes 0002
+    /// in place: its series keep every column and gain an empty
+    /// `tvmaze_id`, and the two new tables arrive empty.
+    #[test]
+    fn a_version_1_database_migrates_to_2_keeping_its_rows() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("anibeam.db");
+        {
+            let mut c = rusqlite::Connection::open(&path).unwrap();
+            rusqlite_migration::Migrations::new(vec![rusqlite_migration::M::up(include_str!(
+                "sql/0001_initial.sql"
+            ))])
+            .to_latest(&mut c)
+            .unwrap();
+            c.execute_batch(
+                "INSERT INTO sources (id, path, added_at) VALUES (1, '/tv', 0);
+                 INSERT INTO series (id, source_id, kind, path, folder_name, added_at, attempted_at, attempt_version)
+                 VALUES (58, 1, 'show', '/tv/Avatar Seven Havens', 'Avatar Seven Havens', 0, 100, 1);",
+            )
+            .unwrap();
+            let v: i64 = c
+                .query_row("PRAGMA user_version", [], |r| r.get(0))
+                .unwrap();
+            assert_eq!(v, 1);
+        }
+        let store = Store::open(&path).unwrap();
+        let (v, row): (i64, (String, Option<i64>, Option<i64>)) = store
+            .write(|c| {
+                Ok((
+                    c.query_row("PRAGMA user_version", [], |r| r.get(0))?,
+                    c.query_row(
+                        "SELECT folder_name, attempted_at, tvmaze_id FROM series WHERE id = 58",
+                        [],
+                        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                    )?,
+                ))
+            })
+            .unwrap();
+        assert_eq!(v, 2);
+        assert_eq!(row, ("Avatar Seven Havens".to_string(), Some(100), None));
+        let shows: i64 = store
+            .write(|c| Ok(c.query_row("SELECT count(*) FROM tvmaze_shows", [], |r| r.get(0))?))
+            .unwrap();
+        assert_eq!(shows, 0);
     }
 
     #[test]

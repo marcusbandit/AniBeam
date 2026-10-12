@@ -16,6 +16,7 @@ pub mod aniskip;
 pub mod jikan;
 pub mod limiter;
 pub mod mal;
+pub mod tvmaze;
 
 /// A boxed future, so `Http` stays object safe and the fake and the real
 /// client can be swapped behind one `Arc<dyn Http>`.
@@ -109,8 +110,8 @@ pub trait Http: Send + Sync {
     fn send(&self, req: HttpRequest) -> BoxFuture<'_, Result<HttpResponse, HttpError>>;
 }
 
-/// Which service a limiter paces. The contract's `Provider` names the three
-/// metadata sources; this names the four hosts the core actually talks to,
+/// Which service a limiter paces. The contract's `Provider` names the
+/// metadata sources; this names the five hosts the core actually talks to,
 /// so Jikan and AniSkip can be paced separately while still reporting as
 /// the MyAnimeList-keyed provider they belong to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -119,6 +120,7 @@ pub enum Upstream {
     Jikan,
     AniSkip,
     Mal,
+    Tvmaze,
 }
 
 impl Upstream {
@@ -128,6 +130,7 @@ impl Upstream {
             // Jikan and AniSkip are both keyed by MAL id and both answer
             // for MyAnimeList's data, so an error from either names MAL.
             Upstream::Jikan | Upstream::AniSkip | Upstream::Mal => Provider::Mal,
+            Upstream::Tvmaze => Provider::Tvmaze,
         }
     }
 
@@ -137,6 +140,7 @@ impl Upstream {
             Upstream::Jikan => "Jikan",
             Upstream::AniSkip => "AniSkip",
             Upstream::Mal => "MAL",
+            Upstream::Tvmaze => "TVmaze",
         }
     }
 }

@@ -1,7 +1,9 @@
-//! The form-encoded reading of a query string value, by hand.
+//! The form-encoded reading of a query string value, by hand, and the
+//! writing of one.
 //!
-//! Two callers want it, the OAuth callback's query and a nyaa feed url's
-//! search term, and neither wants a dependency for thirty lines.
+//! Two callers want the reading, the OAuth callback's query and a nyaa
+//! feed url's search term, and one the writing, TVmaze's search term;
+//! none of them wants a dependency for thirty lines.
 
 /// `+` is a space, `%XX` is a byte, and anything that is not a complete
 /// escape stands for itself rather than failing. Bytes that do not make
@@ -36,6 +38,22 @@ pub(crate) fn decode(value: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
+/// A query string value, percent-encoded: the unreserved characters stand
+/// for themselves and every other byte of the UTF-8 is `%XX`. A space is
+/// `%20` rather than `+`, which every server reads the same way.
+pub(crate) fn encode(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                out.push(byte as char)
+            }
+            other => out.push_str(&format!("%{other:02X}")),
+        }
+    }
+    out
+}
+
 fn hex(byte: u8) -> Option<u8> {
     match byte {
         b'0'..=b'9' => Some(byte - b'0'),
@@ -55,6 +73,14 @@ mod tests {
         assert_eq!(decode("%zz"), "%zz");
         assert_eq!(decode("%2"), "%2");
         assert_eq!(decode("%41%42"), "AB");
+    }
+
+    #[test]
+    fn encoding_escapes_all_but_the_unreserved_and_decodes_back() {
+        assert_eq!(encode("Avatar: Seven Havens"), "Avatar%3A%20Seven%20Havens");
+        assert_eq!(encode("a-b_c.d~e"), "a-b_c.d~e");
+        assert_eq!(encode("Shōgun & co"), "Sh%C5%8Dgun%20%26%20co");
+        assert_eq!(decode(&encode("Shōgun & co+1")), "Shōgun & co+1");
     }
 
     #[test]

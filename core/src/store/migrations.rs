@@ -9,12 +9,13 @@ use crate::contract::CoreError;
 pub static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
     Migrations::new(vec![
         M::up(include_str!("sql/0001_initial.sql")).foreign_key_check(),
+        M::up(include_str!("sql/0002_tvmaze.sql")).foreign_key_check(),
     ])
 });
 
 /// The count. Private to the crate so this `usize` never crosses the
 /// contract boundary (constraint 10 forbids `usize` in any exported type).
-pub(crate) const SCHEMA_VERSION: usize = 1;
+pub(crate) const SCHEMA_VERSION: usize = 2;
 
 /// Refuses a database written by a newer build, then applies what is pending
 /// inside rusqlite_migration's own transaction.
