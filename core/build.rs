@@ -3,6 +3,7 @@ use std::process::Command;
 fn main() {
     println!("cargo:rerun-if-changed=../.git/HEAD");
     println!("cargo:rerun-if-changed=../.git/refs/tags");
+    rerun_when_head_moves();
     let fallback = std::env::var("CARGO_PKG_VERSION").unwrap_or_default();
     let describe = Command::new("git")
         .args(["describe", "--tags", "--dirty"])
@@ -33,4 +34,33 @@ fn main() {
         })
         .unwrap_or(fallback);
     println!("cargo:rustc-env=ANIBEAM_VERSION={version}");
+}
+
+/// On a branch, `.git/HEAD` names the ref and never changes when a commit lands; the ref
+/// file does. Watch HEAD in the git dir (a worktree's own), the ref it points to in the
+/// common dir, and packed-refs, so the described hash is never stale. Only files that
+/// exist are named: cargo reruns a script on every build for a missing one.
+fn rerun_when_head_moves() {
+    let rev_parse = |arg: &str| {
+        Command::new("git")
+            .args(["rev-parse", arg])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|s| std::path::PathBuf::from(s.trim()))
+    };
+    let (Some(git_dir), Some(common)) = (rev_parse("--git-dir"), rev_parse("--git-common-dir")) else {
+        return;
+    };
+    let head = git_dir.join("HEAD");
+    let mut watch = vec![head.clone(), common.join("packed-refs")];
+    if let Ok(text) = std::fs::read_to_string(&head) {
+        if let Some(r) = text.trim().strip_prefix("ref: ") {
+            watch.push(common.join(r));
+        }
+    }
+    for path in watch.into_iter().filter(|p| p.exists()) {
+        println!("cargo:rerun-if-changed={}", path.display());
+    }
 }

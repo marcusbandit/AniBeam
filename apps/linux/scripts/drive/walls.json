@@ -19,8 +19,12 @@
   {"shot": "walls-02-feed-back"},
 
   {"log": "Coming soon: the scheduled head as its own labelled section"},
+  {"eval": "driver.item.findItem('wall-flick').contentY = 0; 'to the top, where the sort is'"},
+  {"wait": 300},
   {"click": "feed-sort-upcoming"},
-  {"wait": 600},
+  {"wait": 800},
+  {"eval": "driver.item.findItem('feed-page').sort", "expect": "Upcoming"},
+  {"eval": "!!driver.item.findItem('stone-coming-soon')", "expect": true},
   {"shot": "walls-03-feed-upcoming"},
   {"click": "feed-sort-recent"},
   {"wait": 600},

@@ -61,9 +61,13 @@ Item {
             return tail.length ? [{ label: "", count: tail.length, cards: tail, heroes: fresh }] : []
         }
         var out = []
-        if (head.length) out.push({ label: "Coming soon", count: head.length, accent: true, cards: head,
+        var next = null
+        for (var h = 0; h < head.length; h++) if (head[h].at > now && (!next || head[h].at < next.at)) next = { at: head[h].at, text: head[h].item.title }
+        var recent = tail.filter(function(e) { return e.at > 0 && now - e.at <= week }).length
+        if (head.length) out.push({ label: "Coming soon", count: head.length, accent: true, cards: head, fact: next,
                                     heroes: head.filter(function(e) { return e.at - now <= week }) })
-        if (tail.length) out.push({ label: "Everything else", count: tail.length, cards: tail, heroes: [] })
+        if (tail.length) out.push({ label: "Everything else", count: tail.length, cards: tail, heroes: [],
+                                    fact: recent > 0 ? { text: recent + " out this week" } : null })
         return out
     }
 

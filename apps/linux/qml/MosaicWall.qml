@@ -9,7 +9,8 @@
 // (`need`) and whether it takes the row's spare columns (`flex`); the wall gives it whole
 // column spans, one unit tall, wrapping on a narrow window.
 //
-// sections: [{ label, count, accent, heroes: [entry], cards: [entry] }]; an entry is
+// sections: [{ label, count, accent, fact, heroes: [entry], cards: [entry] }]; `fact` is
+// the label stone's line ({ text } or { at, text } with the countdown pill, see StoneFact); an entry is
 // { id, item (the Card's series), meta, countdown, ghost }. An empty label has no stone.
 // When no section holds a tile, `body` (if set) fills the rest of the viewport.
 import QtQuick
@@ -163,14 +164,19 @@ Item {
                         radius: theme.radiusTile
                         smoothing: theme.cornerSmoothing
                         color: accent ? theme.plate(theme.accent) : theme.raised
-                        Label {
+                        Column {
                             x: theme.space(4); y: theme.space(4)
                             width: parent.width - theme.space(8)
-                            text: cell.section.label
-                            role: "title"
-                            wrapMode: Text.Wrap
-                            maximumLineCount: 3
-                            elide: Text.ElideRight
+                            spacing: theme.space(2)
+                            Label {
+                                width: parent.width
+                                text: cell.section.label
+                                role: "title"
+                                wrapMode: Text.Wrap
+                                maximumLineCount: 3
+                                elide: Text.ElideRight
+                            }
+                            StoneFact { width: parent.width; fact: cell.section.fact || null; nowMs: wall.nowMs }
                         }
                         Label {
                             anchors.right: parent.right; anchors.rightMargin: theme.space(4)

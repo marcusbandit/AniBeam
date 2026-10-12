@@ -97,6 +97,34 @@ Item {
         }
         return "Everything"
     }
+    // A label stone's one line under its name. Airing names the next episode out, with the
+    // countdown pill ({ at, text }); the rest say the first of these that tells the section
+    // something its name and count do not: how many are in progress, not started, or air
+    // this week, else that every one is watched.
+    function soonest(list) {
+        var best = null, now = page.packedAt / 1000
+        for (var i = 0; i < list.length; i++) {
+            var n = list[i].next_airing
+            if (n && n.at > now && (!best || n.at < best.at)) best = { at: n.at, text: list[i].title }
+        }
+        return best
+    }
+    function factOf(list) {
+        var now = page.packedAt / 1000, going = 0, fresh = 0, airs = 0, done = 0
+        for (var i = 0; i < list.length; i++) {
+            var c = list[i], w = c.watched !== null && c.watched !== undefined ? c.watched : 0
+            if (c.watched_state === "CaughtUp") done++
+            else if (w > 0 || c.watched_state === "Behind") going++
+            else fresh++
+            if (c.next_airing && c.next_airing.at > now && c.next_airing.at - now <= 7 * 86400) airs++
+        }
+        var n = list.length
+        if (going > 0 && going < n) return { text: going + " in progress" }
+        if (fresh > 0 && fresh < n) return { text: fresh + " not started" }
+        if (airs > 0) return { text: airs + " airing this week" }
+        if (n > 0 && done === n) return { text: "All watched" }
+        return null
+    }
     readonly property bool airingShows: page.query === "" && !page.libraryEmpty
     readonly property var groups: {
         page.revision   // a dependency: see revision
@@ -120,8 +148,8 @@ Item {
             return d !== 0 ? d : (a < b ? -1 : a > b ? 1 : 0)
         })
         var out = []
-        if (airingShows && airingRows.length) out.push({ label: "Airing", count: airingRows.length, cards: airingRows })
-        for (var s = 0; s < order.length; s++) out.push({ label: order[s], count: buckets[order[s]].length, cards: buckets[order[s]] })
+        if (airingShows && airingRows.length) out.push({ label: "Airing", count: airingRows.length, cards: airingRows, fact: soonest(airingRows) })
+        for (var s = 0; s < order.length; s++) out.push({ label: order[s], count: buckets[order[s]].length, cards: buckets[order[s]], fact: factOf(buckets[order[s]]) })
         return out
     }
 
@@ -492,14 +520,19 @@ Item {
                         radius: theme.radiusTile
                         smoothing: theme.cornerSmoothing
                         color: airing ? theme.plate(theme.accent) : theme.raised
-                        Label {
+                        Column {
                             x: theme.space(4); y: theme.space(4)
                             width: parent.width - theme.space(8)
-                            text: cell.section.label
-                            role: "title"
-                            wrapMode: Text.Wrap
-                            maximumLineCount: 3
-                            elide: Text.ElideRight
+                            spacing: theme.space(2)
+                            Label {
+                                width: parent.width
+                                text: cell.section.label
+                                role: "title"
+                                wrapMode: Text.Wrap
+                                maximumLineCount: 3
+                                elide: Text.ElideRight
+                            }
+                            StoneFact { width: parent.width; fact: cell.section.fact; nowMs: page.nowMs }
                         }
                         Label {
                             anchors.right: parent.right; anchors.rightMargin: theme.space(4)
