@@ -4,7 +4,7 @@
   {"wait": 800},
   {"eval": "frame.item.nav.current.page", "expect": "feed"},
   {"shot": "walls-01-feed"},
-  {"wheel": [1600, 900, -240]},
+  {"wheel": [800, 600, -240]},
   {"wait": 1500},
   {"eval": "Math.round(frame.item.leavingScroll())", "as": "scrolled"},
   {"eval": "vars.scrolled > 300", "expect": true},

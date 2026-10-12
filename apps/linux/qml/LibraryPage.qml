@@ -238,6 +238,14 @@ Item {
         for (var i = 0; i < b.length; i++) if (!b[i].airing && b[i].ids.indexOf(id) >= 0) return b[i].title
         return ""
     }
+    // scroll the first tile of a kind ("hero", "label", "small") to the top of the view
+    function revealFirst(kind) {
+        for (var i = 0; i < tiles.length; i++) if (tiles[i].kind === kind) {
+            flick.contentY = Math.max(0, Math.min(flick.wallTop + tiles[i].row * step - grout, flick.contentHeight - flick.height))
+            return true
+        }
+        return false
+    }
     // ids in the order the core sorted them, for the evals
     function cardIds() { var out = []; for (var i = 0; i < cards.count; i++) out.push(cards.at(i).id); return out }
     function seriesWhere(text) { var out = []; for (var i = 0; i < cards.count; i++) { var c = cards.at(i); if (String(c.title).toLowerCase().indexOf(text) >= 0) out.push({ id: c.id, title: c.title, format: c.format, franchise: c.franchise === undefined ? "undefined" : c.franchise }) } return out }
