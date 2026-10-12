@@ -20,6 +20,13 @@
   "expect": true
  },
  {
+  "log": "the header names the episode, never the raw file"
+ },
+ {
+  "eval": "frame.item.pageItem.episodeLine.length > 0 && !/\\.mkv$/.test(frame.item.pageItem.episodeLine)",
+  "expect": true
+ },
+ {
   "hover": [
    1280,
    700

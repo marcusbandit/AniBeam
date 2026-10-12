@@ -69,6 +69,12 @@ FocusScope {
     property bool trackerKnown: false
     property var seriesTitles: ({})
     property real episodeNumber: -1
+    // The header's second line: the episode's title, else "Episode N" through the shared
+    // helper, else (an extra or an unmatched file, which have no number) the file's name.
+    readonly property string episodeLine: !session ? ""
+        : session.episode_title ? session.episode_title
+        : !session.is_extra && episodeNumber >= 0 ? Fmt.episodeName("", episodeNumber)
+        : session.path.split("/").pop()
     readonly property bool canMark: trackerKnown && !!session && !session.is_extra && episodeNumber >= 0
     function readSeries() {
         var d = Door.getSeries(session.series)

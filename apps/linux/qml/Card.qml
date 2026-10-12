@@ -86,7 +86,7 @@ Item {
     readonly property var airing: countdown ? countdown
                                 : metaOverride === "" && !!item.next_airing && item.next_airing.at * 1000 > nowMs ? item.next_airing : null
     readonly property string airingTime: airing ? shortCountdown(airing.at - nowMs / 1000) : ""
-    readonly property string airingEpisode: airing ? "Episode " + airing.episode : ""
+    readonly property string airingEpisode: airing ? Fmt.episodeName("", airing.episode) : ""
     readonly property string watchedText: hasWatched ? (totalKnown ? item.watched + " of " + item.total_episodes + (item.total_is_estimate ? "+" : "") : item.watched + " watched") : ""
     readonly property string filesText: Fmt.plural(item.episodes_on_disk || 0, "file", "files")
     // The one ledger line under the title: the countdown pill when one runs, else what the
@@ -98,7 +98,7 @@ Item {
         if (!hasWatched || item.watched_state === "CaughtUp") return ""
         var w = item.watched
         if (totalKnown && w >= item.total_episodes) return ""
-        return "Episode " + (w + 1) + " next"
+        return Fmt.episodeName("", w + 1) + " next"
     }
 
     // The poster's tone, read only once the tile is live (it decodes the poster at 8x12)

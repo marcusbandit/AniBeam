@@ -25,7 +25,7 @@ Item {
 
     function reasonText(reason) {
         var kind = reason ? Object.keys(reason)[0] : "None"
-        if (kind === "Aired") return "Episode aired " + Fmt.relative(reason.Aired.at, nowMs / 1000)
+        if (kind === "Aired") return Fmt.episodeName("", reason.Aired.episode) + " aired " + Fmt.relative(reason.Aired.at, nowMs / 1000)
         if (kind === "Downloaded") return "File downloaded " + Fmt.relative(reason.Downloaded.at, nowMs / 1000)
         return ""
     }

@@ -49,7 +49,7 @@ Item {
                 readonly property real cap: Math.max(theme.space(40), root.width * 0.4)
                 width: Math.min(cap, Math.max(seriesLine.implicitWidth, episodeLine.implicitWidth, codeLine.implicitWidth))
                 Label { id: seriesLine; width: parent.width; elide: Text.ElideRight; role: "title"; font.pointSize: theme.typeNormal; text: page.session ? page.session.series_title : "" }
-                Label { id: episodeLine; width: parent.width; elide: Text.ElideRight; role: "ui"; text: page.session ? (page.session.episode_title || page.session.path.split("/").pop()) : "" }
+                Label { id: episodeLine; width: parent.width; elide: Text.ElideRight; role: "ui"; text: page.episodeLine }
                 Label { id: codeLine; width: parent.width; elide: Text.ElideRight; role: "ledger"; color: theme.textDim; text: page.session ? page.session.code : "" }
             }
         }
