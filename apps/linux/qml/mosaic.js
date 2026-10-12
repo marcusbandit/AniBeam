@@ -68,87 +68,100 @@ function pickHeroes(cards, nowSecs, cap, taken) {
     return out
 }
 
-// First-fit skyline packing. sections: [{ label, count, heroes: [card], cards: [card] }]
-// where `cards` may include the heroes (they are skipped there). Each section starts on a
-// fresh row (the skyline flattened to its top), with its label stone at column 0, then its
-// heroes, then its small tiles, each at the lowest row its span fits, left-most on ties.
-// Heroes past the cap, or with fewer than two columns, are set as small tiles, and so are
-// the least important heroes while the section would otherwise leave a hole (see holes()).
-// Returns { tiles: [{ kind, section, card, col, row, colSpan, rowSpan }] sorted by row
-// then col, rows: the total height in units }.
+// First-fit skyline packing of the whole wall. sections: [{ label, count, heroes: [card],
+// cards: [card] }] where `cards` may include the heroes (they are skipped there). The wall is
+// one continuous skyline: a section's label stone goes where the previous section's last
+// tile left off (no fresh row, no section-end gap), then its heroes, then its small tiles,
+// each at the lowest row its span fits, left-most on ties. Because the skyline only grows
+// and a section's span-1 tiles are placed after its label, a later section's tiles never
+// precede an earlier one's in reading order. A section with an empty label has no stone.
+// Heroes past the cap, or with fewer than two columns, are set as small tiles; while the
+// wall would leave a hole (see firstHole()), the least important hero of the section that
+// caused it is set small and the wall is packed again. Only the very last row may run
+// short. Returns { tiles: [{ kind, section, card, col, row, colSpan, rowSpan }] sorted by
+// row then col, rows: the total height in units }.
 function pack(sections, cols, unitsSmall, unitsHero) {
     cols = Math.max(1, cols)
-    var sky = []
-    for (var c = 0; c < cols; c++) sky.push(0)
-    var tiles = []
-    var cap = heroCap(cols)
+    var cap = cols >= 2 ? heroCap(cols) : 0
+    var allowed = []
+    for (var a = 0; a < sections.length; a++) allowed.push(cap)
 
-    function place(kind, si, card, span, height) {
-        span = Math.min(span, cols)
-        var best = -1, bestRow = Infinity
-        for (var x = 0; x + span <= cols; x++) {
-            var y = 0
-            for (var k = x; k < x + span; k++) y = Math.max(y, sky[k])
-            if (y < bestRow) { bestRow = y; best = x }
+    function packWall() {
+        var sky = []
+        for (var c = 0; c < cols; c++) sky.push(0)
+        var tiles = []
+        var used = []
+        // The reading-order floor: no tile may sit before the last tile of an earlier
+        // section (row, then column), so sections never interleave. A free cell the floor
+        // skips is a hole, and firstHole() sends the wall back for a demotion.
+        var floorRow = -1, floorCol = -1, lastRow = -1, lastCol = -1
+        function place(kind, si, card, span, height) {
+            span = Math.min(span, cols)
+            var best = -1, bestRow = Infinity
+            for (var x = 0; x + span <= cols; x++) {
+                var y = 0
+                for (var k = x; k < x + span; k++) y = Math.max(y, sky[k])
+                if (y < floorRow || (y === floorRow && x <= floorCol)) y = x > floorCol ? floorRow : floorRow + unitsSmall
+                if (y < bestRow) { bestRow = y; best = x }
+            }
+            if (bestRow > lastRow || (bestRow === lastRow && best > lastCol)) { lastRow = bestRow; lastCol = best }
+            for (var m = best; m < best + span; m++) sky[m] = bestRow + height
+            tiles.push({ kind: kind, section: si, card: card, col: best, row: bestRow, colSpan: span, rowSpan: height })
         }
-        for (var m = best; m < best + span; m++) sky[m] = bestRow + height
-        tiles.push({ kind: kind, section: si, card: card, col: best, row: bestRow, colSpan: span, rowSpan: height })
+        // A series is a hero once on the wall: the first section that sets it large keeps it
+        var heroed = {}
+        for (var si = 0; si < sections.length; si++) {
+            var s = sections[si]
+            floorRow = lastRow; floorCol = lastCol
+            if (s.label) place("label", si, null, 1, unitsSmall)
+            var heroes = (s.heroes || []).filter(function(h) { return !heroed[h.id] }).slice(0, allowed[si])
+            used.push(heroes.length)
+            var heroIds = {}
+            for (var h = 0; h < heroes.length; h++) {
+                heroIds[heroes[h].id] = heroed[heroes[h].id] = true
+                place("hero", si, heroes[h], 2, unitsHero)
+            }
+            var cards = s.cards || []
+            var inCards = {}
+            for (var i = 0; i < cards.length; i++) {
+                inCards[cards[i].id] = true
+                if (!heroIds[cards[i].id]) place("small", si, cards[i], 1, unitsSmall)
+            }
+            // demoted heroes (past the cap, or to close a hole) that were not in cards
+            var extra = s.heroes || []
+            for (var e = 0; e < extra.length; e++)
+                if (!heroIds[extra[e].id] && !inCards[extra[e].id]) place("small", si, extra[e], 1, unitsSmall)
+        }
+        var rows = 0
+        for (var r = 0; r < cols; r++) rows = Math.max(rows, sky[r])
+        return { tiles: tiles, rows: rows, used: used }
     }
 
-    // A series is a hero once on the wall: the first section that sets it large keeps it
-    var heroed = {}
-    function candidates(s) { return (s.heroes || []).filter(function(c) { return !heroed[c.id] }) }
-
-    function packSection(si, s, heroCount) {
-        place("label", si, null, 1, unitsSmall)
-        var heroes = candidates(s).slice(0, heroCount)
-        var heroIds = {}
-        for (var h = 0; h < heroes.length; h++) {
-            heroIds[heroes[h].id] = true
-            place("hero", si, heroes[h], 2, unitsHero)
+    var out
+    for (;;) {
+        out = packWall()
+        var bad = firstHole(out.tiles, cols, 0, unitsSmall)
+        if (bad < 0) break
+        // Demote in the latest section with a hero at or above the first hole: that is the
+        // hero whose span opened it (an earlier one would have shown a hole sooner)
+        var pick = -1
+        for (var t = 0; t < out.tiles.length; t++) {
+            var tt = out.tiles[t]
+            if (tt.kind === "hero" && tt.row <= bad && tt.section > pick) pick = tt.section
         }
-        var cards = s.cards || []
-        for (var i = 0; i < cards.length; i++) {
-            if (heroIds[cards[i].id]) continue
-            place("small", si, cards[i], 1, unitsSmall)
-        }
-        // demoted heroes (past the cap, or to close a hole) that were not in cards
-        var extra = (s.heroes || []).filter(function(c) { return !heroIds[c.id] })
-        for (var e = 0; e < extra.length; e++) {
-            var inCards = false
-            for (var q = 0; q < cards.length; q++) if (cards[q].id === extra[e].id) { inCards = true; break }
-            if (!inCards) place("small", si, extra[e], 1, unitsSmall)
-        }
+        // (or, when the floor skipped cells above a later hero, the latest section with one)
+        if (pick < 0) for (var q = 0; q < out.used.length; q++) if (out.used[q] > 0) pick = q
+        if (pick < 0) break   // no heroes left: span-1 tiles cannot leave a hole
+        allowed[pick] = out.used[pick] - 1
     }
-
-    for (var si = 0; si < sections.length; si++) {
-        var s = sections[si]
-        var top = 0
-        for (var a = 0; a < cols; a++) top = Math.max(top, sky[a])
-        for (var b = 0; b < cols; b++) sky[b] = top
-        // Pack with every hero the cap allows; while that leaves a hole, demote the least
-        // important hero and pack again. With no heroes left it cannot leave one.
-        var start = tiles.length
-        var heroCount = Math.min(candidates(s).length, cols >= 2 ? cap : 0)
-        for (;;) {
-            packSection(si, s, heroCount)
-            if (heroCount === 0 || !holes(tiles.slice(start), cols, top, unitsSmall)) break
-            tiles.length = start
-            for (var r0 = 0; r0 < cols; r0++) sky[r0] = top
-            heroCount--
-        }
-        for (var k = start; k < tiles.length; k++) if (tiles[k].kind === "hero") heroed[tiles[k].card.id] = true
-    }
-    var rows = 0
-    for (var r = 0; r < cols; r++) rows = Math.max(rows, sky[r])
-    tiles.sort(function(p, q) { return p.row - q.row || p.col - q.col })
-    return { tiles: tiles, rows: rows }
+    out.tiles.sort(function(p, q) { return p.row - q.row || p.col - q.col })
+    return { tiles: out.tiles, rows: out.rows }
 }
 
-// Does a packed section leave a hole? Every cell above its final small row must be
-// filled, and the final row may only run short on the right (a ragged last row, filled
-// left to right). `tiles` are the section's own, starting at unit row `top`.
-function holes(tiles, cols, top, unitsSmall) {
+// The first unit row at which the tiles leave a hole, or -1. Every cell above the final
+// small row must be filled, and the final row may only run short on the right (a ragged
+// last row, filled left to right). `tiles` start at unit row `top`.
+function firstHole(tiles, cols, top, unitsSmall) {
     var bottom = top
     for (var i = 0; i < tiles.length; i++) bottom = Math.max(bottom, tiles[i].row + tiles[i].rowSpan)
     var taken = {}
@@ -162,13 +175,14 @@ function holes(tiles, cols, top, unitsSmall) {
         var gap = false
         for (var c = 0; c < cols; c++) {
             var full = taken[c + ":" + r] === true
-            if (!full && r < finalRow) return true
+            if (!full && r < finalRow) return r
             if (!full) gap = true
-            else if (gap) return true
+            else if (gap) return r
         }
     }
-    return false
+    return -1
 }
+function holes(tiles, cols, top, unitsSmall) { return firstHole(tiles, cols, top, unitsSmall) >= 0 }
 
 // Do any two tiles share a cell? (the drive script's check, and the test's)
 function overlaps(tiles) {

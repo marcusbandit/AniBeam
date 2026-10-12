@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs"
 import assert from "node:assert/strict"
 
 const src = readFileSync(new URL("./mosaic.js", import.meta.url), "utf8").replace(/^\.pragma library$/m, "")
-const M = new Function(src + "\nreturn { columns, unitsToPx, unitsFor, heroCap, heroRank, pickHeroes, pack, holes, overlaps, header }")()
+const M = new Function(src + "\nreturn { columns, unitsToPx, unitsFor, heroCap, heroRank, pickHeroes, pack, holes, firstHole, overlaps, header }")()
 
 const now = 2_000_000_000
 const day = 86400
@@ -62,24 +62,20 @@ function check(sections, cols, us, uh) {
     assert.ok(own.filter(t => t.kind === "hero").length <= cap, "heroes within the cap")
     assert.equal(own.filter(t => t.kind === "label").length, 1)
     const label = own.find(t => t.kind === "label")
-    assert.equal(label.col, 0)
-    assert.ok(own.every(t => t.row >= label.row), "the label stone opens its section")
+    const first = [...own].sort((p, q) => p.row - q.row || p.col - q.col)[0]
+    assert.equal(first, label, "the label stone opens its section in reading order")
     // every series of the section placed exactly once
     const ids = new Set([...sections[s].cards, ...sections[s].heroes].map(c => c.id))
     assert.equal(own.filter(t => t.kind !== "label").length, ids.size)
   }
-  // sections never interleave: each starts below the bottom of every earlier tile
-  for (let s = 1; s < sections.length; s++) {
-    const start = Math.min(...tiles.filter(t => t.section === s).map(t => t.row))
-    const prevBottom = Math.max(...tiles.filter(t => t.section < s).map(t => t.row + t.rowSpan))
-    assert.ok(start >= prevBottom, "a section starts on a fresh row")
-  }
-  // no holes: every section is solid above its final small row, ragged only on the right
-  for (let s = 0; s < sections.length; s++) {
-    const own = tiles.filter(t => t.section === s)
-    const top = Math.min(...own.map(t => t.row))
-    assert.equal(M.holes(own, cols, top, us), false, `section ${s} has no hole at ${cols} cols`)
-  }
+  // sections never interleave: in reading order (row, then column) the section index
+  // never goes back
+  const reading = [...tiles].sort((p, q) => p.row - q.row || p.col - q.col)
+  for (let i = 1; i < reading.length; i++)
+    assert.ok(reading[i].section >= reading[i - 1].section, `sections interleave at ${cols} cols`)
+  // one continuous wall: no hole anywhere above its final small row, which runs short only
+  // on the right
+  assert.equal(M.holes(tiles, cols, 0, us), false, `the wall has a hole at ${cols} cols`)
   // sorted by row then col
   for (let i = 1; i < tiles.length; i++)
     assert.ok(tiles[i - 1].row < tiles[i].row || (tiles[i - 1].row === tiles[i].row && tiles[i - 1].col < tiles[i].col))
@@ -91,6 +87,7 @@ for (const cols of [1, 2, 3, 4, 5, 7, 8, 13, 26]) {
   const all = Array.from({ length: 52 }, () => card())
   const airing = Array.from({ length: 6 }, () => card())
   const heroes = all.slice(0, 6)
+  // the airing series are not repeated in the main section
   const sections = [
     { label: "Airing", heroes: airing.slice(0, 2), cards: airing },
     { label: "Everything", heroes, cards: all },
@@ -99,20 +96,30 @@ for (const cols of [1, 2, 3, 4, 5, 7, 8, 13, 26]) {
   check(sections, cols, 4, 8)
 }
 
-// a series is a hero once on the wall, and one demoted to close a hole in an earlier
-// section can still be large in a later one
+// a series is a hero once on the wall (the sections hold disjoint series)
 {
   id = 0
   const all = Array.from({ length: 30 }, () => card())
-  const airing = all.slice(0, 3)
   const { tiles } = check([
-    { label: "Airing", heroes: airing.slice(0, 2), cards: airing },
-    { label: "Everything", heroes: all.slice(0, 4), cards: all },
+    { label: "Airing", heroes: all.slice(0, 2), cards: all.slice(0, 3) },
+    { label: "Everything", heroes: all.slice(3, 7), cards: all.slice(3) },
   ], 8, 4, 8)
   const heroIds = tiles.filter(t => t.kind === "hero").map(t => t.card.id)
   assert.equal(new Set(heroIds).size, heroIds.length, "no series is a hero twice")
-  assert.equal(tiles.filter(t => t.kind === "hero" && t.section === 0).length, 0, "three airing cards cannot hold a hero without a hole")
-  assert.deepEqual(tiles.filter(t => t.kind === "hero" && t.section === 1).map(t => t.card.id), [1, 2], "so they are large in Everything")
+}
+
+// one continuous wall: the second section's label follows the first section's last tile
+// on the same row, no fresh row and no empty field beside a short section
+{
+  id = 0
+  const airing = Array.from({ length: 6 }, () => card())
+  const all = Array.from({ length: 52 }, () => card())
+  const { tiles } = check([
+    { label: "Airing", heroes: [], cards: airing },
+    { label: "Series", heroes: [], cards: all },
+  ], 14, 4, 8)
+  const label = tiles.find(t => t.kind === "label" && t.section === 1)
+  assert.deepEqual([label.col, label.row], [7, 0], "the Series stone sits beside Airing's last tile")
 }
 
 // the airing case: 6 cards, 13 columns, 4 of them hero-eligible. Four heroes would leave
