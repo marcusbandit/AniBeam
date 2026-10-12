@@ -31,13 +31,15 @@ Item {
     // for the never-opened case, so this is safe to call unconditionally on destruction.
     Component.onDestruction: root.close()
 
-    MouseArea { anchors.fill: parent; onPressed: root.close() }
+    // The shield: any press outside the panel closes the picker, and no press, wheel or
+    // hover reaches what is under it
+    Blocker { anchors.fill: parent; scrim: false; dismissOnPress: true; onDismissed: root.close() }
     Corner {
         id: panel
         width: theme.space(48); height: theme.space(60)
         radius: theme.radiusMd; smoothing: theme.cornerSmoothing
         color: theme.surfaceRaised; borderColor: theme.lineStrong; borderWidth: 1
-        MouseArea { anchors.fill: parent }
+        MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons }
         ListView {
             id: list
             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top

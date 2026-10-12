@@ -14,21 +14,36 @@ FocusScope {
     readonly property alias nav: nav
     readonly property alias overlay: overlay
     readonly property alias escapeStack: escapeStack
+    // Read-only handles for --drive evals; named apart from the ids they alias (see above)
+    readonly property alias menuPanel: menu
+    readonly property alias drawerPanel: drawer
+    readonly property alias sheetPanel: connectSheet
+    readonly property alias tipShown: tip.visible
+    readonly property Item pageItem: page.item
     readonly property bool fullWindow: page.item ? (page.item.fullWindow === true) : false
     readonly property string windowTitle: (page.item && page.item.title ? page.item.title : nav.current.label) + " - AniBeam"
 
     Nav { id: nav }
     QtObject {
         id: escapeStack
+        // Openers push on open and pop on close, so entries is in opening order and the
+        // last one is what the user opened most recently: Escape closes that one first.
+        // kind is a record, not a rank: ranking by kind let the drawer outrank a picker
+        // opened after it, so Escape closed the drawer and left the picker up.
         property var entries: []
-        readonly property var rank: ({ drawer: 3, confirm: 2, popover: 1 })
         function push(kind, closer) { pop(closer); entries = entries.concat([{ kind: kind, closer: closer }]) }
         function pop(closer) { entries = entries.filter(function(e) { return e.closer !== closer }) }
         function clear() { entries = [] }
+        // The newest entry the user can see. The drawer stays open, and on the stack, under
+        // the full-window player, where it is hidden; Escape must not be spent on it there.
+        // Checked by kind and fullWindow rather than closer.visible: the drawer's visible
+        // also tracks its rise, which is still 0 for the first frame after show().
         function top() {
-            var best = null
-            entries.forEach(function(e) { if (!best || rank[e.kind] >= rank[best.kind]) best = e })
-            return best
+            for (var i = entries.length - 1; i >= 0; i--) {
+                if (frame.fullWindow && entries[i].kind === "drawer") continue
+                return entries[i]
+            }
+            return null
         }
     }
     // Named escapePressed, not escape: QML's compiler reserves "escape" (and unescape, eval,
@@ -40,6 +55,26 @@ FocusScope {
         if (page.item && page.item.escapePressed && page.item.escapePressed()) return
     }
     Keys.onEscapePressed: escapePressed()
+
+    // Hands key focus back to the page when a layer that took it closes. Only when the
+    // focus is still inside that layer (or nowhere): a field the user clicked into while
+    // the layer was up keeps its focus.
+    function focusPage(layer) {
+        if (!page.item) return
+        var f = frame.hostWindow ? frame.hostWindow.activeFocusItem : null
+        for (var p = f; p; p = p.parent) if (p === layer) { f = null; break }
+        if (!f || f === frame) page.item.forceActiveFocus()
+    }
+
+    // Frame-owned overlays outlive a page. A navigation clears the stack, so they are
+    // pushed back after the clear, in the order they were opened.
+    function reclaimFrameOwned() {
+        var keep = escapeStack.entries.filter(function(e) { return e.closer === drawer || e.closer === connectSheet })
+        escapeStack.clear()
+        keep.forEach(function(e) {
+            if (e.closer === drawer ? drawer.open : connectSheet.visible) escapeStack.push(e.kind, e.closer)
+        })
+    }
 
     // Pages by name; a page task swaps its placeholder for the real file
     readonly property var pages: ({
@@ -85,12 +120,12 @@ FocusScope {
     // owns (a score picker, an inline confirm) is destroyed with it, and any entry it
     // pushed is now a zombie whose closer is gone, so the next escapePressed() would try
     // to call close() on a destroyed object and throw before ever reaching the new page.
-    // The drawer is the one exception: it is not owned by the leaving page, so it is not
-    // destroyed and stays open across a navigation. Re-push it right after the clear, in
-    // this same handler, so it stays first in line for the next Escape; a second
-    // Connections on nav.changed would race this one with no ordering guarantee between
-    // them.
-    Connections { target: nav; function onChanged() { frame.loadPage(); frame.hideTip(); frame.closeMenu(); frame.escapeStack.clear(); if (drawer.open) frame.escapeStack.push("drawer", drawer) } }
+    // The drawer and the connect sheet are the exceptions: the frame owns them, they stay
+    // open across a navigation (the sheet keeps a typed client id), and
+    // reclaimFrameOwned() keeps their entries, in this same handler, so Escape still
+    // reaches them; a second Connections on nav.changed would race this one with no
+    // ordering guarantee between them.
+    Connections { target: nav; function onChanged() { frame.loadPage(); frame.hideTip(); frame.closeMenu(); frame.reclaimFrameOwned() } }
 
     Rail {
         id: rail
@@ -156,6 +191,7 @@ FocusScope {
         anchors.left: content.left; anchors.right: content.right; anchors.bottom: content.bottom
         maxHeight: Math.round(page.height * 0.6)
         z: 500
+        onClosed: frame.focusPage(drawer)
     }
     function toggleDrawer() { drawer.toggle() }
 
@@ -168,10 +204,12 @@ FocusScope {
     }
     function openConnect(tracker) { connectSheet.openFor(tracker || "Anilist") }
 
-    // Overlay: menus, tips, toasts
+    // Overlay: menus, tips, toasts, sheets. Above the drawer (z 500), so a menu or a
+    // sheet opened over the drawer's region draws over it, not under it.
     Item {
         id: overlay
         anchors.fill: parent
+        z: 600
         Menu { id: menu }
         Frost {
             id: tip
@@ -197,7 +235,12 @@ FocusScope {
         var p = item.mapToItem(overlay, item.width / 2, item.height)
         tipText.text = text
         tip.x = Math.max(theme.space(2), Math.min(p.x - tip.width / 2, overlay.width - tip.width - theme.space(2)))
-        tip.y = Math.min(p.y + theme.space(1), overlay.height - tip.height - theme.space(2))
+        // Below the item, or above it when there is no room below (the player's controls
+        // island sits at the window's foot); never over the item it describes.
+        var top = item.mapToItem(overlay, 0, 0).y
+        var below = p.y + theme.space(1)
+        tip.y = below + tip.height <= overlay.height - theme.space(2) ? below
+              : Math.max(theme.space(2), top - tip.height - theme.space(1))
         tip.visible = true
     }
     function hideTip() { tip.visible = false }
