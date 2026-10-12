@@ -6,7 +6,7 @@
 //! `cards` for a card, `detail` for a page.
 
 use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 use std::time::SystemTime;
 
@@ -15,6 +15,7 @@ use serde_json::Value;
 
 use crate::contract::*;
 use crate::library::sidecar::sidecars_of;
+use crate::net::tvmaze;
 use crate::prefs;
 use crate::store::sql::placeholders;
 
@@ -36,8 +37,12 @@ pub struct SeriesRow {
     pub mal_id: Option<u64>,
     pub tmdb_id: Option<u64>,
     pub tmdb_kind: Option<TmdbKind>,
+    pub tvmaze_id: Option<u64>,
     pub confirmed: bool,
     pub track_choice: Option<String>,
+    /// The record behind the match: the AniList media, or for a TVmaze
+    /// match the show, read into the same shape so every reader draws
+    /// either without asking which it is.
     pub media: Option<MediaRow>,
     pub poster_path: Option<String>,
     pub banner_path: Option<String>,
@@ -103,6 +108,9 @@ pub struct Snapshot {
     pub files: HashMap<u64, Vec<FileRow>>,
     /// By AniList id.
     pub airing: HashMap<u64, Vec<AiringRow>>,
+    /// By TVmaze show id, then by season. TVmaze numbers its episodes
+    /// within a season, so a file is looked up by both.
+    pub tv_seasons: HashMap<u64, BTreeMap<u32, Vec<AiringRow>>>,
     pub anilist_entries: HashMap<u64, TrackerRow>,
     pub mal_entries: HashMap<u64, TrackerRow>,
     pub views: HashMap<u64, (String, i64)>,
@@ -135,6 +143,40 @@ fn json_value(raw: &str) -> Value {
     serde_json::from_str(raw).unwrap_or(Value::Null)
 }
 
+/// A TVmaze show read into the media row every reader already draws:
+/// columns 35 to 45 of the series query. TVmaze's own status becomes the
+/// AniList word for it, its 0 to 10 rating the 0 to 100 the row stores,
+/// and its network the studio.
+fn show_media(r: &rusqlite::Row) -> rusqlite::Result<MediaRow> {
+    let status: Option<String> = r.get(37)?;
+    let premiered: Option<String> = r.get(38)?;
+    let rating: Option<f64> = r.get(39)?;
+    Ok(MediaRow {
+        title_romaji: r.get(36)?,
+        title_english: None,
+        title_native: None,
+        // TVmaze carries television and nothing else.
+        format: Some("TV".to_string()),
+        status: status
+            .as_deref()
+            .and_then(tvmaze::airing_status)
+            .map(|s| s.anilist_word().to_string()),
+        year: tvmaze::year_of(premiered.as_deref()),
+        episodes: None,
+        description: r.get(42)?,
+        average_score: rating
+            .filter(|v| v.is_finite() && *v >= 0.0)
+            .map(|v| (v * 10.0).round() as u32),
+        genres: json_strings(&r.get::<_, String>(40)?),
+        studio: r.get(41)?,
+        tags: Value::Null,
+        characters: Value::Null,
+        site_url: r.get(43)?,
+        cover_url: r.get(44)?,
+        banner_url: r.get(45)?,
+    })
+}
+
 impl Snapshot {
     /// Loads the whole library with `scope` None, or exactly the named
     /// series with `scope` Some. An empty scope loads nothing at all.
@@ -152,6 +194,7 @@ impl Snapshot {
             index: HashMap::new(),
             files: HashMap::new(),
             airing: HashMap::new(),
+            tv_seasons: HashMap::new(),
             anilist_entries: HashMap::new(),
             mal_entries: HashMap::new(),
             views: HashMap::new(),
@@ -176,8 +219,11 @@ impl Snapshot {
             .collect();
         let scoped_series = scope.map(|_| series_ids.as_slice());
 
+        let show_ids: Vec<u64> = snap.series.iter().filter_map(|r| r.tvmaze_id).collect();
         snap.load_files(conn, scoped_series)?;
         snap.load_airing(conn, scope.map(|_| anilist_ids.as_slice()))?;
+        snap.load_tv_episodes(conn, scope.map(|_| show_ids.as_slice()))?;
+        snap.fill_tvmaze_totals();
         snap.load_tracker_entries(conn, scope.map(|_| media_ids.as_slice()))?;
         snap.load_history(conn, scoped_series)?;
         snap.load_graph_seeds(conn, scope.map(|_| anilist_ids.as_slice()))?;
@@ -199,11 +245,14 @@ impl Snapshot {
                     s.provider, s.anilist_id, s.mal_id, s.tmdb_id, s.tmdb_kind, s.confirmed, s.track_choice,
                     m.id, m.title_romaji, m.title_english, m.title_native, m.format, m.status, m.year, m.episodes,
                     m.description, m.average_score, m.genres, m.studio, m.tags, m.characters, m.site_url,
-                    m.cover_url, m.banner_url, ip.path, ib.path
+                    m.cover_url, m.banner_url, ip.path, ib.path,
+                    s.tvmaze_id, t.id, t.name, t.status, t.premiered, t.rating, t.genres, t.network, t.summary,
+                    t.url, t.poster_url, t.background_url
              FROM series s
              LEFT JOIN anilist_media m ON m.id = s.anilist_id
-             LEFT JOIN images ip ON ip.url = m.cover_url
-             LEFT JOIN images ib ON ib.url = m.banner_url
+             LEFT JOIN tvmaze_shows t ON t.id = s.tvmaze_id AND s.provider = 'tvmaze'
+             LEFT JOIN images ip ON ip.url = CASE WHEN t.id IS NOT NULL THEN t.poster_url ELSE m.cover_url END
+             LEFT JOIN images ib ON ib.url = CASE WHEN t.id IS NOT NULL THEN t.background_url ELSE m.banner_url END
              {where_sql}
              ORDER BY s.id"
         );
@@ -218,7 +267,12 @@ impl Snapshot {
                 tracing::warn!("skipping series {id}: unknown kind {kind_col:?}");
                 return Ok(None);
             };
+            let show = match r.get::<_, Option<i64>>(35)? {
+                None => None,
+                Some(_) => Some(show_media(r)?),
+            };
             let media = match r.get::<_, Option<i64>>(15)? {
+                _ if show.is_some() => show,
                 None => None,
                 Some(_) => Some(MediaRow {
                     title_romaji: r.get(16)?,
@@ -257,6 +311,7 @@ impl Snapshot {
                 tmdb_kind: r
                     .get::<_, Option<String>>(12)?
                     .and_then(|s| TmdbKind::from_column(&s)),
+                tvmaze_id: r.get::<_, Option<i64>>(34)?.map(|v| v as u64),
                 confirmed: r.get::<_, i64>(13)? != 0,
                 track_choice: r.get(14)?,
                 media,
@@ -348,6 +403,74 @@ impl Snapshot {
             self.airing.entry(anilist_id).or_default().push(airing);
         }
         Ok(())
+    }
+
+    /// The episodes of every TVmaze show the scope's series are matched
+    /// to, grouped by season.
+    fn load_tv_episodes(
+        &mut self,
+        conn: &Connection,
+        scope: Option<&[u64]>,
+    ) -> Result<(), CoreError> {
+        if scope.is_some_and(<[u64]>::is_empty) {
+            return Ok(());
+        }
+        let where_sql = match scope {
+            Some(ids) => format!("show_id IN ({})", placeholders(ids.len())),
+            None => "show_id IN (SELECT tvmaze_id FROM series WHERE provider = 'tvmaze' AND tvmaze_id IS NOT NULL)"
+                .to_string(),
+        };
+        let sql = format!(
+            "SELECT show_id, season, number, name, airstamp FROM tvmaze_episodes WHERE {where_sql} ORDER BY season, number"
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(params_from_iter(ids_as_i64(scope.unwrap_or(&[]))), |r| {
+            Ok((
+                r.get::<_, i64>(0)? as u64,
+                r.get::<_, i64>(1)? as u32,
+                AiringRow {
+                    number: r.get::<_, i64>(2)? as u32,
+                    title: r.get(3)?,
+                    aired_at: r.get(4)?,
+                },
+            ))
+        })?;
+        for row in rows {
+            let (show, season, airing) = row?;
+            self.tv_seasons
+                .entry(show)
+                .or_default()
+                .entry(season)
+                .or_default()
+                .push(airing);
+        }
+        Ok(())
+    }
+
+    /// A TVmaze show publishes no episode count, and its list is the
+    /// whole run rather than one season's. Once a show has ended, the
+    /// season a card is about is complete, so its length is the total;
+    /// while it runs, the list is only what is announced so far, which is
+    /// the aired estimate's job rather than a total's.
+    fn fill_tvmaze_totals(&mut self) {
+        let mut totals: Vec<(usize, u32)> = Vec::new();
+        for (i, row) in self.series.iter().enumerate() {
+            let finished = row.media.as_ref().is_some_and(|m| {
+                m.status.as_deref().and_then(AiringStatus::from_provider)
+                    == Some(AiringStatus::Finished)
+            });
+            if row.provider == Some(Provider::Tvmaze) && finished {
+                let n = self.airing_of(row).len() as u32;
+                if n > 0 {
+                    totals.push((i, n));
+                }
+            }
+        }
+        for (i, n) in totals {
+            if let Some(m) = self.series[i].media.as_mut() {
+                m.episodes = Some(n);
+            }
+        }
     }
 
     fn load_tracker_entries(
@@ -517,11 +640,49 @@ impl Snapshot {
         self.files.get(&id).map(Vec::as_slice).unwrap_or(&[])
     }
 
-    pub(super) fn airing_of(&self, row: &SeriesRow) -> &[AiringRow] {
+    /// The episodes a card counts and schedules by. For an AniList match
+    /// that is the media's schedule; for a TVmaze match it is one season
+    /// of the show, the one `season_of` names.
+    pub(crate) fn airing_of(&self, row: &SeriesRow) -> &[AiringRow] {
+        if row.provider == Some(Provider::Tvmaze) {
+            return row
+                .tvmaze_id
+                .and_then(|id| self.tv_seasons.get(&id))
+                .and_then(|seasons| seasons.get(&self.season_of(row)))
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
+        }
         row.anilist_id
             .and_then(|id| self.airing.get(&id))
             .map(Vec::as_slice)
             .unwrap_or(&[])
+    }
+
+    /// The season a TVmaze card is about: the highest one on disk, since
+    /// that is the one being watched, with a file that names no season
+    /// read as season 1, and season 1 for a folder with no episodes yet.
+    fn season_of(&self, row: &SeriesRow) -> u32 {
+        self.files_of(row.id)
+            .iter()
+            .filter(|f| f.is_episode)
+            .map(|f| f.season.unwrap_or(1))
+            .max()
+            .unwrap_or(1)
+    }
+
+    /// One file's own episode in the provider's list: by number for an
+    /// AniList match, by season and number for a TVmaze one.
+    pub(crate) fn episode_airing(&self, row: &SeriesRow, file: &FileRow) -> Option<&AiringRow> {
+        let rows: &[AiringRow] = if row.provider == Some(Provider::Tvmaze) {
+            row.tvmaze_id
+                .and_then(|id| self.tv_seasons.get(&id))
+                .and_then(|seasons| seasons.get(&file.season.unwrap_or(1)))
+                .map(Vec::as_slice)
+                .unwrap_or(&[])
+        } else {
+            self.airing_of(row)
+        };
+        rows.iter().find(|a| f64::from(a.number) == file.number)
     }
 
     /// The episodes on disk, sorted by number, as (file id, number).

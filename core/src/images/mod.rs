@@ -2,9 +2,9 @@
 //! file in `images`, and the two jobs that fill and empty it.
 //!
 //! Nothing here goes through a provider limiter. The posters, banners and
-//! portraits all come from AniList's CDN rather than its API, so the only
-//! bound on a fetch is a semaphore of four permits; an error from one still
-//! names AniList, since that is whose CDN answered.
+//! portraits come from AniList's CDN and TVmaze's static host rather than
+//! either API, so the only bound on a fetch is a semaphore of four permits;
+//! an error from one names AniList, whose CDN answers nearly all of them.
 //!
 //! A read never fetches. It reports the gap it found and the cache decides,
 //! at most once every five minutes, whether that is worth a fill job.
@@ -59,12 +59,16 @@ const REFERENCED_SQL: &str =
     "SELECT cover_url AS url FROM anilist_media WHERE cover_url IS NOT NULL
      UNION SELECT banner_url FROM anilist_media WHERE banner_url IS NOT NULL
      UNION SELECT value ->> 'image_url' FROM anilist_media, json_each(anilist_media.characters)
-           WHERE value ->> 'image_url' IS NOT NULL";
+           WHERE value ->> 'image_url' IS NOT NULL
+     UNION SELECT poster_url FROM tvmaze_shows WHERE poster_url IS NOT NULL
+     UNION SELECT background_url FROM tvmaze_shows WHERE background_url IS NOT NULL";
 
 /// The urls of a series the library actually owns. These are never evicted
 /// by the cap: losing them is the one loss a user would see at once.
 const PINNED_SQL: &str = "SELECT m.cover_url AS url FROM anilist_media m JOIN series s ON s.anilist_id = m.id WHERE m.cover_url IS NOT NULL
-     UNION SELECT m.banner_url FROM anilist_media m JOIN series s ON s.anilist_id = m.id WHERE m.banner_url IS NOT NULL";
+     UNION SELECT m.banner_url FROM anilist_media m JOIN series s ON s.anilist_id = m.id WHERE m.banner_url IS NOT NULL
+     UNION SELECT t.poster_url FROM tvmaze_shows t JOIN series s ON s.tvmaze_id = t.id WHERE t.poster_url IS NOT NULL
+     UNION SELECT t.background_url FROM tvmaze_shows t JOIN series s ON s.tvmaze_id = t.id WHERE t.background_url IS NOT NULL";
 
 /// What a fill goes and gets: everything an owned series draws, the covers
 /// of what it recommends, and the covers behind the watching list.
@@ -79,6 +83,8 @@ const MISSING_SQL: &str = "SELECT DISTINCT url FROM (
         UNION SELECT tm.cover_url FROM tracker_entries t
                      JOIN anilist_media tm ON (t.tracker = 'anilist' AND tm.id = t.media_id)
                                            OR (t.tracker = 'mal' AND tm.mal_id = t.media_id)
+        UNION SELECT ts.poster_url FROM tvmaze_shows ts JOIN series s ON s.tvmaze_id = ts.id
+        UNION SELECT ts.background_url FROM tvmaze_shows ts JOIN series s ON s.tvmaze_id = ts.id
      )
      WHERE url IS NOT NULL AND url NOT IN (SELECT url FROM images)
      ORDER BY url";
@@ -518,12 +524,16 @@ fn series_for_urls(conn: &Connection, urls: &[String]) -> Result<Vec<u64>, CoreE
     let list = placeholders(urls.len());
     let sql = format!(
         "SELECT s.id FROM series s JOIN anilist_media m ON m.id = s.anilist_id
-         WHERE m.cover_url IN ({list}) OR m.banner_url IN ({list})"
+         WHERE m.cover_url IN ({list}) OR m.banner_url IN ({list})
+         UNION
+         SELECT s.id FROM series s JOIN tvmaze_shows t ON t.id = s.tvmaze_id
+         WHERE t.poster_url IN ({list}) OR t.background_url IN ({list})"
     );
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(params_from_iter(urls.iter().chain(urls.iter())), |r| {
-        r.get::<_, i64>(0)
-    })?;
+    let rows = stmt.query_map(
+        params_from_iter(urls.iter().chain(urls).chain(urls).chain(urls)),
+        |r| r.get::<_, i64>(0),
+    )?;
     Ok(rows
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()
@@ -532,8 +542,9 @@ fn series_for_urls(conn: &Connection, urls: &[String]) -> Result<Vec<u64>, CoreE
 }
 
 fn matched_series(conn: &Connection) -> Result<Vec<u64>, CoreError> {
-    let mut stmt =
-        conn.prepare("SELECT id FROM series WHERE anilist_id IS NOT NULL ORDER BY id")?;
+    let mut stmt = conn.prepare(
+        "SELECT id FROM series WHERE anilist_id IS NOT NULL OR tvmaze_id IS NOT NULL ORDER BY id",
+    )?;
     let rows = stmt.query_map([], |r| r.get::<_, i64>(0))?;
     Ok(rows
         .collect::<Result<Vec<_>, _>>()?

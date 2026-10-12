@@ -61,7 +61,7 @@ impl Snapshot {
             .map(|rows| rows.iter().map(|(k, _)| k.as_str()).collect())
             .unwrap_or_default();
         let episode = |f: &FileRow| {
-            let air = airing.iter().find(|a| f64::from(a.number) == f.number);
+            let air = self.episode_airing(row, f);
             Episode {
                 file: f.id,
                 number: f.number,
