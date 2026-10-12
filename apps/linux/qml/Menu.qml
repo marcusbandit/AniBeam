@@ -1,7 +1,8 @@
 // The frame's menu: rows of text and a glyph on a raised tile. Every row is as wide as the
 // widest one, so the hover highlight is one even column. Opened by the frame at a point;
 // closes on a pick, a click outside, or Escape through the escape stack. Up, Down, Home
-// and End move the highlight, Return picks; it takes key focus while open and gives it back.
+// and End move the highlight, Return picks; it takes key focus while open and gives it back to
+// whatever had it.
 import QtQuick
 
 Item {
@@ -17,12 +18,14 @@ Item {
     anchors.fill: parent
     z: 1000
 
+    property Item prevFocus: null
     function openAt(x, y, list) {
+        if (!open) prevFocus = frame.hostWindow ? frame.hostWindow.activeFocusItem : null
         items = list; originX = x; originY = y; hi = -1; open = true
         frame.escapeStack.push("popover", root)
         root.forceActiveFocus()
     }
-    function close() { if (!open) return; open = false; frame.escapeStack.pop(root); frame.focusPage(root) }
+    function close() { if (!open) return; open = false; frame.escapeStack.pop(root); frame.focusPage(root, prevFocus); prevFocus = null }
     // The mouse and the keyboard share one path: close first, so an action that navigates
     // or opens another layer starts from a closed menu.
     function pick(i) {

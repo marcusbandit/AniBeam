@@ -56,14 +56,17 @@ FocusScope {
     }
     Keys.onEscapePressed: escapePressed()
 
-    // Hands key focus back to the page when a layer that took it closes. Only when the
-    // focus is still inside that layer (or nowhere): a field the user clicked into while
+    // Hands key focus back when a layer that took it closes: to `prev` (what had it before
+    // the layer opened) while that is still on screen, else to the page. Only when the
+    // focus is still inside the layer (or nowhere): a field the user clicked into while
     // the layer was up keeps its focus.
-    function focusPage(layer) {
+    function focusPage(layer, prev) {
         if (!page.item) return
         var f = frame.hostWindow ? frame.hostWindow.activeFocusItem : null
         for (var p = f; p; p = p.parent) if (p === layer) { f = null; break }
-        if (!f || f === frame) page.item.forceActiveFocus()
+        if (f && f !== frame) return
+        if (prev && prev.visible && prev !== frame && prev !== frame.hostWindow.contentItem) prev.forceActiveFocus()
+        else page.item.forceActiveFocus()
     }
 
     // Frame-owned overlays outlive a page. A navigation clears the stack, so they are
@@ -176,8 +179,14 @@ FocusScope {
             anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
             readonly property var job: Door.runningJobs.length ? Door.runningJobs[0] : null
             readonly property var line: Door.latestLine
-            stage: job ? String(job.kind).toLowerCase() : (line && line.stage ? String(line.stage).toLowerCase() : "system")
-            message: job ? (job.label || job.kind) + (job.total > 0 ? ", " + job.done + " of " + job.total : "") : (line && line.message ? line.message : "")
+            // A kind or stage as words: "ConnectTracker" reads "Connect tracker", "metadata"
+            // reads "Metadata"
+            function words(k) {
+                var w = String(k).replace(/([a-z])([A-Z])/g, "$1 $2").replace(/_/g, " ").toLowerCase()
+                return w.charAt(0).toUpperCase() + w.slice(1)
+            }
+            stage: job ? words(job.kind) : (line && line.stage ? words(line.stage) : "System")
+            message: job ? (job.label || words(job.kind)) + (job.total > 0 ? ", " + job.done + " of " + job.total : "") : (line && line.message ? line.message : "")
             time: job || !line || !line.at ? "" : Qt.formatTime(new Date(line.at * 1000), "hh:mm")
             running: job !== null
             fraction: job && job.total > 0 ? job.done / job.total : 0
