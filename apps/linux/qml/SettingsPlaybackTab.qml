@@ -44,7 +44,18 @@ SettingsTab {
     SettingsPair {
         split: 2 / 5
         leftPanels: [ playbackPanel, tracksPanel, subtitlePanel ]
-        rightPanels: [ previewPanel ]
+        rightPanels: [ previewPanel, keysPanel ]
+    }
+    // The player's key map, read off KeyHelp (never shown here) so the list is the one the
+    // player itself shows on ?
+    property Item keyMap: KeyHelp { visible: false; open: false }
+    readonly property var keyRows: {
+        var out = []
+        for (var g = 0; g < keyMap.groups.length; g++) {
+            if (keyMap.groups[g].name === "Library") continue
+            for (var k = 0; k < keyMap.groups[g].keys.length; k++) out.push(keyMap.groups[g].keys[k])
+        }
+        return out
     }
     Component {
         id: playbackPanel
@@ -72,7 +83,7 @@ SettingsTab {
     Component {
         id: subtitlePanel
         Panel {
-            title: "Subtitle defaults"; icon: "captions"; grows: true
+            title: "Subtitle defaults"; icon: "captions"; grows: true; spread: true
             helper: "What every session starts from. Change tracks in the player and AniBeam remembers them per series."
             SettingRow { label: "Scale"
                 SliderRow { from: 0.5; to: 2.0; stepSize: 0.05; decimals: 2; value: tab.defaults.scale || 1; onMoved: function(v) { tab.edit(function(d) { d.scale = v }) } } }
@@ -103,14 +114,44 @@ SettingsTab {
     Component {
         id: previewPanel
         Panel {
-            title: "Preview"; icon: "eye"; grows: true
+            title: "Preview"; icon: "eye"
             stretch: Item {
                 anchors.fill: parent
-                implicitHeight: theme.space(60)
+                implicitHeight: width * 9 / 16
                 SubtitlePreview {
                     anchors.centerIn: parent
                     width: Math.min(parent.width, parent.height * 16 / 9); height: width * 9 / 16
                     defaults: tab.defaults; path: tab.preview.path; subtitle: tab.preview.subtitle; startAt: tab.preview.startAt
+                }
+            }
+        }
+    }
+    // What the player answers to, as many lines as the column holds
+    Component {
+        id: keysPanel
+        Panel {
+            objectName: "settings-player-keys"
+            title: "Player keys"; icon: "keyboard"; grows: true
+            helper: "? in the player lists them all."
+            stretch: FillRows {
+                anchors.fill: parent
+                model: tab.keyRows
+                rowHeight: theme.space(9)
+                delegate: Item {
+                    id: keyRow
+                    required property var modelData
+                    width: parent ? parent.width : 0
+                    height: theme.space(9)
+                    Chip { id: keyChip; anchors.verticalCenter: parent.verticalCenter; text: keyRow.modelData[0]; small: true; color: theme.raised }
+                    Label {
+                        anchors.left: parent.left; anchors.leftMargin: theme.space(36)
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: keyRow.modelData[1]
+                        role: "ui"; color: theme.textDim
+                        elide: Text.ElideRight
+                    }
+                    Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.line; opacity: 0.5 }
                 }
             }
         }

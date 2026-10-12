@@ -4,6 +4,7 @@
 // singleton's pick* invokables; the engine pushes the fresh resolution back and the panes
 // re-tone through their own Tokens, so nothing here polls.
 import QtQuick
+import QtQuick.Layouts
 import com.marcusrosado.AniBeam
 
 SettingsTab {
@@ -28,11 +29,14 @@ SettingsTab {
         }
     }
 
+    // The knobs side by side at their own height, the preview under them taking the rest
     SettingsPair {
-        split: 1 / 3
-        leftPanels: [ coloursPanel, shapePanel ]
-        rightPanels: [ previewPanel ]
+        split: 1 / 2
+        evenColumns: true
+        leftPanels: [ coloursPanel ]
+        rightPanels: [ shapePanel ]
     }
+    Loader { property bool grows: true; sourceComponent: previewPanel; Layout.fillWidth: true; Layout.fillHeight: true; Layout.minimumHeight: item ? item.implicitHeight : 0 }
     Component {
         id: coloursPanel
         Panel {
@@ -55,7 +59,7 @@ SettingsTab {
     Component {
         id: shapePanel
         Panel {
-            title: "Shape"; icon: "shapes"; grows: true
+            title: "Shape"; icon: "shapes"
             SettingRow { label: "Density"
                 Seg { options: ["Compact", "Normal", "Comfortable"]; index: ["compact", "normal", "comfortable"].indexOf(Theme.density); onPicked: function(i) { Theme.pickDensity(["compact", "normal", "comfortable"][i]) } } }
             SettingRow { label: "Poster size"
