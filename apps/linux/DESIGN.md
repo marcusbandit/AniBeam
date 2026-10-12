@@ -64,28 +64,61 @@ stagger). Reduced motion (`Theme.reducedMotion` or the setting) turns it off.
 
 ## Layout
 
+One module for the whole window. The library computes its columns from the page width
+(as many as fit at `posterWidth` plus a grout, the spare pixels handed out one per column
+from the left so the right edge is exact) and a vertical unit `u` of half a column. A tile
+spanning k units is `k*u + (k-1)*grout` tall, so every edge on the page lands on the
+module. The grout is the only joint: between tiles both ways, and as the page's margin on
+the top, right and bottom (on the left the rail's own grout is the joint).
+
 ```
-rail  header row of tiles                                      shelf (the mosaic)
-┌──┐ ┌──────────────────────────┐┌──────────────┐┌─────┐┌─────┐
-│▣ │ │ Library                  ││ Search       ││ 56  ││  3  │
-│▣ │ └──────────────────────────┘└──────────────┘└─────┘└─────┘
-│▣ │ ┌ All  Series  Movies ┐ ┌ Sort ┐ ┌ Group ┐
-│▣ │ ┌───────────┐┌───────────┐┌────┐┌────┐┌────┐┌────┐
-│▣ │ │ hero 2x2  ││ hero 2x2  ││ 1  ││ 1  ││ 1  ││ 1  │
-│  │ │ poster    ││ poster    │├────┤├────┤├────┤├────┤
-│  │ │ plate+Play││ plate+Play││ 1  ││ 1  ││ 1  ││ 1  │
-│  │ └───────────┘└───────────┘└────┘└────┘└────┘└────┘
-└──┘ ┌────┐┌────┐┌────┐┌────┐┌────┐┌────┐┌────┐┌────┐
+rail  header: one unit tall, whole column spans, spare columns to the title
+┌──┐ ┌───────────────┐┌ Show ─────────┐┌ Sort by ─────────────┐┌ Group by ─┐┌ Show ┐┌ Search ─────┐┌─────┐
+│▣ │ │ Library       ││ All Series .. ││ ^ A to Z  Last .. .. ││ None ..   ││  o   ││ [         ] ││ 52  │
+│▣ │ └───────────────┘└───────────────┘└──────────────────────┘└───────────┘└──────┘└─────────────┘└─────┘
+│▣ │ ┌─────┐┌────┐┌────┐┌────┐┌────┐┌────┐┌────┐┌────┐      Airing: label stone, then small
+│▣ │ │Airing││    ││    ││    ││    ││    ││    ││    │      tiles; its heroes were demoted
+│▣ │ │     6││plate││plate││ .. ││    ││    ││    ││    │      because they left a hole
+│  │ └─────┘└────┘└────┘└────┘└────┘└────┘└────┘└────┘
+│  │ ┌─────┐┌───────────┐┌───────────┐┌────┐┌────┐┌────┐
+│  │ │Series││ hero 2x2  ││ hero 2x2  ││ 1  ││ 1  ││ 1  │   label stone, heroes, then small
+│  │ │   52││ poster    ││ poster    │└────┘└────┘└────┘   tiles first-fit around them
+│  │ └─────┘│           ││           │┌────┐┌────┐┌────┐
+│  │ ┌────┐ │ plate     ││ plate     ││ 1  ││ 1  ││ 1  │
+│  │ │ 1  │ │ Play      ││ Play      ││    ││    ││    │
+└──┘ └────┘ └───────────┘└───────────┘└────┘└────┘└────┘
 ```
 
-- Content is left-aligned; numbers are right-aligned inside their tile.
-- Pages fill the viewport (the owner's standing rule): tiles stretch to the width, columns are
-  computed from it, and only the shelf scrolls.
-- The rail is a column of square tiles, icon over label; the active one is raised, its glyph in
-  smalt. No accent bar.
-- Hero tiles (2x2) go to series that are behind or in progress and were viewed recently, or air
-  within seven days, capped at a third of the columns. Each carries the next episode and a Play
-  button that starts it directly.
+- **The header is a row of tiles**, one unit tall: the title, the tabs, the sorts (the
+  active one carries its direction as a chevron; picking it again flips it), the grouping,
+  Show watched, the search and the count. Each tile spans the whole columns its content
+  needs, the row's spare columns go to the title, and a narrow window wraps it onto a
+  second unit row. It scrolls with the wall as its first rows.
+- **A series is one stone**: the poster on top (2:3) and, in the same rounded shape, a
+  plate in the poster's own tone carrying the title (two lines at most) and one ledger line
+  (the airing countdown in the accent, else "3 of 12", else "12 files") with the score at
+  its right. The episode code rides the poster's top left, the progress strip its bottom
+  edge. The plate is as tall as it takes to land the tile on a whole number of units.
+  Nothing is captioned outside a tile, on any page that shows series (`Card.qml`).
+- **Size says what matters now.** A hero is 2x2 (two columns, two small tiles and the
+  joint between tall) and goes to a series that is in progress and was viewed in the last
+  14 days, or airs within seven, most recent first, capped at a third of the columns (one
+  from four columns, none below). Its plate carries the title in the display cut, the next
+  episode, and a Play button that starts it (or opens the series when nothing is next). A
+  series is a hero once on the wall.
+- **Section labels are stones**: each section opens with a tile the size of a small one,
+  its name at the top left and its count in big figures at the bottom right; Airing's in
+  the accent's plate, the rest raised slate. Sections follow each other in the same
+  packing, each on a fresh unit row.
+- **The packer** (`qml/mosaic.js`, tested by `node apps/linux/qml/test-mosaic.mjs`) is a
+  first-fit skyline per section: the label stone at column 0, then the heroes, then the
+  small tiles, each at the lowest row its span fits, left-most on ties. A section may not
+  leave a hole: every cell above its final small row is filled and that row runs short only
+  on the right. While it would, the least important hero is set small and the section is
+  packed again.
+- The wall is one Flickable; a tile is built only within a screen of the viewport.
+- The rail is a column of square tiles, icon over label; the active one is raised, its
+  glyph in smalt. No accent bar.
 - The series page is a bento: banner across the top, poster, title tile, fact tiles (score,
   episodes, status, next airing), synopsis, tags, the episode ledger, relations.
 

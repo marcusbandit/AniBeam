@@ -1,4 +1,5 @@
 [
+  {"log": "needs a library with a hero and a watched series (a tracker entry marked completed); the real copy has neither tracker entries nor views, so seed a scratch copy"},
   {"log": "the library opens as one packed wall, no two tiles sharing a cell"},
   {"eval": "frame.item.nav.current.page", "expect": "library"},
   {"wait": 800},
