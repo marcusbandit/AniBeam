@@ -36,6 +36,9 @@ pub mod qobject {
         fn watched_chip(self: &Fmt, watched: i32, total: i32, estimate: bool) -> QString;
         #[qinvokable]
         fn score(self: &Fmt, x: f64) -> QString;
+        /// An episode's title, else "Episode N"; pass "" for no title.
+        #[qinvokable]
+        fn episode_name(self: &Fmt, title: &QString, number: f64) -> QString;
         /// The poster's tone as "#rrggbb", or "" for no poster or an unreadable one. Takes a
         /// path or a file:// URL.
         #[qinvokable]
@@ -82,6 +85,10 @@ impl qobject::Fmt {
     }
     pub fn score(&self, x: f64) -> QString {
         QString::from(&crate::format::score(x))
+    }
+    pub fn episode_name(&self, title: &QString, number: f64) -> QString {
+        let t = title.to_string();
+        QString::from(crate::format::episode_name(Some(t.as_str()), number))
     }
     pub fn poster_tone(&self, path: &QString) -> QString {
         QString::from(&tone(&path.to_string()))

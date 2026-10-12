@@ -3,9 +3,8 @@
 // content fits and something in it grows, its natural height otherwise, so the Flickable
 // only scrolls when it has to. Under it sits the focus sink: a press that no control
 // claimed lands on it and takes the focus, so a Field, Dropdown or Slider lets go when the
-// user clicks elsewhere. `blockX` and `blockWidth` are the block every tab shares: the
-// tab's width up to a cap, centred when the tab is wider, so a row's label and its control
-// never drift metres apart, and SettingsPage's header lines up with it.
+// user clicks elsewhere. The block is the tab's whole width: its tiles fill the viewport on
+// the mosaic, one grout apart, with no cap and no centring column.
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls.Basic as QC
@@ -13,12 +12,11 @@ import QtQuick.Controls.Basic as QC
 Flickable {
     id: root
     default property alias body: layout.data
-    property real footInset: theme.space(10)
+    property real footInset: 0
     readonly property real viewport: Math.max(0, height - footInset)
-    readonly property real gap: theme.space(6)
-    readonly property real maxWidth: theme.space(560)
-    readonly property real blockWidth: Math.min(width, maxWidth)
-    readonly property real blockX: Math.round((width - blockWidth) / 2)
+    readonly property real gap: theme.grout
+    readonly property real blockWidth: width
+    readonly property real blockX: 0
 
     // Whether any direct child asks for the spare height (a Panel or a SettingsPair with
     // `grows`)
@@ -44,5 +42,6 @@ Flickable {
         height: grows ? Math.max(root.viewport, implicitHeight) : implicitHeight
         spacing: root.gap
     }
-    QC.ScrollBar.vertical: ThinScrollBar {}
+    // The scroll bar rides the right-hand joint, beside the tiles
+    QC.ScrollBar.vertical: ThinScrollBar { parent: root.parent; x: root.x + root.width + Math.max(0, (theme.grout - width) / 2); y: root.y; height: root.height; width: Math.min(theme.grout, theme.space(1)) }
 }

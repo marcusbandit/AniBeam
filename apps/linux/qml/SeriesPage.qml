@@ -54,7 +54,7 @@ Item {
     function contextItems() {
         return [
             { text: "Rescan show", icon: "refresh-cw", action: page.rescan },
-            { text: "To Metadata", icon: "database", action: function() { frame.go("metadata", { q: page.title }) } }
+            { text: "Open in Metadata", icon: "database", action: function() { frame.go("metadata", { q: page.title }) } }
         ]
     }
     function rescan() { var r = Door.rescanSeries(page.props.id); frame.toast(r.error ? r.error.message : "Rescan started") }
@@ -96,12 +96,11 @@ Item {
     function listStatus(s) { return { Watching: "Watching", Planning: "Planning", Completed: "Completed", Paused: "Paused", Dropped: "Dropped", Repeating: "Rewatching" }[s] || s }
     function formatLabel(f) { return isMovie ? "Film" : !f ? "Series" : ({ TV: "TV", TV_SHORT: "TV short", OVA: "OVA", ONA: "ONA", SPECIAL: "Special", MOVIE: "Film" })[f] || f.replace(/_/g, " ") }
     function relationLabel(r) { if (!r) return ""; var s = String(r).replace(/_/g, " ").toLowerCase(); return s.charAt(0).toUpperCase() + s.slice(1) }
-    // An episode's name: its own title, else "Episode 13" (AniList often lists fewer
-    // titled episodes than are on disk; the file name is never a title)
+    // An episode's name: Fmt.episodeName, the one rule the player and the feed share (its
+    // own title, else "Episode 13"; the file name is never a title). A lone film is the film.
     function episodeName(ep) {
-        if (ep.title) return ep.title
-        if (isMovie && detail && detail.episodes.length === 1) return page.title
-        return "Episode " + ep.number
+        if (!ep.title && isMovie && detail && detail.episodes.length === 1) return page.title
+        return Fmt.episodeName(ep.title || "", ep.number)
     }
 
     // Track to here / untrack to here, optimistic; the core confirms through progressSet.
@@ -314,7 +313,7 @@ Item {
                 spacing: theme.space(2)
                 Button { objectName: "series-hide"; small: true; text: card.hidden ? "Unhide" : "Hide"; icon: card.hidden ? "eye" : "eye-off"
                     onClicked: { var r = Door.setHidden(props.id, !card.hidden); if (r.error) frame.toast(r.error.message) }
-                    Tooltip { text: "Incognito: stops tracker sync and hides from all lists" } }
+                    Tooltip { text: "Hidden from every list, and tracker sync stops" } }
                 Button { visible: !!(detail && detail.site_url); small: true; text: "AniList"; icon: "external-link"; onClicked: Qt.openUrlExternally(detail.site_url) }
                 Button { small: true; text: "Rescan"; icon: "refresh-cw"; onClicked: page.rescan() }
             }
@@ -368,7 +367,7 @@ Item {
             delegate: Tile {
                 id: fact
                 required property var modelData
-                readonly property var place: page.factSlot(modelData.key)
+                readonly property var place: modelData ? page.factSlot(modelData.key) : ({ col: 0, row: 0, colSpan: 1 })
                 readonly property bool clickable: modelData.key === "mine"
                 objectName: "fact-" + modelData.key
                 x: page.spanX(page.lead + place.col)
@@ -568,11 +567,11 @@ Item {
                         Label {
                             width: parent.width - theme.space(6)
                             wrapMode: Text.Wrap; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim
-                            text: page.detail ? (page.detail.unmatched_files.length === 1 ? "One file goes" : page.detail.unmatched_files.length + " files go") + " beyond the expected " + Fmt.plural(card.total_episodes || 0, "episode", "episodes") + " for this title: misnamed, duplicates or specials. Rename or remove what doesn't belong." : ""
+                            text: page.detail ? (page.detail.unmatched_files.length === 1 ? "One file is" : page.detail.unmatched_files.length + " files are") + " more than the " + (card.total_episodes || 0) + " expected episodes: misnamed, duplicates or specials. Rename or remove " + (page.detail.unmatched_files.length === 1 ? "it." : "them.") : ""
                         }
                     }
                     Repeater { model: page.detail ? page.detail.unmatched_files : []
-                        EpisodeRow { required property var modelData; episode: modelData; extra: true; title: modelData.title || "Episode " + modelData.number; detailText: modelData.path.split("/").pop(); onPlay: page.openFile(modelData.file) } }
+                        EpisodeRow { required property var modelData; episode: modelData; extra: true; title: Fmt.episodeName(modelData.title || "", modelData.number); detailText: modelData.path.split("/").pop(); onPlay: page.openFile(modelData.file) } }
                 }
             }
         }
@@ -655,7 +654,7 @@ Item {
                             width: parent.width; spacing: theme.space(1.5)
                             Repeater {
                                 model: tagsTile.tags
-                                Chip { required property var modelData; text: modelData.name + "  " + modelData.rank + "%"; mono: false; color: theme.raised; textColor: modelData.spoiler || modelData.adult ? theme.yellow : theme.textDim }
+                                Chip { required property var modelData; text: modelData.name + ", " + modelData.rank + "%"; mono: false; color: theme.raised; textColor: modelData.spoiler || modelData.adult ? theme.yellow : theme.textDim }
                             }
                         }
                     }

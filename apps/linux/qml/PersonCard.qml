@@ -1,4 +1,4 @@
-// A character: portrait or a users glyph, name, role in lower case.
+// A character: portrait or a users glyph, name, role in sentence case.
 import QtQuick
 Column {
     property var person: ({})
@@ -12,5 +12,5 @@ Column {
         Icon { visible: !person.image; anchors.centerIn: parent; glyph: "users"; size: theme.space(6); color: theme.textFaint }
     }
     Text { width: parent.width; text: person.name || "Unknown"; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeNormal; font.weight: Font.DemiBold; elide: Text.ElideRight }
-    Text { width: parent.width; text: (person.role || "").toLowerCase(); color: theme.textFaint; font.family: theme.fontSans; font.pointSize: theme.typeSmall; elide: Text.ElideRight }
+    Text { width: parent.width; text: (function(r) { r = String(r || "").toLowerCase(); return r.charAt(0).toUpperCase() + r.slice(1) })(person.role); color: theme.textFaint; font.family: theme.fontSans; font.pointSize: theme.typeSmall; elide: Text.ElideRight }
 }

@@ -20,7 +20,7 @@ Corner {
         title: "Sample series",
         titles: { folder: "Sample series" },
         poster: null,
-        code: "EP 12",
+        code: "Ep 12",
         watched: 8,
         watched_state: "Behind",
         total_episodes: 12,
@@ -83,7 +83,7 @@ Corner {
                 anchors.right: hint.left
                 anchors.rightMargin: theme.space(2)
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Search romaji, english or folder"
+                text: "Search titles or folders"
                 color: theme.textFaint
                 elide: Text.ElideRight
                 font.family: theme.fontSans
@@ -94,7 +94,7 @@ Corner {
                 anchors.right: parent.right
                 anchors.rightMargin: theme.space(2)
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Ctrl K"
+                text: "/ or Ctrl+K"
                 small: true
                 color: theme.surface
                 textColor: theme.textFaint
@@ -125,7 +125,7 @@ Corner {
             spacing: theme.space(2)
             Chip { text: "Plain"; mono: false; color: theme.surface; textColor: theme.textDim }
             Chip { text: "Selected"; mono: false; selected: true }
-            Chip { text: "EP 12"; small: true; color: theme.surface }
+            Chip { text: "Ep 12"; small: true; color: theme.surface }
             Chip { text: "2 errors"; icon: "circle-alert"; small: true; color: theme.redSoft; textColor: theme.red }
         }
 
@@ -179,7 +179,7 @@ Corner {
                 anchors.rightMargin: theme.space(3)
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: theme.space(2)
-                Chip { id: stripStage; anchors.verticalCenter: parent.verticalCenter; text: "scan"; small: true; color: theme.surface; textColor: theme.textDim }
+                Chip { id: stripStage; anchors.verticalCenter: parent.verticalCenter; text: "Scan"; small: true; color: theme.surface; textColor: theme.textDim }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     width: Math.max(0, Math.min(implicitWidth, stripLine.width - stripStage.width - stripStamp.width - stripLine.spacing * 2))

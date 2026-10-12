@@ -125,6 +125,18 @@ pub fn bytes(n: u64) -> String {
     }
 }
 
+/// An episode's name wherever one is shown (the series ledger, the player's header, the
+/// feed): its own title, else "Episode 13" ("Episode 12.5" for a half-numbered one). A file
+/// name is never a title: AniList often lists fewer titled episodes than are on disk.
+pub fn episode_name(title: Option<&str>, number: f64) -> String {
+    match title.map(str::trim) {
+        Some(t) if !t.is_empty() => t.to_string(),
+        _ if number.is_finite() && number.fract() == 0.0 => format!("Episode {}", number as i64),
+        _ if number.is_finite() => format!("Episode {}", (number * 100.0).round() / 100.0),
+        _ => "Episode".to_string(),
+    }
+}
+
 pub fn plural(n: u64, one: &str, many: &str) -> String {
     if n == 1 {
         format!("{n} {one}")
@@ -223,6 +235,14 @@ mod tests {
         assert_eq!(watched_chip(Some(120), Some(1100), false), "0120/1100");
         assert_eq!(plural(1, "file", "files"), "1 file");
         assert_eq!(plural(3, "file", "files"), "3 files");
+    }
+
+    #[test]
+    fn an_untitled_episode_is_named_by_its_number() {
+        assert_eq!(episode_name(Some("Hitagi Crab, Part 1"), 1.0), "Hitagi Crab, Part 1");
+        assert_eq!(episode_name(None, 13.0), "Episode 13");
+        assert_eq!(episode_name(Some("  "), 13.0), "Episode 13");
+        assert_eq!(episode_name(None, 12.5), "Episode 12.5");
     }
 
     #[test]

@@ -23,7 +23,8 @@ SettingsTab {
         if (!recent.error) rows = rows.concat(recent.reply.series)
         var watched = Door.listSeries("Watched", "", "LastViewed", "Desc", false)
         if (!watched.error) rows = rows.concat(watched.reply.series)
-        var viewed = function(s) { return s.last_viewed_at && s.last_viewed_at.secs_since_epoch !== undefined ? s.last_viewed_at.secs_since_epoch : 0 }
+        // Times reach QML as plain seconds (json.rs flatten_times)
+        var viewed = function(s) { return typeof s.last_viewed_at === "number" ? s.last_viewed_at : 0 }
         rows.sort(function(a, b) { return viewed(b) - viewed(a) })
         var chosen = null
         for (var i = 0; i < rows.length && !chosen; i++) {
@@ -53,8 +54,8 @@ SettingsTab {
                 Switch { checked: !!(Door.settings.auto_skip && Door.settings.auto_skip.intro); onToggled: function(on) { Door.setAutoSkip(on, !!(Door.settings.auto_skip && Door.settings.auto_skip.outro)) } } }
             SettingRow { label: "Auto-skip outro"; helper: "Jumps the outro when the file's chapters or AniSkip know where it is. Undo in the player turns it off for the session."
                 Switch { checked: !!(Door.settings.auto_skip && Door.settings.auto_skip.outro); onToggled: function(on) { Door.setAutoSkip(!!(Door.settings.auto_skip && Door.settings.auto_skip.intro), on) } } }
-            SettingRow { label: "Use my mpv.conf"; helper: "Loads ~/.config/mpv/mpv.conf under AniBeam's own settings. Lines that only apply at start-up, scripts, input-conf and config-dir, are ignored, and no script ever loads."
-                status: Player.configLayers.length ? Player.configLayers.join("\n") : "No config layer found on disk."
+            SettingRow { label: "Use my mpv settings"; helper: "Reads your mpv settings file. Options that only apply at startup are skipped, and scripts never load."
+                status: Player.configLayers.length ? Player.configLayers.join("\n") : "No mpv settings file found."
                 Switch { checked: Player.useMyMpvConf; onToggled: function(on) { Player.setUseMyMpvConf(on) } } }
         }
     }
@@ -71,24 +72,24 @@ SettingsTab {
     Component {
         id: subtitlePanel
         Panel {
-            title: "Subtitle defaults"; icon: "captions"
+            title: "Subtitle defaults"; icon: "captions"; grows: true
             helper: "What every session starts from. Change tracks in the player and AniBeam remembers them per series."
             SettingRow { label: "Scale"
                 SliderRow { from: 0.5; to: 2.0; stepSize: 0.05; decimals: 2; value: tab.defaults.scale || 1; onMoved: function(v) { tab.edit(function(d) { d.scale = v }) } } }
-            SettingRow { label: "ASS override"; helper: "Force applies the text style to styled subtitles and may break signs and karaoke."
+            SettingRow { label: "Styled subtitles"; helper: "Force applies your text style to every subtitle, which can break signs and karaoke."
                 Seg { options: ["As scripted", "Scale only", "Force"]; index: ["AsScripted", "ScaleOnly", "Force"].indexOf(tab.defaults.ass_override || "ScaleOnly"); onPicked: function(i) { tab.edit(function(d) { d.ass_override = ["AsScripted", "ScaleOnly", "Force"][i] }) } } }
-            Note { text: "Applies to SRT and VTT subtitles; ASS files carry their own styling." }
+            Note { text: "Applies to plain subtitle files (SRT, VTT). Styled files (ASS) keep their own look." }
             SettingRow { label: "Font"
                 Field { text: tab.defaults.text_style ? tab.defaults.text_style.font : ""; width: theme.space(30); onEdited: function(t) { if (t.trim() !== "") tab.edit(function(d) { d.text_style.font = t.trim() }) } } }
             SettingRow { label: "Colour"
                 Row { spacing: theme.space(2)
                     Corner { width: theme.space(6); height: width; radius: theme.radiusSm; smoothing: theme.cornerSmoothing; color: tab.defaults.text_style ? tab.hexOf(tab.defaults.text_style.colour) : "#ffffff"; borderColor: theme.line; borderWidth: 1 }
-                    Field { text: tab.defaults.text_style ? tab.hexOf(tab.defaults.text_style.colour).toUpperCase() : ""; mono: true; width: theme.space(24); onEdited: function(t) { if (tab.isHex(t)) tab.edit(function(d) { d.text_style.colour = tab.colourOf(t) }) } } } }
+                    Field { text: tab.defaults.text_style ? tab.hexOf(tab.defaults.text_style.colour) : ""; mono: true; width: theme.space(24); onEdited: function(t) { if (tab.isHex(t)) tab.edit(function(d) { d.text_style.colour = tab.colourOf(t) }) } } } }
             SettingRow { label: "Outline"
                 Row { spacing: theme.space(2)
                     Field { text: tab.defaults.text_style ? String(tab.defaults.text_style.outline_size) : ""; mono: true; width: theme.space(18); onEdited: function(t) { var v = Number(t); if (v >= 0) tab.edit(function(d) { d.text_style.outline_size = v }) } }
                     Corner { width: theme.space(6); height: width; radius: theme.radiusSm; smoothing: theme.cornerSmoothing; color: tab.defaults.text_style ? tab.hexOf(tab.defaults.text_style.outline_colour) : "#000000"; borderColor: theme.line; borderWidth: 1 }
-                    Field { text: tab.defaults.text_style ? tab.hexOf(tab.defaults.text_style.outline_colour).toUpperCase() : ""; mono: true; width: theme.space(24); onEdited: function(t) { if (tab.isHex(t)) tab.edit(function(d) { d.text_style.outline_colour = tab.colourOf(t) }) } } } }
+                    Field { text: tab.defaults.text_style ? tab.hexOf(tab.defaults.text_style.outline_colour) : ""; mono: true; width: theme.space(24); onEdited: function(t) { if (tab.isHex(t)) tab.edit(function(d) { d.text_style.outline_colour = tab.colourOf(t) }) } } } }
             SettingRow { label: "Shadow"
                 Field { text: tab.defaults.text_style ? String(tab.defaults.text_style.shadow_offset) : ""; mono: true; width: theme.space(14); onEdited: function(t) { var v = Number(t); if (v >= 0) tab.edit(function(d) { d.text_style.shadow_offset = v }) } } }
             SettingRow { label: "Box opacity"
