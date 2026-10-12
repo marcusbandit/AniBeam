@@ -127,7 +127,7 @@ Item {
                 objectName: "feed-sort"
                 x: parent.pad
                 anchors.verticalCenter: parent.verticalCenter
-                options: [{ text: "Recently released", icon: "clock" }, { text: "Coming soon", icon: "calendar-clock" }]
+                options: [{ text: "Recently released", icon: "clock", name: "recent" }, { text: "Coming soon", icon: "calendar-clock", name: "upcoming" }]
                 index: page.sort === "Upcoming" ? 1 : 0
                 onPicked: function(i) { page.sort = i === 1 ? "Upcoming" : "Recent"; page.persist(); page.reload() }
             }

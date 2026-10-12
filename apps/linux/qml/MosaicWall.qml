@@ -76,6 +76,7 @@ Item {
 
     Flickable {
         id: flick
+        objectName: "wall-flick"   // a --drive target: the page's scroll lives here
         y: wall.grout
         width: wall.width - wall.grout
         height: wall.height - wall.grout * 2
