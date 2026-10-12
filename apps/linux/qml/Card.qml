@@ -1,5 +1,5 @@
 // One series in the grid: the poster in a G2 frame with four corner facts and a progress
-// strip, the title and a meta line beneath. Hover lifts the poster with exponential smoothing.
+// strip, the title and a meta line beneath. Hover edges the frame in the accent.
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -35,52 +35,16 @@ Item {
     readonly property string metaText: metaOverride !== "" ? metaOverride : (item.last_viewed_at ? Fmt.relative(item.last_viewed_at, nowMs / 1000) : Fmt.plural(item.episodes_on_disk || 0, "file", "files"))
     readonly property string countdownText: countdownOverride !== "" ? countdownOverride : (item.next_airing && item.next_airing.at * 1000 > nowMs ? Fmt.countdown(item.next_airing.at - nowMs / 1000) : "")
 
-    // Lift: exponential smoothing toward the hover target, and the glow the lift turns
-    // on — the poster is a lobby lightbox, lit from behind while the pointer is on it
-    property real lift: 0
-    property real glow: 0
-    readonly property real liftTarget: hover.containsMouse ? -3 : 0
-    readonly property real glowTarget: hover.containsMouse ? 1 : 0
-    FrameAnimation {
-        running: Math.abs(root.lift - root.liftTarget) > 0.05 || Math.abs(root.glow - root.glowTarget) > 0.02
-        onTriggered: {
-            root.lift += (root.liftTarget - root.lift) * (1 - Math.exp(-12 * frameTime))
-            root.glow += (root.glowTarget - root.glow) * (1 - Math.exp(-10 * frameTime))
-        }
-    }
-
-    // The light spill: two warm halos behind the poster, seen only while lit. The one
-    // bold spend of the design; everything else on the card stays quiet.
-    Corner {
-        visible: root.glow > 0.02
-        x: shape.x - theme.space(3) * root.glow
-        y: shape.y - theme.space(3) * root.glow + root.lift
-        width: shape.width + theme.space(6) * root.glow
-        height: shape.height + theme.space(6) * root.glow
-        radius: theme.radiusMd
-        smoothing: theme.cornerSmoothing
-        color: Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, 0.10 * root.glow)
-    }
-    Corner {
-        visible: root.glow > 0.02
-        x: shape.x - theme.space(1.5) * root.glow
-        y: shape.y - theme.space(1.5) * root.glow + root.lift
-        width: shape.width + theme.space(3) * root.glow
-        height: shape.height + theme.space(3) * root.glow
-        radius: theme.radiusSm
-        smoothing: theme.cornerSmoothing
-        color: Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, 0.12 * root.glow)
-    }
-
-    // The poster, laid out at the shape's size and cropped to it; the shape paints it as
-    // laid out through Corner.fillItem
+    // The poster, laid out at the shape's size and cropped to it; the shape samples its
+    // texture straight through Corner.fillItem. Decoded at the shared poster size (the pool's,
+    // so a warmed poster is a cache hit, not a second decode).
     Image {
         id: poster
         visible: false
         width: shape.width
         height: shape.height
         source: item.poster ? "file://" + item.poster : ""
-        sourceSize.width: 480
+        sourceSize: theme.posterDecodeSize
         fillMode: Image.PreserveAspectCrop
         smooth: true
         mipmap: true
@@ -94,7 +58,7 @@ Item {
     Corner {
         id: shape
         x: 0
-        y: root.lift
+        y: 0
         width: root.posterWidth
         height: width * 1.5
         radius: theme.radiusSm
@@ -161,17 +125,17 @@ Item {
             height: Math.max(2, theme.space(0.75))
             anchors.bottom: parent.bottom
             anchors.bottomMargin: theme.space(2)
-            Corner { width: parent.width; height: parent.height; radius: 0; smoothing: 0; color: root.totalKnown ? theme.scrim : theme.line }
-            Corner { anchors.right: parent.right; width: parent.width * root.unknownPct; height: parent.height; radius: 0; smoothing: 0; color: theme.line; visible: root.unknownPct > 0 }
-            Corner { width: parent.width * root.airedPct; height: parent.height; radius: 0; smoothing: 0; color: theme.behind }
-            Corner { width: parent.width * root.watchedPct; height: parent.height; radius: 0; smoothing: 0; color: theme.caughtUp }
+            Rectangle { width: parent.width; height: parent.height; color: root.totalKnown ? theme.scrim : theme.line }
+            Rectangle { anchors.right: parent.right; width: parent.width * root.unknownPct; height: parent.height; color: theme.line; visible: root.unknownPct > 0 }
+            Rectangle { width: parent.width * root.airedPct; height: parent.height; color: theme.behind }
+            Rectangle { width: parent.width * root.watchedPct; height: parent.height; color: theme.caughtUp }
         }
     }
 
     Column {
         id: info
         anchors.top: shape.bottom
-        anchors.topMargin: theme.space(2) - root.lift
+        anchors.topMargin: theme.space(2)
         width: root.posterWidth
         spacing: theme.space(0.5)
         Text {

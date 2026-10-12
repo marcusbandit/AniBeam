@@ -38,7 +38,10 @@ Window {
     }
     Timer { id: poolDebounce; interval: 2000; onTriggered: window.fillPool() }
     Connections { target: Door; function onSeriesChanged(cards) { poolDebounce.restart() } }
-    Connections { target: Door; function onReadyChanged() { if (Door.ready) Qt.callLater(window.fillPool) } }
+    // The first fill waits a beat after the library is ready, so the first page's own
+    // posters reach the single pixmap reader thread ahead of the pool's.
+    Timer { id: poolStart; interval: 1500; onTriggered: window.fillPool() }
+    Connections { target: Door; function onReadyChanged() { if (Door.ready) poolStart.start() } }
 
     // Touching the Player singleton here is what constructs it, and constructing it is what
     // registers the Qt thread an MPRIS command is queued on. Without this the first media

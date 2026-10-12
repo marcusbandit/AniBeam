@@ -89,6 +89,12 @@ Item {
     readonly property real radiusTile: 12 * densityFactor
     function radiusInner(padding) { return Math.max(2, radiusTile - padding) }
     readonly property int posterWidth: Theme.posterWidth
+    // The one size posters decode at, in device pixels: a grid card is laid out between the
+    // poster width and about a quarter wider (the columns stretch to fill the row), so the
+    // decode covers that at the screen's pixel ratio. Cards and the poster pool share it,
+    // and the pixmap cache keys on it, so a warmed poster is a hit, never a second decode.
+    readonly property real devicePixelRatio: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
+    readonly property size posterDecodeSize: Qt.size(Math.ceil(posterWidth * 1.25 * devicePixelRatio), Math.ceil(posterWidth * 1.25 * 1.5 * devicePixelRatio))
     readonly property real systemPointSize: Qt.application.font.pointSize > 0 ? Qt.application.font.pointSize : 10
     readonly property string fontSans: fontFamily
     // Shims kept while the surfaces are restyled: the old names all resolve to Archivo.

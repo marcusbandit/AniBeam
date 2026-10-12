@@ -2,6 +2,10 @@
 // `radius` is the corner's REACH along each side, not the arc radius; the arc radius is
 // reach / (1 + smoothing), so a G2 corner and a plain corner of the same radius are the
 // same size. Reach is clamped to half the shorter side, so a pill is radius: height / 2.
+//
+// Cost: a plain corner (smoothing 0) with a flat colour is a Rectangle, which is what it
+// looks like anyway, and the Shape is never built. Only smoothing, a fill item, a gradient
+// or a dash build the Shape (CurveRenderer, the JS squircle, the PathSvg parse).
 import QtQuick
 import QtQuick.Shapes
 
@@ -13,43 +17,98 @@ Item {
     property color color: "transparent"
     property color borderColor: "transparent"
     property real borderWidth: 0
-    // Any Item painted inside the shape instead of `color`, as it is laid out: the shape is
-    // handed a live rendering of the item (a ShaderEffectSource at the item's size times the
-    // device pixel ratio), never the item's own texture. An Image's texture provider is its
-    // decoded source, so handing the Image itself to ShapePath.fillItem ignores its fillMode,
-    // width and height and maps the raw texture from the top left. Lay the item out at this
-    // shape's size; it is hidden on screen while it is the fill.
+    // Any Item painted inside the shape instead of `color`, as it is laid out at this
+    // shape's size; hide it on screen (visible: false) while it is the fill.
+    //
+    // An Image (anything with a fillMode and a decoded texture) is sampled straight from its
+    // own texture, with no offscreen pass: ShapePath maps a fill texture at its native pixel
+    // size from the shape's top left, ignoring the Image's width, height and fillMode (the
+    // old quarter-poster bug was exactly that, a 480 px decode drawn 1:1 into a 180 px
+    // frame). The fillTransform below scales and centres the texture the way the Image's own
+    // fillMode would (PreserveAspectCrop, or Stretch), so decode the Image at its displayed
+    // size (sourceSize width AND height, times the device pixel ratio) and it is a pointer
+    // to an already-cached texture. Any other item (an effect, a video) is rendered into a
+    // ShaderEffectSource first, which exists only while such an item is the fill.
     property Item fillItem: null
     // A ShapeGradient (LinearGradient and friends) painted instead of `color`.
     property ShapeGradient fillGradient: null
     property int dashed: 0
 
     readonly property real inset: borderWidth / 2
-    readonly property string pathData: squircle(width, height, radius, smoothing, inset)
+    readonly property string pathData: plain ? "" : squircle(width, height, radius, smoothing, inset)
+    readonly property bool plain: smoothing <= 0 && fillItem === null && fillGradient === null && dashed === 0
+    readonly property bool fillIsImage: fillItem !== null && fillItem.fillMode !== undefined && fillItem.implicitWidth > 0
 
-    ShaderEffectSource {
-        id: fillTexture
-        visible: false
-        sourceItem: root.fillItem
-        hideSource: true
-        live: true
-        smooth: true
-        readonly property real dpr: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
-        textureSize: root.fillItem ? Qt.size(Math.ceil(root.fillItem.width * dpr), Math.ceil(root.fillItem.height * dpr)) : Qt.size(0, 0)
+    // One child, picked by what the corner has to paint: a Rectangle, a flat Shape, or a
+    // Shape with a fill item and the transform that lays the fill out
+    Rectangle {
+        visible: root.plain
+        anchors.fill: parent
+        radius: Math.max(0, Math.min(root.radius, root.width / 2, root.height / 2))
+        color: root.color
+        border.color: root.borderWidth > 0 ? root.borderColor : "transparent"
+        border.width: root.borderWidth
+        antialiasing: radius > 0
+    }
+    Loader {
+        anchors.fill: parent
+        active: !root.plain
+        sourceComponent: root.fillItem !== null ? filledShape : curvedShape
     }
 
-    Shape {
-        anchors.fill: parent
-        preferredRendererType: Shape.CurveRenderer
-        ShapePath {
-            strokeColor: root.borderWidth > 0 ? root.borderColor : "transparent"
-            strokeWidth: root.borderWidth
-            strokeStyle: root.dashed ? ShapePath.DashLine : ShapePath.SolidLine
-            dashPattern: [3, 3]
-            fillColor: root.fillItem ? "white" : root.color
-            fillItem: root.fillItem ? fillTexture : null
-            fillGradient: root.fillGradient
-            PathSvg { path: root.pathData }
+    Component {
+        id: curvedShape
+        Shape {
+            preferredRendererType: Shape.CurveRenderer
+            ShapePath {
+                strokeColor: root.borderWidth > 0 ? root.borderColor : "transparent"
+                strokeWidth: root.borderWidth
+                strokeStyle: root.dashed ? ShapePath.DashLine : ShapePath.SolidLine
+                dashPattern: [3, 3]
+                fillColor: root.color
+                fillGradient: root.fillGradient
+                PathSvg { path: root.pathData }
+            }
+        }
+    }
+
+    Component {
+        id: filledShape
+        Shape {
+            id: shape
+            preferredRendererType: Shape.CurveRenderer
+            // Anything but an Image is rendered into a texture first, and only then
+            readonly property bool image: root.fillIsImage
+            ShaderEffectSource {
+                id: layer
+                visible: false
+                sourceItem: shape.image ? null : root.fillItem
+                hideSource: !shape.image
+                live: !shape.image
+                smooth: true
+                readonly property real dpr: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
+                textureSize: shape.image || !root.fillItem ? Qt.size(1, 1) : Qt.size(Math.ceil(root.fillItem.width * dpr), Math.ceil(root.fillItem.height * dpr))
+            }
+            // The fill texture's size in its own units, and the transform that lays it over
+            // this shape's box the way the fill item itself would draw (the fill item is laid
+            // out at this shape's size and origin)
+            readonly property real tw: image ? root.fillItem.implicitWidth : layer.textureSize.width
+            readonly property real th: image ? root.fillItem.implicitHeight : layer.textureSize.height
+            readonly property bool stretch: !image || root.fillItem.fillMode === Image.Stretch
+            readonly property real sx: tw > 0 ? (stretch ? root.width / tw : Math.max(root.width / tw, root.height / th)) : 1
+            readonly property real sy: th > 0 ? (stretch ? root.height / th : sx) : 1
+            ShapePath {
+                strokeColor: root.borderWidth > 0 ? root.borderColor : "transparent"
+                strokeWidth: root.borderWidth
+                strokeStyle: root.dashed ? ShapePath.DashLine : ShapePath.SolidLine
+                dashPattern: [3, 3]
+                fillColor: "white"
+                fillItem: shape.image ? root.fillItem : layer
+                fillTransform: Qt.matrix4x4(shape.sx, 0, 0, (root.width - shape.tw * shape.sx) / 2,
+                                            0, shape.sy, 0, (root.height - shape.th * shape.sy) / 2,
+                                            0, 0, 1, 0, 0, 0, 0, 1)
+                PathSvg { path: root.pathData }
+            }
         }
     }
 
