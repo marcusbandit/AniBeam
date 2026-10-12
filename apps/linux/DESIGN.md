@@ -1,55 +1,108 @@
-# The lobby — the Linux shell's design direction
+# Tesserae: the Linux shell's design direction
 
-Named for where the app puts you: a dark room with one warm light source, and the
-posters are the colour. The direction was set with the frontend-design skill's process
-(plan, review against the generated-design tells, build, critique on captures); this file
-is the memory of what was chosen and why, for future passes.
+AniBeam is one person's anime library on their own desktop: a 5120x1440 ultrawide and a
+portrait panel, a local folder of series, mpv in the window, AniList on the side. Its first job
+is getting from launch to the next episode in one click. Its second is keeping the library
+tidy.
+
+The direction is a mosaic. Every surface in the app is a tile, set into one grid with one
+constant joint (the grout). Two things carry the meaning:
+
+- **A tile's size says how much it matters right now.** What you are mid-way through and what
+  airs this week sit as large tiles at the head of the library. The rest of the shelf is the
+  small module. A series page is a set of tiles cut to fit its facts.
+- **The colour comes from the art.** Each poster's own average colour, darkened into a legible
+  ground, becomes the plate its title sits on. The grid reads as a field of coloured stones
+  cut from the posters. The chrome around it stays neutral slate.
+
+This supersedes "the lobby" (warm ink, Fraunces, the lightbox halo). Its rules on killed
+idioms (below) still hold.
 
 ## Tokens
 
-Palette (dark flagship, `themes/lobby-dark.yaml`; light companion `lobby-light.yaml`):
+Palette (dark flagship `themes/tesserae-dark.yaml`, light companion `tesserae-light.yaml`).
+The slate ramp is borrowed from the owner's own desktop shell (bandit shell, theme slate), so
+the app sits on that desktop as if it came with it.
 
 | Role | Hex | Use |
 |---|---|---|
-| Ink `base00` | `#1a1511` | the ground — warm brown-black, not neutral |
-| Shade `base01–02` | `#221b15`–`#2c241c` | raised surfaces, lines |
-| Vellum `base05` | `#efe6d8` | text |
-| Dim `base04` | `#9a8b77` | secondary text |
-| Tungsten `base09` | `#e8a33d` | the one accent: active, playing, airing-live, watched fill |
-| Gold `base0A` | `#f2c14e` | behind/paused states — deliberately distinct from the accent |
+| Grout `base00` | `#181b1f` | the ground and every joint between tiles |
+| Tile `base01` | `#1d2126` | the resting tile |
+| Raised `base02` | `#262b31` | hovered and selected tiles, menus |
+| Line `base03` | `#3a4149` | the rare hairline (inputs, menus) |
+| Text `base05` | `#eef2f5` | text |
+| Dim `base04` | `#a5aeb8` | secondary text |
+| Smalt `base0D` | `#7fb3d4` | the accent: active, playing, caught up, focus |
+| Gilt `base0A` | `#e0b25a` | behind, paused, waiting: deliberately not the accent |
+| Alarm `base08` | `#ff7a4d` | errors and destructive actions only |
 
-Type: **Fraunces** (variable, qrc) is the voice — page titles, section headers, series
-titles, its optical sizing settling as point size climbs. **Schibsted Grotesk** (variable,
-qrc) is the worker — controls, meta, times, counts. There is no monospace face anywhere;
-the fixed-face readouts of earlier designs were a generated-design tell. The faces load
-through `FontLoader` in `Tokens.qml` from the qrc, so the packaged binary is
-self-contained; `scripts/fetch-fonts.sh` refreshes the committed artifacts.
+Poster tone: `Fmt.posterTone(path)` returns the poster's average colour (decoded at 8x12 in
+C++, cached per path). The plate is that colour moved toward the grout until the text on it
+holds 4.5:1; hover lifts it one step toward the tone itself.
 
-## What was deliberately killed (and must not creep back)
+Type: **Archivo**, one variable family (`wdth` 62 to 125, `wght` 100 to 900) cut to the tile it
+sits in, the way one stone is cut to different shapes:
 
-- Numbered nav markers ("01 / LIBRARY") — numbering implies a sequence; nav isn't one.
-- Letter-spaced ALL-CAPS eyebrow labels, everywhere.
-- Monospace for data labels and timecodes.
-- Middle-dot meta joins ("A · B · C") — plain sentences instead.
+- Display (page titles, the hero tile's title): `wdth` 125, weight 800, `typeDisplay`.
+- Titles (tile plates, section names): `wdth` 112, weight 650, `typeLarge` or `typeNormal`.
+- UI (controls, body): `wdth` 100, weight 450, `typeNormal`.
+- Ledger (tables, episode lists, counts, times): `wdth` 88, weight 500, tabular figures,
+  `typeSmall`.
+
+Four sizes only (small 0.85, normal 1, large 1.5, display 2.2 of the system size); widths and
+weights do the rest. No monospace anywhere.
+
+Geometry: grout 6 px at density 1 (`theme.grout`); tile radius 12 (`theme.radiusTile`),
+anything inside a tile is `radiusTile - padding` so corners nest; pills for chips, segmented
+switches and buttons. Corners are the G2 squircle from `Corner.qml`. No shadows, no gradients,
+no blur: menus and sheets are raised tiles on a scrim, not glass.
+
+Motion: exponential smoothing at rate 14 for anything tracking a target (bandit shell's value).
+Hover is a plate step and a 1 px inner edge; press is scale 0.98. One orchestrated moment: when
+the library opens, the hero tiles settle first and the shelf follows in one sweep (no per-card
+stagger). Reduced motion (`Theme.reducedMotion` or the setting) turns it off.
+
+## Layout
+
+```
+rail  header row of tiles                                      shelf (the mosaic)
+┌──┐ ┌──────────────────────────┐┌──────────────┐┌─────┐┌─────┐
+│▣ │ │ Library                  ││ Search       ││ 56  ││  3  │
+│▣ │ └──────────────────────────┘└──────────────┘└─────┘└─────┘
+│▣ │ ┌ All  Series  Movies ┐ ┌ Sort ┐ ┌ Group ┐
+│▣ │ ┌───────────┐┌───────────┐┌────┐┌────┐┌────┐┌────┐
+│▣ │ │ hero 2x2  ││ hero 2x2  ││ 1  ││ 1  ││ 1  ││ 1  │
+│  │ │ poster    ││ poster    │├────┤├────┤├────┤├────┤
+│  │ │ plate+Play││ plate+Play││ 1  ││ 1  ││ 1  ││ 1  │
+│  │ └───────────┘└───────────┘└────┘└────┘└────┘└────┘
+└──┘ ┌────┐┌────┐┌────┐┌────┐┌────┐┌────┐┌────┐┌────┐
+```
+
+- Content is left-aligned; numbers are right-aligned inside their tile.
+- Pages fill the viewport (the owner's standing rule): tiles stretch to the width, columns are
+  computed from it, and only the shelf scrolls.
+- The rail is a column of square tiles, icon over label; the active one is raised, its glyph in
+  smalt. No accent bar.
+- Hero tiles (2x2) go to series that are behind or in progress and were viewed recently, or air
+  within seven days, capped at a third of the columns. Each carries the next episode and a Play
+  button that starts it directly.
+- The series page is a bento: banner across the top, poster, title tile, fact tiles (score,
+  episodes, status, next airing), synopsis, tags, the episode ledger, relations.
+
+## Killed idioms (still dead)
+
+- Numbered nav markers; letter-spaced ALL-CAPS eyebrows; monospace data labels.
+- Middle-dot meta joins ("A · B · C"): plain sentences instead.
 - Appended arrows on controls.
+- The lobby's lightbox halo and the frosted glass (a live blur of the whole page every frame).
 
 ## The one bold spend
 
-The card's lightbox treatment (`Card.qml`): on hover the poster lifts and two warm halos
-fade in behind it, a lobby lightbox lit from behind. Everything else on the card stays
-quiet. If a future pass adds a second bold effect, remove one of the two instead.
-
-## Defaults
-
-A fresh install (no `theme.toml`) lands on the lobby pair with `source = "theme"` —
-`ThemeSettings::default` in `config.rs`, guarded by the
-`a_fresh_install_without_theme_toml_lands_on_the_lobby_pair` test. Existing configs that
-pin `source = "system"` keep reading the desktop's scheme and accent.
+Poster-toned plates. Every other surface is quiet slate. If a future pass wants a second loud
+effect, take one away instead.
 
 ## Reviewing the work
 
-`scripts/shoot.sh <name> --page <page>` renders any page offscreen into `captures/`;
-settings tabs ride `--props '{"tab":"appearance"}'` (the `:<action>` suffix is the
-drawer's, not tabs). The player needs a real file id, not a path:
-`bench.sh lobby-player <ws> x --page player --props '{"file": 44}'`. Read the PNGs at
-native resolution — thumbnail scaling invented a light search field that was never there.
+`scripts/shoot.sh <name> --page <page>` renders a page offscreen into `captures/`;
+`scripts/drive.sh <script.json>` clicks through the real app offscreen and captures each step
+(see README). Read the PNGs at native resolution.
