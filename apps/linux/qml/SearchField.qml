@@ -1,13 +1,13 @@
 // The search field: a sunken tile with a hairline and the accent ring on focus, placeholder
-// in faint text, a "/  Ctrl K" hint at rest, an X once there is text. Escape clears and
+// in faint text, a "/ or Ctrl+K" hint at rest, an X once there is text. Escape clears and
 // leaves it, unless a layer is open, which Escape closes first.
 import QtQuick
 
 Corner {
     id: root
     property alias text: input.text
-    property string placeholder: "Search romaji, english or folder"
-    property string hint: "/  Ctrl K"
+    property string placeholder: "Search titles or folders"
+    property string hint: "/ or Ctrl+K"
     signal cleared()
     width: Math.min(parent ? parent.width : theme.space(120), theme.space(120))
     height: theme.controlHeight

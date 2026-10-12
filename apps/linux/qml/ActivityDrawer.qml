@@ -152,7 +152,7 @@ Item {
                     Chip {
                         required property string modelData
                         anchors.verticalCenter: parent.verticalCenter
-                        text: modelData.toLowerCase()
+                        text: modelData
                         small: true
                         clickable: true
                         selected: root.stageOn[modelData] === true
@@ -167,7 +167,7 @@ Item {
                     Chip {
                         required property string modelData
                         anchors.verticalCenter: parent.verticalCenter
-                        text: modelData.toLowerCase()
+                        text: modelData === "Warn" ? "Warning" : modelData
                         small: true
                         clickable: true
                         selected: root.levelOn[modelData] === true
@@ -221,7 +221,7 @@ Item {
                     Chip {
                         id: stageChip
                         anchors.verticalCenter: parent.verticalCenter
-                        text: modelData.stage.toLowerCase()
+                        text: modelData.stage
                         small: true
                         color: theme.surfaceSunken
                         textColor: theme.textDim

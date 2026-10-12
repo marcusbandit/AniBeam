@@ -162,7 +162,7 @@ Item {
                     }
                     Text {
                         width: parent.width
-                        text: "Open AniList's developer settings, create a client, and give it this redirect URL exactly — the port and the trailing /callback included."
+                        text: "Open AniList's developer settings, create a client, and give it this redirect URL exactly, including the port and the /callback path."
                         color: theme.textDim
                         wrapMode: Text.Wrap
                         font.family: theme.fontUi
@@ -240,7 +240,7 @@ Item {
                     Text {
                         width: parent.width
                         text: root.failed
-                            ? "The connect did not finish. Check the Client ID, then connect again."
+                            ? root.name + " did not finish signing you in. Check the Client ID and try again."
                             : root.waiting
                                 ? "AniList asks you to sign in and approve AniBeam; the reply comes back here on its own."
                                 : "The browser opens, AniList asks you to sign in, and AniBeam catches the reply."
