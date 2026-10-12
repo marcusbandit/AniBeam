@@ -35,7 +35,7 @@ Item {
     readonly property bool showSetup: showCreds && guided
 
     width: parent ? parent.width : theme.space(100)
-    implicitHeight: top.height + (showSetup ? theme.space(3) + setupBox.implicitHeight : showCreds ? theme.space(3) + creds.implicitHeight : 0)
+    implicitHeight: top.height + (showSetup ? theme.space(3) + setup.implicitHeight : showCreds ? theme.space(3) + creds.implicitHeight : 0)
 
     Item {
         id: top
@@ -129,7 +129,7 @@ Item {
     // walks the create-client, paste-id, connect sequence with the state
     // each step leaves behind.
     Column {
-        id: setupBox
+        id: setup
         visible: root.showSetup
         anchors.top: top.bottom
         anchors.topMargin: theme.space(3)

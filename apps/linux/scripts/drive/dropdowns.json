@@ -1,0 +1,592 @@
+[
+ {
+  "log": "settings, appearance; theme colour source so the dropdowns are live"
+ },
+ {
+  "click": "rail-settings"
+ },
+ {
+  "wait": 400
+ },
+ {
+  "click": "settings-tabs-appearance"
+ },
+ {
+  "wait": 400
+ },
+ {
+  "eval": "Theme.source",
+  "as": "source"
+ },
+ {
+  "eval": "Theme.themeDark",
+  "as": "dark"
+ },
+ {
+  "click": "colour-source-theme"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "driver.item.findItem('theme-dark').options.length > 8",
+  "expect": true
+ },
+ {
+  "eval": "driver.item.findItem('theme-dark').index",
+  "as": "i0"
+ },
+ {
+  "eval": "driver.item.findItem('theme-dark').options.length",
+  "as": "n"
+ },
+ {
+  "log": "open: the current row is in view"
+ },
+ {
+  "click": "theme-dark"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "driver.item.findItem('theme-dark-popup') !== null",
+  "expect": true
+ },
+ {
+  "eval": "(function(){var p=driver.item.findItem('theme-dark-popup'); var o=driver.item.findItem('theme-dark-option-'+(vars.i0)); if (!p||!o) return false; var a=p.mapToItem(null,0,0), b=o.mapToItem(null,0,0); return b.y>=a.y-1 && b.y+o.height<=a.y+p.height+1})()",
+  "expect": true
+ },
+ {
+  "eval": "frame.item.escapeStack.entries.map(function(e){return e.kind})",
+  "expect": [
+   "popover"
+  ]
+ },
+ {
+  "shot": "dropdowns-01-open"
+ },
+ {
+  "log": "Down then Return picks the next row, closes, and focus is back on the pill"
+ },
+ {
+  "key": "Down"
+ },
+ {
+  "key": "Return"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "driver.item.findItem('theme-dark-popup') !== null",
+  "expect": false
+ },
+ {
+  "eval": "driver.item.findItem('theme-dark').index === Math.min(vars.i0 + 1, vars.n - 1)",
+  "expect": true
+ },
+ {
+  "eval": "window.activeFocusItem === driver.item.findItem('theme-dark')",
+  "expect": true
+ },
+ {
+  "eval": "frame.item.escapeStack.entries.map(function(e){return e.kind})",
+  "expect": []
+ },
+ {
+  "log": "from the keyboard: Down opens, Home and Return pick the first, End and Return the last"
+ },
+ {
+  "key": "Down"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "driver.item.findItem('theme-dark-popup') !== null",
+  "expect": true
+ },
+ {
+  "key": "Home"
+ },
+ {
+  "key": "Return"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "driver.item.findItem('theme-dark').index",
+  "expect": 0
+ },
+ {
+  "eval": "window.activeFocusItem === driver.item.findItem('theme-dark')",
+  "expect": true
+ },
+ {
+  "key": "Down"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "(function(){var p=driver.item.findItem('theme-dark-popup'); var o=driver.item.findItem('theme-dark-option-'+(0)); if (!p||!o) return false; var a=p.mapToItem(null,0,0), b=o.mapToItem(null,0,0); return b.y>=a.y-1 && b.y+o.height<=a.y+p.height+1})()",
+  "expect": true
+ },
+ {
+  "key": "End"
+ },
+ {
+  "key": "Return"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "driver.item.findItem('theme-dark').index === vars.n - 1",
+  "expect": true
+ },
+ {
+  "log": "reopened on the last row, the list is scrolled to it"
+ },
+ {
+  "key": "Down"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "(function(){var p=driver.item.findItem('theme-dark-popup'); var o=driver.item.findItem('theme-dark-option-'+(vars.n - 1)); if (!p||!o) return false; var a=p.mapToItem(null,0,0), b=o.mapToItem(null,0,0); return b.y>=a.y-1 && b.y+o.height<=a.y+p.height+1})()",
+  "expect": true
+ },
+ {
+  "eval": "driver.item.findItem('theme-dark-option-0') === null",
+  "expect": true
+ },
+ {
+  "shot": "dropdowns-02-scrolled"
+ },
+ {
+  "log": "Escape closes the list alone; the page and the tab stay"
+ },
+ {
+  "key": "Escape"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "driver.item.findItem('theme-dark-popup') !== null",
+  "expect": false
+ },
+ {
+  "eval": "window.activeFocusItem === driver.item.findItem('theme-dark')",
+  "expect": true
+ },
+ {
+  "eval": "frame.item.escapeStack.entries.map(function(e){return e.kind})",
+  "expect": []
+ },
+ {
+  "eval": "frame.item.nav.current.page",
+  "expect": "settings"
+ },
+ {
+  "eval": "driver.item.findItem('theme-dark') !== null",
+  "expect": true
+ },
+ {
+  "log": "with the drawer up too, Escape still closes only the dropdown"
+ },
+ {
+  "key": "Ctrl+L"
+ },
+ {
+  "wait": 500
+ },
+ {
+  "eval": "frame.item.escapeStack.entries.map(function(e){return e.kind})",
+  "expect": [
+   "drawer"
+  ]
+ },
+ {
+  "click": "theme-dark"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "frame.item.escapeStack.entries.map(function(e){return e.kind})",
+  "expect": [
+   "drawer",
+   "popover"
+  ]
+ },
+ {
+  "key": "Escape"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "driver.item.findItem('theme-dark-popup') !== null",
+  "expect": false
+ },
+ {
+  "eval": "frame.item.escapeStack.entries.map(function(e){return e.kind})",
+  "expect": [
+   "drawer"
+  ]
+ },
+ {
+  "key": "Ctrl+L"
+ },
+ {
+  "wait": 500
+ },
+ {
+  "eval": "frame.item.escapeStack.entries.map(function(e){return e.kind})",
+  "expect": []
+ },
+ {
+  "log": "a press outside closes it"
+ },
+ {
+  "click": "theme-dark"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "driver.item.findItem('theme-dark-popup') !== null",
+  "expect": true
+ },
+ {
+  "click": [
+   560,
+   337
+  ]
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "driver.item.findItem('theme-dark-popup') !== null",
+  "expect": false
+ },
+ {
+  "eval": "frame.item.escapeStack.entries.map(function(e){return e.kind})",
+  "expect": []
+ },
+ {
+  "log": "the light theme's dropdown: open on its current row, Escape, focus back"
+ },
+ {
+  "eval": "Theme.themeLight",
+  "as": "light"
+ },
+ {
+  "click": "theme-light"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "driver.item.findItem('theme-light-popup') !== null",
+  "expect": true
+ },
+ {
+  "eval": "(function(){var p=driver.item.findItem('theme-light-popup'); var o=driver.item.findItem('theme-light-option-'+(driver.item.findItem('theme-light').index)); if (!p||!o) return false; var a=p.mapToItem(null,0,0), b=o.mapToItem(null,0,0); return b.y>=a.y-1 && b.y+o.height<=a.y+p.height+1})()",
+  "expect": true
+ },
+ {
+  "shot": "dropdowns-03-light"
+ },
+ {
+  "key": "Escape"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "driver.item.findItem('theme-light-popup') !== null",
+  "expect": false
+ },
+ {
+  "eval": "window.activeFocusItem === driver.item.findItem('theme-light')",
+  "expect": true
+ },
+ {
+  "log": "put the themes back"
+ },
+ {
+  "eval": "Theme.pickTheme('dark', vars.dark); Theme.pickTheme('light', vars.light); true",
+  "expect": true
+ },
+ {
+  "wait": 400
+ },
+ {
+  "eval": "Theme.themeDark === vars.dark && Theme.themeLight === vars.light",
+  "expect": true
+ },
+ {
+  "log": "a tooltip over a hovering MouseArea: both see the hover"
+ },
+ {
+  "eval": "Qt.createQmlObject('import QtQuick; import com.marcusrosado.AniBeam; Rectangle { objectName: \"tipfix\"; x: 1700; y: 900; width: 200; height: 80; color: area.containsMouse ? theme.raisedHover : theme.raised; MouseArea { id: area; objectName: \"tipfix-area\"; anchors.fill: parent; hoverEnabled: true } Tooltip { text: \"Fixture tip\" } }', frame.item.overlay, 'tipfix') !== null",
+  "expect": true
+ },
+ {
+  "hover": "tipfix"
+ },
+ {
+  "wait": 900
+ },
+ {
+  "eval": "driver.item.findItem('tipfix-area').containsMouse",
+  "expect": true
+ },
+ {
+  "eval": "frame.item.overlay.children.some(function(c){return c.visible && c.objectName !== 'tipfix' && c.children.some(function(k){return k.text==='Fixture tip'})})",
+  "expect": true
+ },
+ {
+  "shot": "dropdowns-04-tip"
+ },
+ {
+  "hover": [
+   1700,
+   700
+  ]
+ },
+ {
+  "wait": 200
+ },
+ {
+  "eval": "frame.item.overlay.children.some(function(c){return c.visible && c.objectName !== 'tipfix' && c.children.some(function(k){return k.text==='Fixture tip'})})",
+  "expect": false
+ },
+ {
+  "log": "no tip while a popover is up, and the sibling still hovers"
+ },
+ {
+  "click": "theme-dark"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "frame.item.escapeStack.entries.map(function(e){return e.kind})",
+  "expect": [
+   "popover"
+  ]
+ },
+ {
+  "hover": "tipfix"
+ },
+ {
+  "wait": 900
+ },
+ {
+  "eval": "driver.item.findItem('tipfix-area').containsMouse",
+  "expect": true
+ },
+ {
+  "eval": "frame.item.overlay.children.some(function(c){return c.visible && c.objectName !== 'tipfix' && c.children.some(function(k){return k.text==='Fixture tip'})})",
+  "expect": false
+ },
+ {
+  "key": "Escape"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "driver.item.findItem('theme-dark-popup') !== null",
+  "expect": false
+ },
+ {
+  "eval": "driver.item.findItem('tipfix').destroy(); true",
+  "expect": true
+ },
+ {
+  "hover": [
+   1700,
+   700
+  ]
+ },
+ {
+  "wait": 200
+ },
+ {
+  "log": "1100x700, the dropdown at the foot of the window: the list opens on-screen"
+ },
+ {
+  "eval": "window.width = 1100; window.height = 700; [window.width, window.height]",
+  "expect": [
+   1100,
+   700
+  ]
+ },
+ {
+  "wait": 600
+ },
+ {
+  "eval": "(function(){var d=driver.item.findItem('theme-dark'); var f=d; while (f && f.contentY === undefined) f=f.parent; var fb=f.mapToItem(null,0,f.height).y; var y=d.mapToItem(null,0,0).y; var dy = y - (fb - d.height - 8); f.topMargin = Math.max(0, -(f.contentY + dy)); f.contentY += dy; var b=d.mapToItem(null,0,0).y + d.height; return b > window.height - 140 && b <= fb})()",
+  "expect": true
+ },
+ {
+  "wait": 300
+ },
+ {
+  "click": "theme-dark"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "driver.item.findItem('theme-dark-popup') !== null",
+  "expect": true
+ },
+ {
+  "eval": "(function(){var d=driver.item.findItem('theme-dark'), p=driver.item.findItem('theme-dark-popup'); var a=p.mapToItem(null,0,0), t=d.mapToItem(null,0,0); return {top: Math.round(a.y), bottom: Math.round(a.y + p.height), pill: Math.round(t.y), win: window.height}})()",
+  "as": "pop"
+ },
+ {
+  "eval": "vars.pop.top >= 0 && vars.pop.bottom <= vars.pop.win && vars.pop.bottom <= vars.pop.pill",
+  "expect": true
+ },
+ {
+  "eval": "(function(){var p=driver.item.findItem('theme-dark-popup'); var o=driver.item.findItem('theme-dark-option-'+(driver.item.findItem('theme-dark').index)); if (!p||!o) return false; var a=p.mapToItem(null,0,0), b=o.mapToItem(null,0,0); return b.y>=a.y-1 && b.y+o.height<=a.y+p.height+1})()",
+  "expect": true
+ },
+ {
+  "shot": "dropdowns-05-foot"
+ },
+ {
+  "key": "Escape"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "driver.item.findItem('theme-dark-popup') !== null",
+  "expect": false
+ },
+ {
+  "eval": "(function(){var d=driver.item.findItem('theme-dark'); var f=d; while (f && f.contentY === undefined) f=f.parent; f.topMargin = 0; f.contentY = 0; window.width = 2560; window.height = 1440; return true})()",
+  "expect": true
+ },
+ {
+  "wait": 600
+ },
+ {
+  "log": "tracker row: Disconnect, then the confirm's own Disconnect, leaves no confirm behind"
+ },
+ {
+  "eval": "!Door.trackers.mal || Door.trackers.mal.connected !== true",
+  "expect": true
+ },
+ {
+  "click": "settings-tabs-library"
+ },
+ {
+  "wait": 500
+ },
+ {
+  "eval": "var r = (function(){var r=null; (function f(it){ if (r) return; if (it.objectName === 'tracker-Mal') { r = it; return } for (var i = 0; i < it.children.length; i++) f(it.children[i]) })(window.contentItem); return r})(); r.account = { connected: true, username: 'proof', last_sync: 0 }; r.connected",
+  "expect": true
+ },
+ {
+  "wait": 200
+ },
+ {
+  "click": "Mal-disconnect"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "(function(){var r=null; (function f(it){ if (r) return; if (it.objectName === 'tracker-Mal') { r = it; return } for (var i = 0; i < it.children.length; i++) f(it.children[i]) })(window.contentItem); return r})().confirming",
+  "expect": true
+ },
+ {
+  "eval": "frame.item.escapeStack.entries.map(function(e){return e.kind})",
+  "expect": [
+   "confirm"
+  ]
+ },
+ {
+  "shot": "dropdowns-06-tracker-confirm"
+ },
+ {
+  "eval": "(function(){var c=null; (function f(it){ if (c) return; if (it.question !== undefined && it.accepted) { c = it; return } for (var i = 0; i < it.children.length; i++) f(it.children[i]) })((function(){var r=null; (function f(it){ if (r) return; if (it.objectName === 'tracker-Mal') { r = it; return } for (var i = 0; i < it.children.length; i++) f(it.children[i]) })(window.contentItem); return r})()); c.accepted(); return true})()",
+  "expect": true
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "(function(){var r=null; (function f(it){ if (r) return; if (it.objectName === 'tracker-Mal') { r = it; return } for (var i = 0; i < it.children.length; i++) f(it.children[i]) })(window.contentItem); return r})().confirming",
+  "expect": false
+ },
+ {
+  "eval": "frame.item.escapeStack.entries.map(function(e){return e.kind})",
+  "expect": []
+ },
+ {
+  "log": "a disconnect from anywhere else puts a raised confirm away too"
+ },
+ {
+  "click": "Mal-disconnect"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "(function(){var r=null; (function f(it){ if (r) return; if (it.objectName === 'tracker-Mal') { r = it; return } for (var i = 0; i < it.children.length; i++) f(it.children[i]) })(window.contentItem); return r})().confirming",
+  "expect": true
+ },
+ {
+  "eval": "var r = (function(){var r=null; (function f(it){ if (r) return; if (it.objectName === 'tracker-Mal') { r = it; return } for (var i = 0; i < it.children.length; i++) f(it.children[i]) })(window.contentItem); return r})(); r.account = { connected: false }; r.confirming",
+  "expect": false
+ },
+ {
+  "wait": 200
+ },
+ {
+  "eval": "frame.item.escapeStack.entries.map(function(e){return e.kind})",
+  "expect": []
+ },
+ {
+  "eval": "var r = (function(){var r=null; (function f(it){ if (r) return; if (it.objectName === 'tracker-Mal') { r = it; return } for (var i = 0; i < it.children.length; i++) f(it.children[i]) })(window.contentItem); return r})(); r.account = { connected: true, username: 'proof', last_sync: 0 }; r.confirming",
+  "expect": false
+ },
+ {
+  "eval": "driver.item.findItem('Mal-disconnect') !== null",
+  "expect": true
+ },
+ {
+  "log": "colour source back"
+ },
+ {
+  "click": "settings-tabs-appearance"
+ },
+ {
+  "wait": 400
+ },
+ {
+  "eval": "if (Theme.source !== vars.source) Theme.pickSource(vars.source); true",
+  "expect": true
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "Theme.source === vars.source",
+  "expect": true
+ }
+]
