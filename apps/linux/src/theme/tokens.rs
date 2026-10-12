@@ -58,11 +58,17 @@ fn finish(
         label,
     } = parts;
     let [_red, orange, yellow, green, cyan, blue, purple, brown] = hues;
-    let accent_text = if accent.contrast(bg) > accent.contrast(text) {
-        bg
-    } else {
-        text
-    };
+    // The ink on an accent fill: whichever of the ground, the text and the raised surface
+    // reads best on it. The raised surface is the candidate a light theme needs, where it is
+    // the lightest of the three and a mid-dark accent wants near-white ink.
+    let accent_text = [bg, text, mixed.raised].into_iter().fold(bg, |best, c| {
+        if accent.contrast(c) > accent.contrast(best) {
+            c
+        } else {
+            best
+        }
+    });
+    let text_faint = legible_faint(mixed.faint, mixed.dim, text, &[bg, mixed.surface]);
     Palette {
         bg,
         surface: mixed.surface,
@@ -73,7 +79,7 @@ fn finish(
         line_strong: mixed.line_strong,
         text,
         text_dim: mixed.dim,
-        text_faint: mixed.faint,
+        text_faint,
         accent,
         accent_text,
         accent_soft: bg.mix(accent, 0.2),
@@ -91,6 +97,22 @@ fn finish(
         mode,
         source_label: label,
     }
+}
+
+/// The faintest text still worth printing holds 3:1 against the ground and the resting tile.
+pub const FAINT_MIN_CONTRAST: f64 = 3.0;
+
+/// `faint` as a source gave it, or the first step from it toward `dim` (then toward `text`)
+/// that holds `FAINT_MIN_CONTRAST` against every ground. A base16 theme's faint slot is its
+/// line colour (base03), which is a hairline, not a text colour: on most dark themes it
+/// sits under 2:1, near-invisible as text.
+fn legible_faint(faint: Rgb, dim: Rgb, text: Rgb, grounds: &[Rgb]) -> Rgb {
+    let holds = |c: Rgb| grounds.iter().all(|g| c.contrast(*g) >= FAINT_MIN_CONTRAST);
+    (0..=20)
+        .map(|i| faint.mix(dim, f64::from(i) / 20.0))
+        .chain((1..=20).map(|i| dim.mix(text, f64::from(i) / 20.0)))
+        .find(|c| holds(*c))
+        .unwrap_or(text)
 }
 
 fn mixes(bg: Rgb, text: Rgb, contrast: bool, s: &Steps) -> Mixed {
@@ -430,7 +452,11 @@ mod tests {
         assert_eq!(p.surface_raised.to_hex(), "#313244");
         assert_eq!(p.line.to_hex(), "#313244");
         assert_eq!(p.line_strong.to_hex(), "#45475a");
-        assert_eq!(p.text_faint.to_hex(), "#45475a");
+        // faint starts at base03, but Mocha's base03 is a hairline at under 2:1, so it is
+        // walked toward base04 (then the text) until it holds 3:1 on the ground and tile
+        assert!(p.text_faint.contrast(p.bg) >= FAINT_MIN_CONTRAST);
+        assert!(p.text_faint.contrast(p.surface) >= FAINT_MIN_CONTRAST);
+        assert_ne!(p.text_faint.to_hex(), "#45475a");
         assert_eq!(p.text_dim.to_hex(), "#585b70");
         assert_eq!(p.text.to_hex(), "#cdd6f4");
         assert_eq!(p.red.to_hex(), "#f38ba8");
@@ -458,7 +484,7 @@ mod tests {
         let contrasted = from_base16(&mocha(), true, &Steps::default());
         assert_eq!(contrasted.line.to_hex(), "#313244");
         assert_eq!(contrasted.line_strong.to_hex(), "#45475a");
-        assert_eq!(contrasted.text_faint.to_hex(), "#45475a");
+        assert_eq!(contrasted.text_faint.to_hex(), p.text_faint.to_hex());
     }
 
     #[test]

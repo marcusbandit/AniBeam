@@ -48,6 +48,7 @@ pub mod qobject {
         #[qproperty(i32, poster_width)]
         #[qproperty(f64, smoothing)]
         #[qproperty(bool, ready)]
+        #[qproperty(bool, reduced_motion)]
         type Theme = super::ThemeRust;
 
         #[qinvokable]
@@ -64,6 +65,8 @@ pub mod qobject {
         fn pick_corners(self: Pin<&mut Self>, corners: &QString);
         #[qinvokable]
         fn pick_theme(self: Pin<&mut Self>, mode: &QString, stem: &QString);
+        #[qinvokable]
+        fn pick_reduced_motion(self: Pin<&mut Self>, on: bool);
         #[qinvokable]
         fn format_hue(self: &Self, format: &QString) -> QString;
         #[qinvokable]
@@ -93,6 +96,7 @@ pub struct ThemeRust {
     poster_width: i32,
     smoothing: f64,
     ready: bool,
+    reduced_motion: bool,
     resolved: Option<Resolved>,
     commands: Option<mpsc::UnboundedSender<ThemeSettings>>,
 }
@@ -106,8 +110,8 @@ impl Default for ThemeRust {
             density: QString::from("normal"),
             poster: QString::from("m"),
             corners: QString::from("smooth"),
-            theme_dark: QString::from("lobby-dark"),
-            theme_light: QString::from("lobby-light"),
+            theme_dark: QString::from("tesserae-dark"),
+            theme_light: QString::from("tesserae-light"),
             resolved_mode: QString::from("dark"),
             source_label: QString::default(),
             contrast: false,
@@ -118,6 +122,7 @@ impl Default for ThemeRust {
             poster_width: 180,
             smoothing: 0.6,
             ready: false,
+            reduced_motion: false,
             resolved: None,
             commands: None,
         }
@@ -171,6 +176,7 @@ impl qobject::Theme {
         self.as_mut().set_density_factor(s.density.factor());
         self.as_mut().set_poster_width(s.poster.width());
         self.as_mut().set_smoothing(s.corners.smoothing());
+        self.as_mut().set_reduced_motion(s.reduced_motion);
         self.as_mut().set_contrast(r.inputs.portal.contrast);
         let mut themes = QJsonArray::default();
         for t in &r.inputs.themes {
@@ -263,6 +269,9 @@ impl qobject::Theme {
             "light" => self.change(|s| s.theme_light = stem),
             _ => {}
         }
+    }
+    pub fn pick_reduced_motion(self: Pin<&mut Self>, on: bool) {
+        self.change(|s| s.reduced_motion = on)
     }
     pub fn format_hue(&self, format: &QString) -> QString {
         QString::from(format_hue(&format.to_string()))
