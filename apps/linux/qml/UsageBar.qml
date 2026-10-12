@@ -17,7 +17,7 @@ Column {
             anchors.fill: parent
             radius: height / 2
             smoothing: theme.cornerSmoothing
-            color: theme.surfaceSunken
+            color: theme.tileSunken
             borderColor: theme.line
             borderWidth: 1
         }

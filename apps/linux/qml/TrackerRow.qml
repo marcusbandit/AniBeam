@@ -55,7 +55,7 @@ Item {
             height: theme.controlHeight
             radius: height / 2
             smoothing: theme.cornerSmoothing
-            color: root.connected ? theme.accentSoft : theme.surfaceSunken
+            color: root.connected ? theme.accentSoft : theme.tileSunken
             borderColor: root.connected ? "transparent" : theme.line
             borderWidth: root.connected ? 0 : 1
             Label {

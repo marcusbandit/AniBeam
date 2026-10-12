@@ -8,7 +8,7 @@ Column {
     spacing: theme.space(1)
     Corner {
         width: parent.width; height: width * 1.5
-        radius: theme.radiusMd; smoothing: theme.cornerSmoothing; color: theme.surface; borderColor: m.containsMouse ? theme.lineStrong : theme.line; borderWidth: 1
+        radius: theme.radiusMd; smoothing: theme.cornerSmoothing; color: m.containsMouse ? theme.raised : theme.tile; borderColor: m.containsMouse ? theme.lineStrong : theme.line; borderWidth: 1
         fillItem: art.status === Image.Ready ? art : null
         Image { id: art; visible: false; width: parent.width; height: parent.height; source: rec.poster ? "file://" + rec.poster : ""; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize: theme.posterDecodeSize }
         Chip { x: theme.space(1.5); y: theme.space(1.5); small: true; mono: false; text: rec.owned ? "Available" : "AniList"; textColor: rec.owned ? theme.accent : theme.textDim }

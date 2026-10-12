@@ -53,9 +53,10 @@ FocusScope {
         y: page.grout + place.row * page.step
         width: page.spanW(place.col, place.colSpan)
         height: page.unit
-        radius: theme.radiusTile
-        smoothing: theme.cornerSmoothing
         color: theme.tile
+        borderColor: theme.line
+        borderWidth: 1
+        highlight: theme.glassHighlight
     }
 
     HeaderTile {

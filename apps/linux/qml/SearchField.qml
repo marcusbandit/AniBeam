@@ -1,4 +1,4 @@
-// The search field: a sunken tile with a hairline and the accent ring on focus, placeholder
+// The search field: a square pane of glass with the glass edge and an accent line along its foot on focus, placeholder
 // in faint text, a "/ or Ctrl+K" hint at rest, an X once there is text. Escape clears and
 // leaves it, unless a layer is open, which Escape closes first.
 import QtQuick
@@ -13,9 +13,11 @@ Corner {
     height: theme.controlHeight
     radius: Math.min(theme.radiusTile, height / 2)
     smoothing: theme.cornerSmoothing
-    color: theme.tileSunken
-    borderColor: input.activeFocus ? theme.focusRing : (hover.containsMouse ? theme.lineStrong : theme.line)
-    borderWidth: input.activeFocus ? theme.space(0.5) : 1
+    color: input.activeFocus ? theme.raised : theme.tile
+    borderColor: hover.containsMouse || input.activeFocus ? theme.lineStrong : theme.line
+    borderWidth: 1
+    // Focus is the accent line along the foot
+    Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 2; color: theme.focusRing; visible: input.activeFocus }
     function focusInput() { input.forceActiveFocus(); input.selectAll() }
     MouseArea { id: hover; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.IBeamCursor; onClicked: input.forceActiveFocus() }
     Icon {

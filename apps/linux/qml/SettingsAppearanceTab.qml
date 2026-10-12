@@ -1,5 +1,5 @@
 // Spec 4.5: Colours (mode, colour source, the theme pair, the accent), Shape (density,
-// poster size, corners), and the two preview panes, each holding its own tokens forced to
+// poster size; corners are always square in the glass mosaic, so that knob is gone), and the two preview panes, each holding its own tokens forced to
 // a mode so the pair being chosen is what is shown. Every knob writes through the Theme
 // singleton's pick* invokables; the engine pushes the fresh resolution back and the panes
 // re-tone through their own Tokens, so nothing here polls.
@@ -18,16 +18,6 @@ SettingsTab {
     // while this tab exists, since the Loader that owns it destroys it on tab switch.
     property real nowMs: Date.now()
     Timer { interval: 30000; running: true; repeat: true; onTriggered: tab.nowMs = Date.now() }
-
-    Component {
-        id: cornerGlyph
-        Corner {
-            width: theme.space(5); height: width
-            radius: width * 0.45
-            smoothing: option.smoothing
-            borderColor: tint; borderWidth: 1.5; color: "transparent"
-        }
-    }
 
     // The knobs side by side at their own height, the preview under them taking the rest
     SettingsPair {
@@ -64,9 +54,6 @@ SettingsTab {
                 Seg { options: ["Compact", "Normal", "Comfortable"]; index: ["compact", "normal", "comfortable"].indexOf(Theme.density); onPicked: function(i) { Theme.pickDensity(["compact", "normal", "comfortable"][i]) } } }
             SettingRow { label: "Poster size"
                 Seg { options: ["Small", "Medium", "Large"]; index: ["s", "m", "l"].indexOf(Theme.poster); onPicked: function(i) { Theme.pickPoster(["s", "m", "l"][i]) } } }
-            SettingRow { label: "Corners"
-                Seg { options: [{ text: "Smooth", delegate: cornerGlyph, smoothing: 0.6 }, { text: "Plain", delegate: cornerGlyph, smoothing: 0 }]
-                    index: Theme.corners === "plain" ? 1 : 0; onPicked: function(i) { Theme.pickCorners(i === 1 ? "plain" : "smooth") } } }
             SettingRow { label: "Reduce motion"; helper: "Skips the library's opening sweep and other movement that is only for show."
                 Switch { objectName: "reduce-motion"; checked: Theme.reducedMotion; onToggled: function(on) { Theme.pickReducedMotion(on) } } }
             Note { text: "All of this lives in ~/.config/anibeam/theme.toml and reloads when the file changes." }

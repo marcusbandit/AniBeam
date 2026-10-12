@@ -73,7 +73,7 @@ Corner {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: theme.space(1.5)
                     Chip { visible: root.nextUp; text: "Next up"; small: true; mono: false; color: theme.accentSoft; textColor: theme.accent }
-                    Chip { visible: root.extra; text: "Extra"; small: true; mono: false; color: theme.tone(theme.tile, theme.yellow, 0.2); textColor: theme.yellow }
+                    Chip { visible: root.extra; text: "Extra"; small: true; mono: false; textColor: theme.textDim }
                     Label {
                         visible: root.resumeFraction > 0 && root.resumeFraction < 0.97
                         anchors.verticalCenter: parent.verticalCenter

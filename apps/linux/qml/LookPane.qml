@@ -70,7 +70,7 @@ Corner {
                 anchors.verticalCenter: parent.verticalCenter
                 text: pane.samples.length + " series"
                 small: true
-                color: theme.surface
+                color: theme.tile
                 textColor: theme.textDim
             }
         }
@@ -81,7 +81,7 @@ Corner {
             height: theme.controlHeight
             radius: height / 2
             smoothing: theme.cornerSmoothing
-            color: theme.surfaceSunken
+            color: theme.tileSunken
             borderColor: theme.line
             borderWidth: 1
             Text {
@@ -103,7 +103,7 @@ Corner {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "/ or Ctrl+K"
                 small: true
-                color: theme.surface
+                color: theme.tile
                 textColor: theme.textFaint
             }
         }
@@ -151,7 +151,7 @@ Corner {
             spacing: theme.space(2)
             Chip { text: "Plain"; mono: false; color: theme.surface; textColor: theme.textDim }
             Chip { text: "Selected"; mono: false; selected: true }
-            Chip { text: "Ep 12"; small: true; color: theme.surface }
+            Chip { text: "Ep 12"; small: true; color: theme.tile }
             Chip { text: "2 errors"; icon: "circle-alert"; small: true; color: theme.redSoft; textColor: theme.red }
         }
 
@@ -194,7 +194,7 @@ Corner {
             height: theme.space(7)
             radius: theme.radiusSm
             smoothing: theme.cornerSmoothing
-            color: theme.surfaceSunken
+            color: theme.tileSunken
             borderColor: theme.line
             borderWidth: 1
             Row {

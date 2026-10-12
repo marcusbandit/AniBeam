@@ -1,4 +1,4 @@
-// A slider with a ledger readout beside it, the track and the round handle drawn through
+// A slider with a ledger readout beside it, the square track and handle drawn through
 // Corner. The value is the owner's: `moved` reports drags, `value` is bound in.
 //
 // `takesFocus: false` keeps the slider off the keyboard entirely: clicks and drags still
@@ -32,19 +32,17 @@ Row {
             y: s.topPadding + s.availableHeight / 2 - height / 2
             width: s.availableWidth
             height: theme.space(1)
-            Corner { anchors.fill: parent; radius: height / 2; smoothing: theme.cornerSmoothing; color: theme.tileSunken }
-            Corner { width: s.visualPosition * parent.width; height: parent.height; radius: height / 2; smoothing: theme.cornerSmoothing; color: theme.accent }
+            Corner { anchors.fill: parent; color: theme.glassEdgeStrong }
+            Corner { width: s.visualPosition * parent.width; height: parent.height; color: theme.accent }
         }
         handle: Corner {
             x: s.leftPadding + s.visualPosition * (s.availableWidth - width)
             y: s.topPadding + s.availableHeight / 2 - height / 2
-            width: theme.space(4)
-            height: width
-            radius: width / 2
-            smoothing: theme.cornerSmoothing
-            color: theme.accent
-            borderColor: s.activeFocus ? theme.focusRing : root.ground
-            borderWidth: theme.space(0.5)
+            width: theme.space(1.5)
+            height: theme.space(4.5)
+            color: s.pressed || s.hovered ? theme.text : theme.accent
+            borderColor: s.activeFocus ? theme.text : "transparent"
+            borderWidth: s.activeFocus ? 1 : 0
         }
     }
     Label {

@@ -4,10 +4,12 @@
 // is a property on `page`, reached through the context chain, and every control calls one of
 // the page's own functions; this file keeps no state of its own beyond the preview's.
 //
-// Mosaic: the chrome is two raised tiles set a grout in from the window's edge, the header
-// at the top left as small as its text and the controls island at the foot. Nothing else is
-// drawn on the picture except the seek preview, the auto-next tile, the replay button and
-// the page's own notices, each a raised stone of its own; there is no scrim and no glass.
+// Glass mosaic: the chrome is two square panes of the video glass (black at 0.55, a faint
+// edge, the top highlight) set a grout in from the window's edge, the header at the top left
+// as small as its text and the controls island at the foot. Nothing else is drawn on the
+// picture except the seek preview, the auto-next tile, the replay button and the page's own
+// notices, each a pane of its own; there is no scrim and no blur. PlayerPage forces its
+// tokens dark, so this reads the same on a light theme.
 import QtQuick
 import QtQuick.Window
 import com.marcusrosado.AniBeam
@@ -24,6 +26,7 @@ Item {
         id: header
         objectName: "player-header"
         raised: true
+        color: theme.glassVideo; borderColor: Qt.rgba(1, 1, 1, 0.1)
         padding: theme.space(3)
         anchors.left: parent.left; anchors.top: parent.top
         anchors.leftMargin: theme.grout; anchors.topMargin: theme.grout
@@ -62,6 +65,7 @@ Item {
     Tile {
         id: preview
         raised: true
+        color: theme.glassVideo; borderColor: Qt.rgba(1, 1, 1, 0.1)
         padding: theme.space(1)
         // It hides with the chrome as well as on exit: the island can go while the pointer
         // rests on the bar, and the bar goes with it, so no exit would ever arrive.
@@ -96,6 +100,7 @@ Item {
         id: controls
         objectName: "player-controls"
         raised: true
+        color: theme.glassVideo; borderColor: Qt.rgba(1, 1, 1, 0.1)
         padding: theme.space(3)
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom; anchors.bottomMargin: theme.grout
@@ -165,6 +170,7 @@ Item {
         objectName: "player-next-tile"
         visible: page.nextVisible
         raised: true
+        color: theme.glassVideo; borderColor: Qt.rgba(1, 1, 1, 0.1)
         padding: theme.space(1.5)
         anchors.right: parent.right; anchors.rightMargin: theme.grout
         anchors.bottom: controls.top; anchors.bottomMargin: theme.grout
@@ -177,9 +183,8 @@ Item {
             Corner {
                 anchors.verticalCenter: parent.verticalCenter
                 width: nextLabel.implicitWidth + theme.space(8); height: theme.controlHeight
-                radius: height / 2; smoothing: theme.cornerSmoothing
                 color: theme.raised; borderColor: theme.accent; borderWidth: 1
-                Corner { id: countFill; width: 0; height: parent.height; radius: height / 2; smoothing: theme.cornerSmoothing; color: theme.accent; opacity: 0.35
+                Corner { id: countFill; width: 0; height: parent.height; color: theme.accent; opacity: 0.35
                     // The animation owns the width while it runs and leaves it wherever it
                     // stopped, so a countdown cancelled part way would keep a half filled pill.
                     NumberAnimation on width { running: page.nextCounting; from: 0; to: countFill.parent.width; duration: page.nextCountMs

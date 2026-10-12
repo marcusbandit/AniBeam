@@ -1,4 +1,4 @@
-// A pill of text on a scrim or a surface, with an optional Lucide glyph before the text.
+// A square tag of glass, with an optional Lucide glyph before the text.
 // `mono` (the default) sets the label in the ledger cut, tabular figures for counts and
 // codes; off, the ui cut. `maxLabelWidth` is opt-in (-1, the default, leaves the label at
 // its natural width): set it to cap the label and elide the middle instead of growing the
@@ -21,9 +21,9 @@ Corner {
     implicitHeight: label.implicitHeight + theme.space(small ? 0.75 : 1.25) * 2
     radius: height / 2
     smoothing: theme.cornerSmoothing
-    color: selected ? theme.accentSoft : theme.scrim
-    borderColor: hover.containsMouse ? theme.line : "transparent"
-    borderWidth: clickable && hover.containsMouse ? 1 : 0
+    color: selected ? theme.accentSoft : clickable && hover.containsMouse ? theme.glassPressed : theme.raised
+    borderColor: selected ? Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, 0.5) : clickable && hover.containsMouse ? theme.lineStrong : theme.line
+    borderWidth: 1
     scale: hover.pressed ? 0.98 : 1
 
     readonly property color ink: selected ? theme.accent : textColor

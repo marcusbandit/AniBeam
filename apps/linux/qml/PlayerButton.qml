@@ -1,4 +1,4 @@
-// A round glyph button for the player's islands. Nothing but the glyph at rest; the fill
+// A square glyph button for the player's islands. Nothing but the glyph at rest; the fill
 // arrives on hover and deepens on press, and the tip comes from the frame's own overlay so
 // it is never clipped by the island.
 //
@@ -21,9 +21,8 @@ Corner {
     signal clicked()
 
     width: theme.space(9); height: width
-    radius: width / 2; smoothing: theme.cornerSmoothing
     readonly property bool hovered: m.containsMouse
-    color: m.pressed && interactive ? theme.surfacePressed : (hovered && interactive ? theme.raisedHover : restColor)
+    color: m.pressed && interactive ? theme.glassOf(0.16) : (hovered && interactive ? theme.glassOf(0.1) : restColor)
     opacity: interactive ? 1 : theme.disabledOpacity
 
     Icon { anchors.centerIn: parent; glyph: root.glyph; size: root.glyphSize; color: root.active ? theme.accent : theme.text }

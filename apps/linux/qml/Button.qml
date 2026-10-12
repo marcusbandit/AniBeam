@@ -1,7 +1,7 @@
-// A pill button with a text label and an optional Lucide glyph before it. At rest it is a
-// raised pill; `flat` sets it as a resting tile instead (a quieter button on the ground),
-// `primary` fills it with the accent under the accent's own ink, and `danger` sets the label
-// and the soft fill in red. Hover lifts the fill one step, press one more and scales it to
+// A square button with a text label and an optional Lucide glyph before it. At rest it is a
+// raised pane of glass (edge and top highlight); `flat` sets it as resting glass without the
+// highlight (a quieter button), `primary` fills it with the accent under ground-coloured
+// ink, and `danger` sets the label and the soft fill in red. Hover lifts the fill one step, press one more and scales it to
 // 0.98, both with exponential smoothing. Space and Return press it.
 import QtQuick
 
@@ -37,20 +37,21 @@ Corner {
     }
     readonly property color restFill: danger ? theme.redSoft : primary ? theme.accent : flat ? theme.tile : theme.raised
     readonly property color hoverFill: danger ? theme.tone(theme.redSoft, theme.red, 0.15)
-                                     : primary ? theme.tone(theme.accent, theme.text, 0.15)
+                                     : primary ? theme.tone(theme.accent, theme.ink, 0.15)
                                      : flat ? theme.tileHover : theme.raisedHover
     readonly property color pressFill: danger ? theme.tone(theme.redSoft, theme.red, 0.3)
-                                     : primary ? theme.tone(theme.accent, theme.text, 0.25)
-                                     : theme.tone(hoverFill, theme.text, 0.06)
+                                     : primary ? theme.tone(theme.accent, theme.ink, 0.25)
+                                     : theme.glassOf(theme.dark ? 0.12 : 0.15)
     color: lift < 1 ? theme.tone(restFill, hoverFill, lift) : theme.tone(hoverFill, pressFill, lift - 1)
-    borderColor: activeFocus ? theme.focusRing : "transparent"
-    borderWidth: activeFocus ? theme.space(0.5) : 0
+    borderColor: activeFocus ? theme.focusRing : primary ? "transparent" : danger ? Qt.rgba(theme.red.r, theme.red.g, theme.red.b, 0.3) : theme.line
+    borderWidth: activeFocus ? 2 : 1
+    highlight: !flat && !primary && !danger ? theme.glassHighlight : "transparent"
 
     Keys.onSpacePressed: clicked()
     Keys.onReturnPressed: clicked()
     Keys.onEnterPressed: clicked()
 
-    readonly property color ink: danger ? theme.red : primary ? theme.accentText : (flat && lift < 0.5 ? theme.textDim : theme.text)
+    readonly property color ink: danger ? theme.red : primary ? (theme.dark ? theme.ground : theme.accentText) : (flat && lift < 0.5 ? theme.textDim : theme.text)
     Row {
         id: content
         anchors.centerIn: parent

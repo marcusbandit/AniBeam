@@ -29,7 +29,7 @@ Item {
         return parts.join(", ")
     }
 
-    Rectangle { anchors.fill: parent; color: m.containsMouse ? theme.surfaceRaised : "transparent" }
+    Rectangle { anchors.fill: parent; color: m.containsMouse ? theme.raised : "transparent" }
 
     Row {
         anchors.left: parent.left; anchors.leftMargin: theme.space(2)
@@ -41,7 +41,7 @@ Item {
             width: theme.space(11); height: width * 1.5
             anchors.verticalCenter: parent.verticalCenter
             radius: 2; smoothing: 0
-            color: theme.surface
+            color: theme.tileSunken
             borderColor: theme.line; borderWidth: 1
             Image {
                 id: poster

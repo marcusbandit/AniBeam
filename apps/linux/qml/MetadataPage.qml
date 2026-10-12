@@ -120,9 +120,10 @@ Item {
         y: place.row * page.step
         width: page.spanW(place.col, place.colSpan)
         height: page.unit
-        radius: theme.radiusTile
-        smoothing: theme.cornerSmoothing
         color: theme.tile
+        borderColor: theme.line
+        borderWidth: 1
+        highlight: theme.glassHighlight
     }
     component Caption: Label {
         x: page.hpad; y: page.hpad
@@ -281,9 +282,10 @@ Item {
         readonly property real extra: expected > 0 ? Math.max(0, have - expected) : 0
         readonly property real inPad: theme.space(3)
         objectName: "meta-row-" + card.id
-        radius: theme.radiusTile
-        smoothing: theme.cornerSmoothing
         color: m.containsMouse ? theme.tileHover : theme.tile
+        borderColor: m.containsMouse ? theme.lineStrong : theme.line
+        borderWidth: 1
+        highlight: theme.glassHighlight
 
         // Under everything else, so the buttons take their own clicks
         MouseArea {
@@ -353,7 +355,7 @@ Item {
             spacing: theme.space(2)
             Row {
                 spacing: theme.space(1.5)
-                Chip { small: true; mono: false; color: theme.raised; text: metaRow.isMovie ? "Film" : "Series"; textColor: theme.hue(Theme.formatHue(metaRow.isMovie ? "MOVIE" : "TV")) }
+                Chip { small: true; mono: false; color: theme.raised; text: metaRow.isMovie ? "Film" : "Series"; textColor: theme.textDim }
                 Chip { small: true; mono: false; color: theme.raised
                     text: !metaRow.matched ? "No match" : page.providerLabel(metaRow.card.match_info.provider)
                     textColor: metaRow.matched ? theme.text : theme.textDim }
@@ -366,7 +368,7 @@ Item {
                     id: filesCount
                     text: metaRow.have + " of " + (metaRow.expected > 0 ? metaRow.expected : "?") + (metaRow.extra > 0 ? ", " + metaRow.extra + " extra" : "")
                     role: "ledger"
-                    color: metaRow.extra > 0 ? theme.behind : theme.textDim
+                    color: metaRow.extra > 0 ? theme.yellow : theme.textDim
                     Tooltip { text: metaRow.extra > 0 ? "Files beyond the expected count, likely misnamed or stray" : "" }
                 }
                 Corner {
@@ -380,7 +382,7 @@ Item {
                         width: Math.max(metaRow.pct > 0 ? height : 0, parent.width * metaRow.pct)
                         height: parent.height
                         radius: height / 2; smoothing: theme.cornerSmoothing
-                        color: metaRow.extra > 0 ? theme.behind : theme.caughtUp
+                        color: metaRow.extra > 0 ? theme.yellow : theme.caughtUp
                     }
                 }
             }

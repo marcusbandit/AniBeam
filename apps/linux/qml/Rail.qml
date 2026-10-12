@@ -1,7 +1,7 @@
 // The left rail: a column of tiles set in the grout. The brand tile at the top, one tile per
 // page (a Lucide glyph over a short label), and a foot tile with the title-language switch
-// and the version. The active page's tile is raised and its glyph is in the accent; there is
-// no accent bar. The tiles are as wide as the widest label (or the switch) needs at the
+// and the version. Every tile is a square pane of glass; the active page's is raised, its
+// glyph in the accent, with a 2 px accent bar along its left edge. The tiles are as wide as the widest label (or the switch) needs at the
 // current density, so a label never clips.
 import QtQuick
 import com.marcusrosado.AniBeam
@@ -51,6 +51,8 @@ Item {
             radius: theme.radiusTile
             smoothing: theme.cornerSmoothing
             color: theme.tile
+            borderColor: theme.line; borderWidth: 1
+            highlight: theme.glassHighlight
             Image {
                 anchors.centerIn: parent
                 width: Math.round(parent.height * 0.62); height: width
@@ -72,9 +74,11 @@ Item {
                 height: root.cellHeight
                 radius: theme.radiusTile
                 smoothing: theme.cornerSmoothing
-                color: on ? theme.raised : theme.tile
-                borderColor: entry.activeFocus ? theme.focusRing : (m.containsMouse && !on ? theme.line : "transparent")
-                borderWidth: entry.activeFocus ? theme.space(0.5) : (m.containsMouse && !on ? 1 : 0)
+                color: on || m.containsMouse ? theme.raised : theme.tile
+                borderColor: entry.activeFocus ? theme.focusRing : (m.containsMouse || on ? theme.lineStrong : theme.line)
+                borderWidth: 1
+                highlight: theme.glassHighlight
+                Rectangle { visible: entry.on; width: 2; height: parent.height; color: theme.accent }
                 scale: m.pressed ? 0.98 : 1
                 activeFocusOnTab: true
                 Keys.onReturnPressed: root.picked(entry.index)
@@ -115,11 +119,13 @@ Item {
         radius: theme.radiusTile
         smoothing: theme.cornerSmoothing
         color: theme.tile
+        borderColor: theme.line; borderWidth: 1
+        highlight: theme.glassHighlight
         Column {
             id: foot
             anchors.centerIn: parent
             spacing: theme.space(2)
-            // The title language: one pill naming the current one; a click switches
+            // The title language: one square naming the current one; a click switches
             Corner {
                 id: lang
                 objectName: "title-language"
@@ -131,6 +137,7 @@ Item {
                 radius: height / 2
                 smoothing: theme.cornerSmoothing
                 color: langMouse.containsMouse ? theme.raisedHover : theme.raised
+                borderColor: langMouse.containsMouse ? theme.lineStrong : theme.line; borderWidth: 1
                 scale: langMouse.pressed ? 0.98 : 1
                 Label {
                     anchors.centerIn: parent

@@ -1,8 +1,8 @@
 // A passing notice over the picture: one line, an optional button, gone after four seconds.
 // The Skipped intro line with its Undo and the tracker outcomes after a mark all come
 // through here. The line is capped at the page's width and elides, since a tracker's own
-// error text is as long as the tracker cares to make it. A raised pill, like every stone on the
-// player; its Undo never takes the keyboard, so Space after it still pauses.
+// error text is as long as the tracker cares to make it. A pane of the player's glass, like every island on
+// the player; its Undo never takes the keyboard, so Space after it still pauses.
 import QtQuick
 
 Corner {
@@ -16,8 +16,9 @@ Corner {
     anchors.horizontalCenter: parent.horizontalCenter
     anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(30)
     width: row.implicitWidth + theme.space(6); height: theme.controlHeight
-    radius: height / 2; smoothing: theme.cornerSmoothing
-    color: theme.raised
+    color: theme.glassVideo
+    borderColor: Qt.rgba(1, 1, 1, 0.1); borderWidth: 1
+    highlight: theme.glassHighlight
 
     readonly property real maxWidth: parent ? parent.width - theme.space(8) : theme.space(100)
     Row {

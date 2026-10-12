@@ -49,7 +49,8 @@ Item {
         return ""
     }
     readonly property string nativeTitle: titles.native && titles.native !== card.title ? titles.native : ""
-    readonly property string tone: card.poster ? Fmt.posterTone(card.poster) : ""
+    // No surface takes the poster's tone in the glass mosaic; kept empty for old readers
+    readonly property string tone: ""
 
     function contextItems() {
         return [
@@ -301,8 +302,7 @@ Item {
             id: posterTile
             x: page.spanX(0); y: page.step
             width: page.spanW(0, page.lead); height: page.px(page.posterUnits)
-            radius: theme.radiusTile; smoothing: theme.cornerSmoothing
-            color: page.tone !== "" ? theme.plate(page.tone) : theme.tile
+            color: theme.tile
             fillItem: poster.status === Image.Ready ? poster : null
             Image {
                 id: poster; visible: false
@@ -332,15 +332,14 @@ Item {
             }
         }
 
-        // ---- The banner: the art across the band, or a plate in the poster's tone
+        // ---- The banner: the art across the band
         Corner {
             id: bannerTile
             readonly property bool hasBanner: page.hasBanner
             visible: hasBanner
             x: page.spanX(page.lead); y: 0
             width: page.spanW(page.lead, page.rest); height: page.px(page.bannerUnits)
-            radius: theme.radiusTile; smoothing: theme.cornerSmoothing
-            color: page.tone !== "" ? theme.plate(page.tone) : theme.tile
+            color: theme.tile
             fillItem: hasBanner && art.status === Image.Ready ? art : null
             Image {
                 id: art; visible: false
@@ -357,7 +356,6 @@ Item {
             width: page.spanW(page.lead, page.rest - page.continueSpan)
             height: page.px(page.titleSpanUnits)
             padding: page.pad
-            tone: page.tone !== "" ? page.tone : "transparent"
             Column {
                 id: titleBlock
                 width: parent.width
@@ -370,8 +368,8 @@ Item {
                     wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight
                     lineHeight: 0.95
                 }
-                Label { visible: page.altTitle !== ""; width: parent.width; text: page.altTitle; role: "ui"; elide: Text.ElideRight; color: theme.contrast(theme.textDim, titleTile.fill) >= 4.5 ? theme.textDim : theme.text }
-                Label { visible: page.nativeTitle !== ""; width: parent.width; text: page.nativeTitle; role: "ui"; font.pointSize: theme.typeSmall; elide: Text.ElideRight; color: theme.contrast(theme.textDim, titleTile.fill) >= 4.5 ? theme.textDim : theme.text }
+                Label { visible: page.altTitle !== ""; width: parent.width; text: page.altTitle; role: "ui"; elide: Text.ElideRight; color: theme.textDim }
+                Label { visible: page.nativeTitle !== ""; width: parent.width; text: page.nativeTitle; role: "ui"; font.pointSize: theme.typeSmall; elide: Text.ElideRight; color: theme.textDim }
             }
         }
 
@@ -404,19 +402,18 @@ Item {
                         width: Math.min(implicitWidth, fact.width - fact.padding * 2 - theme.space(7))
                         elide: Text.ElideRight
                     }
-                    // The countdown: a pill in the accent under ground-coloured text
-                    Corner {
+                    // The countdown: a clock and the time in accent text, the card's treatment
+                    Icon { visible: fact.modelData.key === "airing"; anchors.verticalCenter: parent.verticalCenter; glyph: "clock"; size: theme.space(4); color: theme.accent }
+                    Item {
                         visible: fact.modelData.key === "airing"
-                        width: countdown.implicitWidth + theme.space(6); height: countdown.implicitHeight + theme.space(2)
-                        radius: height / 2; smoothing: theme.cornerSmoothing
-                        color: theme.accent
+                        width: countdown.implicitWidth; height: countdown.implicitHeight
                         Label {
                             id: countdown
                             anchors.centerIn: parent
                             text: card.next_airing ? Fmt.countdownSeconds(card.next_airing.at - page.nowMs / 1000) : ""
                             role: "ledger"; font.pointSize: theme.typeNormal
                             font.weight: 600; font.variableAxes: ({ "wdth": 88, "wght": 600 })
-                            color: theme.contrast(theme.ground, theme.accent) >= 4.5 ? theme.ground : theme.text
+                            color: theme.accent
                         }
                     }
                 }
@@ -763,7 +760,6 @@ Item {
         id: rel
         property var node: ({})
         readonly property bool owned: node.owned !== null && node.owned !== undefined
-        readonly property string relTone: node.poster ? Fmt.posterTone(node.poster) : ""
         height: theme.space(24)
         radius: theme.radiusInner(page.pad > theme.space(2) ? theme.space(2) : page.pad)
         smoothing: theme.cornerSmoothing
@@ -773,7 +769,7 @@ Item {
             id: relThumb
             width: height / 1.5; height: parent.height
             radius: parent.radius; smoothing: theme.cornerSmoothing
-            color: rel.relTone !== "" ? theme.plate(rel.relTone) : theme.tileSunken
+            color: theme.tileSunken
             fillItem: relArt.status === Image.Ready ? relArt : null
             Image { id: relArt; visible: false; width: parent.width; height: parent.height
                 source: rel.node.poster ? "file://" + rel.node.poster : ""

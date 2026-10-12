@@ -55,7 +55,7 @@ Item {
                     text: "Unavailable"
                     small: true
                     mono: false
-                    color: theme.surface
+                    color: theme.tileSunken
                     textColor: theme.textDim
                 }
             }

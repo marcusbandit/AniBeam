@@ -50,9 +50,10 @@ Corner {
     Layout.fillHeight: grows
     Layout.minimumHeight: implicitHeight
     Layout.preferredHeight: implicitHeight
-    radius: theme.radiusTile
-    smoothing: theme.cornerSmoothing
     color: theme.tile
+    borderColor: theme.line
+    borderWidth: 1
+    highlight: theme.glassHighlight
 
     Column {
         id: head
