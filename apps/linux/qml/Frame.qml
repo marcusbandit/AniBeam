@@ -245,10 +245,12 @@ FocusScope {
         tipText.text = text
         tip.x = Math.max(theme.space(2), Math.min(p.x - tip.width / 2, overlay.width - tip.width - theme.space(2)))
         // Below the item, or above it when there is no room below (the player's controls
-        // island sits at the window's foot); never over the item it describes.
-        var top = item.mapToItem(overlay, 0, 0).y
+        // island sits at the window's foot); never over the item it describes. Inside the
+        // player's controls tile, above the whole tile, so the tip never covers the seek bar.
+        var top = item.mapToItem(overlay, 0, 0).y, inTile = false
+        for (var a = item; a; a = a.parent) if (a.objectName === "player-controls") { top = a.mapToItem(overlay, 0, 0).y; inTile = true; break }
         var below = p.y + theme.space(1)
-        tip.y = below + tip.height <= overlay.height - theme.space(2) ? below
+        tip.y = !inTile && below + tip.height <= overlay.height - theme.space(2) ? below
               : Math.max(theme.space(2), top - tip.height - theme.space(1))
         tip.visible = true
     }

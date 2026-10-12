@@ -1,5 +1,6 @@
 // A track picker: Off (for subtitles) plus every track, the current one in the accent.
-// Opens above its anchor; a pick closes it; Escape closes it through the frame.
+// Opens above its anchor (above the whole controls tile in the player), scrolling when
+// the list is taller than the room there; a pick closes it; Escape closes it through the frame.
 import QtQuick
 import QtQuick.Controls.Basic as QC
 
@@ -20,11 +21,31 @@ Item {
     // strand the panel away from its button. mapToItem is not a tracked binding, so the
     // explicit size handlers below are what keep it right.
     property var anchorItem: null
+    // The tallest the panel may be; place() lowers it to the room above the anchor, so a
+    // long list scrolls instead of running off the window's top.
+    property real maxHeight: theme.space(80)
+    // The tile the anchor sits in (the player's controls island), so the panel clears all
+    // of it, the seek bar included, not only the button.
+    function tileOf(item) {
+        for (var p = item; p; p = p.parent) if (p.objectName === "player-controls") return p
+        return null
+    }
     function place() {
         if (!anchorItem) return
         var p = anchorItem.mapToItem(root, anchorItem.width / 2, 0)
+        var tile = tileOf(anchorItem)
+        var floor = (tile ? tile.mapToItem(root, 0, 0).y : p.y) - theme.space(2)
+        maxHeight = Math.max(theme.space(20), Math.min(theme.space(80), floor - theme.space(2)))
         panel.x = Math.max(theme.space(2), Math.min(p.x - panel.width / 2, root.width - panel.width - theme.space(2)))
-        panel.y = Math.max(theme.space(2), p.y - panel.height - theme.space(2))
+        panel.y = Math.max(theme.space(2), floor - panel.height)
+    }
+    // The current track, scrolled into the middle of the list when the list scrolls
+    function revealSelected() {
+        var rows = (offRow ? [{ id: -1 }] : []).concat(tracks)
+        for (var i = 0; i < rows.length; i++) if (rows[i].id === selected) break
+        if (i >= rows.length) return
+        var y = theme.space(6) + i * theme.controlHeight
+        trackList.contentY = Math.max(0, Math.min(trackList.contentHeight - trackList.height, y - (trackList.height - theme.controlHeight) / 2))
     }
     onWidthChanged: if (open) place()
     onHeightChanged: if (open) place()
@@ -35,6 +56,7 @@ Item {
         anchorItem = anchor
         place()
         open = true
+        revealSelected()
         page.openMenus++
         frame.escapeStack.push("popover", root)
     }
@@ -50,9 +72,11 @@ Item {
     Corner {
         id: panel
         objectName: root.objectName !== "" ? root.objectName + "-panel" : "track-picker-panel"
-        width: theme.space(70); height: Math.min(theme.space(80), column.implicitHeight + theme.space(4))
+        width: theme.space(70); height: Math.min(root.maxHeight, column.implicitHeight + theme.space(4))
         radius: theme.radiusMd; smoothing: theme.cornerSmoothing
         color: theme.surfaceRaised; borderColor: theme.lineStrong; borderWidth: 1
+        // The list's length can change while open (tracks arrive late); keep the foot put
+        onHeightChanged: if (root.open) root.place()
         MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons }
         Flickable {
             id: trackList
