@@ -1,6 +1,7 @@
 // The Library tab on the mosaic: the stat stones (the same counts the Metadata filter
 // shows), the Folders tile sized to its sources, and the recent scans growing into the
-// rest of the column; beside them the Trackers tile and the library options.
+// rest of the column; beside them the Trackers tile, the metadata providers in the order
+// matching tries them, and the library options.
 import QtQuick
 import QtQuick.Dialogs
 import com.marcusrosado.AniBeam
@@ -34,6 +35,20 @@ SettingsTab {
         stats = { series: m.reply.counts.series, films: m.reply.counts.movies, episodes: eps, lastScan: last }
     }
     Component.onCompleted: reload()
+
+    // The match providers, first tried first; the core keeps the order and says what it is
+    readonly property var providerOrder: Door.settings && Door.settings.provider_order && Door.settings.provider_order.length ? Door.settings.provider_order : ["Anilist", "Tvmaze"]
+    readonly property var providerAbout: ({ Anilist: "Anime: series, films and their relations. Episodes you watch are marked on your trackers.",
+                                           Tvmaze: "Other television: live action, cartoons, documentaries. Nothing is marked on a tracker." })
+    readonly property var ordinals: ["Tried first", "Tried second", "Tried third", "Tried fourth"]
+    function moveProvider(from, to) {
+        if (to < 0 || to >= providerOrder.length) return
+        var o = providerOrder.slice()
+        var p = o.splice(from, 1)[0]
+        o.splice(to, 0, p)
+        var r = Door.setProviderOrder(o)
+        if (r.error) frame.toast(r.error.message)
+    }
     Timer { id: debounce; interval: 250; onTriggered: tab.reload() }
     Connections {
         target: Door
@@ -48,7 +63,7 @@ SettingsTab {
     SettingsPair {
         split: 3 / 5
         leftPanels: [ statStones, foldersPanel, scansPanel ]
-        rightPanels: [ trackersPanel, optionsPanel ]
+        rightPanels: [ trackersPanel, providersPanel, optionsPanel ]
     }
     Component {
         id: statStones
@@ -129,6 +144,32 @@ SettingsTab {
             SettingRow { label: "Sync progress now"; helper: "Reads your lists from every connected tracker again."
                 Button { objectName: "settings-sync-trackers"; text: "Sync"; icon: "refresh-cw"; enabled: !!(Door.trackers.anilist && Door.trackers.anilist.connected) || !!(Door.trackers.mal && Door.trackers.mal.connected)
                     onClicked: { var r = Door.refreshProgress(""); frame.toast(r.error ? r.error.message : "Syncing tracker progress") } } }
+        }
+    }
+    Component {
+        id: providersPanel
+        Panel {
+            objectName: "settings-providers"
+            title: "Metadata providers"; icon: "database"
+            helper: "Matching a folder tries each provider from the top and keeps the first good match. A match you set by hand is never replaced."
+            Repeater {
+                model: tab.providerOrder
+                SettingRow {
+                    required property var modelData
+                    required property int index
+                    objectName: "provider-row-" + String(modelData).toLowerCase()
+                    label: frame.providerName(modelData)
+                    line: tab.ordinals[index] || ""
+                    helper: tab.providerAbout[modelData] || ""
+                    Row {
+                        spacing: theme.space(1)
+                        Button { objectName: "provider-up-" + String(modelData).toLowerCase(); text: "Move up"; icon: "arrow-up"; flat: true
+                            enabled: index > 0; onClicked: tab.moveProvider(index, index - 1) }
+                        Button { objectName: "provider-down-" + String(modelData).toLowerCase(); text: "Move down"; icon: "arrow-down"; flat: true
+                            enabled: index < tab.providerOrder.length - 1; onClicked: tab.moveProvider(index, index + 1) }
+                    }
+                }
+            }
         }
     }
     Component {
