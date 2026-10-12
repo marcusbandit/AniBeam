@@ -166,7 +166,7 @@ Item {
             else { tipIntent.stop(); frame.hideTip() }
         }
     }
-    Timer { id: tipIntent; interval: 600; onTriggered: frame.showTip(titleText, root.folderName) }
+    Timer { id: tipIntent; interval: 600; onTriggered: frame.showTip(titleText, root.folderName, root) }
     onFolderNameChanged: if (hoverer.hovered && folderName === "") frame.hideTip()
 
     // The click covers the whole tile; the Play button sits above it and takes its own
@@ -221,7 +221,7 @@ Item {
                                                  foot.height + root.pad * 2 + theme.space(6)))
         gradient: Gradient {
             GradientStop { position: 0; color: "transparent" }
-            GradientStop { position: 0.45; color: Qt.rgba(theme.posterScrim.r, theme.posterScrim.g, theme.posterScrim.b, theme.posterScrim.a * (0.62 + 0.14 * root.lift)) }
+            GradientStop { position: 0.45; color: Qt.rgba(theme.posterScrim.r, theme.posterScrim.g, theme.posterScrim.b, theme.posterScrim.a * (0.7 + 0.12 * root.lift)) }
             GradientStop { position: 1; color: theme.posterScrim }
         }
     }

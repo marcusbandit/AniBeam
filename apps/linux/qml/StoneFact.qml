@@ -1,6 +1,6 @@
 // A label stone's one line under the section's name, in the plates' own roles: a plain
-// ledger line ({ text }), or the next episode out ({ at, text }): "Next", the countdown in
-// the accent pill (ground-coloured text where that holds 4.5:1), and the title under it.
+// ledger line ({ text }), or the next episode out ({ at, text }): "Next", a clock and the
+// countdown in accent text (the Card's treatment, no pill), and the title under it.
 import QtQuick
 
 Column {
@@ -20,21 +20,15 @@ Column {
         visible: root.countdown
         spacing: theme.space(1.5)
         Label { anchors.verticalCenter: parent.verticalCenter; text: "Next"; role: "ledger"; color: theme.textDim }
-        Rectangle {
+        Icon { anchors.verticalCenter: parent.verticalCenter; glyph: "clock"; size: Math.round(pillText.implicitHeight * 0.85); color: theme.accent }
+        Label {
+            id: pillText
             anchors.verticalCenter: parent.verticalCenter
-            height: pillText.implicitHeight + theme.space(1)
-            width: pillText.implicitWidth + theme.space(3)
-            radius: height / 2
+            text: root.countdown ? root.shortCountdown(root.fact.at - root.nowMs / 1000) : ""
+            role: "ledger"
+            font.weight: 650
+            font.variableAxes: ({ "wdth": 88, "wght": 650 })
             color: theme.accent
-            Label {
-                id: pillText
-                anchors.centerIn: parent
-                text: root.countdown ? root.shortCountdown(root.fact.at - root.nowMs / 1000) : ""
-                role: "ledger"
-                font.weight: 650
-                font.variableAxes: ({ "wdth": 88, "wght": 650 })
-                color: theme.contrast(theme.ground, theme.accent) >= 4.5 ? theme.ground : theme.text
-            }
         }
     }
     Label {

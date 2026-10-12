@@ -1,0 +1,138 @@
+[
+  {
+"log": "a tip always belongs to the area under the pointer: a scroll, a search and a page change take it down at once, and a tip that comes back names what the pointer is on now"
+},
+  {
+"eval": "frame.item.nav.current.page",
+"expect": "library"
+},
+  {
+"wait": 900
+},
+  {
+"hover": "small-tile"
+},
+  {
+"wait": 1000
+},
+  {
+"eval": "frame.item.tipShown",
+"expect": true
+},
+  {
+"shot": "tips-01-shown"
+},
+  {
+"log": "a wheel notch scrolls the wall under a still pointer: the tip goes"
+},
+  {
+"wheel": "small-tile",
+"dy": -120
+},
+  {
+"wait": 500
+},
+  {
+"eval": "frame.item.tipShown",
+"expect": false
+},
+  {
+"wait": 1200
+},
+  {
+"log": "if a tip is up again it is the one for what is under the pointer now"
+},
+  {
+"eval": "!frame.item.tipShown || (frame.item.tipArea !== null && frame.item.pointerInside(frame.item.tipArea))",
+"expect": true
+},
+  {
+"shot": "tips-02-scrolled"
+},
+  {
+"eval": "frame.item.leavingScroll() > 0",
+"expect": true
+},
+  {
+"log": "hover again, then type a search: the wall re-lays out and the tip goes"
+},
+  {
+"hover": "small-tile"
+},
+  {
+"wait": 1000
+},
+  {
+"eval": "frame.item.tipShown",
+"expect": true
+},
+  {
+"key": "/"
+},
+  {
+"type": "zzqx"
+},
+  {
+"wait": 500
+},
+  {
+"eval": "frame.item.tipShown",
+"expect": false
+},
+  {
+"wait": 1200
+},
+  {
+"log": "if a tip is up again it is the one for what is under the pointer now"
+},
+  {
+"eval": "!frame.item.tipShown || (frame.item.tipArea !== null && frame.item.pointerInside(frame.item.tipArea))",
+"expect": true
+},
+  {
+"shot": "tips-03-searched"
+},
+  {
+"key": "Escape"
+},
+  {
+"wait": 600
+},
+  {
+"log": "hover, then change page from the keyboard: the tip goes with the page"
+},
+  {
+"hover": "small-tile"
+},
+  {
+"wait": 1000
+},
+  {
+"eval": "frame.item.tipShown",
+"expect": true
+},
+  {
+"key": "Ctrl+,"
+},
+  {
+"wait": 500
+},
+  {
+"eval": "frame.item.nav.current.page",
+"expect": "settings"
+},
+  {
+"eval": "frame.item.tipShown",
+"expect": false
+},
+  {
+"wait": 1200
+},
+  {
+"log": "if a tip is up again it is the one for what is under the pointer now"
+},
+  {
+"eval": "!frame.item.tipShown || (frame.item.tipArea !== null && frame.item.pointerInside(frame.item.tipArea))",
+"expect": true
+}
+]
