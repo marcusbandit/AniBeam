@@ -8,7 +8,8 @@
 // 0.98. Keyboard focus draws that same outline at full strength and a 2 px ring in
 // theme.focusRing outside the tile, so focus never reads as hover; Return opens the series,
 // Space plays its next episode, and the arrows are the page's (GridKeys through PageScroll).
-// A click gives the tile focus so the arrows go on from there; hover never does.
+// A click gives the tile focus so the arrows go on from there; hover never does. A card
+// with no poster is a plain pane: no scrim, and the writing in the theme's own inks.
 //
 // The tile's size comes from the layout, never from the image: `tileHeight` when the
 // mosaic sets one, else a 2:3 tile at `posterWidth`. `hero` is the 2x2 tile: the title in
@@ -69,6 +70,12 @@ Item {
     FontMetrics { id: ledgerMetrics; font.family: theme.fontFamily; font.pointSize: theme.typeSmall; font.weight: theme.roleWeight("ledger"); font.variableAxes: theme.roleAxes("ledger") }
 
     readonly property string displayTitle: item.title || ""
+    // No poster: the card is a plain pane of the surface, so the scrim goes (it read as a
+    // grey smear on a light surface) and the writing takes the theme's own inks
+    readonly property bool bare: !item.poster
+    readonly property color inkMain: bare ? theme.text : theme.onPoster
+    readonly property color inkDim: bare ? theme.textDim : theme.onPosterDim
+    readonly property color inkAccent: bare ? theme.accent : theme.accentOnPoster
     readonly property string folderName: item.titles ? item.titles.folder || "" : ""
     readonly property bool hasWatched: item.watched !== null && item.watched !== undefined
     readonly property bool totalKnown: item.total_episodes !== null && item.total_episodes !== undefined && item.total_episodes > 0
@@ -124,13 +131,13 @@ Item {
             width: Math.min(implicitWidth, Math.max(0, cd.room - cdClock.width - cdTime.implicitWidth - cd.spacing * 2 - theme.space(0.5)))
             text: root.airingEpisode
             role: "ledger"
-            color: theme.onPosterDim
+            color: root.inkDim
             elide: Text.ElideRight
         }
         Row {
             anchors.verticalCenter: parent.verticalCenter
             spacing: theme.space(0.5)
-            Icon { id: cdClock; anchors.verticalCenter: parent.verticalCenter; glyph: "clock"; size: Math.round(ledgerMetrics.height * 0.85); color: theme.accentOnPoster }
+            Icon { id: cdClock; anchors.verticalCenter: parent.verticalCenter; glyph: "clock"; size: Math.round(ledgerMetrics.height * 0.85); color: root.inkAccent }
             Label {
                 id: cdTime
                 anchors.verticalCenter: parent.verticalCenter
@@ -138,7 +145,7 @@ Item {
                 role: "ledger"
                 font.weight: 650
                 font.variableAxes: ({ "wdth": 88, "wght": 650 })
-                color: theme.accentOnPoster
+                color: root.inkAccent
             }
         }
     }
@@ -208,7 +215,7 @@ Item {
         border.width: 1
     }
     Label {
-        visible: !root.item.poster
+        visible: root.bare
         anchors.centerIn: parent
         anchors.verticalCenterOffset: -root.height * 0.12
         text: "No poster"
@@ -245,6 +252,7 @@ Item {
     // ---- The scrim: rises from the foot, always tall enough to sit under every line
     Rectangle {
         id: scrim
+        visible: !root.bare
         anchors.bottom: parent.bottom
         width: parent.width
         height: Math.min(parent.height, Math.max(parent.height * (theme.scrimReach + 0.06 * root.lift),
@@ -287,7 +295,7 @@ Item {
             text: root.displayTitle
             role: root.hero ? "display" : "title"
             font.pointSize: root.hero ? theme.typeLarge * 1.2 : theme.typeNormal
-            color: theme.onPoster
+            color: root.inkMain
             wrapMode: Text.Wrap
             maximumLineCount: 2
             elide: Text.ElideRight
@@ -307,7 +315,7 @@ Item {
                 width: Math.min(implicitWidth, parent.room)
                 text: root.ledgerText
                 role: "ledger"
-                color: theme.onPosterDim
+                color: root.inkDim
                 elide: Text.ElideRight
             }
             Label {
@@ -316,7 +324,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.scoreText
                 role: "ledger"
-                color: root.mine ? theme.accentOnPoster : theme.onPosterDim
+                color: root.mine ? root.inkAccent : root.inkDim
             }
         }
 
@@ -327,7 +335,7 @@ Item {
             width: parent.width
             text: root.nextText
             role: "ui"
-            color: theme.onPoster
+            color: root.inkMain
             elide: Text.ElideRight
         }
         Countdown { visible: root.hero && root.airing !== null; room: foot.width }
@@ -336,7 +344,7 @@ Item {
             width: parent.width
             text: root.metaOverride
             role: "ledger"
-            color: theme.onPosterDim
+            color: root.inkDim
             elide: Text.ElideRight
         }
         Label {
@@ -344,7 +352,7 @@ Item {
             width: parent.width
             text: root.watchedText !== "" ? root.watchedText : root.filesText
             role: "ledger"
-            color: theme.onPosterDim
+            color: root.inkDim
             elide: Text.ElideRight
         }
         Item { visible: root.hero; width: 1; height: theme.space(1.5) }
@@ -374,7 +382,7 @@ Item {
                     text: root.scoreText
                     role: "ledger"
                     font.pointSize: theme.typeNormal
-                    color: root.mine ? theme.accentOnPoster : theme.onPosterDim
+                    color: root.mine ? root.inkAccent : root.inkDim
                 }
             }
         }
@@ -391,8 +399,8 @@ Item {
         height: 4
         // One fact: how much of the run is watched, in the accent over a faint track. The
         // aired-but-unseen share used to sit on the same line and read as progress.
-        Rectangle { anchors.fill: parent; radius: height / 2; color: Qt.rgba(1, 1, 1, 0.18) }
-        Rectangle { width: parent.width * Math.min(1, root.watchedPct); height: parent.height; radius: height / 2; color: theme.accentOnPoster }
+        Rectangle { anchors.fill: parent; radius: height / 2; color: root.bare ? theme.behind : Qt.rgba(1, 1, 1, 0.18) }
+        Rectangle { width: parent.width * Math.min(1, root.watchedPct); height: parent.height; radius: height / 2; color: root.inkAccent }
     }
 
     // ---- The 1 px accent outline on hover, at full strength on focus
