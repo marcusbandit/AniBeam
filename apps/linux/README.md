@@ -33,3 +33,25 @@ page name cannot reach on its own. `library:drawer` opens the library page as us
 `frame.toggleDrawer()` once the page is up and before the grab, so the shoot's own settle delay
 doubles as the drawer's rise time. `Main.qml` splits the suffix off before ever comparing against a
 page name, so `--page library:drawer` still opens `library`, not a page literally named that.
+
+`--drive <script.json>` is the interactive sibling of `--shoot` (the two are exclusive): once the
+frame is up it runs a JSON array of steps against the offscreen window and exits 0, or prints
+`DRIVE FAIL: <reason>` and exits 1. `scripts/drive.sh <script.json> [anibeam args...]` wraps it
+like `shoot.sh` does (same `ANIBEAM_ROOT`, `W`/`H`; shots land in `captures/` unless
+`ANIBEAM_CAPTURES` or `--out <dir>` says otherwise) and prints the `DRIVE STEP <n>: ...` log.
+`scripts/drive/smoke.json` is the worked example.
+
+    {"wait": ms}                     {"click": [x, y] | "objectName", "button": "right", "double": true}
+    {"hover": [x, y] | "objectName"} {"wheel": [x, y, dy]}  or  {"wheel": "objectName", "dy": -120}
+    {"key": "Escape" | "Ctrl+K" | "Alt+Left" | "Shift+Tab" | "a"}     {"type": "some text"}
+    {"shot": "name"}                 {"log": "text"}        {"page": "settings", "props": {}}
+    {"eval": "frame.item.nav.current.page", "expect": "settings", "as": "k"}
+
+Input enters through QtGui's window-system entry points (`qt_handleMouseEvent` and friends, the
+ones QtTest uses, declared in `cpp/helpers.cpp`), so Shortcut, Keys, MouseArea hover, pointer
+handlers, Popup close-on-press-outside and double-click synthesis all behave as with a real
+pointer. A click is move, press, release 30 ms apart. An objectName target is the first visible
+item of that name in the window's tree, open Popups included; `Rail`, `Seg` (cells are
+`<name>-<label>`) and `Dropdown` (`<name>-popup`, `<name>-option-<i>`) carry names for this.
+`eval` runs in Main.qml's scope (`window`, `frame`, `Theme`, `driver.item.findItem(name)`), and
+`vars.k` reads what an earlier `"as": "k"` stored.

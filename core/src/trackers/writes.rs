@@ -402,7 +402,7 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
     match action {
         Action::Mark { episode } => Finished {
             level,
-            message: format!("marked episode {episode} of {folder}"),
+            message: format!("Marked episode {episode} of {folder}"),
             body: EventBody::Marked {
                 series,
                 episode,
@@ -411,7 +411,7 @@ fn finished(target: &Targets, action: Action, outcomes: Vec<TrackerOutcome>) -> 
         },
         Action::Progress { progress } => Finished {
             level,
-            message: format!("progress of {folder} set to {progress}"),
+            message: format!("Progress of {folder} set to {progress}"),
             body: EventBody::ProgressSet {
                 series,
                 progress,
@@ -934,7 +934,7 @@ mod tests {
                     reason: Refusal::Hidden
                 }
             ),
-            "refused: Hidden"
+            "Cannot do that: the show is hidden."
         );
     }
 }

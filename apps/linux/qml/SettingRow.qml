@@ -46,7 +46,7 @@ Item {
             text: root.line
             color: theme.textDim
             wrapMode: Text.Wrap
-            font.family: theme.fontMono
+            font.family: theme.fontUi
             font.pointSize: theme.typeSmall
         }
         Text {
@@ -64,7 +64,7 @@ Item {
             text: root.status
             color: theme.textDim
             wrapMode: Text.Wrap
-            font.family: theme.fontMono
+            font.family: theme.fontUi
             font.pointSize: theme.typeSmall
         }
     }

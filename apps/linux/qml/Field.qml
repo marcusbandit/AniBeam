@@ -1,5 +1,5 @@
-// A one line text field in a pill: placeholder in faint text, focus on the border,
-// `mono` sets the fixed face for numbers and codes.
+// A one line text field: a square pane of glass with its edge, placeholder in faint text,
+// an accent line along the foot on focus. `mono` sets the ledger cut, tabular figures for numbers and codes.
 import QtQuick
 
 Corner {
@@ -11,11 +11,13 @@ Corner {
 
     implicitWidth: theme.space(40)
     implicitHeight: theme.controlHeight
-    radius: height / 2
+    radius: Math.min(theme.radiusTile, height / 2)
     smoothing: theme.cornerSmoothing
-    color: theme.surfaceSunken
-    borderColor: input.activeFocus ? theme.focusRing : (hover.containsMouse ? theme.lineStrong : theme.line)
-    borderWidth: input.activeFocus ? theme.space(0.5) : 1
+    color: input.activeFocus ? theme.raised : theme.tile
+    borderColor: hover.containsMouse || input.activeFocus ? theme.lineStrong : theme.line
+    borderWidth: 1
+    // Focus is the accent line along the foot
+    Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 2; color: theme.focusRing; visible: input.activeFocus }
 
     function focusInput() { input.forceActiveFocus() }
 
@@ -29,12 +31,15 @@ Corner {
     TextInput {
         id: input
         anchors.fill: parent
-        anchors.leftMargin: theme.space(4)
-        anchors.rightMargin: theme.space(4)
+        anchors.leftMargin: theme.space(3)
+        anchors.rightMargin: theme.space(3)
         verticalAlignment: TextInput.AlignVCenter
         color: theme.text
-        font.family: root.mono ? theme.fontMono : theme.fontSans
-        font.pointSize: theme.typeNormal
+        font.family: theme.fontFamily
+        font.pointSize: root.mono ? theme.typeSmall : theme.typeNormal
+        font.weight: theme.roleWeight(root.mono ? "ledger" : "ui")
+        font.variableAxes: theme.roleAxes(root.mono ? "ledger" : "ui")
+        font.features: theme.roleFeatures(root.mono ? "ledger" : "ui")
         selectionColor: theme.accentSoft
         selectedTextColor: theme.text
         clip: true

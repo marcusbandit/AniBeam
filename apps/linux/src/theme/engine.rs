@@ -281,7 +281,9 @@ mod tests {
 
     #[test]
     fn system_mode_follows_the_terminal_before_the_portal() {
-        let r = resolve(inputs());
+        let mut i = inputs();
+        i.settings.source = Source::System;
+        let r = resolve(i.clone());
         assert_eq!(
             r.mode,
             Mode::Dark,
@@ -293,11 +295,41 @@ mod tests {
             Mode::Light,
             "the other mode is still resolved for the preview"
         );
-        let mut no_terminal = inputs();
+        let mut no_terminal = i;
         no_terminal.terminal = None;
         let r = resolve(no_terminal);
         assert_eq!(r.mode, Mode::Light, "with no terminal the portal decides");
         assert!(r.light.source_label.starts_with("portal"));
+    }
+
+    #[test]
+    fn a_fresh_install_without_theme_toml_lands_on_the_tesserae_pair() {
+        // No terminal, no portal state: the shell's own pair is the identity a new user
+        // sees. The built-in dir must carry it, and the resolution must be the glass mosaic's ground.
+        let dir = tempfile::tempdir().unwrap();
+        let paths = ShellPaths {
+            core: anibeam_core::CorePaths::under(dir.path()),
+            runtime_dir: dir.path().join("runtime"),
+            builtin_themes: std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("themes"),
+            bundled_mpv_conf_override: None,
+        };
+        let inputs = read_inputs(&paths, Portal::default());
+        let r = resolve(inputs);
+        assert_eq!(r.dark.bg.to_hex(), "#0c0d10", "the graphite ground");
+        assert_eq!(r.dark.surface.to_hex(), "#16181b", "the resting glass, composited");
+        assert_eq!(r.dark.accent.to_hex(), "#f2f4f6", "monochrome: the accent is white");
+        assert_eq!(r.dark.source_label, "theme Graphite Glass");
+        assert_eq!(r.light.bg.to_hex(), "#e3e6ea", "the pale ground");
+        assert_eq!(r.light.source_label, "theme Graphite Glass Light");
+        for p in [&r.dark, &r.light] {
+            // faint text is legible on the ground and the tile, the accent reads as text on
+            // a tile, and the ink on an accent fill (a primary button) reads too
+            assert!(p.text_faint.contrast(p.bg) >= 3.0, "{} faint on ground", p.source_label);
+            assert!(p.text_faint.contrast(p.surface) >= 3.0, "{} faint on tile", p.source_label);
+            assert!(p.accent.contrast(p.surface) >= 4.5, "{} accent on tile", p.source_label);
+            assert!(p.accent_text.contrast(p.accent) >= 4.5, "{} ink on accent", p.source_label);
+            assert!(p.text_dim.contrast(p.surface) >= 4.5, "{} dim on tile", p.source_label);
+        }
     }
 
     #[test]
@@ -363,3 +395,4 @@ mod tests {
         assert_eq!(dirs, sorted, "sorted, so the watch set is stable");
     }
 }
+

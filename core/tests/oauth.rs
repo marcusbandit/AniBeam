@@ -8,6 +8,7 @@ use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::time::Duration;
 
+use anibeam_core::trackers::accounts;
 use anibeam_core::*;
 
 /// The browser's half of the flow: one request to the core's listener,
@@ -137,7 +138,7 @@ fn anilist_implicit_grant_through_the_forwarder_connects() {
         53690,
         "/callback?access_token=tok&expires_in=3600&token_type=Bearer",
     );
-    assert!(second.contains("AniList connected"), "{second}");
+    assert!(second.contains("AniList is connected to"), "{second}");
 
     let done = common::wait_job(&c, job);
     assert!(
@@ -264,7 +265,7 @@ fn mal_pkce_flow_checks_state_and_exchanges_the_code() {
     let state = param(&open_url, "state");
     let verifier = param(&open_url, "code_challenge");
     let ok = http_get(53691, &format!("/callback?code=abc&state={state}"));
-    assert!(ok.contains("MyAnimeList connected"), "{ok}");
+    assert!(ok.contains("MyAnimeList is connected to"), "{ok}");
     let done = common::wait_job(&c, job);
     assert!(
         matches!(
@@ -321,6 +322,376 @@ fn mal_pkce_flow_checks_state_and_exchanges_the_code() {
         },
         Duration::from_secs(5),
     );
+}
+
+/// The form of the one token request a test's core made.
+fn token_form(http: &anibeam_core::net::FakeHttp) -> Vec<(String, String)> {
+    let exchange = http
+        .requests()
+        .into_iter()
+        .find(|r| r.url.contains("oauth2/token"))
+        .expect("a token request");
+    match exchange.body {
+        Some(anibeam_core::net::Body::Form(f)) => f,
+        other => panic!("{other:?}"),
+    }
+}
+
+/// A MAL app registered with App Type "other" is a public client: no
+/// secret exists, and the exchange carries the id and the verifier alone.
+/// The field is left out, not sent empty.
+#[test]
+fn mal_without_a_secret_signs_in_as_a_public_client() {
+    // A build that bundles a MAL secret always has one to send, so there
+    // is no secretless flow to drive in it.
+    if accounts::bundled_client_secret(Tracker::Mal).is_some() {
+        return;
+    }
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    core.set_oauth_port(53693);
+    core.call(Call::SetTrackerCredentials {
+        tracker: Tracker::Mal,
+        client_id: "mid".into(),
+        client_secret: None,
+    })
+    .unwrap();
+    http.push_for(
+        "oauth2/token",
+        200,
+        serde_json::json!({ "access_token": "mtok", "refresh_token": "mref", "expires_in": 2_415_600 }).to_string(),
+    );
+    http.push_for(
+        "users/@me",
+        200,
+        serde_json::json!({ "id": 7, "name": "bandit" }).to_string(),
+    );
+    http.push_for(
+        "users/@me/animelist",
+        200,
+        serde_json::json!({ "data": [], "paging": {} }).to_string(),
+    );
+
+    // No secret anywhere is no longer a refusal: the call starts a job.
+    let job = started(
+        core.call(Call::ConnectTracker {
+            tracker: Tracker::Mal,
+        })
+        .unwrap(),
+    );
+    let open_url = ready_url(&c, job);
+    let state = param(&open_url, "state");
+    let verifier = param(&open_url, "code_challenge");
+    let ok = http_get(53693, &format!("/callback?code=abc&state={state}"));
+    assert!(ok.contains("MyAnimeList is connected to"), "{ok}");
+    let done = common::wait_job(&c, job);
+    assert!(
+        matches!(
+            done.body,
+            EventBody::TrackerConnected {
+                tracker: Tracker::Mal,
+                ..
+            }
+        ),
+        "{done:?}"
+    );
+
+    let form = token_form(&http);
+    assert!(
+        form.iter().all(|(k, _)| k != "client_secret"),
+        "a public client sent a secret field: {form:?}"
+    );
+    assert!(
+        form.contains(&("client_id".into(), "mid".into())),
+        "{form:?}"
+    );
+    assert!(
+        form.contains(&("code_verifier".into(), verifier)),
+        "{form:?}"
+    );
+    match core.call(Call::GetTrackers).unwrap() {
+        Reply::Trackers { state } => {
+            assert!(state.mal.connected);
+            assert!(!state.mal.has_client_secret);
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+/// An app registered as "web" is confidential, and MAL answers a request
+/// without its secret with `invalid_client`. That is the one refusal a
+/// user can fix themselves, so the job fails saying how.
+#[test]
+fn mal_invalid_client_without_a_secret_asks_for_the_secret() {
+    if accounts::bundled_client_secret(Tracker::Mal).is_some() {
+        return;
+    }
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    core.set_oauth_port(53694);
+    core.call(Call::SetTrackerCredentials {
+        tracker: Tracker::Mal,
+        client_id: "mid".into(),
+        client_secret: None,
+    })
+    .unwrap();
+    http.push_for(
+        "oauth2/token",
+        401,
+        serde_json::json!({ "error": "invalid_client", "message": "Client authentication failed" })
+            .to_string(),
+    );
+
+    let job = started(
+        core.call(Call::ConnectTracker {
+            tracker: Tracker::Mal,
+        })
+        .unwrap(),
+    );
+    let open_url = ready_url(&c, job);
+    let state = param(&open_url, "state");
+    // The tab is answered once the exchange has an outcome, so it says what
+    // the app will say rather than "connected".
+    let page = http_get(53694, &format!("/callback?code=abc&state={state}"));
+    assert!(page.starts_with("HTTP/1.1 400"), "{page}");
+    assert!(page.contains("client secret"), "{page}");
+    assert!(page.contains("try again"), "{page}");
+    let failed = common::wait_job(&c, job);
+    match failed.body {
+        EventBody::JobFailed {
+            error:
+                CoreError::Provider {
+                    provider: Provider::Mal,
+                    status: Some(401),
+                    ref message,
+                    ..
+                },
+        } => {
+            assert!(message.contains("client secret"), "{message}");
+            assert!(message.contains("App Type \"other\""), "{message}");
+        }
+        other => panic!("{other:?}"),
+    }
+    assert!(token_form(&http).iter().all(|(k, _)| k != "client_secret"));
+}
+
+/// A token AniList will not accept fails the job, and the tab that
+/// brought it is told so instead of being shown a success.
+#[test]
+fn an_anilist_token_that_fails_validation_gets_the_error_page() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    core.set_oauth_port(53696);
+    core.call(Call::SetTrackerCredentials {
+        tracker: Tracker::Anilist,
+        client_id: "123".into(),
+        client_secret: None,
+    })
+    .unwrap();
+    http.push_json(
+        400,
+        serde_json::json!({ "errors": [{ "message": "Invalid token", "status": 400 }], "data": null }),
+    );
+    let job = started(
+        core.call(Call::ConnectTracker {
+            tracker: Tracker::Anilist,
+        })
+        .unwrap(),
+    );
+    ready_url(&c, job);
+    let page = http_get(53696, "/callback?access_token=bogus&expires_in=60");
+    assert!(page.starts_with("HTTP/1.1 400"), "{page}");
+    assert!(!page.contains("is connected to"), "{page}");
+    assert!(page.contains("try again"), "{page}");
+    let failed = common::wait_job(&c, job);
+    assert!(
+        matches!(failed.body, EventBody::JobFailed { .. }),
+        "{failed:?}"
+    );
+    match core.call(Call::GetTrackers).unwrap() {
+        Reply::Trackers { state } => assert!(!state.anilist.connected),
+        other => panic!("{other:?}"),
+    }
+}
+
+/// A sign-in the provider keeps waiting does not hold the browser forever:
+/// past the hold the tab gets the "still finishing" page, and the sign-in
+/// carries on to the outcome the app reports.
+#[test]
+fn a_slow_sign_in_lets_the_tab_go_and_still_finishes() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    core.set_oauth_port(53697);
+    core.set_sign_in_hold(Duration::from_millis(200));
+    core.call(Call::SetTrackerCredentials {
+        tracker: Tracker::Anilist,
+        client_id: "123".into(),
+        client_secret: None,
+    })
+    .unwrap();
+    // The validation is rate limited once, for a second: five holds' worth.
+    http.push_with_headers(429, "{}", vec![("Retry-After".into(), "1".into())]);
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "Viewer": { "id": 42, "name": "bandit" } } }),
+    );
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "MediaListCollection": { "lists": [] } } }),
+    );
+    let job = started(
+        core.call(Call::ConnectTracker {
+            tracker: Tracker::Anilist,
+        })
+        .unwrap(),
+    );
+    ready_url(&c, job);
+    let page = http_get(53697, "/callback?access_token=tok&expires_in=3600");
+    assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+    assert!(page.contains("Still finishing"), "{page}");
+    assert!(!page.contains("is connected to"), "{page}");
+    let done = common::wait_job(&c, job);
+    assert!(
+        matches!(done.body, EventBody::TrackerConnected { .. }),
+        "{done:?}"
+    );
+}
+
+/// A sign-in cancelled while the tab is held answers the tab with the
+/// cancelled page rather than dropping the connection on it.
+#[test]
+fn a_sign_in_cancelled_while_held_tells_the_tab() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    core.set_oauth_port(53698);
+    core.call(Call::SetTrackerCredentials {
+        tracker: Tracker::Anilist,
+        client_id: "123".into(),
+        client_secret: None,
+    })
+    .unwrap();
+    // Long enough that the cancel lands while the validation waits on it.
+    http.push_with_headers(429, "{}", vec![("Retry-After".into(), "5".into())]);
+    let job = started(
+        core.call(Call::ConnectTracker {
+            tracker: Tracker::Anilist,
+        })
+        .unwrap(),
+    );
+    ready_url(&c, job);
+    let browser =
+        std::thread::spawn(|| http_get(53698, "/callback?access_token=tok&expires_in=3600"));
+    // The rate-limited validation is the only request, and nothing emits an
+    // event when it is made, so this watches the fake's own log.
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while http.requests().is_empty() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the validation never went out"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    core.call(Call::CancelJob { job }).unwrap();
+    let page = browser.join().unwrap();
+    assert!(page.contains("This sign-in was cancelled"), "{page}");
+    let done = common::wait_job(&c, job);
+    assert!(matches!(done.body, EventBody::JobCancelled), "{done:?}");
+}
+
+/// The same refusal with a secret sent is not about a missing secret, so
+/// it is passed on as MAL gave it rather than asking for one.
+#[test]
+fn mal_invalid_client_with_a_secret_is_passed_on() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    core.set_oauth_port(53695);
+    core.call(Call::SetTrackerCredentials {
+        tracker: Tracker::Mal,
+        client_id: "mid".into(),
+        client_secret: Some("wrong".into()),
+    })
+    .unwrap();
+    http.push_for(
+        "oauth2/token",
+        401,
+        serde_json::json!({ "error": "invalid_client" }).to_string(),
+    );
+    let job = started(
+        core.call(Call::ConnectTracker {
+            tracker: Tracker::Mal,
+        })
+        .unwrap(),
+    );
+    let open_url = ready_url(&c, job);
+    let state = param(&open_url, "state");
+    http_get(53695, &format!("/callback?code=abc&state={state}"));
+    match common::wait_job(&c, job).body {
+        EventBody::JobFailed {
+            error: CoreError::Provider { ref message, .. },
+        } => assert!(!message.contains("App Type"), "{message}"),
+        other => panic!("{other:?}"),
+    }
+    assert!(token_form(&http).contains(&("client_secret".into(), "wrong".into())));
+}
+
+/// A build's bundled id is all either tracker needs to sign in with one
+/// click: AniList has no secret, and MAL's is optional. Whatever this
+/// build bundles, the flag follows the id alone, and a secret is only
+/// reported when one exists.
+#[test]
+fn bundled_credentials_follow_the_bundled_id_alone() {
+    let (_dir, core, _c) = common::open_core();
+    match core.call(Call::GetTrackers).unwrap() {
+        Reply::Trackers { state } => {
+            assert_eq!(
+                state.anilist.bundled_credentials,
+                accounts::bundled_client_id(Tracker::Anilist).is_some()
+            );
+            assert_eq!(
+                state.mal.bundled_credentials,
+                accounts::bundled_client_id(Tracker::Mal).is_some()
+            );
+            assert_eq!(
+                state.mal.has_client_secret,
+                accounts::bundled_client_secret(Tracker::Mal).is_some()
+            );
+            assert!(!state.anilist.has_client_secret);
+            assert_eq!(
+                state.mal.client_id,
+                accounts::bundled_client_id(Tracker::Mal).unwrap_or_default()
+            );
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+/// The secret's three answers: absent keeps it, so re-saving the id does
+/// not mean pasting it again; empty removes it; a value replaces it.
+#[test]
+fn an_absent_secret_keeps_and_an_empty_one_removes() {
+    // A bundled secret would still report as present after the removal.
+    if accounts::bundled_client_secret(Tracker::Mal).is_some() {
+        return;
+    }
+    let (_dir, core, _c) = common::open_core();
+    let save = |secret: Option<&str>| {
+        core.call(Call::SetTrackerCredentials {
+            tracker: Tracker::Mal,
+            client_id: "mid".into(),
+            client_secret: secret.map(str::to_string),
+        })
+        .unwrap();
+        match core.call(Call::GetTrackers).unwrap() {
+            Reply::Trackers { state } => state.mal.has_client_secret,
+            other => panic!("{other:?}"),
+        }
+    };
+    assert!(save(Some("sec")));
+    assert!(save(None), "re-saving the id dropped the secret");
+    assert!(!save(Some("")), "an empty secret did not remove it");
+    assert!(!save(None));
+    assert!(save(Some("  again  ")));
+    assert!(!save(Some("   ")));
 }
 
 /// A connect whose port is still held waits for it instead of failing at

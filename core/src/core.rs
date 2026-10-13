@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::{Duration, Instant};
 
@@ -91,6 +91,10 @@ pub struct Core {
     /// to a URL registered on their developer panel, so the port is part
     /// of that registration. A test moves it out of the way.
     pub(crate) oauth_port: AtomicU16,
+    /// How long, in milliseconds, the browser's callback request is held
+    /// open for the sign-in to finish before the tab is let go. A test
+    /// shortens it.
+    pub(crate) sign_in_hold_ms: AtomicU64,
     /// When the core last said out loud that Jikan was not answering.
     /// Jikan is the episode-title side-fetch, so an outage costs a series
     /// its titles rather than its match, and a job walking a whole library
@@ -109,6 +113,12 @@ pub struct Core {
     /// so the core keeps a `Weak` to itself from `Arc::new_cyclic` and
     /// upgrades it.
     me: Weak<Core>,
+    /// Off unless a shell turns it on: the whole-library load is kept for
+    /// the rest of its state generation (`library::reads`). Off by default
+    /// because a test that writes rows behind the core's back emits no
+    /// event and would read its own stale load.
+    pub(crate) snapshot_cache: AtomicBool,
+    pub(crate) kept_load: Mutex<Option<crate::library::reads::KeptLoad>>,
     started: AtomicBool,
     closed: AtomicBool,
 }
@@ -125,6 +135,9 @@ const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
 /// The loopback port both providers redirect back to. Registered on their
 /// developer panels, so it is a constant rather than a preference.
 const DEFAULT_OAUTH_PORT: u16 = 53682;
+/// A minute: long past any sign-in that is going well, and short of the
+/// point where a browser gives up on the request itself.
+const DEFAULT_SIGN_IN_HOLD_MS: u64 = 60_000;
 
 /// The gap each upstream is paced to, from its published limit.
 const ANILIST_GAP: Duration = Duration::from_millis(800);
@@ -228,10 +241,13 @@ impl Core {
             mal,
             tvmaze,
             oauth_port: AtomicU16::new(DEFAULT_OAUTH_PORT),
+            sign_in_hold_ms: AtomicU64::new(DEFAULT_SIGN_IN_HOLD_MS),
             jikan_outage: Mutex::new(None),
             sessions: Arc::new(Sessions::default()),
             crawl_recent: Mutex::new(HashMap::new()),
             me: me.clone(),
+            snapshot_cache: AtomicBool::new(false),
+            kept_load: Mutex::new(None),
             started: AtomicBool::new(false),
             closed: AtomicBool::new(false),
         }))
@@ -256,6 +272,15 @@ impl Core {
     #[doc(hidden)]
     pub fn set_oauth_port(&self, port: u16) {
         self.oauth_port.store(port, Ordering::SeqCst);
+    }
+
+    /// Shortens how long the browser's callback is held for a sign-in to
+    /// finish, so a test can reach the "still finishing" page without a
+    /// minute's wait. Not part of the contract either.
+    #[doc(hidden)]
+    pub fn set_sign_in_hold(&self, hold: std::time::Duration) {
+        self.sign_in_hold_ms
+            .store(hold.as_millis() as u64, Ordering::SeqCst);
     }
 
     /// The store itself, for the integration tests' fixtures: they build
@@ -501,6 +526,13 @@ impl Core {
                 reveal_hidden: _,
             } => reads::list_series(self, tab, &query, sort, direction),
             Call::ListAiring { offset, limit } => reads::list_airing(self, offset, limit),
+            Call::ListLibrary {
+                tab,
+                query,
+                sort,
+                direction,
+                reveal_hidden: _,
+            } => reads::list_library(self, tab, &query, sort, direction),
             // Pure over one snapshot load, scope None: nothing to write and
             // no job. The shell's own sort preference is saved separately
             // through SetPreferences.
@@ -652,9 +684,11 @@ impl Core {
                     job: cache::start_refresh(&core, tracker, false),
                 })
             }
-            // The cached list leaves at once and the refresh runs behind
-            // it, the way the Electron page did on every visit.
+            // The cached list leaves at once and starts nothing: a read
+            // with a network side effect made every library change an
+            // AniList request. The page asks for a refresh on its own.
             Call::ListWatching => watching::list_call(self),
+            Call::RefreshWatching { force } => watching::refresh_call(self, force),
             // The graph is drawn off the tables as they stand, and the
             // crawl behind it fills in whatever the walk found missing.
             Call::GetFranchiseGraph { series } => {
@@ -722,7 +756,23 @@ impl Core {
         }
     }
 
-    pub fn subscribe(&self, listener: Arc<dyn EventListener>) -> Arc<Subscription> {
+    /// Keeps the whole-library load for the rest of its state generation
+    /// (at most 30 seconds), so reads in one beat share one snapshot. For a
+    /// shell whose every write goes through calls; off by default.
+    pub fn set_snapshot_cache(&self, on: bool) {
+        self.snapshot_cache.store(on, Ordering::Relaxed);
+        if !on {
+            *self.kept_load.lock().unwrap() = None;
+        }
+    }
+
+    /// The state generation (`EventBus::generation`): a shell may keep a
+    /// read for as long as this has not moved.
+    pub fn generation(&self) -> u64 {
+        self.bus.generation()
+    }
+
+        pub fn subscribe(&self, listener: Arc<dyn EventListener>) -> Arc<Subscription> {
         Subscription::new(self.bus.clone(), listener)
     }
 

@@ -1,13 +1,19 @@
-// A list-status dot: the status hue, pulsing for Watching.
+// A list-status square in the status hue. Static: an infinite pulse kept the whole window
+// rendering at the display's rate for as long as a dot was on screen.
 import QtQuick
 import com.marcusrosado.AniBeam
 
 Corner {
     property string status: ""
     width: theme.space(2.5); height: width
-    radius: width / 2; smoothing: theme.cornerSmoothing
-    color: theme.hue(Theme.statusHue(status))
+    // The quiet mapping (Tokens, status colours): the accent for the live states, greys
+    // for the rest, rather than Theme.statusHue's six hues
+    color: status === "Watching" ? theme.statusWatching
+         : status === "Repeating" ? theme.statusRewatching
+         : status === "Completed" ? theme.statusCompleted
+         : status === "Paused" ? theme.statusPaused
+         : status === "Dropped" ? theme.statusDropped
+         : theme.statusPlanning
     visible: status !== ""
-    SequentialAnimation on opacity { running: status === "Watching"; loops: Animation.Infinite; NumberAnimation { to: 0.35; duration: 900 } NumberAnimation { to: 1; duration: 900 } }
     Tooltip { text: "On your list: " + (status === "Repeating" ? "Rewatching" : status) }
 }

@@ -1,7 +1,8 @@
-// A pill button with a text label and an optional Lucide glyph before it. Hover lifts the
-// fill one surface step, press one more, both with exponential smoothing. `flat` draws no
-// fill at rest (a text button), `danger` sets the label and the soft fill in red. Space and
-// Return press it.
+// A square button with a text label and an optional Lucide glyph before it. At rest it is a
+// raised pane of glass (edge and top highlight); `flat` sets it as resting glass without the
+// highlight (a quieter button), `primary` fills it with the accent under ground-coloured
+// ink, and `danger` sets the label and the soft fill in red. Hover lifts the fill one step, press one more and scales it to
+// 0.98, both with exponential smoothing. Space and Return press it.
 import QtQuick
 
 Corner {
@@ -10,35 +11,47 @@ Corner {
     property string icon: ""
     property bool danger: false
     property bool flat: false
+    property bool primary: false
     property bool small: false
+    // False for a button that must never hold the keyboard: the player's, where a focused
+    // button would swallow Space and Return before the page's own keys see them, and Tab
+    // would walk a focus ring through the island.
+    property bool takesFocus: true
     signal clicked()
 
     implicitWidth: content.implicitWidth + theme.space(small ? 3 : 4) * 2
     implicitHeight: small ? theme.space(6) : theme.controlHeight
     radius: height / 2
     smoothing: theme.cornerSmoothing
-    activeFocusOnTab: true
+    activeFocusOnTab: takesFocus
+    scale: mouse.pressed ? 0.98 : 1
+    // A disabled button takes no clicks (its MouseArea inherits `enabled`); this says so.
+    opacity: enabled ? 1 : 0.45
 
     // 0 rest, 1 hover, 2 press
     property real lift: 0
     readonly property real liftTarget: mouse.pressed ? 2 : (mouse.containsMouse ? 1 : 0)
     FrameAnimation {
         running: Math.abs(root.lift - root.liftTarget) > 0.002
-        onTriggered: root.lift += (root.liftTarget - root.lift) * (1 - Math.exp(-18 * frameTime))
+        onTriggered: root.lift = theme.follow(root.lift, root.liftTarget, frameTime)
     }
-    // A step above the panel it sits on, so it reads as a button on a surface as well as on bg
-    readonly property color restFill: danger ? theme.redSoft : (flat ? "transparent" : theme.surfaceRaised)
-    readonly property color hoverFill: danger ? theme.tone(theme.redSoft, theme.red, 0.15) : (flat ? theme.surfaceRaised : theme.surfacePressed)
-    readonly property color pressFill: danger ? theme.tone(theme.redSoft, theme.red, 0.3) : (flat ? theme.surfacePressed : theme.tone(theme.surfacePressed, theme.text, 0.08))
+    readonly property color restFill: danger ? theme.redSoft : primary ? theme.accent : flat ? theme.tile : theme.raised
+    readonly property color hoverFill: danger ? theme.tone(theme.redSoft, theme.red, 0.15)
+                                     : primary ? theme.tone(theme.accent, theme.ink, 0.15)
+                                     : flat ? theme.tileHover : theme.raisedHover
+    readonly property color pressFill: danger ? theme.tone(theme.redSoft, theme.red, 0.3)
+                                     : primary ? theme.tone(theme.accent, theme.ink, 0.25)
+                                     : theme.glassOf(theme.dark ? 0.12 : 0.15)
     color: lift < 1 ? theme.tone(restFill, hoverFill, lift) : theme.tone(hoverFill, pressFill, lift - 1)
-    borderColor: activeFocus ? theme.focusRing : (flat ? "transparent" : theme.line)
-    borderWidth: activeFocus ? theme.space(0.5) : (flat ? 0 : 1)
+    borderColor: activeFocus ? theme.focusRing : primary ? "transparent" : danger ? Qt.rgba(theme.red.r, theme.red.g, theme.red.b, 0.3) : theme.line
+    borderWidth: activeFocus ? 2 : 1
+    highlight: !flat && !primary && !danger ? theme.glassHighlight : "transparent"
 
     Keys.onSpacePressed: clicked()
     Keys.onReturnPressed: clicked()
     Keys.onEnterPressed: clicked()
 
-    readonly property color ink: danger ? theme.red : (flat && lift < 0.5 ? theme.textDim : theme.text)
+    readonly property color ink: danger ? theme.red : primary ? (theme.dark ? theme.ground : theme.accentText) : (flat && lift < 0.5 ? theme.textDim : theme.text)
     Row {
         id: content
         anchors.centerIn: parent
@@ -50,14 +63,17 @@ Corner {
             color: root.ink
             size: theme.space(root.small ? 3.5 : 4.5)
         }
-        Text {
+        Label {
             id: label
+            // An icon-only button has no label, and no spacing after its glyph either.
+            visible: root.text !== ""
             anchors.verticalCenter: parent.verticalCenter
             text: root.text
             color: root.ink
-            font.family: theme.fontSans
+            role: "ui"
             font.pointSize: root.small ? theme.typeSmall : theme.typeNormal
-            font.weight: Font.Medium
+            font.weight: root.primary ? 600 : theme.roleWeight("ui")
+            font.variableAxes: ({ "wdth": 100, "wght": root.primary ? 600 : theme.roleWeight("ui") })
         }
     }
     MouseArea {
@@ -65,6 +81,6 @@ Corner {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: { root.forceActiveFocus(); root.clicked() }
+        onClicked: { if (root.takesFocus) root.forceActiveFocus(); root.clicked() }
     }
 }

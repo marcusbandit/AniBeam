@@ -143,7 +143,7 @@ pub fn start(core: &Arc<Core>, path: String, private: bool) -> u64 {
             write_atomically(&path, text.into_bytes()).await?;
             Ok(Finished {
                 level: Level::Info,
-                message: format!("exported {count} series to {path}"),
+                message: format!("Exported {count} series to {path}"),
                 body: EventBody::ExportFinished { path },
             })
         })

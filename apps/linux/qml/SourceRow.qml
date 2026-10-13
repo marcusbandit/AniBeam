@@ -19,7 +19,7 @@ Item {
 
     readonly property bool available: source.available !== false
     readonly property string meta: Fmt.plural(source.series_count || 0, "series", "series")
-        + ((source.movie_folders || []).length ? " · " + Fmt.plural(source.movie_folders.length, "movie folder", "movie folders") : "")
+        + ((source.movie_folders || []).length ? ", " + Fmt.plural(source.movie_folders.length, "movie folder", "movie folders") : "")
     readonly property real gutter: theme.space(6)
     readonly property bool stacked: width < lead.width + controls.width + gutter + theme.space(4)
 
@@ -46,7 +46,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     text: root.source.path || ""
                     color: root.available ? theme.text : theme.textDim
-                    font.family: theme.fontMono
+                    font.family: theme.fontUi
                     font.pointSize: theme.typeNormal
                 }
                 Chip {
@@ -55,7 +55,7 @@ Item {
                     text: "Unavailable"
                     small: true
                     mono: false
-                    color: theme.surface
+                    color: theme.tileSunken
                     textColor: theme.textDim
                 }
             }

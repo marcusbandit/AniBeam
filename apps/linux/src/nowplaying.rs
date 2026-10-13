@@ -4,7 +4,7 @@
 
 use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 
-const SEP: &str = " · ";
+const SEP: &str = ", ";
 
 fn fold(s: &str) -> String {
     s.trim()
@@ -115,7 +115,7 @@ mod tests {
     fn a_real_episode_title_is_the_title_line() {
         assert_eq!(
             lines("Dungeon Meshi", Some(12), Some("Red Dragon"), None),
-            ("Red Dragon".into(), "Dungeon Meshi · Episode 12".into())
+            ("Red Dragon".into(), "Dungeon Meshi, Episode 12".into())
         );
     }
 

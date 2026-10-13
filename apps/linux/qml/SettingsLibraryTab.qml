@@ -1,6 +1,7 @@
-// The Library tab: sources with their counts and the Movies folders under them, Scan all,
-// Add folder through the native picker, Rescan and Remove per source, Show hidden shows,
-// the Subscriptions row; and the Trackers panel.
+// The Library tab on the mosaic: the stat stones (the same counts the Metadata filter
+// shows), the Folders tile sized to its sources, and the recent scans growing into the
+// rest of the column, as many as it holds; beside them the Trackers tile, the library
+// options at their own height, and the series on disk, most files first, filling the rest.
 import QtQuick
 import QtQuick.Dialogs
 import com.marcusrosado.AniBeam
@@ -9,28 +10,32 @@ SettingsTab {
     id: tab
     property var sources: []
     property var stats: ({ series: 0, films: 0, episodes: 0, lastScan: "never" })
-    property var waitingJob: ({})           // tracker name -> connect job id
+    property var scans: []                  // the ScanFinished events, newest first
+    property var disk: []                   // the Metadata rows, most episodes on disk first
+    function sourcePath(id) { for (var i = 0; i < sources.length; i++) if (sources[i].id === id) return sources[i].path; return "" }
     function reload() {
         var r = Door.listSources()
         if (!r.error) sources = r.reply.sources
-        var all = Door.listSeries("All", "", "Alpha", "Asc", Door.revealHidden)
-        // The stats describe the library, not what the watched toggle
-        // currently leaves visible, so the Watched tab rides along.
-        var watched = Door.listSeries("Watched", "", "Alpha", "Asc", Door.revealHidden)
-        if (!all.error) {
-            var s = all.reply.series.concat(watched.error ? [] : watched.reply.series)
-            var eps = 0; s.forEach(function(c) { eps += c.episodes_on_disk || 0 })
-            // Source carries no last-scan time of its own (core/src/contract/records.rs), so
-            // this reads it off the event history instead: recentEvents' Reply::Events serialises
-            // each Event.body through plain serde, externally tagged as { ScanFinished: {...} },
-            // not through the door.rs event_json helper that flattens a live-pushed envelope to
-            // a top-level "kind"; there is no e.kind here.
-            var ev = Door.recentEvents(2000)
-            var lastAt = null
-            if (!ev.error) ev.reply.events.forEach(function(e) { if (e.body && e.body.ScanFinished !== undefined && (lastAt === null || e.at > lastAt)) lastAt = e.at })
-            var last = lastAt === null ? "never" : Fmt.relative(lastAt, Date.now() / 1000)
-            stats = { series: s.filter(function(c) { return c.kind === "Show" }).length, films: s.filter(function(c) { return c.kind === "Movie" }).length, episodes: eps, lastScan: last }
-        }
+        // The counts are the Metadata page's own (one rule for films: a Movie folder or
+        // a MOVIE format), and the episodes are its files on disk, so every page agrees
+        var m = Door.listMetadata("All", "", false)
+        if (m.error) return
+        var eps = 0
+        m.reply.rows.forEach(function(row) { eps += row.have || 0 })
+        // Source carries no last-scan time of its own (core/src/contract/records.rs), so
+        // this reads it off the event history instead: recentEvents' Reply::Events serialises
+        // each Event.body through plain serde, externally tagged as { ScanFinished: {...} },
+        // not through the door.rs event_json helper that flattens a live-pushed envelope to
+        // a top-level "kind"; there is no e.kind here.
+        var ev = Door.recentEvents(2000)
+        var found = []
+        if (!ev.error) ev.reply.events.forEach(function(e) { if (e.body && e.body.ScanFinished !== undefined) found.push({ at: e.at, scan: e.body.ScanFinished }) })
+        found.sort(function(a, b) { return b.at - a.at })
+        scans = found
+        disk = m.reply.rows.filter(function(row) { return (row.have || 0) + (row.extra_on_disk || 0) > 0 })
+                           .sort(function(a, b) { return (b.have || 0) - (a.have || 0) || (a.series.title < b.series.title ? -1 : 1) })
+        var last = found.length ? Fmt.relative(found[0].at, Date.now() / 1000) : "never"
+        stats = { series: m.reply.counts.series, films: m.reply.counts.movies, episodes: eps, lastScan: last }
     }
     Component.onCompleted: reload()
     Timer { id: debounce; interval: 250; onTriggered: tab.reload() }
@@ -40,75 +45,152 @@ SettingsTab {
         function onSourceRemoved(s) { debounce.restart() }
         function onScanFinished(s, a, c, r) { debounce.restart() }
         function onSeriesChanged(c) { debounce.restart() }
-        function onAuthUrlReady(tracker, openUrl, redirectUrl) { Qt.openUrlExternally(openUrl) }
-        function onTrackerConnected(tracker, username) { frame.toast("Connected to " + (tracker === "Anilist" ? "AniList" : "MyAnimeList") + " as " + username); var w = JSON.parse(JSON.stringify(tab.waitingJob)); delete w[tracker]; tab.waitingJob = w }
-        function onJobFinished(job, kind, ok) { if (kind === "ConnectTracker") { var w = {}; for (var k in tab.waitingJob) if (tab.waitingJob[k] !== job) w[k] = tab.waitingJob[k]; tab.waitingJob = w; if (!ok) frame.toast("Connect failed") } }
-    }
-    function login(tracker, clientId, clientSecret) {
-        if (clientId !== "") { var c = Door.setTrackerCredentials(tracker, clientId, clientSecret); if (c.error) { frame.toast(c.error.message); return } }
-        var r = Door.connectTracker(tracker)
-        if (r.error) { frame.toast(r.error.message); return }
-        var w = JSON.parse(JSON.stringify(waitingJob)); w[tracker] = r.reply.job; waitingJob = w
+        function onSeriesRemoved(ids) { debounce.restart() }
+        function onProgressRefreshed() { frame.toast("Tracker progress synced") }
     }
 
     SettingsPair {
         split: 3 / 5
-        leftPanels: [ libraryPanel ]
-        rightPanels: [ trackersPanel ]
+        leftPanels: [ statStones, foldersPanel, scansPanel ]
+        rightPanels: [ trackersPanel, optionsPanel, diskPanel ]
     }
     Component {
-        id: libraryPanel
+        id: statStones
+        Tiles { tiles: [{ value: String(tab.stats.series), caption: "Series" }, { value: String(tab.stats.films), caption: "Films" }, { value: tab.stats.episodes.toLocaleString(Qt.locale(), "f", 0), caption: "Episodes on disk" }, { value: tab.stats.lastScan, caption: "Last scan" }] }
+    }
+    Component {
+        id: foldersPanel
         Panel {
-            title: "Library"; icon: "folder-open"; grows: true
-            Tiles { tiles: [{ value: String(tab.stats.series), caption: "Series" }, { value: String(tab.stats.films), caption: "Films" }, { value: tab.stats.episodes.toLocaleString(), caption: "Episodes" }, { value: tab.stats.lastScan, caption: "Last scan" }] }
-            stretch: Corner {
-                anchors.fill: parent
-                implicitHeight: list.implicitHeight + theme.space(4)
-                radius: theme.radiusMd; smoothing: theme.cornerSmoothing; color: theme.surfaceSunken; borderColor: theme.line; borderWidth: 1
-                Column {
-                    id: list
-                    x: theme.space(2); y: theme.space(2); width: parent.width - theme.space(4)
-                    Repeater {
-                        model: tab.sources
-                        SourceRow {
-                            required property var modelData
-                            source: modelData
-                            onOpen: Qt.openUrlExternally("file://" + modelData.path)
-                            onRescan: { var r = Door.scan(modelData.id); frame.toast(r.error ? r.error.message : "Rescan started") }
-                            onRemove: confirming = true
-                            onRemoveAccepted: { var r = Door.removeSource(modelData.id); if (r.error) frame.toast(r.error.message) }
-                        }
+            objectName: "settings-folders"
+            title: "Folders"; icon: "folder-open"
+            helper: "AniBeam scans these folders for video files. A folder is a series; a file at the top level of a Movies folder is a film."
+            Column {
+                width: parent.width
+                Repeater {
+                    model: tab.sources
+                    SourceRow {
+                        required property var modelData
+                        source: modelData
+                        onOpen: Qt.openUrlExternally("file://" + modelData.path)
+                        onRescan: { var r = Door.scan(modelData.id); frame.toast(r.error ? r.error.message : "Rescan started") }
+                        onRemove: confirming = true
+                        onRemoveAccepted: { var r = Door.removeSource(modelData.id); if (r.error) frame.toast(r.error.message) }
                     }
-                    Text { visible: tab.sources.length === 0; text: "No folders yet. Click Add folder to point AniBeam at your collection."; color: theme.textDim; font.family: theme.fontSans; font.pointSize: theme.typeNormal; padding: theme.space(3) }
+                }
+                Label { visible: tab.sources.length === 0; width: parent.width; wrapMode: Text.Wrap; text: "No folders yet. Add a folder to point AniBeam at your collection."; color: theme.textDim; role: "ui"; topPadding: theme.space(2); bottomPadding: theme.space(2) }
+            }
+            Row { spacing: theme.space(2)
+                Button { objectName: "settings-add-folder"; text: "Add folder"; icon: "folder-plus"; onClicked: folderDialog.open() }
+                Button { text: "Scan all"; icon: "refresh-cw"; enabled: tab.sources.length > 0; onClicked: { var r = Door.scan(-1); frame.toast(r.error ? r.error.message : "Scan started") } } }
+        }
+    }
+    // The scans the folders have had, newest first: what each one found
+    Component {
+        id: scansPanel
+        Panel {
+            title: "Recent scans"; icon: "scan"; grows: true
+            helper: tab.scans.length ? "" : "No scans yet. Scan all reads every folder again."
+            stretch: FillRows {
+                objectName: "settings-scans"
+                anchors.fill: parent
+                model: tab.scans
+                delegate: Item {
+                    required property var modelData
+                    width: parent ? parent.width : 0
+                    height: theme.space(10)
+                    readonly property var s: modelData.scan
+                    Label {
+                        anchors.left: parent.left; anchors.right: when.left; anchors.rightMargin: theme.space(4)
+                        anchors.verticalCenter: parent.verticalCenter
+                        elide: Text.ElideMiddle
+                        role: "ui"
+                        text: (parent.s.source !== null && parent.s.source !== undefined && tab.sourcePath(parent.s.source) !== "" ? tab.sourcePath(parent.s.source) : "Every folder") + ": "
+                              + (parent.s.added + parent.s.changed + parent.s.removed === 0 ? "nothing changed"
+                                 : [parent.s.added ? parent.s.added + " added" : "", parent.s.changed ? parent.s.changed + " changed" : "", parent.s.removed ? parent.s.removed + " removed" : ""].filter(Boolean).join(", "))
+                    }
+                    Label {
+                        id: when
+                        anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                        text: Fmt.relative(modelData.at, Date.now() / 1000)
+                        role: "ledger"; color: theme.textDim
+                    }
+                    Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.line; opacity: 0.5 }
                 }
             }
-            foot: [
-                Row { spacing: theme.space(2)
-                    Button { text: "Add folder"; icon: "folder-plus"; onClicked: folderDialog.open() }
-                    Button { text: "Scan all"; icon: "refresh-cw"; enabled: tab.sources.length > 0; onClicked: { var r = Door.scan(-1); frame.toast(r.error ? r.error.message : "Scan started") } } },
-                Note { text: "AniBeam scans these folders for video files. A folder is a series; a file at the top level of a Movies folder is a film." },
-                SettingRow { label: "Show hidden shows"; helper: "Shows hidden series on every page until AniBeam closes."
-                    Switch { checked: Door.revealHidden; onToggled: function(on) { Door.revealHidden = on } } },
-                SettingRow { label: "Subscriptions"; helper: "The feeds anirss watches for you."
-                    Button { text: "Open"; icon: "arrow-up-right"; flat: true; onClicked: frame.go("subscriptions") } }
-            ]
         }
     }
     Component {
         id: trackersPanel
         Panel {
-            title: "Trackers"; icon: "user-check"; grows: true
+            title: "Trackers"; icon: "user-check"
             helper: "Episodes are marked on every connected tracker when you reach the outro or mark them by hand. Counts only go up."
-            TrackerRow { tracker: "Anilist"; account: Door.trackers.anilist || ({}); waiting: tab.waitingJob["Anilist"] !== undefined
-                onLogin: function(id, secret) { tab.login("Anilist", id, secret) }
-                onDisconnect: { var r = Door.disconnectTracker("Anilist"); if (r.error) frame.toast(r.error.message) }
-                onCancel: Door.cancelJob(tab.waitingJob["Anilist"]) }
-            TrackerRow { tracker: "Mal"; account: Door.trackers.mal || ({}); waiting: tab.waitingJob["Mal"] !== undefined
-                onLogin: function(id, secret) { tab.login("Mal", id, secret) }
-                onDisconnect: { var r = Door.disconnectTracker("Mal"); if (r.error) frame.toast(r.error.message) }
-                onCancel: Door.cancelJob(tab.waitingJob["Mal"]) }
-            SettingRow { label: "Main tracker"; helper: "Whose count the cards show. The other tracker still receives every mark."
+            // The connect flow itself is the frame's: the rows start it, show it and stop it
+            // through frame.openConnect and the state beside it.
+            TrackerRow { tracker: "Anilist"; account: Door.trackers.anilist || ({})
+                onDisconnect: { var r = Door.disconnectTracker("Anilist"); if (r.error) frame.toast(r.error.message) } }
+            TrackerRow { tracker: "Mal"; account: Door.trackers.mal || ({})
+                onDisconnect: { var r = Door.disconnectTracker("Mal"); if (r.error) frame.toast(r.error.message) } }
+            SettingRow { label: "Main tracker"; helper: "Whose progress the cards show. The other tracker still gets every update."
                 Seg { options: ["AniList", "MyAnimeList"]; index: Door.trackers.main === "Mal" ? 1 : 0; onPicked: function(i) { var r = Door.setMainTracker(i === 1 ? "Mal" : "Anilist"); if (r.error) frame.toast(r.error.message) } } }
+            SettingRow { label: "Sync progress now"; helper: "Reads your lists from every connected tracker again."
+                Button { objectName: "settings-sync-trackers"; text: "Sync"; icon: "refresh-cw"; enabled: !!(Door.trackers.anilist && Door.trackers.anilist.connected) || !!(Door.trackers.mal && Door.trackers.mal.connected)
+                    onClicked: { var r = Door.refreshProgress(""); frame.toast(r.error ? r.error.message : "Syncing tracker progress") } } }
+        }
+    }
+    Component {
+        id: optionsPanel
+        Panel {
+            title: "Library options"; icon: "sliders-horizontal"
+            SettingRow { label: "Show hidden shows"; helper: "Shows hidden series on every page until AniBeam closes."
+                Switch { objectName: "settings-reveal-hidden"; checked: Door.revealHidden; onToggled: function(on) { Door.revealHidden = on } } }
+            SettingRow { label: "Subscriptions"; helper: "The feeds your subscriptions come from."
+                Button { text: "Open"; icon: "rss"; onClicked: frame.go("subscriptions") } }
+            SettingRow { label: "Metadata"; helper: "Every series, the record it is matched to, and its files on disk."
+                Button { text: "Open"; icon: "database"; onClicked: frame.go("metadata") } }
+        }
+    }
+    // Every series with files, most episodes first: a ledger of what the folders hold
+    Component {
+        id: diskPanel
+        Panel {
+            objectName: "settings-disk"
+            title: "On disk"; icon: "hard-drive"; grows: true
+            helper: "Episodes on disk per series, most first, against the count AniList gives."
+            stretch: FillRows {
+                anchors.fill: parent
+                model: tab.disk
+                rowHeight: theme.space(9)
+                delegate: Item {
+                    id: diskRow
+                    required property var modelData
+                    width: parent ? parent.width : 0
+                    height: theme.space(9)
+                    readonly property var row: modelData
+                    Label {
+                        anchors.left: parent.left; anchors.right: count.left; anchors.rightMargin: theme.space(4)
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: diskRow.row.series.title
+                        role: "ui"
+                        color: rowMouse.containsMouse ? theme.accent : theme.text
+                        elide: Text.ElideRight
+                    }
+                    Label {
+                        id: count
+                        anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                        text: (diskRow.row.have || 0) + (diskRow.row.expected ? " / " + diskRow.row.expected : "")
+                              + (diskRow.row.extra_on_disk ? "  +" + diskRow.row.extra_on_disk + " extra" : "")
+                        role: "ledger"; color: theme.textDim
+                    }
+                    Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.line; opacity: 0.5 }
+                    MouseArea {
+                        id: rowMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: frame.go("series", { id: diskRow.row.series.id }, diskRow.row.series.title)
+                    }
+                }
+            }
         }
     }
     FolderDialog {

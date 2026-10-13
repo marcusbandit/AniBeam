@@ -8,11 +8,23 @@ import com.marcusrosado.AniBeam
 
 QtObject {
     id: root
-    // The keys a held press repeats: the seeks, the volume ramp and the two frame steps, as
-    // every player does. Everything else acts once however long it is held.
-    readonly property var repeatKeys: [Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down]
+    // The keys a held press repeats: the seeks, the volume ramp and the speed steps, as every
+    // player does. The two frame steps repeat as well; they return above the repeat guard.
+    // Everything else acts once however long it is held.
+    readonly property var repeatKeys: [Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down,
+                                       Qt.Key_J, Qt.Key_L, Qt.Key_BracketLeft, Qt.Key_BracketRight]
 
     function handle(e) {
+        // A popover is open (a track picker, the rating picker, this list): it owns the keys
+        // until it closes. Escape goes on to the frame's escape stack, which closes the
+        // topmost popover; Ctrl, Alt and Meta presses go on to the frame's shortcuts; ? still
+        // toggles the list. Everything else is swallowed, so nothing pauses or seeks under it.
+        if (page.openMenus > 0) {
+            if (e.key === Qt.Key_Escape || (e.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))) { e.accepted = false; return }
+            e.accepted = true
+            if (e.key === Qt.Key_Question && !e.isAutoRepeat) page.toggleHelp()
+            return
+        }
         // Frame step sits above every guard: it repeats, it carries no modifier of its own,
         // and it must not bring the chrome back, so it never reaches the branches below.
         if ((e.key === Qt.Key_Period || e.key === Qt.Key_Comma) && !(e.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))) {
@@ -37,20 +49,23 @@ QtObject {
         if (e.key === Qt.Key_Space || e.key === Qt.Key_K) page.togglePause()
         else if (e.key === Qt.Key_Left) page.seekTo(page.timePos - 5)
         else if (e.key === Qt.Key_Right) page.seekTo(page.timePos + 5)
+        else if (e.key === Qt.Key_J) page.seekTo(page.timePos - 10)
+        else if (e.key === Qt.Key_L) page.seekTo(page.timePos + 10)
+        else if (e.key === Qt.Key_BracketLeft) page.stepSpeed(-1)
+        else if (e.key === Qt.Key_BracketRight) page.stepSpeed(1)
+        else if (e.key === Qt.Key_Backspace) page.setSpeed(1)
+        else if (e.key === Qt.Key_N) page.openNext()
+        else if (e.key === Qt.Key_P) page.openPrevious()
         else if (e.key === Qt.Key_M) page.setMute(!Player.mute)
         else if (e.key === Qt.Key_F) page.toggleFullscreen()          // F does not bring the chrome back
-        else if (e.key === Qt.Key_Up) page.setVolume(Player.volume + 5)
-        else if (e.key === Qt.Key_Down) page.setVolume(Player.volume - 5)
+        else if (e.key === Qt.Key_Up) page.setVolume(page.volume + 5)
+        else if (e.key === Qt.Key_Down) page.setVolume(page.volume - 5)
         else if (e.key === Qt.Key_C) page.toggleSubtitles()
         else if (e.key === Qt.Key_Z && !(e.modifiers & Qt.ShiftModifier)) page.nudgeDelay(-0.1)
         else if (e.key === Qt.Key_Z) page.nudgeDelay(0.1)
         else if (e.key === Qt.Key_Question) page.toggleHelp()          // R33: a second press closes it
-        // A popover is open: the press belongs to the frame's escape stack, which closes the
-        // topmost one, the key list before a track picker. Accepting it here would leave the
-        // player and take the popover with it.
         else if (e.key === Qt.Key_Escape) {
-            if (page.openMenus > 0) e.accepted = false
-            else if (frame.hostWindow.visibility === Window.FullScreen) frame.hostWindow.visibility = Window.Windowed
+            if (frame.hostWindow.visibility === Window.FullScreen) frame.hostWindow.visibility = Window.Windowed
             else page.leave()
         }
         else e.accepted = false

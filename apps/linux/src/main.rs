@@ -6,6 +6,7 @@ mod json;
 mod nowplaying;
 mod paths;
 mod player_config;
+mod read_cache;
 mod runtime;
 mod theme;
 mod tracks;
@@ -27,6 +28,19 @@ fn main() {
     if args.version {
         println!("anibeam {}", anibeam_core::VERSION);
         return;
+    }
+    // A drive script that is not one fails here, before a window or the core exists, with
+    // the same marker every later drive failure prints.
+    if let Some(script) = args.drive.as_deref() {
+        if let Err(e) = args::load_drive(std::path::Path::new(script)) {
+            eprintln!("DRIVE FAIL: {e}");
+            std::process::exit(1);
+        }
+        let out = args::drive_out(args.out.as_deref(), std::env::var("ANIBEAM_CAPTURES").ok());
+        if let Err(e) = std::fs::create_dir_all(&out) {
+            eprintln!("DRIVE FAIL: cannot create {}: {e}", out.display());
+            std::process::exit(1);
+        }
     }
     let paths = match paths::ShellPaths::resolve(args.root.as_deref()) {
         Ok(p) => p,

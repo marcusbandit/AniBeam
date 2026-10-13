@@ -2,7 +2,9 @@
 //! renders one page offscreen and leaves, `--root` sandboxes every path, `--action` is what
 //! a second launch forwards as ActivateAction (Task 13), `--props` is the JSON object a
 //! `--shoot`'d page opens with, for pages that need more than a bare page name (a series
-//! id, a metadata query).
+//! id, a metadata query). `--drive <script.json>` is `--shoot`'s interactive sibling: it
+//! runs a JSON array of input steps against the offscreen window and writes each `shot` step
+//! into `--out` (default: `$ANIBEAM_CAPTURES`, else the checkout's `apps/linux/captures`).
 
 use std::path::PathBuf;
 
@@ -16,6 +18,8 @@ pub struct Args {
     pub height: u32,
     pub root: Option<PathBuf>,
     pub action: Option<String>,
+    pub drive: Option<String>,
+    pub out: Option<PathBuf>,
 }
 
 impl Default for Args {
@@ -29,6 +33,8 @@ impl Default for Args {
             height: 800,
             root: None,
             action: None,
+            drive: None,
+            out: None,
         }
     }
 }
@@ -59,10 +65,46 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
             }
             "--root" => a.root = Some(PathBuf::from(value("--root")?)),
             "--action" => a.action = Some(value("--action")?),
+            "--drive" => a.drive = Some(value("--drive")?),
+            "--out" => a.out = Some(PathBuf::from(value("--out")?)),
             other => return Err(format!("unknown argument {other}")),
         }
     }
+    if a.shoot.is_some() && a.drive.is_some() {
+        return Err("--shoot and --drive are exclusive; a drive script shoots with its own steps".into());
+    }
+    if a.out.is_some() && a.drive.is_none() {
+        return Err("--out only means something with --drive".into());
+    }
     Ok(a)
+}
+
+/// Where a drive script's `shot` steps land: `--out`, else `$ANIBEAM_CAPTURES`, else the
+/// checkout's own captures directory (ignored by git), which is where `shoot.sh` writes too.
+pub fn drive_out(out: Option<&std::path::Path>, env: Option<String>) -> PathBuf {
+    match (out, env.filter(|e| !e.is_empty())) {
+        (Some(o), _) => o.to_path_buf(),
+        (None, Some(e)) => PathBuf::from(e),
+        (None, None) => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("captures"),
+    }
+}
+
+/// Reads a drive script and checks its outer shape: a JSON array of objects. Each step's own
+/// keys are the QML driver's business; this only catches the file that is not a script at
+/// all before a window is ever built. Returns the text exactly as read.
+pub fn load_drive(path: &std::path::Path) -> Result<String, String> {
+    let text = std::fs::read_to_string(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    check_drive(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(text)
+}
+
+fn check_drive(text: &str) -> Result<(), String> {
+    let v: serde_json::Value = serde_json::from_str(text).map_err(|e| format!("bad JSON: {e}"))?;
+    let steps = v.as_array().ok_or("a drive script is a JSON array of steps")?;
+    if let Some(i) = steps.iter().position(|s| !s.is_object()) {
+        return Err(format!("step {} is not an object", i + 1));
+    }
+    Ok(())
 }
 
 #[cfg(test)]

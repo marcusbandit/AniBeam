@@ -8,9 +8,14 @@ fn main() {
         QmlModule::new("com.marcusrosado.AniBeam")
             .version(1, 0)
             .qml_file("qml/Main.qml")
+            .qml_file("qml/Driver.qml")
             .qml_file("qml/Tokens.qml")
             .qml_file("qml/TokensPage.qml")
             .qml_file("qml/Corner.qml")
+            .qml_file("qml/Frost.qml")
+            .qml_file("qml/Blocker.qml")
+            .qml_file("qml/WheelStep.qml")
+            .qml_file("qml/Label.qml")
             .qml_file("qml/Icon.qml")
             .qml_file("qml/Chip.qml")
             .qml_file("qml/Seg.qml")
@@ -22,6 +27,7 @@ fn main() {
             .qml_file("qml/SliderRow.qml")
             .qml_file("qml/SettingRow.qml")
             .qml_file("qml/Panel.qml")
+            .qml_file("qml/FillRows.qml")
             .qml_file("qml/Frame.qml")
             .qml_file("qml/Nav.qml")
             .qml_file("qml/Menu.qml")
@@ -37,7 +43,19 @@ fn main() {
             .qml_file("qml/SearchField.qml")
             .qml_file("qml/Pager.qml")
             .qml_file("qml/Card.qml")
+            .qml_file("qml/LibraryRow.qml")
             .qml_file("qml/LibraryPage.qml")
+            .qml_file("qml/StoneFact.qml")
+            .qml_file("qml/MosaicWall.qml")
+            .qml_file("qml/FeedPage.qml")
+            .qml_file("qml/WatchingPage.qml")
+            .qml_file("qml/MetadataPage.qml")
+            .qml_file("qml/MatchPanel.qml")
+            .qml_file("qml/SubscriptionsPage.qml")
+            .qml_file("qml/ConnectSheet.qml")
+            .qml_file("qml/TrackerNudge.qml")
+            .qml_file("qml/ConnectButton.qml")
+            .qml_file("qml/PosterPool.qml")
             .qml_file("qml/StatusDot.qml")
             .qml_file("qml/ScorePicker.qml")
             .qml_file("qml/EpisodeRow.qml")
@@ -54,6 +72,7 @@ fn main() {
             .qml_file("qml/PlayerPage.qml")
             .qml_file("qml/ActivityDrawer.qml")
             .qml_file("qml/Note.qml")
+            .qml_file("qml/Tile.qml")
             .qml_file("qml/Tiles.qml")
             .qml_file("qml/UsageBar.qml")
             .qml_file("qml/SettingsTab.qml")
@@ -86,8 +105,14 @@ fn main() {
     // qrc:/qt/qml/com/marcusrosado/AniBeam/assets/...; a name left out of this list is a
     // blank icon at runtime, not a build error, so it is generated:
     // ls apps/linux/assets/icons/*.svg | sed 's|apps/linux/||;s|.*|        "&",|'
+    // mosaic.js is a QML script library the library page imports relatively; the module
+    // builder only takes .qml files, so it rides the qrc at the same path instead.
     .qrc_resources([
+        "qml/mosaic.js",
         "assets/icon.png",
+        "assets/fonts/Archivo-Variable-Regular.ttf",
+        "assets/fonts/Archivo-Variable-SemiBold.ttf",
+        "assets/fonts/Archivo-Variable-ExtraBold.ttf",
         "assets/icons/activity.svg",
         "assets/icons/archive.svg",
         "assets/icons/arrow-down.svg",

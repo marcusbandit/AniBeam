@@ -84,3 +84,7 @@ Issues, specs and wayfinder maps live in this repo's GitHub Issues, driven with 
 ### Domain docs
 
 Single-context: one `CONTEXT.md` at the root and ADRs under `docs/adr/`. See `docs/agents/domain.md`.
+
+### Subagents
+
+Subagent use on this project is heavily allowed and expected. Fan work out to parallel subagents split by file ownership (commit by explicit path). Use Haiku for research, fix specs, captures, visual review, drive scripts, test runs and release builds; keep Opus for the final implementation. Never block the main conversation on a build or a long wait.

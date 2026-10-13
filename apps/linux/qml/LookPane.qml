@@ -11,6 +11,9 @@ Corner {
     property string mode: "dark"
     property var samples: []             // SeriesCard records, most telling first
     property real nowMs: Date.now()      // refreshed by the tab's own tick, not a one-shot
+    // The height the pane is given: its status strip sits at the foot and the sample cards
+    // take as many rows as fit between; 0 is the natural height, one row of cards
+    property real targetHeight: 0
 
     Tokens { id: theme; mode: pane.mode }
 
@@ -20,7 +23,7 @@ Corner {
         title: "Sample series",
         titles: { folder: "Sample series" },
         poster: null,
-        code: "EP 12",
+        code: "Ep 12",
         watched: 8,
         watched_state: "Behind",
         total_episodes: 12,
@@ -39,7 +42,11 @@ Corner {
     color: theme.bg
     borderColor: theme.line
     borderWidth: 1
-    implicitHeight: body.height + pad * 2
+    readonly property real cardGap: theme.space(5)
+    readonly property real cardHeight: probe.implicitHeight
+    readonly property real naturalHeight: pane.pad * 2 + body.height + foot.height + cardHeight + body.spacing * 2
+    implicitHeight: Math.max(naturalHeight, targetHeight)
+    Card { id: probe; visible: false; live: false; item: pane.fallback; posterWidth: theme.posterWidth }
 
     Column {
         id: body
@@ -55,15 +62,15 @@ Corner {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Library"
                 color: theme.text
-                font.family: theme.fontSans
+                font.family: theme.fontDisplay
                 font.pointSize: theme.typeLarge
-                font.weight: Font.Bold
+                font.weight: Font.DemiBold
             }
             Chip {
                 anchors.verticalCenter: parent.verticalCenter
                 text: pane.samples.length + " series"
                 small: true
-                color: theme.surface
+                color: theme.tile
                 textColor: theme.textDim
             }
         }
@@ -74,7 +81,7 @@ Corner {
             height: theme.controlHeight
             radius: height / 2
             smoothing: theme.cornerSmoothing
-            color: theme.surfaceSunken
+            color: theme.tileSunken
             borderColor: theme.line
             borderWidth: 1
             Text {
@@ -83,7 +90,7 @@ Corner {
                 anchors.right: hint.left
                 anchors.rightMargin: theme.space(2)
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Search romaji, english or folder"
+                text: "Search titles or folders"
                 color: theme.textFaint
                 elide: Text.ElideRight
                 font.family: theme.fontSans
@@ -94,23 +101,34 @@ Corner {
                 anchors.right: parent.right
                 anchors.rightMargin: theme.space(2)
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Ctrl K"
+                text: "/ or Ctrl+K"
                 small: true
-                color: theme.surface
+                color: theme.tile
                 textColor: theme.textFaint
             }
         }
 
         Seg { options: ["All", "Series", "Movies"]; index: 0 }
 
-        // As many cards as the pane holds at the poster width, one at least
-        Row {
+    }
+
+    // As many cards as the pane holds at the poster width, in as many rows as its height
+    // holds, one at least
+    Item {
+        id: cardsBox
+        x: pane.pad
+        y: body.y + body.height + body.spacing
+        width: pane.width - pane.pad * 2
+        height: Math.max(pane.cardHeight, foot.y - body.spacing - y)
+        clip: true
+        Grid {
             id: cards
-            readonly property real gap: theme.space(5)
-            readonly property int count: Math.max(1, Math.floor((body.width + gap) / (theme.posterWidth + gap)))
-            spacing: gap
+            readonly property int perRow: Math.max(1, Math.floor((cardsBox.width + pane.cardGap) / (theme.posterWidth + pane.cardGap)))
+            readonly property int lines: Math.max(1, Math.floor((cardsBox.height + pane.cardGap) / (pane.cardHeight + pane.cardGap)))
+            columns: perRow
+            spacing: pane.cardGap
             Repeater {
-                model: cards.count
+                model: cards.perRow * cards.lines
                 Card {
                     required property int index
                     item: pane.samples.length ? pane.samples[index % pane.samples.length] : pane.fallback
@@ -119,13 +137,21 @@ Corner {
                 }
             }
         }
+    }
+
+    Column {
+        id: foot
+        x: pane.pad
+        y: pane.height - pane.pad - height
+        width: pane.width - pane.pad * 2
+        spacing: theme.space(4)
 
         Flow {
             width: parent.width
             spacing: theme.space(2)
             Chip { text: "Plain"; mono: false; color: theme.surface; textColor: theme.textDim }
             Chip { text: "Selected"; mono: false; selected: true }
-            Chip { text: "EP 12"; small: true; color: theme.surface }
+            Chip { text: "Ep 12"; small: true; color: theme.tile }
             Chip { text: "2 errors"; icon: "circle-alert"; small: true; color: theme.redSoft; textColor: theme.red }
         }
 
@@ -134,9 +160,9 @@ Corner {
             text: "Large"
             color: theme.text
             wrapMode: Text.Wrap
-            font.family: theme.fontSans
+            font.family: theme.fontDisplay
             font.pointSize: theme.typeLarge
-            font.weight: Font.Bold
+            font.weight: Font.DemiBold
         }
         Text {
             width: parent.width
@@ -168,7 +194,7 @@ Corner {
             height: theme.space(7)
             radius: theme.radiusSm
             smoothing: theme.cornerSmoothing
-            color: theme.surfaceSunken
+            color: theme.tileSunken
             borderColor: theme.line
             borderWidth: 1
             Row {
@@ -179,7 +205,7 @@ Corner {
                 anchors.rightMargin: theme.space(3)
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: theme.space(2)
-                Chip { id: stripStage; anchors.verticalCenter: parent.verticalCenter; text: "scan"; small: true; color: theme.surface; textColor: theme.textDim }
+                Chip { id: stripStage; anchors.verticalCenter: parent.verticalCenter; text: "Scan"; small: true; color: theme.surface; textColor: theme.textDim }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     width: Math.max(0, Math.min(implicitWidth, stripLine.width - stripStage.width - stripStamp.width - stripLine.spacing * 2))
@@ -189,7 +215,7 @@ Corner {
                     font.family: theme.fontSans
                     font.pointSize: theme.typeSmall
                 }
-                Text { id: stripStamp; anchors.verticalCenter: parent.verticalCenter; text: "12:04"; color: theme.textFaint; font.family: theme.fontMono; font.pointSize: theme.typeSmall }
+                Text { id: stripStamp; anchors.verticalCenter: parent.verticalCenter; text: "12:04"; color: theme.textFaint; font.family: theme.fontUi; font.pointSize: theme.typeSmall }
             }
             Chip {
                 id: stripErrors

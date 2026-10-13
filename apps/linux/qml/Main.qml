@@ -18,6 +18,33 @@ Window {
     Tokens { id: theme }
     color: Theme.ready ? theme.bg : "#101216"
 
+    // The poster pool: every poster decoded once and held, so a page's first
+    // paint finds its pictures in the engine's cache instead of on the disk.
+    // Filled the way the pages show them — airing soonest, then recently
+    // viewed, then the shelf — and refilled (debounced) when the library says
+    // a series changed, only ever replacing the pool when the path set moved.
+    PosterPool { id: posterPool }
+    // One read for both lists: listLibrary carries the airing rail with the shelf, and
+    // the Door keeps the answer until the library changes, so a page reading the same
+    // thing in the same beat pays nothing.
+    function fillPool() {
+        var r = Door.listLibrary("All", "", "LastViewed", "Desc", false)
+        if (r.error) return
+        var out = [], seen = {}
+        function push(c) { if (c.poster && !seen[c.poster]) { seen[c.poster] = true; out.push(c.poster) } }
+        r.reply.airing.forEach(function(c) { if (c.next_airing) push(c) })
+        r.reply.series.forEach(push)
+        var paths = out.slice(0, posterPool.capacity)
+        if (paths.length !== posterPool.paths.length || paths.join("\u0001") !== posterPool.paths.join("\u0001"))
+            posterPool.paths = paths
+    }
+    Timer { id: poolDebounce; interval: 2000; onTriggered: window.fillPool() }
+    Connections { target: Door; function onSeriesChanged(cards) { poolDebounce.restart() } }
+    // The first fill waits a beat after the library is ready, so the first page's own
+    // posters reach the single pixmap reader thread ahead of the pool's.
+    Timer { id: poolStart; interval: 1500; onTriggered: window.fillPool() }
+    Connections { target: Door; function onReadyChanged() { if (Door.ready) poolStart.start() } }
+
     // Touching the Player singleton here is what constructs it, and constructing it is what
     // registers the Qt thread an MPRIS command is queued on. Without this the first media
     // key before a file plays would have nowhere to go.
@@ -54,7 +81,10 @@ Window {
         active: window.settled && Theme.ready && Door.ready
         sourceComponent: window.pageName === "tokens" ? tokensPage : frameComponent
         onLoaded: {
-            if (window.pageName !== "tokens" && window.pageName !== "library" && item.nav) {
+            // The library is the default page, so its props ride only when a launch
+            // actually handed some over; every other page always replaces.
+            var libraryWithProps = window.pageName === "library" && Shell.props !== ""
+            if (window.pageName !== "tokens" && (libraryWithProps || (window.pageName !== "library" && item.nav))) {
                 var props = {}
                 if (Shell.props !== "") { try { props = JSON.parse(Shell.props) } catch (e) { console.warn("--props is not valid JSON:", e.message); props = {} } }
                 // A --shoot of the series page with no id in --props opens the first
@@ -68,6 +98,7 @@ Window {
             // The suffix action runs once the page is up and before the grab, so the
             // drawer's rise has the whole shoot delay to settle at its open height.
             if (window.pageAction === "drawer" && item.toggleDrawer) item.toggleDrawer()
+            if (window.pageAction === "connect" && item.openConnect) item.openConnect("Anilist")
             window.maybeShoot()
         }
     }
@@ -79,8 +110,10 @@ Window {
     // the scene into an image, so it works under QT_QPA_PLATFORM=offscreen. The colours are
     // the engine's first push, so the shot waits for Theme.ready and the frame's item as
     // well as for settle.
+    // --drive <script.json> starts its steps at the same moment instead of grabbing; see
+    // Driver.qml. driveOut is set only on a drive run, so it is the mode flag.
     function maybeShoot() {
-        if (window.settled && Theme.ready && frame.item && Shell.shoot !== "")
+        if (window.settled && Theme.ready && frame.item && (Shell.shoot !== "" || Shell.driveOut !== ""))
             shootTimer.start()
     }
     onSettledChanged: window.maybeShoot()
@@ -88,9 +121,20 @@ Window {
     Timer {
         id: shootTimer
         interval: 400
-        onTriggered: window.contentItem.grabToImage(function(result) {
-            result.saveToFile(Shell.shoot)
-            Qt.quit()
-        })
+        onTriggered: {
+            if (Shell.driveOut !== "") { if (driver.item) driver.item.start(); return }
+            window.contentItem.grabToImage(function(result) {
+                result.saveToFile(Shell.shoot)
+                Qt.quit()
+            })
+        }
     }
+    Loader {
+        id: driver
+        active: Shell.driveOut !== ""
+        sourceComponent: Driver { hostWindow: window; hostFrame: frame; outDir: Shell.driveOut; evaluate: window.driveEval }
+    }
+    // A drive script's {"eval": ...}: direct eval here, so window, frame and theme resolve,
+    // and `vars` holds what earlier evals stored with "as".
+    function driveEval(src, vars) { return eval(src) }
 }

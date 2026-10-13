@@ -223,6 +223,7 @@ impl Snapshot {
             },
             poster: row.poster_path.clone(),
             format: media.and_then(|m| m.format.clone()),
+            genres: media.map(|m| m.genres.clone()).unwrap_or_default(),
             status,
             hidden: row.hidden,
             missing: row.missing,
@@ -267,6 +268,7 @@ impl Snapshot {
                 files,
                 now,
             )),
+            franchise: self.franchises.get(&row.id).cloned(),
         }
     }
 
@@ -496,6 +498,7 @@ mod tests {
             },
             poster: None,
             format: None,
+            genres: Vec::new(),
             status: Some(AiringStatus::Finished),
             hidden: false,
             missing: false,
@@ -518,6 +521,7 @@ mod tests {
             next_airing: None,
             last_viewed_at: None,
             latest_activity_at: UNIX_EPOCH,
+            franchise: None,
         }
     }
 

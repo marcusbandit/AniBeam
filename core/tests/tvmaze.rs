@@ -218,7 +218,7 @@ fn the_auto_match_falls_through_to_tvmaze_when_anilist_misses() {
     );
     assert!(
         c.events().iter().any(
-            |e| e.message == "match (TVmaze 1.00): Avatar Seven Havens -> Avatar: Seven Havens"
+            |e| e.message == "Match (TVmaze 1.00): Avatar Seven Havens -> Avatar: Seven Havens"
         ),
         "{:#?}",
         c.events()
@@ -444,7 +444,7 @@ fn a_series_stamped_under_version_1_is_tried_again() {
     assert!(
         c.events()
             .iter()
-            .any(|e| e.message == "auto-match v2: re-attempting 1 unmatched series"),
+            .any(|e| e.message == "Auto-match v2: re-attempting 1 unmatched series"),
         "{:#?}",
         c.events()
     );
@@ -483,7 +483,7 @@ fn a_series_is_searched_linked_and_rematched_through_tvmaze() {
         },
     );
     let done = common::wait_job(&c, job);
-    assert_eq!(done.message, "search: 4 TVmaze results for \"avatar\"");
+    assert_eq!(done.message, "Search: 4 TVmaze results for \"avatar\"");
     let EventBody::SearchFinished { results } = done.body else {
         panic!("{done:?}")
     };

@@ -201,7 +201,7 @@ pub fn start(
             }
             Ok(Finished {
                 level: Level::Debug,
-                message: format!("skip windows: {}", summary(&windows)),
+                message: format!("Skip windows: {}", summary(&windows)),
                 body: EventBody::SkipWindowsReady {
                     session: s.id,
                     windows,

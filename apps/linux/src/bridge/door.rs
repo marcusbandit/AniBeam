@@ -12,7 +12,9 @@
 //! generated setter and go through `put_*` below.
 
 use core::pin::Pin;
-use std::sync::Arc;
+use std::cell::RefCell;
+use std::sync::{Arc, OnceLock};
+use std::time::Instant;
 
 use anibeam_core::events::Subscription;
 use anibeam_core::{
@@ -26,6 +28,7 @@ use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
 use crate::json::{self, from_qjson_object, to_qjson_array, to_qjson_object};
+use crate::read_cache::{self, ReadCache};
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -88,6 +91,19 @@ pub mod qobject {
         ) -> QJsonObject;
         #[qinvokable]
         fn list_airing(self: &Door, offset: f64, limit: f64) -> QJsonObject;
+        /// The library page in one read: `{ series, airing, counts: { all, series,
+        /// movies, watched, hidden } }`, off one snapshot. Every card, here and in
+        /// listSeries, carries `franchise: { id, title, size }` when other library
+        /// series share its franchise, else null (core `franchise::groups`).
+        #[qinvokable]
+        fn list_library(
+            self: &Door,
+            tab: &QString,
+            query: &QString,
+            sort: &QString,
+            direction: &QString,
+            reveal_hidden: bool,
+        ) -> QJsonObject;
         #[qinvokable]
         fn get_series(self: &Door, series: f64) -> QJsonObject;
         #[qinvokable]
@@ -157,6 +173,11 @@ pub mod qobject {
         fn refresh_progress(self: &Door, tracker: &QString) -> QJsonObject;
         #[qinvokable]
         fn list_watching(self: &Door) -> QJsonObject;
+        /// Starts the AniList watching refresh when the cached list is over five minutes
+        /// old, or always with `force`. `Started` with the job, or `Ok` when fresh or
+        /// not connected; the job ends in `watchingRefreshed`.
+        #[qinvokable]
+        fn refresh_watching(self: &Door, force: bool) -> QJsonObject;
         // Franchise
         #[qinvokable]
         fn get_franchise_graph(self: &Door, series: f64) -> QJsonObject;
@@ -278,11 +299,14 @@ pub mod qobject {
         #[qsignal]
         fn trackers_changed(self: Pin<&mut Door>, state: QJsonObject);
         #[qsignal]
+        /// `job` is the connect job the url belongs to, so a shell can drop the url of a
+        /// flow it has since replaced instead of opening a sign-in nobody is waiting on.
         fn auth_url_ready(
             self: Pin<&mut Door>,
             tracker: QString,
             open_url: QString,
             redirect_url: QString,
+            job: f64,
         );
         #[qsignal]
         fn tracker_connected(self: Pin<&mut Door>, tracker: QString, username: QString);
@@ -333,6 +357,34 @@ pub struct DoorRust {
     unseen_errors: i32,
     subscription: Option<Arc<Subscription>>,
     jobs: Vec<Value>,
+    /// Whole-library answers kept while the core's generation stands still.
+    read_cache: RefCell<ReadCache<QJsonObject>>,
+}
+
+impl Default for ReadCache<QJsonObject> {
+    /// On unless `ANIBEAM_READ_CACHE=0`, which is there to measure what it saves.
+    fn default() -> Self {
+        ReadCache::new(std::env::var("ANIBEAM_READ_CACHE").as_deref() != Ok("0"))
+    }
+}
+
+/// `ANIBEAM_TIMING=1` prints every Door call's cost to stderr: the core's work, the walk
+/// to a JSON value, and the walk to a QJsonObject, or a cache hit.
+fn timing() -> bool {
+    static ON: OnceLock<bool> = OnceLock::new();
+    *ON.get_or_init(|| std::env::var("ANIBEAM_TIMING").as_deref() == Ok("1"))
+}
+
+fn call_name(call: &Call) -> String {
+    match serde_json::to_value(call) {
+        Ok(Value::String(s)) => s,
+        Ok(Value::Object(m)) => m.keys().next().cloned().unwrap_or_default(),
+        _ => "?".into(),
+    }
+}
+
+fn ms(d: std::time::Duration) -> f64 {
+    d.as_secs_f64() * 1000.0
 }
 
 /// Runs on the core's threads; every event becomes one queued closure on the Qt thread.
@@ -357,6 +409,10 @@ impl cxx_qt::Initialize for qobject::Door {
             qt: self.qt_thread(),
         }));
         self.as_mut().rust_mut().subscription = Some(sub);
+        // Every write the shell makes goes through a call that emits, so the core may keep
+        // its whole-library load for the rest of a generation; the same switch as the
+        // Door's own read cache.
+        core.set_snapshot_cache(std::env::var("ANIBEAM_READ_CACHE").as_deref() != Ok("0"));
         if let Err(e) = core.start() {
             eprintln!("anibeam: core start: {e}");
         }
@@ -383,7 +439,7 @@ fn opt_id(v: f64) -> Option<u64> {
 
 fn parse_enum<T: DeserializeOwned>(field: &str, s: &QString) -> Result<T, CoreError> {
     serde_json::from_value(Value::String(s.to_string()))
-        .map_err(|_| CoreError::invalid(field, format!("unknown value {s}")))
+        .map_err(|_| CoreError::invalid(field, format!("{s} is not a valid choice")))
 }
 
 fn parse_object<T: DeserializeOwned>(field: &str, o: &QJsonObject) -> Result<T, CoreError> {
@@ -485,16 +541,56 @@ impl qobject::Door {
     /// `Internal` error shape.
     fn dispatch(&self, call: Result<Call, CoreError>) -> QJsonObject {
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let v = match call {
-                Ok(c) => json::dispatch(crate::runtime::core(), c),
-                Err(e) => json!({ "error": json::error_json(&e) }),
-            };
-            to_qjson_object(&v)
+            match call {
+                Ok(c) => self.answer(c),
+                Err(e) => to_qjson_object(&json!({ "error": json::error_json(&e) })),
+            }
         }))
         .unwrap_or_else(|payload| {
             let e = CoreError::internal(panic_text(&*payload));
             to_qjson_object(&json!({ "error": json::error_json(&e) }))
         })
+    }
+
+    /// One call, from the read cache when it is a whole-library read the core's state has
+    /// not moved past. The generation is read before the call runs, so a change that lands
+    /// during the read leaves its answer stamped old.
+    fn answer(&self, call: Call) -> QJsonObject {
+        let core = crate::runtime::core();
+        let key = read_cache::key_of(&call);
+        let name = if timing() { call_name(&call) } else { String::new() };
+        let generation = core.generation();
+        let t0 = Instant::now();
+        if let Some(k) = &key
+            && let Some(hit) = self.read_cache.borrow_mut().get(k, generation, t0)
+        {
+            if timing() {
+                eprintln!("timing {name} hit {:.3}ms", ms(t0.elapsed()));
+            }
+            return hit;
+        }
+        let reply = core.call(call);
+        let t1 = Instant::now();
+        let ok = reply.is_ok();
+        let v = json::reply_json(reply);
+        let t2 = Instant::now();
+        let o = to_qjson_object(&v);
+        let t3 = Instant::now();
+        if ok && let Some(k) = key {
+            self.read_cache
+                .borrow_mut()
+                .put(k, generation, t0, o.clone());
+        }
+        if timing() {
+            eprintln!(
+                "timing {name} core {:.3}ms json {:.3}ms qjson {:.3}ms total {:.3}ms",
+                ms(t1 - t0),
+                ms(t2 - t1),
+                ms(t3 - t2),
+                ms(t3 - t0)
+            );
+        }
+        o
     }
 
     fn reply_of(&self, call: Call) -> Option<Value> {
@@ -682,7 +778,7 @@ impl qobject::Door {
             EventBody::TrackersChanged { .. } => self.as_mut().put_trackers(obj("state")),
             EventBody::AuthUrlReady { .. } => {
                 self.as_mut()
-                    .auth_url_ready(s("tracker"), s("open_url"), s("redirect_url"))
+                    .auth_url_ready(s("tracker"), s("open_url"), s("redirect_url"), job_id)
             }
             EventBody::TrackerConnected { .. } => {
                 self.as_mut().tracker_connected(s("tracker"), s("username"))
@@ -781,6 +877,24 @@ impl qobject::Door {
             offset: id(offset),
             limit: id(limit),
         }))
+    }
+    pub fn list_library(
+        &self,
+        tab: &QString,
+        query: &QString,
+        sort: &QString,
+        direction: &QString,
+        reveal_hidden: bool,
+    ) -> QJsonObject {
+        self.dispatch((|| -> Result<Call, CoreError> {
+            Ok(Call::ListLibrary {
+                tab: parse_enum::<Tab>("tab", tab)?,
+                query: query.to_string(),
+                sort: parse_enum::<Sort>("sort", sort)?,
+                direction: parse_enum::<Direction>("direction", direction)?,
+                reveal_hidden,
+            })
+        })())
     }
     pub fn get_series(&self, series: f64) -> QJsonObject {
         self.dispatch(Ok(Call::GetSeries { series: id(series) }))
@@ -954,6 +1068,9 @@ impl qobject::Door {
     }
     pub fn list_watching(&self) -> QJsonObject {
         self.dispatch(Ok(Call::ListWatching))
+    }
+    pub fn refresh_watching(&self, force: bool) -> QJsonObject {
+        self.dispatch(Ok(Call::RefreshWatching { force }))
     }
     // Franchise
     pub fn get_franchise_graph(&self, series: f64) -> QJsonObject {

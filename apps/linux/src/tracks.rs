@@ -203,14 +203,14 @@ pub fn track_ref(t: &Track) -> TrackRef {
     }
 }
 
-/// "Full Dialogue (eng)", "English (eng, sidecar)", "spa", "Track 2".
+/// "Full Dialogue (eng)", "English (eng, external file)", "spa", "Track 2".
 pub fn label(t: &Track) -> String {
     let mut extra: Vec<&str> = Vec::new();
     if let Some(l) = &t.lang {
         extra.push(l);
     }
     if t.external {
-        extra.push("sidecar");
+        extra.push("external file");
     }
     match (&t.title, extra.is_empty()) {
         (Some(title), true) => title.clone(),
@@ -340,7 +340,7 @@ mod tests {
         assert_eq!(r.language.as_deref(), Some("eng"));
         assert_eq!(r.title.as_deref(), Some("English"));
         assert_eq!(label(&l[4]), "Full Dialogue (eng)");
-        assert_eq!(label(&l[5]), "English (eng, sidecar)");
+        assert_eq!(label(&l[5]), "English (eng, external file)");
         assert_eq!(label(&l[6]), "spa");
         assert!(
             same_lang("en", "eng")

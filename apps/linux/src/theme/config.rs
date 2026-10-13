@@ -18,7 +18,7 @@ macro_rules! choice {
 }
 
 choice!(ModeSetting { Dark = "dark", Light = "light", System = "system" }, default System);
-choice!(Source { System = "system", Theme = "theme" }, default System);
+choice!(Source { System = "system", Theme = "theme" }, default Theme);
 choice!(Density { Compact = "compact", Normal = "normal", Comfortable = "comfortable" }, default Normal);
 choice!(Poster { S = "s", M = "m", L = "l" }, default M);
 choice!(Corners { Smooth = "smooth", Plain = "plain" }, default Smooth);
@@ -62,19 +62,22 @@ pub struct ThemeSettings {
     pub corners: Corners,
     pub theme_dark: String,
     pub theme_light: String,
+    /// Skip the orchestrated motion (the library's opening sweep); smoothing still runs.
+    pub reduced_motion: bool,
 }
 
 impl Default for ThemeSettings {
     fn default() -> Self {
         ThemeSettings {
             mode: ModeSetting::System,
-            source: Source::System,
+            source: Source::Theme,
             accent: 4,
             density: Density::Normal,
             poster: Poster::M,
-            corners: Corners::Smooth,
-            theme_dark: "anibeam-dark".into(),
-            theme_light: "anibeam-light".into(),
+            corners: Corners::Plain,
+            theme_dark: "tesserae-dark".into(),
+            theme_light: "tesserae-light".into(),
+            reduced_motion: false,
         }
     }
 }
@@ -123,6 +126,10 @@ pub fn load(path: &Path) -> ThemeSettings {
             .unwrap_or(d.corners),
         theme_dark: pair("dark", &d.theme_dark),
         theme_light: pair("light", &d.theme_light),
+        reduced_motion: doc
+            .get("reduced_motion")
+            .and_then(Item::as_bool)
+            .unwrap_or(d.reduced_motion),
     }
 }
 
@@ -140,6 +147,7 @@ pub fn save(path: &Path, s: &ThemeSettings) -> std::io::Result<()> {
     doc["density"] = value(s.density.as_str());
     doc["poster"] = value(s.poster.as_str());
     doc["corners"] = value(s.corners.as_str());
+    doc["reduced_motion"] = value(s.reduced_motion);
     if !doc.contains_table("theme") {
         doc["theme"] = Item::Table(Table::new());
     }
@@ -165,7 +173,8 @@ mod tests {
         assert_eq!(s.accent, 4, "an out of range accent falls back");
         assert_eq!(s.density, Density::Compact);
         assert_eq!(s.theme_dark, "gruvbox-dark-medium");
-        assert_eq!(s.theme_light, "anibeam-light");
+        assert_eq!(s.theme_light, "tesserae-light");
+        assert!(!s.reduced_motion);
     }
 
     #[test]
@@ -178,6 +187,7 @@ mod tests {
         s.mode = ModeSetting::Light;
         s.poster = Poster::L;
         s.theme_light = "catppuccin-latte".into();
+        s.reduced_motion = true;
         save(&path, &s).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("# my notes"));
@@ -186,6 +196,7 @@ mod tests {
         assert!(text.contains("mode = \"light\""));
         assert!(text.contains("poster = \"l\""));
         assert!(text.contains("light = \"catppuccin-latte\""));
+        assert!(text.contains("reduced_motion = true"));
         assert_eq!(load(&path), s);
     }
 

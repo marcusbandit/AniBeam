@@ -563,6 +563,7 @@ mod tests {
             },
             poster: None,
             format: None,
+            genres: Vec::new(),
             status: None,
             hidden: false,
             missing: false,
@@ -585,6 +586,7 @@ mod tests {
             next_airing: None,
             last_viewed_at: None,
             latest_activity_at: time::now(),
+            franchise: None,
         }
     }
 

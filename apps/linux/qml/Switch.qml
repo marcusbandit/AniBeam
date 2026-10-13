@@ -1,5 +1,5 @@
-// An on/off switch: a pill track, a round thumb that slides with exponential smoothing and
-// carries the accent fill with it. Space toggles it; hover and focus show on the border.
+// An on/off switch: a square glass track, a square thumb that slides with exponential
+// smoothing (theme.followRate) and carries the accent fill with it. Space toggles it; hover and focus show on the border.
 import QtQuick
 
 Corner {
@@ -12,9 +12,9 @@ Corner {
     implicitHeight: theme.space(6)
     radius: height / 2
     smoothing: theme.cornerSmoothing
-    color: theme.tone(theme.surfaceSunken, theme.accent, on)
-    borderColor: activeFocus ? theme.focusRing : (hover.containsMouse ? theme.lineStrong : theme.tone(theme.line, theme.accent, on))
-    borderWidth: activeFocus ? theme.space(0.5) : 1
+    color: theme.tone(theme.tile, theme.accentSoft, on)
+    borderColor: activeFocus ? theme.focusRing : (hover.containsMouse ? theme.lineStrong : theme.tone(theme.line, Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, 0.55), on))
+    borderWidth: 1
     activeFocusOnTab: true
 
     // 0 off, 1 on, smoothed; drives the thumb and both fills
@@ -23,7 +23,7 @@ Corner {
     Component.onCompleted: on = onTarget
     FrameAnimation {
         running: Math.abs(root.on - root.onTarget) > 0.002
-        onTriggered: root.on += (root.onTarget - root.on) * (1 - Math.exp(-14 * frameTime))
+        onTriggered: root.on = theme.follow(root.on, root.onTarget, frameTime)
     }
 
     function toggle() { checked = !checked; toggled(checked) }
@@ -37,7 +37,7 @@ Corner {
         height: size
         radius: size / 2
         smoothing: theme.cornerSmoothing
-        color: theme.tone(theme.textDim, theme.accentText, root.on)
+        color: theme.tone(theme.textDim, theme.accent, root.on)
     }
     MouseArea {
         id: hover

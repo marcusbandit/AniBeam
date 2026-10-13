@@ -770,6 +770,7 @@ async fn import_preferences(
                 // The export format predates the toggle, so an import never
                 // changes it: it keeps whatever was already set.
                 library_show_watched: current.library_show_watched,
+                library_arrange: current.library_arrange,
             };
             prefs::save_preferences(tx, &preferences)?;
             if let Some(auto_skip) = &entry.auto_skip {

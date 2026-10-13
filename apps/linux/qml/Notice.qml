@@ -1,7 +1,8 @@
 // A passing notice over the picture: one line, an optional button, gone after four seconds.
 // The Skipped intro line with its Undo and the tracker outcomes after a mark all come
 // through here. The line is capped at the page's width and elides, since a tracker's own
-// error text is as long as the tracker cares to make it.
+// error text is as long as the tracker cares to make it. A pane of the player's glass, like every island on
+// the player; its Undo never takes the keyboard, so Space after it still pauses.
 import QtQuick
 
 Corner {
@@ -10,25 +11,28 @@ Corner {
     property string action: ""
     signal acted()
 
+    objectName: "player-notice"
     visible: false
     anchors.horizontalCenter: parent.horizontalCenter
     anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(30)
     width: row.implicitWidth + theme.space(6); height: theme.controlHeight
-    radius: height / 2; smoothing: theme.cornerSmoothing
-    color: theme.scrim; borderColor: theme.line; borderWidth: 1
+    color: theme.glassVideo
+    borderColor: Qt.rgba(1, 1, 1, 0.1); borderWidth: 1
+    highlight: theme.glassHighlight
 
     readonly property real maxWidth: parent ? parent.width - theme.space(8) : theme.space(100)
     Row {
         id: row
         anchors.centerIn: parent; spacing: theme.space(3)
-        Text {
+        Label {
             anchors.verticalCenter: parent.verticalCenter
+            role: "ui"
             // The button's own width is what is left over, so the line takes the rest.
             width: Math.min(implicitWidth, root.maxWidth - theme.space(6) - (act.visible ? act.width + theme.space(3) : 0))
             elide: Text.ElideRight
-            text: root.text; color: theme.text; font.family: theme.fontSans; font.pointSize: theme.typeNormal
+            text: root.text
         }
-        Button { id: act; anchors.verticalCenter: parent.verticalCenter; visible: root.action !== ""; text: root.action; small: true; onClicked: { root.hide(); root.acted() } }
+        Button { id: act; anchors.verticalCenter: parent.verticalCenter; visible: root.action !== ""; text: root.action; small: true; flat: true; takesFocus: false; onClicked: { root.hide(); root.acted() } }
     }
     Timer { id: life; interval: 4000; onTriggered: root.visible = false }
     function show(text, action, seconds) { root.text = text; root.action = action || ""; life.interval = (seconds || 4) * 1000; visible = true; life.restart() }

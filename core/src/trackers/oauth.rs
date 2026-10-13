@@ -5,13 +5,16 @@
 //! which a server never sees, so the first hit is answered with a page
 //! that re-issues the request with the fragment as a query. MAL is an
 //! authorization code with plain PKCE, which is what MAL supports: it
-//! rejects S256 outright, so the challenge is the verifier.
+//! rejects S256 outright, so the challenge is the verifier. MAL is treated
+//! as a public client, the id and the verifier and nothing else, unless a
+//! secret has been pasted or bundled for an app registered as "web".
 //!
-//! Everything here is carried from Electron's `trackerHandler.ts`: the
-//! urls character for character, the three pages, the five minute window,
-//! and the order the pages are served in. The browser is answered before
-//! the token is validated or exchanged, so the tab finishes cleanly
-//! whatever the provider says next.
+//! Carried from Electron's `trackerHandler.ts`: the urls character for
+//! character and the five minute window. Unlike Electron, the browser's
+//! last request is held open until the account is known, the token
+//! validated or the code exchanged and the profile read, and only then
+//! answered: a tab that says "connected" while the app says the sign-in
+//! failed is the one outcome worse than a second of waiting.
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -30,7 +33,7 @@ use crate::net::anilist::VIEWER_QUERY;
 use crate::percent::decode;
 use crate::time;
 use crate::trackers::accounts::{self, Tokens};
-use crate::trackers::cache;
+use crate::trackers::{TRACKER_TIMEOUT, cache};
 
 /// The one path the listener serves. Both providers redirect here.
 const CALLBACK_PATH: &str = "/callback";
@@ -154,74 +157,43 @@ async fn run(
         },
     );
 
-    let callback = tokio::time::timeout(FLOW_TIMEOUT, serve(&listener, t, &state))
+    let (callback, stream) = tokio::time::timeout(FLOW_TIMEOUT, serve(&listener, t, &state))
         .await
         .map_err(|_| accounts::tracker_error(t, TIMED_OUT))??;
+    let mut tab = HeldTab(Some(stream));
 
-    let (user_id, username, tokens) = match callback {
-        Callback::Anilist {
-            access_token,
-            expires_at,
-        } => {
-            let profile = core
-                .anilist
-                .graphql(VIEWER_QUERY, serde_json::json!({}), Some(&access_token))
-                .await?;
-            let username = profile["Viewer"]["name"]
-                .as_str()
-                .filter(|name| !name.is_empty())
-                .ok_or_else(|| accounts::tracker_error(t, "the profile came back without a name"))?
-                .to_string();
-            (
-                profile["Viewer"]["id"].as_u64(),
-                username,
-                Tokens {
-                    access_token,
-                    refresh_token: None,
-                    expires_at,
-                },
-            )
-        }
-        Callback::Mal { code } => {
-            let tokens = exchange(
-                &core,
-                &code,
-                &verifier,
-                &client_id,
-                client_secret.as_deref(),
-                &redirect_url,
-            )
-            .await?;
-            let profile = core.mal.get(MAL_ME, &tokens.access_token).await?;
-            if !profile.is_success() {
-                return Err(CoreError::Provider {
-                    provider: Provider::Mal,
-                    status: Some(u32::from(profile.status)),
-                    message: profile.text(),
-                    retry_after: None,
-                });
-            }
-            let profile: serde_json::Value = profile.json()?;
-            let username = profile["name"]
-                .as_str()
-                .filter(|name| !name.is_empty())
-                .ok_or_else(|| accounts::tracker_error(t, "the profile came back without a name"))?
-                .to_string();
-            (profile["id"].as_u64(), username, tokens)
-        }
-    };
-
-    let store = accounts::save_tokens(&core, t, &tokens).await?;
-    accounts::save_connection(
+    // The browser's request is held while this runs, so the page it gets
+    // says what actually happened: a provider refusal reaches the tab as the
+    // error page with the provider's own words, not as a success the app
+    // then contradicts. Held for so long and no longer: a limiter backing
+    // off a run of 429s could outlast the browser's own patience, so past
+    // the hold the tab is let go with a page that sends the user back to
+    // AniBeam, and the sign-in carries on to an outcome the app reports.
+    let hold = Duration::from_millis(core.sign_in_hold_ms.load(Ordering::SeqCst));
+    let signing_in = sign_in(
         &core,
         t,
-        user_id,
-        &username,
+        callback,
+        &verifier,
         &client_id,
-        tokens.expires_at,
-        store,
-    )
-    .await?;
+        client_secret.as_deref(),
+        &redirect_url,
+    );
+    tokio::pin!(signing_in);
+    let signed_in = match tokio::time::timeout(hold, &mut signing_in).await {
+        Ok(signed_in) => {
+            match &signed_in {
+                Ok(_) => tab.answer(OK, &success_page(site_name(t))).await,
+                Err(e) => tab.answer(BAD_REQUEST, &error_page(&page_message(e))).await,
+            }
+            signed_in
+        }
+        Err(_) => {
+            tab.answer(OK, &finishing_page(site_name(t))).await;
+            signing_in.await
+        }
+    };
+    let username = signed_in?;
     let trackers = accounts::state_async(&core).await?;
     ctx.emit(
         Level::Debug,
@@ -243,9 +215,106 @@ async fn run(
     })
 }
 
-/// The code exchange. The secret rides in the form, which is what makes
-/// MAL a confidential client; `effective_credentials` has already refused
-/// a MAL connect without one.
+/// What the browser came back with, turned into a stored account: the
+/// AniList token validated with a `Viewer` query, or the MAL code exchanged
+/// and the profile read, then the tokens and the row saved. The username
+/// is what the finished job reports.
+async fn sign_in(
+    core: &Arc<Core>,
+    t: Tracker,
+    callback: Callback,
+    verifier: &str,
+    client_id: &str,
+    client_secret: Option<&str>,
+    redirect_url: &str,
+) -> Result<String, CoreError> {
+    let (user_id, username, tokens) = match callback {
+        Callback::Anilist {
+            access_token,
+            expires_at,
+        } => {
+            let profile = core
+                .anilist
+                .graphql_within(
+                    VIEWER_QUERY,
+                    serde_json::json!({}),
+                    Some(&access_token),
+                    TRACKER_TIMEOUT,
+                )
+                .await?;
+            let username = profile["Viewer"]["name"]
+                .as_str()
+                .filter(|name| !name.is_empty())
+                .ok_or_else(|| accounts::tracker_error(t, "the profile came back without a name"))?
+                .to_string();
+            (
+                profile["Viewer"]["id"].as_u64(),
+                username,
+                Tokens {
+                    access_token,
+                    refresh_token: None,
+                    expires_at,
+                },
+            )
+        }
+        Callback::Mal { code } => {
+            let tokens = exchange(
+                core,
+                &code,
+                verifier,
+                client_id,
+                client_secret,
+                redirect_url,
+            )
+            .await?;
+            let profile = core
+                .mal
+                .get_within(MAL_ME, &tokens.access_token, TRACKER_TIMEOUT)
+                .await?;
+            if !profile.is_success() {
+                return Err(CoreError::Provider {
+                    provider: Provider::Mal,
+                    status: Some(u32::from(profile.status)),
+                    message: profile.text(),
+                    retry_after: None,
+                });
+            }
+            let profile: serde_json::Value = profile.json()?;
+            let username = profile["name"]
+                .as_str()
+                .filter(|name| !name.is_empty())
+                .ok_or_else(|| accounts::tracker_error(t, "the profile came back without a name"))?
+                .to_string();
+            (profile["id"].as_u64(), username, tokens)
+        }
+    };
+
+    let store = accounts::save_tokens(core, t, &tokens).await?;
+    accounts::save_connection(
+        core,
+        t,
+        user_id,
+        &username,
+        client_id,
+        tokens.expires_at,
+        store,
+    )
+    .await?;
+    Ok(username)
+}
+
+/// The line the browser's error page shows for a sign-in that failed after
+/// the callback: the provider's own words without the log's prefix.
+fn page_message(e: &CoreError) -> String {
+    match e {
+        CoreError::Provider { message, .. } => message.clone(),
+        other => other.to_string(),
+    }
+}
+
+/// The code exchange. The verifier is what proves this is the client that
+/// started the flow; the secret rides along only for an app registered as
+/// "web", and a refusal for want of one says so in words a user can act on.
 async fn exchange(
     core: &Arc<Core>,
     code: &str,
@@ -254,25 +323,22 @@ async fn exchange(
     client_secret: Option<&str>,
     redirect_url: &str,
 ) -> Result<Tokens, CoreError> {
-    let form = vec![
-        ("client_id".to_string(), client_id.to_string()),
-        (
-            "client_secret".to_string(),
-            client_secret.unwrap_or_default().to_string(),
-        ),
-        ("code".to_string(), code.to_string()),
-        ("code_verifier".to_string(), verifier.to_string()),
-        ("grant_type".to_string(), "authorization_code".to_string()),
-        ("redirect_uri".to_string(), redirect_url.to_string()),
-    ];
-    let response = core.mal.post_form(accounts::MAL_TOKEN_URL, form).await?;
+    let form = accounts::token_form(
+        client_id,
+        client_secret,
+        [
+            ("code", code),
+            ("code_verifier", verifier),
+            ("grant_type", "authorization_code"),
+            ("redirect_uri", redirect_url),
+        ],
+    );
+    let response = core
+        .mal
+        .post_form_within(accounts::MAL_TOKEN_URL, form, TRACKER_TIMEOUT)
+        .await?;
     if !response.is_success() {
-        return Err(CoreError::Provider {
-            provider: Provider::Mal,
-            status: Some(u32::from(response.status)),
-            message: response.text(),
-            retry_after: None,
-        });
+        return Err(accounts::token_failure(&response, client_secret.is_some()));
     }
     accounts::parse_tokens(&response.body, time::now())
 }
@@ -317,7 +383,13 @@ async fn bind_with_retry(port: u16) -> Result<TcpListener, CoreError> {
 /// One connection at a time until the flow is settled. Everything that is
 /// not the callback the core is waiting for is answered and the loop goes
 /// round again, so a favicon request or a stray reload cannot end a flow.
-async fn serve(listener: &TcpListener, t: Tracker, state: &str) -> Result<Callback, CoreError> {
+/// The callback itself is not answered here: its connection comes back
+/// with it, and the page goes out once the sign-in has an outcome.
+async fn serve(
+    listener: &TcpListener,
+    t: Tracker,
+    state: &str,
+) -> Result<(Callback, TcpStream), CoreError> {
     loop {
         let (mut stream, _) = listener.accept().await.map_err(io_error)?;
         let target = match read_target(&mut stream).await {
@@ -367,23 +439,22 @@ async fn serve(listener: &TcpListener, t: Tracker, state: &str) -> Result<Callba
                 reply(&mut stream, BAD_REQUEST, &error_page(NO_CODE)).await;
                 return Err(accounts::tracker_error(t, NO_CODE));
             };
-            // The page goes out before the exchange, so the tab is finished
-            // with whatever MAL says to the request that follows.
-            reply(&mut stream, OK, &success_page(site_name(t))).await;
-            return Ok(Callback::Mal { code });
+            return Ok((Callback::Mal { code }, stream));
         }
         let Some(access_token) = get("access_token") else {
             reply(&mut stream, BAD_REQUEST, &error_page(NO_TOKEN)).await;
             return Err(accounts::tracker_error(t, NO_TOKEN));
         };
-        reply(&mut stream, OK, &success_page(site_name(t))).await;
         let expires_at = get("expires_in")
             .and_then(|seconds| seconds.parse::<u64>().ok())
             .map(|seconds| time::now() + Duration::from_secs(seconds));
-        return Ok(Callback::Anilist {
-            access_token,
-            expires_at,
-        });
+        return Ok((
+            Callback::Anilist {
+                access_token,
+                expires_at,
+            },
+            stream,
+        ));
     }
 }
 
@@ -453,6 +524,47 @@ async fn reply(stream: &mut TcpStream, status: &str, body: &str) {
     // A client reading to EOF needs the write half closed before it sees
     // the page as complete.
     let _ = stream.shutdown().await;
+}
+
+/// The browser's callback request while the sign-in it carried is under
+/// way. Answered once, through `answer`. A job cancelled or superseded in
+/// the meantime is dropped mid-await and never reaches `answer`, so the
+/// drop answers instead, with the cancelled page, rather than leaving the
+/// tab with a reset connection. That write is synchronous: the page is a
+/// couple of kilobytes onto a loopback socket, which the kernel's send
+/// buffer takes whole, and a drop has no executor to await on.
+struct HeldTab(Option<TcpStream>);
+
+impl HeldTab {
+    async fn answer(&mut self, status: &str, body: &str) {
+        if let Some(mut stream) = self.0.take() {
+            reply(&mut stream, status, body).await;
+        }
+    }
+}
+
+impl Drop for HeldTab {
+    fn drop(&mut self) {
+        let Some(stream) = self.0.take() else { return };
+        let Ok(mut stream) = stream.into_std() else {
+            return;
+        };
+        let _ = stream.set_nonblocking(false);
+        let _ = stream.set_write_timeout(Some(Duration::from_millis(500)));
+        let body = cancelled_page();
+        let head = format!(
+            "HTTP/1.1 {OK}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        );
+        use std::io::Write;
+        let written = stream
+            .write_all(head.as_bytes())
+            .and_then(|_| stream.write_all(body.as_bytes()));
+        if let Err(e) = written {
+            tracing::debug!("the cancelled page could not be written: {e}");
+        }
+        let _ = stream.shutdown(std::net::Shutdown::Write);
+    }
 }
 
 async fn write_all(stream: &mut TcpStream, head: &str, body: &str) -> Result<(), std::io::Error> {
@@ -534,16 +646,35 @@ fn query_pairs(query: &str) -> Vec<(String, String)> {
 
 // The pages ------------------------------------------------------------------
 
-/// The three pages, carried from Electron's `trackerHandler.ts`. They are
-/// the only interface a user sees in the browser, so they look like the
-/// app rather than like a server default.
+/// The look every page shares: AniBeam Dark's ground and brand teal, the
+/// mono face, one quiet card in the middle of the tab. These pages are the
+/// only interface a user sees in the browser, so they look like the app
+/// rather than like a server default.
+const PAGE_STYLE: &str = "html,body{margin:0;height:100%;background:#07090f;color:#e6ebf5;\
+font-family:'JetBrains Mono',ui-monospace,monospace}\
+body{display:flex;align-items:center;justify-content:center}\
+main{background:#0d1119;border:1px solid #161c28;border-radius:20px;padding:2.5rem 3rem;max-width:32rem;\
+display:flex;flex-direction:column;gap:0.75rem}\
+.mark{width:2.5rem;height:2.5rem;border-radius:50%;display:flex;align-items:center;justify-content:center;\
+font-size:1.25rem;font-weight:700;background:rgba(70,224,196,0.14);color:#46e0c4}\
+.mark.bad{background:rgba(240,113,138,0.14);color:#f0718a}\
+h1{margin:0.5rem 0 0;font-weight:600;font-size:1.1rem}\
+p{margin:0;color:#a3aec5;font-size:0.875rem;line-height:1.5}\
+.brand{color:#46e0c4}";
+
+/// The tab a finished sign-in leaves. It asks the browser to close it a
+/// beat later; a browser that refuses a script closing a tab it did not
+/// open leaves the page saying the same thing in words.
 fn success_page(site: &str) -> String {
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\">\n\
-         <title>AniBeam, connected</title>\n\
-         <style>html,body{{margin:0;height:100%;background:#0b0b10;color:#f1f5f9;font-family:'JetBrains Mono',ui-monospace,monospace;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:0.5rem}}h1{{font-weight:500;font-size:1rem}}p{{color:#94a3b8;font-size:0.85rem}}</style></head>\n\
-         <body><h1>{} connected</h1><p>You can close this tab and return to AniBeam.</p></body></html>",
-        escape(site)
+         <title>{site} is connected to AniBeam</title>\n\
+         <style>{PAGE_STYLE}</style></head>\n\
+         <body><main><div class=\"mark\">&#10003;</div>\
+         <h1>{site} is connected to <span class=\"brand\">AniBeam</span></h1>\
+         <p>You can close this tab.</p></main>\n\
+         <script>setTimeout(function(){{window.close()}},1500)</script></body></html>",
+        site = escape(site)
     )
 }
 
@@ -553,10 +684,42 @@ fn success_page(site: &str) -> String {
 fn error_page(message: &str) -> String {
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\">\n\
-         <title>AniBeam, auth failed</title>\n\
-         <style>html,body{{margin:0;height:100%;background:#0b0b10;color:#f1f5f9;font-family:'JetBrains Mono',ui-monospace,monospace;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:0.5rem}}h1{{font-weight:500;font-size:1rem;color:#f43f5e}}p{{color:#94a3b8;font-size:0.85rem}}</style></head>\n\
-         <body><h1>Authentication failed</h1><p>{}</p></body></html>",
+         <title>AniBeam, sign-in failed</title>\n\
+         <style>{PAGE_STYLE}</style></head>\n\
+         <body><main><div class=\"mark bad\">!</div>\
+         <h1>The sign-in did not finish</h1>\
+         <p>{}</p>\
+         <p>Go back to <span class=\"brand\">AniBeam</span> and try again.</p></main></body></html>",
         escape(message)
+    )
+}
+
+/// The tab let go before the sign-in finished. Neither a success nor a
+/// failure, because neither is known yet; the app is where the outcome
+/// lands.
+fn finishing_page(site: &str) -> String {
+    format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\">\n\
+         <title>AniBeam, still finishing</title>\n\
+         <style>{PAGE_STYLE}</style></head>\n\
+         <body><main><div class=\"mark\">&#8230;</div>\
+         <h1>Still finishing</h1>\
+         <p>{site} answered and AniBeam is finishing the sign-in. \
+         Return to <span class=\"brand\">AniBeam</span>, which says when it is done.</p></main></body></html>",
+        site = escape(site)
+    )
+}
+
+/// The tab of a sign-in that was cancelled, or replaced by a newer one,
+/// while it was being finished.
+fn cancelled_page() -> String {
+    format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\">\n\
+         <title>AniBeam, sign-in cancelled</title>\n\
+         <style>{PAGE_STYLE}</style></head>\n\
+         <body><main><div class=\"mark bad\">&#215;</div>\
+         <h1>This sign-in was cancelled</h1>\
+         <p>You can close this tab. Start again from <span class=\"brand\">AniBeam</span> if you meant to.</p></main></body></html>"
     )
 }
 
@@ -564,7 +727,7 @@ fn error_page(message: &str) -> String {
 /// page reads it in the browser and reloads with the same parameters as a
 /// query, which the listener can read.
 const FRAGMENT_FORWARDER: &str = "<!doctype html><html><head><meta charset=\"utf-8\"><title>Connecting</title>\n\
-<style>html,body{margin:0;height:100%;background:#0b0b10;color:#94a3b8;font-family:'JetBrains Mono',ui-monospace,monospace;display:flex;align-items:center;justify-content:center}</style></head>\n\
+<style>html,body{margin:0;height:100%;background:#07090f;color:#a3aec5;font-family:'JetBrains Mono',ui-monospace,monospace;display:flex;align-items:center;justify-content:center}</style></head>\n\
 <body>Connecting<script>\n\
 (function(){\n\
   var h=window.location.hash;\n\
@@ -637,11 +800,15 @@ mod tests {
 
     #[test]
     fn the_pages_name_the_site_and_escape_what_a_provider_sent() {
-        assert!(success_page(site_name(Tracker::Mal)).contains("MyAnimeList connected"));
-        assert!(success_page(site_name(Tracker::Anilist)).contains("AniList connected"));
+        let page = success_page(site_name(Tracker::Mal));
+        assert!(page.contains("MyAnimeList is connected to"), "{page}");
+        assert!(page.contains("You can close this tab."), "{page}");
+        assert!(page.contains("window.close()"), "{page}");
+        assert!(success_page(site_name(Tracker::Anilist)).contains("AniList is connected to"));
         let page = error_page("<script>alert(1)</script>");
         assert!(!page.contains("<script>alert"));
         assert!(page.contains("&lt;script&gt;"));
+        assert!(page.contains("try again"), "{page}");
         assert!(FRAGMENT_FORWARDER.contains("window.location.hash"));
     }
 

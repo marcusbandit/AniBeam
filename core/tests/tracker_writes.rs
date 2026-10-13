@@ -134,7 +134,7 @@ fn a_mark_writes_to_both_trackers_and_the_card_follows() {
     };
     // A decimal episode is floored for a tracker: 12.5 is still episode 12.
     assert_eq!(episode, 12);
-    assert_eq!(done.message, "marked episode 12 of Cowboy Bebop");
+    assert_eq!(done.message, "Marked episode 12 of Cowboy Bebop");
     assert_eq!(outcomes.len(), 2);
     assert_eq!(
         outcome(&outcomes, Tracker::Anilist),

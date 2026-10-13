@@ -1,0 +1,53 @@
+[
+  {"log": "library"},
+  {"eval": "frame.item.nav.current.page", "expect": "library"},
+  {"shot": "smoke-01-library"},
+
+  {"log": "right-click opens the frame menu"},
+  {"click": [900, 600], "button": "right"},
+  {"eval": "frame.item.escapeStack.entries.length", "expect": 1},
+  {"shot": "smoke-02-menu"},
+
+  {"log": "Escape closes it"},
+  {"key": "Escape"},
+  {"eval": "frame.item.escapeStack.entries.length", "expect": 0},
+  {"shot": "smoke-03-menu-closed"},
+
+  {"log": "the rail goes to the feed"},
+  {"click": "rail-feed"},
+  {"wait": 300},
+  {"eval": "frame.item.nav.current.page", "expect": "feed"},
+  {"shot": "smoke-04-feed"},
+
+  {"log": "settings, appearance, a theme dropdown open"},
+  {"click": "rail-settings"},
+  {"wait": 300},
+  {"click": "settings-tabs-appearance"},
+  {"wait": 300},
+  {"eval": "Theme.source", "as": "source"},
+  {"click": "colour-source-theme"},
+  {"wait": 200},
+  {"click": "theme-dark"},
+  {"wait": 250},
+  {"eval": "driver.item.findItem('theme-dark-popup') !== null", "expect": true},
+  {"eval": "(function(){var d=driver.item.findItem('theme-dark'); return driver.item.findItem('theme-dark-option-' + d.index) !== null})()", "expect": true},
+  {"hover": "theme-dark-popup"},
+  {"shot": "smoke-05-dropdown-open"},
+
+  {"log": "Escape closes the dropdown, the colour source goes back"},
+  {"key": "Escape"},
+  {"wait": 250},
+  {"eval": "driver.item.findItem('theme-dark-popup') !== null", "expect": false},
+  {"shot": "smoke-06-dropdown-closed"},
+
+  {"log": "a press outside closes it too"},
+  {"click": "theme-dark"},
+  {"wait": 250},
+  {"eval": "driver.item.findItem('theme-dark-popup') !== null", "expect": true},
+  {"click": [1000, 950]},
+  {"wait": 250},
+  {"eval": "driver.item.findItem('theme-dark-popup') !== null", "expect": false},
+  {"eval": "if (Theme.source !== vars.source) Theme.pickSource(vars.source)"},
+  {"wait": 200},
+  {"eval": "Theme.source === vars.source", "expect": true}
+]
