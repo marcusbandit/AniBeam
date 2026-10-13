@@ -56,6 +56,12 @@ pub struct MediaRow {
     pub format: Option<String>,
     pub status: Option<String>,
     pub year: Option<u32>,
+    /// AniList's raw season word (WINTER, SPRING, SUMMER, FALL); None for
+    /// TVmaze, whose shows carry only a premiere date.
+    pub season: Option<String>,
+    /// The start date as `YYYY-MM-DD` (`format_date` fills a missing month
+    /// or day with 01); TVmaze's `premiered` on the show path.
+    pub start_date: Option<String>,
     pub episodes: Option<u32>,
     pub description: Option<String>,
     pub average_score: Option<u32>,
@@ -176,6 +182,8 @@ fn show_media(r: &rusqlite::Row) -> rusqlite::Result<MediaRow> {
             .and_then(tvmaze::airing_status)
             .map(|s| s.anilist_word().to_string()),
         year: tvmaze::year_of(premiered.as_deref()),
+        season: None,
+        start_date: premiered,
         episodes: None,
         description: r.get(42)?,
         average_score: rating
@@ -263,7 +271,7 @@ impl Snapshot {
                     m.description, m.average_score, m.genres, m.studio, m.tags, m.characters, m.site_url,
                     m.cover_url, m.banner_url, ip.path, ib.path,
                     s.tvmaze_id, t.id, t.name, t.status, t.premiered, t.rating, t.genres, t.network, t.summary,
-                    t.url, t.poster_url, t.background_url
+                    t.url, t.poster_url, t.background_url, m.season, m.start_date
              FROM series s
              LEFT JOIN anilist_media m ON m.id = s.anilist_id
              LEFT JOIN tvmaze_shows t ON t.id = s.tvmaze_id AND s.provider = 'tvmaze'
@@ -297,6 +305,8 @@ impl Snapshot {
                     format: r.get(19)?,
                     status: r.get(20)?,
                     year: r.get::<_, Option<i64>>(21)?.map(|v| v as u32),
+                    season: r.get(46)?,
+                    start_date: r.get(47)?,
                     episodes: r.get::<_, Option<i64>>(22)?.map(|v| v as u32),
                     description: r.get(23)?,
                     average_score: r.get::<_, Option<i64>>(24)?.map(|v| v as u32),

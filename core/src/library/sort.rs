@@ -159,6 +159,8 @@ mod tests {
             last_viewed_at: viewed.map(|s| UNIX_EPOCH + std::time::Duration::from_secs(s)),
             latest_activity_at: UNIX_EPOCH,
             franchise: None,
+            year: None,
+            season: None,
         }
     }
 
