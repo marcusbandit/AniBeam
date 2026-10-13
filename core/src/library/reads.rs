@@ -19,7 +19,7 @@ use crate::time;
 /// A film to the tabs: the folder was classified as one, or the match says
 /// the title is one. Carried from `MetadataTab.tsx`'s `isMovie`.
 fn is_movie(c: &SeriesCard) -> bool {
-    c.kind == SeriesKind::Movie || c.format.as_deref() == Some("MOVIE")
+    cards::is_film(c)
 }
 
 /// Hidden series live in their own tab and are never mixed into the others;

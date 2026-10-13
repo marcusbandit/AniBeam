@@ -6,24 +6,30 @@
 use std::cmp::Ordering;
 
 use crate::contract::*;
+use crate::library::cards;
 use crate::time;
 
 fn title_of(c: &SeriesCard) -> String {
     c.title.to_lowercase()
 }
 
-/// Finished with it: completed on the tracker, watched at or above a known
-/// total, or a film with any watch at all.
+/// Finished with it: completed on the tracker, watched at or above a
+/// published total, or a film with any watch at all. An estimated total is
+/// only how far the user has got, so reaching it is not finished.
 fn watched_through(c: &SeriesCard) -> bool {
     if c.list_status == Some(ListStatus::Completed) {
         return true;
     }
-    let Some(w) = c.watched else { return false };
-    match c.total_episodes {
-        None => w > 0,
-        Some(0) => false,
-        Some(t) => w >= t,
+    let Some(w) = c.watched.filter(|w| *w > 0) else {
+        return false;
+    };
+    if cards::is_film(c) {
+        return true;
     }
+    if c.total_is_estimate {
+        return false;
+    }
+    c.total_episodes.is_some_and(|t| w >= t)
 }
 
 /// Not mid-way through: finished with it, or never started.
@@ -215,6 +221,30 @@ mod tests {
         assert_eq!(
             titles(&cards),
             vec!["early", "mid", "done", "dropped-complete", "never", "zero"]
+        );
+    }
+
+    #[test]
+    fn progress_keeps_a_show_caught_up_to_an_estimate_in_play() {
+        // No published total: the estimate is how far the user has got,
+        // so a show caught up to it is still in progress, and so is one
+        // with nothing knowable at all. A film seen once is finished.
+        let mut caught_up = card("caught-up", Some(8), Some(8), None, None, None, None);
+        caught_up.total_is_estimate = true;
+        let unknown = card("unknown", Some(3), None, None, None, None, None);
+        let mut film = card("film", Some(1), None, None, None, None, None);
+        film.kind = SeriesKind::Movie;
+        let mut cards = vec![
+            film,
+            card("done", Some(12), Some(12), None, None, None, None),
+            caught_up,
+            unknown,
+            card("mid", Some(6), Some(12), None, None, None, None),
+        ];
+        sort_cards(&mut cards, Sort::Progress, Direction::Desc);
+        assert_eq!(
+            titles(&cards),
+            vec!["caught-up", "unknown", "mid", "done", "film"]
         );
     }
 
