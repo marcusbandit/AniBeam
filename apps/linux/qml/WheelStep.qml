@@ -12,7 +12,7 @@ WheelHandler {
     required property Flickable flick
     // One notch of a mouse wheel, in px: three of the usual desktop steps (Chromium and
     // GTK scroll about 100 px a notch), so one tap here is three taps elsewhere
-    property real step: theme.space(75)
+    property real step: theme.scrollStep
     property real target: 0
     property bool following: false
     function bound(y) { return Math.max(0, Math.min(y, Math.max(0, flick.contentHeight - flick.height))) }

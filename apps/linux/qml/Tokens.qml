@@ -3,6 +3,7 @@
 // forced, so a preview renders the other mode with the same components. Colours come from
 // the Rust Theme singleton; the sizes are arithmetic on its settings.
 import QtQuick
+import QtCore
 import com.marcusrosado.AniBeam
 
 Item {
@@ -197,6 +198,11 @@ Item {
     readonly property int motionNormal: 200
     readonly property int motionSlow: 320
     readonly property real controlHeight: space(8)
+    // The wheel: one notch moves scrollStep px, three desktop steps by default, times the
+    // multiplier kept in shell.conf (Settings > Appearance > Scroll speed)
+    Settings { id: scrollKept; location: Shell.settingsUrl; category: "input"; property real scrollMultiplier: 1 }
+    property alias scrollMultiplier: scrollKept.scrollMultiplier
+    readonly property real scrollStep: space(75) * scrollMultiplier
     readonly property real disabledOpacity: 0.45
 
     // A colour t of the way from a to b, alpha included; takes Qt colours
