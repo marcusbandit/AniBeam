@@ -228,70 +228,68 @@ function header(items, cols) {
 
 // ---- Boxes (DESIGN.md, Layout: Arrange). The library arranged into framed, labelled boxes,
 // SpaceSniffer's lesson taken for grouping, not for style: each group of two or more is a
-// rigid rectangle with its label and members packed inside, boxes and lone tiles packed
-// edge to edge on one wall.
+// rigid rectangle with a slim header strip across its top and its members tiled under it,
+// boxes and lone tiles packed edge to edge on one wall.
 //
-// Everything here counts in slots: one column by one small tile's height (unitsSmall
-// units). A box is c columns by k slot rows. Its header is the label stone at its top left,
-// one slot tall and `s` columns wide, and it takes the box's slack: s = c*k - members (a
-// hero counts 4), so 1 <= s <= c and every box is a full rectangle with no hole inside, at
-// any width. That is why the header is a stone on the module rather than a thinner strip:
-// a strip would put every box a fraction of a slot out of step with the lone tiles beside
-// it, and the wall could never close up.
+// The wall counts in slots: one column by one small tile's height (unitsSmall units). A box
+// is c columns by k slots, so its outer edges stay on the module beside the lone tiles. Its
+// strip (one strip unit, the same for every box) is cut from that height and the members
+// share the rest, so a member stands a few pixels shorter than a lone tile. The members fill
+// the box exactly: with a hero (2x2) only when it makes an exact fit, else spread over the k
+// rows as evenly as they go (fuller rows first), a short row's tiles widened to the box's
+// width. That widening is the box's "stretch", kept small by the shape cost, so no box has a
+// hole and none needs a filler cell.
 
-// A box's inner layout at width c: the header stone, the hero (2x2) first-fit, then the
-// small members first-fit, all relative to the box. null when the hero cannot fit.
+// A box's inner layout at width c: rows of members, x and w in columns (fractions where a
+// row is stretched), row and rows in inner rows. null when the shape does not hold.
 function boxLayout(n, hero, c) {
     var area = n + (hero ? 3 : 0)
-    var k = Math.ceil((area + 1) / c)
-    var s = c * k - area
-    if (hero && (c < 2 || k < 2)) return null
-    var grid = []
-    for (var r = 0; r < k; r++) { grid.push([]); for (var x = 0; x < c; x++) grid[r].push(false) }
-    var cells = [{ kind: "label", col: 0, row: 0, colSpan: s, rowSpan: 1 }]
-    for (var hx = 0; hx < s; hx++) grid[0][hx] = true
+    if (c < 1 || n < 1) return null
+    var k = Math.ceil(area / c)
+    var cells = []
     if (hero) {
-        var placed = false
-        for (var hr = 0; hr + 1 < k && !placed; hr++)
-            for (var hc = 0; hc + 1 < c && !placed; hc++)
-                if (!grid[hr][hc] && !grid[hr][hc + 1] && !grid[hr + 1][hc] && !grid[hr + 1][hc + 1]) {
-                    grid[hr][hc] = grid[hr][hc + 1] = grid[hr + 1][hc] = grid[hr + 1][hc + 1] = true
-                    cells.push({ kind: "hero", col: hc, row: hr, colSpan: 2, rowSpan: 2 })
-                    placed = true
-                }
-        if (!placed) return null
+        if (c < 2 || k < 2 || c * k !== area) return null
+        cells.push({ kind: "hero", x: 0, w: 2, row: 0, rows: 2 })
+        var grid = {}
+        grid["0:0"] = grid["0:1"] = grid["1:0"] = grid["1:1"] = true
+        for (var r = 0; r < k; r++)
+            for (var x = 0; x < c; x++)
+                if (!grid[r + ":" + x]) cells.push({ kind: "small", x: x, w: 1, row: r, rows: 1 })
+        return { c: c, k: k, hero: true, stretch: 1, cells: cells }
     }
-    for (var rr = 0; rr < k; rr++)
-        for (var cc = 0; cc < c; cc++)
-            if (!grid[rr][cc]) { grid[rr][cc] = true; cells.push({ kind: "small", col: cc, row: rr, colSpan: 1, rowSpan: 1 }) }
-    return { c: c, k: k, s: s, hero: !!hero, cells: cells }
+    var base = Math.floor(n / k), extra = n % k, stretch = 1
+    for (var row = 0; row < k; row++) {
+        var m = base + (row < extra ? 1 : 0)
+        if (m < 1) return null
+        stretch = Math.max(stretch, c / m)
+        for (var i = 0; i < m; i++) cells.push({ kind: "small", x: i * c / m, w: c / m, row: row, rows: 1 })
+    }
+    return { c: c, k: k, hero: false, stretch: stretch, cells: cells }
 }
 
-// A box's shapes at most maxC wide, best first: nearest a square in pixels, each slot of
-// header past the first costing as much as a fair step off square (an empty stretch of
-// glass reads as a hole), a hero shape preferred by a little when the box has a candidate.
-// geo: { slotW, slotH, grout } in pixels.
-var SLACK_COST = 0.3, HERO_BONUS = 0.15, BAND_COST = 1
+// A shape's cost: how far its pixel rectangle is from a square, plus its stretch (a widened
+// member crops its poster), less a little for a hero. geo: { slotW, slotH, grout } in pixels.
+var STRETCH_COST = 1.5, HERO_BONUS = 0.15, BAND_COST = 1
 function shapeCost(L, geo) {
     var W = L.c * geo.slotW + (L.c - 1) * geo.grout
     var H = L.k * geo.slotH + (L.k - 1) * geo.grout
-    return Math.abs(Math.log(W / H)) + SLACK_COST * (L.s - 1) - (L.hero ? HERO_BONUS : 0)
+    return Math.abs(Math.log(W / H)) + STRETCH_COST * (L.stretch - 1) - (L.hero ? HERO_BONUS : 0)
 }
+// A box's shapes at most maxC wide, best first
 function boxShapes(n, heroOk, maxC, geo) {
     var out = []
     var tries = heroOk ? [true, false] : [false]
     for (var t = 0; t < tries.length; t++) {
-        var hero = tries[t]
-        var area = n + (hero ? 3 : 0)
-        for (var c = 1; c <= Math.min(maxC, area + 1); c++) {
-            var L = boxLayout(n, hero, c)
-            if (!L) continue
+        var area = n + (tries[t] ? 3 : 0)
+        for (var c = 1; c <= Math.min(maxC, area); c++) {
+            var L = boxLayout(n, tries[t], c)
+            if (!L || L.stretch > MAX_STRETCH) continue
             L.score = shapeCost(L, geo)
             out.push(L)
         }
     }
     out.sort(function(a, b) { return a.score - b.score || a.c - b.c || (a.hero ? -1 : 1) })
-    if (!out.length) out.push(boxLayout(n, false, 1))
+    if (!out.length) out.push(boxLayout(n, false, Math.min(maxC, n)))
     return out
 }
 function boxShape(n, heroOk, maxC, geo) { return boxShapes(n, heroOk, maxC, geo)[0] }
@@ -315,8 +313,9 @@ function boxShape(n, heroOk, maxC, geo) { return boxShapes(n, heroOk, maxC, geo)
 // tile held back to the end, a lone hero set small. The search has a budget. The wall is
 // also laid in bands (see bands()), which always closes, and the cheaper of the two by box
 // shape cost stands.
-// Returns { tiles: [{ kind: frame|label|hero|small, item, card, airing, col, row, colSpan,
-// rowSpan }] sorted by row then col (a frame before what it holds), rows } in units.
+// Returns { tiles: [{ kind: frame|hero|small, item, card, airing, box, inner, col, row,
+// colSpan, rowSpan }] sorted by row then col (a frame before what it holds), rows } in units;
+// a member's `box` is its frame tile and `inner` its place in the box (see the mapping).
 var MAX_NODES = 2000, MAX_GREEDY = 120
 function packGroups(items, cols, unitsSmall, geo) {
     cols = Math.max(1, cols)
@@ -451,24 +450,28 @@ function packGroups(items, cols, unitsSmall, geo) {
         slots = banded.slots
     }
 
-    // Slots to units, boxes to their frame, label and members
+    // Slots to units: a box to its frame (which draws the strip) and its members, each
+    // member carrying its place inside the box (`inner`: x and w in columns, row and rows in
+    // inner rows, and the box's c and k) and, for the live window, the unit row it falls on
     var us = unitsSmall
     var tiles = []
     for (var k2 = 0; k2 < placedList.length; k2++) {
         var pl = placedList[k2], item = items[pl.j]
         if (pl.shape) {
             var S = pl.shape
-            tiles.push({ kind: "frame", item: pl.j, card: null, airing: !!item.airing, col: pl.col, row: pl.row * us, colSpan: S.c, rowSpan: S.k * us })
+            var frameTile = { kind: "frame", item: pl.j, card: null, airing: !!item.airing, col: pl.col, row: pl.row * us, colSpan: S.c, rowSpan: S.k * us }
+            tiles.push(frameTile)
             var heroCard = S.hero ? item.hero : null
             var members = heroCard ? item.cards.filter(function(c) { return c.id !== heroCard.id }) : item.cards
             var mi = 0
             for (var ci = 0; ci < S.cells.length; ci++) {
                 var cell = S.cells[ci]
-                var cardOf = cell.kind === "label" ? null : cell.kind === "hero" ? heroCard : members[mi++]
-                tiles.push({ kind: cell.kind, item: pl.j, card: cardOf, airing: !!item.airing, col: pl.col + cell.col, row: (pl.row + cell.row) * us, colSpan: cell.colSpan, rowSpan: cell.rowSpan * us })
+                tiles.push({ kind: cell.kind, item: pl.j, card: cell.kind === "hero" ? heroCard : members[mi++], airing: !!item.airing, box: frameTile,
+                             col: pl.col + Math.floor(cell.x), row: (pl.row + cell.row) * us, colSpan: Math.max(1, Math.round(cell.w)), rowSpan: cell.rows * us,
+                             inner: { x: cell.x, w: cell.w, row: cell.row, rows: cell.rows, c: S.c, k: S.k } })
             }
         } else {
-            tiles.push({ kind: pl.span === 2 ? "hero" : "small", item: pl.j, card: item.cards[0], airing: false, col: pl.col, row: pl.row * us, colSpan: pl.span, rowSpan: pl.span * us })
+            tiles.push({ kind: pl.span === 2 ? "hero" : "small", item: pl.j, card: item.cards[0], airing: false, box: null, col: pl.col, row: pl.row * us, colSpan: pl.span, rowSpan: pl.span * us })
         }
     }
     tiles.sort(function(a, b) { return a.row - b.row || a.col - b.col || (a.kind === "frame" ? -1 : b.kind === "frame" ? 1 : 0) })
@@ -481,7 +484,7 @@ function packGroups(items, cols, unitsSmall, geo) {
 // dynamic programming over the boxes (at most BAND_MAX to a band) and the band heights,
 // each band's widths by a knapsack to the column count, for the least total shape cost.
 // A box alone at the full width is always a band, so this always closes.
-var BAND_MAX = 8
+var BAND_MAX = 8, MAX_STRETCH = 1.5
 function bands(items, isBox, heroOk, cols, geo) {
     var boxes = []
     for (var i = 0; i < items.length; i++) if (isBox[i]) boxes.push(i)
@@ -497,15 +500,20 @@ function bands(items, isBox, heroOk, cols, geo) {
         for (var c = 1; c <= cols; c++) {
             var L = heroOk[j] ? boxLayout(n, true, c) : null
             if (!L || L.k !== K) L = boxLayout(n, false, c)
-            if (!L || L.k !== K) continue
+            if (!L || L.k !== K || L.stretch > MAX_STRETCH) continue
             out.push({ c: c, L: L, cost: shapeCost(L, geo) })
+        }
+        // alone at the full width a box always makes a band, whatever its stretch
+        if (!out.some(function(o) { return o.c === cols })) {
+            var full = boxLayout(n, false, cols)
+            if (full && full.k === K) out.push({ c: cols, L: full, cost: shapeCost(full, geo) })
         }
         return (optsMemo[key] = out)
     }
     for (var b0 = 0; b0 < B; b0++) {
         var n0 = items[boxes[b0]].cards.length + (heroOk[boxes[b0]] ? 3 : 0)
-        heights[Math.ceil((items[boxes[b0]].cards.length + 1) / cols)] = true
-        heights[Math.ceil((n0 + 1) / cols)] = true
+        heights[Math.ceil(items[boxes[b0]].cards.length / cols)] = true
+        heights[Math.ceil(n0 / cols)] = true
     }
     var Ks = Object.keys(heights).map(Number)
     // best[i]: the least cost to lay boxes 0..i-1; via[i]: { from, K, picks }
