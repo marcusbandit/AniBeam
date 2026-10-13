@@ -231,7 +231,11 @@ pub fn from_base16(theme: &Base16Theme, _contrast: bool, steps: &Steps) -> Palet
         dim: p[4],
     };
     let hues = [p[8], p[9], p[10], p[11], p[12], p[13], p[14], p[15]];
+    // A neutral slot makes a monochrome theme: the accent is the text ramp's brightest
     let accent = match theme.accent.as_str() {
+        "base05" => p[5],
+        "base06" => p[6],
+        "base07" => p[7],
         "base08" => p[8],
         "base09" => p[9],
         "base0A" => p[10],

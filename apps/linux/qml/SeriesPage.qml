@@ -672,7 +672,7 @@ Item {
                             width: parent.width; spacing: theme.space(1.5)
                             Repeater {
                                 model: tagsTile.tags
-                                Chip { required property var modelData; text: modelData.name + ", " + modelData.rank + "%"; mono: false; color: theme.raised; textColor: modelData.spoiler || modelData.adult ? theme.yellow : theme.textDim }
+                                Chip { required property var modelData; text: modelData.name + ", " + modelData.rank + "%"; mono: false; color: theme.raised; textColor: modelData.spoiler || modelData.adult ? theme.text : theme.textDim }
                             }
                         }
                     }

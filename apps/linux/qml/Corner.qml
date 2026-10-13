@@ -66,6 +66,20 @@ Item {
         sourceComponent: root.fillItem !== null ? filledShape : curvedShape
     }
 
+    // The sheen: a lit pane catches light from above, a soft wash that fades out by
+    // `theme.sheenReach` of its height (capped so a tall pane's sheen stays a band at its
+    // top). Drawn only on panes with a highlight, so a quiet strip stays flat.
+    Rectangle {
+        visible: root.highlight.a > 0 && theme.sheen.a > 0
+        x: root.borderWidth; y: root.borderWidth
+        width: Math.max(0, root.width - root.borderWidth * 2)
+        height: Math.min(Math.max(0, root.height - root.borderWidth * 2) * theme.sheenReach, theme.sheenMax)
+        gradient: Gradient {
+            GradientStop { position: 0; color: theme.sheen }
+            GradientStop { position: 1; color: Qt.rgba(theme.sheen.r, theme.sheen.g, theme.sheen.b, 0) }
+        }
+        z: 0
+    }
     // Above the fill (and a fill item), below the caller's children
     Rectangle {
         visible: root.highlight.a > 0

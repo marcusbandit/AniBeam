@@ -67,7 +67,13 @@ Item {
     readonly property color glassPressed: glassOf(dark ? 0.09 : 0.11)
     readonly property color glassEdge: glassOf(dark ? 0.08 : 0.12)
     readonly property color glassEdgeStrong: glassOf(dark ? 0.16 : 0.22)
-    readonly property color glassHighlight: dark ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(1, 1, 1, 0.75)
+    readonly property color glassHighlight: dark ? Qt.rgba(1, 1, 1, 0.22) : Qt.rgba(1, 1, 1, 0.85)
+    // The sheen under the highlight (Corner.qml): light falling on the glass from above,
+    // strongest at the top edge and gone by sheenReach of the pane's height, never deeper
+    // than sheenMax px.
+    readonly property color sheen: dark ? Qt.rgba(1, 1, 1, 0.055) : Qt.rgba(1, 1, 1, 0.45)
+    readonly property real sheenReach: 0.6
+    readonly property real sheenMax: 120
     // A floating pane (menus, tips, sheets, popups, the drawer) sits over arbitrary content,
     // so it is opaque: the ground lifted one glass step (any alpha let text ghost through).
     function lifted(t, a) { var c = tone(bg, ink, t); return Qt.rgba(c.r, c.g, c.b, a) }
@@ -144,7 +150,7 @@ Item {
     readonly property string fontUi: fontFamily
     readonly property string fontSerif: fontFamily
     // Four sizes only; widths and weights do the rest
-    readonly property real typeDisplay: systemPointSize * 2.2
+    readonly property real typeDisplay: systemPointSize * 2.8
     readonly property real typeNormal: systemPointSize
     readonly property real typeSmall: systemPointSize * 0.85
     readonly property real typeLarge: systemPointSize * 1.5
@@ -152,13 +158,13 @@ Item {
     // `role: "title"`; a plain Text can take the same through these functions:
     //   font.variableAxes: theme.roleAxes(r)   font.weight: theme.roleWeight(r)
     //   font.pointSize: theme.roleSize(r)      font.features: theme.roleFeatures(r)
-    //   display  page titles, the hero tile's title   wdth 125, wght 760, typeDisplay
-    //   title    titles on posters, section names     wdth 112, wght 650, typeLarge or typeNormal
+    //   display  page titles, the hero tile's title   wdth 68, wght 330, typeDisplay (tall, condensed, light)
+    //   title    titles on posters, section names     wdth 86, wght 600, typeLarge or typeNormal
     //   ui       controls, body                      wdth 100, wght 450, typeNormal
     //   ledger   tables, episode lists, counts, times wdth 88, wght 500, tabular, typeSmall
     readonly property var roles: ({
-        display: { wdth: 125, wght: 760 },
-        title: { wdth: 112, wght: 650 },
+        display: { wdth: 68, wght: 330 },
+        title: { wdth: 86, wght: 600 },
         ui: { wdth: 100, wght: 450 },
         ledger: { wdth: 88, wght: 500 }
     })

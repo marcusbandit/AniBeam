@@ -315,12 +315,12 @@ mod tests {
         };
         let inputs = read_inputs(&paths, Portal::default());
         let r = resolve(inputs);
-        assert_eq!(r.dark.bg.to_hex(), "#0e1013", "the near-black slate ground");
+        assert_eq!(r.dark.bg.to_hex(), "#0c0d10", "the graphite ground");
         assert_eq!(r.dark.surface.to_hex(), "#16181b", "the resting glass, composited");
-        assert_eq!(r.dark.accent.to_hex(), "#7fb3d4", "smalt");
-        assert_eq!(r.dark.source_label, "theme Tesserae Dark");
+        assert_eq!(r.dark.accent.to_hex(), "#f2f4f6", "monochrome: the accent is white");
+        assert_eq!(r.dark.source_label, "theme Graphite Glass");
         assert_eq!(r.light.bg.to_hex(), "#e3e6ea", "the pale ground");
-        assert_eq!(r.light.source_label, "theme Tesserae Light");
+        assert_eq!(r.light.source_label, "theme Graphite Glass Light");
         for p in [&r.dark, &r.light] {
             // faint text is legible on the ground and the tile, the accent reads as text on
             // a tile, and the ink on an accent fill (a primary button) reads too

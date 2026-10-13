@@ -1,8 +1,8 @@
 system: "base16"
-name: "Tesserae Light"
+name: "Graphite Glass Light"
 author: "AniBeam glass mosaic, the light companion: smoked glass on a pale ground"
 variant: "light"
-accent: "base0D"
+accent: "base07"
 # The glass mosaic, light. Glass is the text colour at low alpha over the pale ground
 # (dark-on-light), with a white top highlight; see tesserae-dark.yaml and Tokens.qml.
 palette:
@@ -13,7 +13,7 @@ palette:
   base04: "#4f5862"
   base05: "#111418"
   base06: "#0b0d10"
-  base07: "#000000"
+  base07: "#0b0d10"
   base08: "#be421b"
   base09: "#a8551d"
   base0A: "#8d6110"

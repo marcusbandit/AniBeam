@@ -368,7 +368,7 @@ Item {
                     id: filesCount
                     text: metaRow.have + " of " + (metaRow.expected > 0 ? metaRow.expected : "?") + (metaRow.extra > 0 ? ", " + metaRow.extra + " extra" : "")
                     role: "ledger"
-                    color: metaRow.extra > 0 ? theme.yellow : theme.textDim
+                    color: theme.textDim
                     Tooltip { text: metaRow.extra > 0 ? "Files beyond the expected count, likely misnamed or stray" : "" }
                 }
                 Corner {
@@ -382,7 +382,7 @@ Item {
                         width: Math.max(metaRow.pct > 0 ? height : 0, parent.width * metaRow.pct)
                         height: parent.height
                         radius: height / 2; smoothing: theme.cornerSmoothing
-                        color: metaRow.extra > 0 ? theme.yellow : theme.caughtUp
+                        color: theme.caughtUp
                     }
                 }
             }
