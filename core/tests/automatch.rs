@@ -24,6 +24,23 @@ fn media_json(id: u64, romaji: &str, cover: bool) -> serde_json::Value {
     })
 }
 
+/// `media_json` with the fields the matcher's short rules read: format,
+/// duration in minutes, and the synonyms.
+fn media_json_as(
+    id: u64,
+    romaji: &str,
+    format: &str,
+    duration: Option<u32>,
+    synonyms: &[&str],
+) -> serde_json::Value {
+    let mut m = media_json(id, romaji, true);
+    m["format"] = serde_json::json!(format);
+    m["duration"] = serde_json::json!(duration);
+    m["episodes"] = serde_json::json!(1);
+    m["synonyms"] = serde_json::json!(synonyms);
+    m
+}
+
 fn list_cards(core: &Core) -> Vec<SeriesCard> {
     match core
         .call(Call::ListSeries {
@@ -414,4 +431,81 @@ fn an_error_from_the_last_provider_leaves_the_series_unstamped() {
     assert_eq!(http.requests().len(), 2, "{:#?}", http.requests());
     assert!(attempted_at(&core, series).is_none());
     core.shutdown();
+}
+
+/// Issue #35: the film folder "Kimi no Na wa" must land on AniList 21519
+/// "Kimi no Na wa." and not on 97962, the one-minute Suntory ad that lists
+/// the film's title as a synonym and that the search returns first.
+#[test]
+fn a_film_folder_matches_kimi_no_na_wa_and_not_the_suntory_short() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let src = fixtures::insert_source(&core, "/lib");
+    let film = fixtures::insert_series(
+        &core,
+        src,
+        SeriesKind::Movie,
+        "/lib/Kimi no Na wa",
+        "Kimi no Na wa",
+    );
+    fixtures::insert_file(
+        &core,
+        film,
+        "/lib/Kimi no Na wa/Kimi no Na wa.mkv",
+        1.0,
+        None,
+        "episode",
+        1,
+    );
+
+    // The search, the short first; then the film's enrichment, schedule,
+    // Jikan and poster.
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "Page": { "media": [
+            media_json_as(97962, "Suntory Minami Alps no Tennen Mizu x Kimi no Na wa", "SPECIAL", Some(1), &["Kimi no Na wa"]),
+            media_json_as(21519, "Kimi no Na wa.", "MOVIE", Some(106), &["Your Name."]),
+        ] } } }),
+    );
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "Media": { "id": 21519, "idMal": 22519, "type": "ANIME", "streamingEpisodes": [], "tags": [], "studios": { "edges": [] }, "characters": { "edges": [] }, "recommendations": { "edges": [] }, "relations": { "edges": [] } } } }),
+    );
+    http.push_json(200, serde_json::json!({ "data": { "Media": { "id": 21519, "nextAiringEpisode": null, "airingSchedule": { "nodes": [] } } } }));
+    http.push_for(
+        "jikan.moe",
+        200,
+        serde_json::json!({ "data": [] }).to_string(),
+    );
+    http.push_for("img/21519-xl.jpg", 200, vec![1, 2, 3]);
+
+    let job = started(&core, Call::AutoMatch);
+    let done = common::wait_job(&c, job);
+    assert!(
+        matches!(
+            done.body,
+            EventBody::AutoMatchFinished {
+                backfilled: 0,
+                matched: 1,
+                unmatched: 0
+            }
+        ),
+        "{done:?}"
+    );
+    assert!(
+        c.events()
+            .iter()
+            .any(|e| e.message == "Match (AniList 1.10): Kimi no Na wa -> Kimi no Na wa."),
+        "{:#?}",
+        c.events()
+    );
+    let cards = list_cards(&core);
+    let matched = cards.iter().find(|s| s.id == film).unwrap();
+    assert_eq!(
+        matched
+            .match_info
+            .as_ref()
+            .map(|m| (m.provider, m.anilist_id, m.confirmed)),
+        Some((Provider::Anilist, Some(21519), false))
+    );
 }

@@ -12,6 +12,17 @@
 //! threshold and has a poster to draw. The first provider whose winner is
 //! accepted is the match; the next is only asked when this one missed.
 //!
+//! Three rules sit on top of the similarity, all learned from "Kimi no Na
+//! wa" landing on a one-minute Suntory ad that lists the film's title as a
+//! synonym. A synonym scores a little under a main title, so the film's own
+//! title beats a short that merely cites it. A film folder leans toward
+//! MOVIE candidates and away from MUSIC and SPECIAL ones, as a bonus and a
+//! penalty on the score rather than a filter, so a film folder holding an
+//! OVA with a unique title still finds it. And an AniList candidate that is
+//! a short, under five minutes or format MUSIC, is never auto-matched at
+//! all: it stays in the manual picker's list, where the user can still
+//! choose it on purpose.
+//!
 //! One attempt per series, ever. A miss stamps `attempted_at` once every
 //! provider has answered with a miss, so the next run walks past it rather
 //! than asking the same questions again; the manual picker is the
@@ -22,7 +33,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
+use rusqlite::{params, params_from_iter, Connection, OptionalExtension};
 
 use crate::contract::*;
 use crate::core::Core;
@@ -45,6 +56,26 @@ use crate::time;
 /// close" one: anything further off is left for the manual picker.
 pub const THRESHOLD: f64 = 0.5;
 
+/// What a match on a synonym alone gives up against a match on the romaji,
+/// English or native title. Small: a folder named by a synonym still
+/// clears the threshold on it; it only loses to an entry that carries the
+/// same words as its own title.
+pub const SYNONYM_DISCOUNT: f64 = 0.05;
+
+/// What a MOVIE candidate gains when the folder is a film.
+pub const MOVIE_BONUS: f64 = 0.10;
+
+/// What a MUSIC or SPECIAL candidate loses when the folder is a film.
+/// Sized so an exact-title ad short loses to the film with the same title
+/// and so a special with a unique title, exact at 1.0, still clears the
+/// threshold from a film folder.
+pub const SHORT_FORMAT_PENALTY: f64 = 0.20;
+
+/// An AniList entry shorter than this many minutes is a short, and a short
+/// never auto-matches: a folder with a film or a season in it is not a
+/// one-minute ad, whatever the ad calls itself.
+pub const MIN_DURATION: u32 = 5;
+
 /// Bumped when the matcher's rules change. A stored version below this one
 /// clears every failed attempt stamped under an older version so the whole
 /// library is tried again under the new rules; a match already made, and a
@@ -56,22 +87,57 @@ pub const AUTO_MATCH_VERSION: u32 = 2;
 /// manual picker shows.
 const RESULTS: u32 = 10;
 
+/// An AniList entry the auto-match never picks: a known duration under
+/// `MIN_DURATION`, or format MUSIC. The manual picker still lists it.
+pub fn is_short(m: &Media) -> bool {
+    m.duration.is_some_and(|d| d < MIN_DURATION) || m.format.as_deref() == Some("MUSIC")
+}
+
+/// One candidate's score for a folder of this kind: the best Dice over its
+/// main titles, or over its synonyms less `SYNONYM_DISCOUNT`, whichever is
+/// higher, then the format lean for a film folder. The lean is an
+/// adjustment and not a cap, so a film with its exact title scores above
+/// 1.0; the log prints what the pick saw.
+pub fn score(query: &str, kind: SeriesKind, m: &Media) -> f64 {
+    let main = best_title_score(
+        query,
+        &[
+            m.title.romaji.as_deref(),
+            m.title.english.as_deref(),
+            m.title.native.as_deref(),
+        ],
+    );
+    let synonyms: Vec<Option<&str>> = m.synonyms.iter().map(|s| Some(s.as_str())).collect();
+    let synonym = best_title_score(query, &synonyms);
+    let synonym = if synonym > 0.0 {
+        synonym - SYNONYM_DISCOUNT
+    } else {
+        0.0
+    };
+    let mut score = main.max(synonym);
+    if kind == SeriesKind::Movie {
+        match m.format.as_deref() {
+            Some("MOVIE") => score += MOVIE_BONUS,
+            Some("MUSIC") | Some("SPECIAL") => score -= SHORT_FORMAT_PENALTY,
+            _ => {}
+        }
+    }
+    score
+}
+
 /// The best-scoring candidate and its score, or nothing.
 ///
-/// The cover is a gate on the winner rather than a filter over the field,
-/// which is Electron's order: the best-scoring entry is the answer, and an
-/// answer with no poster to draw is refused rather than quietly replaced
-/// by a worse-scoring one.
-pub fn pick<'a>(query: &str, results: &'a [Media]) -> Option<(&'a Media, f64)> {
+/// Shorts are left out of the field before scoring, which is the one place
+/// a candidate is filtered rather than scored: a short is never the right
+/// answer for a folder, so leaving it in could only ever hide the right
+/// one. The cover, by contrast, is a gate on the winner rather than a
+/// filter over the field, which is Electron's order: the best-scoring
+/// entry is the answer, and an answer with no poster to draw is refused
+/// rather than quietly replaced by a worse-scoring one.
+pub fn pick<'a>(query: &str, kind: SeriesKind, results: &'a [Media]) -> Option<(&'a Media, f64)> {
     let mut best: Option<(&Media, f64)> = None;
-    for r in results {
-        let mut titles: Vec<Option<&str>> = vec![
-            r.title.romaji.as_deref(),
-            r.title.english.as_deref(),
-            r.title.native.as_deref(),
-        ];
-        titles.extend(r.synonyms.iter().map(|s| Some(s.as_str())));
-        let score = best_title_score(query, &titles);
+    for r in results.iter().filter(|r| !is_short(r)) {
+        let score = score(query, kind, r);
         // Strict, so a tie keeps the earlier and more relevant result.
         if best.is_none_or(|(_, b)| score > b) {
             best = Some((r, score));
@@ -145,10 +211,14 @@ fn armed(core: &Core) -> Vec<u64> {
 
 /// The next series worth a search: never matched, never attempted, its
 /// files still on disk, and not one of `skip`. Ordered by id, so the run
-/// is deterministic and the caller can walk it one at a time.
-fn next_candidate(conn: &Connection, skip: &[u64]) -> Result<Option<(u64, String)>, CoreError> {
+/// is deterministic and the caller can walk it one at a time. The kind
+/// comes along because a film folder scores its candidates differently.
+fn next_candidate(
+    conn: &Connection,
+    skip: &[u64],
+) -> Result<Option<(u64, String, SeriesKind)>, CoreError> {
     let mut sql = String::from(
-        "SELECT id, folder_name FROM series
+        "SELECT id, folder_name, kind FROM series
          WHERE provider IS NULL AND attempted_at IS NULL AND missing_since IS NULL
            AND EXISTS (SELECT 1 FROM files WHERE files.series_id = series.id)",
     );
@@ -159,7 +229,12 @@ fn next_candidate(conn: &Connection, skip: &[u64]) -> Result<Option<(u64, String
     let mut stmt = conn.prepare(&sql)?;
     let row = stmt
         .query_row(params_from_iter(skip.iter().map(|id| *id as i64)), |r| {
-            Ok((r.get::<_, i64>(0)? as u64, r.get::<_, String>(1)?))
+            let kind: String = r.get(2)?;
+            Ok((
+                r.get::<_, i64>(0)? as u64,
+                r.get::<_, String>(1)?,
+                SeriesKind::from_column(&kind).unwrap_or(SeriesKind::Show),
+            ))
         })
         .optional()?;
     Ok(row)
@@ -196,12 +271,13 @@ async fn attempt(
     core: &Core,
     series: u64,
     folder: &str,
+    kind: SeriesKind,
     order: &[Provider],
 ) -> Result<Option<Hit>, (Provider, CoreError)> {
     for &provider in order {
         let outcome = match provider {
             Provider::Tvmaze => attempt_tvmaze(core, series, folder).await,
-            _ => attempt_anilist(core, series, folder).await,
+            _ => attempt_anilist(core, series, folder, kind).await,
         };
         match outcome {
             Ok(Some(hit)) => return Ok(Some(hit)),
@@ -213,9 +289,14 @@ async fn attempt(
 }
 
 /// AniList's turn: the search, the pick, and, on a hit, the whole record.
-async fn attempt_anilist(core: &Core, series: u64, folder: &str) -> Result<Option<Hit>, CoreError> {
+async fn attempt_anilist(
+    core: &Core,
+    series: u64,
+    folder: &str,
+    kind: SeriesKind,
+) -> Result<Option<Hit>, CoreError> {
     let results = core.anilist.search(folder, RESULTS).await?;
-    let Some((media, score)) = pick(folder, &results) else {
+    let Some((media, score)) = pick(folder, kind, &results) else {
         return Ok(None);
     };
     let title = matched_title(media);
@@ -312,13 +393,13 @@ pub fn start(core: &Arc<Core>) -> u64 {
             skip.extend(seen.iter().copied());
             skip.sort_unstable();
             skip.dedup();
-            let Some((series, folder)) = owner.store.write_async(move |c| next_candidate(c, &skip)).await? else { break };
+            let Some((series, folder, kind)) = owner.store.write_async(move |c| next_candidate(c, &skip)).await? else { break };
             seen.insert(series);
             ctx.progress(matched + unmatched, None, &folder);
 
             let outcome = {
                 let _in_flight = InFlight::begin(&owner.library, series);
-                attempt(&owner, series, &folder, &order).await
+                attempt(&owner, series, &folder, kind, &order).await
             };
             match outcome {
                 Ok(Some(hit)) => {
@@ -446,7 +527,7 @@ mod tests {
         // Electron's order: the best-scoring candidate is chosen first and
         // then has to have a cover, so the coverless winner is not replaced
         // by the runner-up.
-        assert!(pick(query, &results).is_none());
+        assert!(pick(query, SeriesKind::Show, &results).is_none());
 
         // With a cover on it, that same best candidate wins.
         let mut with_cover = results.clone();
@@ -454,7 +535,7 @@ mod tests {
             large: Some("https://img/2.jpg".into()),
             extra_large: None,
         });
-        let (m, score) = pick(query, &with_cover).unwrap();
+        let (m, score) = pick(query, SeriesKind::Show, &with_cover).unwrap();
         assert_eq!(m.id, 2);
         assert!((score - 0.75).abs() < 1e-9, "{score}");
 
@@ -463,15 +544,21 @@ mod tests {
             media(4, "one two yy zz", true),
             media(5, "one two aa bb", true),
         ];
-        assert_eq!(pick(query, &tie).unwrap().0.id, 4);
+        assert_eq!(pick(query, SeriesKind::Show, &tie).unwrap().0.id, 4);
 
         // Nothing clears the bar.
-        assert!(pick(query, &[media(6, "nothing like it", true)]).is_none());
-        assert!(pick(query, &[]).is_none());
+        assert!(pick(
+            query,
+            SeriesKind::Show,
+            &[media(6, "nothing like it", true)]
+        )
+        .is_none());
+        assert!(pick(query, SeriesKind::Show, &[]).is_none());
     }
 
     /// The synonyms are scored too: AniList's romaji for a series is often
-    /// not what the folder is called.
+    /// not what the folder is called. A synonym match carries the small
+    /// discount and still clears the bar on its own.
     #[test]
     fn a_synonym_can_win_the_match() {
         let m = Media {
@@ -487,8 +574,165 @@ mod tests {
             }),
             ..Default::default()
         };
-        let (picked, score) = pick("Frieren at the Funeral", std::slice::from_ref(&m)).unwrap();
+        let (picked, score) = pick(
+            "Frieren at the Funeral",
+            SeriesKind::Show,
+            std::slice::from_ref(&m),
+        )
+        .unwrap();
         assert_eq!(picked.id, 1);
-        assert!((score - 1.0).abs() < 1e-9, "{score}");
+        assert!((score - (1.0 - SYNONYM_DISCOUNT)).abs() < 1e-9, "{score}");
+    }
+
+    /// The real case behind the rules: AniList 21519 "Kimi no Na wa." the
+    /// film, and 97962 "Suntory Minami Alps no Tennen Mizu x Kimi no Na
+    /// wa", the one-minute ad short that lists the film's title among its
+    /// synonyms. The search returns the short first.
+    fn kimi_no_na_wa() -> Media {
+        let mut m = media(21519, "Kimi no Na wa.", true);
+        m.title.english = Some("Your Name.".into());
+        m.format = Some("MOVIE".into());
+        m.duration = Some(106);
+        m.episodes = Some(1);
+        m
+    }
+
+    fn suntory_short(format: &str, duration: Option<u32>) -> Media {
+        let mut m = media(
+            97962,
+            "Suntory Minami Alps no Tennen Mizu x Kimi no Na wa",
+            true,
+        );
+        m.synonyms = vec!["Kimi no Na wa".into()];
+        m.format = Some(format.into());
+        m.duration = duration;
+        m.episodes = Some(1);
+        m
+    }
+
+    /// Rule 3: the film's own title beats a short that lists the film's
+    /// title as a synonym, and the synonym match itself scores a little
+    /// under the title match. Kind Show here, so no format lean is in play
+    /// and only the synonym discount separates them.
+    #[test]
+    fn kimi_no_na_wa_beats_the_suntory_short_on_its_synonym() {
+        let short = suntory_short("ONA", None);
+        let film = kimi_no_na_wa();
+        let synonym = score("Kimi no Na wa", SeriesKind::Show, &short);
+        let title = score("Kimi no Na wa", SeriesKind::Show, &film);
+        assert!(
+            (synonym - (1.0 - SYNONYM_DISCOUNT)).abs() < 1e-9,
+            "{synonym}"
+        );
+        assert!((title - 1.0).abs() < 1e-9, "{title}");
+        let results = vec![short, film];
+        assert_eq!(
+            pick("Kimi no Na wa", SeriesKind::Show, &results)
+                .unwrap()
+                .0
+                .id,
+            21519
+        );
+    }
+
+    /// Rule 1: a film folder leans toward the MOVIE and away from the
+    /// SPECIAL. The short's duration is unknown here so the gate does not
+    /// remove it, and the lean alone has to decide.
+    #[test]
+    fn a_film_folder_prefers_the_film_over_the_suntory_special() {
+        let short = suntory_short("SPECIAL", None);
+        let film = kimi_no_na_wa();
+        let penalised = score("Kimi no Na wa", SeriesKind::Movie, &short);
+        let boosted = score("Kimi no Na wa", SeriesKind::Movie, &film);
+        assert!(
+            (penalised - (1.0 - SYNONYM_DISCOUNT - SHORT_FORMAT_PENALTY)).abs() < 1e-9,
+            "{penalised}"
+        );
+        assert!((boosted - (1.0 + MOVIE_BONUS)).abs() < 1e-9, "{boosted}");
+        let results = vec![short, film];
+        let (m, s) = pick("Kimi no Na wa", SeriesKind::Movie, &results).unwrap();
+        assert_eq!(m.id, 21519);
+        assert!((s - boosted).abs() < 1e-9, "{s}");
+        // A show folder gets no lean at all.
+        let plain = score("Kimi no Na wa", SeriesKind::Show, &results[1]);
+        assert!((plain - 1.0).abs() < 1e-9, "{plain}");
+    }
+
+    /// Rule 1's other half: the penalty is not a filter. A film folder
+    /// holding an OVA or a special with a unique title still matches it.
+    #[test]
+    fn a_film_folder_still_matches_an_ova_or_a_special_with_a_unique_title() {
+        let mut ova = media(1, "Kara no Kyoukai: Mirai Fukuin", true);
+        ova.format = Some("OVA".into());
+        ova.duration = Some(88);
+        let (m, s) = pick(
+            "Kara no Kyoukai Mirai Fukuin",
+            SeriesKind::Movie,
+            std::slice::from_ref(&ova),
+        )
+        .unwrap();
+        assert_eq!(m.id, 1);
+        assert!((s - 1.0).abs() < 1e-9, "{s}");
+
+        let mut special = media(2, "Gintama: Shiroyasha Koutan", true);
+        special.format = Some("SPECIAL".into());
+        special.duration = Some(10);
+        let (m, s) = pick(
+            "Gintama Shiroyasha Koutan",
+            SeriesKind::Movie,
+            std::slice::from_ref(&special),
+        )
+        .unwrap();
+        assert_eq!(m.id, 2);
+        assert!((s - (1.0 - SHORT_FORMAT_PENALTY)).abs() < 1e-9, "{s}");
+        assert!(s >= THRESHOLD);
+    }
+
+    /// Rule 2: a short never auto-matches. The Suntory ad as AniList really
+    /// lists it, one minute long, is out of the field for a film folder and
+    /// a show folder alike, and so is anything of format MUSIC, whatever
+    /// its length. With the short out, the film behind it is the pick.
+    #[test]
+    fn the_suntory_short_never_auto_matches() {
+        let one_minute = suntory_short("SPECIAL", Some(1));
+        assert!(is_short(&one_minute));
+        assert!(pick(
+            "Kimi no Na wa",
+            SeriesKind::Movie,
+            std::slice::from_ref(&one_minute)
+        )
+        .is_none());
+        assert!(pick(
+            "Kimi no Na wa",
+            SeriesKind::Show,
+            std::slice::from_ref(&one_minute)
+        )
+        .is_none());
+
+        let mut music = media(3, "Kimi no Na wa", true);
+        music.format = Some("MUSIC".into());
+        music.duration = Some(30);
+        assert!(is_short(&music));
+        assert!(pick(
+            "Kimi no Na wa",
+            SeriesKind::Show,
+            std::slice::from_ref(&music)
+        )
+        .is_none());
+
+        // Five minutes is not a short; an unknown duration is not either.
+        let mut five = media(4, "Kimi no Na wa", true);
+        five.duration = Some(5);
+        assert!(!is_short(&five));
+        assert!(!is_short(&suntory_short("ONA", None)));
+
+        let results = vec![one_minute, kimi_no_na_wa()];
+        assert_eq!(
+            pick("Kimi no Na wa", SeriesKind::Movie, &results)
+                .unwrap()
+                .0
+                .id,
+            21519
+        );
     }
 }
