@@ -1,18 +1,19 @@
 // The subscriptions: what anirss watches for the user, read-only, reached from the Library
-// settings tab's Open button, as tiles on the library's module. ListSubscriptions starts a
-// job that shells out to anirss; SubscriptionsListed carries the result, and its four
+// settings tab's Open button, as sections of uniform flat tiles. ListSubscriptions starts
+// a job that shells out to anirss; SubscriptionsListed carries the result, and its four
 // shapes are the page's four states: feeds, not installed, no qBittorrent session, or no
 // answer. A job that fails, is cancelled, or never answers ends the wait as "no answer".
+// The feeds sit in two sections, Active and Paused, each a grid of tiles whose column
+// count comes from the width.
 import QtQuick
 import com.marcusrosado.AniBeam
-import "mosaic.js" as Mosaic
 
 Item {
     id: page
     objectName: "subscriptions-page"
     property var props: ({})
     property string title: "Subscriptions"
-    property alias scrollY: wall.scrollY
+    property alias scrollY: scroll.contentY
     function escapePressed() { return false }
 
     property var result: null
@@ -45,74 +46,203 @@ Item {
     }
     Component.onCompleted: load()
 
-    FontMetrics { id: smallMetrics; font.family: theme.fontFamily; font.pointSize: theme.typeSmall }
+    // The sections: the active feeds, then the paused ones
+    readonly property var sections: {
+        var active = feeds.filter(function(f) { return f.active })
+        var paused = feeds.filter(function(f) { return !f.active })
+        var out = []
+        if (active.length) out.push({ title: "Active", cards: active, accent: true, fact: Fmt.plural(active.reduce(function(n, f) { return n + (f.torrents || 0) }, 0), "torrent", "torrents") })
+        if (paused.length) out.push({ title: "Paused", cards: paused, accent: false, fact: "" })
+        return out
+    }
+    // The head's one line
+    readonly property string summary: {
+        if (page.waiting || page.result === null) return "Reading your subscriptions."
+        if (feeds.length === 0) return "The feeds you subscribe to, and where each one saves."
+        var active = feeds.filter(function(f) { return f.active }).length
+        return active === feeds.length ? "All active." : active + " of " + feeds.length + " active."
+    }
+    readonly property string kind: page.result ? page.result.kind : ""
 
-    MosaicWall {
-        id: wall
+    // ---- The grid's geometry: as many columns as the width holds at the tile width
+    readonly property real gap: theme.space(4)
+    readonly property real tileMin: theme.space(90)
+    readonly property int cols: Math.max(1, Math.floor((scroll.innerWidth + gap) / (tileMin + gap)))
+    readonly property real tileWidth: Math.floor((scroll.innerWidth - gap * (cols - 1)) / cols)
+
+    PageScroll {
+        id: scroll
         anchors.fill: parent
+        readonly property real innerWidth: width - theme.space(16)
 
-        MosaicWall.HeaderTile {
-            need: titleCol.implicitWidth
-            minSpan: 2
-            flex: true
-            Column {
-                id: titleCol
-                x: parent.pad
+        // ---- The head: the title, the count and the one line beside it, Refresh at the right
+        Item {
+            width: parent.width
+            height: theme.space(14)
+            Label {
+                id: titleLabel
+                anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: theme.space(1)
-                Label { text: "Subscriptions"; role: "display" }
-                Label { text: "The feeds you subscribe to, and where each one saves."; role: "ui"; color: theme.textDim }
+                text: "Subscriptions"
+                role: "display"
             }
-        }
-        MosaicWall.HeaderTile {
-            visible: page.feeds.length > 0
-            need: countRow.implicitWidth
-            Row {
-                id: countRow
-                anchors.right: parent.right; anchors.rightMargin: parent.pad
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: theme.space(1.5)
-                Label {
-                    id: countFigure
-                    text: page.feeds.length
-                    role: "ledger"
-                    font.pointSize: theme.typeDisplay
-                    font.weight: 700
-                    font.variableAxes: ({ "wdth": 88, "wght": 700 })
-                }
-                Label {
-                    anchors.baseline: countFigure.baseline
-                    text: page.feeds.length === 1 ? "feed" : "feeds"
-                    role: "ui"
-                    font.pointSize: theme.typeSmall
-                    color: theme.textDim
-                }
+            Label {
+                id: countLabel
+                visible: page.feeds.length > 0
+                anchors.left: titleLabel.right
+                anchors.leftMargin: theme.space(3)
+                anchors.baseline: titleLabel.baseline
+                text: Fmt.plural(page.feeds.length, "feed", "feeds")
+                role: "ui"
+                color: theme.textDim
             }
-        }
-        MosaicWall.HeaderTile {
-            need: refreshBtn.implicitWidth
+            Label {
+                objectName: "subscriptions-summary"
+                anchors.left: countLabel.visible ? countLabel.right : titleLabel.right
+                anchors.leftMargin: theme.space(3)
+                anchors.right: refreshBtn.left
+                anchors.rightMargin: theme.space(4)
+                anchors.baseline: titleLabel.baseline
+                text: page.summary
+                role: "ui"
+                color: theme.textDim
+                elide: Text.ElideRight
+            }
             Button {
                 id: refreshBtn
                 objectName: "subscriptions-refresh"
-                x: parent.pad
+                anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Refresh"
+                text: page.waiting ? "Reading" : "Refresh"
                 icon: "refresh-cw"
+                flat: true
                 enabled: !page.waiting
                 onClicked: page.load()
             }
         }
 
-        body: page.feeds.length > 0 ? feedTiles : stateTile
-    }
+        // ---- The sections: a heading in the display cut with its count and one fact,
+        // over a grid of uniform tiles
+        Repeater {
+            model: page.sections
+            Column {
+                id: section
+                required property var modelData
+                required property int index
+                objectName: "subscriptions-section-" + String(modelData.title).toLowerCase()
+                width: parent.width
+                spacing: theme.space(3)
+                topPadding: index > 0 ? theme.space(2) : 0
+                Item {
+                    width: parent.width
+                    height: theme.space(12)
+                    Row {
+                        anchors.left: parent.left
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: theme.space(2)
+                        spacing: theme.space(3)
+                        Label {
+                            id: sectionTitle
+                            text: section.modelData.title
+                            role: "display"
+                            font.pointSize: theme.typeLarge
+                            font.variableAxes: ({ "wdth": 74, "wght": 500 })
+                            color: section.modelData.accent ? theme.accent : theme.text
+                        }
+                        Label { anchors.baseline: sectionTitle.baseline; text: section.modelData.cards.length; role: "ledger"; color: theme.textFaint }
+                        Label { anchors.baseline: sectionTitle.baseline; text: section.modelData.fact; role: "ui"; color: theme.textDim }
+                    }
+                }
+                Flow {
+                    width: parent.width
+                    spacing: page.gap
+                    Repeater {
+                        model: section.modelData.cards
+                        // One feed: its name with the state beside it, the torrent count,
+                        // the match, the save path, and a link to the feed
+                        Tile {
+                            id: feedTile
+                            required property var modelData
+                            readonly property var f: modelData || ({})
+                            width: page.tileWidth
+                            height: body.implicitHeight + padding * 2
+                            lit: false
+                            Column {
+                                id: body
+                                width: parent.width
+                                spacing: theme.space(1.5)
+                                Row {
+                                    width: parent.width
+                                    height: theme.controlHeight
+                                    spacing: theme.space(3)
+                                    Icon {
+                                        glyph: "rss"
+                                        size: theme.space(5)
+                                        color: feedTile.f.active ? theme.accent : theme.textFaint
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+                                    Label {
+                                        text: feedTile.f.name || ""
+                                        role: "title"
+                                        elide: Text.ElideRight
+                                        width: parent.width - theme.space(5) - stateLabel.width - parent.spacing * 2
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+                                    Label {
+                                        id: stateLabel
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: feedTile.f.active ? "Active" : "Paused"
+                                        role: "ledger"
+                                        color: feedTile.f.active ? theme.caughtUp : theme.textFaint
+                                    }
+                                }
+                                Label {
+                                    text: Fmt.plural(feedTile.f.torrents || 0, "torrent", "torrents")
+                                    role: "ledger"
+                                    color: theme.textDim
+                                }
+                                Label {
+                                    visible: !!feedTile.f.query
+                                    width: parent.width
+                                    text: "Matches \"" + (feedTile.f.query || "") + "\""
+                                    role: "ledger"
+                                    color: theme.textDim
+                                    elide: Text.ElideRight
+                                }
+                                Row {
+                                    visible: !!feedTile.f.save_path
+                                    width: parent.width
+                                    spacing: theme.space(2)
+                                    Icon { glyph: "folder"; size: theme.space(3.5); color: theme.textFaint; anchors.verticalCenter: parent.verticalCenter }
+                                    Label {
+                                        width: parent.width - theme.space(5.5)
+                                        text: feedTile.f.save_path || ""
+                                        role: "ledger"
+                                        color: theme.textFaint
+                                        elide: Text.ElideMiddle
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+                                }
+                                Item { width: 1; height: theme.space(1) }
+                                Button {
+                                    visible: !!feedTile.f.url
+                                    text: "Open the feed"
+                                    flat: true
+                                    small: true
+                                    onClicked: Qt.openUrlExternally(feedTile.f.url)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
-    // The wait and the four outcomes other than feeds: one tile filling the page
-    Component {
-        id: stateTile
-        Tile {
-            id: st
-            implicitHeight: theme.space(60)
-            readonly property string kind: page.result ? page.result.kind : ""
+        // ---- The wait and the four outcomes other than feeds, in a plain box in the column
+        Item {
+            visible: page.feeds.length === 0
+            width: parent.width
+            height: visible ? theme.space(60) : 0
             EmptyState {
                 visible: page.waiting || page.result === null
                 icon: "rss"
@@ -120,128 +250,29 @@ Item {
                 body: "This takes a few seconds."
             }
             EmptyState {
-                visible: !page.waiting && st.kind === "Ok"
+                visible: !page.waiting && page.kind === "Ok"
                 icon: "rss"
                 title: "No subscriptions yet"
                 body: "Add a feed in anirss, then come back here."
             }
             EmptyState {
-                visible: !page.waiting && st.kind === "Missing"
+                visible: !page.waiting && page.kind === "Missing"
                 icon: "circle-alert"
                 title: "Subscriptions need anirss"
                 body: "anirss was not found on your system. Install it to see your subscriptions."
             }
             EmptyState {
-                visible: !page.waiting && st.kind === "NeedsAuth"
+                visible: !page.waiting && page.kind === "NeedsAuth"
                 icon: "log-in"
                 title: "Not logged in to qBittorrent"
                 body: "Run anirss once in a terminal and log in to qBittorrent. AniBeam will pick up that login."
             }
             EmptyState {
-                visible: !page.waiting && (st.kind === "Timeout" || st.kind === "Error")
+                visible: !page.waiting && (page.kind === "Timeout" || page.kind === "Error")
                 icon: "clock"
                 title: "Subscriptions did not load"
                 body: page.result && page.result.message ? page.result.message : "Check that qBittorrent is running."
                 Button { text: "Try again"; icon: "refresh-cw"; onClicked: page.load() }
-            }
-        }
-    }
-
-    // The feeds: one tile each, as many across as fit at three columns or more, the rows
-    // stretched on whole units to fill the viewport when they would leave it half empty
-    Component {
-        id: feedTiles
-        Item {
-            id: grid
-            readonly property int span: Math.min(wall.geo.cols, Math.max(3, wall.spanFor(theme.space(110))))
-            readonly property int across: Math.max(1, Math.floor(wall.geo.cols / span))
-            readonly property int rows: Math.ceil(page.feeds.length / across)
-            readonly property real lineH: smallMetrics.height + theme.space(1.5)
-            readonly property int needUnits: Mosaic.unitsFor(theme.space(10) + theme.controlHeight * 2 + lineH * 3, wall.unit, wall.grout)
-            readonly property int fitUnits: Math.floor((height + wall.grout) / wall.step / Math.max(1, rows))
-            readonly property int rowUnits: Math.max(needUnits, fitUnits)
-            implicitHeight: rows * (wall.px(needUnits) + wall.grout) - wall.grout
-            Repeater {
-                model: page.feeds
-                Tile {
-                    id: feedTile
-                    required property var modelData
-                    required property int index
-                    readonly property int col: index % grid.across
-                    readonly property int row: Math.floor(index / grid.across)
-                    // the row's columns shared out whole, the last tile taking the remainder
-                    readonly property int c0: Math.floor(col * wall.geo.cols / grid.across)
-                    readonly property int c1: Math.floor((col + 1) * wall.geo.cols / grid.across)
-                    readonly property var f: modelData || ({})
-                    x: wall.spanX(c0)
-                    y: row * (wall.px(grid.rowUnits) + wall.grout)
-                    width: wall.spanW(c0, c1 - c0)
-                    height: wall.px(grid.rowUnits)
-                    Column {
-                        width: parent.width
-                        spacing: theme.space(1.5)
-                        Row {
-                            width: parent.width
-                            height: theme.controlHeight
-                            spacing: theme.space(3)
-                            Icon {
-                                glyph: "rss"
-                                size: theme.space(5)
-                                color: feedTile.f.active ? theme.accent : theme.textFaint
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-                            Label {
-                                text: feedTile.f.name || ""
-                                role: "title"
-                                elide: Text.ElideRight
-                                width: parent.width - theme.space(5) - activeChip.width - parent.spacing * 2
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-                            Chip {
-                                id: activeChip
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: feedTile.f.active ? "Active" : "Paused"
-                                textColor: feedTile.f.active ? theme.caughtUp : theme.textFaint
-                            }
-                        }
-                        Label {
-                            text: Fmt.plural(feedTile.f.torrents || 0, "torrent", "torrents")
-                            role: "ledger"
-                            color: theme.textDim
-                        }
-                        Label {
-                            visible: !!feedTile.f.query
-                            width: parent.width
-                            text: "Matches \"" + (feedTile.f.query || "") + "\""
-                            role: "ledger"
-                            color: theme.textDim
-                            elide: Text.ElideRight
-                        }
-                        Row {
-                            visible: !!feedTile.f.save_path
-                            width: parent.width
-                            spacing: theme.space(2)
-                            Icon { glyph: "folder"; size: theme.space(3.5); color: theme.textFaint; anchors.verticalCenter: parent.verticalCenter }
-                            Label {
-                                width: parent.width - theme.space(5.5)
-                                text: feedTile.f.save_path || ""
-                                role: "ledger"
-                                color: theme.textFaint
-                                elide: Text.ElideMiddle
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-                        }
-                    }
-                    Button {
-                        visible: !!feedTile.f.url
-                        anchors.left: parent.left
-                        anchors.bottom: parent.bottom
-                        text: "Open the feed"
-                        flat: true
-                        small: true
-                        onClicked: Qt.openUrlExternally(feedTile.f.url)
-                    }
-                }
             }
         }
     }

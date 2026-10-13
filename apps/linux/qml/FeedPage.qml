@@ -1,27 +1,28 @@
-// The feed: what landed and what lands next, as a mosaic wall on the library's module. The
-// core builds the cards (ListFeed replies Feed(Vec<FeedCard>), one per series with files,
-// sorted in Rust); this page picks the sort (Recently released, Coming soon, persisted in
-// the core's preferences), cuts the sections and ticks the countdowns. A card "says which":
-// Aired names the broadcast, Downloaded the file's arrival, and a Scheduled card carries
-// its countdown pill. The newest episodes (this week's) are the heroes, with Play.
+// The feed: what landed and what lands next, as sections of uniform cards. The core builds
+// the cards (ListFeed replies Feed(Vec<FeedCard>), one per series with files, sorted in
+// Rust); this page picks the sort (Recently released, Coming soon, persisted in the core's
+// preferences), cuts the sections and ticks the countdowns. A card "says which": Aired
+// names the broadcast, Downloaded the file's arrival, and a Scheduled card carries its
+// countdown. Recent is "This week" over "Earlier"; Coming soon is the scheduled ones over
+// "Everything else". The head is the library's: the title, the one-line summary beside
+// it, the sort at the right.
 import QtQuick
 import com.marcusrosado.AniBeam
-import "mosaic.js" as Mosaic
 
 Item {
     id: page
     objectName: "feed-page"
     property var props: ({})
     property string title: "Feed"
-    property alias scrollY: wall.scrollY
+    property alias scrollY: scroll.contentY
     function escapePressed() { return false }
 
     property string sort: Door.preferences.feed_sort === "Upcoming" ? "Upcoming" : "Recent"
     property var cards: []
     property real nowMs: Date.now()
-    // The clock heroes are picked against: set on reload, so the wall is not repacked as
-    // the countdowns tick
-    property real packedAt: Date.now()
+    // The clock the sections are cut against: set on reload, so the lists do not move
+    // between This week and Earlier as the countdowns tick
+    property real cutAt: Date.now()
 
     function reasonText(reason) {
         var kind = reason ? Object.keys(reason)[0] : "None"
@@ -43,12 +44,16 @@ Item {
         var sched = scheduledIn(card)
         return { id: s.id, item: s, meta: sched ? "" : reasonText(card.reason), countdown: sched, at: sched ? sched.at : reasonAt(card.reason) }
     }
+    function shortCountdown(secs) {
+        var t = Math.max(0, Math.floor(secs))
+        var d = Math.floor(t / 86400), h = Math.floor(t % 86400 / 3600), m = Math.floor(t % 3600 / 60)
+        return d > 0 ? d + "d " + h + "h" : h > 0 ? h + "h " + m + "m" : Math.max(1, m) + "m"
+    }
 
-    // One wall, built once: Recent is a single unlabelled section, Upcoming the scheduled
-    // head ("Coming soon", in the accent) and the rest. The countdown text is the Card's
-    // own, so the sections do not depend on the ticking clock.
+    // The sections, cut once per reload. Recent: this week's over the earlier ones.
+    // Upcoming: the scheduled ones (soonest first, in the accent) over everything else.
     readonly property var sections: {
-        var now = page.packedAt / 1000
+        var now = page.cutAt / 1000
         var week = 7 * 86400
         var head = [], tail = []
         for (var i = 0; i < cards.length; i++) {
@@ -56,23 +61,27 @@ Item {
             if (e.id === undefined) continue
             if (sort === "Upcoming" && e.countdown) head.push(e); else tail.push(e)
         }
+        var out = []
         if (sort === "Recent") {
             var fresh = tail.filter(function(e) { return e.at > 0 && now - e.at <= week })
-            return tail.length ? [{ label: "", count: tail.length, cards: tail, heroes: fresh }] : []
+            var earlier = tail.filter(function(e) { return !(e.at > 0 && now - e.at <= week) })
+            if (fresh.length) out.push({ title: "This week", cards: fresh, accent: true, fact: Fmt.plural(fresh.length, "new episode", "new episodes") })
+            if (earlier.length) out.push({ title: "Earlier", cards: earlier, accent: false,
+                                           fact: earlier[0].at > 0 ? "Latest out " + Fmt.relative(earlier[0].at, now) : "" })
+            return out
         }
-        var out = []
-        var next = null
-        for (var h = 0; h < head.length; h++) if (head[h].at > now && (!next || head[h].at < next.at)) next = { at: head[h].at, text: head[h].item.title }
+        // The head line already names the next one; the section counts this week's
+        var thisWeek = head.filter(function(e) { return e.at - now <= week }).length
         var recent = tail.filter(function(e) { return e.at > 0 && now - e.at <= week }).length
-        if (head.length) out.push({ label: "Coming soon", count: head.length, accent: true, cards: head, fact: next,
-                                    heroes: head.filter(function(e) { return e.at - now <= week }) })
-        if (tail.length) out.push({ label: "Everything else", count: tail.length, cards: tail, heroes: [],
-                                    fact: recent > 0 ? { text: recent + " out this week" }
-                                        : tail[0].at > 0 ? { text: "Latest out " + Fmt.relative(tail[0].at, now) } : null })
+        if (head.length) out.push({ title: "Coming soon", cards: head, accent: true,
+                                    fact: thisWeek > 0 ? thisWeek + " this week" : "" })
+        if (tail.length) out.push({ title: "Everything else", cards: tail, accent: false,
+                                    fact: recent > 0 ? recent + " out this week"
+                                        : tail[0].at > 0 ? "Latest out " + Fmt.relative(tail[0].at, now) : "" })
         return out
     }
 
-    // The title tile's one line: what this sort has to say right now
+    // The head's one line: what this sort has to say right now
     readonly property string summary: {
         var now = nowMs / 1000
         if (sort === "Upcoming") {
@@ -82,8 +91,7 @@ Item {
                 if (sc && sc.at > now && (!next || sc.at < next.at)) next = { at: sc.at, title: cards[i].series ? cards[i].series.title : "" }
             }
             if (!next) return "Nothing scheduled yet."
-            var t = Math.floor(next.at - now), d = Math.floor(t / 86400), h = Math.floor(t % 86400 / 3600), m = Math.floor(t % 3600 / 60)
-            return "Next: " + next.title + " in " + (d > 0 ? d + "d " + h + "h" : h > 0 ? h + "h " + m + "m" : Math.max(1, m) + "m")
+            return "Next: " + next.title + " in " + shortCountdown(next.at - now)
         }
         var fresh = 0
         for (var j = 0; j < cards.length; j++) {
@@ -94,18 +102,20 @@ Item {
     }
 
     function reload() {
+        var keep = scroll.contentY
         var r = Door.listFeed(page.sort)
         if (r.error) { frame.toast(r.error.message); return }
-        page.packedAt = Date.now()
-        page.nowMs = page.packedAt
+        page.cutAt = Date.now()
+        page.nowMs = page.cutAt
         page.cards = r.reply.cards
+        scroll.contentY = Math.max(0, Math.min(keep, Math.max(0, scroll.contentHeight - scroll.height)))
     }
     function persist() {
         var p = JSON.parse(JSON.stringify(Door.preferences))
         p.feed_sort = page.sort
         Door.setPreferences(p)
     }
-    // A hero's Play: the series' next episode, read only now; nothing next opens the series
+    // Play: the series' next episode, read only now; nothing next opens the series
     function playSeries(s) {
         var r = Door.getSeries(s.id)
         var d = !r.error ? r.reply.detail : null
@@ -113,6 +123,7 @@ Item {
         if (file) frame.go("player", { file: file }, s.title)
         else frame.go("series", { id: s.id }, s.title)
     }
+    function openSeries(s) { frame.go("series", { id: s.id }, s.title) }
     Timer { id: debounce; interval: 250; onTriggered: page.reload() }
     Timer { interval: 30000; running: page.cards.length > 0; repeat: true; onTriggered: page.nowMs = Date.now() }
     Connections {
@@ -126,70 +137,113 @@ Item {
     }
     Component.onCompleted: reload()
 
-    MosaicWall {
-        id: wall
-        anchors.fill: parent
-        sections: page.sections
-        nowMs: page.nowMs
-        onOpened: function(e) { frame.go("series", { id: e.id }, e.item.title) }
-        onPlayed: function(e) { page.playSeries(e.item) }
+    // ---- The grid's geometry: as many columns as the width holds at the poster width
+    readonly property real gap: theme.space(4)
+    readonly property int cols: Math.max(1, Math.floor((scroll.innerWidth + gap) / (theme.posterWidth + gap)))
+    readonly property real cardWidth: Math.floor((scroll.innerWidth - gap * (cols - 1)) / cols)
 
-        // The title, this sort's one line under it, and the count at the right
-        MosaicWall.HeaderTile {
-            need: Math.max(feedTitle.implicitWidth, summaryLine.implicitWidth) + theme.space(6) + countRow.implicitWidth
-            minSpan: 2
-            flex: true
-            Column {
-                x: parent.pad
+    PageScroll {
+        id: scroll
+        anchors.fill: parent
+        readonly property real innerWidth: width - theme.space(16)
+
+        // ---- The head: the title, this sort's one line beside it, the sort at the right
+        Item {
+            width: parent.width
+            height: theme.space(14)
+            Label {
+                id: titleLabel
+                anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: theme.space(1)
-                Label { id: feedTitle; text: "Feed"; role: "display" }
-                Label { id: summaryLine; objectName: "feed-summary"; text: page.summary; role: "ui"; color: theme.textDim }
+                text: "Feed"
+                role: "display"
             }
-            Row {
-                id: countRow
-                anchors.right: parent.right; anchors.rightMargin: parent.pad
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: theme.space(1.5)
-                Label {
-                    id: countFigure
-                    text: page.cards.length
-                    role: "ledger"
-                    font.pointSize: theme.typeDisplay
-                    font.weight: 700
-                    font.variableAxes: ({ "wdth": 88, "wght": 700 })
-                }
-                Label {
-                    anchors.baseline: countFigure.baseline
-                    text: "series"
-                    role: "ui"
-                    font.pointSize: theme.typeSmall
-                    color: theme.textDim
-                }
+            Label {
+                objectName: "feed-summary"
+                anchors.left: titleLabel.right
+                anchors.leftMargin: theme.space(3)
+                anchors.right: sortSeg.left
+                anchors.rightMargin: theme.space(4)
+                anchors.baseline: titleLabel.baseline
+                text: page.summary
+                role: "ui"
+                color: theme.textDim
+                elide: Text.ElideRight
             }
-        }
-        MosaicWall.HeaderTile {
-            need: sortSeg.implicitWidth
             Seg {
                 id: sortSeg
                 objectName: "feed-sort"
-                x: Math.max(parent.pad, (parent.width - width) / 2)
+                anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 options: [{ text: "Recently released", icon: "clock", name: "recent" }, { text: "Coming soon", icon: "calendar-clock", name: "upcoming" }]
                 index: page.sort === "Upcoming" ? 1 : 0
                 onPicked: function(i) { page.sort = i === 1 ? "Upcoming" : "Recent"; page.persist(); page.reload() }
             }
         }
-        // Nothing to show: one tile filling the page, saying what to do
-        body: Component {
-            Tile {
-                implicitHeight: theme.space(60)
-                EmptyState {
-                    icon: "rss"
-                    title: "Nothing here yet"
-                    body: "Add a folder in Settings to build your feed."
-                    Button { text: "Settings"; icon: "settings"; onClicked: frame.go("settings") }
+
+        // ---- The sections: a heading in the display cut with its count and one fact,
+        // over a grid of uniform cards
+        Repeater {
+            model: page.sections
+            Column {
+                id: section
+                required property var modelData
+                required property int index
+                objectName: "feed-section-" + String(modelData.title).toLowerCase().replace(/[^a-z0-9]+/g, "-")
+                width: parent.width
+                spacing: theme.space(3)
+                topPadding: index > 0 ? theme.space(2) : 0
+                Item {
+                    width: parent.width
+                    height: theme.space(12)
+                    Row {
+                        anchors.left: parent.left
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: theme.space(2)
+                        spacing: theme.space(3)
+                        Label {
+                            id: sectionTitle
+                            text: section.modelData.title
+                            role: "display"
+                            font.pointSize: theme.typeLarge
+                            font.variableAxes: ({ "wdth": 74, "wght": 500 })
+                            color: section.modelData.accent ? theme.accent : theme.text
+                        }
+                        Label { anchors.baseline: sectionTitle.baseline; text: section.modelData.cards.length; role: "ledger"; color: theme.textFaint }
+                        Label { anchors.baseline: sectionTitle.baseline; text: section.modelData.fact; role: "ui"; color: theme.textDim }
+                    }
                 }
+                Flow {
+                    width: parent.width
+                    spacing: page.gap
+                    Repeater {
+                        model: section.modelData.cards
+                        Card {
+                            required property var modelData
+                            objectName: "tile-" + modelData.id
+                            item: modelData.item
+                            metaOverride: modelData.meta
+                            countdown: modelData.countdown
+                            posterWidth: page.cardWidth
+                            nowMs: page.nowMs
+                            onOpened: page.openSeries(modelData.item)
+                            onPlayed: page.playSeries(modelData.item)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Nothing to show: what to do, in a plain box in the column
+        Item {
+            visible: page.sections.length === 0
+            width: parent.width
+            height: visible ? theme.space(60) : 0
+            EmptyState {
+                icon: "rss"
+                title: "Nothing here yet"
+                body: "Add a folder in Settings to build your feed."
+                Button { text: "Settings"; icon: "settings"; onClicked: frame.go("settings") }
             }
         }
     }
