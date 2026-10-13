@@ -1,4 +1,4 @@
-# Glass mosaic: the Linux shell's design direction
+# The Linux shell's design direction: flat, home first
 
 AniBeam is one person's anime library on their own desktop: a 5120x1440 ultrawide and a
 portrait panel, a local folder of series, mpv in the window, AniList on the side. Its first job
