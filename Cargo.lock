@@ -43,7 +43,7 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
 name = "anibeam"
-version = "2.0.0-dev"
+version = "2.0.0"
 dependencies = [
  "anibeam-core",
  "cxx",
@@ -67,7 +67,7 @@ dependencies = [
 
 [[package]]
 name = "anibeam-cli"
-version = "2.0.0-dev"
+version = "2.0.0"
 dependencies = [
  "anibeam-core",
  "clap",
@@ -76,7 +76,7 @@ dependencies = [
 
 [[package]]
 name = "anibeam-core"
-version = "2.0.0-dev"
+version = "2.0.0"
 dependencies = [
  "backon",
  "base64 0.23.1",

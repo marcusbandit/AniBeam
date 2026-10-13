@@ -1,7 +1,7 @@
-// A square pane of glass showing the current value; opens a floating pane listing the
+// A pill of glass showing the current value; opens a floating pane listing the
 // options, rows highlighted on hover, the current one in the accent. No chevron: an appended
 // arrow on a control is a killed idiom (DESIGN.md), the hover edge and the accent focus
-// line say it opens.
+// edge say it opens.
 //
 // The list opens scrolled to the current row, under the pill, or above it when the window has
 // more room there, and never taller than the room it has, so it never runs off the window.
@@ -34,9 +34,8 @@ Corner {
     radius: height / 2
     smoothing: theme.cornerSmoothing
     color: hover.containsMouse || pop.opened ? theme.raised : theme.tile
-    borderColor: hover.containsMouse || activeFocus || pop.opened ? theme.lineStrong : theme.line
+    borderColor: root.activeFocus || pop.opened ? theme.focusRing : hover.containsMouse ? theme.lineStrong : theme.line
     borderWidth: 1
-    Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 2; color: theme.focusRing; visible: root.activeFocus || pop.opened }
     activeFocusOnTab: root.interactive
 
     function open() {
@@ -188,8 +187,7 @@ Corner {
                     height: pop.rowHeight
                     radius: theme.radiusInner(pop.inset)
                     smoothing: theme.cornerSmoothing
-                    color: index === pop.hi ? theme.glassRaised : "transparent"
-                    Rectangle { visible: index === root.index; width: 2; height: parent.height; color: theme.accent }
+                    color: index === pop.hi ? theme.glassRaised : index === root.index ? theme.accentSoft : "transparent"
                     Label {
                         anchors.left: parent.left
                         anchors.leftMargin: theme.space(3)

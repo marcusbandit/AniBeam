@@ -81,7 +81,7 @@ FocusScope {
 
     // Pages by name; a page task swaps its placeholder for the real file
     readonly property var pages: ({
-        library: "LibraryPage.qml", feed: "FeedPage.qml", watching: "WatchingPage.qml", metadata: "MetadataPage.qml",
+        home: "HomePage.qml", library: "LibraryPage.qml", feed: "FeedPage.qml", watching: "WatchingPage.qml", metadata: "MetadataPage.qml",
         settings: "SettingsPage.qml", subscriptions: "SubscriptionsPage.qml", series: "SeriesPage.qml", player: "PlayerPage.qml"
     })
 
@@ -142,10 +142,16 @@ FocusScope {
         id: content
         anchors.left: frame.fullWindow ? parent.left : rail.right
         anchors.right: parent.right; anchors.top: parent.top; anchors.bottom: parent.bottom
+        // The pages sit in a centred column no wider than theme.contentMax; the player
+        // alone takes the whole window
+        readonly property real column: frame.fullWindow ? width : Math.min(width, theme.contentMax)
+        readonly property real columnX: frame.fullWindow ? 0 : Math.round((width - column) / 2)
 
         Loader {
             id: page
-            anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+            x: content.columnX
+            width: content.column
+            anchors.top: parent.top
             anchors.bottom: frame.fullWindow ? parent.bottom : strip.top
             focus: true
             asynchronous: false
@@ -176,7 +182,9 @@ FocusScope {
             visible: !frame.fullWindow
             // One band with the rail's foot tile: the same height, the same bottom joint
             height: visible ? rail.footHeight + theme.grout : 0
-            anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
+            x: content.columnX
+            width: content.column
+            anchors.bottom: parent.bottom
             readonly property var job: Door.runningJobs.length ? Door.runningJobs[0] : null
             readonly property var line: Door.latestLine
             // A kind or stage as words: "ConnectTracker" reads "Connect tracker", "metadata"

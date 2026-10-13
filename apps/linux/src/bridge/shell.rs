@@ -60,6 +60,10 @@ pub mod qobject {
         /// --drive: one line to stderr, bare, with none of the QML logger's prefixes.
         #[qinvokable]
         fn drive_log(self: &Self, line: &QString);
+        /// The pointer hidden over the whole application (the player with its chrome
+        /// gone), or shown again.
+        #[qinvokable]
+        fn set_cursor_hidden(self: &Self, hidden: bool);
     }
 
     impl cxx_qt::Threading for Shell {}
@@ -101,7 +105,7 @@ impl Default for ShellRust {
             version: QString::from(anibeam_core::VERSION),
             release: QString::from(release(env!("CARGO_PKG_VERSION"), anibeam_core::VERSION).as_str()),
             shoot: QString::from(a.shoot.as_deref().unwrap_or("")),
-            page: QString::from(a.page.as_deref().unwrap_or("library")),
+            page: QString::from(a.page.as_deref().unwrap_or("home")),
             props: QString::from(a.props.as_deref().unwrap_or("")),
             shoot_width: if shooting { a.width as i32 } else { 0 },
             shoot_height: if shooting { a.height as i32 } else { 0 },
@@ -186,6 +190,9 @@ impl qobject::Shell {
 
     pub fn drive_log(&self, line: &QString) {
         eprintln!("{line}");
+    }
+    pub fn set_cursor_hidden(&self, hidden: bool) {
+        crate::bridge::helpers::ffi::set_cursor_hidden(hidden);
     }
 }
 

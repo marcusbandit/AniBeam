@@ -98,7 +98,6 @@ Item {
                     radius: theme.radiusInner(root.pad)
                     smoothing: theme.cornerSmoothing
                     color: highlighted ? theme.glassRaised : "transparent"
-                    Rectangle { visible: highlighted; width: 2; height: parent.height; color: theme.accent }
                     Row {
                         id: row
                         anchors.left: parent.left; anchors.leftMargin: theme.space(3)

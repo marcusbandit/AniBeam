@@ -1,5 +1,11 @@
 [
-  {"log": "library"},
+  {"log": "home is the first page"},
+  {"eval": "frame.item.nav.current.page", "expect": "home"},
+  {"shot": "smoke-00-home"},
+
+  {"log": "the rail goes to the library"},
+  {"click": "rail-library"},
+  {"wait": 300},
   {"eval": "frame.item.nav.current.page", "expect": "library"},
   {"shot": "smoke-01-library"},
 

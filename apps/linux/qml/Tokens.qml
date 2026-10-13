@@ -3,6 +3,7 @@
 // forced, so a preview renders the other mode with the same components. Colours come from
 // the Rust Theme singleton; the sizes are arithmetic on its settings.
 import QtQuick
+import QtCore
 import com.marcusrosado.AniBeam
 
 Item {
@@ -42,6 +43,9 @@ Item {
     readonly property color accentText: token("accent_text")
     // The soft fills are glass tinted by the hue, translucent like every other pane
     readonly property color accentSoft: Qt.rgba(accent.r, accent.g, accent.b, dark ? 0.16 : 0.14)
+    // The edge of a pane filled with the soft accent (the rail's active page, a switch's
+    // thumb, a list's current row)
+    readonly property color accentEdge: Qt.rgba(accent.r, accent.g, accent.b, 0.5)
     readonly property color redSoft: Qt.rgba(red.r, red.g, red.b, dark ? 0.16 : 0.14)
     readonly property color focusRing: token("focus")
     readonly property color red: token("red")
@@ -62,16 +66,20 @@ Item {
     // needs a solid colour.
     readonly property color ink: dark ? "#ffffff" : text
     function glassOf(a) { return Qt.rgba(ink.r, ink.g, ink.b, a) }
-    readonly property color glass: glassOf(dark ? 0.035 : 0.045)
-    readonly property color glassRaised: glassOf(dark ? 0.06 : 0.075)
-    readonly property color glassPressed: glassOf(dark ? 0.09 : 0.11)
-    readonly property color glassEdge: glassOf(dark ? 0.08 : 0.12)
-    readonly property color glassEdgeStrong: glassOf(dark ? 0.16 : 0.22)
-    readonly property color glassHighlight: dark ? Qt.rgba(1, 1, 1, 0.22) : Qt.rgba(1, 1, 1, 0.85)
+    // Flat (2026-10-13): every pane is one solid step up from the ground, no top highlight,
+    // no sheen. The names stay so every surface follows the one change.
+    // Three roles: the ground (bg), the surface (the theme's own secondary colour: the
+    // sidebar, cards' plates, the toolbar's controls) and the accent, used sparingly.
+    readonly property color glass: surface
+    readonly property color glassRaised: surfaceRaised
+    readonly property color glassPressed: surfacePressed
+    readonly property color glassEdge: glassOf(dark ? 0.06 : 0.1)
+    readonly property color glassEdgeStrong: glassOf(dark ? 0.14 : 0.2)
+    readonly property color glassHighlight: "transparent"
     // The sheen under the highlight (Corner.qml): light falling on the glass from above,
     // strongest at the top edge and gone by sheenReach of the pane's height, never deeper
     // than sheenMax px.
-    readonly property color sheen: dark ? Qt.rgba(1, 1, 1, 0.055) : Qt.rgba(1, 1, 1, 0.45)
+    readonly property color sheen: "transparent"
     readonly property real sheenReach: 0.6
     readonly property real sheenMax: 120
     // A floating pane (menus, tips, sheets, popups, the drawer) sits over arbitrary content,
@@ -123,19 +131,26 @@ Item {
     // Spacing, radii, type, motion
     readonly property real densityFactor: Theme.densityFactor
     function space(n) { return Math.round(4 * densityFactor * n) }
-    // Straight lines everywhere: every radius is 0 and nothing is smoothed. The names stay
-    // for their callers (Corner squares whatever it is given anyway).
-    readonly property real cornerBase: 0
+    // Rounded panes, plain circular corners (no squircle smoothing): the tile radius is the
+    // one every pane takes, the smaller steps are for what nests inside one, and a control
+    // asks for height / 2, a pill. All of it scales with density.
     readonly property real cornerSmoothing: 0
-    readonly property real radiusSm: 0
-    readonly property real radiusMd: 0
-    readonly property real radiusLg: 0
-    readonly property real radiusXl: 0
-    // The mosaic's geometry: one 2 px joint between every pair of panes, and the page's
-    // own margin is the same joint.
-    readonly property real grout: 2
-    readonly property real radiusTile: 0
-    function radiusInner(padding) { return 0 }
+    readonly property real radiusTile: space(4.5)
+    readonly property real cornerBase: radiusTile
+    readonly property real radiusSm: space(1.5)
+    readonly property real radiusMd: space(2.5)
+    readonly property real radiusLg: space(5)
+    readonly property real radiusXl: space(7)
+    // The mosaic's geometry: one joint between every pair of panes, wide enough for the
+    // panes to read as set apart, and the page's own margin is the same joint.
+    readonly property real grout: space(3)
+    // The widest the page content grows: past it the pages sit in a centred column, so an
+    // ultrawide window shows a readable page with ground either side rather than one
+    // endless wall.
+    readonly property real contentMax: space(500)
+    // The radius of a shape nested `padding` inside a tile, so the two curves stay
+    // concentric; never below the small step so a nested row still reads as rounded.
+    function radiusInner(padding) { return Math.max(radiusSm, radiusTile - padding) }
     readonly property int posterWidth: Theme.posterWidth
     // The one size posters decode at, in device pixels: a grid card is laid out between the
     // poster width and about a quarter wider (the columns stretch to fill the row), so the
@@ -183,6 +198,11 @@ Item {
     readonly property int motionNormal: 200
     readonly property int motionSlow: 320
     readonly property real controlHeight: space(8)
+    // The wheel: one notch moves scrollStep px, three desktop steps by default, times the
+    // multiplier kept in shell.conf (Settings > Appearance > Scroll speed)
+    Settings { id: scrollKept; location: Shell.settingsUrl; category: "input"; property real scrollMultiplier: 1 }
+    property alias scrollMultiplier: scrollKept.scrollMultiplier
+    readonly property real scrollStep: space(75) * scrollMultiplier
     readonly property real disabledOpacity: 0.45
 
     // A colour t of the way from a to b, alpha included; takes Qt colours

@@ -1,10 +1,8 @@
-// The one shape primitive. The glass mosaic is all straight lines, so every Corner is square:
-// `radius` and `smoothing` are still accepted (every caller sets them) and ignored, and so
-// are flatTop and flatBottom. The squircle code below is kept, unreached, so a later
-// direction can bring corners back by restoring `reach`. `highlight` draws the glass's
-// 1 px top line inside the edge.
-//
-// Was: a G2 squircle (Figma corner smoothing, reach semantics), `radius` the corner's REACH.
+// The one shape primitive: a rounded pane. `radius` is the corner radius and is drawn as a
+// plain circular corner: `smoothing` is accepted and ignored (the G2 squircle code below is
+// kept, unreached, in case a later direction wants it back by passing it through). flatTop
+// and flatBottom square off one pair of corners. `highlight` draws the glass's 1 px top
+// line inside the edge, inset past the curve so it never leaves the pane.
 //
 // Cost: a plain corner (smoothing 0) with a flat colour is a Rectangle, which is what it
 // looks like anyway, and the Shape is never built. Only smoothing, a fill item, a gradient
@@ -15,7 +13,7 @@ import QtQuick.Shapes
 Item {
     id: root
 
-    property real radius: 10
+    property real radius: theme.radiusTile
     property real smoothing: 0.6
     property color color: "transparent"
     property color borderColor: "transparent"
@@ -42,13 +40,22 @@ Item {
     property bool flatBottom: false
     // The glass's top highlight: a 1 px line along the top edge, inside any border
     property color highlight: "transparent"
-    // The corner reach actually drawn: always 0 (see the header)
-    readonly property real reach: 0
+    // The corner radius actually drawn: the caller's, never past half the pane
+    readonly property real reach: Math.max(0, Math.min(radius, width / 2, height / 2))
+    // How far in from the side the top edge is still straight at 1 px down a corner of
+    // `reach`: the curve's x offset at y = 1, so the highlight line stops where the curve
+    // starts
+    readonly property real highlightInset: reach >= 1 ? reach - Math.sqrt(2 * reach - 1) : 0
 
     readonly property real inset: borderWidth / 2
-    readonly property string pathData: plain ? "" : squircle(width, height, reach, 0, inset, false, false)
+    readonly property string pathData: plain ? "" : squircle(width, height, reach, 0, inset, flatTop, flatBottom)
     readonly property bool plain: fillItem === null && fillGradient === null && dashed === 0
     readonly property bool fillIsImage: fillItem !== null && fillItem.fillMode !== undefined && fillItem.implicitWidth > 0
+    // The software scene graph (a headless shoot with no display) cannot paint a Shape's
+    // fill item: every poster came back white. There an Image fill is drawn as a plain
+    // Image at this shape's box instead, square-cornered rather than missing.
+    readonly property bool softwareRender: GraphicsInfo.api === GraphicsInfo.Software
+    readonly property bool imageFallback: softwareRender && fillItem !== null && fillItem.fillMode !== undefined
 
     // One child, picked by what the corner has to paint: a Rectangle, a flat Shape, or a
     // Shape with a fill item and the transform that lays the fill out
@@ -58,12 +65,25 @@ Item {
         color: root.color
         border.color: root.borderWidth > 0 ? root.borderColor : "transparent"
         border.width: root.borderWidth
-        antialiasing: false
+        radius: root.reach
+        antialiasing: root.reach > 0
     }
     Loader {
         anchors.fill: parent
-        active: !root.plain
+        active: !root.plain && !root.imageFallback
         sourceComponent: root.fillItem !== null ? filledShape : curvedShape
+    }
+    Loader {
+        anchors.fill: parent
+        active: root.imageFallback
+        sourceComponent: Image {
+            source: root.fillItem.source
+            sourceSize: root.fillItem.sourceSize
+            fillMode: root.fillItem.fillMode
+            smooth: true
+            asynchronous: true
+            cache: true
+        }
     }
 
     // The sheen: a lit pane catches light from above, a soft wash that fades out by
@@ -74,6 +94,8 @@ Item {
         x: root.borderWidth; y: root.borderWidth
         width: Math.max(0, root.width - root.borderWidth * 2)
         height: Math.min(Math.max(0, root.height - root.borderWidth * 2) * theme.sheenReach, theme.sheenMax)
+        radius: Math.max(0, root.reach - root.borderWidth)
+        antialiasing: radius > 0
         gradient: Gradient {
             GradientStop { position: 0; color: theme.sheen }
             GradientStop { position: 1; color: Qt.rgba(theme.sheen.r, theme.sheen.g, theme.sheen.b, 0) }
@@ -83,8 +105,8 @@ Item {
     // Above the fill (and a fill item), below the caller's children
     Rectangle {
         visible: root.highlight.a > 0
-        x: root.borderWidth; y: root.borderWidth
-        width: Math.max(0, root.width - root.borderWidth * 2)
+        x: root.borderWidth + root.highlightInset; y: root.borderWidth
+        width: Math.max(0, root.width - (root.borderWidth + root.highlightInset) * 2)
         height: 1
         color: root.highlight
         z: 0

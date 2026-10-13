@@ -17,6 +17,9 @@ Corner {
     // button would swallow Space and Return before the page's own keys see them, and Tab
     // would walk a focus ring through the island.
     property bool takesFocus: true
+    // A primary button in a colour of the page's own (the home hero's poster tone) rather
+    // than the theme's accent
+    property color tint: theme.accent
     signal clicked()
 
     implicitWidth: content.implicitWidth + theme.space(small ? 3 : 4) * 2
@@ -35,12 +38,12 @@ Corner {
         running: Math.abs(root.lift - root.liftTarget) > 0.002
         onTriggered: root.lift = theme.follow(root.lift, root.liftTarget, frameTime)
     }
-    readonly property color restFill: danger ? theme.redSoft : primary ? theme.accent : flat ? theme.tile : theme.raised
+    readonly property color restFill: danger ? theme.redSoft : primary ? tint : flat ? theme.tile : theme.raised
     readonly property color hoverFill: danger ? theme.tone(theme.redSoft, theme.red, 0.15)
-                                     : primary ? theme.tone(theme.accent, theme.ink, 0.15)
+                                     : primary ? theme.tone(tint, theme.ink, 0.15)
                                      : flat ? theme.tileHover : theme.raisedHover
     readonly property color pressFill: danger ? theme.tone(theme.redSoft, theme.red, 0.3)
-                                     : primary ? theme.tone(theme.accent, theme.ink, 0.25)
+                                     : primary ? theme.tone(tint, theme.ink, 0.25)
                                      : theme.glassOf(theme.dark ? 0.12 : 0.15)
     color: lift < 1 ? theme.tone(restFill, hoverFill, lift) : theme.tone(hoverFill, pressFill, lift - 1)
     borderColor: activeFocus ? theme.focusRing : primary ? "transparent" : danger ? Qt.rgba(theme.red.r, theme.red.g, theme.red.b, 0.3) : theme.line
@@ -51,7 +54,10 @@ Corner {
     Keys.onReturnPressed: clicked()
     Keys.onEnterPressed: clicked()
 
-    readonly property color ink: danger ? theme.red : primary ? (theme.dark ? theme.ground : theme.accentText) : (flat && lift < 0.5 ? theme.textDim : theme.text)
+    // Ink on a primary: the ground, or white when the tint is dark enough to need it
+    readonly property color ink: danger ? theme.red
+                               : primary ? (theme.contrast(tint, Qt.rgba(1, 1, 1, 1)) >= 3 ? "#ffffff" : "#0d0e11")
+                               : (flat && lift < 0.5 ? theme.textDim : theme.text)
     Row {
         id: content
         anchors.centerIn: parent

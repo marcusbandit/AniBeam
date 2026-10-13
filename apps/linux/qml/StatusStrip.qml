@@ -24,9 +24,8 @@ Item {
         height: parent.height - theme.grout
         radius: theme.radiusTile
         smoothing: theme.cornerSmoothing
-        color: mouse.containsMouse ? theme.tileHover : theme.tile
-        borderColor: theme.line; borderWidth: 1
-        highlight: theme.glassHighlight
+        // Flat and quiet: no pane until the pointer asks for the drawer
+        color: mouse.containsMouse ? theme.tileHover : "transparent"
 
         Rectangle {
             visible: root.running

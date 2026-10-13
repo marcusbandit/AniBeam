@@ -86,8 +86,8 @@ Item {
                                 // The Dropdown's current-row treatment: the highlight a step up from the panel,
                 // the value in the accent
                 readonly property bool isDraft: Number(modelData) === Number(root.draft.toFixed(1))
-                color: isDraft || m.containsMouse ? (isDraft ? theme.glassPressed : theme.glassRaised) : "transparent"
-                Rectangle { visible: parent.isDraft; width: 2; height: parent.height; color: theme.accent }
+                radius: theme.radiusSm
+                color: isDraft ? theme.accentSoft : m.containsMouse ? theme.glassRaised : "transparent"
                 Text { anchors.centerIn: parent; text: modelData; color: parent.isDraft ? theme.accent : theme.text; font.family: theme.fontUi; font.pointSize: theme.typeNormal; font.weight: parent.isDraft ? Font.DemiBold : Font.Normal }
                 MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; onClicked: root.draft = Number(modelData) }
             }

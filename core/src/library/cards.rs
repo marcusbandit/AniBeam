@@ -114,17 +114,19 @@ pub fn total_with_estimate(
     (None, false)
 }
 
-/// Done with it: nothing left to see and nothing more coming — the state a
+/// Done with it: nothing left to see and nothing more coming, the state a
 /// non-rewatcher files a series away under. The tracker's own COMPLETED
 /// outranks everything: the user said done, and a stale stored status that
 /// still says releasing must not second-guess them (the airing refresh's
 /// status write may not have landed yet), so a completed series leaves the
-/// grid and the airing rail the same day they mark it. Otherwise the
-/// watched count has to reach the card's total, whose estimate already
-/// means "everything knowable has been seen" (it is the later of aired and
-/// watched when no total is published). Without the tracker's word, a
-/// still-releasing series is never done with: caught up is current, not
-/// finished, however little there is left to wait for.
+/// grid and the airing rail the same day they mark it. Without the
+/// tracker's word, a still-releasing series is never done with: caught up
+/// is current, not finished, however little there is left to wait for.
+/// Otherwise the watched count has to reach a published total. An
+/// estimated total never counts: it is the later of aired and watched, so
+/// it only says how far the user has got, and reaching the newest episode
+/// on hand is not the same as the show being over. A film is the one
+/// exception that needs no total, since seeing it once is all there is.
 pub fn watched_out(c: &SeriesCard) -> bool {
     if c.list_status == Some(ListStatus::Completed) {
         return true;
@@ -132,10 +134,21 @@ pub fn watched_out(c: &SeriesCard) -> bool {
     if c.status == Some(AiringStatus::Releasing) {
         return false;
     }
-    let Some(w) = c.watched else {
+    let Some(w) = c.watched.filter(|w| *w > 0) else {
         return false;
     };
-    w > 0 && c.total_episodes.is_some_and(|t| w >= t)
+    if is_film(c) {
+        return true;
+    }
+    if c.total_is_estimate {
+        return false;
+    }
+    c.total_episodes.is_some_and(|t| w >= t)
+}
+
+/// A film, by our own kind or the provider's format.
+pub fn is_film(c: &SeriesCard) -> bool {
+    c.kind == SeriesKind::Movie || c.format.as_deref() == Some("MOVIE")
 }
 
 /// `episodes` is (file id, number) sorted by number. `last_completed` is the
@@ -548,13 +561,35 @@ mod tests {
         assert!(watched_out(&c));
 
         // No published total: the estimate (the later of aired and
-        // watched) is the bar, so only reaching it counts.
+        // watched) only says how far the user has got, so reaching it is
+        // never done with, whatever the status says. This is the case of
+        // having watched the newest episode on hand of a show with no
+        // published total.
+        for status in [
+            Some(AiringStatus::Finished),
+            Some(AiringStatus::Hiatus),
+            Some(AiringStatus::NotYetReleased),
+            None,
+        ] {
+            let mut c = card();
+            c.status = status;
+            c.total_episodes = Some(8);
+            c.total_is_estimate = true;
+            c.watched = Some(5);
+            assert!(!watched_out(&c));
+            c.watched = Some(8);
+            assert!(!watched_out(&c));
+            c.watched = Some(9);
+            assert!(!watched_out(&c));
+            // Only the tracker's word files it away.
+            c.list_status = Some(ListStatus::Completed);
+            assert!(watched_out(&c));
+        }
+
+        // A published total reached on a show with no status (unmatched
+        // status, or a provider without one) is done with.
         let mut c = card();
-        c.total_episodes = Some(8);
-        c.total_is_estimate = true;
-        c.watched = Some(5);
-        assert!(!watched_out(&c));
-        c.watched = Some(8);
+        c.status = None;
         assert!(watched_out(&c));
 
         // Nothing knowable at all is not done, short of the tracker's word.
@@ -572,6 +607,16 @@ mod tests {
         c.total_episodes = Some(1);
         c.watched = Some(1);
         assert!(watched_out(&c));
+        // Also when the total is only an estimate or unknown, as with a
+        // film matched somewhere that publishes no episode count.
+        c.total_is_estimate = true;
+        assert!(watched_out(&c));
+        c.total_episodes = None;
+        c.total_is_estimate = false;
+        c.format = None;
+        assert!(watched_out(&c));
+        c.watched = Some(0);
+        assert!(!watched_out(&c));
 
         // Hidden is a separate drawer; watched does not decide for it.
         let mut c = card();

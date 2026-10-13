@@ -42,3 +42,9 @@ void drive_key(QObject *window, bool press, int key, int modifiers, const QStrin
 // path for the process (the cache is guarded; the GUI thread is the expected caller). An
 // unreadable or missing file is an invalid QColor, also cached.
 QColor poster_tone(const QString &path);
+
+// The pointer hidden over every window of the process (the player, once its chrome has
+// gone), or shown again. An application override, not an item's cursor shape: the item
+// under a resting pointer is not re-asked for its cursor on Wayland until the pointer moves,
+// so an item-level blank cursor left the arrow standing on the picture.
+void set_cursor_hidden(bool hidden);
