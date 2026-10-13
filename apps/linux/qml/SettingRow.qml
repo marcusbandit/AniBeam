@@ -5,7 +5,8 @@
 // never crushed into a ribbon. Never shorter than theme.space(12). Sized through
 // implicitHeight so it sits in a Column and a ColumnLayout alike; the two blocks are
 // placed by x and y rather than anchors, so the switch between the two arrangements is
-// one binding each and never leaves a stale anchor behind.
+// one binding each and never leaves a stale anchor behind. A hairline closes the row at
+// its foot (`hairline`), so a flat section reads as a list.
 import QtQuick
 import QtQuick.Layouts
 
@@ -15,9 +16,10 @@ Item {
     property string line: ""
     property string helper: ""
     property string status: ""
+    property bool hairline: true
     default property alias control: slot.data
 
-    readonly property real pad: theme.space(2)
+    readonly property real pad: theme.space(2.5)
     readonly property real gutter: theme.space(6)
     readonly property bool wordy: line !== "" || helper !== "" || status !== ""
     readonly property bool stacked: wordy && width - slot.width - gutter < theme.space(60)
@@ -75,4 +77,5 @@ Item {
         width: childrenRect.width
         height: childrenRect.height
     }
+    Rectangle { visible: root.hairline; anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.line }
 }

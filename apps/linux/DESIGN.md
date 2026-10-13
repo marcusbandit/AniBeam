@@ -67,8 +67,19 @@ below where they disagree:
   (Recently released) or Coming soon and Everything else (Coming soon); Watching cuts
   Airing, Episodes waiting, Up to date and Not in the library (the ghosts), and without
   AniList is one empty state with the connect button; Subscriptions cuts Active and
-  Paused feeds as flat tiles. `MosaicWall.qml` is gone; `mosaic.js` stays for the
-  Settings and Metadata headers.
+  Paused feeds as flat tiles. `MosaicWall.qml` is gone.
+- **Metadata and Settings are flat too, and `mosaic.js` is gone.** Metadata is the head
+  row (the title in the display cut, the count, the filter, Match unmatched and Refresh
+  all as flat pills, the search at the right) over a flat list: a poster thumbnail, the
+  title, the kind and the record as pills, the files against the expected count on a
+  thin line, Match and Refresh as small flat buttons, a hairline under each row, two to
+  a line on a wide window. Settings is the head row (the title, the section switch at the
+  right) over each tab's sections: `Panel.qml` is now a flat section, a heading in the
+  display cut at `typeLarge` with its glyph before it and the rows under it, each
+  `SettingRow` closed by a hairline, no tile around any of it; the stat figures
+  (`Tiles.qml`) stand on the ground as a figure over its caption. The Appearance previews
+  keep their panes inside their section. A card without a poster (`Card.qml`) is a plain
+  pane with no scrim and the theme's own inks, so it reads in light mode.
 
 This supersedes Tesserae (rounded tiles on poster-toned plates), which superseded "the lobby".
 The killed idioms (below) still hold.

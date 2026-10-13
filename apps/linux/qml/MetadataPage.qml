@@ -1,23 +1,22 @@
-// The metadata wall: every series in the library as a row tile on the library's module, the
-// record it is matched to, and the files on disk against the expected count. The header is
-// a row of tiles (title, the filter with its counts, the search, the bulk actions); under it
-// the row tiles, as many to a line as hold their words, each a whole number of columns. The
-// core owns the filtering and the counts (ListMetadata { filter, query, reveal_hidden });
-// the page runs the two bulk jobs (Match unmatched is the AutoMatch job, Refresh all the
-// RefreshAll job) and opens the match panel over the overlay for a row that needs a
-// different record.
+// Metadata, flat (DESIGN.md, the flat home pass): every series in the library, the record
+// it is matched to, and the files on disk against the expected count. The head is the
+// library's: the title in the display cut with the count beside it, the filter, the two
+// bulk actions and the search at the right; under it the rows as a flat list with a
+// hairline between them, two to a line on a wide window. The core owns the filtering and
+// the counts (ListMetadata { filter, query, reveal_hidden }); the page runs the two bulk
+// jobs (Match unmatched is the AutoMatch job, Refresh all the RefreshAll job) and opens the
+// match panel over the overlay for a row that needs a different record.
 import QtQuick
-import QtQuick.Controls.Basic as QC
 import com.marcusrosado.AniBeam
-import "mosaic.js" as Mosaic
 
 Item {
     id: page
     objectName: "metadata-page"
     property var props: ({})
     property string title: "Metadata"
-    property alias scrollY: flick.contentY
+    property alias scrollY: scroll.contentY
     function escapePressed() { return false }
+    Keys.onPressed: function(event) { scroll.keyPressed(event) }
 
     readonly property var filters: ["All", "Series", "Movies", "MissingFiles"]
     readonly property var filterLabels: ["All", "Series", "Films", "Missing"]
@@ -28,13 +27,13 @@ Item {
     property bool loaded: false
 
     function reload() {
-        var keep = flick.contentY
+        var keep = scroll.contentY
         var r = Door.listMetadata(page.filter, page.query, Door.revealHidden)
         if (r.error) { frame.toast(r.error.message); return }
         page.counts = r.reply.counts
         page.rows = r.reply.rows
         page.loaded = true
-        flick.contentY = Math.max(0, Math.min(keep, Math.max(0, flick.contentHeight - flick.height)))
+        scroll.contentY = Math.max(0, Math.min(keep, Math.max(0, scroll.contentHeight - scroll.height)))
     }
     function filterCount(f) {
         return f === "All" ? page.counts.all : f === "Series" ? page.counts.series : f === "Movies" ? page.counts.movies : page.counts.missing_files
@@ -78,196 +77,150 @@ Item {
         reload()
     }
 
-    // ---- The module: the library's columns and unit
-    readonly property real grout: theme.grout
-    readonly property var geo: Mosaic.columns(Math.max(1, width - grout), theme.posterWidth, grout)
-    readonly property int cols: geo.cols
-    readonly property real unit: geo.u
-    readonly property real step: unit + grout
-    function px(units) { return Mosaic.unitsToPx(units, unit, grout) }
-    function spanX(col) { return geo.xs[Math.max(0, Math.min(col, cols - 1))] }
-    function spanW(col, span) { col = Math.max(0, Math.min(col, cols - 1)); var last = Math.max(col, Math.min(cols - 1, col + span - 1)); return geo.xs[last] + geo.ws[last] - geo.xs[col] }
-    readonly property real hpad: theme.space(2.5)
-    function spanFor(w) { return Math.max(1, Math.ceil((w + hpad * 2 + grout) / (geo.w + grout))) }
-
-    // The header: one unit tall, wrapping on a narrow window; spare columns to the title
+    // ---- The crawl, while it runs: a label and a thin line in the tools
     readonly property bool crawling: crawlJob() !== null
-    readonly property var headerLayout: Mosaic.header([
-        { key: "title", span: Math.max(2, spanFor(titleLabel.implicitWidth)), flex: true },
-        { key: "filter", span: spanFor(filterSeg.implicitWidth) },
-        { key: "actions", span: spanFor(actionsRow.implicitWidth) },
-        { key: "search", span: Math.max(2, spanFor(theme.space(56))), flex: true }
-    ].concat(crawling ? [{ key: "crawl", span: spanFor(theme.space(60)) }] : []), cols)
-    function headerTile(key) {
-        var t = headerLayout.tiles
-        for (var i = 0; i < t.length; i++) if (t[i].key === key) return t[i]
-        return { col: 0, row: 0, colSpan: 1 }
-    }
-    readonly property real headerHeight: px(headerLayout.rows)
 
-    // The rows: as many row tiles to a line as hold their words at theme.space(170) or more,
-    // each a whole number of columns, the line's columns shared out from the left
-    readonly property int perLine: Math.max(1, Math.min(cols, Math.floor((width - grout + grout) / (theme.space(170) + grout))))
-    function rowCol(i) { var k = i % perLine; return Math.floor(k * cols / perLine) }
-    function rowSpan(i) { var k = i % perLine; return Math.floor((k + 1) * cols / perLine) - Math.floor(k * cols / perLine) }
-    readonly property int rowLines: Math.ceil(rows.length / perLine)
-    readonly property real wallTop: headerHeight + grout
+    // ---- The rows' geometry: two to a line while each still has theme.space(150)
+    readonly property real gap: theme.space(6)
+    readonly property int rowCols: Math.max(1, Math.min(2, Math.floor((scroll.innerWidth + gap) / (theme.space(150) + gap))))
+    readonly property real rowWidth: Math.floor((scroll.innerWidth - gap * (rowCols - 1)) / rowCols)
 
-    component HeaderTile: Corner {
-        property string key: ""
-        readonly property var place: page.headerTile(key)
-        x: page.spanX(place.col)
-        y: place.row * page.step
-        width: page.spanW(place.col, place.colSpan)
-        height: page.unit
-        color: theme.tile
-        borderColor: theme.line
-        borderWidth: 1
-        highlight: theme.glassHighlight
-    }
-    component Caption: Label {
-        x: page.hpad; y: page.hpad
-        role: "ui"
-        font.pointSize: theme.typeSmall
-        color: theme.textDim
-    }
+    PageScroll {
+        id: scroll
+        anchors.fill: parent
+        readonly property real innerWidth: width - theme.space(16)
 
-    Flickable {
-        id: flick
-        y: page.grout
-        width: page.width - page.grout
-        height: page.height - page.grout * 2
-        clip: true
-        boundsBehavior: Flickable.StopAtBounds
-        contentWidth: width
-        contentHeight: Math.max(height, page.wallTop + (page.rows.length ? page.px(page.rowLines) : 0) + (page.rows.length ? 0 : page.px(4)))
-        QC.ScrollBar.vertical: scrollBar
-        WheelStep { flick: flick }
-        MouseArea { anchors.fill: parent; onPressed: function(m) { flick.forceActiveFocus(); m.accepted = false } }
-
-        HeaderTile {
-            key: "title"
-            Label {
-                id: titleLabel
-                x: page.hpad
-                y: parent.height - page.hpad - height
-                text: "Metadata"
-                role: "display"
+        // ---- The head: the title and its count, the tools beside them while they fit, the
+        // search at the right
+        Item {
+            id: head
+            width: parent.width
+            height: theme.space(14)
+            readonly property bool toolsInline: titleRow.implicitWidth + theme.space(6) + tools.implicitWidth + theme.space(6) + search.width <= width
+            Row {
+                id: titleRow
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: theme.space(3)
+                Label { id: titleLabel; anchors.verticalCenter: parent.verticalCenter; text: "Metadata"; role: "display" }
+                Label {
+                    objectName: "metadata-count"
+                    anchors.baseline: titleLabel.baseline
+                    text: Fmt.plural(page.counts.all, "series", "series")
+                    role: "ui"
+                    color: theme.textDim
+                }
+            }
+            Item {
+                id: inlineSlot
+                anchors.left: titleRow.right; anchors.leftMargin: theme.space(6)
+                anchors.verticalCenter: parent.verticalCenter
+                width: head.toolsInline ? tools.implicitWidth : 0
+                height: tools.implicitHeight
+            }
+            SearchField {
+                id: search
+                objectName: "metadata-search"
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.min(theme.space(100), Math.max(theme.space(40), parent.width * 0.3))
+                placeholder: "Filter titles"
+                hint: ""
+                onTextChanged: queryDebounce.restart()
+                onCleared: { queryDebounce.stop(); page.query = ""; page.reload() }
             }
         }
-        HeaderTile {
-            key: "filter"
-            Caption { text: "Show" }
+        // The tools on their own line when the head is too narrow to hold them
+        Item {
+            id: wrapSlot
+            width: parent.width
+            height: head.toolsInline ? 0 : tools.implicitHeight
+            visible: !head.toolsInline
+        }
+        // The tools are declared once and sit in whichever slot the width allows
+        Row {
+            id: tools
+            parent: head.toolsInline ? inlineSlot : wrapSlot
+            spacing: theme.space(3)
             Seg {
                 id: filterSeg
                 objectName: "metadata-filter"
-                x: page.hpad
-                y: parent.height - page.hpad - height
                 options: page.filters.map(function(f, i) { return { text: page.filterLabels[i] + " " + page.filterCount(f), name: f.toLowerCase() } })
                 index: Math.max(0, page.filters.indexOf(page.filter))
                 onPicked: function(i) { page.filter = page.filters[i]; page.reload() }
             }
-        }
-        HeaderTile {
-            key: "search"
-            Caption { text: "Search" }
-            SearchField {
-                id: search
-                objectName: "metadata-search"
-                x: page.hpad
-                y: parent.height - page.hpad - height
-                width: parent.width - page.hpad * 2
-                placeholder: "Filter titles"
-                hint: ""
-                onTextChanged: queryDebounce.restart()
+            Button {
+                objectName: "metadata-match-all"
+                flat: true
+                text: "Match unmatched"
+                icon: "link"
+                onClicked: { var r = Door.autoMatch(); frame.toast(r.error ? r.error.message : "Looking up a match for unmatched folders") }
+                Tooltip { text: "Looks up every folder that has no match yet, on each metadata provider in the order Settings gives them" }
             }
-        }
-        HeaderTile {
-            key: "actions"
-            Caption { text: "Every series" }
-            Row {
-                id: actionsRow
-                x: page.hpad
-                y: parent.height - page.hpad - height
-                spacing: theme.space(2)
-                Button {
-                    objectName: "metadata-match-all"
-                    text: "Match unmatched"
-                    icon: "link"
-                    onClicked: { var r = Door.autoMatch(); frame.toast(r.error ? r.error.message : "Looking up a match for unmatched folders") }
-                    Tooltip { text: "Looks up every folder that has no match yet, on each metadata provider in the order Settings gives them" }
+            Button {
+                objectName: "metadata-refresh-all"
+                flat: true
+                text: "Refresh all"
+                icon: "refresh-cw"
+                onClicked: { var r = Door.refreshAll(); frame.toast(r.error ? r.error.message : "Refreshing every matched series") }
+                Tooltip { text: "Fetches every matched series' record again" }
+            }
+            // The franchise crawl's own line, only while it runs
+            Column {
+                visible: page.crawling
+                readonly property var job: page.crawlJob()
+                width: theme.space(50)
+                height: theme.controlHeight
+                spacing: theme.space(1.5)
+                topPadding: theme.space(1)
+                Row {
+                    spacing: theme.space(2)
+                    Label { text: "Finding franchise links"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim }
+                    Label { text: parent.parent.job && parent.parent.job.total > 0 ? parent.parent.job.done + " of " + parent.parent.job.total : ""; role: "ledger"; color: theme.textDim }
                 }
-                Button {
-                    objectName: "metadata-refresh-all"
-                    text: "Refresh all"
-                    icon: "refresh-cw"
-                    onClicked: { var r = Door.refreshAll(); frame.toast(r.error ? r.error.message : "Refreshing every matched series") }
-                    Tooltip { text: "Fetches every matched series' record again" }
-                }
-            }
-        }
-        // The franchise crawl's own bar, only while it runs
-        HeaderTile {
-            key: "crawl"
-            visible: page.crawling
-            readonly property var job: page.crawlJob()
-            Caption { text: "Finding franchise links" }
-            Label {
-                anchors.right: parent.right; anchors.rightMargin: page.hpad; y: page.hpad
-                text: parent.job && parent.job.total > 0 ? parent.job.done + " of " + parent.job.total : ""
-                role: "ledger"; color: theme.textDim
-            }
-            Corner {
-                x: page.hpad; width: parent.width - page.hpad * 2; height: theme.space(1)
-                y: parent.height - page.hpad - height * 2
-                radius: height / 2; smoothing: theme.cornerSmoothing
-                color: theme.tileSunken
-                Corner {
-                    width: parent.width * (parent.parent.job && parent.parent.job.total > 0 ? parent.parent.job.done / parent.parent.job.total : 0)
-                    height: parent.height
-                    radius: height / 2; smoothing: theme.cornerSmoothing
-                    color: theme.accent
+                Rectangle {
+                    width: parent.width; height: theme.space(0.75); radius: height / 2
+                    color: theme.behind
+                    Rectangle {
+                        width: parent.width * (parent.parent.job && parent.parent.job.total > 0 ? parent.parent.job.done / parent.parent.job.total : 0)
+                        height: parent.height; radius: height / 2
+                        color: theme.accent
+                    }
                 }
             }
         }
 
-        // Nothing to show: a tile, not text on the grout
-        Tile {
+        // ---- The rows: a flat list, a hairline under each, two to a line when wide
+        Flow {
+            width: parent.width
+            spacing: page.gap
+            Repeater {
+                model: page.rows
+                MetaRow {
+                    required property int index
+                    width: page.rowWidth
+                    first: index === 0
+                }
+            }
+        }
+
+        // EmptyState centres itself in its parent, so it gets a plain box in the column
+        Item {
             visible: page.loaded && page.rows.length === 0
-            x: 0; y: page.wallTop
-            width: flick.width
-            height: flick.height - page.wallTop
+            width: parent.width
+            height: visible ? theme.space(60) : 0
             EmptyState {
                 icon: page.counts.all === 0 ? "database" : "search"
                 title: page.counts.all === 0 ? "No metadata yet" : page.query !== "" ? "No matches for \"" + page.query + "\"" : "Nothing under this filter"
                 body: page.counts.all === 0 ? "Your library is empty. Add a folder in Settings and scan it to get started." : page.query !== "" ? "" : "No series here right now."
             }
         }
-
-        Repeater {
-            model: page.rows
-            MetaRow {
-                required property int index
-                x: page.spanX(page.rowCol(index))
-                y: page.wallTop + Math.floor(index / page.perLine) * page.step
-                width: page.spanW(page.rowCol(index), page.rowSpan(index))
-                height: page.unit
-                first: index === 0
-            }
-        }
-    }
-    ThinScrollBar {
-        id: scrollBar
-        x: page.width - page.grout + Math.max(0, (page.grout - width) / 2)
-        y: flick.y
-        height: flick.height
-        width: Math.min(page.grout, theme.space(1))
     }
 
-    // One series: the poster sliver flush in the tile, the titles, the kind and the record,
-    // the files against the expected count, and the row's actions, all in one stone. A click
-    // anywhere else on it opens the match panel.
-    component MetaRow: Corner {
+    // One series: the poster thumbnail, the titles, the kind and the record as pills, the
+    // files against the expected count with a thin line, and the row's actions, on the
+    // ground with a hairline under it. A click anywhere else on it opens the match panel.
+    component MetaRow: Item {
         id: metaRow
         required property var modelData
         property bool first: false
@@ -281,13 +234,19 @@ Item {
         readonly property real have: d.have || 0
         readonly property real pct: expected > 0 ? Math.min(1, have / expected) : 0
         readonly property real extra: expected > 0 ? Math.max(0, have - expected) : 0
-        readonly property real inPad: theme.space(3)
+        readonly property real pad: theme.space(3)
         objectName: "meta-row-" + card.id
-        color: m.containsMouse ? theme.tileHover : theme.tile
-        borderColor: m.containsMouse ? theme.lineStrong : theme.line
-        borderWidth: 1
-        highlight: theme.glassHighlight
+        height: theme.space(22)
 
+        // The hover: one step of the surface, inset so the hairlines stay a list
+        Rectangle {
+            anchors.fill: parent
+            anchors.topMargin: theme.space(1)
+            anchors.bottomMargin: theme.space(1)
+            radius: theme.radiusSm
+            color: theme.tile
+            opacity: m.containsMouse ? 1 : 0
+        }
         // Under everything else, so the buttons take their own clicks
         MouseArea {
             id: m
@@ -297,13 +256,15 @@ Item {
             onClicked: matchPanel.openFor(metaRow.card.id, metaRow.card.title, metaRow.card.match_info)
         }
 
-        // The poster: flush with the tile's left edge, its own corners the tile's.
-        // Decoded at its own displayed size and shown only once it is Ready.
+        // The poster, decoded at its displayed size and shown only once it is Ready
         Corner {
             id: thumb
-            width: Math.round(height / 1.5); height: parent.height
-            radius: theme.radiusTile; smoothing: theme.cornerSmoothing
-            color: theme.tileSunken
+            x: metaRow.pad
+            anchors.verticalCenter: parent.verticalCenter
+            height: parent.height - theme.space(4)
+            width: Math.round(height / 1.5)
+            radius: theme.radiusSm; smoothing: theme.cornerSmoothing
+            color: theme.tile
             fillItem: art.status === Image.Ready ? art : null
             Image {
                 id: art
@@ -324,12 +285,13 @@ Item {
             }
         }
 
-        // The titles, between the poster and the readouts
+        // The titles
         Column {
-            anchors.left: thumb.right; anchors.leftMargin: metaRow.inPad
-            anchors.right: readout.left; anchors.rightMargin: metaRow.inPad
+            id: titles
+            anchors.left: thumb.right; anchors.leftMargin: metaRow.pad
+            anchors.right: readout.left; anchors.rightMargin: metaRow.pad
             anchors.verticalCenter: parent.verticalCenter
-            spacing: theme.space(1)
+            spacing: theme.space(0.5)
             Label {
                 width: parent.width
                 text: metaRow.card.title || (metaRow.card.titles ? metaRow.card.titles.folder : "")
@@ -347,17 +309,17 @@ Item {
             }
         }
 
-        // The readouts: kind and record over the files bar and its count
+        // The readouts: the kind and the record as pills over the files line and its count
         Column {
             id: readout
-            anchors.right: actions.left; anchors.rightMargin: metaRow.inPad
+            anchors.right: actions.left; anchors.rightMargin: metaRow.pad
             anchors.verticalCenter: parent.verticalCenter
             width: theme.space(56)
             spacing: theme.space(2)
             Row {
                 spacing: theme.space(1.5)
-                Chip { small: true; mono: false; color: theme.raised; text: metaRow.isMovie ? "Film" : "Series"; textColor: theme.textDim }
-                Chip { small: true; mono: false; color: theme.raised
+                Chip { small: true; mono: false; color: theme.tile; text: metaRow.isMovie ? "Film" : "Series"; textColor: theme.textDim }
+                Chip { small: true; mono: false; color: theme.tile
                     text: !metaRow.matched ? "No match" : page.providerLabel(metaRow.card.match_info.provider)
                     textColor: metaRow.matched ? theme.text : theme.textDim }
                 Chip { visible: metaRow.missing; small: true; mono: false; color: theme.redSoft; text: "Missing"; textColor: theme.red }
@@ -372,53 +334,53 @@ Item {
                     color: theme.textDim
                     Tooltip { text: metaRow.extra > 0 ? "Files beyond the expected count, likely misnamed or stray" : "" }
                 }
-                Corner {
+                Rectangle {
                     anchors.left: filesCount.right; anchors.leftMargin: theme.space(3)
                     anchors.right: parent.right
                     anchors.verticalCenter: filesCount.verticalCenter
-                    height: theme.space(1)
-                    radius: height / 2; smoothing: theme.cornerSmoothing
-                    color: theme.tileSunken
-                    Corner {
+                    height: theme.space(0.75)
+                    radius: height / 2
+                    color: theme.behind
+                    Rectangle {
                         width: Math.max(metaRow.pct > 0 ? height : 0, parent.width * metaRow.pct)
                         height: parent.height
-                        radius: height / 2; smoothing: theme.cornerSmoothing
+                        radius: height / 2
                         color: theme.caughtUp
                     }
                 }
             }
         }
 
-        // The row's actions
-        Column {
+        // The row's actions: small flat buttons
+        Row {
             id: actions
-            anchors.right: parent.right; anchors.rightMargin: metaRow.inPad
+            anchors.right: parent.right; anchors.rightMargin: metaRow.pad
             anchors.verticalCenter: parent.verticalCenter
             spacing: theme.space(1.5)
             Button {
                 id: matchBtn
                 objectName: metaRow.first ? "row-match" : ""
-                width: Math.max(implicitWidth, refreshBtn.implicitWidth)
-                text: "Match"; icon: "link"; small: true
+                text: "Match"; icon: "link"; small: true; flat: true
                 onClicked: matchPanel.openFor(metaRow.card.id, metaRow.card.title, metaRow.card.match_info)
             }
             Button {
                 id: refreshBtn
                 visible: !metaRow.missing
                 objectName: metaRow.first ? "row-refresh" : ""
-                width: Math.max(implicitWidth, matchBtn.implicitWidth)
-                text: "Refresh"; icon: "refresh-cw"; small: true
+                text: "Refresh"; icon: "refresh-cw"; small: true; flat: true
                 onClicked: { var r = Door.refreshSeries(metaRow.card.id); frame.toast(r.error ? r.error.message : "Refreshing " + (metaRow.card.title || "")) }
             }
             Button {
                 visible: metaRow.missing
                 objectName: "row-forget"
-                width: Math.max(implicitWidth, matchBtn.implicitWidth)
                 text: "Forget"; icon: "trash-2"; small: true; danger: true
                 onClicked: page.forget(metaRow.card)
                 Tooltip { text: "The folder is gone: drop this series and its history" }
             }
         }
+
+        // The hairline under the row
+        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.line }
     }
 
     MatchPanel {

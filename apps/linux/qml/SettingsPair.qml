@@ -19,8 +19,8 @@ import QtQuick.Layouts
 Item {
     id: pair
     property real split: 0.5
-    property real columnGap: theme.grout
-    property real rowGap: theme.grout
+    property real columnGap: theme.space(12)
+    property real rowGap: theme.space(8)
     property var leftPanels: []
     property var rightPanels: []
     property bool evenColumns: false
