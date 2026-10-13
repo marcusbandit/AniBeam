@@ -152,6 +152,16 @@ accent line along the foot, inside the padding. Hover: a 1 px accent outline, a 
 percent and a deeper scrim; press scales 0.98. The hero takes the display cut and a square
 Play button. A ghost (Watching's AniList-only entries) shows its poster at 60 percent.
 
+Keys across the grids (`GridKeys.qml`, owned by `PageScroll`): a tile takes focus from Tab,
+after the rail and the page's controls, or from a click; hover never takes it. Focus is the
+hover outline at full strength plus a 2 px ring of `theme.focusRing` outside the tile, so the
+two states never read alike. Left and Right walk a Flow in its own order, Up and Down go to the
+row above or below at the nearest centre x, with rows read off the content at the key press,
+so a section boundary, a day row of the week and Home's Resume button are all just rows and
+no column count is ever hardcoded. Return opens the series, Space plays the next episode,
+Escape drops the focus to the page, and the page scrolls the focused tile wholly into view
+through the wheel's smoothed target.
+
 Motion: exponential smoothing at rate 14 for anything tracking a target (bandit shell's value).
 Hover is a glass step and a 1 px edge; press is scale 0.98. One orchestrated moment: when the
 library opens, the hero tiles settle first and the shelf follows in one sweep (no per-card
