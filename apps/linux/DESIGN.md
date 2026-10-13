@@ -34,6 +34,13 @@ below where they disagree:
   Settings are quiet round glyphs at the foot.
 - **A width cap.** Pages sit in a centred column no wider than `theme.contentMax`, so an
   ultrawide window shows a readable page instead of an endless wall.
+- **The series' own colour.** The home band takes the tone of its poster (`PosterTone.qml`,
+  the most saturated common hue, read off a thumbnail) as its wash, its Resume button and a
+  glow into the page's head. The one place the chrome takes a colour, and it changes with
+  what you are watching.
+- **The week.** Airing series sit in seven day columns from today, on the day their next
+  episode lands, with a Later column for the rest. A card with an episode out and unseen
+  carries a "New" tag in the accent.
 - **Scrolling** glides three times as far per wheel notch (`WheelStep.multiplier` 9).
 
 This supersedes Tesserae (rounded tiles on poster-toned plates), which superseded "the lobby".

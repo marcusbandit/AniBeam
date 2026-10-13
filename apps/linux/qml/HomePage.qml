@@ -1,9 +1,10 @@
-// Home: the page the app opens on, ordered by what the app is for. First, the series last
-// watched, but only when there is something to go on with (an episode left half-way, or the
-// next one on disk); then what is airing, the series that have episodes waiting, a row of
-// things not started yet, and the library's genres as a way in. Each shelf is a plain grid
-// whose column count comes from the width, cards a size up for the airing shelf, and a
-// shelf that could run long stops at a row or two with "See all" into the library.
+// Home: the page the app opens on, ordered by what the app is for. First, the series to go
+// on with (an episode left half-way, or the next one on disk), set on a band in that
+// series' own colour, read off its poster. Then the week: seven day columns from today with
+// the airing series' posters placed on the day their next episode lands, and a Later column
+// for the rest. Then the series with episodes waiting, a row not started yet, and the
+// library's genres as a way in. Every shelf is a plain grid whose column count comes from
+// the width, and a shelf that could run long stops at a row or two with "See all".
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -80,27 +81,50 @@ Item {
         else openSeries(c)
     }
 
-    // ---- The shelves' lists. The hero's series shows only in the hero.
-    readonly property var heroId: resume ? resume.card.id : -1
+    // ---- The lists. The hero's series shows only in the hero.
+    readonly property int heroId: resume ? resume.card.id : -1
     function behindOf(c) {
-        // Episodes out and not seen: aired or on disk past the watched count
         var w = watchedOf(c), reach = Math.max(c.episodes_on_disk || 0, 0)
         return c.watched_state === "Behind" ? Math.max(1, reach - w) : 0
-    }
-    readonly property var airingList: {
-        var list = airingRows.filter(function(c) { return c.id !== page.heroId })
-        // Episodes waiting first, then the soonest to air
-        return list.slice().sort(function(a, b) {
-            var ba = page.behindOf(a) > 0 ? 1 : 0, bb = page.behindOf(b) > 0 ? 1 : 0
-            if (ba !== bb) return bb - ba
-            var na = a.next_airing ? a.next_airing.at : 1e12, nb = b.next_airing ? b.next_airing.at : 1e12
-            return na - nb
-        })
     }
     readonly property var airingIds: {
         var m = {}
         for (var i = 0; i < airingRows.length; i++) m[airingRows[i].id] = true
         return m
+    }
+    // The week: today and the six days after it, each holding the airing series whose next
+    // episode lands that day (soonest first); what airs later or carries no date is Later.
+    readonly property var week: {
+        var now = new Date(nowMs)
+        var start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000
+        var days = []
+        for (var i = 0; i < 7; i++) {
+            var d = new Date((start + i * 86400) * 1000)
+            days.push({ label: i === 0 ? "Today" : i === 1 ? "Tomorrow" : Qt.formatDate(d, "dddd"), date: Qt.formatDate(d, "d MMM"), today: i === 0, cards: [] })
+        }
+        var later = []
+        var rows = airingRows.slice().sort(function(a, b) {
+            var na = a.next_airing ? a.next_airing.at : 1e12, nb = b.next_airing ? b.next_airing.at : 1e12
+            return na - nb
+        })
+        for (var r = 0; r < rows.length; r++) {
+            var c = rows[r]
+            var at = c.next_airing ? c.next_airing.at : 0
+            var k = at > 0 ? Math.floor((at - start) / 86400) : -1
+            if (k >= 0 && k < 7) days[k].cards.push(c); else later.push(c)
+        }
+        if (later.length) days.push({ label: "Later", date: "", today: false, cards: later, later: true })
+        return days
+    }
+    readonly property int airingWaiting: airingRows.filter(function(c) { return page.behindOf(c) > 0 }).length
+    readonly property string weekFact: {
+        if (airingWaiting > 0) return Fmt.plural(airingWaiting, "series has", "series have") + " a new episode out"
+        var now = nowMs / 1000, next = null
+        for (var i = 0; i < airingRows.length; i++) {
+            var n = airingRows[i].next_airing
+            if (n && n.at > now && (!next || n.at < next.n.at)) next = { n: n, c: airingRows[i] }
+        }
+        return next ? "Next up: " + next.c.title + " in " + shortCountdown(next.n.at - now) : ""
     }
     // Episodes waiting: behind on the tracker, or watched recently and not caught up
     readonly property var catchUpList: {
@@ -136,18 +160,27 @@ Item {
         var d = Math.floor(t / 86400), h = Math.floor(t % 86400 / 3600), m = Math.floor(t % 3600 / 60)
         return d > 0 ? d + "d " + h + "h" : h > 0 ? h + "h " + m + "m" : Math.max(1, m) + "m"
     }
-    readonly property string airingFact: {
-        var waiting = airingList.filter(function(c) { return page.behindOf(c) > 0 }).length
-        if (waiting > 0) return Fmt.plural(waiting, "series has", "series have") + " new episodes"
-        var now = nowMs / 1000, next = null
-        for (var i = 0; i < airingList.length; i++) {
-            var n = airingList[i].next_airing
-            if (n && n.at > now && (!next || n.at < next.n.at)) next = { n: n, c: airingList[i] }
+
+    // ---- A section heading: the name in the display cut, its one fact beside it, and an
+    // action at the right
+    component Heading: Item {
+        property string text: ""
+        property string fact: ""
+        property alias action: actionSlot.data
+        width: parent ? parent.width : 0
+        height: theme.space(12)
+        Row {
+            anchors.left: parent.left
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: theme.space(2)
+            spacing: theme.space(3)
+            Label { id: headingText; text: parent.parent.text; role: "display"; font.pointSize: theme.typeLarge; font.variableAxes: ({ "wdth": 74, "wght": 500 }) }
+            Label { anchors.baseline: headingText.baseline; text: parent.parent.fact; role: "ui"; color: theme.textDim }
         }
-        return next ? next.c.title + " in " + shortCountdown(next.n.at - now) : ""
+        Item { id: actionSlot; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(2); width: childrenRect.width; height: childrenRect.height }
     }
 
-    // ---- A shelf: a heading with its one fact and a way into the library, over a grid
+    // ---- A shelf: a heading over a grid of cards
     component Shelf: Column {
         id: shelfBox
         property string heading: ""
@@ -161,26 +194,11 @@ Item {
         readonly property real cardWidth: Math.floor((width - page.gap * (cols - 1)) / cols)
         readonly property var shown: maxRows > 0 ? list.slice(0, cols * maxRows) : list
         visible: list.length > 0
-        spacing: theme.space(4)
-
-        Item {
-            width: shelfBox.width
-            height: theme.controlHeight
-            Row {
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: theme.space(3)
-                Label { id: shelfTitle; text: shelfBox.heading; role: "title"; anchors.verticalCenter: parent.verticalCenter }
-                Label {
-                    anchors.baseline: shelfTitle.baseline
-                    text: shelfBox.fact
-                    role: "ui"
-                    color: theme.textDim
-                }
-            }
-            Button {
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
+        spacing: theme.space(3)
+        Heading {
+            text: shelfBox.heading
+            fact: shelfBox.fact
+            action: Button {
                 visible: shelfBox.list.length > shelfBox.shown.length
                 text: shelfBox.moreText
                 small: true
@@ -210,40 +228,69 @@ Item {
         anchors.fill: parent
         visible: !page.libraryEmpty
 
-        // ---- The hero: the series to go on with, across the page over its banner art
+        // ---- The hero: the series to go on with, on a band in its own colour, the banner
+        // art fading in from the right
         Item {
             id: hero
             visible: page.resume !== null
             width: parent.width
-            height: visible ? theme.space(88) : 0
+            height: visible ? theme.space(92) : 0
             readonly property var r: page.resume
             readonly property var d: r ? r.detail : null
             readonly property var c: r ? r.card : null
             readonly property var ep: r ? r.episode : null
             readonly property bool hasArt: !!(d && d.banner)
-            readonly property color ink: hasArt ? theme.onPoster : theme.text
-            readonly property color inkDim: hasArt ? theme.onPosterDim : theme.textDim
             readonly property real pad: theme.space(8)
+            // The band's colour: the poster's tone over a dark base, so white ink holds in
+            // both modes; the ink accent is the tone lifted toward white
+            PosterTone { id: toneOf; source: hero.c && hero.c.poster ? "file://" + hero.c.poster : "" }
+            readonly property color tone: toneOf.tone
+            readonly property color base: theme.tone(Qt.rgba(0.05, 0.055, 0.07, 1), tone, 0.5)
+            readonly property color inkAccent: theme.tone(tone, Qt.rgba(1, 1, 1, 1), 0.45)
+            readonly property color ink: "#f4f6f8"
+            readonly property color inkDim: Qt.rgba(1, 1, 1, 0.68)
 
-            Corner {
-                id: band
-                anchors.fill: parent
-                radius: theme.radiusXl
-                color: theme.tile
-                fillItem: hero.hasArt && art.status === Image.Ready ? art : null
-                Image {
-                    id: art; visible: false
-                    width: parent.width; height: parent.height
-                    source: hero.hasArt ? "file://" + hero.d.banner : ""
-                    fillMode: Image.PreserveAspectCrop; asynchronous: true
+            // The band's colour bleeds up into the page's head, so the whole top of Home
+            // takes the series' tone
+            Rectangle {
+                x: -theme.space(8); y: -theme.space(7)
+                width: parent.width + theme.space(16); height: parent.height * 0.6 + theme.space(7)
+                gradient: Gradient {
+                    GradientStop { position: 0; color: Qt.rgba(hero.tone.r, hero.tone.g, hero.tone.b, 0.22) }
+                    GradientStop { position: 1; color: Qt.rgba(hero.tone.r, hero.tone.g, hero.tone.b, 0) }
                 }
             }
-            // Legibility for the words on the art: one flat wash over the whole band
-            Rectangle {
-                visible: hero.hasArt
+            Rectangle { anchors.fill: parent; radius: theme.radiusXl; color: hero.base; antialiasing: true }
+            // The art sits in the right two thirds, under a wash of the band's colour that
+            // clears to the right
+            Item {
                 anchors.fill: parent
-                radius: theme.radiusXl
-                color: Qt.rgba(0.03, 0.035, 0.045, 0.74)
+                clip: true
+                Corner {
+                    id: band
+                    visible: hero.hasArt
+                    x: Math.round(parent.width * 0.3); y: 0
+                    width: parent.width - x; height: parent.height
+                    radius: theme.radiusXl
+                    color: "transparent"
+                    fillItem: hero.hasArt && art.status === Image.Ready ? art : null
+                    Image {
+                        id: art; visible: false
+                        width: parent.width; height: parent.height
+                        source: hero.hasArt ? "file://" + hero.d.banner : ""
+                        fillMode: Image.PreserveAspectCrop; asynchronous: true
+                    }
+                }
+                Rectangle {
+                    visible: hero.hasArt
+                    anchors.fill: parent
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0.28; color: hero.base }
+                        GradientStop { position: 0.62; color: Qt.rgba(hero.base.r, hero.base.g, hero.base.b, 0.55) }
+                        GradientStop { position: 1; color: Qt.rgba(hero.base.r, hero.base.g, hero.base.b, 0.1) }
+                    }
+                }
             }
 
             Corner {
@@ -253,7 +300,7 @@ Item {
                 height: parent.height - hero.pad * 2
                 width: Math.round(height * 2 / 3)
                 radius: theme.radiusTile
-                color: theme.raised
+                color: Qt.rgba(0, 0, 0, 0.3)
                 fillItem: hero.c && hero.c.poster && heroPosterImage.status === Image.Ready ? heroPosterImage : null
                 Image {
                     id: heroPosterImage; visible: false
@@ -271,12 +318,13 @@ Item {
                 anchors.right: parent.right
                 anchors.rightMargin: hero.pad
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: theme.space(3)
+                spacing: theme.space(2.5)
 
                 Label {
                     text: hero.r && hero.r.partial ? "Pick up where you stopped" : "Up next"
-                    role: "ui"
-                    color: theme.accentOnPoster
+                    role: "title"
+                    font.pointSize: theme.typeNormal
+                    color: hero.inkAccent
                 }
                 Label {
                     width: parent.width
@@ -286,16 +334,15 @@ Item {
                     wrapMode: Text.Wrap
                     maximumLineCount: 2
                     elide: Text.ElideRight
+                    lineHeight: 0.92
                 }
                 Label {
                     width: parent.width
                     text: hero.ep ? Fmt.episodeName(hero.ep.title || "", hero.ep.number) : ""
-                    role: "title"
-                    font.pointSize: theme.typeNormal
+                    role: "ui"
                     color: hero.ink
                     elide: Text.ElideRight
                 }
-                // How far into the half-watched episode, or how far into the series
                 Row {
                     spacing: theme.space(3)
                     readonly property real frac: hero.r && hero.r.partial
@@ -306,13 +353,11 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         width: theme.space(60); height: theme.space(1)
                         radius: height / 2
-                        color: Qt.rgba(1, 1, 1, hero.hasArt ? 0.18 : 0)
-                        border.width: hero.hasArt ? 0 : 1
-                        border.color: theme.line
+                        color: Qt.rgba(1, 1, 1, 0.2)
                         Rectangle {
                             width: parent.width * Math.min(1, parent.parent.frac)
                             height: parent.height; radius: parent.radius
-                            color: theme.accent
+                            color: hero.inkAccent
                         }
                     }
                     Label {
@@ -336,29 +381,90 @@ Item {
                     Button {
                         objectName: "home-resume"
                         primary: true
+                        tint: hero.inkAccent
                         icon: "play"
                         text: hero.ep ? (hero.r.partial ? "Resume " : "Play ") + Fmt.episodeName("", hero.ep.number).toLowerCase() : ""
                         onClicked: page.playFile(hero.ep.file, hero.c.title)
                     }
                     Button {
                         text: "Open series"
+                        flat: true
                         onClicked: page.openSeries(hero.c)
                     }
                 }
             }
         }
 
-        Item { width: 1; height: hero.visible ? theme.space(6) : 0 }
+        Item { width: 1; height: hero.visible ? theme.space(4) : 0 }
 
-        Shelf {
-            objectName: "home-airing"
+        // ---- The week: a column per day, the posters on the day their episode lands
+        Column {
+            objectName: "home-week"
+            visible: page.airingRows.length > 0
             width: parent.width
-            heading: "Airing now"
-            fact: page.airingFact
-            list: page.airingList
-            minWidth: Math.round(theme.posterWidth * 1.2)
+            spacing: theme.space(3)
+            readonly property int cols: page.week.length
+            readonly property real colWidth: Math.floor((width - page.gap * (cols - 1)) / cols)
+            readonly property real cardWidth: Math.min(theme.posterWidth, colWidth)
+            Heading { text: "This week"; fact: page.weekFact }
+            Row {
+                spacing: page.gap
+                Repeater {
+                    model: page.week
+                    Column {
+                        id: day
+                        required property var modelData
+                        required property int index
+                        objectName: "home-day-" + index
+                        width: parent.parent.colWidth
+                        spacing: theme.space(3)
+                        readonly property bool hasCards: modelData.cards.length > 0
+                        // The day's name and date; today in the accent, an empty day dim
+                        Column {
+                            width: parent.width
+                            spacing: theme.space(0.5)
+                            Label {
+                                text: day.modelData.label
+                                role: "title"
+                                font.pointSize: theme.typeNormal
+                                color: day.modelData.today ? theme.accent : day.hasCards ? theme.text : theme.textFaint
+                            }
+                            Label {
+                                text: day.modelData.date
+                                visible: text !== ""
+                                role: "ledger"
+                                color: day.modelData.today ? theme.accent : theme.textFaint
+                            }
+                        }
+                        Rectangle {
+                            width: parent.width; height: 2
+                            radius: 1
+                            color: day.modelData.today ? theme.accent : theme.line
+                        }
+                        Repeater {
+                            model: day.modelData.cards
+                            Card {
+                                required property var modelData
+                                item: modelData
+                                posterWidth: day.parent.parent.cardWidth
+                                nowMs: page.nowMs
+                                onOpened: page.openSeries(modelData)
+                                onPlayed: page.playSeries(modelData)
+                            }
+                        }
+                        // An empty day keeps its column, with a quiet slot where a poster
+                        // would sit
+                        Label {
+                            visible: !day.hasCards
+                            text: "Nothing airs"
+                            role: "ledger"
+                            color: theme.textFaint
+                        }
+                    }
+                }
+            }
         }
-        Item { width: 1; height: page.airingList.length ? theme.space(6) : 0 }
+        Item { width: 1; height: page.airingRows.length ? theme.space(4) : 0 }
 
         Shelf {
             objectName: "home-catch-up"
@@ -369,7 +475,7 @@ Item {
             maxRows: 2
             onMore: frame.go("library", { arrange: "WatchState" })
         }
-        Item { width: 1; height: page.catchUpList.length ? theme.space(6) : 0 }
+        Item { width: 1; height: page.catchUpList.length ? theme.space(4) : 0 }
 
         Shelf {
             objectName: "home-fresh"
@@ -380,21 +486,17 @@ Item {
             maxRows: 1
             onMore: frame.go("library")
         }
-        Item { width: 1; height: page.freshList.length ? theme.space(6) : 0 }
+        Item { width: 1; height: page.freshList.length ? theme.space(4) : 0 }
 
         // ---- Genres: a way into the library by kind
         Column {
             objectName: "home-genres"
             visible: page.genreList.length > 0
             width: parent.width
-            spacing: theme.space(4)
-            Item {
-                width: parent.width
-                height: theme.controlHeight
-                Label { anchors.verticalCenter: parent.verticalCenter; text: "Genres"; role: "title" }
-                Button {
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
+            spacing: theme.space(3)
+            Heading {
+                text: "Genres"
+                action: Button {
                     text: "Open library"
                     icon: "layers"
                     small: true
@@ -414,7 +516,7 @@ Item {
                         height: theme.space(10)
                         radius: height / 2
                         color: gm.containsMouse ? theme.raised : theme.tile
-                        border.color: gm.containsMouse ? theme.lineStrong : theme.line
+                        border.color: gm.containsMouse ? theme.lineStrong : "transparent"
                         border.width: 1
                         scale: gm.pressed ? 0.97 : 1
                         Row {

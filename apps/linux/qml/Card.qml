@@ -253,6 +253,8 @@ Item {
     Row {
         x: root.width - width - root.pad * 0.8; y: root.pad * 0.8
         spacing: theme.space(1)
+        // An episode out and not seen: the one tag in the accent
+        PosterTag { visible: root.item.watched_state === "Behind" && !root.ghost; text: "New"; ink: theme.accentOnPoster }
         PosterTag { visible: !!root.item.hidden; text: "Hidden"; ink: theme.onPosterDim }
         PosterTag { visible: root.ghost && !!root.item.site_url; text: "AniList" }
     }
