@@ -41,6 +41,11 @@ pub struct Strip {
 pub struct Airing {
     pub episode: u32,
     pub at: SystemTime,
+    /// The episode's season for a provider that numbers within one (TVmaze),
+    /// None for AniList, whose numbers run through a media. `serde(default)`
+    /// because older blobs predate it.
+    #[serde(default)]
+    pub season: Option<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
@@ -188,9 +193,20 @@ pub struct SeriesDetail {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Enum)]
 pub enum FeedReason {
-    Aired { episode: u32, at: SystemTime },
-    Downloaded { at: SystemTime },
-    Scheduled { episode: u32, at: SystemTime },
+    Aired {
+        episode: u32,
+        at: SystemTime,
+    },
+    Downloaded {
+        at: SystemTime,
+    },
+    Scheduled {
+        episode: u32,
+        at: SystemTime,
+        /// As `Airing::season`.
+        #[serde(default)]
+        season: Option<u32>,
+    },
     None,
 }
 

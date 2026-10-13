@@ -8,7 +8,7 @@ use std::path::Path;
 use rusqlite::Connection;
 
 use crate::contract::*;
-use crate::library::snapshot::{AiringRow, FileRow, SeriesRow, Snapshot};
+use crate::library::snapshot::{AiringRow, FileRow, NextEpisode, SeriesRow, Snapshot};
 use crate::library::{labels, titles};
 use crate::time;
 
@@ -151,40 +151,65 @@ pub fn is_film(c: &SeriesCard) -> bool {
     c.kind == SeriesKind::Movie || c.format.as_deref() == Some("MOVIE")
 }
 
-/// `episodes` is (file id, number) sorted by number. `last_completed` is the
-/// most recently completed episode's number. With something watched, the
-/// episode after it; with nothing watched, the first one on disk, above zero
-/// when a tracker entry says the series has been started at all.
+/// `episodes` is (file id, season, number) in season then number order.
+/// `last_completed` is the most recently completed episode's season and
+/// number; a tracker's progress counts as season 1, since AniList numbers
+/// one season per entry. With something watched, the episode after it in
+/// (season, number) order: the next number of the same season, else the
+/// first episode past it, which is how finishing S01E10 lands on S02E01.
+/// With nothing watched, the first one on disk, above zero when a tracker
+/// entry says the series has been started at all.
 pub fn next_up(
-    episodes: &[(u64, f64)],
-    last_completed: Option<f64>,
+    episodes: &[(u64, u32, f64)],
+    last_completed: Option<(u32, f64)>,
     tracker_progress: Option<u32>,
 ) -> Option<u64> {
-    let last = last_completed
-        .unwrap_or(0.0)
-        .max(f64::from(tracker_progress.unwrap_or(0)));
-    if last > 0.0 {
+    let progress = tracker_progress
+        .filter(|p| *p > 0)
+        .map(|p| (1, f64::from(p)));
+    let last = match (last_completed.filter(|(_, n)| *n > 0.0), progress) {
+        (Some(a), Some(b)) => Some(if after(a, b) { a } else { b }),
+        (a, b) => a.or(b),
+    };
+    if let Some((season, number)) = last {
         return episodes
             .iter()
-            .find(|(_, n)| *n == last + 1.0)
-            .or_else(|| episodes.iter().find(|(_, n)| *n > last))
-            .map(|(f, _)| *f);
+            .find(|(_, s, n)| *s == season && *n == number + 1.0)
+            .or_else(|| {
+                episodes
+                    .iter()
+                    .find(|(_, s, n)| after((*s, *n), (season, number)))
+            })
+            .map(|(f, _, _)| *f);
     }
     if tracker_progress.is_some() {
-        return episodes.iter().find(|(_, n)| *n > 0.0).map(|(f, _)| *f);
+        return episodes
+            .iter()
+            .find(|(_, _, n)| *n > 0.0)
+            .map(|(f, _, _)| *f);
     }
-    episodes.first().map(|(f, _)| *f)
+    episodes.first().map(|(f, _, _)| *f)
+}
+
+/// Whether `a` comes after `b` in (season, number) order.
+fn after(a: (u32, f64), b: (u32, f64)) -> bool {
+    a.0 > b.0 || (a.0 == b.0 && a.1 > b.1)
 }
 /// The highest episode that has aired, and the earliest one still to come.
-pub(super) fn aired_and_scheduled(airing: &[AiringRow], now: i64) -> (u32, Option<(u32, i64)>) {
+/// An AniList schedule carries no season.
+pub(super) fn aired_and_scheduled(airing: &[AiringRow], now: i64) -> (u32, Option<NextEpisode>) {
     let mut latest_aired = 0;
-    let mut next_scheduled: Option<(u32, i64)> = None;
+    let mut next_scheduled: Option<NextEpisode> = None;
     for a in airing {
         let Some(at) = a.aired_at else { continue };
         if at <= now {
             latest_aired = latest_aired.max(a.number);
-        } else if next_scheduled.is_none_or(|(_, t)| at < t) {
-            next_scheduled = Some((a.number, at));
+        } else if next_scheduled.is_none_or(|n| at < n.at) {
+            next_scheduled = Some(NextEpisode {
+                season: None,
+                number: a.number,
+                at,
+            });
         }
     }
     (latest_aired, next_scheduled)
@@ -260,7 +285,7 @@ impl Snapshot {
                 watched,
                 total,
                 latest_aired,
-                next_scheduled.map(|(n, _)| n),
+                next_scheduled.map(|n| n.number),
                 latest_downloaded,
                 status,
             ),
@@ -269,9 +294,10 @@ impl Snapshot {
                 .map(|s| f64::from(s) / 10.0),
             my_score: entry.and_then(|e| e.score),
             list_status: entry.and_then(|e| e.status),
-            next_airing: next_scheduled.map(|(episode, at)| Airing {
-                episode,
-                at: time::from_secs(at),
+            next_airing: next_scheduled.map(|n| Airing {
+                episode: n.number,
+                at: time::from_secs(n.at),
+                season: n.season,
             }),
             last_viewed_at: self.views.get(&row.id).map(|(_, at)| time::from_secs(*at)),
             latest_activity_at: time::from_secs(self.latest_activity(
@@ -486,13 +512,30 @@ mod tests {
 
     #[test]
     fn next_up_rules() {
-        let disk = vec![(10u64, 1.0), (11, 2.0), (12, 3.0), (13, 5.0)];
-        assert_eq!(next_up(&disk, Some(2.0), Some(1)), Some(12));
-        assert_eq!(next_up(&disk, Some(3.0), None), Some(13));
+        let disk = vec![(10u64, 1, 1.0), (11, 1, 2.0), (12, 1, 3.0), (13, 1, 5.0)];
+        assert_eq!(next_up(&disk, Some((1, 2.0)), Some(1)), Some(12));
+        assert_eq!(next_up(&disk, Some((1, 3.0)), None), Some(13));
         assert_eq!(next_up(&disk, None, Some(0)), Some(10));
         assert_eq!(next_up(&disk, None, None), Some(10));
-        assert_eq!(next_up(&disk, Some(5.0), Some(5)), None);
-        assert_eq!(next_up(&[], Some(1.0), None), None);
+        assert_eq!(next_up(&disk, Some((1, 5.0)), Some(5)), None);
+        assert_eq!(next_up(&[], Some((1, 1.0)), None), None);
+    }
+
+    /// Two seasons on disk: the episode after S02E03 is S02E04, never
+    /// S01E04; finishing season 1 lands on season 2's first; a tracker's
+    /// progress is season 1's and never outranks a later season's history.
+    #[test]
+    fn next_up_walks_within_the_season_then_into_the_next() {
+        let mut disk: Vec<(u64, u32, f64)> = (1..=10u32)
+            .map(|n| (u64::from(n), 1, f64::from(n)))
+            .collect();
+        disk.extend((1..=8u32).map(|n| (20 + u64::from(n), 2, f64::from(n))));
+        assert_eq!(next_up(&disk, Some((2, 3.0)), None), Some(24));
+        assert_eq!(next_up(&disk, Some((1, 10.0)), None), Some(21));
+        assert_eq!(next_up(&disk, Some((1, 3.0)), None), Some(4));
+        assert_eq!(next_up(&disk, Some((2, 3.0)), Some(10)), Some(24));
+        assert_eq!(next_up(&disk, Some((2, 8.0)), None), None);
+        assert_eq!(next_up(&disk, None, None), Some(1));
     }
 
     #[cfg(test)]

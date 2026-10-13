@@ -77,7 +77,7 @@ pub fn insert_file(
     let episode_key = if is_extra {
         name
     } else {
-        classifier::format_number(number)
+        classifier::number_key(season, number)
     };
     let (path, kind) = (path.to_string(), kind.to_string());
     let extra_index = if is_extra {

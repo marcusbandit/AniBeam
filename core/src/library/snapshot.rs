@@ -89,6 +89,15 @@ pub struct AiringRow {
     pub aired_at: Option<i64>,
 }
 
+/// The earliest episode still to come. The season is TVmaze's, whose
+/// numbers restart every season; an AniList schedule carries none.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct NextEpisode {
+    pub season: Option<u32>,
+    pub number: u32,
+    pub at: i64,
+}
+
 pub struct TrackerRow {
     pub progress: u32,
     pub status: Option<ListStatus>,
@@ -711,7 +720,7 @@ impl Snapshot {
     /// season on disk, which is the number the folder's count is measured
     /// in, and the earliest episode still to come in any season, so an
     /// announced next season is what is next.
-    pub(crate) fn aired_and_next(&self, row: &SeriesRow, now: i64) -> (u32, Option<(u32, i64)>) {
+    pub(crate) fn aired_and_next(&self, row: &SeriesRow, now: i64) -> (u32, Option<NextEpisode>) {
         if row.provider != Some(Provider::Tvmaze) {
             return aired_and_scheduled(self.airing_of(row), now);
         }
@@ -723,9 +732,19 @@ impl Snapshot {
             .tvmaze_id
             .and_then(|id| self.tv_seasons.get(&id))
             .into_iter()
-            .flat_map(|seasons| seasons.values().flatten())
-            .filter_map(|a| a.aired_at.filter(|at| *at > now).map(|at| (a.number, at)))
-            .min_by_key(|(_, at)| *at);
+            .flat_map(|seasons| {
+                seasons
+                    .iter()
+                    .flat_map(|(season, eps)| eps.iter().map(move |a| (*season, a)))
+            })
+            .filter_map(|(season, a)| {
+                a.aired_at.filter(|at| *at > now).map(|at| NextEpisode {
+                    season: Some(season),
+                    number: a.number,
+                    at,
+                })
+            })
+            .min_by_key(|n| n.at);
         (aired, next)
     }
 
@@ -779,15 +798,25 @@ impl Snapshot {
         rows.iter().find(|a| f64::from(a.number) == file.number)
     }
 
-    /// The episodes on disk, sorted by number, as (file id, number).
+    /// The episodes on disk in season then number order, a file naming no
+    /// season read as season 1, so a folder holding S01E10 and S02E08 ends
+    /// on S02E08 and the card's code, latest download and next up follow
+    /// the latest season.
     pub(super) fn episodes_on_disk(&self, id: u64) -> Vec<&FileRow> {
         let mut eps: Vec<&FileRow> = self.files_of(id).iter().filter(|f| f.is_episode).collect();
         eps.sort_by(|a, b| {
-            a.number
-                .partial_cmp(&b.number)
-                .unwrap_or(Ordering::Equal)
+            season_of(a)
+                .cmp(&season_of(b))
+                .then_with(|| a.number.partial_cmp(&b.number).unwrap_or(Ordering::Equal))
                 .then_with(|| a.path.cmp(&b.path))
         });
         eps
     }
 }
+
+/// The season a file sorts and keys under: its own, else season 1.
+pub(crate) fn season_of(f: &FileRow) -> u32 {
+    f.season.unwrap_or(1)
+}
+
+impl Snapshot {}

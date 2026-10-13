@@ -516,7 +516,7 @@ async fn import_history(
                     "INSERT INTO views (series_id, episode_key, at) VALUES (?1, ?2, ?3)
                      ON CONFLICT(series_id) DO UPDATE SET episode_key = excluded.episode_key, at = excluded.at
                      WHERE excluded.at > views.at",
-                    params![row.id as i64, row.key(view.last_episode), at],
+                    params![row.id as i64, row.key(view.last_episode, view.season), at],
                 )? as u64;
             }
             let mut completed = 0u64;
@@ -525,7 +525,7 @@ async fn import_history(
                 completed += tx.execute(
                     "INSERT INTO completed (series_id, episode_key, at) VALUES (?1, ?2, ?3)
                      ON CONFLICT(series_id, episode_key) DO UPDATE SET at = excluded.at WHERE excluded.at > completed.at",
-                    params![row.id as i64, row.key(entry.episode), at],
+                    params![row.id as i64, row.key(entry.episode, entry.season), at],
                 )? as u64;
             }
             let mut resume = 0u64;
@@ -559,11 +559,12 @@ struct HistorySeries {
 impl HistorySeries {
     /// A film has no episode number, so its history key is its file name,
     /// which is the last segment of its own path. Everything else keys by
-    /// the number, `12` or `12.5`, never `12.0`.
-    fn key(&self, number: f64) -> String {
+    /// the number, `12` or `12.5`, never `12.0`, prefixed with the season
+    /// when the document names one past the first.
+    fn key(&self, number: f64, season: Option<u32>) -> String {
         match self.kind {
             SeriesKind::Movie => file_name(&self.path),
-            SeriesKind::Show => classifier::format_number(number),
+            SeriesKind::Show => classifier::number_key(season, number),
         }
     }
 }
@@ -593,6 +594,7 @@ fn resume_target(
         ResumeEntry::Series {
             series: path,
             episode,
+            season,
             position,
             duration,
             at,
@@ -600,7 +602,7 @@ fn resume_target(
             let row = series.get(&normalise(path))?;
             Some((
                 row.id,
-                row.key(*episode),
+                row.key(*episode, *season),
                 *position,
                 *duration,
                 format::parse_instant(at)?,
@@ -810,14 +812,15 @@ mod tests {
             kind: SeriesKind::Movie,
             path: "/lib/Movies/Film (2001).mkv".to_string(),
         };
-        assert_eq!(film.key(0.0), "Film (2001).mkv");
+        assert_eq!(film.key(0.0, None), "Film (2001).mkv");
         let show = HistorySeries {
             id: 2,
             kind: SeriesKind::Show,
             path: "/lib/Show".to_string(),
         };
-        assert_eq!(show.key(12.0), "12");
-        assert_eq!(show.key(12.5), "12.5");
+        assert_eq!(show.key(12.0, None), "12");
+        assert_eq!(show.key(12.5, None), "12.5");
+        assert_eq!(show.key(1.0, Some(2)), "S02E01");
     }
 
     /// A resume point keyed by file lands on the series that owns the
@@ -859,11 +862,23 @@ mod tests {
         let by_series = ResumeEntry::Series {
             series: "/lib/Show".to_string(),
             episode: 13.0,
+            season: None,
+            position: 1.0,
+            duration: 2.0,
+            at: at.clone(),
+        };
+        let (id, key, ..) = resume_target(&series, &by_series).unwrap();
+        assert_eq!((id, key.as_str()), (2, "13"));
+        // A later season keys apart from the first.
+        let by_season = ResumeEntry::Series {
+            series: "/lib/Show".to_string(),
+            episode: 1.0,
+            season: Some(2),
             position: 1.0,
             duration: 2.0,
             at,
         };
-        let (id, key, ..) = resume_target(&series, &by_series).unwrap();
-        assert_eq!((id, key.as_str()), (2, "13"));
+        let (id, key, ..) = resume_target(&series, &by_season).unwrap();
+        assert_eq!((id, key.as_str()), (2, "S02E01"));
     }
 }

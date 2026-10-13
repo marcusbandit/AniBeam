@@ -101,6 +101,7 @@ pub fn list(conn: &Connection, images_dir: &Path) -> Result<WatchingList, CoreEr
             next_airing.entry(anilist_id).or_insert(Airing {
                 episode,
                 at: time::from_secs(at),
+                season: None,
             });
         }
     }

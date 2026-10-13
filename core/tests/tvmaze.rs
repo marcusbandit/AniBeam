@@ -1122,6 +1122,58 @@ fn an_ended_multi_season_show_judges_each_file_against_its_own_season() {
     core.shutdown();
 }
 
+/// Two seasons on disk keep their history apart: watching S01E01 never
+/// marks S02E01, the card's code reads the latest season's latest episode
+/// rather than season 1's higher number, and next up walks within the
+/// season of what was last completed.
+#[test]
+fn a_multi_season_show_keys_its_history_and_next_up_by_season() {
+    let (_dir, core, _c) = common::open_core();
+    let now = time::now_secs();
+    insert_show(&core, 903, "Ended", &[(1, long_ago(10)), (2, long_ago(8))]);
+    let mut files: Vec<(u32, u32)> = (1..=10).map(|n| (1, n)).collect();
+    files.extend((1..=8).map(|n| (2, n)));
+    let series = tv_series(&core, 903, &files);
+
+    // Season 1 keys by the bare number, as every key did before seasons.
+    fixtures::insert_completed(&core, series, "1", now - 10);
+    let d = detail(&core, series);
+    assert_eq!(d.card.code.as_deref(), Some("S02E08"));
+    let codes: Vec<&str> = d.episodes.iter().map(|e| e.code.as_str()).collect();
+    assert_eq!(codes[9], "S01E10");
+    assert_eq!(codes[10], "S02E01");
+    assert_eq!(codes[17], "S02E08");
+    let watched: Vec<&str> = d
+        .episodes
+        .iter()
+        .filter(|e| e.watched)
+        .map(|e| e.code.as_str())
+        .collect();
+    assert_eq!(watched, vec!["S01E01"]);
+    let next = d.episodes.iter().find(|e| e.next_up).unwrap();
+    assert_eq!((next.code.as_str(), Some(next.file)), ("S01E02", d.next_up));
+
+    // Season 2 keys apart: S02E03 done leaves S01E03 alone and S02E04 next.
+    fixtures::insert_completed(&core, series, "S02E03", now - 5);
+    let d = detail(&core, series);
+    let watched: Vec<&str> = d
+        .episodes
+        .iter()
+        .filter(|e| e.watched)
+        .map(|e| e.code.as_str())
+        .collect();
+    assert_eq!(watched, vec!["S01E01", "S02E03"]);
+    let next = d.episodes.iter().find(|e| e.next_up).unwrap();
+    assert_eq!((next.code.as_str(), Some(next.file)), ("S02E04", d.next_up));
+
+    // Finishing season 1 lands on season 2's first episode.
+    fixtures::insert_completed(&core, series, "10", now);
+    let d = detail(&core, series);
+    let next = d.episodes.iter().find(|e| e.next_up).unwrap();
+    assert_eq!(next.code, "S02E01");
+    core.shutdown();
+}
+
 /// A running show with season 1 whole on disk and the first three of
 /// season 2's eleven aired episodes: the estimate counts what has aired in
 /// both seasons, what is expected is both seasons' announced length, and
@@ -1177,9 +1229,10 @@ fn an_announced_next_season_is_upcoming() {
     let c = card(&core, series);
     let next = c.next_airing.as_ref().expect("season 2 is announced");
     assert_eq!((next.episode, time::to_secs(next.at)), (1, s2[0]));
+    assert_eq!(next.season, Some(2));
     let upcoming = feed(&core, FeedSort::Upcoming);
     assert!(
-        matches!(upcoming[0].reason, FeedReason::Scheduled { episode: 1, at } if time::to_secs(at) == s2[0]),
+        matches!(upcoming[0].reason, FeedReason::Scheduled { episode: 1, at, season: Some(2) } if time::to_secs(at) == s2[0]),
         "{upcoming:#?}"
     );
     core.shutdown();
