@@ -80,6 +80,22 @@ below where they disagree:
   (`Tiles.qml`) stand on the ground as a figure over its caption. The Appearance previews
   keep their panes inside their section. A card without a poster (`Card.qml`) is a plain
   pane with no scrim and the theme's own inks, so it reads in light mode.
+- **Metadata answers the librarian's questions before it lists.** Under the head a line of
+  figures on the ground (`Tiles.qml`): matched, unmatched, missing folders, incomplete, and
+  the files on disk against the expected total, read off the whole library whatever the
+  filter. The rows are cut into the sections a person works in order, Unmatched, Missing on
+  disk, Incomplete, Complete, each a heading in the display cut at `typeLarge` with its
+  count in the ledger and one fact (how many episodes short, how many files on disk); an
+  empty section is not shown and the filter still applies on top. The row is tighter and
+  carries the record's season or year as a dim note after its pills.
+- **The library cuts by season, and the two controls are Order and Sort.** The lone series
+  under Related no longer pile up as Everything else: they are sections per anime season
+  ("Fall 2025", "Summer 2025"), newest first, Fall before Summer before Spring before Winter
+  within a year, the series without a date closing the page under No date. Season is a cut
+  of its own in the same control, over the whole library. The control that orders the cards
+  (A to Z, Last viewed, ...) is labelled Order and the one that cuts the sections is
+  labelled Sort, each with a dim word before it so they read as a pair. One helper
+  (`seasonSections`) makes the cut for both, so they never drift.
 
 This supersedes Tesserae (rounded tiles on poster-toned plates), which superseded "the lobby".
 The killed idioms (below) still hold.
