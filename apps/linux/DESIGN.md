@@ -103,7 +103,11 @@ below where they disagree:
   of its own in the same control, over the whole library. The control that orders the cards
   (A to Z, Last viewed, ...) is labelled Order and the one that cuts the sections is
   labelled Sort, each with a dim word before it so they read as a pair. One helper
-  (`seasonSections`) makes the cut for both, so they never drift.
+  (`seasonSections`) makes the cut for both, so they never drift. Group franchises is a
+  switch over any cut, and Airing is its own section before everything: a series airing
+  now sits there and also under its franchise or its cut, the one exception being the
+  current season's section, which holds only what is done airing, so nothing repeats on
+  the same ground.
 
 This supersedes Tesserae (rounded tiles on poster-toned plates), which superseded "the lobby".
 The killed idioms (below) still hold.
