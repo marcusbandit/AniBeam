@@ -2,10 +2,14 @@
 // it is matched to, and the files on disk against the expected count. The head is the
 // library's: the title in the display cut with the count beside it, the filter, the two
 // bulk actions and the search at the right. Under it the library's figures (matched,
-// unmatched, missing folders, incomplete, files against expected), then the rows cut into
+// unmatched, missing folders, incomplete, files against expected), then the series cut into
 // the sections a librarian works in order: Unmatched, Missing on disk, Incomplete,
-// Complete, each a heading in the display cut with its count and one fact, over rows with
-// a hairline between them, two to a line on a wide window. The core owns the filtering and
+// Complete, each a heading in the display cut with its count and one fact. The three
+// attention sections are rows with a hairline between them, two to a line on a wide
+// window: that is where the person works. Complete is a dense grid of small poster tiles,
+// as many to a line as the width holds (the library's column math), ordered by season
+// newest first then title, with the title, the files count and the season under each; its
+// Match and Refresh are glyph buttons that show on hover. The core owns the filtering and
 // the four counts (ListMetadata { filter, query, reveal_hidden }); the figures and the
 // sections are cut client-side, the figures off the whole library, the sections off the
 // filtered rows. The page runs the two bulk jobs (Match unmatched is the AutoMatch job,
@@ -95,7 +99,37 @@ Item {
         }
         return ""
     }
-    // The sections, cut from the filtered rows; an empty one is not shown
+    // When a record aired, as one number that sorts: the year four times plus the season's
+    // place in it ("Fall 2025" is 2025 * 4 + 3), a bare year counts as its winter, and a
+    // record with neither sorts last
+    readonly property var seasonWords: ["Winter", "Spring", "Summer", "Fall"]
+    function whenKey(card) {
+        var year = card.year !== null && card.year !== undefined ? Number(card.year) : NaN
+        var place = 0
+        if (card.season) {
+            var parts = String(card.season).split(" ")
+            var w = page.seasonWords.indexOf(parts[0])
+            var y = parseInt(parts[parts.length - 1])
+            if (!isNaN(y)) year = y
+            if (w >= 0) place = w
+        }
+        return isNaN(year) ? -1 : year * 4 + place
+    }
+    function titleOf(d) { var c = d.series || {}; return c.title || (c.titles ? c.titles.folder : "") || "" }
+    // The sections, cut from the filtered rows; an empty one is not shown. Complete is
+    // ordered by season, newest first, then by title; the other sections keep the core's
+    // order
+    // The provider word under a complete tile only when the library mixes providers: one
+    // provider everywhere is texture, not a fact
+    readonly property bool mixedProviders: {
+        var seen = {}, n = 0
+        for (var i = 0; i < rows.length; i++) {
+            var mi = rows[i].series && rows[i].series.match_info
+            var k = mi && mi.provider ? String(mi.provider) : ""
+            if (k !== "" && !seen[k]) { seen[k] = true; n++ }
+        }
+        return n > 1
+    }
     readonly property var sections: {
         page.revision
         var buckets = {}
@@ -103,6 +137,13 @@ Item {
             var k = page.bucketOf(page.rows[i])
             if (!buckets[k]) buckets[k] = []
             buckets[k].push(page.rows[i])
+        }
+        if (buckets.complete) {
+            buckets.complete.sort(function(a, b) {
+                var ka = page.whenKey(a.series || {}), kb = page.whenKey(b.series || {})
+                if (ka !== kb) return kb - ka
+                return page.titleOf(a).localeCompare(page.titleOf(b))
+            })
         }
         var out = []
         for (var s = 0; s < page.sectionOrder.length; s++) {
@@ -183,6 +224,12 @@ Item {
     readonly property real gap: theme.space(6)
     readonly property int rowCols: Math.max(1, Math.min(2, Math.floor((scroll.innerWidth + gap) / (theme.space(150) + gap))))
     readonly property real rowWidth: Math.floor((scroll.innerWidth - gap * (rowCols - 1)) / rowCols)
+    // ---- The grid's geometry: small poster tiles, as many to a line as the width holds at
+    // theme.space(24) each, widened to fill the line (the library's column math)
+    readonly property real tileGap: theme.space(4)
+    readonly property real tileMin: theme.space(24)
+    readonly property int tileCols: Math.max(1, Math.floor((scroll.innerWidth + tileGap) / (tileMin + tileGap)))
+    readonly property real tileWidth: Math.floor((scroll.innerWidth - tileGap * (tileCols - 1)) / tileCols)
 
     PageScroll {
         id: scroll
@@ -328,13 +375,31 @@ Item {
                     // The hairline the rows continue
                     Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.line }
                 }
+                // The attention sections: rows, where the person works
                 Flow {
+                    visible: section.modelData.key !== "complete"
                     width: parent.width
                     spacing: page.gap
                     Repeater {
-                        model: section.modelData.rows
+                        model: section.modelData.key !== "complete" ? section.modelData.rows : []
                         MetaRow {
                             width: page.rowWidth
+                            first: String(card.id) === page.firstId
+                        }
+                    }
+                }
+                // Complete: the grid, nothing to do here but look
+                Flow {
+                    visible: section.modelData.key === "complete"
+                    width: parent.width
+                    spacing: page.tileGap
+                    // The rows carry their own top inset; the posters get the same air
+                    // under the heading's hairline
+                    topPadding: theme.space(3)
+                    Repeater {
+                        model: section.modelData.key === "complete" ? section.modelData.rows : []
+                        MetaTile {
+                            width: page.tileWidth
                             first: String(card.id) === page.firstId
                         }
                     }
@@ -528,6 +593,161 @@ Item {
 
         // The hairline under the row
         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.line }
+    }
+
+    // One complete series as a small tile of the grid: the poster at 2:3, under it the title
+    // on one line, the files count in the ledger with the provider as a faint word at its
+    // right, and the season (or the year) as a dim line when the record has one. At rest
+    // nothing else; hover lifts the tile one step of the surface, turns the title to the
+    // accent and shows a Match and a Refresh glyph button on the poster's foot. A click on
+    // the tile opens the match panel, as a row's does. The glyph buttons are always present
+    // (a drive click lands on them at rest); only their opacity follows the hover.
+    component MetaTile: Item {
+        id: tile
+        required property var modelData
+        property bool first: false
+        readonly property var d: modelData || ({})
+        readonly property var card: d.series || ({})
+        readonly property bool isMovie: card.kind === "Movie" || card.format === "MOVIE"
+        readonly property real expected: d.expected !== null && d.expected !== undefined ? d.expected : (isMovie ? 1 : 0)
+        readonly property real have: d.have || 0
+        readonly property real extra: expected > 0 ? Math.max(0, have - expected) : 0
+        readonly property string when: card.season ? String(card.season) : (card.year !== null && card.year !== undefined ? String(card.year) : "")
+        readonly property string provider: card.match_info && card.match_info.provider ? page.providerLabel(card.match_info.provider) : ""
+        readonly property real pad: theme.space(2)
+        FontMetrics { id: tileTitleMetrics; font.family: theme.fontFamily; font.pointSize: theme.typeSmall; font.weight: theme.roleWeight("title"); font.variableAxes: theme.roleAxes("title") }
+        objectName: "meta-row-" + card.id
+        height: poster.height + theme.space(1.5) + writing.height + pad
+
+        // 0 rest, 1 hover, followed with exponential smoothing like every tracking value
+        property real lift: 0
+        readonly property real liftTarget: m.containsMouse || matchGlyph.hovered || refreshGlyph.hovered ? 1 : 0
+        FrameAnimation {
+            running: Math.abs(tile.lift - tile.liftTarget) > 0.002
+            onTriggered: tile.lift = theme.follow(tile.lift, tile.liftTarget, frameTime)
+        }
+        z: lift > 0.01 ? 1 : 0
+
+        // The hover: one step of the surface, reaching into the gap so the tile reads lifted
+        // rather than boxed
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: -tile.pad
+            radius: theme.radiusSm + tile.pad
+            color: theme.tile
+            opacity: tile.lift
+        }
+        // Under the glyph buttons, so they take their own clicks
+        MouseArea {
+            id: m
+            anchors.fill: parent
+            anchors.margins: -tile.pad
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: matchPanel.openFor(tile.card.id, tile.card.title, tile.card.match_info)
+        }
+
+        // The poster, decoded at its displayed size and shown only once it is Ready
+        Corner {
+            id: poster
+            width: parent.width
+            height: Math.round(width * 1.5)
+            radius: theme.radiusSm; smoothing: theme.cornerSmoothing
+            color: theme.tile
+            fillItem: art.status === Image.Ready ? art : null
+            Image {
+                id: art
+                visible: false
+                width: poster.width; height: poster.height
+                source: tile.card.poster ? "file://" + tile.card.poster : ""
+                sourceSize: Qt.size(Math.ceil(poster.width * theme.devicePixelRatio), Math.ceil(poster.height * theme.devicePixelRatio))
+                fillMode: Image.PreserveAspectCrop
+                smooth: true
+                asynchronous: true
+            }
+            Icon {
+                visible: art.status !== Image.Ready
+                anchors.centerIn: parent
+                glyph: tile.isMovie ? "film" : "tv"
+                size: theme.space(5)
+                color: theme.textDim
+            }
+        }
+        // The glyph buttons on the poster's foot, seen on hover
+        Row {
+            anchors.horizontalCenter: poster.horizontalCenter
+            anchors.bottom: poster.bottom
+            anchors.bottomMargin: tile.pad
+            spacing: theme.space(1.5)
+            // A hair above zero at rest: the drive's findItem treats opacity 0 as hidden,
+            // and a drive click on row-match must land on these buttons at rest
+            opacity: Math.max(0.001, tile.lift)
+            Button {
+                id: matchGlyph
+                readonly property bool hovered: lift > 0.5
+                objectName: tile.first ? "row-match" : ""
+                icon: "link"; small: true
+                onClicked: matchPanel.openFor(tile.card.id, tile.card.title, tile.card.match_info)
+                Tooltip { text: "Match to a different record" }
+            }
+            Button {
+                id: refreshGlyph
+                readonly property bool hovered: lift > 0.5
+                objectName: tile.first ? "row-refresh" : ""
+                icon: "refresh-cw"; small: true
+                onClicked: { var r = Door.refreshSeries(tile.card.id); frame.toast(r.error ? r.error.message : "Refreshing " + (tile.card.title || "")) }
+                Tooltip { text: "Fetch the record again" }
+            }
+        }
+
+        // The writing under the poster
+        Column {
+            id: writing
+            anchors.top: poster.bottom; anchors.topMargin: theme.space(1.5)
+            width: parent.width
+            spacing: theme.space(0.25)
+            // One line at the face's own height, whatever glyph the title falls back for
+            // (a △ in a title took a taller fallback and pushed the lines under it down)
+            Label {
+                width: parent.width
+                height: Math.ceil(tileTitleMetrics.height)
+                clip: true
+                text: page.titleOf(tile.d)
+                role: "title"; font.pointSize: theme.typeSmall
+                elide: Text.ElideRight
+                verticalAlignment: Text.AlignVCenter
+                color: theme.tone(theme.text, theme.accent, tile.lift)
+            }
+            Item {
+                width: parent.width
+                height: files.implicitHeight
+                Label {
+                    id: files
+                    anchors.left: parent.left
+                    anchors.right: providerWord.left; anchors.rightMargin: theme.space(1)
+                    text: tile.have + " of " + (tile.expected > 0 ? tile.expected : "?") + (tile.extra > 0 ? " +" + tile.extra : "")
+                    role: "ledger"
+                    color: theme.textDim
+                    elide: Text.ElideRight
+                }
+                Label {
+                    id: providerWord
+                    anchors.right: parent.right
+                    anchors.baseline: files.baseline
+                    text: page.mixedProviders ? tile.provider : ""
+                    role: "ledger"
+                    color: theme.textFaint
+                }
+            }
+            Label {
+                visible: tile.when !== ""
+                width: parent.width
+                text: tile.when
+                role: "ledger"
+                color: theme.textFaint
+                elide: Text.ElideRight
+            }
+        }
     }
 
     MatchPanel {
