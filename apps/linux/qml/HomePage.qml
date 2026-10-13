@@ -31,9 +31,12 @@ Item {
     // The hero: the most recently viewed series with something to go on with. An episode
     // stopped short of its end comes first, else the series' next episode on disk; a
     // series with neither is caught up and is passed over for the one viewed before it.
-    function pickResume() {
+    // Every viewed series with something to go on with, most recently viewed first: the
+    // first is the hero, the rest the Continue row. At most twelve series are read.
+    function pickContinue() {
+        var out = []
         var viewed = shelf.filter(function(c) { return page.viewedAt(c) > 0 })
-        for (var i = 0; i < viewed.length && i < 8; i++) {
+        for (var i = 0; i < viewed.length && i < 12; i++) {
             var c = viewed[i]
             var r = Door.getSeries(c.id)
             if (r.error) continue
@@ -47,10 +50,12 @@ Item {
                 if (d.next_up && e.file === d.next_up) next = e
             }
             var ep = partial || next
-            if (ep) return { card: c, detail: d, episode: ep, partial: partial !== null }
+            if (ep) out.push({ card: c, detail: d, episode: ep, partial: partial !== null })
         }
-        return null
+        return out
     }
+    property var continueList: []
+    function pickResume() { continueList = pickContinue(); return continueList.length ? continueList[0] : null }
 
     function reload() {
         var r = Door.listLibrary("All", "", "LastViewed", "Desc", false)
@@ -396,6 +401,18 @@ Item {
         }
 
         Item { width: 1; height: hero.visible ? theme.space(4) : 0 }
+
+        // ---- Continue: the other series with an episode to go on with, after the hero
+        Shelf {
+            objectName: "home-continue"
+            width: parent.width
+            heading: "Continue"
+            fact: page.continueList.length > 1 ? Fmt.plural(page.continueList.length - 1, "more series", "more series") + " to go on with" : ""
+            list: page.continueList.slice(1).map(function(e) { return e.card })
+            maxRows: 1
+            onMore: frame.go("library", { arrange: "WatchState" })
+        }
+        Item { width: 1; height: page.continueList.length > 1 ? theme.space(4) : 0 }
 
         // ---- The week: one row per day that has an episode landing, today always first
         // (and marked), every day's posters in one line so nothing hides below the fold;
