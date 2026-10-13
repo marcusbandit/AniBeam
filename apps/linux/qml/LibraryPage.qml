@@ -3,8 +3,10 @@
 // heading in the display cut with one fact and a count, over a grid of uniform cards whose
 // column count comes from the width. Group franchises (a switch, on by default) pulls every
 // franchise with two or more series in the library out as a section of its own, ahead of
-// the cut; the cut is Season (newest first, the lone airing series leading), Type, Genre,
-// Watch state, or None for one flat grid. The core searches and orders; the page cuts the sections client-side and
+// the cut; the cut is Season (newest first), Type, Genre, Watch state, or None for one
+// flat grid. Airing is its own section before all of that: a series airing now is there
+// and also under its franchise or its cut, except in the current season's section, which
+// holds only what is done airing. The core searches and orders; the page cuts the sections client-side and
 // reloads, debounced, when the core says a series changed. The visible words are Order
 // (the core's ordering, `sort` here) and Sort (the cut, `arrange` here); the names stay
 // for the preference keys and the drive scripts.
@@ -114,11 +116,19 @@ Item {
         if (isNaN(year)) return -1
         return year * seasonWords.length + Math.max(0, word)
     }
+    // The season now, as a card's season label reads ("Fall 2026")
+    readonly property string currentSeason: {
+        var d = new Date(nowMs)
+        return seasonWords[Math.floor(d.getMonth() / 3)] + " " + d.getFullYear()
+    }
     function seasonSections(list, airingIds) {
         var buckets = {}, keys = [], undated = []
         for (var i = 0; i < list.length; i++) {
             var c = list[i], s = c.season ? String(c.season) : ""
             if (s === "") { undated.push(c); continue }
+            // An airing series is already under Airing; the season now holds only the
+            // ones done airing, so nothing is shown twice on the same ground
+            if (s === currentSeason && airingIds[c.id] === true) continue
             if (!buckets[s]) { buckets[s] = { rank: seasonRank(c), cards: [] }; keys.push(s) }
             buckets[s].cards.push(c)
         }
@@ -167,6 +177,11 @@ Item {
         page.revision
         var airingIds = {}
         for (var a = 0; a < airingRows.length; a++) airingIds[airingRows[a].id] = true
+        // Airing is its own section, always first: a series airing now is here and also
+        // wherever the cut or its franchise puts it. The one place it is not repeated is
+        // the current season's section (seasonSections).
+        var airing = cardList.filter(function(c) { return airingIds[c.id] === true })
+        var lead = airing.length ? [{ title: "Airing", cards: airing, airing: true }] : []
         // The franchises first, when grouped: a franchise with two or more series in the
         // library is a section of its own, in release order; the rest go on to the cut
         var out = [], rest = []
@@ -189,13 +204,7 @@ Item {
             // The grouped ones keep the library's order among themselves
             rest.sort(function(p, q) { return cardList.indexOf(p) - cardList.indexOf(q) })
         } else rest = cardList.slice()
-        // Under Season the lone series airing now lead, as their own section
-        if (arrange === "Season" && query === "") {
-            var airing = [], later = []
-            for (var l = 0; l < rest.length; l++) (airingIds[rest[l].id] ? airing : later).push(rest[l])
-            if (airing.length) { out.unshift({ title: "Airing", cards: airing, airing: true }); rest = later }
-            return out.concat(seasonSections(rest, airingIds))
-        }
+        out = lead.concat(out)
         if (arrange === "Season") return out.concat(seasonSections(rest, airingIds))
         if (arrange === "None") return rest.length ? out.concat([{ title: out.length ? "Everything else" : "", cards: rest, airing: false }]) : out
         var buckets = {}, order = []

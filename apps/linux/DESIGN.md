@@ -80,22 +80,25 @@ below where they disagree:
   (`Tiles.qml`) stand on the ground as a figure over its caption. The Appearance previews
   keep their panes inside their section. A card without a poster (`Card.qml`) is a plain
   pane with no scrim and the theme's own inks, so it reads in light mode.
-- **Metadata answers the librarian's questions before it lists.** Under the head a line of
-  figures on the ground (`Tiles.qml`): matched, unmatched, missing folders, incomplete, and
-  the files on disk against the expected total, read off the whole library whatever the
-  filter. The rows are cut into the sections a person works in order, Unmatched, Missing on
-  disk, Incomplete, Complete, each a heading in the display cut at `typeLarge` with its
-  count in the ledger and one fact (how many episodes short, how many files on disk); an
-  empty section is not shown and the filter still applies on top. The three attention
-  sections are rows, where the person works: tighter, the record's season or year as a dim
-  note after the pills. Complete is a grid, not a list: small poster tiles at about
-  `theme.space(24)`, as many to a line as the width holds by the library's column math,
-  ordered by season newest first then title, each with its title on one line, the files
-  count in the ledger with the provider as a faint word, and the season as a dim line. At
-  rest a tile carries no buttons; hover lifts it one step of the surface and shows a Match
-  and a Refresh glyph on the poster's foot, and a click on the tile opens the match panel.
-  A healthy library (everything matched and complete) reads as the figures and then one
-  wall of posters under a Complete heading, not as a list of rows with nothing to do.
+- **Metadata answers the librarian's questions before it lists.** The head is the title
+  with its count and the search; under it one line of pills (the filter with its counts,
+  Match unmatched, Refresh all) that wraps on a narrow window. Then the figures on the
+  ground (`Tiles.qml`), which are the sections' own counts off the whole library whatever
+  the filter, so they agree with what is below: Needs a match, Folder gone, Missing
+  episodes, Airing, Complete, and the files on disk against the expected total (a zero is
+  a fact here; 0 need a match is the good news). The series are cut into those sections in
+  the order a person works them, each a heading in the display cut at `typeLarge` with its
+  count and nothing else, over small poster tiles in the library's column math (columns
+  from the width, tiles widened to fill the line), so a narrow window has fewer columns
+  and never a row that overlaps. One tile idiom everywhere, no rows: the poster at 2:3,
+  the title on one line, a state line that says the section's fact for this series ("No
+  record yet", "Folder not found", "9 of 12, 3 missing", "5 of 7 aired, 2 missing", "12 of
+  12 +2"), and a dim line with the season, or on an airing series the countdown to the
+  next episode ("Next in 1d 23h"). An airing series is measured against what has aired so
+  far (one short of the next episode's number), never the record's total, and is never
+  under Missing episodes or Complete. There is no Match button: a click on the tile opens
+  the match panel, and hover shows one glyph on the poster's foot, Refresh, or Forget on a
+  gone folder. An empty section is not shown and the filter still applies on top.
 - **The library cuts by season, and the two controls are Order and Sort.** The lone series
   under Related no longer pile up as Everything else: they are sections per anime season
   ("Fall 2025", "Summer 2025"), newest first, Fall before Summer before Spring before Winter
@@ -103,7 +106,11 @@ below where they disagree:
   of its own in the same control, over the whole library. The control that orders the cards
   (A to Z, Last viewed, ...) is labelled Order and the one that cuts the sections is
   labelled Sort, each with a dim word before it so they read as a pair. One helper
-  (`seasonSections`) makes the cut for both, so they never drift.
+  (`seasonSections`) makes the cut for both, so they never drift. Group franchises is a
+  switch over any cut, and Airing is its own section before everything: a series airing
+  now sits there and also under its franchise or its cut, the one exception being the
+  current season's section, which holds only what is done airing, so nothing repeats on
+  the same ground.
 
 This supersedes Tesserae (rounded tiles on poster-toned plates), which superseded "the lobby".
 The killed idioms (below) still hold.
