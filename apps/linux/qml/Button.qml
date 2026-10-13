@@ -2,7 +2,9 @@
 // raised pane of glass (edge and top highlight); `flat` sets it as resting glass without the
 // highlight (a quieter button), `primary` fills it with the accent under ground-coloured
 // ink, and `danger` sets the label and the soft fill in red. Hover lifts the fill one step, press one more and scales it to
-// 0.98, both with exponential smoothing. Space and Return press it.
+// 0.98, both with exponential smoothing. Space and Return press it. `ghost` is a flat
+// button set on art or a coloured band (the series band): white ink on a faint white fill,
+// so it reads on any tone without taking the theme's surface colour onto the band.
 import QtQuick
 
 Corner {
@@ -12,6 +14,7 @@ Corner {
     property bool danger: false
     property bool flat: false
     property bool primary: false
+    property bool ghost: false
     property bool small: false
     // False for a button that must never hold the keyboard: the player's, where a focused
     // button would swallow Space and Return before the page's own keys see them, and Tab
@@ -38,17 +41,19 @@ Corner {
         running: Math.abs(root.lift - root.liftTarget) > 0.002
         onTriggered: root.lift = theme.follow(root.lift, root.liftTarget, frameTime)
     }
-    readonly property color restFill: danger ? theme.redSoft : primary ? tint : flat ? theme.tile : theme.raised
+    readonly property color restFill: danger ? theme.redSoft : primary ? tint : ghost ? Qt.rgba(1, 1, 1, 0.1) : flat ? theme.tile : theme.raised
     readonly property color hoverFill: danger ? theme.tone(theme.redSoft, theme.red, 0.15)
                                      : primary ? theme.tone(tint, theme.ink, 0.15)
+                                     : ghost ? Qt.rgba(1, 1, 1, 0.16)
                                      : flat ? theme.tileHover : theme.raisedHover
     readonly property color pressFill: danger ? theme.tone(theme.redSoft, theme.red, 0.3)
                                      : primary ? theme.tone(tint, theme.ink, 0.25)
+                                     : ghost ? Qt.rgba(1, 1, 1, 0.24)
                                      : theme.glassOf(theme.dark ? 0.12 : 0.15)
     color: lift < 1 ? theme.tone(restFill, hoverFill, lift) : theme.tone(hoverFill, pressFill, lift - 1)
-    borderColor: activeFocus ? theme.focusRing : primary ? "transparent" : danger ? Qt.rgba(theme.red.r, theme.red.g, theme.red.b, 0.3) : theme.line
+    borderColor: activeFocus ? theme.focusRing : primary || ghost ? "transparent" : danger ? Qt.rgba(theme.red.r, theme.red.g, theme.red.b, 0.3) : theme.line
     borderWidth: activeFocus ? 2 : 1
-    highlight: !flat && !primary && !danger ? theme.glassHighlight : "transparent"
+    highlight: !flat && !primary && !danger && !ghost ? theme.glassHighlight : "transparent"
 
     Keys.onSpacePressed: clicked()
     Keys.onReturnPressed: clicked()
@@ -57,6 +62,7 @@ Corner {
     // Ink on a primary: the ground, or white when the tint is dark enough to need it
     readonly property color ink: danger ? theme.red
                                : primary ? (theme.contrast(tint, Qt.rgba(1, 1, 1, 1)) >= 3 ? "#ffffff" : "#0d0e11")
+                               : ghost ? Qt.rgba(1, 1, 1, lift < 0.5 ? 0.82 : 1)
                                : (flat && lift < 0.5 ? theme.textDim : theme.text)
     Row {
         id: content

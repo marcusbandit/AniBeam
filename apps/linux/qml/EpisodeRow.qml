@@ -1,7 +1,8 @@
-// One episode in a ledger tile: the marker (track to here / untrack to here), the code in
-// the ledger cut, the title with "Next up" right beside it, an optional detail line (a stray
-// file's name), and the resume point. Everything sits left, next to what it describes; the
-// row lifts one step on hover, its corners nested in the tile's. Clicking it plays.
+// One episode as a flat row: the watched tick (track to here / untrack to here), the code
+// in the ledger cut, the title with "Next up" or the resume point beside it, an optional
+// detail line (a stray file's name), the air date at the right, and a thin resume bar along
+// the foot of a half-watched row. The next episode up sits on a filled row; the rest are
+// bare, lifting to the tile fill on hover. Clicking the row plays.
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -15,38 +16,41 @@ Corner {
     signal play()
     signal marker()
     width: parent ? parent.width : implicitWidth
-    height: Math.max(theme.space(11), words.implicitHeight + theme.space(2))
-    radius: theme.radiusInner(theme.space(4))
+    height: Math.max(theme.space(10), words.implicitHeight + theme.space(3))
+    radius: theme.radiusMd
     smoothing: theme.cornerSmoothing
-    color: hover.containsMouse ? theme.tileHover : "transparent"
+    color: nextUp ? (hover.containsMouse ? theme.raised : theme.tile) : hover.containsMouse ? theme.tile : "transparent"
 
     property bool watched: !!episode.watched
     readonly property bool nextUp: !!episode.next_up
     readonly property real resumeFraction: episode.resume && episode.resume.duration > 0 ? episode.resume.position / episode.resume.duration : 0
+    readonly property string dateText: episode.air_date ? Qt.formatDate(new Date(episode.air_date * 1000), "d MMM yyyy") : ""
 
     MouseArea { id: hover; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.play() }
 
     Row {
         id: line
-        x: theme.space(2)
-        width: parent.width - theme.space(4)
+        x: theme.space(3)
+        width: parent.width - theme.space(6)
         anchors.verticalCenter: parent.verticalCenter
         spacing: theme.space(3)
-        Corner {
+        // The tick: a hairline ring until watched, then the accent's soft fill with a check
+        Rectangle {
             id: mark
             anchors.verticalCenter: parent.verticalCenter
-            width: theme.space(6); height: width
-            radius: width / 2; smoothing: theme.cornerSmoothing
-            color: root.watched ? theme.accentSoft : theme.tileSunken
-            borderColor: markHover.containsMouse ? theme.accent : "transparent"; borderWidth: 1
-            Icon { anchors.centerIn: parent; glyph: root.watched ? "check" : "play"; size: theme.space(3.5); color: root.watched ? theme.accent : theme.textDim }
-            MouseArea { id: markHover; anchors.fill: parent; hoverEnabled: true; enabled: root.hasTracker && !root.extra; cursorShape: Qt.PointingHandCursor; onClicked: root.marker() }
+            width: theme.space(5); height: width
+            radius: width / 2
+            color: root.watched ? theme.accentSoft : "transparent"
+            border.color: markHover.containsMouse ? theme.accent : root.watched ? "transparent" : theme.lineStrong
+            border.width: 1
+            Icon { anchors.centerIn: parent; glyph: "check"; size: theme.space(3); color: theme.accent; visible: root.watched }
+            MouseArea { id: markHover; anchors.fill: parent; anchors.margins: -theme.space(1); hoverEnabled: true; enabled: root.hasTracker && !root.extra; cursorShape: Qt.PointingHandCursor; onClicked: root.marker() }
             Tooltip { text: root.hasTracker && !root.extra ? (root.watched ? "Untrack to here" : "Track to here") : "" }
         }
         Label {
             id: code
             anchors.verticalCenter: parent.verticalCenter
-            width: theme.space(14)
+            width: theme.space(12)
             text: root.episode.code || ""
             role: "ledger"
             color: root.nextUp ? theme.accent : theme.textDim
@@ -55,7 +59,7 @@ Corner {
         Column {
             id: words
             anchors.verticalCenter: parent.verticalCenter
-            width: parent.width - mark.width - code.width - parent.spacing * 2
+            width: parent.width - mark.width - code.width - (date.visible ? date.width + parent.spacing : 0) - parent.spacing * 2
             Row {
                 width: parent.width
                 spacing: theme.space(2)
@@ -65,15 +69,17 @@ Corner {
                     width: Math.min(implicitWidth, parent.width - (tags.width > 0 ? tags.width + parent.spacing : 0))
                     text: root.title
                     role: "ui"
+                    font.weight: root.nextUp ? 600 : theme.roleWeight("ui")
+                    font.variableAxes: ({ "wdth": 100, "wght": root.nextUp ? 600 : theme.roleWeight("ui") })
                     color: root.watched && !root.nextUp ? theme.textDim : theme.text
                     elide: Text.ElideRight
                 }
                 Row {
                     id: tags
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: theme.space(1.5)
-                    Chip { visible: root.nextUp; text: "Next up"; small: true; mono: false; color: theme.accentSoft; textColor: theme.accent }
-                    Chip { visible: root.extra; text: "Extra"; small: true; mono: false; textColor: theme.textDim }
+                    spacing: theme.space(2)
+                    Label { visible: root.nextUp; anchors.verticalCenter: parent.verticalCenter; text: "Next up"; role: "ledger"; color: theme.accent }
+                    Label { visible: root.extra; anchors.verticalCenter: parent.verticalCenter; text: "Extra"; role: "ledger"; color: theme.textFaint }
                     Label {
                         visible: root.resumeFraction > 0 && root.resumeFraction < 0.97
                         anchors.verticalCenter: parent.verticalCenter
@@ -92,15 +98,24 @@ Corner {
                 elide: Text.ElideMiddle
             }
         }
+        Label {
+            id: date
+            visible: root.dateText !== ""
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.dateText
+            role: "ledger"
+            color: theme.textFaint
+        }
     }
     // The resume point along the foot of the row
-    Corner {
+    Rectangle {
         visible: root.resumeFraction > 0
         x: line.x + mark.width + line.spacing
-        width: (parent.width - x - theme.space(2)) * Math.min(1, root.resumeFraction)
+        width: (parent.width - x - theme.space(3)) * Math.min(1, root.resumeFraction)
         height: theme.space(0.5)
-        anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(0.5)
-        radius: height / 2; smoothing: 0
-        color: theme.tone(theme.tile, theme.accent, 0.6)
+        anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(1)
+        radius: height / 2
+        color: theme.accent
+        opacity: 0.7
     }
 }
