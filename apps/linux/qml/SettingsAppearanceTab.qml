@@ -1,5 +1,5 @@
 // Spec 4.5: Colours (mode, colour source, the theme pair, the accent), Shape (density,
-// poster size; corners are always square in the glass mosaic, so that knob is gone), and the two preview panes, each holding its own tokens forced to
+// poster size; corners are always plain arcs, so that knob is gone), and the two preview panes, each holding its own tokens forced to
 // a mode so the pair being chosen is what is shown. Every knob writes through the Theme
 // singleton's pick* invokables; the engine pushes the fresh resolution back and the panes
 // re-tone through their own Tokens, so nothing here polls.

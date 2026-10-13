@@ -10,7 +10,7 @@
 "wait": 900
 },
   {
-"hover": "small-tile"
+"hover": "tile-18"
 },
   {
 "wait": 1000
@@ -26,7 +26,7 @@
 "log": "a wheel notch scrolls the wall under a still pointer: the tip goes"
 },
   {
-"wheel": "small-tile",
+"wheel": "tile-18",
 "dy": -120
 },
   {
@@ -57,7 +57,7 @@
 "log": "hover again, then type a search: the wall re-lays out and the tip goes"
 },
   {
-"hover": "small-tile"
+"hover": "tile-18"
 },
   {
 "wait": 1000
@@ -102,7 +102,7 @@
 "log": "hover, then change page from the keyboard: the tip goes with the page"
 },
   {
-"hover": "small-tile"
+"hover": "tile-18"
 },
   {
 "wait": 1000

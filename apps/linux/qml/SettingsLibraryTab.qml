@@ -1,8 +1,8 @@
-// The Library tab on the mosaic: the stat stones (the same counts the Metadata filter
-// shows), the Folders tile sized to its sources, and the recent scans growing into the
-// rest of the column, as many as it holds; beside them the Trackers tile, the metadata
-// providers in the order matching tries them, the library options at their own height,
-// and the series on disk, most files first, filling the rest.
+// The Library tab, flat sections: the figures (the same counts the Metadata filter
+// shows), Folders sized to its sources, and the recent scans growing into the rest of
+// the column, as many as it holds; beside them Trackers, the metadata providers in the
+// order matching tries them, the library options at their own height, and the series on
+// disk, most files first, filling the rest.
 import QtQuick
 import QtQuick.Dialogs
 import com.marcusrosado.AniBeam

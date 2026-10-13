@@ -105,7 +105,7 @@
   {"eval": "driver.item.findItem('library-search').text", "expect": ""},
 
   {"log": "control for S5: a small tile's hover tip does show with nothing open"},
-  {"hover": "small-tile"}, {"wait": 1200},
+  {"hover": "tile-18"}, {"wait": 1200},
   {"eval": "frame.item.tipShown", "as": "tipBare"},
   {"hover": [10, 700]}, {"wait": 300},
 
@@ -126,7 +126,7 @@
   {"eval": "frame.item.leavingScroll()", "as": "s2"},
   {"wheel": [300, 700, -360]}, {"wait": 600},
   {"eval": "frame.item.leavingScroll() === vars.s2", "expect": true},
-  {"hover": "small-tile"}, {"wait": 1200},
+  {"hover": "tile-18"}, {"wait": 1200},
   {"eval": "frame.item.tipShown", "expect": false},
   {"eval": "vars.tipBare", "expect": true},
   {"click": [10, 10]}, {"wait": 200},

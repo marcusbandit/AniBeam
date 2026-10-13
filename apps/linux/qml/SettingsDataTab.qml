@@ -1,9 +1,9 @@
 // The Data tab: export and import of the library (the anibeam-export format), the image
 // cache with its size and a clear, and where AniBeam keeps its files. Export, import and the
 // clear are jobs; their results come back as exportFinished, importFinished and
-// imagesCleared, and each lands in its own tile. Export and Import sit beside About, the
-// pair squared off; the Images tile runs the width under them and takes the rest of the
-// viewport with a wall of the library's cached posters, as many as it holds.
+// imagesCleared, and each lands in its own section. Export and Import sit beside About,
+// the pair squared off; the Images section runs the width under them and takes the rest
+// of the viewport with a wall of the library's cached posters, as many as it holds.
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Dialogs
