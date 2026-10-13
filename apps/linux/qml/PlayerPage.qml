@@ -55,6 +55,8 @@ FocusScope {
     // chrome hides 2.5 s after the menu closes instead of staying up until the next move.
     Timer { id: hideTimer; interval: 2500; onTriggered: { if (page.openMenus > 0) restart(); else page.chromeVisible = false } }
     function showChrome() { chromeVisible = true; hideTimer.restart() }
+    // The pointer goes with the chrome, as an application override (see helpers.h)
+    onChromeVisibleChanged: Shell.setCursorHidden(!chromeVisible)
 
     // ---- Session
     Component.onCompleted: {
@@ -90,6 +92,7 @@ FocusScope {
         episodeNumber = ep ? ep.number : -1
     }
     Component.onDestruction: {
+        Shell.setCursorHidden(false)
         flushVolume()
         close("Stopped")
         // The page is the only thing that ever publishes; leaving it leaves nothing playing.

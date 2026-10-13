@@ -60,6 +60,10 @@ pub mod qobject {
         /// --drive: one line to stderr, bare, with none of the QML logger's prefixes.
         #[qinvokable]
         fn drive_log(self: &Self, line: &QString);
+        /// The pointer hidden over the whole application (the player with its chrome
+        /// gone), or shown again.
+        #[qinvokable]
+        fn set_cursor_hidden(self: &Self, hidden: bool);
     }
 
     impl cxx_qt::Threading for Shell {}
@@ -186,6 +190,9 @@ impl qobject::Shell {
 
     pub fn drive_log(&self, line: &QString) {
         eprintln!("{line}");
+    }
+    pub fn set_cursor_hidden(&self, hidden: bool) {
+        crate::bridge::helpers::ffi::set_cursor_hidden(hidden);
     }
 }
 

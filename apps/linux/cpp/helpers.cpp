@@ -13,6 +13,7 @@
 #include <QtCore/QMutexLocker>
 #include <QtGui/QImage>
 #include <QtGui/QImageReader>
+#include <QtGui/QCursor>
 
 // Exported by QtGui for QtTest's benefit and declared nowhere else public; the declarations
 // are QtTest's own (qtestmouse.h, qtestkeyboard.h, qtestwheel.h). Using them rather than
@@ -182,4 +183,16 @@ void drive_key(QObject *window, bool press, int key, int modifiers, const QStrin
         return;
     qt_handleKeyEvent(w, press ? QEvent::KeyPress : QEvent::KeyRelease, key,
                       Qt::KeyboardModifiers(modifiers) & Qt::KeyboardModifierMask, text, false, 1);
+}
+
+void set_cursor_hidden(bool hidden)
+{
+    static bool overridden = false;
+    if (hidden && !overridden) {
+        QGuiApplication::setOverrideCursor(QCursor(Qt::BlankCursor));
+        overridden = true;
+    } else if (!hidden && overridden) {
+        QGuiApplication::restoreOverrideCursor();
+        overridden = false;
+    }
 }

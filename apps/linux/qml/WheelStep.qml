@@ -16,12 +16,25 @@ WheelHandler {
     property real target: 0
     property bool following: false
     function bound(y) { return Math.max(0, Math.min(y, Math.max(0, flick.contentHeight - flick.height))) }
+    // The first wheel events of a run go to the log with everything the platform said about
+    // them, so a report of a crawling wheel can be read against the real device
+    property int logged: 0
     onWheel: function(ev) {
         if (!following) target = flick.contentY
-        // Only a touchpad's pixel delta is taken as pixels: Qt on Wayland fills pixelDelta
-        // for a plain mouse wheel too (a dozen px a notch), which read as a crawl.
+        // A mouse notch is the angle delta (120 a notch, in fragments on a high-resolution
+        // wheel); a touchpad's pixel delta is taken as pixels. Qt on Wayland fills pixelDelta
+        // for a plain mouse wheel too, a dozen px a notch, which read as a crawl, so pixels
+        // count only from a touchpad, and a wheel that reports no angle at all is read from
+        // its pixel value at libinput's 15 a notch.
         var touchpad = ev.device && ev.device.type === PointerDevice.TouchPad && ev.pixelDelta.y !== 0
-        var dy = touchpad ? -ev.pixelDelta.y : -ev.angleDelta.y / 120 * step
+        var notches = ev.angleDelta.y !== 0 ? ev.angleDelta.y / 120 : ev.pixelDelta.y / 15
+        var dy = touchpad ? -ev.pixelDelta.y : -notches * step
+        if (logged < 40) {
+            logged++
+            console.info("wheel: device=" + (ev.device ? ev.device.name + " type=" + ev.device.type : "none")
+                         + " angle=" + ev.angleDelta.y + " pixel=" + ev.pixelDelta.y + " phase=" + ev.phase
+                         + " inverted=" + ev.inverted + " -> dy=" + dy + " step=" + step)
+        }
         target = bound(target + dy)
         following = true
         flick.cancelFlick()
