@@ -81,6 +81,16 @@ pub struct SeriesCard {
     /// (`franchise::groups`).
     #[serde(default)]
     pub franchise: Option<FranchiseTag>,
+    /// The release year: AniList's seasonYear, else the start year; TVmaze's
+    /// premiere year.
+    #[serde(default)]
+    pub year: Option<u32>,
+    /// The anime season the series started in, as the shell shows it:
+    /// "Fall 2025", "Winter 2024". AniList's own season word when it carries
+    /// one, else derived from the start date's month (Jan to Mar Winter, Apr
+    /// to Jun Spring, Jul to Sep Summer, Oct to Dec Fall); None without a date.
+    #[serde(default)]
+    pub season: Option<String>,
 }
 
 /// One franchise as the library page groups it: the connected component of

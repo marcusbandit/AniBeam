@@ -87,6 +87,10 @@ Item {
     function lifted(t, a) { var c = tone(bg, ink, t); return Qt.rgba(c.r, c.g, c.b, a) }
     readonly property color glassFloat: lifted(dark ? 0.07 : 0.06, 1)
     readonly property color glassFloatHover: lifted(dark ? 0.12 : 0.11, 1)
+    // The hovered row of a list on a floating pane (a dropdown's option, a menu row): a
+    // clear step up from the float itself. The flat pass made the raised surface the float's
+    // own colour, so a row set in it vanished and hovering looked broken.
+    readonly property color floatHover: lifted(dark ? 0.16 : 0.14, 1)
     // The player's islands: glass over video, dark in both modes so the picture never
     // washes the controls out
     readonly property color glassVideo: Qt.rgba(0.03, 0.035, 0.045, 0.55)

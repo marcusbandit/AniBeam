@@ -151,6 +151,47 @@ pub fn is_film(c: &SeriesCard) -> bool {
     c.kind == SeriesKind::Movie || c.format.as_deref() == Some("MOVIE")
 }
 
+/// The season label the library groups by: "Fall 2025". `word` is the
+/// provider's own season (AniList's WINTER, SPRING, SUMMER, FALL, any
+/// case), title-cased and joined with `year`, else with the start date's
+/// year. Without a word the season comes from the start date's month
+/// (Jan to Mar Winter, Apr to Jun Spring, Jul to Sep Summer, Oct to Dec
+/// Fall) and the year from the same date. A year alone is not a season,
+/// and a word with no year anywhere is not one either.
+pub fn season_label(
+    word: Option<&str>,
+    start_date: Option<&str>,
+    year: Option<u32>,
+) -> Option<String> {
+    let date_year = start_date
+        .and_then(|d| d.get(..4))
+        .and_then(|y| y.parse::<u32>().ok())
+        .filter(|y| *y > 0);
+    let date_month = start_date
+        .and_then(|d| d.get(5..7))
+        .and_then(|m| m.parse::<u32>().ok())
+        .filter(|m| (1..=12).contains(m));
+    let from_word = word.map(str::trim).filter(|w| !w.is_empty()).and_then(|w| {
+        let mut chars = w.chars();
+        let first = chars.next()?.to_uppercase().collect::<String>();
+        let rest = chars.as_str().to_lowercase();
+        Some(format!("{first}{rest}"))
+    });
+    let (name, label_year) = match from_word {
+        Some(name) => (name, year.or(date_year)?),
+        None => {
+            let name = match date_month? {
+                1..=3 => "Winter",
+                4..=6 => "Spring",
+                7..=9 => "Summer",
+                _ => "Fall",
+            };
+            (name.to_string(), date_year?)
+        }
+    };
+    Some(format!("{name} {label_year}"))
+}
+
 /// `episodes` is (file id, season, number) in season then number order.
 /// `last_completed` is the most recently completed episode's season and
 /// number; a tracker's progress counts as season 1, since AniList numbers
@@ -308,6 +349,12 @@ impl Snapshot {
                 now,
             )),
             franchise: self.franchises.get(&row.id).cloned(),
+            year: media.and_then(|m| m.year),
+            season: season_label(
+                media.and_then(|m| m.season.as_deref()),
+                media.and_then(|m| m.start_date.as_deref()),
+                media.and_then(|m| m.year),
+            ),
         }
     }
 
@@ -511,6 +558,46 @@ mod tests {
     }
 
     #[test]
+    fn season_label_rules() {
+        // AniList's word wins, title-cased, with its seasonYear.
+        assert_eq!(
+            season_label(Some("FALL"), Some("2012-10-09"), Some(2012)),
+            Some("Fall 2012".into())
+        );
+        // A word without seasonYear takes the year off the start date.
+        assert_eq!(
+            season_label(Some("WINTER"), Some("2018-01-11"), None),
+            Some("Winter 2018".into())
+        );
+        // seasonYear outranks the date's year: a Winter season that starts
+        // in December belongs to the next year.
+        assert_eq!(
+            season_label(Some("winter"), Some("2023-12-28"), Some(2024)),
+            Some("Winter 2024".into())
+        );
+        // No word: the month decides, the date supplies the year.
+        assert_eq!(season_label(None, Some("2016-01-06"), None), Some("Winter 2016".into()));
+        assert_eq!(season_label(None, Some("2016-03-31"), None), Some("Winter 2016".into()));
+        assert_eq!(season_label(None, Some("2016-04-01"), None), Some("Spring 2016".into()));
+        assert_eq!(season_label(None, Some("2016-07-12"), None), Some("Summer 2016".into()));
+        assert_eq!(season_label(None, Some("2016-09-30"), None), Some("Summer 2016".into()));
+        assert_eq!(season_label(None, Some("2016-10-01"), None), Some("Fall 2016".into()));
+        assert_eq!(season_label(None, Some("2016-12-31"), None), Some("Fall 2016".into()));
+        // Without a word the date's year is the label's year even when
+        // `year` disagrees: the date is the only thing that named the season.
+        assert_eq!(season_label(None, Some("2019-07-08"), Some(2020)), Some("Summer 2019".into()));
+        // Nothing to derive from: a year alone, a word alone, or no date.
+        assert_eq!(season_label(None, None, Some(2016)), None);
+        assert_eq!(season_label(Some("FALL"), None, None), None);
+        assert_eq!(season_label(None, None, None), None);
+        assert_eq!(season_label(Some(""), None, Some(2016)), None);
+        // Garbage dates derive nothing.
+        assert_eq!(season_label(None, Some("2016"), None), None);
+        assert_eq!(season_label(None, Some("0000-00-00"), None), None);
+        assert_eq!(season_label(None, Some("2016-13-01"), None), None);
+    }
+
+    #[test]
     fn next_up_rules() {
         let disk = vec![(10u64, 1, 1.0), (11, 1, 2.0), (12, 1, 3.0), (13, 1, 5.0)];
         assert_eq!(next_up(&disk, Some((1, 2.0)), Some(1)), Some(12));
@@ -578,6 +665,8 @@ mod tests {
             last_viewed_at: None,
             latest_activity_at: UNIX_EPOCH,
             franchise: None,
+            year: None,
+            season: None,
         }
     }
 

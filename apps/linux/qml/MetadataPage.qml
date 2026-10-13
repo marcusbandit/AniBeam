@@ -1,11 +1,16 @@
 // Metadata, flat (DESIGN.md, the flat home pass): every series in the library, the record
 // it is matched to, and the files on disk against the expected count. The head is the
 // library's: the title in the display cut with the count beside it, the filter, the two
-// bulk actions and the search at the right; under it the rows as a flat list with a
-// hairline between them, two to a line on a wide window. The core owns the filtering and
-// the counts (ListMetadata { filter, query, reveal_hidden }); the page runs the two bulk
-// jobs (Match unmatched is the AutoMatch job, Refresh all the RefreshAll job) and opens the
-// match panel over the overlay for a row that needs a different record.
+// bulk actions and the search at the right. Under it the library's figures (matched,
+// unmatched, missing folders, incomplete, files against expected), then the rows cut into
+// the sections a librarian works in order: Unmatched, Missing on disk, Incomplete,
+// Complete, each a heading in the display cut with its count and one fact, over rows with
+// a hairline between them, two to a line on a wide window. The core owns the filtering and
+// the four counts (ListMetadata { filter, query, reveal_hidden }); the figures and the
+// sections are cut client-side, the figures off the whole library, the sections off the
+// filtered rows. The page runs the two bulk jobs (Match unmatched is the AutoMatch job,
+// Refresh all the RefreshAll job) and opens the match panel over the overlay for a row
+// that needs a different record.
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -23,8 +28,10 @@ Item {
     property string filter: "All"
     property string query: props.q || ""
     property var counts: ({ all: 0, series: 0, movies: 0, missing_files: 0 })
-    property var rows: []
+    property var rows: []            // the filtered list, flat: the drive reads its length
+    property var allRows: []         // the whole library, no filter and no query: the figures
     property bool loaded: false
+    property int revision: 0
 
     function reload() {
         var keep = scroll.contentY
@@ -32,8 +39,100 @@ Item {
         if (r.error) { frame.toast(r.error.message); return }
         page.counts = r.reply.counts
         page.rows = r.reply.rows
+        // The figures are the library's, whatever the filter: one more read only when the
+        // filtered list is not already the whole library
+        if (page.filter === "All" && page.query === "") page.allRows = r.reply.rows
+        else { var a = Door.listMetadata("All", "", Door.revealHidden); page.allRows = a.error ? r.reply.rows : a.reply.rows }
         page.loaded = true
+        page.revision++
         scroll.contentY = Math.max(0, Math.min(keep, Math.max(0, scroll.contentHeight - scroll.height)))
+    }
+
+    // ---- What a row is, read once for the figures and the sections
+    function isMatched(card) {
+        return !!card.match_info && ["anilist_id", "mal_id", "tvmaze_id", "tmdb_id"].some(function(k) { return card.match_info[k] !== null && card.match_info[k] !== undefined })
+    }
+    function expectedOf(d) {
+        var card = d.series || {}
+        var movie = card.kind === "Movie" || card.format === "MOVIE"
+        return d.expected !== null && d.expected !== undefined ? d.expected : (movie ? 1 : 0)
+    }
+    // The bucket a row works in, in the order a person would take them: a gone folder is
+    // past matching, so Missing wins over Unmatched; an unmatched folder has no expected
+    // count to be short of, so Unmatched wins over Incomplete
+    function bucketOf(d) {
+        var card = d.series || {}
+        if (card.missing === true) return "missing"
+        if (!isMatched(card)) return "unmatched"
+        var expected = expectedOf(d)
+        if (expected > 0 && (d.have || 0) < expected) return "incomplete"
+        return "complete"
+    }
+    readonly property var sectionOrder: [
+        { key: "unmatched", title: "Unmatched" },
+        { key: "missing", title: "Missing on disk" },
+        { key: "incomplete", title: "Incomplete" },
+        { key: "complete", title: "Complete" }
+    ]
+    // A section's one fact beside its count: what its name does not already say
+    function factOf(key, list) {
+        var i, n
+        if (key === "incomplete") {
+            var short = 0
+            for (i = 0; i < list.length; i++) short += Math.max(0, expectedOf(list[i]) - (list[i].have || 0))
+            return short > 0 ? Fmt.plural(short, "episode", "episodes") + " short" : ""
+        }
+        if (key === "complete") {
+            var files = 0
+            for (i = 0; i < list.length; i++) files += list[i].have || 0
+            return files > 0 ? Fmt.plural(files, "file", "files") + " on disk" : ""
+        }
+        if (key === "unmatched") {
+            var films = 0
+            for (i = 0; i < list.length; i++) { var c = list[i].series || {}; if (c.kind === "Movie" || c.format === "MOVIE") films++ }
+            n = list.length
+            return films > 0 && films < n ? (n - films) + " series, " + Fmt.plural(films, "film", "films") : ""
+        }
+        return ""
+    }
+    // The sections, cut from the filtered rows; an empty one is not shown
+    readonly property var sections: {
+        page.revision
+        var buckets = {}
+        for (var i = 0; i < page.rows.length; i++) {
+            var k = page.bucketOf(page.rows[i])
+            if (!buckets[k]) buckets[k] = []
+            buckets[k].push(page.rows[i])
+        }
+        var out = []
+        for (var s = 0; s < page.sectionOrder.length; s++) {
+            var o = page.sectionOrder[s]
+            if (buckets[o.key] && buckets[o.key].length > 0) out.push({ key: o.key, title: o.title, rows: buckets[o.key], fact: page.factOf(o.key, buckets[o.key]) })
+        }
+        return out
+    }
+    // The first row of the page carries the row-match and row-refresh names the drive clicks
+    readonly property string firstId: sections.length > 0 ? String(sections[0].rows[0].series.id) : ""
+    // The figures: the library's, whatever the filter and the search
+    readonly property var figures: {
+        page.revision
+        var matched = 0, unmatched = 0, missing = 0, incomplete = 0, have = 0, expected = 0
+        for (var i = 0; i < page.allRows.length; i++) {
+            var d = page.allRows[i], card = d.series || {}
+            if (card.missing === true) missing++
+            if (page.isMatched(card)) matched++; else unmatched++
+            var b = page.bucketOf(d)
+            if (b === "incomplete") incomplete++
+            have += d.have || 0
+            expected += page.expectedOf(d)
+        }
+        return [
+            { value: String(matched), caption: "Matched" },
+            { value: String(unmatched), caption: "Unmatched" },
+            { value: String(missing), caption: "Missing folders" },
+            { value: String(incomplete), caption: "Incomplete" },
+            { value: have.toLocaleString(Qt.locale(), "f", 0) + " of " + expected.toLocaleString(Qt.locale(), "f", 0), caption: "Files on disk" }
+        ]
     }
     function filterCount(f) {
         return f === "All" ? page.counts.all : f === "Series" ? page.counts.series : f === "Movies" ? page.counts.movies : page.counts.missing_files
@@ -190,16 +289,55 @@ Item {
             }
         }
 
-        // ---- The rows: a flat list, a hairline under each, two to a line when wide
-        Flow {
-            width: parent.width
-            spacing: page.gap
-            Repeater {
-                model: page.rows
-                MetaRow {
-                    required property int index
-                    width: page.rowWidth
-                    first: index === 0
+        // ---- The figures: the library's state at a glance, on the ground
+        Tiles {
+            objectName: "metadata-figures"
+            visible: page.loaded && page.counts.all > 0
+            tiles: page.figures
+        }
+
+        // ---- The sections: a heading in the display cut with its count and one fact, over
+        // the rows as a flat list, a hairline under each, two to a line when wide
+        Repeater {
+            model: page.sections
+            Column {
+                id: section
+                required property var modelData
+                objectName: "meta-section-" + modelData.key
+                width: parent.width
+                spacing: theme.space(2)
+                Item {
+                    width: parent.width
+                    height: theme.space(12)
+                    Row {
+                        anchors.left: parent.left
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: theme.space(2)
+                        spacing: theme.space(3)
+                        Label {
+                            id: sectionTitle
+                            text: section.modelData.title
+                            role: "display"
+                            font.pointSize: theme.typeLarge
+                            font.variableAxes: ({ "wdth": 74, "wght": 500 })
+                            color: section.modelData.key === "missing" ? theme.red : theme.text
+                        }
+                        Label { anchors.baseline: sectionTitle.baseline; text: section.modelData.rows.length; role: "ledger"; color: theme.textFaint }
+                        Label { anchors.baseline: sectionTitle.baseline; text: section.modelData.fact; role: "ui"; color: theme.textDim }
+                    }
+                    // The hairline the rows continue
+                    Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.line }
+                }
+                Flow {
+                    width: parent.width
+                    spacing: page.gap
+                    Repeater {
+                        model: section.modelData.rows
+                        MetaRow {
+                            width: page.rowWidth
+                            first: String(card.id) === page.firstId
+                        }
+                    }
                 }
             }
         }
@@ -227,7 +365,9 @@ Item {
         readonly property var d: modelData || ({})
         readonly property var card: d.series || ({})
         // Matched on any provider the record names an id for: AniList, MyAnimeList, TVmaze or TMDB
-        readonly property bool matched: !!card.match_info && ["anilist_id", "mal_id", "tvmaze_id", "tmdb_id"].some(function(k) { return card.match_info[k] !== null && card.match_info[k] !== undefined })
+        readonly property bool matched: page.isMatched(card)
+        // The record's season when it has one, else its year, as a dim note after the pills
+        readonly property string when: card.season ? String(card.season) : (card.year !== null && card.year !== undefined ? String(card.year) : "")
         readonly property bool isMovie: card.kind === "Movie" || card.format === "MOVIE"
         readonly property bool missing: card.missing === true
         readonly property real expected: d.expected !== null && d.expected !== undefined ? d.expected : (isMovie ? 1 : 0)
@@ -236,7 +376,7 @@ Item {
         readonly property real extra: expected > 0 ? Math.max(0, have - expected) : 0
         readonly property real pad: theme.space(3)
         objectName: "meta-row-" + card.id
-        height: theme.space(22)
+        height: theme.space(19)
 
         // The hover: one step of the surface, inset so the hairlines stay a list
         Rectangle {
@@ -323,6 +463,13 @@ Item {
                     text: !metaRow.matched ? "No match" : page.providerLabel(metaRow.card.match_info.provider)
                     textColor: metaRow.matched ? theme.text : theme.textDim }
                 Chip { visible: metaRow.missing; small: true; mono: false; color: theme.redSoft; text: "Missing"; textColor: theme.red }
+                Label {
+                    visible: metaRow.when !== ""
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: metaRow.when
+                    role: "ui"; font.pointSize: theme.typeSmall
+                    color: theme.textDim
+                }
             }
             Item {
                 width: parent.width

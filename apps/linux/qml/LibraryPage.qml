@@ -1,10 +1,13 @@
 // The library: a title with its count, the search, one row of pill controls (the tab, the
-// sort, the arrangement, the watched switch), then the series in sections. A section is a
+// order, the sort, the watched switch), then the series in sections. A section is a
 // heading in the display cut with one fact and a count, over a grid of uniform cards whose
 // column count comes from the width. Related names the franchises with two or more series
-// in the library as sections and gathers the rest under one; Type, Genre and Watch state
-// section every group; None is one flat grid. The core searches and sorts; the page cuts
-// the sections client-side and reloads, debounced, when the core says a series changed.
+// in the library as sections and cuts the rest by anime season, newest first; Season cuts
+// the whole library that way; Type, Genre and Watch state section every group; None is one
+// flat grid. The core searches and orders; the page cuts the sections client-side and
+// reloads, debounced, when the core says a series changed. The visible words are Order
+// (the core's ordering, `sort` here) and Sort (the cut, `arrange` here); the names stay
+// for the preference keys and the drive scripts.
 import QtQuick
 import QtQuick.Controls.Basic as QC
 import QtQuick.Dialogs
@@ -23,7 +26,7 @@ Item {
 
     readonly property var tabs: ["All", "Series", "Movies"]
     readonly property var sorts: [["Alpha", "A to Z"], ["LastViewed", "Last viewed"], ["Progress", "Progress"], ["CommunityScore", "Average score"], ["MyScore", "My score"]]
-    readonly property var arrangements: [["Related", "Related"], ["Type", "Type"], ["Genre", "Genre"], ["WatchState", "Watch state"], ["None", "None"]]
+    readonly property var arrangements: [["Related", "Related"], ["Type", "Type"], ["Genre", "Genre"], ["Season", "Season"], ["WatchState", "Watch state"], ["None", "None"]]
     // Loaded-with copies, not bindings on Door.preferences: seeded once in
     // Component.onCompleted, ordinary state from then on, so the preferences-changed
     // handler below can compare what moved.
@@ -87,6 +90,32 @@ Item {
         if (c.watched_state === "Behind") return "Watching"
         return w !== null && w !== undefined && w > 0 ? "Watching" : "Not started"
     }
+    // ---- The season cut, shared by the Season sort and Related's lone series: one section
+    // per `c.season` ("Fall 2025"), newest first (the year, then Fall, Summer, Spring,
+    // Winter), the series without one closing the list under "No date". A season with a
+    // single series is still its own section. The order inside a section is the core's.
+    readonly property var seasonWords: ["Winter", "Spring", "Summer", "Fall"]
+    function seasonRank(c) {
+        var label = c.season ? String(c.season) : ""
+        var parts = label.split(" ")
+        var word = seasonWords.indexOf(parts[0])
+        var year = typeof c.year === "number" ? c.year : parseInt(parts[parts.length - 1], 10)
+        if (isNaN(year)) return -1
+        return year * seasonWords.length + Math.max(0, word)
+    }
+    function seasonSections(list, airingIds) {
+        var buckets = {}, keys = [], undated = []
+        for (var i = 0; i < list.length; i++) {
+            var c = list[i], s = c.season ? String(c.season) : ""
+            if (s === "") { undated.push(c); continue }
+            if (!buckets[s]) { buckets[s] = { rank: seasonRank(c), cards: [] }; keys.push(s) }
+            buckets[s].cards.push(c)
+        }
+        keys.sort(function(p, q) { return buckets[q].rank - buckets[p].rank })
+        var out = keys.map(function(k) { return { title: k, cards: buckets[k].cards, airing: buckets[k].cards.some(function(x) { return airingIds[x.id] === true }) } })
+        if (undated.length) out.push({ title: "No date", cards: undated, airing: undated.some(function(x) { return airingIds[x.id] === true }) })
+        return out
+    }
     function groupOf(c) {
         if (arrange === "Related") return c.franchise ? { key: "f" + c.franchise.id, title: c.franchise.title } : null
         if (arrange === "Type") { var t = typeOf(c); return { key: t, title: t } }
@@ -137,8 +166,9 @@ Item {
             buckets[g.key].cards.push(c)
         }
         var out = []
+        if (arrange === "Season") return seasonSections(cardList, airingIds)
         // Related: a franchise with one series in the library is a lone one; the lone
-        // ones airing now lead, the rest follow the franchises
+        // ones airing now lead, the rest follow the franchises cut by season
         if (arrange === "Related") {
             var airing = [], rest = []
             for (var k = 0; k < order.length; k++) {
@@ -150,8 +180,7 @@ Item {
             }
             for (var l = 0; l < lone.length; l++) (airingIds[lone[l].id] ? airing : rest).push(lone[l])
             if (query === "" && airing.length) out.unshift({ title: "Airing", cards: airing, airing: true })
-            if (rest.length) out.push({ title: out.length ? "Everything else" : "", cards: rest, airing: false })
-            return out
+            return out.concat(seasonSections(rest, airingIds))
         }
         if (arrange === "None") return cardList.length ? [{ title: "", cards: cardList, airing: false }] : []
         for (var s = 0; s < order.length; s++) {
@@ -288,36 +317,42 @@ Item {
                 index: Math.max(0, page.tabNames.indexOf(page.tab))
                 onPicked: function(i) { page.pickTab(i) }
             }
-            Seg {
-                objectName: "sort"
-                visible: !page.compact
-                options: page.sorts.map(function(s) {
-                    return { text: s[1], name: s[0], icon: s[0] === page.sort ? (page.direction === "Asc" ? "chevron-up" : "chevron-down") : "" }
-                })
-                index: Math.max(0, page.sorts.findIndex(function(s) { return s[0] === page.sort }))
-                onPicked: function(i) { if (i === index) page.flipDirection(); else page.pickSort(page.sorts[i][0]) }
-            }
+            // Order (the core's ordering) and Sort (the cut into sections) read as a pair:
+            // a dim label before each control
             Row {
-                visible: page.compact
-                spacing: theme.space(1)
-                Dropdown {
-                    objectName: "sort-menu"
-                    minWidth: theme.space(28)
-                    options: page.sorts.map(function(s) { return s[1] })
+                spacing: theme.space(2.5)
+                Label { anchors.verticalCenter: parent.verticalCenter; text: "Order"; role: "ui"; color: theme.textDim }
+                Seg {
+                    objectName: "sort"
+                    visible: !page.compact
+                    options: page.sorts.map(function(s) {
+                        return { text: s[1], name: s[0], icon: s[0] === page.sort ? (page.direction === "Asc" ? "chevron-up" : "chevron-down") : "" }
+                    })
                     index: Math.max(0, page.sorts.findIndex(function(s) { return s[0] === page.sort }))
-                    onPicked: function(i) { page.pickSort(page.sorts[i][0]) }
+                    onPicked: function(i) { if (i === index) page.flipDirection(); else page.pickSort(page.sorts[i][0]) }
                 }
-                Button {
-                    objectName: "sort-direction"
-                    anchors.verticalCenter: parent.verticalCenter
-                    small: true; flat: true
-                    icon: page.direction === "Asc" ? "chevron-up" : "chevron-down"
-                    onClicked: page.flipDirection()
+                Row {
+                    visible: page.compact
+                    spacing: theme.space(1)
+                    Dropdown {
+                        objectName: "sort-menu"
+                        minWidth: theme.space(28)
+                        options: page.sorts.map(function(s) { return s[1] })
+                        index: Math.max(0, page.sorts.findIndex(function(s) { return s[0] === page.sort }))
+                        onPicked: function(i) { page.pickSort(page.sorts[i][0]) }
+                    }
+                    Button {
+                        objectName: "sort-direction"
+                        anchors.verticalCenter: parent.verticalCenter
+                        small: true; flat: true
+                        icon: page.direction === "Asc" ? "chevron-up" : "chevron-down"
+                        onClicked: page.flipDirection()
+                    }
                 }
             }
             Row {
                 spacing: theme.space(2.5)
-                Label { anchors.verticalCenter: parent.verticalCenter; text: "Arrange"; role: "ui"; color: theme.textDim }
+                Label { anchors.verticalCenter: parent.verticalCenter; text: "Sort"; role: "ui"; color: theme.textDim }
                 Seg {
                     objectName: "arrange"
                     visible: !page.compact
