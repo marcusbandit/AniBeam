@@ -4,7 +4,8 @@
 //! than one anybody asks for.
 //!
 //! Everything here ends in `fetch::fetch_and_write`, the one routine that
-//! turns an AniList id into a record. What this module adds is the order
+//! turns an AniList id into a record, or its TVmaze twin
+//! `fetch_and_write_tvmaze`. What this module adds is the order
 //! around it: what is validated before a job is worth starting, what the
 //! user is told while it runs, and which failures are the series' and
 //! which are the provider's.
@@ -22,18 +23,23 @@ use crate::metadata::fetch::{self, message_of};
 use crate::metadata::link::{self, Link};
 use crate::metadata::record;
 use crate::net::anilist::Media;
+use crate::net::tvmaze::Show;
 use crate::time;
 
 /// What the modal says when the text was a URL the core knows the host of
 /// but cannot follow: a themoviedb.org page, an AniList user profile, an
 /// id with a typo in it.
-const UNREADABLE: &str = "Couldn't read that link. Paste an AniList or MyAnimeList page URL.";
+const UNREADABLE: &str =
+    "Couldn't read that link. Paste an AniList, MyAnimeList, TVmaze or IMDb page URL.";
 
 /// AniList answered, and the answer was that it carries no entry for that
 /// MyAnimeList id. Deliberate rather than silent: `ResolveLink` is how a
 /// pasted link becomes a match, and a link that resolves to nothing has to
 /// say so instead of quietly writing a MAL-only match nobody asked for.
 const NO_MAL_ENTRY: &str = "AniList has no entry for that MyAnimeList id.";
+
+/// The same for a pasted IMDb link: TVmaze has no show behind that title.
+const NO_IMDB_SHOW: &str = "TVmaze has no show for that IMDb title.";
 
 /// A shortest sensible query. One character matches most of AniList.
 const MIN_QUERY: usize = 2;
@@ -44,11 +50,11 @@ const MAX_RESULTS: u32 = 50;
 
 // The calls -----------------------------------------------------------------
 
-/// Starts the Search job. AniList is the only provider the native line can
-/// search: TMDB has no client at all and MAL is a tracker rather than a
-/// matching provider.
+/// Starts the Search job on one match provider: AniList or TVmaze. MAL is
+/// a tracker rather than a matching provider and TMDB has no client at
+/// all, so neither can be searched.
 pub fn search(core: &Core, provider: Provider, query: &str, limit: u32) -> Result<u64, CoreError> {
-    if provider != Provider::Anilist {
+    if !MATCH_PROVIDERS.contains(&provider) {
         return Err(CoreError::Unsupported {
             what: format!("search on {}", provider.as_str()),
         });
@@ -66,17 +72,29 @@ pub fn search(core: &Core, provider: Provider, query: &str, limit: u32) -> Resul
         .jobs
         .clone()
         .start(JobKind::Search, move |_ctx| async move {
-            let results: Vec<SearchResult> = owner
-                .anilist
-                .search(&query, per_page)
-                .await?
-                .iter()
-                .map(to_result)
-                .collect();
+            let results: Vec<SearchResult> = match provider {
+                // TVmaze has no page size; it answers with its best ten
+                // or so, and the limit is applied here instead.
+                Provider::Tvmaze => owner
+                    .tvmaze
+                    .search(&query)
+                    .await?
+                    .iter()
+                    .take(per_page as usize)
+                    .map(show_result)
+                    .collect(),
+                _ => owner
+                    .anilist
+                    .search(&query, per_page)
+                    .await?
+                    .iter()
+                    .map(to_result)
+                    .collect(),
+            };
             let n = results.len();
             Ok(Finished {
                 level: Level::Debug,
-                message: format!("Search: {n} results for \"{query}\""),
+                message: format!("Search: {n} {} results for \"{query}\"", provider.label()),
                 body: EventBody::SearchFinished { results },
             })
         }))
@@ -87,17 +105,21 @@ pub fn search(core: &Core, provider: Provider, query: &str, limit: u32) -> Resul
 enum Pasted {
     Anilist(u64),
     Mal(u64),
+    Tvmaze(u64),
+    Imdb(String),
 }
 
 /// Starts the ResolveLink job: a pasted URL turned into the target
-/// `ApplyMatch` takes. An AniList link is already that target and needs no
-/// request; a MyAnimeList link goes through AniList's `Media(idMal:)`,
-/// because a MAL id alone is not something a series page can be drawn
-/// from.
+/// `ApplyMatch` takes. An AniList or a TVmaze link is already that target
+/// and needs no request; a MyAnimeList link goes through AniList's
+/// `Media(idMal:)`, because a MAL id alone is not something a series page
+/// can be drawn from, and an IMDb link goes through TVmaze's lookup.
 pub fn resolve_link(core: &Core, url: &str) -> Result<u64, CoreError> {
     let pasted = match link::parse(url).ok_or_else(|| CoreError::invalid("url", "not a link"))? {
         Link::Anilist { id } => Pasted::Anilist(id),
         Link::Mal { id } => Pasted::Mal(id),
+        Link::Tvmaze { id } => Pasted::Tvmaze(id),
+        Link::Imdb { id } => Pasted::Imdb(id),
         Link::Unknown => return Err(CoreError::invalid("url", UNREADABLE)),
     };
     let owner = core.owner()?;
@@ -105,25 +127,42 @@ pub fn resolve_link(core: &Core, url: &str) -> Result<u64, CoreError> {
         .jobs
         .clone()
         .start(JobKind::ResolveLink, move |_ctx| async move {
-            let id = match pasted {
-                Pasted::Anilist(id) => id,
+            let target = match pasted {
+                Pasted::Anilist(id) => MatchTarget::Anilist { id, season: None },
                 Pasted::Mal(mal_id) => {
-                    owner.anilist.resolve_by_mal(mal_id).await?.ok_or_else(|| {
+                    let id = owner.anilist.resolve_by_mal(mal_id).await?.ok_or_else(|| {
                         CoreError::Provider {
                             provider: Provider::Anilist,
                             status: Some(404),
                             message: NO_MAL_ENTRY.to_string(),
                             retry_after: None,
                         }
-                    })?
+                    })?;
+                    MatchTarget::Anilist { id, season: None }
+                }
+                Pasted::Tvmaze(id) => MatchTarget::Tvmaze { id },
+                Pasted::Imdb(imdb) => {
+                    let id = owner.tvmaze.lookup_imdb(&imdb).await?.ok_or_else(|| {
+                        CoreError::Provider {
+                            provider: Provider::Tvmaze,
+                            status: Some(404),
+                            message: NO_IMDB_SHOW.to_string(),
+                            retry_after: None,
+                        }
+                    })?;
+                    MatchTarget::Tvmaze { id }
+                }
+            };
+            let named = match &target {
+                MatchTarget::Tvmaze { id } => format!("TVmaze {id}"),
+                MatchTarget::Anilist { id, .. } | MatchTarget::Mal { id } => {
+                    format!("AniList {id}")
                 }
             };
             Ok(Finished {
                 level: Level::Debug,
-                message: format!("Link resolved to AniList {id}"),
-                body: EventBody::LinkResolved {
-                    target: MatchTarget::Anilist { id, season: None },
-                },
+                message: format!("Link resolved to {named}"),
+                body: EventBody::LinkResolved { target },
             })
         }))
 }
@@ -150,6 +189,22 @@ pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64,
             // is set.
             let (anilist_id, pasted_mal) = match target {
                 MatchTarget::Anilist { id, season: _ } => (id, None),
+                // TVmaze is one fetch, so the show comes first and the
+                // match is written with it in one transaction: a show
+                // TVmaze does not have, or a fetch that never lands, leaves
+                // the series' old match exactly as it was.
+                MatchTarget::Tvmaze { id } => {
+                    fetch::fetch_and_write_tvmaze(&owner, series, id, true, time::now_secs())
+                        .await?;
+                    if let Some(card) = card_for(&owner, series).await? {
+                        ctx.changed(card);
+                    }
+                    return Ok(Finished {
+                        level: Level::Info,
+                        message: format!("matched {folder} to TVmaze {id}"),
+                        body: EventBody::MatchApplied { series },
+                    });
+                }
                 MatchTarget::Mal { id } => match owner.anilist.resolve_by_mal(id).await? {
                     Some(anilist_id) => (anilist_id, Some(id)),
                     None => {
@@ -269,7 +324,7 @@ pub fn refresh_series(core: &Core, series: u64) -> Result<u64, CoreError> {
             reason: Refusal::Unmatched,
         });
     }
-    let Some(anilist_id) = target.anilist_id else {
+    let Some(id) = target.id else {
         return Err(CoreError::Unsupported {
             what: "refresh of a MAL-only or TMDB match".to_string(),
         });
@@ -280,24 +335,15 @@ pub fn refresh_series(core: &Core, series: u64) -> Result<u64, CoreError> {
         .clone()
         .start(JobKind::Refresh, move |ctx| async move {
             let folder = target.folder;
-            let (refreshed, failed) = match fetch::fetch_and_write(
-                &owner,
-                series,
-                anilist_id,
-                None,
-                target.confirmed,
-                time::now_secs(),
-            )
-            .await
-            {
+            let (refreshed, failed) = match fetch_id(&owner, series, id, target.confirmed).await {
                 Ok(()) => {
                     if let Some(card) = card_for(&owner, series).await? {
                         ctx.changed(card);
                     }
                     (1, 0)
                 }
-                // A rate limit the limiter could not ride out is AniList
-                // saying stop, not this series failing.
+                // A rate limit the limiter could not ride out is the
+                // provider saying stop, not this series failing.
                 Err(e) if is_rate_limited(&e) => return Err(e),
                 // Anything else leaves the match standing, so it is this
                 // series' failure and not the job's.
@@ -323,8 +369,8 @@ pub fn refresh_series(core: &Core, series: u64) -> Result<u64, CoreError> {
         }))
 }
 
-/// Starts the RefreshAll job: every series carrying an AniList id, one at
-/// a time, paced by the limiter.
+/// Starts the RefreshAll job: every series carrying an AniList or a TVmaze
+/// id, one at a time, paced by each provider's limiter.
 pub fn refresh_all(core: &Arc<Core>) -> u64 {
     start_refresh_walk(core, JobKind::RefreshAll, "refresh", ALL_MATCHED_SQL)
 }
@@ -332,25 +378,59 @@ pub fn refresh_all(core: &Arc<Core>) -> u64 {
 /// Starts the stub backfill: every series whose media row was never
 /// fetched, only known from an edge, a recommendation, a list or an
 /// import. The native form of Electron's `backfillRelationsForLibrary`,
-/// and Task 31 queues it once at launch.
+/// and Task 31 queues it once at launch. A TVmaze match with no show row
+/// behind it, which is what an import leaves, is one of these too.
 pub fn backfill_stubs(core: &Arc<Core>) -> u64 {
     start_refresh_walk(core, JobKind::Refresh, "backfill", STUBS_SQL)
 }
 
 // The walk ------------------------------------------------------------------
 
-const ALL_MATCHED_SQL: &str = "SELECT id, folder_name, anilist_id, confirmed FROM series WHERE anilist_id IS NOT NULL ORDER BY id";
+const ALL_MATCHED_SQL: &str = "SELECT id, folder_name, anilist_id, tvmaze_id, confirmed FROM series
+     WHERE anilist_id IS NOT NULL OR (provider = 'tvmaze' AND tvmaze_id IS NOT NULL)
+     ORDER BY id";
 
-const STUBS_SQL: &str = "SELECT s.id, s.folder_name, s.anilist_id, s.confirmed
+const STUBS_SQL: &str = "SELECT s.id, s.folder_name, s.anilist_id, NULL, s.confirmed
      FROM series s JOIN anilist_media m ON m.id = s.anilist_id
      WHERE m.fetched_at IS NULL
-     ORDER BY s.id";
+     UNION ALL
+     SELECT s.id, s.folder_name, NULL, s.tvmaze_id, s.confirmed
+     FROM series s
+     WHERE s.provider = 'tvmaze' AND s.tvmaze_id IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM tvmaze_shows t WHERE t.id = s.tvmaze_id)
+     ORDER BY 1";
+
+/// The provider id a refresh asks about: the AniList media or the TVmaze
+/// show behind the match.
+#[derive(Clone, Copy, Debug)]
+enum RecordId {
+    Anilist(u64),
+    Tvmaze(u64),
+}
+
+/// The fetch behind either id, writing against `series`.
+async fn fetch_id(
+    core: &Core,
+    series: u64,
+    id: RecordId,
+    confirmed: bool,
+) -> Result<(), CoreError> {
+    match id {
+        RecordId::Anilist(anilist_id) => {
+            fetch::fetch_and_write(core, series, anilist_id, None, confirmed, time::now_secs())
+                .await
+        }
+        RecordId::Tvmaze(show_id) => {
+            fetch::fetch_and_write_tvmaze(core, series, show_id, confirmed, time::now_secs()).await
+        }
+    }
+}
 
 /// One series' turn in a refresh walk.
 struct Candidate {
     series: u64,
     folder: String,
-    anilist_id: u64,
+    id: RecordId,
     confirmed: bool,
 }
 
@@ -376,23 +456,14 @@ fn start_refresh_walk(
         for (done, c) in work.into_iter().enumerate() {
             ctx.checkpoint()?;
             ctx.progress(done as u64, Some(total), label);
-            match fetch::fetch_and_write(
-                &owner,
-                c.series,
-                c.anilist_id,
-                None,
-                c.confirmed,
-                time::now_secs(),
-            )
-            .await
-            {
+            match fetch_id(&owner, c.series, c.id, c.confirmed).await {
                 Ok(()) => {
                     refreshed += 1;
                     if let Some(card) = card_for(&owner, c.series).await? {
                         ctx.changed(card);
                     }
                 }
-                // AniList saying stop, or nothing answering at all, ends
+                // A provider saying stop, or nothing answering at all, ends
                 // the walk rather than counting one failed series and
                 // asking again for the next.
                 Err(e) if provider_stopped(&e) => return Err(e),
@@ -421,14 +492,34 @@ fn start_refresh_walk(
 fn candidates(conn: &rusqlite::Connection, sql: &str) -> Result<Vec<Candidate>, CoreError> {
     let mut stmt = conn.prepare(sql)?;
     let rows = stmt.query_map([], |r| {
-        Ok(Candidate {
-            series: r.get::<_, i64>(0)? as u64,
-            folder: r.get(1)?,
-            anilist_id: r.get::<_, i64>(2)? as u64,
-            confirmed: r.get::<_, i64>(3)? == 1,
-        })
+        let anilist_id = r.get::<_, Option<i64>>(2)?;
+        let tvmaze_id = r.get::<_, Option<i64>>(3)?;
+        Ok((
+            r.get::<_, i64>(0)? as u64,
+            r.get::<_, String>(1)?,
+            anilist_id,
+            tvmaze_id,
+            r.get::<_, i64>(4)? == 1,
+        ))
     })?;
-    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    let mut out = Vec::new();
+    for row in rows {
+        let (series, folder, anilist_id, tvmaze_id, confirmed) = row?;
+        // AniList first: a row that somehow carries both is an AniList
+        // match, the way every read takes it.
+        let id = match (anilist_id, tvmaze_id) {
+            (Some(a), _) => RecordId::Anilist(a as u64),
+            (None, Some(t)) => RecordId::Tvmaze(t as u64),
+            (None, None) => continue,
+        };
+        out.push(Candidate {
+            series,
+            folder,
+            id,
+            confirmed,
+        });
+    }
+    Ok(out)
 }
 
 // The pieces ----------------------------------------------------------------
@@ -462,11 +553,27 @@ fn to_result(m: &Media) -> SearchResult {
     }
 }
 
+/// A TVmaze search hit as the modal draws it. The second line is the
+/// network, which is what tells two shows of one name apart, and the
+/// cover is the small image: a picker has no use for the originals.
+fn show_result(s: &Show) -> SearchResult {
+    SearchResult {
+        provider: Provider::Tvmaze,
+        id: s.id,
+        title: s.name.clone().unwrap_or_else(|| "?".to_string()),
+        alt_title: None,
+        format: s.network_name().or_else(|| s.kind.clone()),
+        year: s.year(),
+        episodes: None,
+        cover_url: s.thumbnail_url(),
+    }
+}
+
 /// What a refresh needs to know before it is worth starting a job for.
 struct RefreshTarget {
     folder: String,
     provider: Option<String>,
-    anilist_id: Option<u64>,
+    id: Option<RecordId>,
     confirmed: bool,
 }
 
@@ -476,14 +583,21 @@ fn refresh_target(
 ) -> Result<Option<RefreshTarget>, CoreError> {
     Ok(conn
         .query_row(
-            "SELECT folder_name, provider, anilist_id, confirmed FROM series WHERE id = ?1",
+            "SELECT folder_name, provider, anilist_id, tvmaze_id, confirmed FROM series WHERE id = ?1",
             params![series as i64],
             |r| {
+                let provider: Option<String> = r.get(1)?;
+                let anilist_id = r.get::<_, Option<i64>>(2)?.map(|v| RecordId::Anilist(v as u64));
+                let tvmaze_id = r.get::<_, Option<i64>>(3)?.map(|v| RecordId::Tvmaze(v as u64));
+                let id = match provider.as_deref() {
+                    Some("tvmaze") => tvmaze_id,
+                    _ => anilist_id,
+                };
                 Ok(RefreshTarget {
                     folder: r.get(0)?,
-                    provider: r.get(1)?,
-                    anilist_id: r.get::<_, Option<i64>>(2)?.map(|v| v as u64),
-                    confirmed: r.get::<_, i64>(3)? == 1,
+                    provider,
+                    id,
+                    confirmed: r.get::<_, i64>(4)? == 1,
                 })
             },
         )

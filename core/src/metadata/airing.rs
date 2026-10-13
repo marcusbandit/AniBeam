@@ -18,6 +18,11 @@
 //!
 //! Electron's `airingRefreshCandidate`, `refreshAiringForSeries` and
 //! `AIRING_REFRESH_TTL_MS`, carried over.
+//!
+//! A TVmaze match takes the same window and the same rules, but there is
+//! no cheaper TVmaze request than the whole show: its refresh is the full
+//! fetch, one call with the episodes embedded, and `fetched_at` is its
+//! clock.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -28,8 +33,9 @@ use crate::contract::*;
 use crate::core::Core;
 use crate::jobs::{Finished, JobCtx};
 use crate::metadata::apply::{card_for, provider_stopped};
-use crate::metadata::fetch::message_of;
+use crate::metadata::fetch::{self, message_of};
 use crate::metadata::record;
+use crate::net::tvmaze;
 use crate::time;
 
 /// How long a series' schedule is taken to be current. Electron's
@@ -38,23 +44,41 @@ use crate::time;
 /// every time a page is opened.
 pub const TTL: Duration = Duration::from_secs(6 * 60 * 60);
 
-/// One series worth asking about. `mal_id` decides whether Jikan is asked
-/// at all; `folder_name` is what the log lines name it by.
+/// One series worth asking about. `folder_name` is what the log lines
+/// name it by.
 #[derive(Clone, Debug)]
 pub struct Candidate {
     pub series: u64,
-    pub anilist_id: u64,
-    pub mal_id: Option<u64>,
+    pub behind: Behind,
     pub folder_name: String,
 }
 
-/// The join a candidate is decided from. The `anilist_media` join is what
-/// makes an unmatched series and a MAL-only match disappear from it: a
-/// NULL `anilist_id` matches no row.
-const ELIGIBILITY_SQL: &str =
-    "SELECT s.id, s.anilist_id, s.mal_id, s.folder_name, m.status, m.airing_refreshed_at,
-       EXISTS (SELECT 1 FROM files f WHERE f.series_id = s.id) AS has_files
-FROM series s JOIN anilist_media m ON m.id = s.anilist_id";
+/// The record a candidate's schedule lives in. `mal_id` decides whether
+/// Jikan is asked at all.
+#[derive(Clone, Debug)]
+pub enum Behind {
+    Anilist {
+        anilist_id: u64,
+        mal_id: Option<u64>,
+    },
+    Tvmaze {
+        show_id: u64,
+    },
+}
+
+/// The join a candidate is decided from. The `anilist_media` and the
+/// `tvmaze_shows` joins are what make an unmatched series and a MAL-only
+/// match disappear from it: a NULL id matches no row. The TVmaze half
+/// reads the show's last fetch as its refresh stamp.
+const ELIGIBILITY_SQL: &str = "SELECT * FROM (
+    SELECT s.id AS id, s.anilist_id, s.mal_id, NULL AS show_id, s.folder_name, m.status, m.airing_refreshed_at,
+           EXISTS (SELECT 1 FROM files f WHERE f.series_id = s.id) AS has_files
+    FROM series s JOIN anilist_media m ON m.id = s.anilist_id
+    UNION ALL
+    SELECT s.id, NULL, NULL, t.id, s.folder_name, t.status, t.fetched_at,
+           EXISTS (SELECT 1 FROM files f WHERE f.series_id = s.id)
+    FROM series s JOIN tvmaze_shows t ON t.id = s.tvmaze_id AND s.provider = 'tvmaze'
+)";
 
 /// One row of that query, before the tests below have been applied.
 struct Row {
@@ -65,16 +89,36 @@ struct Row {
 }
 
 fn read_row(r: &rusqlite::Row) -> rusqlite::Result<Row> {
+    let status: Option<String> = r.get(5)?;
+    let (behind, status) = match r.get::<_, Option<i64>>(3)? {
+        // TVmaze's status in AniList's words, which is what `eligible`
+        // and every other reader speak.
+        Some(show_id) => (
+            Behind::Tvmaze {
+                show_id: show_id as u64,
+            },
+            status
+                .as_deref()
+                .and_then(tvmaze::airing_status)
+                .map(|s| s.anilist_word().to_string()),
+        ),
+        None => (
+            Behind::Anilist {
+                anilist_id: r.get::<_, i64>(1)? as u64,
+                mal_id: r.get::<_, Option<i64>>(2)?.map(|v| v as u64),
+            },
+            status,
+        ),
+    };
     Ok(Row {
         candidate: Candidate {
             series: r.get::<_, i64>(0)? as u64,
-            anilist_id: r.get::<_, i64>(1)? as u64,
-            mal_id: r.get::<_, Option<i64>>(2)?.map(|v| v as u64),
-            folder_name: r.get(3)?,
+            behind,
+            folder_name: r.get(4)?,
         },
-        status: r.get(4)?,
-        refreshed_at: r.get(5)?,
-        has_files: r.get::<_, i64>(6)? == 1,
+        status,
+        refreshed_at: r.get(6)?,
+        has_files: r.get::<_, i64>(7)? == 1,
     })
 }
 
@@ -107,7 +151,7 @@ pub fn candidate(
     now: i64,
     force: bool,
 ) -> Result<Option<Candidate>, CoreError> {
-    let sql = format!("{ELIGIBILITY_SQL} WHERE s.id = ?1");
+    let sql = format!("{ELIGIBILITY_SQL} WHERE id = ?1");
     let row = conn
         .query_row(&sql, params![series as i64], read_row)
         .optional()?;
@@ -119,7 +163,7 @@ pub fn candidate(
 /// Every series worth a fetch right now, in id order, which is what the
 /// launch sweep walks.
 pub fn candidates(conn: &Connection, now: i64) -> Result<Vec<Candidate>, CoreError> {
-    let sql = format!("{ELIGIBILITY_SQL} ORDER BY s.id");
+    let sql = format!("{ELIGIBILITY_SQL} ORDER BY id");
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt
         .query_map([], read_row)?
@@ -140,8 +184,22 @@ pub fn candidates(conn: &Connection, now: i64) -> Result<Vec<Candidate>, CoreErr
 /// compared: the same numbers with the same titles and the same dates is
 /// a refresh nobody needs to hear about.
 pub async fn refresh_one(core: &Core, cand: &Candidate, now: i64) -> Result<bool, CoreError> {
-    let schedule = core.anilist.schedule(cand.anilist_id).await?;
-    let jikan = match cand.mal_id {
+    match cand.behind {
+        Behind::Anilist { anilist_id, mal_id } => {
+            refresh_anilist(core, anilist_id, mal_id, now).await
+        }
+        Behind::Tvmaze { show_id } => refresh_tvmaze(core, show_id, now).await,
+    }
+}
+
+async fn refresh_anilist(
+    core: &Core,
+    anilist_id: u64,
+    mal_id: Option<u64>,
+    now: i64,
+) -> Result<bool, CoreError> {
+    let schedule = core.anilist.schedule(anilist_id).await?;
+    let jikan = match mal_id {
         Some(mal_id) => match core.jikan.episodes(mal_id).await {
             Ok(episodes) => episodes,
             Err(e) => {
@@ -154,7 +212,6 @@ pub async fn refresh_one(core: &Core, cand: &Candidate, now: i64) -> Result<bool
     // No streaming titles: this job never fetches the enrichment they come
     // from, and an empty list is not an instruction to clear anything.
     let rows = record::merge_episodes(Some(&schedule), &[], &jikan);
-    let anilist_id = cand.anilist_id;
     let status = schedule.status.clone();
     core.store
         .tx_async(move |tx| {
@@ -165,6 +222,45 @@ pub async fn refresh_one(core: &Core, cand: &Candidate, now: i64) -> Result<bool
             Ok(status_changed || before != stored(tx, anilist_id)?)
         })
         .await
+}
+
+/// A TVmaze show's turn: the whole show fetched again and written whole,
+/// compared either side the way the AniList half compares its rows. A
+/// new poster comes in with it.
+async fn refresh_tvmaze(core: &Core, show_id: u64, now: i64) -> Result<bool, CoreError> {
+    let show = fetch::fetch_show(core, show_id).await?;
+    let urls = fetch::show_image_urls(&show);
+    let changed = core
+        .store
+        .tx_async(move |tx| {
+            let before = stored_show(tx, show_id)?;
+            fetch::write_show(tx, &show, now)?;
+            Ok(before != stored_show(tx, show_id)?)
+        })
+        .await?;
+    core.images.ensure(&urls).await;
+    Ok(changed)
+}
+
+/// A show's status and its episodes, the part of it a card draws from.
+type StoredShow = (Option<String>, Vec<(i64, i64, Option<String>, Option<i64>)>);
+
+fn stored_show(tx: &Transaction, show_id: u64) -> Result<StoredShow, CoreError> {
+    let status: Option<String> = tx
+        .query_row(
+            "SELECT status FROM tvmaze_shows WHERE id = ?1",
+            params![show_id as i64],
+            |r| r.get(0),
+        )
+        .optional()?
+        .flatten();
+    let mut stmt = tx.prepare(
+        "SELECT season, number, name, airstamp FROM tvmaze_episodes WHERE show_id = ?1 ORDER BY season, number",
+    )?;
+    let rows = stmt.query_map(params![show_id as i64], |r| {
+        Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+    })?;
+    Ok((status, rows.collect::<Result<Vec<_>, _>>()?))
 }
 
 /// One stored row as the comparison sees it: the number, the title and
@@ -222,9 +318,20 @@ fn write_status(
     Ok(true)
 }
 
-async fn stamp_async(core: &Core, anilist_id: u64, now: i64) -> Result<(), CoreError> {
+async fn stamp_async(core: &Core, behind: Behind, now: i64) -> Result<(), CoreError> {
     core.store
-        .tx_async(move |tx| stamp(tx, anilist_id, now))
+        .tx_async(move |tx| match behind {
+            Behind::Anilist { anilist_id, .. } => stamp(tx, anilist_id, now),
+            // The show's fetch is its clock, so a failed turn moves it on
+            // the same way a failed AniList turn moves its stamp.
+            Behind::Tvmaze { show_id } => {
+                tx.execute(
+                    "UPDATE tvmaze_shows SET fetched_at = ?2 WHERE id = ?1",
+                    params![show_id as i64, now],
+                )?;
+                Ok(())
+            }
+        })
         .await
 }
 
@@ -239,8 +346,8 @@ async fn refresh_reported(
     match refresh_one(core, cand, now).await {
         Ok(updated) => Ok(updated),
         // A rate limit the limiter could not ride out, or nothing
-        // answering at all, is AniList saying stop rather than this series
-        // failing. The job ends and the series keeps its old stamp, so the
+        // answering at all, is the provider saying stop rather than this
+        // series failing. The job ends and the series keeps its old stamp, so the
         // next run asks again.
         Err(e) if provider_stopped(&e) => Err(e),
         Err(e) => {
@@ -253,7 +360,7 @@ async fn refresh_reported(
                 ),
                 EventBody::Notice,
             );
-            stamp_async(core, cand.anilist_id, now).await?;
+            stamp_async(core, cand.behind.clone(), now).await?;
             Ok(false)
         }
     }

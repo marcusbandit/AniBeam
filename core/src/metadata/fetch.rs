@@ -1,6 +1,7 @@
 //! "Everything behind an AniList id, written down." One routine, used by
 //! every path that gives a series an identity: the auto-match, the manual
-//! match, and the refresh.
+//! match, and the refresh. Its TVmaze twin sits below it and keeps the same
+//! promises with one request instead of four.
 //!
 //! The shape is deliberate. All four provider calls happen first and the
 //! whole record lands in one immediate transaction, so a series is never
@@ -16,6 +17,7 @@ use crate::core::Core;
 use crate::metadata::automatch::AUTO_MATCH_VERSION;
 use crate::metadata::record;
 use crate::net::anilist::{Enrichment, Media};
+use crate::net::tvmaze::{self, Show};
 use crate::store::sql::as_i64;
 
 /// The whole record behind `anilist_id`, written against `series`.
@@ -127,7 +129,7 @@ pub fn write_match_only(
     now: i64,
 ) -> Result<(), CoreError> {
     tx.execute(
-        "UPDATE series SET provider = ?2, anilist_id = ?3, mal_id = ?4, tmdb_id = NULL, tmdb_kind = NULL,
+        "UPDATE series SET provider = ?2, anilist_id = ?3, mal_id = ?4, tmdb_id = NULL, tmdb_kind = NULL, tvmaze_id = NULL,
                 confirmed = ?5, matched_at = ?6, attempted_at = ?6, attempt_version = ?7
          WHERE id = ?1",
         params![
@@ -141,6 +143,146 @@ pub fn write_match_only(
         ],
     )?;
     Ok(())
+}
+
+// TVmaze ----------------------------------------------------------------------
+
+/// The whole record behind a TVmaze show id, written against `series`: the
+/// show, its numbered episodes, the match columns, and the poster and the
+/// background waited for. One fetch with the episodes and the images
+/// embedded, so there is no half-fetched shape to guard against; the show
+/// and the match land in one transaction all the same.
+pub async fn fetch_and_write_tvmaze(
+    core: &Core,
+    series: u64,
+    show_id: u64,
+    confirmed: bool,
+    now: i64,
+) -> Result<(), CoreError> {
+    let show = fetch_show(core, show_id).await?;
+    let urls = show_image_urls(&show);
+    core.store
+        .tx_async(move |tx| {
+            write_show(tx, &show, now)?;
+            write_tvmaze_match(tx, series, show_id, confirmed, now)
+        })
+        .await?;
+    core.images.ensure(&urls).await;
+    Ok(())
+}
+
+/// The show behind an id, or the provider's 404 when TVmaze has none.
+pub async fn fetch_show(core: &Core, show_id: u64) -> Result<Show, CoreError> {
+    core.tvmaze
+        .show(show_id)
+        .await?
+        .ok_or_else(|| no_such_show(show_id))
+}
+
+/// The two pictures a TVmaze series draws: the poster and the banner.
+pub fn show_image_urls(show: &Show) -> Vec<String> {
+    [show.poster_url(), show.background_url()]
+        .into_iter()
+        .flatten()
+        .collect()
+}
+
+/// The show row and its episodes, replaced whole. TVmaze answers with the
+/// complete episode list every time, so the old rows go rather than being
+/// merged: an episode TVmaze renumbered must not linger under its old key.
+pub fn write_show(tx: &Transaction, show: &Show, now: i64) -> Result<(), CoreError> {
+    let genres = serde_json::to_string(&show.genres)?;
+    let summary = show
+        .summary
+        .as_deref()
+        .map(tvmaze::plain_summary)
+        .filter(|s| !s.is_empty());
+    tx.execute(
+        "INSERT INTO tvmaze_shows (id, name, url, type, language, genres, status, premiered, ended, average_runtime,
+                                   rating, network, summary, poster_url, background_url, imdb, thetvdb, fetched_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
+         ON CONFLICT(id) DO UPDATE SET
+            name = excluded.name, url = excluded.url, type = excluded.type, language = excluded.language,
+            genres = excluded.genres, status = excluded.status, premiered = excluded.premiered,
+            ended = excluded.ended, average_runtime = excluded.average_runtime, rating = excluded.rating,
+            network = excluded.network, summary = excluded.summary, poster_url = excluded.poster_url,
+            background_url = excluded.background_url, imdb = excluded.imdb, thetvdb = excluded.thetvdb,
+            fetched_at = excluded.fetched_at",
+        params![
+            as_i64(show.id),
+            show.name,
+            show.url,
+            show.kind,
+            show.language,
+            genres,
+            show.status,
+            show.premiered,
+            show.ended,
+            show.average_runtime,
+            show.rating.average,
+            show.network_name(),
+            summary,
+            show.poster_url(),
+            show.background_url(),
+            show.externals.imdb,
+            show.externals.thetvdb.map(as_i64),
+            now,
+        ],
+    )?;
+    tx.execute(
+        "DELETE FROM tvmaze_episodes WHERE show_id = ?1",
+        params![as_i64(show.id)],
+    )?;
+    let mut insert = tx.prepare(
+        "INSERT INTO tvmaze_episodes (show_id, season, number, name, airstamp, runtime) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+    )?;
+    for e in show.episodes() {
+        insert.execute(params![
+            as_i64(show.id),
+            e.season,
+            e.number,
+            e.name,
+            e.airstamp,
+            e.runtime
+        ])?;
+    }
+    Ok(())
+}
+
+/// The match columns of a TVmaze match: the show id and nothing else. A
+/// TVmaze series carries no AniList or MAL id, which is what keeps every
+/// tracker write away from it. `attempted_at` is stamped for the same
+/// reason `write_match_only` stamps it.
+pub fn write_tvmaze_match(
+    tx: &Transaction,
+    series: u64,
+    show_id: u64,
+    confirmed: bool,
+    now: i64,
+) -> Result<(), CoreError> {
+    tx.execute(
+        "UPDATE series SET provider = 'tvmaze', anilist_id = NULL, mal_id = NULL, tmdb_id = NULL, tmdb_kind = NULL,
+                tvmaze_id = ?2, confirmed = ?3, matched_at = ?4, attempted_at = ?4, attempt_version = ?5
+         WHERE id = ?1",
+        params![
+            as_i64(series),
+            as_i64(show_id),
+            i64::from(confirmed),
+            now,
+            i64::from(AUTO_MATCH_VERSION),
+        ],
+    )?;
+    Ok(())
+}
+
+/// TVmaze answered that there is no such show: an attempt that was made.
+fn no_such_show(show_id: u64) -> CoreError {
+    CoreError::Provider {
+        provider: Provider::Tvmaze,
+        status: Some(404),
+        message: format!("TVmaze has no show {show_id}"),
+        retry_after: None,
+    }
 }
 
 /// AniList answered, and what it said is that there is no such media. That

@@ -42,18 +42,17 @@ pub fn recent_entry(
     let now_secs = time::to_secs(now);
     let newest_mtime = files.iter().map(|f| f.mtime).max();
 
+    // A TVmaze match numbers its episodes within a season, so only the
+    // card's own season is matched against that season's list.
+    let season = snapshot.card_season(row);
     let on_disk_numbers: Vec<f64> = files
         .iter()
-        .filter(|f| f.is_episode)
+        .filter(|f| f.is_episode && season.is_none_or(|s| f.season.unwrap_or(1) == s))
         .map(|f| f.number)
         .collect();
     let highest_on_disk = on_disk_numbers.iter().copied().fold(0.0_f64, f64::max);
 
-    let airing = row
-        .anilist_id
-        .and_then(|id| snapshot.airing.get(&id))
-        .map(Vec::as_slice)
-        .unwrap_or(&[]);
+    let airing = snapshot.airing_of(row);
     let mut best_aired: Option<(i64, u32)> = None;
     for a in airing {
         let Some(at) = a.aired_at else { continue };
@@ -115,18 +114,13 @@ pub fn recent_entry(
     None
 }
 
-/// The earliest future `anilist_episodes` row for this series, matched or
-/// not on disk: coming soon lists what is next, not what is already owned.
+/// The earliest future episode for this series, matched or not on disk:
+/// coming soon lists what is next, not what is already owned. An AniList
+/// match reads its schedule, a TVmaze match every season of its show, so
+/// an announced next season is coming soon too.
 pub fn upcoming(snapshot: &Snapshot, series_id: u64, now: SystemTime) -> Option<(u32, i64)> {
     let row = snapshot.row(series_id)?;
-    let anilist_id = row.anilist_id?;
-    let airing = snapshot.airing.get(&anilist_id)?;
-    let now_secs = time::to_secs(now);
-    airing
-        .iter()
-        .filter_map(|a| a.aired_at.map(|at| (a.number, at)))
-        .filter(|(_, at)| *at > now_secs)
-        .min_by_key(|(_, at)| *at)
+    snapshot.aired_and_next(row, time::to_secs(now)).1
 }
 
 /// A `FeedCard` for one series, or `None` when the id somehow no longer

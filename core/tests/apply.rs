@@ -80,10 +80,11 @@ fn per_page(req: &anibeam_core::net::HttpRequest) -> u64 {
     }
 }
 
-/// AniList is the only provider the native line can search: TMDB has no
-/// client at all, and MAL is a tracker rather than a matching provider.
+/// AniList and TVmaze are the providers the native line can search: TMDB
+/// has no client at all, and MAL is a tracker rather than a matching
+/// provider. TVmaze's half has a test of its own in `tvmaze.rs`.
 #[test]
-fn a_search_answers_from_anilist_and_refuses_every_other_provider() {
+fn a_search_answers_from_anilist_and_refuses_every_non_matching_provider() {
     let http = anibeam_core::net::FakeHttp::new();
     let (_dir, core, c) = common::open_core_with_http(http.clone());
 
@@ -158,7 +159,7 @@ fn a_search_answers_from_anilist_and_refuses_every_other_provider() {
         },
     );
     let done = common::wait_job(&c, job);
-    assert_eq!(done.message, "Search: 2 results for \"Frieren\"");
+    assert_eq!(done.message, "Search: 2 AniList results for \"Frieren\"");
     assert_eq!(done.level, Level::Debug);
     let EventBody::SearchFinished { results } = done.body else {
         panic!("{done:?}")
@@ -234,7 +235,7 @@ fn a_mal_link_anilist_cannot_resolve_fails_the_job_with_a_message() {
         .unwrap();
     assert!(
         matches!(&err, CoreError::Invalid { field, message }
-            if field == "url" && message == "Couldn't read that link. Paste an AniList or MyAnimeList page URL."),
+            if field == "url" && message == "Couldn't read that link. Paste an AniList, MyAnimeList, TVmaze or IMDb page URL."),
         "{err:?}"
     );
 

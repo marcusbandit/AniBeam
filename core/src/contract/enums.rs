@@ -5,6 +5,7 @@ pub enum Provider {
     Anilist,
     Mal,
     Tmdb,
+    Tvmaze,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
@@ -45,6 +46,7 @@ impl Provider {
             Provider::Anilist => "anilist",
             Provider::Mal => "mal",
             Provider::Tmdb => "tmdb",
+            Provider::Tvmaze => "tvmaze",
         }
     }
 
@@ -53,10 +55,27 @@ impl Provider {
             "anilist" => Some(Provider::Anilist),
             "mal" => Some(Provider::Mal),
             "tmdb" => Some(Provider::Tmdb),
+            "tvmaze" => Some(Provider::Tvmaze),
             _ => None,
         }
     }
+
+    /// The name a user reads: AniList, MAL, TMDB or TVmaze.
+    pub fn label(self) -> &'static str {
+        match self {
+            Provider::Anilist => "AniList",
+            Provider::Mal => "MAL",
+            Provider::Tmdb => "TMDB",
+            Provider::Tvmaze => "TVmaze",
+        }
+    }
 }
+
+/// The providers a series can be matched against, in the default order the
+/// auto-match tries them. MAL is a tracker and TMDB has no client on the
+/// native line, so neither is one. The `provider_order` setting is always
+/// a reordering of exactly this list.
+pub const MATCH_PROVIDERS: [Provider; 2] = [Provider::Anilist, Provider::Tvmaze];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
 pub enum SeriesKind {
@@ -117,6 +136,18 @@ impl AiringStatus {
     /// Applies Electron's `normalizeStatus` (`src/shared/airingStatus.ts`):
     /// trim, lower case, and collapse whitespace and hyphens to underscores
     /// before matching.
+    /// AniList's spelling of the status, the vocabulary a stored media
+    /// row speaks and `from_provider` reads back.
+    pub fn anilist_word(self) -> &'static str {
+        match self {
+            AiringStatus::Releasing => "RELEASING",
+            AiringStatus::Finished => "FINISHED",
+            AiringStatus::NotYetReleased => "NOT_YET_RELEASED",
+            AiringStatus::Cancelled => "CANCELLED",
+            AiringStatus::Hiatus => "HIATUS",
+        }
+    }
+
     pub fn from_provider(s: &str) -> Option<AiringStatus> {
         let normalised = normalise_status(s);
         match normalised.as_str() {

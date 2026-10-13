@@ -1,5 +1,5 @@
 //! Preferences (the library and feed view state) and settings (subtitle
-//! defaults, auto-skip and the main tracker), both stored as JSON blobs in
+//! defaults, auto-skip, the main tracker and the provider order), both stored as JSON blobs in
 //! the settings table keyed by `store::settings`'s key constants.
 
 use rusqlite::Connection;
@@ -28,7 +28,68 @@ pub fn load_settings(conn: &Connection) -> Result<Settings, CoreError> {
         subtitle_defaults: settings::get_or_default(conn, settings::SUBTITLE_DEFAULTS)?,
         auto_skip: settings::get_or_default(conn, settings::AUTO_SKIP)?,
         main_tracker: load_main_tracker(conn)?,
+        provider_order: load_provider_order(conn)?,
     })
+}
+
+/// The match providers in the order the auto-match walks them. Whatever
+/// is stored, this answers with every provider exactly once and never
+/// fails: a row from a build that knew fewer providers, or a newer one
+/// that knew more, keeps the providers this build knows in their stored
+/// order, each once, and gains any missing ones in the default order; a
+/// row that is not a list at all reads as the default.
+pub fn load_provider_order(conn: &Connection) -> Result<Vec<Provider>, CoreError> {
+    let stored = match settings::get::<Vec<serde_json::Value>>(conn, settings::PROVIDER_ORDER) {
+        Ok(stored) => stored.unwrap_or_default(),
+        Err(e) if e.is_decode_failure() => {
+            tracing::warn!("reading the provider order as the default: {e}");
+            Vec::new()
+        }
+        Err(e) => return Err(e),
+    };
+    let mut order: Vec<Provider> = Vec::with_capacity(MATCH_PROVIDERS.len());
+    for p in stored
+        .into_iter()
+        .filter_map(|v| serde_json::from_value::<Provider>(v).ok())
+    {
+        if MATCH_PROVIDERS.contains(&p) && !order.contains(&p) {
+            order.push(p);
+        }
+    }
+    for p in MATCH_PROVIDERS {
+        if !order.contains(&p) {
+            order.push(p);
+        }
+    }
+    Ok(order)
+}
+
+pub fn save_provider_order(conn: &Connection, order: &[Provider]) -> Result<(), CoreError> {
+    settings::set(conn, settings::PROVIDER_ORDER, &order)
+}
+
+/// Every match provider exactly once, and nothing that is not one: an
+/// order is a reordering, never a way to switch a provider off.
+pub fn validate_provider_order(order: &[Provider]) -> Result<(), CoreError> {
+    if let Some(p) = order.iter().find(|p| !MATCH_PROVIDERS.contains(p)) {
+        return Err(CoreError::invalid(
+            "order",
+            format!("{} is not a match provider", p.label()),
+        ));
+    }
+    for p in MATCH_PROVIDERS {
+        let n = order.iter().filter(|o| **o == p).count();
+        if n != 1 {
+            return Err(CoreError::invalid(
+                "order",
+                format!(
+                    "{} appears {n} times; every provider appears once",
+                    p.label()
+                ),
+            ));
+        }
+    }
+    Ok(())
 }
 
 pub fn save_subtitle_defaults(conn: &Connection, d: &SubtitleDefaults) -> Result<(), CoreError> {

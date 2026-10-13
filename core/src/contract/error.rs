@@ -45,6 +45,7 @@ fn provider_name(provider: Provider) -> &'static str {
         Provider::Anilist => "AniList",
         Provider::Mal => "MyAnimeList",
         Provider::Tmdb => "TMDB",
+        Provider::Tvmaze => "TVmaze",
     }
 }
 
