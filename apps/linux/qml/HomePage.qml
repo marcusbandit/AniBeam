@@ -113,7 +113,7 @@ Item {
             var k = at > 0 ? Math.floor((at - start) / 86400) : -1
             if (k >= 0 && k < 7) days[k].cards.push(c); else later.push(c)
         }
-        if (later.length) days.push({ label: "Later", date: "", today: false, cards: later, later: true })
+        if (later.length) days.push({ label: "No date yet", date: "", today: false, cards: later, later: true })
         return days
     }
     readonly property int airingWaiting: airingRows.filter(function(c) { return page.behindOf(c) > 0 }).length
@@ -397,68 +397,73 @@ Item {
 
         Item { width: 1; height: hero.visible ? theme.space(4) : 0 }
 
-        // ---- The week: a column per day, the posters on the day their episode lands
+        // ---- The week: one row per day that has an episode landing, today always first
+        // (and marked), every day's posters in one line so nothing hides below the fold;
+        // the series without a date yet close the list
         Column {
             objectName: "home-week"
             visible: page.airingRows.length > 0
             width: parent.width
-            spacing: theme.space(3)
-            readonly property int cols: page.week.length
-            readonly property real colWidth: Math.floor((width - page.gap * (cols - 1)) / cols)
-            readonly property real cardWidth: Math.min(theme.posterWidth, colWidth)
+            spacing: theme.space(4)
+            readonly property real labelWidth: theme.space(30)
+            readonly property real cardWidth: theme.space(42)
             Heading { text: "This week"; fact: page.weekFact }
-            Row {
-                spacing: page.gap
-                Repeater {
-                    model: page.week
+            Repeater {
+                model: page.week.filter(function(d) { return d.today || d.cards.length > 0 })
+                Item {
+                    id: day
+                    required property var modelData
+                    required property int index
+                    objectName: "home-day-" + index
+                    width: parent.width
+                    height: Math.max(dayHead.implicitHeight, dayCards.implicitHeight)
+                    readonly property bool hasCards: modelData.cards.length > 0
+                    // Today's line is drawn in the accent; the others sit on a hairline
+                    Rectangle {
+                        x: 0; y: 0
+                        width: 3; height: parent.height
+                        radius: 1.5
+                        color: day.modelData.today ? theme.accent : theme.line
+                    }
                     Column {
-                        id: day
-                        required property var modelData
-                        required property int index
-                        objectName: "home-day-" + index
-                        width: parent.parent.colWidth
+                        id: dayHead
+                        x: theme.space(4); y: 0
+                        width: parent.parent.labelWidth - x
+                        spacing: theme.space(0.5)
+                        Label {
+                            text: day.modelData.label
+                            role: "title"
+                            font.pointSize: theme.typeNormal
+                            color: day.modelData.today ? theme.accent : theme.text
+                        }
+                        Label {
+                            text: day.modelData.date
+                            visible: text !== ""
+                            role: "ledger"
+                            color: day.modelData.today ? theme.accent : theme.textDim
+                        }
+                        Label {
+                            visible: !day.hasCards
+                            text: "Nothing lands today"
+                            role: "ledger"
+                            color: theme.textFaint
+                        }
+                    }
+                    Flow {
+                        id: dayCards
+                        x: parent.parent.labelWidth
+                        width: parent.width - x
                         spacing: theme.space(3)
-                        readonly property bool hasCards: modelData.cards.length > 0
-                        // The day's name and date; today in the accent, an empty day dim
-                        Column {
-                            width: parent.width
-                            spacing: theme.space(0.5)
-                            Label {
-                                text: day.modelData.label
-                                role: "title"
-                                font.pointSize: theme.typeNormal
-                                color: day.modelData.today ? theme.accent : day.hasCards ? theme.text : theme.textFaint
-                            }
-                            Label {
-                                text: day.modelData.date
-                                visible: text !== ""
-                                role: "ledger"
-                                color: day.modelData.today ? theme.accent : theme.textFaint
-                            }
-                        }
-                        Rectangle {
-                            width: parent.width; height: 2
-                            radius: 1
-                            color: day.modelData.today ? theme.accent : theme.line
-                        }
                         Repeater {
                             model: day.modelData.cards
                             Card {
                                 required property var modelData
                                 item: modelData
-                                posterWidth: day.parent.parent.cardWidth
+                                posterWidth: day.parent.cardWidth
                                 nowMs: page.nowMs
                                 onOpened: page.openSeries(modelData)
                                 onPlayed: page.playSeries(modelData)
                             }
-                        }
-                        // An empty day keeps its column, with a quiet slot where a poster
-                        // would sit
-                        Label {
-                            visible: !day.hasCards
-                            text: "Nothing airs"
-                            role: "ledger"
-                            color: theme.textFaint
                         }
                     }
                 }

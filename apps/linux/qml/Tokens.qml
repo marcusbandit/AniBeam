@@ -67,9 +67,11 @@ Item {
     function glassOf(a) { return Qt.rgba(ink.r, ink.g, ink.b, a) }
     // Flat (2026-10-13): every pane is one solid step up from the ground, no top highlight,
     // no sheen. The names stay so every surface follows the one change.
-    readonly property color glass: lifted(dark ? 0.045 : 0.04, 1)
-    readonly property color glassRaised: lifted(dark ? 0.085 : 0.075, 1)
-    readonly property color glassPressed: lifted(dark ? 0.12 : 0.11, 1)
+    // Three roles: the ground (bg), the surface (the theme's own secondary colour: the
+    // sidebar, cards' plates, the toolbar's controls) and the accent, used sparingly.
+    readonly property color glass: surface
+    readonly property color glassRaised: surfaceRaised
+    readonly property color glassPressed: surfacePressed
     readonly property color glassEdge: glassOf(dark ? 0.06 : 0.1)
     readonly property color glassEdgeStrong: glassOf(dark ? 0.14 : 0.2)
     readonly property color glassHighlight: "transparent"
@@ -132,12 +134,12 @@ Item {
     // one every pane takes, the smaller steps are for what nests inside one, and a control
     // asks for height / 2, a pill. All of it scales with density.
     readonly property real cornerSmoothing: 0
-    readonly property real radiusTile: space(3.5)
+    readonly property real radiusTile: space(4.5)
     readonly property real cornerBase: radiusTile
     readonly property real radiusSm: space(1.5)
     readonly property real radiusMd: space(2.5)
-    readonly property real radiusLg: space(4)
-    readonly property real radiusXl: space(5)
+    readonly property real radiusLg: space(5)
+    readonly property real radiusXl: space(7)
     // The mosaic's geometry: one joint between every pair of panes, wide enough for the
     // panes to read as set apart, and the page's own margin is the same joint.
     readonly property real grout: space(3)

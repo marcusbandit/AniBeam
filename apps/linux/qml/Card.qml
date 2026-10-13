@@ -374,10 +374,12 @@ Item {
         x: root.pad
         y: parent.height - root.pad * 0.6 - height
         width: parent.width - root.pad * 2
-        height: 3
-        Rectangle { anchors.fill: parent; radius: height / 2; color: Qt.rgba(1, 1, 1, 0.14) }
-        Rectangle { width: parent.width * root.airedPct; height: parent.height; radius: height / 2; color: Qt.rgba(1, 1, 1, 0.34) }
-        Rectangle { width: parent.width * root.watchedPct; height: parent.height; radius: height / 2; color: theme.accent }
+        height: 4
+        // Three states on one line: watched in the accent, aired and not yet seen in the
+        // accent at half, the rest of the run as a faint track
+        Rectangle { anchors.fill: parent; radius: height / 2; color: Qt.rgba(1, 1, 1, 0.2) }
+        Rectangle { width: parent.width * root.airedPct; height: parent.height; radius: height / 2; color: Qt.rgba(theme.accentOnPoster.r, theme.accentOnPoster.g, theme.accentOnPoster.b, 0.45) }
+        Rectangle { width: parent.width * root.watchedPct; height: parent.height; radius: height / 2; color: theme.accentOnPoster }
     }
 
     // ---- The 1 px accent outline on hover

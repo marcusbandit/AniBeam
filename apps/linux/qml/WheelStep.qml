@@ -1,24 +1,37 @@
-// The shell's mouse-wheel step for any Flickable. A notch starts the Flickable's own
-// flick at a velocity that glides roughly three reading lines before its deceleration
-// settles — Chromium's step, carried by the Flickable's native curve, so it is smooth,
-// clamped at the bounds, and interrupted the moment a drag takes over. Mice and pens
-// only: a touchpad keeps the Flickable's pixel-precise handling and momentum.
+// The shell's mouse-wheel step for any Flickable. Every notch adds a fixed step to a target
+// and the content follows it with exponential smoothing, so a spin of five notches goes
+// five steps, not one: the Flickable's own flick() replaced the velocity on each notch, and
+// a fast spin barely moved further than a single click. A touchpad hands pixel deltas,
+// which add straight to the same target. The target is clamped to the content's bounds
+// and a drag takes over the moment it starts.
 import QtQuick
 import com.marcusrosado.AniBeam
 
 WheelHandler {
     id: root
     required property Flickable flick
-    // How far a notch travels, relative to the base step of ~3 reading lines. Glide distance
-    // goes with velocity squared, so the velocity (and the cap a fast spin runs into) scales
-    // by its square root.
-    property real multiplier: 9
-    // velocity for one base notch: ~3 lines of glide under the default 1500 px/s^2 deceleration
-    readonly property real notchVelocity: 600 * Math.sqrt(multiplier)
-    Component.onCompleted: flick.maximumFlickVelocity = 2500 * Math.sqrt(multiplier)
+    // One notch, in px: about three Chromium steps
+    property real step: theme.space(72)
+    property real target: 0
+    property bool following: false
+    function bound(y) { return Math.max(0, Math.min(y, Math.max(0, flick.contentHeight - flick.height))) }
     onWheel: function(ev) {
-        var notches = ev.angleDelta.y / 120
-        flick.flick(0, notches * notchVelocity)
+        if (!following) target = flick.contentY
+        var dy = ev.pixelDelta.y !== 0 ? -ev.pixelDelta.y : -ev.angleDelta.y / 120 * step
+        target = bound(target + dy)
+        following = true
+        flick.cancelFlick()
         ev.accepted = true
+    }
+    // A handler holds no children, so the follower is a property
+    property FrameAnimation follower: FrameAnimation {
+        running: root.following
+        onTriggered: {
+            if (root.flick.dragging) { root.following = false; return }
+            var y = root.bound(root.target)
+            var next = theme.follow(root.flick.contentY, y, frameTime)
+            if (Math.abs(next - y) < 0.5) { root.flick.contentY = y; root.following = false }
+            else root.flick.contentY = next
+        }
     }
 }

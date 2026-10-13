@@ -41,7 +41,16 @@ below where they disagree:
 - **The week.** Airing series sit in seven day columns from today, on the day their next
   episode lands, with a Later column for the rest. A card with an episode out and unseen
   carries a "New" tag in the accent.
-- **Scrolling** glides three times as far per wheel notch (`WheelStep.multiplier` 9).
+- **The library is sections of one grid.** A title with its count, the search, one line of
+  pill controls, then sections (franchises, or the chosen arrangement's groups) each a heading
+  in the display cut with one fact and a count over uniform cards. No heroes, no framed boxes,
+  no packing. The lone airing series lead under Airing; the rest close the page under
+  Everything else.
+- **The week is rows, not columns.** One row per day that has an episode landing, today always
+  first and marked in the accent, every day's posters in one line so nothing hides below the
+  fold; the series without a date yet close the list.
+- **Scrolling** adds a fixed step per wheel notch to a target the content follows with
+  exponential smoothing, so a spin of five notches goes five steps (`WheelStep.step`).
 
 This supersedes Tesserae (rounded tiles on poster-toned plates), which superseded "the lobby".
 The killed idioms (below) still hold.
