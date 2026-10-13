@@ -48,7 +48,6 @@ fn main() {
             .qml_file("qml/HomePage.qml")
             .qml_file("qml/PosterTone.qml")
             .qml_file("qml/StoneFact.qml")
-            .qml_file("qml/MosaicWall.qml")
             .qml_file("qml/FeedPage.qml")
             .qml_file("qml/WatchingPage.qml")
             .qml_file("qml/MetadataPage.qml")

@@ -60,6 +60,15 @@ below where they disagree:
   at a readable measure, round character portraits, small recommendation cards, the tags
   and the franchise at the right; one column under about 1100 px. An unmatched series
   draws the same band off its folder name, with the match where the synopsis would be.
+- **Feed, Watching and Subscriptions are the library's sections too.** Each is a head row
+  (the title in the display cut, one line of fact beside it in dim ui text, the page's
+  control at the right: the feed's sort, Refresh) over sections of uniform cards in the
+  library's column math, no heroes and no packing. The feed cuts This week and Earlier
+  (Recently released) or Coming soon and Everything else (Coming soon); Watching cuts
+  Airing, Episodes waiting, Up to date and Not in the library (the ghosts), and without
+  AniList is one empty state with the connect button; Subscriptions cuts Active and
+  Paused feeds as flat tiles. `MosaicWall.qml` is gone; `mosaic.js` stays for the
+  Settings and Metadata headers.
 
 This supersedes Tesserae (rounded tiles on poster-toned plates), which superseded "the lobby".
 The killed idioms (below) still hold.
