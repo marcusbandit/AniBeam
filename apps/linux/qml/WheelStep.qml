@@ -19,26 +19,29 @@ WheelHandler {
     // The first wheel events of a run go to the log with everything the platform said about
     // them, so a report of a crawling wheel can be read against the real device
     property int logged: 0
+    acceptedDevices: PointerDevice.AllDevices
     onWheel: function(ev) {
-        if (!following) target = flick.contentY
-        // A mouse notch is the angle delta (120 a notch, in fragments on a high-resolution
-        // wheel); a touchpad's pixel delta is taken as pixels. Qt on Wayland fills pixelDelta
-        // for a plain mouse wheel too, a dozen px a notch, which read as a crawl, so pixels
-        // count only from a touchpad, and a wheel that reports no angle at all is read from
-        // its pixel value at libinput's 15 a notch.
-        var touchpad = ev.device && ev.device.type === PointerDevice.TouchPad && ev.pixelDelta.y !== 0
-        var notches = ev.angleDelta.y !== 0 ? ev.angleDelta.y / 120 : ev.pixelDelta.y / 15
-        var dy = touchpad ? -ev.pixelDelta.y : -notches * step
-        if (logged < 40) {
-            logged++
-            console.info("wheel: device=" + (ev.device ? ev.device.name + " type=" + ev.device.type : "none")
-                         + " angle=" + ev.angleDelta.y + " pixel=" + ev.pixelDelta.y + " phase=" + ev.phase
-                         + " inverted=" + ev.inverted + " -> dy=" + dy + " step=" + step)
+        try {
+            if (!following) target = flick.contentY
+            // A mouse notch is the angle delta (120 a notch, in fragments on a high-resolution
+            // wheel). Qt on Wayland fills pixelDelta for a plain mouse wheel too, a dozen px a
+            // notch, which read as a crawl, so pixels count only when no angle came at all (a
+            // touchpad, or a wheel the platform reports in pixels: libinput's 15 a notch).
+            var angle = ev.angleDelta.y, pixel = ev.pixelDelta.y
+            var dy = angle !== 0 ? -angle / 120 * step : -pixel / 15 * step
+            if (logged < 40) {
+                logged++
+                var dev = "none"
+                try { dev = ev.device ? (ev.device.name + " type=" + ev.device.type) : "none" } catch (e) { dev = "unreadable" }
+                console.warn("wheel: device=" + dev + " angle=" + angle + " pixel=" + pixel + " phase=" + ev.phase + " -> dy=" + dy + " step=" + step)
+            }
+            target = bound(target + dy)
+            following = true
+            flick.cancelFlick()
+            ev.accepted = true
+        } catch (e) {
+            console.warn("wheel: handler failed: " + e)
         }
-        target = bound(target + dy)
-        following = true
-        flick.cancelFlick()
-        ev.accepted = true
     }
     // A handler holds no children, so the follower is a property
     property FrameAnimation follower: FrameAnimation {
