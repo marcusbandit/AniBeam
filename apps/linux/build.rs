@@ -45,6 +45,7 @@ fn main() {
             .qml_file("qml/Card.qml")
             .qml_file("qml/LibraryRow.qml")
             .qml_file("qml/LibraryPage.qml")
+            .qml_file("qml/HomePage.qml")
             .qml_file("qml/StoneFact.qml")
             .qml_file("qml/MosaicWall.qml")
             .qml_file("qml/FeedPage.qml")

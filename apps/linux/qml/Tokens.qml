@@ -65,16 +65,18 @@ Item {
     // needs a solid colour.
     readonly property color ink: dark ? "#ffffff" : text
     function glassOf(a) { return Qt.rgba(ink.r, ink.g, ink.b, a) }
-    readonly property color glass: glassOf(dark ? 0.035 : 0.045)
-    readonly property color glassRaised: glassOf(dark ? 0.06 : 0.075)
-    readonly property color glassPressed: glassOf(dark ? 0.09 : 0.11)
-    readonly property color glassEdge: glassOf(dark ? 0.08 : 0.12)
-    readonly property color glassEdgeStrong: glassOf(dark ? 0.16 : 0.22)
-    readonly property color glassHighlight: dark ? Qt.rgba(1, 1, 1, 0.22) : Qt.rgba(1, 1, 1, 0.85)
+    // Flat (2026-10-13): every pane is one solid step up from the ground, no top highlight,
+    // no sheen. The names stay so every surface follows the one change.
+    readonly property color glass: lifted(dark ? 0.045 : 0.04, 1)
+    readonly property color glassRaised: lifted(dark ? 0.085 : 0.075, 1)
+    readonly property color glassPressed: lifted(dark ? 0.12 : 0.11, 1)
+    readonly property color glassEdge: glassOf(dark ? 0.06 : 0.1)
+    readonly property color glassEdgeStrong: glassOf(dark ? 0.14 : 0.2)
+    readonly property color glassHighlight: "transparent"
     // The sheen under the highlight (Corner.qml): light falling on the glass from above,
     // strongest at the top edge and gone by sheenReach of the pane's height, never deeper
     // than sheenMax px.
-    readonly property color sheen: dark ? Qt.rgba(1, 1, 1, 0.055) : Qt.rgba(1, 1, 1, 0.45)
+    readonly property color sheen: "transparent"
     readonly property real sheenReach: 0.6
     readonly property real sheenMax: 120
     // A floating pane (menus, tips, sheets, popups, the drawer) sits over arbitrary content,
@@ -139,6 +141,10 @@ Item {
     // The mosaic's geometry: one joint between every pair of panes, wide enough for the
     // panes to read as set apart, and the page's own margin is the same joint.
     readonly property real grout: space(3)
+    // The widest the page content grows: past it the pages sit in a centred column, so an
+    // ultrawide window shows a readable page with ground either side rather than one
+    // endless wall.
+    readonly property real contentMax: space(500)
     // The radius of a shape nested `padding` inside a tile, so the two curves stay
     // concentric; never below the small step so a nested row still reads as rounded.
     function radiusInner(padding) { return Math.max(radiusSm, radiusTile - padding) }

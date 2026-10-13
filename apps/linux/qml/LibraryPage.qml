@@ -38,6 +38,10 @@ Item {
     property string titleLanguage: "Romaji"
     property bool showWatched: false
     property string query: props.q || ""
+    // A genre picked on Home: the wall holds that genre's series only, until cleared
+    property string genre: props.genre || ""
+    function clearGenre() { genre = ""; frame.nav.current.props = { q: page.query }; frame.nav.relabel("Library"); reload() }
+    function inGenre(c) { return genre === "" || (c.genres && c.genres.indexOf(genre) >= 0) }
     property bool hiddenExist: false
     property bool watchedExist: false
     property real nowMs: Date.now()
@@ -148,7 +152,7 @@ Item {
         for (var i = 0; i < list.length; i++) {
             var c = list[i], w = c.watched !== null && c.watched !== undefined ? c.watched : 0
             files += c.episodes_on_disk || 0
-            if (c.watched_state === "CaughtUp") done++
+            if (c.watched_state === "CaughtUp" && !c.next_airing) done++
             else if (w > 0 || c.watched_state === "Behind") going++
             else fresh++
             if (c.next_airing && c.next_airing.at > now && c.next_airing.at - now <= 7 * 86400) airs++
@@ -282,7 +286,7 @@ Item {
         // One snapshot per reload: the shelf, the airing rail and the per-tab counts
         var r = Door.listLibrary(tab, query, sort, direction, Door.revealHidden)
         if (r.error) { frame.toast(r.error.message); return }
-        cards.reset(r.reply.series)
+        cards.reset(r.reply.series.filter(page.inGenre))
         var n = r.reply.counts || {}
         // The library is empty only when nothing is anywhere: All leaves watched series out
         // unless they are shown, and hidden ones out unless revealed. The Watched tab
@@ -290,7 +294,7 @@ Item {
         watchedExist = (n.watched || 0) > 0
         hiddenExist = Door.revealHidden && (n.hidden || 0) > 0
         libraryEmpty = (n.all || 0) === 0 && !watchedExist && (n.hidden || 0) === 0
-        airingRows = query === "" && !libraryEmpty && r.reply.airing ? r.reply.airing : []
+        airingRows = query === "" && !libraryEmpty && r.reply.airing ? r.reply.airing.filter(page.inGenre) : []
         packedAt = Date.now()
         revision++
         flick.contentY = Math.max(0, Math.min(keep, Math.max(0, flick.contentHeight - flick.height)))
@@ -362,45 +366,49 @@ Item {
         NumberAnimation { target: page; property: "shelfIn"; to: 1; duration: 220; easing.type: Easing.OutCubic }
     }
 
-    // ---- The header: a row of tiles on the module, one unit tall, wrapping to a second
-    // row on a narrow window. Each tile's span is the whole columns its content needs; the
-    // row's spare columns go to the title (or the search on a wrapped row). A control is
-    // centred in its tile both ways, so a whole-column span's slack sits evenly around it.
-    // A control says what it is, so no tile carries an eyebrow; only the arrangement keeps
-    // a word ("Arrange"), since a bare "None" would not.
-    // Compact, below seven columns: the header's rows are a control's height rather than a
-    // unit, the sorts and the arrangement are dropdowns, and the search takes what is left,
-    // so a small window still shows the wall
+    // ---- The header. Compact, below seven columns: the sorts and the arrangement are
+    // dropdowns, so a small window still shows the wall.
     readonly property bool compact: geo.cols < 7
-    readonly property real headerRowH: compact ? theme.space(12) : unit
     readonly property real hpad: theme.space(compact ? 2 : 3)
-    function spanFor(w) { return Math.max(1, Math.ceil((w + hpad * 2 + grout) / (geo.w + grout))) }
-    readonly property var headerLayout: Mosaic.header([
-        // The title tile carries the count at its right and takes the row's spare columns.
-        { key: "title", span: Math.max(compact ? 1 : 2, spanFor(titleLabel.implicitWidth + theme.space(compact ? 3 : 6) + countRow.implicitWidth)), flex: true },
-        { key: "tabs", span: spanFor(tabsSeg.implicitWidth) },
-        { key: "sorts", span: spanFor(compact ? sortCompact.implicitWidth : sortSeg.implicitWidth) },
-        { key: "arrange", span: spanFor(arrangeRow.implicitWidth) },
-        { key: "watched", span: spanFor(watchedRow.implicitWidth) },
-        { key: "search", span: compact ? 1 : Math.max(2, spanFor(theme.space(56))), flex: true }
-    ], geo.cols)
-    function headerTile(key) {
-        var t = headerLayout.tiles
-        for (var i = 0; i < t.length; i++) if (t[i].key === key) return t[i]
-        return { col: 0, row: 0, colSpan: 1 }
+    // The flat header: the title with its count on the left and the search on the right,
+    // then the controls in one left-aligned run under them, wrapping on a narrow window.
+    // Each control's slot is its own width; nothing is centred in a column span.
+    readonly property real ctrlRowH: theme.space(12)
+    readonly property real titleRowH: theme.space(18)
+    readonly property real hgap: theme.space(8)
+    readonly property var headerSlots: {
+        var W = Math.max(1, width - grout)
+        var out = {}
+        var titleW = titleLabel.implicitWidth + (clearGenreButton.visible ? clearGenreButton.width + theme.space(2) : 0) + theme.space(4) + countRow.implicitWidth
+        var searchW = Math.max(theme.space(40), Math.min(theme.space(110), W - titleW - hgap))
+        out.title = { x: 0, y: 0, w: Math.max(titleW, W - searchW - hgap), h: titleRowH }
+        out.search = { x: W - searchW, y: 0, w: searchW, h: titleRowH }
+        var widths = { tabs: tabsSeg.implicitWidth, sorts: compact ? sortCompact.implicitWidth : sortSeg.implicitWidth,
+                       arrange: arrangeRow.implicitWidth, watched: watchedRow.implicitWidth }
+        var keys = ["tabs", "sorts", "arrange", "watched"]
+        var x = 0, y = titleRowH
+        for (var i = 0; i < keys.length; i++) {
+            var w = widths[keys[i]]
+            if (x > 0 && x + w > W) { x = 0; y += ctrlRowH }
+            out[keys[i]] = { x: x, y: y, w: w, h: ctrlRowH }
+            x += w + hgap
+        }
+        out.height = y + ctrlRowH + theme.space(3)
+        return out
     }
-    readonly property real headerHeight: headerLayout.rows * headerRowH + (headerLayout.rows - 1) * grout
+    readonly property real headerHeight: headerSlots.height
 
     component HeaderTile: Corner {
         property string key: ""
-        readonly property var slot: page.headerTile(key)
-        x: page.spanX(slot.col)
-        y: slot.row * (page.headerRowH + page.grout)
-        width: page.spanW(slot.col, slot.colSpan)
-        height: page.headerRowH
+        readonly property var slot: page.headerSlots[key] || { x: 0, y: 0, w: 0, h: 0 }
+        x: slot.x
+        y: slot.y
+        width: slot.w
+        height: slot.h
         radius: theme.radiusTile
         smoothing: theme.cornerSmoothing
-        color: theme.tile
+        // Flat: the controls sit on the ground, no pane behind each
+        color: "transparent"
     }
 
     // ---- The wall
@@ -431,14 +439,27 @@ Item {
                 key: "title"
                 Label {
                     id: titleLabel
-                    x: page.hpad
+                    x: 0
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "Library"
+                    text: page.genre !== "" ? page.genre : "Library"
                     role: page.compact ? "title" : "display"
+                }
+                Button {
+                    id: clearGenreButton
+                    objectName: "clear-genre"
+                    visible: page.genre !== ""
+                    anchors.left: titleLabel.right; anchors.leftMargin: theme.space(2)
+                    anchors.verticalCenter: titleLabel.verticalCenter
+                    small: true
+                    flat: true
+                    icon: "x"
+                    text: "All genres"
+                    onClicked: page.clearGenre()
                 }
                 Row {
                     id: countRow
-                    anchors.right: parent.right; anchors.rightMargin: page.hpad
+                    anchors.left: clearGenreButton.visible ? clearGenreButton.right : titleLabel.right
+                    anchors.leftMargin: theme.space(4)
                     anchors.baseline: titleLabel.baseline
                     spacing: theme.space(1.5)
                     Label {
@@ -446,9 +467,8 @@ Item {
                         objectName: "library-count"
                         text: page.shownCount
                         role: "ledger"
-                        font.pointSize: page.compact ? theme.typeLarge : theme.typeDisplay
-                        font.weight: 700
-                        font.variableAxes: ({ "wdth": 88, "wght": 700 })
+                        font.pointSize: theme.typeNormal
+                        color: theme.textDim
                     }
                     Label {
                         anchors.baseline: countFigure.baseline
@@ -464,7 +484,7 @@ Item {
                 Seg {
                     id: tabsSeg
                     objectName: "tab"
-                    x: Math.max(page.hpad, (parent.width - width) / 2)
+                    x: 0
                     anchors.verticalCenter: parent.verticalCenter
                     options: page.tabNames
                     index: Math.max(0, page.tabNames.indexOf(page.tab))
@@ -478,7 +498,7 @@ Item {
                 Row {
                     id: sortCompact
                     visible: page.compact
-                    x: Math.max(page.hpad, (parent.width - width) / 2)
+                    x: 0
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: theme.space(1)
                     Dropdown {
@@ -501,7 +521,7 @@ Item {
                     id: sortSeg
                     objectName: "sort"
                     visible: !page.compact
-                    x: Math.max(page.hpad, (parent.width - width) / 2)
+                    x: 0
                     anchors.verticalCenter: parent.verticalCenter
                     options: page.sorts.map(function(s) {
                         return { text: s[1], name: s[0], icon: s[0] === page.sort ? (page.direction === "Asc" ? "chevron-up" : "chevron-down") : "" }
@@ -514,7 +534,7 @@ Item {
                 key: "arrange"
                 Row {
                     id: arrangeRow
-                    x: Math.max(page.hpad, (parent.width - width) / 2)
+                    x: 0
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: theme.space(2.5)
                     Label {
@@ -545,7 +565,7 @@ Item {
             HeaderTile {
                 key: "watched"
                 id: watchedTile
-                color: watchedArea.containsMouse ? theme.tileHover : theme.tile
+                color: "transparent"
                 // The whole tile toggles; the switch on it takes its own clicks the same way
                 MouseArea {
                     id: watchedArea
@@ -556,7 +576,7 @@ Item {
                 }
                 Row {
                     id: watchedRow
-                    x: Math.max(page.hpad, (parent.width - width) / 2)
+                    x: 0
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: theme.space(2.5)
                     Label {
@@ -578,9 +598,9 @@ Item {
                 SearchField {
                     id: search
                     objectName: "library-search"
-                    x: page.hpad
+                    x: 0
                     anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width - page.hpad * 2
+                    width: parent.width
                     placeholder: "Search titles or folders"
                     onTextChanged: queryDebounce.restart()
                     onCleared: { queryDebounce.stop(); page.query = ""; frame.nav.current.props = {}; page.reload() }

@@ -6,18 +6,18 @@ import QtQuick
 QtObject {
     id: nav
     property var trail: []
-    property var current: ({ page: "library", props: {}, label: "Library" })
+    property var current: ({ page: "home", props: {}, label: "Home" })
     property real pendingScroll: -1
     signal changed()
 
-    readonly property var labels: ({ library: "Library", feed: "Feed", watching: "Watching", metadata: "Metadata", settings: "Settings",
+    readonly property var labels: ({ home: "Home", library: "Library", feed: "Feed", watching: "Watching", metadata: "Metadata", settings: "Settings",
                                      subscriptions: "Subscriptions", series: "Series", player: "Player" })
-    readonly property var railPages: ["library", "feed", "watching", "metadata", "settings"]
-    readonly property string backLabel: trail.length ? trail[trail.length - 1].label : "Library"
+    readonly property var railPages: ["home", "library", "feed", "watching", "metadata", "settings"]
+    readonly property string backLabel: trail.length ? trail[trail.length - 1].label : "Home"
     readonly property int railIndex: {
         var i = railPages.indexOf(current.page)
         if (i >= 0) return i
-        if (current.page === "subscriptions") return 4
+        if (current.page === "subscriptions") return railPages.indexOf("settings")
         for (var k = 0; k < trail.length; k++) { var j = railPages.indexOf(trail[k].page); if (j >= 0) return j }
         return 0
     }
@@ -42,7 +42,7 @@ QtObject {
         changed()
     }
     function back() {
-        if (!trail.length) { if (current.page !== "library") replace("library", {}, "Library"); return }
+        if (!trail.length) { if (current.page !== "home") replace("home", {}, "Home"); return }
         var t = trail.slice()
         var target = t.pop()
         trail = t

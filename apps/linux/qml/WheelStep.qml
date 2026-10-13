@@ -12,7 +12,7 @@ WheelHandler {
     // How far a notch travels, relative to the base step of ~3 reading lines. Glide distance
     // goes with velocity squared, so the velocity (and the cap a fast spin runs into) scales
     // by its square root.
-    property real multiplier: 3
+    property real multiplier: 9
     // velocity for one base notch: ~3 lines of glide under the default 1500 px/s^2 deceleration
     readonly property real notchVelocity: 600 * Math.sqrt(multiplier)
     Component.onCompleted: flick.maximumFlickVelocity = 2500 * Math.sqrt(multiplier)

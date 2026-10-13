@@ -101,7 +101,7 @@ impl Default for ShellRust {
             version: QString::from(anibeam_core::VERSION),
             release: QString::from(release(env!("CARGO_PKG_VERSION"), anibeam_core::VERSION).as_str()),
             shoot: QString::from(a.shoot.as_deref().unwrap_or("")),
-            page: QString::from(a.page.as_deref().unwrap_or("library")),
+            page: QString::from(a.page.as_deref().unwrap_or("home")),
             props: QString::from(a.props.as_deref().unwrap_or("")),
             shoot_width: if shooting { a.width as i32 } else { 0 },
             shoot_height: if shooting { a.height as i32 } else { 0 },

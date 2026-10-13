@@ -19,6 +19,23 @@ grout, 12 px at normal density) that is also the page's margin. Three things car
   airs this week sit as large tiles at the head of the library; the rest of the shelf is the
   small module.
 
+**Flat home pass, 2026-10-13.** The owner found the glass half-shaded and the poster wall hard
+to digest, and asked for flat, modern and clean. What changed, and it outranks the glass text
+below where they disagree:
+
+- **Flat surfaces.** Panes are one solid step up from the ground. No top highlight, no sheen,
+  hairline edges only where a control needs one. The library header's controls sit on the
+  ground in a two-row toolbar, not in boxes.
+- **Home first.** The app opens on Home: the series to go on with (an episode left half-way, or
+  the next one on disk, never a caught-up show), then Airing now, Catch up, Start something
+  new, and the genres as a way into the library. Airing comes first because airing is what the
+  app is mostly used for.
+- **A slim sidebar.** Home and Library are the two places; Feed, Watching, Metadata and
+  Settings are quiet round glyphs at the foot.
+- **A width cap.** Pages sit in a centred column no wider than `theme.contentMax`, so an
+  ultrawide window shows a readable page instead of an endless wall.
+- **Scrolling** glides three times as far per wheel notch (`WheelStep.multiplier` 9).
+
 This supersedes Tesserae (rounded tiles on poster-toned plates), which superseded "the lobby".
 The killed idioms (below) still hold.
 
