@@ -18,7 +18,7 @@ use serde_json::Value;
 use crate::contract::*;
 use crate::core::Core;
 use crate::jobs::Finished;
-use crate::library::titles;
+use crate::library::{classifier, titles};
 use crate::prefs;
 use crate::time;
 use crate::trackers::accounts::{self, access_key, refresh_key, secret_key};
@@ -330,9 +330,11 @@ fn history(conn: &Connection, rows: &[Row]) -> Result<History, CoreError> {
             let Some(series) = by_id.get(&id) else {
                 continue;
             };
+            let (last_episode, season) = number_of(&key);
             views.push(View {
                 series: series.path.clone(),
-                last_episode: number_of(&key),
+                last_episode,
+                season,
                 at: Value::String(format::format_instant(at)),
                 extra: HashMap::new(),
             });
@@ -356,9 +358,11 @@ fn history(conn: &Connection, rows: &[Row]) -> Result<History, CoreError> {
             let Some(series) = by_id.get(&id) else {
                 continue;
             };
+            let (episode, season) = number_of(&key);
             completed.push(Completed {
                 series: series.path.clone(),
-                episode: number_of(&key),
+                episode,
+                season,
                 at: Value::String(format::format_instant(at)),
                 extra: HashMap::new(),
             });
@@ -383,10 +387,11 @@ fn history(conn: &Connection, rows: &[Row]) -> Result<History, CoreError> {
                 continue;
             };
             let at = Value::String(format::format_instant(at));
-            resume_points.push(match key.parse::<f64>() {
-                Ok(episode) => ResumeEntry::Series {
+            resume_points.push(match classifier::parse_episode_key(&key) {
+                Some((season, episode)) => ResumeEntry::Series {
                     series: series.path.clone(),
                     episode,
+                    season: later_season(season),
                     position,
                     duration,
                     at,
@@ -394,7 +399,7 @@ fn history(conn: &Connection, rows: &[Row]) -> Result<History, CoreError> {
                 // No number to key by: a film, an OP, an ED, an SP. The
                 // key is the file's own name, and the file sits inside the
                 // series' folder unless the series is the file.
-                Err(_) => ResumeEntry::File {
+                None => ResumeEntry::File {
                     file: file_of(series, &key),
                     position,
                     duration,
@@ -412,10 +417,20 @@ fn history(conn: &Connection, rows: &[Row]) -> Result<History, CoreError> {
     })
 }
 
-/// A film's history key is its file name rather than a number, and the
-/// format writes 0 for it.
-fn number_of(key: &str) -> f64 {
-    key.parse::<f64>().unwrap_or(0.0)
+/// The number and season a history key names. A film's key is its file
+/// name rather than a number, and the format writes 0 for it; season 1 is
+/// the format's default and is left out.
+fn number_of(key: &str) -> (f64, Option<u32>) {
+    match classifier::parse_episode_key(key) {
+        Some((season, number)) => (number, later_season(season)),
+        None => (0.0, None),
+    }
+}
+
+/// Season 1 is what a document without a season means, so only a later
+/// season is written.
+fn later_season(season: u32) -> Option<u32> {
+    (season != 1).then_some(season)
 }
 
 fn file_of(series: &Row, key: &str) -> String {
@@ -458,9 +473,10 @@ mod tests {
             file_of(&row(SeriesKind::Movie, "/lib/Movies/Film.mkv"), "Film.mkv"),
             "/lib/Movies/Film.mkv"
         );
-        assert_eq!(number_of("12"), 12.0);
-        assert_eq!(number_of("12.5"), 12.5);
-        assert_eq!(number_of("Film.mkv"), 0.0);
+        assert_eq!(number_of("12"), (12.0, None));
+        assert_eq!(number_of("12.5"), (12.5, None));
+        assert_eq!(number_of("S02E01"), (1.0, Some(2)));
+        assert_eq!(number_of("Film.mkv"), (0.0, None));
     }
 
     /// Only the provider the row names: applying an AniList match over a

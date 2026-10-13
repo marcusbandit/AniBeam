@@ -194,9 +194,42 @@ pub fn format_number(n: f64) -> String {
 /// The history key: the number for an episode, the file name for an extra.
 pub fn episode_key(c: &Classified, file_name: &str) -> String {
     match c.extra {
-        None => format_number(c.number),
+        None => number_key(c.season, c.number),
         Some(_) => file_name.to_string(),
     }
+}
+
+/// An episode's history key. Season 1, and a file naming no season, key
+/// by the bare number (`12`, `12.5`), which is what every key was before
+/// seasons were part of it, so old history rows keep matching their files.
+/// Any other season is prefixed the way the code reads: `S02E01`,
+/// `S02E12.5`, `S00E03` for a special.
+pub fn number_key(season: Option<u32>, number: f64) -> String {
+    match season {
+        None | Some(1) => format_number(number),
+        Some(s) => format!("S{s:02}E{}", pad_number(number)),
+    }
+}
+
+/// `01` or `12.5`: an integer padded to two digits, a decimal as is.
+fn pad_number(number: f64) -> String {
+    if number.fract() == 0.0 {
+        format!("{:02}", number as i64)
+    } else {
+        format_number(number)
+    }
+}
+
+static SEASON_KEY: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^S([0-9]+)E([0-9]+(?:\.[0-9]+)?)$").unwrap());
+
+/// The season and number an episode key names, None for an extra's file
+/// name. A bare number is season 1's.
+pub fn parse_episode_key(key: &str) -> Option<(u32, f64)> {
+    if let Some(m) = SEASON_KEY.captures(key) {
+        return Some((m[1].parse().ok()?, m[2].parse().ok()?));
+    }
+    key.parse::<f64>().ok().map(|n| (1, n))
 }
 
 /// The title of last resort: bracket-stripped, a trailing `-` or `_` removed.
@@ -330,9 +363,14 @@ mod tests {
 
     #[test]
     fn a_revision_suffix_is_not_the_episode_number() {
-        let c = ep("[Erai-raws] Honzuki no Gekokujou S4 - 17v2 [1080p CR WEB-DL AVC AAC][MultiSub][BC7A5FC1].mkv");
+        let c = ep(
+            "[Erai-raws] Honzuki no Gekokujou S4 - 17v2 [1080p CR WEB-DL AVC AAC][MultiSub][BC7A5FC1].mkv",
+        );
         assert_eq!((c.extra, c.number), (None, 17.0));
-        assert_eq!(ep("[Erai-raws] Neko to Ryuu - 07v2 [1080p].mkv").number, 7.0);
+        assert_eq!(
+            ep("[Erai-raws] Neko to Ryuu - 07v2 [1080p].mkv").number,
+            7.0
+        );
         assert_eq!(ep("Show 05v3.mkv").number, 5.0);
         assert_eq!(ep("Show.Name.12v2.mkv").number, 12.0);
         assert_eq!(ep("[Erai-raws] Show Name - 02 [1080p].mkv").number, 2.0);
@@ -360,6 +398,21 @@ mod tests {
         assert_eq!(episode_key(&c, "Show - 12.mkv"), "12");
         let c = ep("Show OP1.mkv");
         assert_eq!(episode_key(&c, "Show OP1.mkv"), "Show OP1.mkv");
+        // Season 1 keys by the bare number, as every key did before
+        // seasons; a later season is prefixed so S01E01 and S02E01 never
+        // share a history row.
+        let c = ep("Show.Name.S01E01.mkv");
+        assert_eq!(episode_key(&c, "Show.Name.S01E01.mkv"), "1");
+        let c = ep("Show.Name.S02E01.mkv");
+        assert_eq!(episode_key(&c, "Show.Name.S02E01.mkv"), "S02E01");
+        assert_eq!(number_key(Some(2), 12.5), "S02E12.5");
+        assert_eq!(number_key(Some(0), 3.0), "S00E03");
+        assert_eq!(number_key(None, 7.0), "7");
+        assert_eq!(parse_episode_key("12"), Some((1, 12.0)));
+        assert_eq!(parse_episode_key("12.5"), Some((1, 12.5)));
+        assert_eq!(parse_episode_key("S02E01"), Some((2, 1.0)));
+        assert_eq!(parse_episode_key("S02E12.5"), Some((2, 12.5)));
+        assert_eq!(parse_episode_key("Show OP1.mkv"), None);
         assert_eq!(format_number(12.0), "12");
         assert_eq!(format_number(12.5), "12.5");
         assert_eq!(

@@ -11,7 +11,7 @@ use std::time::SystemTime;
 use rusqlite::Connection;
 
 use crate::contract::*;
-use crate::library::snapshot::Snapshot;
+use crate::library::snapshot::{NextEpisode, Snapshot};
 use crate::time;
 
 /// One series's place on the Recent feed: the reason it is there, the
@@ -118,7 +118,7 @@ pub fn recent_entry(
 /// coming soon lists what is next, not what is already owned. An AniList
 /// match reads its schedule, a TVmaze match every season of its show, so
 /// an announced next season is coming soon too.
-pub fn upcoming(snapshot: &Snapshot, series_id: u64, now: SystemTime) -> Option<(u32, i64)> {
+pub fn upcoming(snapshot: &Snapshot, series_id: u64, now: SystemTime) -> Option<NextEpisode> {
     let row = snapshot.row(series_id)?;
     snapshot.aired_and_next(row, time::to_secs(now)).1
 }
@@ -198,15 +198,15 @@ pub fn list(
                 .collect()
         }
         FeedSort::Upcoming => {
-            let mut scheduled: Vec<(u64, u32, i64, f64)> = Vec::new();
+            let mut scheduled: Vec<(u64, NextEpisode, f64)> = Vec::new();
             let mut rest: Vec<Recent> = Vec::new();
             for r in recents {
                 match upcoming(&snap, r.series_id, now) {
-                    Some((episode, at)) => scheduled.push((r.series_id, episode, at, r.highest)),
+                    Some(next) => scheduled.push((r.series_id, next, r.highest)),
                     None => rest.push(r),
                 }
             }
-            scheduled.sort_by(|a, b| a.2.cmp(&b.2).then_with(|| a.0.cmp(&b.0)));
+            scheduled.sort_by(|a, b| a.1.at.cmp(&b.1.at).then_with(|| a.0.cmp(&b.0)));
             rest.sort_by(|a, b| {
                 b.instant
                     .cmp(&a.instant)
@@ -215,13 +215,14 @@ pub fn list(
 
             scheduled
                 .into_iter()
-                .filter_map(|(series_id, episode, at, highest)| {
+                .filter_map(|(series_id, next, highest)| {
                     feed_card(
                         &snap,
                         series_id,
                         FeedReason::Scheduled {
-                            episode,
-                            at: time::from_secs(at),
+                            episode: next.number,
+                            at: time::from_secs(next.at),
+                            season: next.season,
                         },
                         highest,
                     )

@@ -206,6 +206,10 @@ pub struct View {
     /// The number of the latest episode watched, 0 for a film.
     #[serde(default)]
     pub last_episode: f64,
+    /// The episode's season when it is not the first: a later season of a
+    /// multi-season folder keys its history apart from season 1's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub season: Option<u32>,
     pub at: Value,
     #[serde(flatten)]
     pub extra: HashMap<String, Value>,
@@ -217,6 +221,9 @@ pub struct Completed {
     pub series: String,
     #[serde(default)]
     pub episode: f64,
+    /// As `View::season`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub season: Option<u32>,
     pub at: Value,
     #[serde(flatten)]
     pub extra: HashMap<String, Value>,
@@ -230,6 +237,9 @@ pub enum ResumeEntry {
     Series {
         series: String,
         episode: f64,
+        /// As `View::season`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        season: Option<u32>,
         position: f64,
         duration: f64,
         at: Value,

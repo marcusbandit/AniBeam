@@ -96,7 +96,8 @@ Item {
     readonly property var airing: countdown ? countdown
                                 : metaOverride === "" && !!item.next_airing && item.next_airing.at * 1000 > nowMs ? item.next_airing : null
     readonly property string airingTime: airing ? shortCountdown(airing.at - nowMs / 1000) : ""
-    readonly property string airingEpisode: airing ? Fmt.episodeName("", airing.episode) : ""
+    // A TVmaze season past the first is named, since its numbers restart: "S2 Episode 1"
+    readonly property string airingEpisode: airing ? (airing.season && airing.season !== 1 ? "S" + airing.season + " " : "") + Fmt.episodeName("", airing.episode) : ""
     readonly property string watchedText: hasWatched ? (totalKnown ? item.watched + " of " + item.total_episodes + (item.total_is_estimate ? "+" : "") : item.watched + " watched") : ""
     readonly property string filesText: Fmt.plural(item.episodes_on_disk || 0, "file", "files")
     // The one ledger line under the title: the countdown when one runs, else what the owning

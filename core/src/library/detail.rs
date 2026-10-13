@@ -10,7 +10,8 @@ use serde_json::Value;
 
 use crate::contract::*;
 use crate::library::cards::next_up;
-use crate::library::snapshot::{FileRow, MediaRow, Snapshot};
+use crate::library::classifier;
+use crate::library::snapshot::{FileRow, MediaRow, Snapshot, season_of};
 use crate::library::{labels, titles};
 use crate::store::sql::placeholders;
 use crate::time;
@@ -39,8 +40,11 @@ impl Snapshot {
             None => (Some(on_disk as u32), false),
         };
 
-        let disk: Vec<(u64, f64)> = episodes.iter().map(|f| (f.id, f.number)).collect();
-        let next = next_up(&disk, self.last_completed_number(id), card.watched);
+        let disk: Vec<(u64, u32, f64)> = episodes
+            .iter()
+            .map(|f| (f.id, season_of(f), f.number))
+            .collect();
+        let next = next_up(&disk, self.last_completed(id), card.watched);
 
         // Files numbered past a known episode count are almost always
         // misnamed, duplicates or stray specials; `past_the_end` decides
@@ -147,15 +151,16 @@ impl Snapshot {
             })
     }
 
-    /// The number of the most recently completed episode, resolved through
-    /// the file that carries its key, or the key itself when no file does.
-    fn last_completed_number(&self, id: u64) -> Option<f64> {
+    /// The season and number of the most recently completed episode,
+    /// resolved through the file that carries its key, or the key itself
+    /// when no file does.
+    fn last_completed(&self, id: u64) -> Option<(u32, f64)> {
         let (key, _) = self.completed.get(&id)?.iter().max_by_key(|(_, at)| *at)?;
         self.files_of(id)
             .iter()
             .find(|f| f.is_episode && f.episode_key == *key)
-            .map(|f| f.number)
-            .or_else(|| key.parse::<f64>().ok())
+            .map(|f| (season_of(f), f.number))
+            .or_else(|| classifier::parse_episode_key(key))
     }
 
     /// The top characters, their portraits resolved through the image cache

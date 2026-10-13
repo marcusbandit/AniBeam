@@ -277,9 +277,9 @@ mod tests {
         assert_eq!(tvmaze, 2);
     }
 
-    /// A version 1 database, the one every install has today, takes 0002
-    /// in place: its series keep every column and gain an empty
-    /// `tvmaze_id`, and the two new tables arrive empty.
+    /// A version 1 database takes every later migration in place: its
+    /// series keep every column and gain an empty `tvmaze_id`, and the
+    /// two TVmaze tables arrive empty.
     #[test]
     fn a_version_1_database_migrates_to_2_keeping_its_rows() {
         let dir = tempfile::tempdir().unwrap();
@@ -315,12 +315,88 @@ mod tests {
                 ))
             })
             .unwrap();
-        assert_eq!(v, 2);
+        assert_eq!(v as usize, migrations::SCHEMA_VERSION);
         assert_eq!(row, ("Avatar Seven Havens".to_string(), Some(100), None));
         let shows: i64 = store
             .write(|c| Ok(c.query_row("SELECT count(*) FROM tvmaze_shows", [], |r| r.get(0))?))
             .unwrap();
         assert_eq!(shows, 0);
+    }
+
+    /// A version 2 database keys every episode by its bare number. 0003
+    /// moves a later season's files to `S02E01` keys and takes the history
+    /// rows that can only have been theirs along: a folder holding season
+    /// 2 alone keeps its watched episodes. Where season 1 carries the same
+    /// number the row is ambiguous and stays season 1's.
+    #[test]
+    fn a_version_2_database_migrates_its_season_keys_keeping_unambiguous_history() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("anibeam.db");
+        {
+            let mut c = rusqlite::Connection::open(&path).unwrap();
+            rusqlite_migration::Migrations::new(vec![
+                rusqlite_migration::M::up(include_str!("sql/0001_initial.sql")),
+                rusqlite_migration::M::up(include_str!("sql/0002_tvmaze.sql")),
+            ])
+            .to_latest(&mut c)
+            .unwrap();
+            c.execute_batch(
+                "INSERT INTO sources (id, path, added_at) VALUES (1, '/tv', 0);
+                 INSERT INTO series (id, source_id, kind, path, folder_name, added_at) VALUES
+                   (1, 1, 'show', '/tv/Only S2', 'Only S2', 0),
+                   (2, 1, 'show', '/tv/Both', 'Both', 0);
+                 INSERT INTO files (id, series_id, path, size, mtime, kind, number, season, label, episode_key, sidecars, seen_at) VALUES
+                   (10, 1, '/tv/Only S2/S02E01.mkv', 0, 0, 'episode', 1, 2, 'S02E01', '1', '[]', 0),
+                   (11, 1, '/tv/Only S2/S02E02.mkv', 0, 0, 'episode', 2, 2, 'S02E02', '2', '[]', 0),
+                   (20, 2, '/tv/Both/S01E01.mkv', 0, 0, 'episode', 1, 1, 'S01E01', '1', '[]', 0),
+                   (21, 2, '/tv/Both/S02E01.mkv', 0, 0, 'episode', 1, 2, 'S02E01', '1', '[]', 0),
+                   (22, 2, '/tv/Both/S02E02.mkv', 0, 0, 'episode', 2, 2, 'S02E02', '2', '[]', 0),
+                   (23, 2, '/tv/Both/OP1.mkv', 0, 0, 'extra', 0, NULL, 'OP1', 'OP1.mkv', '[]', 0);
+                 INSERT INTO completed (series_id, episode_key, at) VALUES (1, '1', 5), (2, '1', 6), (2, '2', 7), (2, 'OP1.mkv', 8);
+                 INSERT INTO resume_points (series_id, episode_key, position, duration, at) VALUES (1, '2', 10, 100, 5);
+                 INSERT INTO views (series_id, episode_key, at) VALUES (1, '2', 5), (2, '1', 6);",
+            )
+            .unwrap();
+        }
+        let store = Store::open(&path).unwrap();
+        let read = |sql: &str| -> Vec<(i64, String)> {
+            let sql = sql.to_string();
+            store
+                .write(move |c| {
+                    let mut stmt = c.prepare(&sql)?;
+                    let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+                    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+                })
+                .unwrap()
+        };
+        assert_eq!(
+            read("SELECT id, episode_key FROM files ORDER BY id"),
+            vec![
+                (10, "S02E01".to_string()),
+                (11, "S02E02".to_string()),
+                (20, "1".to_string()),
+                (21, "S02E01".to_string()),
+                (22, "S02E02".to_string()),
+                (23, "OP1.mkv".to_string()),
+            ]
+        );
+        assert_eq!(
+            read("SELECT series_id, episode_key FROM completed ORDER BY series_id, at"),
+            vec![
+                (1, "S02E01".to_string()),
+                (2, "1".to_string()),
+                (2, "S02E02".to_string()),
+                (2, "OP1.mkv".to_string()),
+            ]
+        );
+        assert_eq!(
+            read("SELECT series_id, episode_key FROM resume_points"),
+            vec![(1, "S02E02".to_string())]
+        );
+        assert_eq!(
+            read("SELECT series_id, episode_key FROM views ORDER BY series_id"),
+            vec![(1, "S02E02".to_string()), (2, "1".to_string())]
+        );
     }
 
     #[test]
