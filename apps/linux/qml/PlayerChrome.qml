@@ -38,7 +38,7 @@ Item {
         visible: opacity > 0
         Behavior on opacity { NumberAnimation { duration: theme.motionNormal } }
         // The picture's MouseArea is under the tile: a click on its padding must not pause.
-        MouseArea { anchors.fill: parent; anchors.margins: -header.padding; hoverEnabled: true; onPositionChanged: page.showChrome() }
+        MouseArea { enabled: page.chromeVisible; anchors.fill: parent; anchors.margins: -header.padding; hoverEnabled: true; onPositionChanged: page.showChrome() }
         Row {
             id: headerRow
             anchors.verticalCenter: parent.verticalCenter
@@ -111,7 +111,7 @@ Item {
         Behavior on opacity { NumberAnimation { duration: theme.motionNormal } }
         // Keeps the chrome awake while the pointer rests anywhere on the tile, its padding
         // included, and keeps a click on the tile off the picture (which would pause).
-        MouseArea { anchors.fill: parent; anchors.margins: -controls.padding; hoverEnabled: true; onPositionChanged: page.showChrome() }
+        MouseArea { enabled: page.chromeVisible; anchors.fill: parent; anchors.margins: -controls.padding; hoverEnabled: true; onPositionChanged: page.showChrome() }
 
         Item {
             id: ledgerRow
@@ -175,7 +175,7 @@ Item {
         anchors.right: parent.right; anchors.rightMargin: theme.grout
         anchors.bottom: controls.top; anchors.bottomMargin: theme.grout
         width: nextRow.implicitWidth + padding * 2; height: nextRow.implicitHeight + padding * 2
-        MouseArea { anchors.fill: parent; anchors.margins: -nextTile.padding }
+        MouseArea { enabled: page.chromeVisible; anchors.fill: parent; anchors.margins: -nextTile.padding }
         Row {
             id: nextRow
             spacing: theme.space(1.5)

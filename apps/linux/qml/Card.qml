@@ -63,7 +63,10 @@ Item {
     readonly property string folderName: item.titles ? item.titles.folder || "" : ""
     readonly property bool hasWatched: item.watched !== null && item.watched !== undefined
     readonly property bool totalKnown: item.total_episodes !== null && item.total_episodes !== undefined && item.total_episodes > 0
-    readonly property real watchedPct: item.strip ? item.strip.watched : 0
+    // The core's strip scales every share by 0.85 to leave an unknown tail; a card wants the
+    // plain fraction, so a finished run fills the line
+    readonly property real watchedPct: totalKnown && hasWatched ? Math.min(1, item.watched / item.total_episodes)
+                                     : item.strip ? item.strip.watched / 0.85 : 0
     readonly property real airedPct: item.strip ? item.strip.watched + item.strip.aired_unwatched : 0
     readonly property real unknownPct: item.strip ? item.strip.unknown : 0
     readonly property string epBadge: item.code || ""
@@ -370,16 +373,15 @@ Item {
     // watched
     Item {
         id: strip
-        visible: root.hasWatched && !root.ghost
+        visible: root.hasWatched && root.item.watched > 0 && !root.ghost
         x: root.pad
         y: parent.height - root.pad * 0.6 - height
         width: parent.width - root.pad * 2
         height: 4
-        // Three states on one line: watched in the accent, aired and not yet seen in the
-        // accent at half, the rest of the run as a faint track
-        Rectangle { anchors.fill: parent; radius: height / 2; color: Qt.rgba(1, 1, 1, 0.2) }
-        Rectangle { width: parent.width * root.airedPct; height: parent.height; radius: height / 2; color: Qt.rgba(theme.accentOnPoster.r, theme.accentOnPoster.g, theme.accentOnPoster.b, 0.45) }
-        Rectangle { width: parent.width * root.watchedPct; height: parent.height; radius: height / 2; color: theme.accentOnPoster }
+        // One fact: how much of the run is watched, in the accent over a faint track. The
+        // aired-but-unseen share used to sit on the same line and read as progress.
+        Rectangle { anchors.fill: parent; radius: height / 2; color: Qt.rgba(1, 1, 1, 0.18) }
+        Rectangle { width: parent.width * Math.min(1, root.watchedPct); height: parent.height; radius: height / 2; color: theme.accentOnPoster }
     }
 
     // ---- The 1 px accent outline on hover

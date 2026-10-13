@@ -10,14 +10,18 @@ import com.marcusrosado.AniBeam
 WheelHandler {
     id: root
     required property Flickable flick
-    // One notch, in px: about three Chromium steps
-    property real step: theme.space(72)
+    // One notch of a mouse wheel, in px: three of the usual desktop steps (Chromium and
+    // GTK scroll about 100 px a notch), so one tap here is three taps elsewhere
+    property real step: theme.space(75)
     property real target: 0
     property bool following: false
     function bound(y) { return Math.max(0, Math.min(y, Math.max(0, flick.contentHeight - flick.height))) }
     onWheel: function(ev) {
         if (!following) target = flick.contentY
-        var dy = ev.pixelDelta.y !== 0 ? -ev.pixelDelta.y : -ev.angleDelta.y / 120 * step
+        // Only a touchpad's pixel delta is taken as pixels: Qt on Wayland fills pixelDelta
+        // for a plain mouse wheel too (a dozen px a notch), which read as a crawl.
+        var touchpad = ev.device && ev.device.type === PointerDevice.TouchPad && ev.pixelDelta.y !== 0
+        var dy = touchpad ? -ev.pixelDelta.y : -ev.angleDelta.y / 120 * step
         target = bound(target + dy)
         following = true
         flick.cancelFlick()

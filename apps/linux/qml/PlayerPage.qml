@@ -611,7 +611,7 @@ FocusScope {
         anchors.horizontalCenter: parent.horizontalCenter; anchors.top: parent.top; anchors.topMargin: theme.space(24)
         width: ratingRow.implicitWidth + padding * 2; height: ratingRow.implicitHeight + padding * 2
         // The picture's own MouseArea is under the tile; a click on its padding must not pause.
-        MouseArea { anchors.fill: parent; anchors.margins: -rating.padding }
+        MouseArea { enabled: page.chromeVisible; anchors.fill: parent; anchors.margins: -rating.padding }
         Row {
             id: ratingRow
             anchors.centerIn: parent; spacing: theme.space(3)
