@@ -68,10 +68,9 @@ Item {
         id: panel
         objectName: "score-picker-panel"
         width: theme.space(48); height: theme.space(60)
-        radius: theme.radiusMd; smoothing: theme.cornerSmoothing
         // One fill step above raised: it floats over a raised surface (the player's
         // controls tile, the rating prompt), and the same fill would merge with it
-        color: theme.raisedFloat; borderColor: theme.lineStrong; borderWidth: 1
+        color: theme.glassFloat; borderColor: theme.lineStrong; borderWidth: 1; highlight: theme.glassHighlight
         MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons }
         ListView {
             id: list
@@ -84,11 +83,11 @@ Item {
                 required property int index
                 objectName: "score-picker-row-" + index
                 width: list.width; height: theme.space(6)
-                radius: theme.radiusSm; smoothing: theme.cornerSmoothing
-                // The Dropdown's current-row treatment: the highlight a step up from the panel,
+                                // The Dropdown's current-row treatment: the highlight a step up from the panel,
                 // the value in the accent
                 readonly property bool isDraft: Number(modelData) === Number(root.draft.toFixed(1))
-                color: isDraft || m.containsMouse ? theme.tone(theme.raisedFloat, theme.text, isDraft ? 0.1 : 0.07) : "transparent"
+                color: isDraft || m.containsMouse ? (isDraft ? theme.glassPressed : theme.glassRaised) : "transparent"
+                Rectangle { visible: parent.isDraft; width: 2; height: parent.height; color: theme.accent }
                 Text { anchors.centerIn: parent; text: modelData; color: parent.isDraft ? theme.accent : theme.text; font.family: theme.fontUi; font.pointSize: theme.typeNormal; font.weight: parent.isDraft ? Font.DemiBold : Font.Normal }
                 MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; onClicked: root.draft = Number(modelData) }
             }
@@ -99,7 +98,7 @@ Item {
             anchors.bottom: parent.bottom; anchors.right: parent.right; anchors.margins: theme.space(2)
             spacing: theme.space(2)
             Button { visible: root.current >= 0; text: "Clear"; danger: true; small: true; onClicked: { root.close(); root.cleared() } }
-            Button { text: "Save"; small: true; onClicked: root.save() }
+            Button { text: "Save"; primary: true; small: true; onClicked: root.save() }
         }
     }
 }

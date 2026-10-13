@@ -194,14 +194,14 @@ async fn run(
     if let Some(first) = first_failure {
         ctx.emit(
             Level::Warn,
-            format!("crawl: {failed} nodes failed, first: {first}"),
+            format!("Crawl: {failed} nodes failed, first: {first}"),
             EventBody::Notice,
         );
     }
 
     Ok(Finished {
         level: Level::Info,
-        message: format!("crawl finished: {fetched} fetched, {deferred} deferred"),
+        message: format!("Crawl finished: {fetched} fetched, {deferred} deferred"),
         body: EventBody::CrawlFinished { fetched, deferred },
     })
 }

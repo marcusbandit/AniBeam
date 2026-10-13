@@ -94,7 +94,7 @@ pub fn search(core: &Core, provider: Provider, query: &str, limit: u32) -> Resul
             let n = results.len();
             Ok(Finished {
                 level: Level::Debug,
-                message: format!("search: {n} {} results for \"{query}\"", provider.label()),
+                message: format!("Search: {n} {} results for \"{query}\"", provider.label()),
                 body: EventBody::SearchFinished { results },
             })
         }))
@@ -161,7 +161,7 @@ pub fn resolve_link(core: &Core, url: &str) -> Result<u64, CoreError> {
             };
             Ok(Finished {
                 level: Level::Debug,
-                message: format!("link resolved to {named}"),
+                message: format!("Link resolved to {named}"),
                 body: EventBody::LinkResolved { target },
             })
         }))
@@ -201,7 +201,7 @@ pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64,
                     }
                     return Ok(Finished {
                         level: Level::Info,
-                        message: format!("matched {folder} to TVmaze {id}"),
+                        message: format!("Matched {folder} to TVmaze {id}"),
                         body: EventBody::MatchApplied { series },
                     });
                 }
@@ -228,7 +228,7 @@ pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64,
                         }
                         return Ok(Finished {
                             level: Level::Info,
-                            message: format!("matched {folder} to MyAnimeList {id}"),
+                            message: format!("Matched {folder} to MyAnimeList {id}"),
                             body: EventBody::MatchApplied { series },
                         });
                     }
@@ -300,7 +300,7 @@ pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64,
 
             Ok(Finished {
                 level: Level::Info,
-                message: format!("matched {folder} to AniList {anilist_id}"),
+                message: format!("Matched {folder} to AniList {anilist_id}"),
                 body: EventBody::MatchApplied { series },
             })
         }))

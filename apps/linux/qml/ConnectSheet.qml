@@ -72,7 +72,7 @@ Item {
     // (a right-click, a wheel, a hover) reaches the page under it.
     Blocker { anchors.fill: parent; dismissOnPress: true; onDismissed: root.close() }
 
-    // The step's roundel: the number while pending, the check once the step's
+    // The step's square badge: the number while pending, the check once the step's
     // fact exists, the clock while the browser is out.
     component StepBadge: Corner {
         property int step: 0
@@ -82,9 +82,9 @@ Item {
         width: theme.space(7); height: width
         radius: width / 2
         smoothing: theme.cornerSmoothing
-        color: done ? theme.accentSoft : theme.surfaceSunken
+        color: done ? theme.accentSoft : theme.tile
         borderColor: current && !done ? theme.accent : theme.line
-        borderWidth: current && !done ? 1.5 : 1
+        borderWidth: 1
         anchors.verticalCenter: parent.top
         Icon {
             anchors.centerIn: parent
@@ -135,9 +135,10 @@ Item {
         height: Math.min(parent.height - theme.space(8), steps.implicitHeight + theme.space(14))
         radius: theme.radiusLg
         smoothing: theme.cornerSmoothing
-        color: theme.surfaceRaised
+        color: theme.glassFloat
         borderColor: theme.lineStrong
         borderWidth: 1
+        highlight: theme.glassHighlight
         // Takes every press on the sheet's text and padding, which would otherwise reach
         // the shield and close it; the steps are declared after it, so their controls sit on top.
         MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons }

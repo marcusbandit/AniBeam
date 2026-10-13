@@ -26,9 +26,10 @@ Grid {
             required property var modelData
             width: root.tileWidth
             height: theme.space(26)
-            radius: theme.radiusTile
-            smoothing: theme.cornerSmoothing
             color: root.stone
+            borderColor: theme.line
+            borderWidth: 1
+            highlight: theme.glassHighlight
             Label {
                 x: theme.space(4); y: theme.space(4)
                 width: parent.width - theme.space(8)

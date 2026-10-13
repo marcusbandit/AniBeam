@@ -268,6 +268,7 @@ impl Snapshot {
                 files,
                 now,
             )),
+            franchise: self.franchises.get(&row.id).cloned(),
         }
     }
 
@@ -520,6 +521,7 @@ mod tests {
             next_airing: None,
             last_viewed_at: None,
             latest_activity_at: UNIX_EPOCH,
+            franchise: None,
         }
     }
 

@@ -586,6 +586,7 @@ mod tests {
             next_airing: None,
             last_viewed_at: None,
             latest_activity_at: time::now(),
+            franchise: None,
         }
     }
 

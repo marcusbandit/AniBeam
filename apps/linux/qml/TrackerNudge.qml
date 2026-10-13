@@ -29,8 +29,9 @@ Tile {
         width: theme.space(10); height: width
         radius: width / 2
         smoothing: theme.cornerSmoothing
-        color: theme.accentSoft
-        Icon { anchors.centerIn: parent; glyph: "user-check"; color: theme.accent; size: theme.space(5) }
+        color: theme.raised
+        borderColor: theme.line; borderWidth: 1
+        Icon { anchors.centerIn: parent; glyph: "user-check"; color: theme.textDim; size: theme.space(5) }
     }
     Column {
         id: words

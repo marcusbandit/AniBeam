@@ -166,7 +166,7 @@ fn chapters_answer_without_a_request_and_cache_themselves() {
             },
         ]
     );
-    assert_eq!(e.message, "skip windows: intro, outro");
+    assert_eq!(e.message, "Skip windows: intro, outro");
     assert_eq!(e.level, Level::Debug);
     assert!(http.requests().is_empty(), "{:?}", http.requests());
 
@@ -240,7 +240,7 @@ fn aniskip_answers_when_the_file_has_no_chapters_and_its_outro_completes_the_epi
             },
         ]
     );
-    assert_eq!(e.message, "skip windows: intro, outro");
+    assert_eq!(e.message, "Skip windows: intro, outro");
     let requests = http.requests();
     assert_eq!(requests.len(), 1, "{requests:?}");
     assert_eq!(
@@ -287,7 +287,7 @@ fn a_miss_is_cached_and_the_next_session_sends_no_request() {
 
     let e = ready(&c, report(&core, s.session, vec![], 1400.0));
     assert!(windows_of(&e).is_empty(), "{:?}", windows_of(&e));
-    assert_eq!(e.message, "skip windows: none");
+    assert_eq!(e.message, "Skip windows: none");
     assert_eq!(
         cache_row(&core, lib.series, "2"),
         Some(("[]".to_string(), "none".to_string()))
@@ -330,7 +330,7 @@ fn a_miss_older_than_the_retry_window_is_asked_about_again() {
             source: SkipSource::AniSkip
         }]
     );
-    assert_eq!(e.message, "skip windows: intro");
+    assert_eq!(e.message, "Skip windows: intro");
     assert_eq!(http.requests().len(), 2);
     assert_eq!(
         cache_row(&core, lib.series, "2").map(|(_, source)| source),
@@ -349,7 +349,7 @@ fn an_extra_uses_its_chapters_alone() {
 
     let e = ready(&c, report(&core, s.session, vec![], 90.0));
     assert!(windows_of(&e).is_empty(), "{:?}", windows_of(&e));
-    assert_eq!(e.message, "skip windows: none");
+    assert_eq!(e.message, "Skip windows: none");
     assert!(http.requests().is_empty(), "{:?}", http.requests());
     assert_eq!(cache_row(&core, lib.series, "OP1.mkv"), None);
 

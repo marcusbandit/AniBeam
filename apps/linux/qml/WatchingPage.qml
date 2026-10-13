@@ -6,6 +6,9 @@
 // open AniList. ListWatching reads the cache only; RefreshWatching goes to AniList, on
 // open when the cache is over five minutes old and from the Refresh tile when asked. The
 // page reads on open and on tracker and watching events, never on library changes.
+// Without AniList the page is still a wall: a connect tile and a line on what the page
+// shows once connected head it, and under them what this machine knows on its own (the
+// series played here, the library's series airing, and the rest newest on disk first).
 import QtQuick
 import com.marcusrosado.AniBeam
 import "mosaic.js" as Mosaic
@@ -24,6 +27,9 @@ Item {
     property real nowMs: Date.now()
     property real packedAt: Date.now()
     property bool refreshing: false
+    property var localPlayed: []    // library cards with a view on this machine, newest first
+    property var localAiring: []    // the library's airing rail
+    property var localLatest: []    // every library card, newest activity first
 
     function entryItem(e) {
         return {
@@ -46,7 +52,37 @@ Item {
     }
     function owned(e) { return e.owned !== null && e.owned !== undefined }
 
+    function localSections() {
+        var now = packedAt / 1000, out = []
+        function entry(c, meta) { return { id: c.id, item: c, raw: { owned: c.id, title: c.title }, ghost: false, meta: meta } }
+        if (localPlayed.length) {
+            var played = localPlayed.map(function(c) { return entry(c, "Played " + Fmt.relative(c.last_viewed_at, nowMs / 1000)) })
+            out.push({ label: "Played here", count: played.length, cards: played,
+                       fact: { text: "Kept on this machine" },
+                       heroes: Mosaic.pickHeroes(localPlayed, now, 2, null).map(function(c) { return played[localPlayed.indexOf(c)] }) })
+        }
+        var playedIds = {}
+        for (var i = 0; i < localPlayed.length; i++) playedIds[localPlayed[i].id] = true
+        var airing = localAiring.filter(function(c) { return !playedIds[c.id] })
+        if (airing.length) {
+            var best = null
+            for (var j = 0; j < airing.length; j++) {
+                var n = airing[j].next_airing
+                if (n && n.at > now && (!best || n.at < best.at)) best = { at: n.at, text: airing[j].title }
+            }
+            var rows = airing.map(function(c) { return entry(c, "") })
+            out.push({ label: "Airing", count: rows.length, cards: rows, fact: best,
+                       heroes: Mosaic.pickHeroes(airing, now, airing.length, null).map(function(c) { return entry(c, "") }) })
+        }
+        var shown = {}
+        for (var k = 0; k < out.length; k++) for (var m = 0; m < out[k].cards.length; m++) shown[out[k].cards[m].id] = true
+        var latest = localLatest.filter(function(c) { return !shown[c.id] }).map(function(c) { return entry(c, "") })
+        if (latest.length) out.push({ label: "Latest on disk", count: latest.length, cards: latest,
+                                      fact: { text: "Newest downloads first" }, heroes: [] })
+        return out
+    }
     readonly property var sections: {
+        if (!anilistConnected) return localSections()
         if (entries.length === 0) return []
         var now = packedAt / 1000
         var list = [], heroes = []
@@ -67,13 +103,22 @@ Item {
     function reload() {
         var t = Door.getTrackers()
         if (!t.error) page.anilistConnected = !!(t.reply.state.anilist.connected)
-        if (!page.anilistConnected) { page.entries = []; return }
+        if (!page.anilistConnected) { page.entries = []; page.loadLocal(); return }
         var r = Door.listWatching()
         if (r.error) { page.loadFailed = true; frame.toast(r.error.message); return }
         page.loadFailed = false
         page.packedAt = Date.now()
         page.entries = r.reply.list.entries || []
         if (r.reply.refreshing !== null && r.reply.refreshing !== undefined) page.refreshing = true
+    }
+    // What the page shows without AniList: the library's own read, no network
+    function loadLocal() {
+        var r = Door.listLibrary("All", "", "LastViewed", "Desc", false)
+        if (r.error) { page.localPlayed = []; page.localAiring = []; return }
+        page.packedAt = Date.now()
+        page.localPlayed = (r.reply.series || []).filter(function(c) { return !!c.last_viewed_at })
+        page.localAiring = r.reply.airing || []
+        page.localLatest = (r.reply.series || []).slice().sort(function(a, b) { return b.latest_activity_at - a.latest_activity_at })
     }
     // To AniList: `force` from the Refresh tile, else only when the cache is stale. The core
     // answers Ok without a fetch when no account is connected, so the page always asks.
@@ -97,6 +142,7 @@ Item {
         target: Door
         function onWatchingRefreshed(list) { page.refreshing = false; page.loadFailed = false; page.packedAt = Date.now(); page.entries = list.entries || [] }
         function onTrackersChanged() { debounce.restart() }
+        function onViewed(series, episode) { if (!page.anilistConnected) page.loadLocal() }
         function onJobFailed(job, kind, error) { if (kind === "RefreshWatching") { page.refreshing = false; page.loadFailed = page.entries.length === 0; frame.toast(error && error.message ? error.message : "AniList could not be reached") } }
         function onJobCancelled(job, kind) { if (kind === "RefreshWatching") page.refreshing = false }
     }
@@ -127,6 +173,44 @@ Item {
             }
         }
         MosaicWall.HeaderTile {
+            objectName: "watching-connect-tile"
+            visible: !page.anilistConnected
+            need: connectCol.implicitWidth
+            Column {
+                id: connectCol
+                x: parent.pad
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: theme.space(1.5)
+                Label { text: "AniList is not connected"; role: "title" }
+                // One click: the browser opens on it when the build carries AniList's id
+                ConnectButton {
+                    objectName: "watching-connect"
+                    tracker: "Anilist"
+                    text: frame.connecting["Anilist"] !== undefined ? "Waiting for the browser" : "Connect AniList"
+                    icon: frame.connecting["Anilist"] !== undefined ? "clock" : "log-in"
+                    primary: true
+                    onClicked: frame.openConnect("Anilist")
+                }
+            }
+        }
+        MosaicWall.HeaderTile {
+            objectName: "watching-explain-tile"
+            visible: !page.anilistConnected
+            need: theme.space(120)
+            flex: true
+            Label {
+                x: parent.pad
+                width: parent.width - parent.pad * 2
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Connected, this page lists your Watching and Rewatching series on AniList: Play on the ones you own, a countdown on the ones airing. Until then it shows what this machine knows."
+                role: "ui"
+                color: theme.textDim
+                wrapMode: Text.Wrap
+                maximumLineCount: 3
+                elide: Text.ElideRight
+            }
+        }
+        MosaicWall.HeaderTile {
             visible: page.anilistConnected
             need: refreshBtn.implicitWidth
             Button {
@@ -141,7 +225,7 @@ Item {
             }
         }
         MosaicWall.HeaderTile {
-            visible: page.entries.length > 0
+            visible: page.anilistConnected && page.entries.length > 0
             need: countRow.implicitWidth
             Row {
                 id: countRow
@@ -172,18 +256,10 @@ Item {
                 implicitHeight: theme.space(60)
                 EmptyState {
                     visible: !page.anilistConnected
-                    icon: "log-in"
-                    title: "AniList is not connected"
-                    body: "Connect AniList to see your watching list."
-                    // One click: the browser opens on it when the build carries AniList's id
-                    ConnectButton {
-                        objectName: "watching-connect"
-                        tracker: "Anilist"
-                        text: frame.connecting["Anilist"] !== undefined ? "Waiting for the browser" : "Connect AniList"
-                        icon: frame.connecting["Anilist"] !== undefined ? "clock" : "log-in"
-                        primary: true
-                        onClicked: frame.openConnect("Anilist")
-                    }
+                    icon: "play"
+                    title: "Nothing played here yet"
+                    body: "Play an episode from the library and it shows here, with the series airing this week."
+                    Button { text: "Open the library"; icon: "house"; onClicked: frame.go("library", {}, "Library") }
                 }
                 EmptyState {
                     visible: page.anilistConnected && page.loadFailed

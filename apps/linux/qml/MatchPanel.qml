@@ -94,9 +94,11 @@ Corner {
     width: Math.min(theme.space(170), (parent ? parent.width : theme.space(170)) - theme.space(16))
     height: Math.min(theme.space(160), (parent ? parent.height : theme.space(160)) - theme.space(16))
     visible: false
-    radius: theme.radiusTile
-    smoothing: theme.cornerSmoothing
-    color: theme.raised
+    // A floating pane of glass over the metadata wall
+    color: theme.glassFloat
+    borderColor: theme.lineStrong
+    borderWidth: 1
+    highlight: theme.glassHighlight
 
     onVisibleChanged: if (!visible) { results = []; resolved = null; searching = false; searchDebounce.stop() }
 
@@ -248,7 +250,7 @@ Corner {
             height: theme.space(18)
             radius: theme.radiusInner(theme.space(1))
             smoothing: theme.cornerSmoothing
-            color: resultMouse.containsMouse ? theme.raisedHover : "transparent"
+            color: resultMouse.containsMouse ? theme.glassRaised : "transparent"
             MouseArea { id: resultMouse; anchors.fill: parent; hoverEnabled: true }
             Corner {
                 id: cover

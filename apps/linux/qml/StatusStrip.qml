@@ -25,14 +25,17 @@ Item {
         radius: theme.radiusTile
         smoothing: theme.cornerSmoothing
         color: mouse.containsMouse ? theme.tileHover : theme.tile
+        borderColor: theme.line; borderWidth: 1
+        highlight: theme.glassHighlight
 
         Rectangle {
             visible: root.running
             anchors.top: parent.top
             x: tileBox.radius
             width: (parent.width - tileBox.radius * 2) * Math.max(0, Math.min(1, root.fraction))
-            height: theme.space(0.5)
+            height: 2
             color: theme.accent
+            z: 1
         }
 
         Row {

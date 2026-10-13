@@ -47,39 +47,39 @@ Flickable {
             Swatches { slot: 4 }
             SliderRow { from: 0; to: 150; value: 100 }
         }
+        // The glass ramp: resting, raised, pressed, floating, each a square pane with its edge
+        // and top highlight
         Row {
-            spacing: theme.space(3)
+            spacing: theme.grout
             Repeater {
-                model: [theme.radiusSm, theme.radiusMd, theme.radiusLg, theme.radiusXl]
-                Corner { required property real modelData; width: theme.space(24); height: theme.space(16); radius: modelData; smoothing: theme.cornerSmoothing; color: theme.surface; borderColor: theme.lineStrong; borderWidth: 1 }
+                model: [["Glass", theme.glass], ["Raised", theme.glassRaised], ["Pressed", theme.glassPressed], ["Float", theme.glassFloat], ["Video", theme.glassVideo]]
+                Corner { required property var modelData; width: theme.space(30); height: theme.space(16); color: modelData[1]; borderColor: theme.line; borderWidth: 1; highlight: theme.glassHighlight
+                    Label { anchors.centerIn: parent; role: "ledger"; text: parent.modelData[0] } }
             }
         }
         // The four roles of the face, then the faint and dim text on a tile
         Column {
             spacing: theme.space(1)
-            Label { role: "display"; text: "Display, wdth 125 wght 800" }
+            Label { role: "display"; text: "Display, wdth 125 wght 760" }
             Label { role: "title"; text: "Title, wdth 112 wght 650" }
             Label { role: "ui"; text: "UI, wdth 100 wght 450: the controls and the body" }
             Label { role: "ledger"; text: "Ledger, wdth 88 wght 500: 1111 0000 24 of 24, 23:59" }
             Label { role: "ledger"; color: theme.textDim; text: "Dim ledger: 12 files, 3 days ago" }
             Label { role: "ledger"; color: theme.textFaint; text: "Faint ledger: no poster, 0 files" }
         }
-        // Poster plates: each tile is a poster's tone, its plate and its hover plate
-        Row {
-            spacing: theme.grout
-            Repeater {
-                model: ["#d23c3c", "#f4f1ea", "#1a1a2e", "#3c7ad2", "#e8c547", "#2e8b57"]
-                Column {
-                    required property string modelData
-                    spacing: theme.grout
-                    Corner { width: theme.space(30); height: theme.space(8); radius: theme.radiusTile; smoothing: theme.cornerSmoothing; color: modelData
-                        Label { anchors.centerIn: parent; role: "ledger"; text: "tone " + modelData; color: theme.contrast(theme.text, parent.color) >= 4.5 ? theme.text : theme.bg } }
-                    Corner { width: theme.space(30); height: theme.space(8); radius: theme.radiusTile; smoothing: theme.cornerSmoothing; color: theme.plate(modelData)
-                        Label { anchors.centerIn: parent; role: "title"; font.pointSize: theme.typeNormal; text: "Plate " + theme.contrast(theme.text, parent.color).toFixed(1) } }
-                    Corner { width: theme.space(30); height: theme.space(8); radius: theme.radiusTile; smoothing: theme.cornerSmoothing; color: theme.plateHover(modelData)
-                        Label { anchors.centerIn: parent; role: "title"; font.pointSize: theme.typeNormal; text: "Hover " + theme.contrast(theme.text, parent.color).toFixed(1) } }
+        // The poster scrim, the one gradient: near-black at the foot, clear by scrimReach
+        Rectangle {
+            width: theme.space(40); height: theme.space(60)
+            color: theme.accentSoft
+            Rectangle {
+                anchors.bottom: parent.bottom; width: parent.width; height: parent.height * theme.scrimReach
+                gradient: Gradient {
+                    GradientStop { position: 0; color: "transparent" }
+                    GradientStop { position: 0.45; color: Qt.rgba(theme.posterScrim.r, theme.posterScrim.g, theme.posterScrim.b, theme.posterScrim.a * 0.62) }
+                    GradientStop { position: 1; color: theme.posterScrim }
                 }
             }
+            Label { x: theme.space(2.5); anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(2.5); role: "title"; font.pointSize: theme.typeNormal; color: theme.onPoster; text: "Title on the scrim" }
         }
         Column {
             spacing: theme.space(1)

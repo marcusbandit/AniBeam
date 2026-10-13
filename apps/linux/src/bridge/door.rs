@@ -92,7 +92,9 @@ pub mod qobject {
         #[qinvokable]
         fn list_airing(self: &Door, offset: f64, limit: f64) -> QJsonObject;
         /// The library page in one read: `{ series, airing, counts: { all, series,
-        /// movies, watched, hidden } }`, off one snapshot.
+        /// movies, watched, hidden } }`, off one snapshot. Every card, here and in
+        /// listSeries, carries `franchise: { id, title, size }` when other library
+        /// series share its franchise, else null (core `franchise::groups`).
         #[qinvokable]
         fn list_library(
             self: &Door,

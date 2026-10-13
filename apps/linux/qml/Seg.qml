@@ -1,5 +1,5 @@
-// A segmented switch: options in a sunken pill, the active one carried by a raised pill
-// thumb that follows with exponential smoothing (theme.followRate). Picking emits `picked`; the owner sets `index`,
+// A segmented switch: square cells in a pane of glass, the active one carried by a raised
+// glass thumb with a 1 px accent underline that follows with exponential smoothing (theme.followRate). Picking emits `picked`; the owner sets `index`,
 // so a binding on it survives. An option is a string, or a record { text, icon, delegate }:
 // `icon` names a Lucide glyph drawn before the text, `name` the cell's objectName suffix, `delegate` is a Component drawn before
 // it instead, which reads the option's colour and record off its parent Loader as `tint`
@@ -13,12 +13,12 @@ Corner {
     property bool small: false
     signal picked(int i)
 
-    readonly property real pad: theme.space(0.75)
+    readonly property real pad: 1
     implicitHeight: (small ? theme.space(6) : theme.controlHeight)
     implicitWidth: row.implicitWidth + pad * 2
     radius: height / 2
     smoothing: theme.cornerSmoothing
-    color: theme.tileSunken
+    color: theme.tile
     borderColor: theme.line
     borderWidth: 1
 
@@ -42,9 +42,8 @@ Corner {
         y: root.pad
         width: root.thumbW
         height: root.height - root.pad * 2
-        radius: height / 2
-        smoothing: theme.cornerSmoothing
-        color: theme.raised
+        color: theme.glassPressed
+        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.accent }
     }
 
     Row {

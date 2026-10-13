@@ -156,7 +156,7 @@ Item {
                         small: true
                         clickable: true
                         selected: root.stageOn[modelData] === true
-                        color: selected ? theme.accentSoft : theme.surfaceSunken
+                        color: selected ? theme.accentSoft : theme.tileSunken
                         textColor: theme.textDim
                         onClicked: root.stageOn = root.flip(root.stageOn, modelData)
                     }
@@ -171,7 +171,7 @@ Item {
                         small: true
                         clickable: true
                         selected: root.levelOn[modelData] === true
-                        color: selected ? theme.accentSoft : theme.surfaceSunken
+                        color: selected ? theme.accentSoft : theme.tileSunken
                         textColor: modelData === "Info" ? theme.textDim : root.levelColor(modelData)
                         onClicked: root.levelOn = root.flip(root.levelOn, modelData)
                     }
@@ -223,7 +223,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         text: modelData.stage
                         small: true
-                        color: theme.surfaceSunken
+                        color: theme.tileSunken
                         textColor: theme.textDim
                         width: theme.space(16)
                     }
@@ -243,12 +243,12 @@ Item {
                         text: "×" + modelData.count
                         small: true
                         clickable: true
-                        color: theme.surfaceSunken
+                        color: theme.tileSunken
                         textColor: theme.textDim
                         onClicked: { var n = {}; for (var k in root.expanded) n[k] = root.expanded[k]; n[modelData.key] = true; root.expanded = n }
                     }
                 }
-                Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.surfaceSunken }
+                Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.tileSunken }
             }
             QC.ScrollBar.vertical: ThinScrollBar {}
         }

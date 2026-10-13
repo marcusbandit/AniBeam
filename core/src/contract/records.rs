@@ -71,6 +71,27 @@ pub struct SeriesCard {
     pub next_airing: Option<Airing>,
     pub last_viewed_at: Option<SystemTime>,
     pub latest_activity_at: SystemTime,
+    /// The franchise this series shares with other library series, or None
+    /// when it relates to no other series in the library
+    /// (`franchise::groups`).
+    #[serde(default)]
+    pub franchise: Option<FranchiseTag>,
+}
+
+/// One franchise as the library page groups it: the connected component of
+/// library series over the relations the graph walks (never CHARACTER or
+/// OTHER). Only a component of two or more series is tagged.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, uniffi::Record)]
+pub struct FranchiseTag {
+    /// Stable for as long as the members stay: the smallest AniList id
+    /// among the component's library series, as a decimal string.
+    pub id: String,
+    /// The group's name: the members' shared title stem, else the
+    /// earliest-released member's title with its season suffix stripped.
+    pub title: String,
+    /// How many library series are in the component, missing ones left
+    /// out, hidden ones counted whichever tab is open.
+    pub size: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
@@ -409,6 +430,10 @@ pub struct Preferences {
     /// behind. `serde(default)` because older blobs predate it.
     #[serde(default)]
     pub library_show_watched: bool,
+    /// How the library page arranges its cards. `serde(default)` because
+    /// older blobs predate it, which is the whole migration.
+    #[serde(default)]
+    pub library_arrange: Arrange,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
@@ -517,6 +542,7 @@ impl Default for Preferences {
             library_direction: Direction::Asc,
             feed_sort: FeedSort::Recent,
             library_show_watched: false,
+            library_arrange: Arrange::Related,
         }
     }
 }

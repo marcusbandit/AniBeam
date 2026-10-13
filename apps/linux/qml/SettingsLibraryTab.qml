@@ -1,7 +1,8 @@
 // The Library tab on the mosaic: the stat stones (the same counts the Metadata filter
 // shows), the Folders tile sized to its sources, and the recent scans growing into the
-// rest of the column; beside them the Trackers tile, the metadata providers in the order
-// matching tries them, and the library options.
+// rest of the column, as many as it holds; beside them the Trackers tile, the metadata
+// providers in the order matching tries them, the library options at their own height,
+// and the series on disk, most files first, filling the rest.
 import QtQuick
 import QtQuick.Dialogs
 import com.marcusrosado.AniBeam
@@ -10,7 +11,8 @@ SettingsTab {
     id: tab
     property var sources: []
     property var stats: ({ series: 0, films: 0, episodes: 0, lastScan: "never" })
-    property var scans: []                  // the latest ScanFinished events, newest first
+    property var scans: []                  // the ScanFinished events, newest first
+    property var disk: []                   // the Metadata rows, most episodes on disk first
     function sourcePath(id) { for (var i = 0; i < sources.length; i++) if (sources[i].id === id) return sources[i].path; return "" }
     function reload() {
         var r = Door.listSources()
@@ -30,7 +32,9 @@ SettingsTab {
         var found = []
         if (!ev.error) ev.reply.events.forEach(function(e) { if (e.body && e.body.ScanFinished !== undefined) found.push({ at: e.at, scan: e.body.ScanFinished }) })
         found.sort(function(a, b) { return b.at - a.at })
-        scans = found.slice(0, 12)
+        scans = found
+        disk = m.reply.rows.filter(function(row) { return (row.have || 0) + (row.extra_on_disk || 0) > 0 })
+                           .sort(function(a, b) { return (b.have || 0) - (a.have || 0) || (a.series.title < b.series.title ? -1 : 1) })
         var last = found.length ? Fmt.relative(found[0].at, Date.now() / 1000) : "never"
         stats = { series: m.reply.counts.series, films: m.reply.counts.movies, episodes: eps, lastScan: last }
     }
@@ -63,7 +67,7 @@ SettingsTab {
     SettingsPair {
         split: 3 / 5
         leftPanels: [ statStones, foldersPanel, scansPanel ]
-        rightPanels: [ trackersPanel, providersPanel, optionsPanel ]
+        rightPanels: [ trackersPanel, providersPanel, optionsPanel, diskPanel ]
     }
     Component {
         id: statStones
@@ -101,11 +105,13 @@ SettingsTab {
         Panel {
             title: "Recent scans"; icon: "scan"; grows: true
             helper: tab.scans.length ? "" : "No scans yet. Scan all reads every folder again."
-            Repeater {
+            stretch: FillRows {
+                objectName: "settings-scans"
+                anchors.fill: parent
                 model: tab.scans
-                Item {
+                delegate: Item {
                     required property var modelData
-                    width: parent.width
+                    width: parent ? parent.width : 0
                     height: theme.space(10)
                     readonly property var s: modelData.scan
                     Label {
@@ -175,13 +181,57 @@ SettingsTab {
     Component {
         id: optionsPanel
         Panel {
-            title: "Library options"; icon: "sliders-horizontal"; grows: true
+            title: "Library options"; icon: "sliders-horizontal"
             SettingRow { label: "Show hidden shows"; helper: "Shows hidden series on every page until AniBeam closes."
                 Switch { objectName: "settings-reveal-hidden"; checked: Door.revealHidden; onToggled: function(on) { Door.revealHidden = on } } }
             SettingRow { label: "Subscriptions"; helper: "The feeds your subscriptions come from."
                 Button { text: "Open"; icon: "rss"; onClicked: frame.go("subscriptions") } }
             SettingRow { label: "Metadata"; helper: "Every series, the record it is matched to, and its files on disk."
                 Button { text: "Open"; icon: "database"; onClicked: frame.go("metadata") } }
+        }
+    }
+    // Every series with files, most episodes first: a ledger of what the folders hold
+    Component {
+        id: diskPanel
+        Panel {
+            objectName: "settings-disk"
+            title: "On disk"; icon: "hard-drive"; grows: true
+            helper: "Episodes on disk per series, most first, against the count AniList gives."
+            stretch: FillRows {
+                anchors.fill: parent
+                model: tab.disk
+                rowHeight: theme.space(9)
+                delegate: Item {
+                    id: diskRow
+                    required property var modelData
+                    width: parent ? parent.width : 0
+                    height: theme.space(9)
+                    readonly property var row: modelData
+                    Label {
+                        anchors.left: parent.left; anchors.right: count.left; anchors.rightMargin: theme.space(4)
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: diskRow.row.series.title
+                        role: "ui"
+                        color: rowMouse.containsMouse ? theme.accent : theme.text
+                        elide: Text.ElideRight
+                    }
+                    Label {
+                        id: count
+                        anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                        text: (diskRow.row.have || 0) + (diskRow.row.expected ? " / " + diskRow.row.expected : "")
+                              + (diskRow.row.extra_on_disk ? "  +" + diskRow.row.extra_on_disk + " extra" : "")
+                        role: "ledger"; color: theme.textDim
+                    }
+                    Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.line; opacity: 0.5 }
+                    MouseArea {
+                        id: rowMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: frame.go("series", { id: diskRow.row.series.id }, diskRow.row.series.title)
+                    }
+                }
+            }
         }
     }
     FolderDialog {

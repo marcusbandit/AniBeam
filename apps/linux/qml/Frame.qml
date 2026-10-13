@@ -371,7 +371,32 @@ FocusScope {
     }
     function openMenu(x, y, items) { menu.openAt(x, y, items) }
     function closeMenu() { menu.close() }
-    function showTip(item, text) {
+    // A tip belongs to the area the pointer is over (`area`, the anchor item itself unless a
+    // caller anchors the tip on part of a bigger hover area, the way Card anchors on its
+    // title). It is refused when the pointer is not inside that area by the time the
+    // 600 ms intent fires, and it goes as soon as the area is destroyed (a wall's Loader
+    // deactivating the tile, a page change), hidden, moved (a scroll, a re-layout after a
+    // search) or left by the pointer: a tip naming a title not under the cursor is a lie.
+    property Item tipArea: null
+    property point tipOrigin: Qt.point(0, 0)
+    onTipAreaChanged: if (!tipArea && tip.visible) tip.visible = false
+    HoverHandler { id: pointerWatch }
+    function pointerInside(area) {
+        if (!area || !pointerWatch.hovered || !area.visible) return false
+        var p = area.mapFromItem(frame, pointerWatch.point.position.x, pointerWatch.point.position.y)
+        return p.x >= 0 && p.y >= 0 && p.x <= area.width && p.y <= area.height
+    }
+    function tipStillTrue() {
+        if (!tipArea || !pointerInside(tipArea)) return false
+        var o = tipArea.mapToItem(overlay, 0, 0)
+        return Math.abs(o.x - tipOrigin.x) < 1 && Math.abs(o.y - tipOrigin.y) < 1
+    }
+    Timer { interval: 100; repeat: true; running: tip.visible; onTriggered: if (!frame.tipStillTrue()) frame.hideTip() }
+    function showTip(item, text, area) {
+        area = area || item
+        if (!item || !frame.pointerInside(area)) { frame.hideTip(); return }
+        tipArea = area
+        tipOrigin = area.mapToItem(overlay, 0, 0)
         var p = item.mapToItem(overlay, item.width / 2, item.height)
         tipText.text = text
         tip.x = Math.max(theme.space(2), Math.min(p.x - tip.width / 2, overlay.width - tip.width - theme.space(2)))
@@ -385,7 +410,7 @@ FocusScope {
               : Math.max(theme.space(2), top - tip.height - theme.space(1))
         tip.visible = true
     }
-    function hideTip() { tip.visible = false }
+    function hideTip() { tip.visible = false; tipArea = null }
     function toast(text, seconds) { toastText.text = text; toastBox.visible = true; toastTimer.interval = (seconds || 4) * 1000; toastTimer.restart() }
 
     Shortcut { sequence: "Ctrl+K"; onActivated: { if (nav.current.page !== "library") frame.go("library"); Qt.callLater(function() { if (page.item && page.item.focusSearch) page.item.focusSearch() }) } }

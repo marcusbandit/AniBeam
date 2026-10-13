@@ -1,4 +1,4 @@
-// An on/off switch: a sunken pill track, a round thumb that slides with exponential
+// An on/off switch: a square glass track, a square thumb that slides with exponential
 // smoothing (theme.followRate) and carries the accent fill with it. Space toggles it; hover and focus show on the border.
 import QtQuick
 
@@ -12,9 +12,9 @@ Corner {
     implicitHeight: theme.space(6)
     radius: height / 2
     smoothing: theme.cornerSmoothing
-    color: theme.tone(theme.tileSunken, theme.accent, on)
-    borderColor: activeFocus ? theme.focusRing : (hover.containsMouse ? theme.lineStrong : theme.tone(theme.line, theme.accent, on))
-    borderWidth: activeFocus ? theme.space(0.5) : 1
+    color: theme.tone(theme.tile, theme.accentSoft, on)
+    borderColor: activeFocus ? theme.focusRing : (hover.containsMouse ? theme.lineStrong : theme.tone(theme.line, Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, 0.55), on))
+    borderWidth: 1
     activeFocusOnTab: true
 
     // 0 off, 1 on, smoothed; drives the thumb and both fills
@@ -37,7 +37,7 @@ Corner {
         height: size
         radius: size / 2
         smoothing: theme.cornerSmoothing
-        color: theme.tone(theme.textDim, theme.accentText, root.on)
+        color: theme.tone(theme.textDim, theme.accent, root.on)
     }
     MouseArea {
         id: hover

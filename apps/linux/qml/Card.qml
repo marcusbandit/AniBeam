@@ -1,18 +1,22 @@
-// One series as a stone: a single rounded tile, the poster on top (2:3, cropped into the
-// shape through Corner.fillItem) and, under it in the same tile, a plate in the poster's own
-// tone carrying the title and one ledger line with the score at its right. The episode code
-// rides the poster's top left, the progress strip its bottom edge. Nothing sits outside the
-// tile. Hover lifts the plate one step and edges the tile in the accent; press scales 0.98.
+// One series as a pane of the glass mosaic: the poster full-bleed, cropped to the tile, with
+// everything written on it. A scrim rises from the poster's foot (near-black, clear by
+// theme.scrimReach of the height; the only gradient in the shell), and on it, bottom left,
+// the title (two lines at most) over one dim ledger line, the score bottom right. The
+// episode code is a small square glass tag top left; Hidden and the ghost's AniList tag sit
+// top right. Progress is a 2 px line along the very bottom edge. Hover draws a 1 px accent
+// inner outline and deepens the scrim; press scales 0.98.
 //
-// `hero` is the 2x2 tile of the library mosaic: a plate with the title in the display cut,
-// the next episode, the countdown and a Play button (`played`). `tileHeight` lands the tile
-// on the mosaic's module: a small tile keeps its 2:3 poster and takes the rest as plate, a
-// hero's plate is exactly as tall as its lines and the poster takes the rest. 0 is the
-// smallest plate that holds the lines. `live` false drops the poster (the mosaic's tiles far
-// outside the viewport).
+// The tile's size comes from the layout, never from the image: `tileHeight` when the
+// mosaic sets one, else a 2:3 tile at `posterWidth`. `hero` is the 2x2 tile: the title in
+// the display cut, the next episode, the countdown, the progress, and a square Play button
+// (`played`). `live` false drops the poster (the mosaic's tiles far outside the viewport).
 //
-// An airing countdown is one treatment everywhere: a small accent pill holding the time
-// ("4d 18h") with "Episode 2" beside it in plain plate text.
+// An airing countdown is one treatment everywhere: "Episode 2" in the dim ledger, then a
+// small clock and the time ("4d 18h") in accent text.
+//
+// Kept for the layout code that measures a probe card: posterHeight is the whole tile, and
+// minPlate, heroPlate and plateH are 0 (nothing sits under the poster any more).
+// `plateHeight` is accepted and unused.
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -29,36 +33,28 @@ Item {
     // { episode, at } in seconds: a countdown the owning page supplies (the feed's
     // scheduled cards); null leaves the series' own next airing
     property var countdown: null
+    property alias countdownOverride: root.countdown
     // An external card: the series is not in the library (the watching page's
-    // AniList-only entries), so the plate reads quieter and a chip names where it lives.
+    // AniList-only entries), so the poster reads quieter and a tag names where it lives.
     property bool ghost: false
     property bool hero: false
     property real tileHeight: 0
+    property real plateHeight: 0
     property bool live: true
     signal opened()
     signal played()
 
     readonly property real pad: theme.space(hero ? 4 : 2.5)
     readonly property real pillHeight: Math.ceil(ledgerMetrics.height + theme.space(1))
-    // The smallest plate that holds two title lines and the ledger line (a pill at most)
-    readonly property real minPlate: Math.ceil(pad * 2 + titleMetrics.height * 2 + theme.space(1.5) + pillHeight)
-    // A hero's plate: room for its lines at their fullest (two title lines in the display
-    // cut, the next episode, the countdown pill, the progress) and the Play row. Fixed by
-    // the module and the type, never by the title's wrap or the poster image, so hero plates
-    // in a row start on one line.
-    readonly property real heroPlate: Math.ceil(pad * 2 + heroTitleMetrics.height * 0.95 * 2 + theme.space(2)
-                                                + uiMetrics.height + pillHeight + ledgerMetrics.height + theme.space(1) * 2
-                                                + theme.space(3) + theme.controlHeight)
-    readonly property real posterHeight: hero && tileHeight > 0 ? Math.max(0, tileHeight - heroPlate) : Math.round(posterWidth * 1.5)
-    readonly property real plateH: tileHeight > 0 ? tileHeight - posterHeight : hero ? heroPlate : minPlate
+    readonly property real minPlate: 0
+    readonly property real heroPlate: 0
+    readonly property real plateH: 0
+    readonly property real posterHeight: tileHeight > 0 ? tileHeight : Math.round(posterWidth * 1.5)
     width: posterWidth
-    height: posterHeight + plateH
+    height: posterHeight
     implicitWidth: posterWidth
-    implicitHeight: posterHeight + plateH
+    implicitHeight: posterHeight
 
-    FontMetrics { id: titleMetrics; font.family: theme.fontFamily; font.pointSize: theme.typeNormal; font.weight: theme.roleWeight("title"); font.variableAxes: theme.roleAxes("title") }
-    FontMetrics { id: heroTitleMetrics; font.family: theme.fontFamily; font.pointSize: theme.typeLarge; font.weight: theme.roleWeight("display"); font.variableAxes: theme.roleAxes("display") }
-    FontMetrics { id: uiMetrics; font.family: theme.fontFamily; font.pointSize: theme.typeNormal; font.weight: theme.roleWeight("ui"); font.variableAxes: theme.roleAxes("ui") }
     FontMetrics { id: ledgerMetrics; font.family: theme.fontFamily; font.pointSize: theme.typeSmall; font.weight: theme.roleWeight("ledger"); font.variableAxes: theme.roleAxes("ledger") }
 
     readonly property string displayTitle: item.title || ""
@@ -75,22 +71,22 @@ Item {
     readonly property string scoreText: mine ? Number(item.my_score).toFixed(1)
                                       : hasScore ? Number(item.community_score).toFixed(1) : ""
 
-    // "2d 5h", "4h 12m", "12m": short enough to share a plate line with the episode
+    // "2d 5h", "4h 12m", "12m": short enough to share a line with the episode
     function shortCountdown(secs) {
         var t = Math.max(0, Math.floor(secs))
         var d = Math.floor(t / 86400), h = Math.floor(t % 86400 / 3600), m = Math.floor(t % 3600 / 60)
         return d > 0 ? d + "d " + h + "h" : h > 0 ? h + "h " + m + "m" : Math.max(1, m) + "m"
     }
-    // The countdown on the plate: the page's own, else the series' next airing while it is
-    // ahead and no page story stands in its place
+    // The countdown: the page's own, else the series' next airing while it is ahead and no
+    // page story stands in its place
     readonly property var airing: countdown ? countdown
                                 : metaOverride === "" && !!item.next_airing && item.next_airing.at * 1000 > nowMs ? item.next_airing : null
     readonly property string airingTime: airing ? shortCountdown(airing.at - nowMs / 1000) : ""
     readonly property string airingEpisode: airing ? Fmt.episodeName("", airing.episode) : ""
     readonly property string watchedText: hasWatched ? (totalKnown ? item.watched + " of " + item.total_episodes + (item.total_is_estimate ? "+" : "") : item.watched + " watched") : ""
     readonly property string filesText: Fmt.plural(item.episodes_on_disk || 0, "file", "files")
-    // The one ledger line under the title: the countdown pill when one runs, else what the
-    // owning page says, else the progress, else what is on disk
+    // The one ledger line under the title: the countdown when one runs, else what the owning
+    // page says, else the progress, else what is on disk
     readonly property string ledgerText: metaOverride !== "" ? metaOverride
                                        : watchedText !== "" ? watchedText : filesText
     // The hero's next episode: one past what was watched while the series is in progress
@@ -101,50 +97,54 @@ Item {
         return Fmt.episodeName("", w + 1) + " next"
     }
 
-    // The poster's tone, read only once the tile is live (it decodes the poster at 8x12)
-    readonly property string tone: live && item.poster ? Fmt.posterTone(item.poster) : ""
-    readonly property color plateRest: ghost ? theme.tile : tone !== "" ? theme.plate(tone) : theme.raised
-    readonly property color plateLift: ghost ? theme.tileHover : tone !== "" ? theme.plateHover(tone) : theme.raisedHover
-
-    // A colour for text on the plate: itself where it holds 4.5:1 there, else the first step
-    // of it toward the text colour that does, so the accent stays the accent's hue
-    function legible(c) {
-        c = Qt.color(c)
-        for (var t = 0; t < 1; t += 0.1) {
-            var k = theme.tone(c, theme.text, t)
-            if (theme.contrast(k, plate.color) >= 4.5) return k
-        }
-        return theme.text
-    }
-
-    // The countdown: an accent pill holding the time, the episode beside it in plate text.
-    // The pill's text is the ground where that holds 4.5:1 on the accent, else the text.
-    component Countdown: Item {
+    // The countdown line: the episode in the dim ledger, then a clock and the time in accent
+    component Countdown: Row {
+        id: cd
+        property real room: 0
         height: root.pillHeight
-        Rectangle {
-            id: pill
-            height: parent.height
-            width: pillText.implicitWidth + theme.space(3)
-            radius: height / 2
-            color: theme.accent
+        spacing: theme.space(1.5)
+        Label {
+            id: cdEpisode
+            anchors.verticalCenter: parent.verticalCenter
+            width: Math.min(implicitWidth, Math.max(0, cd.room - cdClock.width - cdTime.implicitWidth - cd.spacing * 2 - theme.space(0.5)))
+            text: root.airingEpisode
+            role: "ledger"
+            color: theme.onPosterDim
+            elide: Text.ElideRight
+        }
+        Row {
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: theme.space(0.5)
+            Icon { id: cdClock; anchors.verticalCenter: parent.verticalCenter; glyph: "clock"; size: Math.round(ledgerMetrics.height * 0.85); color: theme.accentOnPoster }
             Label {
-                id: pillText
-                anchors.centerIn: parent
+                id: cdTime
+                anchors.verticalCenter: parent.verticalCenter
                 text: root.airingTime
                 role: "ledger"
                 font.weight: 650
                 font.variableAxes: ({ "wdth": 88, "wght": 650 })
-                color: theme.contrast(theme.ground, theme.accent) >= 4.5 ? theme.ground : theme.text
+                color: theme.accentOnPoster
             }
         }
+    }
+
+    // A small square tag of dark glass on the poster
+    component PosterTag: Rectangle {
+        property string text: ""
+        property color ink: theme.onPoster
+        implicitWidth: tagLabel.implicitWidth + theme.space(root.hero ? 2.5 : 2) * 2
+        implicitHeight: tagLabel.implicitHeight + theme.space(root.hero ? 1 : 0.75) * 2
+        width: implicitWidth; height: implicitHeight
+        color: Qt.rgba(8 / 255, 9 / 255, 11 / 255, 0.62)
+        border.color: Qt.rgba(1, 1, 1, 0.14)
+        border.width: 1
         Label {
-            x: pill.width + theme.space(1.5)
-            anchors.verticalCenter: pill.verticalCenter
-            width: Math.max(0, parent.width - x)
-            text: root.airingEpisode
+            id: tagLabel
+            anchors.centerIn: parent
+            text: parent.text
             role: "ledger"
-            color: root.legible(theme.text)
-            elide: Text.ElideRight
+            font.pointSize: root.hero ? theme.typeNormal * 0.92 : theme.typeSmall
+            color: parent.ink
         }
     }
 
@@ -166,10 +166,10 @@ Item {
             else { tipIntent.stop(); frame.hideTip() }
         }
     }
-    Timer { id: tipIntent; interval: 600; onTriggered: frame.showTip(titleText, root.folderName) }
+    Timer { id: tipIntent; interval: 600; onTriggered: frame.showTip(titleText, root.folderName, root) }
     onFolderNameChanged: if (hoverer.hovered && folderName === "") frame.hideTip()
 
-    // The click covers the whole stone; the Play button sits above it and takes its own
+    // The click covers the whole tile; the Play button sits above it and takes its own
     MouseArea {
         id: press
         anchors.fill: parent
@@ -177,139 +177,103 @@ Item {
         onClicked: { tipIntent.stop(); frame.hideTip(); root.opened() }
     }
 
-    // ---- The poster: the top of the stone, square along its bottom edge where the plate
-    // meets it. Built only while live.
-    Loader {
-        id: posterLoader
-        width: root.posterWidth
-        height: root.posterHeight
-        active: root.live
-        sourceComponent: Item {
-            // Decoded at the shared poster size (the pool's, so a warmed poster is a cache
-            // hit, not a second decode); a hero at twice it.
-            Image {
-                id: poster
-                visible: false
-                width: shape.width
-                height: shape.height
-                source: root.item.poster ? "file://" + root.item.poster : ""
-                sourceSize: root.hero ? Qt.size(theme.posterDecodeSize.width * 2, theme.posterDecodeSize.height * 2) : theme.posterDecodeSize
-                fillMode: Image.PreserveAspectCrop
-                smooth: true
-                asynchronous: true
-                cache: true
-            }
-            // Named shape, not frame: an id may not reuse a context-chain name (frame,
-            // theme, page, window, nav), or everything below resolves that name here.
-            Corner {
-                id: shape
-                width: root.posterWidth
-                height: root.posterHeight
-                radius: theme.radiusTile
-                smoothing: theme.cornerSmoothing
-                flatBottom: true
-                color: theme.tile
-                fillItem: poster.status === Image.Ready ? poster : null
-            }
-        }
+    // ---- The pane under the poster: glass, seen only until the poster decodes or when
+    // there is none
+    Rectangle {
+        anchors.fill: parent
+        color: theme.tile
+        border.color: theme.line
+        border.width: 1
     }
     Label {
         visible: !root.item.poster
-        x: 0; width: root.posterWidth; y: root.posterHeight / 2 - height / 2
-        horizontalAlignment: Text.AlignHCenter
+        anchors.centerIn: parent
+        anchors.verticalCenterOffset: -root.height * 0.12
         text: "No poster"
         color: theme.textFaint
         role: "ui"
         font.pointSize: theme.typeSmall
     }
 
-    Chip {
-        visible: root.epBadge !== ""
-        x: theme.space(2); y: theme.space(2)
-        text: root.epBadge
-        small: !root.hero
-    }
-    Chip {
-        visible: root.ghost
-        x: theme.space(2)
-        y: root.posterHeight - height - theme.space(2) - (strip.visible ? strip.height : 0)
-        text: root.item.site_url ? "AniList" : ""
-        small: true
-        textColor: theme.text
-    }
-    Chip {
-        visible: !!root.item.hidden
-        text: "Hidden"
-        small: true
-        textColor: theme.textDim
-        x: root.posterWidth - width - theme.space(2)
-        y: root.posterHeight - height - theme.space(2) - (strip.visible ? strip.height : 0)
-    }
-
-    // Progress strip along the poster's bottom edge, on the seam with the plate: a base
-    // track, the unknown remainder from the right, aired under watched from the left
-    Item {
-        id: strip
-        visible: root.hasWatched && !root.ghost
-        y: root.posterHeight - height
-        width: root.posterWidth
-        height: Math.max(3, theme.space(1))
-        Rectangle { width: parent.width; height: parent.height; color: root.totalKnown ? theme.scrim : theme.line }
-        Rectangle { anchors.right: parent.right; width: parent.width * root.unknownPct; height: parent.height; color: theme.line; visible: root.unknownPct > 0 }
-        Rectangle { width: parent.width * root.airedPct; height: parent.height; color: theme.behind }
-        Rectangle { width: parent.width * root.watchedPct; height: parent.height; color: theme.caughtUp }
-    }
-
-    // ---- The plate: the bottom of the stone, in the poster's tone
-    Corner {
-        id: plate
-        y: root.posterHeight
-        width: root.posterWidth
-        height: root.plateH
-        radius: theme.radiusTile
-        smoothing: theme.cornerSmoothing
-        flatTop: true
-        color: theme.tone(root.plateRest, root.plateLift, root.lift)
-
-        // The seam: a 1 px line one step up the plate's own tone, so a dark plate never
-        // melts into a dark poster's foot
-        Rectangle {
-            visible: !root.ghost
-            width: parent.width
-            height: 1
-            color: root.tone !== "" ? theme.plateHover(root.tone) : theme.raisedHover
+    // ---- The poster: full-bleed, cropped to the tile. Built only while live; decoded at the
+    // shared poster size (the pool's, so a warmed poster is a cache hit, not a second
+    // decode), a hero at twice it.
+    Loader {
+        anchors.fill: parent
+        active: root.live && !!root.item.poster
+        sourceComponent: Image {
+            source: "file://" + root.item.poster
+            sourceSize: root.hero ? Qt.size(theme.posterDecodeSize.width * 2, theme.posterDecodeSize.height * 2) : theme.posterDecodeSize
+            fillMode: Image.PreserveAspectCrop
+            smooth: true
+            asynchronous: true
+            cache: true
+            opacity: root.ghost ? 0.6 : 1
         }
+    }
+
+    // ---- The scrim: rises from the foot, always tall enough to sit under every line
+    Rectangle {
+        id: scrim
+        anchors.bottom: parent.bottom
+        width: parent.width
+        height: Math.min(parent.height, Math.max(parent.height * (theme.scrimReach + 0.06 * root.lift),
+                                                 foot.height + root.pad * 2 + theme.space(6)))
+        gradient: Gradient {
+            GradientStop { position: 0; color: "transparent" }
+            GradientStop { position: 0.45; color: Qt.rgba(theme.posterScrim.r, theme.posterScrim.g, theme.posterScrim.b, theme.posterScrim.a * (0.7 + 0.12 * root.lift)) }
+            GradientStop { position: 1; color: theme.posterScrim }
+        }
+    }
+
+    // ---- Tags along the top: the episode code left, Hidden and AniList right
+    PosterTag {
+        visible: root.epBadge !== ""
+        x: root.pad * 0.8; y: root.pad * 0.8
+        text: root.epBadge
+    }
+    Row {
+        x: root.width - width - root.pad * 0.8; y: root.pad * 0.8
+        spacing: theme.space(1)
+        PosterTag { visible: !!root.item.hidden; text: "Hidden"; ink: theme.onPosterDim }
+        PosterTag { visible: root.ghost && !!root.item.site_url; text: "AniList" }
+    }
+
+    // ---- The writing on the foot
+    Column {
+        id: foot
+        x: root.pad
+        width: root.width - root.pad * 2
+        y: root.height - root.pad - height - (strip.visible ? strip.height : 0)
+        spacing: theme.space(root.hero ? 1.5 : 1)
 
         Label {
             id: titleText
-            x: root.pad; y: root.pad
-            width: parent.width - root.pad * 2
+            width: parent.width
             text: root.displayTitle
             role: root.hero ? "display" : "title"
-            font.pointSize: root.hero ? theme.typeLarge : theme.typeNormal
+            font.pointSize: root.hero ? theme.typeLarge * 1.2 : theme.typeNormal
+            color: theme.onPoster
             wrapMode: Text.Wrap
             maximumLineCount: 2
             elide: Text.ElideRight
             lineHeight: 0.95
         }
 
-        // Small: one ledger line along the plate's foot, the score at its right
+        // Small: one ledger line, the score at its right
         Item {
             visible: !root.hero
-            x: root.pad
-            width: parent.width - root.pad * 2
-            height: root.airing ? root.pillHeight : ledger.implicitHeight
-            y: parent.height - root.pad - height
+            width: parent.width
+            height: root.pillHeight
             readonly property real room: width - (score.text !== "" ? score.implicitWidth + theme.space(2) : 0)
-            Countdown { visible: root.airing !== null; width: parent.room; anchors.verticalCenter: parent.verticalCenter }
+            Countdown { visible: root.airing !== null; room: parent.room; anchors.verticalCenter: parent.verticalCenter }
             Label {
-                id: ledger
                 visible: root.airing === null
                 anchors.verticalCenter: parent.verticalCenter
                 width: Math.min(implicitWidth, parent.room)
                 text: root.ledgerText
                 role: "ledger"
-                color: root.legible(theme.textDim)
+                color: theme.onPosterDim
                 elide: Text.ElideRight
             }
             Label {
@@ -318,49 +282,43 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.scoreText
                 role: "ledger"
-                color: root.legible(root.mine ? theme.accent : theme.textDim)
+                color: root.mine ? theme.accentOnPoster : theme.onPosterDim
             }
         }
 
-        // Hero: the next episode, the countdown, the progress, and Play with the score at
-        // its right
-        Column {
-            id: heroLines
-            visible: root.hero
-            x: root.pad
-            y: titleText.y + titleText.height + theme.space(2)
-            width: parent.width - root.pad * 2
-            spacing: theme.space(1)
-            Label {
-                visible: text !== ""
-                width: parent.width
-                text: root.nextText
-                role: "ui"
-                elide: Text.ElideRight
-            }
-            Countdown { visible: root.airing !== null; width: parent.width }
-            Label {
-                visible: text !== ""
-                width: parent.width
-                text: root.metaOverride
-                role: "ledger"
-                color: root.legible(theme.textDim)
-                elide: Text.ElideRight
-            }
-            Label {
-                width: parent.width
-                text: root.watchedText !== "" ? root.watchedText : root.filesText
-                role: "ledger"
-                color: root.legible(theme.textDim)
-                elide: Text.ElideRight
-            }
+        // Hero: the next episode, the countdown, the page's line, the progress, then Play
+        // with the score at its right
+        Label {
+            visible: root.hero && text !== ""
+            width: parent.width
+            text: root.nextText
+            role: "ui"
+            color: theme.onPoster
+            elide: Text.ElideRight
         }
+        Countdown { visible: root.hero && root.airing !== null; room: foot.width }
+        Label {
+            visible: root.hero && text !== ""
+            width: parent.width
+            text: root.metaOverride
+            role: "ledger"
+            color: theme.onPosterDim
+            elide: Text.ElideRight
+        }
+        Label {
+            visible: root.hero
+            width: parent.width
+            text: root.watchedText !== "" ? root.watchedText : root.filesText
+            role: "ledger"
+            color: theme.onPosterDim
+            elide: Text.ElideRight
+        }
+        Item { visible: root.hero; width: 1; height: theme.space(1.5) }
         Loader {
             active: root.hero
-            x: root.pad
-            width: parent.width - root.pad * 2
-            y: parent.height - root.pad - height
-            height: theme.controlHeight
+            visible: root.hero
+            width: parent.width
+            height: active ? theme.controlHeight : 0
             sourceComponent: Item {
                 Item {
                     objectName: "tile-play-" + root.item.id
@@ -382,22 +340,30 @@ Item {
                     text: root.scoreText
                     role: "ledger"
                     font.pointSize: theme.typeNormal
-                    color: root.legible(root.mine ? theme.accent : theme.textDim)
+                    color: root.mine ? theme.accentOnPoster : theme.onPosterDim
                 }
             }
         }
     }
 
-    // The 1 px inner edge on hover, around the whole stone
-    Loader {
+    // ---- Progress: a 2 px line along the very bottom edge, aired under watched
+    Item {
+        id: strip
+        visible: root.hasWatched && !root.ghost
+        anchors.bottom: parent.bottom
+        width: parent.width
+        height: 2
+        Rectangle { anchors.fill: parent; color: Qt.rgba(1, 1, 1, 0.12) }
+        Rectangle { width: parent.width * root.airedPct; height: parent.height; color: Qt.rgba(1, 1, 1, 0.34) }
+        Rectangle { width: parent.width * root.watchedPct; height: parent.height; color: theme.accent }
+    }
+
+    // ---- The 1 px accent inner outline on hover
+    Rectangle {
         anchors.fill: parent
-        active: root.lift > 0.01 || root.ghost
-        sourceComponent: Corner {
-            radius: theme.radiusTile
-            smoothing: theme.cornerSmoothing
-            color: "transparent"
-            borderWidth: 1
-            borderColor: root.ghost ? theme.tone(theme.lineStrong, theme.accent, root.lift) : Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, root.lift)
-        }
+        visible: root.lift > 0.01
+        color: "transparent"
+        border.width: 1
+        border.color: Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, root.lift)
     }
 }

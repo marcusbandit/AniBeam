@@ -12,6 +12,10 @@ import com.marcusrosado.AniBeam
 
 FocusScope {
     id: page
+    // The player is a dark room in either mode: its own tokens, forced dark, so the glass
+    // over the picture and the text on it read the same on a light theme. Everything the
+    // page and PlayerChrome build resolves `theme` here first.
+    Tokens { id: theme; mode: "dark" }
     property var props: ({})
     readonly property bool fullWindow: true
     property var session: null
@@ -570,14 +574,15 @@ FocusScope {
 
     // ---- The HUD line: one message over the picture, gone after 1.2 s. The subtitle delay
     // and the frame step share it, each owning the line through its own kind. A
-    // raised pill like every other stone on the player; its text is figures, so ledger.
+    // pane of the video glass like every other island on the player; its text is figures,
+    // so ledger.
     Corner {
         id: hud
         objectName: "player-hud"
         visible: false
         anchors.top: parent.top; anchors.topMargin: theme.space(20); anchors.horizontalCenter: parent.horizontalCenter
         width: hudText.implicitWidth + theme.space(6); height: theme.controlHeight
-        radius: height / 2; smoothing: theme.cornerSmoothing; color: theme.raised
+        color: theme.glassVideo; borderColor: Qt.rgba(1, 1, 1, 0.1); borderWidth: 1; highlight: theme.glassHighlight
         // Which key owns the line on screen, so an observation that lands afterwards can
         // rewrite its own line and no other. An omitted kind belongs to nobody.
         property string kind: ""
@@ -601,6 +606,7 @@ FocusScope {
         objectName: "player-rating"
         visible: false
         raised: true
+        color: theme.glassVideo; borderColor: Qt.rgba(1, 1, 1, 0.1)
         padding: theme.space(3)
         anchors.horizontalCenter: parent.horizontalCenter; anchors.top: parent.top; anchors.topMargin: theme.space(24)
         width: ratingRow.implicitWidth + padding * 2; height: ratingRow.implicitHeight + padding * 2

@@ -106,7 +106,7 @@ fn spawn_outcome(err: &std::io::Error) -> Option<SubscriptionsResult> {
 /// The message for each of the four outcomes, verbatim.
 fn message_of(result: &SubscriptionsResult) -> String {
     match result {
-        SubscriptionsResult::Ok { feeds } => format!("subscriptions: {} feeds", feeds.len()),
+        SubscriptionsResult::Ok { feeds } => format!("Subscriptions: {} feeds", feeds.len()),
         SubscriptionsResult::Missing => "anirss missing".to_string(),
         SubscriptionsResult::NeedsAuth => "anirss needs a qBittorrent session".to_string(),
         SubscriptionsResult::Timeout => "anirss timed out".to_string(),

@@ -1,4 +1,4 @@
-// The shell's one vertical scroll bar: a thin Corner pill thumb, visible only while there
+// The shell's one vertical scroll bar: a thin square thumb, visible only while there
 // is more to scroll. Attach with `QC.ScrollBar.vertical: ThinScrollBar {}` on any Flickable
 // or view (a QtQuick.Controls.Basic import as QC is still needed for the attached property
 // itself, just not for this type).
@@ -10,8 +10,6 @@ QC.ScrollBar {
     visible: size < 1
     contentItem: Corner {
         implicitWidth: theme.space(1)
-        radius: height / 2
-        smoothing: theme.cornerSmoothing
         color: parent.active ? theme.textFaint : theme.line
     }
 }

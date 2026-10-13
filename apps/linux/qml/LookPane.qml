@@ -11,6 +11,9 @@ Corner {
     property string mode: "dark"
     property var samples: []             // SeriesCard records, most telling first
     property real nowMs: Date.now()      // refreshed by the tab's own tick, not a one-shot
+    // The height the pane is given: its status strip sits at the foot and the sample cards
+    // take as many rows as fit between; 0 is the natural height, one row of cards
+    property real targetHeight: 0
 
     Tokens { id: theme; mode: pane.mode }
 
@@ -39,7 +42,11 @@ Corner {
     color: theme.bg
     borderColor: theme.line
     borderWidth: 1
-    implicitHeight: body.height + pad * 2
+    readonly property real cardGap: theme.space(5)
+    readonly property real cardHeight: probe.implicitHeight
+    readonly property real naturalHeight: pane.pad * 2 + body.height + foot.height + cardHeight + body.spacing * 2
+    implicitHeight: Math.max(naturalHeight, targetHeight)
+    Card { id: probe; visible: false; live: false; item: pane.fallback; posterWidth: theme.posterWidth }
 
     Column {
         id: body
@@ -63,7 +70,7 @@ Corner {
                 anchors.verticalCenter: parent.verticalCenter
                 text: pane.samples.length + " series"
                 small: true
-                color: theme.surface
+                color: theme.tile
                 textColor: theme.textDim
             }
         }
@@ -74,7 +81,7 @@ Corner {
             height: theme.controlHeight
             radius: height / 2
             smoothing: theme.cornerSmoothing
-            color: theme.surfaceSunken
+            color: theme.tileSunken
             borderColor: theme.line
             borderWidth: 1
             Text {
@@ -96,21 +103,32 @@ Corner {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "/ or Ctrl+K"
                 small: true
-                color: theme.surface
+                color: theme.tile
                 textColor: theme.textFaint
             }
         }
 
         Seg { options: ["All", "Series", "Movies"]; index: 0 }
 
-        // As many cards as the pane holds at the poster width, one at least
-        Row {
+    }
+
+    // As many cards as the pane holds at the poster width, in as many rows as its height
+    // holds, one at least
+    Item {
+        id: cardsBox
+        x: pane.pad
+        y: body.y + body.height + body.spacing
+        width: pane.width - pane.pad * 2
+        height: Math.max(pane.cardHeight, foot.y - body.spacing - y)
+        clip: true
+        Grid {
             id: cards
-            readonly property real gap: theme.space(5)
-            readonly property int count: Math.max(1, Math.floor((body.width + gap) / (theme.posterWidth + gap)))
-            spacing: gap
+            readonly property int perRow: Math.max(1, Math.floor((cardsBox.width + pane.cardGap) / (theme.posterWidth + pane.cardGap)))
+            readonly property int lines: Math.max(1, Math.floor((cardsBox.height + pane.cardGap) / (pane.cardHeight + pane.cardGap)))
+            columns: perRow
+            spacing: pane.cardGap
             Repeater {
-                model: cards.count
+                model: cards.perRow * cards.lines
                 Card {
                     required property int index
                     item: pane.samples.length ? pane.samples[index % pane.samples.length] : pane.fallback
@@ -119,13 +137,21 @@ Corner {
                 }
             }
         }
+    }
+
+    Column {
+        id: foot
+        x: pane.pad
+        y: pane.height - pane.pad - height
+        width: pane.width - pane.pad * 2
+        spacing: theme.space(4)
 
         Flow {
             width: parent.width
             spacing: theme.space(2)
             Chip { text: "Plain"; mono: false; color: theme.surface; textColor: theme.textDim }
             Chip { text: "Selected"; mono: false; selected: true }
-            Chip { text: "Ep 12"; small: true; color: theme.surface }
+            Chip { text: "Ep 12"; small: true; color: theme.tile }
             Chip { text: "2 errors"; icon: "circle-alert"; small: true; color: theme.redSoft; textColor: theme.red }
         }
 
@@ -168,7 +194,7 @@ Corner {
             height: theme.space(7)
             radius: theme.radiusSm
             smoothing: theme.cornerSmoothing
-            color: theme.surfaceSunken
+            color: theme.tileSunken
             borderColor: theme.line
             borderWidth: 1
             Row {

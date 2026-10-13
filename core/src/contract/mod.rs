@@ -127,5 +127,36 @@ mod tests {
         assert_eq!(p.library_direction, Direction::Asc);
         assert_eq!(p.feed_sort, FeedSort::Recent);
         assert!(!p.library_show_watched);
+        assert_eq!(p.library_arrange, Arrange::Related);
+    }
+
+    /// The whole migration for `library_arrange`: a blob written before it
+    /// existed reads as Related, and the five values cross the wire as the
+    /// shell spells them, "None" included.
+    #[test]
+    fn library_arrange_defaults_for_old_blobs_and_spells_its_values() {
+        let old = r#"{"title_language":"English","library_tab":"Movies","library_sort":"MyScore","library_direction":"Desc","feed_sort":"Upcoming","library_show_watched":true}"#;
+        let p: Preferences = serde_json::from_str(old).unwrap();
+        assert_eq!(p.library_arrange, Arrange::Related);
+        assert_eq!(p.library_sort, Sort::MyScore);
+        for (a, wire) in [
+            (Arrange::Related, "Related"),
+            (Arrange::Type, "Type"),
+            (Arrange::Genre, "Genre"),
+            (Arrange::WatchState, "WatchState"),
+            (Arrange::Flat, "None"),
+        ] {
+            assert_eq!(serde_json::to_value(a).unwrap(), wire);
+            assert_eq!(serde_json::from_value::<Arrange>(wire.into()).unwrap(), a);
+        }
+        let back: Preferences = serde_json::from_value(
+            serde_json::to_value(Preferences {
+                library_arrange: Arrange::Flat,
+                ..Preferences::default()
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(back.library_arrange, Arrange::Flat);
     }
 }

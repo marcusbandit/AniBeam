@@ -1,7 +1,10 @@
-// The one rounded-shape primitive: a G2 squircle (Figma corner smoothing, reach semantics).
-// `radius` is the corner's REACH along each side, not the arc radius; the arc radius is
-// reach / (1 + smoothing), so a G2 corner and a plain corner of the same radius are the
-// same size. Reach is clamped to half the shorter side, so a pill is radius: height / 2.
+// The one shape primitive. The glass mosaic is all straight lines, so every Corner is square:
+// `radius` and `smoothing` are still accepted (every caller sets them) and ignored, and so
+// are flatTop and flatBottom. The squircle code below is kept, unreached, so a later
+// direction can bring corners back by restoring `reach`. `highlight` draws the glass's
+// 1 px top line inside the edge.
+//
+// Was: a G2 squircle (Figma corner smoothing, reach semantics), `radius` the corner's REACH.
 //
 // Cost: a plain corner (smoothing 0) with a flat colour is a Rectangle, which is what it
 // looks like anyway, and the Shape is never built. Only smoothing, a fill item, a gradient
@@ -37,10 +40,14 @@ Item {
     // flatBottom over one flatTop, read as one rounded stone (a poster over its plate).
     property bool flatTop: false
     property bool flatBottom: false
+    // The glass's top highlight: a 1 px line along the top edge, inside any border
+    property color highlight: "transparent"
+    // The corner reach actually drawn: always 0 (see the header)
+    readonly property real reach: 0
 
     readonly property real inset: borderWidth / 2
-    readonly property string pathData: plain ? "" : squircle(width, height, radius, smoothing, inset, flatTop, flatBottom)
-    readonly property bool plain: smoothing <= 0 && fillItem === null && fillGradient === null && dashed === 0 && !flatTop && !flatBottom
+    readonly property string pathData: plain ? "" : squircle(width, height, reach, 0, inset, false, false)
+    readonly property bool plain: fillItem === null && fillGradient === null && dashed === 0
     readonly property bool fillIsImage: fillItem !== null && fillItem.fillMode !== undefined && fillItem.implicitWidth > 0
 
     // One child, picked by what the corner has to paint: a Rectangle, a flat Shape, or a
@@ -48,16 +55,39 @@ Item {
     Rectangle {
         visible: root.plain
         anchors.fill: parent
-        radius: Math.max(0, Math.min(root.radius, root.width / 2, root.height / 2))
         color: root.color
         border.color: root.borderWidth > 0 ? root.borderColor : "transparent"
         border.width: root.borderWidth
-        antialiasing: radius > 0
+        antialiasing: false
     }
     Loader {
         anchors.fill: parent
         active: !root.plain
         sourceComponent: root.fillItem !== null ? filledShape : curvedShape
+    }
+
+    // The sheen: a lit pane catches light from above, a soft wash that fades out by
+    // `theme.sheenReach` of its height (capped so a tall pane's sheen stays a band at its
+    // top). Drawn only on panes with a highlight, so a quiet strip stays flat.
+    Rectangle {
+        visible: root.highlight.a > 0 && theme.sheen.a > 0
+        x: root.borderWidth; y: root.borderWidth
+        width: Math.max(0, root.width - root.borderWidth * 2)
+        height: Math.min(Math.max(0, root.height - root.borderWidth * 2) * theme.sheenReach, theme.sheenMax)
+        gradient: Gradient {
+            GradientStop { position: 0; color: theme.sheen }
+            GradientStop { position: 1; color: Qt.rgba(theme.sheen.r, theme.sheen.g, theme.sheen.b, 0) }
+        }
+        z: 0
+    }
+    // Above the fill (and a fill item), below the caller's children
+    Rectangle {
+        visible: root.highlight.a > 0
+        x: root.borderWidth; y: root.borderWidth
+        width: Math.max(0, root.width - root.borderWidth * 2)
+        height: 1
+        color: root.highlight
+        z: 0
     }
 
     Component {

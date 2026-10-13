@@ -159,11 +159,11 @@ Item {
                 }
                 Component {
                     id: labelStone
-                    Corner {
+                    // glass, every section alike: the accent only marks the countdown
+                    Tile {
                         readonly property bool accent: !!cell.section.accent
-                        radius: theme.radiusTile
-                        smoothing: theme.cornerSmoothing
-                        color: accent ? theme.plate(theme.accent) : theme.raised
+                        raised: true
+                        padding: 0
                         Column {
                             id: stoneCol
                             x: theme.space(4); y: theme.space(4)
@@ -195,7 +195,7 @@ Item {
                             font.pointSize: theme.typeDisplay * 1.6
                             font.weight: 700
                             font.variableAxes: ({ "wdth": 88, "wght": 700 })
-                            color: parent.accent ? theme.text : theme.textDim
+                            color: theme.textDim
                         }
                     }
                 }

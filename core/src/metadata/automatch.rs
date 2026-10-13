@@ -295,7 +295,7 @@ pub fn start(core: &Arc<Core>) -> u64 {
             })
             .await?;
         if reset > 0 {
-            ctx.emit(Level::Info, format!("auto-match v{AUTO_MATCH_VERSION}: re-attempting {reset} unmatched series"), EventBody::Notice);
+            ctx.emit(Level::Info, format!("Auto-match v{AUTO_MATCH_VERSION}: re-attempting {reset} unmatched series"), EventBody::Notice);
         }
         let order = owner.store.write_async(|c| prefs::load_provider_order(c)).await?;
 
@@ -326,7 +326,7 @@ pub fn start(core: &Arc<Core>) -> u64 {
                     let score = hit.score;
                     let title = hit.title;
                     let label = hit.provider.label();
-                    ctx.emit(Level::Info, format!("match ({label} {score:.2}): {folder} -> {title}"), EventBody::Notice);
+                    ctx.emit(Level::Info, format!("Match ({label} {score:.2}): {folder} -> {title}"), EventBody::Notice);
                     let dir = images_dir.clone();
                     let cards = owner.store.write_async(move |c| cards::cards_for(c, &dir, &[series])).await?;
                     if let Some(card) = cards.into_iter().next() {
@@ -336,7 +336,7 @@ pub fn start(core: &Arc<Core>) -> u64 {
                 Ok(None) => {
                     unmatched += 1;
                     stamp_attempt(&owner, series, time::now_secs()).await?;
-                    ctx.emit(Level::Info, format!("no match for {folder} (threshold {THRESHOLD})"), EventBody::Notice);
+                    ctx.emit(Level::Info, format!("No match for {folder} (threshold {THRESHOLD})"), EventBody::Notice);
                 }
                 // A rate limit the limiter could not ride out, or nothing
                 // answering at all, is the provider saying stop rather
@@ -370,7 +370,7 @@ pub fn start(core: &Arc<Core>) -> u64 {
 
         Ok(Finished {
             level: Level::Info,
-            message: format!("auto-match: {matched} matched, {unmatched} unmatched, {backfilled} backfilled"),
+            message: format!("Auto-match: {matched} matched, {unmatched} unmatched, {backfilled} backfilled"),
             body: EventBody::AutoMatchFinished { backfilled, matched, unmatched },
         })
     })

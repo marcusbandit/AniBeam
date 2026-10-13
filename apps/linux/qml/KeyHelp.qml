@@ -3,7 +3,7 @@
 // acts on has no line here, and every line here is a key that works. Escape or a press
 // outside closes it, and it holds the chrome open while it is up.
 //
-// A raised tile on a Blocker scrim, like every sheet. The groups sit side by side when the
+// A floating pane of glass on a Blocker scrim, like every sheet. The groups sit side by side when the
 // window has room for them and stack when it does not; past the window's height the tile
 // scrolls rather than spilling.
 import QtQuick
@@ -66,7 +66,8 @@ Item {
 
     Tile {
         id: panel
-        raised: true
+        color: theme.glassFloat
+        borderColor: theme.lineStrong
         padding: theme.space(6)
         anchors.centerIn: parent
         width: Math.min(parent.width - root.margin * 2, column.implicitWidth + padding * 2)

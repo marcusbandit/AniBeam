@@ -76,7 +76,7 @@ Item {
             var p = d.mapToItem(root, 0, 0)
             return root.originY >= p.y && root.originX >= p.x && root.originX <= p.x + d.width
         }
-        color: overRaised ? theme.raisedFloat : theme.raised
+        color: overRaised ? theme.raisedFloat : theme.glassFloat
         borderColor: theme.lineStrong
         // Takes presses on the padding and the gaps between rows, which would otherwise
         // reach the shield and close the menu; the rows are declared after it, on top.
@@ -97,7 +97,8 @@ Item {
                     height: theme.controlHeight
                     radius: theme.radiusInner(root.pad)
                     smoothing: theme.cornerSmoothing
-                    color: highlighted ? theme.tone(panel.color, theme.text, 0.07) : "transparent"
+                    color: highlighted ? theme.glassRaised : "transparent"
+                    Rectangle { visible: highlighted; width: 2; height: parent.height; color: theme.accent }
                     Row {
                         id: row
                         anchors.left: parent.left; anchors.leftMargin: theme.space(3)

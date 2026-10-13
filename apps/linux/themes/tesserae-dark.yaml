@@ -1,17 +1,24 @@
 system: "base16"
-name: "Tesserae Dark"
-author: "AniBeam tesserae design (slate ramp from bandit shell)"
+name: "Graphite Glass"
+author: "AniBeam: monochrome graphite under glass; the posters carry the colour"
 variant: "dark"
-accent: "base0D"
+accent: "base07"
+# The glass mosaic (DESIGN.md). base00 is the ground every pane of glass sits on. The
+# shell paints its surfaces as translucent glass over that ground, not as these opaque
+# slots: Tokens.qml derives the glass from the text colour at fixed alphas
+#   fill 0.035, raised/hover 0.06, pressed 0.09, edge 0.08, top highlight 0.14,
+#   player islands black at 0.55.
+# base01 and base02 are those fills composited on the ground, the opaque equivalents for
+# the code that needs a solid colour (ink contrast, the Rust palette).
 palette:
-  base00: "#181b1f"
-  base01: "#1d2126"
-  base02: "#262b31"
-  base03: "#3a4149"
-  base04: "#a5aeb8"
+  base00: "#0c0d10"
+  base01: "#16181b"
+  base02: "#1c1e21"
+  base03: "#2b2e33"
+  base04: "#8e959d"
   base05: "#eef2f5"
   base06: "#f5f7f9"
-  base07: "#ffffff"
+  base07: "#f2f4f6"
   base08: "#ff7a4d"
   base09: "#f0955a"
   base0A: "#e0b25a"

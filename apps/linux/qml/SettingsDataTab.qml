@@ -1,8 +1,11 @@
 // The Data tab: export and import of the library (the anibeam-export format), the image
 // cache with its size and a clear, and where AniBeam keeps its files. Export, import and the
 // clear are jobs; their results come back as exportFinished, importFinished and
-// imagesCleared, and each lands in its own tile.
+// imagesCleared, and each lands in its own tile. Export and Import sit beside About, the
+// pair squared off; the Images tile runs the width under them and takes the rest of the
+// viewport with a wall of the library's cached posters, as many as it holds.
 import QtQuick
+import QtQuick.Layouts
 import QtQuick.Dialogs
 import com.marcusrosado.AniBeam
 
@@ -13,16 +16,22 @@ SettingsTab {
     property var importSummary: null
     property var storage: ({ image_count: 0, image_bytes: 0 })
     property bool confirmingClear: false
+    property var posters: []                // the library's cached poster files, A to Z
+    function loadPosters() {
+        var r = Door.listLibrary("All", "", "Alpha", "Asc", false)
+        if (r.error) return
+        posters = (r.reply.series || []).filter(function(c) { return !!c.poster }).map(function(c) { return { id: c.id, title: c.title, poster: c.poster } })
+    }
     readonly property var about: Door.about || ({})
     function loadStorage() { var r = Door.getStorage(); if (!r.error) storage = r.reply }
     function path(url) { return decodeURIComponent(String(url).replace("file://", "")) }
     function dir(p) { var i = String(p || "").lastIndexOf("/"); return i > 0 ? p.slice(0, i) : p }
-    Component.onCompleted: loadStorage()
+    Component.onCompleted: { loadStorage(); loadPosters() }
     Connections {
         target: Door
         function onExportFinished(p) { tab.lastExport = p; frame.toast("Exported to " + p) }
         function onImportFinished(summary) { tab.importSummary = summary; frame.toast("Import finished") }
-        function onImagesCleared(removed) { tab.loadStorage(); frame.toast("Removed " + Fmt.plural(removed, "image", "images")) }
+        function onImagesCleared(removed) { tab.loadStorage(); tab.loadPosters(); frame.toast("Removed " + Fmt.plural(removed, "image", "images")) }
         function onJobFailed(job, kind, error) { if (kind === "Export" || kind === "Import" || kind === "ClearImages") frame.toast(error && error.message ? error.message : "That did not finish") }
     }
     function summaryLines(s) {
@@ -38,9 +47,11 @@ SettingsTab {
 
     SettingsPair {
         split: 1 / 2
+        evenColumns: true
         leftPanels: [ exportPanel, importPanel ]
-        rightPanels: [ storagePanel, aboutPanel ]
+        rightPanels: [ aboutPanel ]
     }
+    Loader { property bool grows: true; sourceComponent: storagePanel; Layout.fillWidth: true; Layout.fillHeight: true; Layout.minimumHeight: item ? item.implicitHeight : 0 }
     Component {
         id: exportPanel
         Panel {
@@ -58,7 +69,7 @@ SettingsTab {
     Component {
         id: importPanel
         Panel {
-            title: "Import"; icon: "file-down"; grows: true
+            title: "Import"; icon: "file-down"
             helper: "Reads an AniBeam export into this library. What is on disk wins; the file fills in the rest."
             Button { objectName: "data-import"; text: "Import a file"; icon: "upload"; onClicked: importDialog.open() }
             Column {
@@ -75,7 +86,8 @@ SettingsTab {
     Component {
         id: storagePanel
         Panel {
-            title: "Images"; icon: "image"
+            objectName: "data-images"
+            title: "Images"; icon: "image"; grows: true
             helper: "Posters, banners and portraits are kept on disk so the library works offline. Clearing them frees the space; they download again as pages need them."
             Tiles { stone: theme.raised; tiles: [{ value: String(tab.storage.image_count), caption: "Images" }, { value: Fmt.bytes(tab.storage.image_bytes || 0), caption: "On disk" }] }
             Item {
@@ -91,12 +103,56 @@ SettingsTab {
                     onKept: tab.confirmingClear = false
                 }
             }
+            // What the cache holds: the library's posters, whole rows only
+            stretch: Item {
+                id: wallBox
+                anchors.fill: parent
+                readonly property real gap: theme.space(2)
+                // The fewest columns (the largest posters) that fit every poster in the
+                // height; past the smallest poster, whole rows of the smallest
+                readonly property real minW: theme.space(20)
+                readonly property int cols: {
+                    var n = tab.posters.length, most = Math.max(1, Math.floor((width + gap) / (minW + gap)))
+                    for (var c = 1; c <= most; c++) {
+                        var cw = (width - (c - 1) * gap) / c, r = Math.ceil(n / c)
+                        if (r * Math.round(cw * 1.5) + (r - 1) * gap <= height) return c
+                    }
+                    return most
+                }
+                readonly property real w: (width - (cols - 1) * gap) / cols
+                readonly property real h0: Math.round(w * 1.5)
+                readonly property int rows: Math.min(Math.ceil(tab.posters.length / cols), Math.max(0, Math.floor((height + gap) / (h0 + gap))))
+                // The rows run to the tile's foot: each poster a little taller, cropped,
+                // while that stays under 1.9 to 1
+                readonly property real h: rows > 0 ? Math.min(w * 1.9, (height - (rows - 1) * gap) / rows) : h0
+                implicitHeight: tab.posters.length ? Math.round(minW * 1.5) : 0
+                clip: true
+                Grid {
+                    columns: wallBox.cols
+                    spacing: wallBox.gap
+                    Repeater {
+                        model: tab.posters.slice(0, wallBox.cols * wallBox.rows)
+                        // A plain clipped Image, not a Corner fill: the Shape fill left
+                        // whole runs of these cells blank in the captures
+                        Rectangle {
+                            id: cell
+                            required property var modelData
+                            width: wallBox.w; height: wallBox.h
+                            color: theme.raised
+                            clip: true
+                            Image { anchors.fill: parent; source: "file://" + cell.modelData.poster; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize: theme.posterDecodeSize }
+                            MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: frame.go("series", { id: cell.modelData.id }, cell.modelData.title) }
+                            Tooltip { text: cell.modelData.title }
+                        }
+                    }
+                }
+            }
         }
     }
     Component {
         id: aboutPanel
         Panel {
-            title: "About"; icon: "info"; grows: true
+            title: "About"; icon: "info"
             SettingRow { label: "Version"; Label { text: tab.about.version || ""; role: "ledger" } }
             Repeater {
                 model: [["Library database", "db_path", true], ["Data", "data_dir", false], ["Settings", "config_dir", false], ["Cache", "cache_dir", false]]

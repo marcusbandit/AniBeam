@@ -1,6 +1,7 @@
-// A sunken pill showing the current value; opens a raised tile listing the options, rows
-// highlighted on hover, the current one in the accent. No chevron: an appended arrow on a
-// control is a killed idiom (DESIGN.md), the pill's hover edge and the focus ring say it opens.
+// A square pane of glass showing the current value; opens a floating pane listing the
+// options, rows highlighted on hover, the current one in the accent. No chevron: an appended
+// arrow on a control is a killed idiom (DESIGN.md), the hover edge and the accent focus
+// line say it opens.
 //
 // The list opens scrolled to the current row, under the pill, or above it when the window has
 // more room there, and never taller than the room it has, so it never runs off the window.
@@ -32,9 +33,10 @@ Corner {
     implicitHeight: theme.controlHeight
     radius: height / 2
     smoothing: theme.cornerSmoothing
-    color: hover.containsMouse ? theme.tone(theme.tileSunken, theme.text, 0.03) : theme.tileSunken
-    borderColor: activeFocus || pop.opened ? theme.focusRing : (hover.containsMouse ? theme.lineStrong : theme.line)
-    borderWidth: activeFocus || pop.opened ? theme.space(0.5) : 1
+    color: hover.containsMouse || pop.opened ? theme.raised : theme.tile
+    borderColor: hover.containsMouse || activeFocus || pop.opened ? theme.lineStrong : theme.line
+    borderWidth: 1
+    Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 2; color: theme.focusRing; visible: root.activeFocus || pop.opened }
     activeFocusOnTab: root.interactive
 
     function open() {
@@ -150,9 +152,10 @@ Corner {
             objectName: root.objectName !== "" ? root.objectName + "-popup" : ""
             radius: theme.radiusTile
             smoothing: theme.cornerSmoothing
-            color: theme.raised
-            borderColor: theme.line
+            color: theme.glassFloat
+            borderColor: theme.lineStrong
             borderWidth: 1
+            highlight: theme.glassHighlight
             ListView {
                 id: list
                 anchors.fill: parent
@@ -185,7 +188,8 @@ Corner {
                     height: pop.rowHeight
                     radius: theme.radiusInner(pop.inset)
                     smoothing: theme.cornerSmoothing
-                    color: index === pop.hi ? theme.raisedHover : "transparent"
+                    color: index === pop.hi ? theme.glassRaised : "transparent"
+                    Rectangle { visible: index === root.index; width: 2; height: parent.height; color: theme.accent }
                     Label {
                         anchors.left: parent.left
                         anchors.leftMargin: theme.space(3)

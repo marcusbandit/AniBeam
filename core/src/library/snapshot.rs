@@ -119,6 +119,10 @@ pub struct Snapshot {
     pub resume: HashMap<(u64, String), (f64, f64)>,
     /// AniList ids with at least one relation row.
     pub graph_seeds: HashSet<u64>,
+    /// The franchise each grouped series belongs to, by series id. Always
+    /// computed over the whole library, scoped load or not, so a job's
+    /// `SeriesChanged` card carries the same tag a list does.
+    pub franchises: HashMap<u64, FranchiseTag>,
     pub images_dir: String,
     /// Series whose media names a cover the image cache has no row for.
     /// The read hands this to the cache, which decides whether it is worth
@@ -202,6 +206,7 @@ impl Snapshot {
             completed: HashMap::new(),
             resume: HashMap::new(),
             graph_seeds: HashSet::new(),
+            franchises: HashMap::new(),
             images_dir: images_dir.to_string_lossy().into_owned(),
             gaps: Vec::new(),
         };
@@ -228,6 +233,7 @@ impl Snapshot {
         snap.load_tracker_entries(conn, scope.map(|_| media_ids.as_slice()))?;
         snap.load_history(conn, scoped_series)?;
         snap.load_graph_seeds(conn, scope.map(|_| anilist_ids.as_slice()))?;
+        snap.franchises = crate::franchise::groups::load(conn, snap.lang)?;
         Ok(snap)
     }
 

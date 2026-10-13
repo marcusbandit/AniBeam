@@ -176,7 +176,7 @@ fn the_page_paints_the_cache_and_the_refresh_fills_it_behind() {
         panic!("{done:?}")
     };
     assert_eq!(done.level, Level::Debug);
-    assert_eq!(done.message, "watching list refreshed: 2 entries");
+    assert_eq!(done.message, "Watching list refreshed: 2 entries");
     let asked = http.requests().len();
     let (cached, again) = watching(&core);
     assert_eq!(cached.entries, list.entries);

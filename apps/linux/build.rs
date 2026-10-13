@@ -27,6 +27,7 @@ fn main() {
             .qml_file("qml/SliderRow.qml")
             .qml_file("qml/SettingRow.qml")
             .qml_file("qml/Panel.qml")
+            .qml_file("qml/FillRows.qml")
             .qml_file("qml/Frame.qml")
             .qml_file("qml/Nav.qml")
             .qml_file("qml/Menu.qml")

@@ -11,6 +11,8 @@
 // grows it is the pair's full height, otherwise its natural height. The pair itself grows
 // in the tab when either column does, and never shrinks under its natural height. Stacked,
 // the spare height goes to the trailing column when it grows, else to the leading one.
+// `evenColumns` squares the pair off without asking the tab for height: side by side, the
+// shorter column's last panel stretches to the taller column's foot.
 import QtQuick
 import QtQuick.Layouts
 
@@ -21,6 +23,7 @@ Item {
     property real rowGap: theme.grout
     property var leftPanels: []
     property var rightPanels: []
+    property bool evenColumns: false
 
     readonly property bool twoUp: width >= 2 * theme.space(100) + columnGap
     readonly property real leftW: twoUp ? Math.round((width - columnGap) * split) : width
@@ -45,7 +48,7 @@ Item {
     ColumnLayout {
         id: leadCol
         width: pair.leftW
-        height: pair.twoUp ? (pair.leadGrows ? pair.height : implicitHeight)
+        height: pair.twoUp ? (pair.leadGrows || pair.evenColumns ? pair.height : implicitHeight)
                            : implicitHeight + (pair.leadGrows && !pair.trailGrows ? pair.extra : 0)
         spacing: pair.rowGap
         Repeater {
@@ -53,10 +56,11 @@ Item {
             model: pair.leftPanels
             Loader {
                 required property var modelData
+                required property int index
                 sourceComponent: modelData
                 onLoaded: pair.loaded++
                 Layout.fillWidth: true
-                Layout.fillHeight: item ? item.grows === true : false
+                Layout.fillHeight: item ? item.grows === true || (pair.evenColumns && pair.twoUp && index === leadRep.count - 1) : false
                 Layout.minimumHeight: item ? item.implicitHeight : 0
             }
         }
@@ -66,7 +70,7 @@ Item {
         x: pair.twoUp ? pair.leftW + pair.columnGap : 0
         y: pair.twoUp ? 0 : leadCol.height + pair.rowGap
         width: pair.twoUp ? pair.width - pair.leftW - pair.columnGap : pair.width
-        height: pair.twoUp ? (pair.trailGrows ? pair.height : implicitHeight)
+        height: pair.twoUp ? (pair.trailGrows || pair.evenColumns ? pair.height : implicitHeight)
                            : implicitHeight + (pair.trailGrows ? pair.extra : 0)
         spacing: pair.rowGap
         Repeater {
@@ -74,10 +78,11 @@ Item {
             model: pair.rightPanels
             Loader {
                 required property var modelData
+                required property int index
                 sourceComponent: modelData
                 onLoaded: pair.loaded++
                 Layout.fillWidth: true
-                Layout.fillHeight: item ? item.grows === true : false
+                Layout.fillHeight: item ? item.grows === true || (pair.evenColumns && pair.twoUp && index === trailRep.count - 1) : false
                 Layout.minimumHeight: item ? item.implicitHeight : 0
             }
         }
