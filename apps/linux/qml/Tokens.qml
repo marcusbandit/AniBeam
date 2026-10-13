@@ -42,6 +42,9 @@ Item {
     readonly property color accentText: token("accent_text")
     // The soft fills are glass tinted by the hue, translucent like every other pane
     readonly property color accentSoft: Qt.rgba(accent.r, accent.g, accent.b, dark ? 0.16 : 0.14)
+    // The edge of a pane filled with the soft accent (the rail's active page, a switch's
+    // thumb, a list's current row)
+    readonly property color accentEdge: Qt.rgba(accent.r, accent.g, accent.b, 0.5)
     readonly property color redSoft: Qt.rgba(red.r, red.g, red.b, dark ? 0.16 : 0.14)
     readonly property color focusRing: token("focus")
     readonly property color red: token("red")
@@ -123,19 +126,22 @@ Item {
     // Spacing, radii, type, motion
     readonly property real densityFactor: Theme.densityFactor
     function space(n) { return Math.round(4 * densityFactor * n) }
-    // Straight lines everywhere: every radius is 0 and nothing is smoothed. The names stay
-    // for their callers (Corner squares whatever it is given anyway).
-    readonly property real cornerBase: 0
+    // Rounded panes, plain circular corners (no squircle smoothing): the tile radius is the
+    // one every pane takes, the smaller steps are for what nests inside one, and a control
+    // asks for height / 2, a pill. All of it scales with density.
     readonly property real cornerSmoothing: 0
-    readonly property real radiusSm: 0
-    readonly property real radiusMd: 0
-    readonly property real radiusLg: 0
-    readonly property real radiusXl: 0
-    // The mosaic's geometry: one 2 px joint between every pair of panes, and the page's
-    // own margin is the same joint.
-    readonly property real grout: 2
-    readonly property real radiusTile: 0
-    function radiusInner(padding) { return 0 }
+    readonly property real radiusTile: space(3.5)
+    readonly property real cornerBase: radiusTile
+    readonly property real radiusSm: space(1.5)
+    readonly property real radiusMd: space(2.5)
+    readonly property real radiusLg: space(4)
+    readonly property real radiusXl: space(5)
+    // The mosaic's geometry: one joint between every pair of panes, wide enough for the
+    // panes to read as set apart, and the page's own margin is the same joint.
+    readonly property real grout: space(3)
+    // The radius of a shape nested `padding` inside a tile, so the two curves stay
+    // concentric; never below the small step so a nested row still reads as rounded.
+    function radiusInner(padding) { return Math.max(radiusSm, radiusTile - padding) }
     readonly property int posterWidth: Theme.posterWidth
     // The one size posters decode at, in device pixels: a grid card is laid out between the
     // poster width and about a quarter wider (the columns stretch to fill the row), so the

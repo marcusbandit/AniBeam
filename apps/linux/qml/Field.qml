@@ -1,5 +1,5 @@
-// A one line text field: a square pane of glass with its edge, placeholder in faint text,
-// an accent line along the foot on focus. `mono` sets the ledger cut, tabular figures for numbers and codes.
+// A one line text field: a pane of glass with its edge, placeholder in faint text, the
+// edge in the accent on focus. `mono` sets the ledger cut, tabular figures for numbers and codes.
 import QtQuick
 
 Corner {
@@ -14,10 +14,9 @@ Corner {
     radius: Math.min(theme.radiusTile, height / 2)
     smoothing: theme.cornerSmoothing
     color: input.activeFocus ? theme.raised : theme.tile
-    borderColor: hover.containsMouse || input.activeFocus ? theme.lineStrong : theme.line
+    // Focus is the accent edge
+    borderColor: input.activeFocus ? theme.focusRing : hover.containsMouse ? theme.lineStrong : theme.line
     borderWidth: 1
-    // Focus is the accent line along the foot
-    Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 2; color: theme.focusRing; visible: input.activeFocus }
 
     function focusInput() { input.forceActiveFocus() }
 

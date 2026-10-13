@@ -1,10 +1,11 @@
-// One series as a pane of the glass mosaic: the poster full-bleed, cropped to the tile, with
-// everything written on it. A scrim rises from the poster's foot (near-black, clear by
+// One series as a pane of the glass mosaic: the poster full-bleed, cropped to the rounded
+// tile, with everything written on it. A scrim rises from the poster's foot (near-black, clear by
 // theme.scrimReach of the height; the only gradient in the shell), and on it, bottom left,
 // the title (two lines at most) over one dim ledger line, the score bottom right. The
 // episode code is a small square glass tag top left; Hidden and the ghost's AniList tag sit
-// top right. Progress is a 2 px line along the very bottom edge. Hover draws a 1 px accent
-// inner outline and deepens the scrim; press scales 0.98.
+// top right. Progress is a short rounded line along the foot, inside the padding. Hover
+// draws a 1 px accent outline, lifts the tile a touch and deepens the scrim; press scales
+// 0.98.
 //
 // The tile's size comes from the layout, never from the image: `tileHeight` when the
 // mosaic sets one, else a 2:3 tile at `posterWidth`. `hero` is the 2x2 tile: the title in
@@ -44,7 +45,8 @@ Item {
     signal opened()
     signal played()
 
-    readonly property real pad: theme.space(hero ? 4 : 2.5)
+    readonly property real pad: theme.space(hero ? 5 : 3)
+    readonly property real radius: theme.radiusTile
     readonly property real pillHeight: Math.ceil(ledgerMetrics.height + theme.space(1))
     readonly property real minPlate: 0
     readonly property real heroPlate: 0
@@ -128,8 +130,10 @@ Item {
         }
     }
 
-    // A small square tag of dark glass on the poster
+    // A small rounded tag of dark glass on the poster
     component PosterTag: Rectangle {
+        radius: theme.radiusSm
+        antialiasing: true
         property string text: ""
         property color ink: theme.onPoster
         implicitWidth: tagLabel.implicitWidth + theme.space(root.hero ? 2.5 : 2) * 2
@@ -155,8 +159,10 @@ Item {
         running: Math.abs(root.lift - root.liftTarget) > 0.002
         onTriggered: root.lift = theme.follow(root.lift, root.liftTarget, frameTime)
     }
-    scale: press.pressed ? 0.98 : 1
-    Behavior on scale { enabled: !theme.reducedMotion; NumberAnimation { duration: theme.motionFast } }
+    // Hover lifts the tile a touch (smoothed with `lift`); a press pulls it back under
+    scale: press.pressed ? 0.98 : 1 + 0.015 * lift
+    Behavior on scale { enabled: !theme.reducedMotion && press.pressed; NumberAnimation { duration: theme.motionFast } }
+    z: lift > 0.01 ? 1 : 0
 
     HoverHandler {
         id: hoverer
@@ -181,6 +187,8 @@ Item {
     // there is none
     Rectangle {
         anchors.fill: parent
+        radius: root.radius
+        antialiasing: true
         color: theme.tile
         border.color: theme.line
         border.width: 1
@@ -195,20 +203,28 @@ Item {
         font.pointSize: theme.typeSmall
     }
 
-    // ---- The poster: full-bleed, cropped to the tile. Built only while live; decoded at the
+    // ---- The poster: full-bleed, cropped to the rounded tile through a Corner that samples
+    // the Image's own texture (no offscreen pass). Built only while live; decoded at the
     // shared poster size (the pool's, so a warmed poster is a cache hit, not a second
     // decode), a hero at twice it.
     Loader {
         anchors.fill: parent
         active: root.live && !!root.item.poster
-        sourceComponent: Image {
-            source: "file://" + root.item.poster
-            sourceSize: root.hero ? Qt.size(theme.posterDecodeSize.width * 2, theme.posterDecodeSize.height * 2) : theme.posterDecodeSize
-            fillMode: Image.PreserveAspectCrop
-            smooth: true
-            asynchronous: true
-            cache: true
-            opacity: root.ghost ? 0.6 : 1
+        opacity: root.ghost ? 0.6 : 1
+        sourceComponent: Corner {
+            radius: root.radius
+            fillItem: posterImage
+            Image {
+                id: posterImage
+                visible: false
+                anchors.fill: parent
+                source: "file://" + root.item.poster
+                sourceSize: root.hero ? Qt.size(theme.posterDecodeSize.width * 2, theme.posterDecodeSize.height * 2) : theme.posterDecodeSize
+                fillMode: Image.PreserveAspectCrop
+                smooth: true
+                asynchronous: true
+                cache: true
+            }
         }
     }
 
@@ -219,6 +235,8 @@ Item {
         width: parent.width
         height: Math.min(parent.height, Math.max(parent.height * (theme.scrimReach + 0.06 * root.lift),
                                                  foot.height + root.pad * 2 + theme.space(6)))
+        radius: root.radius
+        antialiasing: true
         gradient: Gradient {
             GradientStop { position: 0; color: "transparent" }
             GradientStop { position: 0.45; color: Qt.rgba(theme.posterScrim.r, theme.posterScrim.g, theme.posterScrim.b, theme.posterScrim.a * (0.7 + 0.12 * root.lift)) }
@@ -244,7 +262,7 @@ Item {
         id: foot
         x: root.pad
         width: root.width - root.pad * 2
-        y: root.height - root.pad - height - (strip.visible ? strip.height : 0)
+        y: root.height - root.pad - height - (strip.visible ? strip.height + theme.space(1) : 0)
         spacing: theme.space(root.hero ? 1.5 : 1)
 
         Label {
@@ -346,22 +364,26 @@ Item {
         }
     }
 
-    // ---- Progress: a 2 px line along the very bottom edge, aired under watched
+    // ---- Progress: a rounded 3 px line along the foot, inside the padding, aired under
+    // watched
     Item {
         id: strip
         visible: root.hasWatched && !root.ghost
-        anchors.bottom: parent.bottom
-        width: parent.width
-        height: 2
-        Rectangle { anchors.fill: parent; color: Qt.rgba(1, 1, 1, 0.12) }
-        Rectangle { width: parent.width * root.airedPct; height: parent.height; color: Qt.rgba(1, 1, 1, 0.34) }
-        Rectangle { width: parent.width * root.watchedPct; height: parent.height; color: theme.accent }
+        x: root.pad
+        y: parent.height - root.pad * 0.6 - height
+        width: parent.width - root.pad * 2
+        height: 3
+        Rectangle { anchors.fill: parent; radius: height / 2; color: Qt.rgba(1, 1, 1, 0.14) }
+        Rectangle { width: parent.width * root.airedPct; height: parent.height; radius: height / 2; color: Qt.rgba(1, 1, 1, 0.34) }
+        Rectangle { width: parent.width * root.watchedPct; height: parent.height; radius: height / 2; color: theme.accent }
     }
 
-    // ---- The 1 px accent inner outline on hover
+    // ---- The 1 px accent outline on hover
     Rectangle {
         anchors.fill: parent
         visible: root.lift > 0.01
+        radius: root.radius
+        antialiasing: true
         color: "transparent"
         border.width: 1
         border.color: Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, root.lift)

@@ -5,9 +5,9 @@ portrait panel, a local folder of series, mpv in the window, AniList on the side
 is getting from launch to the next episode in one click. Its second is keeping the library
 tidy.
 
-The direction is a glass mosaic: futuristic, quiet, all straight lines. Every surface in the
-app is a square pane, set into one grid with one constant 2 px joint (the grout). Three things
-carry it:
+The direction is a glass mosaic, aired out: futuristic, quiet, with room between the panes.
+Every surface in the app is a rounded pane, set into one grid with one constant joint (the
+grout, 12 px at normal density) that is also the page's margin. Three things carry it:
 
 - **The posters are the colour, and the titles live on them.** A series is its poster,
   full-bleed and cropped to the tile, with the title and one ledger line written on a dark
@@ -69,26 +69,36 @@ Type: **Archivo**, one variable family (`wdth` 62 to 125, `wght` 100 to 900):
 Four sizes only (small 0.85, normal 1, large 1.5, display 2.2 of the system size); widths and
 weights do the rest. No monospace, no ALL CAPS.
 
-Geometry: straight lines everywhere. Every radius is 0: tiles, posters, buttons, chips,
-segmented controls, fields, menus, tooltips, sheets, the rail, the player's islands, even the
-status squares and slider handles. `Corner.qml` squares whatever it is given (its `radius` and
-`smoothing` are accepted and ignored; `highlight` draws the top line) and stays a plain
-Rectangle unless it holds a fill item. Grout 2 px (`theme.grout`), also the page's margin. No
-shadows and no live blur (the frosted glass cost too much): the glass is translucency and
-hairlines. **Gradients are allowed for the poster scrim only.**
+Geometry: rounded panes, plain circular corners, no squircle smoothing. Every tile, poster,
+menu, tooltip, sheet, rail tile and player island takes `theme.radiusTile` (3.5 spacing units,
+14 px at normal density); a control (button, chip, segmented switch, dropdown, the title
+language square) is a pill at half its height; a row nested inside a tile takes
+`theme.radiusInner(padding)`, so the two curves stay concentric. `Corner.qml` draws the radius
+it is given (`smoothing` is accepted and ignored; `highlight` draws the top line, inset past
+the curve) and stays a plain Rectangle unless it holds a fill item. Grout `theme.grout` (3
+spacing units, 12 px at normal density), also the page's margin, so everything scales with
+density together. No shadows and no live blur (the frosted glass cost too much): the glass is
+translucency and hairlines. **Gradients are allowed for the poster scrim only.**
 
-Controls: a button is a raised glass pane (edge and highlight), primary is an accent fill with
-ground-coloured ink. A segmented switch is square cells in a glass pane, the selected cell a
-pressed-glass fill with a 1 px accent underline. Fields and dropdowns are glass with a 2 px
-accent line along the foot on focus. The rail's active page is a raised pane with an accent
-glyph and a 2 px accent bar on its left edge; a menu's highlighted row takes the same bar.
+This aired-out pass (2026-10-13) supersedes the 2 px joint and the square geometry of the
+first glass mosaic: the panes read as set apart now, and the one place that was straight-line
+chrome, the accent bars along a pane's edge, became filled states (below).
+
+Controls: a button is a raised glass pill (edge and highlight), primary is an accent fill with
+ground-coloured ink. A segmented switch is cells in a glass pill, the selected cell carried
+by a thumb of soft accent (`theme.accentSoft`) with an accent edge (`theme.accentEdge`).
+Fields and dropdowns are glass whose edge turns to the accent on focus. The rail's active page
+is a pane filled with the soft accent, its glyph and edge in the accent; a list's current row
+(dropdown, score picker, track picker) takes the same soft fill, and a hovered row the raised
+glass. No bars along an edge: a state is a fill, never a line.
 
 The poster tile (`Card.qml`): the poster full-bleed (`PreserveAspectCrop`, sized by the
-layout, never by the image), the scrim, then bottom left the title (two lines at most) over one
-dim ledger line (progress, a page's own line, or "Episode 3" with a clock and the countdown in
-accent text, or "12 files"); the score bottom right; the episode code a small square tag top
-left; progress a 2 px accent line along the very bottom edge. Hover: a 1 px accent inner
-outline and a deeper scrim; press scales 0.98. The hero takes the display cut and a square
+layout, never by the image, clipped to the tile's radius through a Corner fill), the scrim,
+then bottom left the title (two lines at most) over one dim ledger line (progress, a page's
+own line, or "Episode 3" with a clock and the countdown in accent text, or "12 files"); the
+score bottom right; the episode code a small rounded tag top left; progress a rounded 3 px
+accent line along the foot, inside the padding. Hover: a 1 px accent outline, a lift of 1.5
+percent and a deeper scrim; press scales 0.98. The hero takes the display cut and a square
 Play button. A ghost (Watching's AniList-only entries) shows its poster at 60 percent.
 
 Motion: exponential smoothing at rate 14 for anything tracking a target (bandit shell's value).
@@ -195,8 +205,8 @@ rail  header: one unit tall, whole column spans, spare columns to the title (cou
   nothing to show is its header and one tile filling the rest of the viewport, saying what
   to do.
 - The wall is one Flickable; a tile is built only within a screen of the viewport.
-- The rail is a column of square tiles, icon over label; the active one is raised, its
-  glyph in smalt. No accent bar.
+- The rail is a column of rounded tiles, icon over label; the active one is filled with
+  the soft accent, its glyph in smalt. No accent bar.
 - The series page is a bento: banner across the top, poster, title tile, fact tiles (score,
   episodes, status, next airing), synopsis, tags, the episode ledger, relations.
 
@@ -206,7 +216,8 @@ rail  header: one unit tall, whole column spans, spare columns to the title (cou
 - Middle-dot meta joins ("A · B · C"): plain sentences instead.
 - Appended arrows on controls.
 - The lobby's lightbox halo and the frosted glass (a live blur of the whole page every frame).
-- Rounded corners and pills, anywhere.
+- Squircles (G2 corner smoothing): a corner is a plain arc.
+- Accent bars along a pane's edge: a state is a fill.
 - Poster-toned plates, and any surface tinted by a hue that is not saying something.
 - Gradients, except the poster scrim.
 

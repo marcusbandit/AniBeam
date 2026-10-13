@@ -1,7 +1,7 @@
 // The left rail: a column of tiles set in the grout. The brand tile at the top, one tile per
 // page (a Lucide glyph over a short label), and a foot tile with the title-language switch
-// and the version. Every tile is a square pane of glass; the active page's is raised, its
-// glyph in the accent, with a 2 px accent bar along its left edge. The tiles are as wide as the widest label (or the switch) needs at the
+// and the version. Every tile is a rounded pane of glass; the active page's is filled with
+// the soft accent, its glyph and edge in the accent. The tiles are as wide as the widest label (or the switch) needs at the
 // current density, so a label never clips.
 import QtQuick
 import com.marcusrosado.AniBeam
@@ -74,11 +74,10 @@ Item {
                 height: root.cellHeight
                 radius: theme.radiusTile
                 smoothing: theme.cornerSmoothing
-                color: on || m.containsMouse ? theme.raised : theme.tile
-                borderColor: entry.activeFocus ? theme.focusRing : (m.containsMouse || on ? theme.lineStrong : theme.line)
+                color: on ? theme.accentSoft : m.containsMouse ? theme.raised : theme.tile
+                borderColor: entry.activeFocus ? theme.focusRing : on ? theme.accentEdge : (m.containsMouse ? theme.lineStrong : theme.line)
                 borderWidth: 1
-                highlight: theme.glassHighlight
-                Rectangle { visible: entry.on; width: 2; height: parent.height; color: theme.accent }
+                highlight: on ? "transparent" : theme.glassHighlight
                 scale: m.pressed ? 0.98 : 1
                 activeFocusOnTab: true
                 Keys.onReturnPressed: root.picked(entry.index)
@@ -115,7 +114,7 @@ Item {
         anchors.bottom: parent.bottom
         anchors.bottomMargin: theme.grout
         width: root.tileWidth
-        height: foot.implicitHeight + root.pad * 2
+        height: foot.implicitHeight + root.pad * 3
         radius: theme.radiusTile
         smoothing: theme.cornerSmoothing
         color: theme.tile
