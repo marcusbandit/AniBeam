@@ -40,6 +40,8 @@ Item {
     readonly property bool isMovie: card.kind === "Movie"
     readonly property bool hasTracker: !!(card.match_info && (card.match_info.anilist_id || card.match_info.mal_id))
     readonly property bool matched: !!card.match_info
+    // The site the record came from, named on the button that opens it
+    readonly property string siteName: frame.providerName(card.match_info ? card.match_info.provider : "Anilist") || "AniList"
     readonly property var titles: card.titles || ({})
     // The other language's title under the display one, then the native script
     readonly property string altTitle: {
@@ -383,13 +385,15 @@ Item {
                         }
                     }
                 }
-                // The quiet row: rate, hide, AniList, rescan
+                // The quiet row: rate (on a tracker), hide, the record's site, rescan
                 Flow {
                     width: parent.width
                     spacing: theme.space(2)
                     Button {
                         id: rateButton
                         objectName: "fact-mine"
+                        // A score is the tracker's: a series no tracker carries (a TVmaze match) has none to set
+                        visible: page.hasTracker
                         small: true; ghost: true
                         icon: "star"
                         text: page.hasScore ? "Your score " + Fmt.score(card.my_score) : "Rate"
@@ -401,9 +405,9 @@ Item {
                         text: card.hidden ? "Unhide" : "Hide"
                         icon: card.hidden ? "eye" : "eye-off"
                         onClicked: { var r = Door.setHidden(props.id, !card.hidden); if (r.error) frame.toast(r.error.message) }
-                        Tooltip { text: "Hidden from every list, and tracker sync stops" }
+                        Tooltip { text: page.hasTracker ? "Hidden from every list, and tracker sync stops" : "Hidden from every list" }
                     }
-                    Button { visible: !!(page.detail && page.detail.site_url); small: true; ghost: true; text: "AniList"; icon: "external-link"; onClicked: Qt.openUrlExternally(page.detail.site_url) }
+                    Button { objectName: "series-site"; visible: !!(page.detail && page.detail.site_url); small: true; ghost: true; text: page.siteName; icon: "external-link"; onClicked: Qt.openUrlExternally(page.detail.site_url) }
                     Button { small: true; ghost: true; text: "Rescan"; icon: "refresh-cw"; onClicked: page.rescan() }
                 }
             }
@@ -539,7 +543,7 @@ Item {
                     Heading { text: "Match" }
                     Label {
                         width: Math.min(parent.width, theme.space(140))
-                        text: "Not matched to AniList yet, so there is no poster, synopsis or tracking. Find the record it belongs to."
+                        text: "Not matched yet, so there is no poster, synopsis or tracking. Find the record it belongs to on AniList or TVmaze."
                         role: "ui"; color: theme.textDim
                         wrapMode: Text.Wrap
                     }
