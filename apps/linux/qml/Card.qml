@@ -5,7 +5,10 @@
 // episode code is a small square glass tag top left; Hidden and the ghost's AniList tag sit
 // top right. Progress is a short rounded line along the foot, inside the padding. Hover
 // draws a 1 px accent outline, lifts the tile a touch and deepens the scrim; press scales
-// 0.98.
+// 0.98. Keyboard focus draws that same outline at full strength and a 2 px ring in
+// theme.focusRing outside the tile, so focus never reads as hover; Return opens the series,
+// Space plays its next episode, and the arrows are the page's (GridKeys through PageScroll).
+// A click gives the tile focus so the arrows go on from there; hover never does.
 //
 // The tile's size comes from the layout, never from the image: `tileHeight` when the
 // mosaic sets one, else a 2:3 tile at `posterWidth`. `hero` is the 2x2 tile: the title in
@@ -44,6 +47,12 @@ Item {
     property bool live: true
     signal opened()
     signal played()
+    // A stop for the page's arrow keys (GridKeys), and a Tab stop after the page's controls
+    readonly property bool gridStop: true
+    activeFocusOnTab: true
+    Keys.onReturnPressed: root.opened()
+    Keys.onEnterPressed: root.opened()
+    Keys.onSpacePressed: root.played()
 
     readonly property real pad: theme.space(hero ? 5 : 3)
     readonly property real radius: theme.radiusTile
@@ -165,7 +174,7 @@ Item {
     // Hover lifts the tile a touch (smoothed with `lift`); a press pulls it back under
     scale: press.pressed ? 0.98 : 1 + 0.015 * lift
     Behavior on scale { enabled: !theme.reducedMotion && press.pressed; NumberAnimation { duration: theme.motionFast } }
-    z: lift > 0.01 ? 1 : 0
+    z: lift > 0.01 || activeFocus ? 1 : 0
 
     HoverHandler {
         id: hoverer
@@ -183,6 +192,7 @@ Item {
         id: press
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
+        onPressed: root.forceActiveFocus()
         onClicked: { tipIntent.stop(); frame.hideTip(); root.opened() }
     }
 
@@ -384,14 +394,25 @@ Item {
         Rectangle { width: parent.width * Math.min(1, root.watchedPct); height: parent.height; radius: height / 2; color: theme.accentOnPoster }
     }
 
-    // ---- The 1 px accent outline on hover
+    // ---- The 1 px accent outline on hover, at full strength on focus
     Rectangle {
         anchors.fill: parent
-        visible: root.lift > 0.01
+        visible: root.lift > 0.01 || root.activeFocus
         radius: root.radius
         antialiasing: true
         color: "transparent"
         border.width: 1
-        border.color: Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, root.lift)
+        border.color: Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, root.activeFocus ? 1 : root.lift)
+    }
+    // ---- The focus ring: 2 px outside the tile, so it is never mistaken for hover
+    Rectangle {
+        anchors.fill: parent
+        anchors.margins: -2
+        visible: root.activeFocus
+        radius: root.radius + 2
+        antialiasing: true
+        color: "transparent"
+        border.width: 2
+        border.color: theme.focusRing
     }
 }

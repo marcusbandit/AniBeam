@@ -18,6 +18,8 @@ Item {
     function focusSearch() { scroll.contentY = 0; search.focusInput() }
     // "escape" is reserved by the QML compiler; the frame's hook is named escapePressed.
     function escapePressed() { return false }
+    // The arrows with nothing focused go to the scroll's grid keys (Down lands on the first card)
+    Keys.onPressed: function(event) { scroll.keyPressed(event) }
 
     readonly property var tabs: ["All", "Series", "Movies"]
     readonly property var sorts: [["Alpha", "A to Z"], ["LastViewed", "Last viewed"], ["Progress", "Progress"], ["CommunityScore", "Average score"], ["MyScore", "My score"]]

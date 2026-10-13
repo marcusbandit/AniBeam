@@ -15,6 +15,9 @@ Item {
     property string title: "Home"
     property alias scrollY: scroll.contentY
     function escapePressed() { return false }
+    // The arrows with nothing focused go to the scroll's grid keys (Down lands on the hero's
+    // button or the first card)
+    Keys.onPressed: function(event) { scroll.keyPressed(event) }
 
     property real nowMs: Date.now()
     property var shelf: []        // the library, last viewed first
@@ -218,6 +221,7 @@ Item {
                 model: shelfBox.shown
                 Card {
                     required property var modelData
+                    objectName: "card-" + modelData.id   // a --drive target
                     item: modelData
                     posterWidth: shelfBox.cardWidth
                     nowMs: page.nowMs
@@ -385,6 +389,9 @@ Item {
                     spacing: theme.space(3)
                     Button {
                         objectName: "home-resume"
+                        // The top of the page's vertical key order: Down from here lands on
+                        // the first card, Up from the first row comes back here
+                        readonly property bool gridStop: true
                         primary: true
                         tint: hero.inkAccent
                         icon: "play"
@@ -475,6 +482,7 @@ Item {
                             model: day.modelData.cards
                             Card {
                                 required property var modelData
+                                objectName: "week-card-" + modelData.id
                                 item: modelData
                                 posterWidth: day.parent.cardWidth
                                 nowMs: page.nowMs

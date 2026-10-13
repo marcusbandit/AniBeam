@@ -37,6 +37,7 @@ fn main() {
             .qml_file("qml/SectionHeader.qml")
             .qml_file("qml/PagePlaceholder.qml")
             .qml_file("qml/ThinScrollBar.qml")
+            .qml_file("qml/GridKeys.qml")
             .qml_file("qml/PageScroll.qml")
             .qml_file("qml/Rail.qml")
             .qml_file("qml/StatusStrip.qml")

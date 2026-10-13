@@ -1,6 +1,10 @@
 // The scrolling base most pages sit on: a Flickable with the shell's thin scroll bar, a
-// focus sink so a click on empty space releases a field, and scrollY for the trail.
+// focus sink so a click on empty space releases a field, scrollY for the trail, and the
+// arrow keys across whatever grids the page holds (GridKeys). A page whose root takes the
+// keys first forwards them with keyPressed(event), so Down from a page with nothing focused
+// lands on its first card.
 import QtQuick
+import QtQuick.Window
 import QtQuick.Controls.Basic as QC
 
 Flickable {
@@ -13,7 +17,17 @@ Flickable {
     clip: true
     boundsBehavior: Flickable.StopAtBounds
     QC.ScrollBar.vertical: ThinScrollBar {}
-    WheelStep { flick: root }
+    WheelStep { id: wheel; flick: root }
+    // A programmatic scroll rides the wheel's target, so it follows with the same smoothing
+    // as a notch and a drag takes over the same way
+    function scrollTo(y) {
+        wheel.target = wheel.bound(y)
+        wheel.following = true
+        root.cancelFlick()
+    }
+    GridKeys { id: gridKeys; flick: root }
+    function keyPressed(event) { gridKeys.handle(event, root.Window.window ? root.Window.window.activeFocusItem : null) }
+    Keys.onPressed: function(event) { root.keyPressed(event) }
     MouseArea { anchors.fill: parent; onPressed: function(m) { root.forceActiveFocus(); m.accepted = false } }
     Column {
         id: inner
