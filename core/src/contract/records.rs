@@ -460,6 +460,15 @@ pub struct Preferences {
     /// older blobs predate it, which is the whole migration.
     #[serde(default)]
     pub library_arrange: Arrange,
+    /// Whether the library pulls a franchise's series (two or more in the
+    /// library) out into a section of their own ahead of the cut, or leaves
+    /// every series under its own season, type or genre. Default on.
+    #[serde(default = "default_true")]
+    pub library_group_franchises: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
@@ -569,6 +578,7 @@ impl Default for Preferences {
             feed_sort: FeedSort::Recent,
             library_show_watched: false,
             library_arrange: Arrange::Related,
+            library_group_franchises: true,
         }
     }
 }

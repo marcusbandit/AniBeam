@@ -301,6 +301,7 @@ pub enum Arrange {
     Related,
     Type,
     Genre,
+    Season,
     WatchState,
     #[serde(rename = "None")]
     Flat,

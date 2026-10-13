@@ -225,6 +225,7 @@ fn the_spec_document_imports_and_a_second_import_changes_nothing() {
                 feed_sort: FeedSort::Recent,
                 library_show_watched: false,
                 library_arrange: Arrange::Related,
+                library_group_franchises: true,
             }
         ),
         other => panic!("{other:?}"),
@@ -282,6 +283,7 @@ fn a_private_export_round_trips_into_a_fresh_core() {
         // Neither toggle is in the export format, so both stay at the
         // fresh core's defaults for the round trip to compare equal.
         library_arrange: Arrange::Related,
+        library_group_franchises: true,
     };
     core.call(Call::SetPreferences {
         preferences: preferences.clone(),

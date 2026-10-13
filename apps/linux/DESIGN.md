@@ -86,8 +86,16 @@ below where they disagree:
   filter. The rows are cut into the sections a person works in order, Unmatched, Missing on
   disk, Incomplete, Complete, each a heading in the display cut at `typeLarge` with its
   count in the ledger and one fact (how many episodes short, how many files on disk); an
-  empty section is not shown and the filter still applies on top. The row is tighter and
-  carries the record's season or year as a dim note after its pills.
+  empty section is not shown and the filter still applies on top. The three attention
+  sections are rows, where the person works: tighter, the record's season or year as a dim
+  note after the pills. Complete is a grid, not a list: small poster tiles at about
+  `theme.space(24)`, as many to a line as the width holds by the library's column math,
+  ordered by season newest first then title, each with its title on one line, the files
+  count in the ledger with the provider as a faint word, and the season as a dim line. At
+  rest a tile carries no buttons; hover lifts it one step of the surface and shows a Match
+  and a Refresh glyph on the poster's foot, and a click on the tile opens the match panel.
+  A healthy library (everything matched and complete) reads as the figures and then one
+  wall of posters under a Complete heading, not as a list of rows with nothing to do.
 - **The library cuts by season, and the two controls are Order and Sort.** The lone series
   under Related no longer pile up as Everything else: they are sections per anime season
   ("Fall 2025", "Summer 2025"), newest first, Fall before Summer before Spring before Winter

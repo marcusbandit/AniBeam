@@ -1,10 +1,10 @@
 // The library: a title with its count, the search, one row of pill controls (the tab, the
 // order, the sort, the watched switch), then the series in sections. A section is a
 // heading in the display cut with one fact and a count, over a grid of uniform cards whose
-// column count comes from the width. Related names the franchises with two or more series
-// in the library as sections and cuts the rest by anime season, newest first; Season cuts
-// the whole library that way; Type, Genre and Watch state section every group; None is one
-// flat grid. The core searches and orders; the page cuts the sections client-side and
+// column count comes from the width. Group franchises (a switch, on by default) pulls every
+// franchise with two or more series in the library out as a section of its own, ahead of
+// the cut; the cut is Season (newest first, the lone airing series leading), Type, Genre,
+// Watch state, or None for one flat grid. The core searches and orders; the page cuts the sections client-side and
 // reloads, debounced, when the core says a series changed. The visible words are Order
 // (the core's ordering, `sort` here) and Sort (the cut, `arrange` here); the names stay
 // for the preference keys and the drive scripts.
@@ -26,7 +26,10 @@ Item {
 
     readonly property var tabs: ["All", "Series", "Movies"]
     readonly property var sorts: [["Alpha", "A to Z"], ["LastViewed", "Last viewed"], ["Progress", "Progress"], ["CommunityScore", "Average score"], ["MyScore", "My score"]]
-    readonly property var arrangements: [["Related", "Related"], ["Type", "Type"], ["Genre", "Genre"], ["Season", "Season"], ["WatchState", "Watch state"], ["None", "None"]]
+    // The cuts. A stored "Related" (the cut before the franchise toggle) reads as Season
+    // with the toggle on, which is what it was.
+    readonly property var arrangements: [["Season", "Season"], ["Type", "Type"], ["Genre", "Genre"], ["WatchState", "Watch state"], ["None", "None"]]
+    function cutOf(key) { return key === "Related" ? "Season" : key }
     // Loaded-with copies, not bindings on Door.preferences: seeded once in
     // Component.onCompleted, ordinary state from then on, so the preferences-changed
     // handler below can compare what moved.
@@ -35,7 +38,10 @@ Item {
     property string direction: "Asc"
     property string titleLanguage: "Romaji"
     property bool showWatched: false
-    property string arrange: "Related"
+    property string arrange: "Season"
+    // Franchises as sections of their own ahead of the cut, or every series under its own
+    // season, type or genre: a person who wants to know when things came out turns it off
+    property bool groupFranchises: true
     property string query: props.q || ""
     // A genre picked on Home: the grid holds that genre's series only, until cleared
     property string genre: props.genre || ""
@@ -57,6 +63,11 @@ Item {
         Door.setPreferences(p)
     }
     function pickArrange(key) { arrange = key; persist() }
+    function pickGroupFranchises(on) {
+        var p = JSON.parse(JSON.stringify(Door.preferences))
+        p.library_group_franchises = on
+        Door.setPreferences(p)
+    }
     function pickTab(i) { tab = tabNames[i]; persist(); reload() }
     function pickSort(key) { sort = key; direction = key === "Alpha" ? "Asc" : "Desc"; persist(); reload() }
     function flipDirection() { direction = direction === "Asc" ? "Desc" : "Asc"; persist(); reload() }
@@ -117,7 +128,6 @@ Item {
         return out
     }
     function groupOf(c) {
-        if (arrange === "Related") return c.franchise ? { key: "f" + c.franchise.id, title: c.franchise.title } : null
         if (arrange === "Type") { var t = typeOf(c); return { key: t, title: t } }
         if (arrange === "Genre") { var g = c.genres && c.genres.length ? c.genres[0] : "Unmatched"; return { key: g, title: g } }
         if (arrange === "WatchState") { var st = stateOf(c); return { key: st, title: st } }
@@ -157,32 +167,43 @@ Item {
         page.revision
         var airingIds = {}
         for (var a = 0; a < airingRows.length; a++) airingIds[airingRows[a].id] = true
-        var buckets = {}, order = [], lone = []
-        for (var i = 0; i < cardList.length; i++) {
-            var c = cardList[i]
-            var g = groupOf(c)
-            if (!g) { lone.push(c); continue }
-            if (!buckets[g.key]) { buckets[g.key] = { title: g.title, cards: [] }; order.push(g.key) }
-            buckets[g.key].cards.push(c)
-        }
-        var out = []
-        if (arrange === "Season") return seasonSections(cardList, airingIds)
-        // Related: a franchise with one series in the library is a lone one; the lone
-        // ones airing now lead, the rest follow the franchises cut by season
-        if (arrange === "Related") {
-            var airing = [], rest = []
-            for (var k = 0; k < order.length; k++) {
-                var b = buckets[order[k]]
-                if (b.cards.length < 2) { lone = lone.concat(b.cards); continue }
+        // The franchises first, when grouped: a franchise with two or more series in the
+        // library is a section of its own, in release order; the rest go on to the cut
+        var out = [], rest = []
+        if (groupFranchises) {
+            var fr = {}, frOrder = []
+            for (var i = 0; i < cardList.length; i++) {
+                var c = cardList[i]
+                if (!c.franchise) { rest.push(c); continue }
+                var key = "f" + c.franchise.id
+                if (!fr[key]) { fr[key] = { title: c.franchise.title, cards: [] }; frOrder.push(key) }
+                fr[key].cards.push(c)
+            }
+            for (var k = 0; k < frOrder.length; k++) {
+                var b = fr[frOrder[k]]
+                if (b.cards.length < 2) { rest = rest.concat(b.cards); continue }
                 if (b.cards.every(function(x) { return page.releaseOf(x) !== null }))
                     b.cards.sort(function(p, q) { var rp = page.releaseOf(p), rq = page.releaseOf(q); return rp < rq ? -1 : rp > rq ? 1 : 0 })
                 out.push({ title: b.title, cards: b.cards, airing: b.cards.some(function(x) { return airingIds[x.id] === true }) })
             }
-            for (var l = 0; l < lone.length; l++) (airingIds[lone[l].id] ? airing : rest).push(lone[l])
-            if (query === "" && airing.length) out.unshift({ title: "Airing", cards: airing, airing: true })
+            // The grouped ones keep the library's order among themselves
+            rest.sort(function(p, q) { return cardList.indexOf(p) - cardList.indexOf(q) })
+        } else rest = cardList.slice()
+        // Under Season the lone series airing now lead, as their own section
+        if (arrange === "Season" && query === "") {
+            var airing = [], later = []
+            for (var l = 0; l < rest.length; l++) (airingIds[rest[l].id] ? airing : later).push(rest[l])
+            if (airing.length) { out.unshift({ title: "Airing", cards: airing, airing: true }); rest = later }
             return out.concat(seasonSections(rest, airingIds))
         }
-        if (arrange === "None") return cardList.length ? [{ title: "", cards: cardList, airing: false }] : []
+        if (arrange === "Season") return out.concat(seasonSections(rest, airingIds))
+        if (arrange === "None") return rest.length ? out.concat([{ title: out.length ? "Everything else" : "", cards: rest, airing: false }]) : out
+        var buckets = {}, order = []
+        for (var j = 0; j < rest.length; j++) {
+            var g = groupOf(rest[j])
+            if (!buckets[g.key]) { buckets[g.key] = { title: g.title, cards: [] }; order.push(g.key) }
+            buckets[g.key].cards.push(rest[j])
+        }
         for (var s = 0; s < order.length; s++) {
             var bb = buckets[order[s]]
             out.push({ title: bb.title, cards: bb.cards, airing: bb.cards.some(function(x) { return airingIds[x.id] === true }) })
@@ -227,7 +248,8 @@ Item {
                 || p.library_direction !== page.direction || p.title_language !== page.titleLanguage
                 || p.library_show_watched !== page.showWatched
             page.tab = newTab
-            if (p.library_arrange !== undefined) page.arrange = p.library_arrange
+            if (p.library_arrange !== undefined) page.arrange = page.cutOf(p.library_arrange)
+            if (p.library_group_franchises !== undefined) page.groupFranchises = p.library_group_franchises === true
             page.sort = p.library_sort
             page.direction = p.library_direction
             page.titleLanguage = p.title_language
@@ -243,10 +265,11 @@ Item {
         direction = p.library_direction || "Asc"
         titleLanguage = p.title_language || "Romaji"
         showWatched = p.library_show_watched === true
-        arrange = p.library_arrange || "Related"
+        arrange = cutOf(p.library_arrange || "Season")
+        groupFranchises = p.library_group_franchises !== false
         search.text = query
         var asked = props.arrange || (props.group === "Viewed" ? "WatchState" : props.group)
-        if (arrangements.some(function(a) { return a[0] === asked })) arrange = asked
+        if (arrangements.some(function(a) { return a[0] === cutOf(asked) })) arrange = cutOf(asked)
         queryDebounce.stop()
         reload()
     }
@@ -367,6 +390,17 @@ Item {
                     options: page.arrangements.map(function(a) { return a[1] })
                     index: Math.max(0, page.arrangements.findIndex(function(a) { return a[0] === page.arrange }))
                     onPicked: function(i) { page.pickArrange(page.arrangements[i][0]) }
+                }
+            }
+            Row {
+                spacing: theme.space(2.5)
+                height: theme.controlHeight
+                Label { anchors.verticalCenter: parent.verticalCenter; text: "Group franchises"; role: "ui"; color: theme.textDim }
+                Switch {
+                    objectName: "group-franchises"
+                    anchors.verticalCenter: parent.verticalCenter
+                    checked: page.groupFranchises
+                    onToggled: function(on) { page.pickGroupFranchises(on); checked = Qt.binding(function() { return page.groupFranchises }) }
                 }
             }
             Row {
