@@ -773,6 +773,7 @@ async fn import_preferences(
                 // changes it: it keeps whatever was already set.
                 library_show_watched: current.library_show_watched,
                 library_arrange: current.library_arrange,
+                library_group_franchises: current.library_group_franchises,
             };
             prefs::save_preferences(tx, &preferences)?;
             if let Some(auto_skip) = &entry.auto_skip {

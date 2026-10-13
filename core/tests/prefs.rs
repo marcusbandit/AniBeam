@@ -15,6 +15,7 @@ fn preferences_and_settings_round_trip_with_events() {
         feed_sort: FeedSort::Upcoming,
         library_show_watched: true,
         library_arrange: Arrange::WatchState,
+        library_group_franchises: true,
     };
     assert!(matches!(
         core.call(Call::SetPreferences {
