@@ -51,6 +51,15 @@ below where they disagree:
   fold; the series without a date yet close the list.
 - **Scrolling** adds a fixed step per wheel notch to a target the content follows with
   exponential smoothing, so a spin of five notches goes five steps (`WheelStep.step`).
+- **The series page is a band and two columns.** The head is Home's hero again: a band in
+  the poster's tone with the banner art fading in from the right, the poster, the title in
+  the display cut, the other titles on one quiet line, the facts as one ledger line, Continue
+  in the band's ink accent with the progress beside it, and the actions as ghost pills on
+  the band. Under it the episodes as flat rows at the left (the next one up on a filled row,
+  a thin resume bar under a half-watched one, the air date at the right), and the synopsis
+  at a readable measure, round character portraits, small recommendation cards, the tags
+  and the franchise at the right; one column under about 1100 px. An unmatched series
+  draws the same band off its folder name, with the match where the synopsis would be.
 
 This supersedes Tesserae (rounded tiles on poster-toned plates), which superseded "the lobby".
 The killed idioms (below) still hold.

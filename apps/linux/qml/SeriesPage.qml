@@ -1,22 +1,20 @@
-// A series as a bento (DESIGN.md, Layout): every fact cut into its own tile on the library's
-// module, set in the one joint (theme.grout) that is also the page's margin. The top band:
-// a back tile over the poster and an actions tile in the leading columns; the banner, the
-// title, Continue and a row of fact tiles beside them, the band's two sides landing on the
-// same unit row. Under it two columns: the episode ledger (with the extras and stray files)
-// and a side column of synopsis, tags, relations, recommendations and characters. The
-// shorter column's last tile runs down to the taller one's foot, and both to the viewport's,
-// so the page never ends in bare grout. One GetSeries draws it all; the relations come from
-// GetFranchiseGraph and follow the crawl through graphChanged.
+// A series, flat (DESIGN.md, the flat home pass): a band at the head in the poster's own
+// colour, the way Home's hero is, carrying the poster, the title, the other titles on one
+// quiet line, the facts as one ledger line, Continue with the progress beside it, and the
+// actions as a quiet row. Under it two columns on a wide window: the episodes (then the
+// extras and the stray files) as flat rows at the left, and at the right the synopsis, the
+// characters, the recommendations, the tags and the franchise. One GetSeries draws it all;
+// the relations come from GetFranchiseGraph and follow the crawl through graphChanged. An
+// unmatched series draws the same band off its folder name, with the match where the
+// synopsis would be.
 import QtQuick
-import QtQuick.Controls.Basic as QC
 import com.marcusrosado.AniBeam
-import "mosaic.js" as Mosaic
 
 Item {
     id: page
     objectName: "series-page"
     property var props: ({})
-    property alias scrollY: flick.contentY
+    property alias scrollY: scroll.contentY
     property var detail: null
     property var graph: null
     readonly property var card: detail ? detail.card : ({})
@@ -41,6 +39,7 @@ Item {
     property bool optimisticWatched: false
     readonly property bool isMovie: card.kind === "Movie"
     readonly property bool hasTracker: !!(card.match_info && (card.match_info.anilist_id || card.match_info.mal_id))
+    readonly property bool matched: !!card.match_info
     readonly property var titles: card.titles || ({})
     // The other language's title under the display one, then the native script
     readonly property string altTitle: {
@@ -49,8 +48,9 @@ Item {
         return ""
     }
     readonly property string nativeTitle: titles.native && titles.native !== card.title ? titles.native : ""
-    // No surface takes the poster's tone in the glass mosaic; kept empty for old readers
-    readonly property string tone: ""
+    readonly property string otherTitles: [altTitle, nativeTitle].filter(function(s) { return s !== "" }).join("  ")
+    // The band's tone, read off the poster; kept as a string for old readers of `tone`
+    readonly property string tone: String(toneOf.tone)
 
     function contextItems() {
         return [
@@ -83,6 +83,7 @@ Item {
         function onProgressSet(series, progress, outcomes) { if (series === page.props.id) reloadDebounce.restart() }
         function onScored(series, score, outcomes) { if (series === page.props.id) { reloadDebounce.restart(); frame.toast(outcomes.every(function(o) { return o.ok }) ? "Rated " + (score < 0 ? "cleared" : Fmt.score(score)) : "Score failed") } }
         function onMarked(series, episode, outcomes) { if (series === page.props.id) reloadDebounce.restart() }
+        function onMatchApplied(series) { if (series === page.props.id) reloadDebounce.restart() }
         // The crawl fills the franchise in behind the first read; its root is an AniList id
         function onGraphChanged(root) { if (page.graph === null || page.graph.root === root) graphDebounce.restart() }
         function onCrawlFinished(fetched, deferred) { if (page.detail && page.detail.has_graph) graphDebounce.restart() }
@@ -138,413 +139,327 @@ Item {
     readonly property int watchedCount: tracked ? detail.progress.watched : 0
     readonly property bool caughtUp: tracked && !nextEpisode && watchedCount > 0
     readonly property string playVerb: nextEpisode && watchedCount > 0 ? "Continue" : caughtUp ? "Watch again" : "Play"
+    // "Continue episode 8", "Play episode 1", "Play" for a lone film
+    readonly property string playText: {
+        if (!playEpisode) return playVerb
+        if (isMovie && episodes.length === 1) return playVerb
+        return playVerb + " " + Fmt.episodeName("", playEpisode.number).toLowerCase()
+    }
     readonly property string progressText: {
-        if (!tracked) return ""
+        if (!detail) return ""
+        if (!tracked) return isMovie ? "Not tracked" : "Not tracked, " + Fmt.plural(detail.progress.on_disk, "episode", "episodes") + " on disk"
         var p = detail.progress
         return p.total ? watchedCount + " of " + p.total + (p.estimate ? "+" : "") + " watched" : watchedCount + " watched"
     }
     readonly property real progressFraction: tracked && detail.progress.total ? Math.min(1, watchedCount / detail.progress.total) : 0
     readonly property bool airsAhead: !!card.next_airing && card.next_airing.at * 1000 > nowMs
-
-    // ---- The module: the library's own columns and unit, from this page's width
-    readonly property real grout: theme.grout
-    readonly property var geo: Mosaic.columns(Math.max(1, width - grout), theme.posterWidth, grout)
-    readonly property int cols: geo.cols
-    readonly property real unit: geo.u
-    readonly property real step: unit + grout
-    function px(units) { return Mosaic.unitsToPx(units, unit, grout) }
-    function unitsFor(h) { return Mosaic.unitsFor(h, unit, grout) }
-    function spanX(col) { return geo.xs[Math.max(0, Math.min(col, cols - 1))] }
-    function spanW(col, span) { col = Math.max(0, Math.min(col, cols - 1)); var last = Math.max(col, Math.min(cols - 1, col + span - 1)); return geo.xs[last] + geo.ws[last] - geo.xs[col] }
-    readonly property real pad: theme.space(4)
-
-    // The top band. P leading columns carry back, poster and actions; the R beside them
-    // the banner, the title (with Continue at its right when there is room) and the facts.
-    readonly property int lead: cols >= 4 ? 2 : 1
-    readonly property int rest: Math.max(1, cols - lead)
-    readonly property bool continueBeside: rest >= 7
-    readonly property int continueSpan: continueBeside ? Math.max(3, Math.round(rest * 0.3)) : 0
-    readonly property int posterUnits: unitsFor(spanW(0, lead) * 1.5)
-    readonly property int titleUnits: Math.max(2, unitsFor(titleBlock.implicitHeight + pad * 2), continueBeside ? unitsFor(continueBlock.implicitHeight + pad * 2) : 0)
-    function factSpan(w) { return Math.max(1, Math.ceil((w + pad * 2 + grout) / (geo.w + grout))) }
-    readonly property var factLayout: facts.length ? Mosaic.header(facts.map(function(f) { return { key: f.key, span: factSpan(f.width), flex: f.flex } }), rest) : ({ tiles: [], rows: 0 })
-    function factSlot(key) {
-        var t = factLayout && factLayout.tiles ? factLayout.tiles : []
-        for (var i = 0; i < t.length; i++) if (t[i].key === key) return t[i]
-        return { col: 0, row: 0, colSpan: 1 }
-    }
-    readonly property int factRows: facts.length ? factLayout.rows : 0
-    readonly property int bannerMin: cols >= 10 ? 4 : 3
-    readonly property int bandRows: Math.max(1 + posterUnits + 1, bannerMin + titleUnits + factRows)
-    readonly property int bannerUnits: bandRows - titleUnits - factRows
-    // No banner art: the title's plate takes the banner's rows too, title at its foot
     readonly property bool hasBanner: !!(detail && detail.banner)
-    readonly property int titleTop: hasBanner ? bannerUnits : 0
-    readonly property int titleSpanUnits: hasBanner ? titleUnits : bannerUnits + titleUnits
-    readonly property real bandHeight: px(bandRows)
+    // The art needs the right two thirds to itself; on a narrow band the words reach into
+    // them, so the band goes plain
+    readonly property bool showArt: hasBanner && band.width >= theme.space(275)
+    readonly property bool hasScore: card.my_score !== null && card.my_score !== undefined
 
-    // ---- The facts: one tile each, spanned to its words
-    FontMetrics { id: captionMetrics; font.family: theme.fontFamily; font.pointSize: theme.typeSmall; font.weight: theme.roleWeight("ui"); font.variableAxes: theme.roleAxes("ui") }
-    FontMetrics { id: valueMetrics; font.family: theme.fontFamily; font.pointSize: theme.typeLarge; font.weight: theme.roleWeight("title"); font.variableAxes: theme.roleAxes("title") }
-    FontMetrics { id: pillMetrics; font.family: theme.fontFamily; font.pointSize: theme.typeNormal; font.weight: 600; font.variableAxes: ({ "wdth": 88, "wght": 600 }) }
-    readonly property var facts: {
-        if (!detail) return []
-        var out = []
-        function add(key, caption, value, extra) {
-            var w = Math.max(captionMetrics.advanceWidth(caption), valueMetrics.advanceWidth(value) + (extra || 0))
-            out.push({ key: key, caption: caption, value: value, width: w, flex: false })
-        }
-        if (card.next_airing && card.next_airing.at * 1000 > Date.now())
-            out.push({ key: "airing", caption: "Episode " + card.next_airing.episode + " airs in", value: "",
-                       width: Math.max(captionMetrics.advanceWidth("Episode 00 airs in"), pillMetrics.advanceWidth("0d 00h 00m 00s") + theme.space(6)), flex: true })
-        if (card.community_score !== null && card.community_score !== undefined) add("score", "Average score", Fmt.score(card.community_score))
-        add("mine", "Your score", card.my_score !== null && card.my_score !== undefined ? Fmt.score(card.my_score) : "Rate", 0)
-        if (!isMovie) add("episodes", "Episodes", card.total_episodes ? String(card.total_episodes) + (card.total_is_estimate ? "+" : "") : "?")
-        if (!isMovie) add("disk", "On disk", Fmt.plural(detail.progress.on_disk, "file", "files"))
-        if (card.status) add("status", "Status", status(card.status))
-        add("format", "Format", formatLabel(card.format))
-        if (detail.year) add("year", "Year", String(detail.year))
-        if (detail.studio) add("studio", "Studio", detail.studio)
-        if (card.list_status) add("list", "On your list", listStatus(card.list_status), theme.space(4))
-        if (detail.rewatch_count > 0) add("rewatch", "Rewatched", detail.rewatch_count + (detail.rewatch_count === 1 ? " time" : " times"))
-        if (out.length && !out.some(function(f) { return f.flex })) out[out.length - 1].flex = true
-        return out
+    // ---- The facts, one ledger line: format, year, studio, episodes, on disk, status,
+    // the average score, the list status, rewatches
+    readonly property string factsLine: {
+        if (!detail) return ""
+        var f = [formatLabel(card.format)]
+        if (detail.year) f.push(String(detail.year))
+        if (detail.studio) f.push(detail.studio)
+        if (!isMovie && card.total_episodes) f.push(Fmt.plural(card.total_episodes, "episode", "episodes") + (card.total_is_estimate ? "+" : ""))
+        if (!isMovie) f.push(detail.progress.on_disk + " on disk")
+        if (card.status) f.push(status(card.status))
+        if (card.community_score !== null && card.community_score !== undefined) f.push("Average score " + Fmt.score(card.community_score))
+        if (card.list_status) f.push(listStatus(card.list_status))
+        if (detail.rewatch_count > 0) f.push("Rewatched " + detail.rewatch_count + (detail.rewatch_count === 1 ? " time" : " times"))
+        return f.join("  ")
     }
+    readonly property string episodesFact: {
+        if (!detail) return ""
+        if (nextEpisode) return "Next: " + Fmt.episodeName("", nextEpisode.number)
+        if (caughtUp) return "All watched"
+        return ""
+    }
+    readonly property string synopsisText: detail ? detail.synopsis.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]*>/g, "").replace(/[ \t]+/g, " ").replace(/\n\s*\n+/g, "\n").trim() : ""
+    readonly property var tagList: detail ? detail.tags.filter(function(t) { return page.spoilers || (!t.spoiler && !t.adult) }).sort(function(a, b) { return b.rank - a.rank }) : []
+    readonly property bool anySpoiler: detail ? detail.tags.some(function(t) { return t.spoiler || t.adult }) : false
+    readonly property var relationNodes: graph ? graph.nodes.filter(function(n) { return !n.current }).sort(function(a, b) { return a.y - b.y || a.x - b.x }) : []
 
-    // ---- The body: the ledger column and the side column, stacked when narrow
-    readonly property bool twoCol: cols >= 6
-    readonly property int ledgerSpan: twoCol ? Math.ceil(cols * 0.6) : cols
-    readonly property real ledgerW: spanW(0, ledgerSpan)
-    readonly property real sideX: twoCol ? spanX(ledgerSpan) : 0
-    readonly property real sideW: twoCol ? spanW(ledgerSpan, cols - ledgerSpan) : spanW(0, cols)
-    // Every body tile's natural height snapped to whole units, and the stretch that brings
-    // a column's last tile down to the taller column's foot and to the viewport's
-    function colNatural(tiles) { var h = 0, n = 0; for (var i = 0; i < tiles.length; i++) if (tiles[i].visible && tiles[i].inColumn) { h += tiles[i].snapped; n++ } return n ? h + (n - 1) * grout : 0 }
-    function lastShown(tiles) { for (var i = tiles.length - 1; i >= 0; i--) if (tiles[i].visible && tiles[i].inColumn) return tiles[i].key; return "" }
-    // Recommendations and characters go under the shorter of the two columns' own tiles
-    // (measured without them), so a film's one-row ledger is not left beside a tall side
-    // column. Their own heights never feed the choice, so their width can follow it.
-    readonly property bool peopleLeft: twoCol && colNatural([continueTile, episodesTile, extrasTile, strayTile]) < colNatural([synopsisTile, tagsTile, relationsTile])
-    readonly property var ledgerTiles: [continueTile, episodesTile, extrasTile, strayTile, recsL, charsL]
-    readonly property var sideTiles: [synopsisTile, tagsTile, relationsTile, recsR, charsR]
-    readonly property real ledgerNatural: colNatural(ledgerTiles)
-    readonly property real sideNatural: colNatural(sideTiles)
-    readonly property real bodyTop: bandHeight + grout
-    readonly property real floorHeight: Math.max(0, flick.height - bodyTop)
-    readonly property real bodyHeight: twoCol ? Math.max(ledgerNatural, sideNatural, floorHeight)
-                                              : Math.max(ledgerNatural + (sideNatural > 0 ? grout + sideNatural : 0), floorHeight)
-    readonly property var ledgerLast: lastShown(ledgerTiles)
-    readonly property var sideLast: lastShown(sideTiles)
-    readonly property real ledgerStretch: twoCol ? bodyHeight - ledgerNatural : (sideNatural > 0 ? 0 : bodyHeight - ledgerNatural)
-    readonly property real sideStretch: twoCol ? bodyHeight - sideNatural : bodyHeight - ledgerNatural - (sideNatural > 0 ? grout + sideNatural : 0)
+    // ---- The band's colour: the poster's tone over a dark base, so white ink holds in
+    // both modes; the ink accent is the tone lifted toward white (HomePage's hero)
+    PosterTone { id: toneOf; source: card.poster ? "file://" + card.poster : "" }
+    readonly property color bandTone: toneOf.tone
+    // No poster, no tone: the base stays close to the dark ground
+    readonly property color bandBase: theme.tone(Qt.rgba(0.05, 0.055, 0.07, 1), bandTone, card.poster ? 0.5 : 0.25)
+    readonly property color inkAccent: theme.tone(bandTone, Qt.rgba(1, 1, 1, 1), 0.45)
+    readonly property color ink: "#f4f6f8"
+    readonly property color inkDim: Qt.rgba(1, 1, 1, 0.68)
 
-    component Stone: Tile {
-        property real natural: 0
-        property real stretch: 0
-        property bool inColumn: true
-        property string key: ""
-        readonly property real snapped: page.px(page.unitsFor(natural + padding * 2))
-        padding: page.pad
+    // ---- A section heading: the name in the display cut, its count and one fact beside
+    // it, and an action at the right
+    component Heading: Item {
+        property string text: ""
+        property string fact: ""
+        property int count: -1
+        property alias action: actionSlot.data
         width: parent ? parent.width : 0
-        height: snapped + stretch
+        height: theme.space(10)
+        Row {
+            anchors.left: parent.left
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: theme.space(1)
+            spacing: theme.space(3)
+            Label { id: headingText; text: parent.parent.text; role: "display"; font.pointSize: theme.typeLarge; font.variableAxes: ({ "wdth": 74, "wght": 500 }) }
+            Label { visible: parent.parent.count >= 0; anchors.baseline: headingText.baseline; text: String(parent.parent.count); role: "ledger"; color: theme.textFaint }
+            Label { anchors.baseline: headingText.baseline; text: parent.parent.fact; role: "ui"; color: theme.textDim }
+        }
+        Item { id: actionSlot; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(1); width: childrenRect.width; height: childrenRect.height }
     }
     component Caption: Label {
         role: "ui"
         font.pointSize: theme.typeSmall
         color: theme.textDim
     }
-    component Heading: Row {
-        property string text: ""
-        property int count: -1
-        spacing: theme.space(2)
-        Label { id: headingText; text: parent.text; role: "title"; font.pointSize: theme.typeNormal }
-        Label { visible: parent.count >= 0; text: String(parent.count); role: "ledger"; color: theme.textDim; anchors.baseline: headingText.baseline }
-    }
 
-    Flickable {
-        id: flick
-        y: page.grout
-        width: page.width - page.grout
-        height: page.height - page.grout * 2
-        clip: true
-        boundsBehavior: Flickable.StopAtBounds
-        contentWidth: width
-        contentHeight: page.bodyTop + page.bodyHeight
-        QC.ScrollBar.vertical: scrollBar
-        WheelStep { flick: flick }
-        MouseArea { anchors.fill: parent; onPressed: function(m) { flick.forceActiveFocus(); m.accepted = false } }
+    PageScroll {
+        id: scroll
+        anchors.fill: parent
 
-        // ---- Back: its own tile at the top of the leading columns
-        Tile {
-            id: backTile
+        // ---- Back, above the band
+        Button {
             objectName: "series-back"
-            x: page.spanX(0); y: 0
-            width: page.spanW(0, page.lead); height: page.unit
-            padding: page.pad
-            raised: backMouse.containsMouse
-            Row {
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: theme.space(2)
-                Icon { anchors.verticalCenter: parent.verticalCenter; glyph: "chevron-left"; size: theme.space(5); color: theme.text }
-                Label {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: Math.min(implicitWidth, backTile.width - backTile.padding * 2 - theme.space(7))
-                    text: frame.nav.backLabel
-                    role: "title"; font.pointSize: theme.typeNormal
-                    elide: Text.ElideRight
+            small: true
+            flat: true
+            icon: "chevron-left"
+            text: frame.nav.backLabel
+            onClicked: frame.nav.back()
+        }
+
+        // ---- The band: the series' own colour, the banner art fading in from the right
+        Item {
+            id: band
+            width: parent.width
+            readonly property real pad: theme.space(8)
+            readonly property real posterH: theme.space(72)
+            height: Math.max(posterH, words.implicitHeight) + pad * 2
+
+            Rectangle { anchors.fill: parent; radius: theme.radiusXl; color: page.bandBase; antialiasing: true }
+            // The art sits in the right two thirds, under a wash of the band's colour that
+            // clears to the right
+            Item {
+                anchors.fill: parent
+                clip: true
+                Corner {
+                    visible: page.showArt
+                    x: Math.round(parent.width * 0.3); y: 0
+                    width: parent.width - x; height: parent.height
+                    radius: theme.radiusXl
+                    color: "transparent"
+                    fillItem: page.showArt && art.status === Image.Ready ? art : null
+                    Image {
+                        id: art; visible: false
+                        width: parent.width; height: parent.height
+                        source: page.hasBanner ? "file://" + page.detail.banner : ""
+                        fillMode: Image.PreserveAspectCrop; asynchronous: true
+                    }
+                }
+                Rectangle {
+                    visible: page.showArt
+                    anchors.fill: parent
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0.28; color: page.bandBase }
+                        GradientStop { position: 0.62; color: Qt.rgba(page.bandBase.r, page.bandBase.g, page.bandBase.b, 0.55) }
+                        GradientStop { position: 1; color: Qt.rgba(page.bandBase.r, page.bandBase.g, page.bandBase.b, 0.1) }
+                    }
                 }
             }
-            MouseArea { id: backMouse; anchors.fill: parent; anchors.margins: -backTile.padding; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: frame.nav.back() }
-        }
 
-        // ---- The poster, cut to the leading columns
-        Corner {
-            id: posterTile
-            x: page.spanX(0); y: page.step
-            width: page.spanW(0, page.lead); height: page.px(page.posterUnits)
-            color: theme.tile
-            fillItem: poster.status === Image.Ready ? poster : null
-            Image {
-                id: poster; visible: false
-                width: parent.width; height: parent.height
-                source: card.poster ? "file://" + card.poster : ""
-                sourceSize: Qt.size(Math.ceil(parent.width * theme.devicePixelRatio), Math.ceil(parent.height * theme.devicePixelRatio))
-                fillMode: Image.PreserveAspectCrop; asynchronous: true
-            }
-            Label { visible: !card.poster; anchors.centerIn: parent; text: "No poster"; color: theme.textDim; role: "ui"; font.pointSize: theme.typeSmall }
-        }
-
-        // ---- Actions, under the poster down to the band's foot
-        Tile {
-            id: actionsTile
-            x: page.spanX(0); y: page.step * (1 + page.posterUnits)
-            width: page.spanW(0, page.lead); height: page.px(page.bandRows - 1 - page.posterUnits)
-            padding: page.pad
-            Flow {
-                width: parent.width
+            // The poster
+            Corner {
+                id: posterBox
+                x: band.pad
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: theme.space(2)
-                Button { objectName: "series-hide"; small: true; text: card.hidden ? "Unhide" : "Hide"; icon: card.hidden ? "eye" : "eye-off"
-                    onClicked: { var r = Door.setHidden(props.id, !card.hidden); if (r.error) frame.toast(r.error.message) }
-                    Tooltip { text: "Hidden from every list, and tracker sync stops" } }
-                Button { visible: !!(detail && detail.site_url); small: true; text: "AniList"; icon: "external-link"; onClicked: Qt.openUrlExternally(detail.site_url) }
-                Button { small: true; text: "Rescan"; icon: "refresh-cw"; onClicked: page.rescan() }
+                height: band.posterH
+                width: Math.round(height * 2 / 3)
+                radius: theme.radiusTile
+                color: Qt.rgba(0, 0, 0, 0.3)
+                fillItem: card.poster ? (poster.status === Image.Ready ? poster : null) : null
+                Image {
+                    id: poster; visible: false
+                    anchors.fill: parent
+                    source: card.poster ? "file://" + card.poster : ""
+                    sourceSize: Qt.size(theme.posterDecodeSize.width * 2, theme.posterDecodeSize.height * 2)
+                    fillMode: Image.PreserveAspectCrop; asynchronous: true
+                }
+                Label { visible: !card.poster; anchors.centerIn: parent; text: "No poster"; color: page.inkDim; role: "ui"; font.pointSize: theme.typeSmall }
             }
-        }
 
-        // ---- The banner: the art across the band
-        Corner {
-            id: bannerTile
-            readonly property bool hasBanner: page.hasBanner
-            visible: hasBanner
-            x: page.spanX(page.lead); y: 0
-            width: page.spanW(page.lead, page.rest); height: page.px(page.bannerUnits)
-            color: theme.tile
-            fillItem: hasBanner && art.status === Image.Ready ? art : null
-            Image {
-                id: art; visible: false
-                width: parent.width; height: parent.height
-                source: bannerTile.hasBanner ? "file://" + detail.banner : ""
-                fillMode: Image.PreserveAspectCrop; asynchronous: true
-            }
-        }
-
-        // ---- The title: display cut, then the other language and the native script
-        Tile {
-            id: titleTile
-            x: page.spanX(page.lead); y: page.step * page.titleTop
-            width: page.spanW(page.lead, page.rest - page.continueSpan)
-            height: page.px(page.titleSpanUnits)
-            padding: page.pad
             Column {
-                id: titleBlock
-                width: parent.width
-                anchors.bottom: parent.bottom
-                spacing: theme.space(1)
+                id: words
+                anchors.left: posterBox.right
+                anchors.leftMargin: theme.space(8)
+                anchors.right: parent.right
+                anchors.rightMargin: band.pad
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: theme.space(2.5)
+
                 Label {
                     width: parent.width
                     text: page.title
                     role: "display"
-                    wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight
-                    lineHeight: 0.95
+                    color: page.ink
+                    wrapMode: Text.Wrap
+                    maximumLineCount: 2
+                    elide: Text.ElideRight
+                    lineHeight: 0.92
                 }
-                Label { visible: page.altTitle !== ""; width: parent.width; text: page.altTitle; role: "ui"; elide: Text.ElideRight; color: theme.textDim }
-                Label { visible: page.nativeTitle !== ""; width: parent.width; text: page.nativeTitle; role: "ui"; font.pointSize: theme.typeSmall; elide: Text.ElideRight; color: theme.textDim }
-            }
-        }
-
-        // ---- The facts row(s) under the title
-        Repeater {
-            model: page.facts
-            delegate: Tile {
-                id: fact
-                required property var modelData
-
-                readonly property bool clickable: modelData.key === "mine"
-                objectName: "fact-" + modelData.key
-                x: page.spanX(page.lead + page.factSlot(modelData ? modelData.key : "").col)
-                y: page.step * (page.bannerUnits + page.titleUnits + page.factSlot(modelData ? modelData.key : "").row)
-                width: page.spanW(page.lead + page.factSlot(modelData ? modelData.key : "").col, page.factSlot(modelData ? modelData.key : "").colSpan)
-                height: page.unit
-                padding: theme.space(3)
-                raised: clickable && factMouse.containsMouse
-                Caption { text: fact.modelData.caption; width: parent.width; elide: Text.ElideRight }
+                Label {
+                    visible: page.otherTitles !== ""
+                    width: parent.width
+                    text: page.otherTitles
+                    role: "ui"
+                    color: page.inkDim
+                    elide: Text.ElideRight
+                }
+                // The facts, and the next episode's countdown in the band's ink accent
                 Row {
-                    anchors.bottom: parent.bottom
-                    spacing: theme.space(1.5)
-                    StatusDot { visible: fact.modelData.key === "list"; anchors.verticalCenter: parent.verticalCenter; status: card.list_status || "" }
-                    Icon { visible: fact.modelData.key === "score" || fact.modelData.key === "mine"; anchors.verticalCenter: parent.verticalCenter; glyph: "star"; size: theme.space(4.5)
-                        color: fact.modelData.key === "mine" && card.my_score !== null && card.my_score !== undefined ? theme.accent : theme.textDim }
+                    width: parent.width
+                    spacing: theme.space(2)
                     Label {
-                        visible: fact.modelData.key !== "airing"
-                        text: fact.modelData.value
-                        role: "title"
-                        width: Math.min(implicitWidth, fact.width - fact.padding * 2 - theme.space(7))
+                        id: factsLabel
+                        width: Math.min(implicitWidth, parent.width - (airing.visible ? airing.width + parent.spacing : 0))
+                        text: page.factsLine
+                        role: "ledger"
+                        color: page.inkDim
                         elide: Text.ElideRight
                     }
-                    // The countdown: a clock and the time in accent text, the card's treatment
-                    Icon { visible: fact.modelData.key === "airing"; anchors.verticalCenter: parent.verticalCenter; glyph: "clock"; size: theme.space(4); color: theme.accent }
-                    Item {
-                        visible: fact.modelData.key === "airing"
-                        width: countdown.implicitWidth; height: countdown.implicitHeight
+                    Label {
+                        id: airing
+                        objectName: "fact-airing"
+                        visible: page.airsAhead
+                        text: card.next_airing ? "Episode " + card.next_airing.episode + " airs in " + Fmt.countdownSeconds(card.next_airing.at - page.nowMs / 1000) : ""
+                        role: "ledger"
+                        font.weight: 600; font.variableAxes: ({ "wdth": 88, "wght": 600 })
+                        color: page.inkAccent
+                    }
+                }
+                Item { width: 1; height: theme.space(1.5) }
+                // Continue, with the progress beside it
+                Row {
+                    spacing: theme.space(4)
+                    Button {
+                        objectName: "series-continue"
+                        anchors.verticalCenter: parent.verticalCenter
+                        primary: true
+                        tint: page.inkAccent
+                        icon: "play"
+                        text: page.playText
+                        enabled: page.playEpisode !== null
+                        onClicked: if (page.playEpisode) page.openFile(page.playEpisode.file)
+                    }
+                    Row {
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: theme.space(3)
+                        visible: !!page.detail
+                        Rectangle {
+                            visible: page.tracked && !!page.detail.progress.total
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: theme.space(40); height: theme.space(1)
+                            radius: height / 2
+                            color: Qt.rgba(1, 1, 1, 0.2)
+                            Rectangle {
+                                width: Math.max(page.progressFraction > 0 ? height : 0, parent.width * page.progressFraction)
+                                height: parent.height; radius: parent.radius
+                                color: page.inkAccent
+                            }
+                        }
                         Label {
-                            id: countdown
-                            anchors.centerIn: parent
-                            text: card.next_airing ? Fmt.countdownSeconds(card.next_airing.at - page.nowMs / 1000) : ""
-                            role: "ledger"; font.pointSize: theme.typeNormal
-                            font.weight: 600; font.variableAxes: ({ "wdth": 88, "wght": 600 })
-                            color: theme.accent
+                            objectName: "series-progress"
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: page.progressText
+                            role: "ledger"
+                            color: page.inkDim
                         }
                     }
                 }
-                MouseArea {
-                    id: factMouse
-                    enabled: fact.clickable
-                    anchors.fill: parent; anchors.margins: -fact.padding
-                    hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                    onClicked: scorePicker.openAt(fact, card.my_score === null || card.my_score === undefined ? -1 : card.my_score)
+                // The quiet row: rate, hide, AniList, rescan
+                Flow {
+                    width: parent.width
+                    spacing: theme.space(2)
+                    Button {
+                        id: rateButton
+                        objectName: "fact-mine"
+                        small: true; ghost: true
+                        icon: "star"
+                        text: page.hasScore ? "Your score " + Fmt.score(card.my_score) : "Rate"
+                        onClicked: scorePicker.openAt(rateButton, page.hasScore ? card.my_score : -1)
+                    }
+                    Button {
+                        objectName: "series-hide"
+                        small: true; ghost: true
+                        text: card.hidden ? "Unhide" : "Hide"
+                        icon: card.hidden ? "eye" : "eye-off"
+                        onClicked: { var r = Door.setHidden(props.id, !card.hidden); if (r.error) frame.toast(r.error.message) }
+                        Tooltip { text: "Hidden from every list, and tracker sync stops" }
+                    }
+                    Button { visible: !!(page.detail && page.detail.site_url); small: true; ghost: true; text: "AniList"; icon: "external-link"; onClicked: Qt.openUrlExternally(page.detail.site_url) }
+                    Button { small: true; ghost: true; text: "Rescan"; icon: "refresh-cw"; onClicked: page.rescan() }
                 }
             }
         }
 
-        // ---- The ledger column
-        Column {
-            id: ledgerCol
-            x: 0; y: page.bodyTop
-            width: page.ledgerW
-            spacing: page.grout
+        Item { width: 1; height: theme.space(2) }
 
-            // Continue: what plays next and how far along the series is
-            Stone {
-                id: continueTile
-                key: "continueTile"
-                visible: !!page.detail && page.playEpisode !== null
-                natural: continueBlock.implicitHeight
-                stretch: page.ledgerLast === "continueTile" ? page.ledgerStretch : 0
-                // Beside the title on a wide window; this tile is then its parent's
-                parent: page.continueBeside ? continueSlot : ledgerCol
-                inColumn: !page.continueBeside
-                width: parent ? parent.width : 0
-                height: page.continueBeside ? continueSlot.height : snapped + stretch
-                tone: page.tone !== "" && page.continueBeside ? page.tone : "transparent"
+        // ---- The body: the episodes at the left, the rest at the right; one column on a
+        // narrow window
+        Item {
+            id: body
+            width: parent.width
+            readonly property bool twoCol: width >= theme.space(275)
+            readonly property real gap: theme.space(12)
+            readonly property real sectionGap: theme.space(8)
+            height: twoCol ? Math.max(leftCol.height, rightCol.height)
+                           : leftCol.height + (rightCol.height > 0 ? sectionGap + rightCol.height : 0)
+
+            Column {
+                id: leftCol
+                x: 0; y: 0
+                width: body.twoCol ? Math.floor((body.width - body.gap) * 0.6) : body.width
+                spacing: body.sectionGap
+
+                // The episodes
                 Column {
-                    id: continueBlock
+                    objectName: "series-episodes"
+                    visible: page.episodes.length > 0
                     width: parent.width
-                    anchors.bottom: parent.bottom
-                    spacing: theme.space(2)
-                    Row {
+                    spacing: theme.space(4)
+                    Heading { text: page.isMovie ? "Film" : "Episodes"; count: page.episodes.length; fact: page.episodesFact }
+                    Column {
                         width: parent.width
-                        spacing: theme.space(3)
-                        Button {
-                            id: continueButton
-                            objectName: "series-continue"
-                            anchors.verticalCenter: parent.verticalCenter
-                            primary: true; icon: "play"
-                            text: page.playVerb
-                            onClicked: if (page.playEpisode) page.openFile(page.playEpisode.file)
-                        }
-                        Column {
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: parent.width - continueButton.width - parent.spacing
-                            Label {
-                                width: parent.width
-                                text: page.playEpisode ? (page.isMovie && page.episodes.length === 1 ? "Film" : page.playEpisode.code) : ""
-                                role: "ledger"; color: theme.textDim; elide: Text.ElideRight
-                            }
-                            Label {
-                                width: parent.width
-                                text: page.playEpisode ? page.episodeName(page.playEpisode) : ""
-                                role: "title"; font.pointSize: theme.typeNormal; elide: Text.ElideRight
-                            }
-                        }
-                    }
-                    // Tracked: "3 of 12 watched" over the bar. Untracked says so, no empty bar.
-                    Item {
-                        visible: !!page.detail
-                        width: parent.width
-                        height: progressLine.implicitHeight + (page.tracked && page.detail.progress.total ? theme.space(2.5) : 0)
-                        Label {
-                            id: progressLine
-                            text: page.tracked ? page.progressText : page.isMovie ? "Not tracked" : "Not tracked, " + Fmt.plural(page.detail ? page.detail.progress.on_disk : 0, "episode", "episodes") + " on disk"
-                            role: "ledger"; color: theme.textDim
-                        }
-                        Corner {
-                            visible: page.tracked && !!page.detail.progress.total
-                            anchors.bottom: parent.bottom
-                            width: parent.width; height: theme.space(1)
-                            radius: height / 2; smoothing: theme.cornerSmoothing
-                            color: theme.tileSunken
-                            Corner {
-                                width: Math.max(page.progressFraction > 0 ? height : 0, parent.width * page.progressFraction); height: parent.height
-                                radius: height / 2; smoothing: theme.cornerSmoothing
-                                color: theme.accent
+                        spacing: theme.space(4)
+                        Repeater {
+                            model: page.episodes
+                            EpisodeRow {
+                                required property var modelData
+                                required property int index
+                                objectName: "episode-row-" + index
+                                episode: modelData
+                                hasTracker: page.hasTracker
+                                title: page.episodeName(modelData)
+                                watched: page.watchedWithOptimism(modelData)
+                                onPlay: page.openFile(modelData.file)
+                                onMarker: page.marker(modelData)
                             }
                         }
                     }
                 }
-            }
 
-            // The episodes: the ledger proper
-            Stone {
-                id: episodesTile
-                key: "episodesTile"
-                objectName: "series-episodes"
-                visible: page.episodes.length > 0
-                natural: episodeCol.implicitHeight
-                stretch: page.ledgerLast === "episodesTile" ? page.ledgerStretch : 0
+                // Openings, endings and the rest, grouped
                 Column {
-                    id: episodeCol
+                    visible: !!page.detail && page.detail.extras.length > 0
                     width: parent.width
-                    spacing: theme.space(0.5)
-                    Heading { text: page.isMovie ? "Film" : "Episodes"; count: page.episodes.length; bottomPadding: theme.space(2) }
-                    Repeater {
-                        model: page.episodes
-                        EpisodeRow {
-                            required property var modelData
-                            required property int index
-                            objectName: "episode-row-" + index
-                            episode: modelData
-                            hasTracker: page.hasTracker
-                            title: page.episodeName(modelData)
-                            watched: page.watchedWithOptimism(modelData)
-                            onPlay: page.openFile(modelData.file)
-                            onMarker: page.marker(modelData)
-                        }
-                    }
-                }
-            }
-
-            // Openings, endings and the rest, grouped
-            Stone {
-                id: extrasTile
-                key: "extrasTile"
-                visible: !!page.detail && page.detail.extras.length > 0
-                natural: extrasCol.implicitHeight
-                stretch: page.ledgerLast === "extrasTile" ? page.ledgerStretch : 0
-                Column {
-                    id: extrasCol
-                    width: parent.width
-                    spacing: theme.space(2)
+                    spacing: theme.space(4)
                     Heading { text: "Openings, endings and more"; count: page.detail ? page.detail.extras.length : 0 }
                     Repeater {
                         model: [["Op", "Openings"], ["Ed", "Endings"], ["Pv", "Previews and trailers"], ["Sp", "Specials"], ["Other", "Other"]]
@@ -553,26 +468,23 @@ Item {
                             readonly property var group: page.detail ? page.detail.extras.filter(function(x) { return x.kind === modelData[0] }) : []
                             visible: group.length > 0
                             width: parent.width
-                            spacing: theme.space(0.5)
+                            spacing: theme.space(2)
                             Caption { text: modelData[1] + ", " + group.length }
-                            Repeater { model: group; EpisodeRow { required property var modelData; episode: ({ code: modelData.code, title: modelData.label, resume: modelData.resume, watched: false, next_up: false }); title: modelData.label; onPlay: page.openFile(modelData.file) } }
+                            Column {
+                                width: parent.width
+                                spacing: theme.space(4)
+                                Repeater { model: group; EpisodeRow { required property var modelData; episode: ({ code: modelData.code, title: modelData.label, resume: modelData.resume, watched: false, next_up: false }); title: modelData.label; onPlay: page.openFile(modelData.file) } }
+                            }
                         }
                     }
                 }
-            }
 
-            // Files numbered past the matched count: named by their file, since that is
-            // what needs reviewing
-            Stone {
-                id: strayTile
-                key: "strayTile"
-                visible: !!page.detail && page.detail.unmatched_files.length > 0
-                natural: strayCol.implicitHeight
-                stretch: page.ledgerLast === "strayTile" ? page.ledgerStretch : 0
+                // Files numbered past the matched count: named by their file, since that is
+                // what needs reviewing
                 Column {
-                    id: strayCol
+                    visible: !!page.detail && page.detail.unmatched_files.length > 0
                     width: parent.width
-                    spacing: theme.space(1)
+                    spacing: theme.space(4)
                     Heading { text: "Extra files"; count: page.detail ? page.detail.unmatched_files.length : 0 }
                     Row {
                         width: parent.width
@@ -584,78 +496,93 @@ Item {
                             text: page.detail ? (page.detail.unmatched_files.length === 1 ? "One file is" : page.detail.unmatched_files.length + " files are") + " more than the " + (card.total_episodes || 0) + " expected episodes: misnamed, duplicates or specials. Rename or remove " + (page.detail.unmatched_files.length === 1 ? "it." : "them.") : ""
                         }
                     }
-                    Repeater { model: page.detail ? page.detail.unmatched_files : []
-                        EpisodeRow { required property var modelData; episode: modelData; extra: true; title: Fmt.episodeName(modelData.title || "", modelData.number); detailText: modelData.path.split("/").pop(); onPlay: page.openFile(modelData.file) } }
+                    Column {
+                        width: parent.width
+                        spacing: theme.space(4)
+                        Repeater { model: page.detail ? page.detail.unmatched_files : []
+                            EpisodeRow { required property var modelData; episode: modelData; extra: true; title: Fmt.episodeName(modelData.title || "", modelData.number); detailText: modelData.path.split("/").pop(); onPlay: page.openFile(modelData.file) } }
+                    }
                 }
             }
-            RecsStone { id: recsL; key: "recsL"; inLeft: true }
-            CharsStone { id: charsL; key: "charsL"; inLeft: true }
-        }
 
-        // Continue's slot beside the title on a wide window
-        Item {
-            id: continueSlot
-            x: page.spanX(page.lead + page.rest - page.continueSpan)
-            y: page.step * page.titleTop
-            width: page.continueBeside ? page.spanW(page.lead + page.rest - page.continueSpan, page.continueSpan) : 0
-            height: page.px(page.titleSpanUnits)
-            visible: page.continueBeside
-        }
+            Column {
+                id: rightCol
+                x: body.twoCol ? leftCol.width + body.gap : 0
+                y: body.twoCol ? 0 : leftCol.height + body.sectionGap
+                width: body.twoCol ? body.width - x : body.width
+                spacing: body.sectionGap
 
-        // ---- The side column
-        Column {
-            id: sideCol
-            x: page.sideX
-            y: page.twoCol ? page.bodyTop : page.bodyTop + page.ledgerNatural + (page.ledgerNatural > 0 ? page.grout : 0)
-            width: page.sideW
-            spacing: page.grout
-
-            Stone {
-                id: synopsisTile
-                key: "synopsisTile"
-                visible: !!page.detail && synopsis.text !== ""
-                natural: synopsisCol.implicitHeight
-                stretch: page.sideLast === "synopsisTile" ? page.sideStretch : 0
+                // The synopsis, at a readable measure
                 Column {
-                    id: synopsisCol
+                    visible: page.synopsisText !== ""
                     width: parent.width
-                    spacing: theme.space(2)
+                    spacing: theme.space(3)
                     Heading { text: "Synopsis" }
                     Label {
                         id: synopsis
-                        width: parent.width
-                        text: page.detail ? page.detail.synopsis.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]*>/g, "").replace(/[ \t]+/g, " ").replace(/\n\s*\n+/g, "\n").trim() : ""
+                        width: Math.min(parent.width, theme.space(140))
+                        text: page.synopsisText
                         role: "ui"; color: theme.textDim
                         wrapMode: Text.Wrap; elide: Text.ElideRight
                         maximumLineCount: page.synopsisOpen ? 1000 : 8
-                        lineHeight: 1.15
+                        lineHeight: 1.2
                     }
-                    Button { visible: synopsis.truncated || page.synopsisOpen; small: true; text: page.synopsisOpen ? "Less" : "More"; icon: page.synopsisOpen ? "chevron-up" : "chevron-down"; onClicked: page.synopsisOpen = !page.synopsisOpen }
+                    Button { visible: synopsis.truncated || page.synopsisOpen; small: true; flat: true; text: page.synopsisOpen ? "Less" : "More"; icon: page.synopsisOpen ? "chevron-up" : "chevron-down"; onClicked: page.synopsisOpen = !page.synopsisOpen }
                 }
-            }
 
-            // Tags by rank; spoiler and adult tags behind the toggle
-            Stone {
-                id: tagsTile
-                key: "tagsTile"
-                readonly property var tags: page.detail ? page.detail.tags.filter(function(t) { return page.spoilers || (!t.spoiler && !t.adult) }).sort(function(a, b) { return b.rank - a.rank }) : []
-                readonly property bool anySpoiler: page.detail ? page.detail.tags.some(function(t) { return t.spoiler || t.adult }) : false
-                visible: !!page.detail && page.detail.tags.length > 0
-                natural: tagsCol.implicitHeight
-                stretch: page.sideLast === "tagsTile" ? page.sideStretch : 0
+                // Unmatched: the match, where the synopsis would be
                 Column {
-                    id: tagsCol
+                    objectName: "series-match"
+                    visible: !!page.detail && !page.matched
                     width: parent.width
-                    spacing: theme.space(2)
-                    Item {
-                        width: parent.width; height: Math.max(tagsHeading.height, tagButtons.height)
-                        Heading { id: tagsHeading; anchors.verticalCenter: parent.verticalCenter; text: "Tags"; count: tagsTile.tags.length }
-                        Row {
-                            id: tagButtons
-                            anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                    spacing: theme.space(3)
+                    Heading { text: "Match" }
+                    Label {
+                        width: Math.min(parent.width, theme.space(140))
+                        text: "Not matched to AniList yet, so there is no poster, synopsis or tracking. Find the record it belongs to."
+                        role: "ui"; color: theme.textDim
+                        wrapMode: Text.Wrap
+                    }
+                    Row {
+                        spacing: theme.space(2)
+                        Button { objectName: "series-find-match"; text: "Find a match"; icon: "search"; primary: true; onClicked: matchPanel.openFor(page.props.id, page.title, card.match_info) }
+                        Button { text: "Open in Metadata"; icon: "database"; flat: true; onClicked: frame.go("metadata", { q: page.title }) }
+                    }
+                }
+
+                // The characters, a row of round portraits
+                Column {
+                    visible: !!page.detail && page.detail.characters.length > 0
+                    width: parent.width
+                    spacing: theme.space(3)
+                    Heading { text: "Characters"; count: page.detail ? page.detail.characters.length : 0 }
+                    Flow { width: parent.width; spacing: theme.space(3); Repeater { model: page.detail ? page.detail.characters : []; PersonCard { required property var modelData; person: modelData } } }
+                }
+
+                // Recommendations, a row of small cards
+                Column {
+                    visible: !!page.detail && page.detail.recommendations.length > 0
+                    width: parent.width
+                    spacing: theme.space(3)
+                    Heading { text: "Recommendations"; count: page.detail ? page.detail.recommendations.length : 0 }
+                    Flow { width: parent.width; spacing: theme.space(3)
+                        Repeater { model: page.detail ? page.detail.recommendations : []
+                            RecommendationCard { required property var modelData; rec: modelData; width: theme.space(26)
+                                onOpened: modelData.owned ? frame.go("series", { id: modelData.owned }, modelData.title) : Qt.openUrlExternally("https://anilist.co/anime/" + modelData.anilist_id) } } }
+                }
+
+                // Tags by rank; spoiler and adult tags behind the toggle
+                Column {
+                    visible: !!page.detail && page.detail.tags.length > 0
+                    width: parent.width
+                    spacing: theme.space(3)
+                    Heading {
+                        text: "Tags"
+                        count: page.tagList.length
+                        action: Row {
                             spacing: theme.space(2)
-                            Button { visible: tagsTile.anySpoiler; small: true; text: page.spoilers ? "Hide spoilers" : "Spoilers"; icon: page.spoilers ? "eye-off" : "eye"; onClicked: page.spoilers = !page.spoilers }
-                            Button { visible: tagFlow.implicitHeight > tagClip.height || page.tagsOpen; small: true; text: page.tagsOpen ? "Less" : "All tags"; onClicked: page.tagsOpen = !page.tagsOpen }
+                            Button { visible: page.anySpoiler; small: true; flat: true; text: page.spoilers ? "Hide spoilers" : "Spoilers"; icon: page.spoilers ? "eye-off" : "eye"; onClicked: page.spoilers = !page.spoilers }
+                            Button { visible: tagFlow.implicitHeight > tagClip.height || page.tagsOpen; small: true; flat: true; text: page.tagsOpen ? "Less" : "All tags"; onClicked: page.tagsOpen = !page.tagsOpen }
                         }
                     }
                     // A hidden reference chip: chip height depends on font metrics, so the
@@ -669,88 +596,37 @@ Item {
                         clip: true
                         Flow {
                             id: tagFlow
-                            width: parent.width; spacing: theme.space(1.5)
+                            width: parent.width; spacing: theme.space(2)
                             Repeater {
-                                model: tagsTile.tags
-                                Chip { required property var modelData; text: modelData.name + ", " + modelData.rank + "%"; mono: false; color: theme.raised; textColor: modelData.spoiler || modelData.adult ? theme.text : theme.textDim }
+                                model: page.tagList
+                                Chip { required property var modelData; text: modelData.name + ", " + modelData.rank + "%"; mono: false; color: theme.tile; borderColor: "transparent"; textColor: modelData.spoiler || modelData.adult ? theme.text : theme.textDim }
                             }
                         }
                     }
                 }
-            }
 
-            // Relations: the franchise as small stones, in the crawl's own order
-            Stone {
-                id: relationsTile
-                key: "relationsTile"
-                objectName: "series-relations"
-                readonly property var nodes: page.graph ? page.graph.nodes.filter(function(n) { return !n.current }).sort(function(a, b) { return a.y - b.y || a.x - b.x }) : []
-                visible: nodes.length > 0
-                natural: relationsCol.implicitHeight
-                stretch: page.sideLast === "relationsTile" ? page.sideStretch : 0
+                // Relations: the franchise as small rows, in the crawl's own order
                 Column {
-                    id: relationsCol
+                    objectName: "series-relations"
+                    visible: page.relationNodes.length > 0
                     width: parent.width
-                    spacing: theme.space(2)
-                    Heading { text: "Related"; count: relationsTile.nodes.length }
+                    spacing: theme.space(3)
+                    Heading { text: "Related"; count: page.relationNodes.length }
                     Flow {
                         id: relationFlow
                         width: parent.width
-                        spacing: theme.space(2)
-                        // As many stones a row as fit at theme.space(64), the row filled
+                        spacing: theme.space(3)
+                        // As many a row as fit at theme.space(64), the row filled
                         readonly property int per: Math.max(1, Math.floor((width + spacing) / (theme.space(64) + spacing)))
                         readonly property real stoneW: (width - (per - 1) * spacing) / per
                         Repeater {
-                            model: relationsTile.nodes
+                            model: page.relationNodes
                             RelationStone { required property var modelData; node: modelData; width: relationFlow.stoneW }
                         }
                     }
-                    Caption { visible: !!page.graph && !page.graph.complete; text: "Still filling in from AniList."; color: theme.textDim }
+                    Caption { visible: !!page.graph && !page.graph.complete; text: "Still filling in from AniList." }
                 }
             }
-
-            RecsStone { id: recsR; key: "recsR"; inLeft: false }
-            CharsStone { id: charsR; key: "charsR"; inLeft: false }
-        }
-    }
-    // The scroll bar rides the right-hand joint, not the tiles' edge
-    ThinScrollBar {
-        id: scrollBar
-        x: page.width - page.grout + Math.max(0, (page.grout - width) / 2)
-        y: flick.y
-        height: flick.height
-        width: Math.min(page.grout, theme.space(1))
-    }
-
-    // Recommendations and characters: one of each per column, shown in whichever column
-    // peopleLeft picks, so no tile is ever moved between columns
-    component RecsStone: Stone {
-        property bool inLeft: false
-        visible: !!page.detail && page.detail.recommendations.length > 0 && page.peopleLeft === inLeft
-        natural: recsColumn.implicitHeight
-        stretch: inLeft ? (page.ledgerLast === key ? page.ledgerStretch : 0) : (page.sideLast === key ? page.sideStretch : 0)
-        Column {
-            id: recsColumn
-            width: parent.width
-            spacing: theme.space(3)
-            Heading { text: "Recommendations"; count: page.detail ? page.detail.recommendations.length : 0 }
-            Flow { width: parent.width; spacing: theme.space(3)
-                Repeater { model: page.detail ? page.detail.recommendations : []
-                    RecommendationCard { required property var modelData; rec: modelData
-                        onOpened: modelData.owned ? frame.go("series", { id: modelData.owned }, modelData.title) : Qt.openUrlExternally("https://anilist.co/anime/" + modelData.anilist_id) } } }
-        }
-    }
-    component CharsStone: Stone {
-        property bool inLeft: false
-        visible: !!page.detail && page.detail.characters.length > 0 && page.peopleLeft === inLeft
-        natural: charsColumn.implicitHeight
-        stretch: inLeft ? (page.ledgerLast === key ? page.ledgerStretch : 0) : (page.sideLast === key ? page.sideStretch : 0)
-        Column {
-            id: charsColumn
-            width: parent.width
-            spacing: theme.space(3)
-            Heading { text: "Characters"; count: page.detail ? page.detail.characters.length : 0 }
-            Flow { width: parent.width; spacing: theme.space(3); Repeater { model: page.detail ? page.detail.characters : []; PersonCard { required property var modelData; person: modelData } } }
         }
     }
 
@@ -761,9 +637,9 @@ Item {
         property var node: ({})
         readonly property bool owned: node.owned !== null && node.owned !== undefined
         height: theme.space(24)
-        radius: theme.radiusInner(page.pad > theme.space(2) ? theme.space(2) : page.pad)
+        radius: theme.radiusTile
         smoothing: theme.cornerSmoothing
-        color: relMouse.containsMouse ? theme.raisedHover : theme.raised
+        color: relMouse.containsMouse ? theme.raised : theme.tile
         objectName: "relation-" + node.anilist_id
         Corner {
             id: relThumb
@@ -800,4 +676,19 @@ Item {
     ScorePicker { id: scorePicker; parent: frame.overlay
         onSaved: function(v) { var r = Door.setScore(page.props.id, v); if (r.error) frame.toast(r.error.message) }
         onCleared: { var r = Door.setScore(page.props.id, -1); if (r.error) frame.toast(r.error.message) } }
+
+    // The match, for an unmatched series: the same popover Metadata opens, over the overlay
+    MatchPanel {
+        id: matchPanel
+        parent: frame.overlay
+        anchors.centerIn: parent
+    }
+    Blocker {
+        parent: frame.overlay
+        anchors.fill: parent
+        z: -1
+        visible: matchPanel.visible
+        dismissOnPress: true
+        onDismissed: matchPanel.close()
+    }
 }
