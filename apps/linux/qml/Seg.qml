@@ -70,6 +70,19 @@ Corner {
                 objectName: root.objectName !== "" ? root.objectName + "-" + (record && modelData.name ? String(modelData.name) : label.toLowerCase()) : ""
                 width: content.implicitWidth + theme.space(3) * 2
                 height: root.height - root.pad * 2
+                // The hover on a cell that is not the thumb's: one surface step, following
+                // the pointer in and out with the theme's smoothing
+                property real hoverLift: 0
+                FrameAnimation {
+                    running: Math.abs(cell.hoverLift - (cellMouse.containsMouse && !cell.on ? 1 : 0)) > 0.005
+                    onTriggered: cell.hoverLift = theme.follow(cell.hoverLift, cellMouse.containsMouse && !cell.on ? 1 : 0, frameTime)
+                }
+                Corner {
+                    anchors.fill: parent
+                    radius: height / 2
+                    color: theme.tileHover
+                    opacity: cell.hoverLift
+                }
                 Row {
                     id: content
                     anchors.centerIn: parent

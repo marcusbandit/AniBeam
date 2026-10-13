@@ -98,7 +98,7 @@ Item {
                         required property var modelData
                         width: column.width; height: theme.controlHeight
                                                 radius: theme.radiusSm
-                        color: modelData.id === root.selected ? theme.accentSoft : m.containsMouse ? theme.glassRaised : "transparent"
+                        color: modelData.id === root.selected ? theme.accentSoft : m.containsMouse ? theme.floatHover : "transparent"
                         Text { anchors.left: parent.left; anchors.leftMargin: theme.space(2); anchors.verticalCenter: parent.verticalCenter; text: modelData.label; color: modelData.id === root.selected ? theme.accent : theme.text; font.family: theme.fontSans; font.pointSize: theme.typeNormal; font.weight: modelData.id === root.selected ? Font.DemiBold : Font.Normal; elide: Text.ElideRight; width: parent.width - theme.space(4) }
                         MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { root.picked(modelData.id); root.close() } }
                     }

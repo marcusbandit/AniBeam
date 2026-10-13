@@ -97,7 +97,7 @@ Item {
                     height: theme.controlHeight
                     radius: theme.radiusInner(root.pad)
                     smoothing: theme.cornerSmoothing
-                    color: highlighted ? theme.glassRaised : "transparent"
+                    color: highlighted ? theme.floatHover : "transparent"
                     Row {
                         id: row
                         anchors.left: parent.left; anchors.leftMargin: theme.space(3)

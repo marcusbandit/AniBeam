@@ -258,7 +258,7 @@ Corner {
             height: theme.space(18)
             radius: theme.radiusInner(theme.space(1))
             smoothing: theme.cornerSmoothing
-            color: resultMouse.containsMouse ? theme.glassRaised : "transparent"
+            color: resultMouse.containsMouse ? theme.floatHover : "transparent"
             MouseArea { id: resultMouse; anchors.fill: parent; hoverEnabled: true }
             Corner {
                 id: cover
