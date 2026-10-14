@@ -106,6 +106,16 @@ pub enum CoreError {
     Version { found: u32, supported: u32 },
     #[error("AniBeam hit an internal error: {message}")]
     Internal { message: String },
+    /// A service outside the metadata providers would not do what was
+    /// asked: anirss or the torrent client. `code` is a fixed word a shell
+    /// branches on (anirss's `error.type`, or `unreachable`, `unauthorized`,
+    /// `not_running`, `missing`), `message` is for people.
+    #[error("{service}: {message}")]
+    Service {
+        service: String,
+        code: String,
+        message: String,
+    },
 }
 
 impl From<rusqlite::Error> for CoreError {

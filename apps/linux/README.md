@@ -39,7 +39,9 @@ frame is up it runs a JSON array of steps against the offscreen window and exits
 `DRIVE FAIL: <reason>` and exits 1. `scripts/drive.sh <script.json> [anibeam args...]` wraps it
 like `shoot.sh` does (same `ANIBEAM_ROOT`, `W`/`H`; shots land in `captures/` unless
 `ANIBEAM_CAPTURES` or `--out <dir>` says otherwise) and prints the `DRIVE STEP <n>: ...` log.
-`scripts/drive/smoke.json` is the worked example.
+`scripts/drive/smoke.json` is the worked example. `scripts/drive/downloads.json` drives the Downloads
+page against the real anirss and qBittorrent on the machine (a search, Best fit, the rule preview; it
+adds nothing), so it needs both installed and skips nothing when they are not.
 
     {"wait": ms}                     {"click": [x, y] | "objectName", "button": "right", "double": true}
     {"hover": [x, y] | "objectName"} {"wheel": [x, y, dy]}  or  {"wheel": "objectName", "dy": -120}

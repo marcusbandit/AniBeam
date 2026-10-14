@@ -196,6 +196,99 @@ pub enum Call {
     CancelJob {
         job: u64,
     },
+    // Downloads (anirss and the torrent client)
+    /// The status as last known, settings and endpoints included. Never
+    /// touches the network; `ConnectDownloads` is what moves it.
+    GetDownloads,
+    /// Starts anirss when it is the core's sidecar, reads its health,
+    /// endpoints and qBittorrent view, and tries the torrent client
+    /// directly. Ends in `DownloadsStatusChanged`.
+    ConnectDownloads,
+    /// Searches an endpoint (the first one when `None`), falling through
+    /// to the others when it is empty or unreachable, and analyses the
+    /// result. Ends in `ReleasesFound`.
+    SearchReleases {
+        query: String,
+        endpoint: Option<String>,
+    },
+    /// One refine step over the state the shell holds. Ends in
+    /// `ReleasesRefined`.
+    RefineReleases {
+        query: String,
+        endpoint: String,
+        items: Vec<Release>,
+        op: RefineOp,
+    },
+    /// What subscribing to this state would register, without doing it.
+    /// Ends in `SubscriptionPreviewed`.
+    PreviewSubscription {
+        query: String,
+        endpoint: String,
+        items: Vec<Release>,
+    },
+    /// Registers an RSS feed and an auto-download rule in qBittorrent.
+    /// `name` defaults to the show name anirss parses off the first item.
+    /// Ends in `Subscribed`.
+    Subscribe {
+        query: String,
+        endpoint: String,
+        items: Vec<Release>,
+        name: Option<String>,
+    },
+    /// Hands these releases to qBittorrent now, under `<save_base>/<name>`.
+    /// Ends in `TorrentsAdded`.
+    DownloadReleases {
+        items: Vec<Release>,
+        name: Option<String>,
+    },
+    /// One link into the movie folder, no subdirectory. Ends in
+    /// `TorrentsAdded`.
+    DownloadMovie {
+        link: String,
+    },
+    /// Reads the subscriptions from anirss. Replies `Ok` at once; the list
+    /// arrives as `SubscriptionsRead`, or `DownloadsUnavailable` when it
+    /// could not be read. Not a job: the page asks on open and after every
+    /// change, and a read is not work worth a line in the log.
+    ListSubscriptionRules,
+    /// Reads every torrent and the transfer totals from the torrent client
+    /// directly. Replies `Ok` at once; the list arrives as `TorrentsRead`,
+    /// or `DownloadsUnavailable`. Not a job, for the same reason: the page
+    /// polls this while it is open.
+    ListTorrents,
+    /// What removing a subscription would take with it. Ends in
+    /// `RemovalPlanned`; nothing changes.
+    PlanRemoveSubscription {
+        name: String,
+        torrents: bool,
+        files: bool,
+    },
+    /// Removes the feed and rule, and with `torrents` their torrents, and
+    /// with `files` their data on disk. Ends in `SubscriptionRemoved`.
+    RemoveSubscription {
+        name: String,
+        torrents: bool,
+        files: bool,
+    },
+    /// Stops, starts or deletes torrents by info-hash. Ends in
+    /// `TorrentsControlled`.
+    ControlTorrents {
+        hashes: Vec<String>,
+        action: TorrentAction,
+    },
+    /// Saves the downloads settings. The two secrets have three answers
+    /// each: `None` keeps what is stored, `Some("")` removes it, anything
+    /// else replaces it. A running sidecar is stopped, since its
+    /// environment is built from these; `ConnectDownloads` starts it
+    /// again. Emits `DownloadsStatusChanged`.
+    SetDownloadSettings {
+        settings: DownloadSettings,
+        anirss_token: Option<String>,
+        torrent_password: Option<String>,
+    },
+    /// Tries the torrent client with the saved settings. Ends in
+    /// `DownloadsStatusChanged`.
+    TestTorrentClient,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Enum)]
@@ -263,5 +356,8 @@ pub enum Reply {
     },
     Jobs {
         jobs: Vec<JobInfo>,
+    },
+    Downloads {
+        status: DownloadsStatus,
     },
 }

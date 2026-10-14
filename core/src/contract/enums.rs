@@ -506,6 +506,7 @@ pub enum Stage {
     Playback,
     Store,
     System,
+    Downloads,
 }
 
 impl Stage {
@@ -518,6 +519,7 @@ impl Stage {
             Stage::Playback => "playback",
             Stage::Store => "store",
             Stage::System => "system",
+            Stage::Downloads => "downloads",
         }
     }
 
@@ -530,6 +532,7 @@ impl Stage {
             "playback" => Some(Stage::Playback),
             "store" => Some(Stage::Store),
             "system" => Some(Stage::System),
+            "downloads" => Some(Stage::Downloads),
             _ => None,
         }
     }
@@ -585,6 +588,14 @@ pub enum JobKind {
     Export,
     Import,
     Subscriptions,
+    ConnectDownloads,
+    SearchReleases,
+    RefineReleases,
+    Subscribe,
+    Download,
+    RemoveSubscription,
+    ControlTorrents,
+    TestTorrentClient,
 }
 
 impl JobKind {
@@ -600,6 +611,8 @@ impl JobKind {
             Crawl => Stage::Franchise,
             SkipWindows => Stage::Playback,
             Export | Import => Stage::Store,
+            ConnectDownloads | SearchReleases | RefineReleases | Subscribe | Download
+            | RemoveSubscription | ControlTorrents | TestTorrentClient => Stage::Downloads,
         }
     }
 
@@ -616,6 +629,8 @@ impl JobKind {
                 | RefreshWatching
                 | FillImages
                 | Subscriptions
+                | ConnectDownloads
+                | TestTorrentClient
         )
     }
 
@@ -645,6 +660,14 @@ impl JobKind {
             Export => "Export",
             Import => "Import",
             Subscriptions => "Subscriptions",
+            ConnectDownloads => "ConnectDownloads",
+            SearchReleases => "SearchReleases",
+            RefineReleases => "RefineReleases",
+            Subscribe => "Subscribe",
+            Download => "Download",
+            RemoveSubscription => "RemoveSubscription",
+            ControlTorrents => "ControlTorrents",
+            TestTorrentClient => "TestTorrentClient",
         }
     }
 
@@ -673,6 +696,14 @@ impl JobKind {
             "Export" => Some(Export),
             "Import" => Some(Import),
             "Subscriptions" => Some(Subscriptions),
+            "ConnectDownloads" => Some(ConnectDownloads),
+            "SearchReleases" => Some(SearchReleases),
+            "RefineReleases" => Some(RefineReleases),
+            "Subscribe" => Some(Subscribe),
+            "Download" => Some(Download),
+            "RemoveSubscription" => Some(RemoveSubscription),
+            "ControlTorrents" => Some(ControlTorrents),
+            "TestTorrentClient" => Some(TestTorrentClient),
             _ => None,
         }
     }

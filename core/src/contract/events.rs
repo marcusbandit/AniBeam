@@ -146,6 +146,47 @@ pub enum EventBody {
     ImportFinished {
         summary: ImportSummary,
     },
+    // Downloads
+    DownloadsStatusChanged {
+        status: DownloadsStatus,
+    },
+    ReleasesFound {
+        search: ReleaseSearch,
+    },
+    ReleasesRefined {
+        refinement: Refinement,
+    },
+    SubscriptionPreviewed {
+        spec: SubscriptionSpec,
+    },
+    Subscribed {
+        result: Subscribed,
+    },
+    TorrentsAdded {
+        result: AddedTorrents,
+    },
+    SubscriptionsRead {
+        rules: Vec<SubscriptionRule>,
+    },
+    TorrentsRead {
+        torrents: Vec<Torrent>,
+        transfer: TransferRate,
+    },
+    /// A read that is not a job could not be made: which read, and why.
+    DownloadsUnavailable {
+        what: String,
+        error: CoreError,
+    },
+    RemovalPlanned {
+        plans: Vec<RemovePlan>,
+    },
+    SubscriptionRemoved {
+        name: String,
+    },
+    TorrentsControlled {
+        hashes: Vec<String>,
+        action: TorrentAction,
+    },
 }
 
 /// The listener a shell hands to `subscribe`. Called by value on whatever

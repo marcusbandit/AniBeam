@@ -60,14 +60,24 @@ below where they disagree:
   at a readable measure, round character portraits, small recommendation cards, the tags
   and the franchise at the right; one column under about 1100 px. An unmatched series
   draws the same band off its folder name, with the match where the synopsis would be.
-- **Feed, Watching and Subscriptions are the library's sections too.** Each is a head row
+- **Feed and Watching are the library's sections too.** Each is a head row
   (the title in the display cut, one line of fact beside it in dim ui text, the page's
   control at the right: the feed's sort, Refresh) over sections of uniform cards in the
   library's column math, no heroes and no packing. The feed cuts This week and Earlier
   (Recently released) or Coming soon and Everything else (Coming soon); Watching cuts
   Airing, Episodes waiting, Up to date and Not in the library (the ghosts), and without
-  AniList is one empty state with the connect button; Subscriptions cuts Active and
-  Paused feeds as flat tiles. `MosaicWall.qml` is gone.
+  AniList is one empty state with the connect button. `MosaicWall.qml` is gone, and so
+  is the read-only Subscriptions page: Downloads took its place.
+- **Downloads is anirss's front, in the same column math.** The head row (the title,
+  one line saying how anirss and the torrent client stand, the two as chips that open
+  the Downloads settings), the search row (the field, the endpoint, Search), and with a
+  search up: the query line (Back, the query, the count, what anirss said), the groups
+  as chips, Narrow and Best fit, then the releases as flat rows with a selection mark at
+  the left and the actions pane (a name, Subscribe, Download, Movie, what the last action
+  did) at the right. Under everything the subscriptions and the transfers side by side,
+  flat rows with a hairline, the transfers' progress a 2 px line along each row's foot.
+  Remove on a subscription asks anirss for the plan first and shows it as the inline
+  confirm; Remove on a transfer offers torrent only or files as well.
 - **Metadata and Settings are flat too, and `mosaic.js` is gone.** Metadata is the head
   row (the title in the display cut, the count, the filter, Match unmatched and Refresh
   all as flat pills, the search at the right) over a flat list: a poster thumbnail, the
@@ -310,7 +320,7 @@ rail  header: one unit tall, whole column spans, spare columns to the title (cou
 - The live window covers the boxes too: a box is its frame plus its stone and members as
   tiles in the same flat list, positioned absolutely; the frames are bare outlines, always
   drawn, and the rest is built only within a screen of the viewport.
-- **The other walls** (Feed, Watching, Subscriptions) are `qml/MosaicWall.qml`: the same
+- **The other walls** (Feed, Watching, the old Subscriptions) are `qml/MosaicWall.qml`: the same
   module and header tiles, and sections rather than boxes, packed by `pack`: each section
   opens with a label stone the size of a small tile (its name, fact line and count), then
   its heroes, then its small tiles, as one continuous skyline in which sections never

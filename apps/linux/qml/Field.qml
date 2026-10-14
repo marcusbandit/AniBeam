@@ -7,6 +7,8 @@ Corner {
     property alias text: input.text
     property string placeholder: ""
     property bool mono: false
+    // A password: the characters are hidden as typed
+    property bool secret: false
     signal edited(string text)
 
     implicitWidth: theme.space(40)
@@ -33,6 +35,7 @@ Corner {
         anchors.leftMargin: theme.space(3)
         anchors.rightMargin: theme.space(3)
         verticalAlignment: TextInput.AlignVCenter
+        echoMode: root.secret ? TextInput.Password : TextInput.Normal
         color: theme.text
         font.family: theme.fontFamily
         font.pointSize: root.mono ? theme.typeSmall : theme.typeNormal
