@@ -76,6 +76,10 @@ pub struct SeriesCard {
     pub next_airing: Option<Airing>,
     pub last_viewed_at: Option<SystemTime>,
     pub latest_activity_at: SystemTime,
+    /// When the folder was first seen by a scan: when the person decided
+    /// to start on it, the order they expect a list in.
+    #[serde(default = "epoch")]
+    pub added_at: SystemTime,
     /// The franchise this series shares with other library series, or None
     /// when it relates to no other series in the library
     /// (`franchise::groups`).
@@ -469,6 +473,10 @@ pub struct Preferences {
 
 fn default_true() -> bool {
     true
+}
+
+fn epoch() -> SystemTime {
+    SystemTime::UNIX_EPOCH
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]

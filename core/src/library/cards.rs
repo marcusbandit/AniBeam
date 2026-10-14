@@ -341,6 +341,7 @@ impl Snapshot {
                 season: n.season,
             }),
             last_viewed_at: self.views.get(&row.id).map(|(_, at)| time::from_secs(*at)),
+            added_at: time::from_secs(row.added_at),
             latest_activity_at: time::from_secs(self.latest_activity(
                 row,
                 &self.card_episodes(row, &episodes),
@@ -664,6 +665,7 @@ mod tests {
             next_airing: None,
             last_viewed_at: None,
             latest_activity_at: UNIX_EPOCH,
+            added_at: UNIX_EPOCH,
             franchise: None,
             year: None,
             season: None,

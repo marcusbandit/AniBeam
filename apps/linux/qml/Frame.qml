@@ -422,7 +422,8 @@ FocusScope {
     function toast(text, seconds) { toastText.text = text; toastBox.visible = true; toastTimer.interval = (seconds || 4) * 1000; toastTimer.restart() }
 
     Shortcut { sequence: "Ctrl+K"; onActivated: { if (nav.current.page !== "library") frame.go("library"); Qt.callLater(function() { if (page.item && page.item.focusSearch) page.item.focusSearch() }) } }
-    Shortcut { sequence: "/"; enabled: nav.current.page === "library"; onActivated: if (page.item && page.item.focusSearch) page.item.focusSearch() }
+    // Any page with a search takes "/" (the library, metadata)
+    Shortcut { sequence: "/"; enabled: !!(page.item && page.item.focusSearch); onActivated: if (page.item && page.item.focusSearch) page.item.focusSearch() }
     Shortcut { sequence: "Ctrl+,"; onActivated: if (nav.current.page !== "settings") frame.go("settings") }
     Shortcut { sequence: "Ctrl+L"; enabled: !frame.fullWindow; onActivated: frame.toggleDrawer() }
     Shortcut { sequence: "Ctrl+Q"; onActivated: Qt.quit() }
