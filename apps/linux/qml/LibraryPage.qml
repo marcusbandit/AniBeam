@@ -173,6 +173,10 @@ Item {
         if (files > 0) return Fmt.plural(files, "episode", "episodes") + " on disk"
         return ""
     }
+    function droppedFact(list) {
+        var files = list.reduce(function(n, c) { return n + (c.episodes_on_disk || 0) }, 0)
+        return Fmt.plural(files, "file", "files") + " still on disk"
+    }
     readonly property var sections: {
         page.revision
         var airingIds = {}
@@ -182,13 +186,18 @@ Item {
         // the current season's section (seasonSections).
         var airing = cardList.filter(function(c) { return airingIds[c.id] === true })
         var lead = airing.length ? [{ title: "Airing", cards: airing, airing: true }] : []
+        // Dropped on the tracker is its own section, always last and nowhere else: what is
+        // in it is a reminder to clear the disk, not something to watch
+        var dropped = cardList.filter(function(c) { return c.list_status === "Dropped" })
+        var kept = cardList.filter(function(c) { return c.list_status !== "Dropped" })
+        var tail = dropped.length ? [{ title: "Dropped", cards: dropped, airing: false, dropped: true }] : []
         // The franchises first, when grouped: a franchise with two or more series in the
         // library is a section of its own, in release order; the rest go on to the cut
         var out = [], rest = []
         if (groupFranchises) {
             var fr = {}, frOrder = []
-            for (var i = 0; i < cardList.length; i++) {
-                var c = cardList[i]
+            for (var i = 0; i < kept.length; i++) {
+                var c = kept[i]
                 if (!c.franchise) { rest.push(c); continue }
                 var key = "f" + c.franchise.id
                 if (!fr[key]) { fr[key] = { title: c.franchise.title, cards: [] }; frOrder.push(key) }
@@ -203,10 +212,10 @@ Item {
             }
             // The grouped ones keep the library's order among themselves
             rest.sort(function(p, q) { return cardList.indexOf(p) - cardList.indexOf(q) })
-        } else rest = cardList.slice()
+        } else rest = kept
         out = lead.concat(out)
-        if (arrange === "Season") return out.concat(seasonSections(rest, airingIds))
-        if (arrange === "None") return rest.length ? out.concat([{ title: out.length ? "Everything else" : "", cards: rest, airing: false }]) : out
+        if (arrange === "Season") return out.concat(seasonSections(rest, airingIds), tail)
+        if (arrange === "None") return (rest.length ? out.concat([{ title: out.length || tail.length ? "Everything else" : "", cards: rest, airing: false }]) : out).concat(tail)
         var buckets = {}, order = []
         for (var j = 0; j < rest.length; j++) {
             var g = groupOf(rest[j])
@@ -217,7 +226,7 @@ Item {
             var bb = buckets[order[s]]
             out.push({ title: bb.title, cards: bb.cards, airing: bb.cards.some(function(x) { return airingIds[x.id] === true }) })
         }
-        return out
+        return out.concat(tail)
     }
     readonly property int shownCount: cardList.length
 
@@ -453,10 +462,10 @@ Item {
                             role: "display"
                             font.pointSize: theme.typeLarge
                             font.variableAxes: ({ "wdth": 74, "wght": 500 })
-                            color: section.modelData.airing ? theme.accent : theme.text
+                            color: section.modelData.airing ? theme.accent : section.modelData.dropped ? theme.textDim : theme.text
                         }
                         Label { anchors.baseline: sectionTitle.baseline; text: section.modelData.cards.length; role: "ledger"; color: theme.textFaint }
-                        Label { anchors.baseline: sectionTitle.baseline; text: page.factOf(section.modelData.cards); role: "ui"; color: theme.textDim }
+                        Label { anchors.baseline: sectionTitle.baseline; text: section.modelData.dropped ? page.droppedFact(section.modelData.cards) : page.factOf(section.modelData.cards); role: "ui"; color: theme.textDim }
                     }
                 }
                 Flow {

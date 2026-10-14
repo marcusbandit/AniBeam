@@ -158,6 +158,7 @@ pub fn list_series(
 /// freshest first. A series the core counts as watched-out is out of here
 /// even while a stale status still says releasing — the tracker is the
 /// firmer answer, and the airing refresh's status write clears the rest.
+/// A dropped series is out too: its next episode is nothing to wait for.
 pub fn list_airing(core: &Core, offset: u64, limit: u64) -> Result<Reply, CoreError> {
     let series = airing_rail(load_cards(core)?)
         .into_iter()
@@ -174,6 +175,7 @@ fn airing_rail(mut cards: Vec<SeriesCard>) -> Vec<SeriesCard> {
             && !c.hidden
             && !c.missing
             && !cards::watched_out(c)
+            && c.list_status != Some(ListStatus::Dropped)
     });
     cards.sort_by_key(|c| std::cmp::Reverse(c.latest_activity_at));
     cards

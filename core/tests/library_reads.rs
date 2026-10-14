@@ -462,6 +462,74 @@ fn watched_series_move_to_their_own_tab_until_shown_again() {
     drop(dir);
 }
 
+/// A dropped series still airing stays in the library, where the shell
+/// files it under Dropped, but leaves the airing rail: its next episode is
+/// nothing to wait for. The card carries the status so the shell can tell.
+#[test]
+fn a_dropped_series_leaves_the_airing_rail_but_not_the_library() {
+    let (dir, core, _c) = common::open_core();
+    let src = fixtures::insert_source(&core, "/lib");
+    let now = anibeam_core::time::now_secs();
+    let mut ids = Vec::new();
+    for (media, title, status) in [(12000, "Kept", "watching"), (12001, "Dropped", "dropped")] {
+        let id = fixtures::insert_series(
+            &core,
+            src,
+            SeriesKind::Show,
+            &format!("/lib/{title}"),
+            title,
+        );
+        for n in 1..=3 {
+            fixtures::insert_file(
+                &core,
+                id,
+                &format!("/lib/{title}/{n:02}.mkv"),
+                n as f64,
+                None,
+                "episode",
+                now - 86_400 * (4 - n),
+            );
+        }
+        fixtures::insert_media(
+            &core,
+            media,
+            Some(title),
+            None,
+            Some(12),
+            "RELEASING",
+            "TV",
+            Some(75),
+        );
+        fixtures::match_series(&core, id, Some(media), None);
+        fixtures::insert_tracker_entry(&core, "anilist", media, 2, status, None);
+        ids.push(id);
+    }
+    let (kept, dropped) = (ids[0], ids[1]);
+
+    let (series, airing) = match core
+        .call(Call::ListLibrary {
+            tab: Tab::All,
+            query: String::new(),
+            sort: Sort::Alpha,
+            direction: Direction::Asc,
+            reveal_hidden: false,
+        })
+        .unwrap()
+    {
+        Reply::Library { series, airing, .. } => (series, airing),
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(
+        series.iter().map(|s| s.id).collect::<Vec<_>>(),
+        vec![dropped, kept]
+    );
+    assert_eq!(airing.iter().map(|s| s.id).collect::<Vec<_>>(), vec![kept]);
+    let card = series.iter().find(|s| s.id == dropped).unwrap();
+    assert_eq!(card.list_status, Some(ListStatus::Dropped));
+
+    drop(dir);
+}
+
 /// The kept snapshot: reads in one state generation share one load, and the
 /// event a write emits makes the next read load again. The fixture insert
 /// in the middle goes behind the core's back, which is exactly what the
