@@ -14,17 +14,20 @@
 //! shell holds `{endpoint, query, items}` and its own history.
 
 pub mod anirss;
+pub mod facts;
 pub mod feed;
 pub mod link;
 pub mod qbt;
 pub mod settings;
 pub mod trash;
 
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::contract::*;
 use crate::core::Core;
-use crate::jobs::Finished;
+use crate::jobs::{Finished, JobCtx};
+use crate::net::{Http, HttpRequest, Method};
 use crate::sync::recover;
 use crate::trackers::accounts::with_secrets;
 use anirss::{AnirssClient, Sidecar, SpawnFailure};
@@ -319,7 +322,12 @@ async fn run_connect(core: Arc<Core>) -> Result<Finished, CoreError> {
 /// Health, endpoints and anirss's view of qBittorrent, into the state.
 async fn read_anirss(core: &Arc<Core>, client: &AnirssClient) -> Result<(), CoreError> {
     let version = client.health().await?;
-    let endpoints = client.endpoints().await?;
+    let mut endpoints = client.endpoints().await?;
+    if let Some(path) = settings::anirss_config_path() {
+        for e in &mut endpoints {
+            e.on_demand = settings::anirss_ondemand(&path, &e.name).map(|o| o.timeout);
+        }
+    }
     let view = client.qbt_status().await?;
     let mut st = core.downloads.state();
     st.anirss.state = AnirssState::Ready;
@@ -384,44 +392,92 @@ pub fn search(core: &Core, query: String, endpoint: Option<String>) -> Result<u6
         return Err(CoreError::invalid("query", "type something to search for"));
     }
     let owner = core.owner()?;
+    // The endpoint the search starts on, for the progress line: the one
+    // asked for, else the first anirss lists
+    let first = endpoint.clone().or_else(|| {
+        owner
+            .downloads
+            .state()
+            .endpoints
+            .first()
+            .map(|e| e.name.clone())
+    });
+    let ondemand = first.as_deref().and_then(|name| {
+        settings::anirss_config_path().and_then(|p| settings::anirss_ondemand(&p, name))
+    });
     Ok(owner
         .jobs
         .clone()
-        .start(JobKind::SearchReleases, move |_| async move {
-            let client = ensure_client(&owner).await?;
-            let raw = client.search(&query, endpoint.as_deref(), true).await?;
-            let search = if raw.items.is_empty() {
-                ReleaseSearch {
-                    query: raw.query,
-                    endpoint: raw.endpoint,
-                    items: Vec::new(),
-                    groups: Vec::new(),
-                    best_fit: BestFit {
-                        available: false,
-                        query: String::new(),
-                        item: None,
-                        profile: Vec::new(),
-                    },
-                    tried: raw.tried,
-                    fell_back: raw.fell_back,
-                    client_side: false,
-                    auto_resolution: None,
+        .start(JobKind::SearchReleases, move |ctx| async move {
+            let phase = Arc::new(AtomicU8::new(PHASE_CONNECTING));
+            let watch = watch_search(
+                ctx.clone(),
+                owner.http.clone(),
+                phase.clone(),
+                first
+                    .clone()
+                    .unwrap_or_else(|| "the first endpoint".to_string()),
+                ondemand,
+            );
+            let work = async {
+                let client = ensure_client(&owner).await?;
+                phase.store(PHASE_FETCHING, Ordering::Relaxed);
+                let raw = client.search(&query, endpoint.as_deref(), true).await?;
+                phase.store(PHASE_READING, Ordering::Relaxed);
+                let mut search = if raw.items.is_empty() {
+                    ReleaseSearch {
+                        query: raw.query,
+                        endpoint: raw.endpoint,
+                        items: Vec::new(),
+                        groups: Vec::new(),
+                        best_fit: BestFit {
+                            available: false,
+                            query: String::new(),
+                            item: None,
+                            profile: Vec::new(),
+                        },
+                        tried: raw.tried,
+                        fell_back: raw.fell_back,
+                        client_side: false,
+                        auto_resolution: None,
+                        facts: Vec::new(),
+                        show: None,
+                    }
+                } else {
+                    let a = client
+                        .analyze(&raw.query, &raw.endpoint, &raw.items)
+                        .await?;
+                    ReleaseSearch {
+                        query: a.query,
+                        endpoint: raw.endpoint,
+                        items: a.items,
+                        groups: a.groups,
+                        best_fit: a.best_fit,
+                        tried: raw.tried,
+                        fell_back: raw.fell_back,
+                        client_side: a.client_side,
+                        auto_resolution: a.auto_resolution,
+                        facts: Vec::new(),
+                        show: None,
+                    }
+                };
+                let (facts, show) = annotate(&owner, &search.query, &search.items);
+                search.facts = facts;
+                search.show = show;
+                if !search.items.is_empty() {
+                    enrich(
+                        &owner,
+                        client,
+                        &search.query,
+                        &search.endpoint,
+                        &search.items,
+                    );
                 }
-            } else {
-                let a = client
-                    .analyze(&raw.query, &raw.endpoint, &raw.items)
-                    .await?;
-                ReleaseSearch {
-                    query: a.query,
-                    endpoint: raw.endpoint,
-                    items: a.items,
-                    groups: a.groups,
-                    best_fit: a.best_fit,
-                    tried: raw.tried,
-                    fell_back: raw.fell_back,
-                    client_side: a.client_side,
-                    auto_resolution: a.auto_resolution,
-                }
+                Ok::<_, CoreError>(search)
+            };
+            let search = tokio::select! {
+                r = work => r?,
+                _ = watch => unreachable!("the watch never ends"),
             };
             let message = if search.fell_back {
                 let asked = endpoint
@@ -449,6 +505,129 @@ pub fn search(core: &Core, query: String, endpoint: Option<String>) -> Result<u6
         }))
 }
 
+const PHASE_CONNECTING: u8 = 0;
+const PHASE_FETCHING: u8 = 1;
+const PHASE_READING: u8 = 2;
+
+/// The search's progress line, once a second until the search answers:
+/// what it is waiting on, and for how long. An on-demand endpoint (one
+/// anirss starts, a podman pod behind Jackett) is "Starting" until its
+/// ready URL answers, then "Searching"; `done` counts seconds. A bounded
+/// poll that lives only as long as the search does.
+async fn watch_search(
+    ctx: Arc<JobCtx>,
+    http: Arc<dyn Http>,
+    phase: Arc<AtomicU8>,
+    endpoint: String,
+    ondemand: Option<settings::OnDemand>,
+) {
+    let started = std::time::Instant::now();
+    loop {
+        let label = match phase.load(Ordering::Relaxed) {
+            PHASE_CONNECTING => "Starting anirss".to_string(),
+            PHASE_READING => "Reading the results".to_string(),
+            _ => match &ondemand {
+                Some(od) if !od.ready.is_empty() && !answers(http.as_ref(), &od.ready).await => {
+                    format!("Starting {endpoint}")
+                }
+                _ => format!("Searching {endpoint}"),
+            },
+        };
+        // No total: the seconds are not a count of anything, and the page
+        // knows an on-demand endpoint's ceiling from the endpoint list
+        ctx.progress(started.elapsed().as_secs(), None, &label);
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    }
+}
+
+async fn answers(http: &dyn Http, url: &str) -> bool {
+    http.send(HttpRequest {
+        method: Method::Get,
+        url: url.to_string(),
+        headers: Vec::new(),
+        body: None,
+        timeout: Some(std::time::Duration::from_secs(2)),
+    })
+    .await
+    .map(|r| r.is_success())
+    .unwrap_or(false)
+}
+
+/// The facts read off each release, and the library series the query
+/// names with each release's episode checked against its files. A library
+/// that cannot be read leaves the show out and every `on_disk` false.
+fn annotate(core: &Core, query: &str, items: &[Release]) -> (Vec<ReleaseFacts>, Option<ShowLink>) {
+    let mut facts: Vec<ReleaseFacts> = items.iter().map(facts::read).collect();
+    if items.is_empty() {
+        return (facts, None);
+    }
+    let images = core.paths.images_dir();
+    let found = core
+        .store
+        .read(|c| match link::series_for_query(c, query)? {
+            Some(id) => link::show_with_numbers(c, &images, crate::time::now(), id),
+            None => Ok(None),
+        });
+    match found {
+        Ok(Some((show, files))) => {
+            for f in &mut facts {
+                if let Some(n) = f.episode {
+                    f.on_disk = link::has_episode(&files, f.season, n);
+                }
+            }
+            (facts, Some(show))
+        }
+        Ok(None) => (facts, None),
+        Err(e) => {
+            tracing::warn!("search not matched to the library: {e}");
+            (facts, None)
+        }
+    }
+}
+
+/// After a search answers: the feed it read, read again by the core for
+/// what anirss drops (when each release was posted, a torznab feed's
+/// counts). The address is anirss's own (`/subscriptions/preview` gives the
+/// feed a search on this query reads), and the read is cheap: nyaa and
+/// Erai answer at once and Jackett serves a repeat query from its cache.
+/// Not a job; a failure is a debug line and the page shows no dates.
+fn enrich(core: &Arc<Core>, client: AnirssClient, query: &str, endpoint: &str, items: &[Release]) {
+    let owner = core.clone();
+    let (query, endpoint, items) = (query.to_string(), endpoint.to_string(), items.to_vec());
+    core.handle.spawn(async move {
+        let outcome = async {
+            let spec = client.preview(&query, &endpoint, &items).await?;
+            if spec.feed_url.is_empty() {
+                return Err(CoreError::internal("anirss named no feed for this search"));
+            }
+            feed::read(owner.http.as_ref(), &spec.feed_url).await
+        }
+        .await;
+        match outcome {
+            Ok(entries) => owner.bus.debug(
+                Stage::Downloads,
+                format!(
+                    "{} dated on {endpoint}",
+                    plural(entries.len() as u64, "release", "releases")
+                ),
+                EventBody::ReleasesEnriched {
+                    query,
+                    endpoint,
+                    entries,
+                },
+            ),
+            Err(error) => owner.bus.debug(
+                Stage::Downloads,
+                format!("releases not dated: {}", plain(&error)),
+                EventBody::DownloadsUnavailable {
+                    what: "dates".to_string(),
+                    error,
+                },
+            ),
+        };
+    });
+}
+
 pub fn refine(
     core: &Core,
     query: String,
@@ -462,7 +641,22 @@ pub fn refine(
         .clone()
         .start(JobKind::RefineReleases, move |_| async move {
             let client = ensure_client(&owner).await?;
-            let refinement = client.apply(&query, &endpoint, &items, &op).await?;
+            let mut refinement = client.apply(&query, &endpoint, &items, &op).await?;
+            if refinement.applied {
+                let (facts, show) = annotate(&owner, &refinement.query, &refinement.items);
+                refinement.facts = facts;
+                refinement.show = show;
+                // A refetch read a new feed; a client-side step kept releases already dated
+                if refinement.mode == "refetch" && !refinement.items.is_empty() {
+                    enrich(
+                        &owner,
+                        client,
+                        &refinement.query,
+                        &refinement.endpoint,
+                        &refinement.items,
+                    );
+                }
+            }
             let message = if refinement.applied {
                 format!(
                     "Narrowed to {} releases ({:+})",

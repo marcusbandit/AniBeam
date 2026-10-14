@@ -86,6 +86,11 @@ pub struct SearchEndpoint {
     pub url: String,
     #[serde(default)]
     pub client_side_refine: bool,
+    /// For an endpoint anirss starts on demand (a pod behind Jackett), the
+    /// seconds anirss gives it to come up; None for one that is always
+    /// there. Read from anirss's own config by the core.
+    #[serde(default)]
+    pub on_demand: Option<u64>,
 }
 
 /// A search and its first analysis in one: the items, where they came
@@ -104,6 +109,12 @@ pub struct ReleaseSearch {
     pub fell_back: bool,
     pub client_side: bool,
     pub auto_resolution: Option<String>,
+    /// Index for index with `items`.
+    #[serde(default)]
+    pub facts: Vec<ReleaseFacts>,
+    /// The library series the query names, when one fits.
+    #[serde(default)]
+    pub show: Option<ShowLink>,
 }
 
 /// One refine step. `Tokens` narrows to a group, `Term` adds a positive
@@ -136,6 +147,11 @@ pub struct Refinement {
     pub previous_count: u64,
     #[serde(default)]
     pub delta: i64,
+    /// Index for index with `items`; the core fills these, anirss does not.
+    #[serde(default)]
+    pub facts: Vec<ReleaseFacts>,
+    #[serde(default)]
+    pub show: Option<ShowLink>,
 }
 
 /// What subscribing would register, before it does.
@@ -249,6 +265,21 @@ pub struct RemovePlan {
     /// asked for.
     #[serde(default)]
     pub torrents: Vec<String>,
+}
+
+/// What the core reads off a release beyond anirss's fields, index for
+/// index with the items it came with. `episode` is None for a batch and
+/// for a title naming none; `on_disk` is true when the library series the
+/// search names already has that episode.
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize, uniffi::Record)]
+pub struct ReleaseFacts {
+    pub episode: Option<f64>,
+    pub season: Option<u32>,
+    pub batch: bool,
+    pub group: String,
+    pub resolution: String,
+    pub size_bytes: Option<u64>,
+    pub on_disk: bool,
 }
 
 /// One torrent as qBittorrent reports it, trimmed to what the page draws.

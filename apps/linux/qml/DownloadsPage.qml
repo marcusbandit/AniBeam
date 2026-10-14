@@ -30,6 +30,7 @@ Item {
     property alias scrollY: scroll.contentY
     // Escape closes the show, then the search
     function escapePressed() {
+        if (page.searching) { page.cancelSearch(); return true }
         if (page.detail !== null) { page.closeDetail(); return true }
         if (page.state !== null || page.searchError !== "") { page.state = null; page.history = []; page.searchError = ""; page.notice = ""; return true }
         return false
@@ -68,7 +69,49 @@ Item {
     readonly property var items: state && state.items ? state.items : []
     readonly property var groups: state && state.groups ? state.groups : []
     readonly property int selectedCount: { var n = 0; for (var k in selected) if (selected[k]) n++; return n }
-    readonly property int shown: Math.min(items.length, 200)
+    readonly property var facts: state && state.facts ? state.facts : []
+    readonly property var searchShow: state && state.show ? state.show : null
+    // The search's own progress: the phase the core reports, the seconds since it began,
+    // the ceiling an on-demand endpoint's start has (0 for any other), the endpoint asked
+    property string searchLabel: ""
+    property real searchTotal: 0
+    property real searchStartMs: 0
+    property real searchElapsed: 0
+    property string searchEndpoint: ""
+    Timer { interval: 250; repeat: true; running: page.searching; onTriggered: page.searchElapsed = (Date.now() - page.searchStartMs) / 1000 }
+    // What the core read off the endpoint's own feed: link -> entry and title -> entry,
+    // gathered over the whole search (a step back keeps its dates)
+    property var extras: ({})
+    property var extrasByTitle: ({})
+    property string datesState: "loading"
+    property string sortKey: ""
+    property bool sortDesc: true
+    property bool showDismissed: false
+    readonly property real selectedBytes: {
+        var n = 0
+        for (var i = 0; i < items.length; i++) if (selected[items[i].link]) {
+            var f = facts[i], e = extras[items[i].link]
+            n += f && f.size_bytes ? f.size_bytes : e && e.size_bytes ? e.size_bytes : 0
+        }
+        return n
+    }
+    // The releases for the episodes the library lacks: for each episode in the list that is
+    // not on disk, the one with the most seeders
+    readonly property var missingPicks: {
+        if (!searchShow) return []
+        var best = {}
+        for (var i = 0; i < items.length; i++) {
+            var f = facts[i]
+            if (!f || f.batch || f.on_disk || f.episode === null || f.episode === undefined) continue
+            var k = String(f.episode), seeds = items[i].seeders
+            if (seeds === null || seeds === undefined) { var e = extras[items[i].link]; seeds = e && e.seeders !== null && e.seeders !== undefined ? e.seeders : -1 }
+            if (!(k in best) || seeds > best[k].seeds) best[k] = { i: i, seeds: seeds }
+        }
+        var out = []
+        for (var key in best) out.push(best[key].i)
+        return out
+    }
+    readonly property int onDiskCount: { var n = 0; for (var i = 0; i < facts.length; i++) if (facts[i] && facts[i].on_disk) n++; return n }
 
     // ---- The lists
     readonly property var rules: frame.downloadsRules
@@ -129,6 +172,16 @@ Item {
         if (r.error) { page.searchError = r.error.message; return }
         page.searchJob = r.reply.job
         page.searching = true
+        page.searchStartMs = Date.now()
+        page.searchElapsed = 0
+        page.searchLabel = ""
+        page.searchTotal = page.endpoints.length > page.endpointIndex && page.endpoints[page.endpointIndex].on_demand ? page.endpoints[page.endpointIndex].on_demand : 0
+        page.searchEndpoint = endpoint
+        page.extras = ({})
+        page.extrasByTitle = ({})
+        page.datesState = "loading"
+        page.sortKey = ""
+        page.showDismissed = false
         page.searchError = ""
         page.notice = ""
         page.detail = null
@@ -145,6 +198,11 @@ Item {
         if (r.error) { page.searchError = r.error.message; return }
         page.searchJob = r.reply.job
         page.searching = true
+        page.searchStartMs = Date.now()
+        page.searchElapsed = 0
+        page.searchLabel = "Narrowing on " + page.state.endpoint
+        page.searchTotal = 0
+        page.searchEndpoint = page.state.endpoint
         page.searchError = ""
     }
     function narrow(text) {
@@ -154,7 +212,8 @@ Item {
         else refine({ type: "term", term: t })
     }
     function adopt(s) {
-        page.state = { query: s.query, endpoint: s.endpoint, items: s.items || [], groups: s.groups || [], bestFit: s.best_fit || { available: false }, clientSide: !!s.client_side }
+        page.state = { query: s.query, endpoint: s.endpoint, items: s.items || [], groups: s.groups || [], bestFit: s.best_fit || { available: false }, clientSide: !!s.client_side,
+                       facts: s.facts || [], show: s.show || null }
         page.selected = {}
         page.preview = null
         page.hoveredGroup = -1
@@ -168,6 +227,47 @@ Item {
         page.preview = null
         page.notice = ""
     }
+    function feedHost(url) { var m = String(url || "").match(/^[a-z]+:\/\/([^\/?#]+)/i); return m ? m[1] : String(url || "") }
+    function cancelSearch() {
+        if (!page.searching || page.searchJob < 0) return
+        Door.cancelJob(page.searchJob)
+    }
+    function searchOn(name) {
+        for (var i = 0; i < page.endpoints.length; i++) if (page.endpoints[i].name === name) page.endpointIndex = i
+        page.cancelSearch()
+        Qt.callLater(page.runSearch)
+    }
+    function sortBy(key) {
+        if (page.sortKey === key) page.sortDesc = !page.sortDesc
+        else { page.sortKey = key; page.sortDesc = key !== "title" }
+    }
+    function toggleAll(on) {
+        var s = {}
+        if (on) for (var i = 0; i < page.items.length; i++) s[page.items[i].link] = true
+        page.selected = s
+    }
+    function selectMissing() {
+        var s = {}
+        for (var i = 0; i < page.missingPicks.length; i++) s[page.items[page.missingPicks[i]].link] = true
+        page.selected = s
+    }
+    // anirss's groups, sorted into what a person picks by: release groups, quality, the rest
+    property bool moreFilters: false
+    readonly property var facets: {
+        var out = { groups: [], quality: [], other: [] }
+        var quality = /^(\d{3,4}p|4k|hevc|avc|x26[45]|h\.?26[45]|10-?bit|8-?bit|aac|flac|opus|ac3|eac3|ddp?|web-?dl|webrip|web|bd|bdrip|bluray|remux|cr|nf|amzn|dsnp|hidive|multi-?subs?|multisub|dual(-audio)?|s\d{1,2}|batch|hdr|dv)/i
+        for (var i = 0; i < groups.length; i++) {
+            var g = groups[i], label = String(g.label || "")
+            var entry = { index: i, label: label.replace(/\+/g, " "), count: g.member_count }
+            if (label.charAt(0) === "[") out.groups.push(entry)
+            else if (quality.test(label)) out.quality.push(entry)
+            else out.other.push(entry)
+        }
+        var byCount = function(a, b) { return b.count - a.count }
+        out.groups.sort(byCount); out.quality.sort(byCount); out.other.sort(byCount)
+        return out
+    }
+    readonly property var otherEndpoints: endpoints.map(function(e) { return e.name }).filter(function(n) { return n !== page.searchEndpoint })
     function reasonWords(reason) {
         if (reason === "zero_results") return "That would leave nothing, so the list stays as it is."
         if (reason === "no_match") return "No release matches that term."
@@ -530,6 +630,21 @@ Item {
             page.connecting = false
             if (page.anirssReady && !frame.downloadsRulesRead) page.loadRules()
         }
+        function onJobProgress(job, kind, done, total, label) {
+            if (job !== page.searchJob || !page.searching) return
+            page.searchLabel = label
+        }
+        function onReleasesEnriched(query, endpoint, entries) {
+            if (!page.state && !page.searching) return
+            var byLink = JSON.parse(JSON.stringify(page.extras)), byTitle = JSON.parse(JSON.stringify(page.extrasByTitle))
+            for (var i = 0; i < entries.length; i++) {
+                if (entries[i].link) byLink[entries[i].link] = entries[i]
+                if (entries[i].title) byTitle[entries[i].title] = entries[i]
+            }
+            page.extras = byLink
+            page.extrasByTitle = byTitle
+            page.datesState = "ready"
+        }
         function onReleasesFound(job, search) {
             if (job !== page.searchJob) return
             page.searching = false
@@ -582,6 +697,7 @@ Item {
             page.feed = { url: url, entries: sorted, loading: false, error: "" }
         }
         function onDownloadsUnavailable(what, error) {
+            if (what === "dates") { if (page.datesState === "loading") page.datesState = "none"; return }
             if (what === "torrents") page.torrentsError = page.errorWords(error)
             else if (what === "feed" && page.feed) page.feed = { url: page.feed.url, entries: page.feed.entries, loading: false, error: page.errorWords(error) }
         }
@@ -714,7 +830,13 @@ Item {
                 minWidth: theme.space(28)
                 interactive: page.endpoints.length > 0
                 onPicked: function(i) { page.endpointIndex = i; if (page.state) page.runSearch() }
-                Tooltip { text: page.endpoints.length > page.endpointIndex ? page.endpoints[page.endpointIndex].url : "The search endpoints come from anirss's config" }
+                Tooltip {
+                    text: {
+                        if (page.endpoints.length <= page.endpointIndex) return "The search endpoints come from anirss's config"
+                        var e = page.endpoints[page.endpointIndex]
+                        return e.on_demand ? e.name + " starts on demand: the first search waits for it, up to " + e.on_demand + " seconds" : e.url
+                    }
+                }
             }
             Button {
                 id: go
@@ -740,27 +862,36 @@ Item {
                 Button { text: "Back"; icon: "arrow-left"; flat: true; small: true; enabled: page.history.length > 0; anchors.verticalCenter: parent.verticalCenter; onClicked: page.back() }
                 Label { visible: !!page.state; text: page.state ? page.state.query : ""; role: "title"; font.pointSize: theme.typeNormal; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideMiddle; width: Math.min(implicitWidth, parent.width * 0.5) }
                 Label { visible: !!page.state; text: page.state ? Fmt.plural(page.items.length, "release", "releases") + " on " + page.state.endpoint : ""; role: "ledger"; color: theme.textDim; anchors.verticalCenter: parent.verticalCenter }
-                Label { visible: page.searching; text: page.state ? "Narrowing" : "Searching"; role: "ui"; color: theme.textDim; anchors.verticalCenter: parent.verticalCenter }
                 Label { visible: page.notice !== "" && !page.searching; text: page.notice; role: "ui"; color: theme.textDim; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight }
                 Label { visible: page.searchError !== ""; text: page.searchError; role: "ui"; color: theme.red; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight }
             }
-            // The groups: a token or a few that split the list, a count on each
-            Flow {
+            // While it runs: what it is doing, for how long, and the ways out
+            SearchProgress {
+                visible: page.searching
+                width: parent.width
+                label: page.searchLabel
+                elapsed: page.searchElapsed
+                total: page.searchTotal
+                endpoint: page.searchEndpoint
+                others: page.state ? [] : page.otherEndpoints
+                onCancel: page.cancelSearch()
+                onSwitchTo: function(name) { page.searchOn(name) }
+            }
+            // anirss's groups as filters, by kind: a click narrows to one
+            Column {
                 visible: page.groups.length > 0
                 width: parent.width
                 spacing: theme.space(1.5)
-                Repeater {
-                    model: page.groups
-                    Chip {
-                        required property var modelData
-                        required property int index
-                        text: modelData.label + "  " + modelData.member_count
-                        small: true
-                        clickable: !page.searching
-                        selected: page.hoveredGroup === index
-                        onClicked: page.refine({ type: "tokens", tokens: modelData.tokens })
-                        HoverHandler { onHoveredChanged: page.hoveredGroup = hovered ? index : (page.hoveredGroup === index ? -1 : page.hoveredGroup) }
-                    }
+                FacetRow { title: "Release group"; entries: page.facets.groups.slice(0, 14) }
+                FacetRow { title: "Quality"; entries: page.facets.quality.slice(0, 14) }
+                FacetRow { visible: page.moreFilters; title: "Words"; entries: page.facets.other.slice(0, 30) }
+                Button {
+                    visible: page.facets.other.length > 0
+                    text: page.moreFilters ? "Fewer filters" : "More filters (" + page.facets.other.length + ")"
+                    icon: page.moreFilters ? "chevron-up" : "chevron-down"
+                    flat: true
+                    small: true
+                    onClicked: page.moreFilters = !page.moreFilters
                 }
             }
             Row {
@@ -785,43 +916,132 @@ Item {
                     Tooltip { text: page.state && page.state.bestFit.available ? "Pins the best release's profile: " + page.state.bestFit.query : "Best fit has nothing to pin here" }
                 }
             }
-            // The releases at the left, the actions at the right
-            Item {
+            // The show the search names, when the library has it
+            Tile {
+                visible: !!page.searchShow && !page.showDismissed && !!page.state
                 width: parent.width
-                height: Math.max(list.implicitHeight, pane.implicitHeight)
-                Column {
-                    id: list
-                    x: 0
-                    width: parent.width - page.paneWidth - page.gap
-                    Repeater {
-                        model: page.items.slice(0, page.shown)
-                        ReleaseRow {
-                            required property var modelData
-                            required property int index
-                            release: modelData
-                            selected: page.selected[modelData.link] === true
-                            inGroup: page.hoveredGroup >= 0 && page.groups[page.hoveredGroup] && page.groups[page.hoveredGroup].members.indexOf(index) >= 0
-                            onToggled: page.toggle(modelData)
-                            onDownloadOne: page.download([modelData])
-                        }
+                implicitHeight: theme.space(36)
+                height: visible ? implicitHeight : 0
+                padding: theme.space(4)
+                lit: false
+                Corner {
+                    id: stripPoster
+                    width: theme.space(18); height: width * 1.5
+                    anchors.verticalCenter: parent.verticalCenter
+                    radius: theme.radiusSm
+                    color: theme.tileSunken
+                    Image {
+                        id: stripImage
+                        visible: false
+                        anchors.fill: parent
+                        source: page.searchShow && page.searchShow.poster ? "file://" + page.searchShow.poster : ""
+                        sourceSize: theme.posterDecodeSize
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
                     }
+                    fillItem: stripImage.status === Image.Ready ? stripImage : null
+                }
+                Column {
+                    anchors.left: stripPoster.right
+                    anchors.leftMargin: theme.space(5)
+                    anchors.right: stripButtons.left
+                    anchors.rightMargin: theme.space(5)
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: theme.space(1.5)
+                    Label { text: "In your library"; role: "ledger"; color: theme.textFaint }
+                    Label { width: parent.width; text: page.searchShow ? page.searchShow.title : ""; role: "title"; font.pointSize: theme.typeLarge * 0.8; elide: Text.ElideRight }
                     Label {
-                        visible: page.items.length > page.shown
-                        topPadding: theme.space(2)
-                        text: "and " + (page.items.length - page.shown) + " more. Narrow the list to see them."
+                        width: parent.width
+                        text: {
+                            var s = page.searchShow
+                            if (!s) return ""
+                            var total = s.total_episodes && !s.total_is_estimate ? s.total_episodes : 0
+                            var parts = [total ? s.episodes_on_disk + " of " + total + " episodes on disk" : Fmt.plural(s.episodes_on_disk, "episode", "episodes") + " on disk"]
+                            if (s.next_airing && s.next_airing.at * 1000 > page.nowMs) parts.push("episode " + s.next_airing.episode + " in " + Fmt.countdown(s.next_airing.at - page.nowMs / 1000))
+                            else if (s.complete) parts.push("complete")
+                            return parts.join(", ") + "."
+                        }
                         role: "ui"
                         color: theme.textDim
+                        elide: Text.ElideRight
                     }
-                    Item {
-                        visible: page.state && page.items.length === 0 && !page.searching
+                    Label {
                         width: parent.width
-                        height: visible ? theme.space(40) : 0
-                        EmptyState { icon: "search"; title: "No releases"; body: "Nothing on " + (page.state ? page.state.endpoint : "") + " matches. Try another endpoint or a shorter query." }
+                        text: page.onDiskCount > 0 ? Fmt.plural(page.onDiskCount, "release here is", "releases here are") + " for episodes you already have, marked On disk." : "None of these releases is for an episode you already have."
+                        role: "ui"
+                        font.pointSize: theme.typeSmall
+                        color: theme.textFaint
+                        elide: Text.ElideRight
+                    }
+                }
+                Row {
+                    id: stripButtons
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: theme.space(2)
+                    Button {
+                        objectName: "downloads-select-missing"
+                        visible: page.missingPicks.length > 0
+                        text: "Tick the " + Fmt.plural(page.missingPicks.length, "missing episode", "missing episodes")
+                        icon: "check-check"
+                        primary: true
+                        onClicked: page.selectMissing()
+                        Tooltip { text: "For each episode here the library does not have, the release with the most seeders" }
+                    }
+                    Button { text: "Open in library"; icon: "layers"; flat: true; onClicked: frame.go("series", { id: page.searchShow.series_id }, page.searchShow.title) }
+                    Button { icon: "x"; flat: true; small: true; onClicked: page.showDismissed = true; Tooltip { text: "Not this show" } }
+                }
+            }
+            // The releases as a table at the left, the actions at the right, keeping in view
+            Item {
+                id: resultsArea
+                visible: !!page.state
+                width: parent.width
+                height: page.items.length > 0 ? Math.max(table.implicitHeight, pane.implicitHeight) : noReleases.height
+                ReleaseTable {
+                    id: table
+                    visible: page.items.length > 0
+                    width: parent.width - page.paneWidth - page.gap
+                    items: page.items
+                    facts: page.facts
+                    extras: page.extras
+                    extrasByTitle: page.extrasByTitle
+                    datesState: page.datesState
+                    selected: page.selected
+                    highlight: page.hoveredGroup >= 0 && page.groups[page.hoveredGroup] ? page.groups[page.hoveredGroup].members : []
+                    sortKey: page.sortKey
+                    sortDesc: page.sortDesc
+                    nowMs: page.nowMs
+                    opacity: page.searching ? 0.5 : 1
+                    onToggled: function(item) { page.toggle(item) }
+                    onToggledAll: function(on) { page.toggleAll(on) }
+                    onSortBy: function(key) { page.sortBy(key) }
+                    onDownloadOne: function(item) { page.download([item]) }
+                }
+                Item {
+                    id: noReleases
+                    visible: !!page.state && page.items.length === 0 && !page.searching
+                    width: parent.width
+                    height: visible ? theme.space(48) : 0
+                    EmptyState {
+                        icon: "search"
+                        title: "No releases"
+                        body: "Nothing on " + (page.state ? page.state.endpoint : "") + " matches \u201c" + (page.state ? page.state.query : "") + "\u201d. Another endpoint, or fewer words, may find it."
+                        Repeater {
+                            model: page.state ? page.endpoints.map(function(e) { return e.name }).filter(function(n) { return n !== page.state.endpoint }) : []
+                            Button { required property string modelData; text: "Try " + modelData; icon: "search"; flat: true; onClicked: page.searchOn(modelData) }
+                        }
                     }
                 }
                 Tile {
                     id: pane
+                    visible: page.items.length > 0
                     x: parent.width - page.paneWidth
+                    // Keeps in view while the table scrolls past
+                    y: {
+                        var top = resultsArea.mapToItem(scroll.contentItem, 0, 0).y
+                        return Math.max(0, Math.min(scroll.contentY - top + theme.space(4), resultsArea.height - height))
+                    }
                     width: page.paneWidth
                     implicitHeight: paneBody.implicitHeight + padding * 2
                     height: implicitHeight
@@ -831,48 +1051,27 @@ Item {
                         id: paneBody
                         width: parent.width
                         spacing: theme.space(2.5)
-                        Label { text: "Name"; role: "ledger"; color: theme.textDim }
-                        Field {
-                            objectName: "downloads-name"
+                        // What is ticked
+                        Label { text: page.selectedCount ? Fmt.plural(page.selectedCount, "release", "releases") + " ticked" : "Nothing ticked"; role: "title"; font.pointSize: theme.typeNormal }
+                        Label {
                             width: parent.width
-                            placeholder: "anirss picks one from the first release"
-                            text: page.nameText
-                            onEdited: function(t) { page.nameText = t }
+                            text: page.selectedCount ? (page.selectedBytes > 0 ? Fmt.bytes(page.selectedBytes) + " together." : "") : "Tick releases in the table, or download them all."
+                            role: "ui"
+                            font.pointSize: theme.typeSmall
+                            color: theme.textDim
+                            wrapMode: Text.Wrap
                         }
-                        Label { width: parent.width; text: "The folder under anirss's save base. A subscription keeps this name as its rule."; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint; wrapMode: Text.Wrap }
-                        Item { width: 1; height: theme.space(1) }
-                        Button {
-                            objectName: "downloads-subscribe"
-                            width: parent.width
-                            text: page.acting ? "Working" : "Subscribe to this search"
-                            icon: "rss"
-                            primary: true
-                            enabled: !!page.state && page.items.length > 0 && !page.acting && !page.searching
-                            onClicked: page.subscribe()
+                        Row {
+                            spacing: theme.space(2)
+                            Button { text: "Tick all"; flat: true; small: true; enabled: page.items.length > 0 && page.selectedCount < page.items.length; onClicked: page.toggleAll(true) }
+                            Button { text: "Clear"; flat: true; small: true; enabled: page.selectedCount > 0; onClicked: page.toggleAll(false) }
                         }
-                        Button {
-                            width: parent.width
-                            text: page.preview ? "Preview again" : "Preview the rule"
-                            icon: "eye"
-                            flat: true
-                            small: true
-                            enabled: !!page.state && page.items.length > 0 && !page.searching
-                            onClicked: page.previewSubscription()
-                        }
-                        Column {
-                            visible: !!page.preview
-                            width: parent.width
-                            spacing: theme.space(1)
-                            Label { width: parent.width; text: page.preview ? "Feed " + page.preview.feed_url : ""; role: "ledger"; color: theme.textDim; elide: Text.ElideMiddle }
-                            Label { visible: !!(page.preview && page.preview.must_contain); width: parent.width; text: page.preview ? "Must contain " + page.preview.must_contain : ""; role: "ledger"; color: theme.textDim; elide: Text.ElideRight }
-                            Label { visible: !!(page.preview && page.preview.must_not_contain); width: parent.width; text: page.preview ? "Must not contain " + page.preview.must_not_contain : ""; role: "ledger"; color: theme.textDim; elide: Text.ElideRight }
-                        }
-                        Rectangle { width: parent.width; height: 1; color: theme.line }
                         Button {
                             objectName: "downloads-download"
                             width: parent.width
-                            text: page.selectedCount > 0 ? "Download " + Fmt.plural(page.selectedCount, "selected release", "selected releases") : "Download all " + page.items.length
+                            text: page.acting ? "Working" : page.selectedCount > 0 ? "Download " + Fmt.plural(page.selectedCount, "release", "releases") : "Download all " + page.items.length
                             icon: "download"
+                            primary: true
                             enabled: !!page.state && page.items.length > 0 && !page.acting && !page.searching
                             onClicked: page.download(page.selectedCount > 0 ? page.selectedItems() : page.items)
                         }
@@ -883,7 +1082,50 @@ Item {
                             flat: true
                             enabled: page.selectedCount === 1 && !page.acting
                             onClicked: page.movie()
-                            Tooltip { text: "One selected release, straight into the movie folder" }
+                            Tooltip { text: "One ticked release, straight into the movie folder" }
+                        }
+                        Rectangle { width: parent.width; height: 1; color: theme.line }
+                        // Keeping the show coming
+                        Label { text: "Subscribe"; role: "title"; font.pointSize: theme.typeNormal }
+                        Label {
+                            width: parent.width
+                            text: "New releases that match this search download as they appear, into the folder named here."
+                            role: "ui"
+                            font.pointSize: theme.typeSmall
+                            color: theme.textDim
+                            wrapMode: Text.Wrap
+                        }
+                        Field {
+                            objectName: "downloads-name"
+                            width: parent.width
+                            placeholder: page.searchShow ? page.searchShow.title : "anirss picks one from the first release"
+                            text: page.nameText
+                            onEdited: function(t) { page.nameText = t }
+                        }
+                        Button {
+                            objectName: "downloads-subscribe"
+                            width: parent.width
+                            text: page.acting ? "Working" : "Subscribe to this search"
+                            icon: "rss"
+                            enabled: !!page.state && page.items.length > 0 && !page.acting && !page.searching
+                            onClicked: page.subscribe()
+                        }
+                        Button {
+                            width: parent.width
+                            text: page.preview ? "Show the rule again" : "Show the rule it makes"
+                            icon: "eye"
+                            flat: true
+                            small: true
+                            enabled: !!page.state && page.items.length > 0 && !page.searching
+                            onClicked: page.previewSubscription()
+                        }
+                        Column {
+                            visible: !!page.preview
+                            width: parent.width
+                            spacing: theme.space(1)
+                            Label { width: parent.width; text: page.preview ? "From " + page.feedHost(page.preview.feed_url) + (page.preview.endpoint_name ? " (" + page.preview.endpoint_name + ")" : "") : ""; role: "ledger"; color: theme.textDim; elide: Text.ElideRight }
+                            Label { visible: !!(page.preview && page.preview.must_contain); width: parent.width; text: page.preview ? "Must contain " + page.preview.must_contain : ""; role: "ledger"; color: theme.textDim; wrapMode: Text.Wrap }
+                            Label { visible: !!(page.preview && page.preview.must_not_contain); width: parent.width; text: page.preview ? "Must not contain " + page.preview.must_not_contain : ""; role: "ledger"; color: theme.textDim; wrapMode: Text.Wrap }
                         }
                         Label { visible: page.actionLine !== ""; width: parent.width; text: page.actionLine; role: "ui"; font.pointSize: theme.typeSmall; color: theme.caughtUp; wrapMode: Text.Wrap }
                         Label { visible: page.actionError !== ""; width: parent.width; text: page.actionError; role: "ui"; font.pointSize: theme.typeSmall; color: theme.red; wrapMode: Text.Wrap }
@@ -1102,6 +1344,35 @@ Item {
                     title: page.torrentOn ? "Nothing downloaded" : page.clientName + " is not connected"
                     body: page.torrentOn ? "What you download or subscribe to shows up here, a show at a time." : (page.torrent && page.torrent.message ? page.torrent.message : "Check its address and password in Settings.")
                     Button { visible: !page.torrentOn; text: "Settings"; icon: "settings"; onClicked: frame.go("settings", { tab: "downloads" }) }
+                }
+            }
+        }
+    }
+
+    // One kind of filter: its name, then a chip per group with its count. Hovering a chip
+    // lights its releases in the table; a click narrows to them.
+    component FacetRow: Row {
+        id: facet
+        property string title: ""
+        property var entries: []
+        visible: entries.length > 0
+        width: parent ? parent.width : 0
+        spacing: theme.space(3)
+        Label { id: facetTitle; width: theme.space(26); anchors.verticalCenter: parent.verticalCenter; text: facet.title; role: "ledger"; color: theme.textFaint }
+        Flow {
+            width: facet.width - facetTitle.width - facet.spacing
+            spacing: theme.space(1.5)
+            Repeater {
+                model: facet.entries
+                Chip {
+                    required property var modelData
+                    text: modelData.label + "  " + modelData.count
+                    small: true
+                    maxLabelWidth: theme.space(70)
+                    clickable: !page.searching
+                    selected: page.hoveredGroup === modelData.index
+                    onClicked: page.refine({ type: "tokens", tokens: page.groups[modelData.index].tokens })
+                    HoverHandler { onHoveredChanged: page.hoveredGroup = hovered ? modelData.index : (page.hoveredGroup === modelData.index ? -1 : page.hoveredGroup) }
                 }
             }
         }

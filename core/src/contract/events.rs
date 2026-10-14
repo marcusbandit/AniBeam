@@ -174,6 +174,15 @@ pub enum EventBody {
         /// The library series the torrents' `series_id`s name, once each.
         shows: Vec<ShowLink>,
     },
+    /// What the endpoint's own feed says about a search's releases (the
+    /// date each was posted, the counts a feed carries that anirss drops),
+    /// read after the search answered. Joined to the releases by link,
+    /// else title.
+    ReleasesEnriched {
+        query: String,
+        endpoint: String,
+        entries: Vec<FeedEntry>,
+    },
     /// A subscription's feed, read for the page: `url` is the one asked
     /// for, so a late answer for a feed since closed can be told apart.
     FeedRead {

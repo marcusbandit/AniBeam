@@ -146,6 +146,14 @@ _Avoid_: scale, zoom, compact mode
 One entry a search endpoint returns: a title, a link (a magnet or a `.torrent` URL) and whatever the feed carries beside them. A count the feed did not carry is unknown, never nought. The shape is anirss's `Item`, kept field for field so a release goes back to anirss unchanged.
 _Avoid_: torrent (that is what it becomes once added), result, item, entry
 
+**Release facts**:
+What the core reads off a release's title beside anirss's fields: the episode (and season), whether it is a batch, the release group, the resolution, the size in bytes, and whether the library series the search names already has that episode (On disk). A title the core cannot read gets no episode, never episode 1. The date each release was posted, and a torznab feed's counts, come from the core's own read of the feed the search used, after the search answers.
+_Avoid_: metadata, parsed info
+
+**On-demand endpoint**:
+An endpoint anirss starts only when a search needs it (1337x: a podman pod behind Jackett), and keeps up while the sidecar holds its lease. The first search waits for it to come up, up to the endpoint's timeout; the page says so while it waits ("Starting 1337x"), then "Searching 1337x".
+_Avoid_: harness, container, lazy endpoint
+
 **Endpoint**:
 One site a search goes to, as anirss configures it: nyaa-style, or any RSS search URL. They sit in an order; a search that finds nothing on one falls through to the next.
 _Avoid_: tracker site, indexer, source

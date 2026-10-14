@@ -186,3 +186,80 @@ mod tests {
         );
     }
 }
+
+/// An endpoint anirss starts on demand (it has a `start` command): the URL
+/// that answers once it is up, and how long anirss waits for that.
+#[derive(Clone, Debug, PartialEq)]
+pub struct OnDemand {
+    pub ready: String,
+    pub timeout: u64,
+}
+
+/// The named endpoint's on-demand settings from anirss's own config, or
+/// None for an endpoint that is always there (or a config that cannot be
+/// read: then nothing is known and nothing is claimed).
+pub fn anirss_ondemand(path: &Path, name: &str) -> Option<OnDemand> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let doc: toml::Table = toml::from_str(&text).ok()?;
+    let endpoint = doc
+        .get("endpoint")?
+        .as_array()?
+        .iter()
+        .filter_map(|e| e.as_table())
+        .find(|t| t.get("name").and_then(|n| n.as_str()) == Some(name))?;
+    endpoint
+        .get("start")?
+        .as_str()
+        .filter(|s| !s.trim().is_empty())?;
+    let timeout = endpoint
+        .get("timeout")
+        .and_then(|v| v.as_integer().or_else(|| v.as_float().map(|f| f as i64)))
+        .filter(|t| *t > 0)
+        .unwrap_or(60) as u64;
+    Some(OnDemand {
+        ready: endpoint
+            .get("ready")
+            .and_then(|r| r.as_str())
+            .unwrap_or("")
+            .to_string(),
+        timeout,
+    })
+}
+
+#[cfg(test)]
+mod ondemand_tests {
+    use super::*;
+
+    #[test]
+    fn an_endpoint_with_a_start_command_is_on_demand() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+[[endpoint]]
+name = "nyaa"
+kind = "nyaa"
+url = "https://nyaa.si/"
+
+[[endpoint]]
+name = "1337x"
+kind = "rss"
+url = "http://127.0.0.1:9117/x?q={query}"
+start = "podman pod start x"
+ready = "http://127.0.0.1:9117/caps"
+timeout = 45
+"#,
+        )
+        .unwrap();
+        assert_eq!(anirss_ondemand(&path, "nyaa"), None);
+        assert_eq!(
+            anirss_ondemand(&path, "1337x"),
+            Some(OnDemand {
+                ready: "http://127.0.0.1:9117/caps".to_string(),
+                timeout: 45
+            })
+        );
+        assert_eq!(anirss_ondemand(&path, "erai"), None);
+    }
+}

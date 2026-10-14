@@ -71,9 +71,17 @@ below where they disagree:
 - **Downloads is anirss's front, in the same column math.** The head row (the title,
   one line saying how anirss and the torrent client stand, the two as chips that open
   the Downloads settings), the search row (the field, the endpoint, Search), and with a
-  search up: the query line (Back, the query, the count, what anirss said), the groups
-  as chips, Narrow and Best fit, then the releases as flat rows with a selection mark at
-  the left and the actions pane (a name, Subscribe, Download, Movie, what the last action
+  search up: the query line (Back, the query, the count, what anirss said); while it runs,
+  a panel naming the phase (Starting 1337x, Searching nyaa), the seconds, why it takes that
+  long, a bar (filling toward an on-demand endpoint's start ceiling, else a sweep), Cancel
+  and the other endpoints to try; anirss's groups as filter rows (Release group, Quality,
+  the rest behind More filters); Narrow and Best fit; the library series the query names,
+  with its poster, what is on disk, and Tick the missing episodes (the best-seeded release
+  per episode the library lacks); then the releases as a sortable table (`ReleaseTable.qml`:
+  the cleaned name with its group, resolution, episode or Batch and On disk as chips, then
+  size, seeders, leechers, downloads and when posted), and beside it a pane that keeps in
+  view while the table scrolls (what is ticked and its size, Download, Download as a movie,
+  Subscribe with its name and the rule it makes, what the last action
   did) at the right. With no search up the page is three bands, each a grid of posters
   (`ShowCard.qml`) or a list of rows with thumbnails (`ShowRow.qml`), switched in the
   band's head: Downloading, only while something moves; Subscriptions in sections by

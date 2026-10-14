@@ -107,6 +107,172 @@ pub fn key(name: &str) -> String {
         .collect()
 }
 
+/// Words in a search query that say nothing about which show it is.
+const NOISE: &[&str] = &[
+    "hevc",
+    "x265",
+    "x264",
+    "h264",
+    "h265",
+    "avc",
+    "aac",
+    "flac",
+    "opus",
+    "webdl",
+    "webrip",
+    "web",
+    "bluray",
+    "bdrip",
+    "multisub",
+    "multi",
+    "sub",
+    "subs",
+    "dual",
+    "audio",
+    "batch",
+    "amzn",
+    "dsnp",
+    "hidive",
+    "10bit",
+    "8bit",
+    "hdr",
+    "remux",
+    "mkv",
+    "mp4",
+    "eng",
+    "english",
+    "raw",
+    "raws",
+    "uncensored",
+    "complete",
+];
+
+/// The words of a search query that name the show: bracketed groups,
+/// `-exclusions`, resolutions, codecs and episode codes dropped, each word
+/// reduced to its key. Words of one or two letters are dropped too (they
+/// would match inside any title), unless they are digits.
+pub fn query_words(query: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut depth = 0i32;
+    let mut cleaned = String::new();
+    for ch in query.chars() {
+        match ch {
+            '[' | '(' => depth += 1,
+            ']' | ')' => depth = (depth - 1).max(0),
+            _ if depth == 0 => cleaned.push(ch),
+            _ => {}
+        }
+    }
+    for raw in cleaned.split_whitespace() {
+        if raw.starts_with('-') {
+            continue;
+        }
+        let k = key(raw);
+        let digits = !k.is_empty() && k.chars().all(|c| c.is_ascii_digit());
+        if k.is_empty() || (k.chars().count() < 3 && !digits) {
+            continue;
+        }
+        let resolution = k.ends_with('p')
+            && k[..k.len() - 1].chars().all(|c| c.is_ascii_digit())
+            && k.len() >= 4;
+        let episode_code = k.starts_with('s')
+            && k[1..].chars().all(|c| c.is_ascii_alphanumeric())
+            && k[1..].starts_with(|c: char| c.is_ascii_digit());
+        if resolution || episode_code || NOISE.contains(&k.as_str()) {
+            continue;
+        }
+        words.push(k);
+    }
+    words
+}
+
+/// The library series a search query names: one whose title (romaji,
+/// English, a synonym, TVmaze's name or the folder) holds every word of
+/// the query, the closest such title winning. None when the query has no
+/// naming words or no title holds them all.
+pub fn series_for_query(conn: &Connection, query: &str) -> Result<Option<u64>, CoreError> {
+    let words = query_words(query);
+    if words.is_empty() {
+        return Ok(None);
+    }
+    let mut stmt = conn.prepare(
+        "SELECT s.id, s.folder_name, m.title_romaji, m.title_english, m.synonyms, t.name
+         FROM series s
+         LEFT JOIN anilist_media m ON m.id = s.anilist_id
+         LEFT JOIN tvmaze_shows t ON t.id = s.tvmaze_id
+         WHERE s.missing_since IS NULL",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        let mut titles: Vec<String> = Vec::new();
+        for i in 1..=5 {
+            if let Some(t) = r.get::<_, Option<String>>(i)? {
+                if i == 4 && t.trim_start().starts_with('[') {
+                    if let Ok(list) = serde_json::from_str::<Vec<String>>(&t) {
+                        titles.extend(list);
+                    }
+                } else {
+                    titles.push(t);
+                }
+            }
+        }
+        Ok((r.get::<_, i64>(0)? as u64, titles))
+    })?;
+    let mut best: Option<(usize, u64)> = None;
+    for row in rows {
+        let (id, titles) = row?;
+        for t in titles {
+            let k = key(&t);
+            if words.iter().all(|w| k.contains(w.as_str()))
+                && best.is_none_or(|(len, _)| k.len() < len)
+            {
+                best = Some((k.len(), id));
+            }
+        }
+    }
+    Ok(best.map(|(_, id)| id))
+}
+
+/// The (season, number) of every episode file a series has on disk.
+pub type EpisodeFiles = Vec<(Option<u32>, f64)>;
+
+/// One series as a `ShowLink`, with the (season, number) of every episode
+/// file on disk beside it.
+pub fn show_with_numbers(
+    conn: &Connection,
+    images_dir: &Path,
+    now: SystemTime,
+    id: u64,
+) -> Result<Option<(ShowLink, EpisodeFiles)>, CoreError> {
+    let snap = Snapshot::load(conn, images_dir, now, Some(&[id]))?;
+    let Some(card) = snap.card(id) else {
+        return Ok(None);
+    };
+    let files: EpisodeFiles = snap
+        .files
+        .get(&id)
+        .map(|f| {
+            f.iter()
+                .filter(|f| f.is_episode)
+                .map(|f| (f.season, f.number))
+                .collect()
+        })
+        .unwrap_or_default();
+    let numbers: Vec<f64> = files.iter().map(|(_, n)| *n).collect();
+    Ok(Some((show_of(&card, &numbers), files)))
+}
+
+/// Whether a release's episode is among the files: the number alike, and
+/// the season too when both name one.
+pub fn has_episode(files: &[(Option<u32>, f64)], season: Option<u32>, number: f64) -> bool {
+    files.iter().any(|(s, n)| {
+        (*n - number).abs() < 1e-9
+            && match (season, s) {
+                (Some(a), Some(b)) => a == *b,
+                _ => true,
+            }
+    })
+}
+
 /// The named series as the page draws them, by id. One scoped snapshot
 /// load: only these series, their files and their airing.
 pub fn shows(
@@ -330,5 +496,30 @@ mod tests {
         );
         let film = card(SeriesKind::Movie, None, None, false);
         assert!(show_of(&film, &[]).complete, "a film on disk is complete");
+    }
+
+    #[test]
+    fn a_query_keeps_only_the_words_that_name_the_show() {
+        assert_eq!(query_words("Frieren 1080p"), vec!["frieren"]);
+        assert_eq!(
+            query_words("[SubsPlease] Sousou no Frieren 1080p -HEVC"),
+            vec!["sousou", "frieren"]
+        );
+        assert_eq!(
+            query_words("Dr. Stone: Science Future S04E05 x265"),
+            vec!["stone", "science", "future"]
+        );
+        assert_eq!(query_words("Kaiju No. 8 1080p"), vec!["kaiju", "8"]);
+        assert!(query_words("[Erai-raws] 1080p HEVC").is_empty());
+    }
+
+    #[test]
+    fn has_episode_respects_a_season_only_when_both_name_one() {
+        let files = vec![(None, 1.0), (Some(2), 3.0)];
+        assert!(has_episode(&files, None, 1.0));
+        assert!(has_episode(&files, Some(1), 1.0));
+        assert!(has_episode(&files, Some(2), 3.0));
+        assert!(!has_episode(&files, Some(1), 3.0));
+        assert!(!has_episode(&files, None, 2.0));
     }
 }

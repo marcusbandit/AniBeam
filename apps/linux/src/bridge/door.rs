@@ -460,6 +460,13 @@ pub mod qobject {
         #[qsignal]
         fn feed_read(self: Pin<&mut Door>, url: QString, entries: QJsonArray);
         #[qsignal]
+        fn releases_enriched(
+            self: Pin<&mut Door>,
+            query: QString,
+            endpoint: QString,
+            entries: QJsonArray,
+        );
+        #[qsignal]
         fn downloads_unavailable(self: Pin<&mut Door>, what: QString, error: QJsonObject);
         #[qsignal]
         fn removal_planned(self: Pin<&mut Door>, job: f64, plans: QJsonArray);
@@ -1029,6 +1036,10 @@ impl qobject::Door {
                     .torrents_read(arr("torrents"), obj("transfer"), arr("shows"))
             }
             EventBody::FeedRead { .. } => self.as_mut().feed_read(s("url"), arr("entries")),
+            EventBody::ReleasesEnriched { .. } => {
+                self.as_mut()
+                    .releases_enriched(s("query"), s("endpoint"), arr("entries"))
+            }
             EventBody::DownloadsUnavailable { error, .. } => self
                 .as_mut()
                 .downloads_unavailable(s("what"), to_qjson_object(&json::error_json(error))),
