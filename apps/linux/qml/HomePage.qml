@@ -3,8 +3,10 @@
 // series' own colour, read off its poster. Then the week: seven day columns from today with
 // the airing series' posters placed on the day their next episode lands, and a Later column
 // for the rest. Then the series with episodes waiting, a row not started yet, and the
-// library's genres as a way in. Every shelf is a plain grid whose column count comes from
-// the width, and a shelf that could run long stops at a row or two with "See all".
+// library's genres as a way in. A series dropped on the tracker is in none of those: it
+// closes the page on a shelf of its own, a reminder of what can leave the disk. Every
+// shelf is a plain grid whose column count comes from the width, and a shelf that could
+// run long stops at a row or two with "See all".
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -30,15 +32,17 @@ Item {
 
     function viewedAt(c) { return c.last_viewed_at ? c.last_viewed_at : 0 }
     function watchedOf(c) { return c.watched !== null && c.watched !== undefined ? c.watched : 0 }
+    function droppedOf(c) { return c.list_status === "Dropped" }
 
     // The hero: the most recently viewed series with something to go on with. An episode
     // stopped short of its end comes first, else the series' next episode on disk; a
     // series with neither is caught up and is passed over for the one viewed before it.
     // Every viewed series with something to go on with, most recently viewed first: the
-    // first is the hero, the rest the Continue row. At most twelve series are read.
+    // first is the hero, the rest the Continue row. At most twelve series are read; a
+    // dropped one is never among them.
     function pickContinue() {
         var out = []
-        var viewed = shelf.filter(function(c) { return page.viewedAt(c) > 0 })
+        var viewed = shelf.filter(function(c) { return page.viewedAt(c) > 0 && !page.droppedOf(c) })
         for (var i = 0; i < viewed.length && i < 12; i++) {
             var c = viewed[i]
             var r = Door.getSeries(c.id)
@@ -138,7 +142,7 @@ Item {
     readonly property var catchUpList: {
         var month = 45 * 86400, now = nowMs / 1000
         return shelf.filter(function(c) {
-            if (c.id === page.heroId || page.airingIds[c.id]) return false
+            if (c.id === page.heroId || page.airingIds[c.id] || page.droppedOf(c)) return false
             if (c.watched_state === "Behind") return true
             return page.viewedAt(c) > now - month && c.watched_state !== "CaughtUp"
         })
@@ -146,11 +150,14 @@ Item {
     // Never started, best rated first
     readonly property var freshList: {
         var list = shelf.filter(function(c) {
-            return c.id !== page.heroId && !page.airingIds[c.id] && page.viewedAt(c) === 0
+            return c.id !== page.heroId && !page.airingIds[c.id] && !page.droppedOf(c) && page.viewedAt(c) === 0
                 && page.watchedOf(c) === 0 && (c.episodes_on_disk || 0) > 0
         })
         return list.sort(function(a, b) { return (b.community_score || 0) - (a.community_score || 0) })
     }
+    // Dropped on the tracker and still on disk
+    readonly property var droppedList: shelf.filter(page.droppedOf)
+    readonly property int droppedFiles: droppedList.reduce(function(n, c) { return n + (c.episodes_on_disk || 0) }, 0)
     // Every genre in the library with its count, the biggest first
     readonly property var genreList: {
         var counts = {}
@@ -566,6 +573,18 @@ Item {
                     }
                 }
             }
+        }
+
+        // ---- Dropped: last, since nothing here is to be watched
+        Item { width: 1; height: page.droppedList.length && page.genreList.length ? theme.space(4) : 0 }
+        Shelf {
+            objectName: "home-dropped"
+            width: parent.width
+            heading: "Dropped"
+            fact: Fmt.plural(page.droppedFiles, "file", "files") + " still on disk"
+            list: page.droppedList
+            maxRows: 1
+            onMore: frame.go("library")
         }
     }
 

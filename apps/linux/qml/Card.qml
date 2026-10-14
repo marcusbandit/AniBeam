@@ -2,8 +2,8 @@
 // tile, with everything written on it. A scrim rises from the poster's foot (near-black, clear by
 // theme.scrimReach of the height; the only gradient in the shell), and on it, bottom left,
 // the title (two lines at most) over one dim ledger line, the score bottom right. The
-// episode code is a small square glass tag top left; Hidden and the ghost's AniList tag sit
-// top right. Progress is a short rounded line along the foot, inside the padding. Hover
+// episode code is a small square glass tag top left; Dropped, Hidden and the ghost's AniList
+// tag sit top right. A dropped series reads quieter, its poster dimmed like a ghost's. Progress is a short rounded line along the foot, inside the padding. Hover
 // draws a 1 px accent outline, lifts the tile a touch and deepens the scrim; press scales
 // 0.98. Keyboard focus draws that same outline at full strength and a 2 px ring in
 // theme.focusRing outside the tile, so focus never reads as hover; Return opens the series,
@@ -42,6 +42,9 @@ Item {
     // An external card: the series is not in the library (the watching page's
     // AniList-only entries), so the poster reads quieter and a tag names where it lives.
     property bool ghost: false
+    // Dropped on the tracker: the one list status a card names, since every other one is
+    // what a series on disk is anyway
+    readonly property bool dropped: item.list_status === "Dropped"
     property bool hero: false
     property real tileHeight: 0
     property real plateHeight: 0
@@ -231,7 +234,7 @@ Item {
     Loader {
         anchors.fill: parent
         active: root.live && !!root.item.poster
-        opacity: root.ghost ? 0.6 : 1
+        opacity: root.ghost || root.dropped ? 0.6 : 1
         sourceComponent: Corner {
             radius: root.radius
             fillItem: posterImage
@@ -266,7 +269,7 @@ Item {
         }
     }
 
-    // ---- Tags along the top: the episode code left, Hidden and AniList right
+    // ---- Tags along the top: the episode code left, Dropped, Hidden and AniList right
     PosterTag {
         visible: root.epBadge !== ""
         x: root.pad * 0.8; y: root.pad * 0.8
@@ -276,7 +279,8 @@ Item {
         x: root.width - width - root.pad * 0.8; y: root.pad * 0.8
         spacing: theme.space(1)
         // An episode out and not seen: the one tag in the accent
-        PosterTag { visible: root.item.watched_state === "Behind" && !root.ghost; text: "New"; ink: theme.accentOnPoster }
+        PosterTag { visible: root.item.watched_state === "Behind" && !root.ghost && !root.dropped; text: "New"; ink: theme.accentOnPoster }
+        PosterTag { visible: root.dropped; text: "Dropped"; ink: theme.onPosterDim }
         PosterTag { visible: !!root.item.hidden; text: "Hidden"; ink: theme.onPosterDim }
         PosterTag { visible: root.ghost && !!root.item.site_url; text: "AniList" }
     }
