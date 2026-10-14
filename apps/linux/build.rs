@@ -53,6 +53,7 @@ fn main() {
             .qml_file("qml/WatchingPage.qml")
             .qml_file("qml/MetadataPage.qml")
             .qml_file("qml/MatchPanel.qml")
+            .qml_file("qml/EpisodesPane.qml")
             .qml_file("qml/SubscriptionsPage.qml")
             .qml_file("qml/ConnectSheet.qml")
             .qml_file("qml/TrackerNudge.qml")

@@ -8,14 +8,18 @@
 // its count, over a grid of tiles in the library's column math (columns from the width,
 // tiles widened to fill the line, so a narrow window has fewer columns). A tile is the
 // poster at 2:3, the title on one line, a state line that says the section's fact for this
-// series ("9 of 12, 3 missing", "5 of 7 aired", "No record yet"), and a dim line (the
-// season, or the countdown to the next episode on an airing series). A click on a tile
-// opens the match panel; hover shows one glyph on the poster's foot, Refresh, or Forget on
-// a gone folder. An airing series is measured against what has aired so far, never the
+// series ("9 of 12", "5 of 7 aired", "12 of 12 +2", "No record yet"), and a dim line (the
+// season, or the countdown to the next episode on an airing series), each on one line that
+// elides, never wraps. A click on a matched tile opens the episodes pane (EpisodesPane.qml:
+// which numbers are on disk and which are missing, as chips), on an unmatched one the match
+// panel; hover shows one glyph on the poster's foot, Refresh, or Forget on a gone folder.
+// Complete has a sort of its own, kept in shell.conf: Added (the folder first seen, newest
+// first), Season, A to Z; the other sections keep their order. An airing series is measured against what has aired so far, never the
 // record's total: a show two episodes in is not ten episodes short. The core owns the
 // filtering and the four filter counts (ListMetadata { filter, query, reveal_hidden }); the
 // page cuts the sections off the filtered rows and the figures off the whole library.
 import QtQuick
+import QtCore
 import com.marcusrosado.AniBeam
 
 Item {
@@ -25,6 +29,7 @@ Item {
     property string title: "Metadata"
     property alias scrollY: scroll.contentY
     function escapePressed() { return false }
+    function focusSearch() { scroll.contentY = 0; search.focusInput() }
     Keys.onPressed: function(event) { scroll.keyPressed(event) }
 
     readonly property var filters: ["All", "Series", "Movies", "MissingFiles"]
@@ -37,6 +42,10 @@ Item {
     property bool loaded: false
     property int revision: 0
     property real nowMs: Date.now()
+    // The Complete section's sort, kept across runs
+    Settings { id: kept; location: Shell.settingsUrl; category: "metadata"; property string completeSort: "Added" }
+    readonly property var completeSorts: ["Added", "Season", "A to Z"]
+    property alias completeSort: kept.completeSort
 
     function reload() {
         var keep = scroll.contentY
@@ -95,20 +104,33 @@ Item {
         { key: "airing", title: "Airing" },
         { key: "complete", title: "Complete" }
     ]
-    // The tile's state line: the section's fact for this one series
+    // The tile's state line: the section's fact for this one series, short enough for a
+    // tile's width (the section says the episodes are missing; the pane says which)
     function stateOf(d) {
         var card = d.series || {}, have = d.have || 0, k = bucketOf(d)
         if (k === "missing") return "Folder not found"
         if (k === "unmatched") return "No record yet"
-        if (k === "airing") {
-            var aired = airedOf(d)
-            var shortBy = Math.max(0, aired - have)
-            return Math.min(have, aired) + " of " + aired + " aired" + (shortBy > 0 ? ", " + shortBy + " missing" : "")
-        }
+        if (k === "airing") { var aired = airedOf(d); return Math.min(have, aired) + " of " + aired + " aired" }
         var expected = expectedOf(d)
-        if (k === "incomplete") return have + " of " + expected + ", " + (expected - have) + " missing"
+        if (k === "incomplete") return have + " of " + expected
         var extra = expected > 0 ? Math.max(0, have - expected) : 0
         return have + " of " + (expected > 0 ? expected : "?") + (extra > 0 ? " +" + extra : "")
+    }
+    // The same fact with the shortfall spelled out, for the pane's head
+    function detailOf(d) {
+        var have = d.have || 0, k = bucketOf(d)
+        if (k === "airing") {
+            var aired = airedOf(d), shortBy = Math.max(0, aired - have)
+            return Math.min(have, aired) + " of " + aired + " aired on disk" + (shortBy > 0 ? ", " + shortBy + " missing" : "")
+        }
+        if (k === "incomplete") { var expected = expectedOf(d); return have + " of " + expected + " on disk, " + (expected - have) + " missing" }
+        return stateOf(d)
+    }
+    // A tile's click: the episodes for a matched series, the match for one without a record
+    function openTile(d) {
+        var card = d.series || {}
+        if (isMatched(card)) episodesPane.openFor(card.id, detailOf(d))
+        else matchPanel.openFor(card.id, card.title, card.match_info)
     }
     function shortCountdown(secs) {
         var t = Math.max(0, Math.floor(secs))
@@ -151,10 +173,13 @@ Item {
         return n > 1
     }
     // The sections, cut from the filtered rows; an empty one is not shown. Airing is
-    // ordered by the next episode, soonest first; every other section by season, newest
-    // first, then by title
+    // ordered by the next episode, soonest first; Complete by its own sort (Added: the
+    // folder first seen, newest first; Season; A to Z); every other section by season,
+    // newest first, then by title
+    function addedOf(d) { var c = d.series || {}; return typeof c.added_at === "number" ? c.added_at : 0 }
     readonly property var sections: {
         page.revision
+        var completeSort = page.completeSort
         var buckets = {}
         for (var i = 0; i < page.rows.length; i++) {
             var k = page.bucketOf(page.rows[i])
@@ -172,6 +197,11 @@ Item {
                     var ta = na ? na.at : Infinity, tb = nb ? nb.at : Infinity
                     if (ta !== tb) return ta - tb
                 }
+                if (o.key === "complete" && completeSort === "A to Z") return page.titleOf(a).localeCompare(page.titleOf(b))
+                if (o.key === "complete" && completeSort === "Added") {
+                    var aa = page.addedOf(a), ab = page.addedOf(b)
+                    if (aa !== ab) return ab - aa
+                }
                 var ka = page.whenKey(a.series || {}), kb = page.whenKey(b.series || {})
                 if (ka !== kb) return kb - ka
                 return page.titleOf(a).localeCompare(page.titleOf(b))
@@ -180,9 +210,14 @@ Item {
         }
         return out
     }
-    // The names the drives click: row-match on the page's first tile, row-refresh on the
-    // first tile that has a Refresh glyph, row-forget on the first gone folder
-    readonly property string firstId: sections.length > 0 ? String(sections[0].rows[0].series.id) : ""
+    // The names the drives click: row-match on the first Needs a match tile when that
+    // section is there (its click opens the match panel), else on the page's first tile;
+    // row-refresh on the first tile that has a Refresh glyph, row-forget on the first gone
+    // folder
+    readonly property string firstId: {
+        for (var s = 0; s < sections.length; s++) if (sections[s].key === "unmatched") return String(sections[s].rows[0].series.id)
+        return sections.length > 0 ? String(sections[0].rows[0].series.id) : ""
+    }
     readonly property string firstRefreshId: {
         for (var s = 0; s < sections.length; s++) if (sections[s].key !== "missing") return String(sections[s].rows[0].series.id)
         return ""
@@ -291,7 +326,6 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 width: Math.min(theme.space(100), Math.max(theme.space(40), parent.width * 0.3))
                 placeholder: "Filter titles"
-                hint: ""
                 onTextChanged: queryDebounce.restart()
                 onCleared: { queryDebounce.stop(); page.query = ""; page.reload() }
             }
@@ -383,6 +417,18 @@ Item {
                         }
                         Label { anchors.baseline: sectionTitle.baseline; text: section.modelData.rows.length; role: "ledger"; color: theme.textFaint }
                     }
+                    // Complete's sort, at the heading's right
+                    Seg {
+                        visible: section.modelData.key === "complete"
+                        objectName: visible ? "complete-sort" : ""
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: theme.space(2)
+                        small: true
+                        options: page.completeSorts.map(function(s) { return { text: s, name: s.replace(/ /g, "").toLowerCase() } })
+                        index: Math.max(0, page.completeSorts.indexOf(page.completeSort))
+                        onPicked: function(i) { page.completeSort = page.completeSorts[i] }
+                    }
                     Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.line }
                 }
                 Flow {
@@ -414,10 +460,11 @@ Item {
     // One series as a tile of the grid: the poster at 2:3, under it the title on one line,
     // the state line in the ledger with the provider as a faint word at its right when the
     // library mixes providers, and the dim line (the season, or the countdown on an airing
-    // series). At rest nothing else; hover lifts the tile one step of the surface, turns
-    // the title to the accent and shows one glyph on the poster's foot: Refresh, or Forget
-    // on a gone folder. A click on the tile opens the match panel. The glyph is always
-    // present (a drive click lands on it at rest); only its opacity follows the hover.
+    // series), each on one line. At rest nothing else; hover lifts the tile one step of
+    // the surface, turns the title to the accent and shows one glyph on the poster's foot:
+    // Refresh, or Forget on a gone folder. A click on the tile opens the episodes pane, or
+    // the match panel for a series with no record. The glyph is always present (a drive
+    // click lands on it at rest); only its opacity follows the hover.
     component MetaTile: Item {
         id: tile
         required property var modelData
@@ -456,7 +503,7 @@ Item {
             anchors.margins: -tile.pad
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: matchPanel.openFor(tile.card.id, tile.card.title, tile.card.match_info)
+            onClicked: page.openTile(tile.d)
         }
 
         // The poster, decoded at its displayed size and shown only once it is Ready
@@ -538,8 +585,8 @@ Item {
                 verticalAlignment: Text.AlignVCenter
                 color: theme.tone(theme.text, theme.accent, tile.lift)
             }
-            // The state line may take two lines ("6 of 24 aired, 18 missing" is longer than
-            // a tile is wide); the provider word sits at the right of its first line
+            // The state line on one line, eliding before it reaches the provider word at
+            // its right
             Item {
                 width: parent.width
                 height: stateLine.implicitHeight
@@ -550,7 +597,7 @@ Item {
                     text: page.stateOf(tile.d)
                     role: "ledger"
                     color: tile.gone ? theme.red : theme.textDim
-                    wrapMode: Text.Wrap; maximumLineCount: 2
+                    maximumLineCount: 1
                     elide: Text.ElideRight
                 }
                 Label {
@@ -568,6 +615,7 @@ Item {
                 text: tile.note
                 role: "ledger"
                 color: theme.textFaint
+                maximumLineCount: 1
                 elide: Text.ElideRight
             }
         }
@@ -586,5 +634,20 @@ Item {
         visible: matchPanel.visible
         dismissOnPress: true
         onDismissed: matchPanel.close()
+    }
+    EpisodesPane {
+        id: episodesPane
+        parent: frame.overlay
+        anchors.centerIn: parent
+        onChangeMatch: function(id, title, matchInfo) { matchPanel.openFor(id, title, matchInfo) }
+    }
+    Blocker {
+        objectName: "episodes-blocker"
+        parent: frame.overlay
+        anchors.fill: parent
+        z: -1
+        visible: episodesPane.visible
+        dismissOnPress: true
+        onDismissed: episodesPane.close()
     }
 }

@@ -92,13 +92,24 @@ below where they disagree:
   from the width, tiles widened to fill the line), so a narrow window has fewer columns
   and never a row that overlaps. One tile idiom everywhere, no rows: the poster at 2:3,
   the title on one line, a state line that says the section's fact for this series ("No
-  record yet", "Folder not found", "9 of 12, 3 missing", "5 of 7 aired, 2 missing", "12 of
-  12 +2"), and a dim line with the season, or on an airing series the countdown to the
-  next episode ("Next in 1d 23h"). An airing series is measured against what has aired so
-  far (one short of the next episode's number), never the record's total, and is never
-  under Missing episodes or Complete. There is no Match button: a click on the tile opens
-  the match panel, and hover shows one glyph on the poster's foot, Refresh, or Forget on a
-  gone folder. An empty section is not shown and the filter still applies on top.
+  record yet", "Folder not found", "9 of 12", "5 of 7 aired", "12 of 12 +2"), and a dim
+  line with the season, or on an airing series the countdown to the next episode ("Next in
+  1d 23h"). Both lines are one line that elides, never two: the section already says the
+  episodes are missing, the tile only has to say how many. An airing series is measured
+  against what has aired so far (one short of the next episode's number), never the
+  record's total, and is never under Missing episodes or Complete. There is no Match
+  button: a click on a matched tile opens the episodes pane (`EpisodesPane.qml`), a compact
+  popover in the match panel's idiom that says what is actually there: the title with the
+  full state line under it ("9 of 12 on disk, 3 missing"), then one square number chip per
+  expected episode, filled in the soft accent when the file is on disk and a quiet outline
+  when it is missing, a row per season when the files carry one ("S2"), a line for the
+  extras and unmatched files when there are any, and Open, Change match and Refresh as
+  flat pills at the foot; a film says On disk or Not on disk. A tile with no record opens
+  the match panel instead, and Change match goes there from the pane. Hover shows one glyph
+  on the poster's foot, Refresh, or Forget on a gone folder. Complete has the one sort on
+  the page, at its heading's right and kept in shell.conf: Added (the folder first seen,
+  newest first, the default), Season, A to Z; the other sections keep their order. An
+  empty section is not shown and the filter still applies on top.
 - **The library cuts by season, and the two controls are Order and Sort.** The lone series
   under Related no longer pile up as Everything else: they are sections per anime season
   ("Fall 2025", "Summer 2025"), newest first, Fall before Summer before Spring before Winter
