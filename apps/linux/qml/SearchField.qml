@@ -9,6 +9,8 @@ Corner {
     property string placeholder: "Search titles or folders"
     property string hint: "/ or Ctrl+K"
     signal cleared()
+    // Return or Enter in the field: a page that searches on demand rather than as you type
+    signal accepted()
     width: Math.min(parent ? parent.width : theme.space(120), theme.space(120))
     height: theme.controlHeight
     radius: Math.min(theme.radiusTile, height / 2)
@@ -34,6 +36,7 @@ Corner {
         font.weight: theme.roleWeight("ui"); font.variableAxes: theme.roleAxes("ui")
         selectionColor: theme.accentSoft; selectedTextColor: theme.text
         clip: true
+        onAccepted: root.accepted()
         // With a layer open (a menu, a picker, a sheet) Escape is left to propagate up to
         // the frame, which closes that layer; the query stays.
         Keys.onEscapePressed: function(e) {

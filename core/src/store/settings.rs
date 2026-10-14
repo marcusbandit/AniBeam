@@ -17,6 +17,8 @@ pub const IMDB_RATINGS_FETCHED_AT: &str = "imdb_ratings_fetched_at";
 pub const IMDB_RATINGS_LAST_MODIFIED: &str = "imdb_ratings_last_modified";
 /// When Wikidata's AniList and MAL to IMDb links were last fetched.
 pub const IMDB_LINKS_FETCHED_AT: &str = "imdb_links_fetched_at";
+/// The downloads settings (`downloads::settings`), secrets left out.
+pub const DOWNLOADS: &str = "downloads";
 
 pub fn get<T: DeserializeOwned>(conn: &Connection, key: &str) -> Result<Option<T>, CoreError> {
     let raw: Option<String> = conn

@@ -140,6 +140,48 @@ _Avoid_: highlight, primary, brand colour
 The spacing setting: compact, normal or comfortable. It scales spacing, control heights and radii, never type or poster size.
 _Avoid_: scale, zoom, compact mode
 
+### Downloads
+
+**Release**:
+One entry a search endpoint returns: a title, a link (a magnet or a `.torrent` URL) and whatever the feed carries beside them. A count the feed did not carry is unknown, never nought. The shape is anirss's `Item`, kept field for field so a release goes back to anirss unchanged.
+_Avoid_: torrent (that is what it becomes once added), result, item, entry
+
+**Endpoint**:
+One site a search goes to, as anirss configures it: nyaa-style, or any RSS search URL. They sit in an order; a search that finds nothing on one falls through to the next.
+_Avoid_: tracker site, indexer, source
+
+**Search state**:
+What the Downloads page holds while a search is up: the endpoint, the query and the releases, plus the groups and the best fit the last step returned, and a trail of earlier states for Back. anirss keeps none of it; every step sends the whole state back.
+_Avoid_: session, result set, context
+
+**Group**:
+A token, or a few tokens with one membership, that split the releases: a release group, a resolution, a codec. Picking one is a step.
+_Avoid_: facet, filter, tag
+
+**Step**:
+One narrowing of the search state: a group's tokens, a term to keep, a term to drop, or the best fit. A step that would change nothing says why and leaves the state as it is. Back is the page's own, popping the trail.
+_Avoid_: refine, filter, apply
+
+**Best fit**:
+The step that pins the profile of the best release on offer (its group, resolution, source and audio) by anirss's own ranking.
+_Avoid_: auto-pick, recommended
+
+**Subscription**:
+An RSS feed and an auto-download rule registered in the torrent client under one name, so every new release that matches lands under that name's folder. anirss registers and removes them; the core only asks.
+_Avoid_: rule, feed, watch
+
+**Transfer**:
+A torrent as the torrent client reports it: its state, progress and speed. The one thing in the app that is polled, and only while the Downloads page is up.
+_Avoid_: download, job, task
+
+**Sidecar**:
+anirss run by the core: `anirss --serve` on a port and token the core chose, started the first time something asks for it and stopped with the core. The other way in is a server somebody else runs, reached by address and token.
+_Avoid_: daemon, service, backend, child
+
+**Torrent client**:
+The program that holds the torrents and the subscriptions: qBittorrent today. anirss drives it for anything that creates a torrent or a rule; the core reaches it directly for the transfers and for stopping, starting and removing one.
+_Avoid_: downloader, qBittorrent (as the general word), client
+
 ### Frame
 
 **Frame**:
@@ -147,7 +189,7 @@ The parts of the window every page shares: the rail, the page area and the statu
 _Avoid_: chrome, layout, main window
 
 **Rail**:
-The column at the window's left edge that lists the pages and carries the title language switch and the version.
+The column at the window's left edge that lists the pages (Home and Library large, then Feed, Watching, Metadata, Downloads and Settings as glyphs) and carries the title language switch and the version.
 _Avoid_: sidebar, nav, tab bar
 
 **Status strip**:

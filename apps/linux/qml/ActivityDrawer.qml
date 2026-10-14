@@ -15,7 +15,7 @@ Item {
     property bool backfilled: false
     signal closed()
 
-    readonly property var stages: ["Library", "Metadata", "Trackers", "Franchise", "Playback", "Store", "System"]
+    readonly property var stages: ["Library", "Metadata", "Trackers", "Franchise", "Playback", "Store", "System", "Downloads"]
     readonly property var levels: ["Info", "Warn", "Error"]
     property var stageOn: ({})
     property var levelOn: ({})

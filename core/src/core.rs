@@ -26,6 +26,7 @@ use crate::playback::session::{self, Sessions};
 use crate::playback::skip;
 use crate::prefs;
 use crate::store::Store;
+use crate::downloads;
 use crate::subscriptions;
 use crate::time;
 use crate::trackers::accounts;
@@ -109,6 +110,10 @@ pub struct Core {
     /// crawl behind that read runs at most once a minute per root, so
     /// opening the same page twice costs AniList nothing the second time.
     pub(crate) crawl_recent: Mutex<HashMap<u64, Instant>>,
+    /// The downloads connection: the anirss sidecar, the torrent client's
+    /// session and the last status read. Built empty; nothing starts
+    /// until a downloads call asks.
+    pub(crate) downloads: Arc<crate::downloads::Downloads>,
     /// Jobs need an `Arc<Core>` of their own; exported methods take `&self`,
     /// so the core keeps a `Weak` to itself from `Arc::new_cyclic` and
     /// upgrades it.
@@ -245,6 +250,7 @@ impl Core {
             jikan_outage: Mutex::new(None),
             sessions: Arc::new(Sessions::default()),
             crawl_recent: Mutex::new(HashMap::new()),
+            downloads: Arc::new(crate::downloads::Downloads::default()),
             me: me.clone(),
             snapshot_cache: AtomicBool::new(false),
             kept_load: Mutex::new(None),
@@ -702,6 +708,80 @@ impl Core {
             Call::ListSubscriptions => Ok(Reply::Started {
                 job: subscriptions::start(self)?,
             }),
+            // Downloads: the status is a read off the state, the rest are
+            // jobs over anirss or the torrent client, except the two list
+            // reads the page polls, which answer through events and never
+            // through the job registry.
+            Call::GetDownloads => Ok(Reply::Downloads {
+                status: downloads::status(self)?,
+            }),
+            Call::ConnectDownloads => Ok(Reply::Started {
+                job: downloads::connect(self)?,
+            }),
+            Call::SearchReleases { query, endpoint } => Ok(Reply::Started {
+                job: downloads::search(self, query, endpoint)?,
+            }),
+            Call::RefineReleases {
+                query,
+                endpoint,
+                items,
+                op,
+            } => Ok(Reply::Started {
+                job: downloads::refine(self, query, endpoint, items, op)?,
+            }),
+            Call::PreviewSubscription {
+                query,
+                endpoint,
+                items,
+            } => Ok(Reply::Started {
+                job: downloads::preview(self, query, endpoint, items)?,
+            }),
+            Call::Subscribe {
+                query,
+                endpoint,
+                items,
+                name,
+            } => Ok(Reply::Started {
+                job: downloads::subscribe(self, query, endpoint, items, name)?,
+            }),
+            Call::DownloadReleases { items, name } => Ok(Reply::Started {
+                job: downloads::download(self, items, name)?,
+            }),
+            Call::DownloadMovie { link } => Ok(Reply::Started {
+                job: downloads::movie(self, link)?,
+            }),
+            Call::ListSubscriptionRules => downloads::list_rules(self),
+            Call::ListTorrents => downloads::list_torrents(self),
+            Call::PlanRemoveSubscription {
+                name,
+                torrents,
+                files,
+            } => Ok(Reply::Started {
+                job: downloads::plan_remove(self, name, torrents, files)?,
+            }),
+            Call::RemoveSubscription {
+                name,
+                torrents,
+                files,
+            } => Ok(Reply::Started {
+                job: downloads::remove(self, name, torrents, files)?,
+            }),
+            Call::ControlTorrents { hashes, action } => Ok(Reply::Started {
+                job: downloads::control(self, hashes, action)?,
+            }),
+            Call::SetDownloadSettings {
+                settings,
+                anirss_token,
+                torrent_password,
+            } => downloads::set_settings(
+                self,
+                settings,
+                anirss_token.as_deref(),
+                torrent_password.as_deref(),
+            ),
+            Call::TestTorrentClient => Ok(Reply::Started {
+                job: downloads::test_torrent_client(self)?,
+            }),
             Call::OpenPlayback { file } => Ok(Reply::Playback {
                 session: Box::new(session::open(self, file)?),
             }),
@@ -791,6 +871,8 @@ impl Core {
         }
         // A launch whose scan never finished has no list left to run.
         self.take_launch_listener();
+        // The anirss sidecar goes with the core that started it.
+        self.downloads.stop();
         self.jobs.cancel_all();
         // Taken out of the mutex and dropped by this `let` before the
         // blocking shutdown call, rather than matched straight off the

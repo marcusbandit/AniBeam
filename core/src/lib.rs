@@ -3,6 +3,7 @@
 
 pub mod contract;
 pub mod core;
+pub mod downloads;
 pub mod events;
 pub mod feed;
 pub mod franchise;

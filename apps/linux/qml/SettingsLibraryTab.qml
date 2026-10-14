@@ -183,8 +183,8 @@ SettingsTab {
             title: "Library options"; icon: "sliders-horizontal"
             SettingRow { label: "Show hidden shows"; helper: "Shows hidden series on every page until AniBeam closes."
                 Switch { objectName: "settings-reveal-hidden"; checked: Door.revealHidden; onToggled: function(on) { Door.revealHidden = on } } }
-            SettingRow { label: "Subscriptions"; helper: "The feeds your subscriptions come from."
-                Button { text: "Open"; icon: "rss"; onClicked: frame.go("subscriptions") } }
+            SettingRow { label: "Downloads"; helper: "Search the release feeds, subscribe, and watch what the torrent client is doing."
+                Button { text: "Open"; icon: "download"; onClicked: frame.go("downloads") } }
             SettingRow { label: "Metadata"; helper: "Every series, the record it is matched to, and its files on disk."
                 Button { text: "Open"; icon: "database"; onClicked: frame.go("metadata") } }
         }

@@ -18,9 +18,10 @@ use std::time::Instant;
 
 use anibeam_core::events::Subscription;
 use anibeam_core::{
-    Call, Chapter, CloseReason, CoreError, Direction, Event, EventBody, EventListener, FeedSort,
-    JobPhase, Level, MatchTarget, MetadataFilter, Preferences, Provider, Sort, SubscriptionsResult,
-    SubtitleChoice, SubtitleDefaults, Tab, TrackRef, Tracker,
+    Call, Chapter, CloseReason, CoreError, Direction, DownloadSettings, Event, EventBody,
+    EventListener, FeedSort, JobPhase, Level, MatchTarget, MetadataFilter, Preferences, Provider,
+    RefineOp, Release, Sort, SubscriptionsResult, SubtitleChoice, SubtitleDefaults, Tab,
+    TorrentAction, TrackRef, Tracker,
 };
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QJsonArray, QJsonObject, QString};
@@ -237,6 +238,87 @@ pub mod qobject {
         fn list_jobs(self: &Door) -> QJsonObject;
         #[qinvokable]
         fn cancel_job(self: &Door, job: f64) -> QJsonObject;
+        // Downloads (anirss and the torrent client). Every item list crosses as anirss's
+        // own Item shape; the page sends back what it was given.
+        /// The status as last known, settings and endpoints included. No network.
+        #[qinvokable]
+        fn get_downloads(self: &Door) -> QJsonObject;
+        /// Starts the sidecar if needed and reads both halves; ends in
+        /// `downloadsStatusChanged`.
+        #[qinvokable]
+        fn connect_downloads(self: &Door) -> QJsonObject;
+        /// An empty `endpoint` means anirss's first one. Ends in `releasesFound(job, search)`.
+        #[qinvokable]
+        fn search_releases(self: &Door, query: &QString, endpoint: &QString) -> QJsonObject;
+        /// `op` is `{ type: "tokens", tokens: [...] }`, `{ type: "term", term }`,
+        /// `{ type: "exclude", term }` or `{ type: "best_fit" }`. Ends in
+        /// `releasesRefined(job, refinement)`.
+        #[qinvokable]
+        fn refine_releases(
+            self: &Door,
+            query: &QString,
+            endpoint: &QString,
+            items: &QJsonArray,
+            op: &QJsonObject,
+        ) -> QJsonObject;
+        #[qinvokable]
+        fn preview_subscription(
+            self: &Door,
+            query: &QString,
+            endpoint: &QString,
+            items: &QJsonArray,
+        ) -> QJsonObject;
+        /// An empty `name` lets anirss name the rule off the first release.
+        #[qinvokable]
+        fn subscribe(
+            self: &Door,
+            query: &QString,
+            endpoint: &QString,
+            items: &QJsonArray,
+            name: &QString,
+        ) -> QJsonObject;
+        #[qinvokable]
+        fn download_releases(self: &Door, items: &QJsonArray, name: &QString) -> QJsonObject;
+        #[qinvokable]
+        fn download_movie(self: &Door, link: &QString) -> QJsonObject;
+        /// Replies `Ok`; the list arrives as `subscriptionsRead`, or `downloadsUnavailable`.
+        #[qinvokable]
+        fn list_subscription_rules(self: &Door) -> QJsonObject;
+        /// Replies `Ok`; the list arrives as `torrentsRead`, or `downloadsUnavailable`.
+        #[qinvokable]
+        fn list_torrents(self: &Door) -> QJsonObject;
+        #[qinvokable]
+        fn plan_remove_subscription(
+            self: &Door,
+            name: &QString,
+            torrents: bool,
+            files: bool,
+        ) -> QJsonObject;
+        #[qinvokable]
+        fn remove_subscription(
+            self: &Door,
+            name: &QString,
+            torrents: bool,
+            files: bool,
+        ) -> QJsonObject;
+        /// `action` is `Stop`, `Start` or `Delete`; `files` only matters to `Delete`.
+        #[qinvokable]
+        fn control_torrents(
+            self: &Door,
+            hashes: &QJsonArray,
+            action: &QString,
+            files: bool,
+        ) -> QJsonObject;
+        /// `secrets` carries `anirss_token` and `torrent_password` only when they are to
+        /// change: a key left out keeps what is stored, an empty string removes it.
+        #[qinvokable]
+        fn set_download_settings(
+            self: &Door,
+            settings: &QJsonObject,
+            secrets: &QJsonObject,
+        ) -> QJsonObject;
+        #[qinvokable]
+        fn test_torrent_client(self: &Door) -> QJsonObject;
         /// Any call by name, the CLI's door.
         #[qinvokable]
         fn call(self: &Door, name: &QString, args: &QJsonObject) -> QJsonObject;
@@ -338,6 +420,31 @@ pub mod qobject {
         fn export_finished(self: Pin<&mut Door>, path: QString);
         #[qsignal]
         fn import_finished(self: Pin<&mut Door>, summary: QJsonObject);
+        // Downloads
+        #[qsignal]
+        fn downloads_status_changed(self: Pin<&mut Door>, status: QJsonObject);
+        #[qsignal]
+        fn releases_found(self: Pin<&mut Door>, job: f64, search: QJsonObject);
+        #[qsignal]
+        fn releases_refined(self: Pin<&mut Door>, job: f64, refinement: QJsonObject);
+        #[qsignal]
+        fn subscription_previewed(self: Pin<&mut Door>, job: f64, spec: QJsonObject);
+        #[qsignal]
+        fn subscribed(self: Pin<&mut Door>, job: f64, result: QJsonObject);
+        #[qsignal]
+        fn torrents_added(self: Pin<&mut Door>, job: f64, result: QJsonObject);
+        #[qsignal]
+        fn subscriptions_read(self: Pin<&mut Door>, rules: QJsonArray);
+        #[qsignal]
+        fn torrents_read(self: Pin<&mut Door>, torrents: QJsonArray, transfer: QJsonObject);
+        #[qsignal]
+        fn downloads_unavailable(self: Pin<&mut Door>, what: QString, error: QJsonObject);
+        #[qsignal]
+        fn removal_planned(self: Pin<&mut Door>, job: f64, plans: QJsonArray);
+        #[qsignal]
+        fn subscription_removed(self: Pin<&mut Door>, name: QString);
+        #[qsignal]
+        fn torrents_controlled(self: Pin<&mut Door>, hashes: QJsonArray, action: QString);
     }
 
     impl cxx_qt::Threading for Door {}
@@ -455,6 +562,57 @@ fn parse_option<T: DeserializeOwned>(field: &str, o: &QJsonObject) -> Result<Opt
     }
 }
 
+/// An empty QString is `None`: the optional names and endpoints the downloads page sends.
+fn non_empty(s: &QString) -> Option<String> {
+    let s = s.to_string();
+    let t = s.trim();
+    if t.is_empty() {
+        None
+    } else {
+        Some(t.to_string())
+    }
+}
+
+/// The page's item list back into anirss's `Item` shape, one bad item failing the call
+/// rather than vanishing: a list sent back minus an item would shift every group's
+/// member indexes.
+fn releases(items: &QJsonArray) -> Result<Vec<Release>, CoreError> {
+    serde_json::from_value(Value::Array(
+        items.iter().map(|i| json::from_qjson(&i)).collect(),
+    ))
+    .map_err(|e| CoreError::invalid("items", e.to_string()))
+}
+
+/// `{ type, tokens | term }` from QML into the contract's op.
+fn refine_op(o: &QJsonObject) -> Result<RefineOp, CoreError> {
+    let v = from_qjson_object(o);
+    let kind = v["type"].as_str().unwrap_or("");
+    let term = || v["term"].as_str().unwrap_or("").to_string();
+    match kind {
+        "tokens" => {
+            let tokens: Vec<String> = v["tokens"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|t| t.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default();
+            if tokens.is_empty() {
+                return Err(CoreError::invalid("op", "a tokens op needs tokens"));
+            }
+            Ok(RefineOp::Tokens { tokens })
+        }
+        "term" => Ok(RefineOp::Term { term: term() }),
+        "exclude" => Ok(RefineOp::Exclude { term: term() }),
+        "best_fit" => Ok(RefineOp::BestFit),
+        other => Err(CoreError::invalid(
+            "op",
+            format!("{other} is not a refine op"),
+        )),
+    }
+}
+
 /// What a panic carried, for the two payload shapes `panic!` produces.
 fn panic_text(payload: &(dyn std::any::Any + Send)) -> String {
     if let Some(s) = payload.downcast_ref::<&str>() {
@@ -540,11 +698,9 @@ impl qobject::Door {
     /// about should not take the window with it. A caught panic comes back as the ordinary
     /// `Internal` error shape.
     fn dispatch(&self, call: Result<Call, CoreError>) -> QJsonObject {
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            match call {
-                Ok(c) => self.answer(c),
-                Err(e) => to_qjson_object(&json!({ "error": json::error_json(&e) })),
-            }
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match call {
+            Ok(c) => self.answer(c),
+            Err(e) => to_qjson_object(&json!({ "error": json::error_json(&e) })),
         }))
         .unwrap_or_else(|payload| {
             let e = CoreError::internal(panic_text(&*payload));
@@ -558,7 +714,11 @@ impl qobject::Door {
     fn answer(&self, call: Call) -> QJsonObject {
         let core = crate::runtime::core();
         let key = read_cache::key_of(&call);
-        let name = if timing() { call_name(&call) } else { String::new() };
+        let name = if timing() {
+            call_name(&call)
+        } else {
+            String::new()
+        };
         let generation = core.generation();
         let t0 = Instant::now();
         if let Some(k) = &key
@@ -819,6 +979,36 @@ impl qobject::Door {
             },
             EventBody::ExportFinished { .. } => self.as_mut().export_finished(s("path")),
             EventBody::ImportFinished { .. } => self.as_mut().import_finished(obj("summary")),
+            EventBody::DownloadsStatusChanged { .. } => {
+                self.as_mut().downloads_status_changed(obj("status"))
+            }
+            EventBody::ReleasesFound { .. } => self.as_mut().releases_found(job_id, obj("search")),
+            EventBody::ReleasesRefined { .. } => {
+                self.as_mut().releases_refined(job_id, obj("refinement"))
+            }
+            EventBody::SubscriptionPreviewed { .. } => {
+                self.as_mut().subscription_previewed(job_id, obj("spec"))
+            }
+            EventBody::Subscribed { .. } => self.as_mut().subscribed(job_id, obj("result")),
+            EventBody::TorrentsAdded { .. } => self.as_mut().torrents_added(job_id, obj("result")),
+            EventBody::SubscriptionsRead { .. } => self.as_mut().subscriptions_read(arr("rules")),
+            EventBody::TorrentsRead { .. } => self
+                .as_mut()
+                .torrents_read(arr("torrents"), obj("transfer")),
+            EventBody::DownloadsUnavailable { error, .. } => self
+                .as_mut()
+                .downloads_unavailable(s("what"), to_qjson_object(&json::error_json(error))),
+            EventBody::RemovalPlanned { .. } => self.as_mut().removal_planned(job_id, arr("plans")),
+            EventBody::SubscriptionRemoved { .. } => self.as_mut().subscription_removed(s("name")),
+            EventBody::TorrentsControlled { action, .. } => {
+                let word = match action {
+                    TorrentAction::Stop => "Stop",
+                    TorrentAction::Start => "Start",
+                    TorrentAction::Delete { .. } => "Delete",
+                };
+                self.as_mut()
+                    .torrents_controlled(arr("hashes"), QString::from(word))
+            }
         }
     }
 
@@ -1188,6 +1378,144 @@ impl qobject::Door {
     }
     pub fn cancel_job(&self, job: f64) -> QJsonObject {
         self.dispatch(Ok(Call::CancelJob { job: id(job) }))
+    }
+    // Downloads
+    pub fn get_downloads(&self) -> QJsonObject {
+        self.dispatch(Ok(Call::GetDownloads))
+    }
+    pub fn connect_downloads(&self) -> QJsonObject {
+        self.dispatch(Ok(Call::ConnectDownloads))
+    }
+    pub fn search_releases(&self, query: &QString, endpoint: &QString) -> QJsonObject {
+        self.dispatch(Ok(Call::SearchReleases {
+            query: query.to_string(),
+            endpoint: non_empty(endpoint),
+        }))
+    }
+    pub fn refine_releases(
+        &self,
+        query: &QString,
+        endpoint: &QString,
+        items: &QJsonArray,
+        op: &QJsonObject,
+    ) -> QJsonObject {
+        self.dispatch((|| -> Result<Call, CoreError> {
+            Ok(Call::RefineReleases {
+                query: query.to_string(),
+                endpoint: endpoint.to_string(),
+                items: releases(items)?,
+                op: refine_op(op)?,
+            })
+        })())
+    }
+    pub fn preview_subscription(
+        &self,
+        query: &QString,
+        endpoint: &QString,
+        items: &QJsonArray,
+    ) -> QJsonObject {
+        self.dispatch(releases(items).map(|items| Call::PreviewSubscription {
+            query: query.to_string(),
+            endpoint: endpoint.to_string(),
+            items,
+        }))
+    }
+    pub fn subscribe(
+        &self,
+        query: &QString,
+        endpoint: &QString,
+        items: &QJsonArray,
+        name: &QString,
+    ) -> QJsonObject {
+        self.dispatch(releases(items).map(|items| Call::Subscribe {
+            query: query.to_string(),
+            endpoint: endpoint.to_string(),
+            items,
+            name: non_empty(name),
+        }))
+    }
+    pub fn download_releases(&self, items: &QJsonArray, name: &QString) -> QJsonObject {
+        self.dispatch(releases(items).map(|items| Call::DownloadReleases {
+            items,
+            name: non_empty(name),
+        }))
+    }
+    pub fn download_movie(&self, link: &QString) -> QJsonObject {
+        self.dispatch(Ok(Call::DownloadMovie {
+            link: link.to_string(),
+        }))
+    }
+    pub fn list_subscription_rules(&self) -> QJsonObject {
+        self.dispatch(Ok(Call::ListSubscriptionRules))
+    }
+    pub fn list_torrents(&self) -> QJsonObject {
+        self.dispatch(Ok(Call::ListTorrents))
+    }
+    pub fn plan_remove_subscription(
+        &self,
+        name: &QString,
+        torrents: bool,
+        files: bool,
+    ) -> QJsonObject {
+        self.dispatch(Ok(Call::PlanRemoveSubscription {
+            name: name.to_string(),
+            torrents,
+            files,
+        }))
+    }
+    pub fn remove_subscription(&self, name: &QString, torrents: bool, files: bool) -> QJsonObject {
+        self.dispatch(Ok(Call::RemoveSubscription {
+            name: name.to_string(),
+            torrents,
+            files,
+        }))
+    }
+    pub fn control_torrents(
+        &self,
+        hashes: &QJsonArray,
+        action: &QString,
+        files: bool,
+    ) -> QJsonObject {
+        let hashes: Vec<String> = hashes
+            .iter()
+            .filter_map(|h| json::from_qjson(&h).as_str().map(String::from))
+            .collect();
+        let action = match action.to_string().as_str() {
+            "Stop" => Ok(TorrentAction::Stop),
+            "Start" => Ok(TorrentAction::Start),
+            "Delete" => Ok(TorrentAction::Delete { files }),
+            other => Err(CoreError::invalid(
+                "action",
+                format!("{other} is not a torrent action"),
+            )),
+        };
+        self.dispatch(action.map(|action| Call::ControlTorrents { hashes, action }))
+    }
+    pub fn set_download_settings(
+        &self,
+        settings: &QJsonObject,
+        secrets: &QJsonObject,
+    ) -> QJsonObject {
+        let secret = |key: &str| -> Option<String> {
+            let k = QString::from(key);
+            if secrets.contains(&k) {
+                Some(secrets.value(&k).to_string().to_string())
+            } else {
+                None
+            }
+        };
+        self.dispatch(
+            parse_object::<DownloadSettings>("settings", settings).map(|settings| {
+                Call::SetDownloadSettings {
+                    settings,
+                    anirss_token: secret("anirss_token"),
+                    torrent_password: secret("torrent_password"),
+                }
+            }),
+        )
+    }
+    pub fn test_torrent_client(&self) -> QJsonObject {
+        self.dispatch(Ok(Call::TestTorrentClient))
     }
     pub fn call(&self, name: &QString, args: &QJsonObject) -> QJsonObject {
         self.dispatch(

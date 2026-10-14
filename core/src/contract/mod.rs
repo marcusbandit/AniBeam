@@ -1,10 +1,12 @@
 pub mod calls;
+pub mod downloads;
 pub mod enums;
 pub mod error;
 pub mod events;
 pub mod records;
 
 pub use calls::*;
+pub use downloads::*;
 pub use enums::*;
 pub use error::*;
 pub use events::*;
