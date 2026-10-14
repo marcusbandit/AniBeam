@@ -602,3 +602,161 @@ fn read_feed_answers_with_the_entries_or_says_the_feed_is_unavailable() {
         Err(CoreError::Invalid { .. })
     ));
 }
+
+/// Remote mode with a token, so the core reaches anirss through `FakeHttp`
+/// with no sidecar to start.
+fn remote() -> DownloadSettings {
+    DownloadSettings {
+        anirss_mode: AnirssMode::Remote,
+        anirss_url: "http://anirss.test".to_string(),
+        ..settings("anirss")
+    }
+}
+
+fn form_of(r: &anibeam_core::net::HttpRequest) -> String {
+    match &r.body {
+        Some(anibeam_core::net::Body::Form(pairs)) => pairs
+            .iter()
+            .map(|(k, v)| format!("{k}={v}"))
+            .collect::<Vec<_>>()
+            .join("&"),
+        Some(anibeam_core::net::Body::Json(v)) => v.to_string(),
+        None => String::new(),
+    }
+}
+
+/// Unsubscribing with the torrents ticked: the rule goes through anirss
+/// with neither torrents nor files (the core takes the torrents itself),
+/// and the torrents go from the client with their data kept.
+#[test]
+fn remove_show_unsubscribes_and_takes_the_torrents_keeping_the_files() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    isolate_xdg(dir.path());
+    save(&core, remote(), Some("tok"), Some("pw"));
+    http.push_for(
+        "subscriptions/remove",
+        200,
+        json!({"dry_run": false, "plans": []}).to_string(),
+    );
+    http.push_for("torrents/delete", 200, "");
+
+    let job = started(
+        &core,
+        Call::RemoveShow {
+            title: "Frieren".to_string(),
+            rule: Some("Frieren".to_string()),
+            hashes: vec!["AA".to_string(), " bb ".to_string()],
+            torrents: true,
+            files: false,
+            series: None,
+        },
+    );
+    let event = common::wait_job(&c, job);
+    let EventBody::ShowRemoved {
+        rule,
+        hashes,
+        trashed,
+        ..
+    } = &event.body
+    else {
+        panic!("{:?}", event.body)
+    };
+    assert_eq!(rule.as_deref(), Some("Frieren"));
+    assert_eq!(hashes, &vec!["aa".to_string(), "bb".to_string()]);
+    assert!(trashed.is_empty());
+
+    let requests = http.requests();
+    let remove = requests
+        .iter()
+        .find(|r| r.url.contains("subscriptions/remove"))
+        .expect("the rule went");
+    let body = form_of(remove);
+    assert!(
+        body.contains("\"torrents\":false") && body.contains("\"files\":false"),
+        "{body}"
+    );
+    let delete = requests
+        .iter()
+        .find(|r| r.url.contains("torrents/delete"))
+        .expect("the torrents went");
+    assert_eq!(form_of(delete), "hashes=aa|bb&deleteFiles=false");
+}
+
+/// A file target that holds a library folder refuses the whole removal:
+/// the rule and the torrents stay, nothing is moved.
+#[test]
+fn remove_show_refuses_a_library_root_and_removes_nothing() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    isolate_xdg(dir.path());
+    save(&core, remote(), Some("tok"), Some("pw"));
+    let lib = dir.path().join("lib");
+    std::fs::create_dir_all(lib.join("Frieren")).unwrap();
+    core.call(Call::AddSource {
+        path: lib.to_string_lossy().into_owned(),
+    })
+    .unwrap();
+    common::wait_for(
+        &c,
+        |e| matches!(e.body, EventBody::ScanFinished { .. }),
+        Duration::from_secs(10),
+    );
+
+    // A torrent saved into the base with no folder of its own reports the
+    // base itself as its content
+    http.push_for(
+        "torrents/info",
+        200,
+        json!([{"hash": "cc", "name": "x", "state": "uploading", "progress": 1.0,
+                "save_path": dir.path().to_string_lossy(), "content_path": lib.to_string_lossy()}])
+        .to_string(),
+    );
+    let job = started(
+        &core,
+        Call::RemoveShow {
+            title: "Frieren".to_string(),
+            rule: Some("Frieren".to_string()),
+            hashes: vec!["cc".to_string()],
+            torrents: true,
+            files: true,
+            series: None,
+        },
+    );
+    let failed = common::wait_for(
+        &c,
+        |e| {
+            e.job.as_ref().is_some_and(|j| j.id == job)
+                && matches!(e.body, EventBody::JobFailed { .. })
+        },
+        Duration::from_secs(10),
+    );
+    let EventBody::JobFailed { error } = &failed.body else {
+        panic!("{:?}", failed.body)
+    };
+    assert!(matches!(error, CoreError::Invalid { .. }), "{error:?}");
+    let requests = http.requests();
+    assert!(
+        !requests
+            .iter()
+            .any(|r| r.url.contains("subscriptions/remove")),
+        "the rule stays"
+    );
+    assert!(
+        !requests.iter().any(|r| r.url.contains("torrents/delete")),
+        "the torrents stay"
+    );
+    assert!(lib.join("Frieren").exists());
+
+    assert!(matches!(
+        core.call(Call::RemoveShow {
+            title: String::new(),
+            rule: None,
+            hashes: vec![],
+            torrents: true,
+            files: false,
+            series: None,
+        }),
+        Err(CoreError::Invalid { .. })
+    ));
+}

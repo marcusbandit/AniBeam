@@ -191,6 +191,14 @@ pub enum EventBody {
     SubscriptionRemoved {
         name: String,
     },
+    /// What `RemoveShow` took: the rule when it had one, the torrents it
+    /// took out of the client, the paths it moved to the trash.
+    ShowRemoved {
+        title: String,
+        rule: Option<String>,
+        hashes: Vec<String>,
+        trashed: Vec<String>,
+    },
     TorrentsControlled {
         hashes: Vec<String>,
         action: TorrentAction,

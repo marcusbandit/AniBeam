@@ -1,8 +1,7 @@
 // One torrent as the torrent client reports it: the name, its state in words, the facts
 // in the ledger cut (done of size, speed, time left, peers), a 2 px progress line along
-// the foot, and Stop or Start, Remove and Delete files at the right. Remove takes the
-// torrent out of the client and leaves its files; Delete files takes both. Each asks
-// twice in place (ConfirmButton), so nothing is pushed aside for a question.
+// the foot, and Stop or Start and Remove at the right. Remove opens the removal sheet
+// (the torrent goes, and with a tick what it downloaded goes to the trash).
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -11,7 +10,7 @@ Item {
     property var torrent: ({})
     signal stop()
     signal start()
-    signal remove(bool files)
+    signal removeAsked(Item anchor)
 
     readonly property var t: torrent || ({})
     readonly property string state: String(t.state || "")
@@ -98,21 +97,14 @@ Item {
             small: true
             onClicked: root.stopped ? root.start() : root.stop()
         }
-        ConfirmButton {
+        Button {
+            id: removeButton
             objectName: "torrent-remove"
-            label: "Remove"
+            text: "Remove"
             icon: "x"
+            flat: true
             small: true
-            onConfirmed: root.remove(false)
-            Tooltip { text: "Takes the torrent out of the client. The files stay." }
-        }
-        ConfirmButton {
-            objectName: "torrent-delete-files"
-            label: "Delete files"
-            icon: "trash-2"
-            small: true
-            onConfirmed: root.remove(true)
-            Tooltip { text: "Takes the torrent out of the client and deletes what it downloaded." }
+            onClicked: root.removeAsked(removeButton)
         }
     }
     // The progress line along the foot, the hairline under it

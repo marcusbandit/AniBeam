@@ -753,6 +753,16 @@ impl Core {
             Call::ListSubscriptionRules => downloads::list_rules(self),
             Call::ListTorrents => downloads::list_torrents(self),
             Call::ReadFeed { url } => downloads::read_feed(self, url),
+            Call::RemoveShow {
+                title,
+                rule,
+                hashes,
+                torrents,
+                files,
+                series,
+            } => Ok(Reply::Started {
+                job: downloads::remove_show(self, title, rule, hashes, torrents, files, series)?,
+            }),
             Call::PlanRemoveSubscription {
                 name,
                 torrents,

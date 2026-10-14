@@ -128,7 +128,7 @@ FocusScope {
     // reclaimFrameOwned() keeps their entries, in this same handler, so Escape still
     // reaches them; a second Connections on nav.changed would race this one with no
     // ordering guarantee between them.
-    Connections { target: nav; function onChanged() { frame.loadPage(); frame.hideTip(); frame.closeMenu(); frame.reclaimFrameOwned() } }
+    Connections { target: nav; function onChanged() { frame.loadPage(); frame.hideTip(); frame.closeMenu(); removeSheet.close(); frame.reclaimFrameOwned() } }
 
     Rail {
         id: rail
@@ -367,6 +367,7 @@ FocusScope {
         anchors.fill: parent
         z: 600
         Menu { id: menu }
+        RemoveSheet { id: removeSheet }
         Frost {
             id: tip
             visible: false
@@ -429,40 +430,18 @@ FocusScope {
     function hideTip() { tip.visible = false; tipArea = null }
     function toast(text, seconds) { toastText.text = text; toastBox.visible = true; toastTimer.interval = (seconds || 4) * 1000; toastTimer.restart() }
 
-    // ---- A ConfirmButton armed: one at a time. A press anywhere but on it disarms it and
-    // still goes through to what it landed on (the catcher only looks, accepted false), so
-    // clicking away is one click, not two.
-    property Item armedConfirm: null
-    function armConfirm(b) {
-        if (armedConfirm && armedConfirm !== b) armedConfirm.disarm()
-        armedConfirm = b
-        escapeStack.push("confirm", b)
-    }
-    function disarmConfirm(b) {
-        if (armedConfirm === b) armedConfirm = null
-        escapeStack.pop(b)
-    }
-    MouseArea {
-        id: confirmCatcher
-        anchors.fill: parent
-        z: 700
-        enabled: frame.armedConfirm !== null
-        acceptedButtons: Qt.AllButtons
-        onPressed: function(mouse) {
-            var b = frame.armedConfirm
-            if (b) {
-                var p = b.mapFromItem(confirmCatcher, mouse.x, mouse.y)
-                if (!(p.x >= 0 && p.y >= 0 && p.x <= b.width && p.y <= b.height)) b.disarm()
-            }
-            mouse.accepted = false
-        }
-    }
+    // ---- The removal sheet: every removal on the downloads page asks through it
+    readonly property bool removalOpen: removeSheet.visible
+    function askRemoval(anchor, spec, done) { removeSheet.openAt(anchor, spec, done) }
 
     // ---- Downloads: the subscriptions as last read, shared by the rail's badge and the
     // page. Read once a little after start (anirss is a sidecar the core starts), then
     // again when the library has settled after a change, since a new episode on disk can
     // finish a show. No poll: a read follows something that happened.
     property var downloadsRules: []
+    // The downloads page's two bands, grid or list, for the session
+    property string downloadsSubView: "grid"
+    property string downloadsDlView: "grid"
     property bool downloadsRulesRead: false
     property string downloadsRulesError: ""
     readonly property int downloadsAttention: {
@@ -470,10 +449,10 @@ FocusScope {
         for (var i = 0; i < downloadsRules.length; i++) if (downloadsRules[i].show && downloadsRules[i].show.complete) n++
         return n
     }
-    // Put off while a removal is armed: a fresh list rebuilds the posters, the armed one too
+    // Put off while the removal sheet is up: a fresh list rebuilds what it was opened from
     function readDownloadsRules() {
         if (!Door.ready) return
-        if (frame.armedConfirm !== null) { downloadsReread.restart(); return }
+        if (frame.removalOpen) { downloadsReread.restart(); return }
         Door.listSubscriptionRules()
     }
     Connections {

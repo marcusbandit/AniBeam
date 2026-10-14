@@ -277,6 +277,22 @@ pub enum Call {
         torrents: bool,
         files: bool,
     },
+    /// Takes a show out of downloads in one go, as far as asked: the
+    /// subscription (`rule`: its feed and download rule), with `torrents`
+    /// the client's torrents for it (`hashes`), and with `files` what they
+    /// downloaded and the library series' folder (`series`), moved to the
+    /// trash rather than deleted. `files` implies `torrents`. Every file
+    /// target is checked before anything is removed: a library root, the
+    /// home folder or anything holding one is refused and nothing changes.
+    /// `title` names the show in the log. Ends in `ShowRemoved`.
+    RemoveShow {
+        title: String,
+        rule: Option<String>,
+        hashes: Vec<String>,
+        torrents: bool,
+        files: bool,
+        series: Option<u64>,
+    },
     /// Stops, starts or deletes torrents by info-hash. Ends in
     /// `TorrentsControlled`.
     ControlTorrents {

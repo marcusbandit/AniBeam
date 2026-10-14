@@ -1,23 +1,24 @@
-// Downloads: anirss's front, built around what you subscribe to and what you have, with
-// the transfers in their place: up front only while something is moving. The head names
-// the page and says how anirss and the torrent client stand (each a chip that opens the
-// Downloads settings). Under it the search, then, while a search is up, its query line,
-// groups, Narrow and Best fit, the releases and the actions pane, as before.
+// Downloads: anirss's front, built around what you subscribe to and what you have. The head
+// names the page and says how anirss and the torrent client stand (each a chip that opens
+// the Downloads settings). Under it the search, then, while a search is up, its query line,
+// groups, Narrow and Best fit, the releases and the actions pane.
 //
-// With no search up the page is three bands. Downloading, only while a torrent is moving:
-// the moving ones, speeds in the band's line. Subscriptions: every rule anirss registered
-// as a poster of the library series its folder fills, the complete ones first (finished
-// airing, every episode on disk: nothing left for the rule to do) under a line that says
-// how many there are and offers to remove their RSS in one go. Downloaded: every folder
-// the client holds torrents for, one row per show with its poster, Remove torrents and
-// Remove files. A poster or a row opens the show inside the page (ShowDetail): its
-// episodes, its feed as the feed reads now, its torrents. Every removal asks twice in
-// place (ConfirmButton).
+// With no search up the page is three bands, each a grid of posters or a list (the switch
+// in the band's head, kept by the frame for the session). Downloading, only while
+// something moves: the shows with a torrent moving, their progress and speed. Subscriptions,
+// in sections by where the show stands: Complete (finished airing, every episode on disk:
+// the rule has nothing left to do, and the rail counts these in red), Airing, Incomplete,
+// and Not in the library as short text tiles. Downloaded, in sections by what the
+// client is doing with each show's torrents: Seeding, Done, Stopped, Files missing. A poster
+// or a row opens the show inside the page (ShowDetail). Every removal goes through the
+// frame's removal sheet: unsubscribing always takes the feed and rule, with ticks for the
+// torrents and for the files (which go to the trash and take the torrents along). Removals
+// run one at a time, in the order asked.
 //
 // The subscriptions are the frame's (it reads them for the rail's badge); this page asks
 // for a fresh read on open. The transfers are the one place in the app that polls: every
 // two seconds while something is downloading and the page is up, every fifteen while
-// nothing is. There is no event for a byte arriving.
+// nothing is, and not at all while the removal sheet is open.
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -79,24 +80,17 @@ Item {
     property var shows: ({})
     property bool torrentsRead: false
     property string torrentsError: ""
-    property int subFilter: 0
-    property bool allGroups: false
-    // Rule names whose removal is running, and the jobs that carry them
+    // What is being removed, by key: "r:" a rule name, "g:" a group key, "t:" a hash
     property var removing: ({})
-    property var removeJobs: ({})
-    // Group keys whose torrents are going
-    property var clearing: ({})
-    // Remove RSS for every complete subscription: one at a time, the next on each answer
-    property var bulk: []
-    property string bulkCurrent: ""
+    // Removals waiting their turn ({ target, choice }), and the one running
+    property var queue: []
+    property var running: null
+    property real runningJob: -1
     property real nowMs: Date.now()
-    Timer { interval: 30000; repeat: true; running: page.visible && frame.armedConfirm === null; onTriggered: page.nowMs = Date.now() }
-    // A removed rule stays dimmed until the read after it no longer lists it
-    onRulesChanged: {
-        var keep = {}
-        for (var i = 0; i < rules.length; i++) if (page.removing[rules[i].name]) keep[rules[i].name] = true
-        page.removing = keep
-    }
+    Timer { interval: 30000; repeat: true; running: page.visible && !frame.removalOpen; onTriggered: page.nowMs = Date.now() }
+    // A removal's marks stay until the read after it no longer lists what it took
+    onRulesChanged: page.pruneRemoving()
+    onTorrentsChanged: page.pruneRemoving()
 
     // ---- The show open inside the page: { key, rule, folder, seriesId, title }
     property var detail: null
@@ -223,14 +217,14 @@ Item {
         if (s.indexOf("paused") === 0 || s.indexOf("stopped") === 0) return (t.progress || 0) >= 1 ? 1 : 2
         return (t.progress || 0) >= 1 ? 1 : 0
     }
+    function seeding(t) { var s = String(t.state || ""); return s === "uploading" || s === "stalledUP" || s === "forcedUP" || s === "queuedUP" }
     readonly property var activeTorrents: torrents.filter(function(t) { return page.rank(t) === 0 })
-        .sort(function(a, b) { return (b.dlspeed || 0) - (a.dlspeed || 0) || (b.added_on || 0) - (a.added_on || 0) })
     readonly property var clientIndex: {
         var byHash = {}, byName = {}
         for (var i = 0; i < torrents.length; i++) { byHash[String(torrents[i].hash).toLowerCase()] = torrents[i]; byName[torrents[i].name] = torrents[i] }
         return { byHash: byHash, byName: byName }
     }
-    // One group per show folder, the moving ones first, then the newest
+    // One group per show folder
     readonly property var showGroups: {
         var m = {}, order = []
         for (var i = 0; i < torrents.length; i++) {
@@ -238,41 +232,111 @@ Item {
             if (!g) {
                 var show = t.series_id !== null && t.series_id !== undefined ? (page.shows[t.series_id] || null) : null
                 g = m[k] = { key: k, show: show, title: show ? show.title : page.lastName(t.save_path), folder: page.folderOf(t.save_path),
-                             rule: page.ruleByKey[k] || null, torrents: [], size: 0, active: 0, done: 0, broken: 0, upspeed: 0, latest: 0 }
+                             rule: page.ruleByKey[k] || null, torrents: [], size: 0, have: 0, active: 0, done: 0, broken: 0, seeding: 0,
+                             dlspeed: 0, upspeed: 0, eta: 0, latest: 0 }
                 order.push(g)
             }
             g.torrents.push(t)
             g.size += t.size || 0
+            g.have += Math.round((t.size || 0) * (t.progress || 0))
             var r = page.rank(t)
-            if (r === 0) g.active++
+            if (r === 0) { g.active++; if (t.eta > 0 && t.eta < 8640000) g.eta = Math.max(g.eta, t.eta) }
             if (r === 3) g.broken++
             if ((t.progress || 0) >= 1) g.done++
+            if (page.seeding(t)) g.seeding++
+            g.dlspeed += t.dlspeed || 0
             g.upspeed += t.upspeed || 0
             g.latest = Math.max(g.latest, t.completion_on || 0, t.added_on || 0)
         }
-        order.sort(function(a, b) { return (b.active > 0) - (a.active > 0) || b.latest - a.latest })
+        order.sort(function(a, b) { return b.latest - a.latest })
         return order
     }
-    readonly property int groupCap: 40
+    function groupState(g) {
+        if (g.active > 0) return "downloading"
+        if (g.broken > 0) return "broken"
+        if (g.seeding > 0) return "seeding"
+        if (g.done === g.torrents.length) return "done"
+        return "stopped"
+    }
+    readonly property var downloading: showGroups.filter(function(g) { return page.groupState(g) === "downloading" })
+    readonly property var dlSections: {
+        var defs = [
+            { key: "seeding", title: "Seeding", dot: theme.green, line: "Downloaded and still sharing." },
+            { key: "done", title: "Done", dot: theme.textDim, line: "Downloaded; the client is not sharing them." },
+            { key: "stopped", title: "Stopped", dot: theme.textFaint, line: "Stopped before they finished." },
+            { key: "broken", title: "Files missing", dot: theme.red, line: "The client cannot find their files: they point at a folder that is not there. Removing the torrents tidies the client." }
+        ]
+        var by = {}
+        for (var i = 0; i < defs.length; i++) { defs[i].items = []; by[defs[i].key] = defs[i] }
+        for (var j = 0; j < showGroups.length; j++) { var st = page.groupState(showGroups[j]); if (by[st]) by[st].items.push(showGroups[j]) }
+        return defs.filter(function(d) { return d.items.length > 0 })
+    }
+    readonly property int downloadedCount: { var n = 0; for (var i = 0; i < dlSections.length; i++) n += dlSections[i].items.length; return n }
     readonly property real downloadedSize: { var n = 0; for (var i = 0; i < torrents.length; i++) n += torrents[i].size || 0; return n }
 
-    // The subscriptions: complete first, then airing (soonest first), then the rest
-    function ruleRank(r) {
-        if (r.show && r.show.complete) return 0
-        if (r.show && (r.show.next_airing || r.show.status === "Releasing")) return 1
-        return 2
+    // The subscriptions, by where the show stands
+    function subState(r) {
+        var s = r.show
+        if (!s) return "missing"
+        if (s.complete) return "complete"
+        if (s.next_airing || s.status === "Releasing" || s.status === "NotYetReleased" || s.status === "Hiatus") return "airing"
+        return "incomplete"
     }
-    readonly property var completeRules: rules.filter(function(r) { return r.show && r.show.complete })
-    readonly property var airingRules: rules.filter(function(r) { return page.ruleRank(r) === 1 })
-    readonly property var shownRules: (subFilter === 1 ? completeRules : subFilter === 2 ? airingRules : rules).slice().sort(function(a, b) {
-        var d = page.ruleRank(a) - page.ruleRank(b)
-        if (d !== 0) return d
-        if (page.ruleRank(a) === 1) {
+    readonly property var completeRules: rules.filter(function(r) { return page.subState(r) === "complete" })
+    readonly property var subSections: {
+        var defs = [
+            { key: "complete", title: "Complete", dot: theme.red, line: "Every episode is in the library and nothing more will air: these subscriptions have nothing left to do." },
+            { key: "airing", title: "Airing", dot: theme.accent, line: "New episodes still to come, the soonest first." },
+            { key: "incomplete", title: "Incomplete", dot: theme.orange, line: "Finished airing with episodes not here, or nothing says where the show stands." },
+            { key: "missing", title: "Not in the library", dot: theme.textFaint, line: "Their folder holds nothing the library has found: nothing has arrived yet, or it saves where the library does not look." }
+        ]
+        var by = {}
+        for (var i = 0; i < defs.length; i++) { defs[i].items = []; by[defs[i].key] = defs[i] }
+        for (var j = 0; j < rules.length; j++) by[page.subState(rules[j])].items.push(rules[j])
+        by.airing.items.sort(function(a, b) {
             var an = a.show.next_airing ? a.show.next_airing.at : 1e12, bn = b.show.next_airing ? b.show.next_airing.at : 1e12
-            if (an !== bn) return an - bn
+            return an - bn || page.titleOf(a).localeCompare(page.titleOf(b))
+        })
+        ;["complete", "incomplete", "missing"].forEach(function(k) { by[k].items.sort(function(a, b) { return page.titleOf(a).localeCompare(page.titleOf(b)) }) })
+        return defs.filter(function(d) { return d.items.length > 0 })
+    }
+    // What a rule's card and row say
+    function ruleLedger(r) {
+        var s = r.show
+        if (!s) return Fmt.plural(r.torrent_count || 0, "torrent", "torrents")
+        if (s.kind === "Movie") return s.complete ? "Film, on disk" : "Film"
+        var total = s.total_episodes && !s.total_is_estimate ? s.total_episodes : 0, have = s.episodes_on_disk || 0
+        if (s.complete) return "All " + total + " here"
+        if (s.next_airing && s.next_airing.at * 1000 > page.nowMs) return "Ep " + s.next_airing.episode + " in " + Fmt.countdown(s.next_airing.at - page.nowMs / 1000)
+        if (total > 0) return have + " of " + total + " here"
+        return Fmt.plural(have, "episode", "episodes") + " here"
+    }
+    function ruleTag(r) {
+        var st = page.subState(r)
+        if (st === "complete") return "Complete"
+        if (st === "airing") return r.rule_enabled === false ? "Paused" : "Airing"
+        if (st === "incomplete") return r.show.missing && r.show.missing.length ? r.show.missing.length + " missing" : "Unknown"
+        return ""
+    }
+    function ruleProgress(r) {
+        var s = r.show
+        if (!s || s.kind === "Movie" || !s.total_episodes || s.total_is_estimate) return -1
+        return (s.episodes_on_disk || 0) / s.total_episodes
+    }
+    function groupLedger(g) {
+        if (page.groupState(g) === "downloading") {
+            var parts = [Math.round(100 * g.have / Math.max(1, g.size)) + "%"]
+            if (g.dlspeed > 0) parts.push(Fmt.bytes(g.dlspeed) + "/s")
+            if (g.eta > 0) parts.push(Fmt.countdown(g.eta) + " left")
+            return parts.join(", ")
         }
-        return page.titleOf(a).localeCompare(page.titleOf(b))
-    })
+        return Fmt.plural(g.torrents.length, "torrent", "torrents") + ", " + Fmt.bytes(g.size)
+    }
+    function stateDot(key) {
+        return key === "complete" || key === "broken" ? theme.red : key === "airing" || key === "downloading" ? theme.accent
+             : key === "incomplete" ? theme.orange : key === "seeding" ? theme.green : theme.textFaint
+    }
+    function groupWord(key) { return key === "downloading" ? "Downloading" : key === "seeding" ? "Seeding" : key === "done" ? "Done" : key === "broken" ? "Files missing" : "Stopped" }
 
     // ---- The show inside the page
     function openRule(r) {
@@ -292,12 +356,11 @@ Item {
         return null
     }
     readonly property var detailShow: detailRule && detailRule.show ? detailRule.show : (detail && detail.seriesId >= 0 ? (shows[detail.seriesId] || null) : null)
-    readonly property var detailTorrents: {
-        if (!detail) return []
-        var ruleFolder = detailRule ? page.folderOf(detailRule.save_path) : ""
-        return torrents.filter(function(t) { return page.torrentKey(t) === page.detail.key || (ruleFolder !== "" && page.folderOf(t.save_path) === ruleFolder) })
-            .sort(function(a, b) { return String(a.name).localeCompare(String(b.name)) })
+    function torrentsFor(key, folder) {
+        return torrents.filter(function(t) { return page.torrentKey(t) === key || (folder !== "" && page.folderOf(t.save_path) === folder) })
     }
+    readonly property var detailTorrents: detail ? torrentsFor(detail.key, detailRule ? folderOf(detailRule.save_path) : "")
+        .sort(function(a, b) { return String(a.name).localeCompare(String(b.name)) }) : []
     function readFeed() {
         var r = page.detailRule
         if (!r || !r.feed_url) { page.feed = null; return }
@@ -310,45 +373,143 @@ Item {
         page.act(Door.downloadReleases([{ title: e.title, link: e.link, seeders: e.seeders, leechers: e.leechers, downloads: e.downloads, size: e.size, page: e.page }], name))
         frame.toast("Sent " + e.title + " to " + page.clientName)
     }
-
-    // ---- Removals
-    function withKey(obj, key, on) { var o = JSON.parse(JSON.stringify(obj)); if (on) o[key] = true; else delete o[key]; return o }
-    function removeRss(r) {
-        var res = Door.removeSubscription(r.name, true, false)
-        if (res.error) { frame.toast(page.errorWords(res.error)); return false }
-        page.removing = page.withKey(page.removing, r.name, true)
-        var j = JSON.parse(JSON.stringify(page.removeJobs)); j[String(res.reply.job)] = r.name; page.removeJobs = j
-        return true
-    }
-    function removeAllComplete() {
-        page.bulk = page.completeRules.map(function(r) { return r.name })
-        page.nextBulk()
-    }
-    function nextBulk() {
-        if (!page.bulk.length) { page.bulkCurrent = ""; return }
-        var b = page.bulk.slice(), name = b.shift()
-        page.bulk = b
-        page.bulkCurrent = name
-        var rule = null
-        for (var i = 0; i < page.rules.length; i++) if (page.rules[i].name === name) rule = page.rules[i]
-        if (!rule || !page.removeRss(rule)) page.nextBulk()
-    }
-    function removalEnded(job, name) {
-        var j = JSON.parse(JSON.stringify(page.removeJobs)); delete j[String(job)]; page.removeJobs = j
-        if (page.detail && page.detail.rule === name) page.closeDetail()
-        if (name === page.bulkCurrent) page.nextBulk()
-    }
-    function clearTorrents(key, list, files) {
-        var hashes = list.map(function(t) { return t.hash })
-        if (!hashes.length) return
-        var res = Door.controlTorrents(hashes, "Delete", files === true)
-        if (res.error) { frame.toast(page.errorWords(res.error)); return }
-        page.clearing = page.withKey(page.clearing, key, true)
-    }
-    function control(hash, action, files) {
-        var r = Door.controlTorrents([hash], action, files === true)
+    function control(hash, action) {
+        var r = Door.controlTorrents([hash], action, false)
         if (r.error) frame.toast(page.errorWords(r.error))
     }
+
+    // ---- Removals: one sheet asks, a queue runs them one at a time
+    function sumSize(list) { var n = 0; for (var i = 0; i < list.length; i++) n += list[i].size || 0; return n }
+    function targetForRule(r) {
+        var ts = page.torrentsFor(page.ruleKey(r), page.folderOf(r.save_path))
+        return { title: page.titleOf(r), rule: r.name, hashes: ts.map(function(t) { return t.hash }), series: r.show ? r.show.series_id : -1,
+                 rkey: "r:" + r.name, tkeys: ts.map(function(t) { return "t:" + t.hash }), size: page.sumSize(ts), folder: r.show ? r.show.path : "" }
+    }
+    function targetForGroup(g) {
+        return { title: g.title, rule: "", hashes: g.torrents.map(function(t) { return t.hash }), series: g.show ? g.show.series_id : -1,
+                 rkey: "", tkeys: ["g:" + g.key].concat(g.torrents.map(function(t) { return "t:" + t.hash })), size: g.size, folder: g.show ? g.show.path : "" }
+    }
+    function targetForTorrent(t) {
+        return { title: t.name, rule: "", hashes: [t.hash], series: -1, rkey: "", tkeys: ["t:" + t.hash], size: t.size || 0, folder: "" }
+    }
+    function filesWhere(t) {
+        return t.folder !== "" ? t.folder + " and what the torrents downloaded" : "what the torrents downloaded"
+    }
+    function askUnsubscribe(anchor, r) {
+        var t = page.targetForRule(r)
+        frame.askRemoval(anchor, {
+            heading: "Unsubscribe from " + t.title + "?",
+            base: "Its feed and download rule leave " + page.clientName + ", so nothing new arrives.",
+            rule: true, torrentCount: t.hashes.length,
+            canFiles: t.hashes.length > 0 || t.series >= 0,
+            filesWhere: page.filesWhere(t)
+        }, function(choice) { page.enqueue([t], choice) })
+    }
+    function askUnsubscribeComplete(anchor) {
+        var ts = page.completeRules.map(page.targetForRule), n = 0
+        for (var i = 0; i < ts.length; i++) n += ts[i].hashes.length
+        frame.askRemoval(anchor, {
+            heading: "Unsubscribe from all " + ts.length + " complete shows?",
+            base: "Their feeds and download rules leave " + page.clientName + ". Every episode of them is in the library.",
+            rule: true, torrentCount: n, canFiles: true,
+            filesWhere: "their folders and what their torrents downloaded",
+            note: "They go one at a time; the page shows each as it goes."
+        }, function(choice) { page.enqueue(ts, choice) })
+    }
+    function askRemoveGroup(anchor, g) {
+        var t = page.targetForGroup(g)
+        frame.askRemoval(anchor, {
+            heading: "Remove " + t.title + "?",
+            base: (t.hashes.length === 1 ? "Its torrent leaves " : "Its " + t.hashes.length + " torrents leave ") + page.clientName + "; the files stay unless you tick below."
+                  + (g.rule ? " The subscription stays." : ""),
+            rule: false, torrentCount: t.hashes.length, canFiles: true,
+            filesWhere: page.filesWhere(t)
+        }, function(choice) { page.enqueue([t], choice) })
+    }
+    function askRemoveBroken(anchor, groups) {
+        var ts = groups.map(page.targetForGroup), n = 0
+        for (var i = 0; i < ts.length; i++) n += ts[i].hashes.length
+        frame.askRemoval(anchor, {
+            heading: "Remove the torrents of all " + ts.length + " shows with files missing?",
+            base: "Their " + n + " torrents leave " + page.clientName + ". They point at folders that are not there, so no file is touched; subscriptions stay.",
+            rule: false, torrentCount: n, canFiles: false,
+            note: "They go one at a time; the page shows each as it goes."
+        }, function(choice) { page.enqueue(ts, { torrents: true, files: false }) })
+    }
+    function askRemoveTorrent(anchor, torrent) {
+        var t = page.targetForTorrent(torrent)
+        frame.askRemoval(anchor, {
+            heading: "Remove this torrent?",
+            base: torrent.name,
+            rule: false, torrentCount: 1, canFiles: true,
+            filesWhere: "what it downloaded"
+        }, function(choice) { page.enqueue([t], choice) })
+    }
+    function askRemoveDetail(anchor) {
+        if (page.detail === null) return
+        var t = { title: page.detail.title, rule: "", hashes: page.detailTorrents.map(function(x) { return x.hash }), series: page.detail.seriesId,
+                  rkey: "", tkeys: ["g:" + page.detail.key].concat(page.detailTorrents.map(function(x) { return "t:" + x.hash })), size: page.sumSize(page.detailTorrents),
+                  folder: page.detailShow ? page.detailShow.path : "" }
+        frame.askRemoval(anchor, {
+            heading: "Remove " + t.title + "?",
+            base: "Its " + Fmt.plural(t.hashes.length, "torrent leaves", "torrents leave") + " " + page.clientName + "; the files stay unless you tick below." + (page.detailRule ? " The subscription stays." : ""),
+            rule: false, torrentCount: t.hashes.length, canFiles: true, filesWhere: page.filesWhere(t)
+        }, function(choice) { page.enqueue([t], choice) })
+    }
+    function mark(keys, on) {
+        var o = JSON.parse(JSON.stringify(page.removing))
+        for (var i = 0; i < keys.length; i++) { if (on) o[keys[i]] = true; else delete o[keys[i]] }
+        page.removing = o
+    }
+    function isRemoving(key) { return page.removing[key] === true }
+    function pruneRemoving() {
+        var names = {}, hashes = {}, groups = {}, live = {}
+        for (var i = 0; i < rules.length; i++) names[rules[i].name] = true
+        for (var j = 0; j < torrents.length; j++) { hashes[torrents[j].hash] = true; groups[page.torrentKey(torrents[j])] = true }
+        if (page.running) page.running.keys.forEach(function(k) { live[k] = true })
+        page.queue.forEach(function(q) { q.keys.forEach(function(k) { live[k] = true }) })
+        var o = {}
+        for (var k in page.removing) {
+            var kind = k.slice(0, 2), v = k.slice(2)
+            var still = kind === "r:" ? names[v] : kind === "t:" ? hashes[v] : groups[v]
+            if (still || live[k]) o[k] = true
+        }
+        page.removing = o
+    }
+    function enqueue(targets, choice) {
+        var q = page.queue.slice()
+        for (var i = 0; i < targets.length; i++) {
+            var t = targets[i], keys = (t.rkey ? [t.rkey] : []).concat(choice.torrents || choice.files ? t.tkeys : [])
+            q.push({ target: t, choice: choice, keys: keys })
+            page.mark(keys, true)
+        }
+        page.queue = q
+        page.startNext()
+    }
+    function startNext() {
+        if (page.running !== null || !page.queue.length) return
+        var q = page.queue.slice(), next = q.shift()
+        page.queue = q
+        var t = next.target, c = next.choice
+        var r = Door.removeShow(t.title, t.rule, t.hashes, c.torrents, c.files, t.series)
+        if (r.error) {
+            frame.toast(page.errorWords(r.error))
+            page.mark(next.keys, false)
+            page.startNext()
+            return
+        }
+        page.running = next
+        page.runningJob = r.reply.job
+    }
+    function finishRunning(ok) {
+        var done = page.running
+        page.running = null
+        page.runningJob = -1
+        if (done && !ok) page.mark(done.keys, false)
+        if (done && ok && page.detail !== null && ((done.target.rule !== "" && page.detail.rule === done.target.rule) || done.keys.indexOf("g:" + page.detail.key) >= 0)) page.closeDetail()
+        page.startNext()
+    }
+    readonly property int queued: queue.length + (running !== null ? 1 : 0)
 
     // ---- The head's one line
     readonly property string summary: {
@@ -406,7 +567,7 @@ Item {
             page.pollTorrents()
         }
         function onTorrentsRead(torrents, transfer, shows) {
-            if (frame.armedConfirm !== null) return
+            if (frame.removalOpen) return
             var m = {}
             for (var i = 0; i < shows.length; i++) m[shows[i].series_id] = shows[i]
             page.shows = m
@@ -414,7 +575,6 @@ Item {
             page.transfer = transfer
             page.torrentsRead = true
             page.torrentsError = ""
-            page.clearing = ({})
         }
         function onFeedRead(url, entries) {
             if (!page.feed || page.feed.url !== url) return
@@ -425,8 +585,10 @@ Item {
             if (what === "torrents") page.torrentsError = page.errorWords(error)
             else if (what === "feed" && page.feed) page.feed = { url: page.feed.url, entries: page.feed.entries, loading: false, error: page.errorWords(error) }
         }
-        function onSubscriptionRemoved(name) {
-            for (var k in page.removeJobs) if (page.removeJobs[k] === name) { page.removalEnded(Number(k), name); break }
+        function onShowRemoved(job, title, rule, hashes, trashed) {
+            if (job !== page.runningJob) return
+            if (trashed.length) frame.toast(Fmt.plural(trashed.length, "path", "paths") + " of " + title + " moved to the trash")
+            page.finishRunning(true)
             page.pollTorrents()
         }
         function onTorrentsControlled(hashes, action) { page.pollTorrents() }
@@ -435,25 +597,25 @@ Item {
             else if (job === page.actionJob) { page.acting = false; page.actionError = page.errorWords(error) }
             else if (job === page.connectJob) { page.connecting = false; frame.toast(page.errorWords(error)) }
             else if (job === page.previewJob) { page.previewJob = -1 }
-            else if (page.removeJobs[String(job)] !== undefined) {
-                var name = page.removeJobs[String(job)]
+            else if (job === page.runningJob) {
                 frame.toast(page.errorWords(error))
-                page.bulk = []
-                page.removing = page.withKey(page.removing, name, false)
-                page.removalEnded(job, name)
-            } else if (kind === "ControlTorrents") { page.clearing = ({}); frame.toast(page.errorWords(error)) }
+                // A failure stops the run: what is left is not removed on a guess
+                page.queue.forEach(function(q) { page.mark(q.keys, false) })
+                page.queue = []
+                page.finishRunning(false)
+            } else if (kind === "ControlTorrents") frame.toast(page.errorWords(error))
         }
         function onJobCancelled(job, kind) {
+            if (job === page.runningJob) { page.queue.forEach(function(q) { page.mark(q.keys, false) }); page.queue = []; page.finishRunning(false) }
             if (job === page.searchJob) page.searching = false
             else if (job === page.actionJob) page.acting = false
             else if (job === page.connectJob) page.connecting = false
         }
     }
     // The one poll in the app: the transfers, while this page is up; quick only while
-    // something is moving
-    // Held while a removal is armed: a fresh list rebuilds the rows, and the armed button
-    // with them, between the two clicks
-    Timer { interval: page.activeTorrents.length ? 2000 : 15000; running: page.visible && Door.ready && page.torrentOn && frame.armedConfirm === null; repeat: true; onTriggered: page.pollTorrents() }
+    // something moves, held while the removal sheet is open (a fresh list would rebuild
+    // what it was opened from)
+    Timer { interval: page.activeTorrents.length ? 2000 : 15000; running: page.visible && Door.ready && page.torrentOn && !frame.removalOpen; repeat: true; onTriggered: page.pollTorrents() }
     Component.onCompleted: {
         reload()
         connect()
@@ -760,24 +922,25 @@ Item {
                 feed: page.feed
                 clientIndex: page.clientIndex
                 nowMs: page.nowMs
-                removing: !!page.detailRule && page.removing[page.detailRule.name] === true
+                removing: (!!page.detailRule && page.isRemoving("r:" + page.detailRule.name)) || page.isRemoving("g:" + page.detail.key)
                 onBack: page.closeDetail()
-                onRemoveRss: page.removeRss(page.detailRule)
-                onRemoveTorrents: function(files) { page.clearTorrents(page.detail.key, page.detailTorrents, files) }
-                onControl: function(hash, action, files) { page.control(hash, action, files) }
+                onUnsubscribe: function(anchor) { page.askUnsubscribe(anchor, page.detailRule) }
+                onRemoveAll: function(anchor) { page.askRemoveDetail(anchor) }
+                onRemoveTorrent: function(torrent, anchor) { page.askRemoveTorrent(anchor, torrent) }
+                onControl: function(hash, action) { page.control(hash, action) }
                 onDownloadEntry: function(entry) { page.downloadEntry(entry) }
                 onRefreshFeed: page.readFeed()
             }
         }
 
-        // ---- Downloading: only while something moves
+        // ---- Downloading: the shows with a torrent moving, only while one is
         Column {
-            visible: page.detail === null && page.activeTorrents.length > 0
+            visible: page.detail === null && page.downloading.length > 0
             width: parent.width
-            spacing: theme.space(1)
-            SectionHead {
+            spacing: theme.space(3)
+            BandHead {
                 title: "Downloading"
-                count: page.activeTorrents.length
+                count: page.downloading.length
                 line: {
                     var parts = []
                     if (page.transfer && page.transfer.dl_speed > 0) parts.push(Fmt.bytes(page.transfer.dl_speed) + "/s down")
@@ -785,153 +948,150 @@ Item {
                     return parts.length ? parts.join(", ") : "Waiting for peers."
                 }
             }
-            Repeater {
-                model: page.activeTorrents.slice(0, 50)
-                TorrentRow {
-                    required property var modelData
-                    torrent: modelData
-                    onStop: page.control(modelData.hash, "Stop", false)
-                    onStart: page.control(modelData.hash, "Start", false)
-                    onRemove: function(files) { page.control(modelData.hash, "Delete", files) }
-                }
-            }
+            GroupList { groups: page.downloading; state: "downloading"; grid: frame.downloadsDlView === "grid" }
         }
 
-        // ---- Subscriptions: a poster each, the complete ones first
+        // ---- Subscriptions, in sections by where the show stands
         Column {
             visible: page.home
             width: parent.width
-            spacing: theme.space(3)
-            Item {
-                width: parent.width
-                height: theme.space(12)
-                SectionHead {
-                    anchors.left: parent.left
-                    anchors.right: subSeg.left
-                    anchors.rightMargin: theme.space(4)
-                    title: "Subscriptions"
-                    count: page.rules.length
-                    line: page.rulesError !== "" ? page.rulesError : page.rulesLoaded ? (page.rules.length ? "Feeds anirss watches, as the shows they fill." : "None yet.") : (page.anirssReady ? "Reading." : "")
-                    alarm: page.rulesError !== ""
-                }
-                Seg {
-                    id: subSeg
-                    objectName: "downloads-sub-filter"
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    anchors.bottomMargin: theme.space(1)
-                    small: true
-                    options: ["All " + page.rules.length, "Complete " + page.completeRules.length, "Airing " + page.airingRules.length]
-                    index: page.subFilter
-                    onPicked: function(i) { page.subFilter = i }
-                }
+            spacing: theme.space(4)
+            BandHead {
+                title: "Subscriptions"
+                count: page.rules.length
+                line: page.rulesError !== "" ? page.rulesError : page.rulesLoaded ? (page.rules.length ? "Feeds anirss watches, as the shows they fill." : "None yet.") : (page.anirssReady ? "Reading." : "")
+                alarm: page.rulesError !== ""
+                view: frame.downloadsSubView
+                viewName: "downloads-sub-view"
+                onViewPicked: function(v) { frame.downloadsSubView = v }
             }
-            // The things to do: complete subscriptions, their RSS can go
-            Tile {
-                visible: page.completeRules.length > 0
-                width: parent.width
-                implicitHeight: theme.space(20)
-                height: implicitHeight
-                padding: theme.space(4)
-                lit: false
-                Rectangle { x: 0; anchors.verticalCenter: parent.verticalCenter; width: theme.space(3); height: width; radius: width / 2; color: theme.red }
+            Repeater {
+                model: page.subSections
                 Column {
-                    x: theme.space(6)
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width - x - attentionButtons.width - theme.space(8)
-                    spacing: theme.space(0.75)
-                    Label {
-                        width: parent.width
-                        text: page.bulkCurrent !== "" ? "Removing " + page.bulkCurrent + (page.bulk.length ? ", " + page.bulk.length + " to go" : "") + "."
-                              : Fmt.plural(page.completeRules.length, "subscription is complete", "subscriptions are complete") + "."
-                        role: "title"
-                        font.pointSize: theme.typeNormal
-                        elide: Text.ElideRight
-                    }
-                    Label {
-                        width: parent.width
-                        text: "Every episode is in the library and nothing more will air. Removing their RSS takes the feed, the rule and the torrents out of the client; the files stay."
-                        role: "ui"
-                        color: theme.textDim
-                        elide: Text.ElideRight
-                    }
-                }
-                Row {
-                    id: attentionButtons
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
+                    id: subSection
+                    required property var modelData
+                    width: parent.width
                     spacing: theme.space(2)
-                    Button { visible: page.subFilter !== 1; text: "Show them"; icon: "list-filter"; flat: true; onClicked: page.subFilter = 1 }
-                    ConfirmButton {
-                        objectName: "downloads-remove-complete"
-                        label: page.completeRules.length === 1 ? "Remove its RSS" : "Remove RSS for all " + page.completeRules.length
-                        confirmText: "Confirm, remove " + page.completeRules.length
-                        icon: "rss"
-                        enabled: page.bulkCurrent === ""
-                        onConfirmed: page.removeAllComplete()
+                    SectionHead {
+                        title: subSection.modelData.title
+                        dot: subSection.modelData.dot
+                        count: subSection.modelData.items.length
+                        line: subSection.modelData.line
+                        Button {
+                            id: allButton
+                            objectName: "downloads-unsubscribe-complete"
+                            visible: subSection.modelData.key === "complete"
+                            text: page.queued > 1 ? "Removing, " + page.queued + " to go" : "Unsubscribe all " + subSection.modelData.items.length
+                            icon: "rss"
+                            small: true
+                            enabled: page.queued === 0
+                            onClicked: page.askUnsubscribeComplete(allButton)
+                        }
                     }
-                }
-            }
-            Flow {
-                width: parent.width
-                spacing: page.tileGap
-                Repeater {
-                    model: page.shownRules
-                    SubscriptionCard {
-                        required property var modelData
-                        width: page.cardWidth
-                        height: implicitHeight
-                        rule: modelData
-                        nowMs: page.nowMs
-                        removing: page.removing[modelData.name] === true
-                        onOpened: page.openRule(modelData)
-                        onRemoveRss: page.removeRss(modelData)
+                    Flow {
+                        visible: frame.downloadsSubView === "grid"
+                        width: parent.width
+                        spacing: page.tileGap
+                        Repeater {
+                            model: frame.downloadsSubView === "grid" ? subSection.modelData.items : []
+                            ShowCard {
+                                required property var modelData
+                                width: page.cardWidth
+                                height: implicitHeight
+                                compact: !modelData.show
+                                poster: modelData.show && modelData.show.poster ? modelData.show.poster : ""
+                                title: page.titleOf(modelData)
+                                tag: page.ruleTag(modelData)
+                                tagDot: page.stateDot(page.subState(modelData))
+                                ledger: page.ruleLedger(modelData)
+                                progress: page.ruleProgress(modelData)
+                                actionText: "Unsubscribe"
+                                actionIcon: "rss"
+                                busy: page.isRemoving("r:" + modelData.name)
+                                onOpened: page.openRule(modelData)
+                                onAction: function(anchor) { page.askUnsubscribe(anchor, modelData) }
+                            }
+                        }
+                    }
+                    Column {
+                        visible: frame.downloadsSubView === "list"
+                        width: parent.width
+                        Repeater {
+                            model: frame.downloadsSubView === "list" ? subSection.modelData.items : []
+                            ShowRow {
+                                required property var modelData
+                                poster: modelData.show && modelData.show.poster ? modelData.show.poster : ""
+                                title: page.titleOf(modelData)
+                                chips: {
+                                    var c = []
+                                    var tag = page.ruleTag(modelData)
+                                    if (tag !== "") c.push({ text: tag, dot: page.stateDot(page.subState(modelData)) })
+                                    if (modelData.rule_enabled === false && tag !== "Paused") c.push({ text: "Paused", dot: theme.textFaint })
+                                    return c
+                                }
+                                facts: page.ruleLedger(modelData) + (modelData.show ? ", " + Fmt.plural(modelData.torrent_count || 0, "torrent", "torrents") : "")
+                                folder: modelData.save_path
+                                progress: page.ruleProgress(modelData)
+                                actionText: "Unsubscribe"
+                                actionIcon: "rss"
+                                busy: page.isRemoving("r:" + modelData.name)
+                                onOpened: page.openRule(modelData)
+                                onAction: function(anchor) { page.askUnsubscribe(anchor, modelData) }
+                            }
+                        }
                     }
                 }
             }
             Item {
-                visible: page.rulesLoaded && page.shownRules.length === 0 && page.rulesError === ""
+                visible: page.rulesLoaded && page.rules.length === 0 && page.rulesError === ""
                 width: parent.width
                 height: visible ? theme.space(30) : 0
-                EmptyState {
-                    icon: "rss"
-                    title: page.rules.length ? "None here" : "No subscriptions"
-                    body: page.rules.length ? "No subscription fits this filter." : "Search above and subscribe to keep a show coming."
-                }
+                EmptyState { icon: "rss"; title: "No subscriptions"; body: "Search above and subscribe to keep a show coming." }
             }
         }
 
-        // ---- Downloaded: one row per show folder the client holds torrents for
+        // ---- Downloaded, in sections by what the client is doing with each show
         Column {
             visible: page.home
             width: parent.width
-            spacing: theme.space(1)
-            Item { width: 1; height: theme.space(4) }
-            SectionHead {
-                width: parent.width
+            spacing: theme.space(4)
+            Item { width: 1; height: theme.space(2) }
+            BandHead {
                 title: "Downloaded"
-                count: page.showGroups.length
+                count: page.downloadedCount
                 line: !page.torrentOn ? (page.torrent && page.torrent.message ? page.torrent.message : page.clientName + " is not connected.")
                       : page.torrentsError !== "" ? page.torrentsError
                       : page.torrentsRead ? Fmt.plural(page.torrents.length, "torrent", "torrents") + ", " + Fmt.bytes(page.downloadedSize) + " in " + page.clientName + "." : "Reading."
                 alarm: !page.torrentOn || page.torrentsError !== ""
+                view: frame.downloadsDlView
+                viewName: "downloads-dl-view"
+                onViewPicked: function(v) { frame.downloadsDlView = v }
             }
             Repeater {
-                model: page.allGroups ? page.showGroups : page.showGroups.slice(0, page.groupCap)
-                DownloadedRow {
+                model: page.dlSections
+                Column {
+                    id: dlSection
                     required property var modelData
-                    group: modelData
-                    busy: page.clearing[modelData.key] === true
-                    onOpened: page.openGroup(modelData)
-                    onRemoveTorrents: function(files) { page.clearTorrents(modelData.key, modelData.torrents, files) }
+                    width: parent.width
+                    spacing: theme.space(2)
+                    SectionHead {
+                        title: dlSection.modelData.title
+                        dot: dlSection.modelData.dot
+                        count: dlSection.modelData.items.length
+                        line: dlSection.modelData.line
+                        Button {
+                            id: brokenButton
+                            objectName: "downloads-remove-broken"
+                            visible: dlSection.modelData.key === "broken"
+                            text: page.queued > 1 ? "Removing, " + page.queued + " to go" : "Remove all " + dlSection.modelData.items.length
+                            icon: "x"
+                            small: true
+                            enabled: page.queued === 0
+                            onClicked: page.askRemoveBroken(brokenButton, dlSection.modelData.items)
+                        }
+                    }
+                    GroupList { groups: dlSection.modelData.items; state: dlSection.modelData.key; grid: frame.downloadsDlView === "grid" }
                 }
-            }
-            Button {
-                visible: page.showGroups.length > page.groupCap
-                text: page.allGroups ? "Show fewer" : "Show all " + page.showGroups.length
-                flat: true
-                small: true
-                onClicked: page.allGroups = !page.allGroups
             }
             Item {
                 visible: page.torrentsRead && page.showGroups.length === 0
@@ -940,31 +1100,142 @@ Item {
                 EmptyState {
                     icon: page.torrentOn ? "download" : "circle-alert"
                     title: page.torrentOn ? "Nothing downloaded" : page.clientName + " is not connected"
-                    body: page.torrentOn ? "What you download or subscribe to shows up here, a row per show." : (page.torrent && page.torrent.message ? page.torrent.message : "Check its address and password in Settings.")
+                    body: page.torrentOn ? "What you download or subscribe to shows up here, a show at a time." : (page.torrent && page.torrent.message ? page.torrent.message : "Check its address and password in Settings.")
                     Button { visible: !page.torrentOn; text: "Settings"; icon: "settings"; onClicked: frame.go("settings", { tab: "downloads" }) }
                 }
             }
         }
     }
 
-    // A band's head: the title in the display cut, its count, one line beside it
-    component SectionHead: Item {
-        id: head
+    // A band's head: the title in the display cut, its count, one line, and the grid or
+    // list switch at the right when the band has one
+    component BandHead: Item {
+        id: band
         property string title: ""
         property int count: 0
         property string line: ""
         property bool alarm: false
+        property string view: ""
+        property string viewName: ""
+        signal viewPicked(string view)
         width: parent ? parent.width : 0
         height: theme.space(12)
         Row {
             anchors.left: parent.left
-            anchors.right: parent.right
+            anchors.right: viewSeg.visible ? viewSeg.left : parent.right
+            anchors.rightMargin: theme.space(4)
             anchors.bottom: parent.bottom
             anchors.bottomMargin: theme.space(2)
             spacing: theme.space(3)
-            Label { id: headTitle; text: head.title; role: "display"; font.pointSize: theme.typeLarge; font.variableAxes: ({ "wdth": 74, "wght": 500 }) }
-            Label { anchors.baseline: headTitle.baseline; visible: head.count > 0; text: head.count; role: "ledger"; color: theme.textFaint }
-            Label { anchors.baseline: headTitle.baseline; text: head.line; role: "ui"; color: head.alarm ? theme.red : theme.textDim; elide: Text.ElideRight; width: Math.max(0, Math.min(implicitWidth, parent.width - headTitle.width - theme.space(20))) }
+            Label { id: bandTitle; text: band.title; role: "display"; font.pointSize: theme.typeLarge; font.variableAxes: ({ "wdth": 74, "wght": 500 }) }
+            Label { anchors.baseline: bandTitle.baseline; visible: band.count > 0; text: band.count; role: "ledger"; color: theme.textFaint }
+            Label { anchors.baseline: bandTitle.baseline; text: band.line; role: "ui"; color: band.alarm ? theme.red : theme.textDim; elide: Text.ElideRight; width: Math.max(0, Math.min(implicitWidth, parent.width - bandTitle.width - theme.space(20))) }
+        }
+        Seg {
+            id: viewSeg
+            objectName: band.viewName
+            visible: band.view !== ""
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: theme.space(1)
+            small: true
+            options: [{ text: "Grid", icon: "layout-grid" }, { text: "List", icon: "list" }]
+            index: band.view === "list" ? 1 : 0
+            onPicked: function(i) { band.viewPicked(i === 1 ? "list" : "grid") }
+        }
+    }
+
+    // A section's head inside a band: a dot in the section's colour, the title, the count,
+    // one dim line, and anything handed to it at the right
+    component SectionHead: Item {
+        id: sec
+        property string title: ""
+        property color dot: theme.textFaint
+        property int count: 0
+        property string line: ""
+        default property alias extra: extraRow.data
+        width: parent ? parent.width : 0
+        height: theme.space(10)
+        Rectangle { id: secDot; anchors.verticalCenter: secTitle.verticalCenter; width: theme.space(2.5); height: width; radius: width / 2; color: sec.dot }
+        Label { id: secTitle; anchors.left: secDot.right; anchors.leftMargin: theme.space(2); anchors.verticalCenter: parent.verticalCenter; text: sec.title; role: "title"; font.pointSize: theme.typeNormal * 1.15 }
+        Label { id: secCount; anchors.left: secTitle.right; anchors.leftMargin: theme.space(2); anchors.baseline: secTitle.baseline; text: sec.count; role: "ledger"; color: theme.textFaint }
+        Label {
+            anchors.left: secCount.right
+            anchors.leftMargin: theme.space(3)
+            anchors.right: extraRow.left
+            anchors.rightMargin: theme.space(3)
+            anchors.baseline: secTitle.baseline
+            text: sec.line
+            role: "ui"
+            color: theme.textDim
+            elide: Text.ElideRight
+        }
+        Row { id: extraRow; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; spacing: theme.space(2) }
+    }
+
+    // A section of downloaded shows, as posters or as rows
+    component GroupList: Item {
+        id: gl
+        property var groups: []
+        property string state: ""
+        property bool grid: true
+        width: parent ? parent.width : 0
+        height: grid ? glFlow.implicitHeight : glColumn.implicitHeight
+        Flow {
+            id: glFlow
+            visible: gl.grid
+            width: parent.width
+            spacing: page.tileGap
+            Repeater {
+                model: gl.grid ? gl.groups : []
+                ShowCard {
+                    required property var modelData
+                    width: page.cardWidth
+                    height: implicitHeight
+                    compact: !modelData.show
+                    glyph: "folder"
+                    poster: modelData.show && modelData.show.poster ? modelData.show.poster : ""
+                    title: modelData.title
+                    tag: page.groupWord(gl.state)
+                    tagDot: page.stateDot(gl.state)
+                    ledger: page.groupLedger(modelData)
+                    progress: gl.state === "downloading" ? modelData.have / Math.max(1, modelData.size) : -1
+                    actionText: "Remove"
+                    actionIcon: "x"
+                    busy: page.isRemoving("g:" + modelData.key)
+                    onOpened: page.openGroup(modelData)
+                    onAction: function(anchor) { page.askRemoveGroup(anchor, modelData) }
+                }
+            }
+        }
+        Column {
+            id: glColumn
+            visible: !gl.grid
+            width: parent.width
+            Repeater {
+                model: gl.grid ? [] : gl.groups
+                ShowRow {
+                    required property var modelData
+                    glyph: "folder"
+                    poster: modelData.show && modelData.show.poster ? modelData.show.poster : ""
+                    title: modelData.title
+                    chips: {
+                        var c = [{ text: page.groupWord(gl.state), dot: page.stateDot(gl.state) }]
+                        if (modelData.rule) c.push({ text: "Subscribed", dot: theme.accent })
+                        if (modelData.show && modelData.show.complete) c.push({ text: "Complete", dot: theme.red })
+                        return c
+                    }
+                    facts: page.groupLedger(modelData) + (gl.state === "downloading" ? ", " + Fmt.plural(modelData.torrents.length, "torrent", "torrents") : modelData.upspeed > 0 ? ", " + Fmt.bytes(modelData.upspeed) + "/s up" : "")
+                    trouble: modelData.broken > 0 && modelData.broken < modelData.torrents.length ? modelData.broken + " with files missing" : ""
+                    folder: modelData.folder
+                    progress: gl.state === "downloading" ? modelData.have / Math.max(1, modelData.size) : -1
+                    actionText: "Remove"
+                    actionIcon: "x"
+                    busy: page.isRemoving("g:" + modelData.key)
+                    onOpened: page.openGroup(modelData)
+                    onAction: function(anchor) { page.askRemoveGroup(anchor, modelData) }
+                }
+            }
         }
     }
 }

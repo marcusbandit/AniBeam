@@ -91,10 +91,10 @@ fn main() {
             .qml_file("qml/SettingsDownloadsTab.qml")
             .qml_file("qml/DownloadsPage.qml")
             .qml_file("qml/ReleaseRow.qml")
-            .qml_file("qml/SubscriptionCard.qml")
-            .qml_file("qml/DownloadedRow.qml")
+            .qml_file("qml/ShowCard.qml")
+            .qml_file("qml/ShowRow.qml")
             .qml_file("qml/ShowDetail.qml")
-            .qml_file("qml/ConfirmButton.qml")
+            .qml_file("qml/RemoveSheet.qml")
             .qml_file("qml/TorrentRow.qml")
             .qml_file("qml/SettingsDataTab.qml"),
     )
@@ -176,8 +176,10 @@ fn main() {
         "assets/icons/languages.svg",
         "assets/icons/layers.svg",
         "assets/icons/link.svg",
+        "assets/icons/layout-grid.svg",
         "assets/icons/list-filter.svg",
         "assets/icons/list-video.svg",
+        "assets/icons/list.svg",
         "assets/icons/log-in.svg",
         "assets/icons/log-out.svg",
         "assets/icons/maximize.svg",

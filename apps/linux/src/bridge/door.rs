@@ -313,6 +313,17 @@ pub mod qobject {
             action: &QString,
             files: bool,
         ) -> QJsonObject;
+        /// One removal for a show: `rule` empty for none, `series` below 0 for none.
+        #[qinvokable]
+        fn remove_show(
+            self: &Door,
+            title: &QString,
+            rule: &QString,
+            hashes: &QJsonArray,
+            torrents: bool,
+            files: bool,
+            series: f64,
+        ) -> QJsonObject;
         /// `secrets` carries `anirss_token` and `torrent_password` only when they are to
         /// change: a key left out keeps what is stored, an empty string removes it.
         #[qinvokable]
@@ -456,6 +467,16 @@ pub mod qobject {
         fn subscription_removed(self: Pin<&mut Door>, name: QString);
         #[qsignal]
         fn torrents_controlled(self: Pin<&mut Door>, hashes: QJsonArray, action: QString);
+        /// `rule` is empty when the show had none.
+        #[qsignal]
+        fn show_removed(
+            self: Pin<&mut Door>,
+            job: f64,
+            title: QString,
+            rule: QString,
+            hashes: QJsonArray,
+            trashed: QJsonArray,
+        );
     }
 
     impl cxx_qt::Threading for Door {}
@@ -1013,6 +1034,13 @@ impl qobject::Door {
                 .downloads_unavailable(s("what"), to_qjson_object(&json::error_json(error))),
             EventBody::RemovalPlanned { .. } => self.as_mut().removal_planned(job_id, arr("plans")),
             EventBody::SubscriptionRemoved { .. } => self.as_mut().subscription_removed(s("name")),
+            EventBody::ShowRemoved { rule, .. } => self.as_mut().show_removed(
+                job_id,
+                s("title"),
+                QString::from(rule.as_deref().unwrap_or("")),
+                arr("hashes"),
+                arr("trashed"),
+            ),
             EventBody::TorrentsControlled { action, .. } => {
                 let word = match action {
                     TorrentAction::Stop => "Stop",
@@ -1508,6 +1536,28 @@ impl qobject::Door {
             )),
         };
         self.dispatch(action.map(|action| Call::ControlTorrents { hashes, action }))
+    }
+    pub fn remove_show(
+        &self,
+        title: &QString,
+        rule: &QString,
+        hashes: &QJsonArray,
+        torrents: bool,
+        files: bool,
+        series: f64,
+    ) -> QJsonObject {
+        let hashes: Vec<String> = hashes
+            .iter()
+            .filter_map(|h| json::from_qjson(&h).as_str().map(String::from))
+            .collect();
+        self.dispatch(Ok(Call::RemoveShow {
+            title: title.to_string(),
+            rule: non_empty(rule),
+            hashes,
+            torrents,
+            files,
+            series: (series >= 0.0).then_some(series as u64),
+        }))
     }
     pub fn set_download_settings(
         &self,

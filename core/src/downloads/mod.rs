@@ -18,6 +18,7 @@ pub mod feed;
 pub mod link;
 pub mod qbt;
 pub mod settings;
+pub mod trash;
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -665,6 +666,142 @@ pub fn control(core: &Core, hashes: Vec<String>, action: TorrentAction) -> Resul
                     plural(hashes.len() as u64, "torrent", "torrents")
                 ),
                 body: EventBody::TorrentsControlled { hashes, action },
+            })
+        }))
+}
+
+/// `Call::RemoveShow`: the subscription, the torrents, the files, as far
+/// as asked, each step only once the one before it held. The file targets
+/// are read and checked first, so a refusal removes nothing at all.
+#[allow(clippy::too_many_arguments)]
+pub fn remove_show(
+    core: &Core,
+    title: String,
+    rule: Option<String>,
+    hashes: Vec<String>,
+    torrents: bool,
+    files: bool,
+    series: Option<u64>,
+) -> Result<u64, CoreError> {
+    let rule = rule.map(|r| r.trim().to_string()).filter(|r| !r.is_empty());
+    let hashes: Vec<String> = hashes
+        .into_iter()
+        .map(|h| h.trim().to_ascii_lowercase())
+        .filter(|h| !h.is_empty())
+        .collect();
+    let torrents = torrents || files;
+    let takes_torrents = torrents && !hashes.is_empty();
+    let takes_files = files && (!hashes.is_empty() || series.is_some());
+    if rule.is_none() && !takes_torrents && !takes_files {
+        return Err(CoreError::invalid("show", "nothing to remove"));
+    }
+    let title = if title.trim().is_empty() {
+        rule.clone().unwrap_or_else(|| "the show".to_string())
+    } else {
+        title.trim().to_string()
+    };
+    let owner = core.owner()?;
+    Ok(owner
+        .jobs
+        .clone()
+        .start(JobKind::RemoveShow, move |_| async move {
+            // What the torrents wrote, read before they go, and the series' folder
+            let mut candidates = Vec::new();
+            if takes_files && !hashes.is_empty() {
+                let client = qbt_client(&owner).await?;
+                for t in client.torrents().await? {
+                    if hashes.contains(&t.hash.to_ascii_lowercase()) {
+                        candidates.push(trash::Candidate::Torrent {
+                            content: t.content_path,
+                            save_path: t.save_path,
+                        });
+                    }
+                }
+            }
+            let mut sources = Vec::new();
+            if takes_files {
+                let (series_path, all_sources) = owner.store.read(|c| {
+                    let path: Option<String> = match series {
+                        Some(id) => c
+                            .query_row("SELECT path FROM series WHERE id = ?1", [id as i64], |r| {
+                                r.get(0)
+                            })
+                            .ok(),
+                        None => None,
+                    };
+                    let mut stmt = c.prepare("SELECT path FROM sources")?;
+                    let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+                    let mut all = Vec::new();
+                    for row in rows {
+                        all.push(row?);
+                    }
+                    Ok((path, all))
+                })?;
+                if let Some(path) = series_path {
+                    candidates.push(trash::Candidate::Series { path });
+                }
+                sources = all_sources;
+            }
+            let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+            let targets = if takes_files {
+                trash::targets(&candidates, &sources, home.as_deref())?
+            } else {
+                Vec::new()
+            };
+
+            if let Some(name) = &rule {
+                let client = ensure_client(&owner).await?;
+                client
+                    .remove(std::slice::from_ref(name), false, false, false)
+                    .await?;
+            }
+            if takes_torrents {
+                // Never the client's own delete-with-files: what goes, goes to the trash
+                qbt_client(&owner).await?.delete(&hashes, false).await?;
+            }
+            if !targets.is_empty() {
+                let paths = targets.clone();
+                tokio::task::spawn_blocking(move || trash::move_to_trash(&paths))
+                    .await
+                    .map_err(|e| CoreError::Internal {
+                        message: format!("trash: {e}"),
+                    })??;
+            }
+
+            let mut parts = Vec::new();
+            if rule.is_some() {
+                parts.push("the subscription".to_string());
+            }
+            if takes_torrents {
+                parts.push(plural(hashes.len() as u64, "torrent", "torrents"));
+            }
+            if !targets.is_empty() {
+                parts.push(format!(
+                    "{} to the trash",
+                    plural(targets.len() as u64, "path", "paths")
+                ));
+            }
+            let what = match parts.len() {
+                0 => "nothing".to_string(),
+                1 => parts[0].clone(),
+                _ => format!(
+                    "{} and {}",
+                    parts[..parts.len() - 1].join(", "),
+                    parts[parts.len() - 1]
+                ),
+            };
+            Ok(Finished {
+                level: Level::Info,
+                message: format!("Removed {title}: {what}"),
+                body: EventBody::ShowRemoved {
+                    title,
+                    rule,
+                    hashes: if takes_torrents { hashes } else { Vec::new() },
+                    trashed: targets
+                        .iter()
+                        .map(|p| p.to_string_lossy().into_owned())
+                        .collect(),
+                },
             })
         }))
 }

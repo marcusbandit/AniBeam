@@ -144,7 +144,7 @@ Item {
                         role: "ledger"
                         font.pointSize: theme.typeSmall * 0.85
                         font.weight: 600
-                        color: "#ffffff"
+                        color: theme.contrast(theme.red, Qt.rgba(1, 1, 1, 1)) >= 4.5 ? "#ffffff" : "#0d0e11"
                     }
                 }
             }

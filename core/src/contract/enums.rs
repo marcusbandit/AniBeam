@@ -596,6 +596,7 @@ pub enum JobKind {
     RemoveSubscription,
     ControlTorrents,
     TestTorrentClient,
+    RemoveShow,
 }
 
 impl JobKind {
@@ -612,7 +613,9 @@ impl JobKind {
             SkipWindows => Stage::Playback,
             Export | Import => Stage::Store,
             ConnectDownloads | SearchReleases | RefineReleases | Subscribe | Download
-            | RemoveSubscription | ControlTorrents | TestTorrentClient => Stage::Downloads,
+            | RemoveSubscription | ControlTorrents | TestTorrentClient | RemoveShow => {
+                Stage::Downloads
+            }
         }
     }
 
@@ -668,6 +671,7 @@ impl JobKind {
             RemoveSubscription => "RemoveSubscription",
             ControlTorrents => "ControlTorrents",
             TestTorrentClient => "TestTorrentClient",
+            RemoveShow => "RemoveShow",
         }
     }
 
@@ -704,6 +708,7 @@ impl JobKind {
             "RemoveSubscription" => Some(RemoveSubscription),
             "ControlTorrents" => Some(ControlTorrents),
             "TestTorrentClient" => Some(TestTorrentClient),
+            "RemoveShow" => Some(RemoveShow),
             _ => None,
         }
     }

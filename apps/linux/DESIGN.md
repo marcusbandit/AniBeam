@@ -74,21 +74,22 @@ below where they disagree:
   search up: the query line (Back, the query, the count, what anirss said), the groups
   as chips, Narrow and Best fit, then the releases as flat rows with a selection mark at
   the left and the actions pane (a name, Subscribe, Download, Movie, what the last action
-  did) at the right. With no search up the page puts what you subscribe to and what you
-  have first, and the transfers in their place: a Downloading band (the moving torrents,
-  speeds in its line) only while something moves; Subscriptions as a mosaic of posters of
-  the library series each rule's folder fills, complete ones first with a red Complete
-  tag, under a line naming how many are complete and offering Remove RSS for all of them;
-  then Downloaded, one flat row per show folder the client holds torrents for, poster,
-  totals, Subscribed and Complete chips, Remove torrents and Remove files. A poster or a
-  row opens the show inside the page (`ShowDetail.qml`): the poster with Open in library,
-  where the show stands in one sentence, every episode as a cell, the three removals, the
-  subscription's facts, then the feed as it reads now (each release marked Downloaded or
-  offered for download) beside the folder's torrents. Nothing on the page sends the
-  person to a browser. Every removal is a `ConfirmButton`: one click arms it (red,
-  Confirm), a second does it, a click anywhere else or Escape disarms it; nothing ever
-  opens a question that pushes a row's text aside. The rail's Downloads glyph carries a
-  red count of complete subscriptions.
+  did) at the right. With no search up the page is three bands, each a grid of posters
+  (`ShowCard.qml`) or a list of rows with thumbnails (`ShowRow.qml`), switched in the
+  band's head: Downloading, only while something moves; Subscriptions in sections by
+  where the show stands (Complete, Airing, Incomplete, and Not in the library as short
+  text tiles), each section a dot in its colour, its title, count and one line; Downloaded
+  in sections by what the client is doing (Seeding, Done, Stopped, Files missing). State
+  tags are dark glass with a coloured dot and light writing, never white on a colour. A
+  poster or a row opens the show inside the page (`ShowDetail.qml`): the poster with Open
+  in library, where the show stands in one sentence, every episode as a cell, Unsubscribe
+  and Remove torrents, the subscription's facts, then the feed as it reads now beside the
+  folder's torrents. Nothing on the page sends the person to a browser. Every removal goes
+  through one sheet by the button that asked (`RemoveSheet.qml`): what always goes, then
+  up to two ticks, the torrents and the files (ticking the files ticks the torrents);
+  files go to the trash. Complete has Unsubscribe all, Files missing has Remove all, and a
+  run of removals goes one at a time. The rail's Downloads glyph carries a red count of
+  complete subscriptions.
 - **Metadata and Settings are flat too, and `mosaic.js` is gone.** Metadata is the head
   row (the title in the display cut, the count, the filter, Match unmatched and Refresh
   all as flat pills, the search at the right) over a flat list: a poster thumbnail, the

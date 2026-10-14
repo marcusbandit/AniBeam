@@ -1,6 +1,6 @@
 [
  {
-  "log": "the rail's badge, then the page: subscriptions as posters, complete first"
+  "log": "the rail's badge, then the page: sections by state, posters"
  },
  {
   "wait": 7000
@@ -23,35 +23,45 @@
   "expect": true
  },
  {
+  "eval": "frame.item.pageItem.subSections.map(function(s) { return s.key }).join(',')",
+  "as": "sections"
+ },
+ {
   "shot": "subs-01-home"
  },
  {
-  "log": "hovering a poster puts Remove RSS at its foot; one click arms it, a click away disarms"
+  "log": "hovering a poster puts Unsubscribe at its foot; it opens the sheet, a click away closes it"
  },
  {
-  "hover": [
-   448,
-   420
-  ]
+  "hover": "show-card"
  },
  {
   "wait": 500
  },
  {
-  "shot": "subs-01b-hover"
+  "shot": "subs-02-hover"
  },
  {
-  "click": "subscription-remove"
+  "click": "show-card-action"
+ },
+ {
+  "wait": 400
+ },
+ {
+  "eval": "frame.item.removalOpen",
+  "expect": true
+ },
+ {
+  "shot": "subs-03-sheet"
+ },
+ {
+  "click": "remove-sheet-files"
  },
  {
   "wait": 300
  },
  {
-  "eval": "frame.item.armedConfirm !== null",
-  "expect": true
- },
- {
-  "shot": "subs-01c-card-armed"
+  "shot": "subs-04-sheet-files"
  },
  {
   "click": "downloads-summary"
@@ -60,48 +70,108 @@
   "wait": 300
  },
  {
-  "eval": "frame.item.armedConfirm === null",
-  "expect": true
+  "eval": "frame.item.removalOpen",
+  "expect": false
  },
  {
-  "log": "down to Downloaded"
+  "log": "the lower sections, as posters"
  },
  {
   "wheel": "downloads-page",
-  "dy": -2400
+  "dy": -1500
  },
  {
   "wait": 900
  },
  {
-  "shot": "subs-02-downloaded"
+  "shot": "subs-05-middle-grid"
  },
  {
   "wheel": "downloads-page",
-  "dy": 4800
+  "dy": -1200
+ },
+ {
+  "wait": 900
+ },
+ {
+  "shot": "subs-06-downloaded-grid"
+ },
+ {
+  "wheel": "downloads-page",
+  "dy": -20000
+ },
+ {
+  "wait": 900
+ },
+ {
+  "shot": "subs-06b-broken"
+ },
+ {
+  "click": "downloads-remove-broken"
+ },
+ {
+  "wait": 400
+ },
+ {
+  "eval": "frame.item.removalOpen",
+  "expect": true
+ },
+ {
+  "shot": "subs-06c-broken-sheet"
+ },
+ {
+  "click": "remove-sheet-cancel"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "frame.item.removalOpen",
+  "expect": false
+ },
+ {
+  "wheel": "downloads-page",
+  "dy": 20000
  },
  {
   "wait": 600
  },
  {
-  "log": "the Complete filter"
+  "log": "both bands as lists"
  },
  {
-  "eval": "frame.item.pageItem.subFilter = 1; 1",
+  "eval": "frame.item.downloadsSubView = 'list'; frame.item.downloadsDlView = 'list'; 1",
+  "expect": 1
+ },
+ {
+  "wait": 800
+ },
+ {
+  "shot": "subs-07-list"
+ },
+ {
+  "wheel": "downloads-page",
+  "dy": -7200
+ },
+ {
+  "wait": 900
+ },
+ {
+  "shot": "subs-08-downloaded-list"
+ },
+ {
+  "wheel": "downloads-page",
+  "dy": 20000
+ },
+ {
+  "eval": "frame.item.downloadsSubView = 'grid'; frame.item.downloadsDlView = 'grid'; 1",
   "expect": 1
  },
  {
   "wait": 600
  },
  {
-  "shot": "subs-03-complete"
- },
- {
-  "eval": "frame.item.pageItem.subFilter = 0; 0",
-  "expect": 0
- },
- {
-  "log": "a complete show, inside the page: episodes, feed, torrents"
+  "log": "a complete show, inside the page; Unsubscribe opens the sheet, Cancel closes it"
  },
  {
   "eval": "frame.item.pageItem.openRule(frame.item.pageItem.completeRules[0]); frame.item.pageItem.detail !== null",
@@ -111,39 +181,30 @@
   "wait": 8000
  },
  {
-  "shot": "subs-04-detail"
+  "shot": "subs-09-detail"
  },
  {
-  "log": "Remove RSS arms on one click and a click elsewhere disarms it; never a second click"
- },
- {
-  "click": "show-remove-rss"
+  "click": "show-unsubscribe"
  },
  {
   "wait": 400
  },
  {
-  "eval": "frame.item.armedConfirm !== null",
+  "eval": "frame.item.removalOpen",
   "expect": true
  },
  {
-  "shot": "subs-05-armed"
+  "shot": "subs-10-detail-sheet"
  },
  {
-  "click": "downloads-summary"
+  "click": "remove-sheet-cancel"
  },
  {
-  "wait": 400
+  "wait": 300
  },
  {
-  "eval": "frame.item.armedConfirm === null",
-  "expect": true
- },
- {
-  "shot": "subs-06-disarmed"
- },
- {
-  "log": "Escape closes the show"
+  "eval": "frame.item.removalOpen",
+  "expect": false
  },
  {
   "key": "Escape"
@@ -156,40 +217,20 @@
   "expect": true
  },
  {
-  "log": "something moving brings Downloading up front"
+  "log": "the bulk sheet for every complete show; Escape closes it"
  },
  {
-  "eval": "var p = frame.item.pageItem; p.torrents = p.torrents.concat([{hash: 'f00', name: '[SubsPlease] Test Show - 08 (1080p).mkv', state: 'downloading', progress: 0.42, size: 1500000000, dlspeed: 5200000, upspeed: 0, eta: 160, num_seeds: 41, num_leechs: 3, ratio: 0, save_path: '/x/Test Show', content_path: '/x/Test Show/a.mkv', added_on: 2000000000, completion_on: 0, tags: '', category: '', series_id: null}]); p.activeTorrents.length > 0",
+  "click": "downloads-unsubscribe-complete"
+ },
+ {
+  "wait": 400
+ },
+ {
+  "eval": "frame.item.removalOpen",
   "expect": true
  },
  {
-  "wait": 500
- },
- {
-  "shot": "subs-07-downloading"
- },
- {
-  "log": "an armed Remove holds through what would have been two polls (the fake torrent's hash is not in the client)"
- },
- {
-  "click": "torrent-remove"
- },
- {
-  "wait": 300
- },
- {
-  "eval": "frame.item.armedConfirm !== null",
-  "expect": true
- },
- {
-  "wait": 4500
- },
- {
-  "eval": "frame.item.armedConfirm !== null",
-  "expect": true
- },
- {
-  "shot": "subs-08-armed-holds"
+  "shot": "subs-11-bulk-sheet"
  },
  {
   "key": "Escape"
@@ -198,7 +239,20 @@
   "wait": 300
  },
  {
-  "eval": "frame.item.armedConfirm === null",
+  "eval": "frame.item.removalOpen",
+  "expect": false
+ },
+ {
+  "log": "something moving brings Downloading up front"
+ },
+ {
+  "eval": "var p = frame.item.pageItem; p.torrents = p.torrents.concat([{hash: 'f00', name: '[SubsPlease] Test Show - 08 (1080p).mkv', state: 'downloading', progress: 0.42, size: 1500000000, dlspeed: 5200000, upspeed: 0, eta: 160, num_seeds: 41, num_leechs: 3, ratio: 0, save_path: '/x/Test Show', content_path: '/x/Test Show/a.mkv', added_on: 2000000000, completion_on: 0, tags: '', category: '', series_id: null}]); p.downloading.length > 0",
   "expect": true
+ },
+ {
+  "wait": 500
+ },
+ {
+  "shot": "subs-12-downloading"
  }
 ]

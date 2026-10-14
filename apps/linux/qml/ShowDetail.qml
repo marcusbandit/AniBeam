@@ -1,8 +1,8 @@
 // One show inside the downloads page, opened from its subscription or its downloads: what
 // the Feed button used to send the person to a browser for. The poster at the left with
 // Open in library under it; at the right the title, one sentence on where the show stands,
-// every episode as a cell (on disk, or not), and the ways out (Remove RSS, Remove
-// torrents, Remove files), each asking twice in place. Under that, side by side when the
+// every episode as a cell (on disk, or not), and the ways out (Unsubscribe, Remove
+// torrents), each opening the removal sheet. Under that, side by side when the
 // width holds both: what the subscription's feed holds right now, each release marked
 // with what the client has of it (a missing one can be fetched from here), and the
 // torrents the client holds for the show's folder.
@@ -23,9 +23,10 @@ Column {
     property real nowMs: Date.now()
     property bool removing: false
     signal back()
-    signal removeRss()
-    signal removeTorrents(bool files)
-    signal control(string hash, string action, bool files)
+    signal unsubscribe(Item anchor)
+    signal removeAll(Item anchor)
+    signal removeTorrent(var torrent, Item anchor)
+    signal control(string hash, string action)
     signal downloadEntry(var entry)
     signal refreshFeed()
 
@@ -79,9 +80,17 @@ Column {
             visible: root.complete
             anchors.verticalCenter: parent.verticalCenter
             radius: theme.radiusSm
-            width: completeText.implicitWidth + theme.space(4); height: completeText.implicitHeight + theme.space(1.5)
-            color: theme.red
-            Label { id: completeText; anchors.centerIn: parent; text: "Complete"; role: "ledger"; font.weight: 600; color: "#ffffff" }
+            width: completeRow.implicitWidth + theme.space(4); height: completeRow.implicitHeight + theme.space(1.5)
+            color: theme.raised
+            border.color: theme.line
+            border.width: 1
+            Row {
+                id: completeRow
+                anchors.centerIn: parent
+                spacing: theme.space(1.25)
+                Rectangle { anchors.verticalCenter: parent.verticalCenter; width: theme.space(2); height: width; radius: width / 2; color: theme.red }
+                Label { text: "Complete"; role: "ledger"; color: theme.text }
+            }
         }
     }
 
@@ -162,45 +171,27 @@ Column {
                     }
                 }
             }
-            // The ways out
-            Column {
-                width: parent.width
+            // The ways out, each through the removal sheet
+            Row {
                 spacing: theme.space(2)
-                Row {
-                    spacing: theme.space(2)
-                    ConfirmButton {
-                        objectName: "show-remove-rss"
-                        visible: !!root.rule
-                        enabled: !root.removing
-                        label: "Remove RSS"
-                        icon: "rss"
-                        onConfirmed: root.removeRss()
-                    }
-                    ConfirmButton {
-                        objectName: "show-remove-torrents"
-                        visible: root.torrents.length > 0
-                        enabled: !root.removing
-                        label: root.torrents.length === 1 ? "Remove the torrent" : "Remove " + root.torrents.length + " torrents"
-                        icon: "x"
-                        onConfirmed: root.removeTorrents(false)
-                    }
-                    ConfirmButton {
-                        objectName: "show-remove-files"
-                        visible: root.torrents.length > 0
-                        enabled: !root.removing
-                        label: "Remove files"
-                        icon: "trash-2"
-                        onConfirmed: root.removeTorrents(true)
-                    }
+                Button {
+                    id: unsubscribeButton
+                    objectName: "show-unsubscribe"
+                    visible: !!root.rule
+                    enabled: !root.removing
+                    text: "Unsubscribe"
+                    icon: "rss"
+                    onClicked: root.unsubscribe(unsubscribeButton)
                 }
-                Label {
-                    width: Math.min(parent.width, theme.space(200))
-                    text: (root.rule ? "Remove RSS takes the feed, the rule and its torrents out of the client; the files stay in the library. " : "")
-                          + (root.torrents.length ? "Remove files deletes what the torrents downloaded as well." : "")
-                    role: "ui"
-                    font.pointSize: theme.typeSmall
-                    color: theme.textFaint
-                    wrapMode: Text.Wrap
+                Button {
+                    id: removeAllButton
+                    objectName: "show-remove-torrents"
+                    visible: root.torrents.length > 0
+                    enabled: !root.removing
+                    text: root.torrents.length === 1 ? "Remove the torrent" : "Remove " + root.torrents.length + " torrents"
+                    icon: "x"
+                    flat: true
+                    onClicked: root.removeAll(removeAllButton)
                 }
             }
             // The subscription's facts
@@ -333,9 +324,9 @@ Column {
                     required property var modelData
                     width: torrentCol.width
                     torrent: modelData
-                    onStop: root.control(modelData.hash, "Stop", false)
-                    onStart: root.control(modelData.hash, "Start", false)
-                    onRemove: function(files) { root.control(modelData.hash, "Delete", files) }
+                    onStop: root.control(modelData.hash, "Stop")
+                    onStart: root.control(modelData.hash, "Start")
+                    onRemoveAsked: function(anchor) { root.removeTorrent(modelData, anchor) }
                 }
             }
         }
