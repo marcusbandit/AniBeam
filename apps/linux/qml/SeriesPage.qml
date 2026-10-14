@@ -1,7 +1,8 @@
 // A series, flat (DESIGN.md, the flat home pass): a band at the head in the poster's own
 // colour, the way Home's hero is, carrying the poster, the title, the other titles on one
-// quiet line, the facts as one ledger line, Continue with the progress beside it, and the
-// actions as a quiet row. Under it two columns on a wide window: the episodes (then the
+// quiet line (panned on hover, unfolded on a click when they run past the band), the facts
+// as one ledger line, Continue with the progress beside it, and a quiet row of the scores,
+// the list status and the actions. Under it two columns on a wide window: the episodes (then the
 // extras and the stray files) as flat rows at the left, and at the right the synopsis, the
 // characters, the recommendations, the tags and the franchise. One GetSeries draws it all;
 // the relations come from GetFranchiseGraph and follow the crawl through graphChanged. An
@@ -50,7 +51,7 @@ Item {
         return ""
     }
     readonly property string nativeTitle: titles.native && titles.native !== card.title ? titles.native : ""
-    readonly property string otherTitles: [altTitle, nativeTitle].filter(function(s) { return s !== "" }).join("  ")
+    readonly property var otherTitles: [altTitle, nativeTitle].filter(function(s) { return s !== "" })
     // The band's tone, read off the poster; kept as a string for old readers of `tone`
     readonly property string tone: String(toneOf.tone)
 
@@ -160,9 +161,11 @@ Item {
     // them, so the band goes plain
     readonly property bool showArt: hasBanner && band.width >= theme.space(275)
     readonly property bool hasScore: card.my_score !== null && card.my_score !== undefined
+    readonly property bool hasAverage: card.community_score !== null && card.community_score !== undefined
+    function listIcon(s) { return { Watching: "play", Repeating: "rotate-ccw", Completed: "circle-check", Paused: "pause", Dropped: "ban", Planning: "bookmark" }[s] || "bookmark" }
 
-    // ---- The facts, one ledger line: format, year, studio, episodes, on disk, status,
-    // the average score, the list status, rewatches
+    // ---- The facts, one ledger line: format, year, studio, episodes, on disk, status. The
+    // average score and the list status sit in the quiet row, beside your own score.
     readonly property string factsLine: {
         if (!detail) return ""
         var f = [formatLabel(card.format)]
@@ -171,9 +174,6 @@ Item {
         if (!isMovie && card.total_episodes) f.push(Fmt.plural(card.total_episodes, "episode", "episodes") + (card.total_is_estimate ? "+" : ""))
         if (!isMovie) f.push(detail.progress.on_disk + " on disk")
         if (card.status) f.push(status(card.status))
-        if (card.community_score !== null && card.community_score !== undefined) f.push("Average score " + Fmt.score(card.community_score))
-        if (card.list_status) f.push(listStatus(card.list_status))
-        if (detail.rewatch_count > 0) f.push("Rewatched " + detail.rewatch_count + (detail.rewatch_count === 1 ? " time" : " times"))
         return f.join("  ")
     }
     readonly property string episodesFact: {
@@ -216,6 +216,27 @@ Item {
             Label { anchors.baseline: headingText.baseline; text: parent.parent.fact; role: "ui"; color: theme.textDim }
         }
         Item { id: actionSlot; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(1); width: childrenRect.width; height: childrenRect.height }
+    }
+    // A fact in the band's quiet row: a ghost button's size and ink, outlined instead of
+    // filled, since it reads rather than acts
+    component Fact: Corner {
+        id: fact
+        property string icon: ""
+        property string text: ""
+        implicitWidth: factContent.implicitWidth + theme.space(3) * 2
+        implicitHeight: theme.space(6)
+        radius: height / 2
+        smoothing: theme.cornerSmoothing
+        color: "transparent"
+        borderColor: Qt.rgba(1, 1, 1, 0.22)
+        borderWidth: 1
+        Row {
+            id: factContent
+            anchors.centerIn: parent
+            spacing: theme.space(1.5)
+            Icon { anchors.verticalCenter: parent.verticalCenter; glyph: fact.icon; color: Qt.rgba(1, 1, 1, 0.82); size: theme.space(3.5) }
+            Label { anchors.verticalCenter: parent.verticalCenter; text: fact.text; role: "ui"; font.pointSize: theme.typeSmall; color: Qt.rgba(1, 1, 1, 0.82) }
+        }
     }
     component Caption: Label {
         role: "ui"
@@ -316,13 +337,94 @@ Item {
                     elide: Text.ElideRight
                     lineHeight: 0.92
                 }
-                Label {
-                    visible: page.otherTitles !== ""
+                // The other titles. One line; when they run past the band, hovering pans it
+                // to the end and back at a reading pace, and a click (or Return) unfolds it,
+                // a title to a line, wrapped.
+                Item {
+                    id: aka
+                    objectName: "series-other-titles"
+                    visible: page.otherTitles.length > 0
                     width: parent.width
-                    text: page.otherTitles
-                    role: "ui"
-                    color: page.inkDim
-                    elide: Text.ElideRight
+                    height: akaView.height
+                    property bool open: false
+                    readonly property real gap: theme.space(5)
+                    readonly property bool overflows: akaRuler.width > width
+                    readonly property bool foldable: overflows || open
+                    // How far the line pans: its overflow past the viewport
+                    readonly property real reach: Math.max(0, akaRuler.width - akaView.width)
+                    readonly property bool panning: akaHover.hovered && overflows && !open && !theme.reducedMotion
+                    readonly property real speed: theme.space(18)   // px a second
+                    property real pan: 0
+                    property int dir: 1
+                    property real hold: 0
+                    onPanningChanged: if (panning) { dir = 1; hold = 0.5 }
+                    activeFocusOnTab: foldable
+                    Keys.onReturnPressed: if (foldable) open = !open
+                    Keys.onSpacePressed: if (foldable) open = !open
+
+                    // The natural one-line width, measured off the same labels
+                    Row {
+                        id: akaRuler
+                        visible: false
+                        spacing: aka.gap
+                        Repeater { model: page.otherTitles; Label { required property string modelData; text: modelData; role: "ui" } }
+                    }
+                    // A constant pace while hovered, a hold at either end; let go, it eases home
+                    FrameAnimation {
+                        running: aka.panning || aka.pan > 0
+                        onTriggered: {
+                            if (!aka.panning) { aka.pan = theme.follow(aka.pan, 0, frameTime); if (aka.pan < 0.5) aka.pan = 0; return }
+                            if (aka.hold > 0) { aka.hold -= frameTime; return }
+                            var end = aka.dir > 0 ? aka.reach : 0
+                            var step = aka.speed * frameTime
+                            aka.pan = aka.dir > 0 ? Math.min(end, aka.pan + step) : Math.max(end, aka.pan - step)
+                            if (aka.pan === end) { aka.dir = -aka.dir; aka.hold = 1.2 }
+                        }
+                    }
+                    Item {
+                        id: akaView
+                        width: aka.width - (akaChevron.visible ? akaChevron.width + theme.space(2) : 0)
+                        height: aka.open ? akaFlow.implicitHeight : akaRuler.height
+                        clip: true
+                        Flow {
+                            id: akaFlow
+                            x: aka.open ? 0 : -aka.pan
+                            width: aka.open ? akaView.width : akaRuler.width + 1
+                            spacing: aka.open ? theme.space(1) : aka.gap
+                            Repeater {
+                                model: page.otherTitles
+                                Label {
+                                    required property string modelData
+                                    // Unfolded, a title to a line
+                                    width: aka.open ? akaView.width : implicitWidth
+                                    text: modelData
+                                    role: "ui"
+                                    color: akaHover.hovered && aka.foldable ? page.ink : page.inkDim
+                                    wrapMode: aka.open ? Text.Wrap : Text.NoWrap
+                                }
+                            }
+                        }
+                    }
+                    Icon {
+                        id: akaChevron
+                        visible: aka.foldable
+                        anchors.right: parent.right
+                        y: Math.round((akaRuler.height - height) / 2)
+                        glyph: aka.open ? "chevron-up" : "chevron-down"
+                        size: theme.space(4)
+                        color: akaHover.hovered || aka.activeFocus ? page.ink : page.inkDim
+                    }
+                    Rectangle {
+                        visible: aka.activeFocus
+                        anchors.fill: parent
+                        anchors.margins: -theme.space(1)
+                        radius: theme.radiusSm
+                        color: "transparent"
+                        border.color: theme.focusRing
+                        border.width: 2
+                    }
+                    HoverHandler { id: akaHover; cursorShape: aka.foldable ? Qt.PointingHandCursor : Qt.ArrowCursor }
+                    TapHandler { enabled: aka.foldable; onTapped: aka.open = !aka.open }
                 }
                 // The facts, and the next episode's countdown in the band's ink accent
                 Row {
@@ -385,7 +487,8 @@ Item {
                         }
                     }
                 }
-                // The quiet row: rate (on a tracker), hide, the record's site, rescan
+                // The quiet row: your score (rate, on a tracker), the average score, the list
+                // status and rewatches, then hide, the record's site, rescan
                 Flow {
                     width: parent.width
                     spacing: theme.space(2)
@@ -399,6 +502,9 @@ Item {
                         text: page.hasScore ? "Your score " + Fmt.score(card.my_score) : "Rate"
                         onClicked: scorePicker.openAt(rateButton, page.hasScore ? card.my_score : -1)
                     }
+                    Fact { objectName: "fact-average"; visible: page.hasAverage; icon: "users"; text: page.hasAverage ? "Average score " + Fmt.score(card.community_score) : "" }
+                    Fact { objectName: "fact-list"; visible: !!card.list_status; icon: page.listIcon(card.list_status); text: card.list_status ? page.listStatus(card.list_status) : "" }
+                    Fact { visible: !!page.detail && page.detail.rewatch_count > 0; icon: "rotate-ccw"; text: page.detail && page.detail.rewatch_count > 0 ? "Rewatched " + page.detail.rewatch_count + (page.detail.rewatch_count === 1 ? " time" : " times") : "" }
                     Button {
                         objectName: "series-hide"
                         small: true; ghost: true
