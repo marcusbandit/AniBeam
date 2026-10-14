@@ -64,6 +64,11 @@ pub mod qobject {
         /// gone), or shown again.
         #[qinvokable]
         fn set_cursor_hidden(self: &Self, hidden: bool);
+        /// A link opened in the desktop's browser (or a path in its file manager) through
+        /// xdg-open, bypassing Qt's Wayland activation-token wait, which never returned on
+        /// Hyprland. False when xdg-open could not start.
+        #[qinvokable]
+        fn open_url(self: &Self, url: &QString) -> bool;
     }
 
     impl cxx_qt::Threading for Shell {}
@@ -193,6 +198,9 @@ impl qobject::Shell {
     }
     pub fn set_cursor_hidden(&self, hidden: bool) {
         crate::bridge::helpers::ffi::set_cursor_hidden(hidden);
+    }
+    pub fn open_url(&self, url: &QString) -> bool {
+        crate::bridge::helpers::ffi::open_url(url)
     }
 }
 

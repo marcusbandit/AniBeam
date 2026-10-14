@@ -48,3 +48,9 @@ QColor poster_tone(const QString &path);
 // under a resting pointer is not re-asked for its cursor on Wayland until the pointer moves,
 // so an item-level blank cursor left the arrow standing on the picture.
 void set_cursor_hidden(bool hidden);
+// Opens a URL (or a file:// path) with the desktop's handler by running xdg-open
+// detached, rather than through QDesktopServices: on Wayland Qt first asks the
+// compositor for an xdg-activation token and launches nothing until it arrives, and on
+// Hyprland the token never came, so every link in the shell did nothing. Returns false
+// when xdg-open could not be started.
+bool open_url(const QString &url);

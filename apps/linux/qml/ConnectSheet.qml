@@ -293,7 +293,7 @@ Item {
                         width: parent.width
                         spacing: theme.space(2)
                         Button { text: "Open the developer page"; icon: "external-link"; small: true; flat: true
-                            onClicked: Qt.openUrlExternally(root.developerUrl) }
+                            onClicked: frame.openLink(root.developerUrl) }
                         Chip {
                             text: frame.redirectUrl
                             clickable: true

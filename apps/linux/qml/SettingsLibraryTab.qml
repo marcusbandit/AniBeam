@@ -85,7 +85,7 @@ SettingsTab {
                     SourceRow {
                         required property var modelData
                         source: modelData
-                        onOpen: Qt.openUrlExternally("file://" + modelData.path)
+                        onOpen: frame.openLink("file://" + modelData.path)
                         onRescan: { var r = Door.scan(modelData.id); frame.toast(r.error ? r.error.message : "Rescan started") }
                         onRemove: confirming = true
                         onRemoveAccepted: { var r = Door.removeSource(modelData.id); if (r.error) frame.toast(r.error.message) }

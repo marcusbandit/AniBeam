@@ -160,7 +160,7 @@ SettingsTab {
                     required property var modelData
                     label: modelData[0]
                     line: tab.about[modelData[1]] || ""
-                    Button { text: "Open"; icon: "folder-open"; small: true; onClicked: Qt.openUrlExternally("file://" + (modelData[2] ? tab.dir(tab.about[modelData[1]]) : tab.about[modelData[1]])) }
+                    Button { text: "Open"; icon: "folder-open"; small: true; onClicked: frame.openLink("file://" + (modelData[2] ? tab.dir(tab.about[modelData[1]]) : tab.about[modelData[1]])) }
                 }
             }
         }

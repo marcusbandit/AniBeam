@@ -14,6 +14,8 @@
 #include <QtGui/QImage>
 #include <QtGui/QImageReader>
 #include <QtGui/QCursor>
+#include <QtCore/QProcess>
+#include <QtCore/QUrl>
 
 // Exported by QtGui for QtTest's benefit and declared nowhere else public; the declarations
 // are QtTest's own (qtestmouse.h, qtestkeyboard.h, qtestwheel.h). Using them rather than
@@ -195,4 +197,13 @@ void set_cursor_hidden(bool hidden)
         QGuiApplication::restoreOverrideCursor();
         overridden = false;
     }
+}
+
+bool open_url(const QString &url)
+{
+    QString target = url;
+    // A bare local path becomes a file URL, so xdg-open hands it to the file manager
+    if (target.startsWith(QLatin1Char('/')))
+        target = QUrl::fromLocalFile(target).toString();
+    return QProcess::startDetached(QStringLiteral("xdg-open"), {target});
 }

@@ -229,7 +229,7 @@ Item {
                                     text: "Open the feed"
                                     flat: true
                                     small: true
-                                    onClicked: Qt.openUrlExternally(feedTile.f.url)
+                                    onClicked: frame.openLink(feedTile.f.url)
                                 }
                             }
                         }
