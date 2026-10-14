@@ -1,0 +1,258 @@
+[
+ {
+  "log": "the rail's badge, then the page: sections by state, posters"
+ },
+ {
+  "wait": 7000
+ },
+ {
+  "shot": "subs-00-badge"
+ },
+ {
+  "click": "rail-downloads"
+ },
+ {
+  "wait": 9000
+ },
+ {
+  "eval": "frame.item.nav.current.page",
+  "expect": "downloads"
+ },
+ {
+  "eval": "frame.item.downloadsAttention > 0",
+  "expect": true
+ },
+ {
+  "eval": "frame.item.pageItem.subSections.map(function(s) { return s.key }).join(',')",
+  "as": "sections"
+ },
+ {
+  "shot": "subs-01-home"
+ },
+ {
+  "log": "hovering a poster puts Unsubscribe at its foot; it opens the sheet, a click away closes it"
+ },
+ {
+  "hover": "show-card"
+ },
+ {
+  "wait": 500
+ },
+ {
+  "shot": "subs-02-hover"
+ },
+ {
+  "click": "show-card-action"
+ },
+ {
+  "wait": 400
+ },
+ {
+  "eval": "frame.item.removalOpen",
+  "expect": true
+ },
+ {
+  "shot": "subs-03-sheet"
+ },
+ {
+  "click": "remove-sheet-files"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "shot": "subs-04-sheet-files"
+ },
+ {
+  "click": "downloads-summary"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "frame.item.removalOpen",
+  "expect": false
+ },
+ {
+  "log": "the lower sections, as posters"
+ },
+ {
+  "wheel": "downloads-page",
+  "dy": -1500
+ },
+ {
+  "wait": 900
+ },
+ {
+  "shot": "subs-05-middle-grid"
+ },
+ {
+  "wheel": "downloads-page",
+  "dy": -1200
+ },
+ {
+  "wait": 900
+ },
+ {
+  "shot": "subs-06-downloaded-grid"
+ },
+ {
+  "wheel": "downloads-page",
+  "dy": -20000
+ },
+ {
+  "wait": 900
+ },
+ {
+  "shot": "subs-06b-broken"
+ },
+ {
+  "click": "downloads-remove-broken"
+ },
+ {
+  "wait": 400
+ },
+ {
+  "eval": "frame.item.removalOpen",
+  "expect": true
+ },
+ {
+  "shot": "subs-06c-broken-sheet"
+ },
+ {
+  "click": "remove-sheet-cancel"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "frame.item.removalOpen",
+  "expect": false
+ },
+ {
+  "wheel": "downloads-page",
+  "dy": 20000
+ },
+ {
+  "wait": 600
+ },
+ {
+  "log": "both bands as lists"
+ },
+ {
+  "eval": "frame.item.downloadsSubView = 'list'; frame.item.downloadsDlView = 'list'; 1",
+  "expect": 1
+ },
+ {
+  "wait": 800
+ },
+ {
+  "shot": "subs-07-list"
+ },
+ {
+  "wheel": "downloads-page",
+  "dy": -7200
+ },
+ {
+  "wait": 900
+ },
+ {
+  "shot": "subs-08-downloaded-list"
+ },
+ {
+  "wheel": "downloads-page",
+  "dy": 20000
+ },
+ {
+  "eval": "frame.item.downloadsSubView = 'grid'; frame.item.downloadsDlView = 'grid'; 1",
+  "expect": 1
+ },
+ {
+  "wait": 600
+ },
+ {
+  "log": "a complete show, inside the page; Unsubscribe opens the sheet, Cancel closes it"
+ },
+ {
+  "eval": "frame.item.pageItem.openRule(frame.item.pageItem.completeRules[0]); frame.item.pageItem.detail !== null",
+  "expect": true
+ },
+ {
+  "wait": 8000
+ },
+ {
+  "shot": "subs-09-detail"
+ },
+ {
+  "click": "show-unsubscribe"
+ },
+ {
+  "wait": 400
+ },
+ {
+  "eval": "frame.item.removalOpen",
+  "expect": true
+ },
+ {
+  "shot": "subs-10-detail-sheet"
+ },
+ {
+  "click": "remove-sheet-cancel"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "frame.item.removalOpen",
+  "expect": false
+ },
+ {
+  "key": "Escape"
+ },
+ {
+  "wait": 600
+ },
+ {
+  "eval": "frame.item.pageItem.detail === null",
+  "expect": true
+ },
+ {
+  "log": "the bulk sheet for every complete show; Escape closes it"
+ },
+ {
+  "click": "downloads-unsubscribe-complete"
+ },
+ {
+  "wait": 400
+ },
+ {
+  "eval": "frame.item.removalOpen",
+  "expect": true
+ },
+ {
+  "shot": "subs-11-bulk-sheet"
+ },
+ {
+  "key": "Escape"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "frame.item.removalOpen",
+  "expect": false
+ },
+ {
+  "log": "something moving brings Downloading up front"
+ },
+ {
+  "eval": "var p = frame.item.pageItem; p.torrents = p.torrents.concat([{hash: 'f00', name: '[SubsPlease] Test Show - 08 (1080p).mkv', state: 'downloading', progress: 0.42, size: 1500000000, dlspeed: 5200000, upspeed: 0, eta: 160, num_seeds: 41, num_leechs: 3, ratio: 0, save_path: '/x/Test Show', content_path: '/x/Test Show/a.mkv', added_on: 2000000000, completion_on: 0, tags: '', category: '', series_id: null}]); p.downloading.length > 0",
+  "expect": true
+ },
+ {
+  "wait": 500
+ },
+ {
+  "shot": "subs-12-downloading"
+ }
+]

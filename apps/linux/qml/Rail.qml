@@ -10,6 +10,8 @@ Item {
     id: root
     // Indexes into Nav.railPages: home, library, feed, watching, metadata, downloads, settings
     property int active: 0
+    // Complete subscriptions waiting to be cleared: a red count on Downloads
+    property int downloadsBadge: 0
     signal picked(int index)
 
     readonly property var primary: [
@@ -121,7 +123,30 @@ Item {
                     color: minor.on ? theme.accent : (mm.containsMouse ? theme.text : theme.textFaint)
                 }
                 MouseArea { id: mm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.picked(minor.modelData.index) }
-                Tooltip { text: minor.modelData.text }
+                Tooltip { text: minor.badge > 0 ? minor.modelData.text + ": " + minor.badge + (minor.badge === 1 ? " subscription is" : " subscriptions are") + " complete" : minor.modelData.text }
+                readonly property int badge: modelData.index === 5 ? root.downloadsBadge : 0
+                // The badge: red, its count in it, over the glyph's top right
+                Rectangle {
+                    objectName: "rail-downloads-badge"
+                    visible: minor.badge > 0
+                    height: theme.space(4.5)
+                    width: Math.max(height, badgeText.implicitWidth + theme.space(2))
+                    radius: height / 2
+                    x: minor.width - width * 0.7
+                    y: -height * 0.2
+                    color: theme.red
+                    border.color: theme.tile
+                    border.width: 2
+                    Label {
+                        id: badgeText
+                        anchors.centerIn: parent
+                        text: minor.badge > 99 ? "99+" : String(minor.badge)
+                        role: "ledger"
+                        font.pointSize: theme.typeSmall * 0.85
+                        font.weight: 600
+                        color: theme.contrast(theme.red, Qt.rgba(1, 1, 1, 1)) >= 4.5 ? "#ffffff" : "#0d0e11"
+                    }
+                }
             }
         }
 

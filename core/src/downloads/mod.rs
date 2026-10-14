@@ -14,14 +14,21 @@
 //! shell holds `{endpoint, query, items}` and its own history.
 
 pub mod anirss;
+pub mod facts;
+pub mod feed;
+pub mod link;
 pub mod qbt;
+pub mod rewire;
 pub mod settings;
+pub mod trash;
 
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::contract::*;
 use crate::core::Core;
-use crate::jobs::Finished;
+use crate::jobs::{Finished, JobCtx};
+use crate::net::{Http, HttpRequest, Method};
 use crate::sync::recover;
 use crate::trackers::accounts::with_secrets;
 use anirss::{AnirssClient, Sidecar, SpawnFailure};
@@ -316,7 +323,12 @@ async fn run_connect(core: Arc<Core>) -> Result<Finished, CoreError> {
 /// Health, endpoints and anirss's view of qBittorrent, into the state.
 async fn read_anirss(core: &Arc<Core>, client: &AnirssClient) -> Result<(), CoreError> {
     let version = client.health().await?;
-    let endpoints = client.endpoints().await?;
+    let mut endpoints = client.endpoints().await?;
+    if let Some(path) = settings::anirss_config_path() {
+        for e in &mut endpoints {
+            e.on_demand = settings::anirss_ondemand(&path, &e.name).map(|o| o.timeout);
+        }
+    }
     let view = client.qbt_status().await?;
     let mut st = core.downloads.state();
     st.anirss.state = AnirssState::Ready;
@@ -381,44 +393,96 @@ pub fn search(core: &Core, query: String, endpoint: Option<String>) -> Result<u6
         return Err(CoreError::invalid("query", "type something to search for"));
     }
     let owner = core.owner()?;
+    // The endpoint the search starts on, for the progress line: the one
+    // asked for, else the first anirss lists
+    let first = endpoint.clone().or_else(|| {
+        owner
+            .downloads
+            .state()
+            .endpoints
+            .first()
+            .map(|e| e.name.clone())
+    });
+    let ondemand = first.as_deref().and_then(|name| {
+        settings::anirss_config_path().and_then(|p| settings::anirss_ondemand(&p, name))
+    });
     Ok(owner
         .jobs
         .clone()
-        .start(JobKind::SearchReleases, move |_| async move {
-            let client = ensure_client(&owner).await?;
-            let raw = client.search(&query, endpoint.as_deref(), true).await?;
-            let search = if raw.items.is_empty() {
-                ReleaseSearch {
-                    query: raw.query,
-                    endpoint: raw.endpoint,
-                    items: Vec::new(),
-                    groups: Vec::new(),
-                    best_fit: BestFit {
-                        available: false,
-                        query: String::new(),
-                        item: None,
-                        profile: Vec::new(),
-                    },
-                    tried: raw.tried,
-                    fell_back: raw.fell_back,
-                    client_side: false,
-                    auto_resolution: None,
+        .start(JobKind::SearchReleases, move |ctx| async move {
+            let phase = Arc::new(AtomicU8::new(PHASE_CONNECTING));
+            let watch = watch_search(
+                ctx.clone(),
+                owner.http.clone(),
+                phase.clone(),
+                first
+                    .clone()
+                    .unwrap_or_else(|| "the first endpoint".to_string()),
+                ondemand,
+            );
+            let work = async {
+                let client = ensure_client(&owner).await?;
+                phase.store(PHASE_FETCHING, Ordering::Relaxed);
+                let raw = client.search(&query, endpoint.as_deref(), true).await?;
+                phase.store(PHASE_READING, Ordering::Relaxed);
+                let fetched = raw.query.clone();
+                let mut search = if raw.items.is_empty() {
+                    ReleaseSearch {
+                        query: raw.query,
+                        endpoint: raw.endpoint,
+                        items: Vec::new(),
+                        groups: Vec::new(),
+                        best_fit: BestFit {
+                            available: false,
+                            query: String::new(),
+                            item: None,
+                            profile: Vec::new(),
+                        },
+                        tried: raw.tried,
+                        fell_back: raw.fell_back,
+                        client_side: false,
+                        auto_resolution: None,
+                        facts: Vec::new(),
+                        show: None,
+                        fetched_query: String::new(),
+                    }
+                } else {
+                    let a = client
+                        .analyze(&raw.query, &raw.endpoint, &raw.items)
+                        .await?;
+                    ReleaseSearch {
+                        query: a.query,
+                        endpoint: raw.endpoint,
+                        items: a.items,
+                        groups: a.groups,
+                        best_fit: a.best_fit,
+                        tried: raw.tried,
+                        fell_back: raw.fell_back,
+                        client_side: a.client_side,
+                        auto_resolution: a.auto_resolution,
+                        facts: Vec::new(),
+                        show: None,
+                        fetched_query: String::new(),
+                    }
+                };
+                let (facts, show) = annotate(&owner, &search.query, &search.items);
+                search.facts = facts;
+                search.show = show;
+                search.fetched_query = fetched;
+                if !search.items.is_empty() {
+                    enrich(
+                        &owner,
+                        client,
+                        &search.query,
+                        &search.endpoint,
+                        &search.items,
+                    );
                 }
-            } else {
-                let a = client
-                    .analyze(&raw.query, &raw.endpoint, &raw.items)
-                    .await?;
-                ReleaseSearch {
-                    query: a.query,
-                    endpoint: raw.endpoint,
-                    items: a.items,
-                    groups: a.groups,
-                    best_fit: a.best_fit,
-                    tried: raw.tried,
-                    fell_back: raw.fell_back,
-                    client_side: a.client_side,
-                    auto_resolution: a.auto_resolution,
-                }
+                Ok::<_, CoreError>(search)
+            };
+            let search = tokio::select! {
+                r = work => r?,
+                _ = watch => unreachable!("the watch never ends"),
             };
             let message = if search.fell_back {
                 let asked = endpoint
@@ -446,6 +510,129 @@ pub fn search(core: &Core, query: String, endpoint: Option<String>) -> Result<u6
         }))
 }
 
+const PHASE_CONNECTING: u8 = 0;
+const PHASE_FETCHING: u8 = 1;
+const PHASE_READING: u8 = 2;
+
+/// The search's progress line, once a second until the search answers:
+/// what it is waiting on, and for how long. An on-demand endpoint (one
+/// anirss starts, a podman pod behind Jackett) is "Starting" until its
+/// ready URL answers, then "Searching"; `done` counts seconds. A bounded
+/// poll that lives only as long as the search does.
+async fn watch_search(
+    ctx: Arc<JobCtx>,
+    http: Arc<dyn Http>,
+    phase: Arc<AtomicU8>,
+    endpoint: String,
+    ondemand: Option<settings::OnDemand>,
+) {
+    let started = std::time::Instant::now();
+    loop {
+        let label = match phase.load(Ordering::Relaxed) {
+            PHASE_CONNECTING => "Starting anirss".to_string(),
+            PHASE_READING => "Reading the results".to_string(),
+            _ => match &ondemand {
+                Some(od) if !od.ready.is_empty() && !answers(http.as_ref(), &od.ready).await => {
+                    format!("Starting {endpoint}")
+                }
+                _ => format!("Searching {endpoint}"),
+            },
+        };
+        // No total: the seconds are not a count of anything, and the page
+        // knows an on-demand endpoint's ceiling from the endpoint list
+        ctx.progress(started.elapsed().as_secs(), None, &label);
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    }
+}
+
+async fn answers(http: &dyn Http, url: &str) -> bool {
+    http.send(HttpRequest {
+        method: Method::Get,
+        url: url.to_string(),
+        headers: Vec::new(),
+        body: None,
+        timeout: Some(std::time::Duration::from_secs(2)),
+    })
+    .await
+    .map(|r| r.is_success())
+    .unwrap_or(false)
+}
+
+/// The facts read off each release, and the library series the query
+/// names with each release's episode checked against its files. A library
+/// that cannot be read leaves the show out and every `on_disk` false.
+fn annotate(core: &Core, query: &str, items: &[Release]) -> (Vec<ReleaseFacts>, Option<ShowLink>) {
+    let mut facts: Vec<ReleaseFacts> = items.iter().map(facts::read).collect();
+    if items.is_empty() {
+        return (facts, None);
+    }
+    let images = core.paths.images_dir();
+    let found = core
+        .store
+        .read(|c| match link::series_for_query(c, query)? {
+            Some(id) => link::show_with_numbers(c, &images, crate::time::now(), id),
+            None => Ok(None),
+        });
+    match found {
+        Ok(Some((show, files))) => {
+            for f in &mut facts {
+                if let Some(n) = f.episode {
+                    f.on_disk = link::has_episode(&files, f.season, n);
+                }
+            }
+            (facts, Some(show))
+        }
+        Ok(None) => (facts, None),
+        Err(e) => {
+            tracing::warn!("search not matched to the library: {e}");
+            (facts, None)
+        }
+    }
+}
+
+/// After a search answers: the feed it read, read again by the core for
+/// what anirss drops (when each release was posted, a torznab feed's
+/// counts). The address is anirss's own (`/subscriptions/preview` gives the
+/// feed a search on this query reads), and the read is cheap: nyaa and
+/// Erai answer at once and Jackett serves a repeat query from its cache.
+/// Not a job; a failure is a debug line and the page shows no dates.
+fn enrich(core: &Arc<Core>, client: AnirssClient, query: &str, endpoint: &str, items: &[Release]) {
+    let owner = core.clone();
+    let (query, endpoint, items) = (query.to_string(), endpoint.to_string(), items.to_vec());
+    core.handle.spawn(async move {
+        let outcome = async {
+            let spec = client.preview(&query, &endpoint, &items).await?;
+            if spec.feed_url.is_empty() {
+                return Err(CoreError::internal("anirss named no feed for this search"));
+            }
+            feed::read(owner.http.as_ref(), &spec.feed_url).await
+        }
+        .await;
+        match outcome {
+            Ok(entries) => owner.bus.debug(
+                Stage::Downloads,
+                format!(
+                    "{} dated on {endpoint}",
+                    plural(entries.len() as u64, "release", "releases")
+                ),
+                EventBody::ReleasesEnriched {
+                    query,
+                    endpoint,
+                    entries,
+                },
+            ),
+            Err(error) => owner.bus.debug(
+                Stage::Downloads,
+                format!("releases not dated: {}", plain(&error)),
+                EventBody::DownloadsUnavailable {
+                    what: "dates".to_string(),
+                    error,
+                },
+            ),
+        };
+    });
+}
+
 pub fn refine(
     core: &Core,
     query: String,
@@ -459,7 +646,22 @@ pub fn refine(
         .clone()
         .start(JobKind::RefineReleases, move |_| async move {
             let client = ensure_client(&owner).await?;
-            let refinement = client.apply(&query, &endpoint, &items, &op).await?;
+            let mut refinement = client.apply(&query, &endpoint, &items, &op).await?;
+            if refinement.applied {
+                let (facts, show) = annotate(&owner, &refinement.query, &refinement.items);
+                refinement.facts = facts;
+                refinement.show = show;
+                // A refetch read a new feed; a client-side step kept releases already dated
+                if refinement.mode == "refetch" && !refinement.items.is_empty() {
+                    enrich(
+                        &owner,
+                        client,
+                        &refinement.query,
+                        &refinement.endpoint,
+                        &refinement.items,
+                    );
+                }
+            }
             let message = if refinement.applied {
                 format!(
                     "Narrowed to {} releases ({:+})",
@@ -507,6 +709,7 @@ pub fn subscribe(
     endpoint: String,
     items: Vec<Release>,
     name: Option<String>,
+    wire_query: Option<String>,
 ) -> Result<u64, CoreError> {
     let owner = core.owner()?;
     Ok(owner
@@ -514,18 +717,114 @@ pub fn subscribe(
         .clone()
         .start(JobKind::Subscribe, move |_| async move {
             let client = ensure_client(&owner).await?;
-            let result = client
+            let mut result = client
                 .subscribe(&query, &endpoint, &items, name.as_deref())
                 .await?;
-            Ok(Finished {
-                level: Level::Info,
-                message: format!(
+            let terms = match wire_query.as_deref() {
+                Some(wire) if narrows_locally(&owner, &endpoint) => {
+                    rewire::local_terms(&query, wire)
+                }
+                _ => rewire::LocalTerms::default(),
+            };
+            let message = if terms.is_empty() {
+                format!(
                     "Subscribed to {}; new episodes save to {}",
                     result.name, result.save_path
-                ),
+                )
+            } else {
+                let wire = wire_query.clone().unwrap_or_default();
+                rewire_subscription(
+                    &owner,
+                    &client,
+                    &mut result,
+                    &wire,
+                    &endpoint,
+                    &items,
+                    &terms,
+                )
+                .await?;
+                format!(
+                    "Subscribed to {}; {endpoint} is searched for \"{wire}\" and the rule keeps {}",
+                    result.name,
+                    describe_terms(&terms)
+                )
+            };
+            Ok(Finished {
+                level: Level::Info,
+                message,
                 body: EventBody::Subscribed { result },
             })
         }))
+}
+
+/// An endpoint anirss narrows on its own side, where a refined query is no
+/// query the endpoint can answer: a generic RSS endpoint that is not Erai
+/// (whose subscription anirss already narrows in the rule).
+fn narrows_locally(core: &Core, endpoint: &str) -> bool {
+    core.downloads
+        .state()
+        .endpoints
+        .iter()
+        .find(|e| e.name == endpoint)
+        .is_some_and(|e| e.kind != "nyaa" && !e.url.contains("erai-raws"))
+}
+
+fn describe_terms(terms: &rewire::LocalTerms) -> String {
+    let mut parts = Vec::new();
+    if !terms.must.is_empty() {
+        parts.push(format!("releases with \"{}\"", terms.must.join(" ")));
+    }
+    if !terms.not.is_empty() {
+        parts.push(format!("none with \"{}\"", terms.not.join("\", \"")));
+    }
+    parts.join(" and ")
+}
+
+/// Points anirss's new rule at the feed the search read and puts the
+/// narrowing words in the rule. In this order, so qBittorrent never holds
+/// the rule unnarrowed beside a feed with articles: the rule first (its old
+/// feed found nothing, and its new one is not there yet), then the empty
+/// feed out (unless another rule reads it), then the search's feed in.
+async fn rewire_subscription(
+    core: &Arc<Core>,
+    client: &AnirssClient,
+    result: &mut Subscribed,
+    wire: &str,
+    endpoint: &str,
+    items: &[Release],
+    terms: &rewire::LocalTerms,
+) -> Result<(), CoreError> {
+    let spec = client.preview(wire, endpoint, items).await?;
+    if spec.feed_url.is_empty() || spec.feed_url == result.feed_url {
+        return Ok(());
+    }
+    let qbt = qbt_client(core).await?;
+    let rules = qbt.rules().await?;
+    let Some(def) = rules.get(&result.name) else {
+        return Err(service(
+            "anirss",
+            "rule_missing",
+            format!("qBittorrent holds no rule named {}", result.name),
+        ));
+    };
+    let def = rewire::narrowed(def, terms, &spec.feed_url);
+    qbt.set_rule(&result.name, &def).await?;
+    let feeds = qbt.feeds().await?;
+    let old = feeds
+        .iter()
+        .find(|(_, url)| *url == result.feed_url)
+        .map(|(path, _)| path.clone());
+    if let Some(path) = &old
+        && !rewire::feed_shared(&rules, &result.name, &result.feed_url)
+    {
+        qbt.remove_item(path).await?;
+    }
+    qbt.add_feed(&spec.feed_url, old.as_deref().unwrap_or(&result.name))
+        .await?;
+    result.feed_url = spec.feed_url;
+    result.must_contain = def["mustContain"].as_str().unwrap_or("").to_string();
+    result.must_not_contain = def["mustNotContain"].as_str().unwrap_or("").to_string();
+    Ok(())
 }
 
 pub fn download(core: &Core, items: Vec<Release>, name: Option<String>) -> Result<u64, CoreError> {
@@ -667,6 +966,142 @@ pub fn control(core: &Core, hashes: Vec<String>, action: TorrentAction) -> Resul
         }))
 }
 
+/// `Call::RemoveShow`: the subscription, the torrents, the files, as far
+/// as asked, each step only once the one before it held. The file targets
+/// are read and checked first, so a refusal removes nothing at all.
+#[allow(clippy::too_many_arguments)]
+pub fn remove_show(
+    core: &Core,
+    title: String,
+    rule: Option<String>,
+    hashes: Vec<String>,
+    torrents: bool,
+    files: bool,
+    series: Option<u64>,
+) -> Result<u64, CoreError> {
+    let rule = rule.map(|r| r.trim().to_string()).filter(|r| !r.is_empty());
+    let hashes: Vec<String> = hashes
+        .into_iter()
+        .map(|h| h.trim().to_ascii_lowercase())
+        .filter(|h| !h.is_empty())
+        .collect();
+    let torrents = torrents || files;
+    let takes_torrents = torrents && !hashes.is_empty();
+    let takes_files = files && (!hashes.is_empty() || series.is_some());
+    if rule.is_none() && !takes_torrents && !takes_files {
+        return Err(CoreError::invalid("show", "nothing to remove"));
+    }
+    let title = if title.trim().is_empty() {
+        rule.clone().unwrap_or_else(|| "the show".to_string())
+    } else {
+        title.trim().to_string()
+    };
+    let owner = core.owner()?;
+    Ok(owner
+        .jobs
+        .clone()
+        .start(JobKind::RemoveShow, move |_| async move {
+            // What the torrents wrote, read before they go, and the series' folder
+            let mut candidates = Vec::new();
+            if takes_files && !hashes.is_empty() {
+                let client = qbt_client(&owner).await?;
+                for t in client.torrents().await? {
+                    if hashes.contains(&t.hash.to_ascii_lowercase()) {
+                        candidates.push(trash::Candidate::Torrent {
+                            content: t.content_path,
+                            save_path: t.save_path,
+                        });
+                    }
+                }
+            }
+            let mut sources = Vec::new();
+            if takes_files {
+                let (series_path, all_sources) = owner.store.read(|c| {
+                    let path: Option<String> = match series {
+                        Some(id) => c
+                            .query_row("SELECT path FROM series WHERE id = ?1", [id as i64], |r| {
+                                r.get(0)
+                            })
+                            .ok(),
+                        None => None,
+                    };
+                    let mut stmt = c.prepare("SELECT path FROM sources")?;
+                    let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+                    let mut all = Vec::new();
+                    for row in rows {
+                        all.push(row?);
+                    }
+                    Ok((path, all))
+                })?;
+                if let Some(path) = series_path {
+                    candidates.push(trash::Candidate::Series { path });
+                }
+                sources = all_sources;
+            }
+            let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+            let targets = if takes_files {
+                trash::targets(&candidates, &sources, home.as_deref())?
+            } else {
+                Vec::new()
+            };
+
+            if let Some(name) = &rule {
+                let client = ensure_client(&owner).await?;
+                client
+                    .remove(std::slice::from_ref(name), false, false, false)
+                    .await?;
+            }
+            if takes_torrents {
+                // Never the client's own delete-with-files: what goes, goes to the trash
+                qbt_client(&owner).await?.delete(&hashes, false).await?;
+            }
+            if !targets.is_empty() {
+                let paths = targets.clone();
+                tokio::task::spawn_blocking(move || trash::move_to_trash(&paths))
+                    .await
+                    .map_err(|e| CoreError::Internal {
+                        message: format!("trash: {e}"),
+                    })??;
+            }
+
+            let mut parts = Vec::new();
+            if rule.is_some() {
+                parts.push("the subscription".to_string());
+            }
+            if takes_torrents {
+                parts.push(plural(hashes.len() as u64, "torrent", "torrents"));
+            }
+            if !targets.is_empty() {
+                parts.push(format!(
+                    "{} to the trash",
+                    plural(targets.len() as u64, "path", "paths")
+                ));
+            }
+            let what = match parts.len() {
+                0 => "nothing".to_string(),
+                1 => parts[0].clone(),
+                _ => format!(
+                    "{} and {}",
+                    parts[..parts.len() - 1].join(", "),
+                    parts[parts.len() - 1]
+                ),
+            };
+            Ok(Finished {
+                level: Level::Info,
+                message: format!("Removed {title}: {what}"),
+                body: EventBody::ShowRemoved {
+                    title,
+                    rule,
+                    hashes: if takes_torrents { hashes } else { Vec::new() },
+                    trashed: targets
+                        .iter()
+                        .map(|p| p.to_string_lossy().into_owned())
+                        .collect(),
+                },
+            })
+        }))
+}
+
 /// Not a job: the page asks on open and after every change. The list
 /// arrives as `SubscriptionsRead`, a failure as `DownloadsUnavailable`,
 /// both at debug level so a page polling an absent server writes nothing
@@ -679,14 +1114,17 @@ pub fn list_rules(core: &Core) -> Result<Reply, CoreError> {
             Err(e) => Err(e),
         };
         match outcome {
-            Ok(rules) => owner.bus.debug(
-                Stage::Downloads,
-                format!(
-                    "{} read",
-                    plural(rules.len() as u64, "subscription", "subscriptions")
-                ),
-                EventBody::SubscriptionsRead { rules },
-            ),
+            Ok(mut rules) => {
+                link_rules(&owner, &mut rules);
+                owner.bus.debug(
+                    Stage::Downloads,
+                    format!(
+                        "{} read",
+                        plural(rules.len() as u64, "subscription", "subscriptions")
+                    ),
+                    EventBody::SubscriptionsRead { rules },
+                )
+            }
             Err(error) => owner.bus.debug(
                 Stage::Downloads,
                 format!("subscriptions not read: {}", plain(&error)),
@@ -712,7 +1150,8 @@ pub fn list_torrents(core: &Core) -> Result<Reply, CoreError> {
         }
         .await;
         match outcome {
-            Ok((torrents, transfer)) => {
+            Ok((mut torrents, transfer)) => {
+                let shows = link_torrents(&owner, &mut torrents);
                 {
                     let mut st = owner.downloads.state();
                     st.torrent.connected = true;
@@ -724,7 +1163,11 @@ pub fn list_torrents(core: &Core) -> Result<Reply, CoreError> {
                         "{} read",
                         plural(torrents.len() as u64, "torrent", "torrents")
                     ),
-                    EventBody::TorrentsRead { torrents, transfer },
+                    EventBody::TorrentsRead {
+                        torrents,
+                        transfer,
+                        shows,
+                    },
                 )
             }
             Err(error) => {
@@ -745,6 +1188,243 @@ pub fn list_torrents(core: &Core) -> Result<Reply, CoreError> {
         };
     });
     Ok(Reply::Ok)
+}
+
+/// Not a job: opening a show reads its feed. The core fetches the feed
+/// itself rather than through anirss, which has no route for it; the URL
+/// is the one anirss registered, API key and all, and never leaves this
+/// machine but to its own host.
+pub fn read_feed(core: &Core, url: String) -> Result<Reply, CoreError> {
+    let url = url.trim().to_string();
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err(CoreError::invalid("url", "a feed is an http(s) URL"));
+    }
+    let owner = core.owner()?;
+    core.handle.spawn(async move {
+        match feed::read(owner.http.as_ref(), &url).await {
+            Ok(entries) => owner.bus.debug(
+                Stage::Downloads,
+                format!(
+                    "{} read from {}",
+                    plural(entries.len() as u64, "feed entry", "feed entries"),
+                    feed::host_of(&url)
+                ),
+                EventBody::FeedRead { url, entries },
+            ),
+            Err(error) => owner.bus.debug(
+                Stage::Downloads,
+                format!("feed not read: {}", plain(&error)),
+                EventBody::DownloadsUnavailable {
+                    what: "feed".to_string(),
+                    error,
+                },
+            ),
+        };
+    });
+    Ok(Reply::Ok)
+}
+
+/// `Call::RepairSubscription`: a shorter search for the rule's feed, word
+/// by word from the end, until the endpoint answers with releases; the
+/// dropped words go into the rule. Nothing changes when the feed already
+/// finds something, or when no shorter search does.
+pub fn repair_subscription(core: &Core, name: String) -> Result<u64, CoreError> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err(CoreError::invalid("name", "a rule has a name"));
+    }
+    let owner = core.owner()?;
+    Ok(owner
+        .jobs
+        .clone()
+        .start(JobKind::RepairSubscription, move |ctx| async move {
+            let qbt = qbt_client(&owner).await?;
+            let rules = qbt.rules().await?;
+            let def = rules.get(&name).cloned().ok_or_else(|| {
+                service(qbt::SERVICE, "rule_missing", format!("no rule named {name}"))
+            })?;
+            let url = def["affectedFeeds"][0].as_str().unwrap_or("").to_string();
+            let host = feed::host_of(&url);
+            let (key, value) = rewire::search_param(&url).ok_or_else(|| {
+                service(&host, "no_search", "the feed carries no search to shorten".to_string())
+            })?;
+            let now = feed::read(owner.http.as_ref(), &url).await?;
+            if !now.is_empty() {
+                return Ok(Finished {
+                    level: Level::Info,
+                    message: format!(
+                        "{name} needs no repair: its feed finds {}",
+                        plural(now.len() as u64, "release", "releases")
+                    ),
+                    body: EventBody::SubscriptionRepaired {
+                        name,
+                        feed_url: url,
+                        must_contain: def["mustContain"].as_str().unwrap_or("").to_string(),
+                        found: now.len() as u64,
+                    },
+                });
+            }
+            let fields = rewire::positive_fields(&value);
+            let tries: Vec<usize> = (1..fields.len()).rev().take(4).collect();
+            for (n, k) in tries.iter().enumerate() {
+                let candidate = fields[..*k].join(" ");
+                ctx.progress(n as u64, Some(tries.len() as u64), &format!("Trying \"{candidate}\""));
+                let next = rewire::with_search(&url, &key, &candidate);
+                let entries = feed::read(owner.http.as_ref(), &next).await?;
+                if entries.is_empty() {
+                    continue;
+                }
+                let terms = rewire::local_terms(&value, &candidate);
+                let narrowed = rewire::narrowed(&def, &terms, &next);
+                qbt.set_rule(&name, &narrowed).await?;
+                let feeds = qbt.feeds().await?;
+                let old = feeds.iter().find(|(_, u)| *u == url).map(|(p, _)| p.clone());
+                if let Some(path) = &old
+                    && !rewire::feed_shared(&rules, &name, &url)
+                {
+                    qbt.remove_item(path).await?;
+                }
+                qbt.add_feed(&next, old.as_deref().unwrap_or(&name)).await?;
+                let must = narrowed["mustContain"].as_str().unwrap_or("").to_string();
+                return Ok(Finished {
+                    level: Level::Info,
+                    message: format!(
+                        "Repaired {name}: {host} is searched for \"{candidate}\" ({}) and the rule keeps {}",
+                        plural(entries.len() as u64, "release", "releases"),
+                        describe_terms(&terms)
+                    ),
+                    body: EventBody::SubscriptionRepaired {
+                        name,
+                        feed_url: next,
+                        must_contain: must,
+                        found: entries.len() as u64,
+                    },
+                });
+            }
+            Err(service(
+                &host,
+                "repair_failed",
+                format!(
+                    "no shorter search finds anything; even \"{}\" comes back empty",
+                    fields.first().cloned().unwrap_or_default()
+                ),
+            ))
+        }))
+}
+
+/// Not a job: the show view reads its rule on open and while a fresh
+/// subscription settles.
+pub fn read_rule(core: &Core, name: String) -> Result<Reply, CoreError> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err(CoreError::invalid("name", "a rule has a name"));
+    }
+    let owner = core.owner()?;
+    core.handle.spawn(async move {
+        let outcome = async {
+            let qbt = qbt_client(&owner).await?;
+            let rules = qbt.rules().await?;
+            let def = rules.get(&name).cloned().ok_or_else(|| {
+                service(
+                    qbt::SERVICE,
+                    "rule_missing",
+                    format!("no rule named {name}"),
+                )
+            })?;
+            let matching = qbt.matching_articles(&name).await?;
+            let text = |k: &str| def[k].as_str().unwrap_or("").to_string();
+            Ok::<_, CoreError>(RuleView {
+                name: name.clone(),
+                enabled: def["enabled"].as_bool().unwrap_or(true),
+                must_contain: text("mustContain"),
+                must_not_contain: text("mustNotContain"),
+                save_path: def["savePath"]
+                    .as_str()
+                    .filter(|s| !s.is_empty())
+                    .or_else(|| def["torrentParams"]["save_path"].as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                feeds: def["affectedFeeds"]
+                    .as_array()
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|u| u.as_str().map(String::from))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                last_match: text("lastMatch"),
+                matching,
+            })
+        }
+        .await;
+        match outcome {
+            Ok(rule) => owner.bus.debug(
+                Stage::Downloads,
+                format!(
+                    "rule {} read: {} accepted",
+                    rule.name,
+                    plural(rule.matching.len() as u64, "article", "articles")
+                ),
+                EventBody::RuleRead { rule },
+            ),
+            Err(error) => owner.bus.debug(
+                Stage::Downloads,
+                format!("rule not read: {}", plain(&error)),
+                EventBody::DownloadsUnavailable {
+                    what: "rule".to_string(),
+                    error,
+                },
+            ),
+        };
+    });
+    Ok(Reply::Ok)
+}
+
+/// Fills each rule's `show` from the library. A library that cannot be
+/// read leaves them empty: the rules still stand on their own.
+fn link_rules(core: &Core, rules: &mut [SubscriptionRule]) {
+    let images = core.paths.images_dir();
+    let linked = core.store.read(|c| {
+        let linker = link::Linker::load(c)?;
+        let ids: Vec<Option<u64>> = rules.iter().map(|r| linker.find(&r.save_path)).collect();
+        let wanted: Vec<u64> = ids.iter().flatten().copied().collect();
+        let shows = link::shows(c, &images, crate::time::now(), &wanted)?;
+        Ok((ids, shows))
+    });
+    match linked {
+        Ok((ids, shows)) => {
+            for (rule, id) in rules.iter_mut().zip(ids) {
+                rule.show = id.and_then(|id| shows.get(&id).cloned());
+            }
+        }
+        Err(e) => tracing::warn!("subscriptions not linked to the library: {e}"),
+    }
+}
+
+/// Sets each torrent's `series_id` and returns those series, once each.
+fn link_torrents(core: &Core, torrents: &mut [Torrent]) -> Vec<ShowLink> {
+    let images = core.paths.images_dir();
+    let linked = core.store.read(|c| {
+        let linker = link::Linker::load(c)?;
+        let ids: Vec<Option<u64>> = torrents.iter().map(|t| linker.find_torrent(t)).collect();
+        let wanted: Vec<u64> = ids.iter().flatten().copied().collect();
+        let shows = link::shows(c, &images, crate::time::now(), &wanted)?;
+        Ok((ids, shows))
+    });
+    match linked {
+        Ok((ids, shows)) => {
+            for (t, id) in torrents.iter_mut().zip(ids) {
+                t.series_id = id;
+            }
+            let mut out: Vec<ShowLink> = shows.into_values().collect();
+            out.sort_by_key(|s| s.series_id);
+            out
+        }
+        Err(e) => {
+            tracing::warn!("torrents not linked to the library: {e}");
+            Vec::new()
+        }
+    }
 }
 
 /// Saves the settings and the two secrets, each secret three-state as

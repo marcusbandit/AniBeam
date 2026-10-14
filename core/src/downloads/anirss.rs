@@ -193,6 +193,8 @@ impl AnirssClient {
             best_fit: best_fit(&v["best_fit"]),
             previous_count: previous,
             delta: v["delta"].as_i64().unwrap_or(count - previous as i64),
+            facts: Vec::new(),
+            show: None,
         })
     }
 

@@ -128,13 +128,14 @@ FocusScope {
     // reclaimFrameOwned() keeps their entries, in this same handler, so Escape still
     // reaches them; a second Connections on nav.changed would race this one with no
     // ordering guarantee between them.
-    Connections { target: nav; function onChanged() { frame.loadPage(); frame.hideTip(); frame.closeMenu(); frame.reclaimFrameOwned() } }
+    Connections { target: nav; function onChanged() { frame.loadPage(); frame.hideTip(); frame.closeMenu(); removeSheet.close(); frame.reclaimFrameOwned() } }
 
     Rail {
         id: rail
         visible: !frame.fullWindow
         anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom
         active: nav.railIndex
+        downloadsBadge: frame.downloadsAttention
         onPicked: function(i) { if (i !== nav.railIndex || nav.current.page !== nav.railPages[i]) frame.go(nav.railPages[i]) }
     }
 
@@ -366,6 +367,7 @@ FocusScope {
         anchors.fill: parent
         z: 600
         Menu { id: menu }
+        RemoveSheet { id: removeSheet }
         Frost {
             id: tip
             visible: false
@@ -427,6 +429,49 @@ FocusScope {
     }
     function hideTip() { tip.visible = false; tipArea = null }
     function toast(text, seconds) { toastText.text = text; toastBox.visible = true; toastTimer.interval = (seconds || 4) * 1000; toastTimer.restart() }
+
+    // ---- The removal sheet: every removal on the downloads page asks through it
+    readonly property bool removalOpen: removeSheet.visible
+    function askRemoval(anchor, spec, done) { removeSheet.openAt(anchor, spec, done) }
+
+    // ---- Downloads: the subscriptions as last read, shared by the rail's badge and the
+    // page. Read once a little after start (anirss is a sidecar the core starts), then
+    // again when the library has settled after a change, since a new episode on disk can
+    // finish a show. No poll: a read follows something that happened.
+    property var downloadsRules: []
+    // The downloads page's two bands, grid or list, for the session
+    property string downloadsSubView: "grid"
+    property string downloadsDlView: "grid"
+    property bool downloadsRulesRead: false
+    property string downloadsRulesError: ""
+    readonly property int downloadsAttention: {
+        var n = 0
+        for (var i = 0; i < downloadsRules.length; i++) if (downloadsRules[i].show && downloadsRules[i].show.complete) n++
+        return n
+    }
+    // Put off while the removal sheet is up: a fresh list rebuilds what it was opened from
+    function readDownloadsRules() {
+        if (!Door.ready) return
+        if (frame.removalOpen) { downloadsReread.restart(); return }
+        Door.listSubscriptionRules()
+    }
+    Connections {
+        target: Door
+        function onSubscriptionsRead(rules) { frame.downloadsRules = rules; frame.downloadsRulesRead = true; frame.downloadsRulesError = "" }
+        function onDownloadsUnavailable(what, error) {
+            if (what !== "subscriptions") return
+            frame.downloadsRulesRead = true
+            frame.downloadsRulesError = error && error.message ? error.message : "Not read."
+        }
+        // A run of removals (Remove RSS for all) asks once, after the last
+        function onSubscriptionRemoved(name) { downloadsReread.restart() }
+        function onSubscribed(job, result) { downloadsReread.restart() }
+        function onScanFinished(source, added, changed, removed) { downloadsSettle.restart() }
+        function onSeriesChanged(cards) { downloadsSettle.restart() }
+    }
+    Timer { interval: 4000; running: Door.ready; onTriggered: frame.readDownloadsRules() }
+    Timer { id: downloadsSettle; interval: 10000; onTriggered: frame.readDownloadsRules() }
+    Timer { id: downloadsReread; interval: 1500; onTriggered: frame.readDownloadsRules() }
 
     Shortcut { sequence: "Ctrl+K"; onActivated: { if (nav.current.page !== "library") frame.go("library"); Qt.callLater(function() { if (page.item && page.item.focusSearch) page.item.focusSearch() }) } }
     // Any page with a search takes "/" (the library, metadata)

@@ -1,0 +1,139 @@
+[
+ {
+  "log": "a search on nyaa for a show the library is airing: progress, then the table"
+ },
+ {
+  "click": "rail-downloads"
+ },
+ {
+  "wait": 8000
+ },
+ {
+  "eval": "frame.item.pageItem.endpoints.map(function(e) { return e.name }).join(',')",
+  "as": "endpoints"
+ },
+ {
+  "eval": "var p = frame.item.pageItem; for (var i = 0; i < p.endpoints.length; i++) if (p.endpoints[i].name === 'nyaa') p.endpointIndex = i; p.endpoints[p.endpointIndex].name",
+  "expect": "nyaa"
+ },
+ {
+  "click": "downloads-search"
+ },
+ {
+  "type": "Rakudai Kenja 1080p"
+ },
+ {
+  "key": "Return"
+ },
+ {
+  "wait": 400
+ },
+ {
+  "shot": "search-00-progress"
+ },
+ {
+  "wait": 9000
+ },
+ {
+  "eval": "frame.item.pageItem.state !== null",
+  "expect": true
+ },
+ {
+  "eval": "frame.item.pageItem.searchShow !== null",
+  "expect": true
+ },
+ {
+  "shot": "search-01-table"
+ },
+ {
+  "eval": "frame.item.pageItem.moreFilters = true; 1",
+  "expect": 1
+ },
+ {
+  "shot": "search-01b-more-filters"
+ },
+ {
+  "eval": "frame.item.pageItem.moreFilters = false; 1",
+  "expect": 1
+ },
+ {
+  "log": "sort by seeders, then by date"
+ },
+ {
+  "eval": "frame.item.pageItem.sortBy('seeders'); frame.item.pageItem.sortKey",
+  "expect": "seeders"
+ },
+ {
+  "wait": 500
+ },
+ {
+  "shot": "search-02-by-seeders"
+ },
+ {
+  "eval": "frame.item.pageItem.sortBy('released'); frame.item.pageItem.datesState",
+  "as": "dates"
+ },
+ {
+  "wait": 500
+ },
+ {
+  "shot": "search-03-by-date"
+ },
+ {
+  "log": "tick the missing episodes"
+ },
+ {
+  "eval": "frame.item.pageItem.missingPicks.length",
+  "as": "missing"
+ },
+ {
+  "click": "downloads-select-missing"
+ },
+ {
+  "wait": 400
+ },
+ {
+  "shot": "search-04-missing-ticked"
+ },
+ {
+  "wheel": "downloads-page",
+  "dy": -1200
+ },
+ {
+  "wait": 900
+ },
+ {
+  "shot": "search-05-pane-follows"
+ },
+ {
+  "log": "a fresh 1337x query: the progress panel names the endpoint and the wait"
+ },
+ {
+  "eval": "frame.item.pageItem.scrollY = 0; var p = frame.item.pageItem; for (var i = 0; i < p.endpoints.length; i++) if (p.endpoints[i].name === '1337x') p.endpointIndex = i; p.endpoints[p.endpointIndex].name",
+  "expect": "1337x"
+ },
+ {
+  "click": "downloads-search"
+ },
+ {
+  "key": "Ctrl+A"
+ },
+ {
+  "type": "Avatar Seven Havens 1080p"
+ },
+ {
+  "key": "Return"
+ },
+ {
+  "wait": 3000
+ },
+ {
+  "shot": "search-06-1337x-progress"
+ },
+ {
+  "wait": 30000
+ },
+ {
+  "shot": "search-07-1337x-table"
+ }
+]

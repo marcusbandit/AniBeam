@@ -387,7 +387,10 @@ fn list_torrents_emits_the_torrents_and_the_transfer_totals() {
         |e| matches!(&e.body, EventBody::TorrentsRead { .. }),
         Duration::from_secs(10),
     );
-    let EventBody::TorrentsRead { torrents, transfer } = &event.body else {
+    let EventBody::TorrentsRead {
+        torrents, transfer, ..
+    } = &event.body
+    else {
         panic!("{:?}", event.body)
     };
     assert_eq!(torrents.len(), 1);
@@ -452,5 +455,475 @@ fn a_refine_that_changes_nothing_ends_with_applied_false() {
     assert_eq!(
         http.requests()[0].url,
         "http://anirss.test:8787/api/v1/refine/apply"
+    );
+}
+
+/// A torrent saved under another mount than the library's still finds the
+/// series its folder fills, by the folder's name, and the series travels
+/// beside the list once.
+#[test]
+fn a_torrent_is_linked_to_the_library_series_its_folder_fills() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    isolate_xdg(dir.path());
+    let lib = dir.path().join("lib");
+    let show = lib.join("Sousou no Frieren");
+    std::fs::create_dir_all(&show).unwrap();
+    for n in 1..=3 {
+        std::fs::write(
+            show.join(format!(
+                "[SubsPlease] Sousou no Frieren - {n:02} (1080p).mkv"
+            )),
+            b"x",
+        )
+        .unwrap();
+    }
+    core.call(Call::AddSource {
+        path: lib.to_string_lossy().into_owned(),
+    })
+    .unwrap();
+    common::wait_for(
+        &c,
+        |e| matches!(e.body, EventBody::ScanFinished { .. }),
+        Duration::from_secs(10),
+    );
+
+    let torrent = |hash: &str, save: &str| {
+        json!({"hash": hash, "name": hash, "state": "uploading", "progress": 1.0, "size": 1,
+               "save_path": save, "content_path": format!("{save}/{hash}.mkv")})
+    };
+    http.push_for(
+        "torrents/info",
+        200,
+        json!([
+            torrent("aa", "/srv/media/Anime/Sousou no Frieren"),
+            torrent("bb", "/srv/media/Anime/Sousou no Frieren/"),
+            torrent("cc", "/srv/media/Anime/Something Else"),
+        ])
+        .to_string(),
+    );
+    http.push_for("transfer/info", 200, json!({}).to_string());
+
+    assert_eq!(core.call(Call::ListTorrents).unwrap(), Reply::Ok);
+    let event = common::wait_for(
+        &c,
+        |e| matches!(&e.body, EventBody::TorrentsRead { .. }),
+        Duration::from_secs(10),
+    );
+    let EventBody::TorrentsRead {
+        torrents, shows, ..
+    } = &event.body
+    else {
+        panic!("{:?}", event.body)
+    };
+    assert_eq!(shows.len(), 1, "one series, named once: {shows:?}");
+    let s = &shows[0];
+    assert_eq!(torrents[0].series_id, Some(s.series_id));
+    assert_eq!(
+        torrents[1].series_id,
+        Some(s.series_id),
+        "a trailing slash is the same folder"
+    );
+    assert_eq!(torrents[2].series_id, None);
+    assert_eq!(s.episodes_on_disk, 3);
+    assert!(s.path.ends_with("Sousou no Frieren"));
+    assert!(
+        !s.complete,
+        "an unmatched series has no total, so it is never complete"
+    );
+}
+
+/// The feed is the core's own read: entries arrive as `FeedRead` under the
+/// URL asked for, a refusal as `DownloadsUnavailable` with what "feed".
+#[test]
+fn read_feed_answers_with_the_entries_or_says_the_feed_is_unavailable() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    isolate_xdg(dir.path());
+    let url = "https://nyaa.si/?page=rss&q=Frieren";
+    http.push_for(
+        "nyaa.si",
+        200,
+        r#"<rss xmlns:nyaa="https://nyaa.si/xmlns/nyaa"><channel><item>
+             <title>[SubsPlease] Sousou no Frieren - 01 (1080p)</title>
+             <link>https://nyaa.si/download/1.torrent</link>
+             <guid>https://nyaa.si/view/1</guid>
+             <nyaa:seeders>9</nyaa:seeders>
+             <nyaa:infoHash>ABCDEF0123456789ABCDEF0123456789ABCDEF01</nyaa:infoHash>
+           </item></channel></rss>"#,
+    );
+    assert_eq!(
+        core.call(Call::ReadFeed {
+            url: url.to_string()
+        })
+        .unwrap(),
+        Reply::Ok
+    );
+    let event = common::wait_for(
+        &c,
+        |e| matches!(&e.body, EventBody::FeedRead { .. }),
+        Duration::from_secs(10),
+    );
+    let EventBody::FeedRead { url: read, entries } = &event.body else {
+        panic!("{:?}", event.body)
+    };
+    assert_eq!(read, url);
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].seeders, Some(9));
+    assert_eq!(
+        entries[0].info_hash,
+        "abcdef0123456789abcdef0123456789abcdef01"
+    );
+    assert_eq!(entries[0].page, "https://nyaa.si/view/1");
+
+    http.push_for("nyaa.si", 502, "bad gateway");
+    core.call(Call::ReadFeed {
+        url: url.to_string(),
+    })
+    .unwrap();
+    let event = common::wait_for(
+        &c,
+        |e| matches!(&e.body, EventBody::DownloadsUnavailable { .. }),
+        Duration::from_secs(10),
+    );
+    let EventBody::DownloadsUnavailable { what, error } = &event.body else {
+        panic!("{:?}", event.body)
+    };
+    assert_eq!(what, "feed");
+    assert!(
+        matches!(error, CoreError::Service { code, .. } if code == "http_502"),
+        "{error:?}"
+    );
+
+    assert!(matches!(
+        core.call(Call::ReadFeed {
+            url: "file:///etc/passwd".to_string()
+        }),
+        Err(CoreError::Invalid { .. })
+    ));
+}
+
+/// Remote mode with a token, so the core reaches anirss through `FakeHttp`
+/// with no sidecar to start.
+fn remote() -> DownloadSettings {
+    DownloadSettings {
+        anirss_mode: AnirssMode::Remote,
+        anirss_url: "http://anirss.test".to_string(),
+        ..settings("anirss")
+    }
+}
+
+fn form_of(r: &anibeam_core::net::HttpRequest) -> String {
+    match &r.body {
+        Some(anibeam_core::net::Body::Form(pairs)) => pairs
+            .iter()
+            .map(|(k, v)| format!("{k}={v}"))
+            .collect::<Vec<_>>()
+            .join("&"),
+        Some(anibeam_core::net::Body::Json(v)) => v.to_string(),
+        None => String::new(),
+    }
+}
+
+/// Unsubscribing with the torrents ticked: the rule goes through anirss
+/// with neither torrents nor files (the core takes the torrents itself),
+/// and the torrents go from the client with their data kept.
+#[test]
+fn remove_show_unsubscribes_and_takes_the_torrents_keeping_the_files() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    isolate_xdg(dir.path());
+    save(&core, remote(), Some("tok"), Some("pw"));
+    http.push_for(
+        "subscriptions/remove",
+        200,
+        json!({"dry_run": false, "plans": []}).to_string(),
+    );
+    http.push_for("torrents/delete", 200, "");
+
+    let job = started(
+        &core,
+        Call::RemoveShow {
+            title: "Frieren".to_string(),
+            rule: Some("Frieren".to_string()),
+            hashes: vec!["AA".to_string(), " bb ".to_string()],
+            torrents: true,
+            files: false,
+            series: None,
+        },
+    );
+    let event = common::wait_job(&c, job);
+    let EventBody::ShowRemoved {
+        rule,
+        hashes,
+        trashed,
+        ..
+    } = &event.body
+    else {
+        panic!("{:?}", event.body)
+    };
+    assert_eq!(rule.as_deref(), Some("Frieren"));
+    assert_eq!(hashes, &vec!["aa".to_string(), "bb".to_string()]);
+    assert!(trashed.is_empty());
+
+    let requests = http.requests();
+    let remove = requests
+        .iter()
+        .find(|r| r.url.contains("subscriptions/remove"))
+        .expect("the rule went");
+    let body = form_of(remove);
+    assert!(
+        body.contains("\"torrents\":false") && body.contains("\"files\":false"),
+        "{body}"
+    );
+    let delete = requests
+        .iter()
+        .find(|r| r.url.contains("torrents/delete"))
+        .expect("the torrents went");
+    assert_eq!(form_of(delete), "hashes=aa|bb&deleteFiles=false");
+}
+
+/// A file target that holds a library folder refuses the whole removal:
+/// the rule and the torrents stay, nothing is moved.
+#[test]
+fn remove_show_refuses_a_library_root_and_removes_nothing() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    isolate_xdg(dir.path());
+    save(&core, remote(), Some("tok"), Some("pw"));
+    let lib = dir.path().join("lib");
+    std::fs::create_dir_all(lib.join("Frieren")).unwrap();
+    core.call(Call::AddSource {
+        path: lib.to_string_lossy().into_owned(),
+    })
+    .unwrap();
+    common::wait_for(
+        &c,
+        |e| matches!(e.body, EventBody::ScanFinished { .. }),
+        Duration::from_secs(10),
+    );
+
+    // A torrent saved into the base with no folder of its own reports the
+    // base itself as its content
+    http.push_for(
+        "torrents/info",
+        200,
+        json!([{"hash": "cc", "name": "x", "state": "uploading", "progress": 1.0,
+                "save_path": dir.path().to_string_lossy(), "content_path": lib.to_string_lossy()}])
+        .to_string(),
+    );
+    let job = started(
+        &core,
+        Call::RemoveShow {
+            title: "Frieren".to_string(),
+            rule: Some("Frieren".to_string()),
+            hashes: vec!["cc".to_string()],
+            torrents: true,
+            files: true,
+            series: None,
+        },
+    );
+    let failed = common::wait_for(
+        &c,
+        |e| {
+            e.job.as_ref().is_some_and(|j| j.id == job)
+                && matches!(e.body, EventBody::JobFailed { .. })
+        },
+        Duration::from_secs(10),
+    );
+    let EventBody::JobFailed { error } = &failed.body else {
+        panic!("{:?}", failed.body)
+    };
+    assert!(matches!(error, CoreError::Invalid { .. }), "{error:?}");
+    let requests = http.requests();
+    assert!(
+        !requests
+            .iter()
+            .any(|r| r.url.contains("subscriptions/remove")),
+        "the rule stays"
+    );
+    assert!(
+        !requests.iter().any(|r| r.url.contains("torrents/delete")),
+        "the torrents stay"
+    );
+    assert!(lib.join("Frieren").exists());
+
+    assert!(matches!(
+        core.call(Call::RemoveShow {
+            title: String::new(),
+            rule: None,
+            hashes: vec![],
+            torrents: true,
+            files: false,
+            series: None,
+        }),
+        Err(CoreError::Invalid { .. })
+    ));
+}
+
+/// A subscription narrowed on anirss's side (1337x through Jackett): the
+/// rule anirss made reads a feed that searches for every word and finds
+/// nothing, so the core points it at the feed the search read and keeps
+/// the narrowing words in the rule; the rule first, then the empty feed
+/// out, then the search's feed in.
+#[test]
+fn a_locally_narrowed_subscription_reads_the_searched_feed_and_filters_in_the_rule() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    isolate_xdg(dir.path());
+    save(&core, remote(), Some("tok"), Some("pw"));
+    // Connect so the core knows 1337x is a generic RSS endpoint
+    http.push_for(
+        "/health",
+        200,
+        json!({"ok": true, "version": "0.3.4"}).to_string(),
+    );
+    http.push_for(
+        "/endpoints",
+        200,
+        json!({"endpoints": [{"name": "1337x", "kind": "rss", "url": "http://127.0.0.1:9117/x?q={query}", "client_side_refine": true}]}).to_string(),
+    );
+    http.push_for(
+        "/qbt/status",
+        200,
+        json!({"url": "http://localhost:9090", "reachable": true, "authenticated": true})
+            .to_string(),
+    );
+    http.push_for("app/version", 200, "v5.2.4");
+    let job = started(&core, Call::ConnectDownloads);
+    common::wait_job(&c, job);
+
+    let narrow = "http://127.0.0.1:9117/x?q=Helluva+Boss+S03+1080p+WEB-DL";
+    let wide = "http://127.0.0.1:9117/x?q=Helluva+Boss+S03";
+    http.push_for(
+        "api/v1/subscriptions",
+        201,
+        json!({"name": "Helluva Boss", "feed_url": narrow, "save_path": "/media/TV/Helluva Boss",
+               "must_contain": "", "must_not_contain": "", "tags": ["TV"]})
+        .to_string(),
+    );
+    http.push_for(
+        "subscriptions/preview",
+        200,
+        json!({"feed_url": wide, "must_contain": "", "must_not_contain": "", "endpoint_name": "1337x"}).to_string(),
+    );
+    http.push_for(
+        "rss/rules",
+        200,
+        json!({"Helluva Boss": {"enabled": true, "mustContain": "", "mustNotContain": "", "affectedFeeds": [narrow],
+                                "savePath": "/media/TV/Helluva Boss"}}).to_string(),
+    );
+    http.push_for("rss/setRule", 200, "");
+    http.push_for(
+        "rss/items",
+        200,
+        json!({"Helluva Boss": {"uid": "u", "url": narrow}}).to_string(),
+    );
+    http.push_for("rss/removeItem", 200, "");
+    http.push_for("rss/addFeed", 200, "");
+
+    let job = started(
+        &core,
+        Call::Subscribe {
+            query: "Helluva Boss S03 1080p WEB-DL".to_string(),
+            endpoint: "1337x".to_string(),
+            items: vec![release(1, json!(5))],
+            name: Some("Helluva Boss".to_string()),
+            wire_query: Some("Helluva Boss S03".to_string()),
+        },
+    );
+    let event = common::wait_job(&c, job);
+    let EventBody::Subscribed { result } = &event.body else {
+        panic!("{:?}", event.body)
+    };
+    assert_eq!(result.feed_url, wide);
+    assert_eq!(result.must_contain, "1080p WEB-DL");
+
+    let rss: Vec<_> = http
+        .requests()
+        .into_iter()
+        .filter(|r| r.url.contains("/rss/"))
+        .collect();
+    let order: Vec<&str> = rss
+        .iter()
+        .map(|r| r.url.rsplit('/').next().unwrap_or(""))
+        .collect();
+    assert_eq!(
+        order,
+        vec!["rules", "setRule", "items", "removeItem", "addFeed"],
+        "the rule moves before any feed does"
+    );
+    let set = form_of(&rss[1]);
+    assert!(set.contains("\"mustContain\":\"1080p WEB-DL\""), "{set}");
+    assert!(
+        set.contains(&format!("\"affectedFeeds\":[\"{wide}\"]")),
+        "{set}"
+    );
+    assert_eq!(form_of(&rss[3]), "path=Helluva Boss");
+    assert_eq!(form_of(&rss[4]), format!("url={wide}&path=Helluva Boss"));
+}
+
+/// A rule whose feed finds nothing: the core shortens the feed's search
+/// word by word until the endpoint answers, keeps the dropped words in the
+/// rule, and swaps the feed in the order a fresh subscription does.
+#[test]
+fn repair_shortens_an_empty_feed_until_it_answers_and_keeps_the_words() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    isolate_xdg(dir.path());
+    save(&core, remote(), Some("tok"), Some("pw"));
+    let broken = "http://127.0.0.1:9117/x?apikey=K&t=search&q=Helluva.Boss.+S03+TBK";
+    let empty = r#"<rss><channel><title>1337x</title></channel></rss>"#;
+    let six = r#"<rss><channel>
+        <item><title>Helluva.Boss.S03E01.1080p.WEB-DL-TBK</title><link>http://j/dl/1</link></item>
+        <item><title>Helluva.Boss.S03E01.1080p.HEVC.x265-MeGusta</title><link>http://j/dl/2</link></item>
+      </channel></rss>"#;
+    http.push_for(
+        "rss/rules",
+        200,
+        json!({"Helluva.Boss.": {"enabled": true, "mustContain": "", "mustNotContain": "", "affectedFeeds": [broken]}}).to_string(),
+    );
+    http.push_for("q=Helluva.Boss.+S03+TBK", 200, empty);
+    http.push_for("q=Helluva.Boss.%20S03", 200, six);
+    http.push_for("rss/setRule", 200, "");
+    http.push_for(
+        "rss/items",
+        200,
+        json!({"Helluva.Boss.": {"uid": "u", "url": broken}}).to_string(),
+    );
+    http.push_for("rss/removeItem", 200, "");
+    http.push_for("rss/addFeed", 200, "");
+
+    let job = started(
+        &core,
+        Call::RepairSubscription {
+            name: "Helluva.Boss.".to_string(),
+        },
+    );
+    let event = common::wait_job(&c, job);
+    let EventBody::SubscriptionRepaired {
+        feed_url,
+        must_contain,
+        found,
+        ..
+    } = &event.body
+    else {
+        panic!("{:?}", event.body)
+    };
+    assert_eq!(
+        feed_url,
+        "http://127.0.0.1:9117/x?apikey=K&t=search&q=Helluva.Boss.%20S03"
+    );
+    assert_eq!(must_contain, "TBK");
+    assert_eq!(*found, 2);
+    let rss: Vec<String> = http
+        .requests()
+        .into_iter()
+        .filter(|r| r.url.contains("/rss/"))
+        .map(|r| r.url.rsplit('/').next().unwrap_or("").to_string())
+        .collect();
+    assert_eq!(
+        rss,
+        vec!["rules", "setRule", "items", "removeItem", "addFeed"]
     );
 }

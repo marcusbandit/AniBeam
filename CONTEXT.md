@@ -146,6 +146,14 @@ _Avoid_: scale, zoom, compact mode
 One entry a search endpoint returns: a title, a link (a magnet or a `.torrent` URL) and whatever the feed carries beside them. A count the feed did not carry is unknown, never nought. The shape is anirss's `Item`, kept field for field so a release goes back to anirss unchanged.
 _Avoid_: torrent (that is what it becomes once added), result, item, entry
 
+**Release facts**:
+What the core reads off a release's title beside anirss's fields: the episode (and season), whether it is a batch, the release group, the resolution, the size in bytes, and whether the library series the search names already has that episode (On disk). A title the core cannot read gets no episode, never episode 1. The date each release was posted, and a torznab feed's counts, come from the core's own read of the feed the search used, after the search answers.
+_Avoid_: metadata, parsed info
+
+**On-demand endpoint**:
+An endpoint anirss starts only when a search needs it (1337x: a podman pod behind Jackett), and keeps up while the sidecar holds its lease. The first search waits for it to come up, up to the endpoint's timeout; the page says so while it waits ("Starting 1337x"), then "Searching 1337x".
+_Avoid_: harness, container, lazy endpoint
+
 **Endpoint**:
 One site a search goes to, as anirss configures it: nyaa-style, or any RSS search URL. They sit in an order; a search that finds nothing on one falls through to the next.
 _Avoid_: tracker site, indexer, source
@@ -170,8 +178,28 @@ _Avoid_: auto-pick, recommended
 An RSS feed and an auto-download rule registered in the torrent client under one name, so every new release that matches lands under that name's folder. anirss registers and removes them; the core only asks.
 _Avoid_: rule, feed, watch
 
+**Wire query**:
+The query an endpoint itself was last asked. On a generic RSS endpoint (1337x through Jackett) anirss narrows a search on its own side, so the page's query can hold words the endpoint never saw, and a feed built from them finds nothing. Subscribing hands the core the wire query too: the subscription's feed reads that, and the narrowing words go into the rule's own filters (its "keeps" and "drops"). A feed found empty later can be repaired the same way: its search shortened from the end until the endpoint answers, the dropped words kept in the rule.
+_Avoid_: base query, raw query
+
+**Complete subscription**:
+A subscription whose show has finished airing (or was cancelled) with every episode from 1 to the total on disk, counted by distinct episode number so a v2 beside its v1 counts once. Nothing more will come, so the subscription has nothing left to do: the rail counts these in red and the page offers to unsubscribe from all of them at once. A film is complete once its file is there. An estimated or unknown total is never complete.
+_Avoid_: finished, done, stale
+
+**Unsubscribe**:
+Taking a subscription away: its feed and its download rule always leave the torrent client; ticked, its torrents go too, and ticked again its files go to the trash (which takes the torrents along). Three answers, never more: the rule; the rule and the torrents; the rule, the torrents and the files. Files are never deleted for good, only moved to the trash on their own drive.
+_Avoid_: remove RSS, delete subscription
+
+**Downloaded show**:
+Every torrent the client holds for one folder, as one entry: the series that folder fills when the library has it, else the folder by name. Its state is what the client is doing with the torrents: downloading, seeding, done, stopped, or files missing (the torrents point at a folder that is not there). Removing it takes the torrents, and ticked, the files to the trash; a subscription it has stays.
+_Avoid_: group, torrent list
+
+**Show link**:
+How a subscription or a torrent finds its library series: by the save folder's exact path, else its last component, else that component with case and punctuation dropped. A client can name the library's folder under another mount, and anirss can spell a rule's folder a little differently.
+_Avoid_: match (that is the metadata match), mapping
+
 **Transfer**:
-A torrent as the torrent client reports it: its state, progress and speed. The one thing in the app that is polled, and only while the Downloads page is up.
+A torrent as the torrent client reports it: its state, progress and speed. The one thing in the app that is polled, and only while the Downloads page is up: every two seconds while one is moving, every fifteen while none is.
 _Avoid_: download, job, task
 
 **Sidecar**:

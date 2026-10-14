@@ -71,13 +71,39 @@ below where they disagree:
 - **Downloads is anirss's front, in the same column math.** The head row (the title,
   one line saying how anirss and the torrent client stand, the two as chips that open
   the Downloads settings), the search row (the field, the endpoint, Search), and with a
-  search up: the query line (Back, the query, the count, what anirss said), the groups
-  as chips, Narrow and Best fit, then the releases as flat rows with a selection mark at
-  the left and the actions pane (a name, Subscribe, Download, Movie, what the last action
-  did) at the right. Under everything the subscriptions and the transfers side by side,
-  flat rows with a hairline, the transfers' progress a 2 px line along each row's foot.
-  Remove on a subscription asks anirss for the plan first and shows it as the inline
-  confirm; Remove on a transfer offers torrent only or files as well.
+  search up: the query line (Back, the query, the count, what anirss said); while it runs,
+  a panel naming the phase (Starting 1337x, Searching nyaa), the seconds, why it takes that
+  long, a bar (filling toward an on-demand endpoint's start ceiling, else a sweep), Cancel
+  and the other endpoints to try; anirss's groups as filter rows (Release group, Quality,
+  the rest behind More filters); Narrow and Best fit; the library series the query names,
+  with its poster, what is on disk, and Tick the missing episodes (the best-seeded release
+  per episode the library lacks); then the releases as a sortable table (`ReleaseTable.qml`:
+  the cleaned name with its group, resolution, episode or Batch and On disk as chips, then
+  size, seeders, leechers, downloads and when posted), and beside it a pane that keeps in
+  view while the table scrolls (what is ticked and its size, Download, Download as a movie,
+  Subscribe with its name and the rule it makes, what the last action
+  did) at the right. With no search up the page is three bands, each a grid of posters
+  (`ShowCard.qml`) or a list of rows with thumbnails (`ShowRow.qml`), switched in the
+  band's head: Downloading, only while something moves; Subscriptions in sections by
+  where the show stands (Complete, Airing, Incomplete, and Not in the library as short
+  text tiles), each section a dot in its colour, its title, count and one line; Downloaded
+  in sections by what the client is doing (Seeding, Done, Stopped, Files missing). State
+  tags are dark glass with a coloured dot and light writing, never white on a colour. A
+  poster or a row opens the show inside the page (`ShowDetail.qml`): the poster with Open
+  in library, where the show stands in one sentence, every episode as a cell, Unsubscribe
+  and Remove torrents, the subscription's facts, then the feed as it reads now beside the
+  folder's torrents. Subscribing opens that view on the new subscription: for a minute and
+  a half the page reads the torrents every two seconds and the rule every four, one line
+  says what qBittorrent is doing (reading the feed, how many of the feed's releases the
+  rule takes, how many are downloading), and each feed release is marked Downloading,
+  Downloaded, Taken by the rule or Left out by the rule. A feed that comes back empty gets
+  an orange panel saying why and a Repair button. Nothing on the page sends the person to
+  a browser. Every removal goes
+  through one sheet by the button that asked (`RemoveSheet.qml`): what always goes, then
+  up to two ticks, the torrents and the files (ticking the files ticks the torrents);
+  files go to the trash. Complete has Unsubscribe all, Files missing has Remove all, and a
+  run of removals goes one at a time. The rail's Downloads glyph carries a red count of
+  complete subscriptions.
 - **Metadata and Settings are flat too, and `mosaic.js` is gone.** Metadata is the head
   row (the title in the display cut, the count, the filter, Match unmatched and Refresh
   all as flat pills, the search at the right) over a flat list: a poster thumbnail, the

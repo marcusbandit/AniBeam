@@ -276,6 +276,7 @@ pub mod qobject {
             endpoint: &QString,
             items: &QJsonArray,
             name: &QString,
+            wire_query: &QString,
         ) -> QJsonObject;
         #[qinvokable]
         fn download_releases(self: &Door, items: &QJsonArray, name: &QString) -> QJsonObject;
@@ -287,6 +288,16 @@ pub mod qobject {
         /// Replies `Ok`; the list arrives as `torrentsRead`, or `downloadsUnavailable`.
         #[qinvokable]
         fn list_torrents(self: &Door) -> QJsonObject;
+        /// Replies `Ok`; the entries arrive as `feedRead`, or `downloadsUnavailable` with
+        /// `what` "feed".
+        #[qinvokable]
+        fn read_feed(self: &Door, url: &QString) -> QJsonObject;
+        /// Replies `Ok`; the rule arrives as `ruleRead`, or `downloadsUnavailable` with
+        /// `what` "rule".
+        #[qinvokable]
+        fn read_rule(self: &Door, name: &QString) -> QJsonObject;
+        #[qinvokable]
+        fn repair_subscription(self: &Door, name: &QString) -> QJsonObject;
         #[qinvokable]
         fn plan_remove_subscription(
             self: &Door,
@@ -308,6 +319,17 @@ pub mod qobject {
             hashes: &QJsonArray,
             action: &QString,
             files: bool,
+        ) -> QJsonObject;
+        /// One removal for a show: `rule` empty for none, `series` below 0 for none.
+        #[qinvokable]
+        fn remove_show(
+            self: &Door,
+            title: &QString,
+            rule: &QString,
+            hashes: &QJsonArray,
+            torrents: bool,
+            files: bool,
+            series: f64,
         ) -> QJsonObject;
         /// `secrets` carries `anirss_token` and `torrent_password` only when they are to
         /// change: a key left out keeps what is stored, an empty string removes it.
@@ -436,7 +458,32 @@ pub mod qobject {
         #[qsignal]
         fn subscriptions_read(self: Pin<&mut Door>, rules: QJsonArray);
         #[qsignal]
-        fn torrents_read(self: Pin<&mut Door>, torrents: QJsonArray, transfer: QJsonObject);
+        fn torrents_read(
+            self: Pin<&mut Door>,
+            torrents: QJsonArray,
+            transfer: QJsonObject,
+            shows: QJsonArray,
+        );
+        #[qsignal]
+        fn feed_read(self: Pin<&mut Door>, url: QString, entries: QJsonArray);
+        #[qsignal]
+        fn rule_read(self: Pin<&mut Door>, rule: QJsonObject);
+        #[qsignal]
+        fn subscription_repaired(
+            self: Pin<&mut Door>,
+            job: f64,
+            name: QString,
+            feed_url: QString,
+            must_contain: QString,
+            found: f64,
+        );
+        #[qsignal]
+        fn releases_enriched(
+            self: Pin<&mut Door>,
+            query: QString,
+            endpoint: QString,
+            entries: QJsonArray,
+        );
         #[qsignal]
         fn downloads_unavailable(self: Pin<&mut Door>, what: QString, error: QJsonObject);
         #[qsignal]
@@ -445,6 +492,16 @@ pub mod qobject {
         fn subscription_removed(self: Pin<&mut Door>, name: QString);
         #[qsignal]
         fn torrents_controlled(self: Pin<&mut Door>, hashes: QJsonArray, action: QString);
+        /// `rule` is empty when the show had none.
+        #[qsignal]
+        fn show_removed(
+            self: Pin<&mut Door>,
+            job: f64,
+            title: QString,
+            rule: QString,
+            hashes: QJsonArray,
+            trashed: QJsonArray,
+        );
     }
 
     impl cxx_qt::Threading for Door {}
@@ -992,14 +1049,35 @@ impl qobject::Door {
             EventBody::Subscribed { .. } => self.as_mut().subscribed(job_id, obj("result")),
             EventBody::TorrentsAdded { .. } => self.as_mut().torrents_added(job_id, obj("result")),
             EventBody::SubscriptionsRead { .. } => self.as_mut().subscriptions_read(arr("rules")),
-            EventBody::TorrentsRead { .. } => self
-                .as_mut()
-                .torrents_read(arr("torrents"), obj("transfer")),
+            EventBody::TorrentsRead { .. } => {
+                self.as_mut()
+                    .torrents_read(arr("torrents"), obj("transfer"), arr("shows"))
+            }
+            EventBody::FeedRead { .. } => self.as_mut().feed_read(s("url"), arr("entries")),
+            EventBody::RuleRead { .. } => self.as_mut().rule_read(obj("rule")),
+            EventBody::SubscriptionRepaired { .. } => self.as_mut().subscription_repaired(
+                job_id,
+                s("name"),
+                s("feed_url"),
+                s("must_contain"),
+                n("found"),
+            ),
+            EventBody::ReleasesEnriched { .. } => {
+                self.as_mut()
+                    .releases_enriched(s("query"), s("endpoint"), arr("entries"))
+            }
             EventBody::DownloadsUnavailable { error, .. } => self
                 .as_mut()
                 .downloads_unavailable(s("what"), to_qjson_object(&json::error_json(error))),
             EventBody::RemovalPlanned { .. } => self.as_mut().removal_planned(job_id, arr("plans")),
             EventBody::SubscriptionRemoved { .. } => self.as_mut().subscription_removed(s("name")),
+            EventBody::ShowRemoved { rule, .. } => self.as_mut().show_removed(
+                job_id,
+                s("title"),
+                QString::from(rule.as_deref().unwrap_or("")),
+                arr("hashes"),
+                arr("trashed"),
+            ),
             EventBody::TorrentsControlled { action, .. } => {
                 let word = match action {
                     TorrentAction::Stop => "Stop",
@@ -1426,12 +1504,14 @@ impl qobject::Door {
         endpoint: &QString,
         items: &QJsonArray,
         name: &QString,
+        wire_query: &QString,
     ) -> QJsonObject {
         self.dispatch(releases(items).map(|items| Call::Subscribe {
             query: query.to_string(),
             endpoint: endpoint.to_string(),
             items,
             name: non_empty(name),
+            wire_query: non_empty(wire_query),
         }))
     }
     pub fn download_releases(&self, items: &QJsonArray, name: &QString) -> QJsonObject {
@@ -1450,6 +1530,21 @@ impl qobject::Door {
     }
     pub fn list_torrents(&self) -> QJsonObject {
         self.dispatch(Ok(Call::ListTorrents))
+    }
+    pub fn repair_subscription(&self, name: &QString) -> QJsonObject {
+        self.dispatch(Ok(Call::RepairSubscription {
+            name: name.to_string(),
+        }))
+    }
+    pub fn read_rule(&self, name: &QString) -> QJsonObject {
+        self.dispatch(Ok(Call::ReadRule {
+            name: name.to_string(),
+        }))
+    }
+    pub fn read_feed(&self, url: &QString) -> QJsonObject {
+        self.dispatch(Ok(Call::ReadFeed {
+            url: url.to_string(),
+        }))
     }
     pub fn plan_remove_subscription(
         &self,
@@ -1490,6 +1585,28 @@ impl qobject::Door {
             )),
         };
         self.dispatch(action.map(|action| Call::ControlTorrents { hashes, action }))
+    }
+    pub fn remove_show(
+        &self,
+        title: &QString,
+        rule: &QString,
+        hashes: &QJsonArray,
+        torrents: bool,
+        files: bool,
+        series: f64,
+    ) -> QJsonObject {
+        let hashes: Vec<String> = hashes
+            .iter()
+            .filter_map(|h| json::from_qjson(&h).as_str().map(String::from))
+            .collect();
+        self.dispatch(Ok(Call::RemoveShow {
+            title: title.to_string(),
+            rule: non_empty(rule),
+            hashes,
+            torrents,
+            files,
+            series: (series >= 0.0).then_some(series as u64),
+        }))
     }
     pub fn set_download_settings(
         &self,

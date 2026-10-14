@@ -1,7 +1,7 @@
 // One torrent as the torrent client reports it: the name, its state in words, the facts
 // in the ledger cut (done of size, speed, time left, peers), a 2 px progress line along
-// the foot, and Stop or Start and Remove at the right. Remove turns the row's controls
-// into an inline question with two red answers, torrent only or files as well, and Keep.
+// the foot, and Stop or Start and Remove at the right. Remove opens the removal sheet
+// (the torrent goes, and with a tick what it downloaded goes to the trash).
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -10,7 +10,7 @@ Item {
     property var torrent: ({})
     signal stop()
     signal start()
-    signal remove(bool files)
+    signal removeAsked(Item anchor)
 
     readonly property var t: torrent || ({})
     readonly property string state: String(t.state || "")
@@ -43,7 +43,6 @@ Item {
         if (!root.done) parts.push(String(root.t.num_seeds || 0) + " seeds")
         return parts.join(", ")
     }
-    property bool asking: false
 
     width: parent ? parent.width : theme.space(100)
     height: theme.space(13)
@@ -84,50 +83,28 @@ Item {
             elide: Text.ElideRight
         }
     }
-    // The controls, or the question in their place
-    Item {
+    Row {
         id: controls
         anchors.right: parent.right
         anchors.rightMargin: theme.space(1.5)
         anchors.verticalCenter: parent.verticalCenter
-        width: root.asking ? ask.width : buttons.width
-        height: theme.controlHeight
-        Row {
-            id: buttons
-            visible: !root.asking
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: theme.space(1.5)
-            Button {
-                visible: !root.erred
-                text: root.stopped ? "Start" : "Stop"
-                icon: root.stopped ? "play" : "pause"
-                flat: true
-                small: true
-                onClicked: root.stopped ? root.start() : root.stop()
-            }
-            Button {
-                text: "Remove"
-                icon: "trash-2"
-                flat: true
-                small: true
-                onClicked: root.asking = true
-            }
+        spacing: theme.space(1.5)
+        Button {
+            visible: !root.erred
+            text: root.stopped ? "Start" : "Stop"
+            icon: root.stopped ? "play" : "pause"
+            flat: true
+            small: true
+            onClicked: root.stopped ? root.start() : root.stop()
         }
-        Row {
-            id: ask
-            visible: root.asking
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: theme.space(2)
-            function sync() { if (visible) frame.escapeStack.push("confirm", ask); else frame.escapeStack.pop(ask) }
-            function close() { root.asking = false }
-            onVisibleChanged: sync()
-            Component.onDestruction: frame.escapeStack.pop(ask)
-            Label { anchors.verticalCenter: parent.verticalCenter; text: "Remove this torrent?"; role: "ui" }
-            Button { text: "Keep files"; icon: "trash-2"; danger: true; small: true; onClicked: { root.asking = false; root.remove(false) } }
-            Button { text: "Delete files"; icon: "trash"; danger: true; small: true; onClicked: { root.asking = false; root.remove(true) } }
-            Button { text: "Keep"; flat: true; small: true; onClicked: root.asking = false }
+        Button {
+            id: removeButton
+            objectName: "torrent-remove"
+            text: "Remove"
+            icon: "x"
+            flat: true
+            small: true
+            onClicked: root.removeAsked(removeButton)
         }
     }
     // The progress line along the foot, the hairline under it

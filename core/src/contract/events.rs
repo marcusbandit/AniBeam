@@ -171,6 +171,34 @@ pub enum EventBody {
     TorrentsRead {
         torrents: Vec<Torrent>,
         transfer: TransferRate,
+        /// The library series the torrents' `series_id`s name, once each.
+        shows: Vec<ShowLink>,
+    },
+    /// What the endpoint's own feed says about a search's releases (the
+    /// date each was posted, the counts a feed carries that anirss drops),
+    /// read after the search answered. Joined to the releases by link,
+    /// else title.
+    ReleasesEnriched {
+        query: String,
+        endpoint: String,
+        entries: Vec<FeedEntry>,
+    },
+    RuleRead {
+        rule: RuleView,
+    },
+    /// A subscription mended: the feed it reads now, what the rule keeps,
+    /// and how many releases the new feed held when read.
+    SubscriptionRepaired {
+        name: String,
+        feed_url: String,
+        must_contain: String,
+        found: u64,
+    },
+    /// A subscription's feed, read for the page: `url` is the one asked
+    /// for, so a late answer for a feed since closed can be told apart.
+    FeedRead {
+        url: String,
+        entries: Vec<FeedEntry>,
     },
     /// A read that is not a job could not be made: which read, and why.
     DownloadsUnavailable {
@@ -182,6 +210,14 @@ pub enum EventBody {
     },
     SubscriptionRemoved {
         name: String,
+    },
+    /// What `RemoveShow` took: the rule when it had one, the torrents it
+    /// took out of the client, the paths it moved to the trash.
+    ShowRemoved {
+        title: String,
+        rule: Option<String>,
+        hashes: Vec<String>,
+        trashed: Vec<String>,
     },
     TorrentsControlled {
         hashes: Vec<String>,

@@ -5,6 +5,7 @@
 //! received from anirss goes back to it unchanged (anirss keeps no search
 //! state; the caller sends `{endpoint, query, items}` with every step).
 
+use super::{Airing, AiringStatus, SeriesKind};
 use serde::{Deserialize, Serialize};
 
 /// One release from a feed: anirss's `Item`. The three counts are `None`
@@ -85,6 +86,11 @@ pub struct SearchEndpoint {
     pub url: String,
     #[serde(default)]
     pub client_side_refine: bool,
+    /// For an endpoint anirss starts on demand (a pod behind Jackett), the
+    /// seconds anirss gives it to come up; None for one that is always
+    /// there. Read from anirss's own config by the core.
+    #[serde(default)]
+    pub on_demand: Option<u64>,
 }
 
 /// A search and its first analysis in one: the items, where they came
@@ -103,6 +109,17 @@ pub struct ReleaseSearch {
     pub fell_back: bool,
     pub client_side: bool,
     pub auto_resolution: Option<String>,
+    /// Index for index with `items`.
+    #[serde(default)]
+    pub facts: Vec<ReleaseFacts>,
+    /// The library series the query names, when one fits.
+    #[serde(default)]
+    pub show: Option<ShowLink>,
+    /// The query the endpoint itself was asked, before anirss narrowed the
+    /// result on its own side (an auto-resolution on a generic RSS
+    /// endpoint): what a subscription's feed should search.
+    #[serde(default)]
+    pub fetched_query: String,
 }
 
 /// One refine step. `Tokens` narrows to a group, `Term` adds a positive
@@ -135,6 +152,11 @@ pub struct Refinement {
     pub previous_count: u64,
     #[serde(default)]
     pub delta: i64,
+    /// Index for index with `items`; the core fills these, anirss does not.
+    #[serde(default)]
+    pub facts: Vec<ReleaseFacts>,
+    #[serde(default)]
+    pub show: Option<ShowLink>,
 }
 
 /// What subscribing would register, before it does.
@@ -194,6 +216,38 @@ pub struct SubscriptionRule {
     /// when the feed has none.
     #[serde(default)]
     pub query: String,
+    /// The library series the rule's folder fills, when the library holds
+    /// it: the core fills this in, anirss knows nothing of it.
+    #[serde(default)]
+    pub show: Option<ShowLink>,
+}
+
+/// A library series as the downloads page shows it beside a rule or a
+/// group of torrents. Linked by folder: the exact path first, then the
+/// folder's name, then the name with case and punctuation dropped, since
+/// a client's save path can name the same folder under another mount.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct ShowLink {
+    pub series_id: u64,
+    pub kind: SeriesKind,
+    pub title: String,
+    pub path: String,
+    pub poster: Option<String>,
+    pub status: Option<AiringStatus>,
+    /// Distinct episode numbers on disk, so a v2 next to its v1 counts
+    /// once.
+    pub episodes_on_disk: u64,
+    pub total_episodes: Option<u32>,
+    pub total_is_estimate: bool,
+    pub next_airing: Option<Airing>,
+    /// Every episode from 1 to the total is on disk and the show has
+    /// finished airing (or was cancelled): nothing more will come, so the
+    /// subscription has nothing left to do. A film is complete once its
+    /// file is there.
+    pub complete: bool,
+    /// The episode numbers from 1 to the total that are not on disk, when
+    /// the total is known. Empty for a complete show.
+    pub missing: Vec<u32>,
 }
 
 fn default_true() -> bool {
@@ -216,6 +270,38 @@ pub struct RemovePlan {
     /// asked for.
     #[serde(default)]
     pub torrents: Vec<String>,
+}
+
+/// What the core reads off a release beyond anirss's fields, index for
+/// index with the items it came with. `episode` is None for a batch and
+/// for a title naming none; `on_disk` is true when the library series the
+/// search names already has that episode.
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize, uniffi::Record)]
+pub struct ReleaseFacts {
+    pub episode: Option<f64>,
+    pub season: Option<u32>,
+    pub batch: bool,
+    pub group: String,
+    pub resolution: String,
+    pub size_bytes: Option<u64>,
+    pub on_disk: bool,
+}
+
+/// A subscription's rule as qBittorrent holds it now, and what it takes:
+/// `matching` is the titles of the articles in its feeds that the rule
+/// accepts, as qBittorrent judges them (an empty list before qBittorrent
+/// has read the feed, or when nothing in it fits the rule yet).
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize, uniffi::Record)]
+pub struct RuleView {
+    pub name: String,
+    pub enabled: bool,
+    pub must_contain: String,
+    pub must_not_contain: String,
+    pub save_path: String,
+    pub feeds: Vec<String>,
+    /// qBittorrent's own words for when it last took something, or empty.
+    pub last_match: String,
+    pub matching: Vec<String>,
 }
 
 /// One torrent as qBittorrent reports it, trimmed to what the page draws.
@@ -241,6 +327,33 @@ pub struct Torrent {
     pub completion_on: i64,
     pub tags: String,
     pub category: String,
+    /// The library series this torrent's folder fills, linked as a
+    /// `ShowLink` is; its record travels beside the list.
+    #[serde(default)]
+    pub series_id: Option<u64>,
+}
+
+/// One release in a subscription's feed, read by the core straight from
+/// the feed so the page can show what the feed holds without leaving the
+/// app. Nyaa's own fields and torznab's attributes both land here; a field
+/// the feed did not carry is empty or `None`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct FeedEntry {
+    pub title: String,
+    /// The torrent or magnet link.
+    pub link: String,
+    /// The release's own page, when the feed names one.
+    pub page: String,
+    /// When it was posted, Unix seconds.
+    pub published: Option<i64>,
+    /// The size as the feed wrote it ("1.4 GiB"), or formatted from bytes.
+    pub size: String,
+    pub size_bytes: Option<u64>,
+    pub seeders: Option<i64>,
+    pub leechers: Option<i64>,
+    pub downloads: Option<i64>,
+    /// Lower case hex, empty when the feed carried none.
+    pub info_hash: String,
 }
 
 /// qBittorrent's transfer totals.
