@@ -95,6 +95,19 @@ pub struct SeriesCard {
     /// to Jun Spring, Jul to Sep Summer, Oct to Dec Fall); None without a date.
     #[serde(default)]
     pub season: Option<String>,
+    /// The IMDb title behind the match, as IMDb writes it: "tt" and at least
+    /// seven digits, "tt0213338". A TVmaze match names its own; an AniList
+    /// or MAL match is linked through Wikidata. None for a TMDB match, an
+    /// unmatched series, or a match nothing links to IMDb. Set even when the
+    /// title has no rating yet.
+    #[serde(default)]
+    pub imdb_id: Option<String>,
+    /// IMDb's average rating, already 0 to 10, from IMDb's own dump.
+    #[serde(default)]
+    pub imdb_score: Option<f64>,
+    /// How many votes that average stands on.
+    #[serde(default)]
+    pub imdb_votes: Option<u64>,
 }
 
 /// One franchise as the library page groups it: the connected component of

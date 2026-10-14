@@ -590,6 +590,9 @@ mod tests {
             franchise: None,
             year: None,
             season: None,
+            imdb_id: None,
+            imdb_score: None,
+            imdb_votes: None,
         }
     }
 

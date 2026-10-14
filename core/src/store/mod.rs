@@ -275,6 +275,10 @@ mod tests {
             .write(|c| Ok(c.query_row("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name IN ('tvmaze_shows','tvmaze_episodes')", [], |r| r.get(0))?))
             .unwrap();
         assert_eq!(tvmaze, 2);
+        let imdb: i64 = store
+            .write(|c| Ok(c.query_row("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name IN ('imdb_ratings','imdb_links')", [], |r| r.get(0))?))
+            .unwrap();
+        assert_eq!(imdb, 2);
     }
 
     /// A version 1 database takes every later migration in place: its

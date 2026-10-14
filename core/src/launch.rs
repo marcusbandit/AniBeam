@@ -2,9 +2,10 @@
 //!
 //! One catch-up walk of the library, and behind it the jobs a fresh start
 //! owes: the match, the backfill, the crawl, the airing schedules, the
-//! tracker lists, the images. Nothing here is on a timer. The scan's own
-//! terminal event is the trigger, so the list runs when the library is
-//! actually on the tables rather than at some guessed moment after it.
+//! IMDb ratings, the tracker lists, the images. Nothing here is on a timer.
+//! The scan's own terminal event is the trigger, so the list runs when the
+//! library is actually on the tables rather than at some guessed moment
+//! after it.
 //!
 //! Terminal means terminal, whatever it says: a scan the user cancelled from
 //! the job list and a scan that failed both end the launch's waiting exactly
@@ -20,7 +21,7 @@ use crate::core::Core;
 use crate::franchise::crawl;
 use crate::images;
 use crate::library::scan::{self, ScanScope};
-use crate::metadata::{airing, apply, automatch};
+use crate::metadata::{airing, apply, automatch, imdb};
 use crate::trackers::cache;
 
 /// The catch-up walk, and the one-shot listener that turns its end into the
@@ -114,6 +115,7 @@ fn after_scan(core: &Arc<Core>) {
     apply::backfill_stubs(core);
     crawl::start_gap_crawl(core);
     airing::start_refresh_library(core);
+    imdb::start_refresh(core);
     cache::start_refresh(core, None, false);
     images::start_fill(core);
 

@@ -25,6 +25,7 @@ impl MalClient {
                 url: url.to_string(),
                 headers: bearer(token),
                 body: None,
+                timeout: None,
             })
             .await
     }
@@ -42,6 +43,7 @@ impl MalClient {
                 url: url.to_string(),
                 headers: bearer(token),
                 body: Some(Body::Form(form)),
+                timeout: None,
             })
             .await
     }
@@ -59,6 +61,7 @@ impl MalClient {
                 url: url.to_string(),
                 headers: vec![],
                 body: Some(Body::Form(form)),
+                timeout: None,
             })
             .await
     }
@@ -79,6 +82,7 @@ impl MalClient {
                     url: url.to_string(),
                     headers: bearer(token),
                     body: None,
+                    timeout: None,
                 },
                 timeout,
             )
@@ -100,6 +104,7 @@ impl MalClient {
                     url: url.to_string(),
                     headers: vec![],
                     body: Some(Body::Form(form)),
+                    timeout: None,
                 },
                 timeout,
             )

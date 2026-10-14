@@ -271,6 +271,7 @@ impl Snapshot {
         let episodes = self.episodes_on_disk(row.id);
         let airing = self.airing_of(row);
         let media = row.media.as_ref();
+        let imdb = self.imdb.get(&row.id);
 
         let latest_downloaded = episodes.last().map_or(0.0, |f| f.number).max(0.0) as u32;
         let (latest_aired, next_scheduled) = self.aired_and_next(row, now);
@@ -356,6 +357,9 @@ impl Snapshot {
                 media.and_then(|m| m.start_date.as_deref()),
                 media.and_then(|m| m.year),
             ),
+            imdb_id: imdb.map(|p| format!("tt{:07}", p.id)),
+            imdb_score: imdb.and_then(|p| p.rating).map(|t| f64::from(t) / 10.0),
+            imdb_votes: imdb.and_then(|p| p.votes),
         }
     }
 
@@ -669,6 +673,9 @@ mod tests {
             franchise: None,
             year: None,
             season: None,
+            imdb_id: None,
+            imdb_score: None,
+            imdb_votes: None,
         }
     }
 

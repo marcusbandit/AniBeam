@@ -76,8 +76,8 @@ pub struct Core {
     pub(crate) secrets: Arc<Secrets>,
     /// One transport for every provider, so a test swaps the whole network
     /// out with one `FakeHttp`. The clients below each hold their own
-    /// limiter over it.
-    #[allow(dead_code)]
+    /// limiter over it; the IMDb refresh, which has nothing to pace, sends
+    /// through it directly.
     pub(crate) http: Arc<dyn Http>,
     /// The provider clients. Tasks 16 onwards are the callers; the fields
     /// are built here so every job shares one limiter per upstream.

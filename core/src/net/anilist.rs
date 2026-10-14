@@ -630,6 +630,7 @@ impl AnilistClient {
             body: Some(Body::Json(
                 serde_json::json!({ "query": query, "variables": variables }),
             )),
+            timeout: None,
         };
         let response = match timeout {
             Some(d) => self.client.send_within(request, d).await?,
