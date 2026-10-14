@@ -281,7 +281,14 @@ FocusScope {
         expectedCancels = withKey(expectedCancels, connecting[t], true)
         Door.cancelJob(connecting[t])
     }
-    function reopenSignIn(t) { if (signInUrls[t]) Qt.openUrlExternally(signInUrls[t]) }
+    // Every link in the shell: the desktop's handler through xdg-open (Shell.openUrl), with
+    // a toast when it could not start. The file manager for a local path the same way.
+    function openLink(url) {
+        var u = String(url || "")
+        if (u === "") return
+        if (!Shell.openUrl(u)) frame.toast("Could not open " + u)
+    }
+    function reopenSignIn(t) { if (signInUrls[t]) frame.openLink(signInUrls[t]) }
     // One click: with credentials the browser opens at once and the sheet only says where
     // to finish; without them the sheet walks the set-up first.
     function openConnect(t) {
@@ -298,7 +305,7 @@ FocusScope {
             if (frame.connecting[t] !== job) return
             frame.signInUrls = frame.withKey(frame.signInUrls, t, openUrl)
             // A capture run draws the waiting state; it never opens the owner's browser.
-            if (Shell.shoot === "" && Shell.driveOut === "") Qt.openUrlExternally(openUrl)
+            if (Shell.shoot === "" && Shell.driveOut === "") frame.openLink(openUrl)
         }
         // Door sends this ahead of the body's own signal for every terminal event, so it is
         // where a finished job stops being the one a tracker waits on, by id: a replaced

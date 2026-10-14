@@ -127,7 +127,7 @@ Item {
     }
     function open(x) {
         if (!x.ghost) frame.go("series", { id: x.raw.owned }, x.raw.title)
-        else Qt.openUrlExternally(x.item.site_url)
+        else frame.openLink(x.item.site_url)
     }
     // Tracker events come in bursts (connect, then the state push): one read for them
     Timer { id: debounce; interval: 400; onTriggered: page.reload() }

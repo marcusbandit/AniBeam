@@ -43,5 +43,7 @@ pub mod ffi {
         fn poster_tone(path: &QString) -> QColor;
         /// The pointer hidden (or shown) over every window: an application override cursor.
         fn set_cursor_hidden(hidden: bool);
+        /// A URL opened with the desktop's handler through xdg-open, detached.
+        fn open_url(url: &QString) -> bool;
     }
 }

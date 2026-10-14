@@ -407,7 +407,7 @@ Item {
                         onClicked: { var r = Door.setHidden(props.id, !card.hidden); if (r.error) frame.toast(r.error.message) }
                         Tooltip { text: page.hasTracker ? "Hidden from every list, and tracker sync stops" : "Hidden from every list" }
                     }
-                    Button { objectName: "series-site"; visible: !!(page.detail && page.detail.site_url); small: true; ghost: true; text: page.siteName; icon: "external-link"; onClicked: Qt.openUrlExternally(page.detail.site_url) }
+                    Button { objectName: "series-site"; visible: !!(page.detail && page.detail.site_url); small: true; ghost: true; text: page.siteName; icon: "external-link"; onClicked: frame.openLink(page.detail.site_url) }
                     Button { small: true; ghost: true; text: "Rescan"; icon: "refresh-cw"; onClicked: page.rescan() }
                 }
             }
@@ -572,7 +572,7 @@ Item {
                     Flow { width: parent.width; spacing: theme.space(3)
                         Repeater { model: page.detail ? page.detail.recommendations : []
                             RecommendationCard { required property var modelData; rec: modelData; width: theme.space(26)
-                                onOpened: modelData.owned ? frame.go("series", { id: modelData.owned }, modelData.title) : Qt.openUrlExternally("https://anilist.co/anime/" + modelData.anilist_id) } } }
+                                onOpened: modelData.owned ? frame.go("series", { id: modelData.owned }, modelData.title) : frame.openLink("https://anilist.co/anime/" + modelData.anilist_id) } } }
                 }
 
                 // Tags by rank; spoiler and adult tags behind the toggle
@@ -673,7 +673,7 @@ Item {
         MouseArea {
             id: relMouse
             anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-            onClicked: rel.owned ? frame.go("series", { id: rel.node.owned }, rel.node.title) : (rel.node.site_url ? Qt.openUrlExternally(rel.node.site_url) : Qt.openUrlExternally("https://anilist.co/anime/" + rel.node.anilist_id))
+            onClicked: rel.owned ? frame.go("series", { id: rel.node.owned }, rel.node.title) : (rel.node.site_url ? frame.openLink(rel.node.site_url) : frame.openLink("https://anilist.co/anime/" + rel.node.anilist_id))
         }
     }
 
