@@ -221,6 +221,7 @@ fn main() {
         "assets/icons/users.svg",
         "assets/icons/volume-2.svg",
         "assets/icons/volume-x.svg",
+        "assets/icons/wrench.svg",
         "assets/icons/x.svg",
     ])
     .build();

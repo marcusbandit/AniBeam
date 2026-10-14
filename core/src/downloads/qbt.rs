@@ -70,6 +70,78 @@ impl QbtClient {
             .unwrap_or_default())
     }
 
+    // ---- RSS: anirss creates the feeds and rules; the core reads them, and
+    // rewires one when anirss's feed would come back empty (see
+    // `downloads::rewire`)
+
+    /// Every auto-download rule by name, as qBittorrent writes them.
+    pub async fn rules(&self) -> Result<Value, CoreError> {
+        self.call("rss/rules", None).await?.json()
+    }
+
+    /// Replaces the named rule with `def` whole.
+    pub async fn set_rule(&self, name: &str, def: &Value) -> Result<(), CoreError> {
+        let form = vec![
+            ("ruleName".to_string(), name.to_string()),
+            ("ruleDef".to_string(), def.to_string()),
+        ];
+        self.call("rss/setRule", Some(form)).await.map(|_| ())
+    }
+
+    /// Every feed as (path, url): the tree flattened, folders joined with
+    /// qBittorrent's own `\`.
+    pub async fn feeds(&self) -> Result<Vec<(String, String)>, CoreError> {
+        let v: Value = self.call("rss/items", None).await?.json()?;
+        let mut out = Vec::new();
+        flatten_feeds(&v, "", &mut out);
+        Ok(out)
+    }
+
+    /// Adds a feed at `path`. False when qBittorrent already has a feed at
+    /// that path or with that URL (409), which is no failure here.
+    pub async fn add_feed(&self, url: &str, path: &str) -> Result<bool, CoreError> {
+        let form = vec![
+            ("url".to_string(), url.to_string()),
+            ("path".to_string(), path.to_string()),
+        ];
+        match self.call("rss/addFeed", Some(form)).await {
+            Ok(_) => Ok(true),
+            Err(CoreError::Service { code, .. }) if code == "http_409" => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub async fn remove_item(&self, path: &str) -> Result<(), CoreError> {
+        let form = vec![("path".to_string(), path.to_string())];
+        self.call("rss/removeItem", Some(form)).await.map(|_| ())
+    }
+
+    pub async fn remove_rule(&self, name: &str) -> Result<(), CoreError> {
+        let form = vec![("ruleName".to_string(), name.to_string())];
+        self.call("rss/removeRule", Some(form)).await.map(|_| ())
+    }
+
+    /// The titles of the articles in the rule's feeds that the rule accepts,
+    /// as qBittorrent judges them now.
+    pub async fn matching_articles(&self, rule: &str) -> Result<Vec<String>, CoreError> {
+        let path = format!(
+            "rss/matchingArticles?ruleName={}",
+            crate::percent::encode(rule)
+        );
+        let v: Value = self.call(&path, None).await?.json()?;
+        let mut out = Vec::new();
+        if let Some(feeds) = v.as_object() {
+            for titles in feeds.values() {
+                for t in titles.as_array().into_iter().flatten() {
+                    if let Some(t) = t.as_str() {
+                        out.push(t.to_string());
+                    }
+                }
+            }
+        }
+        Ok(out)
+    }
+
     pub async fn stop(&self, hashes: &[String]) -> Result<(), CoreError> {
         self.either("torrents/stop", "torrents/pause", hashes).await
     }
@@ -214,6 +286,21 @@ fn unauthorized(message: &str) -> CoreError {
         service: SERVICE.to_string(),
         code: "unauthorized".to_string(),
         message: message.to_string(),
+    }
+}
+
+fn flatten_feeds(v: &Value, prefix: &str, out: &mut Vec<(String, String)>) {
+    let Some(map) = v.as_object() else { return };
+    for (name, item) in map {
+        let path = if prefix.is_empty() {
+            name.clone()
+        } else {
+            format!("{prefix}\\{name}")
+        };
+        match item.get("url").and_then(|u| u.as_str()) {
+            Some(url) => out.push((path, url.to_string())),
+            None => flatten_feeds(item, &path, out),
+        }
     }
 }
 
@@ -381,5 +468,59 @@ mod tests {
         assert_eq!(t.eta, 8640000);
         assert_eq!(t.num_seeds, 3);
         assert_eq!(t.content_path, "");
+    }
+
+    #[tokio::test]
+    async fn feeds_flatten_folders_and_a_taken_url_is_no_failure() {
+        let http = FakeHttp::new();
+        let client = client(&http);
+        http.push(
+            200,
+            json!({"Frieren": {"uid": "a", "url": "https://nyaa.si/?q=f"},
+                   "TV": {"Avatar": {"uid": "b", "url": "http://127.0.0.1:9117/x"}}})
+            .to_string(),
+        );
+        let mut feeds = client.feeds().await.unwrap();
+        feeds.sort();
+        assert_eq!(
+            feeds,
+            vec![
+                ("Frieren".to_string(), "https://nyaa.si/?q=f".to_string()),
+                (
+                    "TV\\Avatar".to_string(),
+                    "http://127.0.0.1:9117/x".to_string()
+                ),
+            ]
+        );
+        http.push(409, "Conflict");
+        assert!(
+            !client
+                .add_feed("https://nyaa.si/?q=f", "Frieren")
+                .await
+                .unwrap()
+        );
+        http.push(200, "");
+        assert!(client.add_feed("https://nyaa.si/?q=g", "G").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn matching_articles_gather_every_feed() {
+        let http = FakeHttp::new();
+        let client = client(&http);
+        http.push(
+            200,
+            json!({"A": ["one", "two"], "B": ["three"]}).to_string(),
+        );
+        let mut got = client.matching_articles("Helluva Boss").await.unwrap();
+        got.sort();
+        assert_eq!(got, vec!["one", "three", "two"]);
+        assert!(
+            http.requests()[0]
+                .url
+                .ends_with("rss/matchingArticles?ruleName=Helluva%20Boss")
+                || http.requests()[0]
+                    .url
+                    .ends_with("rss/matchingArticles?ruleName=Helluva+Boss")
+        );
     }
 }

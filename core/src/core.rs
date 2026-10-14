@@ -741,8 +741,9 @@ impl Core {
                 endpoint,
                 items,
                 name,
+                wire_query,
             } => Ok(Reply::Started {
-                job: downloads::subscribe(self, query, endpoint, items, name)?,
+                job: downloads::subscribe(self, query, endpoint, items, name, wire_query)?,
             }),
             Call::DownloadReleases { items, name } => Ok(Reply::Started {
                 job: downloads::download(self, items, name)?,
@@ -753,6 +754,10 @@ impl Core {
             Call::ListSubscriptionRules => downloads::list_rules(self),
             Call::ListTorrents => downloads::list_torrents(self),
             Call::ReadFeed { url } => downloads::read_feed(self, url),
+            Call::ReadRule { name } => downloads::read_rule(self, name),
+            Call::RepairSubscription { name } => Ok(Reply::Started {
+                job: downloads::repair_subscription(self, name)?,
+            }),
             Call::RemoveShow {
                 title,
                 rule,

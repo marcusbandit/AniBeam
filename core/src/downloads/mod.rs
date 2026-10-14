@@ -18,6 +18,7 @@ pub mod facts;
 pub mod feed;
 pub mod link;
 pub mod qbt;
+pub mod rewire;
 pub mod settings;
 pub mod trash;
 
@@ -424,6 +425,7 @@ pub fn search(core: &Core, query: String, endpoint: Option<String>) -> Result<u6
                 phase.store(PHASE_FETCHING, Ordering::Relaxed);
                 let raw = client.search(&query, endpoint.as_deref(), true).await?;
                 phase.store(PHASE_READING, Ordering::Relaxed);
+                let fetched = raw.query.clone();
                 let mut search = if raw.items.is_empty() {
                     ReleaseSearch {
                         query: raw.query,
@@ -442,6 +444,7 @@ pub fn search(core: &Core, query: String, endpoint: Option<String>) -> Result<u6
                         auto_resolution: None,
                         facts: Vec::new(),
                         show: None,
+                        fetched_query: String::new(),
                     }
                 } else {
                     let a = client
@@ -459,11 +462,13 @@ pub fn search(core: &Core, query: String, endpoint: Option<String>) -> Result<u6
                         auto_resolution: a.auto_resolution,
                         facts: Vec::new(),
                         show: None,
+                        fetched_query: String::new(),
                     }
                 };
                 let (facts, show) = annotate(&owner, &search.query, &search.items);
                 search.facts = facts;
                 search.show = show;
+                search.fetched_query = fetched;
                 if !search.items.is_empty() {
                     enrich(
                         &owner,
@@ -704,6 +709,7 @@ pub fn subscribe(
     endpoint: String,
     items: Vec<Release>,
     name: Option<String>,
+    wire_query: Option<String>,
 ) -> Result<u64, CoreError> {
     let owner = core.owner()?;
     Ok(owner
@@ -711,18 +717,114 @@ pub fn subscribe(
         .clone()
         .start(JobKind::Subscribe, move |_| async move {
             let client = ensure_client(&owner).await?;
-            let result = client
+            let mut result = client
                 .subscribe(&query, &endpoint, &items, name.as_deref())
                 .await?;
-            Ok(Finished {
-                level: Level::Info,
-                message: format!(
+            let terms = match wire_query.as_deref() {
+                Some(wire) if narrows_locally(&owner, &endpoint) => {
+                    rewire::local_terms(&query, wire)
+                }
+                _ => rewire::LocalTerms::default(),
+            };
+            let message = if terms.is_empty() {
+                format!(
                     "Subscribed to {}; new episodes save to {}",
                     result.name, result.save_path
-                ),
+                )
+            } else {
+                let wire = wire_query.clone().unwrap_or_default();
+                rewire_subscription(
+                    &owner,
+                    &client,
+                    &mut result,
+                    &wire,
+                    &endpoint,
+                    &items,
+                    &terms,
+                )
+                .await?;
+                format!(
+                    "Subscribed to {}; {endpoint} is searched for \"{wire}\" and the rule keeps {}",
+                    result.name,
+                    describe_terms(&terms)
+                )
+            };
+            Ok(Finished {
+                level: Level::Info,
+                message,
                 body: EventBody::Subscribed { result },
             })
         }))
+}
+
+/// An endpoint anirss narrows on its own side, where a refined query is no
+/// query the endpoint can answer: a generic RSS endpoint that is not Erai
+/// (whose subscription anirss already narrows in the rule).
+fn narrows_locally(core: &Core, endpoint: &str) -> bool {
+    core.downloads
+        .state()
+        .endpoints
+        .iter()
+        .find(|e| e.name == endpoint)
+        .is_some_and(|e| e.kind != "nyaa" && !e.url.contains("erai-raws"))
+}
+
+fn describe_terms(terms: &rewire::LocalTerms) -> String {
+    let mut parts = Vec::new();
+    if !terms.must.is_empty() {
+        parts.push(format!("releases with \"{}\"", terms.must.join(" ")));
+    }
+    if !terms.not.is_empty() {
+        parts.push(format!("none with \"{}\"", terms.not.join("\", \"")));
+    }
+    parts.join(" and ")
+}
+
+/// Points anirss's new rule at the feed the search read and puts the
+/// narrowing words in the rule. In this order, so qBittorrent never holds
+/// the rule unnarrowed beside a feed with articles: the rule first (its old
+/// feed found nothing, and its new one is not there yet), then the empty
+/// feed out (unless another rule reads it), then the search's feed in.
+async fn rewire_subscription(
+    core: &Arc<Core>,
+    client: &AnirssClient,
+    result: &mut Subscribed,
+    wire: &str,
+    endpoint: &str,
+    items: &[Release],
+    terms: &rewire::LocalTerms,
+) -> Result<(), CoreError> {
+    let spec = client.preview(wire, endpoint, items).await?;
+    if spec.feed_url.is_empty() || spec.feed_url == result.feed_url {
+        return Ok(());
+    }
+    let qbt = qbt_client(core).await?;
+    let rules = qbt.rules().await?;
+    let Some(def) = rules.get(&result.name) else {
+        return Err(service(
+            "anirss",
+            "rule_missing",
+            format!("qBittorrent holds no rule named {}", result.name),
+        ));
+    };
+    let def = rewire::narrowed(def, terms, &spec.feed_url);
+    qbt.set_rule(&result.name, &def).await?;
+    let feeds = qbt.feeds().await?;
+    let old = feeds
+        .iter()
+        .find(|(_, url)| *url == result.feed_url)
+        .map(|(path, _)| path.clone());
+    if let Some(path) = &old
+        && !rewire::feed_shared(&rules, &result.name, &result.feed_url)
+    {
+        qbt.remove_item(path).await?;
+    }
+    qbt.add_feed(&spec.feed_url, old.as_deref().unwrap_or(&result.name))
+        .await?;
+    result.feed_url = spec.feed_url;
+    result.must_contain = def["mustContain"].as_str().unwrap_or("").to_string();
+    result.must_not_contain = def["mustNotContain"].as_str().unwrap_or("").to_string();
+    Ok(())
 }
 
 pub fn download(core: &Core, items: Vec<Release>, name: Option<String>) -> Result<u64, CoreError> {
@@ -1114,6 +1216,162 @@ pub fn read_feed(core: &Core, url: String) -> Result<Reply, CoreError> {
                 format!("feed not read: {}", plain(&error)),
                 EventBody::DownloadsUnavailable {
                     what: "feed".to_string(),
+                    error,
+                },
+            ),
+        };
+    });
+    Ok(Reply::Ok)
+}
+
+/// `Call::RepairSubscription`: a shorter search for the rule's feed, word
+/// by word from the end, until the endpoint answers with releases; the
+/// dropped words go into the rule. Nothing changes when the feed already
+/// finds something, or when no shorter search does.
+pub fn repair_subscription(core: &Core, name: String) -> Result<u64, CoreError> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err(CoreError::invalid("name", "a rule has a name"));
+    }
+    let owner = core.owner()?;
+    Ok(owner
+        .jobs
+        .clone()
+        .start(JobKind::RepairSubscription, move |ctx| async move {
+            let qbt = qbt_client(&owner).await?;
+            let rules = qbt.rules().await?;
+            let def = rules.get(&name).cloned().ok_or_else(|| {
+                service(qbt::SERVICE, "rule_missing", format!("no rule named {name}"))
+            })?;
+            let url = def["affectedFeeds"][0].as_str().unwrap_or("").to_string();
+            let host = feed::host_of(&url);
+            let (key, value) = rewire::search_param(&url).ok_or_else(|| {
+                service(&host, "no_search", "the feed carries no search to shorten".to_string())
+            })?;
+            let now = feed::read(owner.http.as_ref(), &url).await?;
+            if !now.is_empty() {
+                return Ok(Finished {
+                    level: Level::Info,
+                    message: format!(
+                        "{name} needs no repair: its feed finds {}",
+                        plural(now.len() as u64, "release", "releases")
+                    ),
+                    body: EventBody::SubscriptionRepaired {
+                        name,
+                        feed_url: url,
+                        must_contain: def["mustContain"].as_str().unwrap_or("").to_string(),
+                        found: now.len() as u64,
+                    },
+                });
+            }
+            let fields = rewire::positive_fields(&value);
+            let tries: Vec<usize> = (1..fields.len()).rev().take(4).collect();
+            for (n, k) in tries.iter().enumerate() {
+                let candidate = fields[..*k].join(" ");
+                ctx.progress(n as u64, Some(tries.len() as u64), &format!("Trying \"{candidate}\""));
+                let next = rewire::with_search(&url, &key, &candidate);
+                let entries = feed::read(owner.http.as_ref(), &next).await?;
+                if entries.is_empty() {
+                    continue;
+                }
+                let terms = rewire::local_terms(&value, &candidate);
+                let narrowed = rewire::narrowed(&def, &terms, &next);
+                qbt.set_rule(&name, &narrowed).await?;
+                let feeds = qbt.feeds().await?;
+                let old = feeds.iter().find(|(_, u)| *u == url).map(|(p, _)| p.clone());
+                if let Some(path) = &old
+                    && !rewire::feed_shared(&rules, &name, &url)
+                {
+                    qbt.remove_item(path).await?;
+                }
+                qbt.add_feed(&next, old.as_deref().unwrap_or(&name)).await?;
+                let must = narrowed["mustContain"].as_str().unwrap_or("").to_string();
+                return Ok(Finished {
+                    level: Level::Info,
+                    message: format!(
+                        "Repaired {name}: {host} is searched for \"{candidate}\" ({}) and the rule keeps {}",
+                        plural(entries.len() as u64, "release", "releases"),
+                        describe_terms(&terms)
+                    ),
+                    body: EventBody::SubscriptionRepaired {
+                        name,
+                        feed_url: next,
+                        must_contain: must,
+                        found: entries.len() as u64,
+                    },
+                });
+            }
+            Err(service(
+                &host,
+                "repair_failed",
+                format!(
+                    "no shorter search finds anything; even \"{}\" comes back empty",
+                    fields.first().cloned().unwrap_or_default()
+                ),
+            ))
+        }))
+}
+
+/// Not a job: the show view reads its rule on open and while a fresh
+/// subscription settles.
+pub fn read_rule(core: &Core, name: String) -> Result<Reply, CoreError> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err(CoreError::invalid("name", "a rule has a name"));
+    }
+    let owner = core.owner()?;
+    core.handle.spawn(async move {
+        let outcome = async {
+            let qbt = qbt_client(&owner).await?;
+            let rules = qbt.rules().await?;
+            let def = rules.get(&name).cloned().ok_or_else(|| {
+                service(
+                    qbt::SERVICE,
+                    "rule_missing",
+                    format!("no rule named {name}"),
+                )
+            })?;
+            let matching = qbt.matching_articles(&name).await?;
+            let text = |k: &str| def[k].as_str().unwrap_or("").to_string();
+            Ok::<_, CoreError>(RuleView {
+                name: name.clone(),
+                enabled: def["enabled"].as_bool().unwrap_or(true),
+                must_contain: text("mustContain"),
+                must_not_contain: text("mustNotContain"),
+                save_path: def["savePath"]
+                    .as_str()
+                    .filter(|s| !s.is_empty())
+                    .or_else(|| def["torrentParams"]["save_path"].as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                feeds: def["affectedFeeds"]
+                    .as_array()
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|u| u.as_str().map(String::from))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                last_match: text("lastMatch"),
+                matching,
+            })
+        }
+        .await;
+        match outcome {
+            Ok(rule) => owner.bus.debug(
+                Stage::Downloads,
+                format!(
+                    "rule {} read: {} accepted",
+                    rule.name,
+                    plural(rule.matching.len() as u64, "article", "articles")
+                ),
+                EventBody::RuleRead { rule },
+            ),
+            Err(error) => owner.bus.debug(
+                Stage::Downloads,
+                format!("rule not read: {}", plain(&error)),
+                EventBody::DownloadsUnavailable {
+                    what: "rule".to_string(),
                     error,
                 },
             ),

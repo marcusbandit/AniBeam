@@ -228,12 +228,17 @@ pub enum Call {
     },
     /// Registers an RSS feed and an auto-download rule in qBittorrent.
     /// `name` defaults to the show name anirss parses off the first item.
+    /// `wire_query` is the query the endpoint itself was last asked, when
+    /// the page narrowed past it on anirss's side: the subscription then
+    /// reads that query's feed and keeps the narrowing words in its rule.
     /// Ends in `Subscribed`.
     Subscribe {
         query: String,
         endpoint: String,
         items: Vec<Release>,
         name: Option<String>,
+        #[serde(default)]
+        wire_query: Option<String>,
     },
     /// Hands these releases to qBittorrent now, under `<save_base>/<name>`.
     /// Ends in `TorrentsAdded`.
@@ -262,6 +267,20 @@ pub enum Call {
     /// `what` set to `feed`. Not a job: opening a show reads it.
     ReadFeed {
         url: String,
+    },
+    /// Mends a subscription whose feed finds nothing because it asks a
+    /// generic RSS endpoint for more words than the endpoint can match:
+    /// drops words from the end of the feed's search until the endpoint
+    /// answers, and keeps the dropped words in the rule. Ends in
+    /// `SubscriptionRepaired`.
+    RepairSubscription {
+        name: String,
+    },
+    /// Reads a subscription's rule from the torrent client, with the
+    /// articles it accepts. Replies `Ok` at once; ends in `RuleRead`, or
+    /// `DownloadsUnavailable` with `what` set to `rule`. Not a job.
+    ReadRule {
+        name: String,
     },
     /// What removing a subscription would take with it. Ends in
     /// `RemovalPlanned`; nothing changes.

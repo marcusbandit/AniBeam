@@ -20,6 +20,19 @@ Column {
     property var feed: null
     // Every torrent in the client, by lower case hash and by name, to mark feed entries
     property var clientIndex: ({ byHash: {}, byName: {} })
+    // The subscription's rule as the client holds it ({ must_contain, must_not_contain,
+    // save_path, last_match, matching: [titles the rule accepts] }), or null until read
+    property var ruleView: null
+    // A subscription made a moment ago: the page is reading the client quickly
+    property bool watching: false
+    property bool justSubscribed: false
+    // A repair running, and the step it is on
+    // The endpoint the feed belongs to, by name ("1337x"), or empty for the page to fall back
+    // on the feed's host
+    property string source: ""
+    property bool repairing: false
+    property string repairLabel: ""
+    signal repair()
     property real nowMs: Date.now()
     property bool removing: false
     signal back()
@@ -53,11 +66,64 @@ Column {
         if (finished && missing.length) parts.push((missing.length === 1 ? "Episode " : "Episodes ") + missing.slice(0, 8).join(", ") + (missing.length > 8 ? " and " + (missing.length - 8) + " more" : "") + (missing.length === 1 ? " is" : " are") + " not here.")
         return parts.join(" ")
     }
-    function entryState(e) {
+    // Letters and digits, lower case: a torrent's name and its feed title differ in dots,
+    // spaces and a trailing group more often than not
+    function key(t) { return String(t || "").toLowerCase().replace(/[^a-z0-9]/g, "") }
+    function torrentFor(e) {
         var t = (e.info_hash && root.clientIndex.byHash[e.info_hash]) || root.clientIndex.byName[e.title]
-        if (!t) return { word: "", torrent: null }
-        if ((t.progress || 0) >= 1) return { word: "Downloaded", torrent: t }
-        return { word: "Downloading " + Math.round((t.progress || 0) * 100) + "%", torrent: t }
+        if (t) return t
+        var k = root.key(e.title)
+        if (k.length < 12) return null
+        for (var i = 0; i < root.torrents.length; i++) {
+            var n = root.key(root.torrents[i].name)
+            if (n.length >= 12 && (k.indexOf(n) === 0 || n.indexOf(k) === 0)) return root.torrents[i]
+        }
+        return null
+    }
+    readonly property var matchingKeys: {
+        var m = {}
+        var list = root.ruleView && root.ruleView.matching ? root.ruleView.matching : []
+        for (var i = 0; i < list.length; i++) m[root.key(list[i])] = true
+        return m
+    }
+    function entryState(e) {
+        var t = root.torrentFor(e)
+        if (t) {
+            if ((t.progress || 0) >= 1) return { word: "Downloaded", ink: theme.accent, torrent: t }
+            return { word: "Downloading " + Math.round((t.progress || 0) * 100) + "%", ink: theme.accent, torrent: t }
+        }
+        if (!root.ruleView) return { word: "", ink: theme.textDim, torrent: null }
+        if (root.matchingKeys[root.key(e.title)]) return { word: root.watching ? "Taken by the rule, adding" : "Taken by the rule", ink: theme.orange, torrent: null }
+        return { word: "Left out by the rule", ink: theme.textFaint, torrent: null }
+    }
+    // What the rule takes of the feed as it reads now (qBittorrent can still hold articles
+    // an earlier version of the feed found; those are not counted)
+    readonly property int takenCount: {
+        var n = 0
+        for (var i = 0; i < entries.length; i++) if (root.matchingKeys[root.key(entries[i].title)]) n++
+        return n
+    }
+    readonly property bool feedEmpty: !!root.rule && !!root.feed && !root.feed.loading && !root.feed.error && root.entries.length === 0
+    readonly property string feedQuery: {
+        var u = String(root.rule && root.rule.feed_url ? root.rule.feed_url : (root.feed ? root.feed.url : ""))
+        var m = u.match(/[?&](?:q|s)=([^&]*)/)
+        if (!m) return ""
+        try { return decodeURIComponent(m[1].replace(/\+/g, " ")) } catch (e) { return m[1] }
+    }
+    readonly property int movingCount: { var n = 0; for (var i = 0; i < torrents.length; i++) if ((torrents[i].progress || 0) < 1) n++; return n }
+    // One line on what a fresh subscription is doing
+    readonly property string settling: {
+        if (!root.justSubscribed || !root.rule && !root.watching) return ""
+        if (root.feedEmpty) return ""
+        if (!root.ruleView || !root.feed || root.feed.loading) return "Subscribed. qBittorrent is reading the feed."
+        if (root.takenCount > 0) {
+            var line = "The rule takes " + root.takenCount + " of the feed's " + Fmt.plural(root.entries.length, "release", "releases")
+            if (root.movingCount > 0) return line + "; " + Fmt.plural(root.movingCount, "is", "are") + " downloading below."
+            if (root.torrents.length > 0) return line + "; " + Fmt.plural(root.torrents.length, "torrent is", "torrents are") + " in the client."
+            return line + "; qBittorrent is adding " + (root.takenCount === 1 ? "it." : "them.")
+        }
+        if (root.feed && !root.feed.loading && root.entries.length === 0) return "The feed holds nothing yet. Releases that fit download as soon as they appear in it."
+        return "Nothing in the feed fits the rule yet. Releases that fit download as soon as they appear."
     }
 
     spacing: theme.space(5)
@@ -144,6 +210,74 @@ Column {
                 color: root.complete ? theme.text : theme.textDim
                 wrapMode: Text.Wrap
             }
+            // A feed that finds nothing never feeds the rule: say so, and offer the repair
+            Rectangle {
+                visible: root.feedEmpty
+                width: Math.min(parent.width, theme.space(200))
+                height: emptyBody.implicitHeight + theme.space(4) * 2
+                radius: theme.radiusSm
+                color: Qt.rgba(theme.orange.r, theme.orange.g, theme.orange.b, 0.08)
+                border.color: Qt.rgba(theme.orange.r, theme.orange.g, theme.orange.b, 0.45)
+                border.width: 1
+                Column {
+                    id: emptyBody
+                    x: theme.space(4)
+                    y: theme.space(4)
+                    width: parent.width - theme.space(8)
+                    spacing: theme.space(2)
+                    Label { text: "This feed finds nothing"; role: "title"; font.pointSize: theme.typeNormal * 1.05; color: theme.text }
+                    Label {
+                        width: parent.width
+                        text: "It asks " + (root.source !== "" ? root.source : root.feedHost(root.rule ? root.rule.feed_url : "")) + (root.feedQuery ? " for \u201c" + root.feedQuery + "\u201d" : "")
+                              + ", which comes back empty, so nothing new can reach the rule. A shorter search usually answers; the words it drops can stay in the rule instead."
+                              + (root.ruleView && root.ruleView.matching && root.ruleView.matching.length ? " qBittorrent still shows what an earlier version of this feed found." : "")
+                        role: "ui"
+                        color: theme.textDim
+                        wrapMode: Text.Wrap
+                    }
+                    Row {
+                        spacing: theme.space(3)
+                        Button {
+                            objectName: "show-repair"
+                            text: root.repairing ? "Repairing" : "Repair"
+                            icon: "wrench"
+                            primary: true
+                            enabled: !root.repairing
+                            onClicked: root.repair()
+                        }
+                        Label { visible: root.repairing && root.repairLabel !== ""; anchors.verticalCenter: parent.verticalCenter; text: root.repairLabel; role: "ui"; color: theme.textDim }
+                    }
+                }
+            }
+            Rectangle {
+                visible: root.settling !== ""
+                width: Math.min(parent.width, theme.space(200))
+                height: settleRow.implicitHeight + theme.space(3) * 2
+                radius: theme.radiusSm
+                color: theme.raised
+                border.color: theme.line
+                border.width: 1
+                Row {
+                    id: settleRow
+                    x: theme.space(3)
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width - theme.space(6)
+                    spacing: theme.space(2.5)
+                    Rectangle {
+                        id: settleDot
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: theme.space(2.5); height: width; radius: width / 2
+                        color: root.movingCount > 0 || root.watching ? theme.accent : root.takenCount > 0 ? theme.green : theme.textFaint
+                        SequentialAnimation on opacity {
+                            running: root.watching && !theme.reducedMotion
+                            loops: Animation.Infinite
+                            NumberAnimation { from: 1; to: 0.25; duration: 700 }
+                            NumberAnimation { from: 0.25; to: 1; duration: 700 }
+                        }
+                    }
+                    Label { width: parent.width - settleDot.width - parent.spacing; text: root.settling; role: "ui"; color: theme.text; wrapMode: Text.Wrap }
+                }
+            }
             // Every episode as a cell: on disk in the accent, not here as an outline, red once
             // the show has finished and it is still missing
             Flow {
@@ -203,9 +337,15 @@ Column {
                 Label { text: "Searches"; role: "ledger"; color: theme.textFaint }
                 Label { text: root.rule && root.rule.query ? "“" + root.rule.query + "”" : "the whole feed"; role: "ui"; color: theme.text; elide: Text.ElideRight; width: Math.min(implicitWidth, info.width - theme.space(40)) }
                 Label { text: "From"; role: "ledger"; color: theme.textFaint }
-                Label { text: root.rule ? root.feedHost(root.rule.feed_url) : ""; role: "ui"; color: theme.textDim }
+                Label { text: root.rule ? (root.source !== "" ? root.source + " (" + root.feedHost(root.rule.feed_url) + ")" : root.feedHost(root.rule.feed_url)) : ""; role: "ui"; color: theme.textDim }
                 Label { text: "Rule"; role: "ledger"; color: theme.textFaint }
                 Label { text: root.rule && root.rule.rule_enabled === false ? "Paused" : "Active"; role: "ui"; color: root.rule && root.rule.rule_enabled === false ? theme.textFaint : theme.text }
+                Label { visible: !!root.ruleView && root.ruleView.must_contain !== ""; text: "Keeps"; role: "ledger"; color: theme.textFaint }
+                Label { visible: !!root.ruleView && root.ruleView.must_contain !== ""; text: root.ruleView ? "releases with \u201c" + root.ruleView.must_contain + "\u201d" : ""; role: "ui"; color: theme.text }
+                Label { visible: !!root.ruleView && root.ruleView.must_not_contain !== ""; text: "Drops"; role: "ledger"; color: theme.textFaint }
+                Label { visible: !!root.ruleView && root.ruleView.must_not_contain !== ""; text: root.ruleView ? "releases with " + root.ruleView.must_not_contain.split("|").map(function(w) { return "\u201c" + w + "\u201d" }).join(" or ") : ""; role: "ui"; color: theme.text }
+                Label { visible: !!root.ruleView && root.ruleView.last_match !== ""; text: "Last took"; role: "ledger"; color: theme.textFaint }
+                Label { visible: !!root.ruleView && root.ruleView.last_match !== ""; text: root.ruleView ? root.ruleView.last_match : ""; role: "ui"; color: theme.textDim }
                 Label { text: "Saves to"; role: "ledger"; color: theme.textFaint }
                 Label { text: root.folder; role: "ledger"; color: theme.textDim; elide: Text.ElideMiddle; width: Math.min(implicitWidth, info.width - theme.space(40)) }
             }
@@ -290,10 +430,10 @@ Column {
                         anchors.right: parent.right
                         anchors.rightMargin: theme.space(2)
                         anchors.verticalCenter: parent.verticalCenter
-                        width: Math.max(stateWord.implicitWidth, getButton.implicitWidth)
+                        width: stateWord.implicitWidth + (getButton.visible ? getButton.implicitWidth + theme.space(2) : 0)
                         height: theme.controlHeight
-                        Label { id: stateWord; visible: entryRow.st.word !== ""; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; text: entryRow.st.word; role: "ledger"; color: theme.accent }
-                        Button { id: getButton; visible: entryRow.st.word === "" && !!entryRow.modelData.link; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; text: "Download"; icon: "download"; flat: true; small: true; onClicked: root.downloadEntry(entryRow.modelData) }
+                        Label { id: stateWord; visible: entryRow.st.word !== ""; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; text: entryRow.st.word; role: "ledger"; color: entryRow.st.ink }
+                        Button { id: getButton; anchors.rightMargin: stateWord.visible ? stateWord.implicitWidth + theme.space(2) : 0; visible: !entryRow.st.torrent && entryRow.st.ink !== theme.orange && !!entryRow.modelData.link; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; text: "Download"; icon: "download"; flat: true; small: true; onClicked: root.downloadEntry(entryRow.modelData) }
                     }
                     Rectangle { anchors.bottom: parent.bottom; x: theme.space(2); width: parent.width - theme.space(4); height: 1; color: theme.line; opacity: 0.5 }
                 }
@@ -315,7 +455,7 @@ Column {
                     spacing: theme.space(3)
                     Label { id: trTitle; text: "Torrents"; role: "display"; font.pointSize: theme.typeLarge * 0.85; font.variableAxes: ({ "wdth": 74, "wght": 500 }) }
                     Label { anchors.baseline: trTitle.baseline; visible: root.torrents.length > 0; text: root.torrents.length; role: "ledger"; color: theme.textFaint }
-                    Label { anchors.baseline: trTitle.baseline; text: root.torrents.length ? "What the client holds for this folder." : "The client holds none for this folder."; role: "ui"; color: theme.textDim }
+                    Label { anchors.baseline: trTitle.baseline; text: root.torrents.length ? (root.movingCount > 0 ? Fmt.plural(root.movingCount, "downloading", "downloading") + " now; the bars fill as they go." : "What the client holds for this folder.") : (root.watching ? "Waiting for qBittorrent to add what the rule takes." : "The client holds none for this folder."); role: "ui"; color: theme.textDim }
                 }
             }
             Repeater {

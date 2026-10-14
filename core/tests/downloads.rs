@@ -760,3 +760,170 @@ fn remove_show_refuses_a_library_root_and_removes_nothing() {
         Err(CoreError::Invalid { .. })
     ));
 }
+
+/// A subscription narrowed on anirss's side (1337x through Jackett): the
+/// rule anirss made reads a feed that searches for every word and finds
+/// nothing, so the core points it at the feed the search read and keeps
+/// the narrowing words in the rule; the rule first, then the empty feed
+/// out, then the search's feed in.
+#[test]
+fn a_locally_narrowed_subscription_reads_the_searched_feed_and_filters_in_the_rule() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    isolate_xdg(dir.path());
+    save(&core, remote(), Some("tok"), Some("pw"));
+    // Connect so the core knows 1337x is a generic RSS endpoint
+    http.push_for(
+        "/health",
+        200,
+        json!({"ok": true, "version": "0.3.4"}).to_string(),
+    );
+    http.push_for(
+        "/endpoints",
+        200,
+        json!({"endpoints": [{"name": "1337x", "kind": "rss", "url": "http://127.0.0.1:9117/x?q={query}", "client_side_refine": true}]}).to_string(),
+    );
+    http.push_for(
+        "/qbt/status",
+        200,
+        json!({"url": "http://localhost:9090", "reachable": true, "authenticated": true})
+            .to_string(),
+    );
+    http.push_for("app/version", 200, "v5.2.4");
+    let job = started(&core, Call::ConnectDownloads);
+    common::wait_job(&c, job);
+
+    let narrow = "http://127.0.0.1:9117/x?q=Helluva+Boss+S03+1080p+WEB-DL";
+    let wide = "http://127.0.0.1:9117/x?q=Helluva+Boss+S03";
+    http.push_for(
+        "api/v1/subscriptions",
+        201,
+        json!({"name": "Helluva Boss", "feed_url": narrow, "save_path": "/media/TV/Helluva Boss",
+               "must_contain": "", "must_not_contain": "", "tags": ["TV"]})
+        .to_string(),
+    );
+    http.push_for(
+        "subscriptions/preview",
+        200,
+        json!({"feed_url": wide, "must_contain": "", "must_not_contain": "", "endpoint_name": "1337x"}).to_string(),
+    );
+    http.push_for(
+        "rss/rules",
+        200,
+        json!({"Helluva Boss": {"enabled": true, "mustContain": "", "mustNotContain": "", "affectedFeeds": [narrow],
+                                "savePath": "/media/TV/Helluva Boss"}}).to_string(),
+    );
+    http.push_for("rss/setRule", 200, "");
+    http.push_for(
+        "rss/items",
+        200,
+        json!({"Helluva Boss": {"uid": "u", "url": narrow}}).to_string(),
+    );
+    http.push_for("rss/removeItem", 200, "");
+    http.push_for("rss/addFeed", 200, "");
+
+    let job = started(
+        &core,
+        Call::Subscribe {
+            query: "Helluva Boss S03 1080p WEB-DL".to_string(),
+            endpoint: "1337x".to_string(),
+            items: vec![release(1, json!(5))],
+            name: Some("Helluva Boss".to_string()),
+            wire_query: Some("Helluva Boss S03".to_string()),
+        },
+    );
+    let event = common::wait_job(&c, job);
+    let EventBody::Subscribed { result } = &event.body else {
+        panic!("{:?}", event.body)
+    };
+    assert_eq!(result.feed_url, wide);
+    assert_eq!(result.must_contain, "1080p WEB-DL");
+
+    let rss: Vec<_> = http
+        .requests()
+        .into_iter()
+        .filter(|r| r.url.contains("/rss/"))
+        .collect();
+    let order: Vec<&str> = rss
+        .iter()
+        .map(|r| r.url.rsplit('/').next().unwrap_or(""))
+        .collect();
+    assert_eq!(
+        order,
+        vec!["rules", "setRule", "items", "removeItem", "addFeed"],
+        "the rule moves before any feed does"
+    );
+    let set = form_of(&rss[1]);
+    assert!(set.contains("\"mustContain\":\"1080p WEB-DL\""), "{set}");
+    assert!(
+        set.contains(&format!("\"affectedFeeds\":[\"{wide}\"]")),
+        "{set}"
+    );
+    assert_eq!(form_of(&rss[3]), "path=Helluva Boss");
+    assert_eq!(form_of(&rss[4]), format!("url={wide}&path=Helluva Boss"));
+}
+
+/// A rule whose feed finds nothing: the core shortens the feed's search
+/// word by word until the endpoint answers, keeps the dropped words in the
+/// rule, and swaps the feed in the order a fresh subscription does.
+#[test]
+fn repair_shortens_an_empty_feed_until_it_answers_and_keeps_the_words() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    isolate_xdg(dir.path());
+    save(&core, remote(), Some("tok"), Some("pw"));
+    let broken = "http://127.0.0.1:9117/x?apikey=K&t=search&q=Helluva.Boss.+S03+TBK";
+    let empty = r#"<rss><channel><title>1337x</title></channel></rss>"#;
+    let six = r#"<rss><channel>
+        <item><title>Helluva.Boss.S03E01.1080p.WEB-DL-TBK</title><link>http://j/dl/1</link></item>
+        <item><title>Helluva.Boss.S03E01.1080p.HEVC.x265-MeGusta</title><link>http://j/dl/2</link></item>
+      </channel></rss>"#;
+    http.push_for(
+        "rss/rules",
+        200,
+        json!({"Helluva.Boss.": {"enabled": true, "mustContain": "", "mustNotContain": "", "affectedFeeds": [broken]}}).to_string(),
+    );
+    http.push_for("q=Helluva.Boss.+S03+TBK", 200, empty);
+    http.push_for("q=Helluva.Boss.%20S03", 200, six);
+    http.push_for("rss/setRule", 200, "");
+    http.push_for(
+        "rss/items",
+        200,
+        json!({"Helluva.Boss.": {"uid": "u", "url": broken}}).to_string(),
+    );
+    http.push_for("rss/removeItem", 200, "");
+    http.push_for("rss/addFeed", 200, "");
+
+    let job = started(
+        &core,
+        Call::RepairSubscription {
+            name: "Helluva.Boss.".to_string(),
+        },
+    );
+    let event = common::wait_job(&c, job);
+    let EventBody::SubscriptionRepaired {
+        feed_url,
+        must_contain,
+        found,
+        ..
+    } = &event.body
+    else {
+        panic!("{:?}", event.body)
+    };
+    assert_eq!(
+        feed_url,
+        "http://127.0.0.1:9117/x?apikey=K&t=search&q=Helluva.Boss.%20S03"
+    );
+    assert_eq!(must_contain, "TBK");
+    assert_eq!(*found, 2);
+    let rss: Vec<String> = http
+        .requests()
+        .into_iter()
+        .filter(|r| r.url.contains("/rss/"))
+        .map(|r| r.url.rsplit('/').next().unwrap_or("").to_string())
+        .collect();
+    assert_eq!(
+        rss,
+        vec!["rules", "setRule", "items", "removeItem", "addFeed"]
+    );
+}

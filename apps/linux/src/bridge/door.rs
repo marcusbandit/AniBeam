@@ -276,6 +276,7 @@ pub mod qobject {
             endpoint: &QString,
             items: &QJsonArray,
             name: &QString,
+            wire_query: &QString,
         ) -> QJsonObject;
         #[qinvokable]
         fn download_releases(self: &Door, items: &QJsonArray, name: &QString) -> QJsonObject;
@@ -291,6 +292,12 @@ pub mod qobject {
         /// `what` "feed".
         #[qinvokable]
         fn read_feed(self: &Door, url: &QString) -> QJsonObject;
+        /// Replies `Ok`; the rule arrives as `ruleRead`, or `downloadsUnavailable` with
+        /// `what` "rule".
+        #[qinvokable]
+        fn read_rule(self: &Door, name: &QString) -> QJsonObject;
+        #[qinvokable]
+        fn repair_subscription(self: &Door, name: &QString) -> QJsonObject;
         #[qinvokable]
         fn plan_remove_subscription(
             self: &Door,
@@ -459,6 +466,17 @@ pub mod qobject {
         );
         #[qsignal]
         fn feed_read(self: Pin<&mut Door>, url: QString, entries: QJsonArray);
+        #[qsignal]
+        fn rule_read(self: Pin<&mut Door>, rule: QJsonObject);
+        #[qsignal]
+        fn subscription_repaired(
+            self: Pin<&mut Door>,
+            job: f64,
+            name: QString,
+            feed_url: QString,
+            must_contain: QString,
+            found: f64,
+        );
         #[qsignal]
         fn releases_enriched(
             self: Pin<&mut Door>,
@@ -1036,6 +1054,14 @@ impl qobject::Door {
                     .torrents_read(arr("torrents"), obj("transfer"), arr("shows"))
             }
             EventBody::FeedRead { .. } => self.as_mut().feed_read(s("url"), arr("entries")),
+            EventBody::RuleRead { .. } => self.as_mut().rule_read(obj("rule")),
+            EventBody::SubscriptionRepaired { .. } => self.as_mut().subscription_repaired(
+                job_id,
+                s("name"),
+                s("feed_url"),
+                s("must_contain"),
+                n("found"),
+            ),
             EventBody::ReleasesEnriched { .. } => {
                 self.as_mut()
                     .releases_enriched(s("query"), s("endpoint"), arr("entries"))
@@ -1478,12 +1504,14 @@ impl qobject::Door {
         endpoint: &QString,
         items: &QJsonArray,
         name: &QString,
+        wire_query: &QString,
     ) -> QJsonObject {
         self.dispatch(releases(items).map(|items| Call::Subscribe {
             query: query.to_string(),
             endpoint: endpoint.to_string(),
             items,
             name: non_empty(name),
+            wire_query: non_empty(wire_query),
         }))
     }
     pub fn download_releases(&self, items: &QJsonArray, name: &QString) -> QJsonObject {
@@ -1502,6 +1530,16 @@ impl qobject::Door {
     }
     pub fn list_torrents(&self) -> QJsonObject {
         self.dispatch(Ok(Call::ListTorrents))
+    }
+    pub fn repair_subscription(&self, name: &QString) -> QJsonObject {
+        self.dispatch(Ok(Call::RepairSubscription {
+            name: name.to_string(),
+        }))
+    }
+    pub fn read_rule(&self, name: &QString) -> QJsonObject {
+        self.dispatch(Ok(Call::ReadRule {
+            name: name.to_string(),
+        }))
     }
     pub fn read_feed(&self, url: &QString) -> QJsonObject {
         self.dispatch(Ok(Call::ReadFeed {

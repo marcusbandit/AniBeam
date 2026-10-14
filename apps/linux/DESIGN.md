@@ -92,7 +92,13 @@ below where they disagree:
   poster or a row opens the show inside the page (`ShowDetail.qml`): the poster with Open
   in library, where the show stands in one sentence, every episode as a cell, Unsubscribe
   and Remove torrents, the subscription's facts, then the feed as it reads now beside the
-  folder's torrents. Nothing on the page sends the person to a browser. Every removal goes
+  folder's torrents. Subscribing opens that view on the new subscription: for a minute and
+  a half the page reads the torrents every two seconds and the rule every four, one line
+  says what qBittorrent is doing (reading the feed, how many of the feed's releases the
+  rule takes, how many are downloading), and each feed release is marked Downloading,
+  Downloaded, Taken by the rule or Left out by the rule. A feed that comes back empty gets
+  an orange panel saying why and a Repair button. Nothing on the page sends the person to
+  a browser. Every removal goes
   through one sheet by the button that asked (`RemoveSheet.qml`): what always goes, then
   up to two ticks, the torrents and the files (ticking the files ticks the torrents);
   files go to the trash. Complete has Unsubscribe all, Files missing has Remove all, and a

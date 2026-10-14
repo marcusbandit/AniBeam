@@ -178,6 +178,10 @@ _Avoid_: auto-pick, recommended
 An RSS feed and an auto-download rule registered in the torrent client under one name, so every new release that matches lands under that name's folder. anirss registers and removes them; the core only asks.
 _Avoid_: rule, feed, watch
 
+**Wire query**:
+The query an endpoint itself was last asked. On a generic RSS endpoint (1337x through Jackett) anirss narrows a search on its own side, so the page's query can hold words the endpoint never saw, and a feed built from them finds nothing. Subscribing hands the core the wire query too: the subscription's feed reads that, and the narrowing words go into the rule's own filters (its "keeps" and "drops"). A feed found empty later can be repaired the same way: its search shortened from the end until the endpoint answers, the dropped words kept in the rule.
+_Avoid_: base query, raw query
+
 **Complete subscription**:
 A subscription whose show has finished airing (or was cancelled) with every episode from 1 to the total on disk, counted by distinct episode number so a v2 beside its v1 counts once. Nothing more will come, so the subscription has nothing left to do: the rail counts these in red and the page offers to unsubscribe from all of them at once. A film is complete once its file is there. An estimated or unknown total is never complete.
 _Avoid_: finished, done, stale

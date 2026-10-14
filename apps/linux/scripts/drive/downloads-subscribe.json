@@ -1,0 +1,95 @@
+[
+ {
+  "log": "the view a fresh subscription opens, on the real Helluva Boss rule (nothing is subscribed)"
+ },
+ {
+  "click": "rail-downloads"
+ },
+ {
+  "wait": 9000
+ },
+ {
+  "eval": "var p = frame.item.pageItem, r = frame.item.downloadsRules.filter(function(x) { return x.name.indexOf('Helluva') === 0 })[0]; p.watchSubscription({ name: r.name, feed_url: r.feed_url, save_path: r.save_path }); p.detail !== null && p.watching",
+  "expect": true
+ },
+ {
+  "wait": 1200
+ },
+ {
+  "shot": "sub-00-settling"
+ },
+ {
+  "wait": 6000
+ },
+ {
+  "eval": "frame.item.pageItem.ruleView !== null",
+  "expect": true
+ },
+ {
+  "eval": "frame.item.pageItem.ruleView.matching.length",
+  "as": "taken"
+ },
+ {
+  "shot": "sub-01-settled"
+ },
+ {
+  "log": "the Helluva rule's feed finds nothing: the view says so and offers the repair (not pressed)"
+ },
+ {
+  "eval": "frame.item.pageItem.feed && frame.item.pageItem.feed.entries.length === 0 && !frame.item.pageItem.feed.loading",
+  "expect": true
+ },
+ {
+  "shot": "sub-01b-empty-feed"
+ },
+ {
+  "key": "Escape"
+ },
+ {
+  "wait": 600
+ },
+ {
+  "log": "a 1337x search narrowed on anirss's side keeps the query the endpoint was asked"
+ },
+ {
+  "eval": "var p = frame.item.pageItem; for (var i = 0; i < p.endpoints.length; i++) if (p.endpoints[i].name === '1337x') p.endpointIndex = i; p.endpoints[p.endpointIndex].name",
+  "expect": "1337x"
+ },
+ {
+  "click": "downloads-search"
+ },
+ {
+  "key": "Ctrl+A"
+ },
+ {
+  "type": "Helluva.Boss. S03"
+ },
+ {
+  "key": "Return"
+ },
+ {
+  "wait": 20000
+ },
+ {
+  "eval": "frame.item.pageItem.state.wireQuery",
+  "as": "wire"
+ },
+ {
+  "eval": "frame.item.pageItem.narrow('WEB-DL'); 1",
+  "expect": 1
+ },
+ {
+  "wait": 8000
+ },
+ {
+  "eval": "var s = frame.item.pageItem.state; s.query + ' | wire: ' + s.wireQuery",
+  "as": "after"
+ },
+ {
+  "eval": "var s = frame.item.pageItem.state; s.query !== s.wireQuery && s.wireQuery.indexOf('WEB-DL') < 0",
+  "expect": true
+ },
+ {
+  "shot": "sub-02-narrowed"
+ }
+]

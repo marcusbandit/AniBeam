@@ -115,6 +115,11 @@ pub struct ReleaseSearch {
     /// The library series the query names, when one fits.
     #[serde(default)]
     pub show: Option<ShowLink>,
+    /// The query the endpoint itself was asked, before anirss narrowed the
+    /// result on its own side (an auto-resolution on a generic RSS
+    /// endpoint): what a subscription's feed should search.
+    #[serde(default)]
+    pub fetched_query: String,
 }
 
 /// One refine step. `Tokens` narrows to a group, `Term` adds a positive
@@ -280,6 +285,23 @@ pub struct ReleaseFacts {
     pub resolution: String,
     pub size_bytes: Option<u64>,
     pub on_disk: bool,
+}
+
+/// A subscription's rule as qBittorrent holds it now, and what it takes:
+/// `matching` is the titles of the articles in its feeds that the rule
+/// accepts, as qBittorrent judges them (an empty list before qBittorrent
+/// has read the feed, or when nothing in it fits the rule yet).
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize, uniffi::Record)]
+pub struct RuleView {
+    pub name: String,
+    pub enabled: bool,
+    pub must_contain: String,
+    pub must_not_contain: String,
+    pub save_path: String,
+    pub feeds: Vec<String>,
+    /// qBittorrent's own words for when it last took something, or empty.
+    pub last_match: String,
+    pub matching: Vec<String>,
 }
 
 /// One torrent as qBittorrent reports it, trimmed to what the page draws.

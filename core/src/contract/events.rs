@@ -183,6 +183,17 @@ pub enum EventBody {
         endpoint: String,
         entries: Vec<FeedEntry>,
     },
+    RuleRead {
+        rule: RuleView,
+    },
+    /// A subscription mended: the feed it reads now, what the rule keeps,
+    /// and how many releases the new feed held when read.
+    SubscriptionRepaired {
+        name: String,
+        feed_url: String,
+        must_contain: String,
+        found: u64,
+    },
     /// A subscription's feed, read for the page: `url` is the one asked
     /// for, so a late answer for a feed since closed can be told apart.
     FeedRead {

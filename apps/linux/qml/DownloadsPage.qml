@@ -211,9 +211,11 @@ Item {
         if (t.charAt(0) === "-" && t.length > 1) refine({ type: "exclude", term: t.slice(1).trim() })
         else refine({ type: "term", term: t })
     }
-    function adopt(s) {
+    // `wire` is the query the endpoint itself was last asked: a search's own, a refetch's,
+    // and a step anirss took on its side keeps the one before it
+    function adopt(s, wire) {
         page.state = { query: s.query, endpoint: s.endpoint, items: s.items || [], groups: s.groups || [], bestFit: s.best_fit || { available: false }, clientSide: !!s.client_side,
-                       facts: s.facts || [], show: s.show || null }
+                       facts: s.facts || [], show: s.show || null, wireQuery: wire || s.query }
         page.selected = {}
         page.preview = null
         page.hoveredGroup = -1
@@ -226,6 +228,12 @@ Item {
         page.selected = {}
         page.preview = null
         page.notice = ""
+    }
+    // The anirss endpoint a feed belongs to, by its host; empty when none matches
+    function endpointFor(url) {
+        var host = page.feedHost(url)
+        for (var i = 0; i < page.endpoints.length; i++) if (page.feedHost(page.endpoints[i].url) === host) return page.endpoints[i].name
+        return ""
     }
     function feedHost(url) { var m = String(url || "").match(/^[a-z]+:\/\/([^\/?#]+)/i); return m ? m[1] : String(url || "") }
     function cancelSearch() {
@@ -287,7 +295,11 @@ Item {
         page.actionLine = ""
         page.actionError = ""
     }
-    function subscribe() { if (page.state) act(Door.subscribe(page.state.query, page.state.endpoint, page.state.items, page.nameText)) }
+    function subscribe() {
+        if (!page.state) return
+        var wire = page.state.wireQuery && page.state.wireQuery !== page.state.query ? page.state.wireQuery : ""
+        act(Door.subscribe(page.state.query, page.state.endpoint, page.state.items, page.nameText, wire))
+    }
     function download(items) { if (items.length) act(Door.downloadReleases(items, page.nameText)) }
     function movie() {
         var one = selectedItems()
@@ -441,6 +453,8 @@ Item {
     // ---- The show inside the page
     function openRule(r) {
         page.detail = { key: page.ruleKey(r), rule: r.name, folder: page.folderOf(r.save_path), seriesId: r.show ? r.show.series_id : -1, title: page.titleOf(r) }
+        page.ruleView = null
+        Door.readRule(r.name)
         page.readFeed()
         scroll.contentY = 0
     }
@@ -449,7 +463,41 @@ Item {
         page.readFeed()
         scroll.contentY = 0
     }
-    function closeDetail() { page.detail = null; page.feed = null }
+    function closeDetail() { page.detail = null; page.feed = null; page.ruleView = null; page.watchUntil = 0 }
+    // ---- A fresh subscription: the show opens on it, and for a minute and a half the page
+    // reads the torrents every two seconds and the rule every four, so what qBittorrent
+    // takes from the feed shows up as it happens
+    property var ruleView: null
+    property real repairJob: -1
+    property string repairLabel: ""
+    function repairRule() {
+        if (page.detail === null || !page.detail.rule) return
+        var r = Door.repairSubscription(page.detail.rule)
+        if (r.error) { frame.toast(page.errorWords(r.error)); return }
+        page.repairJob = r.reply.job
+        page.repairLabel = "Trying shorter searches"
+    }
+    property real watchUntil: 0
+    property real subscribedAt: 0
+    readonly property bool watching: watchUntil > nowTick
+    property real nowTick: Date.now()
+    Timer { interval: 2000; repeat: true; running: page.watchUntil > Date.now() || page.watching; onTriggered: { page.nowTick = Date.now(); if (page.watching && page.detail && page.detail.rule) Door.readRule(page.detail.rule) } }
+    function watchSubscription(result) {
+        page.detail = { key: page.searchShow ? "s" + page.searchShow.series_id : "p" + page.folderOf(result.save_path), rule: result.name,
+                        folder: page.folderOf(result.save_path), seriesId: page.searchShow ? page.searchShow.series_id : -1,
+                        title: page.searchShow ? page.searchShow.title : result.name }
+        page.ruleView = null
+        page.subscribedAt = Date.now()
+        page.watchUntil = Date.now() + 90000
+        page.nowTick = Date.now()
+        page.feed = { url: result.feed_url, entries: [], loading: true, error: "" }
+        var r = Door.readFeed(result.feed_url)
+        if (r.error) page.feed = { url: result.feed_url, entries: [], loading: false, error: page.errorWords(r.error) }
+        Door.readRule(result.name)
+        page.loadRules()
+        page.pollTorrents()
+        scroll.contentY = 0
+    }
     readonly property var detailRule: {
         if (!detail || !detail.rule) return null
         for (var i = 0; i < rules.length; i++) if (rules[i].name === detail.rule) return rules[i]
@@ -459,11 +507,11 @@ Item {
     function torrentsFor(key, folder) {
         return torrents.filter(function(t) { return page.torrentKey(t) === key || (folder !== "" && page.folderOf(t.save_path) === folder) })
     }
-    readonly property var detailTorrents: detail ? torrentsFor(detail.key, detailRule ? folderOf(detailRule.save_path) : "")
+    readonly property var detailTorrents: detail ? torrentsFor(detail.key, detailRule ? folderOf(detailRule.save_path) : (detail.folder || ""))
         .sort(function(a, b) { return String(a.name).localeCompare(String(b.name)) }) : []
     function readFeed() {
         var r = page.detailRule
-        if (!r || !r.feed_url) { page.feed = null; return }
+        if (!r || !r.feed_url) { if (!page.watching) page.feed = null; return }
         page.feed = { url: r.feed_url, entries: page.feed && page.feed.url === r.feed_url ? page.feed.entries : [], loading: true, error: "" }
         var res = Door.readFeed(r.feed_url)
         if (res.error) page.feed = { url: r.feed_url, entries: [], loading: false, error: page.errorWords(res.error) }
@@ -631,6 +679,7 @@ Item {
             if (page.anirssReady && !frame.downloadsRulesRead) page.loadRules()
         }
         function onJobProgress(job, kind, done, total, label) {
+            if (job === page.repairJob) { page.repairLabel = label; return }
             if (job !== page.searchJob || !page.searching) return
             page.searchLabel = label
         }
@@ -648,7 +697,7 @@ Item {
         function onReleasesFound(job, search) {
             if (job !== page.searchJob) return
             page.searching = false
-            page.adopt(search)
+            page.adopt(search, search.fetched_query || search.query)
             var lines = []
             if (search.fell_back) {
                 var asked = search.tried && search.tried.length ? search.tried[0].endpoint : ""
@@ -662,7 +711,7 @@ Item {
             page.searching = false
             if (refinement.applied) {
                 var h = page.history.slice(); h.push(page.state); page.history = h
-                page.adopt(refinement)
+                page.adopt(refinement, refinement.mode === "refetch" ? refinement.query : (page.state.wireQuery || page.state.query))
                 page.notice = ""
             } else {
                 page.notice = page.reasonWords(refinement.reason)
@@ -673,6 +722,27 @@ Item {
             if (job !== page.actionJob) return
             page.acting = false
             page.actionLine = "Subscribed as " + result.name + ". New episodes save to " + result.save_path + "."
+            page.watchSubscription(result)
+        }
+        function onSubscriptionRepaired(job, name, feedUrl, mustContain, found) {
+            if (job !== page.repairJob) return
+            page.repairJob = -1
+            page.repairLabel = ""
+            frame.toast("Repaired " + name + ": the feed finds " + Fmt.plural(found, "release", "releases") + (mustContain ? " and the rule keeps \u201c" + mustContain + "\u201d" : ""), 6)
+            page.loadRules()
+            if (page.detail !== null && page.detail.rule === name) {
+                page.feed = { url: feedUrl, entries: [], loading: true, error: "" }
+                Door.readFeed(feedUrl)
+                Door.readRule(name)
+                page.subscribedAt = Date.now()
+                page.watchUntil = Date.now() + 90000
+                page.nowTick = Date.now()
+                page.pollTorrents()
+            }
+        }
+        function onRuleRead(rule) {
+            if (page.detail === null || page.detail.rule !== rule.name) return
+            page.ruleView = rule
         }
         function onTorrentsAdded(job, result) {
             if (job !== page.actionJob) return
@@ -713,6 +783,7 @@ Item {
             else if (job === page.actionJob) { page.acting = false; page.actionError = page.errorWords(error) }
             else if (job === page.connectJob) { page.connecting = false; frame.toast(page.errorWords(error)) }
             else if (job === page.previewJob) { page.previewJob = -1 }
+            else if (job === page.repairJob) { page.repairJob = -1; page.repairLabel = ""; frame.toast(page.errorWords(error), 6) }
             else if (job === page.runningJob) {
                 frame.toast(page.errorWords(error))
                 // A failure stops the run: what is left is not removed on a guess
@@ -731,7 +802,7 @@ Item {
     // The one poll in the app: the transfers, while this page is up; quick only while
     // something moves, held while the removal sheet is open (a fresh list would rebuild
     // what it was opened from)
-    Timer { interval: page.activeTorrents.length ? 2000 : 15000; running: page.visible && Door.ready && page.torrentOn && !frame.removalOpen; repeat: true; onTriggered: page.pollTorrents() }
+    Timer { interval: page.activeTorrents.length || page.watching ? 2000 : 15000; running: page.visible && Door.ready && page.torrentOn && !frame.removalOpen; repeat: true; onTriggered: page.pollTorrents() }
     Component.onCompleted: {
         reload()
         connect()
@@ -1162,6 +1233,13 @@ Item {
                 folder: page.detailRule ? page.folderOf(page.detailRule.save_path) : page.detail.folder
                 torrents: page.detailTorrents
                 feed: page.feed
+                ruleView: page.ruleView
+                source: page.detailRule ? page.endpointFor(page.detailRule.feed_url) : ""
+                repairing: page.repairJob >= 0
+                repairLabel: page.repairLabel
+                onRepair: page.repairRule()
+                watching: page.watching
+                justSubscribed: page.subscribedAt > 0 && page.detail.rule !== "" && (Date.now() - page.subscribedAt) < 600000
                 clientIndex: page.clientIndex
                 nowMs: page.nowMs
                 removing: (!!page.detailRule && page.isRemoving("r:" + page.detailRule.name)) || page.isRemoving("g:" + page.detail.key)
