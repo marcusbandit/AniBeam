@@ -387,7 +387,10 @@ fn list_torrents_emits_the_torrents_and_the_transfer_totals() {
         |e| matches!(&e.body, EventBody::TorrentsRead { .. }),
         Duration::from_secs(10),
     );
-    let EventBody::TorrentsRead { torrents, transfer } = &event.body else {
+    let EventBody::TorrentsRead {
+        torrents, transfer, ..
+    } = &event.body
+    else {
         panic!("{:?}", event.body)
     };
     assert_eq!(torrents.len(), 1);
@@ -453,4 +456,149 @@ fn a_refine_that_changes_nothing_ends_with_applied_false() {
         http.requests()[0].url,
         "http://anirss.test:8787/api/v1/refine/apply"
     );
+}
+
+/// A torrent saved under another mount than the library's still finds the
+/// series its folder fills, by the folder's name, and the series travels
+/// beside the list once.
+#[test]
+fn a_torrent_is_linked_to_the_library_series_its_folder_fills() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    isolate_xdg(dir.path());
+    let lib = dir.path().join("lib");
+    let show = lib.join("Sousou no Frieren");
+    std::fs::create_dir_all(&show).unwrap();
+    for n in 1..=3 {
+        std::fs::write(
+            show.join(format!(
+                "[SubsPlease] Sousou no Frieren - {n:02} (1080p).mkv"
+            )),
+            b"x",
+        )
+        .unwrap();
+    }
+    core.call(Call::AddSource {
+        path: lib.to_string_lossy().into_owned(),
+    })
+    .unwrap();
+    common::wait_for(
+        &c,
+        |e| matches!(e.body, EventBody::ScanFinished { .. }),
+        Duration::from_secs(10),
+    );
+
+    let torrent = |hash: &str, save: &str| {
+        json!({"hash": hash, "name": hash, "state": "uploading", "progress": 1.0, "size": 1,
+               "save_path": save, "content_path": format!("{save}/{hash}.mkv")})
+    };
+    http.push_for(
+        "torrents/info",
+        200,
+        json!([
+            torrent("aa", "/srv/media/Anime/Sousou no Frieren"),
+            torrent("bb", "/srv/media/Anime/Sousou no Frieren/"),
+            torrent("cc", "/srv/media/Anime/Something Else"),
+        ])
+        .to_string(),
+    );
+    http.push_for("transfer/info", 200, json!({}).to_string());
+
+    assert_eq!(core.call(Call::ListTorrents).unwrap(), Reply::Ok);
+    let event = common::wait_for(
+        &c,
+        |e| matches!(&e.body, EventBody::TorrentsRead { .. }),
+        Duration::from_secs(10),
+    );
+    let EventBody::TorrentsRead {
+        torrents, shows, ..
+    } = &event.body
+    else {
+        panic!("{:?}", event.body)
+    };
+    assert_eq!(shows.len(), 1, "one series, named once: {shows:?}");
+    let s = &shows[0];
+    assert_eq!(torrents[0].series_id, Some(s.series_id));
+    assert_eq!(
+        torrents[1].series_id,
+        Some(s.series_id),
+        "a trailing slash is the same folder"
+    );
+    assert_eq!(torrents[2].series_id, None);
+    assert_eq!(s.episodes_on_disk, 3);
+    assert!(s.path.ends_with("Sousou no Frieren"));
+    assert!(
+        !s.complete,
+        "an unmatched series has no total, so it is never complete"
+    );
+}
+
+/// The feed is the core's own read: entries arrive as `FeedRead` under the
+/// URL asked for, a refusal as `DownloadsUnavailable` with what "feed".
+#[test]
+fn read_feed_answers_with_the_entries_or_says_the_feed_is_unavailable() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    isolate_xdg(dir.path());
+    let url = "https://nyaa.si/?page=rss&q=Frieren";
+    http.push_for(
+        "nyaa.si",
+        200,
+        r#"<rss xmlns:nyaa="https://nyaa.si/xmlns/nyaa"><channel><item>
+             <title>[SubsPlease] Sousou no Frieren - 01 (1080p)</title>
+             <link>https://nyaa.si/download/1.torrent</link>
+             <guid>https://nyaa.si/view/1</guid>
+             <nyaa:seeders>9</nyaa:seeders>
+             <nyaa:infoHash>ABCDEF0123456789ABCDEF0123456789ABCDEF01</nyaa:infoHash>
+           </item></channel></rss>"#,
+    );
+    assert_eq!(
+        core.call(Call::ReadFeed {
+            url: url.to_string()
+        })
+        .unwrap(),
+        Reply::Ok
+    );
+    let event = common::wait_for(
+        &c,
+        |e| matches!(&e.body, EventBody::FeedRead { .. }),
+        Duration::from_secs(10),
+    );
+    let EventBody::FeedRead { url: read, entries } = &event.body else {
+        panic!("{:?}", event.body)
+    };
+    assert_eq!(read, url);
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].seeders, Some(9));
+    assert_eq!(
+        entries[0].info_hash,
+        "abcdef0123456789abcdef0123456789abcdef01"
+    );
+    assert_eq!(entries[0].page, "https://nyaa.si/view/1");
+
+    http.push_for("nyaa.si", 502, "bad gateway");
+    core.call(Call::ReadFeed {
+        url: url.to_string(),
+    })
+    .unwrap();
+    let event = common::wait_for(
+        &c,
+        |e| matches!(&e.body, EventBody::DownloadsUnavailable { .. }),
+        Duration::from_secs(10),
+    );
+    let EventBody::DownloadsUnavailable { what, error } = &event.body else {
+        panic!("{:?}", event.body)
+    };
+    assert_eq!(what, "feed");
+    assert!(
+        matches!(error, CoreError::Service { code, .. } if code == "http_502"),
+        "{error:?}"
+    );
+
+    assert!(matches!(
+        core.call(Call::ReadFeed {
+            url: "file:///etc/passwd".to_string()
+        }),
+        Err(CoreError::Invalid { .. })
+    ));
 }

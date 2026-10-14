@@ -256,6 +256,13 @@ pub enum Call {
     /// or `DownloadsUnavailable`. Not a job, for the same reason: the page
     /// polls this while it is open.
     ListTorrents,
+    /// Reads a subscription's feed itself (the RSS anirss registered), so
+    /// the page can show what it holds. Replies `Ok` at once; the entries
+    /// arrive as `FeedRead`, a failure as `DownloadsUnavailable` with
+    /// `what` set to `feed`. Not a job: opening a show reads it.
+    ReadFeed {
+        url: String,
+    },
     /// What removing a subscription would take with it. Ends in
     /// `RemovalPlanned`; nothing changes.
     PlanRemoveSubscription {

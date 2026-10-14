@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::{Duration, Instant};
 
 use crate::contract::*;
+use crate::downloads;
 use crate::events::{EventBus, Subscription};
 use crate::feed;
 use crate::franchise;
@@ -26,7 +27,6 @@ use crate::playback::session::{self, Sessions};
 use crate::playback::skip;
 use crate::prefs;
 use crate::store::Store;
-use crate::downloads;
 use crate::subscriptions;
 use crate::time;
 use crate::trackers::accounts;
@@ -752,6 +752,7 @@ impl Core {
             }),
             Call::ListSubscriptionRules => downloads::list_rules(self),
             Call::ListTorrents => downloads::list_torrents(self),
+            Call::ReadFeed { url } => downloads::read_feed(self, url),
             Call::PlanRemoveSubscription {
                 name,
                 torrents,
@@ -852,7 +853,7 @@ impl Core {
         self.bus.generation()
     }
 
-        pub fn subscribe(&self, listener: Arc<dyn EventListener>) -> Arc<Subscription> {
+    pub fn subscribe(&self, listener: Arc<dyn EventListener>) -> Arc<Subscription> {
         Subscription::new(self.bus.clone(), listener)
     }
 

@@ -14,6 +14,8 @@
 //! shell holds `{endpoint, query, items}` and its own history.
 
 pub mod anirss;
+pub mod feed;
+pub mod link;
 pub mod qbt;
 pub mod settings;
 
@@ -679,14 +681,17 @@ pub fn list_rules(core: &Core) -> Result<Reply, CoreError> {
             Err(e) => Err(e),
         };
         match outcome {
-            Ok(rules) => owner.bus.debug(
-                Stage::Downloads,
-                format!(
-                    "{} read",
-                    plural(rules.len() as u64, "subscription", "subscriptions")
-                ),
-                EventBody::SubscriptionsRead { rules },
-            ),
+            Ok(mut rules) => {
+                link_rules(&owner, &mut rules);
+                owner.bus.debug(
+                    Stage::Downloads,
+                    format!(
+                        "{} read",
+                        plural(rules.len() as u64, "subscription", "subscriptions")
+                    ),
+                    EventBody::SubscriptionsRead { rules },
+                )
+            }
             Err(error) => owner.bus.debug(
                 Stage::Downloads,
                 format!("subscriptions not read: {}", plain(&error)),
@@ -712,7 +717,8 @@ pub fn list_torrents(core: &Core) -> Result<Reply, CoreError> {
         }
         .await;
         match outcome {
-            Ok((torrents, transfer)) => {
+            Ok((mut torrents, transfer)) => {
+                let shows = link_torrents(&owner, &mut torrents);
                 {
                     let mut st = owner.downloads.state();
                     st.torrent.connected = true;
@@ -724,7 +730,11 @@ pub fn list_torrents(core: &Core) -> Result<Reply, CoreError> {
                         "{} read",
                         plural(torrents.len() as u64, "torrent", "torrents")
                     ),
-                    EventBody::TorrentsRead { torrents, transfer },
+                    EventBody::TorrentsRead {
+                        torrents,
+                        transfer,
+                        shows,
+                    },
                 )
             }
             Err(error) => {
@@ -745,6 +755,87 @@ pub fn list_torrents(core: &Core) -> Result<Reply, CoreError> {
         };
     });
     Ok(Reply::Ok)
+}
+
+/// Not a job: opening a show reads its feed. The core fetches the feed
+/// itself rather than through anirss, which has no route for it; the URL
+/// is the one anirss registered, API key and all, and never leaves this
+/// machine but to its own host.
+pub fn read_feed(core: &Core, url: String) -> Result<Reply, CoreError> {
+    let url = url.trim().to_string();
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err(CoreError::invalid("url", "a feed is an http(s) URL"));
+    }
+    let owner = core.owner()?;
+    core.handle.spawn(async move {
+        match feed::read(owner.http.as_ref(), &url).await {
+            Ok(entries) => owner.bus.debug(
+                Stage::Downloads,
+                format!(
+                    "{} read from {}",
+                    plural(entries.len() as u64, "feed entry", "feed entries"),
+                    feed::host_of(&url)
+                ),
+                EventBody::FeedRead { url, entries },
+            ),
+            Err(error) => owner.bus.debug(
+                Stage::Downloads,
+                format!("feed not read: {}", plain(&error)),
+                EventBody::DownloadsUnavailable {
+                    what: "feed".to_string(),
+                    error,
+                },
+            ),
+        };
+    });
+    Ok(Reply::Ok)
+}
+
+/// Fills each rule's `show` from the library. A library that cannot be
+/// read leaves them empty: the rules still stand on their own.
+fn link_rules(core: &Core, rules: &mut [SubscriptionRule]) {
+    let images = core.paths.images_dir();
+    let linked = core.store.read(|c| {
+        let linker = link::Linker::load(c)?;
+        let ids: Vec<Option<u64>> = rules.iter().map(|r| linker.find(&r.save_path)).collect();
+        let wanted: Vec<u64> = ids.iter().flatten().copied().collect();
+        let shows = link::shows(c, &images, crate::time::now(), &wanted)?;
+        Ok((ids, shows))
+    });
+    match linked {
+        Ok((ids, shows)) => {
+            for (rule, id) in rules.iter_mut().zip(ids) {
+                rule.show = id.and_then(|id| shows.get(&id).cloned());
+            }
+        }
+        Err(e) => tracing::warn!("subscriptions not linked to the library: {e}"),
+    }
+}
+
+/// Sets each torrent's `series_id` and returns those series, once each.
+fn link_torrents(core: &Core, torrents: &mut [Torrent]) -> Vec<ShowLink> {
+    let images = core.paths.images_dir();
+    let linked = core.store.read(|c| {
+        let linker = link::Linker::load(c)?;
+        let ids: Vec<Option<u64>> = torrents.iter().map(|t| linker.find_torrent(t)).collect();
+        let wanted: Vec<u64> = ids.iter().flatten().copied().collect();
+        let shows = link::shows(c, &images, crate::time::now(), &wanted)?;
+        Ok((ids, shows))
+    });
+    match linked {
+        Ok((ids, shows)) => {
+            for (t, id) in torrents.iter_mut().zip(ids) {
+                t.series_id = id;
+            }
+            let mut out: Vec<ShowLink> = shows.into_values().collect();
+            out.sort_by_key(|s| s.series_id);
+            out
+        }
+        Err(e) => {
+            tracing::warn!("torrents not linked to the library: {e}");
+            Vec::new()
+        }
+    }
 }
 
 /// Saves the settings and the two secrets, each secret three-state as

@@ -74,10 +74,21 @@ below where they disagree:
   search up: the query line (Back, the query, the count, what anirss said), the groups
   as chips, Narrow and Best fit, then the releases as flat rows with a selection mark at
   the left and the actions pane (a name, Subscribe, Download, Movie, what the last action
-  did) at the right. Under everything the subscriptions and the transfers side by side,
-  flat rows with a hairline, the transfers' progress a 2 px line along each row's foot.
-  Remove on a subscription asks anirss for the plan first and shows it as the inline
-  confirm; Remove on a transfer offers torrent only or files as well.
+  did) at the right. With no search up the page puts what you subscribe to and what you
+  have first, and the transfers in their place: a Downloading band (the moving torrents,
+  speeds in its line) only while something moves; Subscriptions as a mosaic of posters of
+  the library series each rule's folder fills, complete ones first with a red Complete
+  tag, under a line naming how many are complete and offering Remove RSS for all of them;
+  then Downloaded, one flat row per show folder the client holds torrents for, poster,
+  totals, Subscribed and Complete chips, Remove torrents and Remove files. A poster or a
+  row opens the show inside the page (`ShowDetail.qml`): the poster with Open in library,
+  where the show stands in one sentence, every episode as a cell, the three removals, the
+  subscription's facts, then the feed as it reads now (each release marked Downloaded or
+  offered for download) beside the folder's torrents. Nothing on the page sends the
+  person to a browser. Every removal is a `ConfirmButton`: one click arms it (red,
+  Confirm), a second does it, a click anywhere else or Escape disarms it; nothing ever
+  opens a question that pushes a row's text aside. The rail's Downloads glyph carries a
+  red count of complete subscriptions.
 - **Metadata and Settings are flat too, and `mosaic.js` is gone.** Metadata is the head
   row (the title in the display cut, the count, the filter, Match unmatched and Refresh
   all as flat pills, the search at the right) over a flat list: a poster thumbnail, the

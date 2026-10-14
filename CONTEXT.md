@@ -170,8 +170,24 @@ _Avoid_: auto-pick, recommended
 An RSS feed and an auto-download rule registered in the torrent client under one name, so every new release that matches lands under that name's folder. anirss registers and removes them; the core only asks.
 _Avoid_: rule, feed, watch
 
+**Complete subscription**:
+A subscription whose show has finished airing (or was cancelled) with every episode from 1 to the total on disk, counted by distinct episode number so a v2 beside its v1 counts once. Nothing more will come, so the subscription has nothing left to do: the rail counts these in red and the page offers to remove their RSS. A film is complete once its file is there. An estimated or unknown total is never complete.
+_Avoid_: finished, done, stale
+
+**Remove RSS**:
+Taking a subscription away: its feed, its rule and its torrents leave the torrent client, the files stay in the library. Distinct from removing files, which deletes what the torrents downloaded and belongs to the downloaded show, not to the subscription.
+_Avoid_: unsubscribe, delete subscription
+
+**Downloaded show**:
+Every torrent the client holds for one folder, as one entry: the series that folder fills when the library has it, else the folder by name. Remove torrents and Remove files act on the whole of it.
+_Avoid_: group, torrent list
+
+**Show link**:
+How a subscription or a torrent finds its library series: by the save folder's exact path, else its last component, else that component with case and punctuation dropped. A client can name the library's folder under another mount, and anirss can spell a rule's folder a little differently.
+_Avoid_: match (that is the metadata match), mapping
+
 **Transfer**:
-A torrent as the torrent client reports it: its state, progress and speed. The one thing in the app that is polled, and only while the Downloads page is up.
+A torrent as the torrent client reports it: its state, progress and speed. The one thing in the app that is polled, and only while the Downloads page is up: every two seconds while one is moving, every fifteen while none is.
 _Avoid_: download, job, task
 
 **Sidecar**:

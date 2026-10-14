@@ -135,6 +135,7 @@ FocusScope {
         visible: !frame.fullWindow
         anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom
         active: nav.railIndex
+        downloadsBadge: frame.downloadsAttention
         onPicked: function(i) { if (i !== nav.railIndex || nav.current.page !== nav.railPages[i]) frame.go(nav.railPages[i]) }
     }
 
@@ -427,6 +428,71 @@ FocusScope {
     }
     function hideTip() { tip.visible = false; tipArea = null }
     function toast(text, seconds) { toastText.text = text; toastBox.visible = true; toastTimer.interval = (seconds || 4) * 1000; toastTimer.restart() }
+
+    // ---- A ConfirmButton armed: one at a time. A press anywhere but on it disarms it and
+    // still goes through to what it landed on (the catcher only looks, accepted false), so
+    // clicking away is one click, not two.
+    property Item armedConfirm: null
+    function armConfirm(b) {
+        if (armedConfirm && armedConfirm !== b) armedConfirm.disarm()
+        armedConfirm = b
+        escapeStack.push("confirm", b)
+    }
+    function disarmConfirm(b) {
+        if (armedConfirm === b) armedConfirm = null
+        escapeStack.pop(b)
+    }
+    MouseArea {
+        id: confirmCatcher
+        anchors.fill: parent
+        z: 700
+        enabled: frame.armedConfirm !== null
+        acceptedButtons: Qt.AllButtons
+        onPressed: function(mouse) {
+            var b = frame.armedConfirm
+            if (b) {
+                var p = b.mapFromItem(confirmCatcher, mouse.x, mouse.y)
+                if (!(p.x >= 0 && p.y >= 0 && p.x <= b.width && p.y <= b.height)) b.disarm()
+            }
+            mouse.accepted = false
+        }
+    }
+
+    // ---- Downloads: the subscriptions as last read, shared by the rail's badge and the
+    // page. Read once a little after start (anirss is a sidecar the core starts), then
+    // again when the library has settled after a change, since a new episode on disk can
+    // finish a show. No poll: a read follows something that happened.
+    property var downloadsRules: []
+    property bool downloadsRulesRead: false
+    property string downloadsRulesError: ""
+    readonly property int downloadsAttention: {
+        var n = 0
+        for (var i = 0; i < downloadsRules.length; i++) if (downloadsRules[i].show && downloadsRules[i].show.complete) n++
+        return n
+    }
+    // Put off while a removal is armed: a fresh list rebuilds the posters, the armed one too
+    function readDownloadsRules() {
+        if (!Door.ready) return
+        if (frame.armedConfirm !== null) { downloadsReread.restart(); return }
+        Door.listSubscriptionRules()
+    }
+    Connections {
+        target: Door
+        function onSubscriptionsRead(rules) { frame.downloadsRules = rules; frame.downloadsRulesRead = true; frame.downloadsRulesError = "" }
+        function onDownloadsUnavailable(what, error) {
+            if (what !== "subscriptions") return
+            frame.downloadsRulesRead = true
+            frame.downloadsRulesError = error && error.message ? error.message : "Not read."
+        }
+        // A run of removals (Remove RSS for all) asks once, after the last
+        function onSubscriptionRemoved(name) { downloadsReread.restart() }
+        function onSubscribed(job, result) { downloadsReread.restart() }
+        function onScanFinished(source, added, changed, removed) { downloadsSettle.restart() }
+        function onSeriesChanged(cards) { downloadsSettle.restart() }
+    }
+    Timer { interval: 4000; running: Door.ready; onTriggered: frame.readDownloadsRules() }
+    Timer { id: downloadsSettle; interval: 10000; onTriggered: frame.readDownloadsRules() }
+    Timer { id: downloadsReread; interval: 1500; onTriggered: frame.readDownloadsRules() }
 
     Shortcut { sequence: "Ctrl+K"; onActivated: { if (nav.current.page !== "library") frame.go("library"); Qt.callLater(function() { if (page.item && page.item.focusSearch) page.item.focusSearch() }) } }
     // Any page with a search takes "/" (the library, metadata)

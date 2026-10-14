@@ -91,7 +91,10 @@ fn main() {
             .qml_file("qml/SettingsDownloadsTab.qml")
             .qml_file("qml/DownloadsPage.qml")
             .qml_file("qml/ReleaseRow.qml")
-            .qml_file("qml/SubscriptionRow.qml")
+            .qml_file("qml/SubscriptionCard.qml")
+            .qml_file("qml/DownloadedRow.qml")
+            .qml_file("qml/ShowDetail.qml")
+            .qml_file("qml/ConfirmButton.qml")
             .qml_file("qml/TorrentRow.qml")
             .qml_file("qml/SettingsDataTab.qml"),
     )

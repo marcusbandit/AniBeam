@@ -5,6 +5,7 @@
 //! received from anirss goes back to it unchanged (anirss keeps no search
 //! state; the caller sends `{endpoint, query, items}` with every step).
 
+use super::{Airing, AiringStatus, SeriesKind};
 use serde::{Deserialize, Serialize};
 
 /// One release from a feed: anirss's `Item`. The three counts are `None`
@@ -194,6 +195,38 @@ pub struct SubscriptionRule {
     /// when the feed has none.
     #[serde(default)]
     pub query: String,
+    /// The library series the rule's folder fills, when the library holds
+    /// it: the core fills this in, anirss knows nothing of it.
+    #[serde(default)]
+    pub show: Option<ShowLink>,
+}
+
+/// A library series as the downloads page shows it beside a rule or a
+/// group of torrents. Linked by folder: the exact path first, then the
+/// folder's name, then the name with case and punctuation dropped, since
+/// a client's save path can name the same folder under another mount.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct ShowLink {
+    pub series_id: u64,
+    pub kind: SeriesKind,
+    pub title: String,
+    pub path: String,
+    pub poster: Option<String>,
+    pub status: Option<AiringStatus>,
+    /// Distinct episode numbers on disk, so a v2 next to its v1 counts
+    /// once.
+    pub episodes_on_disk: u64,
+    pub total_episodes: Option<u32>,
+    pub total_is_estimate: bool,
+    pub next_airing: Option<Airing>,
+    /// Every episode from 1 to the total is on disk and the show has
+    /// finished airing (or was cancelled): nothing more will come, so the
+    /// subscription has nothing left to do. A film is complete once its
+    /// file is there.
+    pub complete: bool,
+    /// The episode numbers from 1 to the total that are not on disk, when
+    /// the total is known. Empty for a complete show.
+    pub missing: Vec<u32>,
 }
 
 fn default_true() -> bool {
@@ -241,6 +274,33 @@ pub struct Torrent {
     pub completion_on: i64,
     pub tags: String,
     pub category: String,
+    /// The library series this torrent's folder fills, linked as a
+    /// `ShowLink` is; its record travels beside the list.
+    #[serde(default)]
+    pub series_id: Option<u64>,
+}
+
+/// One release in a subscription's feed, read by the core straight from
+/// the feed so the page can show what the feed holds without leaving the
+/// app. Nyaa's own fields and torznab's attributes both land here; a field
+/// the feed did not carry is empty or `None`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct FeedEntry {
+    pub title: String,
+    /// The torrent or magnet link.
+    pub link: String,
+    /// The release's own page, when the feed names one.
+    pub page: String,
+    /// When it was posted, Unix seconds.
+    pub published: Option<i64>,
+    /// The size as the feed wrote it ("1.4 GiB"), or formatted from bytes.
+    pub size: String,
+    pub size_bytes: Option<u64>,
+    pub seeders: Option<i64>,
+    pub leechers: Option<i64>,
+    pub downloads: Option<i64>,
+    /// Lower case hex, empty when the feed carried none.
+    pub info_hash: String,
 }
 
 /// qBittorrent's transfer totals.

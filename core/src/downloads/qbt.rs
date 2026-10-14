@@ -270,6 +270,7 @@ fn torrent(v: &Value) -> Torrent {
         completion_on: int(&v["completion_on"]),
         tags: text(&v["tags"]),
         category: text(&v["category"]),
+        series_id: None,
     }
 }
 

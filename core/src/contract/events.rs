@@ -171,6 +171,14 @@ pub enum EventBody {
     TorrentsRead {
         torrents: Vec<Torrent>,
         transfer: TransferRate,
+        /// The library series the torrents' `series_id`s name, once each.
+        shows: Vec<ShowLink>,
+    },
+    /// A subscription's feed, read for the page: `url` is the one asked
+    /// for, so a late answer for a feed since closed can be told apart.
+    FeedRead {
+        url: String,
+        entries: Vec<FeedEntry>,
     },
     /// A read that is not a job could not be made: which read, and why.
     DownloadsUnavailable {

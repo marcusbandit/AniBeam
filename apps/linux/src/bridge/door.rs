@@ -287,6 +287,10 @@ pub mod qobject {
         /// Replies `Ok`; the list arrives as `torrentsRead`, or `downloadsUnavailable`.
         #[qinvokable]
         fn list_torrents(self: &Door) -> QJsonObject;
+        /// Replies `Ok`; the entries arrive as `feedRead`, or `downloadsUnavailable` with
+        /// `what` "feed".
+        #[qinvokable]
+        fn read_feed(self: &Door, url: &QString) -> QJsonObject;
         #[qinvokable]
         fn plan_remove_subscription(
             self: &Door,
@@ -436,7 +440,14 @@ pub mod qobject {
         #[qsignal]
         fn subscriptions_read(self: Pin<&mut Door>, rules: QJsonArray);
         #[qsignal]
-        fn torrents_read(self: Pin<&mut Door>, torrents: QJsonArray, transfer: QJsonObject);
+        fn torrents_read(
+            self: Pin<&mut Door>,
+            torrents: QJsonArray,
+            transfer: QJsonObject,
+            shows: QJsonArray,
+        );
+        #[qsignal]
+        fn feed_read(self: Pin<&mut Door>, url: QString, entries: QJsonArray);
         #[qsignal]
         fn downloads_unavailable(self: Pin<&mut Door>, what: QString, error: QJsonObject);
         #[qsignal]
@@ -992,9 +1003,11 @@ impl qobject::Door {
             EventBody::Subscribed { .. } => self.as_mut().subscribed(job_id, obj("result")),
             EventBody::TorrentsAdded { .. } => self.as_mut().torrents_added(job_id, obj("result")),
             EventBody::SubscriptionsRead { .. } => self.as_mut().subscriptions_read(arr("rules")),
-            EventBody::TorrentsRead { .. } => self
-                .as_mut()
-                .torrents_read(arr("torrents"), obj("transfer")),
+            EventBody::TorrentsRead { .. } => {
+                self.as_mut()
+                    .torrents_read(arr("torrents"), obj("transfer"), arr("shows"))
+            }
+            EventBody::FeedRead { .. } => self.as_mut().feed_read(s("url"), arr("entries")),
             EventBody::DownloadsUnavailable { error, .. } => self
                 .as_mut()
                 .downloads_unavailable(s("what"), to_qjson_object(&json::error_json(error))),
@@ -1450,6 +1463,11 @@ impl qobject::Door {
     }
     pub fn list_torrents(&self) -> QJsonObject {
         self.dispatch(Ok(Call::ListTorrents))
+    }
+    pub fn read_feed(&self, url: &QString) -> QJsonObject {
+        self.dispatch(Ok(Call::ReadFeed {
+            url: url.to_string(),
+        }))
     }
     pub fn plan_remove_subscription(
         &self,

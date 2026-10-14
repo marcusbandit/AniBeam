@@ -1,0 +1,204 @@
+[
+ {
+  "log": "the rail's badge, then the page: subscriptions as posters, complete first"
+ },
+ {
+  "wait": 7000
+ },
+ {
+  "shot": "subs-00-badge"
+ },
+ {
+  "click": "rail-downloads"
+ },
+ {
+  "wait": 9000
+ },
+ {
+  "eval": "frame.item.nav.current.page",
+  "expect": "downloads"
+ },
+ {
+  "eval": "frame.item.downloadsAttention > 0",
+  "expect": true
+ },
+ {
+  "shot": "subs-01-home"
+ },
+ {
+  "log": "hovering a poster puts Remove RSS at its foot; one click arms it, a click away disarms"
+ },
+ {
+  "hover": [
+   448,
+   420
+  ]
+ },
+ {
+  "wait": 500
+ },
+ {
+  "shot": "subs-01b-hover"
+ },
+ {
+  "click": "subscription-remove"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "frame.item.armedConfirm !== null",
+  "expect": true
+ },
+ {
+  "shot": "subs-01c-card-armed"
+ },
+ {
+  "click": "downloads-summary"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "frame.item.armedConfirm === null",
+  "expect": true
+ },
+ {
+  "log": "down to Downloaded"
+ },
+ {
+  "wheel": "downloads-page",
+  "dy": -2400
+ },
+ {
+  "wait": 900
+ },
+ {
+  "shot": "subs-02-downloaded"
+ },
+ {
+  "wheel": "downloads-page",
+  "dy": 4800
+ },
+ {
+  "wait": 600
+ },
+ {
+  "log": "the Complete filter"
+ },
+ {
+  "eval": "frame.item.pageItem.subFilter = 1; 1",
+  "expect": 1
+ },
+ {
+  "wait": 600
+ },
+ {
+  "shot": "subs-03-complete"
+ },
+ {
+  "eval": "frame.item.pageItem.subFilter = 0; 0",
+  "expect": 0
+ },
+ {
+  "log": "a complete show, inside the page: episodes, feed, torrents"
+ },
+ {
+  "eval": "frame.item.pageItem.openRule(frame.item.pageItem.completeRules[0]); frame.item.pageItem.detail !== null",
+  "expect": true
+ },
+ {
+  "wait": 8000
+ },
+ {
+  "shot": "subs-04-detail"
+ },
+ {
+  "log": "Remove RSS arms on one click and a click elsewhere disarms it; never a second click"
+ },
+ {
+  "click": "show-remove-rss"
+ },
+ {
+  "wait": 400
+ },
+ {
+  "eval": "frame.item.armedConfirm !== null",
+  "expect": true
+ },
+ {
+  "shot": "subs-05-armed"
+ },
+ {
+  "click": "downloads-summary"
+ },
+ {
+  "wait": 400
+ },
+ {
+  "eval": "frame.item.armedConfirm === null",
+  "expect": true
+ },
+ {
+  "shot": "subs-06-disarmed"
+ },
+ {
+  "log": "Escape closes the show"
+ },
+ {
+  "key": "Escape"
+ },
+ {
+  "wait": 600
+ },
+ {
+  "eval": "frame.item.pageItem.detail === null",
+  "expect": true
+ },
+ {
+  "log": "something moving brings Downloading up front"
+ },
+ {
+  "eval": "var p = frame.item.pageItem; p.torrents = p.torrents.concat([{hash: 'f00', name: '[SubsPlease] Test Show - 08 (1080p).mkv', state: 'downloading', progress: 0.42, size: 1500000000, dlspeed: 5200000, upspeed: 0, eta: 160, num_seeds: 41, num_leechs: 3, ratio: 0, save_path: '/x/Test Show', content_path: '/x/Test Show/a.mkv', added_on: 2000000000, completion_on: 0, tags: '', category: '', series_id: null}]); p.activeTorrents.length > 0",
+  "expect": true
+ },
+ {
+  "wait": 500
+ },
+ {
+  "shot": "subs-07-downloading"
+ },
+ {
+  "log": "an armed Remove holds through what would have been two polls (the fake torrent's hash is not in the client)"
+ },
+ {
+  "click": "torrent-remove"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "frame.item.armedConfirm !== null",
+  "expect": true
+ },
+ {
+  "wait": 4500
+ },
+ {
+  "eval": "frame.item.armedConfirm !== null",
+  "expect": true
+ },
+ {
+  "shot": "subs-08-armed-holds"
+ },
+ {
+  "key": "Escape"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "eval": "frame.item.armedConfirm === null",
+  "expect": true
+ }
+]
