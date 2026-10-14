@@ -111,6 +111,15 @@ pub struct TrackerRow {
     pub repeat: u32,
 }
 
+/// The IMDb title a series' match resolves to, and its rating when IMDb's
+/// dump has one: in tenths, the way the table holds it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ImdbPick {
+    pub id: u64,
+    pub rating: Option<u32>,
+    pub votes: Option<u64>,
+}
+
 /// Everything one read needs, in a handful of queries. `scope` restricts
 /// every one of them to a set of series, so building the cards for a job's
 /// batch never loads the whole library.
@@ -134,6 +143,8 @@ pub struct Snapshot {
     pub resume: HashMap<(u64, String), (f64, f64)>,
     /// AniList ids with at least one relation row.
     pub graph_seeds: HashSet<u64>,
+    /// By series id, only for a series whose match leads to an IMDb title.
+    pub imdb: HashMap<u64, ImdbPick>,
     /// The franchise each grouped series belongs to, by series id. Always
     /// computed over the whole library, scoped load or not, so a job's
     /// `SeriesChanged` card carries the same tag a list does.
@@ -199,6 +210,71 @@ fn show_media(r: &rusqlite::Row) -> rusqlite::Result<MediaRow> {
     })
 }
 
+/// The IMDb title behind each series' current match, one row per series
+/// that has one. A TVmaze show names its own. An AniList match goes
+/// through Wikidata's links for its AniList id, and through its MAL id's
+/// only when Wikidata links the AniList id to nothing; a MAL match takes
+/// its MAL id's. A TMDB match and an unmatched series have none. Where one
+/// id links to several titles the most voted wins, a title with no rating
+/// counting as fewer votes than any rated one, and the lower id breaks a
+/// tie so the pick never wavers between reads.
+///
+/// `{scope}` is the series filter, nothing when the whole library is read.
+const IMDB_SQL: &str = "WITH scoped AS (
+        SELECT id, provider, anilist_id, mal_id, tvmaze_id FROM series {scope}
+    ),
+    candidates (series, fallback, imdb) AS (
+        SELECT s.id, 0, CAST(substr(t.imdb, 3) AS INTEGER)
+        FROM scoped s JOIN tvmaze_shows t ON t.id = s.tvmaze_id
+        WHERE s.provider = 'tvmaze' AND t.imdb GLOB 'tt[0-9]*' AND substr(t.imdb, 3) NOT GLOB '*[^0-9]*'
+        UNION ALL
+        SELECT s.id, 0, l.imdb
+        FROM scoped s JOIN imdb_links l ON l.provider = 'anilist' AND l.provider_id = s.anilist_id
+        WHERE s.provider = 'anilist'
+        UNION ALL
+        SELECT s.id, s.provider = 'anilist', l.imdb
+        FROM scoped s JOIN imdb_links l ON l.provider = 'mal' AND l.provider_id = s.mal_id
+        WHERE s.provider IN ('anilist', 'mal')
+    )
+    SELECT series, imdb, rating, votes FROM (
+        SELECT c.series, c.imdb, r.rating, r.votes,
+               row_number() OVER (
+                   PARTITION BY c.series
+                   ORDER BY c.fallback, coalesce(r.votes, -1) DESC, c.imdb
+               ) AS pick
+        FROM candidates c LEFT JOIN imdb_ratings r ON r.id = c.imdb
+        WHERE c.imdb > 0
+    )
+    WHERE pick = 1";
+
+/// `IMDB_SQL` over the whole library with `scope` None, or over exactly
+/// the named series. The cards read it, and the IMDb refresh reads it
+/// either side of a replace to learn which cards it changed.
+pub(crate) fn imdb_picks(
+    conn: &Connection,
+    scope: Option<&[u64]>,
+) -> Result<HashMap<u64, ImdbPick>, CoreError> {
+    if scope.is_some_and(<[u64]>::is_empty) {
+        return Ok(HashMap::new());
+    }
+    let filter = match scope {
+        Some(ids) => format!("WHERE id IN ({})", placeholders(ids.len())),
+        None => String::new(),
+    };
+    let mut stmt = conn.prepare(&IMDB_SQL.replace("{scope}", &filter))?;
+    let rows = stmt.query_map(params_from_iter(ids_as_i64(scope.unwrap_or(&[]))), |r| {
+        Ok((
+            r.get::<_, i64>(0)? as u64,
+            ImdbPick {
+                id: r.get::<_, i64>(1)? as u64,
+                rating: r.get::<_, Option<i64>>(2)?.map(|v| v as u32),
+                votes: r.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+            },
+        ))
+    })?;
+    Ok(rows.collect::<Result<HashMap<_, _>, _>>()?)
+}
+
 impl Snapshot {
     /// Loads the whole library with `scope` None, or exactly the named
     /// series with `scope` Some. An empty scope loads nothing at all.
@@ -223,6 +299,7 @@ impl Snapshot {
             completed: HashMap::new(),
             resume: HashMap::new(),
             graph_seeds: HashSet::new(),
+            imdb: HashMap::new(),
             franchises: HashMap::new(),
             images_dir: images_dir.to_string_lossy().into_owned(),
             gaps: Vec::new(),
@@ -250,6 +327,7 @@ impl Snapshot {
         snap.load_tracker_entries(conn, scope.map(|_| media_ids.as_slice()))?;
         snap.load_history(conn, scoped_series)?;
         snap.load_graph_seeds(conn, scope.map(|_| anilist_ids.as_slice()))?;
+        snap.imdb = imdb_picks(conn, scoped_series)?;
         snap.franchises = crate::franchise::groups::load(conn, snap.lang)?;
         Ok(snap)
     }

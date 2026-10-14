@@ -571,6 +571,7 @@ pub enum JobKind {
     Refresh,
     RefreshAll,
     RefreshAiring,
+    RefreshImdb,
     ClearImages,
     FillImages,
     ConnectTracker,
@@ -592,7 +593,7 @@ impl JobKind {
         match self {
             Scan | Subscriptions => Stage::Library,
             AutoMatch | Search | ResolveLink | ApplyMatch | Refresh | RefreshAll
-            | RefreshAiring | ClearImages | FillImages => Stage::Metadata,
+            | RefreshAiring | RefreshImdb | ClearImages | FillImages => Stage::Metadata,
             ConnectTracker | Mark | SetProgress | Score | RefreshProgress | RefreshWatching => {
                 Stage::Trackers
             }
@@ -609,6 +610,7 @@ impl JobKind {
             self,
             Scan | AutoMatch
                 | RefreshAll
+                | RefreshImdb
                 | Crawl
                 | RefreshProgress
                 | RefreshWatching
@@ -629,6 +631,7 @@ impl JobKind {
             Refresh => "Refresh",
             RefreshAll => "RefreshAll",
             RefreshAiring => "RefreshAiring",
+            RefreshImdb => "RefreshImdb",
             ClearImages => "ClearImages",
             FillImages => "FillImages",
             ConnectTracker => "ConnectTracker",
@@ -656,6 +659,7 @@ impl JobKind {
             "Refresh" => Some(Refresh),
             "RefreshAll" => Some(RefreshAll),
             "RefreshAiring" => Some(RefreshAiring),
+            "RefreshImdb" => Some(RefreshImdb),
             "ClearImages" => Some(ClearImages),
             "FillImages" => Some(FillImages),
             "ConnectTracker" => Some(ConnectTracker),

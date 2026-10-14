@@ -8,6 +8,7 @@ pub mod airing;
 pub mod apply;
 pub mod automatch;
 pub mod fetch;
+pub mod imdb;
 pub mod link;
 pub mod record;
 pub mod similarity;

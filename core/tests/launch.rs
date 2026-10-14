@@ -32,13 +32,14 @@ fn misses() -> Arc<anibeam_core::net::FakeHttp> {
     http
 }
 
-/// The five kinds the launch owes a session, in the order it starts them.
+/// The six kinds the launch owes a session, in the order it starts them.
 /// The stub backfill is a plain `Refresh`, which is not one at a time and so
 /// is not something a test can wait on by kind alone.
-const LAUNCH_JOBS: [JobKind; 5] = [
+const LAUNCH_JOBS: [JobKind; 6] = [
     JobKind::AutoMatch,
     JobKind::Crawl,
     JobKind::RefreshAiring,
+    JobKind::RefreshImdb,
     JobKind::RefreshProgress,
     JobKind::FillImages,
 ];

@@ -58,6 +58,7 @@ impl JikanClient {
                 url: format!("{JIKAN_API}/anime/{mal_id}/episodes"),
                 headers: vec![("Accept".to_string(), "application/json".to_string())],
                 body: None,
+                timeout: None,
             })
             .await?;
         if response.status == 404 {

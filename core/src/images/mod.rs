@@ -591,6 +591,7 @@ async fn fetch_one(
         url: url.to_string(),
         headers: Vec::new(),
         body: None,
+        timeout: None,
     };
     let response = http
         .send(request)

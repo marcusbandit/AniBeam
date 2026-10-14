@@ -162,10 +162,11 @@ Item {
     readonly property bool showArt: hasBanner && band.width >= theme.space(275)
     readonly property bool hasScore: card.my_score !== null && card.my_score !== undefined
     readonly property bool hasAverage: card.community_score !== null && card.community_score !== undefined
+    readonly property bool hasImdb: card.imdb_score !== null && card.imdb_score !== undefined
     function listIcon(s) { return { Watching: "play", Repeating: "rotate-ccw", Completed: "circle-check", Paused: "pause", Dropped: "ban", Planning: "bookmark" }[s] || "bookmark" }
 
     // ---- The facts, one ledger line: format, year, studio, episodes, on disk, status. The
-    // average score and the list status sit in the quiet row, beside your own score.
+    // average score, the IMDb score and the list status sit in the quiet row, beside your own score.
     readonly property string factsLine: {
         if (!detail) return ""
         var f = [formatLabel(card.format)]
@@ -487,8 +488,9 @@ Item {
                         }
                     }
                 }
-                // The quiet row: your score (rate, on a tracker), the average score, the list
-                // status and rewatches, then hide, the record's site, rescan
+                // The quiet row: your score (rate, on a tracker), the average score, the IMDb
+                // score with its votes on hover, the list status and rewatches, then hide, the
+                // record's site, rescan
                 Flow {
                     width: parent.width
                     spacing: theme.space(2)
@@ -503,6 +505,13 @@ Item {
                         onClicked: scorePicker.openAt(rateButton, page.hasScore ? card.my_score : -1)
                     }
                     Fact { objectName: "fact-average"; visible: page.hasAverage; icon: "users"; text: page.hasAverage ? "Average score " + Fmt.score(card.community_score) : "" }
+                    Fact {
+                        objectName: "fact-imdb"
+                        visible: page.hasImdb
+                        icon: "clapperboard"
+                        text: page.hasImdb ? "IMDb " + Fmt.score(card.imdb_score) : ""
+                        Tooltip { text: page.hasImdb && card.imdb_votes ? Number(card.imdb_votes).toLocaleString(Qt.locale(), "f", 0) + " votes" : "" }
+                    }
                     Fact { objectName: "fact-list"; visible: !!card.list_status; icon: page.listIcon(card.list_status); text: card.list_status ? page.listStatus(card.list_status) : "" }
                     Fact { visible: !!page.detail && page.detail.rewatch_count > 0; icon: "rotate-ccw"; text: page.detail && page.detail.rewatch_count > 0 ? "Rewatched " + page.detail.rewatch_count + (page.detail.rewatch_count === 1 ? " time" : " times") : "" }
                     Button {

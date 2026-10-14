@@ -86,6 +86,12 @@ mod tests {
         assert!(JobKind::Scan.one_at_a_time());
         assert!(!JobKind::Search.one_at_a_time());
         assert!(JobKind::FillImages.one_at_a_time());
+        assert_eq!(JobKind::RefreshImdb.stage(), Stage::Metadata);
+        assert!(JobKind::RefreshImdb.one_at_a_time());
+        assert_eq!(
+            JobKind::from_column(JobKind::RefreshImdb.as_str()),
+            Some(JobKind::RefreshImdb)
+        );
     }
 
     #[test]

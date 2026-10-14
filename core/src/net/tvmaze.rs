@@ -402,6 +402,7 @@ impl TvmazeClient {
                 url,
                 headers: vec![("Accept".to_string(), "application/json".to_string())],
                 body: None,
+                timeout: None,
             })
             .await
     }

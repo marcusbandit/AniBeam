@@ -209,6 +209,7 @@ mod tests {
             url: url.into(),
             headers: vec![],
             body: None,
+            timeout: None,
         }
     }
 

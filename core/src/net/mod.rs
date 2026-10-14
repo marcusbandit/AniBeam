@@ -13,10 +13,12 @@ use crate::contract::{CoreError, Provider};
 
 pub mod anilist;
 pub mod aniskip;
+pub mod imdb;
 pub mod jikan;
 pub mod limiter;
 pub mod mal;
 pub mod tvmaze;
+pub mod wikidata;
 
 /// A boxed future, so `Http` stays object safe and the fake and the real
 /// client can be swapped behind one `Arc<dyn Http>`.
@@ -58,6 +60,11 @@ pub struct HttpRequest {
     pub url: String,
     pub headers: Vec<(String, String)>,
     pub body: Option<Body>,
+    /// A ceiling on this one request, body included, in place of the
+    /// client's. `None` keeps the client's 30 seconds, which is every
+    /// request but the IMDb dump: megabytes rather than kilobytes, and a
+    /// slow line should not cost a week's ratings.
+    pub timeout: Option<Duration>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -104,6 +111,35 @@ impl HttpResponse {
 #[derive(Clone, Debug, PartialEq)]
 pub struct HttpError {
     pub message: String,
+}
+
+/// What a fetch from a host outside the contract's providers comes back
+/// with when it brings nothing to write: IMDb's dataset mirror and
+/// Wikidata's query service. Neither is a `Provider`, so a failure cannot
+/// be a `CoreError::Provider` naming one; the job that asked turns this
+/// into its own log line instead.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Fault {
+    /// Nothing answered: offline, a name that did not resolve, a timeout.
+    Unreachable(String),
+    /// The host answered, but not with anything to write: an error status,
+    /// or a body that would not read.
+    Refused(String),
+}
+
+impl std::fmt::Display for Fault {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Fault::Unreachable(message) => write!(f, "unreachable: {message}"),
+            Fault::Refused(message) => f.write_str(message),
+        }
+    }
+}
+
+impl From<HttpError> for Fault {
+    fn from(e: HttpError) -> Fault {
+        Fault::Unreachable(e.message)
+    }
 }
 
 pub trait Http: Send + Sync {
@@ -175,6 +211,9 @@ impl Http for ReqwestHttp {
                 Method::Patch => reqwest::Method::PATCH,
             };
             let mut builder = client.request(method, &req.url);
+            if let Some(timeout) = req.timeout {
+                builder = builder.timeout(timeout);
+            }
             for (name, value) in &req.headers {
                 builder = builder.header(name, value);
             }
@@ -351,6 +390,7 @@ mod tests {
             url: url.into(),
             headers: vec![],
             body: None,
+            timeout: None,
         }
     }
 

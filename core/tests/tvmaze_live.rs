@@ -46,7 +46,7 @@ fn avatar_seven_havens_auto_matches_on_tvmaze_from_a_copy_of_the_real_library() 
         .store()
         .read(|c| Ok(c.query_row("PRAGMA user_version", [], |r| r.get(0))?))
         .unwrap();
-    assert_eq!(version, 2, "the copy did not take migration 0002");
+    assert!(version >= 2, "the copy did not take migration 0002");
 
     // Every other unmatched series counts as already tried under the new
     // rules, and Avatar's version 1 stamp is cleared the way the version

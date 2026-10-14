@@ -154,6 +154,8 @@ SettingsTab {
         Panel {
             title: "About"; icon: "info"
             SettingRow { label: "Version"; Label { text: tab.about.version || ""; role: "ledger" } }
+            // IMDb's terms ask for this line wherever its data is used
+            SettingRow { label: "Ratings"; helper: "Information courtesy of IMDb (https://www.imdb.com). Used with permission." }
             Repeater {
                 model: [["Library database", "db_path", true], ["Data", "data_dir", false], ["Settings", "config_dir", false], ["Cache", "cache_dir", false]]
                 SettingRow {
