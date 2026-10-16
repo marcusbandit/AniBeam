@@ -28,7 +28,6 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls", "j
 governor = "0.10"
 backon = { version = "1.6", features = ["tokio-sleep"] }
 keyring-core = "1.0"
-zbus-secret-service-keyring-store = { version = "1.0", features = ["rt-tokio-crypto-rust"] }
 regex = "1"
 sha2 = "0.11"
 walkdir = "2"
@@ -40,6 +39,15 @@ flate2 = "1"
 toml = "1"
 roxmltree = "0.20"
 trash = "5"
+
+# The machine's keyring: the Secret Service over D-Bus everywhere but a Mac, the login
+# keychain there. `keychain` rather than `protected`: the protected store needs a
+# provisioning profile, and the Mac build is ad-hoc signed.
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+zbus-secret-service-keyring-store = { version = "1.0", features = ["rt-tokio-crypto-rust"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+apple-native-keyring-store = { version = "1.0", default-features = false, features = ["keychain"] }
 
 [dev-dependencies]
 tempfile = "3"

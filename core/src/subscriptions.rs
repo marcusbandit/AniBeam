@@ -59,7 +59,7 @@ async fn run() -> Result<SubscriptionsResult, CoreError> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    if let Some(path) = child_path() {
+    if let Some(path) = crate::downloads::anirss::child_path() {
         command.env("PATH", path);
     }
     let child = match command.spawn() {
@@ -111,25 +111,6 @@ fn message_of(result: &SubscriptionsResult) -> String {
         SubscriptionsResult::NeedsAuth => "anirss needs a qBittorrent session".to_string(),
         SubscriptionsResult::Timeout => "anirss timed out".to_string(),
     }
-}
-
-/// `~/.local/bin`, prepended to `PATH` when it is not already on it, so a
-/// launch from a `.desktop` entry with a sparse `PATH` still finds a
-/// user-installed anirss. Carried from Electron's `spawnEnv`. `None` when
-/// the directory is already reachable, so the child inherits `PATH`
-/// unchanged.
-fn child_path() -> Option<String> {
-    let home = std::env::var("HOME").ok()?;
-    let user_bin = format!("{home}/.local/bin");
-    let path = std::env::var("PATH").unwrap_or_default();
-    if path.split(':').any(|segment| segment == user_bin) {
-        return None;
-    }
-    Some(if path.is_empty() {
-        user_bin
-    } else {
-        format!("{user_bin}:{path}")
-    })
 }
 
 /// A JSON array of `{ name, feed_url, save_path, rule_enabled,

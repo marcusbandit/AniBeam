@@ -1,5 +1,6 @@
 //! Where a tracker's tokens live: the desktop keyring when the machine has
-//! one, a 0600 JSON file next to the database when it does not.
+//! one (the Secret Service, or the login keychain on a Mac), a 0600 JSON file
+//! next to the database when it does not.
 //!
 //! Two rules shape this file. The Secret Service is reached over D-Bus, so
 //! asking whether it exists costs a round trip and can put a prompt on the
@@ -247,21 +248,7 @@ impl Secrets {
     /// after the first finds the answer already there, and callers racing
     /// the first wait on it rather than opening a second session bus.
     fn primary(&self) -> Option<&Arc<CredentialStore>> {
-        self.primary
-            .get_or_init(|| match zbus_secret_service_keyring_store::Store::new() {
-                Ok(store) => {
-                    let store: Arc<CredentialStore> = store;
-                    Some(store)
-                }
-                // No session bus, or a bus with no Secret Service on it.
-                // Either way there is no keyring here; the file store is
-                // the answer and the core says so once.
-                Err(e) => {
-                    tracing::debug!("no Secret Service: {e}");
-                    None
-                }
-            })
-            .as_ref()
+        self.primary.get_or_init(open_keyring).as_ref()
     }
 
     /// The store of a kind, or `None` when this machine has no keyring.
@@ -302,6 +289,28 @@ fn order(hint: Option<StoreKind>) -> [StoreKind; 2] {
     match hint {
         Some(StoreKind::File) => [StoreKind::File, StoreKind::Keyring],
         _ => [StoreKind::Keyring, StoreKind::File],
+    }
+}
+
+/// The machine's keyring: the Secret Service over D-Bus, or on a Mac the
+/// login keychain. `None` when there is none to reach.
+fn open_keyring() -> Option<Arc<CredentialStore>> {
+    #[cfg(target_os = "macos")]
+    let opened = apple_native_keyring_store::keychain::Store::new();
+    #[cfg(not(target_os = "macos"))]
+    let opened = zbus_secret_service_keyring_store::Store::new();
+    match opened {
+        Ok(store) => {
+            let store: Arc<CredentialStore> = store;
+            Some(store)
+        }
+        // No session bus, or a bus with no Secret Service on it (or a Mac
+        // with no login keychain). Either way there is no keyring here; the
+        // file store is the answer and the core says so once.
+        Err(e) => {
+            tracing::debug!("no keyring: {e}");
+            None
+        }
     }
 }
 

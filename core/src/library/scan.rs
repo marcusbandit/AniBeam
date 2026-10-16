@@ -35,6 +35,9 @@ pub struct LibraryState {
     /// one at a time, so a trigger arriving while a scan is walking waits
     /// here and the running job comes back for it.
     pub pending_paths: Mutex<Vec<String>>,
+    /// Files a backend without close-write reported, each waiting for its
+    /// size to hold still before it is taken in. Empty on Linux.
+    pub settling: Mutex<HashSet<String>>,
     /// Series whose auto-match is running right now, filled by Task 16. A
     /// settle timer is never armed for one of these: the match it would ask
     /// for is already under way.

@@ -612,24 +612,54 @@ fn random_token() -> String {
 
 /// `~/.local/bin` ahead of `PATH` when it is not already on it, so a
 /// launch from a `.desktop` entry with a sparse `PATH` still finds a
-/// user-installed anirss. `None` when nothing needs changing.
-fn child_path() -> Option<String> {
+/// user-installed anirss. A Mac app opened from Finder gets launchd's
+/// `/usr/bin:/bin:/usr/sbin:/sbin`, so there Homebrew's two prefixes join it.
+/// `None` when nothing needs changing. The subscriptions call uses it too.
+pub(crate) fn child_path() -> Option<String> {
     let home = std::env::var("HOME").ok()?;
-    let user_bin = format!("{home}/.local/bin");
-    let path = std::env::var("PATH").unwrap_or_default();
-    if path.split(':').any(|segment| segment == user_bin) {
+    let mut wanted = vec![format!("{home}/.local/bin")];
+    if cfg!(target_os = "macos") {
+        wanted.extend(["/opt/homebrew/bin".to_string(), "/usr/local/bin".to_string()]);
+    }
+    with_dirs(&std::env::var("PATH").unwrap_or_default(), &wanted)
+}
+
+/// `path` with each of `dirs` it lacks put in front, in order; `None` when
+/// it has them all.
+fn with_dirs(path: &str, dirs: &[String]) -> Option<String> {
+    let missing: Vec<&str> = dirs
+        .iter()
+        .map(String::as_str)
+        .filter(|d| !path.split(':').any(|segment| segment == *d))
+        .collect();
+    if missing.is_empty() {
         return None;
     }
-    Some(if path.is_empty() {
-        user_bin
-    } else {
-        format!("{user_bin}:{path}")
-    })
+    let mut parts = missing;
+    if !path.is_empty() {
+        parts.push(path);
+    }
+    Some(parts.join(":"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_the_missing_dirs_go_in_front_of_path() {
+        let dirs = ["/h/.local/bin".to_string(), "/opt/homebrew/bin".to_string()];
+        assert_eq!(
+            with_dirs("/usr/bin:/bin", &dirs).as_deref(),
+            Some("/h/.local/bin:/opt/homebrew/bin:/usr/bin:/bin")
+        );
+        assert_eq!(
+            with_dirs("/opt/homebrew/bin:/usr/bin", &dirs).as_deref(),
+            Some("/h/.local/bin:/opt/homebrew/bin:/usr/bin")
+        );
+        assert_eq!(with_dirs("/h/.local/bin:/opt/homebrew/bin", &dirs), None);
+        assert_eq!(with_dirs("", &dirs[..1]).as_deref(), Some("/h/.local/bin"));
+    }
     use crate::net::FakeHttp;
 
     fn client(http: &Arc<FakeHttp>) -> AnirssClient {

@@ -28,6 +28,7 @@ use crate::playback::skip;
 use crate::prefs;
 use crate::store::Store;
 use crate::subscriptions;
+use crate::sync::recover;
 use crate::time;
 use crate::trackers::accounts;
 use crate::trackers::cache;
@@ -378,7 +379,12 @@ impl Core {
                     paths.push(watcher::parent_series_path(&p))
                 }
                 Trigger::NewDirectory(p) => paths.push(p),
+                // Comes back through here as an Ingest once it is written.
+                Trigger::Settling(p) => self.settle_file(p),
             }
+        }
+        if paths.is_empty() && !rescan {
+            return;
         }
         self.library.push_pending(paths);
         // A full scan covers every queued path, so the job takes them off
@@ -389,6 +395,29 @@ impl Core {
             ScanScope::Paths(Vec::new())
         };
         scan::start(self, scope);
+    }
+
+    /// Waits, on the runtime, for a file a backend without close-write
+    /// reported to stop growing, then hands it back as an ordinary ingest.
+    /// One wait per path: a file being copied reports again and again.
+    fn settle_file(self: &Arc<Self>, path: String) {
+        if !recover(&self.library.settling).insert(path.clone()) {
+            return;
+        }
+        let core = Arc::downgrade(self);
+        self.handle.spawn(async move {
+            let written = watcher::size_holds(
+                std::path::Path::new(&path),
+                watcher::SETTLE_POLL,
+                watcher::SETTLE_HOLD,
+            )
+            .await;
+            let Some(core) = core.upgrade() else { return };
+            recover(&core.library.settling).remove(&path);
+            if written {
+                core.on_watch_triggers(vec![Trigger::Ingest(path)]);
+            }
+        });
     }
 
     /// A folder has stopped changing, so it is worth a match. The entry

@@ -37,7 +37,17 @@ pub enum Trigger {
     NewDirectory(String),
     /// Events were missed, or the OS ran out of watches. Scan everything.
     Rescan,
+    /// A video is being written by a backend that never says a write is
+    /// finished (FSEvents on a Mac): it becomes an `Ingest` once its size
+    /// holds still. Linux's inotify has close-write and never makes one.
+    Settling(String),
 }
+
+/// How often a settling file's size is looked at, and how long it has to
+/// hold still before it counts as written: chokidar's `awaitWriteFinish`,
+/// which the Electron line ran on every platform.
+pub const SETTLE_POLL: Duration = Duration::from_millis(100);
+pub const SETTLE_HOLD: Duration = Duration::from_millis(500);
 
 /// A dot entry, or the name a downloader gives an unfinished file, anywhere
 /// below the watched root. The root's own components are exempt: the walk
@@ -114,6 +124,37 @@ pub fn classify(event: &DebouncedEvent, roots: &[String]) -> Vec<Trigger> {
             .filter(|p| is_video(&name(p)) || p.extension().is_none())
             .map(|p| Trigger::Removed(text(p)))
             .collect(),
+        // FSEvents has no close-write: a video that was created or written
+        // to is ready once its size holds still, which the core waits for
+        // off this thread.
+        #[cfg(not(target_os = "linux"))]
+        EventKind::Create(CreateKind::File | CreateKind::Any)
+        | EventKind::Modify(ModifyKind::Data(_) | ModifyKind::Any)
+            if kept.iter().any(|p| is_video(&name(p))) =>
+        {
+            kept.into_iter()
+                .filter(|p| is_video(&name(p)))
+                .map(|p| Trigger::Settling(text(p)))
+                .collect()
+        }
+        // FSEvents does not pair a rename either. The debouncer stitches the
+        // halves it can match by file id; what reaches here is the half it
+        // could not, a move in from outside the watch or a move out of it,
+        // told apart by whether the path is still there.
+        #[cfg(not(target_os = "linux"))]
+        EventKind::Modify(ModifyKind::Name(RenameMode::Any)) => kept
+            .into_iter()
+            .filter_map(|p| {
+                if p.is_dir() {
+                    Some(Trigger::NewDirectory(text(p)))
+                } else if p.exists() {
+                    is_video(&name(p)).then(|| Trigger::Ingest(text(p)))
+                } else {
+                    (is_video(&name(p)) || p.extension().is_none())
+                        .then(|| Trigger::Removed(text(p)))
+                }
+            })
+            .collect(),
         EventKind::Create(CreateKind::Folder) => kept
             .into_iter()
             .map(|p| Trigger::NewDirectory(text(p)))
@@ -138,18 +179,25 @@ pub fn parent_series_path(p: &str) -> String {
         .unwrap_or_else(|| p.to_string())
 }
 
-/// The macOS fallback for a backend with no close-write. Not built on Linux,
-/// and never on an exported item.
-///
-/// FSEvents reports `Create` and `Modify(Data)` and never says a write is
-/// finished, so readiness has to be inferred from the size holding still.
-/// The Mac shell's own task builds that; until then a file already there
-/// when a directory is walked is still taken in, and a file written into a
-/// watched folder is picked up by the next scan.
-#[cfg(not(target_os = "linux"))]
-#[allow(dead_code)]
-fn size_stable_fallback(_paths: &[PathBuf]) -> Vec<Trigger> {
-    Vec::new()
+/// The fallback for a backend with no close-write: true once `path`'s size
+/// has held for `hold`, looked at every `poll`; false as soon as the file is
+/// gone, since its removal is an event of its own. Built everywhere so its
+/// test runs on Linux too, but only a `Settling` trigger ever waits on it.
+pub async fn size_holds(path: &Path, poll: Duration, hold: Duration) -> bool {
+    let mut last = None;
+    let mut since = tokio::time::Instant::now();
+    loop {
+        let Ok(meta) = tokio::fs::metadata(path).await else {
+            return false;
+        };
+        if last != Some(meta.len()) {
+            last = Some(meta.len());
+            since = tokio::time::Instant::now();
+        } else if since.elapsed() >= hold {
+            return true;
+        }
+        tokio::time::sleep(poll).await;
+    }
 }
 
 /// One debouncer and the roots it watches. Dropping this stops the watch.
@@ -324,6 +372,69 @@ mod tests {
     use notify::Event as RawEvent;
     use notify::event::RemoveKind;
     use std::time::Instant;
+
+    /// A file still growing is not ready; once the writes stop it is, after
+    /// the hold and not long past it.
+    #[tokio::test]
+    async fn a_growing_file_settles_once_its_size_holds() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ep01.mkv");
+        let mut file = std::fs::File::create(&path).unwrap();
+        let writer = std::thread::spawn(move || {
+            for _ in 0..8 {
+                file.write_all(&[0u8; 4096]).unwrap();
+                file.flush().unwrap();
+                std::thread::sleep(Duration::from_millis(60));
+            }
+        });
+        let began = Instant::now();
+        let (poll, hold) = (Duration::from_millis(20), Duration::from_millis(200));
+        assert!(size_holds(&path, poll, hold).await);
+        writer.join().unwrap();
+        let waited = began.elapsed();
+        assert!(
+            waited >= Duration::from_millis(8 * 60) + hold - Duration::from_millis(80),
+            "settled while the file was still growing, after {waited:?}"
+        );
+        assert!(waited < Duration::from_secs(3), "took {waited:?}");
+    }
+
+    #[tokio::test]
+    async fn a_file_that_goes_away_never_settles() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("gone.mkv");
+        assert!(!size_holds(&path, Duration::from_millis(10), Duration::from_millis(50)).await);
+    }
+
+    /// Off Linux a create or a write is a file still being written; a
+    /// rename the debouncer could not pair is a move in or out.
+    #[cfg(not(target_os = "linux"))]
+    #[test]
+    fn without_close_write_a_written_video_settles_first() {
+        use notify::event::DataChange;
+        let created = event(EventKind::Create(CreateKind::File), &["/lib/Show/ep1.mkv"]);
+        assert_eq!(
+            classify(&created, &["/lib".into()]),
+            vec![Trigger::Settling("/lib/Show/ep1.mkv".into())]
+        );
+        let written = event(
+            EventKind::Modify(ModifyKind::Data(DataChange::Content)),
+            &["/lib/Show/ep1.mkv", "/lib/Show/notes.txt"],
+        );
+        assert_eq!(
+            classify(&written, &["/lib".into()]),
+            vec![Trigger::Settling("/lib/Show/ep1.mkv".into())]
+        );
+        let gone = event(
+            EventKind::Modify(ModifyKind::Name(RenameMode::Any)),
+            &["/nowhere/Show/ep1.mkv"],
+        );
+        assert_eq!(
+            classify(&gone, &["/nowhere".into()]),
+            vec![Trigger::Removed("/nowhere/Show/ep1.mkv".into())]
+        );
+    }
 
     fn event(kind: EventKind, paths: &[&str]) -> DebouncedEvent {
         let mut e = RawEvent::new(kind);
@@ -521,7 +632,11 @@ mod tests {
     #[test]
     fn a_created_file_is_never_an_ingest() {
         let e = event(EventKind::Create(CreateKind::File), &["/lib/a/ep.mkv"]);
-        assert!(classify(&e, &[]).is_empty());
+        let triggers = classify(&e, &[]);
+        assert!(!triggers.iter().any(|t| matches!(t, Trigger::Ingest(_))));
+        // Off Linux it is a Settling file instead, waiting for its size.
+        #[cfg(target_os = "linux")]
+        assert!(triggers.is_empty());
     }
 
     #[test]
