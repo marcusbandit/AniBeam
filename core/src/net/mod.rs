@@ -201,6 +201,26 @@ impl ReqwestHttp {
     }
 }
 
+/// A transport error as a person reads it: the host, what went wrong and
+/// why, never the request URL. reqwest's own text carries the whole URL, and
+/// a Torznab feed URL holds the indexer's API key in its query, so that text
+/// would put the key on screen and in the stored events.
+fn describe(e: reqwest::Error) -> String {
+    let host = e.url().and_then(|u| u.host_str()).map(str::to_owned);
+    let e = e.without_url();
+    let mut text = e.to_string();
+    let mut source = std::error::Error::source(&e);
+    while let Some(cause) = source {
+        text.push_str(": ");
+        text.push_str(&cause.to_string());
+        source = cause.source();
+    }
+    match host {
+        Some(host) => format!("{host}: {text}"),
+        None => text,
+    }
+}
+
 impl Http for ReqwestHttp {
     fn send(&self, req: HttpRequest) -> BoxFuture<'_, Result<HttpResponse, HttpError>> {
         let client = self.client.clone();
@@ -223,7 +243,7 @@ impl Http for ReqwestHttp {
                 None => builder,
             };
             let response = builder.send().await.map_err(|e| HttpError {
-                message: e.to_string(),
+                message: describe(e),
             })?;
             let status = response.status().as_u16();
             let headers = response
@@ -240,7 +260,7 @@ impl Http for ReqwestHttp {
                 .bytes()
                 .await
                 .map_err(|e| HttpError {
-                    message: e.to_string(),
+                    message: describe(e),
                 })?
                 .to_vec();
             Ok(HttpResponse {
@@ -392,6 +412,24 @@ mod tests {
             body: None,
             timeout: None,
         }
+    }
+
+    /// A refused connection to a feed URL names the host and never the
+    /// query, where a Torznab indexer keeps its API key.
+    #[tokio::test]
+    async fn a_transport_error_never_carries_the_request_url() {
+        // Bound then dropped, so nothing listens on the port.
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let http = ReqwestHttp::new(Duration::from_secs(5)).unwrap();
+        let url = format!("http://127.0.0.1:{port}/api?t=search&apikey=s3cr3tkey&q=x");
+        let err = http.send(get(&url)).await.unwrap_err();
+        assert!(!err.message.contains("s3cr3tkey"), "{}", err.message);
+        assert!(!err.message.contains("/api"), "{}", err.message);
+        assert!(err.message.starts_with("127.0.0.1: "), "{}", err.message);
     }
 
     #[tokio::test]

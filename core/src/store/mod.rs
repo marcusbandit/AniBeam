@@ -403,6 +403,42 @@ mod tests {
         );
     }
 
+    /// Version 5 drops the stored events that carry an indexer API key,
+    /// written while transport errors still quoted the request URL, and
+    /// keeps every other event.
+    #[test]
+    fn a_version_4_database_loses_only_the_events_with_an_api_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("anibeam.db");
+        {
+            let mut c = rusqlite::Connection::open(&path).unwrap();
+            rusqlite_migration::Migrations::new(vec![
+                rusqlite_migration::M::up(include_str!("sql/0001_initial.sql")),
+                rusqlite_migration::M::up(include_str!("sql/0002_tvmaze.sql")),
+                rusqlite_migration::M::up(include_str!("sql/0003_season_keys.sql")),
+                rusqlite_migration::M::up(include_str!("sql/0004_imdb.sql")),
+            ])
+            .to_latest(&mut c)
+            .unwrap();
+            c.execute_batch(
+                "INSERT INTO events (seq, at, level, stage, message, body) VALUES
+                   (1, 0, 'Warn', 'Downloads', 'feed failed: error sending request for url (https://x/api?t=tvsearch&apikey=abc)', '{}'),
+                   (2, 0, 'Warn', 'Downloads', 'feed failed', '{\"message\":\"https://x/api?apikey=abc\"}'),
+                   (3, 0, 'Info', 'Library', 'Every folder: nothing changed', '{}');",
+            )
+            .unwrap();
+        }
+        let store = Store::open(&path).unwrap();
+        let left: Vec<i64> = store
+            .write(|c| {
+                let mut stmt = c.prepare("SELECT seq FROM events ORDER BY seq")?;
+                let rows = stmt.query_map([], |r| r.get(0))?;
+                Ok(rows.collect::<Result<Vec<_>, _>>()?)
+            })
+            .unwrap();
+        assert_eq!(left, vec![3]);
+    }
+
     #[test]
     fn a_newer_database_is_refused_naming_both_versions() {
         let dir = tempfile::tempdir().unwrap();
