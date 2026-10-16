@@ -439,6 +439,63 @@ mod tests {
         assert_eq!(left, vec![3]);
     }
 
+    /// Version 6 clears a match to a short (under five minutes, or MUSIC)
+    /// with no attempt left behind, so the auto-match takes the series
+    /// again, and leaves every other match, confirmed or not, as it was.
+    #[test]
+    fn a_version_5_database_unmatches_its_shorts_for_the_auto_match() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("anibeam.db");
+        {
+            let mut c = rusqlite::Connection::open(&path).unwrap();
+            rusqlite_migration::Migrations::new(vec![
+                rusqlite_migration::M::up(include_str!("sql/0001_initial.sql")),
+                rusqlite_migration::M::up(include_str!("sql/0002_tvmaze.sql")),
+                rusqlite_migration::M::up(include_str!("sql/0003_season_keys.sql")),
+                rusqlite_migration::M::up(include_str!("sql/0004_imdb.sql")),
+                rusqlite_migration::M::up(include_str!("sql/0005_events_without_keys.sql")),
+            ])
+            .to_latest(&mut c)
+            .unwrap();
+            c.execute_batch(
+                "INSERT INTO sources (id, path, added_at) VALUES (1, '/a', 0);
+                 INSERT INTO anilist_media (id, format, duration, fetched_at, raw) VALUES
+                   (97962, 'SPECIAL', 1, 0, '{}'),
+                   (21519, 'MOVIE', 106, 0, '{}'),
+                   (500, 'MUSIC', NULL, 0, '{}'),
+                   (600, 'SPECIAL', 24, 0, '{}');
+                 INSERT INTO series (id, source_id, kind, path, folder_name, added_at,
+                                     provider, anilist_id, mal_id, confirmed, matched_at) VALUES
+                   (1, 1, 'movie', '/a/Kimi no Na Wa.mkv', 'Kimi no Na Wa', 0, 'anilist', 97962, 33902, 1, 5),
+                   (2, 1, 'movie', '/a/Koe no Katachi.mkv', 'Koe no Katachi', 0, 'anilist', 21519, 28851, 1, 5),
+                   (3, 1, 'show', '/a/OP', 'OP', 0, 'anilist', 500, NULL, 1, 5),
+                   (4, 1, 'show', '/a/Specials', 'Specials', 0, 'anilist', 600, NULL, 0, 5);",
+            )
+            .unwrap();
+        }
+        let store = Store::open(&path).unwrap();
+        let rows: Vec<(i64, Option<i64>, i64, Option<i64>)> = store
+            .write(|c| {
+                let mut stmt = c.prepare(
+                    "SELECT id, anilist_id, confirmed, attempted_at FROM series
+                     WHERE provider IS NULL OR anilist_id IS NOT NULL ORDER BY id",
+                )?;
+                let rows =
+                    stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?;
+                Ok(rows.collect::<Result<Vec<_>, _>>()?)
+            })
+            .unwrap();
+        assert_eq!(
+            rows,
+            vec![
+                (1, None, 0, None),
+                (2, Some(21519), 1, None),
+                (3, None, 0, None),
+                (4, Some(600), 0, None),
+            ]
+        );
+    }
+
     #[test]
     fn a_newer_database_is_refused_naming_both_versions() {
         let dir = tempfile::tempdir().unwrap();
