@@ -1,5 +1,11 @@
 //! The shell's own files. The core has its four XDG directories; the shell adds theme.toml,
 //! player.toml, the two theme directories, the three mpv.conf layers and the lock file.
+//!
+//! On a Mac the packaged files sit in the bundle's `Contents/Resources` rather than
+//! `/usr/share/anibeam`, the lock sits in the per-user `$TMPDIR`, since macOS has no
+//! `$XDG_RUNTIME_DIR`, and the user's own mpv.conf is still `~/.config/mpv/mpv.conf`, which
+//! is where mpv itself reads it on a Mac, not beside the core's `Application Support`
+//! directory. Nothing else differs.
 
 use std::path::{Path, PathBuf};
 
@@ -11,19 +17,22 @@ pub struct ShellPaths {
     pub runtime_dir: PathBuf,
     pub builtin_themes: PathBuf,
     pub bundled_mpv_conf_override: Option<PathBuf>,
+    /// The directory mpv's own `mpv/` folder sits in, when that is not simply the one above
+    /// the core's config directory: only a Mac outside a sandbox sets it.
+    pub mpv_config_home: Option<PathBuf>,
 }
 
 impl ShellPaths {
     /// Under `root` everything sits inside it, the runtime directory included, so a dev run
     /// or a test never touches the real files. Without a root the core's XDG paths apply
-    /// and the lock sits under $XDG_RUNTIME_DIR.
+    /// and the lock sits under $XDG_RUNTIME_DIR (on a Mac, $TMPDIR).
     ///
     /// `ANIBEAM_THEMES_DIR` and `ANIBEAM_MPV_CONF` are read once here, into fields, rather
     /// than on every call: a test that never sets them still sees the packaged defaults.
     pub fn resolve(root: Option<&Path>) -> Result<ShellPaths, String> {
         let builtin_themes = std::env::var_os("ANIBEAM_THEMES_DIR")
             .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("/usr/share/anibeam/themes"));
+            .unwrap_or_else(|| share_dir().join("themes"));
         let bundled_mpv_conf_override = std::env::var_os("ANIBEAM_MPV_CONF").map(PathBuf::from);
         match root {
             Some(r) => Ok(ShellPaths {
@@ -31,21 +40,60 @@ impl ShellPaths {
                 runtime_dir: r.join("runtime"),
                 builtin_themes,
                 bundled_mpv_conf_override,
+                mpv_config_home: None,
             }),
             None => {
                 let core = CorePaths::xdg().map_err(|e| e.to_string())?;
-                let runtime_dir = std::env::var_os("XDG_RUNTIME_DIR")
-                    .map(PathBuf::from)
-                    .ok_or_else(|| "XDG_RUNTIME_DIR is not set".to_string())?;
+                let runtime_dir = user_runtime_dir()?;
                 Ok(ShellPaths {
                     core,
                     runtime_dir,
                     builtin_themes,
                     bundled_mpv_conf_override,
+                    mpv_config_home: mac_config_home(),
                 })
             }
         }
     }
+}
+
+/// Where the package puts the built-in themes and the bundled mpv.conf: the PKGBUILD's
+/// `/usr/share/anibeam`, or on a Mac the `Contents/Resources` of the bundle the binary runs
+/// from (`Contents/MacOS/anibeam`, two levels up).
+pub fn share_dir() -> PathBuf {
+    #[cfg(target_os = "macos")]
+    if let Some(contents) = std::env::current_exe()
+        .ok()
+        .and_then(|exe| Some(exe.parent()?.parent()?.to_path_buf()))
+    {
+        return contents.join("Resources");
+    }
+    PathBuf::from("/usr/share/anibeam")
+}
+
+/// `$XDG_CONFIG_HOME`, else `~/.config`, on a Mac; `None` elsewhere, where the core's own
+/// config directory already sits in it.
+fn mac_config_home() -> Option<PathBuf> {
+    if !cfg!(target_os = "macos") {
+        return None;
+    }
+    std::env::var_os("XDG_CONFIG_HOME")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
+}
+
+/// The per-user directory the lock lives in. Linux has `$XDG_RUNTIME_DIR` for exactly
+/// this; macOS has no such thing, and its `$TMPDIR` is already per user
+/// (`/var/folders/.../T/`), so that is where a Mac keeps it.
+fn user_runtime_dir() -> Result<PathBuf, String> {
+    if let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR") {
+        return Ok(PathBuf::from(dir));
+    }
+    if cfg!(target_os = "macos") {
+        return Ok(std::env::temp_dir());
+    }
+    Err("XDG_RUNTIME_DIR is not set".to_string())
 }
 
 /// What the theme engine reads: theme.toml and the two theme directories.
@@ -75,15 +123,16 @@ impl ShellPaths {
     }
     /// $XDG_CONFIG_HOME/mpv/mpv.conf: the user's own, behind the Use my mpv.conf setting.
     pub fn user_mpv_conf(&self) -> PathBuf {
-        self.config_dir()
-            .parent()
+        self.mpv_config_home
+            .clone()
+            .or_else(|| self.config_dir().parent().map(Path::to_path_buf))
             .map(|p| p.join("mpv").join("mpv.conf"))
             .unwrap_or_default()
     }
     pub fn bundled_mpv_conf(&self) -> PathBuf {
         self.bundled_mpv_conf_override
             .clone()
-            .unwrap_or_else(|| PathBuf::from("/usr/share/anibeam/mpv.conf"))
+            .unwrap_or_else(|| share_dir().join("mpv.conf"))
     }
     pub fn lock_path(&self) -> PathBuf {
         self.runtime_dir.join("anibeam.lock")
@@ -126,10 +175,13 @@ mod tests {
             p.lock_path(),
             PathBuf::from("/tmp/sandbox/runtime/anibeam.lock")
         );
-        assert_eq!(
-            p.bundled_mpv_conf(),
-            PathBuf::from("/usr/share/anibeam/mpv.conf")
-        );
+        assert_eq!(p.bundled_mpv_conf(), share_dir().join("mpv.conf"));
         assert_eq!(p.cache_dir(), PathBuf::from("/tmp/sandbox/cache"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_package_installs_under_usr_share() {
+        assert_eq!(share_dir(), PathBuf::from("/usr/share/anibeam"));
     }
 }

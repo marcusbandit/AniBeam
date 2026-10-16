@@ -210,7 +210,6 @@ pub fn sample_preview(paths: &ShellPaths) -> (String, PathBuf) {
 mod tests {
     use super::*;
     use crate::paths::ShellPaths;
-    use std::path::Path;
 
     #[test]
     fn player_toml_round_trips_with_defaults() {
@@ -313,7 +312,7 @@ mod tests {
         // With no override the bundled layer is the packaged file, and it is a layer only
         // on a machine where the package installed it.
         paths.bundled_mpv_conf_override = None;
-        let packaged = Path::new("/usr/share/anibeam/mpv.conf").to_path_buf();
+        let packaged = crate::paths::share_dir().join("mpv.conf");
         assert_eq!(
             config_layers(&paths, true).contains(&packaged),
             packaged.is_file()

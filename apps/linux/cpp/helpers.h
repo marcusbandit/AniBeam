@@ -51,6 +51,6 @@ void set_cursor_hidden(bool hidden);
 // Opens a URL (or a file:// path) with the desktop's handler by running xdg-open
 // detached, rather than through QDesktopServices: on Wayland Qt first asks the
 // compositor for an xdg-activation token and launches nothing until it arrives, and on
-// Hyprland the token never came, so every link in the shell did nothing. Returns false
-// when xdg-open could not be started.
+// Hyprland the token never came, so every link in the shell did nothing. A Mac runs
+// open(1) instead. Returns false when the opener could not be started.
 bool open_url(const QString &url);

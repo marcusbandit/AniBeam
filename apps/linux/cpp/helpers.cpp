@@ -3,6 +3,7 @@
 #include <QtCore/qglobal.h>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QPalette>
+#include <QtGui/QSurfaceFormat>
 #include <QtGui/QWindow>
 #include <QtQuick/QQuickWindow>
 #include <QtCore/QElapsedTimer>
@@ -35,6 +36,14 @@ QT_END_NAMESPACE
 void use_opengl_scene_graph()
 {
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
+#ifdef Q_OS_MACOS
+    // A Mac hands out a legacy 2.1 context unless a core profile is asked for, and asking
+    // has to happen before the QGuiApplication exists. 4.1 is the newest macOS has.
+    QSurfaceFormat format = QSurfaceFormat::defaultFormat();
+    format.setVersion(4, 1);
+    format.setProfile(QSurfaceFormat::CoreProfile);
+    QSurfaceFormat::setDefaultFormat(format);
+#endif
 }
 
 void set_desktop_file_name(const QString &name)
@@ -205,5 +214,15 @@ bool open_url(const QString &url)
     // A bare local path becomes a file URL, so xdg-open hands it to the file manager
     if (target.startsWith(QLatin1Char('/')))
         target = QUrl::fromLocalFile(target).toString();
+#ifdef Q_OS_MACOS
+    // open(1) is the Mac's xdg-open: Launch Services picks the handler, Finder for a folder.
+    // A file URL goes in as its path, since callers build them by hand ("file://" + path)
+    // and the data directory's "Application Support" puts a raw space in the URL.
+    const QUrl parsed(target);
+    if (parsed.isLocalFile())
+        target = parsed.toLocalFile();
+    return QProcess::startDetached(QStringLiteral("/usr/bin/open"), {target});
+#else
     return QProcess::startDetached(QStringLiteral("xdg-open"), {target});
+#endif
 }
