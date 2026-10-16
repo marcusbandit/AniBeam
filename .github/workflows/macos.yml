@@ -1,0 +1,118 @@
+name: macOS
+
+# Builds AniBeam.app for Apple silicon on a macos-15 runner, runs the core and shell tests
+# there, smoke-tests the bundle with Homebrew moved out of reach, and attaches the .dmg to
+# the GitHub Release when a version tag is pushed:  git tag v2.1.0 && git push origin v2.1.0
+# Run it from the Actions tab (Run workflow) for a build without a release.
+on:
+  push:
+    tags: ['v*']
+    # TEMP: while the pipeline is brought up on its branch. Drop before merging.
+    branches: ['feat/macos-build']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  MACOSX_DEPLOYMENT_TARGET: '15.0'
+  HOMEBREW_NO_AUTO_UPDATE: '1'
+  HOMEBREW_NO_INSTALL_CLEANUP: '1'
+  HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: '1'
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-macos:
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # git describe names the version
+
+      - name: Homebrew packages
+        run: |
+          brew install qtbase qtdeclarative qtsvg qttools qtshadertools \
+            ffmpeg libass libplacebo little-cms2 uchardet zimg \
+            meson ninja pkgconf cmake extra-cmake-modules
+          qmake="$(brew --prefix qtbase)/bin/qmake"
+          echo "QMAKE=$qmake" >> "$GITHUB_ENV"
+          echo "DEPS_PREFIX=$HOME/anibeam-deps" >> "$GITHUB_ENV"
+          echo "MPVQT_PREFIX=$HOME/anibeam-deps" >> "$GITHUB_ENV"
+          echo "MPV_PREFIX=$HOME/anibeam-deps" >> "$GITHUB_ENV"
+          brew list --versions qtbase qtdeclarative qtsvg qttools ffmpeg libass libplacebo
+          "$qmake" -query
+
+      - name: Dependency cache key
+        id: depkey
+        run: |
+          key="$( { cat apps/linux/packaging/macos/deps.sh
+                    brew list --versions ffmpeg libass libplacebo little-cms2 uchardet zimg qtbase qtdeclarative
+                  } | shasum -a 256 | cut -c1-16)"
+          echo "key=macos-15-deps-$key" >> "$GITHUB_OUTPUT"
+
+      - name: Restore libmpv and MpvQt
+        id: deps
+        uses: actions/cache@v4
+        with:
+          path: ~/anibeam-deps
+          key: ${{ steps.depkey.outputs.key }}
+
+      - name: Build libmpv and MpvQt
+        if: steps.deps.outputs.cache-hit != 'true'
+        run: apps/linux/packaging/macos/deps.sh "$DEPS_PREFIX"
+
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustc --version
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --release --locked -p anibeam -p anibeam-cli
+
+      - name: Test the core and the shell
+        run: cargo test --locked -p anibeam-core -p anibeam
+
+      - name: Bundle
+        run: apps/linux/packaging/macos/bundle.sh dist
+
+      - name: Smoke test with Homebrew out of reach
+        run: |
+          smoke=apps/linux/packaging/macos/smoke.sh
+          SMOKE_SEED_ONLY=1 "$smoke" dist/AniBeam.app target/release/anibeam-cli smoke
+          otool -L target/release/anibeam-cli
+          sudo mv /opt/homebrew /opt/homebrew-hidden
+          mv "$DEPS_PREFIX" "$DEPS_PREFIX-hidden"
+          status=0
+          /usr/bin/python3 apps/linux/packaging/macos/fix-dylibs.py dist/AniBeam.app --check || status=1
+          "$smoke" dist/AniBeam.app target/release/anibeam-cli smoke || status=1
+          mv "$DEPS_PREFIX-hidden" "$DEPS_PREFIX"
+          sudo mv /opt/homebrew-hidden /opt/homebrew
+          exit "$status"
+
+      - name: Upload the build
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: anibeam-macos-arm64
+          path: dist/*.dmg
+          if-no-files-found: ignore
+
+      - name: Upload the smoke captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-captures
+          path: |
+            smoke/*.png
+            smoke/*.log
+            smoke/drive/*.png
+          if-no-files-found: ignore
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.dmg
