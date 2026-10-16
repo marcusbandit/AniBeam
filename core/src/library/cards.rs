@@ -194,8 +194,10 @@ pub fn season_label(
 
 /// `episodes` is (file id, season, number) in season then number order.
 /// `last_completed` is the most recently completed episode's season and
-/// number; a tracker's progress counts as season 1, since AniList numbers
-/// one season per entry. With something watched, the episode after it in
+/// number. A tracker's progress counts episodes of the first season on
+/// disk, since AniList numbers one season per entry and a folder matched to
+/// a second season's entry holds that season's files: progress 2 against
+/// S02E01 to S02E03 is S02E02, not S01E02. With something watched, the episode after it in
 /// (season, number) order: the next number of the same season, else the
 /// first episode past it, which is how finishing S01E10 lands on S02E01.
 /// With nothing watched, the first one on disk, above zero when a tracker
@@ -205,9 +207,13 @@ pub fn next_up(
     last_completed: Option<(u32, f64)>,
     tracker_progress: Option<u32>,
 ) -> Option<u64> {
+    let first_season = episodes
+        .iter()
+        .find(|(_, s, n)| *s > 0 && *n > 0.0)
+        .map_or(1, |(_, s, _)| *s);
     let progress = tracker_progress
         .filter(|p| *p > 0)
-        .map(|p| (1, f64::from(p)));
+        .map(|p| (first_season, f64::from(p)));
     let last = match (last_completed.filter(|(_, n)| *n > 0.0), progress) {
         (Some(a), Some(b)) => Some(if after(a, b) { a } else { b }),
         (a, b) => a.or(b),
@@ -628,6 +634,25 @@ mod tests {
         assert_eq!(next_up(&disk, Some((2, 3.0)), Some(10)), Some(24));
         assert_eq!(next_up(&disk, Some((2, 8.0)), None), None);
         assert_eq!(next_up(&disk, None, None), Some(1));
+    }
+
+    /// A folder matched to a second season's AniList entry: the tracker's
+    /// progress counts that season's episodes, so progress 2 resumes at
+    /// S02E03, and a finished season has nothing next rather than S02E01.
+    #[test]
+    fn next_up_reads_tracker_progress_against_the_season_on_disk() {
+        let disk: Vec<(u64, u32, f64)> = (1..=3u32)
+            .map(|n| (578 + u64::from(n), 2, f64::from(n)))
+            .collect();
+        assert_eq!(next_up(&disk, None, Some(2)), Some(581));
+        assert_eq!(next_up(&disk, None, Some(3)), None);
+        assert_eq!(next_up(&disk, None, Some(0)), Some(579));
+        // Local history in the same season still wins when it is further on.
+        assert_eq!(next_up(&disk, Some((2, 2.0)), Some(1)), Some(581));
+        // Season 0 specials never decide which season the progress counts.
+        let mut with_specials = vec![(1u64, 0, 1.0)];
+        with_specials.extend(disk.iter().copied());
+        assert_eq!(next_up(&with_specials, None, Some(2)), Some(581));
     }
 
     #[cfg(test)]
