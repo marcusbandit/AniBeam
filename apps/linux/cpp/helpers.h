@@ -8,9 +8,9 @@
 
 void use_opengl_scene_graph();
 void set_desktop_file_name(const QString &name);
-// QSG_RENDER_LOOP=threaded on both GPUs and QT_XCB_GL_INTEGRATION=xcb_egl for the X11
-// fallback, set into this process's environment before QGuiApplication reads it. A value
-// the user set in the environment wins.
+// QSG_RENDER_LOOP=threaded on both GPUs (never on a Mac, where AppKit forbids it for
+// OpenGL) and QT_XCB_GL_INTEGRATION=xcb_egl for the X11 fallback, set into this process's
+// environment before QGuiApplication reads it. A value the user set in the environment wins.
 void set_render_loop_env();
 // Raises a window with the xdg-activation token a launcher or a second launch passed. The
 // token goes into the environment first, because that is where Qt's Wayland plugin reads it.

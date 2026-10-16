@@ -53,8 +53,13 @@ void set_desktop_file_name(const QString &name)
 
 void set_render_loop_env()
 {
+#ifndef Q_OS_MACOS
+    // Not on a Mac: AppKit traps when an NSOpenGLContext is attached off the main thread
+    // ("-[NSOpenGLContext setView:] must be called from the main thread"), which is where
+    // the threaded loop creates it. Qt's own choice for OpenGL there is the basic loop.
     if (qgetenv("QSG_RENDER_LOOP").isEmpty())
         qputenv("QSG_RENDER_LOOP", QByteArrayLiteral("threaded"));
+#endif
     if (qgetenv("QT_XCB_GL_INTEGRATION").isEmpty())
         qputenv("QT_XCB_GL_INTEGRATION", QByteArrayLiteral("xcb_egl"));
 }
