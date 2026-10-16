@@ -3,12 +3,20 @@ name: macOS
 # Builds AniBeam.app for Apple silicon on a macos-15 runner, runs the core and shell tests
 # there, smoke-tests the bundle with Homebrew moved out of reach, and attaches the .dmg to
 # the GitHub Release when a version tag is pushed:  git tag v2.1.0 && git push origin v2.1.0
-# Run it from the Actions tab (Run workflow) for a build without a release.
+# A pull request that touches the core, the Qt shell or the workspace runs it too, so a
+# change that breaks the Mac shows up before it merges. Run it from the Actions tab (Run
+# workflow) for a build without a release.
 on:
   push:
     tags: ['v*']
-    # TEMP: while the pipeline is brought up on its branch. Drop before merging.
-    branches: ['feat/macos-build']
+  pull_request:
+    paths:
+      - 'core/**'
+      - 'apps/linux/**'
+      - 'apps/cli/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/macos.yml'
   workflow_dispatch:
 
 permissions:
