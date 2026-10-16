@@ -22,6 +22,9 @@ Item {
     property Item prevFocus: null
     property bool torrents: false
     property bool files: false
+    // Where the asking button sat when the sheet opened, in the sheet's own coordinates: the
+    // sheet is placed again whenever its height settles, and the button may be gone by then.
+    property var anchorRect: null
     readonly property bool rule: spec.rule === true
     readonly property int torrentCount: spec.torrentCount || 0
     readonly property bool canTorrents: rule && torrentCount > 0
@@ -37,8 +40,12 @@ Item {
         root.torrents = false
         root.files = false
         root.prevFocus = frame.hostWindow ? frame.hostWindow.activeFocusItem : null
+        if (anchor) {
+            var p = anchor.mapToItem(root, 0, 0)
+            root.anchorRect = { x: p.x, y: p.y, width: anchor.width, height: anchor.height }
+        } else root.anchorRect = null
         root.visible = true
-        panel.place(anchor)
+        panel.place()
         frame.escapeStack.push("sheet", root)
         panel.forceActiveFocus()
     }
@@ -50,8 +57,10 @@ Item {
         frame.focusPage(root, root.prevFocus)
         root.prevFocus = null
     }
+    // Without a subscription the torrents are what goes, ticked or not; the check that adds
+    // them is only there beside a subscription.
     function confirm() {
-        var cb = root.done, choice = { torrents: root.torrents || root.files, files: root.files }
+        var cb = root.done, choice = { torrents: !root.rule || root.torrents || root.files, files: root.files }
         root.close()
         if (cb) cb(choice)
     }
@@ -68,16 +77,20 @@ Item {
         Keys.onReturnPressed: root.confirm()
         Keys.onEnterPressed: root.confirm()
         Keys.onEscapePressed: root.close()
-        // Below the anchor, or above it when the window ends first; never over it
-        function place(anchor) {
-            var w = root.width, h = root.height
-            if (!anchor) { x = (w - width) / 2; y = (h - height) / 2; return }
-            var p = anchor.mapToItem(root, 0, 0)
+        // Below the anchor, or above it when the window ends first; never over it unless
+        // neither fits, and always wholly inside the window. Placed again when the height
+        // settles: the Column reports its height only once it has laid out, so the first
+        // placement can see a short sheet and pick a slot the real one runs out of.
+        onHeightChanged: if (root.visible) place()
+        function place() {
+            var w = root.width, h = root.height, a = root.anchorRect, edge = theme.space(4)
+            if (!a) { x = (w - width) / 2; y = Math.max(edge, (h - height) / 2); return }
             // From the anchor's left edge when the room is there, else ending at its right
-            var left = p.x + width <= w - theme.space(4) ? p.x : p.x + anchor.width - width
-            x = Math.max(theme.space(4), Math.min(left, w - width - theme.space(4)))
-            var below = p.y + anchor.height + theme.space(2)
-            y = below + height <= h - theme.space(4) ? below : Math.max(theme.space(4), p.y - height - theme.space(2))
+            var left = a.x + width <= w - edge ? a.x : a.x + a.width - width
+            x = Math.max(edge, Math.min(left, w - width - edge))
+            var below = a.y + a.height + theme.space(2), above = a.y - height - theme.space(2)
+            var top = below + height <= h - edge ? below : above >= edge ? above : h - height - edge
+            y = Math.max(edge, top)
         }
         MouseArea { anchors.fill: parent }   // a press inside stays inside
 
