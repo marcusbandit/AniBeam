@@ -53,7 +53,7 @@ jobs:
 
       - name: Restore libmpv and MpvQt
         id: deps
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ~/anibeam-deps
           key: ${{ steps.depkey.outputs.key }}
@@ -62,12 +62,22 @@ jobs:
         if: steps.deps.outputs.cache-hit != 'true'
         run: apps/linux/packaging/macos/deps.sh "$DEPS_PREFIX"
 
+      # Saved here rather than at the end, so a run that fails later keeps them.
+      - name: Save libmpv and MpvQt
+        if: steps.deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/anibeam-deps
+          key: ${{ steps.depkey.outputs.key }}
+
       - name: Rust toolchain
         run: |
           rustup toolchain install stable --profile minimal
           rustc --version
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
 
       - name: Build
         run: cargo build --release --locked -p anibeam -p anibeam-cli

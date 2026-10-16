@@ -619,7 +619,10 @@ pub(crate) fn child_path() -> Option<String> {
     let home = std::env::var("HOME").ok()?;
     let mut wanted = vec![format!("{home}/.local/bin")];
     if cfg!(target_os = "macos") {
-        wanted.extend(["/opt/homebrew/bin".to_string(), "/usr/local/bin".to_string()]);
+        wanted.extend([
+            "/opt/homebrew/bin".to_string(),
+            "/usr/local/bin".to_string(),
+        ]);
     }
     with_dirs(&std::env::var("PATH").unwrap_or_default(), &wanted)
 }

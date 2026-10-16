@@ -11,9 +11,9 @@ use std::sync::{Arc, Mutex, TryLockError, Weak};
 use std::time::Duration;
 
 use notify::event::{AccessKind, AccessMode, CreateKind, EventKind, Flag, ModifyKind, RenameMode};
-use notify::{RecommendedWatcher, RecursiveMode};
+use notify::{RecommendedWatcher, RecursiveMode, Watcher as NotifyWatcher};
 use notify_debouncer_full::{
-    DebounceEventResult, DebouncedEvent, Debouncer, RecommendedCache, new_debouncer,
+    DebounceEventResult, DebouncedEvent, Debouncer, RecommendedCache, new_debouncer_opt,
 };
 
 use crate::contract::*;
@@ -200,6 +200,61 @@ pub async fn size_holds(path: &Path, poll: Duration, hold: Duration) -> bool {
     }
 }
 
+/// The notify backend under the debouncer. On a Mac it is FSEvents behind
+/// the stale-create filter below; everywhere else notify's own choice.
+#[cfg(target_os = "macos")]
+type Backend = WithoutStaleCreates<RecommendedWatcher>;
+#[cfg(not(target_os = "macos"))]
+type Backend = RecommendedWatcher;
+
+/// FSEvents keeps an item's flags while the item is fresh, so the event for
+/// a file deleted soon after it arrived still says "created". notify turns
+/// that into a `Create` and then a `Remove` for the same path, and the
+/// debouncer reads the pair as a file that came and went inside one window
+/// and reports neither: the deletion is lost. A create for a path that is
+/// already gone is that stale flag, and dropping it before the debouncer
+/// sees it leaves the `Remove` to arrive.
+pub fn is_stale_create(event: &notify::Event) -> bool {
+    matches!(event.kind, EventKind::Create(_)) && event.paths.iter().all(|p| !p.exists())
+}
+
+/// A notify watcher with [`is_stale_create`] events taken out of its stream.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub struct WithoutStaleCreates<W>(W);
+
+impl<W: NotifyWatcher> NotifyWatcher for WithoutStaleCreates<W> {
+    fn new<F: notify::EventHandler>(
+        mut handler: F,
+        config: notify::Config,
+    ) -> notify::Result<Self> {
+        let inner = W::new(
+            move |event: notify::Result<notify::Event>| {
+                if !matches!(&event, Ok(e) if is_stale_create(e)) {
+                    handler.handle_event(event);
+                }
+            },
+            config,
+        )?;
+        Ok(WithoutStaleCreates(inner))
+    }
+
+    fn watch(&mut self, path: &Path, recursive_mode: RecursiveMode) -> notify::Result<()> {
+        self.0.watch(path, recursive_mode)
+    }
+
+    fn unwatch(&mut self, path: &Path) -> notify::Result<()> {
+        self.0.unwatch(path)
+    }
+
+    fn configure(&mut self, option: notify::Config) -> notify::Result<bool> {
+        self.0.configure(option)
+    }
+
+    fn kind() -> notify::WatcherKind {
+        W::kind()
+    }
+}
+
 /// One debouncer and the roots it watches. Dropping this stops the watch.
 pub struct Watcher {
     /// `None` once `stop` has taken it. `Debouncer::stop` consumes itself,
@@ -211,7 +266,7 @@ pub struct Watcher {
     /// this lock is held for as long as that walk takes. Keeping it here
     /// rather than on the core's slot is what stops everything else that
     /// touches the watcher from waiting on the walk.
-    debouncer: Mutex<Option<Debouncer<RecommendedWatcher, RecommendedCache>>>,
+    debouncer: Mutex<Option<Debouncer<Backend, RecommendedCache>>>,
     /// Shared with the handler, which needs them to tell a hidden entry in
     /// the library from a hidden directory the library merely sits under.
     /// Never held across a call into the debouncer, so it can never take
@@ -231,7 +286,7 @@ pub struct Watcher {
 /// undoing the install.
 fn drain_unwatches(
     pending: &Mutex<Vec<String>>,
-    debouncer: &mut Debouncer<RecommendedWatcher, RecommendedCache>,
+    debouncer: &mut Debouncer<Backend, RecommendedCache>,
     installed: Option<&str>,
 ) {
     for waiting in std::mem::take(&mut *recover(pending)) {
@@ -243,7 +298,7 @@ fn drain_unwatches(
 }
 
 /// One drop against a debouncer that may already have been stopped.
-fn drop_watch(debouncer: Option<&mut Debouncer<RecommendedWatcher, RecommendedCache>>, path: &str) {
+fn drop_watch(debouncer: Option<&mut Debouncer<Backend, RecommendedCache>>, path: &str) {
     if let Some(debouncer) = debouncer {
         let _ = debouncer.unwatch(Path::new(path));
     }
@@ -253,7 +308,7 @@ impl Watcher {
     pub fn new(core: Weak<Core>) -> Result<Watcher, CoreError> {
         let roots: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let handler_roots = roots.clone();
-        let debouncer = new_debouncer(DEBOUNCE, None, move |result: DebounceEventResult| {
+        let handler = move |result: DebounceEventResult| {
             // The core is already going away: there is nothing left to tell.
             let Some(core) = core.upgrade() else { return };
             match result {
@@ -282,7 +337,15 @@ impl Watcher {
                     }
                 }
             }
-        })
+        };
+        // new_debouncer() with the backend named, so a Mac gets the filter.
+        let debouncer = new_debouncer_opt::<_, Backend, RecommendedCache>(
+            DEBOUNCE,
+            None,
+            handler,
+            RecommendedCache::new(),
+            notify::Config::default(),
+        )
         .map_err(|e| CoreError::internal(format!("watcher: {e}")))?;
         Ok(Watcher {
             debouncer: Mutex::new(Some(debouncer)),
@@ -359,9 +422,7 @@ impl Watcher {
         recover(&self.pending_unwatch).len()
     }
 
-    fn debouncer(
-        &self,
-    ) -> std::sync::MutexGuard<'_, Option<Debouncer<RecommendedWatcher, RecommendedCache>>> {
+    fn debouncer(&self) -> std::sync::MutexGuard<'_, Option<Debouncer<Backend, RecommendedCache>>> {
         self.debouncer.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
@@ -405,6 +466,23 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("gone.mkv");
         assert!(!size_holds(&path, Duration::from_millis(10), Duration::from_millis(50)).await);
+    }
+
+    /// A create for a path that is still there is real; one for a path
+    /// already gone is FSEvents repeating an old flag on the deletion.
+    #[test]
+    fn a_create_for_a_vanished_path_is_stale() {
+        let dir = tempfile::tempdir().unwrap();
+        let here = dir.path().join("ep01.mkv");
+        std::fs::write(&here, b"x").unwrap();
+        let create = |p: &Path| {
+            notify::Event::new(EventKind::Create(CreateKind::File)).add_path(p.to_path_buf())
+        };
+        assert!(!is_stale_create(&create(&here)));
+        assert!(is_stale_create(&create(&dir.path().join("gone.mkv"))));
+        let removal = notify::Event::new(EventKind::Remove(RemoveKind::File))
+            .add_path(dir.path().join("gone.mkv"));
+        assert!(!is_stale_create(&removal), "only creates are ever dropped");
     }
 
     /// Off Linux a create or a write is a file still being written; a
