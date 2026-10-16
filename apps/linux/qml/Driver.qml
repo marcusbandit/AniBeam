@@ -7,6 +7,9 @@
 //   {"wait": ms}
 //   {"click": [x, y] | "objectName", "button": "left"|"right"|"middle", "double": true}
 //   {"hover": [x, y] | "objectName"}
+//   {"drag": [x1, y1, x2, y2], "steps": n, "button": ...}       press, n moves held, release;
+//                                                              "release": false keeps it held
+//   {"release": [x, y], "button": ...}                         lets go of a held drag there
 //   {"wheel": [x, y, dy] | "objectName", "dy": n, "dx": n}     angle delta; 120 is a notch
 //   {"key": "Escape" | "Ctrl+K" | "a" | ...}
 //   {"type": "text"}
@@ -204,6 +207,27 @@ QtObject {
                 out.push(function() { Shell.driveMouse(hostWindow, 2, point.x, point.y, b, 0); return gap })
                 out.push(function() { Shell.driveMouse(hostWindow, 1, point.x, point.y, b, 0); return gap })
             }
+            out.push(function() { Shell.driveMouse(hostWindow, 3, point.x, point.y, b, 0); return settle })
+        } else if (step.drag !== undefined) {
+            var d = step.drag, n = step.steps === undefined ? 10 : step.steps
+            if (!Array.isArray(d) || d.length !== 4 || d.some(function(v) { return typeof v !== "number" }))
+                throw new Error("drag is [x1, y1, x2, y2]")
+            if (typeof n !== "number" || n < 1) throw new Error("steps takes a count of at least 1")
+            b = button(step)
+            out.push(moveTo([d[0], d[1]]))
+            out.push(function() { Shell.driveMouse(hostWindow, 1, point.x, point.y, b, 0); return gap })
+            for (var k = 1; k <= n; k++) (function(f) {
+                out.push(function() {
+                    driver.point = { x: d[0] + (d[2] - d[0]) * f, y: d[1] + (d[3] - d[1]) * f }
+                    Shell.driveMouse(hostWindow, 0, point.x, point.y, Qt.NoButton, 0)
+                    return gap
+                })
+            })(k / n)
+            if (step.release !== false)
+                out.push(function() { Shell.driveMouse(hostWindow, 3, point.x, point.y, b, 0); return settle })
+        } else if (step.release !== undefined) {
+            b = button(step)
+            out.push(moveTo(step.release))
             out.push(function() { Shell.driveMouse(hostWindow, 3, point.x, point.y, b, 0); return settle })
         } else if (step.hover !== undefined) {
             out.push(moveTo(step.hover))

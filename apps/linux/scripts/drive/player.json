@@ -230,6 +230,58 @@
   "expect": true
  },
  {
+  "log": "a drag on the seek bar scrubs: held 30% to 80% and 40px off the groove, the picture stays put; the release lands at 80%"
+ },
+ {
+  "hover": [
+   629,
+   922
+  ]
+ },
+ {
+  "wait": 200
+ },
+ {
+  "drag": [
+   629,
+   922,
+   1057,
+   962
+  ],
+  "steps": 20,
+  "release": false
+ },
+ {
+  "wait": 600
+ },
+ {
+  "eval": "Math.abs(frame.item.pageItem.timePos - vars.t1) < 1",
+  "expect": true
+ },
+ {
+  "shot": "player-02b-scrub"
+ },
+ {
+  "release": [
+   1057,
+   962
+  ]
+ },
+ {
+  "wait": 1000
+ },
+ {
+  "eval": "var p = frame.item.pageItem; Math.abs(p.timePos - 0.8 * p.duration) < 3",
+  "expect": true
+ },
+ {
+  "eval": "frame.item.pageItem.seekTo(vars.t1), true",
+  "expect": true
+ },
+ {
+  "wait": 700
+ },
+ {
   "log": "[ and ] step the speed by 0.25, Backspace resets it"
  },
  {
