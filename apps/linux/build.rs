@@ -238,8 +238,17 @@ fn main() {
         "assets/icons/wrench.svg",
         "assets/icons/x.svg",
     ]);
+    // include_dir() copies a directory's headers into the build rather than adding a -I, and
+    // skips names with no extension (MpvQt/MpvAbstractItem), so a prefix the compiler does
+    // not search already goes in as a real -I.
     for prefix in &extra {
-        builder = builder.include_dir(format!("{prefix}/include"));
+        let dir = format!("{prefix}/include");
+        // SAFETY: only adds an include path to cxx-qt's own cc::Build.
+        builder = unsafe {
+            builder.cc_builder(|cc| {
+                cc.include(&dir);
+            })
+        };
     }
     builder.build();
 
