@@ -51,9 +51,9 @@ FocusScope {
     // A popover's own button or row may have held the keyboard while it was up; the page
     // takes it back when the last one closes, so Space and the arrows work again at once.
     onOpenMenusChanged: if (openMenus === 0) forceActiveFocus()
-    // A menu holds the chrome: the timer runs again rather than falling through, so the
-    // chrome hides 2.5 s after the menu closes instead of staying up until the next move.
-    Timer { id: hideTimer; interval: 2500; onTriggered: { if (page.openMenus > 0) restart(); else page.chromeVisible = false } }
+    // A menu or a held scrub holds the chrome: the timer runs again rather than falling
+    // through, so the chrome hides 2.5 s after either ends instead of staying up until the next move.
+    Timer { id: hideTimer; interval: 2500; onTriggered: { if (page.openMenus > 0 || chrome.scrubbing) restart(); else page.chromeVisible = false } }
     function showChrome() { chromeVisible = true; hideTimer.restart() }
     // The pointer goes with the chrome, as an application override (see helpers.h)
     onChromeVisibleChanged: Shell.setCursorHidden(!chromeVisible)
