@@ -78,19 +78,23 @@ echo "== the player on a generated clip"
 first_series="$("$cli" --root "$root" list | awk 'NR==1 {print $1}')"
 file_id="$("$cli" --root "$root" show "$first_series" \
   | python3 -c 'import json,sys; d=json.load(sys.stdin); e=d["episodes"] or d["unmatched_files"]; print(e[0]["file"])')"
-# Twice: as shipped, then with hardware decoding off, each with mpv's own log and a
-# screencapture of the real screen beside the window grab, so a black picture can be told
-# apart between the decoder, the renderer and the grab.
-for run in player player-swdec; do
+# Twice, each with mpv's own log and a screencapture beside the window grab: as shipped,
+# then as cheap as mpv renders. A runner is a VM whose only OpenGL is Apple's software
+# renderer, on the CPU, and mpv's default scalers into an rgba16f FBO take longer there
+# than mpv waits for a frame, so the shipped run plays with every frame dropped. The cheap
+# run is what shows the picture really reaches the window; a Mac's GPU needs none of it.
+for run in player player-cheap; do
   {
     echo "log-file=$out/$run-mpv.log"
     echo "msg-level=all=v"
-    if [ "$run" = player-swdec ]; then echo "hwdec=no"; fi
+    if [ "$run" = player-cheap ]; then
+      printf '%s\n' hwdec=no profile=fast fbo-format=rgba8 dither=no deband=no
+    fi
   } > "$root/config/mpv.conf"
   cat > "$out/$run.json" <<JSON
 [
   {"page": "player", "props": {"file": $file_id}},
-  {"wait": 4000},
+  {"wait": 7000},
   {"eval": "frame.item.pageItem.loaded", "expect": true},
   {"eval": "frame.item.pageItem.duration > 10", "expect": true},
   {"shot": "$run-playing"},
