@@ -99,11 +99,14 @@ for run in player player-swdec; do
   {"shot": "$run-chrome"}
 ]
 JSON
-  ( sleep 4; screencapture -x "$out/$run-screen.png" ) &
-  QT_FORCE_STDERR_LOGGING=1 "$bin" --root "$root" --drive "$out/$run.json" --out "$out/drive" \
+  ( sleep 4; screencapture -x "$out/$run-screen.png"; sleep 2; screencapture -x "$out/$run-screen-later.png" ) &
+  QSG_INFO=1 QT_LOGGING_RULES="qt.scenegraph.renderloop=true;qt.qpa.window=true" \
+    QT_FORCE_STDERR_LOGGING=1 "$bin" --root "$root" --drive "$out/$run.json" --out "$out/drive" \
     --width 1600 --height 1000 2> "$out/$run.log" || { crashed $? "$run"; status=1; }
   wait
-  grep -E 'hwdec|Using|VO:|vo/libmpv|error|rror' "$out/$run-mpv.log" | head -40 || true
+  grep -E 'hwdec|Using|VO:|error|rror' "$out/$run-mpv.log" | head -20 || true
+  grep -c 'not being called' "$out/$run-mpv.log" || true
+  grep -i -E 'render loop|GL_|OpenGL|exposed|expose|renderWindow|occlu' "$out/$run.log" | sort | uniq -c | sort -rn | head -30 || true
 done
 rm -f "$root/config/mpv.conf"
 ls -la "$out" "$out/drive" 2>/dev/null || true
