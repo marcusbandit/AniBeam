@@ -40,12 +40,15 @@ meson compile -C "$work/mpv-build"
 meson install -C "$work/mpv-build"
 
 echo "== MpvQt $MPVQT_VERSION"
+# FindLibmpv hands CMake <prefix>/include/mpv while the sources say <mpv/client.h>; on Arch
+# /usr/include covers the difference, here the flag below does.
 git clone --quiet --depth 1 --branch "$MPVQT_VERSION" https://invent.kde.org/libraries/mpvqt.git "$work/mpvqt"
 cmake -S "$work/mpvqt" -B "$work/mpvqt-build" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX="$prefix" \
   -DCMAKE_INSTALL_LIBDIR=lib \
   -DCMAKE_PREFIX_PATH="$prefix;$brew_prefix" \
+  -DCMAKE_CXX_FLAGS="-isystem $prefix/include" \
   -DBUILD_TESTING=OFF
 cmake --build "$work/mpvqt-build"
 cmake --install "$work/mpvqt-build"
