@@ -7,12 +7,13 @@
 #   SMOKE_ROOT          the sandbox root (default: <out-dir>/root)
 set -euo pipefail
 
-app="$1"
-cli="$2"
-out="$3"
+mkdir -p "$3"
+# Absolute, because AddSource refuses a relative source path.
+app="$(cd "$1" && pwd)"
+cli="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
+out="$(cd "$3" && pwd)"
 here="$(cd "$(dirname "$0")" && pwd)"
 shell="$(cd "$here/../.." && pwd)"
-mkdir -p "$out"
 root="${SMOKE_ROOT:-$out/root}"
 lib="$(dirname "$root")/lib"
 bin="$app/Contents/MacOS/anibeam"
