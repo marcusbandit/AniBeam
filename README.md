@@ -20,6 +20,21 @@ That installs the launcher entry (`anibeam.desktop`) and the app icon into `~/.l
 
 Runtime requirements: `ffmpeg` and `ffprobe` on PATH (used for playback of formats the browser engine can't decode).
 
+## Install on a Mac
+
+The native app (the Qt shell over the Rust core) also ships for Apple silicon Macs on
+macOS 15 or later.
+
+1. Download `AniBeam-<version>-macos-arm64.dmg` from [Releases](https://github.com/marcusbandit/AniBeam/releases).
+2. Open it and drag AniBeam into Applications.
+3. Open AniBeam once. macOS stops it, because the build is not notarized: go to
+   System Settings > Privacy & Security, scroll to the AniBeam line and click Open Anyway.
+   From a terminal, `xattr -dr com.apple.quarantine /Applications/AniBeam.app` does the same.
+
+Everything the app needs is inside the bundle, mpv included. Its data lives in
+`~/Library/Application Support/anibeam`, tracker tokens go to the login keychain, and
+"Use my mpv.conf" reads `~/.config/mpv/mpv.conf`, as mpv itself does.
+
 ## Install from source
 
 ```bash
@@ -100,7 +115,9 @@ months holds an older string for the same id.
 
 ## Releasing
 
-Push a version tag and CI builds the Linux zip and attaches it to a GitHub Release:
+Push a version tag and CI builds the Linux zip and the macOS dmg and attaches both to a
+GitHub Release. The Mac half is `.github/workflows/macos.yml`, which also runs by hand
+from the Actions tab for a test build; its scripts live in `apps/linux/packaging/macos/`.
 
 ```bash
 git tag v1.1.0

@@ -3,7 +3,9 @@
 # Builds what Homebrew does not ship the way AniBeam needs it into <prefix>:
 #   libmpv 0.41.0, lean: the OpenGL render API, VideoToolbox, CoreAudio, libass, and none of
 #     Lua, JavaScript, VapourSynth, Vulkan or libarchive. Homebrew's mpv enables VapourSynth,
-#     which links a whole Python framework into libmpv.
+#     which links a whole Python framework into libmpv. The Swift glue stays on: 0.41's
+#     macOS sources include its header whatever else is off. Its media player half (Now
+#     Playing, remote commands) does not, since the shell owns media keys.
 #   MpvQt 1.2.0, which Homebrew does not package at all.
 # Everything else (Qt, FFmpeg, libass, libplacebo) comes from Homebrew; bundle.sh copies it
 # into the app. The workflow caches <prefix> on a key that includes those Homebrew versions,
@@ -27,7 +29,7 @@ meson setup "$work/mpv-build" "$work/mpv-$MPV_VERSION" \
   --prefix="$prefix" --libdir=lib --buildtype=release \
   -Dlibmpv=true -Dcplayer=false -Dtests=false -Dbuild-date=false \
   -Dmanpage-build=disabled -Dhtml-build=disabled -Dpdf-build=disabled \
-  -Dswift-build=disabled -Dmacos-cocoa-cb=disabled -Dmacos-media-player=disabled -Dmacos-touchbar=disabled \
+  -Dswift-build=enabled -Dmacos-cocoa-cb=disabled -Dmacos-media-player=disabled -Dmacos-touchbar=disabled \
   -Dcocoa=enabled -Dgl=enabled -Dgl-cocoa=enabled -Dplain-gl=enabled -Dvideotoolbox-gl=enabled \
   -Dcoreaudio=enabled -Dlcms2=enabled -Duchardet=enabled -Dzimg=enabled -Diconv=enabled -Dzlib=enabled \
   -Dlua=disabled -Djavascript=disabled -Dvapoursynth=disabled -Dlibarchive=disabled \
