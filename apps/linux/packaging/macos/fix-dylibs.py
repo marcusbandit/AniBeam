@@ -13,6 +13,8 @@ bundle are deleted. --check changes nothing and exits 1 when anything still leak
 The signatures this invalidates are redone by bundle.sh afterwards.
 """
 
+from __future__ import annotations
+
 import os
 import shutil
 import subprocess

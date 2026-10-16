@@ -119,6 +119,7 @@ jobs:
             smoke/*.png
             smoke/*.log
             smoke/drive/*.png
+            ~/Library/Logs/DiagnosticReports/anibeam*.ips
           if-no-files-found: ignore
 
       - name: Attach to the release

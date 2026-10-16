@@ -18,6 +18,14 @@ root="${SMOKE_ROOT:-$out/root}"
 lib="$(dirname "$root")/lib"
 bin="$app/Contents/MacOS/anibeam"
 
+# A run that dies on a signal prints nothing of its own; the crash report says where.
+crashed() {
+  echo "anibeam exited $1 on $2"
+  tail -40 "$out/$2.log"
+  sleep 3 # ReportCrash writes the .ips a moment after the process is gone
+  python3 "$here/crash-report.py" anibeam
+}
+
 if [ ! -f "$root/.seeded" ]; then
   echo "== a library of generated clips"
   for show in "Sousou no Frieren" "Mushishi" "Cowboy Bebop"; do
@@ -33,15 +41,22 @@ if [ ! -f "$root/.seeded" ]; then
   "$cli" --root "$root" list
   touch "$root/.seeded"
 fi
-[ -n "${SMOKE_SEED_ONLY:-}" ] && exit 0
+if [ -n "${SMOKE_SEED_ONLY:-}" ]; then
+  # One page with Homebrew still in place, so a failure later can be told apart from
+  # a library the bundle is missing. Informational only.
+  echo "== probe with Homebrew visible"
+  QT_FORCE_STDERR_LOGGING=1 "$bin" --root "$root" --shoot "$out/probe.png" --page home \
+    --width 1600 --height 1000 2> "$out/probe.log" && echo "probe ok" || crashed $? probe || true
+  exit 0
+fi
 
 echo "== the bundled app"
 "$bin" --version
 
 shoot() {
   local name="$1"; shift
-  "$bin" --root "$root" --shoot "$out/$name.png" --width 1600 --height 1000 "$@" 2> "$out/$name.log" \
-    || { echo "anibeam exited $? on $name"; tail -40 "$out/$name.log"; return 1; }
+  QT_FORCE_STDERR_LOGGING=1 "$bin" --root "$root" --shoot "$out/$name.png" --width 1600 --height 1000 "$@" \
+    2> "$out/$name.log" || { crashed $? "$name"; return 1; }
   file "$out/$name.png" | grep -q PNG || { echo "no PNG for $name"; tail -40 "$out/$name.log"; return 1; }
   echo "$name ok"
 }
@@ -52,8 +67,8 @@ shoot series --page series || status=1
 shoot settings --page settings || status=1
 
 echo "== the frame smoke drive"
-"$bin" --root "$root" --drive "$shell/scripts/drive/smoke.json" --out "$out/drive" \
-  --width 1600 --height 1000 2> "$out/drive.log" || { echo "smoke drive failed"; tail -40 "$out/drive.log"; status=1; }
+QT_FORCE_STDERR_LOGGING=1 "$bin" --root "$root" --drive "$shell/scripts/drive/smoke.json" --out "$out/drive" \
+  --width 1600 --height 1000 2> "$out/drive.log" || { crashed $? drive; status=1; }
 
 echo "== the player on a generated clip"
 first_series="$("$cli" --root "$root" list | awk 'NR==1 {print $1}')"
@@ -71,7 +86,7 @@ cat > "$out/player.json" <<JSON
   {"shot": "player-chrome"}
 ]
 JSON
-"$bin" --root "$root" --drive "$out/player.json" --out "$out/drive" \
-  --width 1600 --height 1000 2> "$out/player.log" || { echo "player drive failed"; tail -60 "$out/player.log"; status=1; }
+QT_FORCE_STDERR_LOGGING=1 "$bin" --root "$root" --drive "$out/player.json" --out "$out/drive" \
+  --width 1600 --height 1000 2> "$out/player.log" || { crashed $? player; status=1; }
 ls -la "$out" "$out/drive" 2>/dev/null || true
 exit "$status"
