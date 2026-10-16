@@ -36,7 +36,8 @@ if [ ! -f "$root/.seeded" ]; then
         -t 15 -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest "$lib/$show/$show - $ep.mkv"
     done
   done
-  "$cli" --root "$root" call AddSource --json "{\"path\": \"$lib\"}" --wait > "$out/seed-add.log"
+  "$cli" --root "$root" call AddSource --json "{\"path\": \"$lib\"}" > "$out/seed-add.log"
+  "$cli" --root "$root" scan --wait > "$out/seed-scan.log"
   "$cli" --root "$root" call AutoMatch --wait > "$out/seed-match.log" || true
   "$cli" --root "$root" list
   touch "$root/.seeded"
@@ -67,26 +68,43 @@ shoot series --page series || status=1
 shoot settings --page settings || status=1
 
 echo "== the frame smoke drive"
-QT_FORCE_STDERR_LOGGING=1 "$bin" --root "$root" --drive "$shell/scripts/drive/smoke.json" --out "$out/drive" \
+# A runner's screen is about 1024x768, so macOS shrinks the window to fit; the one click
+# the Linux script aims below that (a press outside a dropdown) goes to the rail instead.
+sed 's/"click": \[1000, 950\]/"click": [44, 280]/' "$shell/scripts/drive/smoke.json" > "$out/smoke-mac.json"
+QT_FORCE_STDERR_LOGGING=1 "$bin" --root "$root" --drive "$out/smoke-mac.json" --out "$out/drive" \
   --width 1600 --height 1000 2> "$out/drive.log" || { crashed $? drive; status=1; }
 
 echo "== the player on a generated clip"
 first_series="$("$cli" --root "$root" list | awk 'NR==1 {print $1}')"
 file_id="$("$cli" --root "$root" show "$first_series" \
   | python3 -c 'import json,sys; d=json.load(sys.stdin); e=d["episodes"] or d["unmatched_files"]; print(e[0]["file"])')"
-cat > "$out/player.json" <<JSON
+# Twice: as shipped, then with hardware decoding off, each with mpv's own log and a
+# screencapture of the real screen beside the window grab, so a black picture can be told
+# apart between the decoder, the renderer and the grab.
+for run in player player-swdec; do
+  {
+    echo "log-file=$out/$run-mpv.log"
+    echo "msg-level=all=v"
+    if [ "$run" = player-swdec ]; then echo "hwdec=no"; fi
+  } > "$root/config/mpv.conf"
+  cat > "$out/$run.json" <<JSON
 [
   {"page": "player", "props": {"file": $file_id}},
   {"wait": 4000},
   {"eval": "frame.item.pageItem.loaded", "expect": true},
   {"eval": "frame.item.pageItem.duration > 10", "expect": true},
-  {"shot": "player-playing"},
-  {"hover": [800, 700]},
+  {"shot": "$run-playing"},
+  {"hover": [500, 500]},
   {"wait": 400},
-  {"shot": "player-chrome"}
+  {"shot": "$run-chrome"}
 ]
 JSON
-QT_FORCE_STDERR_LOGGING=1 "$bin" --root "$root" --drive "$out/player.json" --out "$out/drive" \
-  --width 1600 --height 1000 2> "$out/player.log" || { crashed $? player; status=1; }
+  ( sleep 4; screencapture -x "$out/$run-screen.png" ) &
+  QT_FORCE_STDERR_LOGGING=1 "$bin" --root "$root" --drive "$out/$run.json" --out "$out/drive" \
+    --width 1600 --height 1000 2> "$out/$run.log" || { crashed $? "$run"; status=1; }
+  wait
+  grep -E 'hwdec|Using|VO:|vo/libmpv|error|rror' "$out/$run-mpv.log" | head -40 || true
+done
+rm -f "$root/config/mpv.conf"
 ls -la "$out" "$out/drive" 2>/dev/null || true
 exit "$status"

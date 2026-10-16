@@ -118,6 +118,7 @@ jobs:
           path: |
             smoke/*.png
             smoke/*.log
+            smoke/*.json
             smoke/drive/*.png
             ~/Library/Logs/DiagnosticReports/anibeam*.ips
           if-no-files-found: ignore
