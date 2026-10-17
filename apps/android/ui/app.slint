@@ -1,0 +1,319 @@
+import { Theme } from "theme.slint";
+import { Dot, IconButton, NavItem, SectionLabel } from "widgets.slint";
+import { NextUpRow, NextUpGrid } from "next_up.slint";
+import { DiskEpisode, DiskRow, TorrentRow, SeriesList, TorrentList } from "on_disk.slint";
+import { HostPanel, InfoPanel } from "settings.slint";
+
+export { NextUpRow, DiskEpisode, DiskRow, TorrentRow }
+
+export component AppWindow inherits Window {
+    title: "AniBeam";
+    background: Theme.ground;
+    default-font-size: Theme.normal;
+
+    // Next up.
+    in property <[NextUpRow]> next-up;
+    // Whether any snapshot was ever stored.
+    in property <bool> has-data;
+    // On disk.
+    in property <[DiskRow]> disk;
+    in property <[TorrentRow]> torrents;
+    in property <bool> torrents-known: true;
+    in property <[string]> problems;
+    // "Live: synced just now from banditbox." or how old it is.
+    in property <string> freshness;
+    in property <bool> live;
+    // The header line: "banditbox online, synced 1 min ago".
+    in property <string> status;
+    // 0: online, 1: offline, 2: not known yet.
+    in property <int> status-tone: 2;
+    in property <bool> syncing;
+    // Settings.
+    in-out property <string> address;
+    in property <string> test-result;
+    in property <int> test-tone: 2;
+    in property <bool> testing;
+    in property <string> sync-info;
+    in property <string> anilist-info;
+    in property <string> version;
+
+    in-out property <int> page: 0;
+
+    callback refresh();
+    callback test-connection(string);
+    callback save-and-sync(string);
+
+    property <bool> wide: self.width > self.height;
+    property <[{icon: image, label: string}]> destinations: [
+        { icon: @image-url("icons/calendar-clock.svg"), label: "Next up" },
+        { icon: @image-url("icons/hard-drive.svg"), label: "On disk" },
+        { icon: @image-url("icons/settings.svg"), label: "Settings" },
+    ];
+    property <[string]> titles: ["Next up", "On disk", "Settings"];
+
+    // The system bars draw over the window; keep touch targets out from under them.
+    property <length> inset-top: self.safe-area-insets.top;
+    property <length> inset-bottom: self.safe-area-insets.bottom;
+    property <length> inset-left: self.safe-area-insets.left;
+    property <length> inset-right: self.safe-area-insets.right;
+
+    // The bottom bar in portrait turns into a rail down the left in landscape.
+    property <length> bar-height: 18 * Theme.unit;
+    property <length> rail-width: 24 * Theme.unit;
+    property <length> content-x: self.wide ? self.inset-left + self.rail-width : self.inset-left;
+    property <length> content-width: self.width - self.content-x - self.inset-right;
+    property <length> content-bottom: self.wide ? self.inset-bottom : self.inset-bottom + self.bar-height;
+
+    forward-focus: keys;
+
+    keys := FocusScope {
+        // Back goes to Next up first, and only leaves the app from there.
+        key-pressed(event) => {
+            if (event.text == Key.Back && root.page != 0) {
+                root.page = 0;
+                return accept;
+            }
+            reject
+        }
+
+        // Header: the page's name, the host status line, and a sync button.
+        header := Rectangle {
+            x: root.content-x;
+            y: root.inset-top;
+            width: root.content-width;
+            height: 22 * Theme.unit;
+            HorizontalLayout {
+                padding-left: Theme.pad;
+                padding-right: Theme.pad;
+                padding-top: Theme.gap;
+                spacing: Theme.gap;
+                VerticalLayout {
+                    alignment: center;
+                    spacing: Theme.unit;
+                    Text {
+                        text: root.titles[root.page];
+                        color: Theme.text;
+                        font-size: Theme.large;
+                        font-weight: 700;
+                    }
+                    HorizontalLayout {
+                        spacing: Theme.unit * 2;
+                        alignment: start;
+                        Dot {
+                            y: (parent.height - self.height) / 2;
+                            tone: root.status-tone == 0 ? Theme.ok : root.status-tone == 1 ? Theme.warn : Theme.faint;
+                        }
+                        Text {
+                            text: root.status;
+                            color: Theme.dim;
+                            font-size: Theme.small;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                        }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    IconButton {
+                        icon: @image-url("icons/refresh-cw.svg");
+                        spinning: root.syncing;
+                        clicked => { root.refresh(); }
+                    }
+                }
+            }
+        }
+
+        body := Rectangle {
+            x: root.content-x;
+            y: header.y + header.height;
+            width: root.content-width;
+            height: root.height - self.y - root.content-bottom;
+            clip: true;
+
+            // Next up, with pull to refresh at the top of the list.
+            pull := SwipeGestureHandler {
+                visible: root.page == 0;
+                handle-swipe-down: root.page == 0 && list.content-y >= 0 && !root.syncing;
+                property <length> distance: self.swiping ? Math.max(0, self.current-position.y - self.pressed-position.y) : 0;
+                property <length> threshold: 30 * Theme.unit;
+                swiped => {
+                    if (self.current-position.y - self.pressed-position.y >= self.threshold) {
+                        root.refresh();
+                    }
+                }
+
+                Text {
+                    y: Theme.unit * 2;
+                    width: parent.width;
+                    horizontal-alignment: center;
+                    text: pull.distance >= pull.threshold ? "Release to sync" : "Pull to sync";
+                    color: pull.distance >= pull.threshold ? Theme.text : Theme.dim;
+                    font-size: Theme.small;
+                    opacity: Math.min(1, pull.distance / pull.threshold);
+                }
+
+                list := Flickable {
+                    // The list follows the finger at half its speed, up to a short way.
+                    y: Math.min(pull.distance / 2, 12 * Theme.unit);
+                    height: parent.height;
+                    VerticalLayout {
+                        alignment: start;
+                        padding-left: Theme.pad;
+                        padding-right: Theme.pad;
+                        padding-top: Theme.unit * 2;
+                        padding-bottom: Theme.pad;
+                        spacing: Theme.gap;
+                        NextUpGrid {
+                            rows: root.next-up;
+                        }
+                        if root.next-up.length == 0: VerticalLayout {
+                            spacing: Theme.unit * 2;
+                            padding-top: Theme.pad * 2;
+                            Text {
+                                text: root.has-data ? "Nothing subscribed or airing." : "Not synced yet.";
+                                color: Theme.text;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                            }
+                            Text {
+                                text: root.has-data
+                                    ? "Shows the host is airing or subscribed to appear here, soonest first."
+                                    : "Set the host's address in Settings, then pull down here to sync.";
+                                color: Theme.dim;
+                                font-size: Theme.small;
+                                wrap: word-wrap;
+                                horizontal-alignment: center;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // On disk: one scroll, in two columns when the screen is wide.
+            disk-view := Flickable {
+                visible: root.page == 1;
+                content-height: disk-content.height;
+                disk-content := Rectangle {
+                    width: disk-view.width;
+                    property <length> inner: self.width - 2 * Theme.pad;
+                    property <length> left-width: root.wide ? (self.inner - Theme.gap) * 0.58 : self.inner;
+                    property <length> columns-y: banner.y + banner.height + Theme.gap;
+                    height: Math.max(series.y + series.height, torrents.y + torrents.height) + Theme.pad;
+
+                    banner := Rectangle {
+                        x: Theme.pad;
+                        y: Theme.unit * 2;
+                        width: parent.inner;
+                        height: banner-body.preferred-height;
+                        border-radius: Theme.radius-large;
+                        border-width: 1px;
+                        border-color: root.live ? Theme.line-strong : Theme.warn;
+                        banner-body := VerticalLayout {
+                            padding: Theme.gap;
+                            spacing: Theme.unit;
+                            HorizontalLayout {
+                                spacing: Theme.unit * 2;
+                                Dot {
+                                    y: (parent.height - self.height) / 2;
+                                    tone: root.live ? Theme.ok : Theme.warn;
+                                }
+                                Text {
+                                    text: root.freshness;
+                                    color: Theme.text;
+                                    font-size: Theme.small;
+                                    wrap: word-wrap;
+                                    horizontal-stretch: 1;
+                                }
+                            }
+                            for problem in root.problems: Text {
+                                text: problem;
+                                color: Theme.warn;
+                                font-size: Theme.small;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+                    series := SeriesList {
+                        x: Theme.pad;
+                        y: parent.columns-y;
+                        width: parent.left-width;
+                        height: self.preferred-height;
+                        rows: root.disk;
+                    }
+                    torrents := TorrentList {
+                        x: root.wide ? Theme.pad + parent.left-width + Theme.gap : Theme.pad;
+                        y: root.wide ? parent.columns-y : series.y + series.height + Theme.pad;
+                        width: root.wide ? parent.inner - parent.left-width - Theme.gap : parent.inner;
+                        height: self.preferred-height;
+                        rows: root.torrents;
+                        known: root.torrents-known;
+                    }
+                }
+            }
+
+            // Settings: the host on the left and the rest beside it when wide.
+            settings-view := Flickable {
+                visible: root.page == 2;
+                content-height: settings-content.height;
+                settings-content := Rectangle {
+                    width: settings-view.width;
+                    property <length> inner: self.width - 2 * Theme.pad;
+                    property <length> half: root.wide ? (self.inner - Theme.gap) / 2 : self.inner;
+                    height: Math.max(host.y + host.height, info.y + info.height) + Theme.pad;
+                    host := HostPanel {
+                        x: Theme.pad;
+                        y: Theme.unit * 2;
+                        width: parent.half;
+                        address <=> root.address;
+                        result: root.test-result;
+                        result-tone: root.test-tone;
+                        busy: root.testing;
+                        test-connection(text) => { root.test-connection(text); }
+                        save-and-sync(text) => { root.save-and-sync(text); }
+                    }
+                    info := InfoPanel {
+                        x: root.wide ? Theme.pad + parent.half + Theme.gap : Theme.pad;
+                        y: root.wide ? host.y : host.y + host.height + Theme.gap;
+                        width: parent.half;
+                        sync-info: root.sync-info;
+                        anilist-info: root.anilist-info;
+                        version: root.version;
+                    }
+                }
+            }
+        }
+
+        // Navigation: three destinations, along the bottom or down the left.
+        nav := Rectangle {
+            x: 0;
+            y: root.wide ? 0 : root.height - root.bar-height - root.inset-bottom;
+            width: root.wide ? root.inset-left + root.rail-width : root.width;
+            height: root.wide ? root.height : root.bar-height + root.inset-bottom;
+            background: Theme.surface;
+            Rectangle {
+                x: root.wide ? parent.width - 1px : 0;
+                y: 0;
+                width: root.wide ? 1px : parent.width;
+                height: root.wide ? parent.height : 1px;
+                background: Theme.line;
+            }
+            property <length> item-width: root.wide ? root.rail-width : (self.width - root.inset-left - root.inset-right) / root.destinations.length;
+            property <length> item-height: root.bar-height;
+            // In the rail, the destinations sit in the middle of the height.
+            property <length> rail-top: (self.height - root.destinations.length * self.item-height) / 2;
+            for destination[i] in root.destinations: NavItem {
+                x: root.wide ? root.inset-left : root.inset-left + i * parent.item-width;
+                y: root.wide ? parent.rail-top + i * parent.item-height : 0;
+                width: parent.item-width;
+                height: parent.item-height;
+                icon: destination.icon;
+                label: destination.label;
+                active: root.page == i;
+                clicked => {
+                    root.page = i;
+                    keys.focus();
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,186 @@
+import { Theme } from "theme.slint";
+import { Poster, ProgressLine, SectionLabel } from "widgets.slint";
+
+export struct DiskEpisode {
+    code: string,
+    watched: bool,
+}
+
+export struct DiskRow {
+    title: string,
+    poster: image,
+    has-poster: bool,
+    initials: string,
+    // "7 of 12 on disk, 6 watched".
+    summary: string,
+    episodes: [DiskEpisode],
+    // "+38 earlier" when the list was cut to the newest, or empty.
+    more: string,
+}
+
+export struct TorrentRow {
+    name: string,
+    // "Downloading", "Seeding", "Stalled", ...
+    state: string,
+    // "1.2 GB of 4.5 GB, 3.4 MB/s, 12m left".
+    facts: string,
+    progress: float,
+    // 0: moving, 1: quiet, 2: stuck or broken.
+    tone: int,
+}
+
+// Episode codes that wrap onto as many lines as they need, each line filled edge to
+// edge. Watched ones are filled and quiet; the ones still to watch are outlined in the
+// accent.
+component EpisodeChips inherits Rectangle {
+    in property <[DiskEpisode]> episodes;
+    property <length> chip-min: 16 * Theme.unit;
+    property <length> chip-height: 7 * Theme.unit;
+    property <length> spacing: 2 * Theme.unit;
+    property <int> per-line: Math.max(1, Math.floor((self.width + self.spacing) / (self.chip-min + self.spacing)));
+    property <length> chip-width: (self.width - (self.per-line - 1) * self.spacing) / self.per-line;
+    height: Math.ceil(self.episodes.length / self.per-line) * (self.chip-height + self.spacing) - self.spacing;
+
+    for episode[i] in root.episodes: Rectangle {
+        x: Math.mod(i, root.per-line) * (root.chip-width + root.spacing);
+        y: Math.floor(i / root.per-line) * (root.chip-height + root.spacing);
+        width: root.chip-width;
+        height: root.chip-height;
+        border-radius: Theme.radius-small;
+        background: episode.watched ? Theme.raised : transparent;
+        border-width: episode.watched ? 0 : 1px;
+        border-color: Theme.line-strong;
+        Text {
+            text: episode.code;
+            color: episode.watched ? Theme.faint : Theme.accent;
+            font-size: Theme.small;
+            font-family: Theme.mono;
+            font-weight: episode.watched ? 400 : 700;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component DiskCard inherits Rectangle {
+    in property <DiskRow> data;
+    background: Theme.surface;
+    border-radius: Theme.radius-large;
+    VerticalLayout {
+        padding: Theme.gap;
+        spacing: Theme.gap;
+        HorizontalLayout {
+            spacing: Theme.gap + Theme.unit;
+            Poster {
+                width: 16 * Theme.unit;
+                height: self.width * Theme.poster-ratio;
+                source: root.data.poster;
+                has-image: root.data.has-poster;
+                initials: root.data.initials;
+            }
+            VerticalLayout {
+                spacing: Theme.unit;
+                alignment: center;
+                Text {
+                    text: root.data.title;
+                    color: Theme.text;
+                    font-weight: 700;
+                    wrap: word-wrap;
+                    overflow: elide;
+                    max-height: Theme.normal * 2.7;
+                }
+                Text {
+                    text: root.data.summary;
+                    color: Theme.dim;
+                    font-size: Theme.small;
+                    wrap: word-wrap;
+                }
+                if root.data.more != "": Text {
+                    text: root.data.more;
+                    color: Theme.faint;
+                    font-size: Theme.small;
+                }
+            }
+        }
+        if root.data.episodes.length > 1: EpisodeChips {
+            episodes: root.data.episodes;
+        }
+    }
+}
+
+export component SeriesList inherits VerticalLayout {
+    in property <[DiskRow]> rows;
+    spacing: Theme.gap;
+    HorizontalLayout {
+        SectionLabel { text: "SERIES ON DISK"; }
+        Text {
+            text: "Dim episodes are watched";
+            color: Theme.faint;
+            font-size: Theme.small;
+            horizontal-alignment: right;
+            horizontal-stretch: 1;
+        }
+    }
+    for row in root.rows: DiskCard { data: row; }
+    if root.rows.length == 0: Text {
+        text: "Nothing on disk yet.";
+        color: Theme.dim;
+    }
+}
+
+component TorrentCard inherits Rectangle {
+    in property <TorrentRow> data;
+    background: Theme.surface;
+    border-radius: Theme.radius-large;
+    VerticalLayout {
+        padding: Theme.gap;
+        spacing: Theme.unit * 2;
+        Text {
+            text: root.data.name;
+            color: Theme.text;
+            font-size: Theme.small;
+            wrap: word-wrap;
+            overflow: elide;
+            max-height: Theme.small * 2.8;
+        }
+        HorizontalLayout {
+            spacing: Theme.gap;
+            Text {
+                text: root.data.state;
+                color: root.data.tone == 0 ? Theme.accent : root.data.tone == 2 ? Theme.warn : Theme.dim;
+                font-size: Theme.small;
+                font-weight: 700;
+            }
+            Text {
+                text: root.data.facts;
+                color: Theme.dim;
+                font-size: Theme.small;
+                font-family: Theme.mono;
+                horizontal-stretch: 1;
+                horizontal-alignment: right;
+                overflow: elide;
+            }
+        }
+        ProgressLine {
+            progress: root.data.progress;
+            fill: root.data.tone == 2 ? Theme.warn : root.data.tone == 0 ? Theme.accent : Theme.dim;
+        }
+    }
+}
+
+export component TorrentList inherits VerticalLayout {
+    in property <[TorrentRow]> rows;
+    in property <bool> known;
+    spacing: Theme.gap;
+    SectionLabel { text: "TORRENTS"; }
+    for row in root.rows: TorrentCard { data: row; }
+    if !root.known: Text {
+        text: "The host could not read its torrent client at the last sync.";
+        color: Theme.dim;
+        wrap: word-wrap;
+    }
+    if root.known && root.rows.length == 0: Text {
+        text: "No torrents.";
+        color: Theme.dim;
+    }
+}

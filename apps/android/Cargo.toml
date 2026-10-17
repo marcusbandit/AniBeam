@@ -1,0 +1,30 @@
+[package]
+name = "anibeam-android"
+description = "AniBeam for Android: what airs next and what the host has on disk"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "GPL-3.0-or-later"
+publish = false
+
+# Its own workspace, so the desktop workspace and its CI never build it.
+[workspace]
+members = [".", "companion"]
+resolver = "3"
+
+[lib]
+name = "anibeam"
+crate-type = ["cdylib"]
+
+[dependencies]
+anibeam-companion = { path = "companion" }
+slint = { version = "1.18", default-features = false, features = ["std", "compat-1-2", "backend-android-activity-06", "renderer-skia"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+
+[build-dependencies]
+slint-build = "1.18"
+
+[profile.release]
+opt-level = "s"
+lto = "thin"
+strip = true
