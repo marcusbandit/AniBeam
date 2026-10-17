@@ -57,6 +57,14 @@ pub fn save_dir() -> Option<PathBuf> {
     )
 }
 
+/// The Web UI port an earlier setup wrote into the profile, if there was one.
+pub fn configured_port(profile: &Path) -> Option<u16> {
+    let text = std::fs::read_to_string(config_file(profile)).ok()?;
+    text.lines()
+        .find_map(|l| l.trim().strip_prefix("WebUI\\Port="))
+        .and_then(|p| p.trim().parse().ok())
+}
+
 fn config_file(profile: &Path) -> PathBuf {
     profile
         .join("qBittorrent")
@@ -245,6 +253,14 @@ mod tests {
         assert_eq!(set_ini(text, "B", "y", "9", false), text);
         assert_eq!(set_ini(text, "B", "y", "9", true), "[A]\nx=1\n\n[B]\ny=9\n");
         assert_eq!(set_ini("", "C", "k", "v", true), "[C]\nk=v\n");
+    }
+
+    #[test]
+    fn the_port_an_earlier_setup_wrote_is_read_back() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(configured_port(dir.path()), None);
+        write_config(dir.path(), 47321, None).unwrap();
+        assert_eq!(configured_port(dir.path()), Some(47321));
     }
 
     #[test]

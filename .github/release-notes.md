@@ -6,9 +6,4 @@
 
 **Arch:** `yay -S anibeam` (or `paru -S anibeam`) builds this tag from the AUR.
 
-**Downloads page (optional):** it needs [anirss](https://github.com/marcusbandit/anirss) 0.4.0 or newer and qBittorrent with its Web UI turned on. Everything else works without them.
-
-- Mac: `brew install marcusbandit/anirss/anirss`
-- Arch: `yay -S anirss`
-- Elsewhere: `uv tool install git+https://github.com/marcusbandit/anirss`
-
+**Downloads page:** nothing to install. AniBeam brings its own anirss, and the first time the page opens it uses your qBittorrent if its Web UI answers, or sets up its own if not. The README walks through the rest: https://github.com/marcusbandit/AniBeam#getting-started

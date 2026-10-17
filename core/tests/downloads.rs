@@ -1022,6 +1022,20 @@ fn a_fresh_install_uses_the_qbittorrent_it_finds_or_starts_its_own() {
         std::fs::read_to_string(profile.join("qBittorrent/config/qBittorrent.conf")).unwrap();
     assert!(conf.contains(&format!("WebUI\\Port={port}\n")), "{conf}");
     assert!(conf.contains("WebUI\\LocalHostAuth=false\n"), "{conf}");
+
+    // Asked to pick again while its own runs, it keeps its own on the same
+    // port rather than taking it for the user's client.
+    let mut again = status.settings.clone();
+    again.torrent_mode = TorrentMode::Auto;
+    save(&core, again, None, None);
+    for _ in 0..4 {
+        http.push_for("app/version", 200, "v5.1.2");
+    }
+    let job = started(&core, Call::TestTorrentClient);
+    common::wait_job(&c, job);
+    let settled = downloads_status(&core).settings;
+    assert_eq!(settled.torrent_mode, TorrentMode::Managed);
+    assert_eq!(settled.torrent_url, status.settings.torrent_url);
     unsafe { std::env::remove_var("ANIBEAM_QBITTORRENT_NOX") };
     core.shutdown();
 }

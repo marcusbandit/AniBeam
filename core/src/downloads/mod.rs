@@ -300,6 +300,20 @@ async fn decide_torrent(
     core: &Arc<Core>,
     mut s: DownloadSettings,
 ) -> Result<DownloadSettings, CoreError> {
+    // AniBeam's own, set up on an earlier day, is still AniBeam's: asked to
+    // pick again, it must not mistake its own Web UI for the user's client.
+    let own_port = managed::configured_port(&managed::profile_dir(&core.paths.data_dir));
+    if let Some(port) = own_port {
+        let own = format!("http://127.0.0.1:{port}");
+        let probe = QbtClient::new(&own, managed::USERNAME, "", core.http.clone());
+        let running = matches!(
+            tokio::time::timeout(PROBE_TIMEOUT, probe.version()).await,
+            Ok(Ok(_))
+        );
+        if running || s.torrent_url == own {
+            s.torrent_url = own;
+        }
+    }
     let (password, _) = resolve_password(core).await?;
     let probe = QbtClient::new(
         &s.torrent_url,
@@ -313,12 +327,21 @@ async fn decide_torrent(
         Ok(Err(CoreError::Service { code, .. })) => code == "unauthorized" || code == "banned",
         _ => false,
     };
-    let message = if answered {
+    let is_own = own_port.is_some_and(|port| s.torrent_url == format!("http://127.0.0.1:{port}"));
+    let message = if is_own && (answered || managed::binary().is_some()) {
+        s.torrent_mode = TorrentMode::Managed;
+        s.torrent_username = managed::USERNAME.to_string();
+        "Downloads use AniBeam's own qBittorrent".to_string()
+    } else if answered {
         s.torrent_mode = TorrentMode::Existing;
         format!("Downloads use the qBittorrent at {}", s.torrent_url)
     } else if managed::binary().is_some() {
-        let port = anirss::free_port()
-            .map_err(|e| service(qbt::SERVICE, "failed", format!("no free port: {e}")))?;
+        // The port an earlier setup chose, so the profile and the address agree
+        let port = match own_port {
+            Some(port) => port,
+            None => anirss::free_port()
+                .map_err(|e| service(qbt::SERVICE, "failed", format!("no free port: {e}")))?,
+        };
         s.torrent_mode = TorrentMode::Managed;
         s.torrent_url = format!("http://127.0.0.1:{port}");
         s.torrent_username = managed::USERNAME.to_string();
