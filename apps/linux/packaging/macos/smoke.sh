@@ -161,6 +161,7 @@ echo "== the Downloads page on the bundled pair"
 # listening on 8080. The core finds no qBittorrent, starts the bundled qbittorrent-nox on a
 # loopback port, then the bundled anirss against it. The managed qBittorrent is meant to
 # outlive the app, so it is killed here.
+pkill -f "[q]bittorrent-nox --profile" || true  # one the pages above started in their root
 fresh="$(mktemp -d)"
 mkdir -p "$fresh/home" "$out/downloads-drive"
 cat > "$out/downloads.json" <<'JSON'
@@ -178,6 +179,13 @@ env -i HOME="$fresh/home" TMPDIR="${TMPDIR:-/tmp}" PATH=/usr/bin:/bin:/usr/sbin:
   "$bin" --root "$fresh/root" --drive "$out/downloads.json" --out "$out/downloads-drive" \
   --width 1600 --height 1000 2> "$out/downloads.log" || { crashed $? downloads; status=1; }
 grep -E 'DRIVE (EVAL|FAIL)' "$out/downloads.log" || true
+# What the managed pair left behind, for a run that did not come up.
+mkdir -p "$out/downloads-state"
+cp "$fresh/root/data/qbittorrent/qbittorrent-nox.log" "$out/downloads-state/" 2>/dev/null || true
+cp "$fresh/root/data/qbittorrent/qBittorrent/config/qBittorrent.conf" "$out/downloads-state/" 2>/dev/null || true
+cp -R "$fresh/home/.config/anirss" "$fresh/home/.local/state/anirss" "$out/downloads-state/" 2>/dev/null || true
+rm -f "$out/downloads-state/anirss/api.token"
+ps ax | grep -E '[a]nirss|[q]bittorrent-nox' | cut -c1-200 || true
 ps ax | grep '[q]bittorrent-nox --profile' || echo "no managed qbittorrent-nox is running"
 pkill -f "[q]bittorrent-nox --profile" || true
 ls -la "$out" "$out/drive" 2>/dev/null || true

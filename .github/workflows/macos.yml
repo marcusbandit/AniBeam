@@ -152,5 +152,6 @@ jobs:
             smoke/*.json
             smoke/drive/*.png
             smoke/downloads-drive/*.png
+            smoke/downloads-state/**
             ~/Library/Logs/DiagnosticReports/anibeam*.ips
           if-no-files-found: ignore
