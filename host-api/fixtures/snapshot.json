@@ -1,0 +1,459 @@
+{
+  "api": 1,
+  "host": "banditbox",
+  "version": "2.1.0",
+  "generated_at": 1792242000,
+  "series": [
+    {
+      "id": 12,
+      "kind": "show",
+      "title": "Sousou no Frieren 2nd Season",
+      "titles": {
+        "romaji": "Sousou no Frieren 2nd Season",
+        "english": "Frieren: Beyond Journey's End Season 2",
+        "native": "葬送のフリーレン 第2期"
+      },
+      "status": "Releasing",
+      "format": "TV",
+      "year": 2026,
+      "season": "Fall 2026",
+      "anilist_id": 182255,
+      "mal_id": 59978,
+      "tvmaze_id": null,
+      "total_episodes": 12,
+      "episodes_on_disk": 7,
+      "progress": 6,
+      "next_airing": {
+        "episode": 8,
+        "season": null,
+        "at": 1792414800
+      },
+      "upcoming": [
+        {
+          "episode": 8,
+          "season": null,
+          "at": 1792414800
+        },
+        {
+          "episode": 9,
+          "season": null,
+          "at": 1793019600
+        },
+        {
+          "episode": 10,
+          "season": null,
+          "at": 1793624400
+        },
+        {
+          "episode": 11,
+          "season": null,
+          "at": 1794229200
+        },
+        {
+          "episode": 12,
+          "season": null,
+          "at": 1794834000
+        }
+      ],
+      "poster": "5f1c0a9e2b",
+      "episodes": [
+        {
+          "key": "1",
+          "number": 1.0,
+          "season": null,
+          "code": "E01",
+          "title": null,
+          "watched": true,
+          "aired_at": 1787576400
+        },
+        {
+          "key": "2",
+          "number": 2.0,
+          "season": null,
+          "code": "E02",
+          "title": null,
+          "watched": true,
+          "aired_at": 1788181200
+        },
+        {
+          "key": "3",
+          "number": 3.0,
+          "season": null,
+          "code": "E03",
+          "title": null,
+          "watched": true,
+          "aired_at": 1788786000
+        },
+        {
+          "key": "4",
+          "number": 4.0,
+          "season": null,
+          "code": "E04",
+          "title": null,
+          "watched": true,
+          "aired_at": 1789390800
+        },
+        {
+          "key": "5",
+          "number": 5.0,
+          "season": null,
+          "code": "E05",
+          "title": null,
+          "watched": true,
+          "aired_at": 1789995600
+        },
+        {
+          "key": "6",
+          "number": 6.0,
+          "season": null,
+          "code": "E06",
+          "title": null,
+          "watched": true,
+          "aired_at": 1790600400
+        },
+        {
+          "key": "7",
+          "number": 7.0,
+          "season": null,
+          "code": "E07",
+          "title": null,
+          "watched": false,
+          "aired_at": 1791205200
+        }
+      ],
+      "added_at": 1787922000,
+      "latest_activity_at": 1791982800
+    },
+    {
+      "id": 3,
+      "kind": "show",
+      "title": "Mushishi",
+      "titles": {
+        "romaji": "Mushishi",
+        "english": "Mushi-Shi",
+        "native": "蟲師"
+      },
+      "status": "Finished",
+      "format": "TV",
+      "year": 2005,
+      "season": "Fall 2005",
+      "anilist_id": 457,
+      "mal_id": 457,
+      "tvmaze_id": null,
+      "total_episodes": 26,
+      "episodes_on_disk": 26,
+      "progress": 26,
+      "next_airing": null,
+      "upcoming": [],
+      "poster": "9a77e0c3d1",
+      "episodes": [
+        {
+          "key": "1",
+          "number": 1.0,
+          "season": null,
+          "code": "E01",
+          "title": null,
+          "watched": true,
+          "aired_at": null
+        },
+        {
+          "key": "2",
+          "number": 2.0,
+          "season": null,
+          "code": "E02",
+          "title": null,
+          "watched": true,
+          "aired_at": null
+        },
+        {
+          "key": "3",
+          "number": 3.0,
+          "season": null,
+          "code": "E03",
+          "title": null,
+          "watched": true,
+          "aired_at": null
+        },
+        {
+          "key": "4",
+          "number": 4.0,
+          "season": null,
+          "code": "E04",
+          "title": null,
+          "watched": true,
+          "aired_at": null
+        },
+        {
+          "key": "5",
+          "number": 5.0,
+          "season": null,
+          "code": "E05",
+          "title": null,
+          "watched": true,
+          "aired_at": null
+        },
+        {
+          "key": "6",
+          "number": 6.0,
+          "season": null,
+          "code": "E06",
+          "title": null,
+          "watched": true,
+          "aired_at": null
+        },
+        {
+          "key": "7",
+          "number": 7.0,
+          "season": null,
+          "code": "E07",
+          "title": null,
+          "watched": true,
+          "aired_at": null
+        },
+        {
+          "key": "8",
+          "number": 8.0,
+          "season": null,
+          "code": "E08",
+          "title": null,
+          "watched": true,
+          "aired_at": null
+        },
+        {
+          "key": "9",
+          "number": 9.0,
+          "season": null,
+          "code": "E09",
+          "title": null,
+          "watched": true,
+          "aired_at": null
+        },
+        {
+          "key": "10",
+          "number": 10.0,
+          "season": null,
+          "code": "E10",
+          "title": null,
+          "watched": true,
+          "aired_at": null
+        },
+        {
+          "key": "11",
+          "number": 11.0,
+          "season": null,
+          "code": "E11",
+          "title": null,
+          "watched": true,
+          "aired_at": null
+        },
+        {
+          "key": "12",
+          "number": 12.0,
+          "season": null,
+          "code": "E12",
+          "title": null,
+          "watched": true,
+          "aired_at": null
+        },
+        {
+          "key": "13",
+          "number": 13.0,
+          "season": null,
+          "code": "E13",
+          "title": null,
+          "watched": true,
+          "aired_at": null
+        },
+        {
+          "key": "14",
+          "number": 14.0,
+          "season": null,
+          "code": "E14",
+          "title": null,
+          "watched": true,
+          "aired_at": null
+        },
+        {
+          "key": "15",
+          "number": 15.0,
+          "season": null,
+          "code": "E15",
+          "title": null,
+          "watched": true,
+          "aired_at": null
+        },
+        {
+          "key": "16",
+          "number": 16.0,
+          "season": null,
+          "code": "E16",
+          "title": null,
+          "watched": true,
+          "aired_at": null
+        },
+        {
+          "key": "17",
+          "number": 17.0,
+          "season": null,
+          "code": "E17",
+          "title": null,
+          "watched": true,
+          "aired_at": null
+        },
+        {
+          "key": "18",
+          "number": 18.0,
+          "season": null,
+          "code": "E18",
+          "title": null,
+          "watched": true,
+          "aired_at": null
+        },
+        {
+          "key": "19",
+          "number": 19.0,
+          "season": null,
+          "code": "E19",
+          "title": null,
+          "watched": true,
+          "aired_at": null
+        },
+        {
+          "key": "20",
+          "number": 20.0,
+          "season": null,
+          "code": "E20",
+          "title": null,
+          "watched": true,
+          "aired_at": null
+        },
+        {
+          "key": "21",
+          "number": 21.0,
+          "season": null,
+          "code": "E21",
+          "title": null,
+          "watched": true,
+          "aired_at": null
+        },
+        {
+          "key": "22",
+          "number": 22.0,
+          "season": null,
+          "code": "E22",
+          "title": null,
+          "watched": true,
+          "aired_at": null
+        },
+        {
+          "key": "23",
+          "number": 23.0,
+          "season": null,
+          "code": "E23",
+          "title": null,
+          "watched": true,
+          "aired_at": null
+        },
+        {
+          "key": "24",
+          "number": 24.0,
+          "season": null,
+          "code": "E24",
+          "title": null,
+          "watched": true,
+          "aired_at": null
+        },
+        {
+          "key": "25",
+          "number": 25.0,
+          "season": null,
+          "code": "E25",
+          "title": null,
+          "watched": true,
+          "aired_at": null
+        },
+        {
+          "key": "26",
+          "number": 26.0,
+          "season": null,
+          "code": "E26",
+          "title": null,
+          "watched": true,
+          "aired_at": null
+        }
+      ],
+      "added_at": 1757682000,
+      "latest_activity_at": 1781874000
+    },
+    {
+      "id": 40,
+      "kind": "movie",
+      "title": "Perfect Blue",
+      "titles": {
+        "romaji": "Perfect Blue",
+        "english": "Perfect Blue",
+        "native": "パーフェクトブルー"
+      },
+      "status": "Finished",
+      "format": "MOVIE",
+      "year": 1997,
+      "season": null,
+      "anilist_id": 437,
+      "mal_id": 437,
+      "tvmaze_id": null,
+      "total_episodes": 1,
+      "episodes_on_disk": 1,
+      "progress": null,
+      "next_airing": null,
+      "upcoming": [],
+      "poster": null,
+      "episodes": [
+        {
+          "key": "1",
+          "number": 1.0,
+          "season": null,
+          "code": "Movie",
+          "title": null,
+          "watched": false,
+          "aired_at": null
+        }
+      ],
+      "added_at": 1791378000,
+      "latest_activity_at": 1791378000
+    }
+  ],
+  "subscriptions": [
+    {
+      "name": "Sousou no Frieren 2nd Season",
+      "feed_url": "https://nyaa.si/?page=rss&q=Sousou+no+Frieren+1080p+%5BSubsPlease%5D&c=1_2&f=0",
+      "query": "Sousou no Frieren 1080p [SubsPlease]",
+      "enabled": true,
+      "torrent_count": 7,
+      "file_count": 7,
+      "series_id": 12,
+      "title": "Sousou no Frieren 2nd Season",
+      "next_airing": {
+        "episode": 8,
+        "season": null,
+        "at": 1792414800
+      },
+      "complete": false,
+      "missing": []
+    }
+  ],
+  "torrents": [
+    {
+      "hash": "a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0",
+      "name": "[SubsPlease] Sousou no Frieren S2 - 07 (1080p) [ABCD1234].mkv",
+      "state": "uploading",
+      "progress": 1.0,
+      "size": 1446000000,
+      "download_speed": 0,
+      "eta": null,
+      "added_on": 1791982800,
+      "completed_on": 1791983400,
+      "series_id": 12
+    }
+  ],
+  "problems": []
+}

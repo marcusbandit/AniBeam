@@ -42,5 +42,6 @@ src/data/
 
 /target/
 !core/tests/fixtures/**/*.json
+!host-api/fixtures/*.json
 apps/linux/captures/
 apps/linux/.qmlls.ini
