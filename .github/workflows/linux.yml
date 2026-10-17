@@ -1,0 +1,215 @@
+name: Linux
+
+# Builds the AniBeam AppImage on an ubuntu-24.04 runner, runs the core and shell tests there,
+# then smoke-tests the image on the runner and inside Debian 13, Fedora 41 and Arch
+# containers, so a library the bundle forgot shows up as a failure on a distro that lacks it.
+# The image carries anirss on its own Python and a static qbittorrent-nox; the smoke run
+# checks both start. release.yml calls it for a version tag and puts the AppImage on the
+# draft release. A pull request that touches the core, the Qt shell or the workspace runs it
+# too. Run it from the Actions tab (Run workflow) for a build without a release.
+on:
+  pull_request:
+    paths:
+      - 'core/**'
+      - 'apps/linux/**'
+      - 'apps/cli/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/linux.yml'
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # The project's own AniList and MAL app registrations, so a release signs in with one
+  # click. Empty on a fork's pull request, whose build then asks for a client ID instead.
+  ANIBEAM_ANILIST_CLIENT_ID: ${{ secrets.ANIBEAM_ANILIST_CLIENT_ID }}
+  ANIBEAM_MAL_CLIENT_ID: ${{ secrets.ANIBEAM_MAL_CLIENT_ID }}
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # git describe names the version
+
+      - name: apt packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config meson ninja-build cmake \
+            libavcodec-dev libavfilter-dev libavformat-dev libavutil-dev libswresample-dev libswscale-dev \
+            libplacebo-dev libass-dev liblcms2-dev libuchardet-dev libzimg-dev libffmpeg-nvenc-dev \
+            libegl-dev libgl-dev libdrm-dev libdisplay-info-dev libgbm-dev \
+            libwayland-dev libwayland-bin wayland-protocols libxkbcommon-dev \
+            libx11-dev libx11-xcb-dev libxcb1-dev libxcb-dri3-dev libxext-dev libxfixes-dev \
+            libxrandr-dev libxss-dev libxpresent-dev \
+            libasound2-dev libpulse-dev libfontconfig1-dev libfreetype-dev libglib2.0-dev libdbus-1-dev \
+            libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1 libxcb-shape0 libxcb-randr0 \
+            libxcb-sync1 libxcb-xfixes0 \
+            xvfb xauth libgl1-mesa-dri ffmpeg
+
+      # Noble's Qt is 6.4 and MpvQt needs 6.9 or newer. The base install is all the shell uses.
+      - name: Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.11.3'
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          cache: true
+          set-env: true
+
+      - name: Build environment
+        run: |
+          echo "QMAKE=$QT_ROOT_DIR/bin/qmake" >> "$GITHUB_ENV"
+          echo "DEPS_PREFIX=$HOME/anibeam-deps" >> "$GITHUB_ENV"
+          echo "MPVQT_PREFIX=$HOME/anibeam-deps" >> "$GITHUB_ENV"
+          echo "MPV_PREFIX=$HOME/anibeam-deps" >> "$GITHUB_ENV"
+          "$QT_ROOT_DIR/bin/qmake" -query QT_VERSION
+
+      - name: Dependency cache key
+        id: depkey
+        run: |
+          key="$( { cat apps/linux/packaging/linux/deps.sh
+                    dpkg-query -W libavcodec-dev libavformat-dev libavfilter-dev libplacebo-dev libass-dev \
+                      liblcms2-dev libuchardet-dev libzimg-dev libdrm-dev libwayland-dev
+                    "$QT_ROOT_DIR/bin/qmake" -query QT_VERSION
+                  } | sha256sum | cut -c1-16)"
+          echo "key=ubuntu-24.04-deps-$key" >> "$GITHUB_OUTPUT"
+
+      - name: Restore libmpv and MpvQt
+        id: deps
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/anibeam-deps
+          key: ${{ steps.depkey.outputs.key }}
+
+      - name: Build libva, libmpv and MpvQt
+        if: steps.deps.outputs.cache-hit != 'true'
+        run: apps/linux/packaging/linux/deps.sh "$DEPS_PREFIX"
+
+      # Saved here rather than at the end, so a run that fails later keeps them.
+      - name: Save libva, libmpv and MpvQt
+        if: steps.deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/anibeam-deps
+          key: ${{ steps.depkey.outputs.key }}
+
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustc --version
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Build
+        run: cargo build --release --locked -p anibeam -p anibeam-cli
+
+      # Read through the core the app links, without printing the IDs themselves.
+      - name: The build carries the tracker app IDs
+        if: env.ANIBEAM_ANILIST_CLIENT_ID != ''
+        run: |
+          root="$(mktemp -d)"
+          target/release/anibeam-cli --root "$root" call GetTrackers > "$root/trackers.json"
+          python3 - "$root/trackers.json" <<'PY'
+          import json, sys
+          state = json.load(open(sys.argv[1]))["Trackers"]["state"]
+          missing = [t for t in ("anilist", "mal") if not state[t]["bundled_credentials"]]
+          assert not missing, f"no bundled client ID for {missing}"
+          print("bundled client IDs: anilist, mal")
+          PY
+
+      - name: Test the core and the shell
+        run: LD_LIBRARY_PATH="$DEPS_PREFIX/lib:$LD_LIBRARY_PATH" cargo test --locked -p anibeam-core -p anibeam
+
+      - name: AppImage
+        run: apps/linux/packaging/linux/appimage.sh dist
+
+      # The host's Qt variables are scrubbed inside smoke.sh, so a plugin the bundle forgot
+      # cannot hide behind the Qt that install-qt-action put on the runner.
+      - name: Smoke test on the runner
+        run: SMOKE_DOWNLOADS=1 SMOKE_CLI=target/release/anibeam-cli apps/linux/packaging/linux/smoke.sh dist/AniBeam-*-x86_64.AppImage smoke/ubuntu
+
+      - name: Smoke test on Debian 13
+        if: always()
+        env:
+          IMAGE: debian:trixie
+          NAME: debian
+          INSTALL: >-
+            apt-get update -qq && apt-get install -y -qq ca-certificates xvfb xauth libgl1-mesa-dri
+            libegl1 libglx-mesa0 libxkbcommon-x11-0 libxcb-cursor0 fonts-dejavu-core libfontconfig1
+            libfreetype6 libharfbuzz0b libasound2t64 libfribidi0 libgmp10 libexpat1 libgpg-error0
+            libdrm2 libgbm1 libcom-err2
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work -e INSTALL -e NAME -e SMOKE_DOWNLOADS=1 "$IMAGE" bash -c '
+            eval "$INSTALL" > /dev/null || { echo "could not install the distro packages"; exit 1; }
+            apps/linux/packaging/linux/smoke.sh dist/AniBeam-*-x86_64.AppImage "smoke/$NAME"
+            code=$?
+            chown -R '"$(id -u):$(id -g)"' smoke
+            exit $code'
+
+      - name: Smoke test on Fedora 41
+        if: always()
+        env:
+          IMAGE: fedora:41
+          NAME: fedora
+          INSTALL: >-
+            dnf install -y -q xorg-x11-server-Xvfb xauth mesa-dri-drivers mesa-libEGL mesa-libGL
+            libxkbcommon-x11 xcb-util-cursor libva fontconfig freetype harfbuzz alsa-lib fribidi gmp
+            expat libdrm mesa-libgbm libcom_err libgpg-error libuuid openssl-libs dejavu-sans-fonts
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work -e INSTALL -e NAME -e SMOKE_DOWNLOADS=1 "$IMAGE" bash -c '
+            eval "$INSTALL" > /dev/null || { echo "could not install the distro packages"; exit 1; }
+            apps/linux/packaging/linux/smoke.sh dist/AniBeam-*-x86_64.AppImage "smoke/$NAME"
+            code=$?
+            chown -R '"$(id -u):$(id -g)"' smoke
+            exit $code'
+
+      - name: Smoke test on Arch
+        if: always()
+        env:
+          IMAGE: archlinux:latest
+          NAME: arch
+          INSTALL: >-
+            pacman -Syu --noconfirm xorg-server-xvfb xorg-xauth mesa libxkbcommon-x11 xcb-util-cursor
+            libva fontconfig freetype2 harfbuzz alsa-lib fribidi gmp expat libdrm ttf-dejavu
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work -e INSTALL -e NAME -e SMOKE_DOWNLOADS=1 "$IMAGE" bash -c '
+            eval "$INSTALL" > /dev/null || { echo "could not install the distro packages"; exit 1; }
+            apps/linux/packaging/linux/smoke.sh dist/AniBeam-*-x86_64.AppImage "smoke/$NAME"
+            code=$?
+            chown -R '"$(id -u):$(id -g)"' smoke
+            exit $code'
+
+      - name: Upload the build
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: anibeam-linux-x86_64
+          path: dist/*.AppImage
+          if-no-files-found: ignore
+
+      - name: Upload the smoke captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-captures-linux
+          path: |
+            smoke/*/*.png
+            smoke/*/*.log
+            smoke/*/*.json
+            smoke/*/player/*.png
+            smoke/*/downloads/*.png
+            dist/linuxdeploy.log
+            dist/appimage-plugin.log
+          if-no-files-found: ignore
