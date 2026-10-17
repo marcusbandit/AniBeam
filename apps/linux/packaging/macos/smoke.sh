@@ -54,6 +54,49 @@ fi
 echo "== the bundled app"
 "$bin" --version
 
+# The two helpers the Downloads page starts, run from inside the bundle with the same bare
+# environment a Finder launch has: qbittorrent-nox and anirss on the Python that ships with
+# it. Each is started for real, not just asked for its version, so a missing Qt plugin or a
+# Python module left out of the tree shows up here and not on a Mac.
+free_port() {
+  /usr/bin/python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])'
+}
+# serves <name> <log> <url> <command...>: runs the command in the background, waits up to
+# 20 s for the URL to answer, prints what it said, then stops the process.
+serves() {
+  local name="$1" log="$2" url="$3"; shift 3
+  "$@" > "$log" 2>&1 &
+  local pid=$! answer="" i
+  for i in $(seq 1 40); do
+    answer="$(curl -s --max-time 2 -w ' [HTTP %{http_code}]' "$url" || true)"
+    case "$answer" in *"[HTTP 000]"*|"") ;; *) break ;; esac
+    kill -0 "$pid" 2>/dev/null || break
+    sleep 0.5
+  done
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  case "$answer" in *"[HTTP 000]"*|"") echo "$name did not answer on $url"; tail -30 "$log"; return 1 ;; esac
+  echo "$name answered: ${answer:0:200}"
+}
+helpers() {
+  local state port
+  state="$(mktemp -d)"
+  clean=(env -i HOME="$state" TMPDIR="${TMPDIR:-/tmp}" PATH=/usr/bin:/bin:/usr/sbin:/sbin)
+  echo "-- qbittorrent-nox"
+  "${clean[@]}" "$app/Contents/MacOS/qbittorrent-nox" --version || return 1
+  port="$(free_port)"
+  serves qbittorrent-nox "$out/qbittorrent-nox.log" "http://127.0.0.1:$port/" \
+    "${clean[@]}" "$app/Contents/MacOS/qbittorrent-nox" --confirm-legal-notice \
+    --profile="$state/qbt" --webui-port="$port" || return 1
+  echo "-- anirss"
+  "${clean[@]}" "$app/Contents/Resources/anirss/bin/anirss" --version || return 1
+  port="$(free_port)"
+  serves anirss "$out/anirss.log" "http://127.0.0.1:$port/api/v1/health" \
+    "${clean[@]}" "$app/Contents/Resources/anirss/bin/anirss" --serve --port "$port" || return 1
+}
+status=0
+helpers || status=1
+
 shoot() {
   local name="$1"; shift
   QT_FORCE_STDERR_LOGGING=1 "$bin" --root "$root" --shoot "$out/$name.png" --width 1600 --height 1000 "$@" \
@@ -61,7 +104,6 @@ shoot() {
   file "$out/$name.png" | grep -q PNG || { echo "no PNG for $name"; tail -40 "$out/$name.log"; return 1; }
   echo "$name ok"
 }
-status=0
 shoot home --page home || status=1
 shoot library --page library || status=1
 shoot series --page series || status=1
