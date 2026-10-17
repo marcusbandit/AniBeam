@@ -6,7 +6,7 @@
 #   QMAKE         the qmake of the Qt the binary was built against
 # Two helpers ride along, each pinned by version and sha256 below:
 #   usr/share/anibeam/anirss/    Python 3.13 (python-build-standalone) and anirss, which needs 3.11
-#   usr/bin/qbittorrent-nox      the fully static build from userdocs
+#   usr/bin/qbittorrent-nox      the fully static build from userdocs, behind a small launcher
 # linuxdeploy runs first and sees only the shell; the helpers are added after it, so it
 # never rewrites the Python tree's rpaths or goes looking for a static binary's libraries.
 set -euo pipefail
@@ -115,7 +115,22 @@ cp -L "$opengl" "$appdir/usr/lib/libOpenGL.so.0"
 echo "== qbittorrent-nox $QBT_TAG"
 fetch "https://github.com/userdocs/qbittorrent-nox-static/releases/download/$QBT_TAG/x86_64-qbittorrent-nox" \
   "$QBT_SHA" qbittorrent-nox
-install -m 755 "$downloads/qbittorrent-nox" "$appdir/usr/bin/qbittorrent-nox"
+# The static build carries its own OpenSSL, which cannot read the crypto-policies config
+# Fedora keeps in /etc/ssl/openssl.cnf: Qt then has no TLS backend and the Web UI crashes on
+# its first connection. The binary sits in libexec under its own name, so a process list still
+# says qbittorrent-nox, and usr/bin/qbittorrent-nox is a launcher that points OpenSSL at no
+# config file. qBittorrent finds the system's CA certificates by itself.
+mkdir -p "$appdir/usr/libexec/anibeam"
+install -m 755 "$downloads/qbittorrent-nox" "$appdir/usr/libexec/anibeam/qbittorrent-nox"
+cat > "$appdir/usr/bin/qbittorrent-nox" <<'LAUNCHER'
+#!/bin/sh
+# AniBeam's own qbittorrent-nox: the static build, with the host's OpenSSL config left out.
+here="$(cd "$(dirname "$0")/.." && pwd)"
+OPENSSL_CONF=/dev/null
+export OPENSSL_CONF
+exec "$here/libexec/anibeam/qbittorrent-nox" "$@"
+LAUNCHER
+chmod 755 "$appdir/usr/bin/qbittorrent-nox"
 
 echo "== anirss $ANIRSS_VERSION on Python 3.13"
 anirss="$appdir/usr/share/anibeam/anirss"
