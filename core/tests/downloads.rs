@@ -24,6 +24,7 @@ fn settings(anirss_command: &str) -> DownloadSettings {
         anirss_url: "http://127.0.0.1:8787".to_string(),
         has_anirss_token: false,
         torrent_client: TorrentClient::Qbittorrent,
+        torrent_mode: TorrentMode::Existing,
         torrent_url: "http://localhost:9090".to_string(),
         torrent_username: "me".to_string(),
         has_torrent_password: false,
@@ -343,7 +344,7 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
         status
             .anirss
             .message
-            .starts_with("anirss 0.3.4 is too old for AniBeam, which needs 0.4.0"),
+            .starts_with("anirss 0.3.4 is too old for AniBeam, which needs 0.4.2"),
         "{}",
         status.anirss.message
     );
@@ -377,6 +378,8 @@ fn list_torrents_emits_the_torrents_and_the_transfer_totals() {
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
     isolate_xdg(dir.path());
+    // The user's own client: a fresh install would probe for one first.
+    save(&core, settings("anirss"), None, None);
 
     http.push_for(
         "torrents/info",
@@ -493,6 +496,8 @@ fn a_torrent_is_linked_to_the_library_series_its_folder_fills() {
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
     isolate_xdg(dir.path());
+    // The user's own client: a fresh install would probe for one first.
+    save(&core, settings("anirss"), None, None);
     let lib = dir.path().join("lib");
     let show = lib.join("Sousou no Frieren");
     std::fs::create_dir_all(&show).unwrap();
@@ -953,4 +958,70 @@ fn repair_shortens_an_empty_feed_until_it_answers_and_keeps_the_words() {
         rss,
         vec!["rules", "setRule", "items", "removeItem", "addFeed"]
     );
+}
+
+/// A fresh install settles the torrent client on first use: a qBittorrent
+/// that answers at the address is the user's, and with none AniBeam starts
+/// its own (a fake qbittorrent-nox here) and points the settings at it.
+/// Both cases live in one test because the bundled binary is named through
+/// a process-wide variable.
+#[test]
+fn a_fresh_install_uses_the_qbittorrent_it_finds_or_starts_its_own() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    isolate_xdg(dir.path());
+    http.push_for("app/version", 200, "v5.1.2");
+    http.push_for("app/version", 200, "v5.1.2");
+    let job = started(&core, Call::TestTorrentClient);
+    common::wait_job(&c, job);
+    let status = downloads_status(&core);
+    assert_eq!(status.settings.torrent_mode, TorrentMode::Existing);
+    assert!(status.torrent.connected);
+    core.shutdown();
+
+    let bin = tempfile::tempdir().unwrap();
+    let nox = bin.path().join("qbittorrent-nox");
+    std::fs::write(
+        &nox,
+        format!(
+            "#!/bin/sh\necho \"$*\" > '{}'\nexec sleep 5\n",
+            bin.path().join("args").display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&nox, std::fs::Permissions::from_mode(0o755)).unwrap();
+    unsafe { std::env::set_var("ANIBEAM_QBITTORRENT_NOX", &nox) };
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    isolate_xdg(dir.path());
+    // Nothing at the stock address, nothing on the new port until it starts
+    http.fail_next("connection refused");
+    http.fail_next("connection refused");
+    http.push_for("app/version", 200, "v5.1.2");
+    http.push_for("app/version", 200, "v5.1.2");
+    let job = started(&core, Call::TestTorrentClient);
+    common::wait_job(&c, job);
+    let status = downloads_status(&core);
+    assert_eq!(status.settings.torrent_mode, TorrentMode::Managed);
+    assert_eq!(status.settings.torrent_username, "anibeam");
+    assert!(status.torrent.connected, "{}", status.torrent.message);
+    let port = status
+        .settings
+        .torrent_url
+        .strip_prefix("http://127.0.0.1:")
+        .expect("a loopback address")
+        .to_string();
+    let args = captured(bin.path(), "args");
+    assert!(args.contains(&format!("--webui-port={port}")), "{args}");
+    let profile = dir.path().join("data").join("qbittorrent");
+    assert!(
+        args.contains(&format!("--profile={}", profile.display())),
+        "{args}"
+    );
+    let conf =
+        std::fs::read_to_string(profile.join("qBittorrent/config/qBittorrent.conf")).unwrap();
+    assert!(conf.contains(&format!("WebUI\\Port={port}\n")), "{conf}");
+    assert!(conf.contains("WebUI\\LocalHostAuth=false\n"), "{conf}");
+    unsafe { std::env::remove_var("ANIBEAM_QBITTORRENT_NOX") };
+    core.shutdown();
 }
