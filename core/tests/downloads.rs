@@ -1018,8 +1018,13 @@ fn a_fresh_install_uses_the_qbittorrent_it_finds_or_starts_its_own() {
         args.contains(&format!("--profile={}", profile.display())),
         "{args}"
     );
-    let conf =
-        std::fs::read_to_string(profile.join("qBittorrent/config/qBittorrent.conf")).unwrap();
+    // qBittorrent's own name for a custom profile's settings file
+    let name = if cfg!(any(windows, target_os = "macos")) {
+        "qBittorrent.ini"
+    } else {
+        "qBittorrent.conf"
+    };
+    let conf = std::fs::read_to_string(profile.join("qBittorrent/config").join(name)).unwrap();
     assert!(conf.contains(&format!("WebUI\\Port={port}\n")), "{conf}");
     assert!(conf.contains("WebUI\\LocalHostAuth=false\n"), "{conf}");
 
