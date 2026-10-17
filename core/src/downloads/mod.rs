@@ -1524,6 +1524,40 @@ fn plural(n: u64, one: &str, many: &str) -> String {
     }
 }
 
+/// The two reads the tailnet host serves, each with the library's links
+/// filled in and each held to `limit`, so a stopped anirss or a hung
+/// torrent client costs a snapshot one half and some seconds, never the
+/// whole. A timeout is a `Service` error with the code `timeout`.
+pub(crate) async fn host_read(
+    core: &Arc<Core>,
+    limit: std::time::Duration,
+) -> (
+    Result<Vec<SubscriptionRule>, CoreError>,
+    Result<Vec<Torrent>, CoreError>,
+) {
+    let rules = async {
+        let client = ensure_client(core).await?;
+        let mut rules = client.subscriptions().await?;
+        link_rules(core, &mut rules);
+        Ok(rules)
+    };
+    let torrents = async {
+        let client = qbt_client(core).await?;
+        let mut torrents = client.torrents().await?;
+        link_torrents(core, &mut torrents);
+        Ok(torrents)
+    };
+    let late = |what: &str| service(what, "timeout", "did not answer in time".to_string());
+    let (rules, torrents) = tokio::join!(
+        tokio::time::timeout(limit, rules),
+        tokio::time::timeout(limit, torrents)
+    );
+    (
+        rules.unwrap_or_else(|_| Err(late("anirss"))),
+        torrents.unwrap_or_else(|_| Err(late("qBittorrent"))),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
