@@ -167,7 +167,7 @@ mkdir -p "$fresh/home" "$out/downloads-drive"
 cat > "$out/downloads.json" <<'JSON'
 [
   {"page": "downloads"},
-  {"wait": 45000},
+  {"wait": 20000},
   {"shot": "downloads"},
   {"eval": "frame.item.pageItem.anirss.state", "expect": "Ready"},
   {"eval": "frame.item.pageItem.anirss.version", "expect": "0.4.2"},
@@ -178,7 +178,7 @@ JSON
 mkdir -p "$out/downloads-state"
 # When each helper first answers, so a slow start can be told apart from one that never comes.
 (
-  conf="$fresh/root/data/qbittorrent/qBittorrent/config/qBittorrent.conf"
+  conf="$fresh/root/data/qbittorrent/qBittorrent/config/qBittorrent.ini"
   for i in $(seq 1 90); do
     port="$(sed -n 's/^WebUI\\Port=//p' "$conf" 2>/dev/null || true)"
     if [ -n "$port" ]; then
@@ -199,7 +199,7 @@ kill "$poller" 2>/dev/null || true
 echo "date at the end: $(date +%T)"
 # What the managed pair left behind, for a run that did not come up.
 cp "$fresh/root/data/qbittorrent/qbittorrent-nox.log" "$out/downloads-state/" 2>/dev/null || true
-cp "$fresh/root/data/qbittorrent/qBittorrent/config/qBittorrent.conf" "$out/downloads-state/" 2>/dev/null || true
+cp "$fresh/root/data/qbittorrent/qBittorrent/config/qBittorrent.ini" "$out/downloads-state/" 2>/dev/null || true
 cp -R "$fresh/home/.config/anirss" "$fresh/home/.local/state/anirss" "$out/downloads-state/" 2>/dev/null || true
 rm -f "$out/downloads-state/anirss/api.token"
 ps ax | grep -E '[a]nirss|[q]bittorrent-nox' | cut -c1-200 || true
