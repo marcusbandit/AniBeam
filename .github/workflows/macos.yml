@@ -8,8 +8,6 @@ name: macOS
 # workspace runs it too, so a change that breaks the Mac shows up before it merges. Run it
 # from the Actions tab (Run workflow) for a build without a release.
 on:
-  push:
-    branches: [ci/macos-tools]
   pull_request:
     paths:
       - 'core/**'
