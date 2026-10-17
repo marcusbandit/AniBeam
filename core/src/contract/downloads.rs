@@ -398,6 +398,21 @@ impl TorrentClient {
     }
 }
 
+/// Whose torrent client the downloads use.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, uniffi::Enum)]
+pub enum TorrentMode {
+    /// Not settled yet. The first connect picks `Existing` when a qBittorrent
+    /// Web UI answers at the address, else `Managed` when AniBeam can run
+    /// one, and saves the choice.
+    #[default]
+    Auto,
+    /// The user's own client, at `torrent_url`.
+    Existing,
+    /// The qbittorrent-nox AniBeam runs itself: a profile of its own under
+    /// AniBeam's data, the Web UI on loopback and open to it without a login.
+    Managed,
+}
+
 /// The downloads settings, secrets left out. The anirss token (remote mode)
 /// and the torrent client's password live in the secret store; the two
 /// `has_*` flags say whether one is held.
@@ -411,10 +426,19 @@ pub struct DownloadSettings {
     #[serde(default)]
     pub has_anirss_token: bool,
     pub torrent_client: TorrentClient,
+    /// A blob saved before the mode existed belongs to someone who had set
+    /// up a client by hand, so it reads as `Existing`; fresh settings start
+    /// at `Auto`.
+    #[serde(default = "existing_mode")]
+    pub torrent_mode: TorrentMode,
     pub torrent_url: String,
     pub torrent_username: String,
     #[serde(default)]
     pub has_torrent_password: bool,
+}
+
+fn existing_mode() -> TorrentMode {
+    TorrentMode::Existing
 }
 
 /// Where the sidecar is in its life.
