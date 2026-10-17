@@ -11,6 +11,14 @@ from the executable, a framework and a dlopen'd plugin alike. Rpaths that lead o
 bundle are deleted. --check changes nothing and exits 1 when anything still leaks out.
 
 The signatures this invalidates are redone by bundle.sh afterwards.
+
+Two kinds of Mach-O live outside the main executable's reach. qbittorrent-nox sits beside
+anibeam in Contents/MacOS and gets the same treatment as anibeam does. The Python tree under
+Contents/Resources/anirss/python is an island: python-build-standalone ships it with
+@rpath/libpython3.13.dylib and an rpath of @executable_path/../lib, which resolves from its
+own bin/python3.13 and not from anibeam. Its references are judged from that executable, left
+alone when they land inside the tree, and an error when they do not, since copying a stray
+library into Contents/Frameworks would not help a Python that looks for it in its own lib.
 """
 
 from __future__ import annotations
@@ -22,6 +30,7 @@ import sys
 from pathlib import Path
 
 SYSTEM = ("/usr/lib/", "/System/Library/")
+PYTHON_HOME = Path("Contents/Resources/anirss/python")
 MAGICS = {
     b"\xcf\xfa\xed\xfe",  # 64-bit, little endian
     b"\xce\xfa\xed\xfe",
@@ -93,6 +102,18 @@ def resolve(ref: str, binary: Path, exe: Path, exe_rpaths: list[str]) -> Path | 
     return candidate if candidate.exists() else None
 
 
+def main_exe(app: Path) -> Path:
+    return app / "Contents" / "MacOS" / "anibeam"
+
+
+def exe_for(binary: Path, app: Path) -> Path:
+    """The executable whose @executable_path the binary's references are read against."""
+    home = app / PYTHON_HOME
+    if inside(binary, home):
+        return home / "bin" / "python3.13"
+    return main_exe(app)
+
+
 def inside(path: Path, app: Path) -> bool:
     try:
         path.resolve().relative_to(app.resolve())
@@ -102,10 +123,10 @@ def inside(path: Path, app: Path) -> bool:
 
 
 def fix(app: Path) -> None:
-    exe = app / "Contents" / "MacOS" / "anibeam"
     frameworks = app / "Contents" / "Frameworks"
     frameworks.mkdir(parents=True, exist_ok=True)
-    exe_rpaths = rpaths(exe)
+    # The executables' rpaths as they were before fix() started deleting.
+    exe_rpaths = {exe: rpaths(exe) for exe in {exe_for(b, app) for b in machos(app)}}
     todo = machos(app)
     seen: set[Path] = set()
     while todo:
@@ -116,9 +137,13 @@ def fix(app: Path) -> None:
         for ref in loads(binary):
             if ref.startswith(SYSTEM):
                 continue
-            target = resolve(ref, binary, exe, exe_rpaths)
+            exe = exe_for(binary, app)
+            target = resolve(ref, binary, exe, exe_rpaths[exe])
             if target is not None and inside(target, app):
                 continue
+            if inside(binary, app / PYTHON_HOME):
+                sys.exit(f"fix-dylibs: {binary.relative_to(app)} loads {ref}, which is outside "
+                         "the Python tree it ships in")
             if target is None:
                 sys.exit(f"fix-dylibs: {binary.relative_to(app)} loads {ref}, which is nowhere")
             if ".framework/" in str(target):
@@ -141,15 +166,15 @@ def fix(app: Path) -> None:
 
 
 def leaks(app: Path) -> list[str]:
-    exe = app / "Contents" / "MacOS" / "anibeam"
-    exe_rpaths = rpaths(exe)
+    exe_rpaths = {exe: rpaths(exe) for exe in {exe_for(b, app) for b in machos(app)}}
     found = []
     for binary in machos(app):
         rel = binary.relative_to(app)
+        exe = exe_for(binary, app)
         for ref in loads(binary):
             if ref.startswith(SYSTEM):
                 continue
-            target = resolve(ref, binary, exe, exe_rpaths)
+            target = resolve(ref, binary, exe, exe_rpaths[exe])
             if target is None or not inside(target, app):
                 found.append(f"{rel}: loads {ref} -> {target}")
         for rp in rpaths(binary):

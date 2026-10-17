@@ -1,8 +1,9 @@
 name: macOS
 
-# Builds AniBeam.app for Apple silicon on a macos-15 runner, runs the core and shell tests
-# there, smoke-tests the bundle with Homebrew moved out of reach, then checks the Downloads
-# page starts anirss from the Homebrew tap. release.yml calls it for a version tag and puts
+# Builds AniBeam.app for Apple silicon on a macos-15 runner, with qbittorrent-nox and anirss
+# (and a Python to run it) inside, runs the core and shell tests there, smoke-tests the
+# bundle and both helpers with Homebrew moved out of reach, including the Downloads page
+# starting them on a fresh install. release.yml calls it for a version tag and puts
 # the .dmg on the draft release. A pull request that touches the core, the Qt shell or the
 # workspace runs it too, so a change that breaks the Mac shows up before it merges. Run it
 # from the Actions tab (Run workflow) for a build without a release.
@@ -10,6 +11,7 @@ on:
   pull_request:
     paths:
       - 'core/**'
+      - 'host-api/**'
       - 'apps/linux/**'
       - 'apps/cli/**'
       - 'Cargo.toml'
@@ -45,20 +47,23 @@ jobs:
         run: |
           brew install qtbase qtdeclarative qtsvg qttools qtshadertools \
             ffmpeg libass libplacebo little-cms2 uchardet zimg \
-            meson ninja pkgconf cmake extra-cmake-modules
+            meson ninja pkgconf cmake extra-cmake-modules \
+            boost openssl@3
           qmake="$(brew --prefix qtbase)/bin/qmake"
           echo "QMAKE=$qmake" >> "$GITHUB_ENV"
           echo "DEPS_PREFIX=$HOME/anibeam-deps" >> "$GITHUB_ENV"
           echo "MPVQT_PREFIX=$HOME/anibeam-deps" >> "$GITHUB_ENV"
           echo "MPV_PREFIX=$HOME/anibeam-deps" >> "$GITHUB_ENV"
-          brew list --versions qtbase qtdeclarative qtsvg qttools ffmpeg libass libplacebo
+          brew list --versions qtbase qtdeclarative qtsvg qttools ffmpeg libass libplacebo \
+            boost openssl@3
           "$qmake" -query
 
       - name: Dependency cache key
         id: depkey
         run: |
           key="$( { cat apps/linux/packaging/macos/deps.sh
-                    brew list --versions ffmpeg libass libplacebo little-cms2 uchardet zimg qtbase qtdeclarative
+                    brew list --versions ffmpeg libass libplacebo little-cms2 uchardet zimg qtbase qtdeclarative \
+                      qtsvg qttools boost openssl@3
                   } | shasum -a 256 | cut -c1-16)"
           echo "key=macos-15-deps-$key" >> "$GITHUB_OUTPUT"
 
@@ -127,28 +132,6 @@ jobs:
           sudo mv /opt/homebrew-hidden /opt/homebrew
           exit "$status"
 
-      # With Homebrew back, the way a Mac user adds downloads: anirss from the tap. The app
-      # starts with launchd's PATH, as it does when opened from Finder, so the core has to
-      # find Homebrew's bin by itself.
-      - name: The Downloads page starts anirss from the Homebrew tap
-        run: |
-          brew install marcusbandit/anirss/anirss
-          anirss --version
-          cat > smoke/downloads.json <<'JSON'
-          [
-            {"page": "downloads"},
-            {"wait": 8000},
-            {"shot": "downloads"},
-            {"eval": "frame.item.pageItem.anirss.state", "expect": "Ready"},
-            {"eval": "frame.item.pageItem.anirss.version"}
-          ]
-          JSON
-          env -i HOME="$HOME" TMPDIR="$TMPDIR" PATH=/usr/bin:/bin:/usr/sbin:/sbin QT_FORCE_STDERR_LOGGING=1 \
-            dist/AniBeam.app/Contents/MacOS/anibeam --root "$PWD/smoke/root" --drive smoke/downloads.json \
-            --out "$PWD/smoke/drive" --width 1600 --height 1000 2> smoke/downloads.log \
-            || { grep -E 'DRIVE|anirss' smoke/downloads.log | tail -40; exit 1; }
-          grep -E 'DRIVE (EVAL|FAIL)' smoke/downloads.log
-
       - name: Upload the build
         if: always()
         uses: actions/upload-artifact@v4
@@ -167,5 +150,7 @@ jobs:
             smoke/*.log
             smoke/*.json
             smoke/drive/*.png
+            smoke/downloads-drive/*.png
+            smoke/downloads-state/**
             ~/Library/Logs/DiagnosticReports/anibeam*.ips
           if-no-files-found: ignore

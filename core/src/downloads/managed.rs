@@ -65,11 +65,16 @@ pub fn configured_port(profile: &Path) -> Option<u16> {
         .and_then(|p| p.trim().parse().ok())
 }
 
+/// qBittorrent names a custom profile's settings file `.ini` on macOS and Windows and `.conf`
+/// elsewhere (Private::CustomProfile::applicationSettings). A `.conf` beside a macOS profile
+/// is never read: the Web UI then asks for a login and keeps its default user.
 fn config_file(profile: &Path) -> PathBuf {
-    profile
-        .join("qBittorrent")
-        .join("config")
-        .join("qBittorrent.conf")
+    let name = if cfg!(any(windows, target_os = "macos")) {
+        "qBittorrent.ini"
+    } else {
+        "qBittorrent.conf"
+    };
+    profile.join("qBittorrent").join("config").join(name)
 }
 
 fn log_file(profile: &Path) -> PathBuf {
