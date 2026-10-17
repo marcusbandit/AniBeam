@@ -39,8 +39,17 @@ export global Theme {
     out property <length> radius: 4 * unit;
     out property <length> radius-large: 6 * unit;
 
+    // The fade under a title on a poster, and the chip on top of one.
+    out property <color> scrim: #08090bf0;
+    out property <color> scrim-mid: #08090ba8;
+    out property <color> scrim-clear: #08090b00;
+    out property <color> chip: #08090b9e;
+    out property <color> track: #ffffff2e;
+
     // Posters are 2:3, like the desktop's.
     out property <float> poster-ratio: 1.5;
     // A card never gets narrower than this; the grid adds columns as the width allows.
     out property <length> card-min: 340px;
+    // Nor does a poster tile.
+    out property <length> tile-min: 104px;
 }

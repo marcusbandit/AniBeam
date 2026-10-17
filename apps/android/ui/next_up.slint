@@ -1,95 +1,102 @@
 import { Theme } from "theme.slint";
-import { Poster, Chip, ClampedText } from "widgets.slint";
+import { AppData } from "data.slint";
+import { Chip, ClampedText, Poster, SectionLabel, ShelfHead, TileGrid } from "widgets.slint";
 
-export struct NextUpRow {
-    title: string,
-    poster: image,
-    has-poster: bool,
-    initials: string,
-    // "in 2d 4h", "aired 2h ago" or "No air time".
-    countdown: string,
-    // 0: still to air, 1: aired and not on disk, 2: no air time known.
-    tone: int,
-    // "E08  Tomorrow 14:00".
-    detail: string,
-    // "then E09 in 6d 22h", or empty.
-    note: string,
-    subscribed: bool,
-    // "Not on disk", "Paused", "Complete", or empty.
-    flag: string,
-}
-
-component NextUpCard inherits Rectangle {
-    in property <NextUpRow> data;
-    background: Theme.surface;
+// The next episode to air, on a band in its poster's hue.
+component HeroBand inherits Rectangle {
+    background: AppData.hero.band;
     border-radius: Theme.radius-large;
-
-    HorizontalLayout {
-        padding: Theme.gap;
-        spacing: Theme.gap + Theme.unit;
+    height: body.preferred-height;
+    body := HorizontalLayout {
+        padding: Theme.pad;
+        spacing: Theme.pad;
         Poster {
-            width: (parent.height - 2 * Theme.gap) / Theme.poster-ratio;
-            source: root.data.poster;
-            has-image: root.data.has-poster;
-            initials: root.data.initials;
+            width: 34 * Theme.unit;
+            height: self.width * Theme.poster-ratio;
+            source: AppData.hero.poster;
+            has-image: AppData.hero.has-poster;
+            initials: AppData.hero.initials;
         }
         VerticalLayout {
-            spacing: Theme.unit;
-            alignment: start;
+            alignment: center;
+            spacing: Theme.unit * 2;
+            SectionLabel {
+                text: "NEXT TO AIR";
+                color: AppData.hero.ink;
+            }
             ClampedText {
-                text: root.data.title;
+                text: AppData.hero.title;
+                font-size: Theme.large;
                 font-weight: 700;
+                lines: 3;
             }
             Text {
-                text: root.data.countdown;
-                color: root.data.tone == 0 ? Theme.accent : root.data.tone == 1 ? Theme.warn : Theme.faint;
+                text: AppData.hero.episode;
+                color: Theme.text;
+                font-size: Theme.small;
+                font-family: Theme.mono;
+                wrap: word-wrap;
+            }
+            Text {
+                text: AppData.hero.countdown;
+                color: AppData.hero.ink;
                 font-size: Theme.large;
-                font-family: root.data.tone == 2 ? "" : Theme.mono;
-                font-weight: root.data.tone == 2 ? 400 : 700;
-                overflow: elide;
-            }
-            if root.data.detail != "": Text {
-                text: root.data.detail;
-                color: Theme.dim;
-                font-size: Theme.small;
                 font-family: Theme.mono;
-                overflow: elide;
+                font-weight: 700;
             }
-            if root.data.note != "": Text {
-                text: root.data.note;
-                color: Theme.dim;
-                font-size: Theme.small;
-                font-family: Theme.mono;
-                overflow: elide;
-            }
-            HorizontalLayout {
-                spacing: Theme.unit * 2;
+            if AppData.hero.subscribed: HorizontalLayout {
                 alignment: start;
-                if root.data.flag != "": Chip {
-                    text: root.data.flag;
-                    ink: root.data.tone == 1 ? Theme.warn : Theme.dim;
-                }
-                if root.data.subscribed: Chip {
-                    text: "Subscribed";
-                }
+                Chip { text: "Subscribed"; ink: Theme.text; }
             }
         }
     }
+    TouchArea {
+        clicked => { AppData.open-series(AppData.hero.id); }
+    }
 }
 
-// Cards in as many columns as the width holds, so landscape fills the screen.
-export component NextUpGrid inherits Rectangle {
-    in property <[NextUpRow]> rows;
-    in property <length> card-height: 44 * Theme.unit;
-    property <int> columns: Math.max(1, Math.floor((self.width + Theme.gap) / (Theme.card-min + Theme.gap)));
-    property <length> card-width: (self.width - (self.columns - 1) * Theme.gap) / self.columns;
-    height: Math.ceil(self.rows.length / self.columns) * (self.card-height + Theme.gap) - Theme.gap;
-
-    for row[i] in root.rows: NextUpCard {
-        x: Math.mod(i, root.columns) * (root.card-width + Theme.gap);
-        y: Math.floor(i / root.columns) * (root.card-height + Theme.gap);
-        width: root.card-width;
-        height: root.card-height;
-        data: row;
+export component NextUpPage inherits Rectangle {
+    flick := Flickable {
+        VerticalLayout {
+            alignment: start;
+            padding-left: Theme.pad;
+            padding-right: Theme.pad;
+            padding-top: Theme.unit * 2;
+            padding-bottom: Theme.pad * 2;
+            spacing: Theme.gap;
+            if AppData.hero.show: HeroBand { }
+            for shelf in AppData.next-shelves: VerticalLayout {
+                spacing: Theme.gap;
+                padding-top: Theme.unit * 2;
+                ShelfHead {
+                    title: shelf.title;
+                    count: shelf.count;
+                    tone: shelf.tone;
+                }
+                TileGrid {
+                    tiles: shelf.tiles;
+                    open(id) => { AppData.open-series(id); }
+                }
+            }
+            if !AppData.hero.show && AppData.next-shelves.length == 0: VerticalLayout {
+                spacing: Theme.unit * 2;
+                padding-top: Theme.pad * 2;
+                Text {
+                    text: AppData.has-data ? "Nothing subscribed or airing." : "Not synced yet.";
+                    color: Theme.text;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: AppData.has-data
+                        ? "Shows the host is airing or subscribed to appear here, soonest first."
+                        : "Set the host's address in Settings; the app syncs on its own after that.";
+                    color: Theme.dim;
+                    font-size: Theme.small;
+                    wrap: word-wrap;
+                    horizontal-alignment: center;
+                }
+            }
+        }
     }
 }

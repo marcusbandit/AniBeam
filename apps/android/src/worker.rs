@@ -7,7 +7,6 @@ use anibeam_companion::address::HostAddress;
 use anibeam_companion::client::HostError;
 use anibeam_companion::store::{AniListCache, Cache, Settings, Store};
 use anibeam_companion::sync::Syncer;
-use slint::{Rgba8Pixel, SharedPixelBuffer};
 
 pub enum Command {
     /// Sync with the saved address.
@@ -21,7 +20,7 @@ pub enum Command {
 pub enum Event {
     SyncStarted,
     Snapshot(Cache),
-    Poster(u64, SharedPixelBuffer<Rgba8Pixel>),
+    Poster(u64, crate::posters::Decoded),
     AniList(AniListCache),
     /// The sync ended; `None` when the host answered.
     SyncDone { at: i64, error: Option<HostError> },
@@ -74,8 +73,8 @@ impl<F: Fn(Event)> Worker<F> {
     }
 
     fn send_poster(&self, series_id: u64) {
-        if let Some(buffer) = self.syncer.store().poster(series_id).and_then(|b| crate::posters::thumbnail(&b)) {
-            (self.deliver)(Event::Poster(series_id, buffer));
+        if let Some(decoded) = self.syncer.store().poster(series_id).and_then(|b| crate::posters::decode(&b)) {
+            (self.deliver)(Event::Poster(series_id, decoded));
         }
     }
 

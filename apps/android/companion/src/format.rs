@@ -21,6 +21,29 @@ pub fn countdown(seconds: i64) -> String {
     }
 }
 
+/// The desktop series page's ticking form: "3d 02h 15m 07s", "2h 05m 07s", "15m 07s".
+pub fn countdown_full(seconds: i64) -> String {
+    let s = seconds.max(0);
+    let (d, h, m, sec) = (s / DAY, (s % DAY) / HOUR, (s % HOUR) / MINUTE, s % MINUTE);
+    if d > 0 {
+        format!("{d}d {h:02}h {m:02}m {sec:02}s")
+    } else if h > 0 {
+        format!("{h}h {m:02}m {sec:02}s")
+    } else {
+        format!("{m}m {sec:02}s")
+    }
+}
+
+/// "17:56" in the phone's zone.
+pub fn clock(at: i64) -> String {
+    Local.timestamp_opt(at, 0).single().map(|t| t.format("%H:%M").to_string()).unwrap_or_default()
+}
+
+/// "17 Oct" in the phone's zone.
+pub fn day_month(at: i64) -> String {
+    Local.timestamp_opt(at, 0).single().map(|t| t.format("%-d %b").to_string()).unwrap_or_default()
+}
+
 /// "just now", "1 min ago", "3h ago", "2d ago".
 pub fn ago(seconds: i64) -> String {
     let s = seconds.max(0);
@@ -170,6 +193,9 @@ mod tests {
         assert_eq!(countdown(12 * MINUTE + 5), "in 12m 05s");
         assert_eq!(countdown(42), "in 42s");
         assert_eq!(countdown(-5), "in 0s");
+        assert_eq!(countdown_full(3 * DAY + 2 * HOUR + 15 * MINUTE + 7), "3d 02h 15m 07s");
+        assert_eq!(countdown_full(2 * HOUR + 5 * MINUTE + 7), "2h 05m 07s");
+        assert_eq!(countdown_full(15 * MINUTE + 7), "15m 07s");
     }
 
     #[test]

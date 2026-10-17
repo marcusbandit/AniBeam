@@ -11,19 +11,23 @@ Gradle in the build.
 
 ## What it does
 
-- **Next up** lists every anirss subscription and every releasing series in the library,
-  soonest first, with a live countdown, the episode and the local air time. An episode
-  that has aired but was not on the host's disk at the last sync is marked in orange and
-  sorts to the top. Shows with no known air time go last. Pull down to sync.
-- **On disk** shows the host's series with their episodes (watched ones dimmed) and its
-  torrents with progress. A banner says whether it is live or how old it is.
+- **Next up** leads with the next episode to air, on a band in its poster's colour, then
+  shelves of posters: what aired but was not on the host's disk at the last sync, what
+  comes next with a live countdown, and the subscriptions with no air time.
+- **Calendar** shows one week at a time: the seven days with how many episodes each has,
+  and the picked day's posters with their air times and whether they are on disk.
+- **Library** is every series as a poster, the airing ones first, with how much is watched.
+  Tap any poster, here or elsewhere, for its series page: the facts, the next episode
+  counting down to the second, the anirss rule, and every episode with a tick once watched.
+- **Downloads** lists the anirss subscriptions and the torrents with their progress, under a
+  line that says whether this is live or how old it is.
 - **Settings** holds the host address, a connection test, and what the last sync and the
   last AniList refresh did.
 
-It syncs on launch, when it comes back to the foreground, on pull to refresh, and every
-five minutes while open: hello, then the snapshot, then any poster whose tag changed.
-The snapshot and the posters live in the app's internal storage, so everything shows
-offline. While the host does not answer, the countdowns keep running from the cached
+It syncs on launch, when it comes back to the foreground, from the button in the header,
+and every five minutes while open: hello, then the snapshot, then any poster whose tag
+changed. The snapshot and the posters live in the app's internal storage, so everything
+shows offline. While the host does not answer, the countdowns keep running from the cached
 schedule, and the app asks AniList's public API for fresh airing times, all shows in one
 request and at most once an hour.
 
@@ -36,7 +40,7 @@ request and at most once an hour.
    (Android asks once to allow installs from that app), or with USB debugging on:
 
    ```sh
-   adb install -r dist/AniBeam-0.1.2.apk
+   adb install -r dist/AniBeam-0.2.0.apk
    ```
 
 4. Open AniBeam. It starts out pointed at `banditbox:8790`, the desktop's MagicDNS name.

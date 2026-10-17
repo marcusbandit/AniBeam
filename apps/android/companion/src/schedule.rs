@@ -1,6 +1,6 @@
 //! "Next up": what is subscribed or airing, in the order it airs.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::api::{Airing, Series, Subscription};
 use crate::store::{AniListCache, Cache};
@@ -51,7 +51,7 @@ impl NextUp {
     }
 }
 
-fn season_of(a: &Airing) -> u32 {
+pub(crate) fn season_of(a: &Airing) -> u32 {
     a.season.unwrap_or(1)
 }
 
@@ -100,13 +100,18 @@ fn finished(series: &Series, synced_at: i64, anilist: &AniListCache) -> bool {
     }
 }
 
+/// The whole-numbered episodes on disk by (season, episode), each watched when any of
+/// its files is.
+pub(crate) fn on_disk_episodes(series: &Series) -> HashMap<(u32, u32), bool> {
+    let mut out = HashMap::new();
+    for e in series.episodes.iter().filter(|e| e.number.fract() == 0.0 && e.number >= 0.0) {
+        *out.entry((e.season.unwrap_or(1), e.number as u32)).or_insert(false) |= e.watched;
+    }
+    out
+}
+
 fn on_disk(series: &Series) -> HashSet<(u32, u32)> {
-    series
-        .episodes
-        .iter()
-        .filter(|e| e.number.fract() == 0.0 && e.number >= 0.0)
-        .map(|e| (e.season.unwrap_or(1), e.number as u32))
-        .collect()
+    on_disk_episodes(series).into_keys().collect()
 }
 
 fn is_airing(series: &Series, schedule: &[Airing]) -> bool {
@@ -130,11 +135,14 @@ fn row(
             missing.insert((season_of(a), a.episode), Some(a.at));
         }
     }
-    // What the host itself said was missing when it made the snapshot.
+    // What the host itself said was missing when it made the snapshot, unless the schedule
+    // says it has not aired yet: then it cannot be missing, whatever the rule thinks.
     for &episode in subscription.map(|s| s.missing.as_slice()).unwrap_or_default() {
         if !disk.contains(&(1, episode)) {
             let at = schedule.iter().find(|a| season_of(a) == 1 && a.episode == episode).map(|a| a.at);
-            missing.entry((1, episode)).or_insert(at);
+            if at.is_none_or(|at| at <= now) {
+                missing.entry((1, episode)).or_insert(at);
+            }
         }
     }
     let mut missing: Vec<((u32, u32), Option<i64>)> = missing.into_iter().collect();
@@ -359,6 +367,17 @@ mod tests {
         anilist.shows.insert(182255, Schedule { status: None, upcoming: vec![airing(9, 1_793_019_600)] });
         let schedule = schedule_for(&cache.snapshot.series[0], cache.synced_at, &anilist);
         assert_eq!(schedule, vec![airing(8, 1_792_414_800), airing(9, 1_793_019_600)]);
+    }
+
+    #[test]
+    fn a_listed_missing_episode_that_has_not_aired_is_not_missing() {
+        let mut cache = fixture();
+        // The rule calls 9 and 12 missing; the schedule has 12 still to air.
+        cache.snapshot.subscriptions[0].missing = vec![12];
+        let now = cache.synced_at + 60;
+        let rows = next_up(&cache, &AniListCache::default(), now);
+        assert_eq!(rows[0].headline, Headline::Upcoming(airing(8, 1_792_414_800)));
+        assert!(rows[0].missing.is_empty());
     }
 
     #[test]

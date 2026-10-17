@@ -11,10 +11,12 @@ use anibeam_companion::address::HostAddress;
 use anibeam_companion::client::HostError;
 use anibeam_companion::format;
 use anibeam_companion::store::{AniListCache, Cache, Store};
-use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, Timer, TimerMode, VecModel};
+use chrono::Datelike;
+use slint::{ComponentHandle, Image, Model, ModelRc, Timer, TimerMode, VecModel};
 
+use crate::rows::{Art, ShelfRows};
 use crate::worker::{self, Command, Commands, Event};
-use crate::{AppWindow, DiskRow, NextUpRow, TorrentRow};
+use crate::{AppData, AppWindow, Day, EpisodeLine, RuleRow, Shelf, Tile, TorrentRow};
 
 /// How often the app looks at the host while it is open.
 const SYNC_EVERY: Duration = Duration::from_secs(5 * 60);
@@ -29,18 +31,70 @@ enum Reach {
     Offline(HostError),
 }
 
+/// Puts a model's rows in place, touching only the rows that changed, so a once-a-second
+/// countdown repaints the text that moved and not the whole grid.
+fn update<T: Clone + PartialEq + 'static>(model: &VecModel<T>, rows: Vec<T>) {
+    if model.row_count() != rows.len() {
+        model.set_vec(rows);
+        return;
+    }
+    for (i, row) in rows.into_iter().enumerate() {
+        if model.row_data(i).as_ref() != Some(&row) {
+            model.set_row_data(i, row);
+        }
+    }
+}
+
+fn list<T: Clone + 'static>() -> Rc<VecModel<T>> {
+    Rc::new(VecModel::default())
+}
+
+/// Shelves whose tiles keep one model per shelf title for the life of the app.
+struct Shelves {
+    shelves: Rc<VecModel<Shelf>>,
+    tiles: HashMap<&'static str, Rc<VecModel<Tile>>>,
+}
+
+impl Shelves {
+    fn new() -> Self {
+        Shelves { shelves: list(), tiles: HashMap::new() }
+    }
+
+    fn set(&mut self, rows: Vec<ShelfRows>) {
+        let shelves = rows
+            .into_iter()
+            .map(|row| {
+                let tiles = self.tiles.entry(row.title).or_insert_with(list).clone();
+                let count = row.tiles.len();
+                update(&tiles, row.tiles);
+                Shelf { title: row.title.into(), count: count.to_string().into(), tone: row.tone, tiles: tiles.into() }
+            })
+            .collect();
+        update(&self.shelves, shelves);
+    }
+}
+
 struct App {
     window: AppWindow,
     commands: Commands,
     cache: Option<Cache>,
     anilist: AniListCache,
     address: HostAddress,
-    posters: HashMap<u64, Image>,
+    art: Art,
     reach: Reach,
     last_attempt: i64,
-    next_up: Rc<VecModel<NextUpRow>>,
-    disk: Rc<VecModel<DiskRow>>,
+    /// Weeks from this one, and the picked day in it (0 is Monday).
+    week: i64,
+    day: usize,
+    /// The series whose page is open.
+    series: Option<u64>,
+    next_shelves: Shelves,
+    library: Shelves,
+    days: Rc<VecModel<Day>>,
+    day_tiles: Rc<VecModel<Tile>>,
+    episodes: Rc<VecModel<EpisodeLine>>,
     torrents: Rc<VecModel<TorrentRow>>,
+    rules: Rc<VecModel<RuleRow>>,
 }
 
 thread_local! {
@@ -55,18 +109,8 @@ fn with_app(f: impl FnOnce(&mut App)) {
     });
 }
 
-/// Puts a model's rows in place, touching only the rows that changed, so a once-a-second
-/// countdown repaints the text that moved and not the whole list.
-fn update<T: Clone + PartialEq + 'static>(model: &VecModel<T>, rows: Vec<T>) {
-    if model.row_count() != rows.len() {
-        model.set_vec(rows);
-        return;
-    }
-    for (i, row) in rows.into_iter().enumerate() {
-        if model.row_data(i).as_ref() != Some(&row) {
-            model.set_row_data(i, row);
-        }
-    }
+fn today_index(now: i64) -> usize {
+    anibeam_companion::calendar::today(now).weekday().num_days_from_monday() as usize
 }
 
 impl App {
@@ -84,11 +128,10 @@ impl App {
             Event::Snapshot(cache) => {
                 self.cache = Some(cache);
                 self.reach = Reach::Online;
-                self.refresh_disk();
             }
-            Event::Poster(id, buffer) => {
-                self.posters.insert(id, Image::from_rgba8(buffer));
-                self.refresh_disk();
+            Event::Poster(id, decoded) => {
+                self.art.posters.insert(id, Image::from_rgba8(decoded.buffer));
+                self.art.tones.insert(id, decoded.tone);
             }
             Event::AniList(anilist) => self.anilist = anilist,
             Event::SyncDone { at, error } => {
@@ -105,40 +148,68 @@ impl App {
             }
             Event::TestDone(result) => {
                 w.set_testing(false);
-                match result {
-                    Ok(text) => {
-                        w.set_test_tone(0);
-                        w.set_test_result(text.into());
-                    }
-                    Err(text) => {
-                        w.set_test_tone(1);
-                        w.set_test_result(text.into());
-                    }
-                }
+                let (tone, text) = match result {
+                    Ok(text) => (0, text),
+                    Err(text) => (1, text),
+                };
+                w.set_test_tone(tone);
+                w.set_test_result(text.into());
             }
         }
         self.tick();
     }
 
-    fn refresh_disk(&mut self) {
-        update(&self.disk, crate::rows::disk(self.cache.as_ref(), &self.posters));
-        let (torrents, known) = crate::rows::torrents(self.cache.as_ref());
-        update(&self.torrents, torrents);
-        self.window.set_torrents_known(known);
-        let problems: Vec<SharedString> = self
-            .cache
-            .iter()
-            .flat_map(|c| c.snapshot.problems.iter().map(|p| SharedString::from(p.as_str())))
-            .collect();
-        self.window.set_problems(ModelRc::new(VecModel::from(problems)));
-        self.window.set_has_data(self.cache.is_some());
-    }
-
-    /// Everything that reads the clock: countdowns, "synced 1 min ago", freshness.
+    /// Everything the pages show, rebuilt from the cache and the clock. Cheap enough to run
+    /// every second; the models only repaint what changed.
     fn tick(&mut self) {
         let now = anibeam_companion::now();
-        update(&self.next_up, crate::rows::next_up(self.cache.as_ref(), &self.anilist, &self.posters, now));
+        let cache = self.cache.as_ref();
+        let data = self.window.global::<AppData>();
 
+        let (hero, shelves) = crate::rows::next_up(cache, &self.anilist, &self.art, now);
+        if data.get_hero() != hero {
+            data.set_hero(hero);
+        }
+        self.next_shelves.set(shelves);
+        data.set_has_data(cache.is_some());
+
+        let view = crate::rows::calendar(cache, &self.anilist, &self.art, now, self.week, self.day);
+        data.set_week_label(view.label.into());
+        data.set_week_note(view.note.into());
+        data.set_week_is_current(view.current);
+        update(&self.days, view.days);
+        data.set_day(self.day as i32);
+        data.set_day_title(view.day_title.into());
+        data.set_day_note(view.day_note.into());
+        update(&self.day_tiles, view.tiles);
+
+        self.library.set(crate::rows::library(cache, &self.anilist, &self.art, now));
+
+        let (torrents, known, rules) = crate::rows::downloads(cache, &self.anilist, now);
+        update(&self.torrents, torrents);
+        data.set_torrents_known(known);
+        update(&self.rules, rules);
+        data.set_problems(ModelRc::new(VecModel::from(crate::rows::problems(cache))));
+
+        match self.series.and_then(|id| crate::rows::series(cache, &self.anilist, &self.art, id, now)) {
+            Some((head, lines)) => {
+                if data.get_series() != head {
+                    data.set_series(head);
+                }
+                update(&self.episodes, lines);
+                data.set_series_open(true);
+            }
+            None => {
+                self.series = None;
+                data.set_series_open(false);
+            }
+        }
+
+        self.status(now);
+    }
+
+    /// The header line, the Downloads banner and the Settings facts.
+    fn status(&self, now: i64) {
         let host = self.host_name();
         let synced = self.cache.as_ref().map(|c| c.synced_at);
         let (status, tone) = match (&self.reach, synced) {
@@ -153,9 +224,10 @@ impl App {
         w.set_status(status.into());
         w.set_status_tone(tone);
 
+        let data = w.global::<AppData>();
         let live = matches!(self.reach, Reach::Online) && synced.is_some_and(|at| now - at < LIVE_FOR);
-        w.set_live(live);
-        w.set_freshness(
+        data.set_live(live);
+        data.set_freshness(
             match synced {
                 None => "Nothing synced yet. Set the host in Settings.".to_string(),
                 Some(at) if live => format!("Live from {host}, synced {}.", format::ago(now - at)),
@@ -182,8 +254,35 @@ impl App {
             sync_info.push_str(&format!(" Last try {}: {e}", format::ago(now - self.last_attempt)));
         }
         w.set_sync_info(sync_info.into());
-
         w.set_anilist_info(anilist_line(&self.anilist, synced, now).into());
+    }
+
+    fn open_series(&mut self, id: i32) {
+        self.series = u64::try_from(id).ok();
+        self.tick();
+    }
+
+    fn close_series(&mut self) {
+        self.series = None;
+        self.window.global::<AppData>().set_series_open(false);
+    }
+
+    fn shift_week(&mut self, by: i32) {
+        let now = anibeam_companion::now();
+        self.week = if by == 0 { 0 } else { self.week + i64::from(by) };
+        // This week opens on today; any other on its first day with something on.
+        self.day = if self.week == 0 {
+            today_index(now)
+        } else {
+            let view = crate::rows::calendar(self.cache.as_ref(), &self.anilist, &self.art, now, self.week, 0);
+            view.days.iter().position(|d| d.count > 0).unwrap_or(0)
+        };
+        self.tick();
+    }
+
+    fn pick_day(&mut self, day: i32) {
+        self.day = usize::try_from(day).unwrap_or(0).min(6);
+        self.tick();
     }
 
     fn save_and_sync(&mut self, text: &str) {
@@ -252,13 +351,22 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
     );
     window.set_address(address.display().into());
 
-    let next_up = Rc::new(VecModel::default());
-    let disk = Rc::new(VecModel::default());
-    let torrents = Rc::new(VecModel::default());
-    window.set_next_up(next_up.clone().into());
-    window.set_disk(disk.clone().into());
-    window.set_torrents(torrents.clone().into());
+    let next_shelves = Shelves::new();
+    let library = Shelves::new();
+    let (days, day_tiles, episodes, torrents, rules) = (list(), list(), list(), list(), list());
+    let data = window.global::<AppData>();
+    data.set_next_shelves(next_shelves.shelves.clone().into());
+    data.set_library(library.shelves.clone().into());
+    data.set_days(days.clone().into());
+    data.set_day_tiles(day_tiles.clone().into());
+    data.set_episodes(episodes.clone().into());
+    data.set_torrents(torrents.clone().into());
+    data.set_rules(rules.clone().into());
 
+    data.on_open_series(|id| with_app(|app| app.open_series(id)));
+    data.on_close_series(|| with_app(App::close_series));
+    data.on_shift_week(|by| with_app(|app| app.shift_week(by)));
+    data.on_pick_day(|day| with_app(|app| app.pick_day(day)));
     window.on_refresh({
         let commands = commands.clone();
         move || {
@@ -268,20 +376,27 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
     window.on_save_and_sync(|text| with_app(|app| app.save_and_sync(&text)));
     window.on_test_connection(|text| with_app(|app| app.test(&text)));
 
+    let now = anibeam_companion::now();
     let mut app = App {
         window: window.clone_strong(),
         commands: commands.clone(),
         cache: store.cache(),
         anilist: store.anilist(),
         address,
-        posters: HashMap::new(),
+        art: Art::default(),
         reach: Reach::NotYet,
         last_attempt: 0,
-        next_up,
-        disk,
+        week: 0,
+        day: today_index(now),
+        series: None,
+        next_shelves,
+        library,
+        days,
+        day_tiles,
+        episodes,
         torrents,
+        rules,
     };
-    app.refresh_disk();
     app.tick();
     APP.with(|cell| *cell.borrow_mut() = Some(app));
 

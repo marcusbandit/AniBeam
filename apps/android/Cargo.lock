@@ -89,9 +89,10 @@ dependencies = [
 
 [[package]]
 name = "anibeam-android"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "anibeam-companion",
+ "chrono",
  "image",
  "slint",
  "slint-build",
