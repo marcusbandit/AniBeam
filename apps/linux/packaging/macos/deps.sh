@@ -7,11 +7,12 @@
 #     macOS sources include its header whatever else is off. Its media player half (Now
 #     Playing, remote commands) does not, since the shell owns media keys.
 #   MpvQt 1.2.0, which Homebrew does not package at all.
-#   libtorrent-rasterbar 2.0.15 and qbittorrent-nox 5.1.4, the headless daemon the Downloads
+#   libtorrent-rasterbar 2.0.15 and qbittorrent-nox 5.2.4, the headless daemon the Downloads
 #     page drives. Homebrew's qbittorrent is the GUI app and has no nox formula, and its
-#     libtorrent-rasterbar is 2.1, which the qBittorrent 5.1 series does not build against
-#     (it wants 2.0.x), so both are built here. They use Homebrew's Qt (the one the app
-#     deploys, so the frameworks are shared), boost and openssl@3.
+#     libtorrent-rasterbar is 2.1, which drags OpenSSL 4 and Python into the app, so both
+#     are built here against the 2.0 series qBittorrent has always supported. They use
+#     Homebrew's Qt (the one the app deploys, so the frameworks are shared), boost and
+#     openssl@3.
 # Everything else (Qt, FFmpeg, libass, libplacebo) comes from Homebrew; bundle.sh copies it
 # into the app. The workflow caches <prefix> on a key that includes those Homebrew versions,
 # since libmpv records their install names.
@@ -22,8 +23,8 @@ MPV_VERSION=0.41.0
 MPVQT_VERSION=v1.2.0
 LIBTORRENT_VERSION=2.0.15
 LIBTORRENT_SHA256=5e2e79129823b7ea48721164c32b5aaf83d3fd733b5502100f6705b29f27bb02
-QBT_VERSION=5.1.4
-QBT_SHA256=ab37deeb364049a308127c572f139bd5eb0535fa355db8821e5aa31990b5625e
+QBT_VERSION=5.2.4
+QBT_SHA256=226a6ad1aa7810fcbfa58b0d28b14feb8e207726cbe774d4d267ce769c19dd6c
 brew_prefix="$(brew --prefix)"
 export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-15.0}"
 export PKG_CONFIG_PATH="$prefix/lib/pkgconfig:$brew_prefix/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
@@ -96,6 +97,11 @@ cmake -S "$work/qBittorrent-release-$QBT_VERSION" -B "$work/qbt-build" -G Ninja 
   -DGUI=OFF -DWEBUI=ON -DSTACKTRACE=OFF -DTESTING=OFF
 cmake --build "$work/qbt-build"
 cmake --install "$work/qbt-build"
+# With the GUI off CMake still makes a qbittorrent-nox.app, which is only a folder around the
+# one executable; the executable is what the app bundle wants, at bin/ like everywhere else.
+mkdir -p "$prefix/bin"
+cp "$prefix/qbittorrent-nox.app/Contents/MacOS/qbittorrent-nox" "$prefix/bin/qbittorrent-nox"
+rm -rf "$prefix/qbittorrent-nox.app"
 
 echo "== installed"
 ls -la "$prefix/lib" "$prefix/include" "$prefix/bin"
