@@ -51,11 +51,11 @@ unpacked="$helpers/squashfs-root"
 anirss="$(env -i HOME="$helpers" "$unpacked/usr/share/anibeam/anirss/bin/anirss" --version 2>/dev/null)"
 echo "anirss: $anirss"
 [ "$anirss" = "anirss 0.4.1" ] || { echo "anirss did not report 0.4.1"; status=1; }
-qbt="$(env -i "$unpacked/usr/bin/qbittorrent-nox" --version 2>&1)"
+qbt="$(env -i "$unpacked/usr/bin/qbittorrent-nox" --version 2>/dev/null)"
 echo "qbittorrent-nox: $qbt"
 case "$qbt" in
-  "qBittorrent v5.1."*) ;;
-  *) echo "qbittorrent-nox did not report 5.1.x"; status=1 ;;
+  "qBittorrent v5.2.4") ;;
+  *) echo "qbittorrent-nox did not report 5.2.4"; status=1 ;;
 esac
 rm -rf "$helpers"
 

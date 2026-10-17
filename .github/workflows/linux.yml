@@ -168,7 +168,7 @@ jobs:
           INSTALL: >-
             dnf install -y -q xorg-x11-server-Xvfb xauth mesa-dri-drivers mesa-libEGL mesa-libGL
             libxkbcommon-x11 xcb-util-cursor libva fontconfig freetype harfbuzz alsa-lib fribidi gmp
-            expat libdrm mesa-libgbm libcom_err libgpg-error libuuid dejavu-sans-fonts
+            expat libdrm mesa-libgbm libcom_err libgpg-error libuuid openssl-libs dejavu-sans-fonts
         run: |
           docker run --rm -v "$PWD:/work" -w /work -e INSTALL -e NAME "$IMAGE" bash -c '
             eval "$INSTALL" > /dev/null || { echo "could not install the distro packages"; exit 1; }

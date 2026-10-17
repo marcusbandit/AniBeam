@@ -32,8 +32,8 @@ PYTHON_FILE=cpython-3.13.16+20261013-x86_64-unknown-linux-gnu-install_only_strip
 PYTHON_SHA=d0080766b6b74aeb81e1949ef0d9a20e6c17f7b160fb295a69b936ccb17660be
 ANIRSS_VERSION=0.4.1
 ANIRSS_SHA=41abedaa11ae5955081d2883c8e0d6723334ba08f2c5d1d1c882ab94e903d2f3
-QBT_TAG=release-5.1.4_v2.0.12
-QBT_SHA=e42bd8f84350adfdd690757ec650ec79b58e4806ec65438cdf9b92a2f61886ca
+QBT_TAG=release-5.2.4_v2.0.15
+QBT_SHA=14d29323f1c12c1e8892ac69496f8b51ddebb74b4b590fc13e343aa213fecaf4
 
 # The PKGBUILD's pkgver rule: v2.0.0 -> 2.0.0, v2.0.0-21-gabc1234 -> 2.0.0.r21.gabc1234.
 describe="$(git -C "$repo" describe --tags --dirty 2>/dev/null || echo v0.0.0)"
