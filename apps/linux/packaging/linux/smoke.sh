@@ -6,6 +6,8 @@
 #   SMOKE_CLI   the anibeam-cli to seed a library with. When set, the script also plays a
 #               generated clip through libmpv (needs ffmpeg), the check that the picture
 #               reaches the window.
+#   SMOKE_DOWNLOADS   set to 1 to open the Downloads page on a fresh install: no anirss on
+#               PATH, no qBittorrent running, so the image has to start its own of both.
 # The host's Qt is scrubbed first, so a plugin the bundle forgot cannot hide behind it.
 set -uo pipefail
 
@@ -97,6 +99,39 @@ JSON
     echo "player ok"
   fi
   grep -E 'VO:|Using|hwdec|vaapi|Failed|rror' "$out/player-mpv.log" 2>/dev/null | head -12 || true
+fi
+
+if [ -n "${SMOKE_DOWNLOADS:-}" ]; then
+  echo "== the Downloads page on a fresh install"
+  droot="$out/downloads-root"
+  dhome="$(mktemp -d)"
+  cat > "$out/downloads.json" <<'JSON'
+[
+  {"page": "downloads"},
+  {"wait": 20000},
+  {"shot": "downloads"},
+  {"eval": "frame.item.pageItem.anirss.state", "expect": "Ready"},
+  {"eval": "frame.item.pageItem.anirss.version", "expect": "0.4.2"},
+  {"eval": "frame.item.pageItem.torrentOn", "expect": true},
+  {"eval": "frame.item.pageItem.status.settings.torrent_mode", "expect": "Managed"}
+]
+JSON
+  # A fresh HOME and a PATH that holds no anirss and no qbittorrent-nox: whatever answers
+  # on the page came out of the image.
+  QT_FORCE_STDERR_LOGGING=1 xvfb-run -a -s "-screen 0 1920x1080x24" \
+    env -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_CACHE_HOME HOME="$dhome" PATH=/usr/bin:/bin \
+    "$img" --root "$droot" --drive "$out/downloads.json" --out "$out/downloads" --width 1600 --height 1000 \
+    2> "$out/downloads.log"
+  code=$?
+  grep -E 'DRIVE (EVAL|FAIL)' "$out/downloads.log" || true
+  if [ "$code" -ne 0 ] || ! is_picture "$out/downloads/downloads.png"; then
+    echo "the Downloads page failed (exit $code)"; tail -40 "$out/downloads.log"; status=1
+  else
+    echo "downloads ok"
+  fi
+  # The managed qBittorrent is meant to outlive the app, so stop it here.
+  pkill -f "[q]bittorrent-nox --profile" || true
+  rm -rf "$dhome"
 fi
 
 ls -la "$out"

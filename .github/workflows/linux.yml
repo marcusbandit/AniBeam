@@ -140,7 +140,7 @@ jobs:
       # The host's Qt variables are scrubbed inside smoke.sh, so a plugin the bundle forgot
       # cannot hide behind the Qt that install-qt-action put on the runner.
       - name: Smoke test on the runner
-        run: SMOKE_CLI=target/release/anibeam-cli apps/linux/packaging/linux/smoke.sh dist/AniBeam-*-x86_64.AppImage smoke/ubuntu
+        run: SMOKE_DOWNLOADS=1 SMOKE_CLI=target/release/anibeam-cli apps/linux/packaging/linux/smoke.sh dist/AniBeam-*-x86_64.AppImage smoke/ubuntu
 
       - name: Smoke test on Debian 13
         if: always()
@@ -153,7 +153,7 @@ jobs:
             libfreetype6 libharfbuzz0b libasound2t64 libfribidi0 libgmp10 libexpat1 libgpg-error0
             libdrm2 libgbm1 libcom-err2
         run: |
-          docker run --rm -v "$PWD:/work" -w /work -e INSTALL -e NAME "$IMAGE" bash -c '
+          docker run --rm -v "$PWD:/work" -w /work -e INSTALL -e NAME -e SMOKE_DOWNLOADS=1 "$IMAGE" bash -c '
             eval "$INSTALL" > /dev/null || { echo "could not install the distro packages"; exit 1; }
             apps/linux/packaging/linux/smoke.sh dist/AniBeam-*-x86_64.AppImage "smoke/$NAME"
             code=$?
@@ -170,7 +170,7 @@ jobs:
             libxkbcommon-x11 xcb-util-cursor libva fontconfig freetype harfbuzz alsa-lib fribidi gmp
             expat libdrm mesa-libgbm libcom_err libgpg-error libuuid openssl-libs dejavu-sans-fonts
         run: |
-          docker run --rm -v "$PWD:/work" -w /work -e INSTALL -e NAME "$IMAGE" bash -c '
+          docker run --rm -v "$PWD:/work" -w /work -e INSTALL -e NAME -e SMOKE_DOWNLOADS=1 "$IMAGE" bash -c '
             eval "$INSTALL" > /dev/null || { echo "could not install the distro packages"; exit 1; }
             apps/linux/packaging/linux/smoke.sh dist/AniBeam-*-x86_64.AppImage "smoke/$NAME"
             code=$?
@@ -186,7 +186,7 @@ jobs:
             pacman -Syu --noconfirm xorg-server-xvfb xorg-xauth mesa libxkbcommon-x11 xcb-util-cursor
             libva fontconfig freetype2 harfbuzz alsa-lib fribidi gmp expat libdrm ttf-dejavu
         run: |
-          docker run --rm -v "$PWD:/work" -w /work -e INSTALL -e NAME "$IMAGE" bash -c '
+          docker run --rm -v "$PWD:/work" -w /work -e INSTALL -e NAME -e SMOKE_DOWNLOADS=1 "$IMAGE" bash -c '
             eval "$INSTALL" > /dev/null || { echo "could not install the distro packages"; exit 1; }
             apps/linux/packaging/linux/smoke.sh dist/AniBeam-*-x86_64.AppImage "smoke/$NAME"
             code=$?
@@ -211,6 +211,7 @@ jobs:
             smoke/*/*.log
             smoke/*/*.json
             smoke/*/player/*.png
+            smoke/*/downloads/*.png
             dist/linuxdeploy.log
             dist/appimage-plugin.log
           if-no-files-found: ignore
