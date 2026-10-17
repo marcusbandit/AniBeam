@@ -50,7 +50,7 @@ unpacked="$helpers/squashfs-root"
 # A scratch HOME, since anirss writes a default config on its first run.
 anirss="$(env -i HOME="$helpers" "$unpacked/usr/share/anibeam/anirss/bin/anirss" --version 2>/dev/null)"
 echo "anirss: $anirss"
-[ "$anirss" = "anirss 0.4.1" ] || { echo "anirss did not report 0.4.1"; status=1; }
+[ "$anirss" = "anirss 0.4.2" ] || { echo "anirss did not report 0.4.2"; status=1; }
 qbt="$(env -i "$unpacked/usr/bin/qbittorrent-nox" --version 2>/dev/null)"
 echo "qbittorrent-nox: $qbt"
 case "$qbt" in
