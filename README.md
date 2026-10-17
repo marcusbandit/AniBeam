@@ -103,7 +103,8 @@ Save.
 AniBeam can share a read-only copy of your library with the AniBeam app on your phone.
 Turn on Settings > Library > Phone app > Share over Tailscale. It needs
 [Tailscale](https://tailscale.com) running on this computer and on the phone, signed in to
-the same tailnet.
+the same tailnet. The phone app lives in `apps/android`; its README covers building it,
+sideloading it and pointing it at this computer.
 
 When the switch is on, AniBeam listens on port 8790, on this computer's Tailscale addresses
 only. Nothing on your home network or the internet can reach it, so the tailnet is the

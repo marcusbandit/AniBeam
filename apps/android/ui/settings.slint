@@ -1,0 +1,118 @@
+import { Theme } from "theme.slint";
+import { Button, Dot, SectionLabel } from "widgets.slint";
+
+component Panel inherits Rectangle {
+    background: Theme.surface;
+    border-radius: Theme.radius-large;
+}
+
+export component HostPanel inherits Panel {
+    in-out property <string> address;
+    in property <string> result;
+    // 0: reached, 1: failed, 2: nothing to say yet.
+    in property <int> result-tone: 2;
+    in property <bool> busy;
+    callback test-connection(string);
+    callback save-and-sync(string);
+    height: body.preferred-height;
+
+    body := VerticalLayout {
+        padding: Theme.pad;
+        spacing: Theme.gap;
+        SectionLabel { text: "HOST"; }
+        Rectangle {
+            height: 13 * Theme.unit;
+            background: Theme.field;
+            border-radius: Theme.radius;
+            border-width: 1px;
+            border-color: input.has-focus ? Theme.dim : Theme.line-strong;
+            input := TextInput {
+                x: Theme.pad;
+                width: parent.width - 2 * Theme.pad;
+                height: parent.height;
+                vertical-alignment: center;
+                text <=> root.address;
+                color: Theme.text;
+                font-family: Theme.mono;
+                single-line: true;
+                selection-background-color: Theme.pressed;
+                accepted => { root.save-and-sync(self.text); }
+            }
+        }
+        Text {
+            text: "The phone reaches the host over the tailnet, so the Tailscale app has to be connected, and AniBeam on the computer needs Share over Tailscale switched on. banditbox:8790 works through MagicDNS; the full name is banditbox.tail24c6a9.ts.net:8790. On the Android emulator, 10.0.2.2:8790 reaches the computer running it.";
+            color: Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            spacing: Theme.gap;
+            alignment: start;
+            Button {
+                text: root.busy ? "Testing" : "Test connection";
+                primary: true;
+                enabled: !root.busy;
+                clicked => { root.test-connection(root.address); }
+            }
+            Button {
+                text: "Save and sync";
+                enabled: !root.busy;
+                clicked => { root.save-and-sync(root.address); }
+            }
+        }
+        if root.result != "": HorizontalLayout {
+            spacing: Theme.gap;
+            alignment: start;
+            Dot {
+                y: (parent.height - self.height) / 2;
+                tone: root.result-tone == 0 ? Theme.ok : root.result-tone == 1 ? Theme.warn : Theme.faint;
+            }
+            Text {
+                text: root.result;
+                color: Theme.text;
+                font-size: Theme.small;
+                wrap: word-wrap;
+                horizontal-stretch: 1;
+            }
+        }
+    }
+}
+
+export component InfoPanel inherits Panel {
+    in property <string> sync-info;
+    in property <string> anilist-info;
+    in property <string> version;
+    height: body.preferred-height;
+
+    body := VerticalLayout {
+        padding: Theme.pad;
+        spacing: Theme.gap;
+        SectionLabel { text: "SYNC"; }
+        Text {
+            text: root.sync-info;
+            color: Theme.text;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        Text {
+            text: "The app syncs when it opens, when you pull down on Next up, and every five minutes while it is open. While the host is away it keeps the last snapshot and asks AniList for airing times, at most once an hour.";
+            color: Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        Text {
+            text: root.anilist-info;
+            color: Theme.text;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        Rectangle { height: Theme.unit; }
+        SectionLabel { text: "ABOUT"; }
+        Text {
+            text: root.version;
+            color: Theme.dim;
+            font-size: Theme.small;
+            font-family: Theme.mono;
+        }
+    }
+}

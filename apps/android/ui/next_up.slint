@@ -1,0 +1,95 @@
+import { Theme } from "theme.slint";
+import { Poster, Chip, ClampedText } from "widgets.slint";
+
+export struct NextUpRow {
+    title: string,
+    poster: image,
+    has-poster: bool,
+    initials: string,
+    // "in 2d 4h", "aired 2h ago" or "No air time".
+    countdown: string,
+    // 0: still to air, 1: aired and not on disk, 2: no air time known.
+    tone: int,
+    // "E08  Tomorrow 14:00".
+    detail: string,
+    // "then E09 in 6d 22h", or empty.
+    note: string,
+    subscribed: bool,
+    // "Not on disk", "Paused", "Complete", or empty.
+    flag: string,
+}
+
+component NextUpCard inherits Rectangle {
+    in property <NextUpRow> data;
+    background: Theme.surface;
+    border-radius: Theme.radius-large;
+
+    HorizontalLayout {
+        padding: Theme.gap;
+        spacing: Theme.gap + Theme.unit;
+        Poster {
+            width: (parent.height - 2 * Theme.gap) / Theme.poster-ratio;
+            source: root.data.poster;
+            has-image: root.data.has-poster;
+            initials: root.data.initials;
+        }
+        VerticalLayout {
+            spacing: Theme.unit;
+            alignment: start;
+            ClampedText {
+                text: root.data.title;
+                font-weight: 700;
+            }
+            Text {
+                text: root.data.countdown;
+                color: root.data.tone == 0 ? Theme.accent : root.data.tone == 1 ? Theme.warn : Theme.faint;
+                font-size: Theme.large;
+                font-family: root.data.tone == 2 ? "" : Theme.mono;
+                font-weight: root.data.tone == 2 ? 400 : 700;
+                overflow: elide;
+            }
+            if root.data.detail != "": Text {
+                text: root.data.detail;
+                color: Theme.dim;
+                font-size: Theme.small;
+                font-family: Theme.mono;
+                overflow: elide;
+            }
+            if root.data.note != "": Text {
+                text: root.data.note;
+                color: Theme.dim;
+                font-size: Theme.small;
+                font-family: Theme.mono;
+                overflow: elide;
+            }
+            HorizontalLayout {
+                spacing: Theme.unit * 2;
+                alignment: start;
+                if root.data.flag != "": Chip {
+                    text: root.data.flag;
+                    ink: root.data.tone == 1 ? Theme.warn : Theme.dim;
+                }
+                if root.data.subscribed: Chip {
+                    text: "Subscribed";
+                }
+            }
+        }
+    }
+}
+
+// Cards in as many columns as the width holds, so landscape fills the screen.
+export component NextUpGrid inherits Rectangle {
+    in property <[NextUpRow]> rows;
+    in property <length> card-height: 44 * Theme.unit;
+    property <int> columns: Math.max(1, Math.floor((self.width + Theme.gap) / (Theme.card-min + Theme.gap)));
+    property <length> card-width: (self.width - (self.columns - 1) * Theme.gap) / self.columns;
+    height: Math.ceil(self.rows.length / self.columns) * (self.card-height + Theme.gap) - Theme.gap;
+
+    for row[i] in root.rows: NextUpCard {
+        x: Math.mod(i, root.columns) * (root.card-width + Theme.gap);
+        y: Math.floor(i / root.columns) * (root.card-height + Theme.gap);
+        width: root.card-width;
+        height: root.card-height;
+        data: row;
+    }
+}

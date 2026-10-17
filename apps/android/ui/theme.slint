@@ -1,0 +1,46 @@
+// The one token file. Colours are the desktop's dark palette (apps/linux/themes,
+// tesserae-dark: "Graphite Glass"); the type scale is three sizes and no more.
+
+export global Theme {
+    // Ground and surfaces, darkest first.
+    out property <color> ground: #0c0d10;
+    out property <color> surface: #16181b;
+    out property <color> raised: #1c1e21;
+    out property <color> pressed: #2b2e33;
+    out property <color> field: #00000047;
+    out property <color> line: #ffffff0f;
+    out property <color> line-strong: #ffffff24;
+
+    // Ink.
+    out property <color> text: #eef2f5;
+    out property <color> dim: #8e959d;
+    out property <color> faint: #616773;
+    // The accent is near white, as on the desktop: hierarchy comes from weight and space.
+    out property <color> accent: #f2f4f6;
+    out property <color> on-accent: #0c0d10;
+
+    // The few hues, each with one job.
+    out property <color> ok: #8cc58a;
+    out property <color> warn: #f0955a;
+    out property <color> bad: #ff7a4d;
+
+    // Type: three sizes for the whole app. Weight, colour and space carry the rest.
+    out property <length> small: 13px;
+    out property <length> normal: 16px;
+    out property <length> large: 24px;
+    // The system's monospace face, for every countdown, time and episode code.
+    out property <string> mono: "Droid Sans Mono";
+
+    // Space comes in steps of one unit; corners are round and generous.
+    out property <length> unit: 4px;
+    out property <length> gap: 3 * unit;
+    out property <length> pad: 4 * unit;
+    out property <length> radius-small: 2 * unit;
+    out property <length> radius: 4 * unit;
+    out property <length> radius-large: 6 * unit;
+
+    // Posters are 2:3, like the desktop's.
+    out property <float> poster-ratio: 1.5;
+    // A card never gets narrower than this; the grid adds columns as the width allows.
+    out property <length> card-min: 340px;
+}
