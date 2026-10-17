@@ -57,18 +57,27 @@ impl ShellPaths {
     }
 }
 
-/// Where the package puts the built-in themes and the bundled mpv.conf: the PKGBUILD's
-/// `/usr/share/anibeam`, or on a Mac the `Contents/Resources` of the bundle the binary runs
-/// from (`Contents/MacOS/anibeam`, two levels up).
+/// Where the package puts the built-in themes and the bundled mpv.conf. On a Mac that is
+/// the `Contents/Resources` of the bundle the binary runs from (`Contents/MacOS/anibeam`, two
+/// levels up). Elsewhere it is `share/anibeam` beside the binary's `bin`, when there is one:
+/// `/usr/share/anibeam` for the PKGBUILD's `/usr/bin/anibeam`, and the same pair inside an
+/// AppImage, which is mounted somewhere new on every run. A binary with no such directory
+/// beside it, such as a cargo build, reads the installed package's.
 pub fn share_dir() -> PathBuf {
-    #[cfg(target_os = "macos")]
-    if let Some(contents) = std::env::current_exe()
+    let prefix = std::env::current_exe()
         .ok()
-        .and_then(|exe| Some(exe.parent()?.parent()?.to_path_buf()))
-    {
+        .and_then(|exe| Some(exe.parent()?.parent()?.to_path_buf()));
+    #[cfg(target_os = "macos")]
+    if let Some(contents) = &prefix {
         return contents.join("Resources");
     }
-    PathBuf::from("/usr/share/anibeam")
+    beside_bin(prefix.as_deref()).unwrap_or_else(|| PathBuf::from("/usr/share/anibeam"))
+}
+
+/// `<prefix>/share/anibeam` when that directory exists.
+fn beside_bin(prefix: Option<&std::path::Path>) -> Option<PathBuf> {
+    let dir = prefix?.join("share/anibeam");
+    dir.is_dir().then_some(dir)
 }
 
 /// `$XDG_CONFIG_HOME`, else `~/.config`, on a Mac; `None` elsewhere, where the core's own
@@ -183,5 +192,17 @@ mod tests {
     #[test]
     fn the_package_installs_under_usr_share() {
         assert_eq!(share_dir(), PathBuf::from("/usr/share/anibeam"));
+    }
+
+    #[test]
+    fn a_share_dir_beside_the_binary_wins() {
+        let root = tempfile::tempdir().unwrap();
+        assert_eq!(beside_bin(Some(root.path())), None);
+        std::fs::create_dir_all(root.path().join("share/anibeam")).unwrap();
+        assert_eq!(
+            beside_bin(Some(root.path())),
+            Some(root.path().join("share/anibeam"))
+        );
+        assert_eq!(beside_bin(None), None);
     }
 }
