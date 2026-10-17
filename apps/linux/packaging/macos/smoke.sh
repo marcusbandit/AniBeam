@@ -175,29 +175,12 @@ cat > "$out/downloads.json" <<'JSON'
   {"eval": "frame.item.pageItem.status.settings.torrent_mode", "expect": "Managed"}
 ]
 JSON
-mkdir -p "$out/downloads-state"
-# When each helper first answers, so a slow start can be told apart from one that never comes.
-(
-  conf="$fresh/root/data/qbittorrent/qBittorrent/config/qBittorrent.ini"
-  for i in $(seq 1 90); do
-    port="$(sed -n 's/^WebUI\\Port=//p' "$conf" 2>/dev/null || true)"
-    if [ -n "$port" ]; then
-      code="$(curl -s -o /dev/null --max-time 2 -w '%{http_code}' "http://127.0.0.1:$port/api/v2/app/version" || true)"
-      echo "$(date +%T) qbt port $port api/v2/app/version -> $code  anirss: $(pgrep -f 'anirss' | tr '\n' ' ')"
-    else
-      echo "$(date +%T) no qbt config yet"
-    fi
-    sleep 1
-  done
-) > "$out/downloads-state/poll.log" 2>&1 &
-poller=$!
 env -i HOME="$fresh/home" TMPDIR="${TMPDIR:-/tmp}" PATH=/usr/bin:/bin:/usr/sbin:/sbin QT_FORCE_STDERR_LOGGING=1 \
   "$bin" --root "$fresh/root" --drive "$out/downloads.json" --out "$out/downloads-drive" \
   --width 1600 --height 1000 2> "$out/downloads.log" || { crashed $? downloads; status=1; }
 grep -E 'DRIVE (EVAL|FAIL)' "$out/downloads.log" || true
-kill "$poller" 2>/dev/null || true
-echo "date at the end: $(date +%T)"
 # What the managed pair left behind, for a run that did not come up.
+mkdir -p "$out/downloads-state"
 cp "$fresh/root/data/qbittorrent/qbittorrent-nox.log" "$out/downloads-state/" 2>/dev/null || true
 cp "$fresh/root/data/qbittorrent/qBittorrent/config/qBittorrent.ini" "$out/downloads-state/" 2>/dev/null || true
 cp -R "$fresh/home/.config/anirss" "$fresh/home/.local/state/anirss" "$out/downloads-state/" 2>/dev/null || true
