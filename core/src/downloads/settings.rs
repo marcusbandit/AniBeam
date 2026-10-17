@@ -93,6 +93,7 @@ pub fn defaults() -> DownloadSettings {
         anirss_url: "http://127.0.0.1:8787".to_string(),
         has_anirss_token: false,
         torrent_client: TorrentClient::Qbittorrent,
+        torrent_mode: TorrentMode::Auto,
         torrent_url: url,
         torrent_username: username,
         has_torrent_password: false,

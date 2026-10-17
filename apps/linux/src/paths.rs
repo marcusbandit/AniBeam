@@ -74,6 +74,31 @@ pub fn share_dir() -> PathBuf {
     beside_bin(prefix.as_deref()).unwrap_or_else(|| PathBuf::from("/usr/share/anibeam"))
 }
 
+/// Names the Downloads helpers a package carries to the core, which looks for them in these
+/// variables: anirss under the share dir, qbittorrent-nox beside the binary (the Mac app and
+/// the AppImage carry both). A variable already set is left alone, so a run can point at
+/// another copy. A setenv, so it has to run before any thread exists.
+pub fn name_bundled_helpers() {
+    let beside_exe = std::env::current_exe()
+        .ok()
+        .and_then(|exe| Some(exe.parent()?.join("qbittorrent-nox")));
+    let helpers = [
+        (
+            "ANIBEAM_ANIRSS",
+            Some(share_dir().join("anirss/bin/anirss")),
+        ),
+        ("ANIBEAM_QBITTORRENT_NOX", beside_exe),
+    ];
+    for (name, path) in helpers {
+        if let Some(path) = path.filter(|p| p.is_file())
+            && std::env::var_os(name).is_none()
+        {
+            // SAFETY: called from main before the core's runtime or Qt starts a thread.
+            unsafe { std::env::set_var(name, path) };
+        }
+    }
+}
+
 /// `<prefix>/share/anibeam` when that directory exists.
 fn beside_bin(prefix: Option<&std::path::Path>) -> Option<PathBuf> {
     let dir = prefix?.join("share/anibeam");

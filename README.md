@@ -7,9 +7,14 @@ at, matches each series against AniList (TVmaze for what AniList does not carry)
 video in the window through libmpv, and syncs watch progress with AniList and MyAnimeList.
 It runs on Linux and on Apple silicon Macs: a Qt 6 shell over a Rust core.
 
-## Install on a Mac
+## Getting started
 
-AniBeam ships for Apple silicon Macs on macOS 15 or later.
+One install is all AniBeam needs, on every platform. The video player, anirss (which
+searches release feeds) and a qBittorrent for downloads all come with it.
+
+### 1. Install
+
+**Mac** (Apple silicon, macOS 15 or later)
 
 1. Download `AniBeam-<version>-macos-arm64.dmg` from [Releases](https://github.com/marcusbandit/AniBeam/releases).
 2. Open it and drag AniBeam into Applications.
@@ -17,50 +22,81 @@ AniBeam ships for Apple silicon Macs on macOS 15 or later.
    System Settings > Privacy & Security, scroll to the AniBeam line and click Open Anyway.
    From a terminal, `xattr -dr com.apple.quarantine /Applications/AniBeam.app` does the same.
 
-Everything the app needs is inside the bundle, mpv included. Its data lives in
-`~/Library/Application Support/anibeam`, tracker tokens go to the login keychain, and
-"Use my mpv.conf" reads `~/.config/mpv/mpv.conf`, as mpv itself does.
-
-## Install on Linux
-
-On Arch, the AUR package builds the latest release:
+**Arch Linux**
 
 ```bash
 yay -S anibeam        # or: paru -S anibeam
 ```
 
-Anywhere else, download `AniBeam-<version>-x86_64.AppImage` from
-[Releases](https://github.com/marcusbandit/AniBeam/releases), make it executable and run it.
-It needs glibc 2.39 or newer: Ubuntu 24.04, Debian 13, Fedora 40 and later.
+The AUR package builds the latest release and pulls in anirss and qbittorrent-nox.
+
+**Any other Linux** (glibc 2.39 or newer: Ubuntu 24.04, Debian 13, Fedora 40 and later)
+
+Download `AniBeam-<version>-x86_64.AppImage` from
+[Releases](https://github.com/marcusbandit/AniBeam/releases), then:
 
 ```bash
 chmod +x AniBeam-*-x86_64.AppImage
 ./AniBeam-*-x86_64.AppImage
 ```
 
-Data lives in the XDG directories (`~/.local/share/anibeam`, `~/.config/anibeam`).
-Tracker tokens go to the Secret Service keyring (GNOME Keyring, KWallet) when one is
-running, and to a file only you can read when none is.
+### 2. Add your library
 
-## The Downloads page
+The first time AniBeam opens, Home says "Your library is empty". Click Add a folder (or go to
+Settings > Library > Folders > Add folder) and pick the folder your anime lives in. One
+folder per show works best, for example `Anime/Sousou no Frieren/Frieren - 01.mkv`.
 
-The Downloads page searches release feeds, subscribes to shows and hands torrents to
-qBittorrent. It is optional: the library, the player and the trackers work without it.
-It needs two programs AniBeam does not ship:
+AniBeam scans it, matches each show against AniList (and TVmaze for anything that is not
+anime), and fetches posters, synopses and airing dates. Files that land in the folder later
+show up by themselves. A show it could not match says "Needs a match": open it, click Find
+a match, and pick the right one.
 
-1. [anirss](https://github.com/marcusbandit/anirss) 0.4.0 or newer. AniBeam starts it in
-   the background when the page needs it.
-   - Mac: `brew install marcusbandit/anirss/anirss`
-   - Arch: `yay -S anirss`
-   - Anywhere with Python 3.11 or newer: `uv tool install git+https://github.com/marcusbandit/anirss`
-2. qBittorrent with its Web UI turned on. In qBittorrent, open Preferences > Web UI, tick
-   the Web UI box, and set a username and password (qBittorrent 5 has no default password).
-   Then fill in the same address (`http://localhost:8080` unless you changed the port),
-   username and password under AniBeam's Settings > Downloads > Torrent client, and Save.
-   On a Mac, `brew install --cask qbittorrent` installs it.
+### 3. Connect AniList or MyAnimeList (optional)
 
-If anirss is missing or older than 0.4.0, the Downloads page says so and names the command
-that fixes it.
+Settings > Library > Trackers > Connect. Your browser opens; sign in, approve AniBeam, and
+come back. From then on, watching most of an episode marks it on your list, and the cards
+show your progress. Main tracker picks whose progress wins when you connect both.
+
+### 4. Watch
+
+Click a show, then an episode. Space plays and pauses, and `?` shows every key. AniBeam
+remembers where you stopped and offers the next episode when one ends.
+
+### 5. Download new episodes (optional)
+
+Open Downloads (the arrow in the left rail). There is nothing to install or set up first:
+
+- AniBeam starts its own anirss, the tool that searches the release feeds.
+- If a qBittorrent of yours is already running with its Web UI on, AniBeam uses it.
+  If not, AniBeam sets up its own qBittorrent the first time you open the page, and
+  says so in the status line at the bottom.
+
+Search for a show (`Frieren 1080p`), look over the releases, and click Subscribe. New
+episodes then download by themselves as they come out, into `~/Downloads/Anime` unless you
+pick another folder. Add that folder to your library (step 2) so they show up there. Download
+grabs a single release instead.
+
+AniBeam's own qBittorrent keeps running after you close AniBeam, so subscriptions keep
+downloading. Settings > Downloads > Torrent client shows which qBittorrent is in use. To
+switch to your own, turn on its Web UI (in qBittorrent: Preferences > Web UI, tick the box,
+set a username and password), choose Mine, fill in the address, username and password, and
+Save.
+
+### When something is off
+
+- **macOS says AniBeam "cannot be opened"**: that is the Open Anyway step in 1.
+- **The AppImage does not start and mentions FUSE**: install `libfuse2` (`libfuse2t64` on
+  Ubuntu 24.04), or run it with `--appimage-extract-and-run`.
+- **Downloads says qBittorrent did not answer**: open Settings > Downloads > Torrent client
+  and press Test; the State line says what went wrong. Choosing "Pick for me" and saving
+  makes AniBeam look again on the next connect.
+- **Sign-in stays on "Finish in your browser"**: approve AniBeam in the browser tab it
+  opened. If that tab is gone, click Open the sign-in page again.
+- **Where things are kept**: on a Mac in `~/Library/Application Support/anibeam`, tracker
+  tokens in the login keychain. On Linux in `~/.local/share/anibeam` and
+  `~/.config/anibeam`, tracker tokens in the Secret Service keyring (GNOME Keyring, KWallet)
+  or, without one, in a file only you can read. "Use my mpv.conf" reads
+  `~/.config/mpv/mpv.conf` on both.
 
 ## Build from source
 
@@ -73,7 +109,9 @@ cd AniBeam
 cargo build --release -p anibeam     # target/release/anibeam
 ```
 
-A build from source has no AniList or MyAnimeList app registration of its own, so the
+A build from source finds anirss and qbittorrent-nox on your PATH (anirss 0.4.2 or newer,
+`yay -S anirss qbittorrent-nox` on Arch). A build from source has no AniList or MyAnimeList
+app registration of its own, so the
 Trackers tab asks for a client ID the first time you connect. To bundle your own, copy
 `.env.example` to `.env.local` and fill it in before building; it explains where to
 register.

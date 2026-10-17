@@ -41,9 +41,12 @@ const STDERR_TAIL: usize = 40;
 /// How long `anirss --version` gets when a sidecar failed to come up.
 const VERSION_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// The first anirss release with `--serve` and every route this client
-/// calls. 0.3.4 and older exit on the flag.
-pub const MIN_VERSION: &str = "0.4.0";
+/// The anirss this client needs: 0.4.0 brought `--serve` (0.3.4 and older
+/// exit on the flag), 0.4.1 the qBittorrent address from the environment,
+/// 0.4.2 a client that needs no login, which AniBeam's own qBittorrent is.
+pub const MIN_VERSION: &str = "0.4.2";
+/// Set by a shell whose package carries its own anirss.
+const BUNDLED_ENV: &str = "ANIBEAM_ANIRSS";
 
 /// One server, one token.
 #[derive(Clone)]
@@ -478,6 +481,25 @@ pub struct Sidecar {
     stderr: Arc<Mutex<VecDeque<String>>>,
 }
 
+/// The torrent client a sidecar is pointed at.
+pub struct QbtLogin<'a> {
+    pub url: &'a str,
+    pub username: &'a str,
+    pub password: Option<&'a str>,
+}
+
+/// The command a sidecar runs: the package's own anirss when the shell
+/// named one and the setting is still the plain default, else the setting.
+pub fn sidecar_command(setting: &str) -> String {
+    if setting == "anirss"
+        && let Some(path) = std::env::var_os(BUNDLED_ENV).map(std::path::PathBuf::from)
+        && path.is_file()
+    {
+        return path.to_string_lossy().into_owned();
+    }
+    setting.to_string()
+}
+
 /// Why a spawn did not happen.
 #[derive(Debug)]
 pub enum SpawnFailure {
@@ -489,9 +511,11 @@ pub enum SpawnFailure {
 
 impl Sidecar {
     /// Starts `command --serve --port <free port>` with the token and the
-    /// qBittorrent password in its environment. Returns as soon as the
-    /// process exists; `wait_ready` is the half that waits on `/health`.
-    pub fn spawn(command: &str, qbt_password: Option<&str>) -> Result<Sidecar, SpawnFailure> {
+    /// qBittorrent the core uses in its environment: its address and user
+    /// (anirss 0.4.1 reads them over its own config), and the password.
+    /// Returns as soon as the process exists; `wait_ready` is the half that
+    /// waits on `/health`.
+    pub fn spawn(command: &str, qbt: &QbtLogin<'_>) -> Result<Sidecar, SpawnFailure> {
         let port = free_port().map_err(|e| SpawnFailure::Io(format!("no free port: {e}")))?;
         let token = random_token();
         let mut cmd = Command::new(command);
@@ -503,7 +527,9 @@ impl Sidecar {
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
-        match qbt_password {
+        cmd.env("ANIRSS_QBT_URL", qbt.url)
+            .env("ANIRSS_QBT_USERNAME", qbt.username);
+        match qbt.password {
             Some(pw) => {
                 cmd.env("ANIRSS_QBT_PASSWORD", pw);
             }
@@ -670,7 +696,7 @@ pub fn update_hint() -> &'static str {
 /// is a window in which something else could take it; a sidecar that then
 /// fails to bind reports it through `wait_ready`, and the next connect
 /// picks another.
-fn free_port() -> std::io::Result<u16> {
+pub(crate) fn free_port() -> std::io::Result<u16> {
     let listener = std::net::TcpListener::bind(("127.0.0.1", 0))?;
     Ok(listener.local_addr()?.port())
 }
@@ -741,7 +767,8 @@ mod tests {
     fn only_a_version_before_the_server_mode_is_too_old() {
         assert_eq!(too_old("anirss 0.3.4").as_deref(), Some("0.3.4"));
         assert_eq!(too_old("0.2").as_deref(), Some("0.2"));
-        assert_eq!(too_old("anirss 0.4.0"), None);
+        assert_eq!(too_old("anirss 0.4.1").as_deref(), Some("0.4.1"));
+        assert_eq!(too_old("anirss 0.4.2"), None);
         assert_eq!(too_old("anirss 0.10.1"), None);
         assert_eq!(too_old("anirss 1.0.0rc1"), None);
         assert_eq!(too_old("anirss dev"), None);
