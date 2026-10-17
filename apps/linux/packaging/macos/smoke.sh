@@ -155,5 +155,30 @@ JSON
   grep -i -E 'render loop|GL_|OpenGL|exposed|expose|renderWindow|occlu' "$out/$run.log" | sort | uniq -c | sort -rn | head -30 || true
 done
 rm -f "$root/config/mpv.conf"
+
+echo "== the Downloads page on the bundled pair"
+# A fresh install: its own root and HOME, launchd's PATH, no anirss from Homebrew and nothing
+# listening on 8080. The core finds no qBittorrent, starts the bundled qbittorrent-nox on a
+# loopback port, then the bundled anirss against it. The managed qBittorrent is meant to
+# outlive the app, so it is killed here.
+fresh="$(mktemp -d)"
+mkdir -p "$fresh/home" "$out/downloads-drive"
+cat > "$out/downloads.json" <<'JSON'
+[
+  {"page": "downloads"},
+  {"wait": 20000},
+  {"shot": "downloads"},
+  {"eval": "frame.item.pageItem.anirss.state", "expect": "Ready"},
+  {"eval": "frame.item.pageItem.anirss.version", "expect": "0.4.2"},
+  {"eval": "frame.item.pageItem.torrentOn", "expect": true},
+  {"eval": "frame.item.pageItem.status.settings.torrent_mode", "expect": "Managed"}
+]
+JSON
+env -i HOME="$fresh/home" TMPDIR="${TMPDIR:-/tmp}" PATH=/usr/bin:/bin:/usr/sbin:/sbin QT_FORCE_STDERR_LOGGING=1 \
+  "$bin" --root "$fresh/root" --drive "$out/downloads.json" --out "$out/downloads-drive" \
+  --width 1600 --height 1000 2> "$out/downloads.log" || { crashed $? downloads; status=1; }
+grep -E 'DRIVE (EVAL|FAIL)' "$out/downloads.log" || true
+ps ax | grep '[q]bittorrent-nox --profile' || echo "no managed qbittorrent-nox is running"
+pkill -f "[q]bittorrent-nox --profile" || true
 ls -la "$out" "$out/drive" 2>/dev/null || true
 exit "$status"
