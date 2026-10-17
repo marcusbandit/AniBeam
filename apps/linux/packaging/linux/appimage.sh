@@ -104,6 +104,14 @@ cd "$out"
   --deploy-deps-only "$appdir/usr/plugins/wayland-shell-integration" \
   --plugin qt > "$out/linuxdeploy.log" 2>&1 || { tail -60 "$out/linuxdeploy.log"; exit 1; }
 
+# libOpenGL.so.0 is on linuxdeploy's exclude list, since a host with a GPU driver has it. A
+# Debian or Fedora install that has never held a Qt 6 program does not, and the shell stops
+# at launch with "cannot open shared object file". It only forwards to libGLdispatch, which
+# every Mesa install carries, so the image brings it.
+opengl="$(ldconfig -p | awk '$1 == "libOpenGL.so.0" && /x86-64/ {print $NF; exit}')"
+[ -n "$opengl" ] || { echo "no libOpenGL.so.0 on this machine to bundle" >&2; exit 1; }
+cp -L "$opengl" "$appdir/usr/lib/libOpenGL.so.0"
+
 echo "== qbittorrent-nox $QBT_TAG"
 fetch "https://github.com/userdocs/qbittorrent-nox-static/releases/download/$QBT_TAG/x86_64-qbittorrent-nox" \
   "$QBT_SHA" qbittorrent-nox

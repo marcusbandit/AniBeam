@@ -49,11 +49,12 @@ echo "== the helpers"
 helpers="$(mktemp -d)"
 ( cd "$helpers" && "$img" --appimage-extract > /dev/null ) || { echo "could not unpack the image"; exit 1; }
 unpacked="$helpers/squashfs-root"
-# A scratch HOME, since anirss writes a default config on its first run.
+# A scratch HOME: anirss writes a default config on its first run, and qbittorrent-nox
+# will not even print its version without a directory to put its cache in.
 anirss="$(env -i HOME="$helpers" "$unpacked/usr/share/anibeam/anirss/bin/anirss" --version 2>/dev/null)"
 echo "anirss: $anirss"
 [ "$anirss" = "anirss 0.4.2" ] || { echo "anirss did not report 0.4.2"; status=1; }
-qbt="$(env -i "$unpacked/usr/bin/qbittorrent-nox" --version 2>/dev/null)"
+qbt="$(env -i HOME="$helpers" "$unpacked/usr/bin/qbittorrent-nox" --version 2>/dev/null)"
 echo "qbittorrent-nox: $qbt"
 case "$qbt" in
   "qBittorrent v5.2.4") ;;
