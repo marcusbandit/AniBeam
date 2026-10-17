@@ -49,14 +49,14 @@ jobs:
           brew install qtbase qtdeclarative qtsvg qttools qtshadertools \
             ffmpeg libass libplacebo little-cms2 uchardet zimg \
             meson ninja pkgconf cmake extra-cmake-modules \
-            libtorrent-rasterbar boost openssl@3
+            boost openssl@3
           qmake="$(brew --prefix qtbase)/bin/qmake"
           echo "QMAKE=$qmake" >> "$GITHUB_ENV"
           echo "DEPS_PREFIX=$HOME/anibeam-deps" >> "$GITHUB_ENV"
           echo "MPVQT_PREFIX=$HOME/anibeam-deps" >> "$GITHUB_ENV"
           echo "MPV_PREFIX=$HOME/anibeam-deps" >> "$GITHUB_ENV"
           brew list --versions qtbase qtdeclarative qtsvg qttools ffmpeg libass libplacebo \
-            libtorrent-rasterbar boost openssl@3
+            boost openssl@3
           "$qmake" -query
 
       - name: Dependency cache key
@@ -64,7 +64,7 @@ jobs:
         run: |
           key="$( { cat apps/linux/packaging/macos/deps.sh
                     brew list --versions ffmpeg libass libplacebo little-cms2 uchardet zimg qtbase qtdeclarative \
-                      qtsvg qttools libtorrent-rasterbar boost openssl@3
+                      qtsvg qttools boost openssl@3
                   } | shasum -a 256 | cut -c1-16)"
           echo "key=macos-15-deps-$key" >> "$GITHUB_OUTPUT"
 
