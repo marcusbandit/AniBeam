@@ -233,20 +233,22 @@ export component AppWindow inherits Window {
                             }
                         }
                     }
-                    series := SeriesList {
-                        x: Theme.pad;
-                        y: parent.columns-y;
-                        width: parent.left-width;
-                        height: self.preferred-height;
-                        rows: root.disk;
-                    }
+                    // Narrow, the few torrents go above the long series list, so what is
+                    // downloading is seen without scrolling past the whole library.
                     torrents := TorrentList {
                         x: root.wide ? Theme.pad + parent.left-width + Theme.gap : Theme.pad;
-                        y: root.wide ? parent.columns-y : series.y + series.height + Theme.pad;
+                        y: parent.columns-y;
                         width: root.wide ? parent.inner - parent.left-width - Theme.gap : parent.inner;
                         height: self.preferred-height;
                         rows: root.torrents;
                         known: root.torrents-known;
+                    }
+                    series := SeriesList {
+                        x: Theme.pad;
+                        y: root.wide ? parent.columns-y : torrents.y + torrents.height + Theme.pad;
+                        width: parent.left-width;
+                        height: self.preferred-height;
+                        rows: root.disk;
                     }
                 }
             }

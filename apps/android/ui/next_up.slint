@@ -1,5 +1,5 @@
 import { Theme } from "theme.slint";
-import { Poster, Chip } from "widgets.slint";
+import { Poster, Chip, ClampedText } from "widgets.slint";
 
 export struct NextUpRow {
     title: string,
@@ -36,13 +36,9 @@ component NextUpCard inherits Rectangle {
         VerticalLayout {
             spacing: Theme.unit;
             alignment: start;
-            Text {
+            ClampedText {
                 text: root.data.title;
-                color: Theme.text;
                 font-weight: 700;
-                wrap: word-wrap;
-                overflow: elide;
-                max-height: Theme.normal * 2.7;
             }
             Text {
                 text: root.data.countdown;

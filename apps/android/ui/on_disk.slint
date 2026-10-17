@@ -1,5 +1,5 @@
 import { Theme } from "theme.slint";
-import { Poster, ProgressLine, SectionLabel } from "widgets.slint";
+import { ClampedText, Poster, ProgressLine, SectionLabel } from "widgets.slint";
 
 export struct DiskEpisode {
     code: string,
@@ -81,13 +81,9 @@ component DiskCard inherits Rectangle {
             VerticalLayout {
                 spacing: Theme.unit;
                 alignment: center;
-                Text {
+                ClampedText {
                     text: root.data.title;
-                    color: Theme.text;
                     font-weight: 700;
-                    wrap: word-wrap;
-                    overflow: elide;
-                    max-height: Theme.normal * 2.7;
                 }
                 Text {
                     text: root.data.summary;
@@ -135,13 +131,9 @@ component TorrentCard inherits Rectangle {
     VerticalLayout {
         padding: Theme.gap;
         spacing: Theme.unit * 2;
-        Text {
+        ClampedText {
             text: root.data.name;
-            color: Theme.text;
             font-size: Theme.small;
-            wrap: word-wrap;
-            overflow: elide;
-            max-height: Theme.small * 2.8;
         }
         HorizontalLayout {
             spacing: Theme.gap;

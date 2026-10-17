@@ -25,6 +25,31 @@ export component Poster inherits Rectangle {
     }
 }
 
+// Text that wraps onto at most `lines` lines and ends in an ellipsis past that. A Text in
+// a layout grows to its wrapped height whatever max-height says, so this one fixes its
+// own height and clips.
+export component ClampedText inherits Rectangle {
+    in property <string> text;
+    in property <int> lines: 2;
+    in property <length> font-size: Theme.normal;
+    in property <int> font-weight: 400;
+    in property <color> ink: Theme.text;
+    // Roboto's ascent plus descent is 1.17 em; 1.25 leaves room without fitting a third line.
+    height: Math.min(inner.preferred-height, root.font-size * 1.25 * root.lines);
+    clip: true;
+    inner := Text {
+        width: parent.width;
+        height: parent.height;
+        text: root.text;
+        color: root.ink;
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+        wrap: word-wrap;
+        overflow: elide;
+        vertical-alignment: top;
+    }
+}
+
 // A small label: what a row is (subscribed, not on disk), never a button.
 export component Chip inherits Rectangle {
     in property <string> text;
