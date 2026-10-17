@@ -170,6 +170,10 @@ pub enum Call {
     SetPreferences {
         preferences: Preferences,
     },
+    /// The tailnet host's state as last known: off, waiting for Tailscale,
+    /// or serving and on which URLs. Never touches the network; changes
+    /// arrive as `HostChanged`.
+    GetHost,
     GetSettings,
     SetSubtitleDefaults {
         defaults: SubtitleDefaults,
@@ -389,6 +393,9 @@ pub enum Reply {
     },
     Preferences {
         preferences: Preferences,
+    },
+    Host {
+        status: HostStatus,
     },
     Settings {
         settings: Settings,

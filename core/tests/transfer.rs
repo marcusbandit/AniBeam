@@ -226,6 +226,7 @@ fn the_spec_document_imports_and_a_second_import_changes_nothing() {
                 library_show_watched: false,
                 library_arrange: Arrange::Related,
                 library_group_franchises: true,
+                share_over_tailscale: false,
             }
         ),
         other => panic!("{other:?}"),
@@ -284,6 +285,7 @@ fn a_private_export_round_trips_into_a_fresh_core() {
         // fresh core's defaults for the round trip to compare equal.
         library_arrange: Arrange::Related,
         library_group_franchises: true,
+        share_over_tailscale: false,
     };
     core.call(Call::SetPreferences {
         preferences: preferences.clone(),

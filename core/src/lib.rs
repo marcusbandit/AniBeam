@@ -7,6 +7,7 @@ pub mod downloads;
 pub mod events;
 pub mod feed;
 pub mod franchise;
+pub mod host;
 pub mod images;
 pub mod jobs;
 pub mod launch;

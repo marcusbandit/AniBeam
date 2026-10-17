@@ -39,6 +39,10 @@ flate2 = "1"
 toml = "1"
 roxmltree = "0.20"
 trash = "5"
+anibeam-host-api.workspace = true
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+if-addrs = "0.13"
+rustix = { version = "1", features = ["system"] }
 
 # The machine's keyring: the Secret Service over D-Bus everywhere but a Mac, the login
 # keychain there. `keychain` rather than `protected`: the protected store needs a
