@@ -115,6 +115,9 @@ pub struct Core {
     /// session and the last status read. Built empty; nothing starts
     /// until a downloads call asks.
     pub(crate) downloads: Arc<crate::downloads::Downloads>,
+    /// The tailnet host: the read-only API the phone app reads, served on
+    /// this machine's Tailscale addresses while the preference is on.
+    pub(crate) host: crate::host::Host,
     /// Jobs need an `Arc<Core>` of their own; exported methods take `&self`,
     /// so the core keeps a `Weak` to itself from `Arc::new_cyclic` and
     /// upgrades it.
@@ -200,6 +203,7 @@ impl Core {
             .map_err(|e| CoreError::internal(format!("runtime: {e}")))?;
         let handle = runtime.handle().clone();
         let jobs = Jobs::new(handle.clone(), bus.clone());
+        let host = crate::host::Host::new(bus.clone());
         let anilist = Arc::new(AnilistClient::new(ProviderClient::new(
             Upstream::Anilist,
             http.clone(),
@@ -252,6 +256,7 @@ impl Core {
             sessions: Arc::new(Sessions::default()),
             crawl_recent: Mutex::new(HashMap::new()),
             downloads: Arc::new(crate::downloads::Downloads::default()),
+            host,
             me: me.clone(),
             snapshot_cache: AtomicBool::new(false),
             kept_load: Mutex::new(None),
@@ -271,6 +276,15 @@ impl Core {
     pub(crate) fn owner(&self) -> Result<Arc<Core>, CoreError> {
         self.arc()
             .ok_or_else(|| CoreError::internal("core is shutting down"))
+    }
+
+    /// Where the tailnet host listens for this core alone, in place of the
+    /// `ANIBEAM_HOST_BIND` env var, which every core in a test process would
+    /// share. Takes effect the next time the host is switched on. Not part of
+    /// the contract and not exported to any shell.
+    #[doc(hidden)]
+    pub fn set_host_bind(&self, bind: Option<String>) {
+        self.host.set_bind(bind);
     }
 
     /// Moves the OAuth listener off the registered port, so two tests
@@ -510,6 +524,9 @@ impl Core {
         let core = self
             .arc()
             .ok_or_else(|| CoreError::internal("core is shutting down"))?;
+        // The host follows the stored preference from the first moment, so
+        // a phone can reach a machine that was left sharing.
+        crate::host::sync(self);
         launch::start(&core)
     }
 
@@ -645,6 +662,8 @@ impl Core {
             Call::SetPreferences { preferences } => {
                 let p = preferences.clone();
                 self.store.write(move |c| prefs::save_preferences(c, &p))?;
+                self.host
+                    .set_enabled(self, preferences.share_over_tailscale);
                 self.bus.debug(
                     Stage::Store,
                     "preferences changed",
@@ -652,6 +671,9 @@ impl Core {
                 );
                 Ok(Reply::Ok)
             }
+            Call::GetHost => Ok(Reply::Host {
+                status: self.host.status(),
+            }),
             Call::GetSettings => Ok(Reply::Settings {
                 settings: self.store.read(prefs::load_settings)?,
             }),
@@ -918,6 +940,7 @@ impl Core {
         self.take_launch_listener();
         // The anirss sidecar goes with the core that started it.
         self.downloads.stop();
+        self.host.stop();
         self.jobs.cancel_all();
         // Taken out of the mutex and dropped by this `let` before the
         // blocking shutdown call, rather than matched straight off the
