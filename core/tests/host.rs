@@ -75,6 +75,7 @@ fn the_preference_starts_and_stops_a_server_that_serves_the_library() {
         anirss_url: "http://127.0.0.1:1".to_string(),
         has_anirss_token: false,
         torrent_client: TorrentClient::Qbittorrent,
+        torrent_mode: TorrentMode::Existing,
         torrent_url: "http://localhost:9090".to_string(),
         torrent_username: "me".to_string(),
         has_torrent_password: false,

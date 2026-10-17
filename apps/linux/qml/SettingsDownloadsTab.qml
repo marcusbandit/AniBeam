@@ -84,6 +84,13 @@ SettingsTab {
         if (torrent.connected) return clientName + " " + torrent.version + " answered."
         return torrent.message ? torrent.message : "Not tried yet."
     }
+    readonly property bool managed: !!draft && draft.torrent_mode === "Managed"
+    readonly property string modeLine: {
+        if (!draft) return ""
+        if (draft.torrent_mode === "Existing") return "Your own qBittorrent, with its Web UI turned on."
+        if (draft.torrent_mode === "Managed") return "AniBeam's own qbittorrent-nox. It keeps running after AniBeam quits so subscriptions keep downloading, into ~/Downloads/Anime."
+        return "On first use: a qBittorrent that answers below, else AniBeam's own."
+    }
     readonly property string passwordLine: {
         if (!settings) return ""
         if (settings.has_torrent_password) return "A password is saved here."
@@ -95,7 +102,7 @@ SettingsTab {
         if (!anirss || !settings || anirss.state !== "Ready" || !anirss.qbt_url) return ""
         var a = String(anirss.qbt_url).replace(/\/+$/, ""), b = String(settings.torrent_url).replace(/\/+$/, "")
         if (a === b) return ""
-        return "anirss talks to " + a + " while AniBeam talks to " + b + ". Point both at the same client: anirss reads its address from its own config.toml."
+        return "anirss talks to " + a + " while AniBeam talks to " + b + ". anirss 0.4.1 and newer take the address from AniBeam; an older one reads it from its own config.toml."
     }
 
     SettingsPair {
@@ -151,16 +158,20 @@ SettingsTab {
         id: clientPanel
         Panel {
             title: "Torrent client"; icon: "download"
-            helper: "The client anirss hands torrents to, and the one this page reads transfers from. The password is kept in the system password store and passed to anirss when AniBeam starts it."
-            SettingRow { label: "Client"; helper: "qBittorrent's WebUI is the one client for now."
+            helper: "The client anirss hands torrents to, and the one this page reads transfers from. AniBeam uses a qBittorrent you already run, or runs its own when you have none. A password is kept in the system password store and passed to anirss when AniBeam starts it."
+            SettingRow { label: "Whose"; helper: tab.modeLine
+                Seg { objectName: "downloads-client-mode"; options: [{ text: "Pick for me", icon: "sparkles" }, { text: "Mine", icon: "user-check" }, { text: "AniBeam's own", icon: "play" }]
+                      index: !tab.draft ? 0 : tab.draft.torrent_mode === "Existing" ? 1 : tab.draft.torrent_mode === "Managed" ? 2 : 0
+                      onPicked: function(i) { tab.edit(function(d) { d.torrent_mode = ["Auto", "Existing", "Managed"][i] }) } } }
+            SettingRow { visible: !tab.managed; label: "Client"; helper: "qBittorrent's WebUI is the one client for now."
                 Dropdown { objectName: "downloads-client"; options: tab.clients.map(function(c) { return c.name }); minWidth: theme.space(36)
                            index: { var i = 0; for (var k = 0; k < tab.clients.length; k++) if (tab.draft && tab.clients[k].id === tab.draft.torrent_client) i = k; return i }
                            onPicked: function(i) { tab.edit(function(d) { d.torrent_client = tab.clients[i].id }) } } }
-            SettingRow { label: "Address"; helper: "The WebUI, as a URL. anirss's own config fills this in on a fresh install."
+            SettingRow { label: "Address"; helper: tab.managed ? "Where AniBeam's own qBittorrent listens. Only this machine can reach it, and it needs no password." : "The WebUI, as a URL. anirss's own config fills this in on a fresh install."
                 Field { objectName: "downloads-client-url"; text: tab.draft ? tab.draft.torrent_url : ""; mono: true; width: theme.space(50); placeholder: "http://localhost:8080"; onEdited: function(t) { tab.edit(function(d) { d.torrent_url = t }) } } }
-            SettingRow { label: "Username"
+            SettingRow { visible: !tab.managed; label: "Username"
                 Field { text: tab.draft ? tab.draft.torrent_username : ""; mono: true; width: theme.space(36); onEdited: function(t) { tab.edit(function(d) { d.torrent_username = t }) } } }
-            SettingRow { label: "Password"; helper: tab.passwordLine
+            SettingRow { visible: !tab.managed; label: "Password"; helper: tab.passwordLine
                 Field { objectName: "downloads-client-password"; text: tab.passwordText; secret: true; mono: true; width: theme.space(36); placeholder: tab.settings && tab.settings.has_torrent_password ? "Saved" : "Not set"
                         onEdited: function(t) { tab.passwordText = t; tab.passwordTouched = true; tab.dirty = true } } }
             SettingRow { label: "State"; line: tab.torrentLine; status: tab.mismatch; hairline: false
