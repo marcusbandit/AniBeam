@@ -18,9 +18,23 @@ pub struct DiskSeries {
     pub episodes: Vec<DiskEpisode>,
 }
 
-fn summary(series: &Series) -> String {
-    let watched = series.episodes.iter().filter(|e| e.watched).count();
-    let on_disk = series.episodes_on_disk.max(series.episodes.len() as u64);
+/// One entry per episode, in the host's order. The host lists every file, so an episode
+/// kept in two releases comes twice; it counts as watched when either copy is.
+fn episodes(series: &Series) -> Vec<DiskEpisode> {
+    let mut out: Vec<(Option<u32>, &str, DiskEpisode)> = Vec::new();
+    for e in &series.episodes {
+        match out.iter_mut().find(|(season, key, _)| *season == e.season && *key == e.key) {
+            Some((_, _, seen)) => seen.watched |= e.watched,
+            None => out.push((e.season, &e.key, DiskEpisode { code: e.code.clone(), watched: e.watched })),
+        }
+    }
+    out.into_iter().map(|(_, _, e)| e).collect()
+}
+
+fn summary(series: &Series, episodes: &[DiskEpisode]) -> String {
+    let watched = episodes.iter().filter(|e| e.watched).count();
+    // The host's own count is of files; without a file list it is all there is.
+    let on_disk = if episodes.is_empty() { series.episodes_on_disk } else { episodes.len() as u64 };
     if series.kind == Kind::Movie {
         return if watched > 0 { "On disk, watched".into() } else { "On disk, not watched yet".into() };
     }
@@ -30,7 +44,7 @@ fn summary(series: &Series) -> String {
     };
     let seen = if watched == 0 {
         "none watched".to_string()
-    } else if watched == series.episodes.len() {
+    } else if watched == episodes.len() {
         "all watched".to_string()
     } else {
         format!("{watched} watched")
@@ -48,15 +62,9 @@ pub fn on_disk(snapshot: &Snapshot) -> Vec<DiskSeries> {
     series.sort_by_key(|s| std::cmp::Reverse(s.latest_activity_at));
     series
         .into_iter()
-        .map(|s| DiskSeries {
-            id: s.id,
-            title: s.title.clone(),
-            summary: summary(s),
-            episodes: s
-                .episodes
-                .iter()
-                .map(|e| DiskEpisode { code: e.code.clone(), watched: e.watched })
-                .collect(),
+        .map(|s| {
+            let episodes = episodes(s);
+            DiskSeries { id: s.id, title: s.title.clone(), summary: summary(s, &episodes), episodes }
         })
         .collect()
 }
@@ -115,6 +123,20 @@ mod tests {
         assert_eq!(rows[1].summary, "On disk, not watched yet");
         assert_eq!(rows[2].summary, "26 on disk, all watched");
         assert_eq!(rows[0].episodes[6], DiskEpisode { code: "E07".into(), watched: false });
+    }
+
+    #[test]
+    fn an_episode_kept_twice_is_one_episode() {
+        let mut snapshot = fixture();
+        let frieren = &mut snapshot.series[0];
+        let mut copy = frieren.episodes[6].clone();
+        copy.watched = true;
+        frieren.episodes.push(copy);
+        frieren.episodes_on_disk = 8;
+        let rows = on_disk(&snapshot);
+        assert_eq!(rows[0].episodes.len(), 7);
+        assert!(rows[0].episodes[6].watched, "the watched copy counts");
+        assert_eq!(rows[0].summary, "7 of 12 on disk, all watched");
     }
 
     #[test]
