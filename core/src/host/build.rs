@@ -122,7 +122,7 @@ pub fn subscriptions(rules: Vec<SubscriptionRule>) -> Vec<wire::Subscription> {
                 complete: show.is_some_and(|s| s.complete),
                 missing: show.map(|s| s.missing.clone()).unwrap_or_default(),
                 name: r.name,
-                feed_url: r.feed_url,
+                feed_url: without_secrets(&r.feed_url),
                 query: r.query,
                 enabled: r.rule_enabled,
                 torrent_count: r.torrent_count,
@@ -130,6 +130,32 @@ pub fn subscriptions(rules: Vec<SubscriptionRule>) -> Vec<wire::Subscription> {
             }
         })
         .collect()
+}
+
+/// Query parameters that carry a credential. A Jackett or Torznab feed puts
+/// the indexer's key in the URL, and every device on the tailnet reads the
+/// snapshot.
+const SECRET_PARAMS: [&str; 5] = ["apikey", "api_key", "passkey", "token", "key"];
+
+/// `url` without its credential parameters. A feed that needed one will not
+/// open from a phone, which is the point; a public feed such as nyaa's has
+/// none and passes through unchanged.
+pub fn without_secrets(url: &str) -> String {
+    let Some((base, query)) = url.split_once('?') else {
+        return url.to_string();
+    };
+    let kept: Vec<&str> = query
+        .split('&')
+        .filter(|pair| {
+            let name = pair.split('=').next().unwrap_or("");
+            !SECRET_PARAMS.iter().any(|s| name.eq_ignore_ascii_case(s))
+        })
+        .collect();
+    if kept.is_empty() {
+        base.to_string()
+    } else {
+        format!("{base}?{}", kept.join("&"))
+    }
 }
 
 /// qBittorrent writes 8640000 for an ETA it has no estimate for, and a
@@ -201,6 +227,24 @@ pub async fn snapshot(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_feed_url_loses_its_credentials_and_keeps_the_rest() {
+        assert_eq!(
+            without_secrets(
+                "http://jackett:9117/api/v2.0/indexers/x/results/torznab/?apikey=abc123&t=search&q=Frieren"
+            ),
+            "http://jackett:9117/api/v2.0/indexers/x/results/torznab/?t=search&q=Frieren"
+        );
+        assert_eq!(
+            without_secrets("https://t.example/rss?passkey=s3cret"),
+            "https://t.example/rss"
+        );
+        let nyaa = "https://nyaa.si/?page=rss&q=Frieren+1080p&c=1_2&f=0";
+        assert_eq!(without_secrets(nyaa), nyaa);
+        assert_eq!(without_secrets("https://nyaa.si/"), "https://nyaa.si/");
+    }
+
     use super::*;
 
     fn at(secs: u64) -> SystemTime {
