@@ -36,7 +36,7 @@ request and at most once an hour.
    (Android asks once to allow installs from that app), or with USB debugging on:
 
    ```sh
-   adb install -r dist/AniBeam-0.1.1.apk
+   adb install -r dist/AniBeam-0.1.2.apk
    ```
 
 4. Open AniBeam. It starts out pointed at `banditbox:8790`, the desktop's MagicDNS name.
