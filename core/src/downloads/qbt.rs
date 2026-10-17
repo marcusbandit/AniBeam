@@ -182,10 +182,10 @@ impl QbtClient {
     ) -> Result<HttpResponse, CoreError> {
         let first = self.send(path, form.clone()).await?;
         if first.status != 403 {
-            return judge(first);
+            return judge(&self.base, first);
         }
         self.login().await?;
-        judge(self.send(path, form).await?)
+        judge(&self.base, self.send(path, form).await?)
     }
 
     async fn send(
@@ -304,7 +304,7 @@ fn flatten_feeds(v: &Value, prefix: &str, out: &mut Vec<(String, String)>) {
     }
 }
 
-fn judge(r: HttpResponse) -> Result<HttpResponse, CoreError> {
+fn judge(base: &str, r: HttpResponse) -> Result<HttpResponse, CoreError> {
     if r.is_success() {
         return Ok(r);
     }
@@ -312,10 +312,31 @@ fn judge(r: HttpResponse) -> Result<HttpResponse, CoreError> {
         401 | 403 => "unauthorized".to_string(),
         s => format!("http_{s}"),
     };
+    // qBittorrent's API errors are a line of plain text. A page of HTML is
+    // some other program on the port, and 8080 is a popular one; reading
+    // that page out to the user helps nobody.
+    let text = r.text();
+    let text = text.trim();
+    let message = if text.starts_with('<') {
+        format!(
+            "{base} answered {}, but not as qBittorrent's Web UI. Check the address in Settings, \
+             and that the Web UI is turned on in qBittorrent",
+            r.status
+        )
+    } else {
+        let line: String = text
+            .lines()
+            .next()
+            .unwrap_or("")
+            .chars()
+            .take(160)
+            .collect();
+        format!("qBittorrent answered {}: {line}", r.status)
+    };
     Err(CoreError::Service {
         service: SERVICE.to_string(),
         code,
-        message: format!("qBittorrent answered {}: {}", r.status, r.text()),
+        message,
     })
 }
 
@@ -369,6 +390,26 @@ mod tests {
 
     fn client(http: &Arc<FakeHttp>) -> QbtClient {
         QbtClient::new("http://localhost:9090/", "me", "pw", http.clone())
+    }
+
+    #[tokio::test]
+    async fn a_web_page_on_the_port_is_not_read_out_as_qbittorrents_answer() {
+        let http = Arc::new(FakeHttp::new());
+        http.push_for(
+            "app/version",
+            404,
+            "<!DOCTYPE html>\n<html lang=\"en\">\n<head><title>SearXNG</title>",
+        );
+        let err = client(&http).version().await.unwrap_err();
+        let CoreError::Service { code, message, .. } = err else {
+            panic!("{err:?}")
+        };
+        assert_eq!(code, "http_404");
+        assert_eq!(
+            message,
+            "http://localhost:9090 answered 404, but not as qBittorrent's Web UI. Check the address \
+             in Settings, and that the Web UI is turned on in qBittorrent"
+        );
     }
 
     #[tokio::test]
