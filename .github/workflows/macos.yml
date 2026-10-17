@@ -1,14 +1,12 @@
 name: macOS
 
 # Builds AniBeam.app for Apple silicon on a macos-15 runner, runs the core and shell tests
-# there, smoke-tests the bundle with Homebrew moved out of reach, and attaches the .dmg to
-# the GitHub Release when a version tag is pushed:  git tag v2.1.0 && git push origin v2.1.0
-# A pull request that touches the core, the Qt shell or the workspace runs it too, so a
-# change that breaks the Mac shows up before it merges. Run it from the Actions tab (Run
-# workflow) for a build without a release.
+# there, smoke-tests the bundle with Homebrew moved out of reach, then checks the Downloads
+# page starts anirss from the Homebrew tap. release.yml calls it for a version tag and puts
+# the .dmg on the draft release. A pull request that touches the core, the Qt shell or the
+# workspace runs it too, so a change that breaks the Mac shows up before it merges. Run it
+# from the Actions tab (Run workflow) for a build without a release.
 on:
-  push:
-    tags: ['v*']
   pull_request:
     paths:
       - 'core/**'
@@ -18,9 +16,10 @@ on:
       - 'Cargo.lock'
       - '.github/workflows/macos.yml'
   workflow_dispatch:
+  workflow_call:
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   MACOSX_DEPLOYMENT_TARGET: '15.0'
@@ -28,6 +27,10 @@ env:
   HOMEBREW_NO_INSTALL_CLEANUP: '1'
   HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: '1'
   CARGO_TERM_COLOR: always
+  # The project's own AniList and MAL app registrations, so a release signs in with one
+  # click. Empty on a fork's pull request, whose build then asks for a client ID instead.
+  ANIBEAM_ANILIST_CLIENT_ID: ${{ secrets.ANIBEAM_ANILIST_CLIENT_ID }}
+  ANIBEAM_MAL_CLIENT_ID: ${{ secrets.ANIBEAM_MAL_CLIENT_ID }}
 
 jobs:
   build-macos:
@@ -90,6 +93,20 @@ jobs:
       - name: Build
         run: cargo build --release --locked -p anibeam -p anibeam-cli
 
+      # Read through the core the app links, without printing the IDs themselves.
+      - name: The build carries the tracker app IDs
+        if: env.ANIBEAM_ANILIST_CLIENT_ID != ''
+        run: |
+          root="$(mktemp -d)"
+          target/release/anibeam-cli --root "$root" call GetTrackers > "$root/trackers.json"
+          python3 - "$root/trackers.json" <<'PY'
+          import json, sys
+          state = json.load(open(sys.argv[1]))["Trackers"]["state"]
+          missing = [t for t in ("anilist", "mal") if not state[t]["bundled_credentials"]]
+          assert not missing, f"no bundled client ID for {missing}"
+          print("bundled client IDs: anilist, mal")
+          PY
+
       - name: Test the core and the shell
         run: cargo test --locked -p anibeam-core -p anibeam
 
@@ -110,6 +127,28 @@ jobs:
           sudo mv /opt/homebrew-hidden /opt/homebrew
           exit "$status"
 
+      # With Homebrew back, the way a Mac user adds downloads: anirss from the tap. The app
+      # starts with launchd's PATH, as it does when opened from Finder, so the core has to
+      # find Homebrew's bin by itself.
+      - name: The Downloads page starts anirss from the Homebrew tap
+        run: |
+          brew install marcusbandit/anirss/anirss
+          anirss --version
+          cat > smoke/downloads.json <<'JSON'
+          [
+            {"page": "downloads"},
+            {"wait": 8000},
+            {"shot": "downloads"},
+            {"eval": "frame.item.pageItem.anirss.state", "expect": "Ready"},
+            {"eval": "frame.item.pageItem.anirss.version"}
+          ]
+          JSON
+          env -i HOME="$HOME" TMPDIR="$TMPDIR" PATH=/usr/bin:/bin:/usr/sbin:/sbin QT_FORCE_STDERR_LOGGING=1 \
+            dist/AniBeam.app/Contents/MacOS/anibeam --root "$PWD/smoke/root" --drive smoke/downloads.json \
+            --out "$PWD/smoke/drive" --width 1600 --height 1000 2> smoke/downloads.log \
+            || { grep -E 'DRIVE|anirss' smoke/downloads.log | tail -40; exit 1; }
+          grep -E 'DRIVE (EVAL|FAIL)' smoke/downloads.log
+
       - name: Upload the build
         if: always()
         uses: actions/upload-artifact@v4
@@ -122,7 +161,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: smoke-captures
+          name: smoke-captures-macos
           path: |
             smoke/*.png
             smoke/*.log
@@ -130,9 +169,3 @@ jobs:
             smoke/drive/*.png
             ~/Library/Logs/DiagnosticReports/anibeam*.ips
           if-no-files-found: ignore
-
-      - name: Attach to the release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*.dmg

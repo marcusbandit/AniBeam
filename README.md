@@ -2,28 +2,14 @@
 
 <img src="assets/icon.png" alt="AniBeam icon" width="96" align="right" />
 
-Electron app for browsing, playing, and tracking a local anime library. It scans your configured folders, matches series against AniList/MAL, transcodes incompatible video for in-window playback, renders a franchise relation graph, and syncs watch progress with AniList and MyAnimeList.
-
-Linux x64 is the supported target.
-
-## Install from a GitHub release
-
-1. Download the latest `AniBeam-linux-x64-<version>.zip` from [Releases](https://github.com/marcusbandit/AniBeam/releases).
-2. Unzip it wherever you want the app to live, e.g. `~/Apps/AniBeam-linux-x64/`.
-3. Run the bundled desktop installer:
-
-```bash
-bash ~/Apps/AniBeam-linux-x64/resources/install-desktop.sh
-```
-
-That installs the launcher entry (`anibeam.desktop`) and the app icon into `~/.local/share`, no root needed. AniBeam then shows up in your app launcher like any other application.
-
-Runtime requirements: `ffmpeg` and `ffprobe` on PATH (used for playback of formats the browser engine can't decode).
+AniBeam browses, plays and tracks a local anime library. It scans the folders you point it
+at, matches each series against AniList (TVmaze for what AniList does not carry), plays
+video in the window through libmpv, and syncs watch progress with AniList and MyAnimeList.
+It runs on Linux and on Apple silicon Macs: a Qt 6 shell over a Rust core.
 
 ## Install on a Mac
 
-The native app (the Qt shell over the Rust core) also ships for Apple silicon Macs on
-macOS 15 or later.
+AniBeam ships for Apple silicon Macs on macOS 15 or later.
 
 1. Download `AniBeam-<version>-macos-arm64.dmg` from [Releases](https://github.com/marcusbandit/AniBeam/releases).
 2. Open it and drag AniBeam into Applications.
@@ -35,34 +21,70 @@ Everything the app needs is inside the bundle, mpv included. Its data lives in
 `~/Library/Application Support/anibeam`, tracker tokens go to the login keychain, and
 "Use my mpv.conf" reads `~/.config/mpv/mpv.conf`, as mpv itself does.
 
-## Install from source
+## Install on Linux
+
+On Arch, the AUR package builds the latest release:
+
+```bash
+yay -S anibeam        # or: paru -S anibeam
+```
+
+Anywhere else, download `AniBeam-<version>-x86_64.AppImage` from
+[Releases](https://github.com/marcusbandit/AniBeam/releases), make it executable and run it.
+It needs glibc 2.39 or newer: Ubuntu 24.04, Debian 13, Fedora 40 and later.
+
+```bash
+chmod +x AniBeam-*-x86_64.AppImage
+./AniBeam-*-x86_64.AppImage
+```
+
+Data lives in the XDG directories (`~/.local/share/anibeam`, `~/.config/anibeam`).
+Tracker tokens go to the Secret Service keyring (GNOME Keyring, KWallet) when one is
+running, and to a file only you can read when none is.
+
+## The Downloads page
+
+The Downloads page searches release feeds, subscribes to shows and hands torrents to
+qBittorrent. It is optional: the library, the player and the trackers work without it.
+It needs two programs AniBeam does not ship:
+
+1. [anirss](https://github.com/marcusbandit/anirss) 0.4.0 or newer. AniBeam starts it in
+   the background when the page needs it.
+   - Mac: `brew install marcusbandit/anirss/anirss`
+   - Arch: `yay -S anirss`
+   - Anywhere with Python 3.11 or newer: `uv tool install git+https://github.com/marcusbandit/anirss`
+2. qBittorrent with its Web UI turned on. In qBittorrent, open Preferences > Web UI, tick
+   the Web UI box, and set a username and password (qBittorrent 5 has no default password).
+   Then fill in the same address (`http://localhost:8080` unless you changed the port),
+   username and password under AniBeam's Settings > Downloads > Torrent client, and Save.
+   On a Mac, `brew install --cask qbittorrent` installs it.
+
+If anirss is missing or older than 0.4.0, the Downloads page says so and names the command
+that fixes it.
+
+## Build from source
+
+You need Rust 1.95 or newer, Qt 6 (base, declarative, svg), libmpv and KDE's MpvQt.
+On Arch that is `pacman -S rust qt6-base qt6-declarative qt6-svg mpv mpvqt`.
 
 ```bash
 git clone https://github.com/marcusbandit/AniBeam.git
 cd AniBeam
-bun install
-bun run package          # builds out/AniBeam-linux-x64/
-bun run install:desktop  # launcher entry + icon
+cargo build --release -p anibeam     # target/release/anibeam
 ```
 
-[Bun](https://bun.sh) is the package manager and script runner; npm/yarn are not supported.
+A build from source has no AniList or MyAnimeList app registration of its own, so the
+Trackers tab asks for a client ID the first time you connect. To bundle your own, copy
+`.env.example` to `.env.local` and fill it in before building; it explains where to
+register.
+
+On a Mac, `apps/linux/packaging/macos/deps.sh` builds libmpv and MpvQt, and `bundle.sh`
+turns the binary into `AniBeam.app` and a dmg. `.github/workflows/macos.yml` runs both.
 
 ## Development
 
-```bash
-bun run dev          # typecheck + electron-forge start with HMR
-bun run package      # typecheck + package to out/AniBeam-linux-x64/anibeam
-bun run typecheck    # tsc --noEmit
-bun run lint         # eslint + typecheck
-```
-
-Tests are plain bun scripts under `scripts/verify-*.mjs`, wired as `bun run verify:<name>` (see package.json). API client IDs are configured via `ANIBEAM_`-prefixed env vars; see `.env.example`.
-
-## Native line
-
-The Rust core and its terminal shell live beside the Electron app, in `core/`
-and `apps/cli/`. They are the successor line; the Electron tree above is
-frozen. Cargo builds them, not Bun.
+The Rust core lives in `core/`, the Qt shell in `apps/linux/` (it builds for the Mac
+too), and a terminal shell over the same core in `apps/cli/`.
 
 ```bash
 cargo build --release -p anibeam-cli   # target/release/anibeam-cli
@@ -113,13 +135,27 @@ Titles can drift apart without either side being wrong: AniList's romaji is
 edited from time to time, so an Electron entry that has not been refreshed in
 months holds an older string for the same id.
 
+## The Electron app
+
+The original Electron app still lives in `src/`, frozen. Its last release is the zip on
+v2.0.0. Bun builds it: `bun install`, then `bun run package`.
+
 ## Releasing
 
-Push a version tag and CI builds the Linux zip and the macOS dmg and attaches both to a
-GitHub Release. The Mac half is `.github/workflows/macos.yml`, which also runs by hand
-from the Actions tab for a test build; its scripts live in `apps/linux/packaging/macos/`.
+Push a version tag. `.github/workflows/release.yml` builds the Mac dmg and the Linux
+AppImage, runs both smoke tests, and leaves a draft release with the files and install
+notes on it. Read the draft, then press Publish.
 
 ```bash
-git tag v1.1.0
-git push origin v1.1.0
+git tag v2.1.0
+git push origin v2.1.0
 ```
+
+Once the release is published, point the AUR at it:
+
+```bash
+apps/linux/packaging/aur/publish.sh 2.1.0
+```
+
+Bump `version` in the workspace `Cargo.toml` before tagging: a build from the AUR's
+tarball has no git history and reports the Cargo version.
