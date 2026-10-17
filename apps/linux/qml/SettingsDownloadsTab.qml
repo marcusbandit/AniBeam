@@ -74,7 +74,7 @@ SettingsTab {
         if (!anirss) return ""
         if (anirss.state === "Ready") return "anirss " + anirss.version + " is up at " + anirss.url + "."
         if (anirss.state === "Starting") return "Starting anirss."
-        if (anirss.state === "Missing") return anirss.message
+        if (anirss.state === "Missing") return "anirss is not installed. " + anirss.message
         if (anirss.state === "Failed") return "anirss is not running: " + anirss.message
         return "Not started yet. It starts the first time the Downloads page asks for it."
     }

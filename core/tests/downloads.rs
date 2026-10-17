@@ -185,7 +185,7 @@ fn a_torrent_url_without_a_scheme_is_refused_as_invalid() {
 /// `Missing`. One function, because `PATH` and `HOME` are edited here for
 /// the whole of it.
 #[test]
-fn the_sidecar_connects_searches_and_reports_a_missing_command() {
+fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
     let home = tempfile::tempdir().unwrap();
     let bin = tempfile::tempdir().unwrap();
     let capture = tempfile::tempdir().unwrap();
@@ -320,6 +320,33 @@ fn the_sidecar_connects_searches_and_reports_a_missing_command() {
     assert_eq!(search.items[1].seeders, None);
     assert_eq!(search.groups.len(), 1);
     assert!(search.best_fit.available);
+
+    // An anirss from before the server mode: `--serve` is a usage error,
+    // and the status names the version and the one AniBeam needs.
+    let old_path = bin.path().join("anirss-old");
+    std::fs::write(
+        &old_path,
+        "#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'anirss 0.3.4'; exit 0; fi\n\
+         echo 'anirss: error: unrecognized arguments: --serve' >&2\nexit 2\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&old_path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    save(&core, settings("anirss-old"), None, None);
+    http.push_for("app/version", 200, "v5.2.4");
+    let job = started(&core, Call::ConnectDownloads);
+    let done = common::wait_job(&c, job);
+    let EventBody::DownloadsStatusChanged { status } = &done.body else {
+        panic!("{:?}", done.body)
+    };
+    assert_eq!(status.anirss.state, AnirssState::Failed);
+    assert!(
+        status
+            .anirss
+            .message
+            .starts_with("anirss 0.3.4 is too old for AniBeam, which needs 0.4.0"),
+        "{}",
+        status.anirss.message
+    );
 
     // A command the machine does not have: the job still finishes. The
     // status says Missing and why, and the torrent half connects anyway.

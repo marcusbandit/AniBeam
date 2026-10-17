@@ -38,6 +38,12 @@ const READY_TIMEOUT: Duration = Duration::from_secs(20);
 const READY_POLL: Duration = Duration::from_millis(200);
 /// Lines of the sidecar's stderr kept for the failure message.
 const STDERR_TAIL: usize = 40;
+/// How long `anirss --version` gets when a sidecar failed to come up.
+const VERSION_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// The first anirss release with `--serve` and every route this client
+/// calls. 0.3.4 and older exit on the flag.
+pub const MIN_VERSION: &str = "0.4.0";
 
 /// One server, one token.
 #[derive(Clone)]
@@ -593,6 +599,73 @@ impl Sidecar {
     }
 }
 
+/// What `command --version` prints, if it answers within a few seconds.
+/// Asked after a sidecar failed to come up, to tell an anirss too old for
+/// `--serve` from one that broke some other way.
+pub async fn installed_version(command: &str) -> Option<String> {
+    let mut cmd = Command::new(command);
+    cmd.arg("--version")
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .kill_on_drop(true);
+    if let Some(path) = child_path() {
+        cmd.env("PATH", path);
+    }
+    let out = tokio::time::timeout(VERSION_TIMEOUT, cmd.output())
+        .await
+        .ok()?
+        .ok()?;
+    let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (!text.is_empty()).then_some(text)
+}
+
+/// The version number in what `--version` or `/health` says ("anirss
+/// 0.3.4", "0.4.0"), when the text holds one older than [`MIN_VERSION`].
+/// Text that does not parse is never called old: a checkout can say
+/// anything.
+pub fn too_old(text: &str) -> Option<String> {
+    let word = text
+        .split_whitespace()
+        .find(|w| w.starts_with(|c: char| c.is_ascii_digit()))?;
+    let version = parse_version(word)?;
+    (version < parse_version(MIN_VERSION)?).then(|| word.to_string())
+}
+
+fn parse_version(word: &str) -> Option<(u32, u32, u32)> {
+    let mut parts = word.split('.').map(|part| {
+        let digits: String = part.chars().take_while(char::is_ascii_digit).collect();
+        digits.parse::<u32>().ok()
+    });
+    let major = parts.next()??;
+    let minor = parts.next().flatten().unwrap_or(0);
+    let patch = parts.next().flatten().unwrap_or(0);
+    Some((major, minor, patch))
+}
+
+/// How this platform installs anirss, for the message a missing command
+/// shows.
+pub fn install_hint() -> String {
+    if cfg!(target_os = "macos") {
+        format!(
+            "Install anirss {MIN_VERSION} or newer with: brew install marcusbandit/anirss/anirss"
+        )
+    } else {
+        format!(
+            "Install anirss {MIN_VERSION} or newer: the anirss package on the AUR, \
+             or uv tool install git+https://github.com/marcusbandit/anirss"
+        )
+    }
+}
+
+/// How this platform updates anirss, for the message an old one shows.
+pub fn update_hint() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "Update it with: brew upgrade anirss"
+    } else {
+        "Update the anirss package, or run: uv tool upgrade anirss"
+    }
+}
+
 /// A port nobody is listening on right now. Bound and released, so there
 /// is a window in which something else could take it; a sidecar that then
 /// fails to bind reports it through `wait_ready`, and the next connect
@@ -662,6 +735,17 @@ mod tests {
         );
         assert_eq!(with_dirs("/h/.local/bin:/opt/homebrew/bin", &dirs), None);
         assert_eq!(with_dirs("", &dirs[..1]).as_deref(), Some("/h/.local/bin"));
+    }
+
+    #[test]
+    fn only_a_version_before_the_server_mode_is_too_old() {
+        assert_eq!(too_old("anirss 0.3.4").as_deref(), Some("0.3.4"));
+        assert_eq!(too_old("0.2").as_deref(), Some("0.2"));
+        assert_eq!(too_old("anirss 0.4.0"), None);
+        assert_eq!(too_old("anirss 0.10.1"), None);
+        assert_eq!(too_old("anirss 1.0.0rc1"), None);
+        assert_eq!(too_old("anirss dev"), None);
+        assert_eq!(too_old(""), None);
     }
     use crate::net::FakeHttp;
 

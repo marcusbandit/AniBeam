@@ -163,10 +163,17 @@ async fn ensure_client(core: &Arc<Core>) -> Result<AnirssClient, CoreError> {
     let mut sidecar = match Sidecar::spawn(&s.anirss_command, password.as_deref()) {
         Ok(sc) => sc,
         Err(SpawnFailure::Missing) => {
-            let message = format!(
-                "{} was not found. Install anirss, or point Settings at a running server.",
-                s.anirss_command
+            let hint = format!(
+                "{}. Or point Settings at a running server.",
+                anirss::install_hint()
             );
+            // The shell already says anirss is not installed; a command
+            // the user typed in is worth naming, the default is not.
+            let message = if s.anirss_command == "anirss" {
+                hint
+            } else {
+                format!("{} was not found. {hint}", s.anirss_command)
+            };
             set_anirss_failure(core, AnirssState::Missing, &message);
             return Err(service(anirss::SERVICE, "missing", message));
         }
@@ -188,6 +195,19 @@ async fn ensure_client(core: &Arc<Core>) -> Result<AnirssClient, CoreError> {
             Ok(client)
         }
         Err(message) => {
+            // An anirss from before the server mode exits on `--serve`
+            // with a usage line that says nothing about versions.
+            let message = match anirss::installed_version(&s.anirss_command)
+                .await
+                .and_then(|text| anirss::too_old(&text))
+            {
+                Some(version) => format!(
+                    "anirss {version} is too old for AniBeam, which needs {} or newer. {}.",
+                    anirss::MIN_VERSION,
+                    anirss::update_hint()
+                ),
+                None => message,
+            };
             set_anirss_failure(core, AnirssState::Failed, &message);
             Err(service(anirss::SERVICE, "failed", message))
         }
@@ -304,7 +324,17 @@ async fn run_connect(core: Arc<Core>) -> Result<Finished, CoreError> {
         Err(e) => Some(plain(&e)),
     };
     probe_torrent(&core).await;
-    let status = status_async(&core).await?;
+    // Any other call may have started anirss again while the torrent half
+    // was probed. Its outcome is the one to report: a status read in the
+    // middle says Starting, and nothing would follow it to the shell.
+    let status = {
+        let _settled = core.downloads.connecting.lock().await;
+        status_async(&core).await?
+    };
+    let anirss_failure = match status.anirss.state {
+        AnirssState::Ready => None,
+        _ => anirss_failure.or_else(|| Some(status.anirss.message.clone())),
+    };
     let after = (status.anirss.state, status.torrent.connected);
     let level = if after == before {
         Level::Debug
