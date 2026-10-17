@@ -150,16 +150,21 @@ component TorrentCard inherits Rectangle {
                 color: root.data.tone == 0 ? Theme.accent : root.data.tone == 2 ? Theme.warn : Theme.dim;
                 font-size: Theme.small;
                 font-weight: 700;
+                horizontal-stretch: 1;
             }
             Text {
-                text: root.data.facts;
+                text: Math.round(root.data.progress * 100) + "%";
                 color: Theme.dim;
                 font-size: Theme.small;
                 font-family: Theme.mono;
-                horizontal-stretch: 1;
-                horizontal-alignment: right;
-                overflow: elide;
             }
+        }
+        Text {
+            text: root.data.facts;
+            color: Theme.dim;
+            font-size: Theme.small;
+            font-family: Theme.mono;
+            wrap: word-wrap;
         }
         ProgressLine {
             progress: root.data.progress;

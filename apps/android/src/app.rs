@@ -183,25 +183,7 @@ impl App {
         }
         w.set_sync_info(sync_info.into());
 
-        let a = &self.anilist;
-        let anilist_info = if a.fetched_at > 0 {
-            let used = synced.is_none_or(|s| a.fetched_at > s);
-            format!(
-                "AniList gave airing times for {} shows {}{}.",
-                a.shows.len(),
-                format::ago(now - a.fetched_at),
-                if used { ", and they are in use" } else { "; the host's later snapshot replaces them" }
-            )
-        } else if let Some(error) = &a.error {
-            format!("AniList did not answer: {error}")
-        } else {
-            "AniList has not been needed yet.".to_string()
-        };
-        let anilist_info = match (&a.error, a.fetched_at > 0) {
-            (Some(error), true) => format!("{anilist_info} The last ask failed: {error}"),
-            _ => anilist_info,
-        };
-        w.set_anilist_info(anilist_info.into());
+        w.set_anilist_info(anilist_line(&self.anilist, synced, now).into());
     }
 
     fn save_and_sync(&mut self, text: &str) {
@@ -232,6 +214,28 @@ impl App {
             }
         }
     }
+}
+
+/// What Settings says about AniList: when it last answered, whether its times are in use,
+/// and why the last ask failed.
+fn anilist_line(a: &AniListCache, synced: Option<i64>, now: i64) -> String {
+    let mut line = if a.fetched_at > 0 {
+        let in_use = synced.is_none_or(|s| a.fetched_at > s);
+        format!(
+            "AniList gave airing times for {} shows {}; {}.",
+            a.shows.len(),
+            format::ago(now - a.fetched_at),
+            if in_use { "they are in use" } else { "the host's later snapshot replaces them" }
+        )
+    } else if a.attempted_at == 0 {
+        "AniList has not been needed yet.".to_string()
+    } else {
+        String::new()
+    };
+    if let Some(error) = &a.error {
+        line.push_str(&format!(" The last ask failed: {error}"));
+    }
+    line.trim().to_string()
 }
 
 /// Builds the window from what is stored, starts the sync thread and the clocks, and runs

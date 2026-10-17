@@ -61,7 +61,13 @@ fn next_up_row(row: &NextUp, posters: &HashMap<u64, Image>, now: i64) -> NextUpR
         }
         Headline::Unscheduled => {
             out.tone = 2;
-            out.countdown = if row.complete { "Complete".into() } else { "No air time".into() };
+            out.countdown = if row.complete {
+                "Complete".into()
+            } else if row.finished {
+                "Finished airing".into()
+            } else {
+                "No air time".into()
+            };
         }
     }
     if let Some(then) = &row.then {

@@ -151,7 +151,10 @@ impl Store {
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let tmp = path.with_extension(format!("tmp{}", std::process::id()));
+    // Unique per write: a relaunched activity can overlap the old one's sync thread.
+    static WRITES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = WRITES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = path.with_extension(format!("tmp{}-{n}", std::process::id()));
     {
         let mut file = fs::File::create(&tmp)?;
         file.write_all(bytes)?;

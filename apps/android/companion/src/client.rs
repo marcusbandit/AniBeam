@@ -88,11 +88,19 @@ impl HostClient {
 
     fn get(&self, path: &str, limit: u64) -> Result<(Vec<u8>, Option<String>), HostError> {
         let url = format!("{}{}", self.address.base_url(), path);
-        let mut response = self
-            .agent
-            .get(&url)
-            .call()
-            .map_err(|e| HostError::Unreachable(describe(&e, &self.address.display())))?;
+        // A connection that drops before the answer gets one more try: every route is a
+        // GET that changes nothing.
+        let dropped = |e: &ureq::Error| {
+            matches!(e, ureq::Error::Io(io) if matches!(io.kind(),
+                std::io::ErrorKind::UnexpectedEof
+                    | std::io::ErrorKind::ConnectionReset
+                    | std::io::ErrorKind::ConnectionAborted))
+        };
+        let mut response = match self.agent.get(&url).call() {
+            Err(e) if dropped(&e) => self.agent.get(&url).call(),
+            other => other,
+        }
+        .map_err(|e| HostError::Unreachable(describe(&e, &self.address.display())))?;
         let status = response.status().as_u16();
         let kind = response
             .headers()

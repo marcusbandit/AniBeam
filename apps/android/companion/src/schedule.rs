@@ -30,6 +30,8 @@ pub struct NextUp {
     pub paused: bool,
     /// The rule has every episode and the show has finished.
     pub complete: bool,
+    /// The show has finished airing, by the host's word or a newer one from AniList.
+    pub finished: bool,
     pub headline: Headline,
     /// Every aired episode not on disk, oldest first; the headline is the last of them.
     pub missing: Vec<(Option<u32>, u32)>,
@@ -82,6 +84,20 @@ pub fn schedule_for(series: &Series, synced_at: i64, anilist: &AniListCache) -> 
     merged.extend(fresh.upcoming.iter().cloned());
     merged.sort_by_key(|a| (a.at, a.episode));
     merged
+}
+
+/// Whether the show has finished: AniList's word when it answered after the snapshot,
+/// the host's otherwise.
+fn finished(series: &Series, synced_at: i64, anilist: &AniListCache) -> bool {
+    let fresh = series
+        .anilist_id
+        .filter(|_| anilist.fetched_at > synced_at)
+        .and_then(|id| anilist.shows.get(&id))
+        .and_then(|s| s.status.as_deref());
+    match fresh {
+        Some(status) => status == "FINISHED",
+        None => series.status.as_deref() == Some("Finished"),
+    }
 }
 
 fn on_disk(series: &Series) -> HashSet<(u32, u32)> {
@@ -142,6 +158,7 @@ fn row(
         subscribed: subscription.is_some(),
         paused: subscription.is_some_and(|s| !s.enabled),
         complete: subscription.is_some_and(|s| s.complete),
+        finished: false,
         headline,
         missing: missing.into_iter().map(|((s, e), _)| ((s > 1).then_some(s), e)).collect(),
         then,
@@ -181,7 +198,7 @@ pub fn next_up(cache: &Cache, anilist: &AniListCache, now: i64) -> Vec<NextUp> {
         if sub.is_none() && !is_airing(series, &schedule) {
             continue;
         }
-        rows.push(row(
+        let mut next = row(
             format!("s{}", series.id),
             Some(series.id),
             series.title.clone(),
@@ -189,7 +206,9 @@ pub fn next_up(cache: &Cache, anilist: &AniListCache, now: i64) -> Vec<NextUp> {
             &schedule,
             &on_disk(series),
             now,
-        ));
+        );
+        next.finished = finished(series, cache.synced_at, anilist);
+        rows.push(next);
     }
 
     rows.sort_by_key(NextUp::order);
@@ -312,11 +331,24 @@ mod tests {
         );
         let rows = next_up(&cache, &anilist, fetched_at + 60);
         assert_eq!(rows[0].headline, Headline::Upcoming(airing(8, 1_793_019_600)));
+        assert!(!rows[0].finished);
 
         // An AniList answer older than the snapshot changes nothing.
         let stale = AniListCache { fetched_at: cache.synced_at - 1, ..anilist.clone() };
         let rows = next_up(&cache, &stale, cache.synced_at + 60);
         assert_eq!(rows[0].headline, Headline::Upcoming(airing(8, 1_792_414_800)));
+    }
+
+    #[test]
+    fn a_show_anilist_calls_finished_says_so_and_goes_last() {
+        let cache = fixture();
+        let fetched_at = cache.synced_at + 60;
+        let mut anilist = AniListCache { fetched_at, ..Default::default() };
+        anilist.shows.insert(182255, Schedule { status: Some("FINISHED".into()), upcoming: vec![] });
+        let rows = next_up(&cache, &anilist, fetched_at + 60);
+        assert_eq!(rows[0].headline, Headline::Unscheduled);
+        assert!(rows[0].finished);
+        assert!(rows[0].subscribed, "the subscription keeps it on the list");
     }
 
     #[test]
