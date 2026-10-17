@@ -62,6 +62,29 @@ It needs two programs AniBeam does not ship:
 If anirss is missing or older than 0.4.0, the Downloads page says so and names the command
 that fixes it.
 
+## Share over Tailscale
+
+AniBeam can share a read-only copy of your library with the AniBeam app on your phone.
+Turn on Settings > Library > Phone app > Share over Tailscale. It needs
+[Tailscale](https://tailscale.com) running on this computer and on the phone, signed in to
+the same tailnet.
+
+When the switch is on, AniBeam listens on port 8790, on this computer's Tailscale addresses
+only. Nothing on your home network or the internet can reach it, so the tailnet is the
+lock. The setting shows the addresses it answers on, and the MagicDNS name when the
+`tailscale` command can say it. If Tailscale is not connected yet, AniBeam says so and looks
+again every minute.
+
+The phone reads three things and changes none of them: your library with its watched
+progress and airing times, your anirss subscriptions, and the torrents qBittorrent holds. If
+anirss or qBittorrent is not running, the phone gets the rest and a short note about which
+half is missing.
+
+You can see what it serves with `curl http://<address>:8790/api/v1/hello` and
+`/api/v1/snapshot`. For development, `ANIBEAM_HOST_BIND=127.0.0.1:8790` picks the address by
+hand. `0.0.0.0:8790` lets an Android emulator reach it at `10.0.2.2`. The file
+`host-api/src/lib.rs` describes the JSON.
+
 ## Build from source
 
 You need Rust 1.95 or newer, Qt 6 (base, declarative, svg), libmpv and KDE's MpvQt.
