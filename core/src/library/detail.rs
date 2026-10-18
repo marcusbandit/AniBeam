@@ -13,6 +13,7 @@ use crate::library::cards::next_up;
 use crate::library::classifier;
 use crate::library::snapshot::{FileRow, MediaRow, Snapshot, season_of};
 use crate::library::{labels, titles};
+use crate::playback::session::MARK_FRACTION;
 use crate::store::sql::placeholders;
 use crate::time;
 
@@ -75,6 +76,7 @@ impl Snapshot {
                 path: f.path.clone(),
                 sidecars: f.sidecars.clone(),
                 resume: self.resume_of(id, &f.episode_key),
+                stopped_short: self.stopped_short(id, &f.episode_key),
                 watched: completed_keys.contains(f.episode_key.as_str())
                     || card.watched.is_some_and(|w| f.number <= f64::from(w)),
                 next_up: next == Some(f.id),
@@ -149,6 +151,22 @@ impl Snapshot {
                 position: *position,
                 duration: *duration,
             })
+    }
+
+    /// Whether the episode's resume point sits before its end line: the
+    /// outro's start when the skip windows name one, else the tracker
+    /// mark's 85 percent. The same line `playback::session` marks on.
+    fn stopped_short(&self, series: u64, key: &str) -> bool {
+        let k = (series, key.to_string());
+        let Some((position, duration)) = self.resume.get(&k) else {
+            return false;
+        };
+        let line = self
+            .outro
+            .get(&k)
+            .copied()
+            .unwrap_or(duration * MARK_FRACTION);
+        *position < line
     }
 
     /// The season and number of the most recently completed episode,

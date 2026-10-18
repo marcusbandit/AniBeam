@@ -650,3 +650,44 @@ fn the_resume_point_is_throttled_but_a_pause_and_the_close_are_not() {
     .unwrap();
     assert_eq!(resume_row(&core, lib.series, "2"), Some((13.0, 1400.0)));
 }
+
+/// A resume point is "stopped short" only before the episode's end line:
+/// the outro's start when the cached skip windows name one, else 85
+/// percent. A stop in the credits of a file with no known outro is seen to
+/// its end; a stop past 85 percent but before a known outro is not.
+#[test]
+fn a_resume_point_before_the_outro_is_stopped_short() {
+    let (_dir, core, _c) = common::open_core();
+    let lib = library(&core);
+    // 1300 of 1400 with no outro known: past 85 percent, so not short.
+    put_resume_row(&core, lib.series, "1", 1300.0);
+    // 1250 of 1400 before an outro at 1280: short, though past 85 percent.
+    put_resume_row(&core, lib.series, "2", 1250.0);
+    let series = lib.series;
+    core.store()
+        .write(move |c| {
+            c.execute(
+                "INSERT INTO skip_windows (series_id, episode_key, windows, source, fetched_at) VALUES (?1, '2', ?2, 'chapters', 0)",
+                rusqlite::params![
+                    series as i64,
+                    r#"[{"kind":"Outro","start":1280.0,"end":1370.0,"source":"Chapters"}]"#
+                ],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    // 600 of 1400 with no outro: short.
+    put_resume_row(&core, lib.series, "3", 600.0);
+
+    let d = detail(&core, lib.series);
+    let short = |file: u64| {
+        d.episodes
+            .iter()
+            .find(|e| e.file == file)
+            .unwrap()
+            .stopped_short
+    };
+    assert!(!short(lib.ep1));
+    assert!(short(lib.ep2));
+    assert!(short(lib.ep3));
+}

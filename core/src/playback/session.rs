@@ -161,13 +161,10 @@ pub fn effects(s: &mut Session, position: f64, kind: TickKind) -> Vec<Effect> {
         out.push(Effect::View);
     }
     if !s.marked && !s.is_extra {
-        // The earlier of a known outro's start and 85 percent of the
-        // duration, so the mark still fires when no outro is known or the
-        // outro is unusually short.
-        let mut at: Option<f64> = s.duration.map(|d| d * MARK_FRACTION);
-        if let Some(o) = s.outro_start {
-            at = Some(at.map_or(o, |a| a.min(o)));
-        }
+        // A known outro's start: an episode stopped before its ending
+        // song is not finished, however far through the file that is. 85
+        // percent of the duration only stands in when no outro is known.
+        let at = s.outro_start.or(s.duration.map(|d| d * MARK_FRACTION));
         if at.is_some_and(|a| position >= a) {
             s.marked = true;
             out.push(Effect::Mark);
@@ -904,9 +901,11 @@ mod tests {
         assert_eq!(s.watched_secs, 2.5);
     }
 
-    /// The earlier of the two lines wins, and each rule fires once.
+    /// 85 percent marks a file with no known outro; a known outro is the
+    /// only line, so stopping past 85 percent but before the ending song
+    /// leaves the episode unwatched. Each rule fires once.
     #[test]
-    fn the_mark_takes_the_earlier_of_the_outro_and_85_percent() {
+    fn the_mark_waits_for_the_outro_and_falls_back_to_85_percent() {
         let mut s = session(false, Some(1400.0));
         assert_eq!(
             effects(&mut s, 1189.0, TickKind::Playing),
@@ -921,6 +920,22 @@ mod tests {
         assert_eq!(
             effects(&mut s, 1200.0, TickKind::Playing),
             vec![Effect::Resume(1200.0)]
+        );
+
+        // An outro past the 85 percent line: 1190 is no mark, 1250 is.
+        let mut s = session(false, Some(1400.0));
+        s.outro_start = Some(1250.0);
+        assert_eq!(
+            effects(&mut s, 1190.0, TickKind::Playing),
+            vec![Effect::Resume(1190.0)]
+        );
+        assert_eq!(
+            effects(&mut s, 1249.0, TickKind::Playing),
+            vec![Effect::Resume(1249.0)]
+        );
+        assert_eq!(
+            effects(&mut s, 1250.0, TickKind::Playing),
+            vec![Effect::Mark, Effect::Complete]
         );
 
         let mut s = session(false, Some(1400.0));

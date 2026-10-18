@@ -141,6 +141,9 @@ pub struct Snapshot {
     pub views: HashMap<u64, (String, i64)>,
     pub completed: HashMap<u64, Vec<(String, i64)>>,
     pub resume: HashMap<(u64, String), (f64, f64)>,
+    /// The outro's start by (series, episode key), for the episodes whose
+    /// skip windows are cached and name one.
+    pub outro: HashMap<(u64, String), f64>,
     /// AniList ids with at least one relation row.
     pub graph_seeds: HashSet<u64>,
     /// By series id, only for a series whose match leads to an IMDb title.
@@ -298,6 +301,7 @@ impl Snapshot {
             views: HashMap::new(),
             completed: HashMap::new(),
             resume: HashMap::new(),
+            outro: HashMap::new(),
             graph_seeds: HashSet::new(),
             imdb: HashMap::new(),
             franchises: HashMap::new(),
@@ -674,6 +678,24 @@ impl Snapshot {
         for row in rows {
             let (series_id, key, position, duration) = row?;
             self.resume.insert((series_id, key), (position, duration));
+        }
+
+        let mut stmt = conn.prepare(&format!(
+            "SELECT series_id, episode_key, windows FROM skip_windows{where_sql}"
+        ))?;
+        let rows = stmt.query_map(params_from_iter(ids.iter()), |r| {
+            Ok((
+                r.get::<_, i64>(0)? as u64,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+            ))
+        })?;
+        for row in rows {
+            let (series_id, key, windows) = row?;
+            let windows: Vec<SkipWindow> = serde_json::from_str(&windows).unwrap_or_default();
+            if let Some(o) = windows.iter().find(|w| w.kind == SkipKind::Outro) {
+                self.outro.insert((series_id, key), o.start);
+            }
         }
         Ok(())
     }
