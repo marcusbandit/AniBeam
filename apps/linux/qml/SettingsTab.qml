@@ -15,8 +15,10 @@ Flickable {
     property real footInset: theme.space(10)
     readonly property real viewport: Math.max(0, height - footInset)
     readonly property real gap: theme.space(8)
-    readonly property real blockWidth: width
-    readonly property real blockX: 0
+    // The sections sit in the centred column every page uses, while the Flickable spans the
+    // page so the wheel works anywhere
+    readonly property real blockWidth: Math.min(width, theme.contentMax) - theme.space(16)
+    readonly property real blockX: Math.round((width - blockWidth) / 2)
 
     // Whether any direct child asks for the spare height (a Panel or a SettingsPair with
     // `grows`)
@@ -42,6 +44,6 @@ Flickable {
         height: grows ? Math.max(root.viewport, implicitHeight) : implicitHeight
         spacing: root.gap
     }
-    // The scroll bar rides the page's right margin, beside the sections
-    QC.ScrollBar.vertical: ThinScrollBar { parent: root.parent; x: root.x + root.width + theme.space(3); y: root.y; height: root.height; width: theme.space(1) }
+    // The scroll bar rides the window's right edge, as on every other page
+    QC.ScrollBar.vertical: ThinScrollBar {}
 }

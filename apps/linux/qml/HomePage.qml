@@ -392,11 +392,11 @@ Item {
             readonly property color ink: "#f4f6f8"
             readonly property color inkDim: Qt.rgba(1, 1, 1, 0.68)
 
-            // The band's colour bleeds up into the page's head, so the whole top of Home
-            // takes the series' tone
+            // The band's colour bleeds up into the page's head and out to the window's edges,
+            // so the whole top of Home takes the series' tone
             Rectangle {
-                x: -theme.space(8); y: -theme.space(7)
-                width: parent.width + theme.space(16); height: parent.height * 0.6 + theme.space(7)
+                x: -scroll.gutter; y: -theme.space(7)
+                width: scroll.width; height: parent.height * 0.6 + theme.space(7)
                 gradient: Gradient {
                     GradientStop { position: 0; color: Qt.rgba(hero.tone.r, hero.tone.g, hero.tone.b, 0.22) }
                     GradientStop { position: 1; color: Qt.rgba(hero.tone.r, hero.tone.g, hero.tone.b, 0) }
@@ -423,12 +423,16 @@ Item {
                         fillMode: Image.PreserveAspectCrop; asynchronous: true
                     }
                 }
+                // The wash shares the band's rounding, so no square corner of it shows past
+                // the band's own; it stays solid until past the art's left edge
                 Rectangle {
                     visible: hero.hasArt
                     anchors.fill: parent
+                    radius: theme.radiusXl
+                    antialiasing: true
                     gradient: Gradient {
                         orientation: Gradient.Horizontal
-                        GradientStop { position: 0.28; color: hero.base }
+                        GradientStop { position: 0.33; color: hero.base }
                         GradientStop { position: 0.62; color: Qt.rgba(hero.base.r, hero.base.g, hero.base.b, 0.55) }
                         GradientStop { position: 1; color: Qt.rgba(hero.base.r, hero.base.g, hero.base.b, 0.1) }
                     }
