@@ -11,7 +11,7 @@ platform. The Electron app it replaced is still in the tree, frozen, until it is
 
 ## Install
 
-[v2.0.0](https://github.com/marcusbandit/AniBeam/releases/tag/v2.0.0) carries `anibeam`, a
+[v2.0.0](https://github.com/marcusbandit/AniBeam/releases/tag/v2.0.0) carries `anibeam-2.0.0`, a
 Linux x86_64 binary built on Arch against Qt 6, MpvQt 1.2 and libmpv. Those have to be
 installed beside it; on Arch:
 
@@ -19,7 +19,7 @@ installed beside it; on Arch:
 sudo pacman -S qt6-base qt6-declarative qt6-svg mpv mpvqt
 ```
 
-Put `anibeam` on your PATH and run it. For a launcher entry, copy
+Rename it to `anibeam`, put it on your PATH and run it. For a launcher entry, copy
 `apps/linux/com.marcusrosado.AniBeam.desktop` into `~/.local/share/applications/`.
 
 The `AniBeam-linux-x64-*.zip` on the same release is the legacy Electron app.
@@ -31,7 +31,7 @@ There is no package yet. An AUR package, an AppImage and a Mac dmg are in progre
 
 ### Add your library
 
-The first time AniBeam opens, it says "Your library is empty". Click Add a folder (or go to
+The first time AniBeam opens, Home says "No series yet". Click Add a folder (or go to
 Settings > Library > Folders > Add folder) and pick the folder your anime lives in. One
 folder per show works best, for example `Anime/Sousou no Frieren/Frieren - 01.mkv`.
 
@@ -64,7 +64,7 @@ your library so they show up there.
 
 `~/.local/share/anibeam`, `~/.config/anibeam` and `~/.cache/anibeam`. Tracker tokens go to
 the Secret Service keyring (GNOME Keyring, KWallet) or, without one, to a file only you can
-read. "Use my mpv.conf" reads `~/.config/mpv/mpv.conf`.
+read. "Use my mpv settings" reads `~/.config/mpv/mpv.conf`.
 
 ## Build from source
 
@@ -95,7 +95,7 @@ register.
 ## macOS
 
 The core and the CLI build and run on a Mac with Cargo as they are. The Qt shell does not
-build on `main` yet: it looks for MpvQt under `/usr` and for `XDG_RUNTIME_DIR`. The port
+build on `main` yet: its build looks for MpvQt under `/usr`. The port
 (MpvQt from source, the Keychain for tokens, an `AniBeam.app` and a dmg) is on the
 `feat/release-pipeline` branch. The longer-term Mac shell is SwiftUI over the same core;
 Appendix A of `docs/superpowers/specs/2026-09-04-native-line-design.md` describes it.
