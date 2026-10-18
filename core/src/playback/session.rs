@@ -233,6 +233,8 @@ struct SeriesRow {
     title_romaji: Option<String>,
     title_english: Option<String>,
     total: Option<u32>,
+    /// Still putting out episodes, by AniList's or TVmaze's own status.
+    airing: bool,
     poster: Option<String>,
 }
 
@@ -268,7 +270,8 @@ fn series_row(conn: &Connection, series: u64, images_dir: &Path) -> Result<Serie
     let row = conn
         .query_row(
             "SELECT s.kind, s.folder_name, s.anilist_id, s.mal_id, s.track_choice,
-                    COALESCE(t.name, m.title_romaji), m.title_english, m.episodes, i.path, t.id
+                    COALESCE(t.name, m.title_romaji), m.title_english, m.episodes, i.path, t.id,
+                    CASE WHEN t.id IS NOT NULL THEN t.status ELSE m.status END
              FROM series s
              LEFT JOIN anilist_media m ON m.id = s.anilist_id
              LEFT JOIN tvmaze_shows t ON t.id = s.tvmaze_id AND s.provider = 'tvmaze'
@@ -292,6 +295,17 @@ fn series_row(conn: &Connection, series: u64, images_dir: &Path) -> Result<Serie
                         .get::<_, Option<i64>>(7)?
                         .map(|v| v as u32)
                         .filter(|t| *t > 0),
+                    airing: matches!(
+                        r.get::<_, Option<String>>(10)?.as_deref(),
+                        Some(
+                            "RELEASING"
+                                | "NOT_YET_RELEASED"
+                                | "HIATUS"
+                                | "Running"
+                                | "To Be Determined"
+                                | "In Development"
+                        )
+                    ),
                     poster: r
                         .get::<_, Option<String>>(8)?
                         .map(|p| images_dir.join(p).to_string_lossy().into_owned()),
@@ -434,7 +448,9 @@ pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
     };
     // A film is the whole of what it is, an extra is never the end of
     // anything, and a show ends where the published total says, or where the
-    // disk runs out when no total is known.
+    // disk runs out when no total is known. A show still airing with no total
+    // has not ended at all: the disk running out there is only this week's
+    // episode not being out yet.
     let is_last_episode = if f.is_extra {
         false
     } else if is_film {
@@ -442,7 +458,7 @@ pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
     } else {
         match s.total {
             Some(total) => f.number >= f64::from(total),
-            None => next.is_none(),
+            None => !s.airing && next.is_none(),
         }
     };
 
