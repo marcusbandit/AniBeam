@@ -69,8 +69,8 @@ read. "Use my mpv settings" reads `~/.config/mpv/mpv.conf`.
 ## Build from source
 
 You need Rust 1.95 or newer, Qt 6.11 or newer (`qmake6` on PATH; base, declarative, svg),
-libmpv and KDE's MpvQt. On Arch that is
-`pacman -S rust qt6-base qt6-declarative qt6-svg mpv mpvqt`.
+libmpv, KDE's MpvQt and the lld linker. On Arch that is
+`pacman -S rust lld qt6-base qt6-declarative qt6-svg mpv mpvqt`.
 
 ```bash
 git clone https://github.com/marcusbandit/AniBeam.git
