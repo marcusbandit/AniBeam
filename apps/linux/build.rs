@@ -257,8 +257,9 @@ fn main() {
             })
         };
     }
-    builder.build();
-
+    // Printed before build() prints Qt's, because the linker and dyld both take the first
+    // match: Qt's directory on a Mac is Homebrew's lib, and a Mac with Homebrew's mpv
+    // installed would otherwise link and load that libmpv rather than the prefix's.
     for prefix in &extra {
         println!("cargo:rustc-link-search=native={prefix}/lib");
         // Both install names are @rpath/... on a Mac; the bundle step rewrites them to the
@@ -267,6 +268,8 @@ fn main() {
             println!("cargo:rustc-link-arg=-Wl,-rpath,{prefix}/lib");
         }
     }
+    builder.build();
+
     println!("cargo:rustc-link-lib=MpvQt");
     println!("cargo:rustc-link-lib=mpv");
 }

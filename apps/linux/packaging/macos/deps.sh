@@ -33,6 +33,17 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 mkdir -p "$prefix"
 
+# meson and KDE's CMake settings both name an installed dylib by its absolute path in the
+# prefix, and whatever links it then records that path. Each is renamed to @rpath, as
+# libtorrent names itself, so nothing built against the prefix remembers where it was: a
+# cargo build finds them through the rpath build.rs adds, and bundle.sh points that at the
+# app's own Frameworks. libmpv is renamed before MpvQt links it, so MpvQt records the new
+# name. Rewriting a load command voids the ad-hoc signature, hence the re-sign.
+rpath_id() {
+  install_name_tool -id "@rpath/$1" "$prefix/lib/$1"
+  codesign --force --sign - "$prefix/lib/$1"
+}
+
 echo "== libmpv $MPV_VERSION"
 curl -fsSL "https://github.com/mpv-player/mpv/archive/refs/tags/v$MPV_VERSION.tar.gz" | tar -xz -C "$work"
 # Upstream fixes not yet in a release. mpv-player/mpv#18383: a failed CoreAudio init left its
@@ -58,6 +69,7 @@ meson setup "$work/mpv-build" "$work/mpv-$MPV_VERSION" \
   -Dvulkan=disabled -Dshaderc=disabled -Dspirv-cross=disabled -Dsdl2-audio=disabled -Dsdl2-video=disabled
 meson compile -C "$work/mpv-build"
 meson install -C "$work/mpv-build"
+rpath_id libmpv.2.dylib
 
 echo "== MpvQt $MPVQT_VERSION"
 # FindLibmpv hands CMake <prefix>/include/mpv while the sources say <mpv/client.h>; on Arch
@@ -72,6 +84,7 @@ cmake -S "$work/mpvqt" -B "$work/mpvqt-build" -G Ninja \
   -DBUILD_TESTING=OFF
 cmake --build "$work/mpvqt-build"
 cmake --install "$work/mpvqt-build"
+rpath_id libMpvQt.3.dylib
 
 echo "== libtorrent-rasterbar $LIBTORRENT_VERSION"
 openssl="$(brew --prefix openssl@3)"
