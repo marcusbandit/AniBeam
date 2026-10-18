@@ -223,12 +223,14 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
     http.push_for(
         "/health",
         200,
-        json!({"ok": true, "version": "0.5.0"}).to_string(),
+        json!({"ok": true, "version": "0.5.0", "features": ["qbt_clients", "qbt_env_session"]})
+            .to_string(),
     );
     http.push_for(
         "/health",
         200,
-        json!({"ok": true, "version": "0.5.0"}).to_string(),
+        json!({"ok": true, "version": "0.5.0", "features": ["qbt_clients", "qbt_env_session"]})
+            .to_string(),
     );
     http.push_for(
         "/endpoints",
@@ -355,8 +357,9 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
         status.anirss.message
     );
 
-    // One that serves but predates the minimum is stopped and reported, not
-    // used: an old anirss would carry one client's login to another.
+    // One that serves but does not list the feature AniBeam relies on is
+    // stopped and reported, not used: it would carry one client's login to
+    // another. An anirss from before 0.5.0 lists no features at all.
     save(&core, settings("anirss"), None, None);
     // One health answer: the readiness poll's, after which it is stopped
     http.push_for(
@@ -375,10 +378,40 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
         status
             .anirss
             .message
-            .starts_with("anirss 0.4.2 is too old for AniBeam, which needs 0.5.0"),
+            .starts_with("anirss 0.4.2 cannot keep each torrent client's login to itself"),
         "{}",
         status.anirss.message
     );
+
+    // The feature is what counts, not the version: a fork or a checkout that
+    // reports an older one but lists it is used.
+    save(&core, settings("anirss"), None, None);
+    for _ in 0..2 {
+        http.push_for(
+            "/health",
+            200,
+            json!({"ok": true, "version": "0.4.2", "features": ["qbt_env_session"]}).to_string(),
+        );
+    }
+    http.push_for("/endpoints", 200, json!({"endpoints": []}).to_string());
+    http.push_for(
+        "/qbt/status",
+        200,
+        json!({"url": "http://localhost:9090", "reachable": true, "authenticated": false, "login_failed": false}).to_string(),
+    );
+    http.push_for("app/version", 200, "v5.2.4");
+    let job = started(&core, Call::ConnectDownloads);
+    let done = common::wait_job(&c, job);
+    let EventBody::DownloadsStatusChanged { status } = &done.body else {
+        panic!("{:?}", done.body)
+    };
+    assert_eq!(
+        status.anirss.state,
+        AnirssState::Ready,
+        "{}",
+        status.anirss.message
+    );
+    assert_eq!(status.anirss.version, "0.4.2");
 
     // A command the machine does not have: the job still finishes. The
     // status says Missing and why, and the torrent half connects anyway.
@@ -420,7 +453,8 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
         http.push_for(
             "/health",
             200,
-            json!({"ok": true, "version": "0.5.0"}).to_string(),
+            json!({"ok": true, "version": "0.5.0", "features": ["qbt_clients", "qbt_env_session"]})
+                .to_string(),
         );
     }
     http.push_for("/endpoints", 200, json!({"endpoints": []}).to_string());

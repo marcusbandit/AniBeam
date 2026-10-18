@@ -206,18 +206,19 @@ async fn ensure_client(core: &Arc<Core>) -> Result<AnirssClient, CoreError> {
     };
     let client = AnirssClient::new(&sidecar.server(), &sidecar.token, core.http.clone());
     match sidecar.wait_ready(&client).await {
-        // One that serves but predates what AniBeam relies on is not used:
-        // it would carry one client's login to another.
-        Ok(version) if anirss::too_old(&version).is_some() => {
+        // One that serves but does not say it keeps each client's login apart
+        // is not used: it would carry one client's login to another. Its
+        // version is not the question; a fork or a checkout can say anything.
+        Ok(health) if !health.has(anirss::SIDECAR_FEATURE) => {
             sidecar.stop();
-            let message = anirss::too_old_message(&version);
+            let message = anirss::lacks_feature_message(&health.version);
             set_anirss_failure(core, AnirssState::Failed, &message);
             Err(service(anirss::SERVICE, "failed", message))
         }
-        Ok(version) => {
+        Ok(health) => {
             let mut st = core.downloads.state();
             st.anirss.state = AnirssState::Ready;
-            st.anirss.version = version;
+            st.anirss.version = health.version;
             st.anirss.url = sidecar.server();
             st.anirss.message.clear();
             st.sidecar = Some(sidecar);
@@ -542,15 +543,9 @@ async fn run_connect(core: Arc<Core>) -> Result<Finished, CoreError> {
 
 /// Health, endpoints and anirss's view of qBittorrent, into the state.
 async fn read_anirss(core: &Arc<Core>, client: &AnirssClient) -> Result<(), CoreError> {
-    let version = client.health().await?;
-    // A server the user runs is held to the same minimum as the sidecar
-    if anirss::too_old(&version).is_some() {
-        return Err(service(
-            anirss::SERVICE,
-            "failed",
-            anirss::too_old_message(&version),
-        ));
-    }
+    // No feature is asked of a server the user runs: AniBeam never points it
+    // at a client, so it reads its own config and keeps its own logins.
+    let version = client.health().await?.version;
     let mut endpoints = client.endpoints().await?;
     if let Some(path) = settings::anirss_config_path() {
         for e in &mut endpoints {
