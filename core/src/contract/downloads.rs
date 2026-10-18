@@ -413,9 +413,25 @@ pub enum TorrentMode {
     Managed,
 }
 
+/// One of the user's own qBittorrents, saved by name so the downloads can
+/// switch between several: a seedbox and the one on this machine, say. Its
+/// password lives in the secret store under a key of its own.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct SavedTorrentClient {
+    /// Fixed for the life of the entry, since it names the password's key:
+    /// letters, digits, `-` and `_`. Left empty on a new entry that is not
+    /// the active one, the core picks it on save.
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    pub username: String,
+    #[serde(default)]
+    pub has_password: bool,
+}
+
 /// The downloads settings, secrets left out. The anirss token (remote mode)
-/// and the torrent client's password live in the secret store; the two
-/// `has_*` flags say whether one is held.
+/// and the torrent clients' passwords live in the secret store; the `has_*`
+/// flags say whether one is held.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct DownloadSettings {
     pub anirss_mode: AnirssMode,
@@ -433,8 +449,17 @@ pub struct DownloadSettings {
     pub torrent_mode: TorrentMode,
     pub torrent_url: String,
     pub torrent_username: String,
+    /// Whether the client in use has a password saved here.
     #[serde(default)]
     pub has_torrent_password: bool,
+    /// The user's own clients. In `Existing` mode `active_client` names the
+    /// one in use, and `torrent_url` and `torrent_username` are its address
+    /// and user: a save writes them into it, and a blob from before the list
+    /// existed reads as one client made of them.
+    #[serde(default)]
+    pub saved_clients: Vec<SavedTorrentClient>,
+    #[serde(default)]
+    pub active_client: String,
 }
 
 fn existing_mode() -> TorrentMode {

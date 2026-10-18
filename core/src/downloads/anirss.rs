@@ -41,10 +41,37 @@ const STDERR_TAIL: usize = 40;
 /// How long `anirss --version` gets when a sidecar failed to come up.
 const VERSION_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// The anirss this client needs: 0.4.0 brought `--serve` (0.3.4 and older
-/// exit on the flag), 0.4.1 the qBittorrent address from the environment,
-/// 0.4.2 a client that needs no login, which AniBeam's own qBittorrent is.
-pub const MIN_VERSION: &str = "0.4.2";
+/// The first anirss release with everything this client needs: 0.4.0 brought
+/// `--serve` (0.3.4 and older exit on the flag), 0.4.1 the qBittorrent address
+/// from the environment, 0.4.2 a client that needs no login, which AniBeam's
+/// own qBittorrent is, and 0.5.0 [`SIDECAR_FEATURE`]. It names the release to
+/// install in the hints and the one the bundles pin
+/// (`the_bundled_anirss_is_new_enough`). Whether a running sidecar will do is
+/// decided by the features it lists, not by this.
+pub const MIN_VERSION: &str = "0.5.0";
+
+/// The feature a sidecar has to list in `/health`: an address only the
+/// environment names keeps its own session and saved password. AniBeam points
+/// its sidecar at the client in use through `ANIRSS_QBT_URL`, and an anirss
+/// without it sends that client the session cookie and saved password of the
+/// qBittorrent its own config names. That fails at nothing, so no call can
+/// find it out; anirss says it has it instead. A server the user runs is not
+/// pointed anywhere and needs no such thing.
+pub const SIDECAR_FEATURE: &str = "qbt_env_session";
+
+/// What `GET /health` says: the version, and the features this anirss lists
+/// (none from one older than 0.5.0, which has no list).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Health {
+    pub version: String,
+    pub features: Vec<String>,
+}
+
+impl Health {
+    pub fn has(&self, feature: &str) -> bool {
+        self.features.iter().any(|f| f == feature)
+    }
+}
 /// Set by a shell whose package carries its own anirss.
 const BUNDLED_ENV: &str = "ANIBEAM_ANIRSS";
 
@@ -102,10 +129,21 @@ impl AnirssClient {
         self.base.trim_end_matches("/api/v1").to_string()
     }
 
-    /// `GET /health`: the version. No token needed.
-    pub async fn health(&self) -> Result<String, CoreError> {
+    /// `GET /health`: the version and the features. No token needed.
+    pub async fn health(&self) -> Result<Health, CoreError> {
         let v = self.get("/health", &[], None).await?;
-        Ok(v["version"].as_str().unwrap_or("").to_string())
+        let features = v["features"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|f| f.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+        Ok(Health {
+            version: v["version"].as_str().unwrap_or("").to_string(),
+            features,
+        })
     }
 
     pub async fn endpoints(&self) -> Result<Vec<SearchEndpoint>, CoreError> {
@@ -577,16 +615,16 @@ impl Sidecar {
     }
 
     /// Polls `/health` until the server answers, the child exits, or the
-    /// ready timeout passes. The version on success; what stderr said on
+    /// ready timeout passes. Its health on success; what stderr said on
     /// failure.
-    pub async fn wait_ready(&mut self, client: &AnirssClient) -> Result<String, String> {
+    pub async fn wait_ready(&mut self, client: &AnirssClient) -> Result<Health, String> {
         let started = tokio::time::Instant::now();
         loop {
             if let Ok(Some(status)) = self.child.try_wait() {
                 return Err(format!("anirss exited ({status}){}", self.stderr_tail()));
             }
-            if let Ok(version) = client.health().await {
-                return Ok(version);
+            if let Ok(health) = client.health().await {
+                return Ok(health);
             }
             if started.elapsed() > READY_TIMEOUT {
                 let _ = self.child.start_kill();
@@ -683,6 +721,24 @@ pub fn install_hint() -> String {
     }
 }
 
+/// What an anirss older than [`MIN_VERSION`] reports, `version` being its own.
+pub fn too_old_message(version: &str) -> String {
+    format!(
+        "anirss {version} is too old for AniBeam, which needs {MIN_VERSION} or newer. {}.",
+        update_hint()
+    )
+}
+
+/// What a sidecar that does not list [`SIDECAR_FEATURE`] reports, `version`
+/// being its own.
+pub fn lacks_feature_message(version: &str) -> String {
+    format!(
+        "anirss {version} cannot keep each torrent client's login to itself, which AniBeam \
+         needs to switch clients; anirss {MIN_VERSION} and newer can. {}.",
+        update_hint()
+    )
+}
+
 /// How this platform updates anirss, for the message an old one shows.
 pub fn update_hint() -> &'static str {
     if cfg!(target_os = "macos") {
@@ -764,11 +820,12 @@ mod tests {
     }
 
     #[test]
-    fn only_a_version_before_the_server_mode_is_too_old() {
+    fn only_a_version_before_the_minimum_is_too_old() {
         assert_eq!(too_old("anirss 0.3.4").as_deref(), Some("0.3.4"));
         assert_eq!(too_old("0.2").as_deref(), Some("0.2"));
         assert_eq!(too_old("anirss 0.4.1").as_deref(), Some("0.4.1"));
-        assert_eq!(too_old("anirss 0.4.2"), None);
+        assert_eq!(too_old("0.4.2").as_deref(), Some("0.4.2"));
+        assert_eq!(too_old("anirss 0.5.0"), None);
         assert_eq!(too_old("anirss 0.10.1"), None);
         assert_eq!(too_old("anirss 1.0.0rc1"), None);
         assert_eq!(too_old("anirss dev"), None);
@@ -783,9 +840,17 @@ mod tests {
     #[tokio::test]
     async fn health_reads_the_version_and_sends_the_bearer() {
         let http = Arc::new(FakeHttp::new());
-        http.push_json(200, json!({"ok": true, "version": "0.3.4"}));
-        let v = client(&http).health().await.unwrap();
-        assert_eq!(v, "0.3.4");
+        http.push_json(
+            200,
+            json!({"ok": true, "version": "0.5.0", "features": ["qbt_clients", "qbt_env_session"]}),
+        );
+        let h = client(&http).health().await.unwrap();
+        assert_eq!(h.version, "0.5.0");
+        assert!(h.has(SIDECAR_FEATURE) && h.has("qbt_clients") && !h.has("qbt_env"));
+        // One from before the list has none, which is not an error
+        http.push_json(200, json!({"ok": true, "version": "0.4.2"}));
+        let h = client(&http).health().await.unwrap();
+        assert_eq!((h.version.as_str(), h.features.len()), ("0.4.2", 0));
         let sent = http.requests();
         assert_eq!(sent[0].url, "http://127.0.0.1:8787/api/v1/health");
         assert!(
@@ -872,6 +937,35 @@ mod tests {
         };
         assert_eq!(body["op"]["type"], "tokens");
         assert_eq!(body["op"]["tokens"][0], "[SubsPlease]");
+    }
+
+    /// The anirss the app bundle and the AppImage carry, and the one the AUR
+    /// package asks for, have to be ones the core accepts. This fails when
+    /// MIN_VERSION has moved past the pinned release: pin one that has what
+    /// it needs (its ANIRSS_VERSION and sha256) before this can pass.
+    #[test]
+    fn the_bundled_anirss_is_new_enough() {
+        let packaging =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../apps/linux/packaging");
+        let pins = [
+            ("macos/anirss.sh", "ANIRSS_VERSION="),
+            ("linux/appimage.sh", "ANIRSS_VERSION="),
+            ("aur/anibeam/PKGBUILD", "'anirss>="),
+        ];
+        for (file, prefix) in pins {
+            let text = std::fs::read_to_string(packaging.join(file)).unwrap();
+            let pinned = text
+                .split(prefix)
+                .nth(1)
+                .and_then(|rest| rest.split(['\n', '\'', ' ']).next())
+                .unwrap_or_else(|| panic!("{file} names no anirss version"));
+            assert_eq!(
+                too_old(pinned),
+                None,
+                "{file} pins anirss {pinned}, older than the {MIN_VERSION} the core needs: \
+                 pin a release that has it, with its sha256"
+            );
+        }
     }
 
     #[test]

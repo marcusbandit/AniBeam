@@ -46,8 +46,24 @@ Item {
     readonly property bool torrentOn: !!torrent && torrent.connected
     readonly property var endpoints: status && status.endpoints ? status.endpoints : []
     readonly property string clientName: status && status.settings ? (status.settings.torrent_client === "Qbittorrent" ? "qBittorrent" : String(status.settings.torrent_client)) : "qBittorrent"
+    readonly property var savedClients: status && status.settings && status.settings.saved_clients ? status.settings.saved_clients : []
+    // A remote anirss keeps the client its own config names, so the chip cannot switch it
+    readonly property bool remoteAnirss: !!status && !!status.settings && status.settings.anirss_mode === "Remote"
+    // The client in use by the name it was saved under, once there is more than one to
+    // tell apart (the saved ones and AniBeam's own); with one, plain "qBittorrent"
+    readonly property string activeClientName: {
+        var s = status ? status.settings : null
+        if (!s || savedClients.length === 0) return clientName
+        if (s.torrent_mode === "Managed") return "AniBeam's own"
+        if (savedClients.length < 2) return clientName
+        for (var i = 0; i < savedClients.length; i++) if (savedClients[i].id === s.active_client) return savedClients[i].name
+        return clientName
+    }
     property real connectJob: -1
     property bool connecting: false
+    // Set by a switch of client: the list is the new client's once it answers, not at the
+    // poll timer's next turn
+    property bool repoll: false
     property int endpointIndex: 0
 
     // ---- The search: the state anirss asks the client to hold, and the trail for Back
@@ -152,6 +168,29 @@ Item {
         page.connecting = true
     }
     function loadRules() { frame.readDownloadsRules() }
+    // The client chip's menu: every saved client and AniBeam's own, the one in use ticked,
+    // then the settings. A pick switches the downloads to it and reconnects.
+    function clientMenu() {
+        var s = page.status ? page.status.settings : null
+        var items = []
+        for (var i = 0; i < page.savedClients.length; i++) {
+            var c = page.savedClients[i]
+            var inUse = !!s && s.torrent_mode === "Existing" && c.id === s.active_client
+            items.push({ text: c.name, icon: inUse ? "check" : "hard-drive", action: page.useClient.bind(null, c.id) })
+        }
+        var own = !!s && s.torrent_mode === "Managed"
+        items.push({ text: "AniBeam's own", icon: own ? "check" : "play", action: page.useClient.bind(null, "") })
+        items.push({ text: "Torrent client settings", icon: "settings", action: function() { frame.go("settings", { tab: "downloads" }) } })
+        return items
+    }
+    function useClient(id) {
+        var r = Door.useTorrentClient(id)
+        if (r.error) { frame.toast(r.error.message); return }
+        frame.forgetDownloadsRules()
+        page.torrents = []
+        page.repoll = true
+        page.connect()
+    }
     function pollTorrents() {
         var r = Door.listTorrents()
         if (r.error) page.torrentsError = r.error.message
@@ -540,8 +579,17 @@ Item {
     function targetForTorrent(t) {
         return { title: t.name, rule: "", hashes: [t.hash], series: -1, rkey: "", tkeys: ["t:" + t.hash], size: t.size || 0, folder: "" }
     }
+    // A client on another machine keeps its files there: it deletes them itself, the trash cannot
+    readonly property bool filesHere: {
+        var s = status ? status.settings : null
+        if (!s || s.torrent_mode === "Managed") return true
+        var host = String(s.torrent_url).replace(/^[a-z]+:\/\//i, "").replace(/[\/?#].*$/, "").replace(/^.*@/, "")
+        host = host.charAt(0) === "[" ? host.slice(1, host.indexOf("]")) : host.replace(/:\d*$/, "")
+        return ["127.0.0.1", "localhost", "::1"].indexOf(host.toLowerCase()) >= 0
+    }
     function filesWhere(t) {
-        return t.folder !== "" ? t.folder + " and what the torrents downloaded" : "what the torrents downloaded"
+        var torrents = page.filesHere ? "what the torrents downloaded" : "what the torrents downloaded, deleted by " + page.activeClientName
+        return t.folder !== "" ? t.folder + " and " + torrents : torrents
     }
     function askUnsubscribe(anchor, r) {
         var t = page.targetForRule(r)
@@ -667,7 +715,7 @@ Item {
         if (a.state === "Missing") return "anirss is not installed. " + a.message
         if (a.state === "Failed") return "anirss is not running: " + a.message
         if (a.state === "Off") return "anirss is not running yet."
-        var t = page.torrentOn ? page.clientName + " " + page.torrent.version + " is connected." : page.clientName + " is not connected: " + (page.torrent.message || "no answer") + "."
+        var t = page.torrentOn ? page.activeClientName + " " + page.torrent.version + " is connected." : page.activeClientName + " is not connected: " + (page.torrent.message || "no answer") + "."
         return "Searches run through anirss " + a.version + ". " + t
     }
 
@@ -677,6 +725,7 @@ Item {
             page.status = status
             page.connecting = false
             if (page.anirssReady && !frame.downloadsRulesRead) page.loadRules()
+            if (page.repoll && page.torrentOn) { page.repoll = false; page.pollTorrents() }
         }
         function onJobProgress(job, kind, done, total, label) {
             if (job === page.repairJob) { page.repairLabel = label; return }
@@ -864,11 +913,14 @@ Item {
                 Chip {
                     objectName: "downloads-client-chip"
                     icon: "download"
-                    text: page.torrentOn ? page.clientName + " " + page.torrent.version : page.clientName + " off"
+                    text: page.torrentOn ? page.activeClientName + " " + page.torrent.version : page.activeClientName + " off"
                     textColor: page.torrentOn ? theme.caughtUp : theme.red
                     clickable: true
-                    onClicked: frame.go("settings", { tab: "downloads" })
-                    Tooltip { text: page.torrentOn ? (page.status.settings.torrent_url) : (page.torrent && page.torrent.message ? page.torrent.message : "Open the Downloads settings") }
+                    onClicked: {
+                        if (page.remoteAnirss) { frame.go("settings", { tab: "downloads" }); return }
+                        var p = mapToItem(frame, 0, height); frame.openMenu(p.x, p.y, page.clientMenu())
+                    }
+                    Tooltip { text: (page.torrentOn ? page.status.settings.torrent_url : (page.torrent && page.torrent.message ? page.torrent.message : "Not connected")) + (page.remoteAnirss ? "\nA remote anirss uses the client its own config names" : "\nClick to switch clients") }
                 }
                 Button {
                     text: page.connecting ? "Connecting" : "Reconnect"

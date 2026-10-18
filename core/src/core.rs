@@ -824,6 +824,7 @@ impl Core {
                 anirss_token.as_deref(),
                 torrent_password.as_deref(),
             ),
+            Call::UseTorrentClient { id } => downloads::use_client(self, id),
             Call::TestTorrentClient => Ok(Reply::Started {
                 job: downloads::test_torrent_client(self)?,
             }),

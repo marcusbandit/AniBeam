@@ -109,7 +109,7 @@ cd AniBeam
 cargo build --release -p anibeam     # target/release/anibeam
 ```
 
-A build from source finds anirss and qbittorrent-nox on your PATH (anirss 0.4.2 or newer,
+A build from source finds anirss and qbittorrent-nox on your PATH (anirss 0.5.0 or newer,
 `yay -S anirss qbittorrent-nox` on Arch). A build from source has no AniList or MyAnimeList
 app registration of its own, so the
 Trackers tab asks for a client ID the first time you connect. To bundle your own, copy
