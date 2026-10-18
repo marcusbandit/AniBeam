@@ -287,12 +287,16 @@ Item {
                         fillMode: Image.PreserveAspectCrop; asynchronous: true
                     }
                 }
+                // The wash shares the band's rounding, so no square corner of it shows past
+                // the band's own; it stays solid until past the art's left edge
                 Rectangle {
                     visible: page.showArt
                     anchors.fill: parent
+                    radius: theme.radiusXl
+                    antialiasing: true
                     gradient: Gradient {
                         orientation: Gradient.Horizontal
-                        GradientStop { position: 0.28; color: page.bandBase }
+                        GradientStop { position: 0.33; color: page.bandBase }
                         GradientStop { position: 0.62; color: Qt.rgba(page.bandBase.r, page.bandBase.g, page.bandBase.b, 0.55) }
                         GradientStop { position: 1; color: Qt.rgba(page.bandBase.r, page.bandBase.g, page.bandBase.b, 0.1) }
                     }

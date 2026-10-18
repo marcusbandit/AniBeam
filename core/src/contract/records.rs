@@ -182,6 +182,10 @@ pub struct Episode {
     pub path: String,
     pub sidecars: Vec<Sidecar>,
     pub resume: Option<ResumePoint>,
+    /// A resume point short of the episode's end line: the outro's start
+    /// when one is known, else the 85 percent the tracker mark uses. Past
+    /// that line the episode was seen to its end, whatever is left.
+    pub stopped_short: bool,
     pub watched: bool,
     pub next_up: bool,
 }

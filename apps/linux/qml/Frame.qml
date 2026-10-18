@@ -143,15 +143,16 @@ FocusScope {
         id: content
         anchors.left: frame.fullWindow ? parent.left : rail.right
         anchors.right: parent.right; anchors.top: parent.top; anchors.bottom: parent.bottom
-        // The pages sit in a centred column no wider than theme.contentMax; the player
-        // alone takes the whole window
+        // The pages take the whole width so the wheel scrolls them from anywhere; each page
+        // centres its own content in a column no wider than theme.contentMax (PageScroll,
+        // SettingsTab). The status strip sits under that column; the player takes the window.
         readonly property real column: frame.fullWindow ? width : Math.min(width, theme.contentMax)
         readonly property real columnX: frame.fullWindow ? 0 : Math.round((width - column) / 2)
 
         Loader {
             id: page
-            x: content.columnX
-            width: content.column
+            x: 0
+            width: content.width
             anchors.top: parent.top
             anchors.bottom: frame.fullWindow ? parent.bottom : strip.top
             focus: true
