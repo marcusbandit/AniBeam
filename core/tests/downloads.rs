@@ -1031,6 +1031,49 @@ fn remove_show_unsubscribes_and_takes_the_torrents_keeping_the_files() {
     assert_eq!(form_of(delete), "hashes=aa|bb&deleteFiles=false");
 }
 
+/// A client on another machine: its files are its own, so the core trashes
+/// nothing here and has the client delete them with the torrents.
+#[test]
+fn remove_show_leaves_a_remote_clients_files_to_the_client() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    isolate_xdg(dir.path());
+    save(
+        &core,
+        DownloadSettings {
+            torrent_url: "http://192.0.2.10:8080".to_string(),
+            ..remote()
+        },
+        Some("tok"),
+        Some("pw"),
+    );
+    http.push_for("torrents/delete", 200, "");
+
+    let job = started(
+        &core,
+        Call::RemoveShow {
+            title: "Frieren".to_string(),
+            rule: None,
+            hashes: vec!["aa".to_string()],
+            torrents: true,
+            files: true,
+            series: None,
+        },
+    );
+    let event = common::wait_job(&c, job);
+    let EventBody::ShowRemoved { trashed, .. } = &event.body else {
+        panic!("{:?}", event.body)
+    };
+    assert!(trashed.is_empty());
+    let requests = http.requests();
+    assert!(!requests.iter().any(|r| r.url.contains("torrents/info")));
+    let delete = requests
+        .iter()
+        .find(|r| r.url.contains("torrents/delete"))
+        .expect("the torrents went");
+    assert_eq!(form_of(delete), "hashes=aa&deleteFiles=true");
+}
+
 /// A file target that holds a library folder refuses the whole removal:
 /// the rule and the torrents stay, nothing is moved.
 #[test]

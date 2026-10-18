@@ -1258,9 +1258,13 @@ pub fn remove_show(
         .jobs
         .clone()
         .start(JobKind::RemoveShow, move |_| async move {
+            // A client on another machine wrote its files there: they are out
+            // of the trash's reach, and its own delete takes them instead.
+            let here = settings::files_here(&load_settings(&owner).await?);
+            let client_deletes_files = takes_files && takes_torrents && !here;
             // What the torrents wrote, read before they go, and the series' folder
             let mut candidates = Vec::new();
-            if takes_files && !hashes.is_empty() {
+            if takes_files && here && !hashes.is_empty() {
                 let client = qbt_client(&owner).await?;
                 for t in client.torrents().await? {
                     if hashes.contains(&t.hash.to_ascii_lowercase()) {
@@ -1309,8 +1313,12 @@ pub fn remove_show(
                     .await?;
             }
             if takes_torrents {
-                // Never the client's own delete-with-files: what goes, goes to the trash
-                qbt_client(&owner).await?.delete(&hashes, false).await?;
+                // Never the client's own delete-with-files on this machine:
+                // what goes, goes to the trash
+                qbt_client(&owner)
+                    .await?
+                    .delete(&hashes, client_deletes_files)
+                    .await?;
             }
             if !targets.is_empty() {
                 let paths = targets.clone();
@@ -1327,6 +1335,9 @@ pub fn remove_show(
             }
             if takes_torrents {
                 parts.push(plural(hashes.len() as u64, "torrent", "torrents"));
+            }
+            if client_deletes_files {
+                parts.push("their files on the torrent client".to_string());
             }
             if !targets.is_empty() {
                 parts.push(format!(

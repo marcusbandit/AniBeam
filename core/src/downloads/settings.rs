@@ -264,6 +264,14 @@ fn address_key(url: &str) -> String {
     format!("{scheme}://{host}:{port}{path}")
 }
 
+/// Whether the client in use keeps its downloads on this machine's disk, so
+/// the core may move them to the trash itself. AniBeam's own always does; a
+/// client of the user's does when it is at a local address. A seedbox's paths
+/// are its own, and the same path here is somebody else's folder.
+pub fn files_here(s: &DownloadSettings) -> bool {
+    s.torrent_mode == TorrentMode::Managed || is_loopback(&s.torrent_url)
+}
+
 /// Whether AniBeam's own may listen at the address in use: it has to be on
 /// this machine, and not where one of the user's saved clients is, or it
 /// would be started at the user's own qBittorrent's port.

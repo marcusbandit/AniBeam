@@ -579,8 +579,17 @@ Item {
     function targetForTorrent(t) {
         return { title: t.name, rule: "", hashes: [t.hash], series: -1, rkey: "", tkeys: ["t:" + t.hash], size: t.size || 0, folder: "" }
     }
+    // A client on another machine keeps its files there: it deletes them itself, the trash cannot
+    readonly property bool filesHere: {
+        var s = status ? status.settings : null
+        if (!s || s.torrent_mode === "Managed") return true
+        var host = String(s.torrent_url).replace(/^[a-z]+:\/\//i, "").replace(/[\/?#].*$/, "").replace(/^.*@/, "")
+        host = host.charAt(0) === "[" ? host.slice(1, host.indexOf("]")) : host.replace(/:\d*$/, "")
+        return ["127.0.0.1", "localhost", "::1"].indexOf(host.toLowerCase()) >= 0
+    }
     function filesWhere(t) {
-        return t.folder !== "" ? t.folder + " and what the torrents downloaded" : "what the torrents downloaded"
+        var torrents = page.filesHere ? "what the torrents downloaded" : "what the torrents downloaded, deleted by " + page.activeClientName
+        return t.folder !== "" ? t.folder + " and " + torrents : torrents
     }
     function askUnsubscribe(anchor, r) {
         var t = page.targetForRule(r)
