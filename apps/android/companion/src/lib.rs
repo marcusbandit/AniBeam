@@ -8,6 +8,7 @@ pub use anibeam_host_api as api;
 
 pub mod address;
 pub mod anilist;
+pub mod calendar;
 pub mod client;
 pub mod format;
 pub mod library;

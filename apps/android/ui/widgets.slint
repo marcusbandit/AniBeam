@@ -1,4 +1,5 @@
 import { Theme } from "theme.slint";
+import { Tile } from "data.slint";
 
 // A poster with round corners, or the title's initials on a plain tile when the host
 // has no poster for it.
@@ -187,5 +188,133 @@ export component NavItem inherits Rectangle {
     }
     TouchArea {
         clicked => { root.clicked(); }
+    }
+}
+
+// A poster tile, as on the desktop: the title sits on the poster over a fade from the
+// foot, an episode code or air time rides the top-left corner, and a thin strip along the
+// bottom says how much is watched.
+export component PosterTile inherits Rectangle {
+    in property <Tile> data;
+    callback open(int);
+    border-radius: Theme.radius;
+    clip: true;
+    background: Theme.raised;
+
+    if root.data.has-poster: Image {
+        width: parent.width;
+        height: parent.height;
+        source: root.data.poster;
+        image-fit: cover;
+    }
+    if !root.data.has-poster: Text {
+        y: parent.height * 0.3;
+        width: parent.width;
+        text: root.data.initials;
+        color: Theme.faint;
+        font-size: Theme.large;
+        font-weight: 700;
+        horizontal-alignment: center;
+    }
+    Rectangle {
+        y: parent.height * 0.4;
+        width: parent.width;
+        height: parent.height * 0.6;
+        background: @linear-gradient(180deg, Theme.scrim-clear 0%, Theme.scrim-mid 45%, Theme.scrim 100%);
+    }
+    if root.data.badge != "": Rectangle {
+        x: Theme.unit * 1.5;
+        y: Theme.unit * 1.5;
+        width: badge.preferred-width + Theme.unit * 3;
+        height: Theme.unit * 5.5;
+        border-radius: Theme.radius-small;
+        background: Theme.chip;
+        border-width: 1px;
+        border-color: Theme.line-strong;
+        badge := Text {
+            text: root.data.badge;
+            color: Theme.text;
+            font-size: Theme.small;
+            font-family: Theme.mono;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+        }
+    }
+    foot := VerticalLayout {
+        x: 0;
+        y: parent.height - self.preferred-height - (root.data.progress >= 0 ? Theme.unit : 0);
+        width: parent.width;
+        padding: Theme.unit * 2;
+        spacing: Theme.unit / 2;
+        ClampedText {
+            text: root.data.title;
+            font-size: Theme.small;
+            font-weight: 700;
+        }
+        if root.data.ledger != "": Text {
+            text: root.data.ledger;
+            color: root.data.ledger-tone == 1 ? Theme.accent : root.data.ledger-tone == 2 ? Theme.warn : root.data.ledger-tone == 3 ? Theme.ok : Theme.dim;
+            font-size: Theme.small;
+            font-family: Theme.mono;
+            font-weight: root.data.ledger-tone == 1 ? 700 : 400;
+            overflow: elide;
+        }
+    }
+    if root.data.progress >= 0: Rectangle {
+        y: parent.height - Theme.unit;
+        width: parent.width;
+        height: Theme.unit;
+        background: Theme.track;
+        Rectangle {
+            x: 0;
+            width: parent.width * Math.clamp(root.data.progress, 0, 1);
+            height: parent.height;
+            background: Theme.accent;
+        }
+    }
+    TouchArea {
+        enabled: root.data.id >= 0;
+        clicked => { root.open(root.data.id); }
+    }
+}
+
+// Tiles in as many columns as the width holds: three on a phone held upright, seven or
+// more sideways.
+export component TileGrid inherits Rectangle {
+    in property <[Tile]> tiles;
+    in property <length> tile-min: Theme.tile-min;
+    callback open(int);
+    property <int> columns: Math.max(1, Math.floor((self.width + Theme.gap) / (self.tile-min + Theme.gap)));
+    property <length> tile-width: (self.width - (self.columns - 1) * Theme.gap) / self.columns;
+    property <length> tile-height: self.tile-width * Theme.poster-ratio;
+    height: Math.max(0, Math.ceil(self.tiles.length / self.columns) * (self.tile-height + Theme.gap) - Theme.gap);
+
+    for tile[i] in root.tiles: PosterTile {
+        x: Math.mod(i, root.columns) * (root.tile-width + Theme.gap);
+        y: Math.floor(i / root.columns) * (root.tile-height + Theme.gap);
+        width: root.tile-width;
+        height: root.tile-height;
+        data: tile;
+        open(id) => { root.open(id); }
+    }
+}
+
+// A shelf's heading: its name, and a faint count beside it.
+export component ShelfHead inherits HorizontalLayout {
+    in property <string> title;
+    in property <string> count;
+    // 0: plain, 1: accent, 2: warning.
+    in property <int> tone;
+    spacing: Theme.unit * 2;
+    alignment: start;
+    Text {
+        text: root.title;
+        color: root.tone == 1 ? Theme.accent : root.tone == 2 ? Theme.warn : Theme.text;
+        font-weight: 700;
+    }
+    Text {
+        text: root.count;
+        color: Theme.faint;
+        font-family: Theme.mono;
     }
 }
