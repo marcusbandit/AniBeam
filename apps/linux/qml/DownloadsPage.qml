@@ -47,6 +47,8 @@ Item {
     readonly property var endpoints: status && status.endpoints ? status.endpoints : []
     readonly property string clientName: status && status.settings ? (status.settings.torrent_client === "Qbittorrent" ? "qBittorrent" : String(status.settings.torrent_client)) : "qBittorrent"
     readonly property var savedClients: status && status.settings && status.settings.saved_clients ? status.settings.saved_clients : []
+    // A remote anirss keeps the client its own config names, so the chip cannot switch it
+    readonly property bool remoteAnirss: !!status && !!status.settings && status.settings.anirss_mode === "Remote"
     // The client in use by the name it was saved under, once there is more than one to
     // tell apart (the saved ones and AniBeam's own); with one, plain "qBittorrent"
     readonly property string activeClientName: {
@@ -905,8 +907,11 @@ Item {
                     text: page.torrentOn ? page.activeClientName + " " + page.torrent.version : page.activeClientName + " off"
                     textColor: page.torrentOn ? theme.caughtUp : theme.red
                     clickable: true
-                    onClicked: { var p = mapToItem(frame, 0, height); frame.openMenu(p.x, p.y, page.clientMenu()) }
-                    Tooltip { text: (page.torrentOn ? page.status.settings.torrent_url : (page.torrent && page.torrent.message ? page.torrent.message : "Not connected")) + "\nClick to switch clients" }
+                    onClicked: {
+                        if (page.remoteAnirss) { frame.go("settings", { tab: "downloads" }); return }
+                        var p = mapToItem(frame, 0, height); frame.openMenu(p.x, p.y, page.clientMenu())
+                    }
+                    Tooltip { text: (page.torrentOn ? page.status.settings.torrent_url : (page.torrent && page.torrent.message ? page.torrent.message : "Not connected")) + (page.remoteAnirss ? "\nA remote anirss uses the client its own config names" : "\nClick to switch clients") }
                 }
                 Button {
                     text: page.connecting ? "Connecting" : "Reconnect"

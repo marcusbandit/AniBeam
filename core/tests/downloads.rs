@@ -580,6 +580,70 @@ fn saved_clients_switch_and_keep_their_own_passwords() {
 }
 
 #[test]
+fn a_removed_clients_password_never_passes_to_a_new_one() {
+    let (dir, core, _c) = common::open_core();
+    isolate_xdg(dir.path());
+    let mut s = settings("anirss");
+    s.torrent_url = "http://192.0.2.10:8080".to_string();
+    save(&core, s, None, Some("seedbox-pw"));
+    let mut s = downloads_status(&core).settings;
+    s.saved_clients
+        .push(saved("c2", "NAS", "http://192.0.2.20:8080", "admin"));
+    s.active_client = "c2".to_string();
+    s.torrent_url = "http://192.0.2.20:8080".to_string();
+    save(&core, s, None, Some("nas-pw"));
+
+    // One save that takes c2 off and adds a client without an id: the new
+    // one is not c2 again, so it has no password of its own yet.
+    let mut s = downloads_status(&core).settings;
+    s.saved_clients.retain(|c| c.id != "c2");
+    s.saved_clients
+        .push(saved("", "Other", "http://192.0.2.30:8080", "admin"));
+    s.active_client = "default".to_string();
+    s.torrent_url = "http://192.0.2.10:8080".to_string();
+    save(&core, s, None, None);
+    let st = downloads_status(&core).settings;
+    let other = st.saved_clients.iter().find(|c| c.name == "Other").unwrap();
+    assert_ne!(other.id, "c2");
+    assert!(!other.has_password);
+}
+
+#[test]
+fn anibeams_own_never_starts_at_a_local_clients_port() {
+    let (dir, core, _c) = common::open_core();
+    isolate_xdg(dir.path());
+    let mut s = settings("anirss");
+    s.torrent_url = "http://localhost:8080".to_string();
+    save(&core, s, None, None);
+
+    // Picking AniBeam's own in Settings while the address is still the
+    // user's own qBittorrent on this machine moves it off that port.
+    let mut s = downloads_status(&core).settings;
+    s.torrent_mode = TorrentMode::Managed;
+    save(&core, s, None, None);
+    let st = downloads_status(&core).settings;
+    assert_eq!(st.torrent_mode, TorrentMode::Managed);
+    assert!(
+        st.torrent_url.starts_with("http://127.0.0.1:") && !st.torrent_url.ends_with(":8080"),
+        "{}",
+        st.torrent_url
+    );
+    assert_eq!(st.saved_clients[0].url, "http://localhost:8080");
+}
+
+#[test]
+fn picking_the_client_in_use_keeps_it() {
+    let (dir, core, _c) = common::open_core();
+    isolate_xdg(dir.path());
+    let mut s = settings("anirss");
+    s.torrent_url = "http://192.0.2.10:8080".to_string();
+    save(&core, s, None, Some("seedbox-pw"));
+    let before = downloads_status(&core).settings;
+    assert_eq!(use_client(&core, Some("default")).unwrap(), Reply::Ok);
+    assert_eq!(downloads_status(&core).settings, before);
+}
+
+#[test]
 fn anibeams_own_never_starts_at_a_remote_clients_address() {
     let (dir, core, _c) = common::open_core();
     isolate_xdg(dir.path());

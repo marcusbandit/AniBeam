@@ -54,8 +54,10 @@ SettingsTab {
     function pickClient(i) { tab.edit(function(d) { tab.use(d, d.saved_clients[i]) }); forgetPassword() }
     function addClient() {
         tab.edit(function(d) {
+            // Never the id of one saved before this edit, even one removed in it: the id names
+            // a password, and a removed client's must not pass to the new one
             var n = 2
-            while (tab.entryOf(d, "c" + n)) n++
+            while (tab.entryOf(d, "c" + n) || (tab.settings && tab.settings.saved_clients && tab.entryOf(tab.settings, "c" + n))) n++
             var c = { id: "c" + n, name: "", url: "http://localhost:8080", username: "admin", has_password: false }
             d.saved_clients.push(c)
             d.torrent_mode = "Existing"
@@ -138,7 +140,7 @@ SettingsTab {
         if (!anirss || !settings || anirss.state !== "Ready" || !anirss.qbt_url) return ""
         var a = String(anirss.qbt_url).replace(/\/+$/, ""), b = String(settings.torrent_url).replace(/\/+$/, "")
         if (a === b) return ""
-        return "anirss talks to " + a + " while AniBeam talks to " + b + ". anirss 0.4.1 and newer take the address from AniBeam; an older one reads it from its own config.toml."
+        return "anirss talks to " + a + " while AniBeam talks to " + b + ". A remote anirss reads the address from its own config.toml, so switching clients here does not move it."
     }
 
     SettingsPair {

@@ -54,6 +54,10 @@ struct State {
     /// The torrent client with its session, built from the settings on
     /// first use and dropped when they change or a test is asked for.
     qbt: Option<Arc<QbtClient>>,
+    /// Bumped by every settings change. A sidecar or a session built from
+    /// settings read before the bump belongs to the old client and is
+    /// thrown away rather than kept.
+    generation: u64,
 }
 
 impl Default for Downloads {
@@ -148,8 +152,8 @@ async fn ensure_client(core: &Arc<Core>) -> Result<AnirssClient, CoreError> {
         }
         return Ok(AnirssClient::new(&s.anirss_url, &token, core.http.clone()));
     }
-    let _one_at_a_time = core.downloads.connecting.lock().await;
-    {
+    let one_at_a_time = core.downloads.connecting.lock().await;
+    let generation = {
         let mut st = core.downloads.state();
         if let Some(sc) = st.sidecar.as_mut() {
             if sc.alive() {
@@ -166,7 +170,8 @@ async fn ensure_client(core: &Arc<Core>) -> Result<AnirssClient, CoreError> {
         st.anirss.state = AnirssState::Starting;
         st.anirss.message.clear();
         st.anirss.url.clear();
-    }
+        st.generation
+    };
     // anirss is pointed at the client the core uses, so that has to be
     // settled first. It still starts without one: the page then says why
     // the torrent half is down.
@@ -216,12 +221,27 @@ async fn ensure_client(core: &Arc<Core>) -> Result<AnirssClient, CoreError> {
             Err(service(anirss::SERVICE, "failed", message))
         }
         Ok(health) => {
-            let mut st = core.downloads.state();
-            st.anirss.state = AnirssState::Ready;
-            st.anirss.version = health.version;
-            st.anirss.url = sidecar.server();
-            st.anirss.message.clear();
-            st.sidecar = Some(sidecar);
+            let kept = {
+                let mut st = core.downloads.state();
+                let current = st.generation == generation;
+                if current {
+                    st.anirss.state = AnirssState::Ready;
+                    st.anirss.version = health.version;
+                    st.anirss.url = sidecar.server();
+                    st.anirss.message.clear();
+                    st.sidecar = Some(sidecar);
+                } else {
+                    // The client was switched while this one started: it
+                    // points at the old one.
+                    sidecar.stop();
+                }
+                current
+            };
+            if !kept {
+                // Start again for the one now in use
+                drop(one_at_a_time);
+                return Box::pin(ensure_client(core)).await;
+            }
             Ok(client)
         }
         Err(message) => {
@@ -266,7 +286,7 @@ async fn resolve_password(
     }
     let anirss_url = settings::anirss_config_path().and_then(|p| settings::anirss_config_qbt(&p));
     let borrowed = anirss_url
-        .filter(|(url, _)| url == s.torrent_url.trim_end_matches('/'))
+        .filter(|(url, _)| settings::same_address(url, &s.torrent_url))
         .and_then(|_| settings::anirss_saved_password());
     match borrowed {
         Some(pw) => Ok((Some(pw), "anirss")),
@@ -276,9 +296,13 @@ async fn resolve_password(
 
 /// The torrent client, built on first use and kept with its session.
 async fn qbt_client(core: &Arc<Core>) -> Result<Arc<QbtClient>, CoreError> {
-    if let Some(c) = core.downloads.state().qbt.clone() {
-        return Ok(c);
-    }
+    let generation = {
+        let st = core.downloads.state();
+        if let Some(c) = st.qbt.clone() {
+            return Ok(c);
+        }
+        st.generation
+    };
     let s = ensure_torrent(core).await?;
     let (password, source) = resolve_password(core, &s).await?;
     let client = Arc::new(QbtClient::new(
@@ -287,9 +311,19 @@ async fn qbt_client(core: &Arc<Core>) -> Result<Arc<QbtClient>, CoreError> {
         password.as_deref().unwrap_or(""),
         core.http.clone(),
     ));
-    let mut st = core.downloads.state();
-    st.torrent.password_source = source.to_string();
-    st.qbt = Some(client.clone());
+    let kept = {
+        let mut st = core.downloads.state();
+        // One built from settings a switch has since replaced is not kept
+        let current = st.generation == generation;
+        if current {
+            st.torrent.password_source = source.to_string();
+            st.qbt = Some(client.clone());
+        }
+        current
+    };
+    if !kept {
+        return Box::pin(qbt_client(core)).await;
+    }
     Ok(client)
 }
 
@@ -352,7 +386,7 @@ async fn decide_torrent(
     } else if answered {
         s.torrent_mode = TorrentMode::Existing;
         // The client it found becomes a saved one, the first on the list
-        settings::settle_clients(&mut s)?;
+        settings::settle_clients(&mut s, &[])?;
         format!("Downloads use the qBittorrent at {}", s.torrent_url)
     } else if managed::binary().is_some() {
         // The port an earlier setup chose, so the profile and the address agree
@@ -1662,14 +1696,13 @@ pub fn set_settings(
 ) -> Result<Reply, CoreError> {
     // AniBeam's own listens on this machine; an address left over from a
     // client elsewhere would have it started at somebody else's port.
-    if settings.torrent_mode == TorrentMode::Managed
-        && !settings::is_loopback(&settings.torrent_url)
-    {
+    // The same for one of the user's own on this machine: its port is theirs.
+    if settings.torrent_mode == TorrentMode::Managed && !settings::fits_managed(&settings) {
         settings.torrent_url = own_address(core)?;
         settings.torrent_username = managed::USERNAME.to_string();
     }
-    settings::validate(&mut settings)?;
     let before = core.store.read(settings::load_stored)?;
+    settings::validate(&mut settings, &before.saved_clients)?;
     match anirss_token.map(str::trim) {
         Some("") => {
             core.secrets().delete(settings::ANIRSS_TOKEN)?;
@@ -1693,15 +1726,18 @@ pub fn set_settings(
             None => {}
         }
     }
-    // A client taken off the list takes its password with it
-    for gone in before
+    let gone: Vec<String> = before
         .saved_clients
         .iter()
         .filter(|old| !settings.saved_clients.iter().any(|c| c.id == old.id))
-    {
-        core.secrets().delete(&settings::password_key(&gone.id))?;
-    }
+        .map(|old| settings::password_key(&old.id))
+        .collect();
     restart(core, settings)?;
+    // A client taken off the list takes its password with it, once the
+    // list without it is saved: a failed save keeps both.
+    for key in gone {
+        core.secrets().delete(&key)?;
+    }
     let status = status(core)?;
     core.bus.debug(
         Stage::Downloads,
@@ -1715,6 +1751,14 @@ pub fn set_settings(
 /// when there is none. The rest of the settings stay as they are.
 pub fn use_client(core: &Core, id: Option<String>) -> Result<Reply, CoreError> {
     let mut s = core.store.read(settings::load_stored)?;
+    let in_use = match id.as_deref() {
+        Some(id) => s.torrent_mode == TorrentMode::Existing && s.active_client == id,
+        None => s.torrent_mode == TorrentMode::Managed,
+    };
+    if in_use {
+        // Picking the one in use keeps its sidecar and its session
+        return Ok(Reply::Ok);
+    }
     let name = match id.as_deref() {
         Some(id) => {
             let c = s.saved_clients.iter().find(|c| c.id == id).ok_or_else(|| {
@@ -1728,15 +1772,13 @@ pub fn use_client(core: &Core, id: Option<String>) -> Result<Reply, CoreError> {
             name
         }
         None => {
-            if s.torrent_mode != TorrentMode::Managed || !settings::is_loopback(&s.torrent_url) {
-                s.torrent_url = own_address(core)?;
-            }
+            s.torrent_url = own_address(core)?;
             s.torrent_username = managed::USERNAME.to_string();
             s.torrent_mode = TorrentMode::Managed;
             "AniBeam's own qBittorrent".to_string()
         }
     };
-    settings::validate(&mut s)?;
+    settings::validate(&mut s, &[])?;
     restart(core, s)?;
     let status = status(core)?;
     core.bus.info(
@@ -1760,6 +1802,7 @@ fn restart(core: &Core, settings: DownloadSettings) -> Result<(), CoreError> {
     st.torrent = TorrentClientStatus::default();
     st.endpoints.clear();
     st.qbt = None;
+    st.generation += 1;
     Ok(())
 }
 

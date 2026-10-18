@@ -94,7 +94,11 @@ pub fn save(conn: &Connection, s: &DownloadSettings) -> Result<(), CoreError> {
 
 /// Trims every field and refuses what cannot work: an empty command, a
 /// URL that is not http(s).
-pub fn validate(s: &mut DownloadSettings) -> Result<(), CoreError> {
+///
+/// `retired` are the clients saved before this change. A new client never
+/// gets one of their ids: the id names a password, and a removed client's
+/// must not come back as a new client's.
+pub fn validate(s: &mut DownloadSettings, retired: &[SavedTorrentClient]) -> Result<(), CoreError> {
     s.anirss_command = s.anirss_command.trim().to_string();
     s.anirss_url = s.anirss_url.trim().trim_end_matches('/').to_string();
     s.torrent_url = s.torrent_url.trim().trim_end_matches('/').to_string();
@@ -120,14 +124,17 @@ pub fn validate(s: &mut DownloadSettings) -> Result<(), CoreError> {
             ),
         ));
     }
-    settle_clients(s)
+    settle_clients(s, retired)
 }
 
 /// Makes the saved clients agree with the rest: each trimmed and checked,
 /// an id for a new one, and in `Existing` mode the address and user in use
 /// written into the active client, which is made from them when there is
 /// none yet.
-pub fn settle_clients(s: &mut DownloadSettings) -> Result<(), CoreError> {
+pub fn settle_clients(
+    s: &mut DownloadSettings,
+    retired: &[SavedTorrentClient],
+) -> Result<(), CoreError> {
     for c in &mut s.saved_clients {
         c.id = c.id.trim().to_string();
         c.name = c.name.trim().to_string();
@@ -137,7 +144,7 @@ pub fn settle_clients(s: &mut DownloadSettings) -> Result<(), CoreError> {
     s.active_client = s.active_client.trim().to_string();
     for i in 0..s.saved_clients.len() {
         if s.saved_clients[i].id.is_empty() {
-            s.saved_clients[i].id = next_id(&s.saved_clients);
+            s.saved_clients[i].id = next_id(&s.saved_clients, retired);
         }
     }
     if s.torrent_mode == TorrentMode::Existing {
@@ -147,7 +154,7 @@ pub fn settle_clients(s: &mut DownloadSettings) -> Result<(), CoreError> {
                 let id = if s.saved_clients.is_empty() {
                     LEGACY_CLIENT.to_string()
                 } else {
-                    next_id(&s.saved_clients)
+                    next_id(&s.saved_clients, retired)
                 };
                 s.saved_clients.push(SavedTorrentClient {
                     id: id.clone(),
@@ -214,12 +221,58 @@ pub fn settle_clients(s: &mut DownloadSettings) -> Result<(), CoreError> {
     Ok(())
 }
 
-/// An id no saved client has: `c2`, `c3`, and so on.
-fn next_id(clients: &[SavedTorrentClient]) -> String {
+/// An id no saved client has, nor a retired one: `c2`, `c3`, and so on.
+fn next_id(clients: &[SavedTorrentClient], retired: &[SavedTorrentClient]) -> String {
     (2..)
         .map(|n| format!("c{n}"))
-        .find(|id| clients.iter().all(|c| &c.id != id))
+        .find(|id| clients.iter().chain(retired).all(|c| &c.id != id))
         .expect("an unused id")
+}
+
+/// Whether two addresses name the same server: scheme and host compared
+/// without case, `localhost` and `::1` read as `127.0.0.1`, the scheme's
+/// default port filled in, a trailing slash and any user info ignored.
+pub fn same_address(a: &str, b: &str) -> bool {
+    address_key(a) == address_key(b)
+}
+
+fn address_key(url: &str) -> String {
+    let url = url.trim().trim_end_matches('/');
+    let (scheme, rest) = url.split_once("://").unwrap_or(("http", url));
+    let scheme = scheme.to_ascii_lowercase();
+    let (authority, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
+    let host_port = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
+    let (host, port) = match host_port.strip_prefix('[') {
+        Some(v6) => match v6.split_once(']') {
+            Some((h, p)) => (h.to_string(), p.strip_prefix(':').unwrap_or("").to_string()),
+            None => (v6.to_string(), String::new()),
+        },
+        None => match host_port.rsplit_once(':') {
+            Some((h, p)) => (h.to_string(), p.to_string()),
+            None => (host_port.to_string(), String::new()),
+        },
+    };
+    let host = match host.to_ascii_lowercase().as_str() {
+        "localhost" | "::1" => "127.0.0.1".to_string(),
+        h => h.to_string(),
+    };
+    let port = if port.is_empty() {
+        if scheme == "https" { "443" } else { "80" }.to_string()
+    } else {
+        port
+    };
+    format!("{scheme}://{host}:{port}{path}")
+}
+
+/// Whether AniBeam's own may listen at the address in use: it has to be on
+/// this machine, and not where one of the user's saved clients is, or it
+/// would be started at the user's own qBittorrent's port.
+pub fn fits_managed(s: &DownloadSettings) -> bool {
+    is_loopback(&s.torrent_url)
+        && !s
+            .saved_clients
+            .iter()
+            .any(|c| same_address(&c.url, &s.torrent_url))
 }
 
 /// A name for a client that has none: its host and port.
@@ -345,6 +398,46 @@ mod tests {
     }
 
     #[test]
+    fn addresses_match_however_they_are_spelled() {
+        assert!(same_address(
+            "http://localhost:8080/",
+            "http://127.0.0.1:8080"
+        ));
+        assert!(same_address("HTTP://LocalHost:8080", "http://[::1]:8080"));
+        assert!(same_address("http://box", "http://box:80"));
+        assert!(same_address("https://box", "https://box:443"));
+        assert!(same_address("http://me:pw@box:8080", "http://box:8080"));
+        assert!(!same_address("http://box:8080", "https://box:8080"));
+        assert!(!same_address("http://box:8080", "http://box:8081"));
+        assert!(!same_address("http://box:8080/a", "http://box:8080"));
+    }
+
+    #[test]
+    fn a_new_client_never_gets_a_retired_id() {
+        let mut s = defaults();
+        s.torrent_mode = TorrentMode::Managed;
+        s.saved_clients = vec![
+            client(LEGACY_CLIENT, "a", "http://192.0.2.1:1"),
+            client("", "b", "http://192.0.2.2:1"),
+        ];
+        settle_clients(&mut s, &[client("c2", "gone", "http://192.0.2.3:1")]).unwrap();
+        assert_eq!(s.saved_clients[1].id, "c3");
+    }
+
+    #[test]
+    fn anibeams_own_does_not_fit_at_a_saved_clients_address() {
+        let mut s = defaults();
+        s.torrent_mode = TorrentMode::Managed;
+        s.torrent_url = "http://127.0.0.1:8080".to_string();
+        assert!(fits_managed(&s));
+        s.saved_clients = vec![client(LEGACY_CLIENT, "mine", "http://localhost:8080")];
+        assert!(!fits_managed(&s));
+        s.torrent_url = "http://192.0.2.10:8080".to_string();
+        s.saved_clients.clear();
+        assert!(!fits_managed(&s));
+    }
+
+    #[test]
     fn the_first_client_keeps_the_old_password_key() {
         assert_eq!(password_key(""), TORRENT_PASSWORD);
         assert_eq!(password_key(LEGACY_CLIENT), TORRENT_PASSWORD);
@@ -371,11 +464,7 @@ mod tests {
             s.saved_clients,
             vec![SavedTorrentClient {
                 username: s.torrent_username.clone(),
-                ..client(
-                    LEGACY_CLIENT,
-                    "192.0.2.10:8080",
-                    "http://192.0.2.10:8080"
-                )
+                ..client(LEGACY_CLIENT, "192.0.2.10:8080", "http://192.0.2.10:8080")
             }]
         );
         // Auto and Managed have no client of the user's to adopt
@@ -394,7 +483,7 @@ mod tests {
             client("", "", "http://nas:9000"),
         ];
         s.active_client = "default".to_string();
-        settle_clients(&mut s).unwrap();
+        settle_clients(&mut s, &[]).unwrap();
         assert_eq!(s.saved_clients[0].url, "http://localhost:8080");
         assert_eq!(
             (
@@ -405,13 +494,13 @@ mod tests {
         );
         // An active id the list lacks is made from the address in use
         s.active_client = "gone".to_string();
-        settle_clients(&mut s).unwrap();
+        settle_clients(&mut s, &[]).unwrap();
         assert_eq!(s.saved_clients.len(), 3);
         assert_eq!(s.active_client, "c3");
         // Off the list in another mode, the active id is forgotten
         s.torrent_mode = TorrentMode::Managed;
         s.saved_clients.truncate(2);
-        settle_clients(&mut s).unwrap();
+        settle_clients(&mut s, &[]).unwrap();
         assert!(s.active_client.is_empty());
     }
 
@@ -420,7 +509,7 @@ mod tests {
         let refused = |clients: Vec<SavedTorrentClient>| {
             let mut s = defaults();
             s.saved_clients = clients;
-            matches!(settle_clients(&mut s), Err(CoreError::Invalid { field, .. }) if field == "saved_clients")
+            matches!(settle_clients(&mut s, &[]), Err(CoreError::Invalid { field, .. }) if field == "saved_clients")
         };
         assert!(refused(vec![
             client("a", "Box", "http://a"),
@@ -451,23 +540,23 @@ mod tests {
         let mut s = defaults();
         s.torrent_url = " http://localhost:9090/ ".to_string();
         s.torrent_username = " me ".to_string();
-        validate(&mut s).unwrap();
+        validate(&mut s, &[]).unwrap();
         assert_eq!(s.torrent_url, "http://localhost:9090");
         assert_eq!(s.torrent_username, "me");
         s.torrent_url = "localhost:9090".to_string();
         assert!(
-            matches!(validate(&mut s), Err(CoreError::Invalid { field, .. }) if field == "torrent_url")
+            matches!(validate(&mut s, &[]), Err(CoreError::Invalid { field, .. }) if field == "torrent_url")
         );
         let mut r = defaults();
         r.anirss_mode = AnirssMode::Remote;
         r.anirss_url = "ftp://x".to_string();
         assert!(
-            matches!(validate(&mut r), Err(CoreError::Invalid { field, .. }) if field == "anirss_url")
+            matches!(validate(&mut r, &[]), Err(CoreError::Invalid { field, .. }) if field == "anirss_url")
         );
         let mut c = defaults();
         c.anirss_command = "  ".to_string();
         assert!(
-            matches!(validate(&mut c), Err(CoreError::Invalid { field, .. }) if field == "anirss_command")
+            matches!(validate(&mut c, &[]), Err(CoreError::Invalid { field, .. }) if field == "anirss_command")
         );
     }
 }
