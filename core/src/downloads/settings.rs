@@ -15,8 +15,27 @@ use crate::trackers::Secrets;
 pub const KEY: &str = settings::DOWNLOADS;
 /// The anirss bearer token, remote mode only.
 pub const ANIRSS_TOKEN: &str = "anirss.token";
-/// The torrent client's WebUI password.
+/// The torrent client's WebUI password: the key of the client a
+/// single-client install had. Every other saved client's has its id after it.
 pub const TORRENT_PASSWORD: &str = "qbittorrent.password";
+/// The id of the client a blob from before the saved list is read as. It
+/// keeps the password key it always had, so nothing in the store moves.
+pub const LEGACY_CLIENT: &str = "default";
+
+/// The secret-store key of a saved client's password.
+pub fn password_key(id: &str) -> String {
+    if id.is_empty() || id == LEGACY_CLIENT {
+        TORRENT_PASSWORD.to_string()
+    } else {
+        format!("{TORRENT_PASSWORD}.{id}")
+    }
+}
+
+/// The key of the password the client in use logs in with. AniBeam's own
+/// needs none, so it has none.
+pub fn active_password_key(s: &DownloadSettings) -> Option<String> {
+    (s.torrent_mode != TorrentMode::Managed).then(|| password_key(&s.active_client))
+}
 
 /// The stored blob, or the defaults; the two `has_*` flags are false here
 /// and set by `load`, which asks the secret store.
@@ -30,16 +49,43 @@ pub fn load_stored(conn: &Connection) -> Result<DownloadSettings, CoreError> {
         }
         Err(e) => return Err(e),
     };
+    adopt_client(&mut s);
     s.has_anirss_token = false;
     s.has_torrent_password = false;
+    for c in &mut s.saved_clients {
+        c.has_password = false;
+    }
     Ok(s)
 }
 
 pub fn load(conn: &Connection, secrets: &Secrets) -> Result<DownloadSettings, CoreError> {
     let mut s = load_stored(conn)?;
-    s.has_anirss_token = secrets.has(ANIRSS_TOKEN);
-    s.has_torrent_password = secrets.has(TORRENT_PASSWORD);
+    fill_secret_flags(&mut s, |key| secrets.has(key));
     Ok(s)
+}
+
+/// Sets every `has_*` flag from `has`, which asks the secret store.
+pub fn fill_secret_flags(s: &mut DownloadSettings, has: impl Fn(&str) -> bool) {
+    s.has_anirss_token = has(ANIRSS_TOKEN);
+    s.has_torrent_password = active_password_key(s).is_some_and(|k| has(&k));
+    for c in &mut s.saved_clients {
+        c.has_password = has(&password_key(&c.id));
+    }
+}
+
+/// A blob from before the saved list, set up by hand with one client, reads
+/// as that one client saved and in use. Auto and Managed have none to adopt.
+fn adopt_client(s: &mut DownloadSettings) {
+    if s.torrent_mode == TorrentMode::Existing && s.saved_clients.is_empty() {
+        s.saved_clients.push(SavedTorrentClient {
+            id: LEGACY_CLIENT.to_string(),
+            name: name_for(&s.torrent_url),
+            url: s.torrent_url.clone(),
+            username: s.torrent_username.clone(),
+            has_password: false,
+        });
+        s.active_client = LEGACY_CLIENT.to_string();
+    }
 }
 
 pub fn save(conn: &Connection, s: &DownloadSettings) -> Result<(), CoreError> {
@@ -74,7 +120,131 @@ pub fn validate(s: &mut DownloadSettings) -> Result<(), CoreError> {
             ),
         ));
     }
+    settle_clients(s)
+}
+
+/// Makes the saved clients agree with the rest: each trimmed and checked,
+/// an id for a new one, and in `Existing` mode the address and user in use
+/// written into the active client, which is made from them when there is
+/// none yet.
+pub fn settle_clients(s: &mut DownloadSettings) -> Result<(), CoreError> {
+    for c in &mut s.saved_clients {
+        c.id = c.id.trim().to_string();
+        c.name = c.name.trim().to_string();
+        c.url = c.url.trim().trim_end_matches('/').to_string();
+        c.username = c.username.trim().to_string();
+    }
+    s.active_client = s.active_client.trim().to_string();
+    for i in 0..s.saved_clients.len() {
+        if s.saved_clients[i].id.is_empty() {
+            s.saved_clients[i].id = next_id(&s.saved_clients);
+        }
+    }
+    if s.torrent_mode == TorrentMode::Existing {
+        let at = match s.saved_clients.iter().position(|c| c.id == s.active_client) {
+            Some(at) => at,
+            None => {
+                let id = if s.saved_clients.is_empty() {
+                    LEGACY_CLIENT.to_string()
+                } else {
+                    next_id(&s.saved_clients)
+                };
+                s.saved_clients.push(SavedTorrentClient {
+                    id: id.clone(),
+                    name: String::new(),
+                    url: String::new(),
+                    username: String::new(),
+                    has_password: false,
+                });
+                s.active_client = id;
+                s.saved_clients.len() - 1
+            }
+        };
+        s.saved_clients[at].url = s.torrent_url.clone();
+        s.saved_clients[at].username = s.torrent_username.clone();
+    } else if !s.saved_clients.iter().any(|c| c.id == s.active_client) {
+        s.active_client.clear();
+    }
+    let (mut ids, mut names) = (Vec::new(), Vec::new());
+    for c in &mut s.saved_clients {
+        if !c
+            .id
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+        {
+            return Err(CoreError::invalid(
+                "saved_clients",
+                format!(
+                    "{:?} is not a client id: use letters, digits, - and _",
+                    c.id
+                ),
+            ));
+        }
+        if ids.contains(&c.id) {
+            return Err(CoreError::invalid(
+                "saved_clients",
+                format!("two clients have the id {}", c.id),
+            ));
+        }
+        if !is_http(&c.url) {
+            return Err(CoreError::invalid(
+                "saved_clients",
+                format!(
+                    "the address of {} must start with http:// or https://",
+                    c.name
+                ),
+            ));
+        }
+        if c.name.is_empty() {
+            c.name = name_for(&c.url);
+        }
+        let name = c.name.to_lowercase();
+        if names.contains(&name) {
+            return Err(CoreError::invalid(
+                "saved_clients",
+                format!(
+                    "two clients are called {}; give each a name of its own",
+                    c.name
+                ),
+            ));
+        }
+        ids.push(c.id.clone());
+        names.push(name);
+    }
     Ok(())
+}
+
+/// An id no saved client has: `c2`, `c3`, and so on.
+fn next_id(clients: &[SavedTorrentClient]) -> String {
+    (2..)
+        .map(|n| format!("c{n}"))
+        .find(|id| clients.iter().all(|c| &c.id != id))
+        .expect("an unused id")
+}
+
+/// A name for a client that has none: its host and port.
+pub fn name_for(url: &str) -> String {
+    let rest = url.split_once("://").map_or(url, |(_, r)| r);
+    let host = rest.split(['/', '?', '#']).next().unwrap_or(rest);
+    let host = host.rsplit_once('@').map_or(host, |(_, h)| h);
+    if host.is_empty() {
+        "qBittorrent".to_string()
+    } else {
+        host.to_string()
+    }
+}
+
+/// Whether `url` points at this machine.
+pub fn is_loopback(url: &str) -> bool {
+    let host = name_for(url);
+    let host = match host.strip_prefix('[') {
+        Some(v6) => v6.split(']').next().unwrap_or(v6).to_string(),
+        None => host
+            .rsplit_once(':')
+            .map_or(host.as_str(), |(h, _)| h)
+            .to_string(),
+    };
+    matches!(host.as_str(), "127.0.0.1" | "localhost" | "::1")
 }
 
 fn is_http(url: &str) -> bool {
@@ -97,6 +267,8 @@ pub fn defaults() -> DownloadSettings {
         torrent_url: url,
         torrent_username: username,
         has_torrent_password: false,
+        saved_clients: Vec::new(),
+        active_client: String::new(),
     }
 }
 
@@ -160,6 +332,118 @@ mod tests {
             Some(("http://localhost:9090".to_string(), "bandit".to_string()))
         );
         assert_eq!(anirss_config_qbt(&dir.path().join("missing.toml")), None);
+    }
+
+    fn client(id: &str, name: &str, url: &str) -> SavedTorrentClient {
+        SavedTorrentClient {
+            id: id.to_string(),
+            name: name.to_string(),
+            url: url.to_string(),
+            username: "admin".to_string(),
+            has_password: false,
+        }
+    }
+
+    #[test]
+    fn the_first_client_keeps_the_old_password_key() {
+        assert_eq!(password_key(""), TORRENT_PASSWORD);
+        assert_eq!(password_key(LEGACY_CLIENT), TORRENT_PASSWORD);
+        assert_eq!(password_key("c2"), "qbittorrent.password.c2");
+        let mut s = defaults();
+        s.torrent_mode = TorrentMode::Managed;
+        assert_eq!(active_password_key(&s), None);
+        s.torrent_mode = TorrentMode::Existing;
+        s.active_client = "c2".to_string();
+        assert_eq!(
+            active_password_key(&s).as_deref(),
+            Some("qbittorrent.password.c2")
+        );
+    }
+
+    #[test]
+    fn a_blob_from_before_the_list_reads_as_one_saved_client() {
+        let mut s = defaults();
+        s.torrent_mode = TorrentMode::Existing;
+        s.torrent_url = "http://192.0.2.10:8080".to_string();
+        adopt_client(&mut s);
+        assert_eq!(s.active_client, LEGACY_CLIENT);
+        assert_eq!(
+            s.saved_clients,
+            vec![SavedTorrentClient {
+                username: s.torrent_username.clone(),
+                ..client(
+                    LEGACY_CLIENT,
+                    "192.0.2.10:8080",
+                    "http://192.0.2.10:8080"
+                )
+            }]
+        );
+        // Auto and Managed have no client of the user's to adopt
+        let mut a = defaults();
+        adopt_client(&mut a);
+        assert!(a.saved_clients.is_empty() && a.active_client.is_empty());
+    }
+
+    #[test]
+    fn settling_writes_the_client_in_use_and_names_new_ones() {
+        let mut s = defaults();
+        s.torrent_mode = TorrentMode::Existing;
+        s.torrent_url = "http://localhost:8080".to_string();
+        s.saved_clients = vec![
+            client("default", "Seedbox", "http://192.0.2.10:8080/"),
+            client("", "", "http://nas:9000"),
+        ];
+        s.active_client = "default".to_string();
+        settle_clients(&mut s).unwrap();
+        assert_eq!(s.saved_clients[0].url, "http://localhost:8080");
+        assert_eq!(
+            (
+                s.saved_clients[1].id.as_str(),
+                s.saved_clients[1].name.as_str()
+            ),
+            ("c2", "nas:9000")
+        );
+        // An active id the list lacks is made from the address in use
+        s.active_client = "gone".to_string();
+        settle_clients(&mut s).unwrap();
+        assert_eq!(s.saved_clients.len(), 3);
+        assert_eq!(s.active_client, "c3");
+        // Off the list in another mode, the active id is forgotten
+        s.torrent_mode = TorrentMode::Managed;
+        s.saved_clients.truncate(2);
+        settle_clients(&mut s).unwrap();
+        assert!(s.active_client.is_empty());
+    }
+
+    #[test]
+    fn settling_refuses_what_cannot_be_told_apart_or_reached() {
+        let refused = |clients: Vec<SavedTorrentClient>| {
+            let mut s = defaults();
+            s.saved_clients = clients;
+            matches!(settle_clients(&mut s), Err(CoreError::Invalid { field, .. }) if field == "saved_clients")
+        };
+        assert!(refused(vec![
+            client("a", "Box", "http://a"),
+            client("b", "box", "http://b")
+        ]));
+        assert!(refused(vec![
+            client("a", "A", "http://a"),
+            client("a", "B", "http://b")
+        ]));
+        assert!(refused(vec![client("a b", "A", "http://a")]));
+        assert!(refused(vec![client("../x", "A", "http://a")]));
+        assert!(refused(vec![client("a", "A", "localhost:8080")]));
+    }
+
+    #[test]
+    fn names_and_loopback_come_off_the_address() {
+        assert_eq!(name_for("http://192.0.2.10:8080/"), "192.0.2.10:8080");
+        assert_eq!(name_for("https://me:pw@box.example/qbt"), "box.example");
+        assert!(is_loopback("http://127.0.0.1:47321"));
+        assert!(is_loopback("http://localhost:8080"));
+        assert!(is_loopback("http://[::1]:8080"));
+        assert!(!is_loopback("http://192.0.2.10:8080"));
+        assert!(!is_loopback("http://localhost.example:8080"));
     }
 
     #[test]

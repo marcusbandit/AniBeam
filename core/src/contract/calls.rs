@@ -331,6 +331,13 @@ pub enum Call {
     /// Tries the torrent client with the saved settings. Ends in
     /// `DownloadsStatusChanged`.
     TestTorrentClient,
+    /// Switches the downloads to another torrent client: the saved client
+    /// `id`, or AniBeam's own when `id` is `None`. A running sidecar is
+    /// stopped, as a save stops it; `ConnectDownloads` starts it again on
+    /// the new client. Emits `DownloadsStatusChanged`.
+    UseTorrentClient {
+        id: Option<String>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Enum)]

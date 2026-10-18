@@ -450,6 +450,8 @@ FocusScope {
         return n
     }
     // Put off while the removal sheet is up: a fresh list rebuilds what it was opened from
+    // Another torrent client is in use: the rules read so far were the last one's
+    function forgetDownloadsRules() { downloadsRules = []; downloadsRulesRead = false; downloadsRulesError = "" }
     function readDownloadsRules() {
         if (!Door.ready) return
         if (frame.removalOpen) { downloadsReread.restart(); return }
