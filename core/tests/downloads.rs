@@ -223,12 +223,12 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
     http.push_for(
         "/health",
         200,
-        json!({"ok": true, "version": "0.3.4"}).to_string(),
+        json!({"ok": true, "version": "0.5.0"}).to_string(),
     );
     http.push_for(
         "/health",
         200,
-        json!({"ok": true, "version": "0.3.4"}).to_string(),
+        json!({"ok": true, "version": "0.5.0"}).to_string(),
     );
     http.push_for(
         "/endpoints",
@@ -247,7 +247,7 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
         panic!("{:?}", done.body)
     };
     assert_eq!(status.anirss.state, AnirssState::Ready);
-    assert_eq!(status.anirss.version, "0.3.4");
+    assert_eq!(status.anirss.version, "0.5.0");
     assert_eq!(status.endpoints.len(), 1);
     assert_eq!(status.endpoints[0].name, "nyaa");
     assert!(status.torrent.connected);
@@ -350,7 +350,32 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
         status
             .anirss
             .message
-            .starts_with("anirss 0.3.4 is too old for AniBeam, which needs 0.4.2"),
+            .starts_with("anirss 0.3.4 is too old for AniBeam, which needs 0.5.0"),
+        "{}",
+        status.anirss.message
+    );
+
+    // One that serves but predates the minimum is stopped and reported, not
+    // used: an old anirss would carry one client's login to another.
+    save(&core, settings("anirss"), None, None);
+    // One health answer: the readiness poll's, after which it is stopped
+    http.push_for(
+        "/health",
+        200,
+        json!({"ok": true, "version": "0.4.2"}).to_string(),
+    );
+    http.push_for("app/version", 200, "v5.2.4");
+    let job = started(&core, Call::ConnectDownloads);
+    let done = common::wait_job(&c, job);
+    let EventBody::DownloadsStatusChanged { status } = &done.body else {
+        panic!("{:?}", done.body)
+    };
+    assert_eq!(status.anirss.state, AnirssState::Failed);
+    assert!(
+        status
+            .anirss
+            .message
+            .starts_with("anirss 0.4.2 is too old for AniBeam, which needs 0.5.0"),
         "{}",
         status.anirss.message
     );
@@ -1001,7 +1026,7 @@ fn a_locally_narrowed_subscription_reads_the_searched_feed_and_filters_in_the_ru
     http.push_for(
         "/health",
         200,
-        json!({"ok": true, "version": "0.3.4"}).to_string(),
+        json!({"ok": true, "version": "0.5.0"}).to_string(),
     );
     http.push_for(
         "/endpoints",

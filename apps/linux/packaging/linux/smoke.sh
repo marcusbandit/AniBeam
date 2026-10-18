@@ -53,7 +53,7 @@ unpacked="$helpers/squashfs-root"
 # will not even print its version without a directory to put its cache in.
 anirss="$(env -i HOME="$helpers" "$unpacked/usr/share/anibeam/anirss/bin/anirss" --version 2>/dev/null)"
 echo "anirss: $anirss"
-[ "$anirss" = "anirss 0.4.2" ] || { echo "anirss did not report 0.4.2"; status=1; }
+[ "$anirss" = "anirss 0.5.0" ] || { echo "anirss did not report 0.5.0"; status=1; }
 qbt="$(env -i HOME="$helpers" "$unpacked/usr/bin/qbittorrent-nox" --version 2>/dev/null)"
 echo "qbittorrent-nox: $qbt"
 case "$qbt" in
@@ -112,7 +112,7 @@ if [ -n "${SMOKE_DOWNLOADS:-}" ]; then
   {"wait": 20000},
   {"shot": "downloads"},
   {"eval": "frame.item.pageItem.anirss.state", "expect": "Ready"},
-  {"eval": "frame.item.pageItem.anirss.version", "expect": "0.4.2"},
+  {"eval": "frame.item.pageItem.anirss.version", "expect": "0.5.0"},
   {"eval": "frame.item.pageItem.torrentOn", "expect": true},
   {"eval": "frame.item.pageItem.status.settings.torrent_mode", "expect": "Managed"}
 ]

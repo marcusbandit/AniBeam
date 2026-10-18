@@ -206,6 +206,14 @@ async fn ensure_client(core: &Arc<Core>) -> Result<AnirssClient, CoreError> {
     };
     let client = AnirssClient::new(&sidecar.server(), &sidecar.token, core.http.clone());
     match sidecar.wait_ready(&client).await {
+        // One that serves but predates what AniBeam relies on is not used:
+        // it would carry one client's login to another.
+        Ok(version) if anirss::too_old(&version).is_some() => {
+            sidecar.stop();
+            let message = anirss::too_old_message(&version);
+            set_anirss_failure(core, AnirssState::Failed, &message);
+            Err(service(anirss::SERVICE, "failed", message))
+        }
         Ok(version) => {
             let mut st = core.downloads.state();
             st.anirss.state = AnirssState::Ready;
@@ -222,11 +230,7 @@ async fn ensure_client(core: &Arc<Core>) -> Result<AnirssClient, CoreError> {
                 .await
                 .and_then(|text| anirss::too_old(&text))
             {
-                Some(version) => format!(
-                    "anirss {version} is too old for AniBeam, which needs {} or newer. {}.",
-                    anirss::MIN_VERSION,
-                    anirss::update_hint()
-                ),
+                Some(version) => anirss::too_old_message(&version),
                 None => message,
             };
             set_anirss_failure(core, AnirssState::Failed, &message);
@@ -539,6 +543,14 @@ async fn run_connect(core: Arc<Core>) -> Result<Finished, CoreError> {
 /// Health, endpoints and anirss's view of qBittorrent, into the state.
 async fn read_anirss(core: &Arc<Core>, client: &AnirssClient) -> Result<(), CoreError> {
     let version = client.health().await?;
+    // A server the user runs is held to the same minimum as the sidecar
+    if anirss::too_old(&version).is_some() {
+        return Err(service(
+            anirss::SERVICE,
+            "failed",
+            anirss::too_old_message(&version),
+        ));
+    }
     let mut endpoints = client.endpoints().await?;
     if let Some(path) = settings::anirss_config_path() {
         for e in &mut endpoints {

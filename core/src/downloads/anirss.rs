@@ -43,8 +43,13 @@ const VERSION_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// The anirss this client needs: 0.4.0 brought `--serve` (0.3.4 and older
 /// exit on the flag), 0.4.1 the qBittorrent address from the environment,
-/// 0.4.2 a client that needs no login, which AniBeam's own qBittorrent is.
-pub const MIN_VERSION: &str = "0.4.2";
+/// 0.4.2 a client that needs no login, which AniBeam's own qBittorrent is,
+/// and 0.5.0 a session of its own for an address only the environment names.
+/// Switching between saved clients depends on that last one: an older anirss
+/// sends the qBittorrent its config names the session cookie and saved
+/// password of whichever client it is pointed at next. The bundles pin a
+/// release at least this new (`the_bundled_anirss_is_new_enough`).
+pub const MIN_VERSION: &str = "0.5.0";
 /// Set by a shell whose package carries its own anirss.
 const BUNDLED_ENV: &str = "ANIBEAM_ANIRSS";
 
@@ -683,6 +688,14 @@ pub fn install_hint() -> String {
     }
 }
 
+/// What an anirss older than [`MIN_VERSION`] reports, `version` being its own.
+pub fn too_old_message(version: &str) -> String {
+    format!(
+        "anirss {version} is too old for AniBeam, which needs {MIN_VERSION} or newer. {}.",
+        update_hint()
+    )
+}
+
 /// How this platform updates anirss, for the message an old one shows.
 pub fn update_hint() -> &'static str {
     if cfg!(target_os = "macos") {
@@ -764,11 +777,12 @@ mod tests {
     }
 
     #[test]
-    fn only_a_version_before_the_server_mode_is_too_old() {
+    fn only_a_version_before_the_minimum_is_too_old() {
         assert_eq!(too_old("anirss 0.3.4").as_deref(), Some("0.3.4"));
         assert_eq!(too_old("0.2").as_deref(), Some("0.2"));
         assert_eq!(too_old("anirss 0.4.1").as_deref(), Some("0.4.1"));
-        assert_eq!(too_old("anirss 0.4.2"), None);
+        assert_eq!(too_old("0.4.2").as_deref(), Some("0.4.2"));
+        assert_eq!(too_old("anirss 0.5.0"), None);
         assert_eq!(too_old("anirss 0.10.1"), None);
         assert_eq!(too_old("anirss 1.0.0rc1"), None);
         assert_eq!(too_old("anirss dev"), None);
@@ -872,6 +886,35 @@ mod tests {
         };
         assert_eq!(body["op"]["type"], "tokens");
         assert_eq!(body["op"]["tokens"][0], "[SubsPlease]");
+    }
+
+    /// The anirss the app bundle and the AppImage carry, and the one the AUR
+    /// package asks for, have to be ones the core accepts. This fails when
+    /// MIN_VERSION has moved past the pinned release: pin one that has what
+    /// it needs (its ANIRSS_VERSION and sha256) before this can pass.
+    #[test]
+    fn the_bundled_anirss_is_new_enough() {
+        let packaging =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../apps/linux/packaging");
+        let pins = [
+            ("macos/anirss.sh", "ANIRSS_VERSION="),
+            ("linux/appimage.sh", "ANIRSS_VERSION="),
+            ("aur/anibeam/PKGBUILD", "'anirss>="),
+        ];
+        for (file, prefix) in pins {
+            let text = std::fs::read_to_string(packaging.join(file)).unwrap();
+            let pinned = text
+                .split(prefix)
+                .nth(1)
+                .and_then(|rest| rest.split(['\n', '\'', ' ']).next())
+                .unwrap_or_else(|| panic!("{file} names no anirss version"));
+            assert_eq!(
+                too_old(pinned),
+                None,
+                "{file} pins anirss {pinned}, older than the {MIN_VERSION} the core needs: \
+                 pin a release that has it, with its sha256"
+            );
+        }
     }
 
     #[test]
