@@ -35,6 +35,11 @@ mkdir -p "$prefix"
 
 echo "== libmpv $MPV_VERSION"
 curl -fsSL "https://github.com/mpv-player/mpv/archive/refs/tags/v$MPV_VERSION.tar.gz" | tar -xz -C "$work"
+# Upstream fixes not yet in a release. mpv-player/mpv#18383: a failed CoreAudio init left its
+# hotplug listener on a freed ao, and the next audio device change crashed the app (#75).
+for patch in "$(dirname "$0")"/patches/mpv-*.patch; do
+  patch -d "$work/mpv-$MPV_VERSION" -p1 --forward < "$patch"
+done
 meson setup "$work/mpv-build" "$work/mpv-$MPV_VERSION" \
   --prefix="$prefix" --libdir=lib --buildtype=release \
   -Dlibmpv=true -Dcplayer=false -Dtests=false -Dbuild-date=false \

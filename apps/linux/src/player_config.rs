@@ -92,9 +92,18 @@ pub fn owned_options() -> Vec<(&'static str, String)> {
         ("volume-max", "100"),
     ]
     .into_iter()
+    .chain(MACOS_AUDIO.iter().copied())
     .map(|(k, v)| (k, v.to_string()))
     .collect()
 }
+
+/// libmpv 0.41's CoreAudio output fails to open on macOS 27 for planar and mono formats
+/// (Opus, mono PCM) with -50, and mpv falls back to AVFoundation without a word (#77). Float
+/// stereo opens on every file tested. Drop this once upstream fixes the channel map call.
+#[cfg(target_os = "macos")]
+const MACOS_AUDIO: &[(&str, &str)] = &[("audio-format", "float"), ("audio-channels", "stereo")];
+#[cfg(not(target_os = "macos"))]
+const MACOS_AUDIO: &[(&str, &str)] = &[];
 
 /// Haruna's MpvPreview recipe: its own core, nothing audible, nothing drawn but the frame.
 pub fn preview_options() -> Vec<(&'static str, &'static str)> {
@@ -242,29 +251,28 @@ mod tests {
         let names: Vec<&str> = o.iter().map(|(n, _)| *n).collect();
         // The order is the point, not the membership: these are set after the config
         // layers, in this sequence, and `vo=libmpv` is the first of them.
-        assert_eq!(
-            names,
-            vec![
-                "vo",
-                "osc",
-                "osd-level",
-                "input-default-bindings",
-                "input-vo-keyboard",
-                "input-media-keys",
-                "resume-playback",
-                "save-position-on-quit",
-                "keep-open",
-                "pause",
-                "fullscreen",
-                "loop-file",
-                "loop-playlist",
-                "ytdl",
-                "sub-auto",
-                "audio-file-auto",
-                "reset-on-next-file",
-                "volume-max",
-            ]
-        );
+        let mut want = vec![
+            "vo",
+            "osc",
+            "osd-level",
+            "input-default-bindings",
+            "input-vo-keyboard",
+            "input-media-keys",
+            "resume-playback",
+            "save-position-on-quit",
+            "keep-open",
+            "pause",
+            "fullscreen",
+            "loop-file",
+            "loop-playlist",
+            "ytdl",
+            "sub-auto",
+            "audio-file-auto",
+            "reset-on-next-file",
+            "volume-max",
+        ];
+        want.extend(MACOS_AUDIO.iter().map(|(n, _)| *n));
+        assert_eq!(names, want);
         assert_eq!(o.iter().find(|(n, _)| *n == "vo").unwrap().1, "libmpv");
         assert_eq!(
             o.iter().find(|(n, _)| *n == "keep-open").unwrap().1,
