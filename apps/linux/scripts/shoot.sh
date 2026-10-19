@@ -7,9 +7,11 @@ here="$(cd "$(dirname "$0")/.." && pwd)"
 name="$1"; shift
 out="$here/captures"; mkdir -p "$out"
 root="${ANIBEAM_ROOT:-$out/root}"; mkdir -p "$root"
-# ANIBEAM_NO_BUILD=1 skips the build and uses target/debug as it is: parallel reviewers
-# capture without queueing on the cargo lock behind running builds.
-[ -n "${ANIBEAM_NO_BUILD:-}" ] || cargo build -p anibeam --quiet
+# The build goes into the shared target dir (target-dir.sh) and is copied to this checkout's own
+# target/debug/anibeam-staged, which is what runs. ANIBEAM_NO_BUILD=1 skips the build and reuses
+# this checkout's last staged build: parallel reviewers capture without queueing on the cargo lock.
+source "$(dirname "$0")/target-dir.sh"
+anibeam_stage
 # The software scene graph cannot paint a Shapes fillItem, so every poster comes back white
 # under plain offscreen; forcing the RHI backend fixes that, but RHI's GL backend needs GLX,
 # which needs a DISPLAY. Without one, forcing it aborts (no context, no PNG) instead of
@@ -17,6 +19,6 @@ root="${ANIBEAM_ROOT:-$out/root}"; mkdir -p "$root"
 rhi_env=()
 [ -n "${DISPLAY:-}" ] && rhi_env=(QT_QUICK_BACKEND=rhi QSG_RHI_BACKEND=opengl)
 env "${rhi_env[@]}" QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 ANIBEAM_THEMES_DIR="$here/themes" ANIBEAM_MPV_CONF="$here/mpv.conf" \
-  "$here/../../target/debug/anibeam" --root "$root" --shoot "$out/$name.png" --width "${W:-1600}" --height "${H:-1000}" "$@" \
+  "$ANIBEAM_BIN" --root "$root" --shoot "$out/$name.png" --width "${W:-1600}" --height "${H:-1000}" "$@" \
   2> "$out/$name.log" || { echo "anibeam exited $?; see $out/$name.log"; exit 1; }
 file "$out/$name.png" | grep -q PNG && echo "$name ok" || { echo "no PNG written; see $out/$name.log"; exit 1; }
