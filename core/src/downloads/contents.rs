@@ -13,7 +13,7 @@ use crate::net::{Http, HttpRequest, Method};
 /// The files a `.torrent` lists, path and size; empty when the bytes are
 /// not a torrent.
 pub fn files_of(bytes: &[u8]) -> Vec<(String, u64)> {
-    let Some((root, _)) = parse(bytes, 0) else {
+    let Some((root, _)) = parse(bytes, 0, 0) else {
         return Vec::new();
     };
     let Some(info) = root.get(b"info") else {
@@ -41,6 +41,9 @@ pub fn files_of(bytes: &[u8]) -> Vec<(String, u64)> {
     }
 }
 
+/// The largest `.torrent` read; past this the link is not a torrent file.
+const MAX_TORRENT: usize = 16 * 1024 * 1024;
+
 const VIDEO: [&str; 7] = ["mkv", "mp4", "avi", "m4v", "webm", "ts", "wmv"];
 
 /// The whole episode numbers among the video files, each read as a release
@@ -53,20 +56,7 @@ pub fn episodes_of(files: &[(String, u64)]) -> Vec<u32> {
         if !VIDEO.contains(&ext.as_str()) {
             continue;
         }
-        let facts = super::facts::read(&Release {
-            title: base.to_string(),
-            link: String::new(),
-            seeders: None,
-            leechers: None,
-            downloads: None,
-            size: String::new(),
-            category: String::new(),
-            page: String::new(),
-            source: String::new(),
-            resolution: String::new(),
-            infomkv: String::new(),
-            linktype: String::new(),
-        });
+        let facts = super::facts::read_name(base);
         if let Some(n) = facts
             .episode
             .filter(|n| n.is_finite() && *n >= 1.0 && n.fract() == 0.0)
@@ -89,7 +79,7 @@ pub async fn inspect(http: &dyn Http, link: &str) -> Result<(Vec<u32>, u64), Cor
             url: link.to_string(),
             headers: Vec::new(),
             body: None,
-            timeout: None,
+            timeout: Some(std::time::Duration::from_secs(20)),
         })
         .await
         .map_err(|e| CoreError::Service {
@@ -103,6 +93,10 @@ pub async fn inspect(http: &dyn Http, link: &str) -> Result<(Vec<u32>, u64), Cor
             code: format!("http_{}", r.status),
             message: format!("the torrent file answered {}", r.status),
         });
+    }
+    // A torrent file is metadata: a few hundred kilobytes for even a long batch
+    if r.body.len() > MAX_TORRENT {
+        return Ok((Vec::new(), 0));
     }
     let files = files_of(&r.body);
     Ok((episodes_of(&files), files.len() as u64))
@@ -145,9 +139,16 @@ impl Value {
     }
 }
 
-/// One value from `at`, and where the next one starts. Depth is bounded by
-/// the input, so a hostile file can at worst be refused.
-fn parse(b: &[u8], at: usize) -> Option<(Value, usize)> {
+/// How deep lists and dictionaries may nest. A torrent's info dictionary
+/// needs four; anything past this is refused rather than recursed into.
+const MAX_DEPTH: usize = 32;
+
+/// One value from `at`, and where the next one starts. Nesting is capped at
+/// `MAX_DEPTH`, so a hostile file is refused instead of running the stack out.
+fn parse(b: &[u8], at: usize, depth: usize) -> Option<(Value, usize)> {
+    if depth > MAX_DEPTH {
+        return None;
+    }
     match *b.get(at)? {
         b'i' => {
             let end = at + 1 + b[at + 1..].iter().position(|c| *c == b'e')?;
@@ -158,7 +159,7 @@ fn parse(b: &[u8], at: usize) -> Option<(Value, usize)> {
             let mut out = Vec::new();
             let mut i = at + 1;
             while *b.get(i)? != b'e' {
-                let (v, next) = parse(b, i)?;
+                let (v, next) = parse(b, i, depth + 1)?;
                 out.push(v);
                 i = next;
             }
@@ -168,9 +169,9 @@ fn parse(b: &[u8], at: usize) -> Option<(Value, usize)> {
             let mut out = Vec::new();
             let mut i = at + 1;
             while *b.get(i)? != b'e' {
-                let (k, next) = parse(b, i)?;
+                let (k, next) = parse(b, i, depth + 1)?;
                 let Value::Bytes(k) = k else { return None };
-                let (v, after) = parse(b, next)?;
+                let (v, after) = parse(b, next, depth + 1)?;
                 out.push((k, v));
                 i = after;
             }
@@ -249,5 +250,10 @@ mod tests {
         assert!(files_of(b"<html>nope</html>").is_empty());
         assert!(files_of(b"d4:infod5:filesl").is_empty());
         assert!(files_of(b"99999999999999999999:x").is_empty());
+        let deep = "l".repeat(500_000).into_bytes();
+        assert!(
+            files_of(&deep).is_empty(),
+            "deep nesting is refused, not recursed"
+        );
     }
 }

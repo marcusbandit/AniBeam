@@ -108,10 +108,11 @@ fn main() {
         }
     };
     // A drive, a shot or a sandbox root runs a copy of the library against the owner's real
-    // anirss, so it must never unsubscribe a show there.
+    // anirss and qBittorrent, so nothing may change there on its own: no unsubscribing, no
+    // replacing.
     let args = runtime::args();
     if args.drive.is_some() || args.shoot.is_some() || args.root.is_some() {
-        core.disable_feed_pruning();
+        core.disable_unattended_changes();
     }
     runtime::install_core(core);
 

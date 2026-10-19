@@ -6,9 +6,9 @@
 //! and the core runs the start command itself, waits for the endpoint's
 //! ready URL to answer and reports what happened.
 //!
-//! The command is the `jackett_command` setting, else the `start` anirss's
-//! own config gives that endpoint (on this kind of setup a `podman pod
-//! start`), else a bare `jackett` on PATH. It runs through `sh -c` because
+//! The command is the `start` anirss's own config gives that endpoint (on
+//! this kind of setup a `podman pod start`), else the `jackett_command`
+//! setting, else a bare `jackett` on PATH. It runs through `sh -c` because
 //! anirss's `start` is a shell string. It is detached: its own process
 //! group, output into a log file, nothing killed when the core stops, since
 //! a pod outlives the command that started it and a bare `jackett` is
@@ -60,16 +60,18 @@ pub fn anirss_start(path: &Path, name: Option<&str>) -> Option<String> {
         })
 }
 
-/// The command to run: the setting, else anirss's `start` for the
-/// endpoint, else `jackett`.
+/// The command to run: anirss's own `start` for this endpoint, else the
+/// setting, else `jackett`. The endpoint's own wins so one saved command can
+/// never start the wrong service for a second on-demand endpoint.
 pub fn resolve_command(setting: &str, anirss_config: Option<&Path>, endpoint: &str) -> String {
+    if let Some(own) = anirss_config.and_then(|p| anirss_start(p, Some(endpoint))) {
+        return own;
+    }
     let setting = setting.trim();
     if !setting.is_empty() {
         return setting.to_string();
     }
-    anirss_config
-        .and_then(|p| anirss_start(p, Some(endpoint)))
-        .unwrap_or_else(|| "jackett".to_string())
+    "jackett".to_string()
 }
 
 /// What the person reads in the popover for a failure.
@@ -231,6 +233,11 @@ mod tests {
         assert_eq!(anirss_start(&cfg, Some("nyaa")), None);
         assert_eq!(
             resolve_command(" my-start ", Some(&cfg), "1337x"),
+            "podman pod start x",
+            "the endpoint's own start wins over the setting"
+        );
+        assert_eq!(
+            resolve_command(" my-start ", Some(&cfg), "nyaa"),
             "my-start"
         );
         assert_eq!(

@@ -390,9 +390,8 @@ pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
             let f = file_row(c, file)?;
             // The safety net behind every Play: whatever page asked, a file a
             // torrent is still writing does not open.
-            if !f.is_extra
-                && let Some(done) = crate::downloads::episode_progress(core, f.series, f.number)
-            {
+            if !f.is_extra && crate::downloads::is_writing(core, &f.path) {
+                let done = crate::downloads::episode_progress(core, f.series, f.number).unwrap_or(0.0);
                 return Err(CoreError::Service {
                     service: crate::downloads::qbt::SERVICE.to_string(),
                     code: "downloading".to_string(),

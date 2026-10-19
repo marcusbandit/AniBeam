@@ -49,6 +49,26 @@ static SIZE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)^\s*([\d.,]+)\s*(B|KB|KIB|MB|MIB|GB|GIB|TB|TIB)\s*$").unwrap()
 });
 
+/// The facts of a bare name, a file's or a torrent's, read as a release
+/// title is; a path counts by its last part.
+pub fn read_name(name: &str) -> ReleaseFacts {
+    let base = name.rsplit('/').next().unwrap_or(name);
+    read(&Release {
+        title: base.to_string(),
+        link: String::new(),
+        seeders: None,
+        leechers: None,
+        downloads: None,
+        size: String::new(),
+        category: String::new(),
+        page: String::new(),
+        source: String::new(),
+        resolution: String::new(),
+        infomkv: String::new(),
+        linktype: String::new(),
+    })
+}
+
 pub fn read(item: &Release) -> ReleaseFacts {
     let title = item.title.as_str();
     let group = GROUP_LEAD

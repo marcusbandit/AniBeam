@@ -227,7 +227,7 @@ impl Core {
             http.clone(),
             TVMAZE_GAP,
         )));
-        Ok(Arc::new_cyclic(|me| Core {
+        let core = Arc::new_cyclic(|me| Core {
             paths,
             store,
             bus,
@@ -256,7 +256,17 @@ impl Core {
             kept_load: Mutex::new(None),
             started: AtomicBool::new(false),
             closed: AtomicBool::new(false),
-        }))
+        });
+        // Every SeriesChanged, from whichever job or scan, carries what is
+        // still downloading, the same as a list read does
+        let weak = Arc::downgrade(&core);
+        core.bus
+            .set_cards_hook(Arc::new(move |cards: &mut [SeriesCard]| {
+                if let Some(core) = weak.upgrade() {
+                    crate::downloads::overlay(&core, cards);
+                }
+            }));
+        Ok(core)
     }
 
     /// `None` once the core is shutting down; callers treat that as "the
@@ -289,11 +299,13 @@ impl Core {
             .store(hold.as_millis() as u64, Ordering::SeqCst);
     }
 
-    /// Turns the downloads pruning of finished feeds off for this core's
-    /// life. A shell calls it when it runs against a library copy but the
-    /// owner's real anirss, such as a drive script or a sandbox root.
-    pub fn disable_feed_pruning(&self) {
-        self.downloads.disable_pruning();
+    /// Turns off, for this core's life, every change the downloads code
+    /// makes on its own: pruning finished feeds, and the replace followups
+    /// that trash old files and cancel or tidy torrents. A shell calls it
+    /// when it runs a library copy against the owner's real anirss and
+    /// qBittorrent, such as a drive script or a sandbox root.
+    pub fn disable_unattended_changes(&self) {
+        self.downloads.disable_unattended();
     }
 
     /// The store itself, for the integration tests' fixtures: they build

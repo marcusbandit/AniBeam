@@ -15,10 +15,11 @@
 //! The check runs after each successful subscription read, at most once a
 //! day (the time of the last one is kept in the settings table), only
 //! while the setting is on and qBittorrent answers, and never in a shell
-//! that disabled it (`Core::disable_feed_pruning`).
+//! that disabled it (`Core::disable_unattended_changes`).
 
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
+use regex::Regex;
 use rusqlite::{Connection, OptionalExtension, params};
 use time::macros::format_description;
 
@@ -89,12 +90,38 @@ pub fn due(enabled: bool, rule: &SubscriptionRule, end: RunEnd, now: i64) -> Opt
         return None;
     }
     let show = rule.show.as_ref()?;
+    // A rule is linked by its save folder, which a new season often shares with the one
+    // before it: only a rule that has taken something, and that names no other season or
+    // part than the finished series does, is that series' subscription
+    if rule.torrent_count == 0 || season_of(&rule.query) != season_of(&show.title) {
+        return None;
+    }
     let days = finished_days(show, end, now)?;
     Some(Due {
         rule: rule.name.clone(),
         title: show.title.clone(),
         days,
     })
+}
+
+static SEASON: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\b(?:s(\d{1,2})|season\s*(\d{1,2})|(\d{1,2})(?:st|nd|rd|th)\s+season|part\s*(\d{1,2})|cour\s*(\d{1,2}))\b")
+        .unwrap()
+});
+
+/// The season or part a name says, 1 when it says none: "Frieren Season 2" is 2,
+/// "Sousou no Frieren" is 1.
+fn season_of(name: &str) -> u32 {
+    SEASON
+        .captures(name)
+        .and_then(|c| {
+            c.iter()
+                .skip(1)
+                .flatten()
+                .next()
+                .and_then(|m| m.as_str().parse().ok())
+        })
+        .unwrap_or(1)
 }
 
 /// When the series' run ended, off the stored schedule and end date of
@@ -188,7 +215,7 @@ pub(super) async fn after_read(
     client: &AnirssClient,
     rules: &[SubscriptionRule],
 ) {
-    if !core.downloads.pruning_allowed() {
+    if !core.downloads.unattended_allowed() {
         return;
     }
     if let Err(e) = check(core, client, rules, crate::time::now_secs()).await {
@@ -292,11 +319,34 @@ mod tests {
             feed_url: "https://nyaa.si/?page=rss&q=frieren".to_string(),
             save_path: "/lib/Frieren".to_string(),
             rule_enabled: true,
-            torrent_count: 0,
-            file_count: 0,
-            query: String::new(),
+            torrent_count: 3,
+            file_count: 3,
+            query: "Frieren".to_string(),
             show,
         }
+    }
+
+    #[test]
+    fn a_new_season_or_an_unused_rule_in_the_finished_folder_stays() {
+        let s = show(Some(AiringStatus::Finished));
+        let mut next = rule(Some(s.clone()));
+        next.query = "Sousou no Frieren Season 2".to_string();
+        assert_eq!(
+            due(true, &next, aired(400), NOW),
+            None,
+            "season 2 shares season 1's folder"
+        );
+        next.query = "Frieren 2nd Season".to_string();
+        assert_eq!(due(true, &next, aired(400), NOW), None);
+        let mut unused = rule(Some(s));
+        unused.torrent_count = 0;
+        assert_eq!(
+            due(true, &unused, aired(400), NOW),
+            None,
+            "a rule that never took anything"
+        );
+        assert_eq!(season_of("Frieren S01"), 1);
+        assert_eq!(season_of("Frieren Part 2"), 2);
     }
 
     fn aired(days_ago: i64) -> RunEnd {

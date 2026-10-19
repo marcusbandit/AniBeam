@@ -52,13 +52,16 @@ fn start(core: &Core, name: &str) -> u64 {
 
 /// An anirss config with a plain nyaa endpoint and a 1337x one that has a
 /// `start`, and the XDG config home pointed at it.
-fn on_demand_config(dir: &Path, start: &str) {
+fn on_demand_config(dir: &Path, start: Option<&str>) {
+    let start = start
+        .map(|s| format!("start = \"{s}\"\n"))
+        .unwrap_or_default();
     let anirss = dir.join("anirss");
     std::fs::create_dir_all(&anirss).unwrap();
     std::fs::write(
         anirss.join("config.toml"),
         format!(
-            "[[endpoint]]\nname = \"nyaa\"\nkind = \"nyaa\"\nurl = \"https://nyaa.si/\"\n\n[[endpoint]]\nname = \"1337x\"\nkind = \"rss\"\nurl = \"http://127.0.0.1:9117/x?q={{query}}\"\nstart = \"{start}\"\nready = \"http://127.0.0.1:9117/caps\"\ntimeout = 5\n"
+            "[[endpoint]]\nname = \"nyaa\"\nkind = \"nyaa\"\nurl = \"https://nyaa.si/\"\n\n[[endpoint]]\nname = \"1337x\"\nkind = \"rss\"\nurl = \"http://127.0.0.1:9117/x?q={{query}}\"\n{start}ready = \"http://127.0.0.1:9117/caps\"\ntimeout = 5\n"
         ),
     )
     .unwrap();
@@ -87,7 +90,10 @@ fn starting_an_endpoint_runs_its_command_and_names_why_it_cannot() {
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
     let marker = dir.path().join("started");
-    on_demand_config(dir.path(), &format!("echo anirss > {}", marker.display()));
+    on_demand_config(
+        dir.path(),
+        Some(&format!("echo anirss > {}", marker.display())),
+    );
     save(&core, remote(""));
 
     let refused = core.call(Call::StartEndpoint {
@@ -109,19 +115,22 @@ fn starting_an_endpoint_runs_its_command_and_names_why_it_cannot() {
     );
     assert_eq!(written(&marker), "anirss");
 
-    // The setting wins over anirss's start
-    let custom = dir.path().join("custom");
+    // anirss's own start wins over the setting
+    let ignored = dir.path().join("ignored");
     save(
         &core,
-        remote(&format!("echo setting > {}", custom.display())),
+        remote(&format!("echo setting > {}", ignored.display())),
     );
+    std::fs::remove_file(&marker).unwrap();
     http.fail_next("refused");
     http.push(200, "ok");
     common::wait_job(&c, start(&core, "1337x"));
-    assert_eq!(written(&custom), "setting");
+    assert_eq!(written(&marker), "anirss");
+    assert!(!ignored.exists(), "the setting never ran");
 
     // Not installed: the shell's exit 127 for a command it cannot find
-    save(&core, remote("anibeam-no-such-jackett"));
+    on_demand_config(dir.path(), Some("anibeam-no-such-jackett"));
+    save(&core, remote(""));
     http.fail_next("refused");
     let event = common::wait_job(&c, start(&core, "1337x"));
     let EventBody::JobFailed {

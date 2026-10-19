@@ -76,7 +76,7 @@ fn rules_json(names: &[&str]) -> String {
         .iter()
         .map(|n| {
             json!({"name": n, "feed_url": format!("https://nyaa.si/?page=rss&q={n}"),
-                   "save_path": format!("/lib/{n}")})
+                   "save_path": format!("/lib/{n}"), "torrent_count": 2, "query": n})
         })
         .collect();
     json!({ "subscriptions": rules }).to_string()
@@ -271,7 +271,7 @@ fn nothing_is_removed_with_the_setting_off() {
 #[test]
 fn nothing_is_removed_in_a_shell_that_turned_it_off() {
     let (_dir, core, c, http) = setup(true);
-    core.disable_feed_pruning();
+    core.disable_unattended_changes();
     push_read(&http);
     http.push_for("app/version", 200, "v5.0.0");
     http.push_for("/subscriptions/remove", 200, "{}");

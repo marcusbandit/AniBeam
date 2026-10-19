@@ -166,21 +166,7 @@ pub fn names_match(torrent_name: &str, title: &str) -> bool {
 }
 
 fn read_name(name: &str) -> ReleaseFacts {
-    let base = name.rsplit('/').next().unwrap_or(name);
-    facts::read(&Release {
-        title: base.to_string(),
-        link: String::new(),
-        seeders: None,
-        leechers: None,
-        downloads: None,
-        size: String::new(),
-        category: String::new(),
-        page: String::new(),
-        source: String::new(),
-        resolution: String::new(),
-        infomkv: String::new(),
-        linktype: String::new(),
-    })
+    facts::read_name(name)
 }
 
 /// The whole-number episode a file or torrent name carries.
@@ -263,9 +249,24 @@ pub fn episode_ready(episode: u32, t: &Torrent, files: &[TorrentFile]) -> bool {
 /// torrent wrote.
 pub fn old_to_trash(old: &[String], written: &[String]) -> Vec<String> {
     old.iter()
-        .filter(|p| !written.iter().any(|w| w == *p))
+        .filter(|p| !written.iter().any(|w| same_file(p, w)))
         .cloned()
         .collect()
+}
+
+/// Two paths name one file: the same text once tidied, or the same device
+/// and inode on disk (a symlinked library source, a hard link). A path that
+/// cannot be read on disk is judged by its text alone.
+fn same_file(a: &str, b: &str) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    let tidy = |p: &str| PathBuf::from(p).components().collect::<PathBuf>();
+    if tidy(a) == tidy(b) {
+        return true;
+    }
+    match (std::fs::metadata(a), std::fs::metadata(b)) {
+        (Ok(x), Ok(y)) => x.dev() == y.dev() && x.ino() == y.ino(),
+        _ => false,
+    }
 }
 
 // The old torrents ------------------------------------------------------------------
@@ -329,8 +330,10 @@ pub enum CancelPlan {
 }
 
 /// How an unfinished torrent gives way to a replacement of `replace`. A
-/// finished torrent is a file to replace, not a download to stop. A file
-/// whose episode cannot be read counts as one that is not being replaced.
+/// finished torrent is a file to replace, not a download to stop, and so is
+/// a finished file inside an unfinished batch: the batch goes whole only
+/// when none of its files is done. A file whose episode cannot be read
+/// counts as one that is not being replaced.
 pub fn cancel_plan(replace: &BTreeSet<u32>, t: &Torrent, files: &[TorrentFile]) -> CancelPlan {
     if t.progress >= 1.0 || replace.is_empty() {
         return CancelPlan::Nothing;
@@ -349,10 +352,12 @@ pub fn cancel_plan(replace: &BTreeSet<u32>, t: &Torrent, files: &[TorrentFile]) 
         .filter(|(_, f)| f.priority > 0)
         .map(|(i, f)| (i, episode_of(&f.name)))
         .collect();
+    // Whole only while nothing of it is finished: a done episode is a playable file, which
+    // goes to the trash once its replacement finishes, never before
     if !wanted.is_empty()
         && wanted
             .iter()
-            .all(|(_, e)| e.is_some_and(|e| replace.contains(&e)))
+            .all(|(i, e)| files[*i].progress < 1.0 && e.is_some_and(|e| replace.contains(&e)))
     {
         return CancelPlan::Whole;
     }
@@ -1126,6 +1131,26 @@ mod tests {
     }
 
     #[test]
+    fn the_new_file_is_never_old_whatever_path_reaches_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("media");
+        std::fs::create_dir(&real).unwrap();
+        std::fs::write(real.join("e02.mkv"), b"x").unwrap();
+        std::os::unix::fs::symlink(&real, dir.path().join("lib")).unwrap();
+        let via_link = dir.path().join("lib/e02.mkv").display().to_string();
+        let written = real.join("e02.mkv").display().to_string();
+        assert!(
+            old_to_trash(
+                std::slice::from_ref(&via_link),
+                std::slice::from_ref(&written)
+            )
+            .is_empty()
+        );
+        let doubled = written.replace("/media/", "/media//");
+        assert!(old_to_trash(&[doubled], &[written]).is_empty());
+    }
+
+    #[test]
     fn cancelling_takes_a_torrent_only_when_every_episode_it_fetches_is_replaced() {
         let mut t = torrent("h", "[G] Show (01-03)", 0);
         t.progress = 0.3;
@@ -1134,13 +1159,27 @@ mod tests {
             file("S/[G] Show - 02.mkv", 0.2, 1),
             file("S/[G] Show - 03.mkv", 0.0, 0),
         ];
-        // Episodes 1 and 2 are fetched (3 is skipped) and both are replaced
+        // Episodes 1 and 2 are fetched (3 is skipped) and both are replaced, but 1 is
+        // already done: it stays on disk until its replacement finishes, only 2 stops
         assert_eq!(
             cancel_plan(
                 &eps(&[1, 2]),
                 &t,
                 &[
                     file("S/[G] Show - 01.mkv", 1.0, 1),
+                    files[1].clone(),
+                    files[2].clone()
+                ]
+            ),
+            CancelPlan::Skip(vec![1])
+        );
+        // Nothing of it done yet: the whole torrent gives way
+        assert_eq!(
+            cancel_plan(
+                &eps(&[1, 2]),
+                &t,
+                &[
+                    file("S/[G] Show - 01.mkv", 0.4, 1),
                     files[1].clone(),
                     files[2].clone()
                 ]

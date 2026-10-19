@@ -25,7 +25,13 @@ pub struct EventBus {
     next_listener: AtomicU64,
     listeners: RwLock<Vec<(u64, Arc<dyn EventListener>)>>,
     store: Arc<Store>,
+    /// Laid over the cards of every `SeriesChanged` before anyone hears it:
+    /// the live state a card read from the database cannot know (what a
+    /// torrent is still writing), whichever job or scan built the cards.
+    cards_hook: RwLock<Option<CardsHook>>,
 }
+
+pub type CardsHook = Arc<dyn Fn(&mut [SeriesCard]) + Send + Sync>;
 
 impl EventBus {
     /// Reads the ring's highest `seq` so numbering continues across
@@ -40,7 +46,13 @@ impl EventBus {
             next_listener: AtomicU64::new(1),
             listeners: RwLock::new(Vec::new()),
             store,
+            cards_hook: RwLock::new(None),
         }))
+    }
+
+    /// Sets the hook every `SeriesChanged` passes through.
+    pub fn set_cards_hook(&self, hook: CardsHook) {
+        *self.cards_hook.write().unwrap() = Some(hook);
     }
 
     /// Stamps `seq` and `at`, persists Info and above to the ring, then
@@ -51,8 +63,14 @@ impl EventBus {
         stage: Stage,
         message: impl Into<String>,
         job: Option<JobRef>,
-        body: EventBody,
+        mut body: EventBody,
     ) -> Event {
+        if let EventBody::SeriesChanged { series } = &mut body {
+            let hook = self.cards_hook.read().unwrap().clone();
+            if let Some(hook) = hook {
+                hook(series);
+            }
+        }
         let event = Event {
             seq: self.seq.fetch_add(1, Ordering::SeqCst) + 1,
             at: time::now(),

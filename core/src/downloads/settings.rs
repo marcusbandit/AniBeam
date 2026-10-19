@@ -7,7 +7,6 @@ use std::path::{Path, PathBuf};
 
 use rusqlite::Connection;
 
-use super::jackett;
 use crate::contract::*;
 use crate::store::settings;
 use crate::trackers::Secrets;
@@ -92,9 +91,8 @@ pub fn defaults() -> DownloadSettings {
     DownloadSettings {
         anirss_mode: AnirssMode::Sidecar,
         anirss_command: "anirss".to_string(),
-        jackett_command: anirss_config_path()
-            .and_then(|p| jackett::anirss_start(&p, None))
-            .unwrap_or_default(),
+        // Empty: each endpoint's own start in anirss's config is found when it is started
+        jackett_command: String::new(),
         anirss_url: "http://127.0.0.1:8787".to_string(),
         has_anirss_token: false,
         torrent_client: TorrentClient::Qbittorrent,
