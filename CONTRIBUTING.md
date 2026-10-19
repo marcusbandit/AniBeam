@@ -12,8 +12,8 @@ the branch, every commit, the PR title and the squash commit it becomes.
 4. **Try it live** in a sandbox run of the branch's own build. See below.
 5. **Open a PR** whose title follows the same pattern and whose body ends in
    `Closes #<issue>`.
-6. **Review and checks.** Checks must be green and review comments answered,
-   each fix as a new commit on the branch. Never amend and force-push a pushed
+6. **Review and checks.** Review comments answered, each fix as a new commit
+   on the branch, and checks green once CI exists (#73). Never amend and force-push a pushed
    branch.
 7. **Squash merge** with `gh pr merge --squash --delete-branch`. The PR title
    becomes the one commit on main, with `(#N)` appended by GitHub.
@@ -29,16 +29,17 @@ the branch, every commit, the PR title and the squash commit it becomes.
 | `docs`     | README, CONTEXT, CONTRIBUTING, `docs/`              |
 | `test`     | tests only                                          |
 | `chore`    | dependencies, tooling, cleanup                      |
-| `ci`       | `.github/workflows`                                 |
+| `ci`       | `.github/workflows`, once #73 adds them             |
 
 ## Scopes
 
 The scope is the crate the change belongs to: `core`, `shell` for
 `apps/linux`, `cli` for `apps/cli`. A shell change that lives on one page or
 in one part of the window can name it instead: `home`, `library`, `series`,
-`feed`, `downloads`, `settings`, `player`.
+`feed`, `watching`, `downloads`, `metadata`, `tokens`, `settings`, `player`.
 
-Outside the crates use `docs`, `readme`, `packaging` or `ci`. A change that
+A `docs` change names the document: `readme`, `contributing`, `context`,
+`spec`. Outside the crates and the docs use `packaging` or `ci`. A change that
 genuinely spans two scopes lists both, comma separated:
 `fix(core,shell): ...`. More than two usually means the PR should split.
 
@@ -46,8 +47,8 @@ genuinely spans two scopes lists both, comma separated:
 
     <type>/<issue>-<slug>
 
-- `fix/12-crash-on-rotate`
 - `feat/69-downloads-redesign`
+- `perf/64-shared-cargo-target`
 - `docs/contributing-naming` when no issue exists, which should be rare
 
 The slug is a few lowercase hyphenated words naming the outcome.
@@ -55,8 +56,9 @@ The slug is a few lowercase hyphenated words naming the outcome.
 ## Trying a branch live
 
 The launcher entry runs the main checkout's `target/release/anibeam`, so a
-branch never reaches it until it is merged and rebuilt. Run the branch's own
-build instead, from its checkout:
+release build in the main checkout replaces what the launcher starts. Work on
+a branch in a worktree under `~/Projects/_wt/` and run that worktree's own
+build:
 
     cargo build --release -p anibeam
     ANIBEAM_THEMES_DIR=apps/linux/themes ANIBEAM_MPV_CONF=apps/linux/mpv.conf \
@@ -92,16 +94,14 @@ Not:
 
 ## The PR body
 
-- **What changed**, in a few lines.
-- **Why**, linking the issue.
-- **How it was verified**: a screenshot or recording for anything visible,
+- What changed, in a few lines.
+- Why, linking the issue.
+- How it was verified: a screenshot or recording for anything visible,
   test output otherwise.
 - `Closes #<issue>` on its own line.
 
 ## Before you open it
 
-- `cargo test --workspace` passes.
-- `cargo clippy --workspace --all-targets -- -D warnings` is clean.
-- `cargo fmt --all --check` is clean.
+- The test, clippy and fmt commands in the README's Development section pass.
 - A visible change has a capture in the PR body, taken against a sandbox root.
 - A new word for something in the domain has its entry in `CONTEXT.md`.
