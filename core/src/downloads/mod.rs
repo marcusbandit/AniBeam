@@ -14,6 +14,7 @@
 //! shell holds `{endpoint, query, items}` and its own history.
 
 pub mod anirss;
+pub mod contents;
 pub mod facts;
 pub mod feed;
 pub mod jackett;
@@ -1649,6 +1650,27 @@ fn mark_downloading(detail: &mut SeriesDetail) {
 /// itself rather than through anirss, which has no route for it; the URL
 /// is the one anirss registered, API key and all, and never leaves this
 /// machine but to its own host.
+/// Not a job: the show view asks once per batch that names no range.
+pub fn inspect_release(core: &Core, link: String) -> Result<Reply, CoreError> {
+    let link = link.trim().to_string();
+    let owner = core.owner()?;
+    core.handle.spawn(async move {
+        let (episodes, files) = match contents::inspect(owner.http.as_ref(), &link).await {
+            Ok(found) => found,
+            Err(e) => {
+                tracing::debug!("release not inspected: {}", plain(&e));
+                (Vec::new(), 0)
+            }
+        };
+        owner.bus.debug(
+            Stage::Downloads,
+            format!("{} in a release", plural(episodes.len() as u64, "episode", "episodes")),
+            EventBody::ReleaseInspected { link, episodes, files },
+        );
+    });
+    Ok(Reply::Ok)
+}
+
 pub fn read_feed(core: &Core, url: String) -> Result<Reply, CoreError> {
     let url = url.trim().to_string();
     if !(url.starts_with("http://") || url.starts_with("https://")) {

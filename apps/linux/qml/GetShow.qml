@@ -51,17 +51,46 @@ Item {
 
     // ---- The library's row and the episode count the grid runs to
     readonly property var libCodes: show && show.cubes ? String(show.cubes).split("") : []
-    readonly property var current: active !== "" && results[active] ? results[active] : null
+    readonly property var current: active !== "" && results[active] ? ofShow(results[active]) : null
+    // ---- Only the releases that name this show. A search matches a release group as well
+    // as a title ("Naruto" finds Naruto-Kun.Hu's One Piece), so a release must carry at
+    // least half of the show's words outside its leading [group]
+    readonly property var showWords: {
+        var q = show ? String(show.query || show.title || "") : ""
+        var stop = { the: 1, and: 1, season: 1, part: 1, movie: 1 }
+        return q.toLowerCase().split(/[^a-z0-9]+/).filter(function(w) { return w.length >= 3 && !stop[w] })
+    }
+    function namesShow(title) {
+        if (!showWords.length) return true
+        var t = " " + String(title || "").toLowerCase().replace(/^\s*\[[^\]]*\]/, "").replace(/[^a-z0-9]+/g, " ") + " "
+        var hit = showWords.filter(function(w) { return t.indexOf(" " + w + " ") >= 0 || t.indexOf(" " + w) >= 0 }).length
+        return hit >= Math.ceil(showWords.length / 2)
+    }
+    function ofShow(r) {
+        if (!r || !r.items) return r
+        var items = [], facts = []
+        for (var i = 0; i < r.items.length; i++) if (namesShow(r.items[i].title)) { items.push(r.items[i]); facts.push(r.facts[i]) }
+        if (items.length === r.items.length) return r
+        var out = {}
+        for (var k in r) out[k] = r[k]
+        out.items = items; out.facts = facts; out.dropped = r.items.length - items.length
+        return out
+    }
     readonly property int total: {
         var t = show && show.total > 0 ? show.total : libCodes.length
+        // A finished show's own count is the count: a stray number in a release name
+        // (Naruto - 1080 something) must not stretch the grid past the last episode
+        if (show && show.total > 0 && !show.airing) return Math.min(show.total, 2000)
         if (current && current.items) for (var i = 0; i < current.facts.length; i++) {
             var f = current.facts[i]
             if (f && !f.batch && f.episode !== null && f.episode !== undefined && f.episode === Math.floor(f.episode)) t = Math.max(t, f.episode)
             if (f && f.batch && f.last_episode) t = Math.max(t, f.last_episode)
+            var inside = f && f.batch && !f.first_episode ? contentsOf(current.items[i]) : null
+            if (inside && inside.length) t = Math.max(t, inside[inside.length - 1])
         }
         // A show made from a torrent has no count of its own: its torrent's episodes are the count
         for (var k in inFlight) t = Math.max(t, Number(k))
-        return Math.min(t, 400)
+        return Math.min(t, 2000)
     }
     // Episode number to how far along its torrent is, for every episode a torrent of this
     // show carries and has not finished; a batch is read file by file
@@ -107,6 +136,43 @@ Item {
     // A batch is a row of its own: one torrent that lights every episode it names (all of
     // them when it names none, a season pack), picked and dropped as one.
     function seedsOf(item) { return item && item.seeders !== null && item.seeders !== undefined ? item.seeders : -1 }
+    // ---- What a batch with no range in its title holds, counted from its torrent's file
+    // list by the core: link -> { state: "asking" | "done", episodes }
+    property var contents: ({})
+    function contentsOf(item) { var c = item && root.contents[item.link]; return c && c.state === "done" ? c.episodes : null }
+    function inspectBatches() {
+        if (!current || !current.items) return
+        var asked = false, next = JSON.parse(JSON.stringify(root.contents))
+        for (var i = 0; i < current.items.length; i++) {
+            var f = current.facts[i] || {}, link = current.items[i].link
+            if (!f.batch || f.first_episode || !link || next[link]) continue
+            next[link] = { state: "asking", episodes: [] }
+            Door.call("InspectRelease", { link: link })
+            asked = true
+        }
+        if (asked) root.contents = next
+    }
+    onCurrentChanged: inspectBatches()
+    Connections {
+        target: Door
+        function onReleaseInspected(link, episodes, files) {
+            if (root.contents[link] === undefined) return
+            var next = JSON.parse(JSON.stringify(root.contents))
+            next[link] = { state: "done", episodes: episodes.map(Number).sort(function(a, b) { return a - b }) }
+            root.contents = next
+        }
+    }
+    // Episode numbers as short runs: 1-12, 14, 20-24
+    function runs(list) {
+        var out = [], i = 0
+        while (i < list.length) {
+            var j = i
+            while (j + 1 < list.length && list[j + 1] === list[j] + 1) j++
+            out.push(j > i ? list[i] + "-" + list[j] : String(list[i]))
+            i = j + 1
+        }
+        return out.join(", ")
+    }
     readonly property var rows: {
         if (!current || !current.items) return []
         var by = {}, order = [], packs = []
@@ -115,10 +181,20 @@ Item {
             var gname = f.group || root.active
             var key = gname + "|" + (f.resolution || "")
             if (f.batch) {
-                var a = f.first_episode || 1, z = f.last_episode || total
-                var b = { key: "batch|" + i, group: gname, resolution: f.resolution || "", batch: true, first: f.first_episode || 0, last: f.last_episode || 0,
+                // The episodes it holds: the title's range, else the counted file list, else
+                // (still counting, or a magnet with no list) the whole show by its title
+                var list = []
+                if (f.first_episode) for (var m = f.first_episode; m <= Math.min(f.last_episode || total, total); m++) list.push(m)
+                else {
+                    var inside = contentsOf(it)
+                    if (inside && inside.length) list = inside.filter(function(x) { return x >= 1 && x <= total })
+                    else for (var w = 1; w <= total; w++) list.push(w)
+                }
+                var state = f.first_episode ? "title" : contentsOf(it) && contentsOf(it).length ? "counted" : root.contents[it.link] && root.contents[it.link].state === "asking" ? "counting" : "unknown"
+                var b = { key: "batch|" + i, group: gname, resolution: f.resolution || "", batch: true, list: list, state: state,
+                          first: list.length ? list[0] : 0, last: list.length ? list[list.length - 1] : 0, label: runs(list),
                           eps: {}, count: 0, seeds: Math.max(0, seedsOf(it)), size: f.size_bytes || 0 }
-                for (var m = a; m <= Math.min(z, total); m++) { b.eps[m] = i; b.count++ }
+                for (var q = 0; q < list.length; q++) { b.eps[list[q]] = i; b.count++ }
                 packs.push(b)
                 continue
             }
@@ -206,6 +282,17 @@ Item {
             return
         }
         if (p[n] === row.eps[n]) delete p[n]; else p[n] = row.eps[n]
+        picks = p
+        chosen = row.key
+    }
+    // A folded cube (a long show) stands for a few episodes: a click takes them all, or
+    // drops them all when every one of them is already picked from this row
+    function toggleRange(row, a, z) {
+        if (row.batch) { for (var m = a; m <= z; m++) if (row.eps[m] !== undefined) { toggleCube(row, m); return } return }
+        var p = JSON.parse(JSON.stringify(picks)), all = true, any = false
+        for (var n = a; n <= z; n++) if (row.eps[n] !== undefined) { any = true; if (p[n] !== row.eps[n]) all = false }
+        if (!any) return
+        for (var k = a; k <= z; k++) if (row.eps[k] !== undefined) { if (all) delete p[k]; else p[k] = row.eps[k] }
         picks = p
         chosen = row.key
     }
@@ -338,20 +425,23 @@ Item {
         return e.running === true ? "Running" : "Not running"
     }
     function resultWords(e) {
-        if (!root.sourceOn(e.name)) return e.on_demand && e.running !== true ? "Off. AniBeam never starts " + e.name + "; start it yourself, then check again." : "Switched off"
-        var r = results[e.name]
+        if (!root.sourceOn(e.name)) return e.on_demand && e.running !== true ? "Not running. Click its source above to start it." : "Switched off"
+        var r = ofShow(results[e.name])
         if (!r || r.state === "idle") return "Click to see what it has for this show"
         if (r.state === "searching") return (r.label || "Searching") + ", " + Math.floor(r.elapsed || 0) + " s"
         if (r.state === "error") return r.error
-        var cover = 0
-        for (var n = 1; n <= total; n++) {
-            var any = false
-            for (var i = 0; i < r.items.length; i++) {
-                var f = r.facts[i]
-                if (f && (f.batch ? (f.first_episode || 1) <= n && n <= (f.last_episode || total) : f.episode === n)) { any = true; break }
-            }
-            if (any) cover++
+        // Each release marks what it holds; a batch by its range, its counted files, or the show
+        var has = {}
+        for (var i = 0; i < r.items.length; i++) {
+            var f = r.facts[i]
+            if (!f) continue
+            if (!f.batch) { if (f.episode >= 1 && f.episode <= total) has[f.episode] = true; continue }
+            var inside = f.first_episode ? null : root.contentsOf(r.items[i])
+            if (inside && inside.length) inside.forEach(function(x) { has[x] = true })
+            else for (var n = f.first_episode || 1; n <= Math.min(f.last_episode || total, total); n++) has[n] = true
         }
+        var cover = 0
+        for (var k in has) if (Number(k) <= total) cover++
         return Fmt.plural(r.items.length, "release", "releases") + (total ? ", " + cover + " of " + total + " episodes covered" : "")
     }
 
@@ -600,7 +690,7 @@ Item {
                             required property var modelData
                             title: modelData.batch ? modelData.group + ", batch" : modelData.group
                             line: (modelData.resolution ? modelData.resolution + ", " : "")
-                                + (modelData.batch ? (modelData.first ? "episodes " + modelData.first + " to " + modelData.last : "the whole season") + ", one torrent" : Fmt.plural(modelData.count, "episode", "episodes"))
+                                + (modelData.batch ? (modelData.state === "counting" ? "counting its episodes" : modelData.state === "unknown" ? "episodes not listed, the whole show by its title" : Fmt.plural(modelData.count, "episode", "episodes")) + ", one torrent" : Fmt.plural(modelData.count, "episode", "episodes"))
                                 + (modelData.size > 0 ? ", " + Fmt.bytes(modelData.size) : "")
                             codes: root.codesOf(modelData)
                             chosen: root.chosen === modelData.key
@@ -608,6 +698,7 @@ Item {
                             rowData: modelData
                             onPicked: root.pickRow(modelData, true)
                             onCubePicked: function(i) { root.toggleCube(modelData, i + 1) }
+                            onRangePicked: function(a, z) { root.toggleRange(modelData, a + 1, z + 1) }
                         }
                     }
                 }
@@ -1016,6 +1107,7 @@ Item {
         property var rowData: null
         signal picked()
         signal cubePicked(int index)
+        signal rangePicked(int first, int last)
         width: grid.width
         height: Math.max(theme.space(15), cubes.implicitHeight + theme.space(5))
         Rectangle {
@@ -1049,13 +1141,15 @@ Item {
             height: implicitHeight
             codes: gr.codes
             fills: gr.fills
-            cubeSize: theme.space(6)
-            minSize: theme.space(2)
-            maxRows: 4
+            // A long show trades cube size for rows before it folds episodes together: a
+            // season keeps big cubes, a few hundred episodes stay one cube each
+            cubeSize: root.total <= 60 ? theme.space(6) : root.total <= 160 ? theme.space(4) : theme.space(3)
+            minSize: theme.space(2.5)
+            maxRows: root.total <= 60 ? 4 : 10
             clickable: gr.clickable
-            spanFirst: gr.rowData && gr.rowData.batch ? (gr.rowData.first || 1) : 0
-            spanLast: gr.rowData && gr.rowData.batch ? Math.min(root.total, gr.rowData.last || root.total) : 0
-            spanLabel: gr.rowData && gr.rowData.batch ? (gr.rowData.first ? gr.rowData.first + "-" + gr.rowData.last : "Whole season") : ""
+            spanFirst: gr.rowData && gr.rowData.batch ? gr.rowData.first : 0
+            spanLast: gr.rowData && gr.rowData.batch ? gr.rowData.last : 0
+            spanLabel: !gr.rowData || !gr.rowData.batch ? "" : gr.rowData.state === "counting" ? "Counting" : gr.rowData.state === "unknown" ? gr.rowData.label + "?" : "Episodes " + gr.rowData.label
             spanChosen: gr.chosen
             tipFor: gr.rowData ? function(i, code) {
                 var idx = gr.rowData.eps[i + 1]
@@ -1069,6 +1163,7 @@ Item {
                 return bits.join("\n")
             } : null
             onCubeClicked: function(i) { gr.cubePicked(i) }
+            onRangeClicked: function(a, z) { gr.rangePicked(a, z) }
         }
     }
 }

@@ -815,6 +815,7 @@ impl Core {
             Call::CheckEndpoints => Ok(Reply::Started {
                 job: downloads::check_endpoints(self)?,
             }),
+            Call::InspectRelease { link } => downloads::inspect_release(self, link),
             Call::StartEndpoint { name } => Ok(Reply::Started {
                 job: downloads::start_endpoint(self, name)?,
             }),

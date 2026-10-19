@@ -81,10 +81,12 @@ pub fn read(item: &Release) -> ReleaseFacts {
     let batch = episode.is_none()
         && (BATCH_WORD.is_match(title)
             || ranged(title)
-            || SEASON_PACK
-                .captures(title)
-                .inspect(|c| season = c[1].parse().ok())
-                .is_some());
+            // "Show S2 - 03" names a season and then its episode: not a pack
+            || (!DASH_EPISODE.is_match(title)
+                && SEASON_PACK
+                    .captures(title)
+                    .inspect(|c| season = c[1].parse().ok())
+                    .is_some()));
     if !batch && episode.is_none() {
         episode = DASH_EPISODE
             .captures(title)
@@ -188,6 +190,12 @@ mod tests {
             (f.group.as_str(), f.resolution.as_str()),
             ("ETHEL", "1080p")
         );
+    }
+
+    #[test]
+    fn a_season_then_a_dashed_episode_is_one_episode() {
+        let f = read(&release("[Naruto-Kun.Hu] Black Clover S2 - 03 [1080p].mkv", ""));
+        assert_eq!((f.episode, f.batch), (Some(3.0), false));
     }
 
     #[test]

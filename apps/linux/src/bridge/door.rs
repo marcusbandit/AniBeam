@@ -477,6 +477,8 @@ pub mod qobject {
         #[qsignal]
         fn feed_read(self: Pin<&mut Door>, url: QString, entries: QJsonArray);
         #[qsignal]
+        fn release_inspected(self: Pin<&mut Door>, link: QString, episodes: QJsonArray, files: f64);
+        #[qsignal]
         fn rule_read(self: Pin<&mut Door>, rule: QJsonObject);
         #[qsignal]
         fn subscription_repaired(
@@ -1064,6 +1066,10 @@ impl qobject::Door {
                     .torrents_read(arr("torrents"), obj("transfer"), arr("shows"))
             }
             EventBody::FeedRead { .. } => self.as_mut().feed_read(s("url"), arr("entries")),
+            EventBody::ReleaseInspected { files, .. } => {
+                self.as_mut()
+                    .release_inspected(s("link"), arr("episodes"), *files as f64)
+            }
             EventBody::RuleRead { .. } => self.as_mut().rule_read(obj("rule")),
             EventBody::SubscriptionRepaired { .. } => self.as_mut().subscription_repaired(
                 job_id,

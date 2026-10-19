@@ -350,6 +350,12 @@ pub enum Call {
     StartEndpoint {
         name: String,
     },
+    /// Reads the `.torrent` behind a release's link and counts the episodes
+    /// in its file list, for a batch whose title names no range. Not a job:
+    /// replies `Ok`, the count arrives as `ReleaseInspected`.
+    InspectRelease {
+        link: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Enum)]
