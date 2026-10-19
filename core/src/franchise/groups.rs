@@ -181,8 +181,7 @@ fn shared_stem(stems: &[String]) -> Option<String> {
         .collect();
     let key = |w: &str| w.trim_end_matches(SEPARATORS).to_lowercase();
     let mut n = 0;
-    'outer: loop {
-        let Some(first) = words[0].get(n) else { break };
+    'outer: while let Some(first) = words[0].get(n) {
         for w in &words[1..] {
             match w.get(n) {
                 Some(x) if key(x) == key(first) && !key(x).is_empty() => {}

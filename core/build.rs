@@ -60,15 +60,16 @@ fn rerun_when_head_moves() {
             .and_then(|o| String::from_utf8(o.stdout).ok())
             .map(|s| std::path::PathBuf::from(s.trim()))
     };
-    let (Some(git_dir), Some(common)) = (rev_parse("--git-dir"), rev_parse("--git-common-dir")) else {
+    let (Some(git_dir), Some(common)) = (rev_parse("--git-dir"), rev_parse("--git-common-dir"))
+    else {
         return;
     };
     let head = git_dir.join("HEAD");
     let mut watch = vec![head.clone(), common.join("packed-refs")];
-    if let Ok(text) = std::fs::read_to_string(&head) {
-        if let Some(r) = text.trim().strip_prefix("ref: ") {
-            watch.push(common.join(r));
-        }
+    if let Ok(text) = std::fs::read_to_string(&head)
+        && let Some(r) = text.trim().strip_prefix("ref: ")
+    {
+        watch.push(common.join(r));
     }
     for path in watch.into_iter().filter(|p| p.exists()) {
         println!("cargo:rerun-if-changed={}", path.display());

@@ -50,13 +50,36 @@ pub mod qobject {
         unsafe fn raise_window(self: &Self, window: *mut QObject, token: &QString);
         /// --drive: a mouse event at window coordinates (see cpp/helpers.h for `kind`).
         #[qinvokable]
-        unsafe fn drive_mouse(self: &Self, window: *mut QObject, kind: i32, x: f64, y: f64, button: i32, modifiers: i32);
+        unsafe fn drive_mouse(
+            self: &Self,
+            window: *mut QObject,
+            kind: i32,
+            x: f64,
+            y: f64,
+            button: i32,
+            modifiers: i32,
+        );
         /// --drive: a wheel event; 120 is one notch.
         #[qinvokable]
-        unsafe fn drive_wheel(self: &Self, window: *mut QObject, x: f64, y: f64, dx: i32, dy: i32, modifiers: i32);
+        unsafe fn drive_wheel(
+            self: &Self,
+            window: *mut QObject,
+            x: f64,
+            y: f64,
+            dx: i32,
+            dy: i32,
+            modifiers: i32,
+        );
         /// --drive: a key press or release with the text it types.
         #[qinvokable]
-        unsafe fn drive_key(self: &Self, window: *mut QObject, press: bool, key: i32, modifiers: i32, text: &QString);
+        unsafe fn drive_key(
+            self: &Self,
+            window: *mut QObject,
+            press: bool,
+            key: i32,
+            modifiers: i32,
+            text: &QString,
+        );
         /// --drive: one line to stderr, bare, with none of the QML logger's prefixes.
         #[qinvokable]
         fn drive_log(self: &Self, line: &QString);
@@ -108,7 +131,9 @@ impl Default for ShellRust {
         };
         ShellRust {
             version: QString::from(anibeam_core::VERSION),
-            release: QString::from(release(env!("CARGO_PKG_VERSION"), anibeam_core::VERSION).as_str()),
+            release: QString::from(
+                release(env!("CARGO_PKG_VERSION"), anibeam_core::VERSION).as_str(),
+            ),
             shoot: QString::from(a.shoot.as_deref().unwrap_or("")),
             page: QString::from(a.page.as_deref().unwrap_or("home")),
             props: QString::from(a.props.as_deref().unwrap_or("")),
@@ -136,9 +161,9 @@ fn settings_url(config_dir: &std::path::Path) -> QString {
 /// put in `described` ("1.0.0.r166.gfcfae8c.dirty" gives "fcfae8c"), so a build reads
 /// "2.0.0-dev fcfae8c". Without a hash (no git at build time) it is the crate version alone.
 fn release(crate_version: &str, described: &str) -> String {
-    let hash = described
-        .split('.')
-        .find(|p| p.len() > 1 && p.starts_with('g') && p[1..].chars().all(|c| c.is_ascii_hexdigit()));
+    let hash = described.split('.').find(|p| {
+        p.len() > 1 && p.starts_with('g') && p[1..].chars().all(|c| c.is_ascii_hexdigit())
+    });
     match hash {
         Some(h) => format!("{crate_version} {}", &h[1..]),
         None => crate_version.to_string(),
@@ -177,19 +202,42 @@ impl qobject::Shell {
 impl qobject::Shell {
     /// # Safety
     /// `window` is the live QML Window, as for `raise_window`.
-    pub unsafe fn drive_mouse(&self, window: *mut cxx_qt::QObject, kind: i32, x: f64, y: f64, button: i32, modifiers: i32) {
+    pub unsafe fn drive_mouse(
+        &self,
+        window: *mut cxx_qt::QObject,
+        kind: i32,
+        x: f64,
+        y: f64,
+        button: i32,
+        modifiers: i32,
+    ) {
         unsafe { crate::bridge::helpers::ffi::drive_mouse(window, kind, x, y, button, modifiers) }
     }
 
     /// # Safety
     /// `window` is the live QML Window, as for `raise_window`.
-    pub unsafe fn drive_wheel(&self, window: *mut cxx_qt::QObject, x: f64, y: f64, dx: i32, dy: i32, modifiers: i32) {
+    pub unsafe fn drive_wheel(
+        &self,
+        window: *mut cxx_qt::QObject,
+        x: f64,
+        y: f64,
+        dx: i32,
+        dy: i32,
+        modifiers: i32,
+    ) {
         unsafe { crate::bridge::helpers::ffi::drive_wheel(window, x, y, dx, dy, modifiers) }
     }
 
     /// # Safety
     /// `window` is the live QML Window, as for `raise_window`.
-    pub unsafe fn drive_key(&self, window: *mut cxx_qt::QObject, press: bool, key: i32, modifiers: i32, text: &QString) {
+    pub unsafe fn drive_key(
+        &self,
+        window: *mut cxx_qt::QObject,
+        press: bool,
+        key: i32,
+        modifiers: i32,
+        text: &QString,
+    ) {
         unsafe { crate::bridge::helpers::ffi::drive_key(window, press, key, modifiers, text) }
     }
 
@@ -208,8 +256,14 @@ impl qobject::Shell {
 mod tests {
     #[test]
     fn release_reads_the_crate_version_and_the_hash() {
-        assert_eq!(super::release("2.0.0-dev", "1.0.0.r166.gfcfae8c"), "2.0.0-dev fcfae8c");
-        assert_eq!(super::release("2.0.0-dev", "1.0.0.r166.gfcfae8c.dirty"), "2.0.0-dev fcfae8c");
+        assert_eq!(
+            super::release("2.0.0-dev", "1.0.0.r166.gfcfae8c"),
+            "2.0.0-dev fcfae8c"
+        );
+        assert_eq!(
+            super::release("2.0.0-dev", "1.0.0.r166.gfcfae8c.dirty"),
+            "2.0.0-dev fcfae8c"
+        );
         assert_eq!(super::release("2.0.0-dev", "2.0.0-dev"), "2.0.0-dev");
         assert_eq!(super::release("2.0.0", "2.0.0"), "2.0.0");
     }

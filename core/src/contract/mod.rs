@@ -147,7 +147,10 @@ mod tests {
         let old = r#"{"title_language":"English","library_tab":"Movies","library_sort":"MyScore","library_direction":"Desc","feed_sort":"Upcoming","library_show_watched":true}"#;
         let p: Preferences = serde_json::from_str(old).unwrap();
         assert_eq!(p.library_arrange, Arrange::Related);
-        assert!(p.library_group_franchises, "a blob before the toggle groups");
+        assert!(
+            p.library_group_franchises,
+            "a blob before the toggle groups"
+        );
         assert_eq!(p.library_sort, Sort::MyScore);
         for (a, wire) in [
             (Arrange::Related, "Related"),
