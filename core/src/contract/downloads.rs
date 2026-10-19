@@ -446,6 +446,11 @@ pub struct DownloadSettings {
     pub anirss_mode: AnirssMode,
     /// The command a sidecar is started with: a name on PATH or a path.
     pub anirss_command: String,
+    /// The command that starts the service behind an on-demand endpoint
+    /// (Jackett for 1337x), run through `sh -c` when the shell asks for it.
+    /// Empty means anirss's own `start` for that endpoint, else `jackett`.
+    #[serde(default)]
+    pub jackett_command: String,
     /// The server's base URL in remote mode, without `/api/v1`.
     pub anirss_url: String,
     #[serde(default)]

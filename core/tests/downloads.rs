@@ -21,6 +21,7 @@ fn settings(anirss_command: &str) -> DownloadSettings {
     DownloadSettings {
         anirss_mode: AnirssMode::Sidecar,
         anirss_command: anirss_command.to_string(),
+        jackett_command: String::new(),
         anirss_url: "http://127.0.0.1:8787".to_string(),
         has_anirss_token: false,
         torrent_client: TorrentClient::Qbittorrent,

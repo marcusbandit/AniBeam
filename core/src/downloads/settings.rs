@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 use rusqlite::Connection;
 
+use super::jackett;
 use crate::contract::*;
 use crate::store::settings;
 use crate::trackers::Secrets;
@@ -53,6 +54,7 @@ pub fn validate(s: &mut DownloadSettings) -> Result<(), CoreError> {
     s.anirss_url = s.anirss_url.trim().trim_end_matches('/').to_string();
     s.torrent_url = s.torrent_url.trim().trim_end_matches('/').to_string();
     s.torrent_username = s.torrent_username.trim().to_string();
+    s.jackett_command = s.jackett_command.trim().to_string();
     if s.anirss_mode == AnirssMode::Sidecar && s.anirss_command.is_empty() {
         return Err(CoreError::invalid(
             "anirss_command",
@@ -90,6 +92,9 @@ pub fn defaults() -> DownloadSettings {
     DownloadSettings {
         anirss_mode: AnirssMode::Sidecar,
         anirss_command: "anirss".to_string(),
+        jackett_command: anirss_config_path()
+            .and_then(|p| jackett::anirss_start(&p, None))
+            .unwrap_or_default(),
         anirss_url: "http://127.0.0.1:8787".to_string(),
         has_anirss_token: false,
         torrent_client: TorrentClient::Qbittorrent,

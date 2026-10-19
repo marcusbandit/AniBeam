@@ -16,6 +16,7 @@
 pub mod anirss;
 pub mod facts;
 pub mod feed;
+pub mod jackett;
 pub mod link;
 pub mod qbt;
 pub mod rewire;
@@ -397,8 +398,8 @@ pub fn test_torrent_client(core: &Core) -> Result<u64, CoreError> {
 }
 
 /// Whether each on-demand endpoint is up, from its ready URL. A GET and
-/// nothing more: AniBeam never starts a service (anirss does, when a search
-/// reaches one, which is why `search` checks first).
+/// nothing more: only `start_endpoint`, after a confirm, starts a service
+/// (anirss does too when a search reaches one, which is why `search` checks first).
 async fn probe_endpoints(http: &dyn Http, endpoints: &mut [SearchEndpoint]) {
     let path = settings::anirss_config_path();
     for e in endpoints.iter_mut() {
@@ -458,6 +459,53 @@ pub fn check_endpoints(core: &Core) -> Result<u64, CoreError> {
         }))
 }
 
+/// Starts the service behind an on-demand endpoint (Jackett for 1337x) and
+/// probes the endpoints again. The shell calls this only after the user
+/// confirmed; nothing else in the core starts one. The command is the
+/// `jackett_command` setting, else anirss's `start` for the endpoint, else
+/// `jackett`, and it is detached (see `jackett`).
+pub fn start_endpoint(core: &Core, name: String) -> Result<u64, CoreError> {
+    let owner = core.owner()?;
+    let config = settings::anirss_config_path();
+    let ondemand = config
+        .as_deref()
+        .and_then(|p| settings::anirss_ondemand(p, &name))
+        .ok_or_else(|| {
+            CoreError::invalid("name", format!("{name} is not an on-demand endpoint"))
+        })?;
+    let log = std::path::Path::new(&core.paths.state_dir).join("jackett-start.log");
+    Ok(owner
+        .jobs
+        .clone()
+        .start(JobKind::StartEndpoint, move |ctx| async move {
+            let s = load_settings(&owner).await?;
+            let command = jackett::resolve_command(&s.jackett_command, config.as_deref(), &name);
+            ctx.progress(0, None, &format!("Starting {name}"));
+            jackett::start(
+                owner.http.as_ref(),
+                &command,
+                &ondemand.ready,
+                std::time::Duration::from_secs(ondemand.timeout),
+                std::time::Duration::from_millis(500),
+                &log,
+            )
+            .await
+            .map_err(|failure| {
+                let (code, message) = jackett::explain(&name, &failure);
+                service(&name, code, message)
+            })?;
+            let mut endpoints = owner.downloads.state().endpoints.clone();
+            probe_endpoints(owner.http.as_ref(), &mut endpoints).await;
+            owner.downloads.state().endpoints = endpoints;
+            let status = status_async(&owner).await?;
+            Ok(Finished {
+                level: Level::Info,
+                message: format!("{name} is running"),
+                body: EventBody::DownloadsStatusChanged { status },
+            })
+        }))
+}
+
 /// The search guard. anirss boots an on-demand endpoint whenever a search
 /// reaches it, so the core makes sure none does unless it already runs:
 /// a search aimed at a stopped one is refused, and anirss's fallback is
@@ -482,7 +530,7 @@ async fn guard_search(
                 service: e.name.clone(),
                 code: "not_running".to_string(),
                 message: format!(
-                    "{} is not running, and AniBeam does not start it. Start it yourself, then check again.",
+                    "{} is not running. Switch it on in the sources and confirm to start it.",
                     e.name
                 ),
             });
