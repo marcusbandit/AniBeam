@@ -16,11 +16,16 @@ extra device channels. It also stops advertising mono unconditionally, so a
 mono source on a stereo device is upmixed by mpv instead of mapped onto one
 channel, maps kAudioChannelLabel_Mono to FC so mono-only devices stay usable,
 and reloads the ao when the default device changes so the map is rebuilt.
+
+One change from upstream: the Mono row sits below Center in speaker_map, so
+the FC to label lookup that ca_get_acl() and ao_avfoundation use still says
+Center.
 ---
 diff --git a/audio/out/ao_coreaudio.c b/audio/out/ao_coreaudio.c
+index 863adaa..c8f2787 100644
 --- a/audio/out/ao_coreaudio.c
 +++ b/audio/out/ao_coreaudio.c
-@@ -136,7 +136,7 @@
+@@ -136,7 +136,7 @@ static int control(struct ao *ao, enum aocontrol cmd, void *arg)
      return CONTROL_UNKNOWN;
  }
  
@@ -29,7 +34,7 @@ diff --git a/audio/out/ao_coreaudio.c b/audio/out/ao_coreaudio.c
  static void init_physical_format(struct ao *ao);
  static void reinit_latency(struct ao *ao);
  static bool register_hotplug_cb(struct ao *ao);
-@@ -176,13 +176,8 @@
+@@ -176,13 +176,8 @@ static int init(struct ao *ao)
  
      AudioStreamBasicDescription asbd;
      ca_fill_asbd(ao, &asbd);
@@ -44,7 +49,7 @@ diff --git a/audio/out/ao_coreaudio.c b/audio/out/ao_coreaudio.c
          goto coreaudio_error;
  
      if (!register_hotplug_cb(ao))
-@@ -279,7 +274,52 @@
+@@ -279,7 +274,52 @@ coreaudio_error:
      talloc_free(tmp);
  }
  
@@ -98,7 +103,7 @@ diff --git a/audio/out/ao_coreaudio.c b/audio/out/ao_coreaudio.c
  {
      OSStatus err;
      uint32_t size;
-@@ -323,12 +363,7 @@
+@@ -323,12 +363,7 @@ static bool init_audiounit(struct ao *ao, AudioStreamBasicDescription asbd, Audi
      CHECK_CA_ERROR_L(coreaudio_error_audiounit,
                       "can't link audio unit to selected device");
  
@@ -112,7 +117,7 @@ diff --git a/audio/out/ao_coreaudio.c b/audio/out/ao_coreaudio.c
  
      AURenderCallbackStruct render_cb = (AURenderCallbackStruct) {
          .inputProc       = render_cb_lpcm,
-@@ -469,9 +504,14 @@
+@@ -469,9 +504,14 @@ static OSStatus hotplug_cb(AudioObjectID id, UInt32 naddr,
      struct ao *ao = ctx;
      struct priv *p = ao->priv;
      MP_VERBOSE(ao, "Handling potential hotplug event...\n");
@@ -130,17 +135,19 @@ diff --git a/audio/out/ao_coreaudio.c b/audio/out/ao_coreaudio.c
      return noErr;
  }
 diff --git a/audio/out/ao_coreaudio_chmap.c b/audio/out/ao_coreaudio_chmap.c
+index 2c6131f..1ec71c6 100644
 --- a/audio/out/ao_coreaudio_chmap.c
 +++ b/audio/out/ao_coreaudio_chmap.c
-@@ -25,6 +25,7 @@
- #include <CoreAudioTypes/CoreAudioTypes.h>
- 
- static const int speaker_map[][2] = {
-+    { kAudioChannelLabel_Mono,                 MP_SPEAKER_ID_FC   },
+@@ -28,6 +28,8 @@ static const int speaker_map[][2] = {
      { kAudioChannelLabel_Left,                 MP_SPEAKER_ID_FL   },
      { kAudioChannelLabel_Right,                MP_SPEAKER_ID_FR   },
      { kAudioChannelLabel_Center,               MP_SPEAKER_ID_FC   },
-@@ -492,8 +493,6 @@
++    // After Center, so FC still turns into the Center label
++    { kAudioChannelLabel_Mono,                 MP_SPEAKER_ID_FC   },
+     { kAudioChannelLabel_LFEScreen,            MP_SPEAKER_ID_LFE  },
+     { kAudioChannelLabel_LeftSurround,         MP_SPEAKER_ID_BL   },
+     { kAudioChannelLabel_RightSurround,        MP_SPEAKER_ID_BR   },
+@@ -492,8 +494,6 @@ bool ca_init_chmap(struct ao *ao, AudioDeviceID device)
      if (!chmap_sel.num_chmaps)
          mp_chmap_sel_add_map(&chmap_sel, &(struct mp_chmap)MP_CHMAP_INIT_STEREO);
  
