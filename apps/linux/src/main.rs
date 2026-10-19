@@ -116,7 +116,15 @@ fn main() {
     bridge::helpers::ffi::set_desktop_file_name(&QString::from(APP_ID));
 
     let mut engine = QQmlApplicationEngine::new();
-    if let Some(engine) = engine.as_mut() {
+    if let Some(mut engine) = engine.as_mut() {
+        // Debug builds only: ANIBEAM_QML_DIR=apps/linux/qml loads the QML from disk, so a
+        // QML-only edit shows up on the next run with no cargo build.
+        #[cfg(debug_assertions)]
+        if let Some(dir) = std::env::var_os("ANIBEAM_QML_DIR") {
+            let dir = dir.to_string_lossy();
+            eprintln!("anibeam: loading QML from {dir}");
+            bridge::helpers::ffi::install_qml_dir(engine.as_mut(), &QString::from(&*dir));
+        }
         engine.load(&QUrl::from(MAIN_QML));
     }
     // The engine goes first: dropping it destroys the Door, which drops the event

@@ -11,6 +11,9 @@ root="${ANIBEAM_ROOT:-$out/root}"; mkdir -p "$root"
 # target/debug/anibeam-staged, which is what runs. ANIBEAM_NO_BUILD=1 skips the build and reuses
 # this checkout's last staged build: parallel reviewers capture without queueing on the cargo lock.
 source "$(dirname "$0")/target-dir.sh"
+# ANIBEAM_QML_DIR=<dir> (debug builds) loads the QML from disk; Qt's compile cache for it
+# stays in the sandbox root, not ~/.cache.
+[ -z "${ANIBEAM_QML_DIR:-}" ] || export QML_DISK_CACHE_PATH="${QML_DISK_CACHE_PATH:-$root/qmlcache}"
 anibeam_stage
 # The software scene graph cannot paint a Shapes fillItem, so every poster comes back white
 # under plain offscreen; forcing the RHI backend fixes that, but RHI's GL backend needs GLX,

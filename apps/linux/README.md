@@ -15,6 +15,22 @@ Qt 6.11 QML over the Rust core through cxx-qt 0.10, built with Cargo alone. Spec
 Environment the shell sets for itself: QSG_RENDER_LOOP=threaded, QT_XCB_GL_INTEGRATION=xcb_egl.
 ANIBEAM_THEMES_DIR and ANIBEAM_MPV_CONF point a dev run at the checkout's themes/ and mpv.conf.
 
+`ANIBEAM_QML_DIR=apps/linux/qml` loads the shell's QML from that directory instead of the copy compiled
+into the binary, so a QML-only edit shows up on the next run with no cargo build (a relink of the
+debug binary is minutes; the QML parse is a fraction of a second). It exists in debug builds only. A
+URL interceptor in `cpp/helpers.cpp` redirects each `qrc:/qt/qml/com/marcusrosado/AniBeam/qml/<name>.qml`
+the engine asks for to `<dir>/<name>.qml` when that file exists, so `Main.qml`, the pages and the shared
+components all come from disk. Edit, then run with the binary as it stands:
+
+    ANIBEAM_NO_BUILD=1 ANIBEAM_QML_DIR=apps/linux/qml scripts/shoot.sh library --page library
+
+Measured on a loaded machine, a library shot took 1.65 s from the resources and 1.69 s from disk with
+Qt's compile cache warm, 1.8 s to 1.9 s with it cold or off. `shoot.sh` and `drive.sh` keep that cache
+in the sandbox root's `qmlcache/` rather than `~/.cache`. What still needs a cargo build: Rust and C++
+changes, a QML file added to or removed from `build.rs`, and the build's own QML checks, so a syntax
+error in a disk file shows up at run time as a load failure in the `.log`, not at build time. Build
+before the last run of a task all the same: the binary the launcher starts has the QML compiled in.
+
 `shoot.sh` and `drive.sh` build into one shared target dir instead of the checkout's own `target/`:
 `scripts/target-dir.sh` points `CARGO_TARGET_DIR` at the main checkout's `target/` (when that is an
 AniBeam checkout), so a fresh worktree reuses the dependency build instead of starting cold (logged

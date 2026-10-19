@@ -16,6 +16,8 @@
 #include <QtGui/QCursor>
 #include <QtCore/QProcess>
 #include <QtCore/QUrl>
+#include <QtCore/QFileInfo>
+#include <QtQml/QQmlAbstractUrlInterceptor>
 #include <QtGui/QWheelEvent>
 #include <QtGui/QPointingDevice>
 
@@ -219,4 +221,30 @@ bool open_url(const QString &url)
     if (target.startsWith(QLatin1Char('/')))
         target = QUrl::fromLocalFile(target).toString();
     return QProcess::startDetached(QStringLiteral("xdg-open"), {target});
+}
+
+namespace {
+// The module's QML files sit at qrc:/qt/qml/com/marcusrosado/AniBeam/qml/<name>.qml; the
+// same name under the dev directory replaces one that exists there.
+class QmlDirInterceptor : public QQmlAbstractUrlInterceptor
+{
+public:
+    explicit QmlDirInterceptor(QString dir) : m_dir(std::move(dir)) {}
+    QUrl intercept(const QUrl &url, DataType type) override
+    {
+        static const QString prefix = QStringLiteral("/qt/qml/com/marcusrosado/AniBeam/qml/");
+        if (type != QmlFile || url.scheme() != QLatin1String("qrc") || !url.path().startsWith(prefix))
+            return url;
+        const QString file = m_dir + QLatin1Char('/') + url.path().mid(prefix.size());
+        return QFileInfo::exists(file) ? QUrl::fromLocalFile(file) : url;
+    }
+
+private:
+    QString m_dir;
+};
+}
+
+void install_qml_dir(QQmlApplicationEngine &engine, const QString &dir)
+{
+    engine.addUrlInterceptor(new QmlDirInterceptor(QFileInfo(dir).absoluteFilePath()));
 }
