@@ -6,6 +6,8 @@
 #include <QtCore/QString>
 #include <QtGui/QColor>
 
+class QQmlApplicationEngine;
+
 void use_opengl_scene_graph();
 void set_desktop_file_name(const QString &name);
 // QSG_RENDER_LOOP=threaded on both GPUs and QT_XCB_GL_INTEGRATION=xcb_egl for the X11
@@ -54,3 +56,10 @@ void set_cursor_hidden(bool hidden);
 // Hyprland the token never came, so every link in the shell did nothing. Returns false
 // when xdg-open could not be started.
 bool open_url(const QString &url);
+
+// Dev only: serves the shell's own QML files from a directory on disk instead of the
+// compiled resources, so a QML-only edit needs no cargo build. Every file the engine would
+// load from the module's resource path is redirected to the same name under `dir` when
+// that file exists there, and anything else (the C++ types, a file not in `dir`) loads as
+// before. The interceptor lives as long as the process.
+void install_qml_dir(QQmlApplicationEngine &engine, const QString &dir);

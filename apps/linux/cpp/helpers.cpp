@@ -16,6 +16,12 @@
 #include <QtGui/QCursor>
 #include <QtCore/QProcess>
 #include <QtCore/QUrl>
+#include <QtCore/QFileInfo>
+#include <QtCore/QMutex>
+#include <QtCore/QMutexLocker>
+#include <QtCore/QSet>
+#include <QtQml/QQmlAbstractUrlInterceptor>
+#include <QtQml/QQmlApplicationEngine>
 #include <QtGui/QWheelEvent>
 #include <QtGui/QPointingDevice>
 
@@ -219,4 +225,42 @@ bool open_url(const QString &url)
     if (target.startsWith(QLatin1Char('/')))
         target = QUrl::fromLocalFile(target).toString();
     return QProcess::startDetached(QStringLiteral("xdg-open"), {target});
+}
+
+namespace {
+// The module's QML files sit at qrc:/qt/qml/com/marcusrosado/AniBeam/qml/<name>.qml; the
+// same name under the dev directory replaces one that exists there.
+class QmlDirInterceptor : public QQmlAbstractUrlInterceptor
+{
+public:
+    explicit QmlDirInterceptor(QString dir) : m_dir(std::move(dir)) {}
+    QUrl intercept(const QUrl &url, DataType type) override
+    {
+        static const QString prefix = QStringLiteral("/qt/qml/com/marcusrosado/AniBeam/qml/");
+        if (type != QmlFile || url.scheme() != QLatin1String("qrc") || !url.path().startsWith(prefix))
+            return url;
+        const QString name = url.path().mid(prefix.size());
+        const QString file = m_dir + QLatin1Char('/') + name;
+        if (QFileInfo::exists(file))
+            return QUrl::fromLocalFile(file);
+        // A miss falls back to the compiled copy by design (a file added to the module is not
+        // on disk yet). Say so once per file, so a mixed disk and compiled load is visible.
+        QMutexLocker lock(&m_mutex);
+        if (!m_warned.contains(name)) {
+            m_warned.insert(name);
+            qWarning("anibeam: ANIBEAM_QML_DIR has no %s; using the compiled copy", qPrintable(name));
+        }
+        return url;
+    }
+
+private:
+    QString m_dir;
+    QMutex m_mutex;
+    QSet<QString> m_warned;
+};
+}
+
+void install_qml_dir(QQmlApplicationEngine &engine, const QString &dir)
+{
+    engine.addUrlInterceptor(new QmlDirInterceptor(QFileInfo(dir).absoluteFilePath()));
 }

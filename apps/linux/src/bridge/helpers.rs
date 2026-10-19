@@ -10,6 +10,8 @@ pub mod ffi {
         type QColor = cxx_qt_lib::QColor;
         include!("cxx-qt-lib/qobject.h");
         type QObject = cxx_qt::QObject;
+        include!("cxx-qt-lib/qqmlapplicationengine.h");
+        type QQmlApplicationEngine = cxx_qt_lib::QQmlApplicationEngine;
     }
 
     unsafe extern "C++" {
@@ -63,6 +65,8 @@ pub mod ffi {
         fn poster_tone(path: &QString) -> QColor;
         /// The pointer hidden (or shown) over every window: an application override cursor.
         fn set_cursor_hidden(hidden: bool);
+        /// Dev only: loads the shell's QML files from `dir` instead of the compiled resources.
+        fn install_qml_dir(engine: Pin<&mut QQmlApplicationEngine>, dir: &QString);
         /// A URL opened with the desktop's handler through xdg-open, detached.
         fn open_url(url: &QString) -> bool;
     }
