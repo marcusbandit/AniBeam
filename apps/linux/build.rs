@@ -14,7 +14,6 @@ fn main() {
             .qml_file("qml/Corner.qml")
             .qml_file("qml/Frost.qml")
             .qml_file("qml/Blocker.qml")
-            .qml_file("qml/WheelStep.qml")
             .qml_file("qml/Label.qml")
             .qml_file("qml/Icon.qml")
             .qml_file("qml/Chip.qml")

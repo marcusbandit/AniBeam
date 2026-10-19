@@ -22,14 +22,16 @@ Flickable {
     clip: true
     boundsBehavior: Flickable.StopAtBounds
     QC.ScrollBar.vertical: ThinScrollBar {}
-    WheelStep { id: wheel; flick: root }
-    // A programmatic scroll rides the wheel's target, so it follows with the same smoothing
-    // as a notch and a drag takes over the same way
+    // The wheel and the touchpad are the Flickable's own, so a page scrolls the way the
+    // platform does. The arrow keys scroll through scrollTo, which eases there; a wheel or a
+    // drag takes over the moment it moves the page.
     function scrollTo(y) {
-        wheel.target = wheel.bound(y)
-        wheel.following = true
         root.cancelFlick()
+        glide.to = Math.max(0, Math.min(y, Math.max(0, root.contentHeight - root.height)))
+        glide.restart()
     }
+    NumberAnimation { id: glide; target: root; property: "contentY"; duration: theme.reducedMotion ? 0 : theme.motionNormal; easing.type: Easing.OutCubic }
+    onMovementStarted: glide.stop()
     GridKeys { id: gridKeys; flick: root }
     function keyPressed(event) { gridKeys.handle(event, root.Window.window ? root.Window.window.activeFocusItem : null) }
     Keys.onPressed: function(event) { root.keyPressed(event) }

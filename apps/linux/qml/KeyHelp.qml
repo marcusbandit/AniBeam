@@ -81,7 +81,6 @@ Item {
             contentWidth: column.implicitWidth; contentHeight: column.implicitHeight
             boundsBehavior: Flickable.StopAtBounds
             QC.ScrollBar.vertical: ThinScrollBar {}
-            WheelStep { flick: keyFlick }
             Column {
                 id: column
                 spacing: theme.space(5)
