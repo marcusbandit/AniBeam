@@ -1,0 +1,18 @@
+From: Marcus Rosado <marcusbanditten@gmail.com>
+Subject: [PATCH] ao_coreaudio: clear audio_unit after disposing it on init failure
+
+mpv-player/mpv#18383 makes a failed init call uninit, which disposes
+p->audio_unit again when init_audiounit already did on its error path.
+---
+diff --git a/audio/out/ao_coreaudio.c b/audio/out/ao_coreaudio.c
+index 7d42139..863adaa 100644
+--- a/audio/out/ao_coreaudio.c
++++ b/audio/out/ao_coreaudio.c
+@@ -349,6 +349,7 @@ coreaudio_error_audiounit:
+     AudioUnitUninitialize(p->audio_unit);
+ coreaudio_error_component:
+     AudioComponentInstanceDispose(p->audio_unit);
++    p->audio_unit = NULL;
+ coreaudio_error:
+     return false;
+ }
