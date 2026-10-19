@@ -232,12 +232,13 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             spacing: theme.space(1.25)
             Label { width: parent.width; text: root.nameOf(line.t); role: "ui"; elide: Text.ElideRight }
-            Item {
+            // Bytes, then time left; the second goes under the first when the row is narrow
+            Flow {
                 width: parent.width
-                height: sizeText.implicitHeight
+                spacing: theme.space(2)
                 Label { id: sizeText; text: line.done ? Fmt.bytes(line.t.size || 0) : Fmt.bytes(Math.round((line.t.size || 0) * (line.t.progress || 0))) + " of " + Fmt.bytes(line.t.size || 0); role: "figure"; font.pointSize: theme.typeSmall * 0.95; color: theme.textDim }
                 Label {
-                    anchors.right: parent.right
+                    id: leftText
                     text: line.broken ? "Files missing" : root.stopped(line.t) && !line.done ? "Stopped" : line.done ? Qt.formatTime(new Date(line.t.completion_on * 1000), "hh:mm")
                         : line.t.eta > 0 && line.t.eta < 8640000 ? Fmt.countdown(line.t.eta) + " left" : line.t.dlspeed > 0 ? Fmt.bytes(line.t.dlspeed) + "/s" : "Waiting for peers"
                     role: line.broken ? "ui" : "figure"

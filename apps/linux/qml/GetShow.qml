@@ -87,7 +87,12 @@ Item {
         var t = show && show.total > 0 ? show.total : libCodes.length
         // A finished show's own count is the count: a stray number in a release name
         // (Naruto - 1080 something) must not stretch the grid past the last episode
-        if (show && show.total > 0 && !show.airing) return Math.min(show.total, 2000)
+        // (an episode a torrent is actually fetching still counts)
+        if (show && show.total > 0 && !show.airing) {
+            var fixed = show.total
+            for (var x in inFlight) fixed = Math.max(fixed, Number(x))
+            return Math.min(fixed, 2000)
+        }
         if (current && current.items) for (var i = 0; i < current.facts.length; i++) {
             var f = current.facts[i]
             if (f && !f.batch && f.episode !== null && f.episode !== undefined && f.episode === Math.floor(f.episode)) t = Math.max(t, f.episode)
