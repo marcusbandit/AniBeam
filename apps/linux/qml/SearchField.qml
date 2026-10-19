@@ -11,8 +11,13 @@ Corner {
     signal cleared()
     // Return or Enter in the field: a page that searches on demand rather than as you type
     signal accepted()
+    // The Downloads page's one wide field: taller, its text at the large size
+    property bool large: false
+    readonly property bool editing: input.activeFocus
+    // Up and Down in the field, for a list of suggestions under it
+    signal stepped(int by)
     width: Math.min(parent ? parent.width : theme.space(120), theme.space(120))
-    height: theme.controlHeight
+    height: large ? theme.space(15) : theme.controlHeight
     radius: Math.min(theme.radiusTile, height / 2)
     smoothing: theme.cornerSmoothing
     color: input.activeFocus ? theme.raised : theme.tile
@@ -23,20 +28,22 @@ Corner {
     MouseArea { id: hover; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.IBeamCursor; onClicked: input.forceActiveFocus() }
     Icon {
         id: glass
-        anchors.left: parent.left; anchors.leftMargin: theme.space(3); anchors.verticalCenter: parent.verticalCenter
-        glyph: "search"; size: theme.space(4); color: input.activeFocus ? theme.text : theme.textDim
+        anchors.left: parent.left; anchors.leftMargin: root.large ? theme.space(5) : theme.space(3); anchors.verticalCenter: parent.verticalCenter
+        glyph: "search"; size: root.large ? theme.space(5.5) : theme.space(4); color: input.activeFocus ? theme.text : theme.textDim
     }
     TextInput {
         id: input
         anchors.fill: parent
-        anchors.leftMargin: theme.space(9); anchors.rightMargin: theme.space(10)
+        anchors.leftMargin: root.large ? theme.space(14) : theme.space(9); anchors.rightMargin: theme.space(10)
         verticalAlignment: TextInput.AlignVCenter
         color: theme.text
-        font.family: theme.fontFamily; font.pointSize: theme.typeNormal
+        font.family: theme.fontFamily; font.pointSize: root.large ? theme.typeLarge : theme.typeNormal
         font.weight: theme.roleWeight("ui"); font.variableAxes: theme.roleAxes("ui")
         selectionColor: theme.accentSoft; selectedTextColor: theme.text
         clip: true
         onAccepted: root.accepted()
+        Keys.onUpPressed: root.stepped(-1)
+        Keys.onDownPressed: root.stepped(1)
         // With a layer open (a menu, a picker, a sheet) Escape is left to propagate up to
         // the frame, which closes that layer; the query stays.
         Keys.onEscapePressed: function(e) {

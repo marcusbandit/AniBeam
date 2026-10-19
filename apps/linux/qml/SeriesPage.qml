@@ -474,7 +474,7 @@ Item {
                         EpisodeCubes {
                             visible: codes.length > 0
                             anchors.verticalCenter: parent.verticalCenter
-                            width: theme.space(70)
+                            width: Math.min(implicitWidth, theme.space(70))
                             height: implicitHeight
                             codes: page.card && page.card.cubes ? page.card.cubes : ""
                             cubeSize: theme.space(2.25)

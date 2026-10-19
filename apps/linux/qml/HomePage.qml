@@ -498,7 +498,7 @@ Item {
                     EpisodeCubes {
                         visible: codes.length > 0
                         anchors.verticalCenter: parent.verticalCenter
-                        width: theme.space(60)
+                        width: Math.min(implicitWidth, theme.space(60))
                         height: implicitHeight
                         codes: hero.c && hero.c.cubes ? hero.c.cubes : ""
                         cubeSize: theme.space(2)

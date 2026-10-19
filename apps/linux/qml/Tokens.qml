@@ -49,7 +49,9 @@ Item {
         f: { label: "Not aired yet", fill: "transparent", edge: glassOf(dark ? 0.2 : 0.28), order: 7 },
         // Downloads-only marks on a provider's row: a release there, and one picked
         a: { label: "Available", fill: glassOf(dark ? 0.1 : 0.12), edge: glassOf(dark ? 0.32 : 0.4), order: 8 },
-        p: { label: "Picked", fill: accent, edge: "transparent", order: 9 }
+        p: { label: "Picked to get", fill: blue, edge: "transparent", order: 9 },
+        o: { label: "Already on disk", fill: glassOf(dark ? 0.05 : 0.07), edge: "transparent", order: 10 },
+        n: { label: "No release", fill: "transparent", edge: "transparent", order: 11 }
     })
     function cubeState(code) { return cubeStates[code] || cubeStates.g }
     // A fraction as a row of step cubes, for progress that is not episodes (bytes, a job):

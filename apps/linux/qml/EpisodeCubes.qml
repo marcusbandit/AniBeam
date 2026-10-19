@@ -21,6 +21,12 @@ Item {
     property int tipLimit: 80
     // The number the first cube stands for
     property int first: 1
+    // A cube that takes a click (the Downloads show view picks releases this way). Folded
+    // rows never do: a cube there is several episodes.
+    property bool clickable: false
+    // Overrides the hover text per cube: function(index, code) returning a string
+    property var tipFor: null
+    signal cubeClicked(int index)
 
     readonly property var list: typeof codes === "string" ? codes.split("") : (codes || [])
     readonly property int count: list.length
@@ -53,7 +59,7 @@ Item {
     }
     readonly property int rows: Math.ceil(cells.length / perRow)
     implicitHeight: count === 0 ? 0 : rows * size + (rows - 1) * gap
-    implicitWidth: Math.min(cells.length, perRow) * (size + gap) - gap
+    implicitWidth: Math.max(0, count * (cubeSize + gap) - gap)
 
     Grid {
         columns: root.perRow
@@ -70,9 +76,21 @@ Item {
                 color: st.fill
                 border.width: st.edge === "transparent" ? 0 : 1
                 border.color: st.edge
+                scale: cubeMouse.containsMouse ? 1.18 : 1
+                Behavior on scale { enabled: !theme.reducedMotion; NumberAnimation { duration: theme.motionFast } }
+                MouseArea {
+                    id: cubeMouse
+                    anchors.fill: parent
+                    anchors.margins: -root.gap / 2
+                    enabled: root.clickable && root.fold === 1
+                    hoverEnabled: enabled
+                    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    onClicked: root.cubeClicked(cube.index)
+                }
                 Tooltip {
-                    text: root.count <= root.tipLimit && root.fold === 1
-                        ? "Episode " + (root.first + cube.index) + ": " + cube.st.label.toLowerCase() : ""
+                    text: root.count > root.tipLimit || root.fold !== 1 ? ""
+                        : root.tipFor ? root.tipFor(cube.index, cube.code)
+                        : "Episode " + (root.first + cube.index) + ": " + cube.st.label.toLowerCase()
                 }
             }
         }

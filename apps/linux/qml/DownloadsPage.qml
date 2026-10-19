@@ -1,19 +1,21 @@
-// Downloads: anirss's front, built around what you subscribe to and what you have. The head
-// names the page and says how anirss and the torrent client stand (each a chip that opens
-// the Downloads settings). Under it the search, then, while a search is up, its query line,
-// groups, Narrow and Best fit, the releases and the actions pane.
+// Downloads: anirss's front, shows first. Two columns: the page, and Activity at the right
+// (ActivityColumn: the rate, what is moving, what finished, today's lines of the log), so a
+// click anywhere has somewhere to show its result.
 //
-// With no search up the page is three bands, each a grid of posters or a list (the switch
-// in the band's head, kept by the frame for the session). Downloading, only while
-// something moves: the shows with a torrent moving, their progress and speed. Subscriptions,
-// in sections by where the show stands: Complete (finished airing, every episode on disk:
-// the rule has nothing left to do, and the rail counts these in red), Airing, Incomplete,
-// and Not in the library as short text tiles. Downloaded, in sections by what the
-// client is doing with each show's torrents: Seeding, Done, Stopped, Files missing. A poster
-// or a row opens the show inside the page (ShowDetail). Every removal goes through the
-// frame's removal sheet: unsubscribing always takes the feed and rule, with ticks for the
-// torrents and for the files (which go to the trash and take the torrents along). Removals
-// run one at a time, in the order asked.
+// The head names the page and says how anirss and the torrent client stand. Under it one
+// wide field: typing lists shows (the library's first, then AniList's), Return searches
+// release names the old way (the table, filters, Subscribe). Under the field the sources:
+// a switch per provider. A plain endpoint is on by default; an on-demand one (1337x, a pod
+// behind Jackett) is on only while it already runs, because AniBeam never starts it and the
+// core refuses a search that would.
+//
+// With nothing searched the page is four lenses: Gaps in your library (aired episodes not
+// on disk), Airing, Following (the subscriptions, in sections by where the show stands) and
+// Downloaded (the torrents, a show at a time). Every show, wherever it is clicked, opens the
+// show view (GetShow): its providers, a click on one fetches what it has, its releases as a
+// grid of episode cubes, and a plan that says what Get and Follow will do. Opening a show
+// never downloads anything. A subscription or a downloaded show opens the older ShowDetail,
+// with its feed and torrents. Every removal goes through the frame's removal sheet.
 //
 // The subscriptions are the frame's (it reads them for the rail's badge); this page asks
 // for a fresh read on open. The transfers are the one place in the app that polls: every
@@ -32,6 +34,7 @@ Item {
     function escapePressed() {
         if (page.searching) { page.cancelSearch(); return true }
         if (page.detail !== null) { page.closeDetail(); return true }
+        if (page.getShow !== null) { page.closeGet(); return true }
         if (page.state !== null || page.searchError !== "") { page.state = null; page.history = []; page.searchError = ""; page.notice = ""; return true }
         return false
     }
@@ -49,6 +52,189 @@ Item {
     property real connectJob: -1
     property bool connecting: false
     property int endpointIndex: 0
+
+    // ---- The sources: which providers a search may ask. A plain endpoint is on unless
+    // switched off; an on-demand one is on only while it runs, unless switched. The flips
+    // live in the frame for the session.
+    function endpointNamed(name) { for (var i = 0; i < endpoints.length; i++) if (endpoints[i].name === name) return endpoints[i]; return null }
+    function sourceOn(name) {
+        var o = frame.downloadsSources[name]
+        if (o !== undefined) return o
+        var e = page.endpointNamed(name)
+        return !e || !e.on_demand || e.running === true
+    }
+    function setSource(name, on) {
+        var m = JSON.parse(JSON.stringify(frame.downloadsSources))
+        m[name] = on
+        frame.downloadsSources = m
+    }
+    readonly property var enabledEndpoints: { var m = frame.downloadsSources; return endpoints.filter(function(e) { return page.sourceOn(e.name) }) }
+    property real checkJob: -1
+    function checkSources() {
+        var r = Door.call("CheckEndpoints", {})
+        if (r.error) { frame.toast(page.errorWords(r.error)); return }
+        page.checkJob = r.reply.job
+    }
+
+    // ---- The library, for the lenses and the suggestions
+    property var libCards: []
+    function loadLibrary() {
+        var r = Door.listLibrary("All", "", "LastViewed", "Desc", false)
+        if (!r.error) page.libCards = r.reply.series || []
+    }
+    function hasGap(c) {
+        var s = String(c.cubes || "")
+        return c.kind === "Show" && !c.hidden && (s.indexOf("m") >= 0 || (s.indexOf("g") >= 0 && /[dlw]/.test(s)))
+    }
+    readonly property var gapCards: libCards.filter(hasGap)
+    readonly property var airingCards: libCards.filter(function(c) { return c.kind === "Show" && !c.hidden && (c.status === "Releasing" || !!c.next_airing) })
+    // "Episodes 4 and 7 missing, 8 to 12 not downloaded"
+    function runs(ns) {
+        if (!ns.length) return ""
+        var parts = [], a = ns[0], b = ns[0]
+        for (var i = 1; i <= ns.length; i++) {
+            if (i < ns.length && ns[i] === b + 1) { b = ns[i]; continue }
+            parts.push(a === b ? String(a) : a + " to " + b)
+            if (i < ns.length) { a = ns[i]; b = ns[i] }
+        }
+        if (parts.length === 2) return parts[0] + " and " + parts[1]
+        return parts.join(", ")
+    }
+    function gapWords(c) {
+        var s = String(c.cubes || ""), miss = [], tail = []
+        for (var i = 0; i < s.length; i++) { if (s[i] === "m") miss.push(i + 1); else if (s[i] === "g") tail.push(i + 1) }
+        var out = []
+        if (miss.length) out.push((miss.length === 1 ? "Episode " : "Episodes ") + page.runs(miss) + " missing")
+        if (tail.length) out.push((out.length ? "" : tail.length === 1 ? "Episode " : "Episodes ") + page.runs(tail) + " not downloaded")
+        return out.join(", ")
+    }
+    property string lens: frame.downloadsLens
+    onLensChanged: frame.downloadsLens = lens
+
+    // ---- The suggestions under the field: library shows, then AniList's
+    property var aniHits: []
+    property real aniJob: -1
+    property int suggestIndex: 0
+    property bool suggestClosed: false
+    readonly property string query: search.text.trim()
+    readonly property var libHits: {
+        var q = page.query.toLowerCase()
+        if (q.length < 2) return []
+        var out = []
+        for (var i = 0; i < libCards.length && out.length < 5; i++) {
+            var c = libCards[i], t = c.titles || {}
+            var hay = [c.title, t.romaji, t.english, t.folder].join(" ").toLowerCase()
+            if (hay.indexOf(q) >= 0) out.push(c)
+        }
+        return out
+    }
+    readonly property var aniOnly: {
+        var ids = {}
+        for (var i = 0; i < libCards.length; i++) if (libCards[i].match_info && libCards[i].match_info.anilist_id) ids[libCards[i].match_info.anilist_id] = libCards[i]
+        return aniHits.filter(function(h) { return !ids[h.id] }).slice(0, 5)
+    }
+    readonly property var suggestRows: libHits.map(function(c) { return { lib: c } }).concat(aniOnly.map(function(h) { return { ani: h } }))
+    readonly property bool suggesting: !suggestClosed && query.length >= 2 && search.editing && page.state === null && !page.searching
+    Timer {
+        id: aniDebounce
+        interval: 300
+        onTriggered: {
+            if (page.query.length < 2) { page.aniHits = []; return }
+            var r = Door.searchOn("Anilist", page.query, 8)
+            if (!r.error) page.aniJob = r.reply.job
+        }
+    }
+    function pickSuggestion(row) {
+        if (!row) return
+        page.suggestClosed = true
+        if (row.lib) page.openGet(page.showFromCard(row.lib))
+        else page.openGet(page.showFromHit(row.ani))
+    }
+
+    // ---- The show view: a show, its providers' releases, the plan
+    property var getShow: null
+    property var getResults: ({})
+    property string getActive: ""
+    property var getJobs: ({})
+    property real getJob: -1
+    property real followJob: -1
+    property var pendingFollow: null
+    property bool getActing: false
+    property string getLine: ""
+    property string getError: ""
+    function lastPart(p) { var f = String(p || "").replace(/\/+$/, ""); var i = f.lastIndexOf("/"); return i >= 0 ? f.slice(i + 1) : f }
+    function showFromCard(c) {
+        var t = c.titles || {}
+        return { title: c.title, query: t.romaji || c.title, poster: c.poster || "", cubes: c.cubes || "", total: c.total_episodes || 0,
+                 seriesId: c.id, status: c.status || "", format: c.format || "", year: c.year || 0, nextAiring: c.next_airing || null,
+                 airing: c.status === "Releasing" || !!c.next_airing, folderName: page.lastPart(c.path) }
+    }
+    function showFromHit(h) {
+        return { title: h.title, query: h.title, poster: h.cover_url || "", cubes: h.episodes ? "g".repeat(Math.min(h.episodes, 400)) : "", total: h.episodes || 0,
+                 seriesId: -1, status: "", format: h.format || "", year: h.year || 0, nextAiring: null, airing: false, folderName: "" }
+    }
+    function showFromLink(s) {
+        for (var i = 0; i < libCards.length; i++) if (libCards[i].id === s.series_id) return page.showFromCard(libCards[i])
+        return { title: s.title, query: s.title, poster: s.poster || "", cubes: s.cubes || "", total: s.total_episodes || 0, seriesId: s.series_id,
+                 status: s.status || "", format: "", year: 0, nextAiring: s.next_airing || null, airing: s.status === "Releasing" || !!s.next_airing, folderName: page.lastPart(s.path) }
+    }
+    function openGet(show) {
+        page.getShow = show
+        page.getResults = ({})
+        page.getActive = ""
+        page.getLine = ""
+        page.getError = ""
+        page.state = null
+        page.detail = null
+        page.history = []
+        scroll.contentY = 0
+    }
+    function closeGet() { page.getShow = null; page.getResults = ({}); page.getActive = ""; page.getJobs = ({}) }
+    function setResult(name, r) { var m = Object.assign({}, page.getResults); m[name] = r; page.getResults = m }
+    function fetchGet(name) {
+        if (!page.getShow || !page.sourceOn(name)) return
+        page.getActive = name
+        var have = page.getResults[name]
+        if (have && (have.state === "done" || have.state === "searching")) return
+        var r = Door.searchReleases(page.getShow.query, name)
+        if (r.error) { page.setResult(name, { state: "error", error: page.errorWords(r.error) }); return }
+        var j = Object.assign({}, page.getJobs); j[r.reply.job] = name; page.getJobs = j
+        page.setResult(name, { state: "searching", label: "", elapsed: 0, start: Date.now() })
+    }
+    Timer {
+        interval: 500; repeat: true
+        running: { for (var k in page.getResults) if (page.getResults[k].state === "searching") return true; return false }
+        onTriggered: {
+            var m = Object.assign({}, page.getResults)
+            for (var k in m) if (m[k].state === "searching") m[k] = Object.assign({}, m[k], { elapsed: (Date.now() - m[k].start) / 1000 })
+            page.getResults = m
+        }
+    }
+    function getAndFollow(plan) {
+        page.getLine = ""
+        page.getError = ""
+        page.pendingFollow = plan.follow ? plan : null
+        if (plan.items.length) {
+            var r = Door.downloadReleases(plan.items, plan.name)
+            if (r.error) { page.getError = page.errorWords(r.error); return }
+            page.getJob = r.reply.job
+            page.getActing = true
+        } else if (plan.follow) page.follow(plan)
+    }
+    function follow(plan) {
+        page.pendingFollow = null
+        var r = Door.subscribe(plan.followQuery, plan.endpoint, plan.followItems, plan.name, plan.query !== plan.followQuery ? plan.query : "")
+        if (r.error) { page.getActing = false; page.getError = page.errorWords(r.error); return }
+        page.followJob = r.reply.job
+        page.getActing = true
+    }
+    function listFromGet(name) {
+        var res = page.getResults[name]
+        if (!res || !res.search) return
+        search.text = res.query
+        page.closeGet()
+        page.adopt(res.search, res.search.fetched_query || res.search.query)
+    }
 
     // ---- The search: the state anirss asks the client to hold, and the trail for Back
     property var state: null
@@ -167,7 +353,11 @@ Item {
     function runSearch() {
         var q = search.text.trim()
         if (q === "") { search.focusInput(); return }
-        var endpoint = page.endpoints.length > page.endpointIndex ? page.endpoints[page.endpointIndex].name : ""
+        var on = page.enabledEndpoints
+        if (!on.length) { page.searchError = "Every source is switched off. Switch one on under the search."; return }
+        var endpoint = on[Math.min(page.endpointIndex, on.length - 1)].name
+        page.closeGet()
+        page.suggestClosed = true
         var r = Door.searchReleases(q, endpoint)
         if (r.error) { page.searchError = r.error.message; return }
         page.searchJob = r.reply.job
@@ -175,7 +365,8 @@ Item {
         page.searchStartMs = Date.now()
         page.searchElapsed = 0
         page.searchLabel = ""
-        page.searchTotal = page.endpoints.length > page.endpointIndex && page.endpoints[page.endpointIndex].on_demand ? page.endpoints[page.endpointIndex].on_demand : 0
+        var picked = page.endpointNamed(endpoint)
+        page.searchTotal = picked && picked.on_demand ? picked.on_demand : 0
         page.searchEndpoint = endpoint
         page.extras = ({})
         page.extrasByTitle = ({})
@@ -241,7 +432,7 @@ Item {
         Door.cancelJob(page.searchJob)
     }
     function searchOn(name) {
-        for (var i = 0; i < page.endpoints.length; i++) if (page.endpoints[i].name === name) page.endpointIndex = i
+        for (var i = 0; i < page.enabledEndpoints.length; i++) if (page.enabledEndpoints[i].name === name) page.endpointIndex = i
         page.cancelSearch()
         Qt.callLater(page.runSearch)
     }
@@ -275,7 +466,7 @@ Item {
         out.groups.sort(byCount); out.quality.sort(byCount); out.other.sort(byCount)
         return out
     }
-    readonly property var otherEndpoints: endpoints.map(function(e) { return e.name }).filter(function(n) { return n !== page.searchEndpoint })
+    readonly property var otherEndpoints: enabledEndpoints.map(function(e) { return e.name }).filter(function(n) { return n !== page.searchEndpoint })
     function reasonWords(reason) {
         if (reason === "zero_results") return "That would leave nothing, so the list stays as it is."
         if (reason === "no_match") return "No release matches that term."
@@ -320,6 +511,7 @@ Item {
     function torrentKey(t) { return t.series_id !== null && t.series_id !== undefined ? "s" + t.series_id : "p" + folderOf(t.save_path) }
     function ruleKey(r) { return r.show ? "s" + r.show.series_id : "p" + folderOf(r.save_path) }
     function titleOf(r) { return r.show ? r.show.title : r.name }
+    function ruleForSeries(id) { for (var i = 0; i < rules.length; i++) if (rules[i].show && rules[i].show.series_id === id) return rules[i]; return null }
     readonly property var ruleByKey: { var m = {}; for (var i = 0; i < rules.length; i++) m[ruleKey(rules[i])] = rules[i]; return m }
 
     // Active is what is moving or waiting to: not done, not stopped, not broken
@@ -373,6 +565,7 @@ Item {
     readonly property var downloading: showGroups.filter(function(g) { return page.groupState(g) === "downloading" })
     readonly property var dlSections: {
         var defs = [
+            { key: "downloading", title: "Downloading", dot: theme.purple, line: "Moving now; Activity at the right has the detail." },
             { key: "seeding", title: "Seeding", dot: theme.green, line: "Downloaded and still sharing." },
             { key: "done", title: "Done", dot: theme.textDim, line: "Downloaded; the client is not sharing them." },
             { key: "stopped", title: "Stopped", dot: theme.textFaint, line: "Stopped before they finished." },
@@ -673,13 +866,23 @@ Item {
 
     Connections {
         target: Door
+        function onSearchFinished(job, res) {
+            if (job !== page.aniJob) return
+            page.aniHits = res || []
+        }
         function onDownloadsStatusChanged(status) {
             page.status = status
             page.connecting = false
+            page.checkJob = -1
             if (page.anirssReady && !frame.downloadsRulesRead) page.loadRules()
         }
         function onJobProgress(job, kind, done, total, label) {
             if (job === page.repairJob) { page.repairLabel = label; return }
+            if (page.getJobs[job] !== undefined) {
+                var n = page.getJobs[job], cur = page.getResults[n]
+                if (cur && cur.state === "searching") page.setResult(n, Object.assign({}, cur, { label: label }))
+                return
+            }
             if (job !== page.searchJob || !page.searching) return
             page.searchLabel = label
         }
@@ -695,6 +898,14 @@ Item {
             page.datesState = "ready"
         }
         function onReleasesFound(job, search) {
+            if (page.getJobs[job] !== undefined) {
+                var name = page.getJobs[job]
+                var j = Object.assign({}, page.getJobs); delete j[job]; page.getJobs = j
+                // A fallback answered from another endpoint: none of it is this provider's
+                var own = search.endpoint === name
+                page.setResult(name, { state: "done", items: own ? search.items : [], facts: own ? search.facts : [], query: search.query, search: search })
+                return
+            }
             if (job !== page.searchJob) return
             page.searching = false
             page.adopt(search, search.fetched_query || search.query)
@@ -719,6 +930,13 @@ Item {
         }
         function onSubscriptionPreviewed(job, spec) { if (job === page.previewJob) page.preview = spec }
         function onSubscribed(job, result) {
+            if (job === page.followJob) {
+                page.followJob = -1
+                page.getActing = false
+                page.getLine = (page.getLine !== "" ? page.getLine + " " : "") + "Following as " + result.name + ": new episodes save to " + result.save_path + "."
+                page.loadRules()
+                return
+            }
             if (job !== page.actionJob) return
             page.acting = false
             page.actionLine = "Subscribed as " + result.name + ". New episodes save to " + result.save_path + "."
@@ -745,6 +963,14 @@ Item {
             page.ruleView = rule
         }
         function onTorrentsAdded(job, result) {
+            if (job === page.getJob) {
+                page.getJob = -1
+                page.getLine = "Sent " + Fmt.plural(result.count, "torrent", "torrents") + " to " + page.clientName + ", saving under " + result.save_path + "."
+                page.pollTorrents()
+                if (page.pendingFollow) page.follow(page.pendingFollow)
+                else page.getActing = false
+                return
+            }
             if (job !== page.actionJob) return
             page.acting = false
             page.actionLine = "Added " + Fmt.plural(result.count, "torrent", "torrents") + " under " + result.save_path + "."
@@ -779,6 +1005,14 @@ Item {
         }
         function onTorrentsControlled(hashes, action) { page.pollTorrents() }
         function onJobFailed(job, kind, error) {
+            if (page.getJobs[job] !== undefined) {
+                var gn = page.getJobs[job]
+                var gj = Object.assign({}, page.getJobs); delete gj[job]; page.getJobs = gj
+                page.setResult(gn, { state: "error", error: page.errorWords(error) })
+                return
+            }
+            if (job === page.getJob || job === page.followJob) { page.getJob = -1; page.followJob = -1; page.getActing = false; page.pendingFollow = null; page.getError = page.errorWords(error); return }
+            if (job === page.checkJob) { page.checkJob = -1; frame.toast(page.errorWords(error)); return }
             if (job === page.searchJob) { page.searching = false; page.searchError = page.errorWords(error) }
             else if (job === page.actionJob) { page.acting = false; page.actionError = page.errorWords(error) }
             else if (job === page.connectJob) { page.connecting = false; frame.toast(page.errorWords(error)) }
@@ -793,6 +1027,7 @@ Item {
             } else if (kind === "ControlTorrents") frame.toast(page.errorWords(error))
         }
         function onJobCancelled(job, kind) {
+            if (page.getJobs[job] !== undefined) { var cn = page.getJobs[job]; var cj = Object.assign({}, page.getJobs); delete cj[job]; page.getJobs = cj; page.setResult(cn, { state: "idle" }) }
             if (job === page.runningJob) { page.queue.forEach(function(q) { page.mark(q.keys, false) }); page.queue = []; page.finishRunning(false) }
             if (job === page.searchJob) page.searching = false
             else if (job === page.actionJob) page.acting = false
@@ -808,6 +1043,7 @@ Item {
         connect()
         loadRules()
         pollTorrents()
+        loadLibrary()
         if (props.query) { search.text = props.query; Qt.callLater(page.runSearch) }
     }
 
@@ -817,23 +1053,47 @@ Item {
     readonly property real tileGap: theme.grout
     readonly property int cols: Math.max(1, Math.floor((scroll.innerWidth + tileGap) / (theme.posterWidth + tileGap)))
     readonly property real cardWidth: Math.floor((scroll.innerWidth - tileGap * (cols - 1)) / cols)
-    readonly property bool home: page.detail === null && page.state === null && !page.searching && page.searchError === ""
+    readonly property bool home: page.detail === null && page.getShow === null && page.state === null && !page.searching && page.searchError === ""
+
+    // ---- Activity at the right, while the window has the width for it
+    readonly property bool activityShown: page.width >= theme.space(250)
+    ActivityColumn {
+        id: activity
+        visible: page.activityShown
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        width: visible ? theme.space(88) : 0
+        torrents: page.torrents
+        transfer: page.transfer
+        shows: page.shows
+        connected: page.torrentOn
+        clientName: page.clientName
+        onOpenShow: function(t) {
+            if (t.series_id !== null && t.series_id !== undefined && page.shows[t.series_id]) page.openGet(page.showFromLink(page.shows[t.series_id]))
+        }
+    }
+    Rectangle { visible: activity.visible; anchors.right: activity.left; anchors.top: parent.top; anchors.bottom: parent.bottom; width: 1; color: theme.line }
 
     PageScroll {
         id: scroll
-        anchors.fill: parent
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.right: activity.visible ? activity.left : parent.right
         readonly property real innerWidth: width - theme.space(16)
 
         // ---- The head: the title, the one line, the two halves as chips
         Item {
             width: parent.width
-            height: theme.space(14)
+            height: theme.space(20)
             Label {
                 id: titleLabel
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Downloads"
                 role: "display"
+                font.pointSize: theme.typePage
             }
             Label {
                 objectName: "downloads-summary"
@@ -880,43 +1140,218 @@ Item {
             }
         }
 
-        // ---- The search row: the field, the endpoint, Search
-        Row {
+        // ---- The search row: one wide field (shows as you type, release names on Return),
+        // the source a release search asks, Search
+        Item {
             width: parent.width
-            spacing: theme.space(2)
+            height: search.height
             SearchField {
                 id: search
                 objectName: "downloads-search"
-                width: parent.width - endpointPick.width - go.width - parent.spacing * 2
-                placeholder: "Search the release feeds"
-                hint: "/ then Return"
-                onAccepted: page.runSearch()
-                onCleared: {}
+                large: true
+                anchors.left: parent.left
+                width: parent.width - endpointPick.width - go.width - theme.space(4)
+                placeholder: "Search for a show, or a release name"
+                hint: "Shows as you type, releases on Return"
+                onAccepted: {
+                    if (page.suggesting && page.suggestIndex > 0 && page.suggestRows.length >= page.suggestIndex) page.pickSuggestion(page.suggestRows[page.suggestIndex - 1])
+                    else page.runSearch()
+                }
+                onStepped: function(by) { if (page.suggesting) page.suggestIndex = Math.max(0, Math.min(page.suggestRows.length, page.suggestIndex + by)) }
+                onTextChanged: { page.suggestClosed = false; page.suggestIndex = 0; aniDebounce.restart() }
+                onCleared: { page.aniHits = [] }
             }
             Dropdown {
                 id: endpointPick
                 objectName: "downloads-endpoint"
-                options: page.endpoints.length ? page.endpoints.map(function(e) { return e.name }) : ["(no endpoints)"]
-                index: page.endpointIndex
+                anchors.right: go.left
+                anchors.rightMargin: theme.space(2)
+                anchors.verticalCenter: parent.verticalCenter
+                options: page.enabledEndpoints.length ? page.enabledEndpoints.map(function(e) { return e.name }) : ["(no sources on)"]
+                index: Math.min(page.endpointIndex, Math.max(0, page.enabledEndpoints.length - 1))
                 minWidth: theme.space(28)
-                interactive: page.endpoints.length > 0
+                interactive: page.enabledEndpoints.length > 0
                 onPicked: function(i) { page.endpointIndex = i; if (page.state) page.runSearch() }
-                Tooltip {
-                    text: {
-                        if (page.endpoints.length <= page.endpointIndex) return "The search endpoints come from anirss's config"
-                        var e = page.endpoints[page.endpointIndex]
-                        return e.on_demand ? e.name + " starts on demand: the first search waits for it, up to " + e.on_demand + " seconds" : e.url
-                    }
-                }
+                Tooltip { text: "The source a release-name search asks. Switch sources on and off under the field." }
             }
             Button {
                 id: go
                 objectName: "downloads-go"
-                text: page.searching ? "Searching" : "Search"
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                text: page.searching ? "Searching" : "Search releases"
                 icon: "search"
                 primary: true
                 enabled: !page.searching
                 onClicked: page.runSearch()
+            }
+        }
+
+        // ---- Shows that match what is typed: the library's own, then AniList's
+        Tile {
+            id: suggestTile
+            objectName: "downloads-suggestions"
+            visible: page.suggesting
+            width: parent.width - endpointPick.width - go.width - theme.space(4)
+            implicitHeight: suggestBody.implicitHeight + padding * 2
+            height: visible ? implicitHeight : 0
+            padding: theme.space(2)
+            lit: false
+            Column {
+                id: suggestBody
+                width: parent.width
+                Repeater {
+                    model: page.suggestRows
+                    Item {
+                        id: srow
+                        required property var modelData
+                        required property int index
+                        readonly property var c: modelData.lib || null
+                        readonly property var h: modelData.ani || null
+                        readonly property bool current: page.suggestIndex === index + 1
+                        width: parent.width
+                        height: theme.space(22)
+                        Rectangle { anchors.fill: parent; radius: theme.radiusMd; color: srow.current || sMouse.containsMouse ? theme.glassFloat : "transparent" }
+                        MouseArea { id: sMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.pickSuggestion(srow.modelData) }
+                        Corner {
+                            id: sPoster
+                            x: theme.space(3)
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: theme.space(12); height: width * 1.45
+                            radius: theme.radiusSm
+                            smoothing: theme.cornerSmoothing
+                            color: theme.tileSunken
+                            Image {
+                                id: sImage
+                                visible: false
+                                anchors.fill: parent
+                                source: srow.c ? (srow.c.poster ? "file://" + srow.c.poster : "") : (srow.h && srow.h.cover_url ? srow.h.cover_url : "")
+                                sourceSize: Qt.size(96, 140)
+                                fillMode: Image.PreserveAspectCrop
+                                asynchronous: true
+                            }
+                            fillItem: sImage.status === Image.Ready ? sImage : null
+                        }
+                        Column {
+                            anchors.left: sPoster.right
+                            anchors.leftMargin: theme.space(5)
+                            anchors.right: sRight.left
+                            anchors.rightMargin: theme.space(5)
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: theme.space(1)
+                            Label { width: parent.width; text: srow.c ? srow.c.title : srow.h.title; role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 }); elide: Text.ElideRight }
+                            Label {
+                                width: parent.width
+                                text: {
+                                    if (srow.c) {
+                                        var parts = []
+                                        if (srow.c.next_airing) parts.push("Airing, episode " + srow.c.next_airing.episode + " in " + Fmt.countdown(srow.c.next_airing.at - page.nowMs / 1000))
+                                        else if (srow.c.status === "Finished") parts.push("Finished")
+                                        var gw = page.gapWords(srow.c)
+                                        if (gw) parts.push(gw)
+                                        return parts.join(". ")
+                                    }
+                                    var b = []
+                                    if (srow.h.format) b.push(srow.h.format)
+                                    if (srow.h.year) b.push(String(srow.h.year))
+                                    if (srow.h.episodes) b.push(srow.h.episodes + " episodes")
+                                    return b.join(", ")
+                                }
+                                role: "ui"; color: theme.textDim; elide: Text.ElideRight
+                            }
+                        }
+                        Column {
+                            id: sRight
+                            anchors.right: parent.right
+                            anchors.rightMargin: theme.space(4)
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: theme.space(60)
+                            spacing: theme.space(1.5)
+                            EpisodeCubes {
+                                visible: srow.c !== null && String(srow.c.cubes || "") !== ""
+                                anchors.right: parent.right
+                                width: Math.min(implicitWidth, parent.width)
+                                height: implicitHeight
+                                codes: srow.c ? srow.c.cubes || "" : ""
+                                cubeSize: theme.space(2)
+                                minSize: 2
+                                maxRows: 2
+                                tipLimit: 0
+                            }
+                            Label { anchors.right: parent.right; text: srow.c ? "In your library" : "On AniList, not in your library"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint }
+                        }
+                    }
+                }
+                Item {
+                    width: parent.width
+                    height: theme.space(14)
+                    Rectangle { anchors.fill: parent; radius: theme.radiusMd; color: page.suggestIndex === 0 ? theme.glassFloat : "transparent" }
+                    Label {
+                        x: theme.space(4)
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Search release names for \u201c" + page.query + "\u201d on " + (page.enabledEndpoints.length ? page.enabledEndpoints[Math.min(page.endpointIndex, page.enabledEndpoints.length - 1)].name : "no source") + " instead"
+                        role: "ui"; color: theme.textDim
+                    }
+                    Label { anchors.right: parent.right; anchors.rightMargin: theme.space(4); anchors.verticalCenter: parent.verticalCenter; text: "Return"; role: "ledger"; color: theme.textFaint }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.runSearch() }
+                }
+            }
+        }
+
+        // ---- The sources: a switch per provider, and whether the on-demand ones run
+        Flow {
+            objectName: "downloads-sources"
+            visible: page.endpoints.length > 0
+            width: parent.width
+            spacing: theme.space(2)
+            Label { height: theme.space(10); verticalAlignment: Text.AlignVCenter; text: "Sources"; role: "ui"; color: theme.textFaint; rightPadding: theme.space(2) }
+            Repeater {
+                model: page.endpoints
+                Corner {
+                    id: src
+                    required property var modelData
+                    readonly property bool on: page.sourceOn(modelData.name)
+                    objectName: "downloads-source-" + modelData.name
+                    width: srcRow.implicitWidth + theme.space(6)
+                    height: theme.space(10)
+                    radius: height / 2
+                    smoothing: theme.cornerSmoothing
+                    color: src.on ? theme.glassFloat : "transparent"
+                    borderColor: src.on ? theme.lineStrong : theme.line
+                    borderWidth: 1
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.setSource(src.modelData.name, !src.on) }
+                    Row {
+                        id: srcRow
+                        anchors.centerIn: parent
+                        spacing: theme.space(2)
+                        Switch { anchors.verticalCenter: parent.verticalCenter; checked: src.on; scale: 0.8; onToggled: function(on) { page.setSource(src.modelData.name, on) } }
+                        Label { anchors.verticalCenter: parent.verticalCenter; text: src.modelData.name; role: "ui"; color: src.on ? theme.text : theme.textDim }
+                        Label {
+                            visible: !!src.modelData.on_demand
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: src.modelData.running === true ? "running" : "not running"
+                            role: "ui"; font.pointSize: theme.typeSmall
+                            color: src.modelData.running === true ? theme.green : theme.textFaint
+                        }
+                    }
+                    Tooltip {
+                        text: src.modelData.on_demand
+                            ? src.modelData.name + " is a service anirss starts on demand. AniBeam only checks whether it runs and never starts it: "
+                              + (src.modelData.running === true ? "it runs now, so it is on." : "it is not running, so it is off.")
+                            : src.modelData.url
+                    }
+                }
+            }
+            Button {
+                visible: page.endpoints.some(function(e) { return !!e.on_demand })
+                height: theme.space(10)
+                text: page.checkJob >= 0 ? "Checking" : "Check again"
+                icon: "refresh-cw"
+                flat: true
+                small: true
+                enabled: page.checkJob < 0
+                onClicked: page.checkSources()
+                Tooltip { text: "Asks whether each on-demand source is running. Starts nothing." }
             }
         }
 
@@ -1219,6 +1654,33 @@ Item {
             }
         }
 
+        // ---- A show to get: its providers, their releases, the plan
+        Loader {
+            active: page.getShow !== null
+            visible: active
+            width: parent.width
+            height: active && item ? item.implicitHeight : 0
+            sourceComponent: GetShow {
+                objectName: "downloads-get"
+                width: scroll.innerWidth
+                show: page.getShow
+                endpoints: page.endpoints
+                results: page.getResults
+                active: page.getActive
+                sourceOn: function(name) { var m = frame.downloadsSources; return page.sourceOn(name) }
+                acting: page.getActing
+                actionLine: page.getLine
+                actionError: page.getError
+                nowMs: page.nowMs
+                onBack: page.closeGet()
+                onFetch: function(name) { page.fetchGet(name) }
+                onSourceToggled: function(name, on) { page.setSource(name, on); if (on) page.fetchGet(name) }
+                onCheckSources: page.checkSources()
+                onOpenList: function(name) { page.listFromGet(name) }
+                onGetAndFollow: function(plan) { page.getAndFollow(plan) }
+            }
+        }
+
         // ---- The show, inside the page
         Loader {
             active: page.detail !== null
@@ -1253,31 +1715,125 @@ Item {
             }
         }
 
-        // ---- Downloading: the shows with a torrent moving, only while one is
-        Column {
-            visible: page.detail === null && page.downloading.length > 0
+        // ---- The lenses: four ways into what there is to get
+        Item {
+            visible: page.home
             width: parent.width
-            spacing: theme.space(3)
-            BandHead {
-                title: "Downloading"
-                count: page.downloading.length
-                line: {
-                    var parts = []
-                    if (page.transfer && page.transfer.dl_speed > 0) parts.push(Fmt.bytes(page.transfer.dl_speed) + "/s down")
-                    if (page.transfer && page.transfer.up_speed > 0) parts.push(Fmt.bytes(page.transfer.up_speed) + "/s up")
-                    return parts.length ? parts.join(", ") : "Waiting for peers."
-                }
+            height: visible ? theme.space(14) : 0
+            Seg {
+                id: lensSeg
+                objectName: "downloads-lens"
+                anchors.left: parent.left
+                anchors.bottom: parent.bottom
+                options: [
+                    { text: "Gaps in your library  " + page.gapCards.length },
+                    { text: "Airing  " + page.airingCards.length },
+                    { text: "Following  " + page.rules.length },
+                    { text: "Downloaded  " + page.showGroups.length }
+                ]
+                index: ["gaps", "airing", "following", "downloaded"].indexOf(page.lens)
+                onPicked: function(i) { page.lens = ["gaps", "airing", "following", "downloaded"][i] }
             }
-            GroupList { groups: page.downloading; state: "downloading"; grid: frame.downloadsDlView === "grid" }
         }
 
-        // ---- Subscriptions, in sections by where the show stands
+        // ---- Gaps: aired episodes the library does not have, a show a row
         Column {
-            visible: page.home
+            visible: page.home && page.lens === "gaps"
             width: parent.width
             spacing: theme.space(4)
             BandHead {
-                title: "Subscriptions"
+                title: "Gaps in your library"
+                count: page.gapCards.length
+                line: page.gapCards.length ? "Aired episodes that are not on disk. Open a show to see who has them." : "Nothing is missing: every aired episode of every show is on disk."
+            }
+            Flow {
+                width: parent.width
+                spacing: page.tileGap
+                Repeater {
+                    model: page.gapCards
+                    Corner {
+                        id: gap
+                        required property var modelData
+                        objectName: "gap-" + modelData.id
+                        readonly property real cols: Math.max(1, Math.floor((scroll.innerWidth + page.tileGap) / (theme.space(105) + page.tileGap)))
+                        width: Math.floor((scroll.innerWidth - page.tileGap * (cols - 1)) / cols)
+                        height: theme.space(36)
+                        radius: theme.radiusTile
+                        smoothing: theme.cornerSmoothing
+                        color: gapMouse.containsMouse ? theme.glassFloatHover : theme.glassFloat
+                        MouseArea { id: gapMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.openGet(page.showFromCard(gap.modelData)) }
+                        Corner {
+                            id: gapPoster
+                            x: theme.space(3); y: theme.space(3)
+                            width: (parent.height - theme.space(6)) / 1.45; height: parent.height - theme.space(6)
+                            radius: theme.radiusMd
+                            smoothing: theme.cornerSmoothing
+                            color: theme.tileSunken
+                            Image {
+                                id: gapImage
+                                visible: false
+                                anchors.fill: parent
+                                source: gap.modelData.poster ? "file://" + gap.modelData.poster : ""
+                                sourceSize: Qt.size(160, 232)
+                                fillMode: Image.PreserveAspectCrop
+                                asynchronous: true
+                            }
+                            fillItem: gapImage.status === Image.Ready ? gapImage : null
+                        }
+                        Column {
+                            anchors.left: gapPoster.right
+                            anchors.leftMargin: theme.space(5)
+                            anchors.right: parent.right
+                            anchors.rightMargin: theme.space(5)
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: theme.space(2)
+                            Label { width: parent.width; text: gap.modelData.title; role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 }); wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; lineHeight: 0.92 }
+                            Label { width: parent.width; text: page.gapWords(gap.modelData); role: "ui"; color: String(gap.modelData.cubes).indexOf("m") >= 0 ? theme.yellow : theme.textDim; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight }
+                            EpisodeCubes { width: parent.width; height: implicitHeight; codes: gap.modelData.cubes || ""; cubeSize: theme.space(2.5); minSize: 2; maxRows: 2 }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ---- Airing: the library's airing shows, posters with their cubes
+        Column {
+            visible: page.home && page.lens === "airing"
+            width: parent.width
+            spacing: theme.space(4)
+            BandHead {
+                title: "Airing"
+                count: page.airingCards.length
+                line: "Shows in your library with episodes still to come. Open one to follow it."
+            }
+            Flow {
+                width: parent.width
+                spacing: page.tileGap
+                Repeater {
+                    model: page.airingCards
+                    ShowCard {
+                        required property var modelData
+                        width: page.cardWidth
+                        height: implicitHeight
+                        poster: modelData.poster || ""
+                        title: modelData.title
+                        tag: { var r = page.ruleForSeries(modelData.id); return r ? "Following" : "" }
+                        tagDot: theme.green
+                        ledger: modelData.next_airing ? "Episode " + modelData.next_airing.episode + " in " + Fmt.countdown(modelData.next_airing.at - page.nowMs / 1000) : "Airing"
+                        cubes: modelData.cubes || ""
+                        onOpened: page.openGet(page.showFromCard(modelData))
+                    }
+                }
+            }
+        }
+
+        // ---- Following: the subscriptions, in sections by where the show stands
+        Column {
+            visible: page.home && page.lens === "following"
+            width: parent.width
+            spacing: theme.space(4)
+            BandHead {
+                title: "Following"
                 count: page.rules.length
                 line: page.rulesError !== "" ? page.rulesError : page.rulesLoaded ? (page.rules.length ? "Feeds anirss watches, as the shows they fill." : "None yet.") : (page.anirssReady ? "Reading." : "")
                 alarm: page.rulesError !== ""
@@ -1325,6 +1881,7 @@ Item {
                                 tagDot: page.stateDot(page.subState(modelData))
                                 ledger: page.ruleLedger(modelData)
                                 progress: page.ruleProgress(modelData)
+                                cubes: modelData.show && modelData.show.cubes ? modelData.show.cubes : ""
                                 actionText: "Unsubscribe"
                                 actionIcon: "rss"
                                 busy: page.isRemoving("r:" + modelData.name)
@@ -1352,6 +1909,7 @@ Item {
                                 facts: page.ruleLedger(modelData) + (modelData.show ? ", " + Fmt.plural(modelData.torrent_count || 0, "torrent", "torrents") : "")
                                 folder: modelData.save_path
                                 progress: page.ruleProgress(modelData)
+                                cubes: modelData.show && modelData.show.cubes ? modelData.show.cubes : ""
                                 actionText: "Unsubscribe"
                                 actionIcon: "rss"
                                 busy: page.isRemoving("r:" + modelData.name)
@@ -1372,10 +1930,9 @@ Item {
 
         // ---- Downloaded, in sections by what the client is doing with each show
         Column {
-            visible: page.home
+            visible: page.home && page.lens === "downloaded"
             width: parent.width
             spacing: theme.space(4)
-            Item { width: 1; height: theme.space(2) }
             BandHead {
                 title: "Downloaded"
                 count: page.downloadedCount
@@ -1476,7 +2033,7 @@ Item {
             anchors.bottom: parent.bottom
             anchors.bottomMargin: theme.space(2)
             spacing: theme.space(3)
-            Label { id: bandTitle; text: band.title; role: "display"; font.pointSize: theme.typeLarge; font.variableAxes: ({ "wdth": 74, "wght": 500 }) }
+            Label { id: bandTitle; text: band.title; role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 }) }
             Label { anchors.baseline: bandTitle.baseline; visible: band.count > 0; text: band.count; role: "ledger"; color: theme.textFaint }
             Label { anchors.baseline: bandTitle.baseline; text: band.line; role: "ui"; color: band.alarm ? theme.red : theme.textDim; elide: Text.ElideRight; width: Math.max(0, Math.min(implicitWidth, parent.width - bandTitle.width - theme.space(20))) }
         }
@@ -1549,6 +2106,8 @@ Item {
                     tagDot: page.stateDot(gl.state)
                     ledger: page.groupLedger(modelData)
                     progress: gl.state === "downloading" ? modelData.have / Math.max(1, modelData.size) : -1
+                    progressCode: "t"
+                    cubes: gl.state !== "downloading" && modelData.show && modelData.show.cubes ? modelData.show.cubes : ""
                     actionText: "Remove"
                     actionIcon: "x"
                     busy: page.isRemoving("g:" + modelData.key)
@@ -1578,6 +2137,8 @@ Item {
                     trouble: modelData.broken > 0 && modelData.broken < modelData.torrents.length ? modelData.broken + " with files missing" : ""
                     folder: modelData.folder
                     progress: gl.state === "downloading" ? modelData.have / Math.max(1, modelData.size) : -1
+                    progressCode: "t"
+                    cubes: gl.state !== "downloading" && modelData.show && modelData.show.cubes ? modelData.show.cubes : ""
                     actionText: "Remove"
                     actionIcon: "x"
                     busy: page.isRemoving("g:" + modelData.key)

@@ -443,6 +443,9 @@ FocusScope {
     // The downloads page's two bands, grid or list, for the session
     property string downloadsSubView: "grid"
     property string downloadsDlView: "grid"
+    // The Downloads page's lens, and the sources switched by hand (name -> on), for the session
+    property string downloadsLens: "gaps"
+    property var downloadsSources: ({})
     property bool downloadsRulesRead: false
     property string downloadsRulesError: ""
     readonly property int downloadsAttention: {
