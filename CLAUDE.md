@@ -6,10 +6,10 @@ AniBeam browses, plays and tracks a local anime library: it scans configured fol
 
 ## Git Workflow
 
-- **Never commit work directly on `main`.** All work happens on branches (`feat/...`, `fix/...`, `docs/...`), merged back when done.
-- **Merge only working code.** `cargo test --workspace` and clippy must pass before a merge; `main` must always build.
-- Keep branches focused, one feature or fix each, and delete them after merging.
-- Commit messages follow the existing `type(scope): summary` style (`feat(core): ...`, `fix(shell): ...`).
+`CONTRIBUTING.md` holds the flow and the naming: issue first, a `<type>/<issue>-<slug>` branch, `<type>(<scope>): <outcome>` commits and PR titles, squash merge. Read it before the first commit of a task.
+
+- **Never commit work directly on `main`.** One focused branch per task, deleted after merging.
+- **Merge only working code.** The checks in CONTRIBUTING's "Before you open it" pass first; `main` must always build.
 
 ## Commands
 
