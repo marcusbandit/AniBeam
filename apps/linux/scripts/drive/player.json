@@ -9,7 +9,8 @@
   }
  },
  {
-  "wait": 4000
+  "until": "frame.item.pageItem.loaded === true && frame.item.pageItem.duration > 600",
+  "timeout": 15000
  },
  {
   "eval": "frame.item.pageItem.loaded",
@@ -33,7 +34,7 @@
   ]
  },
  {
-  "wait": 300
+  "until": "frame.item.pageItem.chromeVisible === true"
  },
  {
   "shot": "player-01-chrome"
@@ -49,7 +50,8 @@
   "expect": true
  },
  {
-  "wait": 1500
+  "until": "Math.abs(frame.item.pageItem.timePos - 71.5) < 1 && frame.item.pageItem.sid >= 0",
+  "timeout": 8000
  },
  {
   "eval": "frame.item.pageItem.sid >= 0",
@@ -81,7 +83,7 @@
   "expect": false
  },
  {
-  "wait": 300
+  "until": "Number(frame.item.pageItem.video.getProperty('sub-pos')) === frame.item.pageItem.subPosSetting"
  },
  {
   "eval": "Number(frame.item.pageItem.video.getProperty('sub-pos')) === frame.item.pageItem.subPosSetting",
@@ -97,7 +99,7 @@
   ]
  },
  {
-  "wait": 300
+  "until": "Number(frame.item.pageItem.video.getProperty('sub-pos')) < frame.item.pageItem.subPosSetting"
  },
  {
   "eval": "Number(frame.item.pageItem.video.getProperty('sub-pos')) < frame.item.pageItem.subPosSetting",
@@ -111,7 +113,7 @@
   "expect": true
  },
  {
-  "wait": 400
+  "until": "frame.item.pageItem.paused === false"
  },
  {
   "eval": "frame.item.pageItem.paused",
@@ -128,7 +130,7 @@
   "click": "player-play"
  },
  {
-  "wait": 400
+  "until": "frame.item.pageItem.paused === true"
  },
  {
   "eval": "frame.item.pageItem.paused",
@@ -138,7 +140,7 @@
   "key": "Space"
  },
  {
-  "wait": 400
+  "until": "frame.item.pageItem.paused === false"
  },
  {
   "eval": "frame.item.pageItem.paused",
@@ -148,7 +150,7 @@
   "key": "Space"
  },
  {
-  "wait": 400
+  "until": "frame.item.pageItem.paused === true"
  },
  {
   "eval": "frame.item.pageItem.paused",
@@ -196,7 +198,7 @@
   "expect": true
  },
  {
-  "wait": 700
+  "until": "Math.round(Player.volume) === Math.round(frame.item.pageItem.volume)"
  },
  {
   "eval": "Math.round(Player.volume) === Math.round(frame.item.pageItem.volume)",
@@ -213,7 +215,7 @@
   "key": "l"
  },
  {
-  "wait": 700
+  "until": "Math.abs(frame.item.pageItem.timePos - (vars.t1 + 10)) < 1"
  },
  {
   "eval": "Math.abs(frame.item.pageItem.timePos - (vars.t1 + 10)) < 1",
@@ -223,7 +225,7 @@
   "key": "j"
  },
  {
-  "wait": 700
+  "until": "Math.abs(frame.item.pageItem.timePos - vars.t1) < 1"
  },
  {
   "eval": "Math.abs(frame.item.pageItem.timePos - vars.t1) < 1",
@@ -268,7 +270,7 @@
   ]
  },
  {
-  "wait": 1000
+  "until": "Math.abs(frame.item.pageItem.timePos - 0.8 * frame.item.pageItem.duration) < 3"
  },
  {
   "eval": "var p = frame.item.pageItem; Math.abs(p.timePos - 0.8 * p.duration) < 3",
@@ -279,7 +281,7 @@
   "expect": true
  },
  {
-  "wait": 700
+  "until": "Math.abs(frame.item.pageItem.timePos - vars.t1) < 1"
  },
  {
   "log": "[ and ] step the speed by 0.25, Backspace resets it"
@@ -294,7 +296,7 @@
   "key": "]"
  },
  {
-  "wait": 400
+  "until": "frame.item.pageItem.speed === 1.5"
  },
  {
   "eval": "frame.item.pageItem.speed",
@@ -315,7 +317,7 @@
   "key": "["
  },
  {
-  "wait": 300
+  "until": "frame.item.pageItem.speed === 1.25"
  },
  {
   "eval": "frame.item.pageItem.speed",
@@ -325,7 +327,7 @@
   "key": "Backspace"
  },
  {
-  "wait": 300
+  "until": "frame.item.pageItem.speed === 1"
  },
  {
   "eval": "frame.item.pageItem.speed",
@@ -342,7 +344,7 @@
   "click": "player-subs"
  },
  {
-  "wait": 400
+  "until": "frame.item.pageItem.openMenus === 1"
  },
  {
   "eval": "frame.item.pageItem.openMenus",
@@ -383,7 +385,7 @@
   "key": "Escape"
  },
  {
-  "wait": 400
+  "until": "frame.item.pageItem.openMenus === 0"
  },
  {
   "eval": "frame.item.pageItem.openMenus",
@@ -397,7 +399,7 @@
   "key": "Space"
  },
  {
-  "wait": 400
+  "until": "frame.item.pageItem.paused === false"
  },
  {
   "eval": "frame.item.pageItem.paused",
@@ -407,7 +409,7 @@
   "key": "Space"
  },
  {
-  "wait": 300
+  "until": "frame.item.pageItem.paused === true"
  },
  {
   "log": "the key list, then Escape closes it and not the player"
@@ -416,7 +418,7 @@
   "key": "?"
  },
  {
-  "wait": 300
+  "until": "frame.item.pageItem.openMenus === 1"
  },
  {
   "eval": "frame.item.pageItem.openMenus",
@@ -429,7 +431,7 @@
   "key": "Escape"
  },
  {
-  "wait": 300
+  "until": "frame.item.pageItem.openMenus === 0"
  },
  {
   "eval": "frame.item.pageItem.openMenus",
@@ -454,7 +456,7 @@
   "click": "player-rate"
  },
  {
-  "wait": 400
+  "until": "frame.item.pageItem.openMenus === 1"
  },
  {
   "eval": "frame.item.pageItem.openMenus",
@@ -467,7 +469,7 @@
   "key": "Escape"
  },
  {
-  "wait": 400
+  "until": "frame.item.pageItem.openMenus === 0"
  },
  {
   "eval": "frame.item.pageItem.openMenus",
@@ -477,7 +479,7 @@
   "key": "Space"
  },
  {
-  "wait": 400
+  "until": "frame.item.pageItem.paused === !vars.p0"
  },
  {
   "eval": "frame.item.pageItem.paused === !vars.p0",
@@ -504,7 +506,8 @@
   "hover": "player-help"
  },
  {
-  "wait": 900
+  "until": "driver.item.findItem('player-help').hovered === true && frame.item.tipShown",
+  "timeout": 5000
  },
  {
   "eval": "driver.item.findItem('player-help').hovered",
@@ -524,7 +527,8 @@
   "key": "n"
  },
  {
-  "wait": 3000
+  "until": "frame.item.pageItem.session.code !== vars.code",
+  "timeout": 15000
  },
  {
   "eval": "frame.item.pageItem.session.code !== vars.code",
@@ -534,7 +538,8 @@
   "key": "p"
  },
  {
-  "wait": 3000
+  "until": "frame.item.pageItem.session.code === vars.code",
+  "timeout": 15000
  },
  {
   "eval": "frame.item.pageItem.session.code === vars.code",
@@ -547,7 +552,7 @@
   "key": "Escape"
  },
  {
-  "wait": 800
+  "until": "frame.item.nav.current.page !== 'player'"
  },
  {
   "eval": "frame.item.nav.current.page !== 'player'",

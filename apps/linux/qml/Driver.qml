@@ -4,7 +4,12 @@
 // here is a click to MouseArea, the pointer handlers, Popup's press-outside and Shortcut.
 // Every step prints "DRIVE STEP <n>: <summary>"; any failure prints "DRIVE FAIL: <reason>"
 // and exits 1; the end of the script exits 0. Steps (one key each, besides the options):
-//   {"wait": ms}
+//   {"wait": ms}                                               a fixed pause; for animation time
+//   {"until": "js", "timeout": ms, "expect": <json>, "as": "k"}  polls the JS every 25 ms until it
+//                                                              is truthy (or equals "expect"), then
+//                                                              goes on; past "timeout" (default 5000)
+//                                                              the run fails. A throw while polling
+//                                                              counts as not ready yet.
 //   {"click": [x, y] | "objectName", "button": "left"|"right"|"middle", "double": true}
 //   {"hover": [x, y] | "objectName"}
 //   {"drag": [x1, y1, x2, y2], "steps": n, "button": ...}       press, n moves held, release;
@@ -40,6 +45,8 @@ QtObject {
     property var point: null       // the current step's resolved target
 
     property Timer timer: Timer { repeat: false; onTriggered: driver.pump() }
+    property Timer poller: Timer { interval: 25; repeat: true; onTriggered: driver.poll() }
+    property var waiting: null     // the {"until"} being polled
 
     readonly property int gap: 30  // between the move, the press and the release of a click
     readonly property int settle: 50
@@ -47,7 +54,7 @@ QtObject {
     function log(s) { Shell.driveLog(s) }
     function fail(reason) {
         if (finished) return
-        finished = true; timer.stop(); queue = []
+        finished = true; timer.stop(); poller.stop(); queue = []
         log("DRIVE FAIL: " + reason)
         Qt.exit(1)
     }
@@ -84,6 +91,51 @@ QtObject {
             if (r > 0) { timer.interval = r; timer.start(); return }
         }
         if (!finished) Qt.callLater(driver.next)
+    }
+
+    // ---- until: one probe of the condition, and the poll that repeats it
+
+    // How a result prints: JSON where it can be (strings quoted, arrays, records); a QObject
+    // or a function prints as itself. The one printer for evals, expects and timeouts.
+    function show(r) {
+        var s
+        try { s = r === undefined ? "undefined" : JSON.stringify(r) } catch (e) { s = undefined }
+        return s === undefined ? String(r) : s
+    }
+
+    // True once `name` is the page on screen. nav.current flips at once, but Frame.loadPage
+    // swaps the page in on a Qt.callLater, so a script that waits on nav.current alone runs
+    // ahead of a page that does not exist yet. The loaded item must be the Frame.pages file
+    // for `name` (an item prints as its type name followed by _QMLTYPE).
+    function pageReady(name) {
+        var f = hostFrame.item
+        if (!f || f.nav.current.page !== name || !f.pageItem) return false
+        var file = f.pages[name] || "PagePlaceholder.qml"
+        return String(f.pageItem).indexOf(file.replace(".qml", "") + "_QMLTYPE") === 0
+    }
+
+    // Evaluates the condition once; true when it holds. A throw is "not ready" (the page or
+    // the item it reads may not exist yet). Only the raw result is kept per poll; it is
+    // formatted when the timeout message needs it, or to compare with "expect".
+    function probe(w) {
+        var r
+        try { r = evaluate(w.src, vars); w.threw = undefined } catch (e) { w.threw = e.message || String(e); return false }
+        w.last = r
+        var ok = w.hasExpect ? JSON.stringify(w.expect) === show(r) : !!r
+        if (ok && w.as !== undefined) vars[w.as] = r
+        return ok
+    }
+    function poll() {
+        var w = waiting
+        if (!w || finished) { poller.stop(); return }
+        if (probe(w)) {
+            poller.stop(); waiting = null
+            log("DRIVE UNTIL: ready after " + (Date.now() - w.started) + " ms")
+            pump()
+        } else if (Date.now() >= w.deadline) {
+            poller.stop(); waiting = null
+            fail("step " + w.n + ": until timed out after " + w.timeout + " ms: " + w.src + " (last: " + (w.threw !== undefined ? "threw " + w.threw : show(w.last)) + ")")
+        }
     }
 
     function summary(step) {
@@ -199,6 +251,19 @@ QtObject {
         if (step.wait !== undefined) {
             if (typeof step.wait !== "number" || step.wait < 0) throw new Error("wait takes milliseconds")
             out.push(function() { return Math.max(1, step.wait) })
+        } else if (step.until !== undefined) {
+            if (typeof step.until !== "string" || step.until === "") throw new Error("until takes a JS condition")
+            var limit = step.timeout === undefined ? 5000 : step.timeout
+            if (typeof limit !== "number" || limit <= 0) throw new Error("timeout takes milliseconds")
+            var n0 = at
+            out.push(function() {
+                var w = { src: step.until, hasExpect: step.expect !== undefined, expect: step.expect,
+                          as: typeof step.as === "string" ? step.as : undefined, timeout: limit, n: n0,
+                          started: Date.now(), deadline: Date.now() + limit, last: undefined, threw: undefined }
+                if (probe(w)) { log("DRIVE UNTIL: ready at once"); return 0 }
+                driver.waiting = w; poller.start()
+                return -1
+            })
         } else if (step.click !== undefined) {
             b = button(step)
             out.push(moveTo(step.click))
@@ -266,11 +331,7 @@ QtObject {
             out.push(function() {
                 var r = evaluate(String(step.eval), vars)
                 if (typeof step.as === "string") vars[step.as] = r
-                // JSON where it can be (strings quoted, arrays, records); a QObject or a
-                // function prints as itself
-                var shown
-                try { shown = r === undefined ? "undefined" : JSON.stringify(r) } catch (e) { shown = undefined }
-                if (shown === undefined) shown = String(r)
+                var shown = show(r)
                 log("DRIVE EVAL: " + shown)
                 if (step.expect !== undefined && JSON.stringify(step.expect) !== shown)
                     throw new Error("expected " + JSON.stringify(step.expect) + ", got " + shown)
