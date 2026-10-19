@@ -111,6 +111,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ```
 
+`CONTRIBUTING.md` covers issues, branch and commit names and the PR flow.
 `apps/linux/README.md` covers the shell's own tooling: sandboxed runs, offscreen captures
 with `scripts/shoot.sh` and scripted drives with `scripts/drive.sh`. `CONTEXT.md` is the
 vocabulary the code and the docs share, and the design behind the native line is
