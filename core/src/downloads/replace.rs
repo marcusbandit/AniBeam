@@ -682,7 +682,11 @@ fn plural_files(n: usize) -> String {
 
 /// Takes the torrent out of the client and what it wrote to the trash. The
 /// trash targets are checked first; if they are refused the torrent stays.
-async fn cancel_whole(core: &Arc<Core>, client: &QbtClient, t: &Torrent) -> Result<String, CoreError> {
+async fn cancel_whole(
+    core: &Arc<Core>,
+    client: &QbtClient,
+    t: &Torrent,
+) -> Result<String, CoreError> {
     let sources = core.store.read(library_sources)?;
     let home = std::env::var_os("HOME").map(PathBuf::from);
     let targets = trash::targets(
@@ -704,7 +708,11 @@ async fn cancel_whole(core: &Arc<Core>, client: &QbtClient, t: &Torrent) -> Resu
     }
     Ok(format!(
         "Cancelled {}, {n} to the trash",
-        if t.name.is_empty() { "a download" } else { &t.name }
+        if t.name.is_empty() {
+            "a download"
+        } else {
+            &t.name
+        }
     ))
 }
 
@@ -734,11 +742,17 @@ pub async fn tick(core: &Arc<Core>, client: &QbtClient, torrents: &[Torrent]) {
         if f.hash.is_empty() {
             continue;
         }
-        let Some(t) = torrents.iter().find(|t| t.hash.eq_ignore_ascii_case(&f.hash)) else {
+        let Some(t) = torrents
+            .iter()
+            .find(|t| t.hash.eq_ignore_ascii_case(&f.hash))
+        else {
             continue;
         };
         if f.sequential {
-            match client.set_sequential(std::slice::from_ref(&t.hash), true).await {
+            match client
+                .set_sequential(std::slice::from_ref(&t.hash), true)
+                .await
+            {
                 Ok(()) => f.sequential = false,
                 Err(e) => tracing::warn!("{} not set to download in order: {e}", t.name),
             }
@@ -760,9 +774,16 @@ pub async fn tick(core: &Arc<Core>, client: &QbtClient, torrents: &[Torrent]) {
             }
             // Ready: done with this entry whatever comes of it
             if let Some(series) = f.series
-                && let Err(e) =
-                    replace_episode(core, client, series, &entry, &written, torrents, &new_hashes)
-                        .await
+                && let Err(e) = replace_episode(
+                    core,
+                    client,
+                    series,
+                    &entry,
+                    &written,
+                    torrents,
+                    &new_hashes,
+                )
+                .await
             {
                 tracing::warn!("episode {} not replaced: {e}", entry.episode);
                 core.bus.warn(
@@ -926,7 +947,8 @@ mod tests {
         );
         // 20 bytes of 0x00 .. 0x13 in base32
         assert_eq!(
-            magnet_hash("magnet:?dn=a&xt=urn:btih:AAAQEAYEAUDAOCAJBIFQYDIOB4IBCEQT&tr=x").as_deref(),
+            magnet_hash("magnet:?dn=a&xt=urn:btih:AAAQEAYEAUDAOCAJBIFQYDIOB4IBCEQT&tr=x")
+                .as_deref(),
             Some("000102030405060708090a0b0c0d0e0f10111213")
         );
         assert_eq!(magnet_hash("https://nyaa.si/download/1.torrent"), None);
@@ -936,9 +958,18 @@ mod tests {
     #[test]
     fn a_name_matches_its_title_through_extension_and_punctuation() {
         let title = "[SubsPlease] Kino no Tabi - 03 (1080p) [ABCD1234].mkv";
-        assert!(names_match("[SubsPlease] Kino no Tabi - 03 (1080p) [ABCD1234]", title));
-        assert!(names_match("[SubsPlease]_Kino_no_Tabi_-_03_(1080p)_[ABCD1234].mkv", title));
-        assert!(!names_match("[SubsPlease] Kino no Tabi - 04 (1080p) [ABCD1234]", title));
+        assert!(names_match(
+            "[SubsPlease] Kino no Tabi - 03 (1080p) [ABCD1234]",
+            title
+        ));
+        assert!(names_match(
+            "[SubsPlease]_Kino_no_Tabi_-_03_(1080p)_[ABCD1234].mkv",
+            title
+        ));
+        assert!(!names_match(
+            "[SubsPlease] Kino no Tabi - 04 (1080p) [ABCD1234]",
+            title
+        ));
         assert!(!names_match("", title));
         // Containment needs a long name: "a" is in everything
         assert!(!names_match("Kino", title));
@@ -960,7 +991,10 @@ mod tests {
             torrent("c", "something else entirely", 1030),
         ];
         assert!(bind(&mut fus, &ts));
-        assert_eq!(fus[0].hash, "a", "an older torrent of that name is not ours");
+        assert_eq!(
+            fus[0].hash, "a",
+            "an older torrent of that name is not ours"
+        );
         assert_eq!(fus[1].hash, "b", "each torrent binds once");
         assert!(!bind(&mut fus, &ts), "nothing left to bind");
     }
@@ -976,7 +1010,10 @@ mod tests {
 
     #[test]
     fn episodes_are_read_off_file_names() {
-        assert_eq!(episode_of("Kino/[G] Kino no Tabi - 03 (1080p).mkv"), Some(3));
+        assert_eq!(
+            episode_of("Kino/[G] Kino no Tabi - 03 (1080p).mkv"),
+            Some(3)
+        );
         assert_eq!(episode_of("[G] Kino no Tabi (01-12) [Batch]"), None);
         assert_eq!(episode_of("[G] Kino no Tabi - 03.5 (1080p).mkv"), None);
         assert_eq!(episode_of("random.mkv"), None);
@@ -1003,15 +1040,26 @@ mod tests {
         assert!(!episode_ready(2, &t, &[]));
         t.progress = 1.0;
         assert!(episode_ready(2, &t, &[]));
-        assert!(episode_ready(2, &t, &[file("[G] Show - 02 (1080p).mkv", 1.0, 1)]));
-        assert!(!episode_ready(3, &t, &[file("[G] Show - 02 (1080p).mkv", 1.0, 1)]));
+        assert!(episode_ready(
+            2,
+            &t,
+            &[file("[G] Show - 02 (1080p).mkv", 1.0, 1)]
+        ));
+        assert!(!episode_ready(
+            3,
+            &t,
+            &[file("[G] Show - 02 (1080p).mkv", 1.0, 1)]
+        ));
     }
 
     #[test]
     fn what_the_new_torrent_wrote_is_never_an_old_file() {
         let old = vec!["/lib/Show/a.mkv".to_string(), "/lib/Show/b.mkv".to_string()];
         let written = vec!["/lib/Show/b.mkv".to_string()];
-        assert_eq!(old_to_trash(&old, &written), vec!["/lib/Show/a.mkv".to_string()]);
+        assert_eq!(
+            old_to_trash(&old, &written),
+            vec!["/lib/Show/a.mkv".to_string()]
+        );
         assert_eq!(old_to_trash(&old, &[]), old);
     }
 
@@ -1046,8 +1094,13 @@ mod tests {
         assert_eq!(
             plan,
             vec![
-                Effect::Remove { hash: "single".into() },
-                Effect::Skip { hash: "batch".into(), ids: vec![1] },
+                Effect::Remove {
+                    hash: "single".into()
+                },
+                Effect::Skip {
+                    hash: "batch".into(),
+                    ids: vec![1]
+                },
             ],
             "the new torrent is never touched, the batch only loses episode 2"
         );
@@ -1058,7 +1111,14 @@ mod tests {
         let mut t = torrent("h", "x", 0);
         t.save_path = "/dl".into();
         t.content_path = "/dl/x.mkv".into();
-        assert!(plan_old(&[PathBuf::from("/dl/other.mkv")], &[(t, Vec::new())], &HashSet::new()).is_empty());
+        assert!(
+            plan_old(
+                &[PathBuf::from("/dl/other.mkv")],
+                &[(t, Vec::new())],
+                &HashSet::new()
+            )
+            .is_empty()
+        );
     }
 
     fn eps(list: &[u32]) -> BTreeSet<u32> {
@@ -1075,18 +1135,34 @@ mod tests {
             file("S/[G] Show - 03.mkv", 0.0, 0),
         ];
         // Episodes 1 and 2 are fetched (3 is skipped) and both are replaced
-        assert_eq!(cancel_plan(&eps(&[1, 2]), &t, &[
-            file("S/[G] Show - 01.mkv", 1.0, 1), files[1].clone(), files[2].clone()]), CancelPlan::Whole);
+        assert_eq!(
+            cancel_plan(
+                &eps(&[1, 2]),
+                &t,
+                &[
+                    file("S/[G] Show - 01.mkv", 1.0, 1),
+                    files[1].clone(),
+                    files[2].clone()
+                ]
+            ),
+            CancelPlan::Whole
+        );
         // Replacing only 2: the rest of the batch goes on, file 2 stops
         let files = vec![
             file("S/[G] Show - 01.mkv", 1.0, 1),
             file("S/[G] Show - 02.mkv", 0.2, 1),
         ];
-        assert_eq!(cancel_plan(&eps(&[2]), &t, &files), CancelPlan::Skip(vec![1]));
+        assert_eq!(
+            cancel_plan(&eps(&[2]), &t, &files),
+            CancelPlan::Skip(vec![1])
+        );
         // Nothing of it is being replaced
         assert_eq!(cancel_plan(&eps(&[7]), &t, &files), CancelPlan::Nothing);
         // A file whose episode cannot be read keeps the whole torrent
-        let odd = vec![file("S/[G] Show - 02.mkv", 0.2, 1), file("S/extras.mkv", 0.2, 1)];
+        let odd = vec![
+            file("S/[G] Show - 02.mkv", 0.2, 1),
+            file("S/extras.mkv", 0.2, 1),
+        ];
         assert_eq!(cancel_plan(&eps(&[2]), &t, &odd), CancelPlan::Skip(vec![0]));
     }
 
@@ -1156,17 +1232,22 @@ mod tests {
             episode: 2,
             old: vec![paths[1].clone(), paths[3].clone(), "/etc/passwd".into()],
         };
-        let (got, sources) = store
-            .read(|c| trash_candidates(c, 1, &entry, &[]))
-            .unwrap();
-        assert_eq!(got, vec![paths[1].clone()], "an extra and a stranger are not episode 2");
+        let (got, sources) = store.read(|c| trash_candidates(c, 1, &entry, &[])).unwrap();
+        assert_eq!(
+            got,
+            vec![paths[1].clone()],
+            "an extra and a stranger are not episode 2"
+        );
         assert_eq!(sources.len(), 1);
     }
 
     #[test]
     fn a_file_the_new_torrent_wrote_or_one_already_gone_is_not_a_candidate() {
         let (_d, store, paths) = library();
-        let entry = Replacement { episode: 1, old: vec![paths[0].clone()] };
+        let entry = Replacement {
+            episode: 1,
+            old: vec![paths[0].clone()],
+        };
         let (got, _) = store
             .read(|c| trash_candidates(c, 1, &entry, std::slice::from_ref(&paths[0])))
             .unwrap();
@@ -1184,7 +1265,10 @@ mod tests {
         let (_d, store, paths) = library();
         std::fs::remove_file(&paths[2]).unwrap();
         std::fs::create_dir(&paths[2]).unwrap();
-        let entry = Replacement { episode: 3, old: vec![paths[2].clone()] };
+        let entry = Replacement {
+            episode: 3,
+            old: vec![paths[2].clone()],
+        };
         let (got, _) = store.read(|c| trash_candidates(c, 1, &entry, &[])).unwrap();
         assert!(got.is_empty());
     }
@@ -1220,22 +1304,40 @@ mod tests {
             provider: "erai".into(),
             series: Some(1),
             replace: vec![
-                ReplaceItem { item: 0, episodes: vec![2] },
+                ReplaceItem {
+                    item: 0,
+                    episodes: vec![2],
+                },
                 // Episodes 1, 3 and 7 (the library has no 7), repeated
-                ReplaceItem { item: 1, episodes: vec![3, 1, 7, 1] },
+                ReplaceItem {
+                    item: 1,
+                    episodes: vec![3, 1, 7, 1],
+                },
             ],
             cancel: Vec::new(),
         };
         let got = prepare(&store, &items, &options).unwrap();
         assert_eq!(got.len(), 2, "item 2 asks for nothing");
         assert_eq!(got[0].hash, hex);
-        assert_eq!(got[0].replace, vec![Replacement { episode: 2, old: vec![paths[1].clone()] }]);
+        assert_eq!(
+            got[0].replace,
+            vec![Replacement {
+                episode: 2,
+                old: vec![paths[1].clone()]
+            }]
+        );
         assert_eq!(got[1].hash, "");
         assert_eq!(
             got[1].replace,
             vec![
-                Replacement { episode: 1, old: vec![paths[0].clone()] },
-                Replacement { episode: 3, old: vec![paths[2].clone()] },
+                Replacement {
+                    episode: 1,
+                    old: vec![paths[0].clone()]
+                },
+                Replacement {
+                    episode: 3,
+                    old: vec![paths[2].clone()]
+                },
             ],
             "sorted, deduplicated, and an episode with no file is no replacement"
         );
@@ -1245,12 +1347,19 @@ mod tests {
     fn prepare_with_download_in_order_makes_a_followup_for_every_item() {
         let (_d, store, _) = library();
         let items = vec![release("a", "x"), release("b", "y")];
-        let options = DownloadOptions { sequential: true, ..Default::default() };
+        let options = DownloadOptions {
+            sequential: true,
+            ..Default::default()
+        };
         let got = prepare(&store, &items, &options).unwrap();
         assert_eq!(got.len(), 2);
         assert!(got.iter().all(|f| f.sequential && f.replace.is_empty()));
         // Nothing asked for: nothing to follow
-        assert!(prepare(&store, &items, &DownloadOptions::default()).unwrap().is_empty());
+        assert!(
+            prepare(&store, &items, &DownloadOptions::default())
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -1258,7 +1367,10 @@ mod tests {
         let (_d, store, _) = library();
         let options = DownloadOptions {
             series: Some(1),
-            replace: vec![ReplaceItem { item: 5, episodes: vec![1] }],
+            replace: vec![ReplaceItem {
+                item: 5,
+                episodes: vec![1],
+            }],
             ..Default::default()
         };
         assert!(prepare(&store, &[release("a", "x")], &options).is_err());
@@ -1269,19 +1381,38 @@ mod tests {
         let (_d, store, _) = library();
         let options = DownloadOptions {
             series: None,
-            replace: vec![ReplaceItem { item: 0, episodes: vec![1] }],
+            replace: vec![ReplaceItem {
+                item: 0,
+                episodes: vec![1],
+            }],
             ..Default::default()
         };
-        assert!(prepare(&store, &[release("a", "x")], &options).unwrap().is_empty());
+        assert!(
+            prepare(&store, &[release("a", "x")], &options)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
     fn changes_merge_by_id_and_leave_a_followup_added_meanwhile() {
-        let a = Followup { id: 1, ..followup("a", 1) };
-        let b = Followup { id: 2, ..followup("b", 1) };
-        let c = Followup { id: 3, ..followup("c", 2) };
+        let a = Followup {
+            id: 1,
+            ..followup("a", 1)
+        };
+        let b = Followup {
+            id: 2,
+            ..followup("b", 1)
+        };
+        let c = Followup {
+            id: 3,
+            ..followup("c", 2)
+        };
         // The tick bound a and retired b; c arrived while it ran
-        let bound = Followup { hash: "h".into(), ..a.clone() };
+        let bound = Followup {
+            hash: "h".into(),
+            ..a.clone()
+        };
         let changes = diff(&[a.clone(), b.clone()], std::slice::from_ref(&bound));
         assert_eq!(changes.len(), 2);
         let got = merge(vec![a, b, c.clone()], &changes);

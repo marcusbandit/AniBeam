@@ -4,8 +4,12 @@
 // answer now without asking it anything; clicking one fetches what it has for this show.
 // Its releases open as a grid: one row per release group and quality, one cube per episode,
 // under the library's own row so the gaps line up. Clicking a group picks its releases for
-// every episode the library lacks; clicking a cube picks or drops one. The plan at the
-// right says what Get will do, and whether new episodes will follow.
+// every episode the library lacks; clicking a cube picks or drops one, and that includes an
+// episode the library already has: picking one asks to replace it, and the plan then carries a
+// "Replace current episodes" switch, off by default. The plan at the right says what Get will
+// do, and whether new episodes will follow. When the show has torrents moving, a Downloading
+// section above all of this says what, from where, how far along, and lets you stop or cancel
+// them or have them fetched in order.
 //
 // The page owns the searches and the actions (DownloadsPage.getShow*); this view draws them
 // and reports clicks.
@@ -33,6 +37,10 @@ Item {
     signal checkSources()
     signal openList(string name)
     signal getAndFollow(var plan)
+    // Stop, start or reorder a torrent of this show; the page runs it (Door.controlTorrents)
+    signal control(string hash, string action)
+    // The page asks before it cancels, and moves what the torrent wrote to the trash
+    signal cancelTorrent(Item anchor, var torrent)
 
     implicitHeight: body.implicitHeight
 
@@ -51,6 +59,8 @@ Item {
             if (f && !f.batch && f.episode !== null && f.episode !== undefined && f.episode === Math.floor(f.episode)) t = Math.max(t, f.episode)
             if (f && f.batch && f.last_episode) t = Math.max(t, f.last_episode)
         }
+        // A show made from a torrent has no count of its own: its torrent's episodes are the count
+        for (var k in inFlight) t = Math.max(t, Number(k))
         return Math.min(t, 400)
     }
     // Episode number to how far along its torrent is, for every episode a torrent of this
@@ -71,6 +81,10 @@ Item {
         }
         return out
     }
+    // The torrents of this show that have not finished, the moving ones first
+    function stoppedState(t) { var st = String(t.state || ""); return st.indexOf("paused") === 0 || st.indexOf("stopped") === 0 }
+    readonly property var activeTorrents: torrents.filter(function(t) { return (t.progress || 0) < 1 })
+        .sort(function(a, b) { return (root.stoppedState(a) ? 1 : 0) - (root.stoppedState(b) ? 1 : 0) || (b.dlspeed || 0) - (a.dlspeed || 0) })
     readonly property bool downloading: Object.keys(inFlight).some(function(n) { return inFlight[n] < 1 })
     readonly property int downloadingCount: Object.keys(inFlight).filter(function(n) { return inFlight[n] < 1 }).length
     readonly property var library: {
@@ -84,8 +98,10 @@ Item {
         return out
     }
     readonly property var libraryFills: library.map(function(c, i) { var p = root.inFlight[i + 1]; return p === undefined ? null : p })
-    // Had, for picking: on disk, or on its way (a torrent already carries it)
+    // Had: on disk, or on its way (a torrent already carries it). A had episode can still be
+    // picked, on purpose, to replace it; the automatic picks never take one.
     function have(n) { var c = library[n - 1]; return c === "d" || c === "l" || c === "w" || c === "t" }
+    function onTheWay(n) { return library[n - 1] === "t" }
 
     // ---- The active provider's releases as rows: group and quality, best-seeded per episode.
     // A batch is a row of its own: one torrent that lights every episode it names (all of
@@ -134,10 +150,23 @@ Item {
     property var picks: ({})
     property string chosen: ""
     property bool follow: !!show && !!show.airing
-    onActiveChanged: { picks = ({}); chosen = "" }
-    onShowChanged: { picks = ({}); chosen = ""; follow = !!show && !!show.airing }
+    // Swap the episodes the library has for the picked releases; off until asked for
+    property bool replaceOn: false
+    // Fetch the new torrents in order, as qBittorrent's option does
+    property bool sequential: false
+    // Get was clicked with a download of this show to cancel: waiting for a yes
+    property bool confirming: false
+    function clearPicks() { picks = ({}); chosen = ""; replaceOn = false; confirming = false }
+    onActiveChanged: clearPicks()
+    onShowChanged: { clearPicks(); sequential = false; follow = !!show && !!show.airing }
+    // When the action went through, the picks are spent
+    onActionLineChanged: if (actionLine !== "") clearPicks()
+    onPicksChanged: confirming = false
+    onReplaceOnChanged: confirming = false
+    // The download it would cancel finished or went: nothing left to ask about
+    onHadOnTheWayChanged: if (!hadOnTheWay.length) confirming = false
     // When a provider's releases arrive, pick the group that covers the most gaps
-    onRowsChanged: if (chosen === "" && rows.length) pickRow(bestRow())
+    onRowsChanged: if (chosen === "" && rows.length) pickRow(bestRow(), false)
     function wanted(row) {
         var out = []
         for (var n = 1; n <= total; n++) if (!have(n) && row.eps[n] !== undefined) out.push(n)
@@ -148,17 +177,27 @@ Item {
         for (var i = 0; i < rows.length; i++) { var s = wanted(rows[i]).length * 1000 + rows[i].count; if (s > score) { score = s; best = rows[i] } }
         return best
     }
-    function pickRow(row) {
+    function covered(row) {
+        var out = []
+        for (var n = 1; n <= total; n++) if (row.eps[n] !== undefined) out.push(n)
+        return out
+    }
+    // `explicit` is a click on the row: with nothing missing it takes everything the row
+    // covers, to replace it. The automatic pick never does.
+    function pickRow(row, explicit) {
         if (!row) return
         var p = {}, w = wanted(row)
+        if (!w.length && explicit) w = covered(row)
         for (var i = 0; i < w.length; i++) p[w[i]] = row.eps[w[i]]
         picks = p
         chosen = row.key
     }
     function toggleCube(row, n) {
-        if (row.eps[n] === undefined || have(n)) return
+        if (row.eps[n] === undefined) return
         var p = JSON.parse(JSON.stringify(picks))
-        if (row.batch) {
+        // A batch comes whole, so a click on a gap takes or drops every gap it fills; a click
+        // on an episode the library has picks just that one, to replace it
+        if (row.batch && !have(n)) {
             // One torrent: a click on any of its episodes takes or drops all of them
             var on = p[n] === row.eps[n], w = wanted(row)
             for (var i = 0; i < w.length; i++) { if (on) { if (p[w[i]] === row.eps[w[i]]) delete p[w[i]] } else p[w[i]] = row.eps[w[i]] }
@@ -174,8 +213,8 @@ Item {
         var out = []
         for (var n = 1; n <= total; n++) {
             if (row.eps[n] === undefined) out.push("n")
-            else if (have(n)) out.push(library[n - 1] === "t" ? "t" : "o")
             else if (picks[n] === row.eps[n]) out.push("p")
+            else if (have(n)) out.push(library[n - 1] === "t" ? "t" : "o")
             else out.push("a")
         }
         return out
@@ -186,10 +225,18 @@ Item {
         out.sort(function(a, b) { return a.n - b.n })
         return out
     }
+    // The picks of episodes the library has, and whether replacing them is on: with it off
+    // they are left out of the plan, and the plan says so
+    readonly property var hadPicked: pickList.filter(function(p) { return root.have(p.n) })
+    readonly property var hadOnDisk: hadPicked.filter(function(p) { return !root.onTheWay(p.n) })
+    readonly property var hadOnTheWay: hadPicked.filter(function(p) { return root.onTheWay(p.n) })
+    readonly property bool replacing: replaceOn && hadPicked.length > 0
+    // What Get will fetch
+    readonly property var planList: replacing ? pickList : pickList.filter(function(p) { return !root.have(p.n) })
     // The torrents behind the picks: a batch is one however many episodes it covers
     readonly property var pickItems: {
         var seen = {}, out = []
-        for (var k = 0; k < pickList.length; k++) { var i = pickList[k].i; if (!seen[i]) { seen[i] = true; out.push(i) } }
+        for (var k = 0; k < planList.length; k++) { var i = planList[k].i; if (!seen[i]) { seen[i] = true; out.push(i) } }
         return out
     }
     readonly property real pickBytes: {
@@ -216,21 +263,67 @@ Item {
         }
         return (ns.length === 1 ? "Episode " : "Episodes ") + parts.join(", ")
     }
+    // The unfinished torrents of this show that carry an episode being replaced; the core
+    // decides, file by file, whether each goes whole or only loses those files
+    function cancelHashes() {
+        var eps = {}, out = []
+        for (var k = 0; k < hadOnTheWay.length; k++) eps[hadOnTheWay[k].n] = true
+        for (var i = 0; i < activeTorrents.length; i++) {
+            var t = activeTorrents[i], files = t.files || [], hit = false
+            if (files.length) { for (var j = 0; j < files.length; j++) if (files[j].episode !== null && files[j].episode !== undefined && eps[files[j].episode]) hit = true }
+            else if (t.episode !== null && t.episode !== undefined && eps[t.episode]) hit = true
+            if (hit) out.push(t.hash)
+        }
+        return out
+    }
+    // What the download asks for beyond the releases: order, and the episodes replaced, each
+    // under the position of its release in `items`
+    function options() {
+        var replace = []
+        if (replacing) {
+            var by = {}
+            for (var k = 0; k < hadPicked.length; k++) {
+                var pos = pickItems.indexOf(hadPicked[k].i)
+                if (pos < 0) continue
+                if (!by[pos]) by[pos] = []
+                by[pos].push(hadPicked[k].n)
+            }
+            for (var key in by) replace.push({ item: Number(key), episodes: by[key] })
+        }
+        return { sequential: sequential, provider: active, series: inLibrary ? show.seriesId : null, replace: replace, cancel: replacing ? cancelHashes() : [] }
+    }
+    // Get: a download that cancels another asks first
+    function go() {
+        if (replacing && hadOnTheWay.length && !confirming) { confirming = true; return }
+        confirming = false
+        getAndFollow(plan())
+    }
     function plan() {
         var items = pickItems.map(function(i) { return current.items[i] })
         var row = followRow
-        return { endpoint: active, query: current ? current.query : "", items: items, follow: follow && !!row,
+        return { endpoint: active, query: current ? current.query : "", items: items, options: options(), follow: follow && !!row,
                  followQuery: row ? (current.query + " " + row.group + (row.resolution ? " " + row.resolution : "")).trim() : "",
                  followItems: row ? Object.keys(row.eps).map(function(n) { return current.items[row.eps[n]] }) : [],
                  name: show ? show.folderName || show.title : "" }
     }
     readonly property string goText: {
-        var n = pickList.length
+        var n = planList.length
         if (acting) return "Working"
-        if (n && follow && followRow) return "Get " + Fmt.plural(n, "episode", "episodes") + " and follow"
-        if (n) return "Get " + Fmt.plural(n, "episode", "episodes")
+        var swap = replacing ? " and replace" : ""
+        if (n && follow && followRow) return "Get " + Fmt.plural(n, "episode", "episodes") + swap + " and follow"
+        if (n) return "Get " + Fmt.plural(n, "episode", "episodes") + swap
         if (follow && followRow) return "Follow new episodes"
-        return "Pick an episode"
+        return pickList.length ? "Nothing new to get" : "Pick an episode"
+    }
+    function epsWords(list) { var w = episodesPhrase(list); return w.charAt(0).toLowerCase() + w.slice(1) }
+    // The line under the Replace switch: what it does now, on or off
+    readonly property string replaceWords: {
+        if (!hadPicked.length) return ""
+        var eps = epsWords(hadPicked)
+        if (!replaceOn) return "Off. The picks for " + eps + " are left out, since the library has them. Turn it on to swap them."
+        var out = "The files you have for " + eps + " go to the trash once the new ones finish."
+        if (hadOnTheWay.length) out += " " + episodesPhrase(hadOnTheWay) + (hadOnTheWay.length === 1 ? " is" : " are") + " downloading now: that download is cancelled and what it wrote goes to the trash."
+        return out
     }
 
     // ---- Provider words
@@ -319,6 +412,7 @@ Item {
                             else if (s.status === "Finished") out.push("Finished")
                             if (s.total > 0) out.push(s.total + " episodes")
                             out.push(root.downloading ? "Downloading " + Fmt.plural(root.downloadingCount, "episode", "episodes")
+                                : root.activeTorrents.length ? "Downloading " + Fmt.plural(root.activeTorrents.length, "torrent", "torrents")
                                 : root.inLibrary ? "In your library" : "Not in your library")
                             return out
                         }
@@ -334,6 +428,34 @@ Item {
                     cubeSize: theme.space(3)
                     maxRows: 3
                 }
+            }
+        }
+
+        // ---- What is downloading now, from where, and how far along
+        Column {
+            id: dlSection
+            objectName: "get-downloading"
+            visible: root.activeTorrents.length > 0
+            width: parent.width
+            spacing: theme.space(2)
+            Item {
+                width: parent.width
+                height: theme.space(14)
+                Label { id: dlTitle; anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(2); text: "Downloading"; role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 }) }
+                Label {
+                    anchors.left: dlTitle.right; anchors.leftMargin: theme.space(3); anchors.baseline: dlTitle.baseline
+                    width: parent.width - dlTitle.width - theme.space(4)
+                    text: {
+                        var n = root.activeTorrents.length, speed = 0
+                        for (var i = 0; i < n; i++) speed += root.activeTorrents[i].dlspeed || 0
+                        return Fmt.plural(n, "torrent", "torrents") + (speed > 0 ? ", " + Fmt.bytes(speed) + "/s" : "") + ". Stopping keeps what it has; cancelling does not."
+                    }
+                    role: "ui"; color: theme.textDim; elide: Text.ElideRight
+                }
+            }
+            Repeater {
+                model: root.activeTorrents
+                TorrentCard { required property var modelData; t: modelData }
             }
         }
 
@@ -453,7 +575,7 @@ Item {
                         Label {
                             anchors.left: gridTitle.right; anchors.leftMargin: theme.space(3); anchors.baseline: gridTitle.baseline
                             width: parent.width - gridTitle.width - listButton.width - theme.space(8)
-                            text: root.rows.length ? "Click a group or a batch to take it for what you are missing, or click single episodes." : "Nothing here names an episode. Every release is in the list."
+                            text: root.rows.length ? "Click a group or a batch to take it for what you are missing, or click any episode, even one you have, to replace it." : "Nothing here names an episode. Every release is in the list."
                             role: "ui"; color: theme.textDim; elide: Text.ElideRight
                         }
                         Button { id: listButton; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(1); text: "Every release as a list"; icon: "list"; flat: true; small: true; onClicked: root.openList(root.active) }
@@ -484,7 +606,7 @@ Item {
                             chosen: root.chosen === modelData.key
                             clickable: true
                             rowData: modelData
-                            onPicked: root.pickRow(modelData)
+                            onPicked: root.pickRow(modelData, true)
                             onCubePicked: function(i) { root.toggleCube(modelData, i + 1) }
                         }
                     }
@@ -538,21 +660,22 @@ Item {
                     spacing: theme.space(4)
                     Label {
                         width: parent.width
-                        text: root.pickList.length ? "Get " + Fmt.plural(root.pickList.length, "episode", "episodes") : root.current && root.current.state === "done" ? "Nothing picked" : "Pick a provider"
+                        text: root.planList.length ? "Get " + Fmt.plural(root.planList.length, "episode", "episodes") : root.pickList.length ? "Nothing new picked" : root.current && root.current.state === "done" ? "Nothing picked" : "Pick a provider"
                         role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 })
                         wrapMode: Text.Wrap
                     }
                     Label {
                         width: parent.width
                         text: {
-                            if (root.pickList.length) return root.episodesPhrase(root.pickList) + " from " + root.pickGroups.join(" and ") + " on " + root.active + "."
+                            if (root.planList.length) return root.episodesPhrase(root.planList) + " from " + root.pickGroups.join(" and ") + " on " + root.active + "."
+                            if (root.pickList.length) return "The library has " + root.epsWords(root.pickList) + ". Turn on Replace current episodes below to swap " + (root.pickList.length === 1 ? "it" : "them") + "."
                             if (root.current && root.current.state === "done") return "Click a group or an episode in the grid."
                             return "Its releases show up here as a grid, an episode to a cube."
                         }
                         role: "ui"; color: theme.textDim; wrapMode: Text.Wrap
                     }
                     Flow {
-                        visible: root.pickList.length > 0
+                        visible: root.planList.length > 0
                         width: parent.width
                         spacing: theme.space(6)
                         Column { Label { text: Fmt.bytes(root.pickBytes); role: "figure"; font.pointSize: theme.typeLarge }
@@ -566,6 +689,52 @@ Item {
                         spacing: theme.space(1)
                         Label { text: "Saves to"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint }
                         Label { width: parent.width; text: root.show ? (root.inLibrary ? "Its library folder, " + (root.show.folderName || root.show.title) : "A new folder, " + root.show.title) : ""; role: "ui"; wrapMode: Text.Wrap }
+                    }
+                    Rectangle { width: parent.width; height: 1; color: theme.line }
+                    // The picks include episodes the library has: say what replacing them does
+                    Item {
+                        visible: root.hadPicked.length > 0
+                        width: parent.width
+                        height: visible ? Math.max(replaceSwitch.height, replaceText.implicitHeight) : 0
+                        Switch {
+                            id: replaceSwitch
+                            objectName: "get-replace"
+                            checked: root.replaceOn
+                            onToggled: function(on) { root.replaceOn = on }
+                        }
+                        Column {
+                            id: replaceText
+                            anchors.left: replaceSwitch.right
+                            anchors.leftMargin: theme.space(4)
+                            anchors.right: parent.right
+                            spacing: theme.space(1)
+                            Label { text: "Replace current episodes"; role: "title"; font.pointSize: theme.typeNormal }
+                            Label { objectName: "get-replace-words"; width: parent.width; text: root.replaceWords; role: "ui"; font.pointSize: theme.typeSmall; color: root.replaceOn ? theme.text : theme.textDim; wrapMode: Text.Wrap }
+                        }
+                    }
+                    Item {
+                        width: parent.width
+                        height: Math.max(orderSwitch.height, orderText.implicitHeight)
+                        Switch {
+                            id: orderSwitch
+                            objectName: "get-sequential"
+                            checked: root.sequential
+                            onToggled: function(on) { root.sequential = on }
+                        }
+                        Column {
+                            id: orderText
+                            anchors.left: orderSwitch.right
+                            anchors.leftMargin: theme.space(4)
+                            anchors.right: parent.right
+                            spacing: theme.space(1)
+                            Label { text: "Download in order"; role: "title"; font.pointSize: theme.typeNormal }
+                            Label {
+                                width: parent.width
+                                text: root.sequential ? "Each new torrent fetches its pieces from the start, so the first episodes finish first and you can watch while the rest comes. A little slower overall."
+                                    : "Off. The client fetches pieces in whatever order the swarm offers them."
+                                role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim; wrapMode: Text.Wrap
+                            }
+                        }
                     }
                     Rectangle { width: parent.width; height: 1; color: theme.line }
                     Item {
@@ -594,14 +763,29 @@ Item {
                             }
                         }
                     }
+                    // Cancelling a download is asked for here, once, before it goes
+                    Column {
+                        visible: root.confirming
+                        width: parent.width
+                        spacing: theme.space(3)
+                        Label {
+                            objectName: "get-confirm-words"
+                            width: parent.width
+                            text: root.episodesPhrase(root.hadOnTheWay) + (root.hadOnTheWay.length === 1 ? " is" : " are") + " downloading now. Replacing " + (root.hadOnTheWay.length === 1 ? "it" : "them") + " cancels that download and moves what it wrote to the trash."
+                            role: "ui"; wrapMode: Text.Wrap
+                        }
+                        Button { objectName: "get-confirm"; width: parent.width; text: "Cancel it and replace"; icon: "trash-2"; primary: true; onClicked: root.go() }
+                        Button { objectName: "get-confirm-back"; width: parent.width; text: "Back"; flat: true; onClicked: root.confirming = false }
+                    }
                     Button {
                         objectName: "get-go"
+                        visible: !root.confirming
                         width: parent.width
                         text: root.goText
                         icon: root.follow && root.followRow ? "rss" : "download"
                         primary: true
-                        enabled: !root.acting && (root.pickList.length > 0 || (root.follow && !!root.followRow))
-                        onClicked: root.getAndFollow(root.plan())
+                        enabled: !root.acting && (root.planList.length > 0 || (root.follow && !!root.followRow))
+                        onClicked: root.go()
                     }
                     Label { visible: root.actionLine !== ""; width: parent.width; text: root.actionLine; role: "ui"; font.pointSize: theme.typeSmall; color: theme.caughtUp; wrapMode: Text.Wrap }
                     Label { visible: root.actionError !== ""; width: parent.width; text: root.actionError; role: "ui"; font.pointSize: theme.typeSmall; color: theme.red; wrapMode: Text.Wrap }
@@ -614,6 +798,209 @@ Item {
                 }
             }
         }
+    }
+
+    // One word for what the client says a torrent is doing
+    function stateWords(t) {
+        var st = String(t.state || "")
+        if (st === "error") return "Error"
+        if (st === "missingFiles") return "Files missing"
+        if (stoppedState(t)) return "Stopped"
+        if (st === "stalledDL") return "Waiting for peers"
+        if (st === "metaDL" || st === "forcedMetaDL") return "Fetching metadata"
+        if (st === "queuedDL") return "Queued"
+        if (st === "checkingDL" || st === "checkingResumeData" || st === "checkingUP") return "Checking files"
+        if (st === "allocating") return "Allocating"
+        if (st === "moving") return "Moving files"
+        if (st === "downloading" || st === "forcedDL") return "Downloading"
+        return st === "" ? "Waiting" : st
+    }
+    // One torrent of this show: its name, where it comes from and goes, how far along, the
+    // episodes as cubes, and the controls
+    component TorrentCard: Tile {
+        id: card
+        property var t: ({})
+        readonly property bool stopped: root.stoppedState(t)
+        readonly property bool broken: t.state === "error" || t.state === "missingFiles"
+        readonly property var files: t.files || []
+        readonly property var eps: {
+            var out = []
+            for (var i = 0; i < files.length; i++) {
+                var n = files[i].episode
+                if (n === null || n === undefined || n !== Math.floor(n) || n < 1) continue
+                out.push({ n: n, p: files[i].progress || 0, skip: files[i].priority === 0 })
+            }
+            return out.sort(function(a, b) { return a.n - b.n })
+        }
+        readonly property int epsDone: eps.filter(function(e) { return e.p >= 1 }).length
+        readonly property var live: eps.filter(function(e) { return !e.skip })
+        readonly property bool seq: !!t.seq_dl
+        // The episodes in words: "Episodes 1 to 12", or the one a single file carries
+        readonly property string episodeWords: {
+            if (live.length > 1) return root.episodesPhrase(live)
+            if (live.length === 1) return "Episode " + live[0].n
+            if (t.episode !== null && t.episode !== undefined) return "Episode " + t.episode
+            return t.batch ? "A batch" : ""
+        }
+        readonly property string release: {
+            var bits = []
+            if (t.group) bits.push(t.group)
+            if (t.resolution) bits.push(t.resolution)
+            return bits.length ? bits.join(", ") : "Group not in the name"
+        }
+        // The endpoint AniBeam picked it on, when it did; else the one whose name the release
+        // group carries (Erai-raws on erai), said to be a guess
+        readonly property string guess: {
+            var g = String(t.group || "").toLowerCase()
+            if (g === "") return ""
+            for (var i = 0; i < root.endpoints.length; i++) if (g.indexOf(String(root.endpoints[i].name).toLowerCase()) >= 0) return root.endpoints[i].name
+            return ""
+        }
+        readonly property string source: {
+            var bits = []
+            if (t.provider) bits.push(t.provider)
+            else if (guess !== "") bits.push("likely " + guess)
+            if (t.tracker) bits.push("tracker " + t.tracker)
+            return bits.length ? bits.join(", ") : "Not known yet"
+        }
+        width: parent ? parent.width : 0
+        implicitHeight: cardBody.implicitHeight + padding * 2
+        height: implicitHeight
+        padding: theme.space(5)
+        lit: false
+        Column {
+            id: cardBody
+            width: parent.width
+            spacing: theme.space(3)
+            Item {
+                width: parent.width
+                height: Math.max(nameCol.implicitHeight, buttons.height)
+                Column {
+                    id: nameCol
+                    anchors.left: parent.left
+                    anchors.right: buttons.left
+                    anchors.rightMargin: theme.space(4)
+                    spacing: theme.space(1)
+                    Row {
+                        spacing: theme.space(2)
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: theme.space(2.5); height: width; radius: width / 2
+                            color: card.broken ? theme.red : card.stopped ? theme.textFaint : (card.t.state === "stalledDL" || card.t.state === "queuedDL" || card.t.state === "metaDL") ? theme.yellow : theme.green
+                        }
+                        Label { objectName: "get-torrent-state"; text: root.stateWords(card.t) + ", " + Math.floor((card.t.progress || 0) * 100) + "%"; role: "title"; font.pointSize: theme.typeNormal; color: card.broken ? theme.red : theme.text }
+                        Label { visible: card.episodeWords !== ""; text: card.episodeWords + (card.epsDone > 0 && card.eps.length > 1 ? ", " + card.epsDone + " done" : ""); role: "ui"; color: theme.textDim }
+                    }
+                    Label { objectName: "get-torrent-name"; width: parent.width; text: card.t.name; role: "ui"; elide: Text.ElideMiddle }
+                }
+                Row {
+                    id: buttons
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    spacing: theme.space(2)
+                    Button {
+                        objectName: "get-torrent-toggle"
+                        small: true
+                        text: card.stopped ? "Start" : "Stop"
+                        icon: card.stopped ? "play" : "pause"
+                        onClicked: root.control(card.t.hash, card.stopped ? "Start" : "Stop")
+                        Tooltip { text: card.stopped ? "Start downloading again" : "Stop downloading; what it has stays" }
+                    }
+                    Button {
+                        id: cancelButton
+                        objectName: "get-torrent-cancel"
+                        small: true
+                        flat: true
+                        text: "Cancel"
+                        icon: "x"
+                        onClicked: root.cancelTorrent(cancelButton, card.t)
+                        Tooltip { text: "Cancel this download and move what it wrote to the trash" }
+                    }
+                }
+            }
+            // Where from, where to
+            Column {
+                width: parent.width
+                spacing: theme.space(1)
+                Fact { key: "Release"; value: card.release }
+                Fact { key: "From"; value: card.source }
+                Fact { key: "Saving to"; value: card.t.save_path || card.t.content_path || "" }
+            }
+            // How far along
+            Item {
+                width: parent.width
+                height: figures.implicitHeight
+                Label {
+                    id: figures
+                    objectName: "get-torrent-figures"
+                    width: parent.width
+                    text: {
+                        var t = card.t, bits = []
+                        bits.push(Fmt.bytes(Math.round((t.size || 0) * (t.progress || 0))) + " of " + Fmt.bytes(t.size || 0))
+                        if ((t.dlspeed || 0) > 0) bits.push(Fmt.bytes(t.dlspeed) + "/s")
+                        if (!card.stopped && t.eta > 0 && t.eta < 8640000) bits.push(Fmt.countdown(t.eta) + " left")
+                        if ((t.num_seeds || 0) > 0) bits.push(Fmt.plural(t.num_seeds, "seed", "seeds"))
+                        return bits.join(", ")
+                    }
+                    role: "figure"; font.pointSize: theme.typeSmall; color: theme.textDim; elide: Text.ElideRight
+                }
+            }
+            EpisodeCubes {
+                visible: card.eps.length > 1
+                width: parent.width
+                height: implicitHeight
+                codes: card.eps.map(function(e) { return e.skip ? "o" : e.p >= 1 ? "d" : "t" })
+                fills: card.eps.map(function(e) { return e.p })
+                cubeSize: theme.space(5)
+                minSize: theme.space(2)
+                maxRows: 3
+                tipFor: function(i, code) { var e = card.eps[i]; return "Episode " + e.n + ": " + (e.skip ? "skipped" : e.p >= 1 ? "done" : Math.floor(e.p * 100) + "%") }
+            }
+            EpisodeCubes {
+                visible: card.eps.length <= 1
+                width: parent.width
+                height: implicitHeight
+                codes: theme.cubeSteps(card.t.progress || 0, 40, card.broken ? "e" : "t", "g")
+                cubeSize: theme.space(2.5)
+                minSize: 2
+                maxRows: 1
+                tipLimit: 0
+            }
+            // The client's own option, per torrent
+            Item {
+                width: parent.width
+                height: Math.max(seqSwitch.height, seqText.implicitHeight)
+                Switch {
+                    id: seqSwitch
+                    objectName: "get-torrent-sequential"
+                    checked: card.seq
+                    onToggled: function(on) { root.control(card.t.hash, on ? "Sequential" : "Unsequential"); settle.restart() }
+                    // The poll after the change brings the client's answer; if the change did not
+                    // take, the switch goes back to what the client says
+                    Binding { target: seqSwitch; property: "checked"; value: card.seq }
+                    Timer { id: settle; interval: 4000; onTriggered: seqSwitch.checked = card.seq }
+                }
+                Column {
+                    id: seqText
+                    anchors.left: seqSwitch.right
+                    anchors.leftMargin: theme.space(4)
+                    anchors.right: parent.right
+                    spacing: theme.space(1)
+                    Label { text: "Download in order"; role: "title"; font.pointSize: theme.typeNormal }
+                    Label { width: parent.width; text: card.seq ? "On. Pieces come from the start of each file, so the first episodes finish first." : "Off. The client fetches pieces in whatever order the swarm offers them."; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim; wrapMode: Text.Wrap }
+                }
+            }
+        }
+    }
+
+    // A key and its value on one line
+    component Fact: Item {
+        property string key: ""
+        property string value: ""
+        width: parent ? parent.width : 0
+        height: Math.max(keyLabel.implicitHeight, valueLabel.implicitHeight)
+        Label { id: keyLabel; width: theme.space(18); text: parent.key; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint }
+        Label { id: valueLabel; x: theme.space(18); width: parent.width - x; text: parent.value; role: "ui"; elide: Text.ElideMiddle }
     }
 
     // One row of the grid: who, one line, and the cubes; a click on the name picks the row
@@ -677,7 +1064,8 @@ Item {
                 var bits = [it.title]
                 if (it.seeders !== null && it.seeders !== undefined) bits.push(it.seeders + " seeders")
                 if (f && f.size_bytes) bits.push(Fmt.bytes(f.size_bytes))
-                if (code === "o") bits.push("already on disk")
+                if (code === "o") bits.push("already on disk, click to replace it")
+                if (code === "t") bits.push("downloading now, click to replace it")
                 return bits.join("\n")
             } : null
             onCubeClicked: function(i) { gr.cubePicked(i) }
