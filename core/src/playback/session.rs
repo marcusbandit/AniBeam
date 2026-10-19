@@ -331,11 +331,14 @@ fn track_choice_of(raw: Option<&str>) -> TrackChoice {
 
 /// The episodes either side of this one on disk. Only whole-numbered
 /// episodes are neighbours, so a 12.5 recap sits between twelve and thirteen
-/// rather than in the running order, and Next from it opens thirteen.
+/// rather than in the running order, and Next from it opens thirteen. An
+/// episode a torrent is still writing (`skip`) is no neighbour: Next steps
+/// over it.
 fn neighbours(
     conn: &Connection,
     series: u64,
     number: f64,
+    skip: &dyn Fn(f64) -> bool,
 ) -> Result<(Option<u64>, Option<u64>), CoreError> {
     let mut stmt =
         conn.prepare("SELECT id, number FROM files WHERE series_id = ?1 AND kind = 'episode' AND number IS NOT NULL ORDER BY number, id")?;
@@ -345,7 +348,7 @@ fn neighbours(
     let (mut prev, mut next) = (None, None);
     for row in rows {
         let (id, n) = row?;
-        if n.fract() != 0.0 {
+        if n.fract() != 0.0 || skip(n) {
             continue;
         }
         if n < number {
@@ -385,6 +388,21 @@ pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
     let (f, s, resume_from, skip_windows, prev, next, episode_title, subtitle_defaults, lang) =
         core.store.read(|c| {
             let f = file_row(c, file)?;
+            // The safety net behind every Play: whatever page asked, a file a
+            // torrent is still writing does not open.
+            if !f.is_extra
+                && let Some(done) = crate::downloads::episode_progress(core, f.series, f.number)
+            {
+                return Err(CoreError::Service {
+                    service: crate::downloads::qbt::SERVICE.to_string(),
+                    code: "downloading".to_string(),
+                    message: format!(
+                        "episode {} is still downloading, {}% done",
+                        f.number as u32,
+                        (done * 100.0).floor()
+                    ),
+                });
+            }
             let s = series_row(c, f.series, &images_dir)?;
             let resume_from: Option<f64> = c
                 .query_row(
@@ -397,7 +415,9 @@ pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
             // An extra stands outside the running order, and a film is its own
             // series, so neither has an episode either side of it.
             let (prev, next) = match (f.is_extra, s.kind) {
-                (false, SeriesKind::Show) => neighbours(c, f.series, f.number)?,
+                (false, SeriesKind::Show) => neighbours(c, f.series, f.number, &|n| {
+                    crate::downloads::episode_progress(core, f.series, n).is_some()
+                })?,
                 _ => (None, None),
             };
             // TVmaze numbers within a season, so its title is looked up by

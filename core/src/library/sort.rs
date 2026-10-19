@@ -162,6 +162,7 @@ mod tests {
             latest_activity_at: UNIX_EPOCH,
             added_at: UNIX_EPOCH,
             downloaded_at: None,
+            downloading: Vec::new(),
             franchise: None,
             year: None,
             season: None,

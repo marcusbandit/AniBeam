@@ -3,7 +3,8 @@
 // onto the escape stack, closed through close()). openFor(id, line) reads GetSeries and
 // shows the title with the tile's state line under it, then the episodes as a wrap of
 // square number chips, one per expected episode number: filled in the soft accent when the
-// file is on disk, a quiet outline when it is missing, so the gaps read at a glance. A
+// file is on disk, a quiet outline when it is missing, so the gaps read at a glance; one a
+// torrent is still writing takes the downloading purple, since it is not whole yet. A
 // series whose files carry seasons gets a row per season with a small "S2" before it. Under
 // the chips one quiet line counts the extras and the unmatched files when there are any. A
 // film has no numbers to show, so it says On disk or Not on disk. At the foot three flat
@@ -71,12 +72,15 @@ Corner {
     // The seasons the files carry, ascending; one unnamed row when they carry none. A row
     // is { season, numbers }: the integer numbers on disk in it, as a set.
     readonly property var seasonRows: {
-        var bySeason = {}, keys = []
+        var bySeason = {}, loading = {}, keys = []
         for (var i = 0; i < episodes.length; i++) {
             var ep = episodes[i]
             var k = ep.season !== null && ep.season !== undefined ? String(ep.season) : ""
-            if (!bySeason[k]) { bySeason[k] = {}; keys.push(k) }
-            if (Math.floor(ep.number) === ep.number) bySeason[k][ep.number] = true
+            if (!bySeason[k]) { bySeason[k] = {}; loading[k] = {}; keys.push(k) }
+            if (Math.floor(ep.number) === ep.number) {
+                bySeason[k][ep.number] = true
+                if (ep.downloading !== undefined && ep.downloading !== null) loading[k][ep.number] = true
+            }
         }
         if (keys.length === 0) keys.push("")
         keys.sort(function(a, b) { return (a === "" ? -1 : Number(a)) - (b === "" ? -1 : Number(b)) })
@@ -88,7 +92,7 @@ Corner {
             // One season is measured against the expected count; several each against
             // their own highest number, since the record counts one of them at most
             var count = keys.length === 1 ? Math.max(root.expected, highest) : highest
-            rows.push({ season: keys[s], count: count, numbers: numbers })
+            rows.push({ season: keys[s], count: count, numbers: numbers, loading: loading[keys[s]] || {} })
         }
         return rows
     }
@@ -195,7 +199,8 @@ Corner {
                                     objectName: "episodes-chip-" + seasonRow.index + "-" + number
                                     width: root.chip; height: root.chip
                                     radius: theme.radiusSm; smoothing: theme.cornerSmoothing
-                                    color: present ? theme.cubeState("d").fill : "transparent"
+                                    readonly property bool loading: seasonRow.modelData.loading[number] === true
+                                    color: loading ? theme.cubeState("t").fill : present ? theme.cubeState("d").fill : "transparent"
                                     borderColor: present ? "transparent" : theme.cubeState("f").edge
                                     borderWidth: 1
                                     Label {

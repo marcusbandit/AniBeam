@@ -252,7 +252,7 @@ pub fn get_series(core: &Core, series: u64) -> Result<Reply, CoreError> {
     })?;
     match detail {
         Some(mut detail) => {
-            crate::downloads::overlay(core, std::slice::from_mut(&mut detail.card));
+            crate::downloads::overlay_detail(core, &mut detail);
             after_read(core, &gaps, poster.into_iter().collect());
             Ok(Reply::SeriesDetail {
                 detail: Box::new(detail),

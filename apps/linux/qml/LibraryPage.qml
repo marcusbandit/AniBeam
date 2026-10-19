@@ -84,7 +84,7 @@ Item {
     function playSeries(c) {
         var r = Door.getSeries(c.id)
         var d = !r.error ? r.reply.detail : null
-        var file = d ? (d.next_up ? d.next_up : (c.kind === "Movie" && d.episodes && d.episodes.length ? d.episodes[0].file : null)) : null
+        var file = d ? (d.next_up ? d.next_up : (c.kind === "Movie" && d.episodes && d.episodes.length && (d.episodes[0].downloading === undefined || d.episodes[0].downloading === null) ? d.episodes[0].file : null)) : null
         if (file) frame.go("player", { file: file }, c.title)
         else frame.go("series", { id: c.id }, c.title)
     }

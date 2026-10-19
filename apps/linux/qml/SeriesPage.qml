@@ -96,7 +96,12 @@ Item {
         // like LibraryPage.qml's own onPreferencesChanged, so there is nothing to diff.
         function onPreferencesChanged() { reloadDebounce.restart() }
     }
-    function openFile(file) { frame.go("player", { file: file }, page.title) }
+    // Never a file a torrent is still writing; the core refuses it too, behind every Play
+    function openFile(file) {
+        for (var i = 0; i < episodes.length; i++) if (episodes[i].file === file && isDownloading(episodes[i])) { frame.toast(Fmt.episodeName("", episodes[i].number) + " is still downloading"); return }
+        frame.go("player", { file: file }, page.title)
+    }
+    function isDownloading(ep) { return ep.downloading !== undefined && ep.downloading !== null }
     function status(s) { return { Releasing: "Airing", Finished: "Finished", NotYetReleased: "Upcoming", Cancelled: "Cancelled", Hiatus: "On hiatus" }[s] || s }
     function listStatus(s) { return { Watching: "Watching", Planning: "Planning", Completed: "Completed", Paused: "Paused", Dropped: "Dropped", Repeating: "Rewatching" }[s] || s }
     function formatLabel(f) { return isMovie ? "Film" : !f ? "Series" : ({ TV: "TV", TV_SHORT: "TV short", OVA: "OVA", ONA: "ONA", SPECIAL: "Special", MOVIE: "Film" })[f] || f.replace(/_/g, " ") }
@@ -134,16 +139,26 @@ Item {
     readonly property var episodes: detail ? detail.episodes : []
     readonly property var nextEpisode: {
         if (!detail || !detail.next_up) return null
-        for (var i = 0; i < episodes.length; i++) if (episodes[i].file === detail.next_up) return episodes[i]
+        for (var i = 0; i < episodes.length; i++) if (episodes[i].file === detail.next_up) return isDownloading(episodes[i]) ? null : episodes[i]
         return null
     }
-    readonly property var playEpisode: nextEpisode ? nextEpisode : (episodes.length ? episodes[0] : null)
+    // The episodes a torrent is still writing: not playable, and never what Continue lands on
+    readonly property var downloadingNow: card && card.downloading ? card.downloading : []
+    readonly property var firstWhole: {
+        for (var i = 0; i < episodes.length; i++) if (!isDownloading(episodes[i])) return episodes[i]
+        return null
+    }
+    readonly property var playEpisode: nextEpisode ? nextEpisode : firstWhole
+    // Caught up on what is whole while the next one downloads: Continue says so instead of
+    // offering a rewatch
+    readonly property bool waitingOnDownload: !nextEpisode && downloadingNow.length > 0 && watchedCount > 0 && !isMovie
     readonly property bool tracked: !!detail && detail.progress.watched !== null && detail.progress.watched !== undefined
     readonly property int watchedCount: tracked ? detail.progress.watched : 0
     readonly property bool caughtUp: tracked && !nextEpisode && watchedCount > 0
     readonly property string playVerb: nextEpisode && watchedCount > 0 ? "Continue" : caughtUp ? "Watch again" : "Play"
     // "Continue episode 8", "Play episode 1", "Play" for a lone film
     readonly property string playText: {
+        if (waitingOnDownload) return "Downloading " + Fmt.episodeName("", downloadingNow[0].number).toLowerCase()
         if (!playEpisode) return playVerb
         if (isMovie && episodes.length === 1) return playVerb
         return playVerb + " " + Fmt.episodeName("", playEpisode.number).toLowerCase()
@@ -180,6 +195,7 @@ Item {
     readonly property string episodesFact: {
         if (!detail) return ""
         if (nextEpisode) return "Next: " + Fmt.episodeName("", nextEpisode.number)
+        if (downloadingNow.length > 0) return Fmt.plural(downloadingNow.length, "episode", "episodes") + " downloading"
         if (caughtUp) return "All watched"
         return ""
     }
@@ -197,6 +213,8 @@ Item {
     readonly property color inkAccent: theme.tone(bandTone, Qt.rgba(1, 1, 1, 1), 0.45)
     readonly property color ink: "#f4f6f8"
     readonly property color inkDim: Qt.rgba(1, 1, 1, 0.68)
+    // The downloading purple, lifted toward white like the accent so it holds on the band
+    readonly property color downloadInk: theme.tone(theme.cubeState("t").fill, Qt.rgba(1, 1, 1, 1), 0.3)
 
     // ---- A section heading: the name in the display cut, its count and one fact beside
     // it, and an action at the right
@@ -437,7 +455,7 @@ Item {
                     spacing: theme.space(2)
                     Label {
                         id: factsLabel
-                        width: Math.min(implicitWidth, parent.width - (airing.visible ? airing.width + parent.spacing : 0))
+                        width: Math.min(implicitWidth, parent.width - (airing.visible ? airing.width + parent.spacing : 0) - (downloadingFact.visible ? downloadingFact.width + parent.spacing : 0))
                         text: page.factsLine
                         role: "ledger"
                         color: page.inkDim
@@ -452,6 +470,15 @@ Item {
                         font.weight: 600; font.variableAxes: ({ "wdth": 88, "wght": 600 })
                         color: page.inkAccent
                     }
+                    Label {
+                        id: downloadingFact
+                        objectName: "fact-downloading"
+                        visible: page.downloadingNow.length > 0
+                        text: "Downloading " + Fmt.plural(page.downloadingNow.length, "episode", "episodes")
+                        role: "ledger"
+                        font.weight: 600; font.variableAxes: ({ "wdth": 88, "wght": 600 })
+                        color: page.downloadInk
+                    }
                 }
                 Item { width: 1; height: theme.space(1.5) }
                 // Continue, with the progress beside it
@@ -464,7 +491,7 @@ Item {
                         tint: page.inkAccent
                         icon: "play"
                         text: page.playText
-                        enabled: page.playEpisode !== null
+                        enabled: page.playEpisode !== null && !page.waitingOnDownload
                         onClicked: if (page.playEpisode) page.openFile(page.playEpisode.file)
                     }
                     Row {
