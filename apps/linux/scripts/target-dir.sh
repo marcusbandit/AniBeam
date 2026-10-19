@@ -10,8 +10,9 @@
 #    another worktree's build can land between this checkout's build and its run. The staged
 #    copy is this checkout's last build, which is what ANIBEAM_NO_BUILD=1 reuses.
 #
-# Tradeoff: builds from different checkouts queue on one cargo lock. The copy follows the
-# build within milliseconds, so the window for another link to land is not zero but is tiny.
+# Tradeoff: builds from different checkouts queue on one lock. The build and the copy share
+# that lock, so another capture script cannot link between them; a plain cargo build run by
+# hand in another checkout still can.
 # Release builds (bench.sh, the launcher) are not touched.
 _ab_checkout="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 if [ -z "${CARGO_TARGET_DIR:-}" ]; then
@@ -28,9 +29,13 @@ fi
 anibeam_stage() {
   local staged="$_ab_checkout/target/debug/anibeam-staged"
   if [ -z "${ANIBEAM_NO_BUILD:-}" ]; then
-    cargo build -p anibeam --quiet
-    mkdir -p "$(dirname "$staged")"
-    cp "$CARGO_TARGET_DIR/debug/anibeam" "$staged.$$" && mv -f "$staged.$$" "$staged"
+    mkdir -p "$(dirname "$staged")" "$CARGO_TARGET_DIR"
+    # One lock around build and copy, so no other capture script links between them
+    (
+      flock 9
+      cargo build -p anibeam --quiet
+      cp "$CARGO_TARGET_DIR/debug/anibeam" "$staged.$$" && mv -f "$staged.$$" "$staged"
+    ) 9> "$CARGO_TARGET_DIR/.anibeam-stage.lock" || return 1
   fi
   if [ ! -x "$staged" ]; then
     echo "no staged build at $staged; run once without ANIBEAM_NO_BUILD" >&2
