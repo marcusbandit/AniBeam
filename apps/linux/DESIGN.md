@@ -175,8 +175,10 @@ The killed idioms (below) still hold.
   (`theme.cubeSteps`). Numbers stand in B612, the `figure` role; page titles are `typePage`
   (4x) and section headings `typeHeading` (2.2x).
 - **Downloads is shows first (#69).** The field suggests shows as you type and searches release
-  names on Return; a Sources row switches providers, and 1337x is on only while it already
-  runs, because AniBeam never starts it. Four lenses (Gaps, Airing, Following, Downloaded) and
+  names on Return, asking every source that is on; a Sources row of chips (lit on, grey off)
+  switches providers, and 1337x is on only while it runs. Clicking it while it is down opens a
+  sheet asking whether to start Jackett, and AniBeam starts it only on that confirm. A release
+  list opened from a show's grid has Back to the grid (and Escape). Four lenses (Gaps, Airing, Following, Downloaded) and
   an Activity column at the right. A show opens `GetShow.qml`: its providers, a click fetches
   one, the releases as a grid of cubes a group to a row under the library's own row, and a plan
   that gets the picks and can follow the group as a feed. Opening a show downloads nothing.

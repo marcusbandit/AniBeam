@@ -603,6 +603,7 @@ pub enum JobKind {
     RemoveShow,
     RepairSubscription,
     CheckEndpoints,
+    StartEndpoint,
 }
 
 impl JobKind {
@@ -620,7 +621,7 @@ impl JobKind {
             Export | Import => Stage::Store,
             ConnectDownloads | SearchReleases | RefineReleases | Subscribe | Download
             | RemoveSubscription | ControlTorrents | TestTorrentClient | RemoveShow
-            | RepairSubscription | CheckEndpoints => Stage::Downloads,
+            | RepairSubscription | CheckEndpoints | StartEndpoint => Stage::Downloads,
         }
     }
 
@@ -640,6 +641,7 @@ impl JobKind {
                 | ConnectDownloads
                 | TestTorrentClient
                 | CheckEndpoints
+                | StartEndpoint
         )
     }
 
@@ -680,6 +682,7 @@ impl JobKind {
             RemoveShow => "RemoveShow",
             RepairSubscription => "RepairSubscription",
             CheckEndpoints => "CheckEndpoints",
+            StartEndpoint => "StartEndpoint",
         }
     }
 
@@ -719,6 +722,7 @@ impl JobKind {
             "RemoveShow" => Some(RemoveShow),
             "RepairSubscription" => Some(RepairSubscription),
             "CheckEndpoints" => Some(CheckEndpoints),
+            "StartEndpoint" => Some(StartEndpoint),
             _ => None,
         }
     }

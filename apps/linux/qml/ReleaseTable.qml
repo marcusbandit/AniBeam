@@ -1,13 +1,14 @@
 // A search's releases as a table: a header of sortable columns, then a row per release.
-// Each row is a tick, the release's name cleaned of its brackets with its facts as chips
-// under it (the group, the resolution, the episode or Batch, On disk when the library
-// already has that episode), then the numbers in the ledger cut, right-aligned: size,
-// seeders (green when healthy, red at none), leechers, completed downloads, and when it
-// was posted. A click ticks the row; hovering offers Download for that release alone.
+// Each row is a tick, the release's name cleaned of its brackets with what else is worth
+// knowing as chips under it (On disk, Batch, the container's info, the source), then the
+// columns: group and resolution as text, and the numbers in the figure cut, right-aligned:
+// episode, size, seeders (green when healthy, red at none), and when it was posted. Leechers
+// and completed downloads join them when the table has the width. Every row is the same
+// height, a click ticks the row, and hovering offers Download for that release alone.
 //
 // The column heads sort: the first click sorts highest first (newest, for Released), a
-// second click turns it round, and Release sorts by name. Until one is clicked the rows
-// keep anirss's order. Seeders, leechers and downloads come from anirss when its feed
+// second click turns it round, and Release and Group sort by name. Until one is clicked the
+// rows keep anirss's order. Seeders, leechers and downloads come from anirss when its feed
 // carried them, else from the core's own read of the same feed (`extras`, by link), which
 // is also where the dates come from; until that read lands the Released column waits.
 import QtQuick
@@ -54,6 +55,8 @@ Item {
     function published(i) { var e = root.extraOf(i); return e && e.published ? e.published : null }
     function value(i, key) {
         if (key === "title") return root.clean(root.items[i].title).toLowerCase()
+        if (key === "group") { var g = root.facts[i]; return g && g.group ? String(g.group).toLowerCase() : null }
+        if (key === "resolution") { var r = root.facts[i]; var n = r && r.resolution ? parseInt(r.resolution) : NaN; return isNaN(n) ? null : n }
         if (key === "episode") { var f = root.facts[i]; return f && f.episode !== null && f.episode !== undefined ? f.episode : null }
         if (key === "size") return root.bytes(i)
         if (key === "released") return root.published(i)
@@ -94,17 +97,23 @@ Item {
         return s.trim() !== "" ? s.trim() : String(t || "")
     }
 
-    // ---- The columns: the tick, the name, then the numbers, then the row's own action
+    // ---- The columns: the tick, the name, group and resolution, then the numbers, then the
+    // room for the date, which the row's Download button replaces on hover. Leechers and downloads wait for a wide table.
+    readonly property bool wide: width >= theme.space(235)
     readonly property real wCheck: theme.space(9)
+    readonly property real wGroup: theme.space(20)
+    readonly property real wRes: theme.space(14)
     readonly property real wEp: theme.space(13)
     readonly property real wSize: theme.space(19)
     readonly property real wSeed: theme.space(17)
-    readonly property real wLeech: theme.space(17)
-    readonly property real wDl: theme.space(19)
-    readonly property real wDate: theme.space(22)
-    readonly property real wAct: theme.space(28)
-    readonly property real wTitle: Math.max(theme.space(40), width - wCheck - wEp - wSize - wSeed - wLeech - wDl - wDate - wAct)
+    readonly property real wLeech: wide ? theme.space(17) : 0
+    readonly property real wDl: wide ? theme.space(19) : 0
+    readonly property real wDate: theme.space(26)
+    readonly property real wTitle: Math.max(theme.space(40), width - wCheck - wGroup - wRes - wEp - wSize - wSeed - wLeech - wDl - wDate)
+    readonly property real rowHeight: theme.space(14)
     readonly property var columns: [
+        { key: "group", text: "Group", w: wGroup, left: true },
+        { key: "resolution", text: "Res", w: wRes },
         { key: "episode", text: "Ep", w: wEp },
         { key: "size", text: "Size", w: wSize },
         { key: "seeders", text: "Seeders", w: wSeed },
@@ -119,7 +128,8 @@ Item {
     Item {
         id: head
         width: parent.width
-        height: theme.space(10)
+        height: theme.space(11)
+        Rectangle { anchors.fill: parent; radius: theme.radiusSm; color: theme.raised }
         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.lineStrong }
         Check {
             x: (root.wCheck - width) / 2
@@ -133,7 +143,7 @@ Item {
             x: root.wCheck + root.wTitle
             Repeater {
                 model: root.columns
-                HeadCell { required property var modelData; width: modelData.w; key: modelData.key; text: modelData.text; alignRight: true }
+                HeadCell { required property var modelData; visible: modelData.w > 0; width: modelData.w; key: modelData.key; text: modelData.text; alignRight: !modelData.left; leftPad: theme.space(3) }
             }
         }
     }
@@ -155,12 +165,14 @@ Item {
                 readonly property bool lit: root.highlight.indexOf(i) >= 0
                 readonly property var seeders: root.count(i, "seeders")
                 width: body.width
-                height: theme.space(15)
+                height: root.rowHeight
                 Rectangle {
                     anchors.fill: parent
                     radius: theme.radiusSm
                     color: row.ticked ? theme.accentSoft : rowHover.hovered ? theme.raised : row.lit ? theme.glassOf(theme.dark ? 0.04 : 0.05) : "transparent"
                 }
+                // A ticked row also carries a bar at its left edge, so it reads from across the table
+                Rectangle { visible: row.ticked; x: 0; y: theme.space(2); width: 2; height: parent.height - theme.space(4); radius: 1; color: theme.accent }
                 HoverHandler { id: rowHover; cursorShape: Qt.PointingHandCursor }
                 MouseArea { anchors.fill: parent; onClicked: root.toggled(row.item) }
                 Check { x: (root.wCheck - width) / 2; anchors.verticalCenter: parent.verticalCenter; on: row.ticked; onClicked: root.toggled(row.item) }
@@ -182,8 +194,6 @@ Item {
                     Row {
                         spacing: theme.space(1.25)
                         Tag { visible: row.fact.on_disk === true; text: "On disk"; dot: theme.accent }
-                        Tag { visible: !!row.fact.group; text: row.fact.group || "" }
-                        Tag { visible: !!row.fact.resolution; text: row.fact.resolution || "" }
                         Tag { visible: row.fact.batch === true; text: row.fact.season ? "Season " + row.fact.season + " batch" : "Batch"; dot: theme.orange }
                         Tag { visible: !!row.item.infomkv; text: row.item.infomkv || "" }
                         Label {
@@ -199,6 +209,22 @@ Item {
                 Row {
                     x: root.wCheck + root.wTitle
                     height: parent.height
+                    Item {
+                        width: root.wGroup
+                        height: parent.height
+                        Label {
+                            anchors.left: parent.left
+                            anchors.leftMargin: theme.space(3)
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: row.fact.group || ""
+                            role: "ui"
+                            color: theme.textDim
+                            elide: Text.ElideRight
+                            Tooltip { text: row.fact.group && parent.truncated ? row.fact.group : "" }
+                        }
+                    }
+                    Cell { width: root.wRes; ink: theme.textDim; text: row.fact.resolution || "" }
                     Cell {
                         width: root.wEp
                         text: row.fact.episode !== null && row.fact.episode !== undefined
@@ -210,11 +236,12 @@ Item {
                         text: row.seeders === null ? "" : String(row.seeders)
                         ink: row.seeders === null ? theme.textFaint : row.seeders === 0 ? theme.red : row.seeders >= 20 ? theme.green : theme.text
                     }
-                    Cell { width: root.wLeech; ink: theme.textDim; text: { var v = root.count(row.i, "leechers"); return v === null ? "" : String(v) } }
-                    Cell { width: root.wDl; ink: theme.textDim; text: { var v = root.count(row.i, "downloads"); return v === null ? "" : String(v) } }
+                    Cell { visible: root.wLeech > 0; width: root.wLeech; ink: theme.textDim; text: { var v = root.count(row.i, "leechers"); return v === null ? "" : String(v) } }
+                    Cell { visible: root.wDl > 0; width: root.wDl; ink: theme.textDim; text: { var v = root.count(row.i, "downloads"); return v === null ? "" : String(v) } }
                     Cell {
                         width: root.wDate
                         readonly property var at: root.published(row.i)
+                        opacity: rowHover.hovered ? 0 : 1
                         text: at ? Fmt.relative(at, root.nowMs / 1000) : (root.datesState === "loading" ? "..." : "")
                         ink: at ? theme.textDim : theme.textFaint
                         Tooltip { visible: !!parent.at; text: parent.at ? new Date(parent.at * 1000).toLocaleString(Qt.locale(), "d MMMM yyyy, HH:mm") : "" }
@@ -251,6 +278,7 @@ Item {
         property string key: ""
         property string text: ""
         property bool alignRight: true
+        property real leftPad: 0
         readonly property bool active: root.sortKey === key
         height: head.height
         HoverHandler { id: hh; cursorShape: Qt.PointingHandCursor }
@@ -260,6 +288,7 @@ Item {
             anchors.right: hc.alignRight ? parent.right : undefined
             anchors.rightMargin: hc.alignRight ? theme.space(3) : 0
             anchors.left: hc.alignRight ? undefined : parent.left
+            anchors.leftMargin: hc.alignRight ? 0 : hc.leftPad
             spacing: theme.space(1)
             Label {
                 anchors.verticalCenter: parent.verticalCenter
@@ -285,7 +314,7 @@ Item {
             anchors.rightMargin: theme.space(3)
             anchors.verticalCenter: parent.verticalCenter
             text: parent.text
-            role: "ledger"
+            role: "figure"
             color: parent.ink
         }
     }

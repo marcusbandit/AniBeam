@@ -4,10 +4,12 @@
 //
 // The head names the page and says how anirss and the torrent client stand. Under it one
 // wide field: typing lists shows (the library's first, then AniList's), Return searches
-// release names the old way (the table, filters, Subscribe). Under the field the sources:
-// a switch per provider. A plain endpoint is on by default; an on-demand one (1337x, a pod
-// behind Jackett) is on only while it already runs, because AniBeam never starts it and the
-// core refuses a search that would.
+// release names the old way (the table, filters, Subscribe), asking every source that is
+// switched on. Under the field the sources: a chip per provider, lit when on and greyed when
+// off, a click flips it. A plain endpoint is on by default; an on-demand one (1337x, a pod
+// behind Jackett) is on only while it runs. Clicking it while it does not run asks, in a
+// small sheet, whether to start Jackett; AniBeam starts it on that confirm and never before,
+// and the core refuses a search that would start it behind your back.
 //
 // With nothing searched the page is four lenses: Gaps in your library (aired episodes not
 // on disk), Airing, Following (the subscriptions, in sections by where the show stands) and
@@ -30,12 +32,14 @@ Item {
     property var props: ({})
     property string title: "Downloads"
     property alias scrollY: scroll.contentY
-    // Escape closes the show, then the search
+    // Escape closes the show, then the search; out of a release list that came from a show's
+    // grid, it goes back to the grid
     function escapePressed() {
         if (page.searching) { page.cancelSearch(); return true }
         if (page.detail !== null) { page.closeDetail(); return true }
         if (page.getShow !== null) { page.closeGet(); return true }
-        if (page.state !== null || page.searchError !== "") { page.state = null; page.history = []; page.searchError = ""; page.notice = ""; return true }
+        if (page.state !== null && page.gridReturn !== null) { page.backToGrid(); return true }
+        if (page.state !== null || page.searchError !== "") { page.clearSearch(); return true }
         return false
     }
     function focusSearch() { scroll.contentY = 0; search.focusInput() }
@@ -51,29 +55,67 @@ Item {
     readonly property string clientName: status && status.settings ? (status.settings.torrent_client === "Qbittorrent" ? "qBittorrent" : String(status.settings.torrent_client)) : "qBittorrent"
     property real connectJob: -1
     property bool connecting: false
-    property int endpointIndex: 0
 
     // ---- The sources: which providers a search may ask. A plain endpoint is on unless
-    // switched off; an on-demand one is on only while it runs, unless switched. The flips
-    // live in the frame for the session.
+    // switched off; an on-demand one is on only while it runs, and switching it on while it
+    // does not asks first (askStart). The flips live in the frame for the session.
     function endpointNamed(name) { for (var i = 0; i < endpoints.length; i++) if (endpoints[i].name === name) return endpoints[i]; return null }
     function sourceOn(name) {
-        var o = frame.downloadsSources[name]
-        if (o !== undefined) return o
         var e = page.endpointNamed(name)
-        return !e || !e.on_demand || e.running === true
+        if (e && e.on_demand && e.running !== true) return false
+        var o = frame.downloadsSources[name]
+        return o !== undefined ? o : true
     }
-    function setSource(name, on) {
+    function storeSource(name, on) {
         var m = JSON.parse(JSON.stringify(frame.downloadsSources))
         m[name] = on
         frame.downloadsSources = m
     }
+    // Switching on a service that is down does not switch it on: it opens the sheet that
+    // asks whether to start it. Everything else flips at once.
+    function setSource(name, on) {
+        var e = page.endpointNamed(name)
+        if (on && e && e.on_demand && e.running !== true) { page.askStart(name); return }
+        page.storeSource(name, on)
+    }
+    function toggleSource(name) { page.setSource(name, !page.sourceOn(name)) }
     readonly property var enabledEndpoints: { var m = frame.downloadsSources; return endpoints.filter(function(e) { return page.sourceOn(e.name) }) }
     property real checkJob: -1
     function checkSources() {
         var r = Door.call("CheckEndpoints", {})
         if (r.error) { frame.toast(page.errorWords(r.error)); return }
         page.checkJob = r.reply.job
+    }
+
+    // ---- Starting a source's service (Jackett, behind 1337x): ask, then the core starts it
+    property real startJob: -1
+    property string startName: ""
+    function askStart(name) {
+        var at = -1
+        for (var i = 0; i < page.endpoints.length; i++) if (page.endpoints[i].name === name) at = i
+        var chip = at >= 0 ? sourceChips.itemAt(at) : null
+        if (page.startJob < 0) startSheet.error = ""
+        startSheet.openAt(chip, name)
+    }
+    function startService(name) {
+        var r = Door.call("StartEndpoint", { name: name })
+        if (r.error) { startSheet.error = page.errorWords(r.error); return }
+        page.startJob = r.reply.job
+        page.startName = name
+        startSheet.error = ""
+        startSheet.busy = true
+    }
+    function startDone(ok, error) {
+        var name = page.startName
+        page.startJob = -1
+        page.startName = ""
+        startSheet.busy = false
+        if (ok) {
+            page.storeSource(name, true)
+            startSheet.close()
+            frame.toast(name + " is running and switched on")
+        } else if (startSheet.visible) startSheet.error = page.errorWords(error)
+        else frame.toast(page.errorWords(error), 6)
     }
 
     // ---- The library, for the lenses and the suggestions
@@ -196,6 +238,8 @@ Item {
         page.getActive = ""
         page.getLine = ""
         page.getError = ""
+        page.gridReturn = null
+        page.dropSearches()
         page.state = null
         page.detail = null
         page.history = []
@@ -240,17 +284,39 @@ Item {
         page.followJob = r.reply.job
         page.getActing = true
     }
+    // The release list a show's grid opens is a step away from the grid: the show, what each
+    // provider found and the field's text are kept, so Back to the grid puts them back
+    property var gridReturn: null
     function listFromGet(name) {
         var res = page.getResults[name]
         if (!res || !res.search) return
+        var kept = {}
+        for (var k in page.getResults) if (page.getResults[k].state === "done") kept[k] = page.getResults[k]
+        page.gridReturn = { show: page.getShow, results: kept, active: page.getActive, text: search.text }
         search.text = res.query
         page.closeGet()
         page.adopt(res.search, res.search.fetched_query || res.search.query)
+        scroll.contentY = 0
+    }
+    function backToGrid() {
+        var back = page.gridReturn
+        if (!back) return
+        search.text = back.text
+        page.openGet(back.show)
+        page.getResults = back.results
+        page.getActive = back.active
     }
 
     // ---- The search: the state anirss asks the client to hold, and the trail for Back
     property var state: null
     property var history: []
+    // A release search asks every source that is on, a job each. `searchJobs` is job to
+    // source; `searchResults` is source to { state: "searching" | "done" | "error" | "idle",
+    // search, error }, kept so a click on a source's chip shows what it found. `state` holds
+    // the one on screen; narrowing it is a step on that source alone (`searchJob`).
+    property var searchJobs: ({})
+    property var searchResults: ({})
+    property string adoptedFrom: ""
     property real searchJob: -1
     property bool searching: false
     property string notice: ""
@@ -362,24 +428,48 @@ Item {
     }
 
     // ---- The search
-    function runSearch() {
+    function pendingNames() { var out = []; for (var k in page.searchResults) if (page.searchResults[k].state === "searching") out.push(k); return out }
+    // Cancels what is still out and forgets what came back; the state on screen stays
+    function dropSearches() {
+        for (var j in page.searchJobs) Door.cancelJob(Number(j))
+        page.searchJobs = ({})
+        page.searchResults = ({})
+        page.adoptedFrom = ""
+    }
+    function clearSearch() {
+        page.dropSearches()
+        page.state = null
+        page.history = []
+        page.searchError = ""
+        page.notice = ""
+    }
+    // One search per source that is on (or per name in `only`), all at once
+    function runSearch(only) {
         var q = search.text.trim()
         if (q === "") { search.focusInput(); return }
-        var on = page.enabledEndpoints
-        if (!on.length) { page.searchError = "Every source is switched off. Switch one on under the search."; return }
-        var endpoint = on[Math.min(page.endpointIndex, on.length - 1)].name
+        var names = only && only.length ? only : page.enabledEndpoints.map(function(e) { return e.name })
+        if (!names.length) { page.searchError = "Every source is switched off. Switch one on under the search."; return }
         page.closeGet()
+        page.gridReturn = null
         page.suggestClosed = true
-        var r = Door.searchReleases(q, endpoint)
-        if (r.error) { page.searchError = r.error.message; return }
-        page.searchJob = r.reply.job
+        page.dropSearches()
+        page.searchJob = -1
+        var jobs = {}, results = {}, failed = []
+        for (var i = 0; i < names.length; i++) {
+            var r = Door.searchReleases(q, names[i])
+            if (r.error) { results[names[i]] = { state: "error", error: page.errorWords(r.error) }; failed.push(r.error.message); continue }
+            jobs[r.reply.job] = names[i]
+            results[names[i]] = { state: "searching" }
+        }
+        page.searchJobs = jobs
+        page.searchResults = results
+        if (!Object.keys(jobs).length) { page.searchError = failed.join(" "); return }
         page.searching = true
         page.searchStartMs = Date.now()
         page.searchElapsed = 0
+        page.searchEndpoint = ""
         page.searchLabel = ""
-        var picked = page.endpointNamed(endpoint)
-        page.searchTotal = picked && picked.on_demand ? picked.on_demand : 0
-        page.searchEndpoint = endpoint
+        page.retarget()
         page.extras = ({})
         page.extrasByTitle = ({})
         page.datesState = "loading"
@@ -394,6 +484,47 @@ Item {
         page.preview = null
         page.actionLine = ""
         page.actionError = ""
+    }
+    // The progress card follows one source: an on-demand one still coming up, else the first
+    // still out
+    function retarget() {
+        if (page.searchJob >= 0) return
+        var pend = page.pendingNames(), pick = pend.length ? pend[0] : ""
+        for (var i = 0; i < pend.length; i++) { var e = page.endpointNamed(pend[i]); if (e && e.on_demand) { pick = pend[i]; break } }
+        if (pick === page.searchEndpoint) return
+        page.searchEndpoint = pick
+        var picked = page.endpointNamed(pick)
+        page.searchTotal = picked && picked.on_demand ? picked.on_demand : 0
+        page.searchLabel = ""
+    }
+    // Puts one source's result on screen, with the trail for Back starting afresh
+    function adoptFrom(name) {
+        var r = page.searchResults[name]
+        if (!r || r.state !== "done") return
+        var s = r.search
+        page.adoptedFrom = name
+        page.history = []
+        page.adopt(s, s.fetched_query || s.query)
+        page.notice = s.auto_resolution ? "Narrowed to " + s.auto_resolution + ", the sharpest on offer" : ""
+    }
+    // After a source answers, fails or is cancelled: the first result with releases goes up
+    // (in the sources' order), and when none has any, the first that answered
+    function settleSearch() {
+        var pend = page.pendingNames().length, withItems = "", firstDone = "", errors = []
+        for (var i = 0; i < page.endpoints.length; i++) {
+            var n = page.endpoints[i].name, r = page.searchResults[n]
+            if (!r) continue
+            if (r.state === "error") errors.push(n + ": " + r.error)
+            if (r.state !== "done") continue
+            if (firstDone === "") firstDone = n
+            if (withItems === "" && r.search.items.length > 0) withItems = n
+        }
+        var cur = page.state
+        if (withItems !== "" && (cur === null || (cur.items.length === 0 && page.history.length === 0 && page.adoptedFrom !== withItems))) page.adoptFrom(withItems)
+        else if (cur === null && pend === 0 && firstDone !== "") page.adoptFrom(firstDone)
+        if (page.searchJob < 0 && (page.state !== null || pend === 0)) page.searching = false
+        if (page.state === null && pend === 0 && errors.length) page.searchError = errors.join(". ")
+        page.retarget()
     }
     function refine(op) {
         if (!page.state || page.searching) return
@@ -440,13 +571,16 @@ Item {
     }
     function feedHost(url) { var m = String(url || "").match(/^[a-z]+:\/\/([^\/?#]+)/i); return m ? m[1] : String(url || "") }
     function cancelSearch() {
-        if (!page.searching || page.searchJob < 0) return
-        Door.cancelJob(page.searchJob)
+        if (!page.searching) return
+        for (var j in page.searchJobs) Door.cancelJob(Number(j))
+        if (page.searchJob >= 0) Door.cancelJob(page.searchJob)
     }
+    // A source's chip, or a Try button: its result when it has one, else a search on it alone
     function searchOn(name) {
-        for (var i = 0; i < page.enabledEndpoints.length; i++) if (page.enabledEndpoints[i].name === name) page.endpointIndex = i
+        var have = page.searchResults[name]
+        if (have && have.state === "done") { page.adoptFrom(name); return }
         page.cancelSearch()
-        Qt.callLater(page.runSearch)
+        Qt.callLater(function() { page.runSearch([name]) })
     }
     function sortBy(key) {
         if (page.sortKey === key) page.sortDesc = !page.sortDesc
@@ -478,7 +612,6 @@ Item {
         out.groups.sort(byCount); out.quality.sort(byCount); out.other.sort(byCount)
         return out
     }
-    readonly property var otherEndpoints: enabledEndpoints.map(function(e) { return e.name }).filter(function(n) { return n !== page.searchEndpoint })
     function reasonWords(reason) {
         if (reason === "zero_results") return "That would leave nothing, so the list stays as it is."
         if (reason === "no_match") return "No release matches that term."
@@ -907,8 +1040,13 @@ Item {
                 if (cur && cur.state === "searching") page.setResult(n, Object.assign({}, cur, { label: label }))
                 return
             }
+            var sn = page.searchJobs[job]
+            if (sn !== undefined) { if (sn === page.searchEndpoint && page.searchJob < 0) page.searchLabel = label; return }
             if (job !== page.searchJob || !page.searching) return
             page.searchLabel = label
+        }
+        function onJobFinished(job, kind, ok) {
+            if (job === page.startJob && ok) page.startDone(true, null)
         }
         function onReleasesEnriched(query, endpoint, entries) {
             if (!page.state && !page.searching) return
@@ -930,19 +1068,18 @@ Item {
                 page.setResult(name, { state: "done", items: own ? search.items : [], facts: own ? search.facts : [], query: search.query, search: search })
                 return
             }
-            if (job !== page.searchJob) return
-            page.searching = false
-            page.adopt(search, search.fetched_query || search.query)
-            var lines = []
-            if (search.fell_back) {
-                var asked = search.tried && search.tried.length ? search.tried[0].endpoint : ""
-                lines.push(asked + ": no results, switched to " + search.endpoint + " (" + search.items.length + ")")
-            }
-            if (search.auto_resolution) lines.push("Narrowed to " + search.auto_resolution + ", the sharpest on offer")
-            page.notice = lines.join(". ")
+            var from = page.searchJobs[job]
+            if (from === undefined) return
+            var rest = Object.assign({}, page.searchJobs); delete rest[job]; page.searchJobs = rest
+            // A fallback answered from another endpoint: none of it is this source's, and the
+            // source it fell back to is searched on its own anyway
+            var shown = search.endpoint === from ? search : Object.assign({}, search, { endpoint: from, items: [], groups: [], facts: [], show: null, best_fit: { available: false } })
+            var res = Object.assign({}, page.searchResults); res[from] = { state: "done", search: shown }; page.searchResults = res
+            page.settleSearch()
         }
         function onReleasesRefined(job, refinement) {
             if (job !== page.searchJob) return
+            page.searchJob = -1
             page.searching = false
             if (refinement.applied) {
                 var h = page.history.slice(); h.push(page.state); page.history = h
@@ -1037,7 +1174,15 @@ Item {
             }
             if (job === page.getJob || job === page.followJob) { page.getJob = -1; page.followJob = -1; page.getActing = false; page.pendingFollow = null; page.getError = page.errorWords(error); return }
             if (job === page.checkJob) { page.checkJob = -1; frame.toast(page.errorWords(error)); return }
-            if (job === page.searchJob) { page.searching = false; page.searchError = page.errorWords(error) }
+            if (page.searchJobs[job] !== undefined) {
+                var fn = page.searchJobs[job]
+                var fj = Object.assign({}, page.searchJobs); delete fj[job]; page.searchJobs = fj
+                var fr = Object.assign({}, page.searchResults); fr[fn] = { state: "error", error: page.errorWords(error) }; page.searchResults = fr
+                page.settleSearch()
+                return
+            }
+            if (job === page.startJob) { page.startDone(false, error); return }
+            if (job === page.searchJob) { page.searchJob = -1; page.searching = false; page.searchError = page.errorWords(error) }
             else if (job === page.actionJob) { page.acting = false; page.actionError = page.errorWords(error) }
             else if (job === page.connectJob) { page.connecting = false; frame.toast(page.errorWords(error)) }
             else if (job === page.previewJob) { page.previewJob = -1 }
@@ -1053,7 +1198,14 @@ Item {
         function onJobCancelled(job, kind) {
             if (page.getJobs[job] !== undefined) { var cn = page.getJobs[job]; var cj = Object.assign({}, page.getJobs); delete cj[job]; page.getJobs = cj; page.setResult(cn, { state: "idle" }) }
             if (job === page.runningJob) { page.queue.forEach(function(q) { page.mark(q.keys, false) }); page.queue = []; page.finishRunning(false) }
-            if (job === page.searchJob) page.searching = false
+            if (page.searchJobs[job] !== undefined) {
+                var sn = page.searchJobs[job]
+                var sj = Object.assign({}, page.searchJobs); delete sj[job]; page.searchJobs = sj
+                var sr = Object.assign({}, page.searchResults); sr[sn] = { state: "idle" }; page.searchResults = sr
+                page.settleSearch()
+            }
+            if (job === page.startJob) { page.startJob = -1; page.startName = ""; startSheet.busy = false }
+            if (job === page.searchJob) { page.searchJob = -1; page.searching = false }
             else if (job === page.actionJob) page.acting = false
             else if (job === page.connectJob) page.connecting = false
         }
@@ -1175,7 +1327,7 @@ Item {
                 objectName: "downloads-search"
                 large: true
                 anchors.left: parent.left
-                width: parent.width - endpointPick.width - go.width - theme.space(4)
+                width: parent.width - go.width - theme.space(4)
                 placeholder: "Search for a show, or a release name"
                 hint: "Shows as you type, releases on Return"
                 onAccepted: {
@@ -1185,19 +1337,6 @@ Item {
                 onStepped: function(by) { if (page.suggesting) page.suggestIndex = Math.max(0, Math.min(page.suggestRows.length, page.suggestIndex + by)) }
                 onTextChanged: { page.suggestClosed = false; page.suggestIndex = 0; aniDebounce.restart() }
                 onCleared: { page.aniHits = [] }
-            }
-            Dropdown {
-                id: endpointPick
-                objectName: "downloads-endpoint"
-                anchors.right: go.left
-                anchors.rightMargin: theme.space(2)
-                anchors.verticalCenter: parent.verticalCenter
-                options: page.enabledEndpoints.length ? page.enabledEndpoints.map(function(e) { return e.name }) : ["(no sources on)"]
-                index: Math.min(page.endpointIndex, Math.max(0, page.enabledEndpoints.length - 1))
-                minWidth: theme.space(28)
-                interactive: page.enabledEndpoints.length > 0
-                onPicked: function(i) { page.endpointIndex = i; if (page.state) page.runSearch() }
-                Tooltip { text: "The source a release-name search asks. Switch sources on and off under the field." }
             }
             Button {
                 id: go
@@ -1209,6 +1348,7 @@ Item {
                 primary: true
                 enabled: !page.searching
                 onClicked: page.runSearch()
+                Tooltip { text: page.enabledEndpoints.length ? "Asks " + page.enabledEndpoints.map(function(e) { return e.name }).join(", ") + ". Switch sources on and off under the field." : "Every source is switched off." }
             }
         }
 
@@ -1217,7 +1357,7 @@ Item {
             id: suggestTile
             objectName: "downloads-suggestions"
             visible: page.suggesting
-            width: parent.width - endpointPick.width - go.width - theme.space(4)
+            width: parent.width - go.width - theme.space(4)
             implicitHeight: suggestBody.implicitHeight + padding * 2
             height: visible ? implicitHeight : 0
             padding: theme.space(2)
@@ -1314,7 +1454,7 @@ Item {
                     Label {
                         x: theme.space(4)
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Search release names for \u201c" + page.query + "\u201d on " + (page.enabledEndpoints.length ? page.enabledEndpoints[Math.min(page.endpointIndex, page.enabledEndpoints.length - 1)].name : "no source") + " instead"
+                        text: "Search release names for \u201c" + page.query + "\u201d on " + (page.enabledEndpoints.length ? page.enabledEndpoints.map(function(e) { return e.name }).join(", ") : "no source") + " instead"
                         role: "ui"; color: theme.textDim
                     }
                     Label { anchors.right: parent.right; anchors.rightMargin: theme.space(4); anchors.verticalCenter: parent.verticalCenter; text: "Return"; role: "ledger"; color: theme.textFaint }
@@ -1323,7 +1463,8 @@ Item {
             }
         }
 
-        // ---- The sources: a switch per provider, and whether the on-demand ones run
+        // ---- The sources: a chip per provider, lit when on, greyed when off; a click flips it.
+        // An on-demand one that is down says so, and switching it on asks to start it first
         Flow {
             objectName: "downloads-sources"
             visible: page.endpoints.length > 0
@@ -1331,39 +1472,27 @@ Item {
             spacing: theme.space(2)
             Label { height: theme.space(10); verticalAlignment: Text.AlignVCenter; text: "Sources"; role: "ui"; color: theme.textFaint; rightPadding: theme.space(2) }
             Repeater {
+                id: sourceChips
                 model: page.endpoints
-                Corner {
+                Chip {
                     id: src
                     required property var modelData
                     readonly property bool on: page.sourceOn(modelData.name)
+                    readonly property bool down: !!modelData.on_demand && modelData.running !== true
+                    readonly property bool starting: page.startJob >= 0 && page.startName === modelData.name
                     objectName: "downloads-source-" + modelData.name
-                    width: srcRow.implicitWidth + theme.space(6)
-                    height: theme.space(10)
-                    radius: height / 2
-                    smoothing: theme.cornerSmoothing
-                    color: src.on ? theme.glassFloat : "transparent"
-                    borderColor: src.on ? theme.lineStrong : theme.line
-                    borderWidth: 1
-                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.setSource(src.modelData.name, !src.on) }
-                    Row {
-                        id: srcRow
-                        anchors.centerIn: parent
-                        spacing: theme.space(2)
-                        Switch { anchors.verticalCenter: parent.verticalCenter; checked: src.on; scale: 0.8; onToggled: function(on) { page.setSource(src.modelData.name, on) } }
-                        Label { anchors.verticalCenter: parent.verticalCenter; text: src.modelData.name; role: "ui"; color: src.on ? theme.text : theme.textDim }
-                        Label {
-                            visible: !!src.modelData.on_demand
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: src.modelData.running === true ? "running" : "not running"
-                            role: "ui"; font.pointSize: theme.typeSmall
-                            color: src.modelData.running === true ? theme.green : theme.textFaint
-                        }
-                    }
+                    text: modelData.name
+                    mono: false
+                    selected: on
+                    dimmed: !on
+                    clickable: true
+                    hint: starting ? "starting" : down ? "not running" : ""
+                    onClicked: page.toggleSource(modelData.name)
                     Tooltip {
-                        text: src.modelData.on_demand
-                            ? src.modelData.name + " is a service anirss starts on demand. AniBeam only checks whether it runs and never starts it: "
-                              + (src.modelData.running === true ? "it runs now, so it is on." : "it is not running, so it is off.")
-                            : src.modelData.url
+                        text: src.down
+                            ? modelData.name + " runs behind Jackett, which is not running. Click to start it."
+                            : (src.on ? "Searches ask " + modelData.name + ". Click to switch it off." : "Switched off. Click to ask " + modelData.name + " again.")
+                              + (modelData.on_demand ? "" : " " + modelData.url)
                     }
                 }
             }
@@ -1390,6 +1519,16 @@ Item {
                 width: parent.width
                 height: theme.controlHeight
                 spacing: theme.space(3)
+                Button {
+                    objectName: "downloads-back-to-grid"
+                    visible: page.gridReturn !== null
+                    text: "Back to the grid"
+                    icon: "layout-grid"
+                    small: true
+                    anchors.verticalCenter: parent.verticalCenter
+                    onClicked: page.backToGrid()
+                    Tooltip { text: page.gridReturn ? "Back to " + page.gridReturn.show.title + " and what each provider found. Escape does the same." : "" }
+                }
                 Button { text: "Back"; icon: "arrow-left"; flat: true; small: true; enabled: page.history.length > 0; anchors.verticalCenter: parent.verticalCenter; onClicked: page.back() }
                 Label { visible: !!page.state; text: page.state ? page.state.query : ""; role: "title"; font.pointSize: theme.typeNormal; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideMiddle; width: Math.min(implicitWidth, parent.width * 0.5) }
                 Label { visible: !!page.state; text: page.state ? Fmt.plural(page.items.length, "release", "releases") + " on " + page.state.endpoint : ""; role: "ledger"; color: theme.textDim; anchors.verticalCenter: parent.verticalCenter }
@@ -1404,9 +1543,32 @@ Item {
                 elapsed: page.searchElapsed
                 total: page.searchTotal
                 endpoint: page.searchEndpoint
-                others: page.state ? [] : page.otherEndpoints
                 onCancel: page.cancelSearch()
-                onSwitchTo: function(name) { page.searchOn(name) }
+            }
+            // Each source the search asked: what it found, and a click shows it
+            Row {
+                objectName: "downloads-search-sources"
+                visible: Object.keys(page.searchResults).length > 1 && (page.state !== null || page.searching)
+                spacing: theme.space(2)
+                Label { anchors.verticalCenter: parent.verticalCenter; text: "Found on"; role: "ui"; color: theme.textFaint; rightPadding: theme.space(1) }
+                Repeater {
+                    model: page.endpoints.map(function(e) { return e.name }).filter(function(n) { return page.searchResults[n] !== undefined })
+                    Chip {
+                        id: found
+                        required property string modelData
+                        readonly property var res: page.searchResults[modelData]
+                        objectName: "downloads-found-" + modelData
+                        text: modelData
+                        mono: false
+                        small: true
+                        selected: page.adoptedFrom === modelData && page.state !== null
+                        dimmed: !res || res.state === "idle" || res.state === "error"
+                        clickable: !!res && res.state === "done"
+                        hint: !res ? "" : res.state === "searching" ? "searching" : res.state === "error" ? "failed" : res.state === "idle" ? "cancelled" : Fmt.plural(res.search.items.length, "release", "releases")
+                        onClicked: page.adoptFrom(modelData)
+                        Tooltip { text: found.res && found.res.state === "error" && found.res.error ? found.res.error : "" }
+                    }
+                }
             }
             // anirss's groups as filters, by kind: a click narrows to one
             Column {
@@ -2008,6 +2170,13 @@ Item {
                 }
             }
         }
+    }
+
+    // The confirm before AniBeam starts a source's service; over everything on the page
+    StartSourceSheet {
+        id: startSheet
+        z: 20
+        onStartRequested: function(name) { page.startService(name) }
     }
 
     // One kind of filter: its name, then a chip per group with its count. Hovering a chip

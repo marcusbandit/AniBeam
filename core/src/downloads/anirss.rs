@@ -613,7 +613,7 @@ fn random_token() -> String {
 /// `~/.local/bin` ahead of `PATH` when it is not already on it, so a
 /// launch from a `.desktop` entry with a sparse `PATH` still finds a
 /// user-installed anirss. `None` when nothing needs changing.
-fn child_path() -> Option<String> {
+pub(super) fn child_path() -> Option<String> {
     let home = std::env::var("HOME").ok()?;
     let user_bin = format!("{home}/.local/bin");
     let path = std::env::var("PATH").unwrap_or_default();

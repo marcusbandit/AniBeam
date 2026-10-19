@@ -801,6 +801,9 @@ impl Core {
             Call::CheckEndpoints => Ok(Reply::Started {
                 job: downloads::check_endpoints(self)?,
             }),
+            Call::StartEndpoint { name } => Ok(Reply::Started {
+                job: downloads::start_endpoint(self, name)?,
+            }),
             Call::OpenPlayback { file } => Ok(Reply::Playback {
                 session: Box::new(session::open(self, file)?),
             }),
