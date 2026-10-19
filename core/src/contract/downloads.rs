@@ -460,6 +460,11 @@ pub struct DownloadSettings {
     pub torrent_username: String,
     #[serde(default)]
     pub has_torrent_password: bool,
+    /// Remove a finished show's RSS feed once its run ended long enough
+    /// ago that no more episodes are due (`downloads::prune`). Settings
+    /// saved before this existed read as on.
+    #[serde(default = "default_true")]
+    pub prune_finished_feeds: bool,
 }
 
 /// Where the sidecar is in its life.

@@ -101,6 +101,7 @@ pub fn defaults() -> DownloadSettings {
         torrent_url: url,
         torrent_username: username,
         has_torrent_password: false,
+        prune_finished_feeds: true,
     }
 }
 

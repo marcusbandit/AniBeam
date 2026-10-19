@@ -289,6 +289,13 @@ impl Core {
             .store(hold.as_millis() as u64, Ordering::SeqCst);
     }
 
+    /// Turns the downloads pruning of finished feeds off for this core's
+    /// life. A shell calls it when it runs against a library copy but the
+    /// owner's real anirss, such as a drive script or a sandbox root.
+    pub fn disable_feed_pruning(&self) {
+        self.downloads.disable_pruning();
+    }
+
     /// The store itself, for the integration tests' fixtures: they build
     /// library state with plain SQL rather than driving a scan. Not part of
     /// the contract and not exported to any shell.

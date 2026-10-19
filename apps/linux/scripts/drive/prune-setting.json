@@ -1,0 +1,8 @@
+[
+ { "log": "settings, downloads; the unsubscribe-from-finished-shows switch is on by default" },
+ { "click": "rail-settings" },
+ { "wait": 400 },
+ { "click": "settings-tabs-downloads" },
+ { "wait": 800 },
+ { "shot": "prune-setting" }
+]

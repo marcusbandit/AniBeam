@@ -18,13 +18,14 @@ pub mod facts;
 pub mod feed;
 pub mod jackett;
 pub mod link;
+pub mod prune;
 pub mod qbt;
 pub mod rewire;
 pub mod settings;
 pub mod trash;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::contract::*;
@@ -41,6 +42,10 @@ pub struct Downloads {
     /// One sidecar start at a time: two jobs that both find it down must
     /// not each spawn one.
     connecting: tokio::sync::Mutex<()>,
+    /// Set by a shell that runs against a copy of the library but the
+    /// owner's real anirss (a drive script, a screenshot, a sandbox root):
+    /// finished feeds are never pruned there.
+    prune_off: AtomicBool,
 }
 
 #[derive(Default)]
@@ -74,6 +79,7 @@ impl Default for Downloads {
         Downloads {
             state: Mutex::new(State::default()),
             connecting: tokio::sync::Mutex::new(()),
+            prune_off: AtomicBool::new(false),
         }
     }
 }
@@ -81,6 +87,14 @@ impl Default for Downloads {
 impl Downloads {
     fn state(&self) -> MutexGuard<'_, State> {
         recover(&self.state)
+    }
+
+    pub(crate) fn disable_pruning(&self) {
+        self.prune_off.store(true, Ordering::Relaxed);
+    }
+
+    fn pruning_allowed(&self) -> bool {
+        !self.prune_off.load(Ordering::Relaxed)
     }
 
     /// Kills the sidecar. `Core::shutdown` calls it; `kill_on_drop` is the
@@ -1274,11 +1288,11 @@ pub fn list_rules(core: &Core) -> Result<Reply, CoreError> {
     let owner = core.owner()?;
     core.handle.spawn(async move {
         let outcome = match ensure_client(&owner).await {
-            Ok(client) => client.subscriptions().await,
+            Ok(client) => client.subscriptions().await.map(|rules| (client, rules)),
             Err(e) => Err(e),
         };
         match outcome {
-            Ok(mut rules) => {
+            Ok((client, mut rules)) => {
                 link_rules(&owner, &mut rules);
                 let again = {
                     let mut st = owner.downloads.state();
@@ -1300,17 +1314,22 @@ pub fn list_rules(core: &Core) -> Result<Reply, CoreError> {
                         "{} read",
                         plural(rules.len() as u64, "subscription", "subscriptions")
                     ),
-                    EventBody::SubscriptionsRead { rules },
-                )
+                    EventBody::SubscriptionsRead {
+                        rules: rules.clone(),
+                    },
+                );
+                prune::after_read(&owner, &client, &rules).await;
             }
-            Err(error) => owner.bus.debug(
-                Stage::Downloads,
-                format!("subscriptions not read: {}", plain(&error)),
-                EventBody::DownloadsUnavailable {
-                    what: "subscriptions".to_string(),
-                    error,
-                },
-            ),
+            Err(error) => {
+                owner.bus.debug(
+                    Stage::Downloads,
+                    format!("subscriptions not read: {}", plain(&error)),
+                    EventBody::DownloadsUnavailable {
+                        what: "subscriptions".to_string(),
+                        error,
+                    },
+                );
+            }
         };
     });
     Ok(Reply::Ok)

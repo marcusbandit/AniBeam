@@ -107,6 +107,12 @@ fn main() {
             }
         }
     };
+    // A drive, a shot or a sandbox root runs a copy of the library against the owner's real
+    // anirss, so it must never unsubscribe a show there.
+    let args = runtime::args();
+    if args.drive.is_some() || args.shoot.is_some() || args.root.is_some() {
+        core.disable_feed_pruning();
+    }
     runtime::install_core(core);
 
     let mut app = QGuiApplication::new();

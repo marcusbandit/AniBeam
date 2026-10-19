@@ -28,6 +28,7 @@ fn settings(anirss_command: &str) -> DownloadSettings {
         torrent_url: "http://localhost:9090".to_string(),
         torrent_username: "me".to_string(),
         has_torrent_password: false,
+        prune_finished_feeds: true,
     }
 }
 
