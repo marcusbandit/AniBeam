@@ -29,6 +29,7 @@ Flickable {
     contentHeight: layout.height + footInset
     clip: true
     boundsBehavior: Flickable.StopAtBounds
+    WheelStep { flick: root }
     MouseArea {
         id: sink
         width: root.width

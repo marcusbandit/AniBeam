@@ -87,6 +87,7 @@ Item {
             contentWidth: width; contentHeight: column.implicitHeight
             boundsBehavior: Flickable.StopAtBounds
             QC.ScrollBar.vertical: ThinScrollBar {}
+            WheelStep { flick: trackList }
             Column {
                 id: column
                 width: parent.width

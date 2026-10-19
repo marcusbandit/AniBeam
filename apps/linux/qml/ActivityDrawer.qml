@@ -113,7 +113,7 @@ Item {
 
         Frost { anchors.fill: parent; radius: theme.radiusTile }
         // Under the header and the list (declared before them), so they keep their buttons
-        // and their wheel; the gaps between them no longer pass a right-click, a wheel or a
+        // and WheelStep; the gaps between them no longer pass a right-click, a wheel or a
         // hover to the page beneath.
         Blocker { anchors.fill: parent; scrim: false }
         Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: theme.line }
@@ -201,6 +201,7 @@ Item {
             clip: true
             boundsBehavior: Flickable.StopAtBounds
             model: root.rows
+            WheelStep { flick: list }
             delegate: Item {
                 required property var modelData
                 width: list.width

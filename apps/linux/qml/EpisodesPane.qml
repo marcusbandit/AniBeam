@@ -124,6 +124,7 @@ Corner {
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         QC.ScrollBar.vertical: ThinScrollBar {}
+        WheelStep { flick: flick }
 
         Column {
             id: body
