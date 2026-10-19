@@ -116,14 +116,18 @@ Item {
         color: theme.line
         opacity: 0.5
     }
-    Rectangle {
+    // The bytes as step cubes: purple while it downloads, red when it broke
+    EpisodeCubes {
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 1
+        anchors.bottomMargin: theme.space(1)
         x: theme.space(2)
-        width: (parent.width - theme.space(4)) * Math.max(0, Math.min(1, root.t.progress || 0))
-        height: 2
-        color: root.erred ? theme.red : root.done ? theme.caughtUp : root.stopped ? theme.textFaint : theme.accent
-        opacity: root.done ? 0.5 : 1
-        Behavior on width { enabled: !theme.reducedMotion; NumberAnimation { duration: theme.motionNormal } }
+        width: parent.width - theme.space(4)
+        height: implicitHeight
+        visible: !root.done
+        codes: theme.cubeSteps(root.t.progress || 0, 40, root.erred ? "e" : root.stopped ? "g" : "t", "g")
+        cubeSize: theme.space(1.25)
+        minSize: 2
+        maxRows: 1
+        tipLimit: 0
     }
 }

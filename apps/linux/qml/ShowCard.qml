@@ -18,6 +18,9 @@ Item {
     property string ledger: ""
     property color ledgerColor: hasPoster ? theme.onPosterDim : theme.textDim
     property real progress: -1
+    // The episode cubes (SeriesCard.cubes); without them a progress fraction draws as steps
+    property string cubes: ""
+    property string progressCode: "d"
     property color progressColor: hasPoster ? theme.accentOnPoster : theme.accent
     property string actionText: "Remove"
     property string actionIcon: "x"
@@ -145,17 +148,15 @@ Item {
             color: root.ledgerColor
             elide: Text.ElideRight
         }
-        Item {
-            visible: root.progress >= 0 && !actionButton.visible
+        EpisodeCubes {
+            visible: (root.cubes !== "" || root.progress >= 0) && !actionButton.visible
             width: parent.width
-            height: theme.space(1)
-            Rectangle { anchors.fill: parent; radius: height / 2; color: root.hasPoster ? Qt.rgba(1, 1, 1, 0.16) : theme.line }
-            Rectangle {
-                width: parent.width * Math.max(0, Math.min(1, root.progress))
-                height: parent.height
-                radius: height / 2
-                color: root.progressColor
-            }
+            height: implicitHeight
+            codes: root.cubes !== "" ? root.cubes : theme.cubeSteps(root.progress, 20, root.progressCode, "g")
+            cubeSize: theme.space(1.75)
+            minSize: 2
+            maxRows: 1
+            tipLimit: 0
         }
         Button {
             id: actionButton

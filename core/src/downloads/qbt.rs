@@ -358,6 +358,8 @@ fn torrent(v: &Value) -> Torrent {
         tags: text(&v["tags"]),
         category: text(&v["category"]),
         series_id: None,
+        episode: None,
+        batch: false,
     }
 }
 

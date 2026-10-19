@@ -307,13 +307,14 @@ Item {
         // ---- The head: the title and its count, the search at the right
         Item {
             width: parent.width
-            height: theme.space(14)
+            height: theme.space(20)
             Label {
                 id: titleLabel
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 text: page.genre !== "" ? page.genre : "Library"
                 role: "display"
+                font.pointSize: theme.typePage
             }
             Button {
                 id: clearGenreButton
@@ -460,8 +461,8 @@ Item {
                             id: sectionTitle
                             text: section.modelData.title
                             role: "display"
-                            font.pointSize: theme.typeLarge
-                            font.variableAxes: ({ "wdth": 74, "wght": 500 })
+                            font.pointSize: theme.typeHeading
+                            font.variableAxes: ({ "wdth": 70, "wght": 420 })
                             color: section.modelData.airing ? theme.accent : section.modelData.dropped ? theme.textDim : theme.text
                         }
                         Label { anchors.baseline: sectionTitle.baseline; text: section.modelData.cards.length; role: "ledger"; color: theme.textFaint }

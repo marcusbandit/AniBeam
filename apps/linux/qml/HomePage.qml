@@ -203,7 +203,7 @@ Item {
             anchors.bottom: parent.bottom
             anchors.bottomMargin: theme.space(2)
             spacing: theme.space(3)
-            Label { id: headingText; text: parent.parent.text; role: "display"; font.pointSize: theme.typeLarge; font.variableAxes: ({ "wdth": 74, "wght": 500 }) }
+            Label { id: headingText; text: parent.parent.text; role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 }) }
             Label { anchors.baseline: headingText.baseline; text: parent.parent.fact; role: "ui"; color: theme.textDim }
         }
         Item { id: actionSlot; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(2); width: childrenRect.width; height: childrenRect.height }
@@ -494,17 +494,15 @@ Item {
                     readonly property real frac: hero.r && hero.r.partial
                         ? hero.ep.resume.position / hero.ep.resume.duration
                         : hero.c && hero.c.total_episodes > 0 ? page.watchedOf(hero.c) / hero.c.total_episodes : 0
-                    visible: frac > 0
-                    Rectangle {
+                    visible: frac > 0 || !!(hero.c && hero.c.cubes)
+                    EpisodeCubes {
+                        visible: codes.length > 0
                         anchors.verticalCenter: parent.verticalCenter
-                        width: theme.space(60); height: theme.space(1)
-                        radius: height / 2
-                        color: Qt.rgba(1, 1, 1, 0.2)
-                        Rectangle {
-                            width: parent.width * Math.min(1, parent.parent.frac)
-                            height: parent.height; radius: parent.radius
-                            color: hero.inkAccent
-                        }
+                        width: theme.space(60)
+                        height: implicitHeight
+                        codes: hero.c && hero.c.cubes ? hero.c.cubes : ""
+                        cubeSize: theme.space(2)
+                        maxRows: 1
                     }
                     Label {
                         anchors.verticalCenter: parent.verticalCenter

@@ -195,14 +195,14 @@ Corner {
                                     objectName: "episodes-chip-" + seasonRow.index + "-" + number
                                     width: root.chip; height: root.chip
                                     radius: theme.radiusSm; smoothing: theme.cornerSmoothing
-                                    color: present ? theme.accentSoft : "transparent"
-                                    borderColor: present ? theme.accentEdge : theme.line
+                                    color: present ? theme.cubeState("d").fill : "transparent"
+                                    borderColor: present ? "transparent" : theme.cubeState("f").edge
                                     borderWidth: 1
                                     Label {
                                         anchors.centerIn: parent
                                         text: parent.number
                                         role: "ledger"
-                                        color: parent.present ? theme.text : theme.textFaint
+                                        color: parent.present ? theme.bg : theme.textFaint
                                     }
                                 }
                             }

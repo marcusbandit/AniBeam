@@ -212,7 +212,7 @@ Item {
             anchors.bottom: parent.bottom
             anchors.bottomMargin: theme.space(1)
             spacing: theme.space(3)
-            Label { id: headingText; text: parent.parent.text; role: "display"; font.pointSize: theme.typeLarge; font.variableAxes: ({ "wdth": 74, "wght": 500 }) }
+            Label { id: headingText; text: parent.parent.text; role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 }) }
             Label { visible: parent.parent.count >= 0; anchors.baseline: headingText.baseline; text: String(parent.parent.count); role: "ledger"; color: theme.textFaint }
             Label { anchors.baseline: headingText.baseline; text: parent.parent.fact; role: "ui"; color: theme.textDim }
         }
@@ -471,17 +471,14 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: theme.space(3)
                         visible: !!page.detail
-                        Rectangle {
-                            visible: page.tracked && !!page.detail.progress.total
+                        EpisodeCubes {
+                            visible: codes.length > 0
                             anchors.verticalCenter: parent.verticalCenter
-                            width: theme.space(40); height: theme.space(1)
-                            radius: height / 2
-                            color: Qt.rgba(1, 1, 1, 0.2)
-                            Rectangle {
-                                width: Math.max(page.progressFraction > 0 ? height : 0, parent.width * page.progressFraction)
-                                height: parent.height; radius: parent.radius
-                                color: page.inkAccent
-                            }
+                            width: theme.space(70)
+                            height: implicitHeight
+                            codes: page.card && page.card.cubes ? page.card.cubes : ""
+                            cubeSize: theme.space(2.25)
+                            maxRows: 2
                         }
                         Label {
                             objectName: "series-progress"

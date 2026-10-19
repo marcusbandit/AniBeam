@@ -70,6 +70,11 @@ pub struct SeriesCard {
     pub watched: Option<u32>,
     pub watched_state: WatchedState,
     pub strip: Strip,
+    /// The episode cubes: one state code per episode from 1 to the total,
+    /// at most 400 (`library::cubes`). Empty for a film or a show with no
+    /// count at all. The codes and their colours are one table each side.
+    #[serde(default)]
+    pub cubes: String,
     pub community_score: Option<f64>,
     pub my_score: Option<f64>,
     pub list_status: Option<ListStatus>,

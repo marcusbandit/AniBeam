@@ -331,6 +331,9 @@ pub enum Call {
     /// Tries the torrent client with the saved settings. Ends in
     /// `DownloadsStatusChanged`.
     TestTorrentClient,
+    /// Asks every on-demand endpoint's ready URL whether it is up, and
+    /// nothing else: it never starts one. Ends in `DownloadsStatusChanged`.
+    CheckEndpoints,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Enum)]

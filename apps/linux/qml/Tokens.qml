@@ -26,6 +26,40 @@ Item {
     FontLoader { source: "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/fonts/Archivo-Variable-ExtraBold.ttf" }
     readonly property string fontFamily: face.name !== "" ? face.name : Qt.application.font.family
     readonly property string fontDisplay: fontFamily
+    // The figures: B612, the face Airbus drew for reading numbers on a cockpit screen at a
+    // glance (OFL). Only numbers take it, through the `figure` role: speeds, sizes, counts,
+    // seeders, times, percentages. Words stay in Archivo.
+    FontLoader { id: figureFace; source: "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/fonts/B612-Regular.ttf" }
+    FontLoader { source: "qrc:/qt/qml/com/marcusrosado/AniBeam/assets/fonts/B612-Bold.ttf" }
+    readonly property string fontFigure: figureFace.name !== "" ? figureFace.name : fontFamily
+
+    // ---- Episode cubes (EpisodeCubes.qml). One cube per episode, its colour its state. The
+    // codes come from the core (library::cards::cubes), plus the client states the Downloads
+    // page lays over them (t, e). A new state is one entry here and one code there; `order`
+    // is the legend's order. The hues are the theme's own, so every theme keeps a palette
+    // that holds together: green and cyan sit side by side because both mean watched.
+    readonly property var cubeStates: ({
+        w: { label: "Watched, tracked online", fill: green, edge: "transparent", order: 0 },
+        l: { label: "Watched here, not tracked yet", fill: cyan, edge: "transparent", order: 1 },
+        d: { label: "On disk", fill: dark ? "#ffffff" : text, edge: "transparent", order: 2 },
+        t: { label: "Downloading", fill: purple, edge: "transparent", order: 3 },
+        m: { label: "Missing", fill: yellow, edge: "transparent", order: 4 },
+        e: { label: "Error", fill: red, edge: "transparent", order: 5 },
+        g: { label: "Not downloaded", fill: glassOf(dark ? 0.16 : 0.18), edge: "transparent", order: 6 },
+        f: { label: "Not aired yet", fill: "transparent", edge: glassOf(dark ? 0.2 : 0.28), order: 7 },
+        // Downloads-only marks on a provider's row: a release there, and one picked
+        a: { label: "Available", fill: glassOf(dark ? 0.1 : 0.12), edge: glassOf(dark ? 0.32 : 0.4), order: 8 },
+        p: { label: "Picked", fill: accent, edge: "transparent", order: 9 }
+    })
+    function cubeState(code) { return cubeStates[code] || cubeStates.g }
+    // A fraction as a row of step cubes, for progress that is not episodes (bytes, a job):
+    // `steps` cubes, the done share in `on`, the rest in `off`. Rounds down, so a cube
+    // lights only once its whole step is done, and 100% is every cube.
+    function cubeSteps(fraction, steps, on, off) {
+        var n = Math.max(1, steps || 20)
+        var k = fraction >= 1 ? n : Math.floor(Math.max(0, fraction) * n)
+        return (on || "d").repeat(k) + (off || "g").repeat(n - k)
+    }
 
     // Colours
     readonly property color bg: token("bg")
@@ -172,6 +206,10 @@ Item {
     readonly property real typeNormal: systemPointSize
     readonly property real typeSmall: systemPointSize * 0.85
     readonly property real typeLarge: systemPointSize * 1.5
+    // A page's own title (Library, Feed, Downloads) and a section's heading: bigger than the
+    // display cut's default, the first thing read on a page
+    readonly property real typePage: systemPointSize * 4
+    readonly property real typeHeading: systemPointSize * 2.2
     // The four cuts of the face, by role (DESIGN.md, Type). Label.qml applies one with
     // `role: "title"`; a plain Text can take the same through these functions:
     //   font.variableAxes: theme.roleAxes(r)   font.weight: theme.roleWeight(r)
@@ -184,13 +222,15 @@ Item {
         display: { wdth: 68, wght: 330 },
         title: { wdth: 86, wght: 600 },
         ui: { wdth: 100, wght: 450 },
-        ledger: { wdth: 88, wght: 500 }
+        ledger: { wdth: 88, wght: 500 },
+        figure: { wdth: 100, wght: 400 }
     })
     function roleOf(r) { return roles[r] || roles.ui }
     function roleAxes(r) { var c = roleOf(r); return { "wdth": c.wdth, "wght": c.wght } }
     function roleWeight(r) { return roleOf(r).wght }
-    function roleSize(r) { return r === "display" ? typeDisplay : r === "title" ? typeLarge : r === "ledger" ? typeSmall : typeNormal }
-    function roleFeatures(r) { return r === "ledger" ? { "tnum": 1 } : {} }
+    function roleSize(r) { return r === "display" ? typeDisplay : r === "title" ? typeLarge : r === "ledger" ? typeSmall : r === "figure" ? typeSmall : typeNormal }
+    function roleFeatures(r) { return r === "ledger" || r === "figure" ? { "tnum": 1 } : {} }
+    function roleFamily(r) { return r === "figure" ? fontFigure : fontFamily }
     // Exponential smoothing toward a target, bandit shell's rate: x += (target - x) * k
     // with k = 1 - exp(-followRate * dt). follow() is one step of it.
     readonly property real followRate: 14

@@ -798,6 +798,9 @@ impl Core {
             Call::TestTorrentClient => Ok(Reply::Started {
                 job: downloads::test_torrent_client(self)?,
             }),
+            Call::CheckEndpoints => Ok(Reply::Started {
+                job: downloads::check_endpoints(self)?,
+            }),
             Call::OpenPlayback { file } => Ok(Reply::Playback {
                 session: Box::new(session::open(self, file)?),
             }),

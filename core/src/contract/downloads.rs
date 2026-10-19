@@ -91,6 +91,11 @@ pub struct SearchEndpoint {
     /// there. Read from anirss's own config by the core.
     #[serde(default)]
     pub on_demand: Option<u64>,
+    /// For an on-demand endpoint, whether its ready URL answered the last
+    /// probe; None for an endpoint that is always there, or one with no
+    /// ready URL to ask. The probe is a plain GET and never starts it.
+    #[serde(default)]
+    pub running: Option<bool>,
 }
 
 /// A search and its first analysis in one: the items, where they came
@@ -248,6 +253,9 @@ pub struct ShowLink {
     /// The episode numbers from 1 to the total that are not on disk, when
     /// the total is known. Empty for a complete show.
     pub missing: Vec<u32>,
+    /// The series card's episode cubes, carried along for the page.
+    #[serde(default)]
+    pub cubes: String,
 }
 
 fn default_true() -> bool {
@@ -331,6 +339,14 @@ pub struct Torrent {
     /// `ShowLink` is; its record travels beside the list.
     #[serde(default)]
     pub series_id: Option<u64>,
+    /// The episode the torrent's name says it carries, read as a release
+    /// title is (`downloads::facts`); None for a batch or a name that
+    /// names none.
+    #[serde(default)]
+    pub episode: Option<f64>,
+    /// The name says it is a batch: several episodes in one torrent.
+    #[serde(default)]
+    pub batch: bool,
 }
 
 /// One release in a subscription's feed, read by the core straight from

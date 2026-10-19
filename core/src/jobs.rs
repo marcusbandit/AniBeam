@@ -580,6 +580,7 @@ mod tests {
                 aired_unwatched: 0.0,
                 unknown: 0.0,
             },
+            cubes: String::new(),
             community_score: None,
             my_score: None,
             list_status: None,

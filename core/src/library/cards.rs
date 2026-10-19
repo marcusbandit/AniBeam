@@ -3,6 +3,7 @@
 //! assembly below turns a `Snapshot`'s rows into the contract's records,
 //! and every job builds its `SeriesChanged` batch through `cards_for`.
 
+use std::collections::{BTreeSet, HashSet};
 use std::path::Path;
 
 use rusqlite::Connection;
@@ -20,6 +21,74 @@ use crate::time;
 /// bar without a published episode count can never read as complete.
 /// Electron's `UNKNOWN_TAIL_PCT = 15`.
 pub const UNKNOWN_TAIL: f64 = 0.15;
+
+/// The most cubes a row draws: past this a count says more than a row.
+pub const CUBES_MAX: u32 = 400;
+
+/// The inputs of one series' cube row, gathered in `card_of`.
+pub struct CubeFacts<'a> {
+    pub total: Option<u32>,
+    pub latest_aired: u32,
+    pub next_scheduled: Option<u32>,
+    pub status: Option<AiringStatus>,
+    /// Tracker progress: episodes 1 to this are watched and synced.
+    pub tracked: Option<u32>,
+    /// Distinct whole episode numbers on disk.
+    pub on_disk: &'a BTreeSet<u32>,
+    /// Episode numbers finished here, in the `completed` table.
+    pub watched_here: &'a BTreeSet<u32>,
+}
+
+/// One state code per episode from 1 to the total, the cube row every
+/// surface draws (the shell's `Tokens.cubeStates` holds the colours). A new
+/// state is a new code here and a new entry there. Precedence, high first:
+///   w  watched and tracked online (tracker progress covers it)
+///   l  watched here, not tracked
+///   d  on disk, untouched
+///   m  missing: aired, not on disk, and a later episode is
+///   g  not downloaded: aired, not on disk, nothing later is
+///   f  not aired yet
+/// Downloading (t) and error (e) are client states; the Downloads page lays
+/// them over this row, the core does not know them per card.
+pub fn cubes(f: &CubeFacts) -> String {
+    let last_disk = f.on_disk.iter().next_back().copied().unwrap_or(0);
+    let tracked = f.tracked.unwrap_or(0);
+    let total = match f.total.filter(|t| *t > 0) {
+        Some(t) => t,
+        None => f.latest_aired.max(last_disk).max(tracked),
+    }
+    .min(CUBES_MAX);
+    if total == 0 {
+        return String::new();
+    }
+    let still_airing = f.next_scheduled.is_some()
+        || matches!(f.status, Some(AiringStatus::Releasing | AiringStatus::NotYetReleased | AiringStatus::Hiatus));
+    let aired = if still_airing {
+        f.latest_aired
+            .max(f.next_scheduled.map_or(0, |n| n.saturating_sub(1)))
+            .max(last_disk)
+            .max(tracked)
+    } else {
+        total
+    };
+    (1..=total)
+        .map(|n| {
+            if n <= tracked {
+                'w'
+            } else if f.watched_here.contains(&n) {
+                'l'
+            } else if f.on_disk.contains(&n) {
+                'd'
+            } else if n <= aired && n < last_disk {
+                'm'
+            } else if n <= aired {
+                'g'
+            } else {
+                'f'
+            }
+        })
+        .collect()
+}
 
 /// The three segments of the strip on a card, as fractions of 0 to 1. The
 /// port of `computeCardProgress`: watched, aired but unwatched (only while
@@ -329,6 +398,34 @@ impl Snapshot {
             code,
             watched,
             watched_state: watched_state(watched, total, latest_aired, latest_downloaded),
+            cubes: if row.kind == SeriesKind::Movie {
+                String::new()
+            } else {
+                let on_disk: BTreeSet<u32> = episodes
+                    .iter()
+                    .filter(|f| f.number >= 1.0 && f.number.fract() == 0.0)
+                    .map(|f| f.number as u32)
+                    .collect();
+                let done: HashSet<&str> = self
+                    .completed
+                    .get(&row.id)
+                    .map(|rows| rows.iter().map(|(k, _)| k.as_str()).collect())
+                    .unwrap_or_default();
+                let watched_here: BTreeSet<u32> = episodes
+                    .iter()
+                    .filter(|f| f.number >= 1.0 && done.contains(f.episode_key.as_str()))
+                    .map(|f| f.number as u32)
+                    .collect();
+                cubes(&CubeFacts {
+                    total,
+                    latest_aired,
+                    next_scheduled: next_scheduled.map(|n| n.number),
+                    status,
+                    tracked: watched,
+                    on_disk: &on_disk,
+                    watched_here: &watched_here,
+                })
+            },
             strip: strip(
                 watched,
                 total,
@@ -688,6 +785,7 @@ mod tests {
                 aired_unwatched: 0.0,
                 unknown: 0.0,
             },
+            cubes: String::new(),
             community_score: None,
             my_score: None,
             list_status: None,
@@ -788,5 +886,69 @@ mod tests {
         let mut c = card();
         c.hidden = true;
         assert!(watched_out(&c));
+    }
+
+    fn set(ns: &[u32]) -> BTreeSet<u32> {
+        ns.iter().copied().collect()
+    }
+
+    #[test]
+    fn cubes_mark_every_state_in_precedence() {
+        // 12 episodes, 7 aired, tracker at 2, 3 watched here, 1 to 5 minus 4
+        // on disk: 4 is a hole before 5, 6 and 7 aired with nothing after
+        let disk = set(&[1, 2, 3, 5]);
+        let here = set(&[3]);
+        let row = cubes(&CubeFacts {
+            total: Some(12),
+            latest_aired: 7,
+            next_scheduled: Some(8),
+            status: Some(AiringStatus::Releasing),
+            tracked: Some(2),
+            on_disk: &disk,
+            watched_here: &here,
+        });
+        assert_eq!(row, "wwlmdggfffff");
+    }
+
+    #[test]
+    fn cubes_of_a_finished_show_have_nothing_unaired() {
+        let disk = set(&[1, 2]);
+        let none = set(&[]);
+        let row = cubes(&CubeFacts {
+            total: Some(4),
+            latest_aired: 0,
+            next_scheduled: None,
+            status: Some(AiringStatus::Finished),
+            tracked: None,
+            on_disk: &disk,
+            watched_here: &none,
+        });
+        assert_eq!(row, "ddgg");
+    }
+
+    #[test]
+    fn cubes_without_a_total_run_to_the_furthest_known_episode() {
+        let disk = set(&[3]);
+        let none = set(&[]);
+        let row = cubes(&CubeFacts {
+            total: None,
+            latest_aired: 0,
+            next_scheduled: None,
+            status: None,
+            tracked: None,
+            on_disk: &disk,
+            watched_here: &none,
+        });
+        assert_eq!(row, "mmd");
+        let empty = cubes(&CubeFacts {
+            total: None,
+            latest_aired: 0,
+            next_scheduled: None,
+            status: None,
+            tracked: None,
+            on_disk: &none,
+            watched_here: &none,
+        });
+        assert_eq!(empty, "");
     }
 }

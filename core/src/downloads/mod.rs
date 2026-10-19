@@ -329,6 +329,7 @@ async fn read_anirss(core: &Arc<Core>, client: &AnirssClient) -> Result<(), Core
             e.on_demand = settings::anirss_ondemand(&path, &e.name).map(|o| o.timeout);
         }
     }
+    probe_endpoints(core.http.as_ref(), &mut endpoints).await;
     let view = client.qbt_status().await?;
     let mut st = core.downloads.state();
     st.anirss.state = AnirssState::Ready;
@@ -387,6 +388,102 @@ pub fn test_torrent_client(core: &Core) -> Result<u64, CoreError> {
         }))
 }
 
+/// Whether each on-demand endpoint is up, from its ready URL. A GET and
+/// nothing more: AniBeam never starts a service (anirss does, when a search
+/// reaches one, which is why `search` checks first).
+async fn probe_endpoints(http: &dyn Http, endpoints: &mut [SearchEndpoint]) {
+    let path = settings::anirss_config_path();
+    for e in endpoints.iter_mut() {
+        let ready = path
+            .as_deref()
+            .and_then(|p| settings::anirss_ondemand(p, &e.name))
+            .map(|o| o.ready)
+            .filter(|r| !r.is_empty());
+        e.running = match ready {
+            Some(url) if e.on_demand.is_some() => Some(probe(http, &url).await),
+            _ => None,
+        };
+    }
+}
+
+/// One ready probe, short: a local service either answers at once or is
+/// not there.
+async fn probe(http: &dyn Http, url: &str) -> bool {
+    http.send(HttpRequest {
+        method: Method::Get,
+        url: url.to_string(),
+        headers: Vec::new(),
+        body: None,
+        timeout: Some(std::time::Duration::from_millis(1500)),
+    })
+    .await
+    .map(|r| r.is_success())
+    .unwrap_or(false)
+}
+
+/// Re-probes the on-demand endpoints the status already lists. Starts
+/// nothing, anirss included: with no endpoint list there is nothing to ask.
+pub fn check_endpoints(core: &Core) -> Result<u64, CoreError> {
+    let owner = core.owner()?;
+    Ok(owner
+        .jobs
+        .clone()
+        .start(JobKind::CheckEndpoints, move |_| async move {
+            let mut endpoints = owner.downloads.state().endpoints.clone();
+            probe_endpoints(owner.http.as_ref(), &mut endpoints).await;
+            let up: Vec<String> = endpoints
+                .iter()
+                .filter(|e| e.running == Some(true))
+                .map(|e| e.name.clone())
+                .collect();
+            owner.downloads.state().endpoints = endpoints;
+            let status = status_async(&owner).await?;
+            Ok(Finished {
+                level: Level::Debug,
+                message: if up.is_empty() {
+                    "No on-demand endpoint is running".to_string()
+                } else {
+                    format!("Running: {}", up.join(", "))
+                },
+                body: EventBody::DownloadsStatusChanged { status },
+            })
+        }))
+}
+
+/// The search guard. anirss boots an on-demand endpoint whenever a search
+/// reaches it, so the core makes sure none does unless it already runs:
+/// a search aimed at a stopped one is refused, and anirss's fallback is
+/// switched off while any on-demand endpoint is down. Returns whether the
+/// fallback may stay on.
+async fn guard_search(
+    http: &dyn Http,
+    endpoints: &[SearchEndpoint],
+    target: Option<&str>,
+) -> Result<bool, CoreError> {
+    let path = settings::anirss_config_path();
+    let mut all_up = true;
+    for e in endpoints.iter().filter(|e| e.on_demand.is_some()) {
+        let ready = path
+            .as_deref()
+            .and_then(|p| settings::anirss_ondemand(p, &e.name))
+            .map(|o| o.ready)
+            .unwrap_or_default();
+        let up = !ready.is_empty() && probe(http, &ready).await;
+        if !up && target == Some(e.name.as_str()) {
+            return Err(CoreError::Service {
+                service: e.name.clone(),
+                code: "not_running".to_string(),
+                message: format!(
+                    "{} is not running, and AniBeam does not start it. Start it yourself, then check again.",
+                    e.name
+                ),
+            });
+        }
+        all_up &= up;
+    }
+    Ok(all_up)
+}
+
 pub fn search(core: &Core, query: String, endpoint: Option<String>) -> Result<u64, CoreError> {
     let query = query.trim().to_string();
     if query.is_empty() {
@@ -422,8 +519,11 @@ pub fn search(core: &Core, query: String, endpoint: Option<String>) -> Result<u6
             );
             let work = async {
                 let client = ensure_client(&owner).await?;
+                let listed = owner.downloads.state().endpoints.clone();
+                let target = endpoint.clone().or_else(|| listed.first().map(|e| e.name.clone()));
+                let fallback = guard_search(owner.http.as_ref(), &listed, target.as_deref()).await?;
                 phase.store(PHASE_FETCHING, Ordering::Relaxed);
-                let raw = client.search(&query, endpoint.as_deref(), true).await?;
+                let raw = client.search(&query, target.as_deref(), fallback).await?;
                 phase.store(PHASE_READING, Ordering::Relaxed);
                 let fetched = raw.query.clone();
                 let mut search = if raw.items.is_empty() {
@@ -1415,6 +1515,22 @@ fn link_torrents(core: &Core, torrents: &mut [Torrent]) -> Vec<ShowLink> {
         Ok((ids, shows)) => {
             for (t, id) in torrents.iter_mut().zip(ids) {
                 t.series_id = id;
+                let f = facts::read(&Release {
+                    title: t.name.clone(),
+                    link: String::new(),
+                    seeders: None,
+                    leechers: None,
+                    downloads: None,
+                    size: String::new(),
+                    category: String::new(),
+                    page: String::new(),
+                    source: String::new(),
+                    resolution: String::new(),
+                    infomkv: String::new(),
+                    linktype: String::new(),
+                });
+                t.batch = f.batch;
+                t.episode = if f.batch { None } else { f.episode };
             }
             let mut out: Vec<ShowLink> = shows.into_values().collect();
             out.sort_by_key(|s| s.series_id);

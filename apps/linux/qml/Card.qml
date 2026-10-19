@@ -392,19 +392,20 @@ Item {
         }
     }
 
-    // ---- Progress: a rounded 3 px line along the foot, inside the padding, aired under
-    // watched
-    Item {
+    // ---- Progress: the episode cubes along the foot, inside the padding, one row; a long
+    // run folds several episodes into a cube rather than wrapping over the title
+    EpisodeCubes {
         id: strip
-        visible: root.hasWatched && root.item.watched > 0 && !root.ghost
+        visible: !root.ghost && (root.item.cubes || "").length > 0
         x: root.pad
         y: parent.height - root.pad * 0.6 - height
         width: parent.width - root.pad * 2
-        height: 4
-        // One fact: how much of the run is watched, in the accent over a faint track. The
-        // aired-but-unseen share used to sit on the same line and read as progress.
-        Rectangle { anchors.fill: parent; radius: height / 2; color: root.bare ? theme.behind : Qt.rgba(1, 1, 1, 0.18) }
-        Rectangle { width: parent.width * Math.min(1, root.watchedPct); height: parent.height; radius: height / 2; color: root.inkAccent }
+        height: implicitHeight
+        codes: root.item.cubes || ""
+        cubeSize: theme.space(1.75)
+        minSize: 2
+        maxRows: 1
+        tipLimit: 0
     }
 
     // ---- The 1 px accent outline on hover, at full strength on focus

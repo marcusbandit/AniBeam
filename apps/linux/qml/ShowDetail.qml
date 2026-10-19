@@ -278,31 +278,21 @@ Column {
                     Label { width: parent.width - settleDot.width - parent.spacing; text: root.settling; role: "ui"; color: theme.text; wrapMode: Text.Wrap }
                 }
             }
-            // Every episode as a cell: on disk in the accent, not here as an outline, red once
-            // the show has finished and it is still missing
-            Flow {
+            // Every episode as a cube, coloured by its state (Tokens.cubeStates): the series
+            // card's own row when the show is in the library, else on disk or not from the
+            // missing list
+            EpisodeCubes {
                 visible: root.total > 0 && root.show.kind !== "Movie"
                 width: parent.width
-                spacing: theme.space(1)
-                Repeater {
-                    model: Math.min(root.total, 400)
-                    Rectangle {
-                        required property int index
-                        readonly property int number: index + 1
-                        readonly property bool here: root.missing.indexOf(number) < 0
-                        width: theme.space(7.5); height: theme.space(6)
-                        radius: theme.radiusSm
-                        color: here ? theme.accentSoft : "transparent"
-                        border.color: here ? theme.accentEdge : root.finished ? Qt.rgba(theme.red.r, theme.red.g, theme.red.b, 0.6) : theme.line
-                        border.width: 1
-                        Label {
-                            anchors.centerIn: parent
-                            text: parent.number
-                            role: "ledger"
-                            font.pointSize: theme.typeSmall
-                            color: parent.here ? theme.accent : root.finished ? theme.red : theme.textFaint
-                        }
-                    }
+                height: implicitHeight
+                cubeSize: theme.space(4)
+                maxRows: 4
+                codes: {
+                    if (root.show && root.show.cubes) return root.show.cubes
+                    var out = []
+                    for (var n = 1; n <= Math.min(root.total, 400); n++)
+                        out.push(root.missing.indexOf(n) < 0 ? "d" : root.finished ? "m" : "g")
+                    return out
                 }
             }
             // The ways out, each through the removal sheet

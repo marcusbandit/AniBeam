@@ -121,6 +121,8 @@ fn main() {
         "assets/fonts/Archivo-Variable-Regular.ttf",
         "assets/fonts/Archivo-Variable-SemiBold.ttf",
         "assets/fonts/Archivo-Variable-ExtraBold.ttf",
+        "assets/fonts/B612-Regular.ttf",
+        "assets/fonts/B612-Bold.ttf",
         "assets/icons/activity.svg",
         "assets/icons/archive.svg",
         "assets/icons/arrow-down.svg",

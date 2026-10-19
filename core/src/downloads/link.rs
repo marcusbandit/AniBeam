@@ -344,6 +344,7 @@ pub fn show_of(card: &SeriesCard, numbers: &[f64]) -> ShowLink {
         next_airing: card.next_airing.clone(),
         complete,
         missing,
+        cubes: card.cubes.clone(),
     }
 }
 
@@ -411,6 +412,8 @@ mod tests {
             tags: String::new(),
             category: String::new(),
             series_id: None,
+            episode: None,
+            batch: false,
         };
         assert_eq!(l.find_torrent(&t), Some(4));
         t.save_path = "/mnt/media/Anime/Frieren".into();
