@@ -3,8 +3,12 @@ name: CI
 # Fast checks on every pull request: formatting for the whole workspace, then clippy and
 # the tests for the core and the terminal shell. The Qt shell (apps/linux, package
 # anibeam) needs Qt 6.11, MpvQt, libmpv and lld, which an ubuntu runner lacks, so a
-# job that builds it needs its own setup (see the release pipeline's linux.yml).
+# job that builds it needs its own setup. Runs on main too, so rust-cache keeps a cache
+# every pull request can restore. The toolchain is pinned so a new Rust release cannot
+# turn clippy red on code nobody touched; bump it on purpose.
 on:
+  push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -26,7 +30,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Rust toolchain
-        run: rustup toolchain install stable --profile minimal --component rustfmt
+        run: rustup toolchain install 1.98 --profile minimal --component rustfmt && rustup default 1.98
 
       - run: cargo fmt --all --check
 
@@ -37,7 +41,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Rust toolchain
-        run: rustup toolchain install stable --profile minimal --component clippy
+        run: rustup toolchain install 1.98 --profile minimal --component clippy && rustup default 1.98
 
       - uses: Swatinem/rust-cache@v2
 
