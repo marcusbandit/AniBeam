@@ -6,13 +6,13 @@
   "click": "rail-settings"
  },
  {
-  "wait": 400
+  "until": "driver.item.findItem('settings-tabs-appearance') !== null"
  },
  {
   "click": "settings-tabs-appearance"
  },
  {
-  "wait": 400
+  "until": "driver.item.findItem('colour-source-theme') !== null"
  },
  {
   "eval": "Theme.source",
@@ -26,7 +26,7 @@
   "click": "colour-source-theme"
  },
  {
-  "wait": 300
+  "until": "driver.item.findItem('theme-dark') !== null && driver.item.findItem('theme-dark').options.length > 8"
  },
  {
   "eval": "driver.item.findItem('theme-dark').options.length > 8",
@@ -47,7 +47,7 @@
   "click": "theme-dark"
  },
  {
-  "wait": 300
+  "until": "driver.item.findItem('theme-dark-popup') !== null"
  },
  {
   "eval": "driver.item.findItem('theme-dark-popup') !== null",
@@ -76,7 +76,7 @@
   "key": "Return"
  },
  {
-  "wait": 300
+  "until": "driver.item.findItem('theme-dark-popup') === null"
  },
  {
   "eval": "driver.item.findItem('theme-dark-popup') !== null",
@@ -101,7 +101,7 @@
   "key": "Down"
  },
  {
-  "wait": 300
+  "until": "driver.item.findItem('theme-dark-popup') !== null"
  },
  {
   "eval": "driver.item.findItem('theme-dark-popup') !== null",
@@ -114,7 +114,7 @@
   "key": "Return"
  },
  {
-  "wait": 300
+  "until": "driver.item.findItem('theme-dark').index === 0"
  },
  {
   "eval": "driver.item.findItem('theme-dark').index",
@@ -174,7 +174,7 @@
   "key": "Escape"
  },
  {
-  "wait": 300
+  "until": "driver.item.findItem('theme-dark-popup') === null"
  },
  {
   "eval": "driver.item.findItem('theme-dark-popup') !== null",
@@ -203,7 +203,10 @@
   "key": "Ctrl+L"
  },
  {
-  "wait": 500
+  "until": "frame.item.escapeStack.entries.map(function(e){return e.kind})",
+  "expect": [
+   "drawer"
+  ]
  },
  {
   "eval": "frame.item.escapeStack.entries.map(function(e){return e.kind})",
@@ -215,7 +218,11 @@
   "click": "theme-dark"
  },
  {
-  "wait": 300
+  "until": "frame.item.escapeStack.entries.map(function(e){return e.kind})",
+  "expect": [
+   "drawer",
+   "popover"
+  ]
  },
  {
   "eval": "frame.item.escapeStack.entries.map(function(e){return e.kind})",
@@ -228,7 +235,7 @@
   "key": "Escape"
  },
  {
-  "wait": 300
+  "until": "driver.item.findItem('theme-dark-popup') === null"
  },
  {
   "eval": "driver.item.findItem('theme-dark-popup') !== null",
@@ -244,7 +251,8 @@
   "key": "Ctrl+L"
  },
  {
-  "wait": 500
+  "until": "frame.item.escapeStack.entries.map(function(e){return e.kind})",
+  "expect": []
  },
  {
   "eval": "frame.item.escapeStack.entries.map(function(e){return e.kind})",
@@ -257,7 +265,7 @@
   "click": "theme-dark"
  },
  {
-  "wait": 300
+  "until": "driver.item.findItem('theme-dark-popup') !== null"
  },
  {
   "eval": "driver.item.findItem('theme-dark-popup') !== null",
@@ -270,7 +278,7 @@
   ]
  },
  {
-  "wait": 300
+  "until": "driver.item.findItem('theme-dark-popup') === null"
  },
  {
   "eval": "driver.item.findItem('theme-dark-popup') !== null",
@@ -291,7 +299,7 @@
   "click": "theme-light"
  },
  {
-  "wait": 300
+  "until": "driver.item.findItem('theme-light-popup') !== null"
  },
  {
   "eval": "driver.item.findItem('theme-light-popup') !== null",
@@ -308,7 +316,7 @@
   "key": "Escape"
  },
  {
-  "wait": 300
+  "until": "driver.item.findItem('theme-light-popup') === null"
  },
  {
   "eval": "driver.item.findItem('theme-light-popup') !== null",
@@ -326,7 +334,7 @@
   "expect": true
  },
  {
-  "wait": 400
+  "until": "Theme.themeDark === vars.dark && Theme.themeLight === vars.light"
  },
  {
   "eval": "Theme.themeDark === vars.dark && Theme.themeLight === vars.light",
@@ -343,7 +351,8 @@
   "hover": "tipfix"
  },
  {
-  "wait": 900
+  "until": "driver.item.findItem('tipfix-area') !== null && driver.item.findItem('tipfix-area').containsMouse && frame.item.overlay.children.some(function(c){return c.visible && c.objectName !== 'tipfix' && c.children.some(function(k){return k.text==='Fixture tip'})})",
+  "timeout": 4000
  },
  {
   "eval": "driver.item.findItem('tipfix-area').containsMouse",
@@ -376,7 +385,10 @@
   "click": "theme-dark"
  },
  {
-  "wait": 300
+  "until": "frame.item.escapeStack.entries.map(function(e){return e.kind})",
+  "expect": [
+   "popover"
+  ]
  },
  {
   "eval": "frame.item.escapeStack.entries.map(function(e){return e.kind})",
@@ -402,7 +414,7 @@
   "key": "Escape"
  },
  {
-  "wait": 300
+  "until": "driver.item.findItem('theme-dark-popup') === null"
  },
  {
   "eval": "driver.item.findItem('theme-dark-popup') !== null",
@@ -445,7 +457,7 @@
   "click": "theme-dark"
  },
  {
-  "wait": 300
+  "until": "driver.item.findItem('theme-dark-popup') !== null"
  },
  {
   "eval": "driver.item.findItem('theme-dark-popup') !== null",
@@ -470,7 +482,7 @@
   "key": "Escape"
  },
  {
-  "wait": 300
+  "until": "driver.item.findItem('theme-dark-popup') === null"
  },
  {
   "eval": "driver.item.findItem('theme-dark-popup') !== null",

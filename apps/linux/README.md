@@ -54,7 +54,8 @@ like `shoot.sh` does (same `ANIBEAM_ROOT`, `W`/`H`; shots land in `captures/` un
 page against the real anirss and qBittorrent on the machine (a search, Best fit, the rule preview; it
 adds nothing), so it needs both installed and skips nothing when they are not.
 
-    {"wait": ms}                     {"click": [x, y] | "objectName", "button": "right", "double": true}
+    {"wait": ms}                     {"until": "js", "timeout": ms, "expect": <json>, "as": "k"}
+    {"click": [x, y] | "objectName", "button": "right", "double": true}
     {"hover": [x, y] | "objectName"} {"wheel": [x, y, dy]}  or  {"wheel": "objectName", "dy": -120}
     {"key": "Escape" | "Ctrl+K" | "Alt+Left" | "Shift+Tab" | "a"}     {"type": "some text"}
     {"shot": "name"}                 {"log": "text"}        {"page": "settings", "props": {}}
@@ -68,3 +69,19 @@ item of that name in the window's tree, open Popups included; `Rail`, `Seg` (cel
 `<name>-<label>`) and `Dropdown` (`<name>-popup`, `<name>-option-<i>`) carry names for this.
 `eval` runs in Main.qml's scope (`window`, `frame`, `Theme`, `driver.item.findItem(name)`), and
 `vars.k` reads what an earlier `"as": "k"` stored.
+
+`{"wait": ms}` is a fixed pause. Use it only for time that is the point, such as an animation
+settling or a hover tip's own delay; a wait for the app to get somewhere is `{"until": "js"}`.
+`until` polls the JS (same scope as `eval`) every 25 ms and goes on the moment it is truthy, or
+equals `"expect"` when one is given; `"as"` keeps the value. It fails the run with `DRIVE FAIL:
+step <n>: until timed out after <ms> ms: <js> (last: <value>)` once `"timeout"` passes (5000 ms
+unless set), so a state that never arrives costs the timeout and a loud failure, not a silent
+sleep. A throw while polling counts as not ready, because the page or item it reads may not exist
+yet. Give slow work such as a network search a generous timeout:
+
+    {"key": "Return"},
+    {"until": "frame.item.pageItem.searching === false && frame.item.pageItem.state !== null", "timeout": 60000}
+
+An `until` is a readiness check, not an assertion that something stays put: where a script waits
+to prove nothing happens (a tip that must not show, a click that must not close a panel), keep
+the `wait`.

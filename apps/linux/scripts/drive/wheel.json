@@ -10,7 +10,7 @@
     "expect": "library"
   },
   {
-    "wait": 500
+    "until": "driver.item.findItem('library-page') !== null"
   },
   {
     "wheel": [
@@ -20,7 +20,8 @@
     ]
   },
   {
-    "wait": 1500
+    "until": "Math.round(frame.item.leavingScroll()) === 100",
+    "timeout": 3000
   },
   {
     "eval": "Math.round(frame.item.leavingScroll())",
@@ -41,7 +42,8 @@
     ]
   },
   {
-    "wait": 1500
+    "until": "Math.round(frame.item.leavingScroll()) === 2 * vars.one",
+    "timeout": 3000
   },
   {
     "eval": "Math.round(frame.item.leavingScroll()) > vars.one",
@@ -90,7 +92,8 @@
     ]
   },
   {
-    "wait": 1500
+    "until": "Math.round(frame.item.leavingScroll()) - vars.two === 500",
+    "timeout": 3000
   },
   {
     "eval": "Math.round(frame.item.leavingScroll()) - vars.two",
