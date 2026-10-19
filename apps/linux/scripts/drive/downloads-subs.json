@@ -13,7 +13,7 @@
   "click": "rail-downloads"
  },
  {
-  "until": "frame.item.nav.current.page === 'downloads' && frame.item.pageItem.torrentsRead === true && frame.item.pageItem.rulesLoaded === true && driver.item.findItem('show-card') !== null",
+  "until": "driver.item.pageReady('downloads') && frame.item.pageItem.torrentsRead === true && frame.item.pageItem.rulesLoaded === true && driver.item.findItem('show-card') !== null",
   "timeout": 25000
  },
  {

@@ -6,7 +6,7 @@
   "click": "rail-downloads"
  },
  {
-  "until": "frame.item.nav.current.page === 'downloads' && frame.item.pageItem.rulesLoaded === true && frame.item.downloadsRules.filter(function(x) { return x.name.indexOf('Helluva') === 0 }).length > 0",
+  "until": "driver.item.pageReady('downloads') && frame.item.pageItem.rulesLoaded === true && frame.item.downloadsRules.filter(function(x) { return x.name.indexOf('Helluva') === 0 }).length > 0",
   "timeout": 20000
  },
  {
@@ -70,20 +70,32 @@
   "key": "Return"
  },
  {
-  "until": "frame.item.pageItem.searching === false && frame.item.pageItem.state !== null",
+  "until": "frame.item.pageItem.searching === false && (frame.item.pageItem.state !== null || frame.item.pageItem.searchError !== '')",
   "timeout": 60000
+ },
+ {
+  "eval": "frame.item.pageItem.searchError",
+  "expect": ""
  },
  {
   "eval": "frame.item.pageItem.state.wireQuery",
   "as": "wire"
  },
  {
+  "eval": "frame.item.pageItem.history.length",
+  "as": "hist"
+ },
+ {
   "eval": "frame.item.pageItem.narrow('WEB-DL'); 1",
   "expect": 1
  },
  {
-  "until": "frame.item.pageItem.searching === false && frame.item.pageItem.state !== null",
+  "until": "frame.item.pageItem.searching === false && (frame.item.pageItem.history.length > vars.hist || frame.item.pageItem.searchError !== '')",
   "timeout": 60000
+ },
+ {
+  "eval": "frame.item.pageItem.searchError",
+  "expect": ""
  },
  {
   "eval": "var s = frame.item.pageItem.state; s.query + ' | wire: ' + s.wireQuery",

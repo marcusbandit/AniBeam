@@ -6,7 +6,7 @@
   "click": "rail-downloads"
  },
  {
-  "until": "frame.item.nav.current.page === 'downloads' && frame.item.pageItem.endpoints.length > 0",
+  "until": "driver.item.pageReady('downloads') && frame.item.pageItem.endpoints.length > 0",
   "timeout": 20000
  },
  {

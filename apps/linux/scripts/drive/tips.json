@@ -118,7 +118,7 @@
 "key": "Ctrl+,"
 },
   {
-"until": "frame.item.nav.current.page === 'settings'"
+"until": "driver.item.pageReady('settings')"
 },
   {
 "eval": "frame.item.nav.current.page",

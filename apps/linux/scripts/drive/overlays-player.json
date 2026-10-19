@@ -1,6 +1,6 @@
 [
   {"log": "overlays in the player: the hidden drawer never takes Escape, the track picker clears the controls tile and follows a resize, the score picker takes keys, tips sit above the tile. Run on a private copy of the real library (file 119 is Hokori episode 2), W=2560 H=1440"},
-  {"key": "Ctrl+L"}, {"until": "frame.item.drawerPanel.open === true"},
+  {"key": "Ctrl+L"}, {"until": "frame.item.drawerPanel.open === true && frame.item.drawerPanel.openness > 0.99"},
   {"eval": "frame.item.drawerPanel.open", "expect": true},
   {"page": "player", "props": {"file": 119}},
   {"until": "frame.item.fullWindow === true && frame.item.pageItem.loaded === true", "timeout": 15000},
@@ -66,6 +66,6 @@
   {"key": "Escape"}, {"until": "frame.item.fullWindow === false"},
   {"eval": "frame.item.fullWindow", "expect": false},
   {"eval": "frame.item.drawerPanel.open", "expect": true},
-  {"key": "Escape"}, {"until": "frame.item.drawerPanel.open === false"},
+  {"key": "Escape"}, {"until": "frame.item.drawerPanel.open === false && frame.item.drawerPanel.visible === false"},
   {"eval": "frame.item.drawerPanel.open", "expect": false}
 ]

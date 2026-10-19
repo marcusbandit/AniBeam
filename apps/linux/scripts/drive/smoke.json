@@ -5,7 +5,7 @@
 
   {"log": "the rail goes to the library"},
   {"click": "rail-library"},
-  {"until": "frame.item.nav.current.page === 'library'"},
+  {"until": "driver.item.pageReady('library')"},
   {"eval": "frame.item.nav.current.page", "expect": "library"},
   {"shot": "smoke-01-library"},
 
@@ -21,7 +21,7 @@
 
   {"log": "the rail goes to the feed"},
   {"click": "rail-feed"},
-  {"until": "frame.item.nav.current.page === 'feed'"},
+  {"until": "driver.item.pageReady('feed')"},
   {"eval": "frame.item.nav.current.page", "expect": "feed"},
   {"shot": "smoke-04-feed"},
 

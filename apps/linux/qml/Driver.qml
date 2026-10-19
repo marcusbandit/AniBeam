@@ -95,15 +95,33 @@ QtObject {
 
     // ---- until: one probe of the condition, and the poll that repeats it
 
+    // How a result prints: JSON where it can be (strings quoted, arrays, records); a QObject
+    // or a function prints as itself. The one printer for evals, expects and timeouts.
+    function show(r) {
+        var s
+        try { s = r === undefined ? "undefined" : JSON.stringify(r) } catch (e) { s = undefined }
+        return s === undefined ? String(r) : s
+    }
+
+    // True once `name` is the page on screen. nav.current flips at once, but Frame.loadPage
+    // swaps the page in on a Qt.callLater, so a script that waits on nav.current alone runs
+    // ahead of a page that does not exist yet. The loaded item must be the Frame.pages file
+    // for `name` (an item prints as its type name followed by _QMLTYPE).
+    function pageReady(name) {
+        var f = hostFrame.item
+        if (!f || f.nav.current.page !== name || !f.pageItem) return false
+        var file = f.pages[name] || "PagePlaceholder.qml"
+        return String(f.pageItem).indexOf(file.replace(".qml", "") + "_QMLTYPE") === 0
+    }
+
     // Evaluates the condition once; true when it holds. A throw is "not ready" (the page or
-    // the item it reads may not exist yet), kept for the timeout message.
+    // the item it reads may not exist yet). Only the raw result is kept per poll; it is
+    // formatted when the timeout message needs it, or to compare with "expect".
     function probe(w) {
-        var r, shown
-        try { r = evaluate(w.src, vars) } catch (e) { w.seen = "threw " + (e.message || e); return false }
-        try { shown = r === undefined ? "undefined" : JSON.stringify(r) } catch (e) { shown = undefined }
-        if (shown === undefined) shown = String(r)
-        w.seen = shown
-        var ok = w.hasExpect ? JSON.stringify(w.expect) === shown : !!r
+        var r
+        try { r = evaluate(w.src, vars); w.threw = undefined } catch (e) { w.threw = e.message || String(e); return false }
+        w.last = r
+        var ok = w.hasExpect ? JSON.stringify(w.expect) === show(r) : !!r
         if (ok && w.as !== undefined) vars[w.as] = r
         return ok
     }
@@ -116,7 +134,7 @@ QtObject {
             pump()
         } else if (Date.now() >= w.deadline) {
             poller.stop(); waiting = null
-            fail("step " + w.n + ": until timed out after " + w.timeout + " ms: " + w.src + " (last: " + w.seen + ")")
+            fail("step " + w.n + ": until timed out after " + w.timeout + " ms: " + w.src + " (last: " + (w.threw !== undefined ? "threw " + w.threw : show(w.last)) + ")")
         }
     }
 
@@ -241,7 +259,7 @@ QtObject {
             out.push(function() {
                 var w = { src: step.until, hasExpect: step.expect !== undefined, expect: step.expect,
                           as: typeof step.as === "string" ? step.as : undefined, timeout: limit, n: n0,
-                          started: Date.now(), deadline: Date.now() + limit, seen: "" }
+                          started: Date.now(), deadline: Date.now() + limit, last: undefined, threw: undefined }
                 if (probe(w)) { log("DRIVE UNTIL: ready at once"); return 0 }
                 driver.waiting = w; poller.start()
                 return -1
@@ -313,11 +331,7 @@ QtObject {
             out.push(function() {
                 var r = evaluate(String(step.eval), vars)
                 if (typeof step.as === "string") vars[step.as] = r
-                // JSON where it can be (strings quoted, arrays, records); a QObject or a
-                // function prints as itself
-                var shown
-                try { shown = r === undefined ? "undefined" : JSON.stringify(r) } catch (e) { shown = undefined }
-                if (shown === undefined) shown = String(r)
+                var shown = show(r)
                 log("DRIVE EVAL: " + shown)
                 if (step.expect !== undefined && JSON.stringify(step.expect) !== shown)
                     throw new Error("expected " + JSON.stringify(step.expect) + ", got " + shown)

@@ -82,6 +82,13 @@ yet. Give slow work such as a network search a generous timeout:
     {"key": "Return"},
     {"until": "frame.item.pageItem.searching === false && frame.item.pageItem.state !== null", "timeout": 60000}
 
+Two proxies flip before the thing is ready, so do not wait on them alone. `nav.current.page`
+changes at once while Frame swaps the page in a tick later: wait on
+`driver.item.pageReady('series')`, which is true once that page's item is the one loaded. The
+activity drawer sets `open` at once and eases `openness` over about 300 ms: wait on
+`frame.item.drawerPanel.open === true && frame.item.drawerPanel.openness > 0.99` to see it up,
+and on `drawerPanel.open === false && drawerPanel.visible === false` to see it gone.
+
 An `until` is a readiness check, not an assertion that something stays put: where a script waits
 to prove nothing happens (a tip that must not show, a click that must not close a panel), keep
 the `wait`.

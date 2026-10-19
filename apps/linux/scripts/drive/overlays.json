@@ -9,7 +9,7 @@
   {"eval": "frame.item.leavingScroll()", "expect": 0},
 
   {"log": "S1: a menu opened over the open drawer draws over it, and Escape closes the menu first"},
-  {"key": "Ctrl+L"}, {"until": "frame.item.drawerPanel.open === true"},
+  {"key": "Ctrl+L"}, {"until": "frame.item.drawerPanel.open === true && frame.item.drawerPanel.openness > 0.99"},
   {"eval": "frame.item.drawerPanel.open", "expect": true},
   {"eval": "frame.item.openMenu(1300, 900, [{ text: 'Back', icon: 'arrow-left' }, { text: 'Second row' }])"},
   {"wait": 200},
@@ -32,7 +32,7 @@
 
   {"log": "S2: Escape closes the drawer and the page gets key focus back"},
   {"eval": "window.activeFocusItem === frame.item.pageItem", "expect": false},
-  {"key": "Escape"}, {"until": "frame.item.drawerPanel.open === false"},
+  {"key": "Escape"}, {"until": "frame.item.drawerPanel.open === false && frame.item.drawerPanel.visible === false"},
   {"eval": "frame.item.drawerPanel.open", "expect": false},
   {"eval": "window.activeFocusItem === frame.item.pageItem", "expect": true},
 
@@ -134,15 +134,15 @@
   {"eval": "frame.item.escapeStack.entries.length", "expect": 0},
 
   {"log": "S3: the connect sheet keeps its Escape across a navigation, and the drawer too, in order"},
-  {"key": "Ctrl+L"}, {"until": "frame.item.drawerPanel.open === true"},
+  {"key": "Ctrl+L"}, {"until": "frame.item.drawerPanel.open === true && frame.item.drawerPanel.openness > 0.99"},
   {"eval": "frame.item.openConnect('Anilist')"}, {"wait": 300},
-  {"page": "settings"}, {"until": "frame.item.nav.current.page === 'settings'"},
+  {"page": "settings"}, {"until": "driver.item.pageReady('settings')"},
   {"eval": "frame.item.escapeStack.entries.length", "expect": 2},
   {"eval": "frame.item.escapeStack.top().closer === frame.item.sheetPanel", "expect": true},
   {"key": "Escape"}, {"wait": 200},
   {"eval": "frame.item.sheetPanel.visible", "expect": false},
   {"eval": "frame.item.drawerPanel.open", "expect": true},
-  {"key": "Escape"}, {"until": "frame.item.drawerPanel.open === false"},
+  {"key": "Escape"}, {"until": "frame.item.drawerPanel.open === false && frame.item.drawerPanel.visible === false"},
   {"eval": "frame.item.drawerPanel.open", "expect": false},
   {"eval": "frame.item.escapeStack.entries.length", "expect": 0},
 
@@ -162,13 +162,13 @@
   {"eval": "vars.dropFocus === 'theme-dark'", "expect": true},
 
   {"log": "Escape with a dropdown open over an open layer (the drawer) closes only the dropdown"},
-  {"key": "Ctrl+L"}, {"until": "frame.item.drawerPanel.open === true"},
+  {"key": "Ctrl+L"}, {"until": "frame.item.drawerPanel.open === true && frame.item.drawerPanel.openness > 0.99"},
   {"click": "theme-dark"}, {"until": "driver.item.findItem('theme-dark-popup') !== null"},
   {"eval": "driver.item.findItem('theme-dark-popup') !== null", "expect": true},
   {"key": "Escape"}, {"until": "driver.item.findItem('theme-dark-popup') === null"},
   {"eval": "driver.item.findItem('theme-dark-popup') !== null", "expect": false},
   {"eval": "frame.item.drawerPanel.open", "expect": true},
-  {"key": "Escape"}, {"until": "frame.item.drawerPanel.open === false"},
+  {"key": "Escape"}, {"until": "frame.item.drawerPanel.open === false && frame.item.drawerPanel.visible === false"},
   {"eval": "frame.item.drawerPanel.open", "expect": false},
   {"eval": "if (Theme.themeDark !== vars.dark) Theme.pickTheme(\"dark\", vars.dark)"},
   {"wait": 200},

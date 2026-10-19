@@ -209,23 +209,13 @@
   ]
  },
  {
-  "eval": "frame.item.escapeStack.entries.map(function(e){return e.kind})",
-  "expect": [
-   "drawer"
-  ]
+  "until": "frame.item.drawerPanel.open === true && frame.item.drawerPanel.openness > 0.99"
  },
  {
   "click": "theme-dark"
  },
  {
   "until": "frame.item.escapeStack.entries.map(function(e){return e.kind})",
-  "expect": [
-   "drawer",
-   "popover"
-  ]
- },
- {
-  "eval": "frame.item.escapeStack.entries.map(function(e){return e.kind})",
   "expect": [
    "drawer",
    "popover"
@@ -255,8 +245,7 @@
   "expect": []
  },
  {
-  "eval": "frame.item.escapeStack.entries.map(function(e){return e.kind})",
-  "expect": []
+  "until": "frame.item.drawerPanel.open === false && frame.item.drawerPanel.visible === false"
  },
  {
   "log": "a press outside closes it"
@@ -386,12 +375,6 @@
  },
  {
   "until": "frame.item.escapeStack.entries.map(function(e){return e.kind})",
-  "expect": [
-   "popover"
-  ]
- },
- {
-  "eval": "frame.item.escapeStack.entries.map(function(e){return e.kind})",
   "expect": [
    "popover"
   ]
