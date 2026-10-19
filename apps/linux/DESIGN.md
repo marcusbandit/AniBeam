@@ -49,8 +49,9 @@ below where they disagree:
 - **The week is rows, not columns.** One row per day that has an episode landing, today always
   first and marked in the accent, every day's posters in one line so nothing hides below the
   fold; the series without a date yet close the list.
-- **Scrolling** adds a fixed step per wheel notch to a target the content follows with
-  exponential smoothing, so a spin of five notches goes five steps (`WheelStep.step`).
+- **The wheel scrolls like a browser.** `WheelStep` adds 100 px a notch to a target and glides
+  there, because Qt's own wheel moves 72 px and drops the rest of a notch when the next one
+  comes. The arrow keys share that target. A touchpad's pixels go on 1:1.
 - **The series page is a band and two columns.** The head is Home's hero again: a band in
   the poster's tone with the banner art fading in from the right, the poster, the title in
   the display cut, the other titles on one quiet line, the facts as one ledger line, Continue

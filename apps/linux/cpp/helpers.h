@@ -30,7 +30,7 @@ void set_app_palette(const QColor &window, const QColor &text, const QColor &bas
 // double-click interval after it, so two separate clicks never fuse into a double click).
 // button: 1 left, 2 right, 4 middle (Qt::MouseButton values).
 void drive_mouse(QObject *window, int kind, double x, double y, int button, int modifiers);
-// One wheel notch is angle delta 120.
+// One wheel notch is angle delta 120, sent as Qt's Wayland plugin sends it.
 void drive_wheel(QObject *window, double x, double y, int dx, int dy, int modifiers);
 // A key press or release; key is a Qt::Key, text what the key types (empty for none).
 void drive_key(QObject *window, bool press, int key, int modifiers, const QString &text);

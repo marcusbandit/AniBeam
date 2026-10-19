@@ -23,13 +23,10 @@ Flickable {
     boundsBehavior: Flickable.StopAtBounds
     QC.ScrollBar.vertical: ThinScrollBar {}
     WheelStep { id: wheel; flick: root }
-    // A programmatic scroll rides the wheel's target, so it follows with the same smoothing
-    // as a notch and a drag takes over the same way
-    function scrollTo(y) {
-        wheel.target = wheel.bound(y)
-        wheel.following = true
-        root.cancelFlick()
-    }
+    // The arrow keys scroll through the wheel's target, so they glide the same way and a
+    // notch or a drag takes over
+    function scrollTo(y) { wheel.scrollTo(y) }
+    readonly property real scrollTarget: wheel.target
     GridKeys { id: gridKeys; flick: root }
     function keyPressed(event) { gridKeys.handle(event, root.Window.window ? root.Window.window.activeFocusItem : null) }
     Keys.onPressed: function(event) { root.keyPressed(event) }

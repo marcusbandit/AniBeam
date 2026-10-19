@@ -16,6 +16,8 @@
 #include <QtGui/QCursor>
 #include <QtCore/QProcess>
 #include <QtCore/QUrl>
+#include <QtGui/QWheelEvent>
+#include <QtGui/QPointingDevice>
 
 // Exported by QtGui for QtTest's benefit and declared nowhere else public; the declarations
 // are QtTest's own (qtestmouse.h, qtestkeyboard.h, qtestwheel.h). Using them rather than
@@ -174,8 +176,19 @@ void drive_wheel(QObject *window, double x, double y, int dx, int dy, int modifi
     if (!w)
         return;
     const QPointF local(x, y);
-    qt_handleWheelEvent(w, local, w->mapToGlobal(local), QPoint(), QPoint(dx, dy),
-                        Qt::KeyboardModifiers(modifiers) & Qt::KeyboardModifierMask, Qt::NoScrollPhase);
+    // Shaped like a notch from Qt's Wayland plugin, which is what the shell runs on: a device
+    // typed as a touchpad, libinput's 15 px beside the 120 angle, and no phase
+    // The id is one no platform hands out, so it never stands in for the real core pointer
+    static QPointingDevice wayland(QStringLiteral("drive wheel"), 0x7d17e, QInputDevice::DeviceType::TouchPad,
+                                   QPointingDevice::PointerType::Generic,
+                                   QInputDevice::Capability::Position | QInputDevice::Capability::Scroll |
+                                       QInputDevice::Capability::PixelScroll,
+                                   1, 0);
+    QWheelEvent e(local, w->mapToGlobal(local), QPoint(dx, dy) / 8, QPoint(dx, dy), Qt::NoButton,
+                  Qt::KeyboardModifiers(modifiers) & Qt::KeyboardModifierMask, Qt::NoScrollPhase, false,
+                  Qt::MouseEventNotSynthesized, &wayland);
+    e.setTimestamp(driveTimestamp());
+    QGuiApplication::sendEvent(w, &e);
 }
 
 void drive_key(QObject *window, bool press, int key, int modifiers, const QString &text)
