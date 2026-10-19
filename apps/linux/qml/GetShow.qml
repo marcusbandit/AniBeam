@@ -591,7 +591,7 @@ Item {
         signal picked()
         signal cubePicked(int index)
         width: grid.width
-        height: Math.max(theme.space(15), cubes.implicitHeight + theme.space(4))
+        height: Math.max(theme.space(15), cubes.implicitHeight + theme.space(5))
         Rectangle {
             anchors.fill: parent
             radius: theme.radiusMd
@@ -626,6 +626,10 @@ Item {
             minSize: theme.space(2)
             maxRows: 4
             clickable: gr.clickable
+            spanFirst: gr.rowData && gr.rowData.batch ? (gr.rowData.first || 1) : 0
+            spanLast: gr.rowData && gr.rowData.batch ? Math.min(root.total, gr.rowData.last || root.total) : 0
+            spanLabel: gr.rowData && gr.rowData.batch ? (gr.rowData.first ? gr.rowData.first + "-" + gr.rowData.last : "Whole season") : ""
+            spanChosen: gr.chosen
             tipFor: gr.rowData ? function(i, code) {
                 var idx = gr.rowData.eps[i + 1]
                 if (idx === undefined) return "Episode " + (i + 1) + ": no release from " + gr.rowData.group

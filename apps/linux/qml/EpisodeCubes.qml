@@ -26,6 +26,12 @@ Item {
     property bool clickable: false
     // Overrides the hover text per cube: function(index, code) returning a string
     property var tipFor: null
+    // A span of episodes that come as one (a batch): drawn in one container with a tab
+    // naming it, and a hover on any of its cubes lifts them all. 0 means no span.
+    property int spanFirst: 0
+    property int spanLast: 0
+    property string spanLabel: ""
+    property bool spanChosen: false
     signal cubeClicked(int index)
 
     readonly property var list: typeof codes === "string" ? codes.split("") : (codes || [])
@@ -58,10 +64,62 @@ Item {
         return out
     }
     readonly property int rows: Math.ceil(cells.length / perRow)
-    implicitHeight: count === 0 ? 0 : rows * size + (rows - 1) * gap
+    // The span in cells, the room its tab takes above the grid, and which cube is hovered
+    readonly property bool spanned: spanFirst > 0 && spanLast >= spanFirst && count > 0
+    readonly property int spanA: spanned ? Math.floor((spanFirst - 1) / fold) : -1
+    readonly property int spanB: spanned ? Math.floor((Math.min(spanLast, count) - 1) / fold) : -1
+    readonly property real pad: Math.max(2, Math.round(gap * 0.6))
+    readonly property real tabHeight: spanned ? Math.round(tabText.implicitHeight + theme.space(1)) : 0
+    property int hoverCell: -1
+    readonly property bool spanHot: spanned && hoverCell >= spanA && hoverCell <= spanB
+    function inSpan(i) { return spanned && i >= spanA && i <= spanB }
+    implicitHeight: count === 0 ? 0 : tabHeight + rows * size + (rows - 1) * gap + (spanned ? pad : 0)
     implicitWidth: Math.max(0, count * (cubeSize + gap) - gap)
 
+    // The span's container: one rounded band per grid row it crosses, a tab on the first
+    readonly property color spanFill: spanChosen ? theme.accentSoft : spanHot ? theme.glassFloat : Qt.rgba(theme.text.r, theme.text.g, theme.text.b, 0.05)
+    readonly property color spanEdge: spanChosen || spanHot ? theme.accentEdge : Qt.rgba(theme.text.r, theme.text.g, theme.text.b, 0.18)
+    Repeater {
+        model: root.spanned ? Math.floor(root.spanB / root.perRow) - Math.floor(root.spanA / root.perRow) + 1 : 0
+        Rectangle {
+            required property int index
+            readonly property int row: Math.floor(root.spanA / root.perRow) + index
+            readonly property int c0: index === 0 ? root.spanA % root.perRow : 0
+            readonly property int c1: row === Math.floor(root.spanB / root.perRow) ? root.spanB % root.perRow : root.perRow - 1
+            x: c0 * (root.size + root.gap) - root.pad
+            y: root.tabHeight + row * (root.size + root.gap) - root.pad
+            width: (c1 - c0 + 1) * (root.size + root.gap) - root.gap + 2 * root.pad
+            height: root.size + 2 * root.pad
+            radius: Math.max(2, root.size * 0.3 + root.pad)
+            color: root.spanFill
+            border.width: 1
+            border.color: root.spanEdge
+            Behavior on color { enabled: !theme.reducedMotion; ColorAnimation { duration: theme.motionFast } }
+        }
+    }
+    Rectangle {
+        visible: root.spanned
+        x: (root.spanA % root.perRow) * (root.size + root.gap) - root.pad
+        y: Math.floor(root.spanA / root.perRow) * (root.size + root.gap) - root.pad
+        width: tabText.implicitWidth + theme.space(3)
+        height: root.tabHeight + 1
+        radius: theme.space(1.5)
+        color: root.spanEdge
+        Behavior on color { enabled: !theme.reducedMotion; ColorAnimation { duration: theme.motionFast } }
+        // Square the bottom so the tab joins the band
+        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: parent.radius; color: parent.color }
+        Label {
+            id: tabText
+            anchors.centerIn: parent
+            text: root.spanLabel
+            role: "figure"
+            font.pointSize: theme.typeSmall
+            color: theme.text
+        }
+    }
+
     Grid {
+        y: root.tabHeight
         columns: root.perRow
         spacing: root.gap
         Repeater {
@@ -76,7 +134,7 @@ Item {
                 color: st.fill
                 border.width: st.edge === "transparent" ? 0 : 1
                 border.color: st.edge
-                scale: cubeMouse.containsMouse ? 1.18 : 1
+                scale: cubeMouse.containsMouse || (root.spanHot && root.inSpan(cube.index)) ? (root.inSpan(cube.index) ? 1.1 : 1.18) : 1
                 Behavior on scale { enabled: !theme.reducedMotion; NumberAnimation { duration: theme.motionFast } }
                 MouseArea {
                     id: cubeMouse
@@ -85,6 +143,7 @@ Item {
                     enabled: root.clickable && root.fold === 1
                     hoverEnabled: enabled
                     cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    onContainsMouseChanged: if (containsMouse) root.hoverCell = cube.index; else if (root.hoverCell === cube.index) root.hoverCell = -1
                     onClicked: root.cubeClicked(cube.index)
                 }
                 Tooltip {
