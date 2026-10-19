@@ -100,13 +100,31 @@ mod tests {
     #[test]
     fn only_whole_library_reads_are_kept_and_arguments_tell_them_apart() {
         assert!(key_of(&series_call()).is_some());
-        assert!(key_of(&Call::ListAiring { offset: 0, limit: 9 }).is_some());
+        assert!(
+            key_of(&Call::ListAiring {
+                offset: 0,
+                limit: 9
+            })
+            .is_some()
+        );
         assert!(key_of(&Call::GetSeries { series: 1 }).is_none());
         assert!(key_of(&Call::ListWatching).is_none());
-        assert!(key_of(&Call::SetHidden { series: 1, hidden: true }).is_none());
+        assert!(
+            key_of(&Call::SetHidden {
+                series: 1,
+                hidden: true
+            })
+            .is_none()
+        );
         assert_ne!(
-            key_of(&Call::ListAiring { offset: 0, limit: 9 }),
-            key_of(&Call::ListAiring { offset: 0, limit: 10 })
+            key_of(&Call::ListAiring {
+                offset: 0,
+                limit: 9
+            }),
+            key_of(&Call::ListAiring {
+                offset: 0,
+                limit: 10
+            })
         );
     }
 

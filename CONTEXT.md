@@ -247,11 +247,11 @@ The first part of the parity checklist. When every item in it is green, the laun
 _Avoid_: MVP, daily-driver build, phase 2 exit
 
 **Retire line**:
-The rest of the parity checklist. When it is green too, Electron is deleted.
+The rest of the parity checklist. When it is green too, Electron is deleted. That happened on 2026-10-19 (#70).
 _Avoid_: full parity, phase 3 gate, the remainder
 
 **App id**:
-The one name a shell's window, its launcher entry, its icon and its bus name share, so the desktop can pair them. Each shell has its own. The Linux shell's is not Electron's, so the two stand side by side until the retire line.
+The one name a shell's window, its launcher entry, its icon and its bus name share, so the desktop can pair them. Each shell has its own. The Linux shell's is not Electron's, so the two stood side by side until the retire line.
 _Avoid_: window class, WM_CLASS, desktop file id, bundle id
 
 **Install**:

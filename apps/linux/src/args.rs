@@ -71,7 +71,9 @@ pub fn parse(argv: &[String]) -> Result<Args, String> {
         }
     }
     if a.shoot.is_some() && a.drive.is_some() {
-        return Err("--shoot and --drive are exclusive; a drive script shoots with its own steps".into());
+        return Err(
+            "--shoot and --drive are exclusive; a drive script shoots with its own steps".into(),
+        );
     }
     if a.out.is_some() && a.drive.is_none() {
         return Err("--out only means something with --drive".into());
@@ -93,14 +95,17 @@ pub fn drive_out(out: Option<&std::path::Path>, env: Option<String>) -> PathBuf 
 /// keys are the QML driver's business; this only catches the file that is not a script at
 /// all before a window is ever built. Returns the text exactly as read.
 pub fn load_drive(path: &std::path::Path) -> Result<String, String> {
-    let text = std::fs::read_to_string(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
     check_drive(&text).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(text)
 }
 
 fn check_drive(text: &str) -> Result<(), String> {
     let v: serde_json::Value = serde_json::from_str(text).map_err(|e| format!("bad JSON: {e}"))?;
-    let steps = v.as_array().ok_or("a drive script is a JSON array of steps")?;
+    let steps = v
+        .as_array()
+        .ok_or("a drive script is a JSON array of steps")?;
     if let Some(i) = steps.iter().position(|s| !s.is_object()) {
         return Err(format!("step {} is not an object", i + 1));
     }

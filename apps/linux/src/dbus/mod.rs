@@ -2,5 +2,7 @@
 //! on the same connection. Both start from the Shell singleton, which exists exactly once
 //! and exists as soon as the engine loads.
 
+#[cfg(not(target_os = "macos"))]
+pub mod inhibit;
 pub mod instance;
 pub mod mpris;

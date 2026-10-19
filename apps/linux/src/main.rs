@@ -2,6 +2,9 @@ mod args;
 mod bridge;
 mod dbus;
 mod format;
+mod inhibit;
+#[cfg(target_os = "macos")]
+mod iokit;
 mod json;
 mod nowplaying;
 mod paths;
