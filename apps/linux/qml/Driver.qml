@@ -324,7 +324,16 @@ QtObject {
         if (step === null || typeof step !== "object" || Array.isArray(step)) throw new Error("a step is an object")
         var out = [], b
         log("DRIVE STEP " + at + ": " + summary(step))
-        if (step.wait !== undefined) {
+        // page and pages first: a page step may carry shot or until, which are steps of their own
+        if (step.page !== undefined) {
+            pageActions(step, out, undefined)
+        } else if (step.pages !== undefined) {
+            if (!Array.isArray(step.pages) || step.pages.length === 0) throw new Error("pages is a list of page steps")
+            step.pages.forEach(function(e, i) {
+                if (e === null || typeof e !== "object" || Array.isArray(e)) throw new Error("pages[" + i + "] is not an object")
+                pageActions(e, out, i)
+            })
+        } else if (step.wait !== undefined) {
             if (typeof step.wait !== "number" || step.wait < 0) throw new Error("wait takes milliseconds")
             out.push(function() { return Math.max(1, step.wait) })
         } else if (step.until !== undefined) {
@@ -399,14 +408,6 @@ QtObject {
                 if (step.expect !== undefined && JSON.stringify(step.expect) !== shown)
                     throw new Error("expected " + JSON.stringify(step.expect) + ", got " + shown)
                 return 0
-            })
-        } else if (step.page !== undefined) {
-            pageActions(step, out, undefined)
-        } else if (step.pages !== undefined) {
-            if (!Array.isArray(step.pages) || step.pages.length === 0) throw new Error("pages is a list of page steps")
-            step.pages.forEach(function(e, i) {
-                if (e === null || typeof e !== "object" || Array.isArray(e)) throw new Error("pages[" + i + "] is not an object")
-                pageActions(e, out, i)
             })
         } else {
             throw new Error("unknown step " + summary(step))
