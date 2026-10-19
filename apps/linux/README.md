@@ -16,12 +16,15 @@ Environment the shell sets for itself: QSG_RENDER_LOOP=threaded, QT_XCB_GL_INTEG
 ANIBEAM_THEMES_DIR and ANIBEAM_MPV_CONF point a dev run at the checkout's themes/ and mpv.conf.
 
 `shoot.sh` and `drive.sh` build into one shared target dir instead of the checkout's own `target/`:
-`scripts/target-dir.sh` points `CARGO_TARGET_DIR` at the main checkout's `target/`, so a fresh worktree
-reuses the dependency build instead of starting cold (logged cold builds ran 99 s median, 518 s worst).
-A `CARGO_TARGET_DIR` already in the environment wins. The tradeoff: builds from different checkouts
-queue on one cargo lock, and `target/debug/anibeam` is whichever checkout built last, so an
-`ANIBEAM_NO_BUILD=1` capture shows that checkout's code, not yours. Release builds and `bench.sh` stay
-per checkout, so a worktree never replaces the binary the launcher starts.
+`scripts/target-dir.sh` points `CARGO_TARGET_DIR` at the main checkout's `target/` (when that is an
+AniBeam checkout), so a fresh worktree reuses the dependency build instead of starting cold (logged
+cold builds ran 99 s median, 518 s worst). A `CARGO_TARGET_DIR` already in the environment wins.
+Right after each build the scripts copy the binary to the checkout's own
+`target/debug/anibeam-staged` and run that copy, so a capture always runs this checkout's last build
+even when another worktree links the shared `debug/anibeam` meanwhile. `ANIBEAM_NO_BUILD=1` skips the
+build and reuses that staged copy. The tradeoff: builds from different checkouts queue on one cargo
+lock. Release builds and `bench.sh` stay per checkout, so a worktree never replaces the binary the
+launcher starts.
 
 `--props '<json>'` hands a shot page its props (Main.qml parses it and passes it to `nav.replace`),
 for a page that needs more than a bare name to draw anything real: `--page series` with no `id` in
