@@ -95,6 +95,7 @@ FocusScope {
         Shell.setCursorHidden(false)
         flushVolume()
         close("Stopped")
+        // The page going away is the one release keepAwake cannot see
         Player.setKeepAwake(false)
         // The page is the only thing that ever publishes; leaving it leaves nothing playing.
         Player.mprisUpdate("Stopped", "", "", "", 0, false, false)
@@ -530,11 +531,13 @@ FocusScope {
         publishNowPlaying()
     }
 
-    // ---- Display sleep: mpv's own rule, a hold while playing and none while paused, ended or
-    // gone. The render API has no window to take it, so the page asks. Only this page's player
-    // counts; the seek preview in the chrome is another core and never reaches this. A frame
-    // step dips through unpaused, so it releases like the pause it is.
-    readonly property bool keepAwake: loaded && !paused && !ended && !closed && !stepping
+    // ---- Display sleep: mpv's own rule, a hold while playing and none while paused. The
+    // render API has no window to take it, so the page asks. keep-open pauses at the end of
+    // the file, so the end needs no term of its own, and a rewind and play after it holds
+    // again. Only this page's player counts; the seek preview in the chrome is another core
+    // and never reaches this. A frame step dips through unpaused, so it releases like the
+    // pause it is. Leaving the page releases in onDestruction.
+    readonly property bool keepAwake: loaded && !paused && !stepping
     onKeepAwakeChanged: Player.setKeepAwake(keepAwake)
 
     // ---- MPRIS: the two now-playing lines out, one command signal in. The show name is the
