@@ -19,6 +19,30 @@ use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
 pub const APP_ID: &str = "com.marcusrosado.AniBeam";
 pub const MAIN_QML: &str = "qrc:/qt/qml/com/marcusrosado/AniBeam/qml/Main.qml";
 
+/// Debug builds only: ANIBEAM_QML_DIR=qml (relative to where it runs; shoot.sh and drive.sh make
+/// it absolute) loads the QML from disk, so a QML-only edit shows up on the next run with no
+/// cargo build. A directory without Main.qml is almost certainly a mistyped or wrongly
+/// relative path, so it warns and keeps the compiled QML instead of claiming a disk load.
+#[cfg(debug_assertions)]
+fn install_dev_qml_dir(
+    mut engine: std::pin::Pin<&mut QQmlApplicationEngine>,
+) -> std::pin::Pin<&mut QQmlApplicationEngine> {
+    let Some(dir) = std::env::var_os("ANIBEAM_QML_DIR") else {
+        return engine;
+    };
+    let dir = std::path::Path::new(&dir);
+    if !dir.join("Main.qml").is_file() {
+        eprintln!(
+            "anibeam: ANIBEAM_QML_DIR={} has no Main.qml; using the compiled QML",
+            dir.display()
+        );
+        return engine;
+    }
+    eprintln!("anibeam: loading QML from {}", dir.display());
+    bridge::helpers::ffi::install_qml_dir(engine.as_mut(), &QString::from(&*dir.to_string_lossy()));
+    engine
+}
+
 fn main() {
     let argv: Vec<String> = std::env::args().collect();
     let args = match args::parse(&argv) {
@@ -116,15 +140,9 @@ fn main() {
     bridge::helpers::ffi::set_desktop_file_name(&QString::from(APP_ID));
 
     let mut engine = QQmlApplicationEngine::new();
-    if let Some(mut engine) = engine.as_mut() {
-        // Debug builds only: ANIBEAM_QML_DIR=apps/linux/qml loads the QML from disk, so a
-        // QML-only edit shows up on the next run with no cargo build.
+    if let Some(engine) = engine.as_mut() {
         #[cfg(debug_assertions)]
-        if let Some(dir) = std::env::var_os("ANIBEAM_QML_DIR") {
-            let dir = dir.to_string_lossy();
-            eprintln!("anibeam: loading QML from {dir}");
-            bridge::helpers::ffi::install_qml_dir(engine.as_mut(), &QString::from(&*dir));
-        }
+        let engine = install_dev_qml_dir(engine);
         engine.load(&QUrl::from(MAIN_QML));
     }
     // The engine goes first: dropping it destroys the Door, which drops the event

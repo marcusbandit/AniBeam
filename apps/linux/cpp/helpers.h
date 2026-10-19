@@ -5,7 +5,8 @@
 #include <QtCore/QObject>
 #include <QtCore/QString>
 #include <QtGui/QColor>
-#include <QtQml/QQmlApplicationEngine>
+
+class QQmlApplicationEngine;
 
 void use_opengl_scene_graph();
 void set_desktop_file_name(const QString &name);
