@@ -22,7 +22,13 @@
 //   {"log": "text"}
 //   {"eval": "js", "expect": <json>, "as": "k"}                in Main.qml's scope; the
 //                                                              result is vars.k to later evals
-//   {"page": "name", "props": {...}}
+//   {"page": "name", "props": {...}}                           opens the page; with "shot" it waits
+//                                                              for the page to be built, lets it
+//                                                              settle ("settle": ms, default 300),
+//                                                              and grabs <out>/<shot>.png; "until": "js"
+//                                                              adds a readiness condition on top
+//   {"pages": [{"page": "name", "props": {...}, "shot": "file"}, ...]}
+//                                                              the same, for each entry in turn
 // An objectName target is the first visible item with that name, depth first from the
 // window's content item, which holds the Controls overlay and so every open Popup too.
 import QtQuick
@@ -118,6 +124,7 @@ QtObject {
     // the item it reads may not exist yet). Only the raw result is kept per poll; it is
     // formatted when the timeout message needs it, or to compare with "expect".
     function probe(w) {
+        if (w.check) return w.check(w)
         var r
         try { r = evaluate(w.src, vars); w.threw = undefined } catch (e) { w.threw = e.message || String(e); return false }
         w.last = r
@@ -134,7 +141,7 @@ QtObject {
             pump()
         } else if (Date.now() >= w.deadline) {
             poller.stop(); waiting = null
-            fail("step " + w.n + ": until timed out after " + w.timeout + " ms: " + w.src + " (last: " + (w.threw !== undefined ? "threw " + w.threw : show(w.last)) + ")")
+            fail("step " + w.n + ": " + (w.what || "until") + " timed out after " + w.timeout + " ms: " + w.src + " (last: " + (w.threw !== undefined ? "threw " + w.threw : show(w.last)) + ")")
         }
     }
 
@@ -244,6 +251,63 @@ QtObject {
         }
     }
 
+    // Grabs the window to <out>/<name>.png, and carries on from the callback.
+    function shotAction(name) {
+        if (typeof name !== "string" || name === "" || name.indexOf("/") >= 0)
+            throw new Error("shot takes a bare file name")
+        var file = outDir + "/" + name + ".png"
+        var n0 = at
+        return function() {
+            var ok = hostWindow.contentItem.grabToImage(function(result) {
+                if (!result.saveToFile(file)) { fail("step " + n0 + ": cannot write " + file); return }
+                log("DRIVE SHOT: " + file)
+                driver.pump()
+            })
+            if (!ok) throw new Error("grabToImage refused")
+            return -1
+        }
+    }
+
+    // A page step: opens the page. With "shot" or "until" it then waits for the page to be
+    // built (the frame shows this page and a new page item stands in it) and for the
+    // optional condition, settles, and grabs, so one run can capture a set of pages.
+    function pageActions(step, out) {
+        if (typeof step.page !== "string" || step.page === "") throw new Error("page takes a page name")
+        var props = step.props || {}, n0 = at, prev = null
+        var limit = step.timeout === undefined ? 15000 : step.timeout
+        if (typeof limit !== "number" || limit <= 0) throw new Error("timeout takes milliseconds")
+        var waits = step.shot !== undefined || step.until !== undefined
+        if (step.until !== undefined && (typeof step.until !== "string" || step.until === ""))
+            throw new Error("until takes a JS condition")
+        out.push(function() {
+            if (!hostFrame.item || !hostFrame.item.go) throw new Error("no frame to navigate")
+            prev = hostFrame.item.pageItem
+            hostFrame.item.go(step.page, props, undefined)
+            return waits ? 0 : settle * 4
+        })
+        if (!waits) return
+        out.push(function() {
+            var w = { what: "page " + step.page, src: step.until || "page built", timeout: limit, n: n0,
+                      started: Date.now(), deadline: Date.now() + limit, last: undefined, threw: undefined,
+                      check: function(w) {
+                          var f = hostFrame.item
+                          if (!f || !f.nav || f.nav.current.page !== step.page || !f.pageItem || f.pageItem === prev) {
+                              w.threw = "page not built yet"; return false
+                          }
+                          if (step.until === undefined) return true
+                          var r
+                          try { r = evaluate(step.until, vars) } catch (e) { w.threw = e.message || String(e); return false }
+                          w.last = r
+                          return !!r
+                      } }
+            if (probe(w)) return 0
+            driver.waiting = w; poller.start()
+            return -1
+        })
+        out.push(function() { return step.settle === undefined ? 300 : step.settle })
+        if (step.shot !== undefined) out.push(shotAction(step.shot))
+    }
+
     function expand(step) {
         if (step === null || typeof step !== "object" || Array.isArray(step)) throw new Error("a step is an object")
         var out = [], b
@@ -315,16 +379,7 @@ QtObject {
         } else if (step.shot !== undefined) {
             if (typeof step.shot !== "string" || step.shot === "" || step.shot.indexOf("/") >= 0)
                 throw new Error("shot takes a bare file name")
-            var file = outDir + "/" + step.shot + ".png"
-            out.push(function() {
-                var ok = hostWindow.contentItem.grabToImage(function(result) {
-                    if (!result.saveToFile(file)) { fail("step " + at + ": cannot write " + file); return }
-                    log("DRIVE SHOT: " + file)
-                    driver.pump()
-                })
-                if (!ok) throw new Error("grabToImage refused")
-                return -1
-            })
+            out.push(shotAction(step.shot))
         } else if (step.log !== undefined) {
             // the step line above is the marker
         } else if (step.eval !== undefined) {
@@ -338,10 +393,12 @@ QtObject {
                 return 0
             })
         } else if (step.page !== undefined) {
-            out.push(function() {
-                if (!hostFrame.item || !hostFrame.item.go) throw new Error("no frame to navigate")
-                hostFrame.item.go(String(step.page), step.props || {}, undefined)
-                return settle * 4
+            pageActions(step, out)
+        } else if (step.pages !== undefined) {
+            if (!Array.isArray(step.pages) || step.pages.length === 0) throw new Error("pages is a list of page steps")
+            step.pages.forEach(function(e) {
+                if (e === null || typeof e !== "object" || Array.isArray(e)) throw new Error("a pages entry is an object")
+                pageActions(e, out)
             })
         } else {
             throw new Error("unknown step " + summary(step))

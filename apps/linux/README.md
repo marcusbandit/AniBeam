@@ -92,3 +92,20 @@ and on `drawerPanel.open === false && drawerPanel.visible === false` to see it g
 An `until` is a readiness check, not an assertion that something stays put: where a script waits
 to prove nothing happens (a tip that must not show, a click that must not close a panel), keep
 the `wait`.
+
+To capture a set of pages, drive them in one run instead of calling `shoot.sh` once per page: each
+`shoot.sh` pays a full app start plus its own settle delay, and a drive run pays them once. A `page`
+step with a `shot` opens the page, waits until the frame shows it and a new page item stands in it,
+settles 300 ms (`"settle": ms` changes that), and grabs `<name>.png`. `"until": "js"` adds a
+readiness condition for a page whose data arrives late, and `"timeout"` bounds the wait (15000 ms
+unless set). `"pages"` takes a list of such steps:
+
+    {"pages": [
+      {"page": "library", "shot": "set-library"},
+      {"page": "series", "props": {"id": 1}, "shot": "set-series"},
+      {"page": "settings", "shot": "set-settings"}
+    ]}
+
+`scripts/drive/capture-pages.json` is that, ready to copy and edit:
+
+    scripts/drive.sh scripts/drive/capture-pages.json     # one PNG per page in captures/
