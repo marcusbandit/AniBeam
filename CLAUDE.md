@@ -8,6 +8,7 @@ AniBeam browses, plays and tracks a local anime library: it scans configured fol
 
 - **Never commit work directly on `main`.** All work happens on branches (`feat/...`, `fix/...`, `docs/...`), merged back when done.
 - **Merge only working code.** `cargo test --workspace` and clippy must pass before a merge; `main` must always build.
+- Keep branches focused, one feature or fix each, and delete them after merging.
 - Commit messages follow the existing `type(scope): summary` style (`feat(core): ...`, `fix(shell): ...`).
 
 ## Commands
@@ -38,8 +39,10 @@ A Cargo workspace with three members:
 
 ### Cross-cutting constraints
 
-- **Rate limiting**: every AniList, MAL and Jikan call goes through the shared limiter in `core/src/net/limiter.rs`. Never call those APIs around it.
+- **Rate limiting**: every provider call (AniList, MAL, Jikan, TVmaze, AniSkip and the rest of `core/src/net/`) goes through the shared limiter in `core/src/net/limiter.rs`. Never call a provider around it.
 - **The activity log is signal-only**: log state changes, never per-asset, per-candidate or per-browse chatter.
+- **Franchise closure**: `core/src/franchise/closure.rs` draws CHARACTER and OTHER edges but never walks them, so a crossover cameo (Isekai Quartet) cannot glue unrelated franchises together. Cross-franchise hops are pointers, not embedded copies.
+- **Scores keep their source's scale**: `average_score` is stored as the provider gave it and normalised at read time. Don't convert it on write.
 - **No polling the library**: the watcher plus a catch-up scan at launch, no intervals or periodic rescans.
 - **One window, play on when hidden**: never a second window or an external mpv process, never auto-pause when the window is hidden.
 - **App behaviour is self-contained**: no Hyprland windowrules, hyprctl or other compositor coupling.

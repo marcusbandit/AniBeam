@@ -28,6 +28,8 @@ dist-ssr
 # Build output
 out/
 
+# Local data, settings and spike build output. Tracked JSON is force-added
+# (git add -f), such as apps/linux/scripts/drive/*.json.
 *.json
 
 /target/

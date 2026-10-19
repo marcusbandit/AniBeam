@@ -23,8 +23,6 @@ sudo pacman -S qt6-base qt6-declarative qt6-svg mpv mpvqt
 Rename it to `anibeam`, put it on your PATH and run it. For a launcher entry, copy
 `apps/linux/com.marcusrosado.AniBeam.desktop` into `~/.local/share/applications/`.
 
-The `AniBeam-linux-x64-*.zip` on the same release is the legacy Electron app.
-
 There is no package yet. An AUR package, an AppImage and a Mac dmg are in progress on the
 `feat/release-pipeline` branch.
 
@@ -104,7 +102,7 @@ Appendix A of `docs/superpowers/specs/2026-09-04-native-line-design.md` describe
 ## Development
 
 The Rust core lives in `core/`, the Qt shell in `apps/linux/`, and a terminal shell over the
-same core in `apps/cli/`. Cargo builds all three, not Bun.
+same core in `apps/cli/`. Cargo builds all three.
 
 ```bash
 cargo build --release -p anibeam-cli   # target/release/anibeam-cli
@@ -133,12 +131,16 @@ anibeam-cli list --tab all --sort alpha --direction asc
 ## Releasing
 
 Nothing builds a release on `main` yet. The native `anibeam` binary is built locally and
-attached by hand, as it was for v2.0.0:
+attached by hand, as it was for v2.0.0. Bump `version` in the root `Cargo.toml` and merge
+that first, then tag the merged commit before building, so `git describe` stamps the
+binary with the tag:
 
 ```bash
+git switch main && git pull
+git tag v2.1.0 && git push origin v2.1.0
 cargo build --release -p anibeam
 cp target/release/anibeam /tmp/anibeam-2.1.0
-gh release create v2.1.0 --generate-notes /tmp/anibeam-2.1.0
+gh release create v2.1.0 --verify-tag --generate-notes /tmp/anibeam-2.1.0
 ```
 
 The tag-driven workflows for the AppImage, the dmg and the AUR package are on the
