@@ -1,5 +1,6 @@
 // Hover text for one item. The tip itself is drawn by the frame in its overlay after a
-// 600 ms hover intent, so it is never clipped by the item's own parent.
+// 600 ms hover intent, so it is never clipped by the item's own parent. Once a tip has
+// shown, the next item's comes at once (the frame's tipWarm), the way desktop tips do.
 //
 // A HoverHandler on the item it describes, not a MouseArea over it. A hovering MouseArea
 // takes the hover from every sibling under it, so a button's own MouseArea declared before
@@ -35,7 +36,12 @@ Item {
     HoverHandler {
         id: hh
         parent: root.target
-        onHoveredChanged: if (hovered) { if (root.text !== "") intent.restart() } else root.hide()
+        onHoveredChanged: {
+            if (!hovered) { root.hide(); return }
+            if (root.text === "") return
+            if (root.host && root.host.tipWarm && root.host.tipWarm()) intent.trigger()
+            else intent.restart()
+        }
     }
     onTextChanged: if (hh.hovered && text === "") hide()
     // A tip already up when a popover opens (a click on the hovered button) goes
@@ -46,6 +52,7 @@ Item {
     Timer {
         id: intent
         interval: 600
+        function trigger() { stop(); triggered() }
         onTriggered: if (hh.hovered && root.host && root.text !== "" && !root.popoverUp()) root.host.showTip(root.target, root.text)
     }
 }

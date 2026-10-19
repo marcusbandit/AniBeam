@@ -189,8 +189,35 @@ Item {
     function pickSuggestion(row) {
         if (!row) return
         page.suggestClosed = true
-        if (row.lib) page.openGet(page.showFromCard(row.lib))
-        else page.openGet(page.showFromHit(row.ani))
+        if (row.lib) page.openGet(page.showFromCard(row.lib, page.query))
+        else page.openGet(page.showFromHit(row.ani, page.query))
+    }
+
+    // ---- Which name a show goes by here. The one that was typed, when it is one of its
+    // names (search "Kino no Tabi" with the app in English and Kino no Tabi is what shows);
+    // otherwise the app's title language. Releases are searched by the romaji name, which is
+    // what release files carry, and by its other names when that finds nothing.
+    function norm(t) { return String(t || "").toLowerCase().replace(/[^a-z0-9\u00c0-\uffff]+/g, " ").trim() }
+    function namesOfHit(h) { return [h.romaji, h.english, h.title].concat(h.synonyms || []).filter(function(n) { return !!n }) }
+    function namesOfCard(c) { var t = c.titles || {}; return [t.romaji, t.english, c.title, t.native].filter(function(n) { return !!n }) }
+    function preferredOfHit(h) {
+        var english = (Door.preferences.title_language || "Romaji") === "English"
+        return english ? (h.english || h.romaji || h.title) : (h.romaji || h.title || h.english)
+    }
+    function typedName(names, typed) {
+        var q = page.norm(typed)
+        if (q.length < 2) return ""
+        for (var i = 0; i < names.length; i++) if (page.norm(names[i]) === q) return names[i]
+        for (var j = 0; j < names.length; j++) { var n = page.norm(names[j]); if (n.indexOf(q) === 0 || (q.length >= 4 && n.indexOf(q) >= 0)) return names[j] }
+        return ""
+    }
+    function nameOfHit(h, typed) { return page.typedName(page.namesOfHit(h), typed) || page.preferredOfHit(h) }
+    function nameOfCard(c, typed) { return page.typedName(page.namesOfCard(c), typed) || c.title }
+    // The release queries, best first: the romaji, then whatever else it is called
+    function queriesOf(names, first) {
+        var out = [], seen = {}
+        ;[first].concat(names).forEach(function(n) { var k = page.norm(n); if (n && k && !seen[k]) { seen[k] = true; out.push(String(n)) } })
+        return out
     }
 
     // ---- The show view: a show, its providers' releases, the plan
@@ -220,14 +247,16 @@ Item {
             return want.indexOf(k) >= 0 || want.indexOf(c) >= 0
         })
     }
-    function showFromCard(c) {
+    function showFromCard(c, typed) {
         var t = c.titles || {}
-        return { title: c.title, query: t.romaji || c.title, poster: c.poster || "", cubes: c.cubes || "", total: c.total_episodes || 0,
+        var queries = page.queriesOf(page.namesOfCard(c), t.romaji || c.title)
+        return { title: page.nameOfCard(c, typed || ""), query: queries[0], queries: queries, poster: c.poster || "", cubes: c.cubes || "", total: c.total_episodes || 0,
                  seriesId: c.id, status: c.status || "", format: c.format || "", year: c.year || 0, nextAiring: c.next_airing || null,
                  airing: c.status === "Releasing" || !!c.next_airing, folderName: page.lastPart(c.path) }
     }
-    function showFromHit(h) {
-        return { title: h.title, query: h.title, poster: h.cover_url || "", cubes: h.episodes ? "g".repeat(Math.min(h.episodes, 400)) : "", total: h.episodes || 0,
+    function showFromHit(h, typed) {
+        var queries = page.queriesOf(page.namesOfHit(h), h.romaji || h.title)
+        return { title: page.nameOfHit(h, typed || ""), query: queries[0], queries: queries, poster: h.cover_url || "", cubes: h.episodes ? "g".repeat(Math.min(h.episodes, 400)) : "", total: h.episodes || 0,
                  seriesId: -1, status: "", format: h.format || "", year: h.year || 0, nextAiring: null, airing: false, folderName: "" }
     }
     function showFromLink(s) {
@@ -280,10 +309,15 @@ Item {
         page.getActive = name
         var have = page.getResults[name]
         if (have && (have.state === "done" || have.state === "searching")) return
-        var r = Door.searchReleases(page.getShow.query, name)
+        page.searchGetAs(name, 0)
+    }
+    // One provider's search by the show's `at`th name; an empty answer moves on to the next
+    function searchGetAs(name, at) {
+        var qs = page.getShow.queries || [page.getShow.query]
+        var r = Door.searchReleases(qs[at], name)
         if (r.error) { page.setResult(name, { state: "error", error: page.errorWords(r.error) }); return }
         var j = Object.assign({}, page.getJobs); j[r.reply.job] = name; page.getJobs = j
-        page.setResult(name, { state: "searching", label: "", elapsed: 0, start: Date.now() })
+        page.setResult(name, { state: "searching", label: at > 0 ? "Trying " + qs[at] : "", elapsed: 0, start: Date.now(), at: at })
     }
     Timer {
         interval: 500; repeat: true
@@ -890,8 +924,35 @@ Item {
     }
     function control(hash, action) {
         var r = Door.controlTorrents([hash], action, false)
-        if (r.error) frame.toast(page.errorWords(r.error))
+        if (r.error) { frame.toast(page.errorWords(r.error)); return }
+        // The client takes a moment: the button spins until a read shows the change
+        var p = Object.assign({}, page.pending); p[hash] = { action: action, at: Date.now() }; page.pending = p
+        Door.listTorrents()
     }
+    // ---- Torrent actions on their way: hash -> { action, at }, cleared by the read that
+    // shows them done, or after 20 s so a button never spins forever
+    property var pending: ({})
+    function stoppedNow(t) { var st = String(t.state || ""); return st.indexOf("paused") === 0 || st.indexOf("stopped") === 0 }
+    function landed(action, t) {
+        if (action === "Stop") return page.stoppedNow(t)
+        if (action === "Start") return !page.stoppedNow(t)
+        if (action === "Sequential" || action === "Unsequential") return !!t.seq_dl === (action === "Sequential")
+        if (action === "FirstLast" || action === "UnFirstLast") return !!t.f_l_piece_prio === (action === "FirstLast")
+        return true
+    }
+    function settlePending() {
+        var keys = Object.keys(page.pending)
+        if (!keys.length) return
+        var by = {}
+        for (var i = 0; i < page.torrents.length; i++) by[page.torrents[i].hash] = page.torrents[i]
+        var p = {}, now = Date.now()
+        keys.forEach(function(h) { var e = page.pending[h], t = by[h]; if (t && now - e.at < 20000 && !page.landed(e.action, t)) p[h] = e })
+        page.pending = p
+    }
+    // What a torrent's buttons wait on: "Stop", "Start", "Cancel" (its removal is queued or
+    // running), or nothing
+    function busyOf(hash) { return page.pending[hash] ? page.pending[hash].action : page.isRemoving("t:" + hash) ? "Cancel" : "" }
+    Timer { interval: 700; repeat: true; running: Object.keys(page.pending).length > 0 && page.visible; onTriggered: Door.listTorrents() }
 
     // ---- Removals: one sheet asks, a queue runs them one at a time
     function sumSize(list) { var n = 0; for (var i = 0; i < list.length; i++) n += list[i].size || 0; return n }
@@ -1094,6 +1155,9 @@ Item {
                 var j = Object.assign({}, page.getJobs); delete j[job]; page.getJobs = j
                 // A fallback answered from another endpoint: none of it is this provider's
                 var own = search.endpoint === name
+                var tried = page.getResults[name] ? page.getResults[name].at || 0 : 0
+                var qs = page.getShow ? page.getShow.queries || [] : []
+                if ((!own || !search.items.length) && tried + 1 < qs.length) { page.searchGetAs(name, tried + 1); return }
                 page.setResult(name, { state: "done", items: own ? search.items : [], facts: own ? search.facts : [], query: search.query, search: search })
                 return
             }
@@ -1176,6 +1240,7 @@ Item {
             page.transfer = transfer
             page.torrentsRead = true
             page.torrentsError = ""
+            page.settlePending()
         }
         function onFeedRead(url, entries) {
             if (!page.feed || page.feed.url !== url) return
@@ -1274,7 +1339,9 @@ Item {
         shows: page.shows
         connected: page.torrentOn
         clientName: page.clientName
+        busyOf: function(hash) { return page.busyOf(hash) }
         onCancelTorrent: function(anchor, t) { page.askCancelTorrent(anchor, t) }
+        onControl: function(hash, action) { page.control(hash, action) }
         onOpenShow: function(t) { page.openFromTorrent(t) }
     }
     Rectangle { visible: activity.visible; anchors.right: activity.left; anchors.top: parent.top; anchors.bottom: parent.bottom; width: 1; color: theme.line }
@@ -1431,7 +1498,7 @@ Item {
                             anchors.rightMargin: theme.space(5)
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: theme.space(1)
-                            Label { width: parent.width; text: srow.c ? srow.c.title : srow.h.title; role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 }); elide: Text.ElideRight }
+                            Label { width: parent.width; text: srow.c ? page.nameOfCard(srow.c, page.query) : page.nameOfHit(srow.h, page.query); role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 }); elide: Text.ElideRight }
                             Label {
                                 width: parent.width
                                 text: {
@@ -1879,6 +1946,7 @@ Item {
                 width: scroll.innerWidth
                 show: page.getShow
                 torrents: page.torrentsOfShow(page.getShow)
+                busyOf: function(hash) { return page.busyOf(hash) }
                 endpoints: page.endpoints
                 results: page.getResults
                 active: page.getActive

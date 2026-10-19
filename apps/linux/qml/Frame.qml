@@ -428,7 +428,11 @@ FocusScope {
               : Math.max(theme.space(2), top - tip.height - theme.space(1))
         tip.visible = true
     }
-    function hideTip() { tip.visible = false; tipArea = null }
+    function hideTip() { if (tip.visible) tipWarmUntil = Date.now() + 1500; tip.visible = false; tipArea = null }
+    // Someone who waited for one tip is reading tips: for a moment after one goes, the next
+    // item's tip comes at once instead of after the hover intent
+    property real tipWarmUntil: 0
+    function tipWarm() { return tip.visible || Date.now() < tipWarmUntil }
     function toast(text, seconds) { toastText.text = text; toastBox.visible = true; toastTimer.interval = (seconds || 4) * 1000; toastTimer.restart() }
 
     // ---- The removal sheet: every removal on the downloads page asks through it

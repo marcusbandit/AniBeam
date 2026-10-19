@@ -16,6 +16,9 @@ Item {
     property string clientName: "qBittorrent"
     signal openShow(var torrent)
     signal cancelTorrent(Item anchor, var torrent)
+    signal control(string hash, string action)
+    // What a torrent's buttons wait on ("Stop", "Start", "Cancel", or ""), from the page
+    property var busyOf: function(hash) { return "" }
 
     // Moving or waiting to: not finished, not stopped; broken ones stay so they get seen
     function moving(t) {
@@ -171,19 +174,35 @@ Item {
         Rectangle { anchors.fill: parent; radius: theme.radiusMd; color: lineMouse.containsMouse ? theme.glassFloat : "transparent" }
         MouseArea { id: lineMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.openShow(line.t) }
         HoverHandler { id: lineHover }
-        // Cancel: the torrent goes, and what it wrote so far (asked first)
-        Button {
-            id: cancel
-            objectName: "activity-cancel"
+        // Stop or start, and cancel (the torrent goes, and what it wrote so far, asked
+        // first); each spins until the client has done it
+        readonly property string waiting: root.busyOf(t.hash)
+        Column {
+            id: actions
             visible: !line.done
             anchors.right: parent.right
             anchors.rightMargin: theme.space(1)
             anchors.verticalCenter: parent.verticalCenter
-            small: true; flat: true
-            icon: "x"
-            opacity: lineHover.hovered ? 1 : 0.6
-            onClicked: root.cancelTorrent(cancel, line.t)
-            Tooltip { text: "Cancel this download" }
+            spacing: theme.space(1.5)
+            Button {
+                id: toggle
+                objectName: "activity-toggle"
+                readonly property bool stopped: root.stopped(line.t)
+                icon: stopped ? "play" : "pause"
+                primary: stopped && !busy
+                busy: line.waiting === "Stop" || line.waiting === "Start"
+                onClicked: root.control(line.t.hash, stopped ? "Start" : "Stop")
+                Tooltip { text: toggle.busy ? (line.waiting === "Stop" ? "Stopping" : "Starting") : toggle.stopped ? "Start downloading" : "Stop downloading; what it has stays" }
+            }
+            Button {
+                id: cancel
+                objectName: "activity-cancel"
+                icon: "x"
+                danger: true
+                busy: line.waiting === "Cancel"
+                onClicked: root.cancelTorrent(cancel, line.t)
+                Tooltip { text: cancel.busy ? "Cancelling" : "Cancel this download" }
+            }
         }
         Corner {
             id: thumb
@@ -208,7 +227,7 @@ Item {
             id: info
             anchors.left: thumb.right
             anchors.leftMargin: theme.space(3)
-            anchors.right: cancel.visible ? cancel.left : parent.right
+            anchors.right: actions.visible ? actions.left : parent.right
             anchors.rightMargin: theme.space(2)
             anchors.verticalCenter: parent.verticalCenter
             spacing: theme.space(1.25)

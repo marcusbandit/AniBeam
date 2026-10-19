@@ -39,6 +39,8 @@ Item {
     signal getAndFollow(var plan)
     // Stop, start or reorder a torrent of this show; the page runs it (Door.controlTorrents)
     signal control(string hash, string action)
+    // What a torrent's buttons wait on ("Stop", "Start", "Cancel", or ""), from the page
+    property var busyOf: function(hash) { return "" }
     // The page asks before it cancels, and moves what the torrent wrote to the trash
     signal cancelTorrent(Item anchor, var torrent)
 
@@ -55,16 +57,21 @@ Item {
     // ---- Only the releases that name this show. A search matches a release group as well
     // as a title ("Naruto" finds Naruto-Kun.Hu's One Piece), so a release must carry at
     // least half of the show's words outside its leading [group]
+    // One word list per name the show goes by; a release passes on any of them
     readonly property var showWords: {
-        var q = show ? String(show.query || show.title || "") : ""
+        if (!show) return []
+        var names = show.queries && show.queries.length ? show.queries : [show.query || show.title || ""]
         var stop = { the: 1, and: 1, season: 1, part: 1, movie: 1 }
-        return q.toLowerCase().split(/[^a-z0-9]+/).filter(function(w) { return w.length >= 3 && !stop[w] })
+        return names.map(function(q) { return String(q).toLowerCase().split(/[^a-z0-9]+/).filter(function(w) { return w.length >= 3 && !stop[w] }) })
+                    .filter(function(ws) { return ws.length > 0 })
     }
     function namesShow(title) {
         if (!showWords.length) return true
         var t = " " + String(title || "").toLowerCase().replace(/^\s*\[[^\]]*\]/, "").replace(/[^a-z0-9]+/g, " ") + " "
-        var hit = showWords.filter(function(w) { return t.indexOf(" " + w + " ") >= 0 || t.indexOf(" " + w) >= 0 }).length
-        return hit >= Math.ceil(showWords.length / 2)
+        return showWords.some(function(ws) {
+            var hit = ws.filter(function(w) { return t.indexOf(" " + w) >= 0 }).length
+            return hit >= Math.ceil(ws.length / 2)
+        })
     }
     function ofShow(r) {
         if (!r || !r.items) return r
@@ -991,8 +998,10 @@ Item {
                     spacing: theme.space(2)
                     Button {
                         objectName: "get-torrent-toggle"
-                        small: true
-                        text: card.stopped ? "Start" : "Stop"
+                        readonly property string waiting: root.busyOf(card.t.hash)
+                        busy: waiting === "Stop" || waiting === "Start"
+                        primary: card.stopped && !busy
+                        text: waiting === "Stop" ? "Stopping" : waiting === "Start" ? "Starting" : card.stopped ? "Start" : "Stop"
                         icon: card.stopped ? "play" : "pause"
                         onClicked: root.control(card.t.hash, card.stopped ? "Start" : "Stop")
                         Tooltip { text: card.stopped ? "Start downloading again" : "Stop downloading; what it has stays" }
@@ -1000,9 +1009,9 @@ Item {
                     Button {
                         id: cancelButton
                         objectName: "get-torrent-cancel"
-                        small: true
-                        flat: true
-                        text: "Cancel"
+                        danger: true
+                        busy: root.busyOf(card.t.hash) === "Cancel"
+                        text: busy ? "Cancelling" : "Cancel"
                         icon: "x"
                         onClicked: root.cancelTorrent(cancelButton, card.t)
                         Tooltip { text: "Cancel this download and move what it wrote to the trash" }

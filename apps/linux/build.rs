@@ -187,6 +187,7 @@ fn main() {
         "assets/icons/list-filter.svg",
         "assets/icons/list-video.svg",
         "assets/icons/list.svg",
+        "assets/icons/loader-circle.svg",
         "assets/icons/log-in.svg",
         "assets/icons/log-out.svg",
         "assets/icons/maximize.svg",

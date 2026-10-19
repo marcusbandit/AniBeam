@@ -194,7 +194,7 @@ Item {
         id: hoverer
         cursorShape: Qt.PointingHandCursor
         onHoveredChanged: {
-            if (hovered && root.folderName !== "") tipIntent.start()
+            if (hovered && root.folderName !== "") { tipIntent.interval = frame.tipWarm() ? 1 : 600; tipIntent.restart() }
             else { tipIntent.stop(); frame.hideTip() }
         }
     }

@@ -16,6 +16,9 @@ Corner {
     property bool primary: false
     property bool ghost: false
     property bool small: false
+    // Waiting on what the click asked for: the glyph turns into a spinning loader and
+    // further clicks are ignored until it is cleared
+    property bool busy: false
     // False for a button that must never hold the keyboard: the player's, where a focused
     // button would swallow Space and Return before the page's own keys see them, and Tab
     // would walk a focus ring through the island.
@@ -55,9 +58,10 @@ Corner {
     borderWidth: activeFocus ? 2 : 1
     highlight: !flat && !primary && !danger && !ghost ? theme.glassHighlight : "transparent"
 
-    Keys.onSpacePressed: clicked()
-    Keys.onReturnPressed: clicked()
-    Keys.onEnterPressed: clicked()
+    Keys.onSpacePressed: if (!busy) clicked()
+    Keys.onReturnPressed: if (!busy) clicked()
+    Keys.onEnterPressed: if (!busy) clicked()
+    onBusyChanged: if (!busy) glyphIcon.rotation = 0
 
     // Ink on a primary: the ground, or white when the tint is dark enough to need it
     readonly property color ink: danger ? theme.red
@@ -69,11 +73,13 @@ Corner {
         anchors.centerIn: parent
         spacing: theme.space(1.5)
         Icon {
-            visible: root.icon !== ""
+            id: glyphIcon
+            visible: root.icon !== "" || root.busy
             anchors.verticalCenter: parent.verticalCenter
-            glyph: root.icon
+            glyph: root.busy ? "loader-circle" : root.icon
             color: root.ink
             size: theme.space(root.small ? 3.5 : 4.5)
+            RotationAnimation on rotation { running: root.busy; from: 0; to: 360; duration: 900; loops: Animation.Infinite }
         }
         Label {
             id: label
@@ -93,6 +99,6 @@ Corner {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: { if (root.takesFocus) root.forceActiveFocus(); root.clicked() }
+        onClicked: { if (root.busy) return; if (root.takesFocus) root.forceActiveFocus(); root.clicked() }
     }
 }

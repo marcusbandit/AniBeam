@@ -314,6 +314,14 @@ pub struct SearchResult {
     pub year: Option<u32>,
     pub episodes: Option<u32>,
     pub cover_url: Option<String>,
+    /// Every name the provider knows the show by, so the shell can show
+    /// the one that was searched for and search releases by another.
+    #[serde(default)]
+    pub romaji: Option<String>,
+    #[serde(default)]
+    pub english: Option<String>,
+    #[serde(default)]
+    pub synonyms: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
