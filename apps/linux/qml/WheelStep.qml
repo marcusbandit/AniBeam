@@ -11,19 +11,22 @@ WheelHandler {
     required property Flickable flick
     readonly property real notch: 100
     function bound(y) { return Math.max(0, Math.min(y, Math.max(0, flick.contentHeight - flick.height))) }
+    // Where the content is headed: the end of a glide under way, or where it is
+    readonly property real target: glide.running ? glide.to : flick.contentY
     // The keys scroll through here too, so a key and a notch add to the same target
     function scrollTo(y) {
         flick.cancelFlick()
         glide.to = bound(y)
         glide.restart()
     }
-    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-    acceptedPointerTypes: PointerDevice.AllPointerTypes
+    acceptedDevices: PointerDevice.AllDevices
     onWheel: function(ev) {
         // Qt's Wayland plugin calls a mouse wheel a touchpad, so the phase is what tells them
-        // apart: a finger on a touchpad comes as a begin, update, end run, a notch with none
-        if (ev.phase === Qt.NoScrollPhase && ev.angleDelta.y !== 0) {
-            scrollTo((glide.running ? glide.to : flick.contentY) - ev.angleDelta.y / 120 * notch)
+        // apart: a finger on a touchpad comes as a begin, update, end run, a notch with none.
+        // A notch is its angle, 120 a notch, or failing that libinput's 15 px a notch.
+        if (ev.phase === Qt.NoScrollPhase && (ev.angleDelta.y !== 0 || ev.pixelDelta.y !== 0)) {
+            var notches = ev.angleDelta.y !== 0 ? ev.angleDelta.y / 120 : ev.pixelDelta.y / 15
+            scrollTo(target - notches * notch)
         } else {
             glide.stop()
             flick.cancelFlick()
@@ -40,5 +43,8 @@ WheelHandler {
     property Connections dragHook: Connections {
         target: root.flick
         function onMovementStarted() { root.glide.stop() }
+        // A page that grows or shrinks under a glide moves its end back inside the content
+        function onContentHeightChanged() { if (root.glide.running && root.glide.to !== root.bound(root.glide.to)) root.scrollTo(root.glide.to) }
+        function onHeightChanged() { onContentHeightChanged() }
     }
 }

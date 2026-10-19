@@ -178,7 +178,8 @@ void drive_wheel(QObject *window, double x, double y, int dx, int dy, int modifi
     const QPointF local(x, y);
     // Shaped like a notch from Qt's Wayland plugin, which is what the shell runs on: a device
     // typed as a touchpad, libinput's 15 px beside the 120 angle, and no phase
-    static QPointingDevice wayland(QStringLiteral("drive wheel"), 1, QInputDevice::DeviceType::TouchPad,
+    // The id is one no platform hands out, so it never stands in for the real core pointer
+    static QPointingDevice wayland(QStringLiteral("drive wheel"), 0x7d17e, QInputDevice::DeviceType::TouchPad,
                                    QPointingDevice::PointerType::Generic,
                                    QInputDevice::Capability::Position | QInputDevice::Capability::Scroll |
                                        QInputDevice::Capability::PixelScroll,

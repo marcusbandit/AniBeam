@@ -26,6 +26,7 @@ Flickable {
     // The arrow keys scroll through the wheel's target, so they glide the same way and a
     // notch or a drag takes over
     function scrollTo(y) { wheel.scrollTo(y) }
+    readonly property real scrollTarget: wheel.target
     GridKeys { id: gridKeys; flick: root }
     function keyPressed(event) { gridKeys.handle(event, root.Window.window ? root.Window.window.activeFocusItem : null) }
     Keys.onPressed: function(event) { root.keyPressed(event) }

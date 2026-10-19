@@ -77,10 +77,12 @@ QtObject {
     function reveal(it) {
         var r = rectOf(it)
         var top = r.y - margin, bottom = r.y + r.h + margin
-        var y = flick.contentY
+        // Measured from where a glide under way will end, not from where it is now
+        var at = flick.scrollTarget !== undefined ? flick.scrollTarget : flick.contentY
+        var y = at
         if (top < y) y = top
         else if (bottom > y + flick.height) y = bottom - flick.height
-        if (y !== flick.contentY) flick.scrollTo(y)
+        if (y !== at) flick.scrollTo(y)
     }
     function go(it) {
         if (!it) return false
