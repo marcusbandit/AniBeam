@@ -223,7 +223,11 @@ palette:
     fn every_shipped_theme_parses() {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("themes");
         let all = load_dir(&dir);
-        assert_eq!(all.len(), 35, "thirty built-ins plus Diablo, the lobby pair and the tesserae pair");
+        assert_eq!(
+            all.len(),
+            35,
+            "thirty built-ins plus Diablo, the lobby pair and the tesserae pair"
+        );
         assert!(
             all.iter()
                 .any(|t| t.stem() == "anibeam-dark" && t.mode() == Mode::Dark)
@@ -233,10 +237,25 @@ palette:
                 .any(|t| t.stem() == "anibeam-light" && t.mode() == Mode::Light)
         );
         assert!(all.iter().any(|t| t.stem() == "kanagawa-dragon"));
-        assert!(all.iter().any(|t| t.stem() == "diablo-dark" && t.mode() == Mode::Dark));
-        assert!(all.iter().any(|t| t.stem() == "lobby-dark" && t.mode() == Mode::Dark));
-        assert!(all.iter().any(|t| t.stem() == "lobby-light" && t.mode() == Mode::Light));
-        assert!(all.iter().any(|t| t.stem() == "tesserae-dark" && t.mode() == Mode::Dark));
-        assert!(all.iter().any(|t| t.stem() == "tesserae-light" && t.mode() == Mode::Light));
+        assert!(
+            all.iter()
+                .any(|t| t.stem() == "diablo-dark" && t.mode() == Mode::Dark)
+        );
+        assert!(
+            all.iter()
+                .any(|t| t.stem() == "lobby-dark" && t.mode() == Mode::Dark)
+        );
+        assert!(
+            all.iter()
+                .any(|t| t.stem() == "lobby-light" && t.mode() == Mode::Light)
+        );
+        assert!(
+            all.iter()
+                .any(|t| t.stem() == "tesserae-dark" && t.mode() == Mode::Dark)
+        );
+        assert!(
+            all.iter()
+                .any(|t| t.stem() == "tesserae-light" && t.mode() == Mode::Light)
+        );
     }
 }

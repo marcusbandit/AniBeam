@@ -33,7 +33,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use rusqlite::{params, params_from_iter, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 
 use crate::contract::*;
 use crate::core::Core;
@@ -547,12 +547,14 @@ mod tests {
         assert_eq!(pick(query, SeriesKind::Show, &tie).unwrap().0.id, 4);
 
         // Nothing clears the bar.
-        assert!(pick(
-            query,
-            SeriesKind::Show,
-            &[media(6, "nothing like it", true)]
-        )
-        .is_none());
+        assert!(
+            pick(
+                query,
+                SeriesKind::Show,
+                &[media(6, "nothing like it", true)]
+            )
+            .is_none()
+        );
         assert!(pick(query, SeriesKind::Show, &[]).is_none());
     }
 
@@ -696,29 +698,35 @@ mod tests {
     fn the_suntory_short_never_auto_matches() {
         let one_minute = suntory_short("SPECIAL", Some(1));
         assert!(is_short(&one_minute));
-        assert!(pick(
-            "Kimi no Na wa",
-            SeriesKind::Movie,
-            std::slice::from_ref(&one_minute)
-        )
-        .is_none());
-        assert!(pick(
-            "Kimi no Na wa",
-            SeriesKind::Show,
-            std::slice::from_ref(&one_minute)
-        )
-        .is_none());
+        assert!(
+            pick(
+                "Kimi no Na wa",
+                SeriesKind::Movie,
+                std::slice::from_ref(&one_minute)
+            )
+            .is_none()
+        );
+        assert!(
+            pick(
+                "Kimi no Na wa",
+                SeriesKind::Show,
+                std::slice::from_ref(&one_minute)
+            )
+            .is_none()
+        );
 
         let mut music = media(3, "Kimi no Na wa", true);
         music.format = Some("MUSIC".into());
         music.duration = Some(30);
         assert!(is_short(&music));
-        assert!(pick(
-            "Kimi no Na wa",
-            SeriesKind::Show,
-            std::slice::from_ref(&music)
-        )
-        .is_none());
+        assert!(
+            pick(
+                "Kimi no Na wa",
+                SeriesKind::Show,
+                std::slice::from_ref(&music)
+            )
+            .is_none()
+        );
 
         // Five minutes is not a short; an unknown duration is not either.
         let mut five = media(4, "Kimi no Na wa", true);

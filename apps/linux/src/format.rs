@@ -239,7 +239,10 @@ mod tests {
 
     #[test]
     fn an_untitled_episode_is_named_by_its_number() {
-        assert_eq!(episode_name(Some("Hitagi Crab, Part 1"), 1.0), "Hitagi Crab, Part 1");
+        assert_eq!(
+            episode_name(Some("Hitagi Crab, Part 1"), 1.0),
+            "Hitagi Crab, Part 1"
+        );
         assert_eq!(episode_name(None, 13.0), "Episode 13");
         assert_eq!(episode_name(Some("  "), 13.0), "Episode 13");
         assert_eq!(episode_name(None, 12.5), "Episode 12.5");

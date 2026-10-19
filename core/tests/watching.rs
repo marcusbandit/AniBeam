@@ -181,13 +181,20 @@ fn the_page_paints_the_cache_and_the_refresh_fills_it_behind() {
     let (cached, again) = watching(&core);
     assert_eq!(cached.entries, list.entries);
     assert!(cached.fetched_at.is_some());
-    assert_eq!(again, None, "nothing is running and the read starts nothing");
+    assert_eq!(
+        again, None,
+        "nothing is running and the read starts nothing"
+    );
     assert_eq!(
         refresh(&core, false),
         None,
         "a list fetched just now is fresh"
     );
-    assert_eq!(http.requests().len(), asked, "so AniList is not asked again");
+    assert_eq!(
+        http.requests().len(),
+        asked,
+        "so AniList is not asked again"
+    );
 
     // Two of the three watched entries: the third is owned and hidden, and
     // the completed one was never on this page at all.

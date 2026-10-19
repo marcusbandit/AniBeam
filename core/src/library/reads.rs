@@ -65,7 +65,10 @@ pub(crate) struct KeptLoad {
 const KEEP_FOR: std::time::Duration = std::time::Duration::from_secs(30);
 
 fn load_all(core: &Core) -> Result<Loaded, CoreError> {
-    if !core.snapshot_cache.load(std::sync::atomic::Ordering::Relaxed) {
+    if !core
+        .snapshot_cache
+        .load(std::sync::atomic::Ordering::Relaxed)
+    {
         return load_fresh(core);
     }
     // Read before the load, so a change that lands during it leaves the
