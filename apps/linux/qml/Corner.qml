@@ -145,11 +145,16 @@ Item {
                 readonly property real dpr: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
                 textureSize: shape.image || !root.fillItem ? Qt.size(1, 1) : Qt.size(Math.ceil(root.fillItem.width * dpr), Math.ceil(root.fillItem.height * dpr))
             }
-            // The fill texture's size in its own units, and the transform that lays it over
-            // this shape's box the way the fill item itself would draw (the fill item is laid
-            // out at this shape's size and origin)
-            readonly property real tw: image ? root.fillItem.implicitWidth : layer.textureSize.width
-            readonly property real th: image ? root.fillItem.implicitHeight : layer.textureSize.height
+            // The fill texture's size in item units, and the transform that lays it over this
+            // shape's box the way the fill item itself would draw (the fill item is laid out
+            // at this shape's size and origin). The texture is decoded in device pixels, but
+            // ShapePath lays it down in item units, one texture pixel per 1/dpr of an item
+            // unit, so the size the transform works from is the pixel size over the pixel
+            // ratio. Without the division a Retina display draws the poster at 1/dpr size and
+            // smears its edge pixels over the rest of the card.
+            readonly property real dpr: Screen.devicePixelRatio > 0 ? Screen.devicePixelRatio : 1
+            readonly property real tw: (image ? root.fillItem.implicitWidth : layer.textureSize.width) / dpr
+            readonly property real th: (image ? root.fillItem.implicitHeight : layer.textureSize.height) / dpr
             readonly property bool stretch: !image || root.fillItem.fillMode === Image.Stretch
             readonly property real sx: tw > 0 ? (stretch ? root.width / tw : Math.max(root.width / tw, root.height / th)) : 1
             readonly property real sy: th > 0 ? (stretch ? root.height / th : sx) : 1
