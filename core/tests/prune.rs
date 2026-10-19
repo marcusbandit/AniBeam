@@ -29,6 +29,7 @@ fn remote(prune: bool) -> DownloadSettings {
     DownloadSettings {
         anirss_mode: AnirssMode::Remote,
         anirss_command: "anirss".to_string(),
+        jackett_command: String::new(),
         anirss_url: "http://anirss.test".to_string(),
         has_anirss_token: false,
         torrent_client: TorrentClient::Qbittorrent,

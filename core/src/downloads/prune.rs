@@ -282,6 +282,7 @@ mod tests {
             next_airing: None,
             complete: false,
             missing: Vec::new(),
+            cubes: String::new(),
         }
     }
 
