@@ -310,7 +310,7 @@ fn a_refresh_that_learns_the_series_ended_writes_the_status() {
     let now = time::now_secs();
     let work = core
         .store()
-        .read(|conn| Ok(anibeam_core::metadata::airing::candidates(conn, now)?))
+        .read(|conn| anibeam_core::metadata::airing::candidates(conn, now))
         .unwrap();
     assert!(work.is_empty(), "{work:?}");
 
