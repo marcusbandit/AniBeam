@@ -86,7 +86,9 @@ impl QbtClient {
 
     /// The files inside one torrent, in qBittorrent's order.
     pub async fn files(&self, hash: &str) -> Result<Vec<TorrentFile>, CoreError> {
-        let r = self.call(&format!("torrents/files?hash={hash}"), None).await?;
+        let r = self
+            .call(&format!("torrents/files?hash={hash}"), None)
+            .await?;
         let v: Value = r.json()?;
         Ok(v.as_array()
             .map(|a| {
@@ -188,18 +190,17 @@ impl QbtClient {
     /// current setting is read first and the toggle pressed for the torrents
     /// that differ; asking for what is already so changes nothing.
     pub async fn set_sequential(&self, hashes: &[String], on: bool) -> Result<(), CoreError> {
-        self.set_flag("torrents/toggleSequentialDownload", hashes, on, |t| t.seq_dl)
-            .await
+        self.set_flag("torrents/toggleSequentialDownload", hashes, on, |t| {
+            t.seq_dl
+        })
+        .await
     }
 
     /// First and last pieces first on or off, set the same way.
     pub async fn set_first_last(&self, hashes: &[String], on: bool) -> Result<(), CoreError> {
-        self.set_flag(
-            "torrents/toggleFirstLastPiecePrio",
-            hashes,
-            on,
-            |t| t.f_l_piece_prio,
-        )
+        self.set_flag("torrents/toggleFirstLastPiecePrio", hashes, on, |t| {
+            t.f_l_piece_prio
+        })
         .await
     }
 
@@ -589,8 +590,10 @@ mod tests {
 
     #[test]
     fn a_torrent_reads_its_order_flags_and_tracker() {
-        let t = torrent(&json!({"hash": "h", "seq_dl": true, "f_l_piece_prio": false,
-                                "tracker": "http://nyaa.tracker.wf:7777/announce"}));
+        let t = torrent(
+            &json!({"hash": "h", "seq_dl": true, "f_l_piece_prio": false,
+                                "tracker": "http://nyaa.tracker.wf:7777/announce"}),
+        );
         assert!(t.seq_dl);
         assert!(!t.f_l_piece_prio);
         assert_eq!(t.tracker, "nyaa.tracker.wf");
@@ -622,30 +625,54 @@ mod tests {
     #[tokio::test]
     async fn sequential_already_so_sends_no_toggle() {
         let http = Arc::new(FakeHttp::new());
-        http.push_for("torrents/info", 200, json!([{"hash": "aa", "seq_dl": true}]).to_string());
-        client(&http).set_sequential(&["aa".into()], true).await.unwrap();
+        http.push_for(
+            "torrents/info",
+            200,
+            json!([{"hash": "aa", "seq_dl": true}]).to_string(),
+        );
+        client(&http)
+            .set_sequential(&["aa".into()], true)
+            .await
+            .unwrap();
         assert_eq!(http.requests().len(), 1, "only the read");
         // And a torrent the client does not know is left alone
         let http = Arc::new(FakeHttp::new());
         http.push_for("torrents/info", 200, "[]");
-        client(&http).set_sequential(&["zz".into()], false).await.unwrap();
+        client(&http)
+            .set_sequential(&["zz".into()], false)
+            .await
+            .unwrap();
         assert_eq!(http.requests().len(), 1);
     }
 
     #[tokio::test]
     async fn first_last_pieces_toggle_their_own_route() {
         let http = Arc::new(FakeHttp::new());
-        http.push_for("torrents/info", 200, json!([{"hash": "aa", "f_l_piece_prio": false}]).to_string());
+        http.push_for(
+            "torrents/info",
+            200,
+            json!([{"hash": "aa", "f_l_piece_prio": false}]).to_string(),
+        );
         http.push_for("torrents/toggleFirstLastPiecePrio", 200, "");
-        client(&http).set_first_last(&["aa".into()], true).await.unwrap();
-        assert!(http.requests()[1].url.ends_with("torrents/toggleFirstLastPiecePrio"));
+        client(&http)
+            .set_first_last(&["aa".into()], true)
+            .await
+            .unwrap();
+        assert!(
+            http.requests()[1]
+                .url
+                .ends_with("torrents/toggleFirstLastPiecePrio")
+        );
     }
 
     #[tokio::test]
     async fn file_priority_names_the_files_by_index() {
         let http = Arc::new(FakeHttp::new());
         http.push_for("torrents/filePrio", 200, "");
-        client(&http).set_file_priority("aa", &[0, 3], 0).await.unwrap();
+        client(&http)
+            .set_file_priority("aa", &[0, 3], 0)
+            .await
+            .unwrap();
         let sent = http.requests();
         assert!(matches!(&sent[0].body, Some(Body::Form(f))
             if f.contains(&("id".to_string(), "0|3".to_string())) && f.contains(&("priority".to_string(), "0".to_string()))));

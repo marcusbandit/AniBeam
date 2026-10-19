@@ -1129,7 +1129,7 @@ mod tests {
     fn cancelling_takes_a_torrent_only_when_every_episode_it_fetches_is_replaced() {
         let mut t = torrent("h", "[G] Show (01-03)", 0);
         t.progress = 0.3;
-        let files = vec![
+        let files = [
             file("S/e01.mkv", 1.0, 1),
             file("S/[G] Show - 02.mkv", 0.2, 1),
             file("S/[G] Show - 03.mkv", 0.0, 0),

@@ -73,7 +73,10 @@ fn load_all(core: &Core) -> Result<Loaded, CoreError> {
 }
 
 fn load_kept(core: &Core) -> Result<Loaded, CoreError> {
-    if !core.snapshot_cache.load(std::sync::atomic::Ordering::Relaxed) {
+    if !core
+        .snapshot_cache
+        .load(std::sync::atomic::Ordering::Relaxed)
+    {
         return load_fresh(core);
     }
     // Read before the load, so a change that lands during it leaves the

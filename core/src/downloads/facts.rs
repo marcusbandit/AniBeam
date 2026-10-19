@@ -194,7 +194,10 @@ mod tests {
 
     #[test]
     fn a_season_then_a_dashed_episode_is_one_episode() {
-        let f = read(&release("[Naruto-Kun.Hu] Black Clover S2 - 03 [1080p].mkv", ""));
+        let f = read(&release(
+            "[Naruto-Kun.Hu] Black Clover S2 - 03 [1080p].mkv",
+            "",
+        ));
         assert_eq!((f.episode, f.batch), (Some(3.0), false));
     }
 

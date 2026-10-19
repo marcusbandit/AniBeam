@@ -13,8 +13,12 @@ use crate::net::{Http, HttpRequest, Method};
 /// The files a `.torrent` lists, path and size; empty when the bytes are
 /// not a torrent.
 pub fn files_of(bytes: &[u8]) -> Vec<(String, u64)> {
-    let Some((root, _)) = parse(bytes, 0) else { return Vec::new() };
-    let Some(info) = root.get(b"info") else { return Vec::new() };
+    let Some((root, _)) = parse(bytes, 0) else {
+        return Vec::new();
+    };
+    let Some(info) = root.get(b"info") else {
+        return Vec::new();
+    };
     let name = info.get(b"name").and_then(Value::text).unwrap_or_default();
     match info.get(b"files").and_then(Value::list) {
         Some(files) => files
@@ -28,7 +32,11 @@ pub fn files_of(bytes: &[u8]) -> Vec<(String, u64)> {
             .collect(),
         None => {
             let size = info.get(b"length").and_then(Value::int).unwrap_or(0).max(0) as u64;
-            if name.is_empty() { Vec::new() } else { vec![(name, size)] }
+            if name.is_empty() {
+                Vec::new()
+            } else {
+                vec![(name, size)]
+            }
         }
     }
 }
@@ -59,7 +67,10 @@ pub fn episodes_of(files: &[(String, u64)]) -> Vec<u32> {
             infomkv: String::new(),
             linktype: String::new(),
         });
-        if let Some(n) = facts.episode.filter(|n| n.is_finite() && *n >= 1.0 && n.fract() == 0.0) {
+        if let Some(n) = facts
+            .episode
+            .filter(|n| n.is_finite() && *n >= 1.0 && n.fract() == 0.0)
+        {
             out.insert(n as u32);
         }
     }
@@ -189,7 +200,12 @@ mod tests {
             .iter()
             .map(|f| format!("d6:lengthi100e4:pathl{}ee", bstr(f)))
             .collect();
-        format!("d8:announce{}4:infod5:filesl{list}e4:name{}12:piece lengthi16384eee", bstr("http://t"), bstr(name)).into_bytes()
+        format!(
+            "d8:announce{}4:infod5:filesl{list}e4:name{}12:piece lengthi16384eee",
+            bstr("http://t"),
+            bstr(name)
+        )
+        .into_bytes()
     }
 
     #[test]
@@ -212,10 +228,20 @@ mod tests {
 
     #[test]
     fn three_digit_episodes_and_a_single_file() {
-        let t = torrent("Naruto", &["Naruto - 001.mkv", "Naruto - 219.mkv", "Naruto - 220.mkv"]);
+        let t = torrent(
+            "Naruto",
+            &["Naruto - 001.mkv", "Naruto - 219.mkv", "Naruto - 220.mkv"],
+        );
         assert_eq!(episodes_of(&files_of(&t)), vec![1, 219, 220]);
-        let single = format!("d4:infod6:lengthi5e4:name{}ee", bstr("[G] Film - 07 [720p].mkv")).into_bytes();
-        assert_eq!(files_of(&single), vec![("[G] Film - 07 [720p].mkv".to_string(), 5)]);
+        let single = format!(
+            "d4:infod6:lengthi5e4:name{}ee",
+            bstr("[G] Film - 07 [720p].mkv")
+        )
+        .into_bytes();
+        assert_eq!(
+            files_of(&single),
+            vec![("[G] Film - 07 [720p].mkv".to_string(), 5)]
+        );
     }
 
     #[test]

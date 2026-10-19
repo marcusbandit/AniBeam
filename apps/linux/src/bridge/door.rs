@@ -18,9 +18,9 @@ use std::time::Instant;
 
 use anibeam_core::events::Subscription;
 use anibeam_core::{
-    Call, Chapter, CloseReason, CoreError, Direction, DownloadOptions, DownloadSettings, Event, EventBody,
-    EventListener, FeedSort, JobPhase, Level, MatchTarget, MetadataFilter, Preferences, Provider,
-    RefineOp, Release, Sort, SubscriptionsResult, SubtitleChoice, SubtitleDefaults, Tab,
+    Call, Chapter, CloseReason, CoreError, Direction, DownloadOptions, DownloadSettings, Event,
+    EventBody, EventListener, FeedSort, JobPhase, Level, MatchTarget, MetadataFilter, Preferences,
+    Provider, RefineOp, Release, Sort, SubscriptionsResult, SubtitleChoice, SubtitleDefaults, Tab,
     TorrentAction, TrackRef, Tracker,
 };
 use cxx_qt::{CxxQtType, Threading};

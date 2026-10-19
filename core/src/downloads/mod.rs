@@ -600,8 +600,11 @@ pub fn search(core: &Core, query: String, endpoint: Option<String>) -> Result<u6
             let work = async {
                 let client = ensure_client(&owner).await?;
                 let listed = owner.downloads.state().endpoints.clone();
-                let target = endpoint.clone().or_else(|| listed.first().map(|e| e.name.clone()));
-                let fallback = guard_search(owner.http.as_ref(), &listed, target.as_deref()).await?;
+                let target = endpoint
+                    .clone()
+                    .or_else(|| listed.first().map(|e| e.name.clone()));
+                let fallback =
+                    guard_search(owner.http.as_ref(), &listed, target.as_deref()).await?;
                 phase.store(PHASE_FETCHING, Ordering::Relaxed);
                 let raw = client.search(&query, target.as_deref(), fallback).await?;
                 phase.store(PHASE_READING, Ordering::Relaxed);
@@ -1406,7 +1409,11 @@ pub fn list_torrents(core: &Core) -> Result<Reply, CoreError> {
                     st.torrent.connected = true;
                     st.torrent.message.clear();
                     st.torrents_at = Some(std::time::Instant::now());
-                    let due = due_for_announcing(&mut st.announced, &downloading, std::time::Instant::now());
+                    let due = due_for_announcing(
+                        &mut st.announced,
+                        &downloading,
+                        std::time::Instant::now(),
+                    );
                     st.downloading = downloading;
                     due
                 };
@@ -1418,13 +1425,24 @@ pub fn list_torrents(core: &Core) -> Result<Reply, CoreError> {
                 if !moved.is_empty() {
                     let images = owner.paths.images_dir();
                     if let Ok(mut cards) = owner.store.read(|c| {
-                        let snap = crate::library::snapshot::Snapshot::load(c, &images, crate::time::now(), Some(&moved))?;
-                        Ok(moved.iter().filter_map(|id| snap.card(*id)).collect::<Vec<SeriesCard>>())
+                        let snap = crate::library::snapshot::Snapshot::load(
+                            c,
+                            &images,
+                            crate::time::now(),
+                            Some(&moved),
+                        )?;
+                        Ok(moved
+                            .iter()
+                            .filter_map(|id| snap.card(*id))
+                            .collect::<Vec<SeriesCard>>())
                     }) {
                         overlay(&owner, &mut cards);
                         owner.bus.debug(
                             Stage::Downloads,
-                            format!("{} downloading changed", plural(cards.len() as u64, "series", "series")),
+                            format!(
+                                "{} downloading changed",
+                                plural(cards.len() as u64, "series", "series")
+                            ),
                             EventBody::SeriesChanged { series: cards },
                         );
                     }
@@ -1485,7 +1503,11 @@ fn downloading_of(torrents: &[Torrent]) -> HashMap<u64, Downloading> {
         let Some(id) = t.series_id else { continue };
         let whole = |n: f64| (n.is_finite() && n >= 1.0 && n.fract() == 0.0).then_some(n as u32);
         let eps: Vec<(u32, f64)> = if t.files.is_empty() {
-            t.episode.and_then(whole).map(|n| (n, t.progress)).into_iter().collect()
+            t.episode
+                .and_then(whole)
+                .map(|n| (n, t.progress))
+                .into_iter()
+                .collect()
         } else {
             t.files
                 .iter()
@@ -1494,7 +1516,11 @@ fn downloading_of(torrents: &[Torrent]) -> HashMap<u64, Downloading> {
                 .collect()
         };
         for (n, progress) in eps {
-            let progress = if progress.is_finite() { progress.clamp(0.0, 1.0) } else { 0.0 };
+            let progress = if progress.is_finite() {
+                progress.clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
             let at = out.entry(id).or_default().entry(n).or_insert(progress);
             *at = at.max(progress);
         }
@@ -1521,11 +1547,16 @@ fn due_for_announcing(
         kept
     });
     for (id, eps) in now_downloading {
-        let pct: BTreeMap<u32, u8> = eps.iter().map(|(n, p)| (*n, (p * 100.0).floor() as u8)).collect();
+        let pct: BTreeMap<u32, u8> = eps
+            .iter()
+            .map(|(n, p)| (*n, (p * 100.0).floor() as u8))
+            .collect();
         let go = match announced.get(id) {
             None => true,
             Some((_, last)) if last.keys().ne(pct.keys()) => true,
-            Some((sent, last)) => *last != pct && at.saturating_duration_since(*sent) >= PROGRESS_EVERY,
+            Some((sent, last)) => {
+                *last != pct && at.saturating_duration_since(*sent) >= PROGRESS_EVERY
+            }
         };
         if go {
             announced.insert(*id, (at, pct));
@@ -1538,7 +1569,12 @@ fn due_for_announcing(
 /// Lays the downloading episodes over a cube row: an episode a torrent is
 /// still writing is `t`, not on disk, whatever the scan found. Watched
 /// episodes keep their mark. Returns how many on-disk cubes it turned.
-fn overlay_cubes(core: &Core, id: u64, cubes: &mut String, known: Option<&HashMap<u64, Downloading>>) -> u64 {
+fn overlay_cubes(
+    core: &Core,
+    id: u64,
+    cubes: &mut String,
+    known: Option<&HashMap<u64, Downloading>>,
+) -> u64 {
     let st;
     let map = match known {
         Some(m) => m,
@@ -1581,11 +1617,18 @@ pub fn overlay(core: &Core, cards: &mut [SeriesCard]) {
             let turned = overlay_cubes(core, card.id, &mut card.cubes, Some(&st.downloading));
             card.episodes_on_disk = card.episodes_on_disk.saturating_sub(turned);
             card.downloading = st.downloading.get(&card.id).map_or_else(Vec::new, |eps| {
-                eps.iter().map(|(n, p)| EpisodeDownload { number: *n, progress: *p }).collect()
+                eps.iter()
+                    .map(|(n, p)| EpisodeDownload {
+                        number: *n,
+                        progress: *p,
+                    })
+                    .collect()
             });
         }
         !st.downloading.is_empty()
-            && st.torrents_at.is_none_or(|at| at.elapsed() > std::time::Duration::from_secs(10))
+            && st
+                .torrents_at
+                .is_none_or(|at| at.elapsed() > std::time::Duration::from_secs(10))
     };
     if stale {
         core.downloads.state().torrents_at = Some(std::time::Instant::now());
@@ -1599,7 +1642,12 @@ pub fn episode_progress(core: &Core, series: u64, number: f64) -> Option<f64> {
     if !(number >= 1.0 && number.fract() == 0.0) {
         return None;
     }
-    core.downloads.state().downloading.get(&series)?.get(&(number as u32)).copied()
+    core.downloads
+        .state()
+        .downloading
+        .get(&series)?
+        .get(&(number as u32))
+        .copied()
 }
 
 /// A series' detail with what is still downloading laid over it: the card as
@@ -1623,7 +1671,11 @@ fn mark_downloading(detail: &mut SeriesDetail) {
             .find(|d| f64::from(d.number) == n)
             .map(|d| d.progress)
     };
-    let marks: Vec<Option<f64>> = detail.episodes.iter().map(|e| progress_of(e.number)).collect();
+    let marks: Vec<Option<f64>> = detail
+        .episodes
+        .iter()
+        .map(|e| progress_of(e.number))
+        .collect();
     for (e, m) in detail.episodes.iter_mut().zip(&marks) {
         e.downloading = *m;
         if m.is_some() {
@@ -1631,7 +1683,9 @@ fn mark_downloading(detail: &mut SeriesDetail) {
         }
     }
     let Some(next) = detail.next_up else { return };
-    let Some(at) = detail.episodes.iter().position(|e| e.file == next) else { return };
+    let Some(at) = detail.episodes.iter().position(|e| e.file == next) else {
+        return;
+    };
     if marks[at].is_none() {
         return;
     }
@@ -1664,8 +1718,15 @@ pub fn inspect_release(core: &Core, link: String) -> Result<Reply, CoreError> {
         };
         owner.bus.debug(
             Stage::Downloads,
-            format!("{} in a release", plural(episodes.len() as u64, "episode", "episodes")),
-            EventBody::ReleaseInspected { link, episodes, files },
+            format!(
+                "{} in a release",
+                plural(episodes.len() as u64, "episode", "episodes")
+            ),
+            EventBody::ReleaseInspected {
+                link,
+                episodes,
+                files,
+            },
         );
     });
     Ok(Reply::Ok)
@@ -2036,9 +2097,24 @@ mod tests {
         t.series_id = Some(7);
         t.progress = 0.4;
         t.files = vec![
-            file(&format!("{dir}/[Erai-raws] Kino no Tabi The Beautiful World - The Animated Series - 01 [1080p][Multiple Subtitle].mkv"), 1.0),
-            file(&format!("{dir}/[Erai-raws] Kino no Tabi The Beautiful World - The Animated Series - 02 [1080p][Multiple Subtitle].mkv"), 0.3),
-            file(&format!("{dir}/[Erai-raws] Kino no Tabi The Beautiful World - The Animated Series - 03 [1080p][Multiple Subtitle].mkv"), 0.0),
+            file(
+                &format!(
+                    "{dir}/[Erai-raws] Kino no Tabi The Beautiful World - The Animated Series - 01 [1080p][Multiple Subtitle].mkv"
+                ),
+                1.0,
+            ),
+            file(
+                &format!(
+                    "{dir}/[Erai-raws] Kino no Tabi The Beautiful World - The Animated Series - 02 [1080p][Multiple Subtitle].mkv"
+                ),
+                0.3,
+            ),
+            file(
+                &format!(
+                    "{dir}/[Erai-raws] Kino no Tabi The Beautiful World - The Animated Series - 03 [1080p][Multiple Subtitle].mkv"
+                ),
+                0.0,
+            ),
         ];
         assert_eq!(t.files[1].episode, Some(2.0));
         let map = downloading_of(&[t]);
@@ -2046,7 +2122,10 @@ mod tests {
         let mut cubes = "dddgw".to_string();
         let eps: Downloading = [2, 3, 5, 9].into_iter().map(|n| (n, 0.5)).collect();
         assert_eq!(lay(&eps, &mut cubes), 2);
-        assert_eq!(cubes, "dttgw", "a watched cube keeps its mark, one past the row is ignored");
+        assert_eq!(
+            cubes, "dttgw",
+            "a watched cube keeps its mark, one past the row is ignored"
+        );
     }
 
     #[test]
@@ -2061,26 +2140,50 @@ mod tests {
         done.episode = Some(7.0);
         done.progress = 1.0;
         let map = downloading_of(&[t, twin, done]);
-        assert_eq!(map[&4], Downloading::from([(6, 0.5)]), "the further torrent counts, a finished one does not");
+        assert_eq!(
+            map[&4],
+            Downloading::from([(6, 0.5)]),
+            "the further torrent counts, a finished one does not"
+        );
     }
 
     #[test]
     fn announcing_follows_the_set_at_once_and_progress_every_ten_seconds() {
         let t0 = std::time::Instant::now();
         let mut sent = HashMap::new();
-        let at = |eps: &[(u32, f64)]| HashMap::from([(1u64, eps.iter().copied().collect::<Downloading>())]);
-        assert_eq!(due_for_announcing(&mut sent, &at(&[(2, 0.10)]), t0), vec![1], "first sight");
+        let at = |eps: &[(u32, f64)]| {
+            HashMap::from([(1u64, eps.iter().copied().collect::<Downloading>())])
+        };
+        assert_eq!(
+            due_for_announcing(&mut sent, &at(&[(2, 0.10)]), t0),
+            vec![1],
+            "first sight"
+        );
         let s = std::time::Duration::from_secs;
-        assert!(due_for_announcing(&mut sent, &at(&[(2, 0.12)]), t0 + s(3)).is_empty(), "too soon");
-        assert!(due_for_announcing(&mut sent, &at(&[(2, 0.109)]), t0 + s(11)).is_empty(), "the same percent");
-        assert_eq!(due_for_announcing(&mut sent, &at(&[(2, 0.20)]), t0 + s(12)), vec![1], "ten seconds on");
+        assert!(
+            due_for_announcing(&mut sent, &at(&[(2, 0.12)]), t0 + s(3)).is_empty(),
+            "too soon"
+        );
+        assert!(
+            due_for_announcing(&mut sent, &at(&[(2, 0.109)]), t0 + s(11)).is_empty(),
+            "the same percent"
+        );
+        assert_eq!(
+            due_for_announcing(&mut sent, &at(&[(2, 0.20)]), t0 + s(12)),
+            vec![1],
+            "ten seconds on"
+        );
         assert!(due_for_announcing(&mut sent, &at(&[(2, 0.30)]), t0 + s(14)).is_empty());
         assert_eq!(
             due_for_announcing(&mut sent, &at(&[(2, 0.30), (3, 0.0)]), t0 + s(14)),
             vec![1],
             "a new episode is not throttled"
         );
-        assert_eq!(due_for_announcing(&mut sent, &HashMap::new(), t0 + s(15)), vec![1], "finished");
+        assert_eq!(
+            due_for_announcing(&mut sent, &HashMap::new(), t0 + s(15)),
+            vec![1],
+            "finished"
+        );
         assert!(sent.is_empty());
     }
 
@@ -2106,7 +2209,10 @@ mod tests {
         let mut d: SeriesDetail = serde_json::from_value(json).expect("a detail");
         d.card.downloading = card_downloading
             .iter()
-            .map(|(number, progress)| EpisodeDownload { number: *number, progress: *progress })
+            .map(|(number, progress)| EpisodeDownload {
+                number: *number,
+                progress: *progress,
+            })
             .collect();
         d
     }
@@ -2117,7 +2223,11 @@ mod tests {
         mark_downloading(&mut d);
         let marks: Vec<Option<f64>> = d.episodes.iter().map(|e| e.downloading).collect();
         assert_eq!(marks, vec![None, Some(0.34), Some(0.0), None]);
-        assert_eq!(d.next_up, Some(104), "next up moves past the downloading run");
+        assert_eq!(
+            d.next_up,
+            Some(104),
+            "next up moves past the downloading run"
+        );
         assert_eq!(
             d.episodes.iter().map(|e| e.next_up).collect::<Vec<_>>(),
             vec![false, false, false, true]

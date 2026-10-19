@@ -945,7 +945,11 @@ fn a_replacing_download_is_set_in_order_and_trashes_the_old_file_only_when_the_n
     let lib = dir.path().join("lib");
     let show = lib.join("Sousou no Frieren");
     std::fs::create_dir_all(&show).unwrap();
-    let old = |n: u32| show.join(format!("[SubsPlease] Sousou no Frieren - {n:02} (1080p).mkv"));
+    let old = |n: u32| {
+        show.join(format!(
+            "[SubsPlease] Sousou no Frieren - {n:02} (1080p).mkv"
+        ))
+    };
     for n in 1..=3 {
         std::fs::write(old(n), b"x").unwrap();
     }
@@ -1025,7 +1029,10 @@ fn a_replacing_download_is_set_in_order_and_trashes_the_old_file_only_when_the_n
     assert_eq!(toggles.len(), 1, "switched on once");
     assert_eq!(form_of(&toggles[0]), format!("hashes={hash}"));
     for n in 1..=3 {
-        assert!(old(n).exists(), "episode {n} stays while the new one downloads");
+        assert!(
+            old(n).exists(),
+            "episode {n} stays while the new one downloads"
+        );
     }
 
     // Round two: finished. Only the old episode 2 goes; order is not asked again.
@@ -1039,7 +1046,10 @@ fn a_replacing_download_is_set_in_order_and_trashes_the_old_file_only_when_the_n
         Duration::from_secs(10),
     );
     assert!(!old(2).exists(), "the replaced episode went to the trash");
-    assert!(old(1).exists() && old(3).exists(), "no other episode is touched");
+    assert!(
+        old(1).exists() && old(3).exists(),
+        "no other episode is touched"
+    );
     let toggles = http
         .requests()
         .into_iter()

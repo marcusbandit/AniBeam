@@ -111,7 +111,10 @@ fn starting_an_endpoint_runs_its_command_and_names_why_it_cannot() {
 
     // The setting wins over anirss's start
     let custom = dir.path().join("custom");
-    save(&core, remote(&format!("echo setting > {}", custom.display())));
+    save(
+        &core,
+        remote(&format!("echo setting > {}", custom.display())),
+    );
     http.fail_next("refused");
     http.push(200, "ok");
     common::wait_job(&c, start(&core, "1337x"));

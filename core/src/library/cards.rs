@@ -62,7 +62,10 @@ pub fn cubes(f: &CubeFacts) -> String {
         return String::new();
     }
     let still_airing = f.next_scheduled.is_some()
-        || matches!(f.status, Some(AiringStatus::Releasing | AiringStatus::NotYetReleased | AiringStatus::Hiatus));
+        || matches!(
+            f.status,
+            Some(AiringStatus::Releasing | AiringStatus::NotYetReleased | AiringStatus::Hiatus)
+        );
     let aired = if still_airing {
         f.latest_aired
             .max(f.next_scheduled.map_or(0, |n| n.saturating_sub(1)))
@@ -686,16 +689,40 @@ mod tests {
             Some("Winter 2024".into())
         );
         // No word: the month decides, the date supplies the year.
-        assert_eq!(season_label(None, Some("2016-01-06"), None), Some("Winter 2016".into()));
-        assert_eq!(season_label(None, Some("2016-03-31"), None), Some("Winter 2016".into()));
-        assert_eq!(season_label(None, Some("2016-04-01"), None), Some("Spring 2016".into()));
-        assert_eq!(season_label(None, Some("2016-07-12"), None), Some("Summer 2016".into()));
-        assert_eq!(season_label(None, Some("2016-09-30"), None), Some("Summer 2016".into()));
-        assert_eq!(season_label(None, Some("2016-10-01"), None), Some("Fall 2016".into()));
-        assert_eq!(season_label(None, Some("2016-12-31"), None), Some("Fall 2016".into()));
+        assert_eq!(
+            season_label(None, Some("2016-01-06"), None),
+            Some("Winter 2016".into())
+        );
+        assert_eq!(
+            season_label(None, Some("2016-03-31"), None),
+            Some("Winter 2016".into())
+        );
+        assert_eq!(
+            season_label(None, Some("2016-04-01"), None),
+            Some("Spring 2016".into())
+        );
+        assert_eq!(
+            season_label(None, Some("2016-07-12"), None),
+            Some("Summer 2016".into())
+        );
+        assert_eq!(
+            season_label(None, Some("2016-09-30"), None),
+            Some("Summer 2016".into())
+        );
+        assert_eq!(
+            season_label(None, Some("2016-10-01"), None),
+            Some("Fall 2016".into())
+        );
+        assert_eq!(
+            season_label(None, Some("2016-12-31"), None),
+            Some("Fall 2016".into())
+        );
         // Without a word the date's year is the label's year even when
         // `year` disagrees: the date is the only thing that named the season.
-        assert_eq!(season_label(None, Some("2019-07-08"), Some(2020)), Some("Summer 2019".into()));
+        assert_eq!(
+            season_label(None, Some("2019-07-08"), Some(2020)),
+            Some("Summer 2019".into())
+        );
         // Nothing to derive from: a year alone, a word alone, or no date.
         assert_eq!(season_label(None, None, Some(2016)), None);
         assert_eq!(season_label(Some("FALL"), None, None), None);

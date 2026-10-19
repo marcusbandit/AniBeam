@@ -167,8 +167,8 @@ pub async fn start(
                 return Err(StartFailure::Missing(program(command)));
             }
             if !status.success() {
-                let why = last_line(log)
-                    .unwrap_or_else(|| format!("the command exited with {status}"));
+                let why =
+                    last_line(log).unwrap_or_else(|| format!("the command exited with {status}"));
                 return Err(StartFailure::Failed(why));
             }
             exited_clean = true;
@@ -224,10 +224,19 @@ mod tests {
             "[[endpoint]]\nname = \"nyaa\"\nkind = \"nyaa\"\n\n[[endpoint]]\nname = \"1337x\"\nkind = \"rss\"\nstart = \" podman pod start x \"\nready = \"http://127.0.0.1:9117/caps\"\n",
         )
         .unwrap();
-        assert_eq!(anirss_start(&cfg, None), Some("podman pod start x".to_string()));
+        assert_eq!(
+            anirss_start(&cfg, None),
+            Some("podman pod start x".to_string())
+        );
         assert_eq!(anirss_start(&cfg, Some("nyaa")), None);
-        assert_eq!(resolve_command(" my-start ", Some(&cfg), "1337x"), "my-start");
-        assert_eq!(resolve_command("", Some(&cfg), "1337x"), "podman pod start x");
+        assert_eq!(
+            resolve_command(" my-start ", Some(&cfg), "1337x"),
+            "my-start"
+        );
+        assert_eq!(
+            resolve_command("", Some(&cfg), "1337x"),
+            "podman pod start x"
+        );
         assert_eq!(resolve_command("", Some(&cfg), "nyaa"), "jackett");
         assert_eq!(resolve_command("", None, "1337x"), "jackett");
     }
@@ -262,7 +271,11 @@ mod tests {
         http.push(200, "ok");
         run(&http, "echo starting", READY, &dir).await.unwrap();
         assert_eq!(http.requests().len(), 4);
-        assert!(std::fs::read_to_string(log(&dir)).unwrap().contains("starting"));
+        assert!(
+            std::fs::read_to_string(log(&dir))
+                .unwrap()
+                .contains("starting")
+        );
     }
 
     #[tokio::test]
@@ -294,7 +307,9 @@ mod tests {
         .await;
         assert_eq!(
             r,
-            Err(StartFailure::Failed("no pod with name anirss-1337x found".to_string()))
+            Err(StartFailure::Failed(
+                "no pod with name anirss-1337x found".to_string()
+            ))
         );
     }
 
