@@ -95,6 +95,7 @@ FocusScope {
         Shell.setCursorHidden(false)
         flushVolume()
         close("Stopped")
+        Player.setKeepAwake(false)
         // The page is the only thing that ever publishes; leaving it leaves nothing playing.
         Player.mprisUpdate("Stopped", "", "", "", 0, false, false)
     }
@@ -528,6 +529,13 @@ FocusScope {
         else if (!stepGuard.running) endStepping()
         publishNowPlaying()
     }
+
+    // ---- Display sleep: mpv's own rule, a hold while playing and none while paused, ended or
+    // gone. The render API has no window to take it, so the page asks. Only this page's player
+    // counts; the seek preview in the chrome is another core and never reaches this. A frame
+    // step dips through unpaused, so it releases like the pause it is.
+    readonly property bool keepAwake: loaded && !paused && !ended && !closed && !stepping
+    onKeepAwakeChanged: Player.setKeepAwake(keepAwake)
 
     // ---- MPRIS: the two now-playing lines out, one command signal in. The show name is the
     // untranslated romaji first, because that is how the library and the trackers name a
