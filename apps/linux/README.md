@@ -92,3 +92,25 @@ and on `drawerPanel.open === false && drawerPanel.visible === false` to see it g
 An `until` is a readiness check, not an assertion that something stays put: where a script waits
 to prove nothing happens (a tip that must not show, a click that must not close a panel), keep
 the `wait`.
+
+To capture a set of pages, drive them in one run instead of calling `shoot.sh` once per page: each
+`shoot.sh` pays a full app start plus its own settle delay, and a drive run pays them once. A `page`
+step with a `shot` opens the page, waits until the frame shows it and a new page item stands in it,
+settles 300 ms (`"settle": ms` changes that), and grabs `<name>.png`. `"until": "js"` adds a
+readiness condition for a page whose data arrives late (it takes `"expect"` and `"as"` like a plain
+`until`), and `"timeout"` bounds the wait (15000 ms
+unless set). `"pages"` takes a list of such steps:
+
+    {"pages": [
+      {"page": "library", "shot": "set-library"},
+      {"page": "series", "props": {"id": 1}, "shot": "set-series"},
+      {"page": "settings", "shot": "set-settings"}
+    ]}
+
+`scripts/drive/capture-pages.json` is that, ready to copy and edit. It opens series id 1, so it
+needs an `ANIBEAM_ROOT` that holds a library with that series; against the default empty root its
+first step fails with a plain message instead of shooting an error page, and the other pages
+would only show empty states. `target/debug/anibeam-cli --root <dir> list` prints the ids, and
+`anibeam-cli --root <dir> import <export.json> --wait` seeds a root from an export file:
+
+    ANIBEAM_ROOT=<dir> scripts/drive.sh scripts/drive/capture-pages.json   # one PNG per page in captures/

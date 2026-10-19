@@ -68,8 +68,8 @@ build:
 gives the run its own bus names, so it opens beside the installed app instead
 of handing off to it and never touches its data. For a picture without a
 window, `apps/linux/scripts/shoot.sh` captures a page offscreen and
-`apps/linux/scripts/drive.sh` clicks through a script first; see
-`apps/linux/README.md`.
+`apps/linux/scripts/drive.sh` clicks through a script first, and shoots a set
+of pages in one run with a `pages` step; see `apps/linux/README.md`.
 
 ## Commit and PR titles
 

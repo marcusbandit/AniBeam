@@ -1,0 +1,11 @@
+[
+  {"log": "one run, one startup: open each page in turn and shoot it once it is built"},
+  {"eval": "!Door.getSeries(1).error", "expect": true},
+  {"pages": [
+    {"page": "library", "shot": "set-library"},
+    {"page": "series", "props": {"id": 1}, "shot": "set-series"},
+    {"page": "feed", "shot": "set-feed"},
+    {"page": "metadata", "shot": "set-metadata"},
+    {"page": "settings", "shot": "set-settings"}
+  ]}
+]
