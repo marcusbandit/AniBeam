@@ -27,18 +27,8 @@ dist-ssr
 
 # Build output
 out/
-# Vite build output
-.vite
 
-# App data
-src/data/
 *.json
-!package.json
-!tsconfig.json
-
-# Stray build/lock cruft (project uses bun.lockb, not npm)
-/main.js
-/package-lock.json
 
 /target/
 !core/tests/fixtures/**/*.json

@@ -7,7 +7,8 @@ at, matches each series against AniList (TVmaze for what AniList does not carry)
 video in the window through libmpv, and syncs watch progress with AniList and MyAnimeList.
 
 Since 2.0 it is a native app: a Qt 6 QML shell over a Rust core. Linux is the supported
-platform. The Electron app it replaced is still in the tree, frozen, until it is retired.
+platform. The Electron app it replaced was retired in October 2026; the zip on v2.0.0 is
+its last build, and the `v2.0.0` tag holds its source.
 
 ## Install
 
@@ -129,56 +130,16 @@ anibeam-cli scan --wait
 anibeam-cli list --tab all --sort alpha --direction asc
 ```
 
-### The phase 1 exit check
-
-The core is finished for phase 1 when it lists the same library the Electron
-app does. Both sides are read from a terminal:
-
-```bash
-bun scripts/electron-export.mjs ~/anibeam-export.json   # what Settings > Export writes
-bun scripts/electron-list.mjs > /tmp/electron-list.txt  # the Home grid, All tab
-```
-
-```bash
-CLI="target/release/anibeam-cli --root /tmp/anibeam-exit-check"
-$CLI import ~/anibeam-export.json --wait
-$CLI scan --wait
-$CLI call RefreshAll --wait
-$CLI list --tab all --sort alpha --direction asc | awk -F'\t' '{ print $3 }' > /tmp/native-list.txt
-diff /tmp/electron-list.txt /tmp/native-list.txt && echo "phase 1 exit: identical"
-```
-
-The import carries the matches as provider ids, so the AniList records behind
-them still have to be fetched: in the app that is the backfill the launch
-queues behind its catch-up scan, and from the terminal it is the `RefreshAll`
-above. A series whose fetch failed keeps its folder name as its title until
-the next run, so run it again if AniList was having a bad day.
-
-Both lists are the same titles in the same order when the two sides agree.
-Titles can drift apart without either side being wrong: AniList's romaji is
-edited from time to time, so an Electron entry that has not been refreshed in
-months holds an older string for the same id.
-
-## The Electron app
-
-The original Electron app still lives in `src/`, frozen: it takes fixes only, and phase 3
-of the native line deletes it in one commit. Its last release is the zip on v2.0.0. Bun
-builds it, and the `bun run verify:*` scripts in `package.json` test it, not the native
-app.
-
-```bash
-bun install
-bun run dev          # typecheck + electron-forge start with HMR
-bun run package      # typecheck + package to out/AniBeam-linux-x64/anibeam
-```
-
 ## Releasing
 
-Push a version tag. `.github/workflows/release.yml` still builds only the Electron zip and
-attaches it to a GitHub Release; the native `anibeam` binary is built locally and attached
-by hand, as it was for v2.0.0.
+Nothing builds a release on `main` yet. The native `anibeam` binary is built locally and
+attached by hand, as it was for v2.0.0:
 
 ```bash
-git tag v2.1.0
-git push origin v2.1.0
+cargo build --release -p anibeam
+cp target/release/anibeam /tmp/anibeam-2.1.0
+gh release create v2.1.0 --generate-notes /tmp/anibeam-2.1.0
 ```
+
+The tag-driven workflows for the AppImage, the dmg and the AUR package are on the
+`feat/release-pipeline` branch.
