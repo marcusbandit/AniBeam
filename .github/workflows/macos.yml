@@ -61,7 +61,7 @@ jobs:
       - name: Dependency cache key
         id: depkey
         run: |
-          key="$( { cat apps/linux/packaging/macos/deps.sh
+          key="$( { cat apps/linux/packaging/macos/deps.sh apps/linux/packaging/macos/patches/*
                     brew list --versions ffmpeg libass libplacebo little-cms2 uchardet zimg qtbase qtdeclarative \
                       qtsvg qttools boost openssl@3
                   } | shasum -a 256 | cut -c1-16)"
