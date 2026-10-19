@@ -47,6 +47,7 @@ Item {
         if (current && current.items) for (var i = 0; i < current.facts.length; i++) {
             var f = current.facts[i]
             if (f && !f.batch && f.episode !== null && f.episode !== undefined && f.episode === Math.floor(f.episode)) t = Math.max(t, f.episode)
+            if (f && f.batch && f.last_episode) t = Math.max(t, f.last_episode)
         }
         return Math.min(t, 400)
     }
@@ -57,21 +58,31 @@ Item {
     }
     function have(n) { var c = library[n - 1]; return c === "d" || c === "l" || c === "w" }
 
-    // ---- The active provider's releases as rows: group and quality, best-seeded per episode
+    // ---- The active provider's releases as rows: group and quality, best-seeded per episode.
+    // A batch is a row of its own: one torrent that lights every episode it names (all of
+    // them when it names none, a season pack), picked and dropped as one.
     function seedsOf(item) { return item && item.seeders !== null && item.seeders !== undefined ? item.seeders : -1 }
     readonly property var rows: {
         if (!current || !current.items) return []
-        var by = {}, order = []
+        var by = {}, order = [], packs = []
         for (var i = 0; i < current.items.length; i++) {
             var f = current.facts[i] || {}, it = current.items[i]
             var gname = f.group || root.active
             var key = gname + "|" + (f.resolution || "")
+            if (f.batch) {
+                var a = f.first_episode || 1, z = f.last_episode || total
+                var b = { key: "batch|" + i, group: gname, resolution: f.resolution || "", batch: true, first: f.first_episode || 0, last: f.last_episode || 0,
+                          eps: {}, count: 0, seeds: Math.max(0, seedsOf(it)), size: f.size_bytes || 0 }
+                for (var m = a; m <= Math.min(z, total); m++) { b.eps[m] = i; b.count++ }
+                packs.push(b)
+                continue
+            }
+            if (f.episode === null || f.episode === undefined || f.episode !== Math.floor(f.episode)) continue
             var r = by[key]
             if (!r) {
-                r = by[key] = { key: key, group: gname, resolution: f.resolution || "", eps: {}, batches: [], count: 0, seeds: 0, size: 0 }
+                r = by[key] = { key: key, group: gname, resolution: f.resolution || "", batch: false, eps: {}, count: 0, seeds: 0, size: 0 }
                 order.push(r)
             }
-            if (f.batch || f.episode === null || f.episode === undefined || f.episode !== Math.floor(f.episode)) { r.batches.push(i); continue }
             var n = f.episode, prev = r.eps[n]
             if (prev === undefined || seedsOf(it) > seedsOf(current.items[prev])) r.eps[n] = i
         }
@@ -79,10 +90,16 @@ Item {
             var row = order[k]
             for (var e in row.eps) { row.count++; row.seeds += Math.max(0, seedsOf(current.items[row.eps[e]])); var fb = current.facts[row.eps[e]]; row.size += fb && fb.size_bytes ? fb.size_bytes : 0 }
         }
-        order.sort(function(a, b) { return b.count - a.count || b.seeds - a.seeds })
+        order = order.concat(packs)
+        order.sort(function(a, b) { return b.count - a.count || (a.batch ? 1 : 0) - (b.batch ? 1 : 0) || b.seeds - a.seeds })
         return order
     }
-    readonly property var batchRows: rows.filter(function(r) { return r.batches.length > 0 })
+    // The feed a pick follows: a batch row follows its group's episode row, when there is one
+    function followOf(row) {
+        if (!row || !row.batch) return row
+        for (var i = 0; i < rows.length; i++) if (!rows[i].batch && rows[i].key === row.group + "|" + row.resolution) return rows[i]
+        return null
+    }
 
     // ---- The picks: episode number -> item index, and the row the plan follows
     property var picks: ({})
@@ -112,6 +129,14 @@ Item {
     function toggleCube(row, n) {
         if (row.eps[n] === undefined || have(n)) return
         var p = JSON.parse(JSON.stringify(picks))
+        if (row.batch) {
+            // One torrent: a click on any of its episodes takes or drops all of them
+            var on = p[n] === row.eps[n], w = wanted(row)
+            for (var i = 0; i < w.length; i++) { if (on) { if (p[w[i]] === row.eps[w[i]]) delete p[w[i]] } else p[w[i]] = row.eps[w[i]] }
+            picks = p
+            chosen = row.key
+            return
+        }
         if (p[n] === row.eps[n]) delete p[n]; else p[n] = row.eps[n]
         picks = p
         chosen = row.key
@@ -132,15 +157,22 @@ Item {
         out.sort(function(a, b) { return a.n - b.n })
         return out
     }
+    // The torrents behind the picks: a batch is one however many episodes it covers
+    readonly property var pickItems: {
+        var seen = {}, out = []
+        for (var k = 0; k < pickList.length; k++) { var i = pickList[k].i; if (!seen[i]) { seen[i] = true; out.push(i) } }
+        return out
+    }
     readonly property real pickBytes: {
         var s = 0
-        for (var k = 0; k < pickList.length; k++) { var f = current && current.facts[pickList[k].i]; s += f && f.size_bytes ? f.size_bytes : 0 }
+        for (var k = 0; k < pickItems.length; k++) { var f = current && current.facts[pickItems[k]]; s += f && f.size_bytes ? f.size_bytes : 0 }
         return s
     }
     readonly property var chosenRow: { for (var i = 0; i < rows.length; i++) if (rows[i].key === chosen) return rows[i]; return null }
+    readonly property var followRow: followOf(chosenRow)
     readonly property var pickGroups: {
         var seen = {}, out = []
-        for (var k = 0; k < pickList.length; k++) { var f = current && current.facts[pickList[k].i]; var g = f && f.group ? f.group : root.active; if (!seen[g]) { seen[g] = true; out.push(g) } }
+        for (var k = 0; k < pickItems.length; k++) { var f = current && current.facts[pickItems[k]]; var g = (f && f.group ? f.group : root.active) + (f && f.batch ? "'s batch" : ""); if (!seen[g]) { seen[g] = true; out.push(g) } }
         return out
     }
     function episodesPhrase(list) {
@@ -156,8 +188,8 @@ Item {
         return (ns.length === 1 ? "Episode " : "Episodes ") + parts.join(", ")
     }
     function plan() {
-        var items = pickList.map(function(p) { return current.items[p.i] })
-        var row = chosenRow
+        var items = pickItems.map(function(i) { return current.items[i] })
+        var row = followRow
         return { endpoint: active, query: current ? current.query : "", items: items, follow: follow && !!row,
                  followQuery: row ? (current.query + " " + row.group + (row.resolution ? " " + row.resolution : "")).trim() : "",
                  followItems: row ? Object.keys(row.eps).map(function(n) { return current.items[row.eps[n]] }) : [],
@@ -166,9 +198,9 @@ Item {
     readonly property string goText: {
         var n = pickList.length
         if (acting) return "Working"
-        if (n && follow && chosenRow) return "Get " + Fmt.plural(n, "episode", "episodes") + " and follow"
+        if (n && follow && followRow) return "Get " + Fmt.plural(n, "episode", "episodes") + " and follow"
         if (n) return "Get " + Fmt.plural(n, "episode", "episodes")
-        if (follow && chosenRow) return "Follow new episodes"
+        if (follow && followRow) return "Follow new episodes"
         return "Pick an episode"
     }
 
@@ -192,7 +224,10 @@ Item {
         var cover = 0
         for (var n = 1; n <= total; n++) {
             var any = false
-            for (var i = 0; i < r.items.length; i++) { var f = r.facts[i]; if (f && f.episode === n && !f.batch) { any = true; break } }
+            for (var i = 0; i < r.items.length; i++) {
+                var f = r.facts[i]
+                if (f && (f.batch ? (f.first_episode || 1) <= n && n <= (f.last_episode || total) : f.episode === n)) { any = true; break }
+            }
             if (any) cover++
         }
         return Fmt.plural(r.items.length, "release", "releases") + (total ? ", " + cover + " of " + total + " episodes covered" : "")
@@ -387,7 +422,7 @@ Item {
                         Label {
                             anchors.left: gridTitle.right; anchors.leftMargin: theme.space(3); anchors.baseline: gridTitle.baseline
                             width: parent.width - gridTitle.width - listButton.width - theme.space(8)
-                            text: root.rows.length ? "Click a group to take its releases for what you are missing, or click single episodes." : "Nothing here names an episode. The list may still have batches."
+                            text: root.rows.length ? "Click a group or a batch to take it for what you are missing, or click single episodes." : "Nothing here names an episode. Every release is in the list."
                             role: "ui"; color: theme.textDim; elide: Text.ElideRight
                         }
                         Button { id: listButton; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(1); text: "Every release as a list"; icon: "list"; flat: true; small: true; onClicked: root.openList(root.active) }
@@ -403,37 +438,16 @@ Item {
                         model: root.rows.filter(function(r) { return r.count > 0 })
                         GridRow {
                             required property var modelData
-                            title: modelData.group
-                            line: (modelData.resolution ? modelData.resolution + ", " : "") + Fmt.plural(modelData.count, "episode", "episodes") + (modelData.size > 0 ? ", " + Fmt.bytes(modelData.size) : "")
+                            title: modelData.batch ? modelData.group + ", batch" : modelData.group
+                            line: (modelData.resolution ? modelData.resolution + ", " : "")
+                                + (modelData.batch ? (modelData.first ? "episodes " + modelData.first + " to " + modelData.last : "the whole season") + ", one torrent" : Fmt.plural(modelData.count, "episode", "episodes"))
+                                + (modelData.size > 0 ? ", " + Fmt.bytes(modelData.size) : "")
                             codes: root.codesOf(modelData)
                             chosen: root.chosen === modelData.key
                             clickable: true
                             rowData: modelData
                             onPicked: root.pickRow(modelData)
                             onCubePicked: function(i) { root.toggleCube(modelData, i + 1) }
-                        }
-                    }
-                    // Batches: one long pill each, never picked by a click on a group
-                    Repeater {
-                        model: root.batchRows
-                        Item {
-                            required property var modelData
-                            width: grid.width
-                            height: theme.space(11)
-                            Label { x: theme.space(4); width: grid.whoWidth - theme.space(4); anchors.verticalCenter: parent.verticalCenter; text: modelData.group; role: "ui"; elide: Text.ElideRight }
-                            Corner {
-                                x: grid.whoWidth + theme.space(4)
-                                width: grid.cubeWidth; height: theme.space(8)
-                                anchors.verticalCenter: parent.verticalCenter
-                                radius: height / 2
-                                color: theme.glassFloat
-                                Label {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    x: theme.space(4); width: parent.width - theme.space(8)
-                                    text: Fmt.plural(modelData.batches.length, "batch", "batches") + ": " + root.current.items[modelData.batches[0]].title
-                                    role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim; elide: Text.ElideRight
-                                }
-                            }
                         }
                     }
                 }
@@ -505,8 +519,8 @@ Item {
                         spacing: theme.space(6)
                         Column { Label { text: Fmt.bytes(root.pickBytes); role: "figure"; font.pointSize: theme.typeLarge }
                             Label { text: "together"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint } }
-                        Column { Label { text: String(root.pickList.length); role: "figure"; font.pointSize: theme.typeLarge }
-                            Label { text: root.pickList.length === 1 ? "torrent" : "torrents"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint } }
+                        Column { Label { text: String(root.pickItems.length); role: "figure"; font.pointSize: theme.typeLarge }
+                            Label { text: root.pickItems.length === 1 ? "torrent" : "torrents"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint } }
                     }
                     Rectangle { width: parent.width; height: 1; color: theme.line }
                     Column {
@@ -536,7 +550,8 @@ Item {
                                 width: parent.width
                                 text: !root.follow ? "Off. New episodes show up here as gaps; nothing downloads by itself."
                                     : !root.chosenRow ? "Pick a group first: a feed follows one group and quality."
-                                    : "A feed for " + root.chosenRow.group + (root.chosenRow.resolution ? " " + root.chosenRow.resolution : "") + " on " + root.active + ". Each new episode downloads as it appears."
+                                    : !root.followRow ? root.chosenRow.group + " has only the batch here, so there is no feed of single episodes to follow."
+                                    : "A feed for " + root.followRow.group + (root.followRow.resolution ? " " + root.followRow.resolution : "") + " on " + root.active + ". Each new episode downloads as it appears."
                                 role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim; wrapMode: Text.Wrap
                             }
                         }
@@ -545,9 +560,9 @@ Item {
                         objectName: "get-go"
                         width: parent.width
                         text: root.goText
-                        icon: root.follow && root.chosenRow ? "rss" : "download"
+                        icon: root.follow && root.followRow ? "rss" : "download"
                         primary: true
-                        enabled: !root.acting && (root.pickList.length > 0 || (root.follow && !!root.chosenRow))
+                        enabled: !root.acting && (root.pickList.length > 0 || (root.follow && !!root.followRow))
                         onClicked: root.getAndFollow(root.plan())
                     }
                     Label { visible: root.actionLine !== ""; width: parent.width; text: root.actionLine; role: "ui"; font.pointSize: theme.typeSmall; color: theme.caughtUp; wrapMode: Text.Wrap }

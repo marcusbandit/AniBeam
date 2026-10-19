@@ -289,6 +289,12 @@ pub struct ReleaseFacts {
     pub episode: Option<f64>,
     pub season: Option<u32>,
     pub batch: bool,
+    /// The episodes a batch names, `(01-28)` as 1 and 28; None when it
+    /// names none (a season pack, "Complete Season").
+    #[serde(default)]
+    pub first_episode: Option<u32>,
+    #[serde(default)]
+    pub last_episode: Option<u32>,
     pub group: String,
     pub resolution: String,
     pub size_bytes: Option<u64>,

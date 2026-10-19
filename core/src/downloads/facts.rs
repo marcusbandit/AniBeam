@@ -92,10 +92,13 @@ pub fn read(item: &Release) -> ReleaseFacts {
             .or_else(|| WORD_EPISODE.captures(title).and_then(|c| c[1].parse().ok()))
             .filter(|n: &f64| *n < 2000.0 || *n > 2099.0);
     }
+    let span = if batch { span(title) } else { None };
     ReleaseFacts {
         episode,
         season,
         batch,
+        first_episode: span.map(|s| s.0),
+        last_episode: span.map(|s| s.1),
         group,
         resolution,
         size_bytes: size_bytes(&item.size),
@@ -105,12 +108,17 @@ pub fn read(item: &Release) -> ReleaseFacts {
 
 /// A range of episodes, not a year span or a resolution pair.
 fn ranged(title: &str) -> bool {
-    RANGE.captures_iter(title).any(|c| {
+    span(title).is_some()
+}
+
+/// The first range of episodes a title names, as first and last.
+fn span(title: &str) -> Option<(u32, u32)> {
+    RANGE.captures_iter(title).find_map(|c| {
         let (a, b) = (
             c[1].parse::<u32>().unwrap_or(0),
             c[2].parse::<u32>().unwrap_or(0),
         );
-        a < b && b < 1900 && b - a < 500
+        (a < b && b < 1900 && b - a < 500).then_some((a, b))
     })
 }
 
@@ -190,12 +198,20 @@ mod tests {
         ));
         assert!(f.batch);
         assert_eq!(f.episode, None);
+        assert_eq!((f.first_episode, f.last_episode), (Some(1), Some(28)));
+        let f = read(&release(
+            "[Erai-raws] Kino no Tabi: The Beautiful World - The Animated Series - 01 ~ 12 [1080p][Batch]",
+            "",
+        ));
+        assert!(f.batch);
+        assert_eq!((f.first_episode, f.last_episode), (Some(1), Some(12)));
         let f = read(&release(
             "Avatar Seven Havens S01 1080p WEB-DL x264-GROUP",
             "",
         ));
         assert!(f.batch);
         assert_eq!((f.season, f.episode), (Some(1), None));
+        assert_eq!(f.first_episode, None);
         let f = read(&release("[Judas] Frieren - Complete Season [1080p]", ""));
         assert!(f.batch);
     }
