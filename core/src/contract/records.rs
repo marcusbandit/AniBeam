@@ -89,6 +89,11 @@ pub struct SeriesCard {
     /// downloaded" order; None with nothing on disk.
     #[serde(default)]
     pub downloaded_at: Option<SystemTime>,
+    /// The episodes a torrent is still writing and how far each is, laid on
+    /// by the downloads overlay (`downloads::overlay`), never by the library
+    /// scan. An episode listed here is not playable yet.
+    #[serde(default)]
+    pub downloading: Vec<EpisodeDownload>,
     /// The franchise this series shares with other library series, or None
     /// when it relates to no other series in the library
     /// (`franchise::groups`).
@@ -180,6 +185,13 @@ pub struct Sidecar {
     pub title: Option<String>,
 }
 
+/// One episode of a series that a torrent is still writing, `progress` 0 to 1.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct EpisodeDownload {
+    pub number: u32,
+    pub progress: f64,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct Episode {
     pub file: u64,
@@ -197,6 +209,11 @@ pub struct Episode {
     pub stopped_short: bool,
     pub watched: bool,
     pub next_up: bool,
+    /// How far a torrent has written this episode, while one is still on it;
+    /// None once it is whole. Laid on by the downloads overlay: a file that is
+    /// being downloaded is on disk but is not playable.
+    #[serde(default)]
+    pub downloading: Option<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]

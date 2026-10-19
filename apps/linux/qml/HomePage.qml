@@ -66,6 +66,8 @@ Item {
                 var e = eps[k]
                 // Stopped before the outro (85 percent when no outro is known): a stop in
                 // the credits is a finished episode, a stop before them is not
+                // An episode a torrent is still writing is never what to go on with
+                if (e.downloading !== undefined && e.downloading !== null) continue
                 if (!e.watched && e.stopped_short && e.resume && e.resume.duration > 0)
                     partial = e
                 if (d.next_up && e.file === d.next_up) next = e
@@ -98,11 +100,12 @@ Item {
     Component.onCompleted: reload()
 
     function playFile(file, title) { if (file) frame.go("player", { file: file }, title) }
+    function wholeFirst(d) { return d && d.episodes && d.episodes.length && (d.episodes[0].downloading === undefined || d.episodes[0].downloading === null) ? d.episodes[0].file : null }
     function openSeries(c) { frame.go("series", { id: c.id }, c.title) }
     function playSeries(c) {
         var r = Door.getSeries(c.id)
         var d = !r.error ? r.reply.detail : null
-        var file = d ? (d.next_up ? d.next_up : (c.kind === "Movie" && d.episodes && d.episodes.length ? d.episodes[0].file : null)) : null
+        var file = d ? (d.next_up ? d.next_up : (c.kind === "Movie" ? page.wholeFirst(d) : null)) : null
         if (file) playFile(file, c.title)
         else openSeries(c)
     }
@@ -495,6 +498,14 @@ Item {
                     color: hero.ink
                     elide: Text.ElideRight
                 }
+                Label {
+                    objectName: "hero-downloading"
+                    visible: !!(hero.c && hero.c.downloading && hero.c.downloading.length > 0)
+                    text: visible ? "Downloading " + Fmt.plural(hero.c.downloading.length, "episode", "episodes") : ""
+                    role: "ledger"
+                    font.weight: 600; font.variableAxes: ({ "wdth": 88, "wght": 600 })
+                    color: theme.tone(theme.cubeState("t").fill, Qt.rgba(1, 1, 1, 1), 0.3)
+                }
                 Row {
                     spacing: theme.space(3)
                     readonly property real frac: hero.r && hero.r.partial
@@ -537,7 +548,7 @@ Item {
                         tint: hero.inkAccent
                         icon: "play"
                         text: hero.ep ? (hero.r.partial ? "Resume " : "Play ") + Fmt.episodeName("", hero.ep.number).toLowerCase() : ""
-                        onClicked: page.playFile(hero.ep.file, hero.c.title)
+                        onClicked: if (hero.ep) page.playFile(hero.ep.file, hero.c.title)
                     }
                     Button {
                         text: "Open series"

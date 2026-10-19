@@ -589,6 +589,7 @@ mod tests {
             latest_activity_at: time::now(),
             added_at: time::now(),
             downloaded_at: None,
+            downloading: Vec::new(),
             franchise: None,
             year: None,
             season: None,

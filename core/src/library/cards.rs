@@ -447,6 +447,7 @@ impl Snapshot {
             last_viewed_at: self.views.get(&row.id).map(|(_, at)| time::from_secs(*at)),
             added_at: time::from_secs(row.added_at),
             downloaded_at: files.iter().map(|f| f.mtime).max().map(time::from_secs),
+            downloading: Vec::new(),
             latest_activity_at: time::from_secs(self.latest_activity(
                 row,
                 &self.card_episodes(row, &episodes),
@@ -795,6 +796,7 @@ mod tests {
             latest_activity_at: UNIX_EPOCH,
             added_at: UNIX_EPOCH,
             downloaded_at: None,
+            downloading: Vec::new(),
             franchise: None,
             year: None,
             season: None,
