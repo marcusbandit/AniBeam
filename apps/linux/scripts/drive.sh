@@ -11,15 +11,17 @@ script="$(realpath "$1")"; shift
 out="${ANIBEAM_CAPTURES:-$here/captures}"; mkdir -p "$out"
 root="${ANIBEAM_ROOT:-$here/captures/root}"; mkdir -p "$root"
 log="$out/$(basename "$script" .json).drive.log"
-# ANIBEAM_NO_BUILD=1 skips the build and uses target/debug as it is: parallel reviewers
+# ANIBEAM_NO_BUILD=1 skips the build and uses the shared debug build as it is: parallel reviewers
 # capture without queueing on the cargo lock behind running builds.
+# CARGO_TARGET_DIR defaults to the main checkout's target/, shared by every worktree (target-dir.sh).
+source "$(dirname "$0")/target-dir.sh"
 [ -n "${ANIBEAM_NO_BUILD:-}" ] || cargo build -p anibeam --quiet
 # The RHI backend only with a DISPLAY to make its GL context against; see shoot.sh.
 rhi_env=()
 [ -n "${DISPLAY:-}" ] && rhi_env=(QT_QUICK_BACKEND=rhi QSG_RHI_BACKEND=opengl)
 set +e
 env "${rhi_env[@]}" QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 ANIBEAM_THEMES_DIR="$here/themes" ANIBEAM_MPV_CONF="$here/mpv.conf" \
-  "$here/../../target/debug/anibeam" --root "$root" --drive "$script" --out "$out" --width "${W:-1600}" --height "${H:-1000}" "$@" \
+  "$CARGO_TARGET_DIR/debug/anibeam" --root "$root" --drive "$script" --out "$out" --width "${W:-1600}" --height "${H:-1000}" "$@" \
   2> "$log"
 code=$?
 set -e
