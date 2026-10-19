@@ -203,6 +203,7 @@ Item {
     property var pendingFollow: null
     property bool getActing: false
     property string getLine: ""
+    property string getNote: ""
     property string getError: ""
     function lastPart(p) { var f = String(p || "").replace(/\/+$/, ""); var i = f.lastIndexOf("/"); return i >= 0 ? f.slice(i + 1) : f }
     // The torrents that fill a show: linked to its series, or saved under a folder named
@@ -211,8 +212,10 @@ Item {
     function torrentsOfShow(show) {
         if (!show) return []
         var want = [keyOf(show.folderName), keyOf(show.title)].filter(function(k) { return k !== "" })
+        var named = show.hashes || []
         return torrents.filter(function(t) {
             if (show.seriesId >= 0 && t.series_id === show.seriesId) return true
+            if (named.indexOf(t.hash) >= 0) return true
             var k = keyOf(page.lastPart(t.save_path)), c = keyOf(page.lastPart(t.content_path))
             return want.indexOf(k) >= 0 || want.indexOf(c) >= 0
         })
@@ -231,6 +234,31 @@ Item {
         for (var i = 0; i < libCards.length; i++) if (libCards[i].id === s.series_id) return page.showFromCard(libCards[i])
         return { title: s.title, query: s.title, poster: s.poster || "", cubes: s.cubes || "", total: s.total_episodes || 0, seriesId: s.series_id,
                  status: s.status || "", format: "", year: 0, nextAiring: s.next_airing || null, airing: s.status === "Releasing" || !!s.next_airing, folderName: page.lastPart(s.path) }
+    }
+    // A show made from a torrent the library does not know: the name as a release title says
+    // it, cut down to the show, unless the folder it saves into is named for the show
+    function showName(name) {
+        var n = String(name || "").replace(/\.(mkv|mp4|avi)$/i, "")
+        n = n.replace(/\[[^\]]*\]|\([^)]*\)/g, " ").replace(/[._]/g, " ")
+        n = n.replace(/\sS\d{1,2}(E\d{1,4})?\b.*$/i, " ").replace(/\s-\s\d{1,4}(v\d)?\b.*$/, " ")
+        n = n.replace(/\b(batch|complete|2160p|1080p|720p|480p|web-?dl|bluray|bd|x264|x265|hevc|aac|multi-?sub).*$/i, " ")
+        return n.replace(/\s+/g, " ").replace(/[\s-]+$/, "").trim()
+    }
+    function showFromTorrent(t) {
+        var folder = page.lastPart(t.save_path)
+        var title = page.showName(t.name)
+        if (folder !== "" && keyOf(folder) !== "" && keyOf(t.name).indexOf(keyOf(folder)) >= 0) title = folder
+        if (title === "") title = folder !== "" ? folder : String(t.name || "")
+        var total = 0, files = t.files || []
+        for (var i = 0; i < files.length; i++) if (files[i].episode !== null && files[i].episode !== undefined) total = Math.max(total, files[i].episode)
+        if (t.episode !== null && t.episode !== undefined) total = Math.max(total, t.episode)
+        return { title: title, query: title, poster: "", cubes: "", total: total, seriesId: -1, status: "", format: "", year: 0, nextAiring: null, airing: false,
+                 folderName: folder, hashes: [t.hash] }
+    }
+    // An Activity row: the show it fills, or one made from the torrent's name and folder
+    function openFromTorrent(t) {
+        if (t.series_id !== null && t.series_id !== undefined && page.shows[t.series_id]) page.openGet(page.showFromLink(page.shows[t.series_id]))
+        else page.openGet(page.showFromTorrent(t))
     }
     function openGet(show) {
         page.getShow = show
@@ -270,8 +298,9 @@ Item {
         page.getLine = ""
         page.getError = ""
         page.pendingFollow = plan.follow ? plan : null
+        page.getNote = plan.options && plan.options.replace.length ? " The files you had for the replaced episodes go to the trash once the new ones finish." : ""
         if (plan.items.length) {
-            var r = Door.downloadReleases(plan.items, plan.name)
+            var r = Door.downloadReleasesWith(plan.items, plan.name, plan.options || {})
             if (r.error) { page.getError = page.errorWords(r.error); return }
             page.getJob = r.reply.job
             page.getActing = true
@@ -1126,7 +1155,7 @@ Item {
         function onTorrentsAdded(job, result) {
             if (job === page.getJob) {
                 page.getJob = -1
-                page.getLine = "Sent " + Fmt.plural(result.count, "torrent", "torrents") + " to " + page.clientName + ", saving under " + result.save_path + "."
+                page.getLine = "Sent " + Fmt.plural(result.count, "torrent", "torrents") + " to " + page.clientName + ", saving under " + result.save_path + "." + page.getNote
                 page.pollTorrents()
                 if (page.pendingFollow) page.follow(page.pendingFollow)
                 else page.getActing = false
@@ -1246,9 +1275,7 @@ Item {
         connected: page.torrentOn
         clientName: page.clientName
         onCancelTorrent: function(anchor, t) { page.askCancelTorrent(anchor, t) }
-        onOpenShow: function(t) {
-            if (t.series_id !== null && t.series_id !== undefined && page.shows[t.series_id]) page.openGet(page.showFromLink(page.shows[t.series_id]))
-        }
+        onOpenShow: function(t) { page.openFromTorrent(t) }
     }
     Rectangle { visible: activity.visible; anchors.right: activity.left; anchors.top: parent.top; anchors.bottom: parent.bottom; width: 1; color: theme.line }
 
@@ -1866,6 +1893,8 @@ Item {
                 onCheckSources: page.checkSources()
                 onOpenList: function(name) { page.listFromGet(name) }
                 onGetAndFollow: function(plan) { page.getAndFollow(plan) }
+                onControl: function(hash, action) { page.control(hash, action) }
+                onCancelTorrent: function(anchor, t) { page.askCancelTorrent(anchor, t) }
             }
         }
 

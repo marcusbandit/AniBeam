@@ -246,6 +246,14 @@ pub enum Call {
         items: Vec<Release>,
         name: Option<String>,
     },
+    /// `DownloadReleases` with options: download in order, and episodes the
+    /// new torrents replace (see `downloads::replace`). Ends in
+    /// `TorrentsAdded`.
+    DownloadReleasesWith {
+        items: Vec<Release>,
+        name: Option<String>,
+        options: DownloadOptions,
+    },
     /// One link into the movie folder, no subdirectory. Ends in
     /// `TorrentsAdded`.
     DownloadMovie {

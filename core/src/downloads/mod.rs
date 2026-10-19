@@ -20,6 +20,7 @@ pub mod jackett;
 pub mod link;
 pub mod prune;
 pub mod qbt;
+pub mod replace;
 pub mod rewire;
 pub mod settings;
 pub mod trash;
@@ -1006,20 +1007,42 @@ async fn rewire_subscription(
 }
 
 pub fn download(core: &Core, items: Vec<Release>, name: Option<String>) -> Result<u64, CoreError> {
+    download_with(core, items, name, DownloadOptions::default())
+}
+
+/// `download` with what anirss cannot be asked for: the new torrents read in
+/// order, and episodes they replace (`downloads::replace`). anirss adds the
+/// torrents; the rest is applied once qBittorrent lists them. The add
+/// itself is the same call, so a failure there changes nothing: nothing is
+/// cancelled and nothing is recorded.
+pub fn download_with(
+    core: &Core,
+    items: Vec<Release>,
+    name: Option<String>,
+    options: DownloadOptions,
+) -> Result<u64, CoreError> {
     if items.is_empty() {
         return Err(CoreError::invalid("items", "nothing selected to download"));
     }
     let owner = core.owner()?;
+    let followups = replace::prepare(&owner.store, &items, &options)?;
     Ok(owner
         .jobs
         .clone()
         .start(JobKind::Download, move |_| async move {
             let client = ensure_client(&owner).await?;
             let result = client.download(&items, name.as_deref()).await?;
+            let extra = replace::describe(&options, &followups);
+            if options != DownloadOptions::default() || !followups.is_empty() {
+                match qbt_client(&owner).await {
+                    Ok(qbt) => replace::after_add(&owner, &qbt, &items, &options, followups).await,
+                    Err(e) => tracing::warn!("download not followed: {e}"),
+                }
+            }
             Ok(Finished {
                 level: Level::Info,
                 message: format!(
-                    "Added {} to {} under {}",
+                    "Added {} to {} under {}{extra}",
                     plural(result.count, "torrent", "torrents"),
                     owner.downloads.torrent_name(),
                     result.save_path
@@ -1130,6 +1153,22 @@ pub fn control(core: &Core, hashes: Vec<String>, action: TorrentAction) -> Resul
                         "Deleted, files included,"
                     } else {
                         "Removed"
+                    }
+                }
+                TorrentAction::Sequential { on } => {
+                    client.set_sequential(&hashes, *on).await?;
+                    if *on {
+                        "Set download in order on for"
+                    } else {
+                        "Set download in order off for"
+                    }
+                }
+                TorrentAction::FirstLastPieces { on } => {
+                    client.set_first_last(&hashes, *on).await?;
+                    if *on {
+                        "Set first and last pieces first on for"
+                    } else {
+                        "Set first and last pieces first off for"
                     }
                 }
             };
@@ -1352,12 +1391,14 @@ pub fn list_torrents(core: &Core) -> Result<Reply, CoreError> {
                 }
             }
             let transfer = client.transfer().await?;
+            replace::tick(&owner, &client, &torrents).await;
             Ok::<_, CoreError>((torrents, transfer))
         }
         .await;
         match outcome {
             Ok((mut torrents, transfer)) => {
                 let mut shows = link_torrents(&owner, &mut torrents);
+                replace::annotate(&owner, &mut torrents);
                 let downloading = downloading_of(&torrents);
                 let moved: Vec<u64> = {
                     let mut st = owner.downloads.state();

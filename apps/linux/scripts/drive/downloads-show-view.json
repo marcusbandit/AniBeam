@@ -1,0 +1,52 @@
+[
+ {
+  "log": "an Activity row opens the show view with a Downloading section: what, from where, how far. Reads only; stops and cancels nothing"
+ },
+ {
+  "click": "rail-downloads"
+ },
+ {
+  "wait": 8000
+ },
+ {
+  "eval": "var p = frame.item.pageItem; JSON.stringify(p.torrents.filter(function(t) { return t.progress < 1 }).map(function(t) { return [t.name, t.state, t.progress, t.series_id, t.group, t.resolution, t.provider, t.tracker, t.seq_dl, (t.files || []).length, t.save_path] }))",
+  "as": "unfinished"
+ },
+ {
+  "shot": "view-00-activity"
+ },
+ {
+  "eval": "var p = frame.item.pageItem; var t = p.torrents.filter(function(t) { return t.progress < 1 })[0]; p.openFromTorrent(t); p.getShow.title + ' | ' + p.getShow.folderName + ' | ' + p.getShow.seriesId",
+  "as": "show"
+ },
+ {
+  "wait": 2000
+ },
+ {
+  "eval": "var g = driver.item.findItem('downloads-get'); var s = driver.item.findItem('get-downloading'); JSON.stringify([!!g, !!s, g ? g.activeTorrents.length : -1])",
+  "as": "section"
+ },
+ {
+  "shot": "view-01-downloading"
+ },
+ {
+  "wheel": [
+   600,
+   600,
+   -400
+  ]
+ },
+ {
+  "wait": 500
+ },
+ {
+  "shot": "view-02-scrolled"
+ },
+ {
+  "eval": "var p = frame.item.pageItem; p.closeGet(); var t = { hash: 'ee11', name: '[SubsPlease] Isekai Shoukan - 04 (1080p) [ABCD1234].mkv', state: 'downloading', progress: 0.62, size: 1400000000, dlspeed: 3200000, upspeed: 0, eta: 190, num_seeds: 14, num_leechs: 2, ratio: 0, save_path: '/mnt/media/Anime/Isekai Shoukan', content_path: '/mnt/media/Anime/Isekai Shoukan/a.mkv', added_on: 1, completion_on: -1, tags: '', category: '', series_id: null, episode: 4, batch: false, files: [], seq_dl: true, f_l_piece_prio: false, tracker: 'nyaa.tracker.wf', group: 'SubsPlease', resolution: '1080p', provider: 'nyaa' }; p.torrents = [t]; p.openFromTorrent(t); p.getShow.title + ' | ' + p.getShow.folderName + ' | ' + p.getShow.seriesId + ' | ' + p.getShow.hashes.join(',')",
+  "as": "unlinked"
+ },
+ {
+  "shot": "view-03-unlinked"
+ }
+]
