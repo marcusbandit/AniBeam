@@ -161,6 +161,12 @@ Item {
             return page.viewedAt(c) > now - month && c.watched_state !== "CaughtUp"
         })
     }
+    // The series a file arrived in over the last fortnight, newest first
+    readonly property var downloadedList: {
+        var since = nowMs / 1000 - 14 * 86400
+        return shelf.filter(function(c) { return c.downloaded_at && c.downloaded_at >= since })
+            .sort(function(a, b) { return b.downloaded_at - a.downloaded_at })
+    }
     // Never started, best rated first
     readonly property var freshList: {
         var list = shelf.filter(function(c) {
@@ -555,6 +561,17 @@ Item {
             onMore: frame.go("library", { arrange: "WatchState" })
         }
         Item { width: 1; height: page.continueList.length > 1 ? theme.space(4) : 0 }
+
+        Shelf {
+            objectName: "home-downloaded"
+            width: parent.width
+            heading: "Recently downloaded"
+            fact: page.downloadedList.length ? Fmt.plural(page.downloadedList.length, "series", "series") + " with new files this fortnight" : ""
+            list: page.downloadedList
+            maxRows: 1
+            onMore: frame.go("library", { sort: "Downloaded", arrange: "None" })
+        }
+        Item { width: 1; height: page.downloadedList.length ? theme.space(4) : 0 }
 
         // ---- The week: one row per day that has an episode landing, today always first
         // (and marked); each series says which episode lands at what time and what of it is

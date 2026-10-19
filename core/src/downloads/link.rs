@@ -414,6 +414,7 @@ mod tests {
             series_id: None,
             episode: None,
             batch: false,
+            files: Vec::new(),
         };
         assert_eq!(l.find_torrent(&t), Some(4));
         t.save_path = "/mnt/media/Anime/Frieren".into();

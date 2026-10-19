@@ -16,6 +16,8 @@ Item {
     id: root
     // { title, query, poster, cubes, total, seriesId, status, format, year, nextAiring, airing }
     property var show: null
+    // This show's torrents from the page's poll, to tell downloading from on disk
+    property var torrents: []
     property var endpoints: []
     // name -> { state: "idle" | "searching" | "done" | "error", items, facts, error, label, elapsed }
     property var results: ({})
@@ -51,12 +53,39 @@ Item {
         }
         return Math.min(t, 400)
     }
-    readonly property var library: {
-        var out = []
-        for (var n = 1; n <= total; n++) out.push(n <= libCodes.length ? libCodes[n - 1] : "g")
+    // Episode number to how far along its torrent is, for every episode a torrent of this
+    // show carries and has not finished; a batch is read file by file
+    readonly property var inFlight: {
+        var out = {}
+        for (var i = 0; i < torrents.length; i++) {
+            var t = torrents[i]
+            if ((t.progress || 0) >= 1) continue
+            var files = t.files || []
+            if (files.length) {
+                for (var j = 0; j < files.length; j++) {
+                    var f = files[j], n = f.episode
+                    if (n === null || n === undefined || n !== Math.floor(n) || f.priority === 0) continue
+                    out[n] = f.progress || 0
+                }
+            } else if (t.episode !== null && t.episode !== undefined) out[t.episode] = t.progress || 0
+        }
         return out
     }
-    function have(n) { var c = library[n - 1]; return c === "d" || c === "l" || c === "w" }
+    readonly property bool downloading: Object.keys(inFlight).some(function(n) { return inFlight[n] < 1 })
+    readonly property int downloadingCount: Object.keys(inFlight).filter(function(n) { return inFlight[n] < 1 }).length
+    readonly property var library: {
+        var out = []
+        for (var n = 1; n <= total; n++) {
+            var c = n <= libCodes.length ? libCodes[n - 1] : "g"
+            var p = inFlight[n]
+            if (p !== undefined && c !== "w" && c !== "l") c = p >= 1 ? "d" : "t"
+            out.push(c)
+        }
+        return out
+    }
+    readonly property var libraryFills: library.map(function(c, i) { var p = root.inFlight[i + 1]; return p === undefined ? null : p })
+    // Had, for picking: on disk, or on its way (a torrent already carries it)
+    function have(n) { var c = library[n - 1]; return c === "d" || c === "l" || c === "w" || c === "t" }
 
     // ---- The active provider's releases as rows: group and quality, best-seeded per episode.
     // A batch is a row of its own: one torrent that lights every episode it names (all of
@@ -145,7 +174,7 @@ Item {
         var out = []
         for (var n = 1; n <= total; n++) {
             if (row.eps[n] === undefined) out.push("n")
-            else if (have(n)) out.push("o")
+            else if (have(n)) out.push(library[n - 1] === "t" ? "t" : "o")
             else if (picks[n] === row.eps[n]) out.push("p")
             else out.push("a")
         }
@@ -289,7 +318,8 @@ Item {
                             if (s.airing) out.push(s.nextAiring ? "Episode " + s.nextAiring.episode + " in " + Fmt.countdown(s.nextAiring.at - root.nowMs / 1000) : "Airing")
                             else if (s.status === "Finished") out.push("Finished")
                             if (s.total > 0) out.push(s.total + " episodes")
-                            out.push(root.inLibrary ? "In your library" : "Not in your library")
+                            out.push(root.downloading ? "Downloading " + Fmt.plural(root.downloadingCount, "episode", "episodes")
+                                : root.inLibrary ? "In your library" : "Not in your library")
                             return out
                         }
                         Label { required property string modelData; text: modelData; role: "ui"; font.pointSize: theme.typeNormal * 1.1; color: theme.textDim }
@@ -300,6 +330,7 @@ Item {
                     height: implicitHeight
                     visible: root.library.length > 0
                     codes: root.library
+                    fills: root.libraryFills
                     cubeSize: theme.space(3)
                     maxRows: 3
                 }
@@ -430,8 +461,15 @@ Item {
                     // The library's own row first, so the gaps line up
                     GridRow {
                         title: "Your library"
-                        line: root.inLibrary ? root.library.filter(function(c) { return c === "d" || c === "l" || c === "w" }).length + " of " + root.total + " on disk" : "Nothing yet"
+                        line: {
+                            var have = root.library.filter(function(c) { return c === "d" || c === "l" || c === "w" }).length
+                            var parts = []
+                            if (have > 0) parts.push(have + " of " + root.total + " on disk")
+                            if (root.downloadingCount > 0) parts.push(root.downloadingCount + " downloading")
+                            return parts.length ? parts.join(", ") : "Nothing yet"
+                        }
                         codes: root.library
+                        fills: root.libraryFills
                         lit: true
                     }
                     Repeater {
@@ -584,6 +622,7 @@ Item {
         property string title: ""
         property string line: ""
         property var codes: []
+        property var fills: null
         property bool chosen: false
         property bool lit: false
         property bool clickable: false
@@ -622,6 +661,7 @@ Item {
             width: grid.cubeWidth
             height: implicitHeight
             codes: gr.codes
+            fills: gr.fills
             cubeSize: theme.space(6)
             minSize: theme.space(2)
             maxRows: 4

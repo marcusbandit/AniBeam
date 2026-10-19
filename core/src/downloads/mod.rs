@@ -22,6 +22,7 @@ pub mod rewire;
 pub mod settings;
 pub mod trash;
 
+use std::collections::{BTreeSet, HashMap};
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -50,6 +51,13 @@ struct State {
     /// The torrent client with its session, built from the settings on
     /// first use and dropped when they change or a test is asked for.
     qbt: Option<Arc<QbtClient>>,
+    /// The episodes an unfinished torrent is still writing, by series, as
+    /// of the last torrent read: on disk is not in the library until the
+    /// torrent is done with them (`overlay`).
+    downloading: HashMap<u64, BTreeSet<u32>>,
+    /// When the torrents were last read, so a library read can ask for a
+    /// fresh look without asking on every read.
+    torrents_at: Option<std::time::Instant>,
 }
 
 impl Default for Downloads {
@@ -1244,18 +1252,56 @@ pub fn list_torrents(core: &Core) -> Result<Reply, CoreError> {
     core.handle.spawn(async move {
         let outcome = async {
             let client = qbt_client(&owner).await?;
-            let torrents = client.torrents().await?;
+            let mut torrents = client.torrents().await?;
+            // The files of each unfinished torrent, so a batch shows each
+            // episode's progress; a single file adds nothing to the torrent's
+            for t in torrents.iter_mut().filter(|t| t.progress < 1.0) {
+                match client.files(&t.hash).await {
+                    Ok(files) if files.len() > 1 => t.files = files,
+                    Ok(_) => {}
+                    Err(e) => tracing::debug!("files of {} not read: {e}", t.name),
+                }
+            }
             let transfer = client.transfer().await?;
             Ok::<_, CoreError>((torrents, transfer))
         }
         .await;
         match outcome {
             Ok((mut torrents, transfer)) => {
-                let shows = link_torrents(&owner, &mut torrents);
-                {
+                let mut shows = link_torrents(&owner, &mut torrents);
+                let downloading = downloading_of(&torrents);
+                let moved: Vec<u64> = {
                     let mut st = owner.downloads.state();
                     st.torrent.connected = true;
                     st.torrent.message.clear();
+                    st.torrents_at = Some(std::time::Instant::now());
+                    let mut ids: BTreeSet<u64> = BTreeSet::new();
+                    for id in st.downloading.keys().chain(downloading.keys()) {
+                        if st.downloading.get(id) != downloading.get(id) {
+                            ids.insert(*id);
+                        }
+                    }
+                    st.downloading = downloading;
+                    ids.into_iter().collect()
+                };
+                for show in shows.iter_mut() {
+                    overlay_cubes(&owner, show.series_id, &mut show.cubes, None);
+                }
+                // A series whose downloading episodes changed reads anew on
+                // every page that shows it
+                if !moved.is_empty() {
+                    let images = owner.paths.images_dir();
+                    if let Ok(mut cards) = owner.store.read(|c| {
+                        let snap = crate::library::snapshot::Snapshot::load(c, &images, crate::time::now(), Some(&moved))?;
+                        Ok(moved.iter().filter_map(|id| snap.card(*id)).collect::<Vec<SeriesCard>>())
+                    }) {
+                        overlay(&owner, &mut cards);
+                        owner.bus.debug(
+                            Stage::Downloads,
+                            format!("{} downloading changed", plural(cards.len() as u64, "series", "series")),
+                            EventBody::SeriesChanged { series: cards },
+                        );
+                    }
                 }
                 owner.bus.debug(
                     Stage::Downloads,
@@ -1288,6 +1334,85 @@ pub fn list_torrents(core: &Core) -> Result<Reply, CoreError> {
         };
     });
     Ok(Reply::Ok)
+}
+
+/// The episodes each linked series has in an unfinished torrent: a file of
+/// a batch that is not done (and not skipped), or a single-episode torrent
+/// that is not done.
+fn downloading_of(torrents: &[Torrent]) -> HashMap<u64, BTreeSet<u32>> {
+    let mut out: HashMap<u64, BTreeSet<u32>> = HashMap::new();
+    for t in torrents.iter().filter(|t| t.progress < 1.0) {
+        let Some(id) = t.series_id else { continue };
+        let whole = |n: f64| (n.is_finite() && n >= 1.0 && n.fract() == 0.0).then_some(n as u32);
+        let eps: Vec<u32> = if t.files.is_empty() {
+            t.episode.and_then(whole).into_iter().collect()
+        } else {
+            t.files
+                .iter()
+                .filter(|f| f.progress < 1.0 && f.priority != 0)
+                .filter_map(|f| f.episode.and_then(whole))
+                .collect()
+        };
+        if !eps.is_empty() {
+            out.entry(id).or_default().extend(eps);
+        }
+    }
+    out
+}
+
+/// Lays the downloading episodes over a cube row: an episode a torrent is
+/// still writing is `t`, not on disk, whatever the scan found. Watched
+/// episodes keep their mark. Returns how many on-disk cubes it turned.
+fn overlay_cubes(core: &Core, id: u64, cubes: &mut String, known: Option<&HashMap<u64, BTreeSet<u32>>>) -> u64 {
+    let st;
+    let map = match known {
+        Some(m) => m,
+        None => {
+            st = core.downloads.state();
+            &st.downloading
+        }
+    };
+    match map.get(&id) {
+        Some(eps) => lay(eps, cubes),
+        None => 0,
+    }
+}
+
+fn lay(eps: &BTreeSet<u32>, cubes: &mut String) -> u64 {
+    let mut codes: Vec<char> = cubes.chars().collect();
+    let mut turned = 0;
+    for n in eps {
+        if let Some(c) = codes.get_mut((*n as usize).wrapping_sub(1))
+            && matches!(*c, 'd' | 'g' | 'm' | 'f')
+        {
+            if *c == 'd' {
+                turned += 1;
+            }
+            *c = 't';
+        }
+    }
+    *cubes = codes.into_iter().collect();
+    turned
+}
+
+/// The library's cards with what is still downloading laid over them, and
+/// a fresh torrent read asked for when the last one is stale and something
+/// was downloading then. With nothing downloading it asks for nothing: the
+/// Downloads page's poll is what starts the overlay.
+pub fn overlay(core: &Core, cards: &mut [SeriesCard]) {
+    let stale = {
+        let st = core.downloads.state();
+        for card in cards.iter_mut() {
+            let turned = overlay_cubes(core, card.id, &mut card.cubes, Some(&st.downloading));
+            card.episodes_on_disk = card.episodes_on_disk.saturating_sub(turned);
+        }
+        !st.downloading.is_empty()
+            && st.torrents_at.is_none_or(|at| at.elapsed() > std::time::Duration::from_secs(10))
+    };
+    if stale {
+        core.downloads.state().torrents_at = Some(std::time::Instant::now());
+        let _ = list_torrents(core);
+    }
 }
 
 /// Not a job: opening a show reads its feed. The core fetches the feed
@@ -1529,8 +1654,26 @@ fn link_torrents(core: &Core, torrents: &mut [Torrent]) -> Vec<ShowLink> {
                     infomkv: String::new(),
                     linktype: String::new(),
                 });
-                t.batch = f.batch;
-                t.episode = if f.batch { None } else { f.episode };
+                t.batch = f.batch || !t.files.is_empty();
+                t.episode = if t.batch { None } else { f.episode };
+                for file in t.files.iter_mut() {
+                    let base = file.name.rsplit('/').next().unwrap_or(&file.name);
+                    file.episode = facts::read(&Release {
+                        title: base.to_string(),
+                        link: String::new(),
+                        seeders: None,
+                        leechers: None,
+                        downloads: None,
+                        size: String::new(),
+                        category: String::new(),
+                        page: String::new(),
+                        source: String::new(),
+                        resolution: String::new(),
+                        infomkv: String::new(),
+                        linktype: String::new(),
+                    })
+                    .episode;
+                }
             }
             let mut out: Vec<ShowLink> = shows.into_values().collect();
             out.sort_by_key(|s| s.series_id);
@@ -1612,6 +1755,46 @@ fn plural(n: u64, one: &str, many: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_batch_downloads_its_unfinished_files_and_lays_them_over_the_cubes() {
+        let file = |name: &str, progress: f64| TorrentFile {
+            name: name.to_string(),
+            size: 1,
+            progress,
+            priority: 1,
+            episode: super::facts::read(&Release {
+                title: name.rsplit('/').next().unwrap().to_string(),
+                link: String::new(),
+                seeders: None,
+                leechers: None,
+                downloads: None,
+                size: String::new(),
+                category: String::new(),
+                page: String::new(),
+                source: String::new(),
+                resolution: String::new(),
+                infomkv: String::new(),
+                linktype: String::new(),
+            })
+            .episode,
+        };
+        let dir = "[Erai-raws] Kino no Tabi The Beautiful World - The Animated Series - 01~12 [1080p][Multiple Subtitle]";
+        let mut t = super::qbt::tests_torrent();
+        t.series_id = Some(7);
+        t.progress = 0.4;
+        t.files = vec![
+            file(&format!("{dir}/[Erai-raws] Kino no Tabi The Beautiful World - The Animated Series - 01 [1080p][Multiple Subtitle].mkv"), 1.0),
+            file(&format!("{dir}/[Erai-raws] Kino no Tabi The Beautiful World - The Animated Series - 02 [1080p][Multiple Subtitle].mkv"), 0.3),
+            file(&format!("{dir}/[Erai-raws] Kino no Tabi The Beautiful World - The Animated Series - 03 [1080p][Multiple Subtitle].mkv"), 0.0),
+        ];
+        assert_eq!(t.files[1].episode, Some(2.0));
+        let map = downloading_of(&[t]);
+        assert_eq!(map[&7], BTreeSet::from([2, 3]));
+        let mut cubes = "dddgw".to_string();
+        assert_eq!(lay(&BTreeSet::from([2, 3, 5, 9]), &mut cubes), 2);
+        assert_eq!(cubes, "dttgw", "a watched cube keeps its mark, one past the row is ignored");
+    }
     use super::*;
 
     #[test]

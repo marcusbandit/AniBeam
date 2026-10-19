@@ -263,6 +263,8 @@ pub enum Sort {
     Progress,
     CommunityScore,
     MyScore,
+    /// The newest file's arrival, newest first by default.
+    Downloaded,
 }
 
 impl Sort {
@@ -274,6 +276,7 @@ impl Sort {
             Sort::Progress => "progress",
             Sort::CommunityScore => "communityScore",
             Sort::MyScore => "myScore",
+            Sort::Downloaded => "downloaded",
         }
     }
 
@@ -284,6 +287,7 @@ impl Sort {
             "progress" => Some(Sort::Progress),
             "communityScore" => Some(Sort::CommunityScore),
             "myScore" => Some(Sort::MyScore),
+            "downloaded" => Some(Sort::Downloaded),
             _ => None,
         }
     }

@@ -353,6 +353,24 @@ pub struct Torrent {
     /// The name says it is a batch: several episodes in one torrent.
     #[serde(default)]
     pub batch: bool,
+    /// The files inside, each with its own progress, read for a torrent of
+    /// several files that is not finished; empty otherwise.
+    #[serde(default)]
+    pub files: Vec<TorrentFile>,
+}
+
+/// One file inside a torrent: its name, size and progress, and the episode
+/// its name carries, so a batch shows how far along each episode is.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct TorrentFile {
+    pub name: String,
+    pub size: u64,
+    pub progress: f64,
+    /// qBittorrent's priority, 0 when the file is skipped.
+    #[serde(default)]
+    pub priority: i64,
+    #[serde(default)]
+    pub episode: Option<f64>,
 }
 
 /// One release in a subscription's feed, read by the core straight from

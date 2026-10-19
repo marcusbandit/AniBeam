@@ -588,6 +588,7 @@ mod tests {
             last_viewed_at: None,
             latest_activity_at: time::now(),
             added_at: time::now(),
+            downloaded_at: None,
             franchise: None,
             year: None,
             season: None,

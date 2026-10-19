@@ -27,7 +27,7 @@ Item {
     Keys.onPressed: function(event) { scroll.keyPressed(event) }
 
     readonly property var tabs: ["All", "Series", "Movies"]
-    readonly property var sorts: [["Alpha", "A to Z"], ["LastViewed", "Last viewed"], ["Progress", "Progress"], ["CommunityScore", "Average score"], ["MyScore", "My score"]]
+    readonly property var sorts: [["Alpha", "A to Z"], ["LastViewed", "Last viewed"], ["Progress", "Progress"], ["CommunityScore", "Average score"], ["MyScore", "My score"], ["Downloaded", "Recently downloaded"]]
     // The cuts. A stored "Related" (the cut before the franchise toggle) reads as Season
     // with the toggle on, which is what it was.
     readonly property var arrangements: [["Season", "Season"], ["Type", "Type"], ["Genre", "Genre"], ["WatchState", "Watch state"], ["None", "None"]]
@@ -65,6 +65,9 @@ Item {
         Door.setPreferences(p)
     }
     function pickArrange(key) { arrange = key; persist() }
+    // Everything in one list, A to Z: no airing, franchise or dropped sections
+    function plain() { sort = "Alpha"; direction = "Asc"; arrange = "None"; persist(); reload() }
+    readonly property bool isPlain: arrange === "None" && sort === "Alpha" && direction === "Asc"
     function pickGroupFranchises(on) {
         var p = JSON.parse(JSON.stringify(Door.preferences))
         p.library_group_franchises = on
@@ -179,6 +182,8 @@ Item {
     }
     readonly property var sections: {
         page.revision
+        // None is no sections at all, the airing and dropped ones included
+        if (arrange === "None") return cardList.length ? [{ title: "", cards: cardList, airing: false }] : []
         var airingIds = {}
         for (var a = 0; a < airingRows.length; a++) airingIds[airingRows[a].id] = true
         // Airing is its own section, always first: a series airing now is here and also
@@ -215,7 +220,6 @@ Item {
         } else rest = kept
         out = lead.concat(out)
         if (arrange === "Season") return out.concat(seasonSections(rest, airingIds), tail)
-        if (arrange === "None") return (rest.length ? out.concat([{ title: out.length || tail.length ? "Everything else" : "", cards: rest, airing: false }]) : out).concat(tail)
         var buckets = {}, order = []
         for (var j = 0; j < rest.length; j++) {
             var g = groupOf(rest[j])
@@ -288,6 +292,7 @@ Item {
         search.text = query
         var asked = props.arrange || (props.group === "Viewed" ? "WatchState" : props.group)
         if (arrangements.some(function(a) { return a[0] === cutOf(asked) })) arrange = cutOf(asked)
+        if (props.sort && sorts.some(function(x) { return x[0] === props.sort })) { sort = props.sort; direction = props.sort === "Alpha" ? "Asc" : "Desc" }
         queryDebounce.stop()
         reload()
     }
@@ -411,7 +416,15 @@ Item {
                     onPicked: function(i) { page.pickArrange(page.arrangements[i][0]) }
                 }
             }
+            Button {
+                objectName: "plain"
+                text: "Plain A to Z"
+                icon: "list"
+                flat: !page.isPlain
+                onClicked: page.plain()
+            }
             Row {
+                visible: page.arrange !== "None"
                 spacing: theme.space(2.5)
                 height: theme.controlHeight
                 Label { anchors.verticalCenter: parent.verticalCenter; text: "Group franchises"; role: "ui"; color: theme.textDim }

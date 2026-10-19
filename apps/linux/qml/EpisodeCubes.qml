@@ -32,6 +32,9 @@ Item {
     property int spanLast: 0
     property string spanLabel: ""
     property bool spanChosen: false
+    // How far along each cube is, 0 to 1, for a cube coded `t`: it fills from the bottom
+    // like a glass, over the not-downloaded ground. Unset or a number missing is a full cube.
+    property var fills: null
     signal cubeClicked(int index)
 
     readonly property var list: typeof codes === "string" ? codes.split("") : (codes || [])
@@ -129,13 +132,27 @@ Item {
                 required property int index
                 readonly property string code: root.cells[index] || "g"
                 readonly property var st: theme.cubeState(code)
+                readonly property real filled: code === "t" && root.fills && root.fold === 1 && typeof root.fills[index] === "number" ? Math.max(0, Math.min(1, root.fills[index])) : -1
                 width: root.size; height: root.size
                 radius: Math.max(1, root.size * 0.3)
-                color: st.fill
+                color: filled >= 0 ? theme.cubeState("g").fill : st.fill
                 border.width: st.edge === "transparent" ? 0 : 1
                 border.color: st.edge
                 scale: cubeMouse.containsMouse || (root.spanHot && root.inSpan(cube.index)) ? (root.inSpan(cube.index) ? 1.1 : 1.18) : 1
                 Behavior on scale { enabled: !theme.reducedMotion; NumberAnimation { duration: theme.motionFast } }
+                Item {
+                    visible: cube.filled > 0
+                    anchors.bottom: parent.bottom
+                    width: parent.width
+                    height: Math.round(parent.height * cube.filled)
+                    clip: true
+                    Rectangle {
+                        y: parent.height - cube.height
+                        width: cube.width; height: cube.height
+                        radius: cube.radius
+                        color: cube.st.fill
+                    }
+                }
                 MouseArea {
                     id: cubeMouse
                     anchors.fill: parent

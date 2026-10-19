@@ -70,6 +70,25 @@ impl QbtClient {
             .unwrap_or_default())
     }
 
+    /// The files inside one torrent, in qBittorrent's order.
+    pub async fn files(&self, hash: &str) -> Result<Vec<TorrentFile>, CoreError> {
+        let r = self.call(&format!("torrents/files?hash={hash}"), None).await?;
+        let v: Value = r.json()?;
+        Ok(v.as_array()
+            .map(|a| {
+                a.iter()
+                    .map(|f| TorrentFile {
+                        name: text(&f["name"]),
+                        size: num(&f["size"]),
+                        progress: f["progress"].as_f64().unwrap_or(0.0).clamp(0.0, 1.0),
+                        priority: int(&f["priority"]),
+                        episode: None,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default())
+    }
+
     // ---- RSS: anirss creates the feeds and rules; the core reads them, and
     // rewires one when anirss's feed would come back empty (see
     // `downloads::rewire`)
@@ -360,7 +379,14 @@ fn torrent(v: &Value) -> Torrent {
         series_id: None,
         episode: None,
         batch: false,
+        files: Vec::new(),
     }
+}
+
+/// A blank torrent for other modules' tests.
+#[cfg(test)]
+pub(crate) fn tests_torrent() -> Torrent {
+    torrent(&Value::Null)
 }
 
 #[cfg(test)]

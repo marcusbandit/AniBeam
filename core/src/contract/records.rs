@@ -85,6 +85,10 @@ pub struct SeriesCard {
     /// to start on it, the order they expect a list in.
     #[serde(default = "epoch")]
     pub added_at: SystemTime,
+    /// When the newest file arrived (its mtime), the "recently
+    /// downloaded" order; None with nothing on disk.
+    #[serde(default)]
+    pub downloaded_at: Option<SystemTime>,
     /// The franchise this series shares with other library series, or None
     /// when it relates to no other series in the library
     /// (`franchise::groups`).

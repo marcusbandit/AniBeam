@@ -163,6 +163,18 @@ Item {
     property string getLine: ""
     property string getError: ""
     function lastPart(p) { var f = String(p || "").replace(/\/+$/, ""); var i = f.lastIndexOf("/"); return i >= 0 ? f.slice(i + 1) : f }
+    // The torrents that fill a show: linked to its series, or saved under a folder named
+    // as it is (a show not scanned into the library yet)
+    function keyOf(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "") }
+    function torrentsOfShow(show) {
+        if (!show) return []
+        var want = [keyOf(show.folderName), keyOf(show.title)].filter(function(k) { return k !== "" })
+        return torrents.filter(function(t) {
+            if (show.seriesId >= 0 && t.series_id === show.seriesId) return true
+            var k = keyOf(page.lastPart(t.save_path)), c = keyOf(page.lastPart(t.content_path))
+            return want.indexOf(k) >= 0 || want.indexOf(c) >= 0
+        })
+    }
     function showFromCard(c) {
         var t = c.titles || {}
         return { title: c.title, query: t.romaji || c.title, poster: c.poster || "", cubes: c.cubes || "", total: c.total_episodes || 0,
@@ -786,6 +798,18 @@ Item {
             filesWhere: "what it downloaded"
         }, function(choice) { page.enqueue([t], choice) })
     }
+    // Stopping a download part way: the torrent goes, and what it wrote so far with it
+    // unless unticked, since half an episode is no use to anyone
+    function askCancelTorrent(anchor, torrent) {
+        var t = page.targetForTorrent(torrent)
+        frame.askRemoval(anchor, {
+            heading: "Cancel this download?",
+            base: torrent.name,
+            rule: false, torrentCount: 1, canFiles: true, filesOn: true,
+            filesWhere: "what it has downloaded so far",
+            confirmText: "Cancel the download", keepText: "Keep downloading"
+        }, function(choice) { page.enqueue([t], choice) })
+    }
     function askRemoveDetail(anchor) {
         if (page.detail === null) return
         var t = { title: page.detail.title, rule: "", hashes: page.detailTorrents.map(function(x) { return x.hash }), series: page.detail.seriesId,
@@ -1069,6 +1093,7 @@ Item {
         shows: page.shows
         connected: page.torrentOn
         clientName: page.clientName
+        onCancelTorrent: function(anchor, t) { page.askCancelTorrent(anchor, t) }
         onOpenShow: function(t) {
             if (t.series_id !== null && t.series_id !== undefined && page.shows[t.series_id]) page.openGet(page.showFromLink(page.shows[t.series_id]))
         }
@@ -1664,6 +1689,7 @@ Item {
                 objectName: "downloads-get"
                 width: scroll.innerWidth
                 show: page.getShow
+                torrents: page.torrentsOfShow(page.getShow)
                 endpoints: page.endpoints
                 results: page.getResults
                 active: page.getActive

@@ -458,6 +458,9 @@ FocusScope {
         if (!Door.ready) return
         if (frame.removalOpen) { downloadsReread.restart(); return }
         Door.listSubscriptionRules()
+        // One torrent read too, so the library knows what is still downloading before
+        // the Downloads page is ever opened (the core keeps it fresh while it lasts)
+        Door.listTorrents()
     }
     Connections {
         target: Door

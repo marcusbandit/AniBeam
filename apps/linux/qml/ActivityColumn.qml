@@ -15,6 +15,7 @@ Item {
     property bool connected: false
     property string clientName: "qBittorrent"
     signal openShow(var torrent)
+    signal cancelTorrent(Item anchor, var torrent)
 
     // Moving or waiting to: not finished, not stopped; broken ones stay so they get seen
     function moving(t) {
@@ -23,7 +24,11 @@ Item {
         if (s.indexOf("paused") === 0 || s.indexOf("stopped") === 0) return false
         return (t.progress || 0) < 1
     }
-    readonly property var active: torrents.filter(moving).sort(function(a, b) { return (b.dlspeed || 0) - (a.dlspeed || 0) || (b.added_on || 0) - (a.added_on || 0) })
+    function stopped(t) { var s = String(t.state || ""); return s.indexOf("paused") === 0 || s.indexOf("stopped") === 0 }
+    // Every unfinished torrent: the moving ones first, the stopped ones after, so a stopped
+    // download can still be seen and cancelled
+    readonly property var active: torrents.filter(function(t) { return root.moving(t) || (root.stopped(t) && (t.progress || 0) < 1) })
+        .sort(function(a, b) { return (root.moving(a) ? 0 : 1) - (root.moving(b) ? 0 : 1) || (b.dlspeed || 0) - (a.dlspeed || 0) || (b.added_on || 0) - (a.added_on || 0) })
     readonly property var finishedToday: {
         var since = new Date(); since.setHours(0, 0, 0, 0)
         var cut = since.getTime() / 1000
@@ -50,6 +55,18 @@ Item {
     }
 
     function showOf(t) { return t.series_id !== null && t.series_id !== undefined ? root.shows[t.series_id] || null : null }
+    // A batch read file by file: one cube per episode, done ones on disk, the rest
+    // filling as they come; files with no episode number are left out
+    function episodesOf(t) {
+        var out = []
+        var files = t.files || []
+        for (var i = 0; i < files.length; i++) {
+            var n = files[i].episode
+            if (n === null || n === undefined || n !== Math.floor(n) || n < 1) continue
+            out.push({ n: n, p: files[i].progress || 0, skip: files[i].priority === 0 })
+        }
+        return out.sort(function(a, b) { return a.n - b.n })
+    }
     function nameOf(t) {
         var s = showOf(t)
         if (!s) return t.name
@@ -147,10 +164,27 @@ Item {
         readonly property var show: root.showOf(t)
         readonly property bool broken: t.state === "error" || t.state === "missingFiles"
         readonly property bool done: (t.progress || 0) >= 1
+        readonly property var eps: root.episodesOf(t)
+        readonly property int epsDone: eps.filter(function(e) { return e.p >= 1 }).length
         width: parent ? parent.width : 0
         height: Math.max(thumb.height, info.implicitHeight) + theme.space(4)
         Rectangle { anchors.fill: parent; radius: theme.radiusMd; color: lineMouse.containsMouse ? theme.glassFloat : "transparent" }
         MouseArea { id: lineMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.openShow(line.t) }
+        HoverHandler { id: lineHover }
+        // Cancel: the torrent goes, and what it wrote so far (asked first)
+        Button {
+            id: cancel
+            objectName: "activity-cancel"
+            visible: !line.done
+            anchors.right: parent.right
+            anchors.rightMargin: theme.space(1)
+            anchors.verticalCenter: parent.verticalCenter
+            small: true; flat: true
+            icon: "x"
+            opacity: lineHover.hovered ? 1 : 0.6
+            onClicked: root.cancelTorrent(cancel, line.t)
+            Tooltip { text: "Cancel this download" }
+        }
         Corner {
             id: thumb
             x: theme.space(2)
@@ -174,7 +208,7 @@ Item {
             id: info
             anchors.left: thumb.right
             anchors.leftMargin: theme.space(3)
-            anchors.right: parent.right
+            anchors.right: cancel.visible ? cancel.left : parent.right
             anchors.rightMargin: theme.space(2)
             anchors.verticalCenter: parent.verticalCenter
             spacing: theme.space(1.25)
@@ -185,15 +219,32 @@ Item {
                 Label { id: sizeText; text: line.done ? Fmt.bytes(line.t.size || 0) : Fmt.bytes(Math.round((line.t.size || 0) * (line.t.progress || 0))) + " of " + Fmt.bytes(line.t.size || 0); role: "figure"; font.pointSize: theme.typeSmall * 0.95; color: theme.textDim }
                 Label {
                     anchors.right: parent.right
-                    text: line.broken ? "Files missing" : line.done ? Qt.formatTime(new Date(line.t.completion_on * 1000), "hh:mm")
+                    text: line.broken ? "Files missing" : root.stopped(line.t) && !line.done ? "Stopped" : line.done ? Qt.formatTime(new Date(line.t.completion_on * 1000), "hh:mm")
                         : line.t.eta > 0 && line.t.eta < 8640000 ? Fmt.countdown(line.t.eta) + " left" : line.t.dlspeed > 0 ? Fmt.bytes(line.t.dlspeed) + "/s" : "Waiting for peers"
                     role: line.broken ? "ui" : "figure"
                     font.pointSize: theme.typeSmall * 0.95
                     color: line.broken ? theme.red : theme.textDim
                 }
             }
+            // A batch: each episode as its own cube, filling as its file comes in
+            Label {
+                visible: !line.done && line.eps.length > 1
+                text: line.epsDone + " of " + line.eps.length + " episodes done"
+                role: "ui"; font.pointSize: theme.typeSmall * 0.95; color: theme.textDim
+            }
             EpisodeCubes {
-                visible: !line.done
+                visible: !line.done && line.eps.length > 1
+                width: parent.width
+                height: implicitHeight
+                codes: line.eps.map(function(e) { return e.skip ? "o" : e.p >= 1 ? "d" : "t" })
+                fills: line.eps.map(function(e) { return e.p })
+                cubeSize: theme.space(3.5)
+                minSize: theme.space(1.5)
+                maxRows: 3
+                tipFor: function(i, code) { var e = line.eps[i]; return "Episode " + e.n + ": " + (e.skip ? "skipped" : e.p >= 1 ? "done" : Math.floor(e.p * 100) + "%") }
+            }
+            EpisodeCubes {
+                visible: !line.done && line.eps.length <= 1
                 width: parent.width
                 height: implicitHeight
                 codes: theme.cubeSteps(line.t.progress || 0, 24, line.broken ? "e" : "t", "g")
