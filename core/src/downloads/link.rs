@@ -415,6 +415,12 @@ mod tests {
             episode: None,
             batch: false,
             files: Vec::new(),
+            seq_dl: false,
+            f_l_piece_prio: false,
+            tracker: String::new(),
+            group: String::new(),
+            resolution: String::new(),
+            provider: String::new(),
         };
         assert_eq!(l.find_torrent(&t), Some(4));
         t.save_path = "/mnt/media/Anime/Frieren".into();

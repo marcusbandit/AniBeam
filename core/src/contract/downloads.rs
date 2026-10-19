@@ -357,6 +357,28 @@ pub struct Torrent {
     /// several files that is not finished; empty otherwise.
     #[serde(default)]
     pub files: Vec<TorrentFile>,
+    /// qBittorrent's "download in order" is on for this torrent.
+    #[serde(default)]
+    pub seq_dl: bool,
+    /// qBittorrent's "first and last pieces first" is on for this torrent.
+    #[serde(default)]
+    pub f_l_piece_prio: bool,
+    /// The host of the tracker the client talks to, as `nyaa.tracker.wf`;
+    /// empty for a torrent with none working yet.
+    #[serde(default)]
+    pub tracker: String,
+    /// The release group in the torrent's name, read as a release title is
+    /// (`downloads::facts`).
+    #[serde(default)]
+    pub group: String,
+    /// The resolution in the torrent's name.
+    #[serde(default)]
+    pub resolution: String,
+    /// The anirss endpoint (erai, nyaa) this torrent was picked on, when
+    /// AniBeam added it; qBittorrent keeps no such thing, so older
+    /// torrents carry none.
+    #[serde(default)]
+    pub provider: String,
 }
 
 /// One file inside a torrent: its name, size and progress, and the episode
@@ -414,6 +436,48 @@ pub enum TorrentAction {
     Delete {
         files: bool,
     },
+    /// Download in order (qBittorrent's sequential download) on or off.
+    /// Idempotent: the client's toggle is only pressed for a torrent
+    /// whose setting differs.
+    Sequential {
+        on: bool,
+    },
+    /// First and last pieces first on or off, set the same way.
+    FirstLastPieces {
+        on: bool,
+    },
+}
+
+/// What a download asks for beyond the releases themselves: the order the
+/// client fetches in, and which episodes the new torrents replace.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct DownloadOptions {
+    /// Turn on download in order for the new torrents once the client has them.
+    #[serde(default)]
+    pub sequential: bool,
+    /// The endpoint the releases came from, kept so Activity can say so.
+    #[serde(default)]
+    pub provider: String,
+    /// The library series the episodes belong to; None for a show not
+    /// scanned in yet, which has no files to replace.
+    #[serde(default)]
+    pub series: Option<u64>,
+    /// Which items replace which episodes: `item` is an index into the
+    /// call's items.
+    #[serde(default)]
+    pub replace: Vec<ReplaceItem>,
+    /// Unfinished torrents (by info-hash) the new ones stand in for.
+    /// Each is cancelled, with what it wrote, if every episode it is still
+    /// fetching is being replaced; otherwise only those files are skipped.
+    #[serde(default)]
+    pub cancel: Vec<String>,
+}
+
+/// One item of a download and the episodes it replaces.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct ReplaceItem {
+    pub item: u64,
+    pub episodes: Vec<u32>,
 }
 
 /// How the core reaches anirss: as a sidecar it starts itself and talks to

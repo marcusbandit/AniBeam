@@ -748,6 +748,13 @@ impl Core {
             Call::DownloadReleases { items, name } => Ok(Reply::Started {
                 job: downloads::download(self, items, name)?,
             }),
+            Call::DownloadReleasesWith {
+                items,
+                name,
+                options,
+            } => Ok(Reply::Started {
+                job: downloads::download_with(self, items, name, options)?,
+            }),
             Call::DownloadMovie { link } => Ok(Reply::Started {
                 job: downloads::movie(self, link)?,
             }),

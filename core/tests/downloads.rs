@@ -927,3 +927,121 @@ fn repair_shortens_an_empty_feed_until_it_answers_and_keeps_the_words() {
         vec!["rules", "setRule", "items", "removeItem", "addFeed"]
     );
 }
+
+/// A download that asks for download in order and to replace episode 2:
+/// the order is set once the client lists the torrent, and the old episode
+/// 2 goes to the trash only after the new file has finished; episodes 1
+/// and 3 are never touched. The trash lands in the test's own data home.
+#[test]
+fn a_replacing_download_is_set_in_order_and_trashes_the_old_file_only_when_the_new_one_is_done() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    isolate_xdg(dir.path());
+    unsafe { std::env::set_var("XDG_DATA_HOME", dir.path().join("share")) };
+    save(&core, remote(), Some("tok"), Some("pw"));
+
+    let lib = dir.path().join("lib");
+    let show = lib.join("Sousou no Frieren");
+    std::fs::create_dir_all(&show).unwrap();
+    let old = |n: u32| show.join(format!("[SubsPlease] Sousou no Frieren - {n:02} (1080p).mkv"));
+    for n in 1..=3 {
+        std::fs::write(old(n), b"x").unwrap();
+    }
+    core.call(Call::AddSource {
+        path: lib.to_string_lossy().into_owned(),
+    })
+    .unwrap();
+    common::wait_for(
+        &c,
+        |e| matches!(e.body, EventBody::ScanFinished { .. }),
+        Duration::from_secs(10),
+    );
+
+    let mut item = release(2, Value::Null);
+    item.title = "[Erai-raws] Sousou no Frieren - 02 [1080p]".to_string();
+    let hash = format!("{:040}", 2);
+    http.push_for(
+        "/downloads",
+        200,
+        json!({"count": 1, "save_path": "/dl/Frieren", "hashes": [hash]}).to_string(),
+    );
+    let job = started(
+        &core,
+        Call::DownloadReleasesWith {
+            items: vec![item.clone()],
+            name: Some("Sousou no Frieren".to_string()),
+            options: DownloadOptions {
+                sequential: true,
+                provider: "erai".to_string(),
+                series: Some(1),
+                replace: vec![ReplaceItem {
+                    item: 0,
+                    episodes: vec![2],
+                }],
+                cancel: Vec::new(),
+            },
+        },
+    );
+    let done = common::wait_job(&c, job);
+    assert!(
+        matches!(&done.body, EventBody::TorrentsAdded { .. }),
+        "{:?}",
+        done.body
+    );
+
+    let new_torrent = |progress: f64| {
+        json!([{"hash": hash, "name": "[Erai-raws] Sousou no Frieren - 02 [1080p]", "state": "downloading",
+                "progress": progress, "size": 100, "save_path": "/dl/Frieren",
+                "content_path": "/dl/Frieren/[Erai-raws] Sousou no Frieren - 02 [1080p].mkv",
+                "added_on": 1, "completion_on": -1, "seq_dl": false}])
+        .to_string()
+    };
+    let new_file = |progress: f64| {
+        json!([{"name": "[Erai-raws] Sousou no Frieren - 02 [1080p].mkv", "size": 100,
+                "progress": progress, "priority": 1}])
+        .to_string()
+    };
+
+    // Round one: half done. In order gets switched on; nothing is trashed.
+    http.push_for("torrents/info", 200, new_torrent(0.5));
+    http.push_for("torrents/info", 200, new_torrent(0.5));
+    http.push_for("torrents/files", 200, new_file(0.5));
+    http.push_for("torrents/files", 200, new_file(0.5));
+    http.push_for("torrents/toggleSequentialDownload", 200, "");
+    http.push_for("transfer/info", 200, json!({}).to_string());
+    assert_eq!(core.call(Call::ListTorrents).unwrap(), Reply::Ok);
+    common::wait_for(
+        &c,
+        |e| matches!(&e.body, EventBody::TorrentsRead { torrents, .. } if torrents.len() == 1 && torrents[0].progress < 1.0),
+        Duration::from_secs(10),
+    );
+    let toggles: Vec<_> = http
+        .requests()
+        .into_iter()
+        .filter(|r| r.url.contains("toggleSequentialDownload"))
+        .collect();
+    assert_eq!(toggles.len(), 1, "switched on once");
+    assert_eq!(form_of(&toggles[0]), format!("hashes={hash}"));
+    for n in 1..=3 {
+        assert!(old(n).exists(), "episode {n} stays while the new one downloads");
+    }
+
+    // Round two: finished. Only the old episode 2 goes; order is not asked again.
+    http.push_for("torrents/info", 200, new_torrent(1.0));
+    http.push_for("torrents/files", 200, new_file(1.0));
+    http.push_for("transfer/info", 200, json!({}).to_string());
+    assert_eq!(core.call(Call::ListTorrents).unwrap(), Reply::Ok);
+    common::wait_for(
+        &c,
+        |e| matches!(&e.body, EventBody::TorrentsRead { torrents, .. } if torrents.len() == 1 && torrents[0].progress >= 1.0),
+        Duration::from_secs(10),
+    );
+    assert!(!old(2).exists(), "the replaced episode went to the trash");
+    assert!(old(1).exists() && old(3).exists(), "no other episode is touched");
+    let toggles = http
+        .requests()
+        .into_iter()
+        .filter(|r| r.url.contains("toggleSequentialDownload"))
+        .count();
+    assert_eq!(toggles, 1, "still the one toggle");
+}
