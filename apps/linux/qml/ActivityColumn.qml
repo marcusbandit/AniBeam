@@ -70,6 +70,13 @@ Item {
         }
         return out.sort(function(a, b) { return a.n - b.n })
     }
+    // The row's two lines: the show (else the torrent's own name), then what of it this is
+    function titleOf(t) { var s = showOf(t); return s ? s.title : t.name }
+    function kindOf(t) {
+        if (t.batch) return "Batch download"
+        if (t.episode !== null && t.episode !== undefined) return "Episode " + t.episode
+        return showOf(t) ? "Download" : ""
+    }
     function nameOf(t) {
         var s = showOf(t)
         if (!s) return t.name
@@ -170,7 +177,7 @@ Item {
         readonly property var eps: root.episodesOf(t)
         readonly property int epsDone: eps.filter(function(e) { return e.p >= 1 }).length
         width: parent ? parent.width : 0
-        height: Math.max(thumb.height, info.implicitHeight) + theme.space(4)
+        height: Math.max(thumb.height, info.implicitHeight, actions.implicitHeight) + theme.space(4)
         Rectangle { anchors.fill: parent; radius: theme.radiusMd; color: lineMouse.containsMouse ? theme.glassFloat : "transparent" }
         MouseArea { id: lineMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.openShow(line.t) }
         HoverHandler { id: lineHover }
@@ -182,10 +189,12 @@ Item {
             visible: !line.done
             anchors.right: parent.right
             anchors.rightMargin: theme.space(1)
-            anchors.verticalCenter: parent.verticalCenter
+            anchors.top: parent.top
+            anchors.topMargin: theme.space(2)
             spacing: theme.space(1.5)
             Button {
                 id: toggle
+                width: theme.space(12.5)
                 objectName: "activity-toggle"
                 readonly property bool stopped: root.stopped(line.t)
                 icon: stopped ? "play" : "pause"
@@ -197,6 +206,7 @@ Item {
             Button {
                 id: cancel
                 objectName: "activity-cancel"
+                width: theme.space(12.5)
                 icon: "x"
                 danger: true
                 busy: line.waiting === "Cancel"
@@ -206,9 +216,10 @@ Item {
         }
         Corner {
             id: thumb
-            x: theme.space(2)
-            anchors.verticalCenter: parent.verticalCenter
-            width: theme.space(10); height: width * 1.45
+            x: theme.space(1)
+            anchors.top: parent.top
+            anchors.topMargin: theme.space(2)
+            width: theme.space(11.5); height: width * 1.5
             radius: theme.radiusSm
             smoothing: theme.cornerSmoothing
             color: theme.tileSunken
@@ -229,17 +240,21 @@ Item {
             anchors.leftMargin: theme.space(3)
             anchors.right: actions.visible ? actions.left : parent.right
             anchors.rightMargin: theme.space(2)
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: theme.space(1.25)
-            Label { width: parent.width; text: root.nameOf(line.t); role: "ui"; elide: Text.ElideRight }
+            anchors.top: parent.top
+            anchors.topMargin: theme.space(1)
+            spacing: theme.space(0.75)
+            Label { width: parent.width; text: root.titleOf(line.t); role: "ui"; font.pointSize: theme.typeNormal * 1.25; elide: Text.ElideRight }
+            Label { visible: text !== ""; width: parent.width; text: root.kindOf(line.t); role: "ui"; font.pointSize: theme.typeSmall * 1.08; elide: Text.ElideRight }
             // Bytes, then time left; the second goes under the first when the row is narrow
             Flow {
                 width: parent.width
                 spacing: theme.space(2)
                 Label { id: sizeText; text: line.done ? Fmt.bytes(line.t.size || 0) : Fmt.bytes(Math.round((line.t.size || 0) * (line.t.progress || 0))) + " of " + Fmt.bytes(line.t.size || 0); role: "figure"; font.pointSize: theme.typeSmall * 0.95; color: theme.textDim }
+                // Stopped needs no word: the play button says it
                 Label {
                     id: leftText
-                    text: line.broken ? "Files missing" : root.stopped(line.t) && !line.done ? "Stopped" : line.done ? Qt.formatTime(new Date(line.t.completion_on * 1000), "hh:mm")
+                    visible: text !== ""
+                    text: line.broken ? "Files missing" : root.stopped(line.t) && !line.done ? "" : line.done ? Qt.formatTime(new Date(line.t.completion_on * 1000), "hh:mm")
                         : line.t.eta > 0 && line.t.eta < 8640000 ? Fmt.countdown(line.t.eta) + " left" : line.t.dlspeed > 0 ? Fmt.bytes(line.t.dlspeed) + "/s" : "Waiting for peers"
                     role: line.broken ? "ui" : "figure"
                     font.pointSize: theme.typeSmall * 0.95
@@ -252,15 +267,16 @@ Item {
                 text: line.epsDone + " of " + line.eps.length + " episodes done"
                 role: "ui"; font.pointSize: theme.typeSmall * 0.95; color: theme.textDim
             }
+            // Six to a row, so a season reads as two short rows
             EpisodeCubes {
                 visible: !line.done && line.eps.length > 1
-                width: parent.width
+                width: Math.min(parent.width, 6 * (cubeSize + gap) - gap)
                 height: implicitHeight
                 codes: line.eps.map(function(e) { return e.skip ? "o" : e.p >= 1 ? "d" : "t" })
                 fills: line.eps.map(function(e) { return e.p })
-                cubeSize: theme.space(3.5)
-                minSize: theme.space(1.5)
-                maxRows: 3
+                cubeSize: theme.space(5.25)
+                minSize: theme.space(2)
+                maxRows: 4
                 tipFor: function(i, code) { var e = line.eps[i]; return "Episode " + e.n + ": " + (e.skip ? "skipped" : e.p >= 1 ? "done" : Math.floor(e.p * 100) + "%") }
             }
             EpisodeCubes {

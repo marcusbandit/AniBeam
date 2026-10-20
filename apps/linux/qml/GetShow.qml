@@ -483,14 +483,29 @@ Item {
                 }
                 fillItem: posterImage.status === Image.Ready ? posterImage : null
             }
+            // The title and its facts at the poster's top; where the show stands, and its
+            // episodes, at its foot
+            // The series' own page: everything about it, and where its episodes play
+            Button {
+                id: seriesButton
+                objectName: "get-open-series"
+                visible: root.inLibrary
+                anchors.right: parent.right
+                anchors.top: poster.top
+                height: theme.space(11.75)
+                text: "Open series"
+                icon: "arrow-up-right"
+                onClicked: frame.go("series", { id: root.show.seriesId }, root.show.title)
+                Tooltip { text: "The series page: its details, episodes and playing" }
+            }
             Column {
                 id: bandText
                 anchors.left: poster.right
                 anchors.leftMargin: theme.space(7)
-                anchors.right: parent.right
-                anchors.bottom: poster.bottom
+                anchors.right: seriesButton.visible ? seriesButton.left : parent.right
+                anchors.rightMargin: seriesButton.visible ? theme.space(4) : 0
+                anchors.top: poster.top
                 spacing: theme.space(3)
-                Button { text: "Downloads"; icon: "arrow-left"; flat: true; small: true; onClicked: root.back() }
                 Label {
                     width: parent.width
                     text: root.show ? root.show.title : ""
@@ -513,22 +528,33 @@ Item {
                             if (s.airing) out.push(s.nextAiring ? "Episode " + s.nextAiring.episode + " in " + Fmt.countdown(s.nextAiring.at - root.nowMs / 1000) : "Airing")
                             else if (s.status === "Finished") out.push("Finished")
                             if (s.total > 0) out.push(s.total + " episodes")
-                            out.push(root.downloading ? "Downloading " + Fmt.plural(root.downloadingCount, "episode", "episodes")
-                                : root.activeTorrents.length ? "Downloading " + Fmt.plural(root.activeTorrents.length, "torrent", "torrents")
-                                : root.inLibrary ? "In your library" : "Not in your library")
                             return out
                         }
                         Label { required property string modelData; text: modelData; role: "ui"; font.pointSize: theme.typeNormal * 1.1; color: theme.textDim }
                     }
                 }
+            }
+            Column {
+                anchors.left: bandText.left
+                anchors.right: parent.right
+                anchors.bottom: poster.bottom
+                spacing: theme.space(3)
+                Label {
+                    objectName: "get-standing"
+                    text: root.downloading ? "Downloading " + Fmt.plural(root.downloadingCount, "episode", "episodes")
+                        : root.activeTorrents.length ? "Downloading " + Fmt.plural(root.activeTorrents.length, "torrent", "torrents")
+                        : root.inLibrary ? "In your library" : "Not in your library"
+                    role: "ui"; font.pointSize: theme.typeNormal * 1.1; color: theme.textDim
+                }
                 EpisodeCubes {
-                    width: Math.min(parent.width, theme.space(160))
+                    width: Math.min(parent.width, theme.space(220))
                     height: implicitHeight
                     visible: root.library.length > 0
                     codes: root.library
                     fills: root.libraryFills
-                    cubeSize: theme.space(3)
-                    maxRows: 3
+                    cubeSize: theme.space(7.75)
+                    minSize: theme.space(2.5)
+                    maxRows: 2
                 }
             }
         }
@@ -544,16 +570,6 @@ Item {
                 width: parent.width
                 height: theme.space(14)
                 Label { id: dlTitle; anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(2); text: "Downloading"; role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 }) }
-                Label {
-                    anchors.left: dlTitle.right; anchors.leftMargin: theme.space(3); anchors.baseline: dlTitle.baseline
-                    width: parent.width - dlTitle.width - theme.space(4)
-                    text: {
-                        var n = root.activeTorrents.length, speed = 0
-                        for (var i = 0; i < n; i++) speed += root.activeTorrents[i].dlspeed || 0
-                        return Fmt.plural(n, "torrent", "torrents") + (speed > 0 ? ", " + Fmt.bytes(speed) + "/s" : "") + ". Stopping keeps what it has; cancelling does not."
-                    }
-                    role: "ui"; color: theme.textDim; elide: Text.ElideRight
-                }
             }
             Repeater {
                 model: root.activeTorrents
@@ -974,91 +990,109 @@ Item {
         Column {
             id: cardBody
             width: parent.width
-            spacing: theme.space(3)
+            spacing: theme.space(5)
+            // What it carries and how far along on the left; its controls on the right
+            // The controls hang over the tile row's right end, so the tiles start right under
+            // the figures
             Item {
                 width: parent.width
-                height: Math.max(nameCol.implicitHeight, buttons.height)
+                height: headCol.implicitHeight
+                z: 1
                 Column {
-                    id: nameCol
+                    id: headCol
                     anchors.left: parent.left
-                    anchors.right: buttons.left
+                    anchors.right: controls.left
                     anchors.rightMargin: theme.space(4)
-                    spacing: theme.space(1)
+                    spacing: theme.space(1.5)
+                    Label { visible: card.episodeWords !== ""; text: card.episodeWords; role: "ui"; color: theme.textDim }
                     Row {
-                        spacing: theme.space(2)
-                        Rectangle {
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: theme.space(2.5); height: width; radius: width / 2
-                            color: card.broken ? theme.red : card.stopped ? theme.textFaint : (card.t.state === "stalledDL" || card.t.state === "queuedDL" || card.t.state === "metaDL") ? theme.yellow : theme.green
+                        spacing: theme.space(3)
+                        Label {
+                            objectName: "get-torrent-state"
+                            text: card.broken ? root.stateWords(card.t) : Math.floor((card.t.progress || 0) * 100) + "%"
+                            role: "title"; font.pointSize: theme.typeLarge
+                            color: card.broken ? theme.red : theme.text
                         }
-                        Label { objectName: "get-torrent-state"; text: root.stateWords(card.t) + ", " + Math.floor((card.t.progress || 0) * 100) + "%"; role: "title"; font.pointSize: theme.typeNormal; color: card.broken ? theme.red : theme.text }
-                        Label { visible: card.episodeWords !== ""; text: card.episodeWords + (card.epsDone > 0 && card.eps.length > 1 ? ", " + card.epsDone + " done" : ""); role: "ui"; color: theme.textDim }
+                        Label {
+                            objectName: "get-torrent-figures"
+                            anchors.baseline: parent.children[0].baseline
+                            text: {
+                                var t = card.t, bits = []
+                                bits.push(Fmt.bytes(Math.round((t.size || 0) * (t.progress || 0))) + " of " + Fmt.bytes(t.size || 0))
+                                if ((t.dlspeed || 0) > 0) bits.push(Fmt.bytes(t.dlspeed) + "/s")
+                                if (!card.stopped && t.eta > 0 && t.eta < 8640000) bits.push(Fmt.countdown(t.eta) + " left")
+                                return bits.join(", ")
+                            }
+                            role: "figure"; font.pointSize: theme.typeLarge; color: theme.textDim
+                        }
                     }
-                    Label { objectName: "get-torrent-name"; width: parent.width; text: card.t.name; role: "ui"; elide: Text.ElideMiddle }
                 }
-                Row {
-                    id: buttons
+                Column {
+                    id: controls
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    spacing: theme.space(2)
-                    Button {
-                        objectName: "get-torrent-toggle"
-                        readonly property string waiting: root.busyOf(card.t.hash)
-                        busy: waiting === "Stop" || waiting === "Start"
-                        primary: card.stopped && !busy
-                        text: waiting === "Stop" ? "Stopping" : waiting === "Start" ? "Starting" : card.stopped ? "Start" : "Stop"
-                        icon: card.stopped ? "play" : "pause"
-                        onClicked: root.control(card.t.hash, card.stopped ? "Start" : "Stop")
-                        Tooltip { text: card.stopped ? "Start downloading again" : "Stop downloading; what it has stays" }
+                    spacing: theme.space(3)
+                    Row {
+                        anchors.right: parent.right
+                        spacing: theme.space(2)
+                        Button {
+                            objectName: "get-torrent-toggle"
+                            readonly property string waiting: root.busyOf(card.t.hash)
+                            busy: waiting === "Stop" || waiting === "Start"
+                            primary: card.stopped && !busy
+                            text: waiting === "Stop" ? "Stopping" : waiting === "Start" ? "Starting" : card.stopped ? "Start" : "Stop"
+                            icon: card.stopped ? "play" : "pause"
+                            onClicked: root.control(card.t.hash, card.stopped ? "Start" : "Stop")
+                            Tooltip { text: card.stopped ? "Start downloading again" : "Stop downloading; what it has stays" }
+                        }
+                        Button {
+                            id: cancelButton
+                            objectName: "get-torrent-cancel"
+                            danger: true
+                            busy: root.busyOf(card.t.hash) === "Cancel"
+                            text: busy ? "Cancelling" : "Cancel"
+                            icon: "x"
+                            onClicked: root.cancelTorrent(cancelButton, card.t)
+                            Tooltip { text: "Cancel this download and move what it wrote to the trash" }
+                        }
                     }
-                    Button {
-                        id: cancelButton
-                        objectName: "get-torrent-cancel"
-                        danger: true
-                        busy: root.busyOf(card.t.hash) === "Cancel"
-                        text: busy ? "Cancelling" : "Cancel"
-                        icon: "x"
-                        onClicked: root.cancelTorrent(cancelButton, card.t)
-                        Tooltip { text: "Cancel this download and move what it wrote to the trash" }
+                    // The client's own option, per torrent
+                    Row {
+                        anchors.right: parent.right
+                        spacing: theme.space(3)
+                        Label { anchors.verticalCenter: parent.verticalCenter; text: "Force download order"; role: "title"; font.pointSize: theme.typeNormal }
+                        Switch {
+                            id: seqSwitch
+                            objectName: "get-torrent-sequential"
+                            anchors.verticalCenter: parent.verticalCenter
+                            checked: card.seq
+                            onToggled: function(on) { root.control(card.t.hash, on ? "Sequential" : "Unsequential"); settle.restart() }
+                            // The poll after the change brings the client's answer; if the change did not
+                            // take, the switch goes back to what the client says
+                            Binding { target: seqSwitch; property: "checked"; value: card.seq }
+                            Timer { id: settle; interval: 4000; onTriggered: seqSwitch.checked = card.seq }
+                            Tooltip { text: card.seq ? "On: pieces come from the start of each file, so the first episodes finish first." : "Off: the client fetches pieces in whatever order the swarm offers them." }
+                        }
                     }
                 }
             }
-            // Where from, where to
-            Column {
-                width: parent.width
-                spacing: theme.space(1)
-                Fact { key: "Release"; value: card.release }
-                Fact { key: "From"; value: card.source }
-                Fact { key: "Saving to"; value: card.t.save_path || card.t.content_path || "" }
-            }
-            // How far along
-            Item {
-                width: parent.width
-                height: figures.implicitHeight
-                Label {
-                    id: figures
-                    objectName: "get-torrent-figures"
-                    width: parent.width
-                    text: {
-                        var t = card.t, bits = []
-                        bits.push(Fmt.bytes(Math.round((t.size || 0) * (t.progress || 0))) + " of " + Fmt.bytes(t.size || 0))
-                        if ((t.dlspeed || 0) > 0) bits.push(Fmt.bytes(t.dlspeed) + "/s")
-                        if (!card.stopped && t.eta > 0 && t.eta < 8640000) bits.push(Fmt.countdown(t.eta) + " left")
-                        if ((t.num_seeds || 0) > 0) bits.push(Fmt.plural(t.num_seeds, "seed", "seeds"))
-                        return bits.join(", ")
-                    }
-                    role: "figure"; font.pointSize: theme.typeSmall; color: theme.textDim; elide: Text.ElideRight
-                }
-            }
+            // One tile per episode, filling from the bottom as its file comes in; the one
+            // furthest along that is not done says how far
             EpisodeCubes {
                 visible: card.eps.length > 1
-                width: parent.width
+                width: parent.width - controls.width - theme.space(8)
                 height: implicitHeight
                 codes: card.eps.map(function(e) { return e.skip ? "o" : e.p >= 1 ? "d" : "t" })
                 fills: card.eps.map(function(e) { return e.p })
-                cubeSize: theme.space(5)
-                minSize: theme.space(2)
+                cubeSize: theme.space(12.25)
+                minSize: theme.space(4)
                 maxRows: 3
+                badgeIndex: {
+                    var best = -1, p = 0
+                    for (var i = 0; i < card.eps.length; i++) { var e = card.eps[i]; if (!e.skip && e.p < 1 && e.p > p) { p = e.p; best = i } }
+                    return best
+                }
+                badgeText: badgeIndex >= 0 ? Math.floor(card.eps[badgeIndex].p * 100) + "%" : ""
                 tipFor: function(i, code) { var e = card.eps[i]; return "Episode " + e.n + ": " + (e.skip ? "skipped" : e.p >= 1 ? "done" : Math.floor(e.p * 100) + "%") }
             }
             EpisodeCubes {
@@ -1071,29 +1105,14 @@ Item {
                 maxRows: 1
                 tipLimit: 0
             }
-            // The client's own option, per torrent
-            Item {
+            // What it is, where from, where to
+            Column {
                 width: parent.width
-                height: Math.max(seqSwitch.height, seqText.implicitHeight)
-                Switch {
-                    id: seqSwitch
-                    objectName: "get-torrent-sequential"
-                    checked: card.seq
-                    onToggled: function(on) { root.control(card.t.hash, on ? "Sequential" : "Unsequential"); settle.restart() }
-                    // The poll after the change brings the client's answer; if the change did not
-                    // take, the switch goes back to what the client says
-                    Binding { target: seqSwitch; property: "checked"; value: card.seq }
-                    Timer { id: settle; interval: 4000; onTriggered: seqSwitch.checked = card.seq }
-                }
-                Column {
-                    id: seqText
-                    anchors.left: seqSwitch.right
-                    anchors.leftMargin: theme.space(4)
-                    anchors.right: parent.right
-                    spacing: theme.space(1)
-                    Label { text: "Download in order"; role: "title"; font.pointSize: theme.typeNormal }
-                    Label { width: parent.width; text: card.seq ? "On. Pieces come from the start of each file, so the first episodes finish first." : "Off. The client fetches pieces in whatever order the swarm offers them."; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim; wrapMode: Text.Wrap }
-                }
+                spacing: theme.space(1.5)
+                Fact { objectName: "get-torrent-name"; key: "Torrent"; value: card.t.name || "" }
+                Fact { key: "Release"; value: card.release }
+                Fact { key: "From"; value: card.source }
+                Fact { key: "Saving to"; value: card.t.save_path || card.t.content_path || "" }
             }
         }
     }
@@ -1105,7 +1124,7 @@ Item {
         width: parent ? parent.width : 0
         height: Math.max(keyLabel.implicitHeight, valueLabel.implicitHeight)
         Label { id: keyLabel; width: theme.space(18); text: parent.key; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint }
-        Label { id: valueLabel; x: theme.space(18); width: parent.width - x; text: parent.value; role: "ui"; elide: Text.ElideMiddle }
+        Label { id: valueLabel; x: theme.space(18); width: parent.width - x; text: parent.value; role: "ui"; color: theme.textDim; elide: Text.ElideMiddle }
     }
 
     // One row of the grid: who, one line, and the cubes; a click on the name picks the row

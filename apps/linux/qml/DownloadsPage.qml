@@ -1354,52 +1354,55 @@ Item {
         anchors.right: activity.visible ? activity.left : parent.right
         readonly property real innerWidth: width - theme.space(16)
 
-        // ---- The head: the title, the one line, the two halves as chips
+        // ---- The head: back (with a show open), the title, the two halves in plain words
         Item {
             width: parent.width
             height: theme.space(20)
+            Button {
+                id: backButton
+                objectName: "downloads-back"
+                visible: page.getShow !== null
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                width: visible ? theme.space(14) : 0
+                height: theme.space(13)
+                radius: theme.space(5)
+                flat: true
+                onClicked: page.closeGet()
+                Icon { anchors.centerIn: parent; glyph: "chevron-left"; size: theme.space(8); color: theme.text }
+                Tooltip { text: "Back to Downloads" }
+            }
             Label {
                 id: titleLabel
-                anchors.left: parent.left
+                anchors.left: backButton.visible ? backButton.right : parent.left
+                anchors.leftMargin: backButton.visible ? theme.space(4) : 0
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Downloads"
                 role: "display"
                 font.pointSize: theme.typePage
             }
-            Label {
-                objectName: "downloads-summary"
-                anchors.left: titleLabel.right
-                anchors.leftMargin: theme.space(3)
-                anchors.right: chips.left
-                anchors.rightMargin: theme.space(4)
-                anchors.baseline: titleLabel.baseline
-                text: page.summary
-                role: "ui"
-                color: theme.textDim
-                elide: Text.ElideRight
-            }
             Row {
                 id: chips
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: theme.space(2)
-                Chip {
+                spacing: theme.space(4)
+                Label {
                     objectName: "downloads-anirss-chip"
-                    icon: "rss"
+                    anchors.verticalCenter: parent.verticalCenter
                     text: page.anirssReady ? "anirss " + page.anirss.version : page.connecting ? "anirss starting" : "anirss off"
-                    textColor: page.anirssReady ? theme.caughtUp : page.connecting ? theme.textDim : theme.red
-                    clickable: true
-                    onClicked: frame.go("settings", { tab: "downloads" })
-                    Tooltip { text: page.anirssReady ? "anirss at " + page.anirss.url : (page.anirss && page.anirss.message ? page.anirss.message : "Open the Downloads settings") }
+                    role: "ledger"; font.pointSize: theme.typeNormal
+                    color: page.anirssReady || page.connecting ? theme.textFaint : theme.red
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: frame.go("settings", { tab: "downloads" }) }
+                    Tooltip { text: page.anirssReady ? "anirss at " + page.anirss.url + ". " + page.summary : (page.anirss && page.anirss.message ? page.anirss.message : "Open the Downloads settings") }
                 }
-                Chip {
+                Label {
                     objectName: "downloads-client-chip"
-                    icon: "download"
+                    anchors.verticalCenter: parent.verticalCenter
                     text: page.torrentOn ? page.clientName + " " + page.torrent.version : page.clientName + " off"
-                    textColor: page.torrentOn ? theme.caughtUp : theme.red
-                    clickable: true
-                    onClicked: frame.go("settings", { tab: "downloads" })
-                    Tooltip { text: page.torrentOn ? (page.status.settings.torrent_url) : (page.torrent && page.torrent.message ? page.torrent.message : "Open the Downloads settings") }
+                    role: "ledger"; font.pointSize: theme.typeNormal
+                    color: page.torrentOn ? theme.textFaint : theme.red
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: frame.go("settings", { tab: "downloads" }) }
+                    Tooltip { text: page.torrentOn ? page.status.settings.torrent_url : (page.torrent && page.torrent.message ? page.torrent.message : "Open the Downloads settings") }
                 }
                 Button {
                     text: page.connecting ? "Connecting" : "Reconnect"
@@ -1411,39 +1414,26 @@ Item {
             }
         }
 
-        // ---- The search row: one wide field (shows as you type, release names on Return),
-        // the source a release search asks, Search
-        Item {
+        // ---- The search row: one wide field (shows as you type, release names on Return or
+        // its round button)
+        SearchField {
+            id: search
+            objectName: "downloads-search"
+            large: true
             width: parent.width
-            height: search.height
-            SearchField {
-                id: search
-                objectName: "downloads-search"
-                large: true
-                anchors.left: parent.left
-                width: parent.width - go.width - theme.space(4)
-                placeholder: "Search for a show, or a release name"
-                hint: "Shows as you type, releases on Return"
-                onAccepted: {
-                    if (page.suggesting && page.suggestIndex > 0 && page.suggestRows.length >= page.suggestIndex) page.pickSuggestion(page.suggestRows[page.suggestIndex - 1])
-                    else page.runSearch()
-                }
-                onStepped: function(by) { if (page.suggesting) page.suggestIndex = Math.max(0, Math.min(page.suggestRows.length, page.suggestIndex + by)) }
-                onTextChanged: { page.suggestClosed = false; page.suggestIndex = 0; aniDebounce.restart() }
-                onCleared: { page.aniHits = [] }
+            placeholder: "Search for a show, or a release name"
+            hint: ""
+            goButton: true
+            goBusy: page.searching
+            goTip: page.enabledEndpoints.length ? "Search release names on " + page.enabledEndpoints.map(function(e) { return e.name }).join(", ") : "Every source is switched off."
+            onGo: page.runSearch()
+            onAccepted: {
+                if (page.suggesting && page.suggestIndex > 0 && page.suggestRows.length >= page.suggestIndex) page.pickSuggestion(page.suggestRows[page.suggestIndex - 1])
+                else page.runSearch()
             }
-            Button {
-                id: go
-                objectName: "downloads-go"
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                text: page.searching ? "Searching" : "Search releases"
-                icon: "search"
-                primary: true
-                enabled: !page.searching
-                onClicked: page.runSearch()
-                Tooltip { text: page.enabledEndpoints.length ? "Asks " + page.enabledEndpoints.map(function(e) { return e.name }).join(", ") + ". Switch sources on and off under the field." : "Every source is switched off." }
-            }
+            onStepped: function(by) { if (page.suggesting) page.suggestIndex = Math.max(0, Math.min(page.suggestRows.length, page.suggestIndex + by)) }
+            onTextChanged: { page.suggestClosed = false; page.suggestIndex = 0; aniDebounce.restart() }
+            onCleared: { page.aniHits = [] }
         }
 
         // ---- Shows that match what is typed: the library's own, then AniList's
@@ -1451,7 +1441,7 @@ Item {
             id: suggestTile
             objectName: "downloads-suggestions"
             visible: page.suggesting
-            width: parent.width - go.width - theme.space(4)
+            width: parent.width
             implicitHeight: suggestBody.implicitHeight + padding * 2
             height: visible ? implicitHeight : 0
             padding: theme.space(2)
@@ -1593,7 +1583,7 @@ Item {
             Button {
                 visible: page.endpoints.some(function(e) { return !!e.on_demand })
                 height: theme.space(10)
-                text: page.checkJob >= 0 ? "Checking" : "Check again"
+                text: page.checkJob >= 0 ? "Checking" : "Check"
                 icon: "refresh-cw"
                 flat: true
                 small: true

@@ -35,6 +35,10 @@ Item {
     // How far along each cube is, 0 to 1, for a cube coded `t`: it fills from the bottom
     // like a glass, over the not-downloaded ground. Unset or a number missing is a full cube.
     property var fills: null
+    // One cube's tag above it (how far the episode downloading now is): its index, its text.
+    // The row makes room for it above the cubes.
+    property int badgeIndex: -1
+    property string badgeText: ""
     signal cubeClicked(int index)
     // A folded cube's click: the first and last episode index it stands for
     signal rangeClicked(int first, int last)
@@ -74,7 +78,10 @@ Item {
     readonly property int spanA: spanned ? Math.floor((spanFirst - 1) / fold) : -1
     readonly property int spanB: spanned ? Math.floor((Math.min(spanLast, count) - 1) / fold) : -1
     readonly property real pad: spanned ? Math.max(3, Math.round(gap * 0.8)) : 0
-    readonly property real tabHeight: spanned ? Math.round(tabText.implicitHeight + theme.space(1)) : 0
+    readonly property real tabHeight: (spanned ? Math.round(tabText.implicitHeight + theme.space(1)) : 0) + badgeRoom
+    readonly property bool badged: badgeIndex >= 0 && badgeIndex < cells.length && badgeText !== ""
+    // The tag overlaps its cube's top edge by half its height; only the rest needs room
+    readonly property real badgeRoom: badged ? Math.round((badgeLabel.implicitHeight + theme.space(1)) / 2) : 0
     property int hoverCell: -1
     readonly property bool spanHot: spanned && hoverCell >= spanA && hoverCell <= spanB
     function inSpan(i) { return spanned && i >= spanA && i <= spanB }
@@ -122,6 +129,22 @@ Item {
         role: "figure"
         font.pointSize: theme.typeSmall
         color: root.spanChosen ? theme.accent : root.spanHot ? theme.text : theme.textDim
+    }
+
+    Rectangle {
+        visible: root.badged
+        readonly property int col: root.badgeIndex % Math.max(1, root.perRow)
+        readonly property int row: Math.floor(root.badgeIndex / Math.max(1, root.perRow))
+        width: badgeLabel.implicitWidth + theme.space(3)
+        height: badgeLabel.implicitHeight + theme.space(1)
+        radius: height / 2
+        x: col * (root.size + root.gap) + (root.size - width) / 2
+        y: root.tabHeight + root.pad + row * (root.size + root.gap) - height / 2
+        z: 1
+        color: theme.raised
+        border.width: 1
+        border.color: theme.line
+        Label { id: badgeLabel; anchors.centerIn: parent; text: root.badgeText; role: "figure"; font.pointSize: theme.typeSmall * 0.9; color: theme.text }
     }
 
     Grid {

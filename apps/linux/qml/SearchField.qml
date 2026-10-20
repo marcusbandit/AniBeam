@@ -13,6 +13,12 @@ Corner {
     signal accepted()
     // The Downloads page's one wide field: taller, its text at the large size
     property bool large: false
+    // A round search button inside the field's right end, for a field whose Return runs a
+    // search worth a button of its own (the Downloads page's release search)
+    property bool goButton: false
+    property bool goBusy: false
+    property string goTip: ""
+    signal go()
     readonly property bool editing: input.activeFocus
     // Up and Down in the field, for a list of suggestions under it
     signal stepped(int by)
@@ -34,7 +40,7 @@ Corner {
     TextInput {
         id: input
         anchors.fill: parent
-        anchors.leftMargin: root.large ? theme.space(14) : theme.space(9); anchors.rightMargin: theme.space(10)
+        anchors.leftMargin: root.large ? theme.space(14) : theme.space(9); anchors.rightMargin: root.goButton ? theme.space(20) : theme.space(10)
         verticalAlignment: TextInput.AlignVCenter
         color: theme.text
         font.family: theme.fontFamily; font.pointSize: root.large ? theme.typeLarge : theme.typeNormal
@@ -52,14 +58,28 @@ Corner {
         }
         Text { anchors.fill: parent; verticalAlignment: Text.AlignVCenter; visible: !input.text; text: root.placeholder; color: theme.textFaint; font: input.font }
     }
+    Button {
+        id: goButton
+        objectName: root.objectName !== "" ? root.objectName + "-go" : ""
+        visible: root.goButton
+        anchors.right: parent.right; anchors.rightMargin: theme.space(4); anchors.verticalCenter: parent.verticalCenter
+        width: theme.space(8); height: width
+        radius: width / 2
+        primary: true
+        icon: "search"
+        busy: root.goBusy
+        takesFocus: false
+        onClicked: root.go()
+        Tooltip { text: root.goTip }
+    }
     Label {
-        anchors.right: parent.right; anchors.rightMargin: theme.space(3); anchors.verticalCenter: parent.verticalCenter
-        visible: !input.activeFocus && !input.text
+        anchors.right: root.goButton ? goButton.left : parent.right; anchors.rightMargin: theme.space(3); anchors.verticalCenter: parent.verticalCenter
+        visible: !input.activeFocus && !input.text && root.hint !== ""
         text: root.hint; color: theme.textFaint; role: "ledger"
     }
     Icon {
         visible: input.text !== ""
-        anchors.right: parent.right; anchors.rightMargin: theme.space(3); anchors.verticalCenter: parent.verticalCenter
+        anchors.right: root.goButton ? goButton.left : parent.right; anchors.rightMargin: theme.space(3); anchors.verticalCenter: parent.verticalCenter
         glyph: "x"; size: theme.space(4); color: theme.textDim
         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { input.text = ""; root.cleared() } }
     }
