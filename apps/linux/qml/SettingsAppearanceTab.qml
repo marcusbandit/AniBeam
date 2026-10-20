@@ -54,8 +54,6 @@ SettingsTab {
                 Seg { options: ["Compact", "Normal", "Comfortable"]; index: ["compact", "normal", "comfortable"].indexOf(Theme.density); onPicked: function(i) { Theme.pickDensity(["compact", "normal", "comfortable"][i]) } } }
             SettingRow { label: "Poster size"
                 Seg { options: ["Small", "Medium", "Large"]; index: ["s", "m", "l"].indexOf(Theme.poster); onPicked: function(i) { Theme.pickPoster(["s", "m", "l"][i]) } } }
-            SettingRow { label: "Scroll speed"
-                SliderRow { objectName: "scroll-speed"; from: 0.25; to: 5; stepSize: 0.25; decimals: 2; value: theme.scrollMultiplier; onMoved: function(v) { theme.scrollMultiplier = v } } }
             SettingRow { label: "Reduce motion"; helper: "Skips the library's opening sweep and other movement that is only for show."
                 Switch { objectName: "reduce-motion"; checked: Theme.reducedMotion; onToggled: function(on) { Theme.pickReducedMotion(on) } } }
             Note { text: "All of this lives in ~/.config/anibeam/theme.toml and reloads when the file changes." }

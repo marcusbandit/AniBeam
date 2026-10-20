@@ -303,14 +303,14 @@ Item {
         Item {
             id: head
             width: parent.width
-            height: theme.space(14)
+            height: theme.space(20)
             Row {
                 id: titleRow
                 anchors.left: parent.left
                 anchors.right: search.left; anchors.rightMargin: theme.space(6)
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: theme.space(3)
-                Label { id: titleLabel; anchors.verticalCenter: parent.verticalCenter; text: "Metadata"; role: "display" }
+                Label { id: titleLabel; anchors.verticalCenter: parent.verticalCenter; text: "Metadata"; role: "display"; font.pointSize: theme.typePage }
                 Label {
                     objectName: "metadata-count"
                     anchors.baseline: titleLabel.baseline
@@ -371,14 +371,14 @@ Item {
                     Label { text: "Finding franchise links"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim }
                     Label { text: parent.parent.job && parent.parent.job.total > 0 ? parent.parent.job.done + " of " + parent.parent.job.total : ""; role: "ledger"; color: theme.textDim }
                 }
-                Rectangle {
-                    width: parent.width; height: theme.space(0.75); radius: height / 2
-                    color: theme.behind
-                    Rectangle {
-                        width: parent.width * (parent.parent.job && parent.parent.job.total > 0 ? parent.parent.job.done / parent.parent.job.total : 0)
-                        height: parent.height; radius: height / 2
-                        color: theme.accent
-                    }
+                EpisodeCubes {
+                    width: parent.width
+                    height: implicitHeight
+                    codes: theme.cubeSteps(parent.job && parent.job.total > 0 ? parent.job.done / parent.job.total : 0, 30, "d", "g")
+                    cubeSize: theme.space(1.25)
+                    minSize: 2
+                    maxRows: 1
+                    tipLimit: 0
                 }
             }
         }
@@ -411,8 +411,8 @@ Item {
                             id: sectionTitle
                             text: section.modelData.title
                             role: "display"
-                            font.pointSize: theme.typeLarge
-                            font.variableAxes: ({ "wdth": 74, "wght": 500 })
+                            font.pointSize: theme.typeHeading
+                            font.variableAxes: ({ "wdth": 70, "wght": 420 })
                             color: section.modelData.key === "missing" ? theme.red : section.modelData.key === "airing" ? theme.accent : theme.text
                         }
                         Label { anchors.baseline: sectionTitle.baseline; text: section.modelData.rows.length; role: "ledger"; color: theme.textFaint }

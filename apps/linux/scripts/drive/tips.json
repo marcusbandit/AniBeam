@@ -7,13 +7,14 @@
 "expect": "library"
 },
   {
-"wait": 900
+"until": "driver.item.findItem('tile-18') !== null"
 },
   {
 "hover": "tile-18"
 },
   {
-"wait": 1000
+"until": "frame.item.tipShown",
+"timeout": 4000
 },
   {
 "eval": "frame.item.tipShown",
@@ -60,7 +61,8 @@
 "hover": "tile-18"
 },
   {
-"wait": 1000
+"until": "frame.item.tipShown",
+"timeout": 4000
 },
   {
 "eval": "frame.item.tipShown",
@@ -105,7 +107,8 @@
 "hover": "tile-18"
 },
   {
-"wait": 1000
+"until": "frame.item.tipShown",
+"timeout": 4000
 },
   {
 "eval": "frame.item.tipShown",
@@ -115,7 +118,7 @@
 "key": "Ctrl+,"
 },
   {
-"wait": 500
+"until": "driver.item.pageReady('settings')"
 },
   {
 "eval": "frame.item.nav.current.page",

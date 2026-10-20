@@ -3,7 +3,7 @@
 // theme.scrimReach of the height; the only gradient in the shell), and on it, bottom left,
 // the title (two lines at most) over one dim ledger line, the score bottom right. The
 // episode code is a small square glass tag top left; Dropped, Hidden and the ghost's AniList
-// tag sit top right. A dropped series reads quieter, its poster dimmed like a ghost's. Progress is a short rounded line along the foot, inside the padding. Hover
+// tag sit top right, and so does a purple Downloading while a torrent is still writing an episode. A dropped series reads quieter, its poster dimmed like a ghost's. Progress is a short rounded line along the foot, inside the padding. Hover
 // draws a 1 px accent outline, lifts the tile a touch and deepens the scrim; press scales
 // 0.98. Keyboard focus draws that same outline at full strength and a 2 px ring in
 // theme.focusRing outside the tile, so focus never reads as hover; Return opens the series,
@@ -89,6 +89,9 @@ Item {
     readonly property real airedPct: item.strip ? item.strip.watched + item.strip.aired_unwatched : 0
     readonly property real unknownPct: item.strip ? item.strip.unknown : 0
     readonly property string epBadge: item.code || ""
+    readonly property int downloadingCount: item.downloading ? item.downloading.length : 0
+    // The downloading purple lifted toward white, so it reads on the dark glass tag
+    readonly property color downloadInk: theme.tone(theme.cubeState("t").fill, Qt.rgba(1, 1, 1, 1), 0.3)
     readonly property bool hasScore: item.my_score !== null && item.my_score !== undefined
                                      || item.community_score !== null && item.community_score !== undefined
     readonly property bool mine: item.my_score !== null && item.my_score !== undefined
@@ -191,7 +194,7 @@ Item {
         id: hoverer
         cursorShape: Qt.PointingHandCursor
         onHoveredChanged: {
-            if (hovered && root.folderName !== "") tipIntent.start()
+            if (hovered && root.folderName !== "") { tipIntent.interval = frame.tipWarm() ? 1 : 600; tipIntent.restart() }
             else { tipIntent.stop(); frame.hideTip() }
         }
     }
@@ -280,6 +283,8 @@ Item {
         spacing: theme.space(1)
         // An episode out and not seen: the one tag in the accent
         PosterTag { visible: root.item.watched_state === "Behind" && !root.ghost && !root.dropped; text: "New"; ink: theme.accentOnPoster }
+        // An episode a torrent is still writing: it is not playable until it is whole
+        PosterTag { objectName: "tag-downloading"; visible: root.downloadingCount > 0 && !root.ghost; text: "Downloading"; ink: root.downloadInk }
         PosterTag { visible: root.dropped; text: "Dropped"; ink: theme.onPosterDim }
         PosterTag { visible: !!root.item.hidden; text: "Hidden"; ink: theme.onPosterDim }
         PosterTag { visible: root.ghost && !!root.item.site_url; text: "AniList" }
@@ -392,19 +397,20 @@ Item {
         }
     }
 
-    // ---- Progress: a rounded 3 px line along the foot, inside the padding, aired under
-    // watched
-    Item {
+    // ---- Progress: the episode cubes along the foot, inside the padding, one row; a long
+    // run folds several episodes into a cube rather than wrapping over the title
+    EpisodeCubes {
         id: strip
-        visible: root.hasWatched && root.item.watched > 0 && !root.ghost
+        visible: !root.ghost && (root.item.cubes || "").length > 0
         x: root.pad
         y: parent.height - root.pad * 0.6 - height
         width: parent.width - root.pad * 2
-        height: 4
-        // One fact: how much of the run is watched, in the accent over a faint track. The
-        // aired-but-unseen share used to sit on the same line and read as progress.
-        Rectangle { anchors.fill: parent; radius: height / 2; color: root.bare ? theme.behind : Qt.rgba(1, 1, 1, 0.18) }
-        Rectangle { width: parent.width * Math.min(1, root.watchedPct); height: parent.height; radius: height / 2; color: root.inkAccent }
+        height: implicitHeight
+        codes: root.item.cubes || ""
+        cubeSize: theme.space(1.75)
+        minSize: 2
+        maxRows: 1
+        tipLimit: 0
     }
 
     // ---- The 1 px accent outline on hover, at full strength on focus

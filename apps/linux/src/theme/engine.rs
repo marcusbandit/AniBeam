@@ -317,19 +317,47 @@ mod tests {
         let inputs = read_inputs(&paths, Portal::default());
         let r = resolve(inputs);
         assert_eq!(r.dark.bg.to_hex(), "#0c0d10", "the graphite ground");
-        assert_eq!(r.dark.surface.to_hex(), "#16181b", "the resting glass, composited");
-        assert_eq!(r.dark.accent.to_hex(), "#f2f4f6", "monochrome: the accent is white");
+        assert_eq!(
+            r.dark.surface.to_hex(),
+            "#16181b",
+            "the resting glass, composited"
+        );
+        assert_eq!(
+            r.dark.accent.to_hex(),
+            "#f2f4f6",
+            "monochrome: the accent is white"
+        );
         assert_eq!(r.dark.source_label, "theme Graphite Glass");
         assert_eq!(r.light.bg.to_hex(), "#e3e6ea", "the pale ground");
         assert_eq!(r.light.source_label, "theme Graphite Glass Light");
         for p in [&r.dark, &r.light] {
             // faint text is legible on the ground and the tile, the accent reads as text on
             // a tile, and the ink on an accent fill (a primary button) reads too
-            assert!(p.text_faint.contrast(p.bg) >= 3.0, "{} faint on ground", p.source_label);
-            assert!(p.text_faint.contrast(p.surface) >= 3.0, "{} faint on tile", p.source_label);
-            assert!(p.accent.contrast(p.surface) >= 4.5, "{} accent on tile", p.source_label);
-            assert!(p.accent_text.contrast(p.accent) >= 4.5, "{} ink on accent", p.source_label);
-            assert!(p.text_dim.contrast(p.surface) >= 4.5, "{} dim on tile", p.source_label);
+            assert!(
+                p.text_faint.contrast(p.bg) >= 3.0,
+                "{} faint on ground",
+                p.source_label
+            );
+            assert!(
+                p.text_faint.contrast(p.surface) >= 3.0,
+                "{} faint on tile",
+                p.source_label
+            );
+            assert!(
+                p.accent.contrast(p.surface) >= 4.5,
+                "{} accent on tile",
+                p.source_label
+            );
+            assert!(
+                p.accent_text.contrast(p.accent) >= 4.5,
+                "{} ink on accent",
+                p.source_label
+            );
+            assert!(
+                p.text_dim.contrast(p.surface) >= 4.5,
+                "{} dim on tile",
+                p.source_label
+            );
         }
     }
 
@@ -396,4 +424,3 @@ mod tests {
         assert_eq!(dirs, sorted, "sorted, so the watch set is stable");
     }
 }
-

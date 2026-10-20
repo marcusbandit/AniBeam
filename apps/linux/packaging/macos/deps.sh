@@ -35,6 +35,16 @@ mkdir -p "$prefix"
 
 echo "== libmpv $MPV_VERSION"
 curl -fsSL "https://github.com/mpv-player/mpv/archive/refs/tags/v$MPV_VERSION.tar.gz" | tar -xz -C "$work"
+# Upstream fixes not yet in a release. mpv-player/mpv#18383: a failed CoreAudio init left its
+# hotplug listener on a freed ao, and the next audio device change crashed the app (#75).
+# 0003 is ours: with 18383, init's error path would dispose the audio unit twice.
+# 0004 is mpv-player/mpv#18637, still open upstream: 0.41.0 hands an AudioChannelLayout to
+# kAudioOutputUnitProperty_ChannelMap, which wants an SInt32 array, and macOS 27 answers -50, so
+# Opus and mono tracks lost CoreAudio (#77). Drop 0004 once a release carries the upstream fix.
+for patch in "$(dirname "$0")"/patches/mpv-*.patch; do
+  [ -e "$patch" ] || continue
+  patch -d "$work/mpv-$MPV_VERSION" -p1 --forward < "$patch"
+done
 meson setup "$work/mpv-build" "$work/mpv-$MPV_VERSION" \
   --prefix="$prefix" --libdir=lib --buildtype=release \
   -Dlibmpv=true -Dcplayer=false -Dtests=false -Dbuild-date=false \

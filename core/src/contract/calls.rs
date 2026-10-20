@@ -250,6 +250,14 @@ pub enum Call {
         items: Vec<Release>,
         name: Option<String>,
     },
+    /// `DownloadReleases` with options: download in order, and episodes the
+    /// new torrents replace (see `downloads::replace`). Ends in
+    /// `TorrentsAdded`.
+    DownloadReleasesWith {
+        items: Vec<Release>,
+        name: Option<String>,
+        options: DownloadOptions,
+    },
     /// One link into the movie folder, no subdirectory. Ends in
     /// `TorrentsAdded`.
     DownloadMovie {
@@ -335,6 +343,30 @@ pub enum Call {
     /// Tries the torrent client with the saved settings. Ends in
     /// `DownloadsStatusChanged`.
     TestTorrentClient,
+    /// Switches the downloads to another torrent client: the saved client
+    /// `id`, or AniBeam's own when `id` is `None`. A running sidecar is
+    /// stopped, as a save stops it; `ConnectDownloads` starts it again on
+    /// the new client. Emits `DownloadsStatusChanged`.
+    UseTorrentClient {
+        id: Option<String>,
+    },
+    /// Asks every on-demand endpoint's ready URL whether it is up, and
+    /// nothing else: it never starts one. Ends in `DownloadsStatusChanged`.
+    CheckEndpoints,
+    /// Starts the service behind the named on-demand endpoint (Jackett for
+    /// 1337x) with the saved command, waits for its ready URL to answer and
+    /// probes it again. Only the shell's confirmed click makes this call.
+    /// Ends in `DownloadsStatusChanged`, or fails with a `Service` error
+    /// whose code is `missing`, `failed` or `timeout`.
+    StartEndpoint {
+        name: String,
+    },
+    /// Reads the `.torrent` behind a release's link and counts the episodes
+    /// in its file list, for a batch whose title names no range. Not a job:
+    /// replies `Ok`, the count arrives as `ReleaseInspected`.
+    InspectRelease {
+        link: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Enum)]

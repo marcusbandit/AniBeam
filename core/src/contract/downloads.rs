@@ -91,6 +91,11 @@ pub struct SearchEndpoint {
     /// there. Read from anirss's own config by the core.
     #[serde(default)]
     pub on_demand: Option<u64>,
+    /// For an on-demand endpoint, whether its ready URL answered the last
+    /// probe; None for an endpoint that is always there, or one with no
+    /// ready URL to ask. The probe is a plain GET and never starts it.
+    #[serde(default)]
+    pub running: Option<bool>,
 }
 
 /// A search and its first analysis in one: the items, where they came
@@ -248,6 +253,9 @@ pub struct ShowLink {
     /// The episode numbers from 1 to the total that are not on disk, when
     /// the total is known. Empty for a complete show.
     pub missing: Vec<u32>,
+    /// The series card's episode cubes, carried along for the page.
+    #[serde(default)]
+    pub cubes: String,
 }
 
 fn default_true() -> bool {
@@ -281,6 +289,12 @@ pub struct ReleaseFacts {
     pub episode: Option<f64>,
     pub season: Option<u32>,
     pub batch: bool,
+    /// The episodes a batch names, `(01-28)` as 1 and 28; None when it
+    /// names none (a season pack, "Complete Season").
+    #[serde(default)]
+    pub first_episode: Option<u32>,
+    #[serde(default)]
+    pub last_episode: Option<u32>,
     pub group: String,
     pub resolution: String,
     pub size_bytes: Option<u64>,
@@ -331,6 +345,54 @@ pub struct Torrent {
     /// `ShowLink` is; its record travels beside the list.
     #[serde(default)]
     pub series_id: Option<u64>,
+    /// The episode the torrent's name says it carries, read as a release
+    /// title is (`downloads::facts`); None for a batch or a name that
+    /// names none.
+    #[serde(default)]
+    pub episode: Option<f64>,
+    /// The name says it is a batch: several episodes in one torrent.
+    #[serde(default)]
+    pub batch: bool,
+    /// The files inside, each with its own progress, read for a torrent of
+    /// several files that is not finished; empty otherwise.
+    #[serde(default)]
+    pub files: Vec<TorrentFile>,
+    /// qBittorrent's "download in order" is on for this torrent.
+    #[serde(default)]
+    pub seq_dl: bool,
+    /// qBittorrent's "first and last pieces first" is on for this torrent.
+    #[serde(default)]
+    pub f_l_piece_prio: bool,
+    /// The host of the tracker the client talks to, as `nyaa.tracker.wf`;
+    /// empty for a torrent with none working yet.
+    #[serde(default)]
+    pub tracker: String,
+    /// The release group in the torrent's name, read as a release title is
+    /// (`downloads::facts`).
+    #[serde(default)]
+    pub group: String,
+    /// The resolution in the torrent's name.
+    #[serde(default)]
+    pub resolution: String,
+    /// The anirss endpoint (erai, nyaa) this torrent was picked on, when
+    /// AniBeam added it; qBittorrent keeps no such thing, so older
+    /// torrents carry none.
+    #[serde(default)]
+    pub provider: String,
+}
+
+/// One file inside a torrent: its name, size and progress, and the episode
+/// its name carries, so a batch shows how far along each episode is.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct TorrentFile {
+    pub name: String,
+    pub size: u64,
+    pub progress: f64,
+    /// qBittorrent's priority, 0 when the file is skipped.
+    #[serde(default)]
+    pub priority: i64,
+    #[serde(default)]
+    pub episode: Option<f64>,
 }
 
 /// One release in a subscription's feed, read by the core straight from
@@ -374,6 +436,48 @@ pub enum TorrentAction {
     Delete {
         files: bool,
     },
+    /// Download in order (qBittorrent's sequential download) on or off.
+    /// Idempotent: the client's toggle is only pressed for a torrent
+    /// whose setting differs.
+    Sequential {
+        on: bool,
+    },
+    /// First and last pieces first on or off, set the same way.
+    FirstLastPieces {
+        on: bool,
+    },
+}
+
+/// What a download asks for beyond the releases themselves: the order the
+/// client fetches in, and which episodes the new torrents replace.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct DownloadOptions {
+    /// Turn on download in order for the new torrents once the client has them.
+    #[serde(default)]
+    pub sequential: bool,
+    /// The endpoint the releases came from, kept so Activity can say so.
+    #[serde(default)]
+    pub provider: String,
+    /// The library series the episodes belong to; None for a show not
+    /// scanned in yet, which has no files to replace.
+    #[serde(default)]
+    pub series: Option<u64>,
+    /// Which items replace which episodes: `item` is an index into the
+    /// call's items.
+    #[serde(default)]
+    pub replace: Vec<ReplaceItem>,
+    /// Unfinished torrents (by info-hash) the new ones stand in for.
+    /// Each is cancelled, with what it wrote, if every episode it is still
+    /// fetching is being replaced; otherwise only those files are skipped.
+    #[serde(default)]
+    pub cancel: Vec<String>,
+}
+
+/// One item of a download and the episodes it replaces.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct ReplaceItem {
+    pub item: u64,
+    pub episodes: Vec<u32>,
 }
 
 /// How the core reaches anirss: as a sidecar it starts itself and talks to
@@ -413,14 +517,35 @@ pub enum TorrentMode {
     Managed,
 }
 
+/// One of the user's own qBittorrents, saved by name so the downloads can
+/// switch between several: a seedbox and the one on this machine, say. Its
+/// password lives in the secret store under a key of its own.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct SavedTorrentClient {
+    /// Fixed for the life of the entry, since it names the password's key:
+    /// letters, digits, `-` and `_`. Left empty on a new entry that is not
+    /// the active one, the core picks it on save.
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    pub username: String,
+    #[serde(default)]
+    pub has_password: bool,
+}
+
 /// The downloads settings, secrets left out. The anirss token (remote mode)
-/// and the torrent client's password live in the secret store; the two
-/// `has_*` flags say whether one is held.
+/// and the torrent clients' passwords live in the secret store; the `has_*`
+/// flags say whether one is held.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct DownloadSettings {
     pub anirss_mode: AnirssMode,
     /// The command a sidecar is started with: a name on PATH or a path.
     pub anirss_command: String,
+    /// The command that starts the service behind an on-demand endpoint
+    /// (Jackett for 1337x), run through `sh -c` when the shell asks for it.
+    /// Empty means anirss's own `start` for that endpoint, else `jackett`.
+    #[serde(default)]
+    pub jackett_command: String,
     /// The server's base URL in remote mode, without `/api/v1`.
     pub anirss_url: String,
     #[serde(default)]
@@ -433,8 +558,22 @@ pub struct DownloadSettings {
     pub torrent_mode: TorrentMode,
     pub torrent_url: String,
     pub torrent_username: String,
+    /// Whether the client in use has a password saved here.
     #[serde(default)]
     pub has_torrent_password: bool,
+    /// The user's own clients. In `Existing` mode `active_client` names the
+    /// one in use, and `torrent_url` and `torrent_username` are its address
+    /// and user: a save writes them into it, and a blob from before the list
+    /// existed reads as one client made of them.
+    #[serde(default)]
+    pub saved_clients: Vec<SavedTorrentClient>,
+    #[serde(default)]
+    pub active_client: String,
+    /// Remove a finished show's RSS feed once its run ended long enough
+    /// ago that no more episodes are due (`downloads::prune`). Settings
+    /// saved before this existed read as on.
+    #[serde(default = "default_true")]
+    pub prune_finished_feeds: bool,
 }
 
 fn existing_mode() -> TorrentMode {

@@ -6,6 +6,8 @@
 #include <QtCore/QString>
 #include <QtGui/QColor>
 
+class QQmlApplicationEngine;
+
 void use_opengl_scene_graph();
 void set_desktop_file_name(const QString &name);
 // QSG_RENDER_LOOP=threaded on both GPUs (never on a Mac, where AppKit forbids it for
@@ -30,7 +32,7 @@ void set_app_palette(const QColor &window, const QColor &text, const QColor &bas
 // double-click interval after it, so two separate clicks never fuse into a double click).
 // button: 1 left, 2 right, 4 middle (Qt::MouseButton values).
 void drive_mouse(QObject *window, int kind, double x, double y, int button, int modifiers);
-// One wheel notch is angle delta 120.
+// One wheel notch is angle delta 120, sent as Qt's Wayland plugin sends it.
 void drive_wheel(QObject *window, double x, double y, int dx, int dy, int modifiers);
 // A key press or release; key is a Qt::Key, text what the key types (empty for none).
 void drive_key(QObject *window, bool press, int key, int modifiers, const QString &text);
@@ -54,3 +56,10 @@ void set_cursor_hidden(bool hidden);
 // Hyprland the token never came, so every link in the shell did nothing. A Mac runs
 // open(1) instead. Returns false when the opener could not be started.
 bool open_url(const QString &url);
+
+// Dev only: serves the shell's own QML files from a directory on disk instead of the
+// compiled resources, so a QML-only edit needs no cargo build. Every file the engine would
+// load from the module's resource path is redirected to the same name under `dir` when
+// that file exists there, and anything else (the C++ types, a file not in `dir`) loads as
+// before. The interceptor lives as long as the process.
+void install_qml_dir(QQmlApplicationEngine &engine, const QString &dir);

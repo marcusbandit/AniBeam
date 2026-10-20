@@ -17,6 +17,9 @@ Item {
     property string trouble: ""
     property string folder: ""
     property real progress: -1
+    // The episode cubes (SeriesCard.cubes); without them a progress fraction draws as steps
+    property string cubes: ""
+    property string progressCode: "d"
     property color progressColor: theme.accent
     property string actionText: "Remove"
     property string actionIcon: "x"
@@ -107,12 +110,14 @@ Item {
             Label { id: troubleLabel; visible: text !== ""; text: root.trouble; role: "ui"; color: theme.red }
         }
         Label { width: parent.width; visible: text !== ""; text: root.folder; role: "ledger"; color: theme.textFaint; elide: Text.ElideMiddle }
-        Item {
-            visible: root.progress >= 0
-            width: Math.min(parent.width, theme.space(80))
-            height: theme.space(1)
-            Rectangle { anchors.fill: parent; radius: height / 2; color: theme.line }
-            Rectangle { width: parent.width * Math.max(0, Math.min(1, root.progress)); height: parent.height; radius: height / 2; color: root.progressColor }
+        EpisodeCubes {
+            visible: root.cubes !== "" || root.progress >= 0
+            width: Math.min(parent.width, theme.space(110))
+            height: implicitHeight
+            codes: root.cubes !== "" ? root.cubes : theme.cubeSteps(root.progress, 20, root.progressCode, "g")
+            cubeSize: theme.space(2)
+            minSize: 2
+            maxRows: 2
         }
     }
 

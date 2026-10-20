@@ -1,0 +1,113 @@
+[
+ {
+  "log": "the redesigned Downloads page: lenses, the show-first search, the show view on a provider. Searches only; it adds nothing"
+ },
+ {
+  "click": "rail-downloads"
+ },
+ {
+  "wait": 9000
+ },
+ {
+  "shot": "redesign-00-gaps"
+ },
+ {
+  "eval": "frame.item.pageItem.endpoints.map(function(e) { return e.name + ':' + (e.on_demand ? 'od' : 'plain') + ':' + e.running }).join(',')",
+  "as": "endpoints"
+ },
+ {
+  "eval": "frame.item.pageItem.enabledEndpoints.map(function(e) { return e.name }).join(',')",
+  "as": "enabled"
+ },
+ {
+  "eval": "frame.item.pageItem.lens = 'airing'; true",
+  "expect": true
+ },
+ {
+  "wait": 600
+ },
+ {
+  "shot": "redesign-01-airing"
+ },
+ {
+  "eval": "frame.item.pageItem.lens = 'following'; true",
+  "expect": true
+ },
+ {
+  "wait": 600
+ },
+ {
+  "shot": "redesign-02-following"
+ },
+ {
+  "eval": "frame.item.pageItem.lens = 'downloaded'; true",
+  "expect": true
+ },
+ {
+  "wait": 600
+ },
+ {
+  "shot": "redesign-03-downloaded"
+ },
+ {
+  "eval": "frame.item.pageItem.lens = 'gaps'; true",
+  "expect": true
+ },
+ {
+  "click": "downloads-search"
+ },
+ {
+  "type": "reinca"
+ },
+ {
+  "wait": 2500
+ },
+ {
+  "shot": "redesign-04-suggest"
+ },
+ {
+  "key": "Escape"
+ },
+ {
+  "eval": "var p = frame.item.pageItem; var c = p.libCards.filter(function(x) { return /Link Click/.test(x.title) })[0] || p.gapCards[0]; p.openGet(p.showFromCard(c)); p.getShow.title",
+  "as": "show"
+ },
+ {
+  "wait": 800
+ },
+ {
+  "shot": "redesign-05-get-providers"
+ },
+ {
+  "click": "provider-nyaa"
+ },
+ {
+  "wait": 600
+ },
+ {
+  "shot": "redesign-05-get-searching"
+ },
+ {
+  "wait": 12000
+ },
+ {
+  "eval": "frame.item.pageItem.getActive + ':' + (frame.item.pageItem.getResults[frame.item.pageItem.getActive] || {}).state",
+  "as": "result"
+ },
+ {
+  "shot": "redesign-06-get-grid"
+ },
+ {
+  "wheel": [
+   900,
+   600,
+   -1200
+  ]
+ },
+ {
+  "wait": 600
+ },
+ {
+  "shot": "redesign-07-get-grid-scrolled"
+ }
+]

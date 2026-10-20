@@ -6,7 +6,8 @@
   "click": "rail-downloads"
  },
  {
-  "wait": 8000
+  "until": "driver.item.pageReady('downloads') && frame.item.pageItem.endpoints.length > 0",
+  "timeout": 20000
  },
  {
   "eval": "frame.item.pageItem.endpoints.map(function(e) { return e.name }).join(',')",
@@ -26,13 +27,15 @@
   "key": "Return"
  },
  {
-  "wait": 400
+  "until": "frame.item.pageItem.searching === true",
+  "timeout": 5000
  },
  {
   "shot": "search-00-progress"
  },
  {
-  "wait": 9000
+  "until": "frame.item.pageItem.state !== null && frame.item.pageItem.searching === false",
+  "timeout": 60000
  },
  {
   "eval": "frame.item.pageItem.state !== null",
@@ -125,13 +128,15 @@
   "key": "Return"
  },
  {
-  "wait": 3000
+  "until": "frame.item.pageItem.searchElapsed >= 1 || frame.item.pageItem.searching === false",
+  "timeout": 10000
  },
  {
   "shot": "search-06-1337x-progress"
  },
  {
-  "wait": 30000
+  "until": "frame.item.pageItem.searching === false",
+  "timeout": 90000
  },
  {
   "shot": "search-07-1337x-table"

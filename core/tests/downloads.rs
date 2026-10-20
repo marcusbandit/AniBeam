@@ -21,6 +21,7 @@ fn settings(anirss_command: &str) -> DownloadSettings {
     DownloadSettings {
         anirss_mode: AnirssMode::Sidecar,
         anirss_command: anirss_command.to_string(),
+        jackett_command: String::new(),
         anirss_url: "http://127.0.0.1:8787".to_string(),
         has_anirss_token: false,
         torrent_client: TorrentClient::Qbittorrent,
@@ -28,6 +29,9 @@ fn settings(anirss_command: &str) -> DownloadSettings {
         torrent_url: "http://localhost:9090".to_string(),
         torrent_username: "me".to_string(),
         has_torrent_password: false,
+        saved_clients: Vec::new(),
+        active_client: String::new(),
+        prune_finished_feeds: true,
     }
 }
 
@@ -84,13 +88,17 @@ fn release(n: u32, seeders: Value) -> Release {
     serde_json::from_value(release_json(n, seeders)).unwrap()
 }
 
-/// The fake `anirss`: writes its arguments and its token into `capture`,
-/// then stays up the way a server would. The token is written last, so a
-/// reader that sees it knows the arguments are already there.
+/// The fake `anirss`: writes its arguments, the qBittorrent it was told to
+/// use and its token into `capture`, then stays up the way a server would.
+/// The token is written last, so a reader that sees it knows the rest is
+/// already there.
 fn fake_anirss(capture: &Path) -> String {
     format!(
-        "#!/bin/sh\necho \"$*\" > '{args}'\nprintf '%s' \"$ANIRSS_API_TOKEN\" > '{token}'\nexec sleep 300\n",
+        "#!/bin/sh\necho \"$*\" > '{args}'\n\
+         printf '%s|%s|%s' \"$ANIRSS_QBT_URL\" \"$ANIRSS_QBT_USERNAME\" \"$ANIRSS_QBT_PASSWORD\" > '{qbt}'\n\
+         printf '%s' \"$ANIRSS_API_TOKEN\" > '{token}'\nexec sleep 300\n",
         args = capture.join("args").display(),
+        qbt = capture.join("qbt").display(),
         token = capture.join("token").display(),
     )
 }
@@ -217,12 +225,14 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
     http.push_for(
         "/health",
         200,
-        json!({"ok": true, "version": "0.3.4"}).to_string(),
+        json!({"ok": true, "version": "0.5.0", "features": ["qbt_clients", "qbt_env_session"]})
+            .to_string(),
     );
     http.push_for(
         "/health",
         200,
-        json!({"ok": true, "version": "0.3.4"}).to_string(),
+        json!({"ok": true, "version": "0.5.0", "features": ["qbt_clients", "qbt_env_session"]})
+            .to_string(),
     );
     http.push_for(
         "/endpoints",
@@ -241,7 +251,7 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
         panic!("{:?}", done.body)
     };
     assert_eq!(status.anirss.state, AnirssState::Ready);
-    assert_eq!(status.anirss.version, "0.3.4");
+    assert_eq!(status.anirss.version, "0.5.0");
     assert_eq!(status.endpoints.len(), 1);
     assert_eq!(status.endpoints[0].name, "nyaa");
     assert!(status.torrent.connected);
@@ -344,10 +354,66 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
         status
             .anirss
             .message
-            .starts_with("anirss 0.3.4 is too old for AniBeam, which needs 0.4.2"),
+            .starts_with("anirss 0.3.4 is too old for AniBeam, which needs 0.5.0"),
         "{}",
         status.anirss.message
     );
+
+    // One that serves but does not list the feature AniBeam relies on is
+    // stopped and reported, not used: it would carry one client's login to
+    // another. An anirss from before 0.5.0 lists no features at all.
+    save(&core, settings("anirss"), None, None);
+    // One health answer: the readiness poll's, after which it is stopped
+    http.push_for(
+        "/health",
+        200,
+        json!({"ok": true, "version": "0.4.2"}).to_string(),
+    );
+    http.push_for("app/version", 200, "v5.2.4");
+    let job = started(&core, Call::ConnectDownloads);
+    let done = common::wait_job(&c, job);
+    let EventBody::DownloadsStatusChanged { status } = &done.body else {
+        panic!("{:?}", done.body)
+    };
+    assert_eq!(status.anirss.state, AnirssState::Failed);
+    assert!(
+        status
+            .anirss
+            .message
+            .starts_with("anirss 0.4.2 cannot keep each torrent client's login to itself"),
+        "{}",
+        status.anirss.message
+    );
+
+    // The feature is what counts, not the version: a fork or a checkout that
+    // reports an older one but lists it is used.
+    save(&core, settings("anirss"), None, None);
+    for _ in 0..2 {
+        http.push_for(
+            "/health",
+            200,
+            json!({"ok": true, "version": "0.4.2", "features": ["qbt_env_session"]}).to_string(),
+        );
+    }
+    http.push_for("/endpoints", 200, json!({"endpoints": []}).to_string());
+    http.push_for(
+        "/qbt/status",
+        200,
+        json!({"url": "http://localhost:9090", "reachable": true, "authenticated": false, "login_failed": false}).to_string(),
+    );
+    http.push_for("app/version", 200, "v5.2.4");
+    let job = started(&core, Call::ConnectDownloads);
+    let done = common::wait_job(&c, job);
+    let EventBody::DownloadsStatusChanged { status } = &done.body else {
+        panic!("{:?}", done.body)
+    };
+    assert_eq!(
+        status.anirss.state,
+        AnirssState::Ready,
+        "{}",
+        status.anirss.message
+    );
+    assert_eq!(status.anirss.version, "0.4.2");
 
     // A command the machine does not have: the job still finishes. The
     // status says Missing and why, and the torrent half connects anyway.
@@ -363,6 +429,55 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
     assert!(status.torrent.connected);
     assert_eq!(done.level, Level::Warn);
 
+    // Switching clients starts anirss again on the one now in use, with that
+    // client's own address, user and password in its environment.
+    let switched = tempfile::tempdir().unwrap();
+    let switch_path = bin.path().join("anirss-switch");
+    std::fs::write(&switch_path, fake_anirss(switched.path())).unwrap();
+    std::fs::set_permissions(&switch_path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let mut s = settings("anirss-switch");
+    s.saved_clients = vec![saved("c2", "local", "http://localhost:8080", "admin")];
+    save(&core, s, None, Some("seedbox-pw"));
+    assert_eq!(
+        core.call(Call::UseTorrentClient {
+            id: Some("c2".to_string())
+        })
+        .unwrap(),
+        Reply::Ok
+    );
+    save(
+        &core,
+        downloads_status(&core).settings,
+        None,
+        Some("local-pw"),
+    );
+    for _ in 0..2 {
+        http.push_for(
+            "/health",
+            200,
+            json!({"ok": true, "version": "0.5.0", "features": ["qbt_clients", "qbt_env_session"]})
+                .to_string(),
+        );
+    }
+    http.push_for("/endpoints", 200, json!({"endpoints": []}).to_string());
+    http.push_for(
+        "/qbt/status",
+        200,
+        json!({"url": "http://localhost:8080", "reachable": true, "authenticated": false, "login_failed": false}).to_string(),
+    );
+    http.push_for("app/version", 200, "v5.2.4");
+    let job = started(&core, Call::ConnectDownloads);
+    let done = common::wait_job(&c, job);
+    let EventBody::DownloadsStatusChanged { status } = &done.body else {
+        panic!("{:?}", done.body)
+    };
+    assert_eq!(status.anirss.state, AnirssState::Ready);
+    captured(switched.path(), "token");
+    assert_eq!(
+        std::fs::read_to_string(switched.path().join("qbt")).unwrap(),
+        "http://localhost:8080|admin|local-pw"
+    );
+
     core.shutdown();
     unsafe {
         match &original_home {
@@ -371,6 +486,209 @@ fn the_sidecar_connects_searches_and_reports_an_old_or_missing_command() {
         }
         std::env::set_var("PATH", &original_path);
     }
+}
+
+fn saved(id: &str, name: &str, url: &str, username: &str) -> SavedTorrentClient {
+    SavedTorrentClient {
+        id: id.to_string(),
+        name: name.to_string(),
+        url: url.to_string(),
+        username: username.to_string(),
+        has_password: false,
+    }
+}
+
+fn use_client(core: &Core, id: Option<&str>) -> Result<Reply, CoreError> {
+    core.call(Call::UseTorrentClient {
+        id: id.map(str::to_string),
+    })
+}
+
+#[test]
+fn saved_clients_switch_and_keep_their_own_passwords() {
+    let (dir, core, _c) = common::open_core();
+    isolate_xdg(dir.path());
+
+    // The one client a settings save names becomes the first saved one, and
+    // its password goes where a single-client install always kept it.
+    let mut s = settings("anirss");
+    s.torrent_url = "http://192.0.2.10:8080".to_string();
+    s.torrent_username = "me".to_string();
+    save(&core, s, None, Some("seedbox-pw"));
+    let st = downloads_status(&core).settings;
+    assert_eq!(st.active_client, "default");
+    assert_eq!(st.saved_clients.len(), 1);
+    assert_eq!(st.saved_clients[0].name, "192.0.2.10:8080");
+    assert!(st.saved_clients[0].has_password && st.has_torrent_password);
+
+    // A second one saves beside it, with no password yet.
+    let mut s = st.clone();
+    s.saved_clients
+        .push(saved("", "This Mac", "http://localhost:8080", "admin"));
+    save(&core, s, None, None);
+    let st = downloads_status(&core).settings;
+    assert_eq!(st.saved_clients[1].id, "c2");
+    assert!(!st.saved_clients[1].has_password);
+
+    // Using it moves the address, the user and the password flag with it.
+    assert_eq!(use_client(&core, Some("c2")).unwrap(), Reply::Ok);
+    let st = downloads_status(&core).settings;
+    assert_eq!(st.torrent_mode, TorrentMode::Existing);
+    assert_eq!(st.active_client, "c2");
+    assert_eq!(st.torrent_url, "http://localhost:8080");
+    assert_eq!(st.torrent_username, "admin");
+    assert!(!st.has_torrent_password);
+
+    // Its own password, saved while it is in use, leaves the other's alone.
+    save(&core, st, None, Some("local-pw"));
+    let st = downloads_status(&core).settings;
+    assert!(st.saved_clients.iter().all(|c| c.has_password));
+    assert_eq!(use_client(&core, Some("default")).unwrap(), Reply::Ok);
+    let st = downloads_status(&core).settings;
+    assert_eq!(st.torrent_url, "http://192.0.2.10:8080");
+    assert_eq!(st.torrent_username, "me");
+    assert!(st.has_torrent_password);
+
+    // Taking one off the list takes its password: added back under the same
+    // id, it has none.
+    let mut s = st.clone();
+    s.saved_clients.retain(|c| c.id != "c2");
+    save(&core, s, None, None);
+    let mut s = downloads_status(&core).settings;
+    assert_eq!(s.saved_clients.len(), 1);
+    s.saved_clients
+        .push(saved("c2", "This Mac", "http://localhost:8080", "admin"));
+    save(&core, s, None, None);
+    let st = downloads_status(&core).settings;
+    assert!(!st.saved_clients[1].has_password);
+    assert!(st.saved_clients[0].has_password);
+
+    // An unknown id changes nothing.
+    assert!(matches!(
+        use_client(&core, Some("nas")),
+        Err(CoreError::Invalid { .. })
+    ));
+    assert_eq!(downloads_status(&core).settings.active_client, "default");
+
+    // Two clients by one name is refused.
+    let mut s = st.clone();
+    s.saved_clients[1].name = "192.0.2.10:8080".to_string();
+    let refused = core.call(Call::SetDownloadSettings {
+        settings: s,
+        anirss_token: None,
+        torrent_password: None,
+    });
+    assert!(matches!(refused, Err(CoreError::Invalid { field, .. }) if field == "saved_clients"));
+}
+
+#[test]
+fn a_removed_clients_password_never_passes_to_a_new_one() {
+    let (dir, core, _c) = common::open_core();
+    isolate_xdg(dir.path());
+    let mut s = settings("anirss");
+    s.torrent_url = "http://192.0.2.10:8080".to_string();
+    save(&core, s, None, Some("seedbox-pw"));
+    let mut s = downloads_status(&core).settings;
+    s.saved_clients
+        .push(saved("c2", "NAS", "http://192.0.2.20:8080", "admin"));
+    s.active_client = "c2".to_string();
+    s.torrent_url = "http://192.0.2.20:8080".to_string();
+    save(&core, s, None, Some("nas-pw"));
+
+    // One save that takes c2 off and adds a client without an id: the new
+    // one is not c2 again, so it has no password of its own yet.
+    let mut s = downloads_status(&core).settings;
+    s.saved_clients.retain(|c| c.id != "c2");
+    s.saved_clients
+        .push(saved("", "Other", "http://192.0.2.30:8080", "admin"));
+    s.active_client = "default".to_string();
+    s.torrent_url = "http://192.0.2.10:8080".to_string();
+    save(&core, s, None, None);
+    let st = downloads_status(&core).settings;
+    let other = st.saved_clients.iter().find(|c| c.name == "Other").unwrap();
+    assert_ne!(other.id, "c2");
+    assert!(!other.has_password);
+}
+
+#[test]
+fn anibeams_own_never_starts_at_a_local_clients_port() {
+    let (dir, core, _c) = common::open_core();
+    isolate_xdg(dir.path());
+    let mut s = settings("anirss");
+    s.torrent_url = "http://localhost:8080".to_string();
+    save(&core, s, None, None);
+
+    // Picking AniBeam's own in Settings while the address is still the
+    // user's own qBittorrent on this machine moves it off that port.
+    let mut s = downloads_status(&core).settings;
+    s.torrent_mode = TorrentMode::Managed;
+    save(&core, s, None, None);
+    let st = downloads_status(&core).settings;
+    assert_eq!(st.torrent_mode, TorrentMode::Managed);
+    assert!(
+        st.torrent_url.starts_with("http://127.0.0.1:") && !st.torrent_url.ends_with(":8080"),
+        "{}",
+        st.torrent_url
+    );
+    assert_eq!(st.saved_clients[0].url, "http://localhost:8080");
+}
+
+#[test]
+fn picking_the_client_in_use_keeps_it() {
+    let (dir, core, _c) = common::open_core();
+    isolate_xdg(dir.path());
+    let mut s = settings("anirss");
+    s.torrent_url = "http://192.0.2.10:8080".to_string();
+    save(&core, s, None, Some("seedbox-pw"));
+    let before = downloads_status(&core).settings;
+    assert_eq!(use_client(&core, Some("default")).unwrap(), Reply::Ok);
+    assert_eq!(downloads_status(&core).settings, before);
+}
+
+#[test]
+fn anibeams_own_never_starts_at_a_remote_clients_address() {
+    let (dir, core, _c) = common::open_core();
+    isolate_xdg(dir.path());
+    let mut s = settings("anirss");
+    s.torrent_url = "http://192.0.2.10:8080".to_string();
+    save(&core, s, None, Some("seedbox-pw"));
+
+    // Switching to AniBeam's own from a client elsewhere gives it an address
+    // on this machine, and its user; the saved client stays on the list.
+    assert_eq!(use_client(&core, None).unwrap(), Reply::Ok);
+    let st = downloads_status(&core).settings;
+    assert_eq!(st.torrent_mode, TorrentMode::Managed);
+    assert!(
+        st.torrent_url.starts_with("http://127.0.0.1:"),
+        "{}",
+        st.torrent_url
+    );
+    assert_eq!(st.torrent_username, "anibeam");
+    assert!(!st.has_torrent_password);
+    assert_eq!(st.saved_clients.len(), 1);
+    let own = st.torrent_url.clone();
+
+    // Back to the saved one, and its password is still there.
+    assert_eq!(use_client(&core, Some("default")).unwrap(), Reply::Ok);
+    let st = downloads_status(&core).settings;
+    assert_eq!(st.torrent_url, "http://192.0.2.10:8080");
+    assert!(st.has_torrent_password);
+
+    // A settings save that picks AniBeam's own with the remote address still
+    // in the field gets the same treatment; a loopback one is kept.
+    let mut s = st.clone();
+    s.torrent_mode = TorrentMode::Managed;
+    save(&core, s, None, None);
+    let st = downloads_status(&core).settings;
+    assert!(
+        st.torrent_url.starts_with("http://127.0.0.1:"),
+        "{}",
+        st.torrent_url
+    );
+    let mut s = st.clone();
+    s.torrent_url = own.clone();
+    save(&core, s, None, None);
+    assert_eq!(downloads_status(&core).settings.torrent_url, own);
 }
 
 #[test]
@@ -715,6 +1033,49 @@ fn remove_show_unsubscribes_and_takes_the_torrents_keeping_the_files() {
     assert_eq!(form_of(delete), "hashes=aa|bb&deleteFiles=false");
 }
 
+/// A client on another machine: its files are its own, so the core trashes
+/// nothing here and has the client delete them with the torrents.
+#[test]
+fn remove_show_leaves_a_remote_clients_files_to_the_client() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    isolate_xdg(dir.path());
+    save(
+        &core,
+        DownloadSettings {
+            torrent_url: "http://192.0.2.10:8080".to_string(),
+            ..remote()
+        },
+        Some("tok"),
+        Some("pw"),
+    );
+    http.push_for("torrents/delete", 200, "");
+
+    let job = started(
+        &core,
+        Call::RemoveShow {
+            title: "Frieren".to_string(),
+            rule: None,
+            hashes: vec!["aa".to_string()],
+            torrents: true,
+            files: true,
+            series: None,
+        },
+    );
+    let event = common::wait_job(&c, job);
+    let EventBody::ShowRemoved { trashed, .. } = &event.body else {
+        panic!("{:?}", event.body)
+    };
+    assert!(trashed.is_empty());
+    let requests = http.requests();
+    assert!(!requests.iter().any(|r| r.url.contains("torrents/info")));
+    let delete = requests
+        .iter()
+        .find(|r| r.url.contains("torrents/delete"))
+        .expect("the torrents went");
+    assert_eq!(form_of(delete), "hashes=aa&deleteFiles=true");
+}
+
 /// A file target that holds a library folder refuses the whole removal:
 /// the rule and the torrents stay, nothing is moved.
 #[test]
@@ -808,7 +1169,7 @@ fn a_locally_narrowed_subscription_reads_the_searched_feed_and_filters_in_the_ru
     http.push_for(
         "/health",
         200,
-        json!({"ok": true, "version": "0.3.4"}).to_string(),
+        json!({"ok": true, "version": "0.5.0"}).to_string(),
     );
     http.push_for(
         "/endpoints",
@@ -1043,4 +1404,132 @@ fn a_fresh_install_uses_the_qbittorrent_it_finds_or_starts_its_own() {
     assert_eq!(settled.torrent_url, status.settings.torrent_url);
     unsafe { std::env::remove_var("ANIBEAM_QBITTORRENT_NOX") };
     core.shutdown();
+}
+
+/// A download that asks for download in order and to replace episode 2:
+/// the order is set once the client lists the torrent, and the old episode
+/// 2 goes to the trash only after the new file has finished; episodes 1
+/// and 3 are never touched. The trash lands in the test's own data home.
+#[test]
+fn a_replacing_download_is_set_in_order_and_trashes_the_old_file_only_when_the_new_one_is_done() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    isolate_xdg(dir.path());
+    unsafe { std::env::set_var("XDG_DATA_HOME", dir.path().join("share")) };
+    save(&core, remote(), Some("tok"), Some("pw"));
+
+    let lib = dir.path().join("lib");
+    let show = lib.join("Sousou no Frieren");
+    std::fs::create_dir_all(&show).unwrap();
+    let old = |n: u32| {
+        show.join(format!(
+            "[SubsPlease] Sousou no Frieren - {n:02} (1080p).mkv"
+        ))
+    };
+    for n in 1..=3 {
+        std::fs::write(old(n), b"x").unwrap();
+    }
+    core.call(Call::AddSource {
+        path: lib.to_string_lossy().into_owned(),
+    })
+    .unwrap();
+    common::wait_for(
+        &c,
+        |e| matches!(e.body, EventBody::ScanFinished { .. }),
+        Duration::from_secs(10),
+    );
+
+    let mut item = release(2, Value::Null);
+    item.title = "[Erai-raws] Sousou no Frieren - 02 [1080p]".to_string();
+    let hash = format!("{:040}", 2);
+    http.push_for(
+        "/downloads",
+        200,
+        json!({"count": 1, "save_path": "/dl/Frieren", "hashes": [hash]}).to_string(),
+    );
+    let job = started(
+        &core,
+        Call::DownloadReleasesWith {
+            items: vec![item.clone()],
+            name: Some("Sousou no Frieren".to_string()),
+            options: DownloadOptions {
+                sequential: true,
+                provider: "erai".to_string(),
+                series: Some(1),
+                replace: vec![ReplaceItem {
+                    item: 0,
+                    episodes: vec![2],
+                }],
+                cancel: Vec::new(),
+            },
+        },
+    );
+    let done = common::wait_job(&c, job);
+    assert!(
+        matches!(&done.body, EventBody::TorrentsAdded { .. }),
+        "{:?}",
+        done.body
+    );
+
+    let new_torrent = |progress: f64| {
+        json!([{"hash": hash, "name": "[Erai-raws] Sousou no Frieren - 02 [1080p]", "state": "downloading",
+                "progress": progress, "size": 100, "save_path": "/dl/Frieren",
+                "content_path": "/dl/Frieren/[Erai-raws] Sousou no Frieren - 02 [1080p].mkv",
+                "added_on": 1, "completion_on": -1, "seq_dl": false}])
+        .to_string()
+    };
+    let new_file = |progress: f64| {
+        json!([{"name": "[Erai-raws] Sousou no Frieren - 02 [1080p].mkv", "size": 100,
+                "progress": progress, "priority": 1}])
+        .to_string()
+    };
+
+    // Round one: half done. In order gets switched on; nothing is trashed.
+    http.push_for("torrents/info", 200, new_torrent(0.5));
+    http.push_for("torrents/info", 200, new_torrent(0.5));
+    http.push_for("torrents/files", 200, new_file(0.5));
+    http.push_for("torrents/files", 200, new_file(0.5));
+    http.push_for("torrents/toggleSequentialDownload", 200, "");
+    http.push_for("transfer/info", 200, json!({}).to_string());
+    assert_eq!(core.call(Call::ListTorrents).unwrap(), Reply::Ok);
+    common::wait_for(
+        &c,
+        |e| matches!(&e.body, EventBody::TorrentsRead { torrents, .. } if torrents.len() == 1 && torrents[0].progress < 1.0),
+        Duration::from_secs(10),
+    );
+    let toggles: Vec<_> = http
+        .requests()
+        .into_iter()
+        .filter(|r| r.url.contains("toggleSequentialDownload"))
+        .collect();
+    assert_eq!(toggles.len(), 1, "switched on once");
+    assert_eq!(form_of(&toggles[0]), format!("hashes={hash}"));
+    for n in 1..=3 {
+        assert!(
+            old(n).exists(),
+            "episode {n} stays while the new one downloads"
+        );
+    }
+
+    // Round two: finished. Only the old episode 2 goes; order is not asked again.
+    http.push_for("torrents/info", 200, new_torrent(1.0));
+    http.push_for("torrents/files", 200, new_file(1.0));
+    http.push_for("transfer/info", 200, json!({}).to_string());
+    assert_eq!(core.call(Call::ListTorrents).unwrap(), Reply::Ok);
+    common::wait_for(
+        &c,
+        |e| matches!(&e.body, EventBody::TorrentsRead { torrents, .. } if torrents.len() == 1 && torrents[0].progress >= 1.0),
+        Duration::from_secs(10),
+    );
+    assert!(!old(2).exists(), "the replaced episode went to the trash");
+    assert!(
+        old(1).exists() && old(3).exists(),
+        "no other episode is touched"
+    );
+    let toggles = http
+        .requests()
+        .into_iter()
+        .filter(|r| r.url.contains("toggleSequentialDownload"))
+        .count();
+    assert_eq!(toggles, 1, "still the one toggle");
 }

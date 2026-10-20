@@ -5,7 +5,8 @@
 AniBeam browses, plays and tracks a local anime library. It scans the folders you point it
 at, matches each series against AniList (TVmaze for what AniList does not carry), plays
 video in the window through libmpv, and syncs watch progress with AniList and MyAnimeList.
-It runs on Linux and on Apple silicon Macs: a Qt 6 shell over a Rust core.
+It runs on Linux and on Apple silicon Macs: a Qt 6 shell over a Rust core. The Electron app
+it replaced was retired in October 2026; the `v2.0.0` tag holds its source.
 
 ## Getting started
 
@@ -42,7 +43,7 @@ chmod +x AniBeam-*-x86_64.AppImage
 
 ### 2. Add your library
 
-The first time AniBeam opens, Home says "Your library is empty". Click Add a folder (or go to
+The first time AniBeam opens, Home says "No series yet". Click Add a folder (or go to
 Settings > Library > Folders > Add folder) and pick the folder your anime lives in. One
 folder per show works best, for example `Anime/Sousou no Frieren/Frieren - 01.mkv`.
 
@@ -124,8 +125,9 @@ hand. `0.0.0.0:8790` lets an Android emulator reach it at `10.0.2.2`. The file
 
 ## Build from source
 
-You need Rust 1.95 or newer, Qt 6 (base, declarative, svg), libmpv and KDE's MpvQt.
-On Arch that is `pacman -S rust qt6-base qt6-declarative qt6-svg mpv mpvqt`.
+You need Rust 1.95 or newer, Qt 6.11 or newer (`qmake6` on PATH; base, declarative, svg),
+libmpv, KDE's MpvQt and the lld linker. On Arch that is
+`pacman -S rust lld qt6-base qt6-declarative qt6-svg mpv mpvqt`.
 
 ```bash
 git clone https://github.com/marcusbandit/AniBeam.git
@@ -133,9 +135,19 @@ cd AniBeam
 cargo build --release -p anibeam     # target/release/anibeam
 ```
 
-A build from source finds anirss and qbittorrent-nox on your PATH (anirss 0.4.2 or newer,
-`yay -S anirss qbittorrent-nox` on Arch). A build from source has no AniList or MyAnimeList
-app registration of its own, so the
+An installed build reads its themes and its bundled `mpv.conf` from `/usr/share/anibeam`. A
+run straight from the checkout points at the checkout's copies instead, and `--root` keeps
+all of its data in one directory so it never touches a real install's:
+
+```bash
+ANIBEAM_THEMES_DIR=apps/linux/themes ANIBEAM_MPV_CONF=apps/linux/mpv.conf \
+  target/release/anibeam --root /tmp/anibeam-dev
+```
+
+A build from source finds anirss and qbittorrent-nox on your PATH (anirss 0.5.0 or newer,
+`yay -S anirss qbittorrent-nox` on Arch).
+
+A build from source has no AniList or MyAnimeList app registration of its own, so the
 Trackers tab asks for a client ID the first time you connect. To bundle your own, copy
 `.env.example` to `.env.local` and fill it in before building; it explains where to
 register.
@@ -146,7 +158,8 @@ turns the binary into `AniBeam.app` and a dmg. `.github/workflows/macos.yml` run
 ## Development
 
 The Rust core lives in `core/`, the Qt shell in `apps/linux/` (it builds for the Mac
-too), and a terminal shell over the same core in `apps/cli/`.
+too), and a terminal shell over the
+same core in `apps/cli/`. Cargo builds all three.
 
 ```bash
 cargo build --release -p anibeam-cli   # target/release/anibeam-cli
@@ -154,6 +167,12 @@ cargo test --workspace                 # unit tests plus core/tests/
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 ```
+
+`CONTRIBUTING.md` covers issues, branch and commit names and the PR flow.
+`apps/linux/README.md` covers the shell's own tooling: sandboxed runs, offscreen captures
+with `scripts/shoot.sh` and scripted drives with `scripts/drive.sh`. `CONTEXT.md` is the
+vocabulary the code and the docs share, and the design behind the native line is
+`docs/superpowers/specs/2026-09-04-native-line-design.md`.
 
 The CLI is the core's door: `sources`, `scan`, `list`, `show`, `jobs`,
 `import`, `export`, `events --follow`, and `call <Name> --json '{...}'` for
@@ -166,41 +185,6 @@ anibeam-cli call AddSource --json '{"path": "/mnt/media/anime"}'
 anibeam-cli scan --wait
 anibeam-cli list --tab all --sort alpha --direction asc
 ```
-
-### The phase 1 exit check
-
-The core is finished for phase 1 when it lists the same library the Electron
-app does. Both sides are read from a terminal:
-
-```bash
-bun scripts/electron-export.mjs ~/anibeam-export.json   # what Settings > Export writes
-bun scripts/electron-list.mjs > /tmp/electron-list.txt  # the Home grid, All tab
-```
-
-```bash
-CLI="target/release/anibeam-cli --root /tmp/anibeam-exit-check"
-$CLI import ~/anibeam-export.json --wait
-$CLI scan --wait
-$CLI call RefreshAll --wait
-$CLI list --tab all --sort alpha --direction asc | awk -F'\t' '{ print $3 }' > /tmp/native-list.txt
-diff /tmp/electron-list.txt /tmp/native-list.txt && echo "phase 1 exit: identical"
-```
-
-The import carries the matches as provider ids, so the AniList records behind
-them still have to be fetched: in the app that is the backfill the launch
-queues behind its catch-up scan, and from the terminal it is the `RefreshAll`
-above. A series whose fetch failed keeps its folder name as its title until
-the next run, so run it again if AniList was having a bad day.
-
-Both lists are the same titles in the same order when the two sides agree.
-Titles can drift apart without either side being wrong: AniList's romaji is
-edited from time to time, so an Electron entry that has not been refreshed in
-months holds an older string for the same id.
-
-## The Electron app
-
-The original Electron app still lives in `src/`, frozen. Its last release is the zip on
-v2.0.0. Bun builds it: `bun install`, then `bun run package`.
 
 ## Releasing
 

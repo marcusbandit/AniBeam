@@ -263,6 +263,8 @@ pub enum Sort {
     Progress,
     CommunityScore,
     MyScore,
+    /// The newest file's arrival, newest first by default.
+    Downloaded,
 }
 
 impl Sort {
@@ -274,6 +276,7 @@ impl Sort {
             Sort::Progress => "progress",
             Sort::CommunityScore => "communityScore",
             Sort::MyScore => "myScore",
+            Sort::Downloaded => "downloaded",
         }
     }
 
@@ -284,6 +287,7 @@ impl Sort {
             "progress" => Some(Sort::Progress),
             "communityScore" => Some(Sort::CommunityScore),
             "myScore" => Some(Sort::MyScore),
+            "downloaded" => Some(Sort::Downloaded),
             _ => None,
         }
     }
@@ -598,6 +602,8 @@ pub enum JobKind {
     TestTorrentClient,
     RemoveShow,
     RepairSubscription,
+    CheckEndpoints,
+    StartEndpoint,
 }
 
 impl JobKind {
@@ -615,7 +621,7 @@ impl JobKind {
             Export | Import => Stage::Store,
             ConnectDownloads | SearchReleases | RefineReleases | Subscribe | Download
             | RemoveSubscription | ControlTorrents | TestTorrentClient | RemoveShow
-            | RepairSubscription => Stage::Downloads,
+            | RepairSubscription | CheckEndpoints | StartEndpoint => Stage::Downloads,
         }
     }
 
@@ -634,6 +640,8 @@ impl JobKind {
                 | Subscriptions
                 | ConnectDownloads
                 | TestTorrentClient
+                | CheckEndpoints
+                | StartEndpoint
         )
     }
 
@@ -673,6 +681,8 @@ impl JobKind {
             TestTorrentClient => "TestTorrentClient",
             RemoveShow => "RemoveShow",
             RepairSubscription => "RepairSubscription",
+            CheckEndpoints => "CheckEndpoints",
+            StartEndpoint => "StartEndpoint",
         }
     }
 
@@ -711,6 +721,8 @@ impl JobKind {
             "TestTorrentClient" => Some(TestTorrentClient),
             "RemoveShow" => Some(RemoveShow),
             "RepairSubscription" => Some(RepairSubscription),
+            "CheckEndpoints" => Some(CheckEndpoints),
+            "StartEndpoint" => Some(StartEndpoint),
             _ => None,
         }
     }

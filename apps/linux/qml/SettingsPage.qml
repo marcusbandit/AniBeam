@@ -24,8 +24,8 @@ FocusScope {
     // property, method or signal name on any object.
     function escapePressed() { return false }
 
-    // The page's margins: the same column PageScroll gives every other page
-    readonly property real sideInset: theme.space(8)
+    // The page's margins: the same centred column PageScroll gives every other page
+    readonly property real sideInset: Math.round((page.width - Math.min(page.width, theme.contentMax)) / 2) + theme.space(8)
     readonly property real topInset: theme.space(7)
 
     // ---- The head: the title, the section switch at the right
@@ -34,13 +34,14 @@ FocusScope {
         x: page.sideInset
         y: page.topInset
         width: page.width - page.sideInset * 2
-        height: theme.space(14)
+        height: theme.space(20)
         Label {
             id: titleLabel
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             text: "Settings"
             role: "display"
+            font.pointSize: theme.typePage
         }
         Seg {
             id: tabsSeg
@@ -54,9 +55,9 @@ FocusScope {
     }
     Loader {
         id: content
-        x: page.sideInset
+        x: 0
         y: head.y + head.height + theme.space(4)
-        width: page.width - page.sideInset * 2
+        width: page.width
         height: page.height - y
         sourceComponent: [libraryTab, appearanceTab, playbackTab, downloadsTab, dataTab][page.tab]
         onLoaded: { item.contentY = frame.settingsScroll[page.tab] || 0 }

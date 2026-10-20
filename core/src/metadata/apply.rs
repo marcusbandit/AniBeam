@@ -550,6 +550,9 @@ fn to_result(m: &Media) -> SearchResult {
             .cover_image
             .as_ref()
             .and_then(|c| c.extra_large.clone().or_else(|| c.large.clone())),
+        romaji: m.title.romaji.clone(),
+        english: m.title.english.clone(),
+        synonyms: m.synonyms.clone(),
     }
 }
 
@@ -566,6 +569,9 @@ fn show_result(s: &Show) -> SearchResult {
         year: s.year(),
         episodes: None,
         cover_url: s.thumbnail_url(),
+        romaji: None,
+        english: s.name.clone(),
+        synonyms: Vec::new(),
     }
 }
 

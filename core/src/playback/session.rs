@@ -161,13 +161,10 @@ pub fn effects(s: &mut Session, position: f64, kind: TickKind) -> Vec<Effect> {
         out.push(Effect::View);
     }
     if !s.marked && !s.is_extra {
-        // The earlier of a known outro's start and 85 percent of the
-        // duration, so the mark still fires when no outro is known or the
-        // outro is unusually short.
-        let mut at: Option<f64> = s.duration.map(|d| d * MARK_FRACTION);
-        if let Some(o) = s.outro_start {
-            at = Some(at.map_or(o, |a| a.min(o)));
-        }
+        // A known outro's start: an episode stopped before its ending
+        // song is not finished, however far through the file that is. 85
+        // percent of the duration only stands in when no outro is known.
+        let at = s.outro_start.or(s.duration.map(|d| d * MARK_FRACTION));
         if at.is_some_and(|a| position >= a) {
             s.marked = true;
             out.push(Effect::Mark);
@@ -233,6 +230,8 @@ struct SeriesRow {
     title_romaji: Option<String>,
     title_english: Option<String>,
     total: Option<u32>,
+    /// Still putting out episodes, by AniList's or TVmaze's own status.
+    airing: bool,
     poster: Option<String>,
 }
 
@@ -268,7 +267,8 @@ fn series_row(conn: &Connection, series: u64, images_dir: &Path) -> Result<Serie
     let row = conn
         .query_row(
             "SELECT s.kind, s.folder_name, s.anilist_id, s.mal_id, s.track_choice,
-                    COALESCE(t.name, m.title_romaji), m.title_english, m.episodes, i.path, t.id
+                    COALESCE(t.name, m.title_romaji), m.title_english, m.episodes, i.path, t.id,
+                    CASE WHEN t.id IS NOT NULL THEN t.status ELSE m.status END
              FROM series s
              LEFT JOIN anilist_media m ON m.id = s.anilist_id
              LEFT JOIN tvmaze_shows t ON t.id = s.tvmaze_id AND s.provider = 'tvmaze'
@@ -292,6 +292,17 @@ fn series_row(conn: &Connection, series: u64, images_dir: &Path) -> Result<Serie
                         .get::<_, Option<i64>>(7)?
                         .map(|v| v as u32)
                         .filter(|t| *t > 0),
+                    airing: matches!(
+                        r.get::<_, Option<String>>(10)?.as_deref(),
+                        Some(
+                            "RELEASING"
+                                | "NOT_YET_RELEASED"
+                                | "HIATUS"
+                                | "Running"
+                                | "To Be Determined"
+                                | "In Development"
+                        )
+                    ),
                     poster: r
                         .get::<_, Option<String>>(8)?
                         .map(|p| images_dir.join(p).to_string_lossy().into_owned()),
@@ -320,11 +331,14 @@ fn track_choice_of(raw: Option<&str>) -> TrackChoice {
 
 /// The episodes either side of this one on disk. Only whole-numbered
 /// episodes are neighbours, so a 12.5 recap sits between twelve and thirteen
-/// rather than in the running order, and Next from it opens thirteen.
+/// rather than in the running order, and Next from it opens thirteen. An
+/// episode a torrent is still writing (`skip`) is no neighbour: Next steps
+/// over it.
 fn neighbours(
     conn: &Connection,
     series: u64,
     number: f64,
+    skip: &dyn Fn(f64) -> bool,
 ) -> Result<(Option<u64>, Option<u64>), CoreError> {
     let mut stmt =
         conn.prepare("SELECT id, number FROM files WHERE series_id = ?1 AND kind = 'episode' AND number IS NOT NULL ORDER BY number, id")?;
@@ -334,7 +348,7 @@ fn neighbours(
     let (mut prev, mut next) = (None, None);
     for row in rows {
         let (id, n) = row?;
-        if n.fract() != 0.0 {
+        if n.fract() != 0.0 || skip(n) {
             continue;
         }
         if n < number {
@@ -374,6 +388,20 @@ pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
     let (f, s, resume_from, skip_windows, prev, next, episode_title, subtitle_defaults, lang) =
         core.store.read(|c| {
             let f = file_row(c, file)?;
+            // The safety net behind every Play: whatever page asked, a file a
+            // torrent is still writing does not open.
+            if !f.is_extra && crate::downloads::is_writing(core, &f.path) {
+                let done = crate::downloads::episode_progress(core, f.series, f.number).unwrap_or(0.0);
+                return Err(CoreError::Service {
+                    service: crate::downloads::qbt::SERVICE.to_string(),
+                    code: "downloading".to_string(),
+                    message: format!(
+                        "episode {} is still downloading, {}% done",
+                        f.number as u32,
+                        (done * 100.0).floor()
+                    ),
+                });
+            }
             let s = series_row(c, f.series, &images_dir)?;
             let resume_from: Option<f64> = c
                 .query_row(
@@ -386,7 +414,9 @@ pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
             // An extra stands outside the running order, and a film is its own
             // series, so neither has an episode either side of it.
             let (prev, next) = match (f.is_extra, s.kind) {
-                (false, SeriesKind::Show) => neighbours(c, f.series, f.number)?,
+                (false, SeriesKind::Show) => neighbours(c, f.series, f.number, &|n| {
+                    crate::downloads::episode_progress(core, f.series, n).is_some()
+                })?,
                 _ => (None, None),
             };
             // TVmaze numbers within a season, so its title is looked up by
@@ -434,7 +464,9 @@ pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
     };
     // A film is the whole of what it is, an extra is never the end of
     // anything, and a show ends where the published total says, or where the
-    // disk runs out when no total is known.
+    // disk runs out when no total is known. A show still airing with no total
+    // has not ended at all: the disk running out there is only this week's
+    // episode not being out yet.
     let is_last_episode = if f.is_extra {
         false
     } else if is_film {
@@ -442,7 +474,7 @@ pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
     } else {
         match s.total {
             Some(total) => f.number >= f64::from(total),
-            None => next.is_none(),
+            None => !s.airing && next.is_none(),
         }
     };
 
@@ -888,9 +920,11 @@ mod tests {
         assert_eq!(s.watched_secs, 2.5);
     }
 
-    /// The earlier of the two lines wins, and each rule fires once.
+    /// 85 percent marks a file with no known outro; a known outro is the
+    /// only line, so stopping past 85 percent but before the ending song
+    /// leaves the episode unwatched. Each rule fires once.
     #[test]
-    fn the_mark_takes_the_earlier_of_the_outro_and_85_percent() {
+    fn the_mark_waits_for_the_outro_and_falls_back_to_85_percent() {
         let mut s = session(false, Some(1400.0));
         assert_eq!(
             effects(&mut s, 1189.0, TickKind::Playing),
@@ -905,6 +939,22 @@ mod tests {
         assert_eq!(
             effects(&mut s, 1200.0, TickKind::Playing),
             vec![Effect::Resume(1200.0)]
+        );
+
+        // An outro past the 85 percent line: 1190 is no mark, 1250 is.
+        let mut s = session(false, Some(1400.0));
+        s.outro_start = Some(1250.0);
+        assert_eq!(
+            effects(&mut s, 1190.0, TickKind::Playing),
+            vec![Effect::Resume(1190.0)]
+        );
+        assert_eq!(
+            effects(&mut s, 1249.0, TickKind::Playing),
+            vec![Effect::Resume(1249.0)]
+        );
+        assert_eq!(
+            effects(&mut s, 1250.0, TickKind::Playing),
+            vec![Effect::Mark, Effect::Complete]
         );
 
         let mut s = session(false, Some(1400.0));

@@ -1,0 +1,52 @@
+name: CI
+
+# Fast checks on every pull request: formatting for the whole workspace, then clippy and
+# the tests for the core and the terminal shell. The Qt shell (apps/linux, package
+# anibeam) needs Qt 6.11, MpvQt, libmpv and lld, which an ubuntu runner lacks, so a
+# job that builds it needs its own setup. Runs on main too, so rust-cache keeps a cache
+# every pull request can restore. The toolchain is pinned so a new Rust release cannot
+# turn clippy red on code nobody touched; bump it on purpose.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fmt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        run: rustup toolchain install 1.98 --profile minimal --component rustfmt && rustup default 1.98
+
+      - run: cargo fmt --all --check
+
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        run: rustup toolchain install 1.98 --profile minimal --component clippy && rustup default 1.98
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Clippy
+        run: cargo clippy --locked -p anibeam-core -p anibeam-cli --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --locked -p anibeam-core -p anibeam-cli

@@ -70,6 +70,41 @@ impl QbtClient {
             .unwrap_or_default())
     }
 
+    /// The torrents with these info-hashes, and no others.
+    pub async fn torrents_named(&self, hashes: &[String]) -> Result<Vec<Torrent>, CoreError> {
+        if hashes.is_empty() {
+            return Ok(Vec::new());
+        }
+        let r = self
+            .call(&format!("torrents/info?hashes={}", hashes.join("|")), None)
+            .await?;
+        let v: Value = r.json()?;
+        Ok(v.as_array()
+            .map(|a| a.iter().map(torrent).collect())
+            .unwrap_or_default())
+    }
+
+    /// The files inside one torrent, in qBittorrent's order.
+    pub async fn files(&self, hash: &str) -> Result<Vec<TorrentFile>, CoreError> {
+        let r = self
+            .call(&format!("torrents/files?hash={hash}"), None)
+            .await?;
+        let v: Value = r.json()?;
+        Ok(v.as_array()
+            .map(|a| {
+                a.iter()
+                    .map(|f| TorrentFile {
+                        name: text(&f["name"]),
+                        size: num(&f["size"]),
+                        progress: f["progress"].as_f64().unwrap_or(0.0).clamp(0.0, 1.0),
+                        priority: int(&f["priority"]),
+                        episode: None,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default())
+    }
+
     // ---- RSS: anirss creates the feeds and rules; the core reads them, and
     // rewires one when anirss's feed would come back empty (see
     // `downloads::rewire`)
@@ -149,6 +184,63 @@ impl QbtClient {
     pub async fn start(&self, hashes: &[String]) -> Result<(), CoreError> {
         self.either("torrents/start", "torrents/resume", hashes)
             .await
+    }
+
+    /// Download in order on or off. qBittorrent only has a toggle, so the
+    /// current setting is read first and the toggle pressed for the torrents
+    /// that differ; asking for what is already so changes nothing.
+    pub async fn set_sequential(&self, hashes: &[String], on: bool) -> Result<(), CoreError> {
+        self.set_flag("torrents/toggleSequentialDownload", hashes, on, |t| {
+            t.seq_dl
+        })
+        .await
+    }
+
+    /// First and last pieces first on or off, set the same way.
+    pub async fn set_first_last(&self, hashes: &[String], on: bool) -> Result<(), CoreError> {
+        self.set_flag("torrents/toggleFirstLastPiecePrio", hashes, on, |t| {
+            t.f_l_piece_prio
+        })
+        .await
+    }
+
+    async fn set_flag(
+        &self,
+        toggle: &str,
+        hashes: &[String],
+        on: bool,
+        current: fn(&Torrent) -> bool,
+    ) -> Result<(), CoreError> {
+        let known = self.torrents_named(hashes).await?;
+        let differ: Vec<String> = known
+            .iter()
+            .filter(|t| current(t) != on)
+            .map(|t| t.hash.clone())
+            .collect();
+        if differ.is_empty() {
+            return Ok(());
+        }
+        let form = vec![("hashes".to_string(), differ.join("|"))];
+        self.call(toggle, Some(form)).await.map(|_| ())
+    }
+
+    /// Sets the priority of files inside one torrent by index (0 skips them).
+    pub async fn set_file_priority(
+        &self,
+        hash: &str,
+        ids: &[usize],
+        priority: i64,
+    ) -> Result<(), CoreError> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+        let ids: Vec<String> = ids.iter().map(|i| i.to_string()).collect();
+        let form = vec![
+            ("hash".to_string(), hash.to_string()),
+            ("id".to_string(), ids.join("|")),
+            ("priority".to_string(), priority.to_string()),
+        ];
+        self.call("torrents/filePrio", Some(form)).await.map(|_| ())
     }
 
     pub async fn delete(&self, hashes: &[String], files: bool) -> Result<(), CoreError> {
@@ -379,7 +471,33 @@ fn torrent(v: &Value) -> Torrent {
         tags: text(&v["tags"]),
         category: text(&v["category"]),
         series_id: None,
+        episode: None,
+        batch: false,
+        files: Vec::new(),
+        seq_dl: v["seq_dl"].as_bool().unwrap_or(false),
+        f_l_piece_prio: v["f_l_piece_prio"].as_bool().unwrap_or(false),
+        tracker: tracker_host(&text(&v["tracker"])),
+        group: String::new(),
+        resolution: String::new(),
+        provider: String::new(),
     }
+}
+
+/// `http://nyaa.tracker.wf:7777/announce` to `nyaa.tracker.wf`.
+fn tracker_host(url: &str) -> String {
+    let rest = url.split_once("://").map(|(_, r)| r).unwrap_or(url);
+    let host = rest.split(['/', '?']).next().unwrap_or("");
+    let host = host.rsplit('@').next().unwrap_or(host);
+    match host.strip_prefix('[') {
+        Some(v6) => v6.split(']').next().unwrap_or("").to_string(),
+        None => host.split(':').next().unwrap_or("").to_string(),
+    }
+}
+
+/// A blank torrent for other modules' tests.
+#[cfg(test)]
+pub(crate) fn tests_torrent() -> Torrent {
+    torrent(&Value::Null)
 }
 
 #[cfg(test)]
@@ -509,6 +627,98 @@ mod tests {
         assert_eq!(t.eta, 8640000);
         assert_eq!(t.num_seeds, 3);
         assert_eq!(t.content_path, "");
+    }
+
+    #[test]
+    fn a_torrent_reads_its_order_flags_and_tracker() {
+        let t = torrent(
+            &json!({"hash": "h", "seq_dl": true, "f_l_piece_prio": false,
+                                "tracker": "http://nyaa.tracker.wf:7777/announce"}),
+        );
+        assert!(t.seq_dl);
+        assert!(!t.f_l_piece_prio);
+        assert_eq!(t.tracker, "nyaa.tracker.wf");
+        assert_eq!(tracker_host("udp://[::1]:80/announce"), "::1");
+        assert_eq!(tracker_host(""), "");
+        assert!(!torrent(&Value::Null).seq_dl);
+    }
+
+    #[tokio::test]
+    async fn sequential_presses_the_toggle_only_for_torrents_that_differ() {
+        let http = Arc::new(FakeHttp::new());
+        http.push_for(
+            "torrents/info",
+            200,
+            json!([{"hash": "aa", "seq_dl": true}, {"hash": "bb", "seq_dl": false}]).to_string(),
+        );
+        http.push_for("torrents/toggleSequentialDownload", 200, "");
+        client(&http)
+            .set_sequential(&["aa".into(), "bb".into()], true)
+            .await
+            .unwrap();
+        let sent = http.requests();
+        assert_eq!(sent.len(), 2);
+        assert!(sent[0].url.ends_with("torrents/info?hashes=aa|bb"));
+        assert!(sent[1].url.ends_with("torrents/toggleSequentialDownload"));
+        assert!(matches!(&sent[1].body, Some(Body::Form(f)) if f[0].1 == "bb"));
+    }
+
+    #[tokio::test]
+    async fn sequential_already_so_sends_no_toggle() {
+        let http = Arc::new(FakeHttp::new());
+        http.push_for(
+            "torrents/info",
+            200,
+            json!([{"hash": "aa", "seq_dl": true}]).to_string(),
+        );
+        client(&http)
+            .set_sequential(&["aa".into()], true)
+            .await
+            .unwrap();
+        assert_eq!(http.requests().len(), 1, "only the read");
+        // And a torrent the client does not know is left alone
+        let http = Arc::new(FakeHttp::new());
+        http.push_for("torrents/info", 200, "[]");
+        client(&http)
+            .set_sequential(&["zz".into()], false)
+            .await
+            .unwrap();
+        assert_eq!(http.requests().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn first_last_pieces_toggle_their_own_route() {
+        let http = Arc::new(FakeHttp::new());
+        http.push_for(
+            "torrents/info",
+            200,
+            json!([{"hash": "aa", "f_l_piece_prio": false}]).to_string(),
+        );
+        http.push_for("torrents/toggleFirstLastPiecePrio", 200, "");
+        client(&http)
+            .set_first_last(&["aa".into()], true)
+            .await
+            .unwrap();
+        assert!(
+            http.requests()[1]
+                .url
+                .ends_with("torrents/toggleFirstLastPiecePrio")
+        );
+    }
+
+    #[tokio::test]
+    async fn file_priority_names_the_files_by_index() {
+        let http = Arc::new(FakeHttp::new());
+        http.push_for("torrents/filePrio", 200, "");
+        client(&http)
+            .set_file_priority("aa", &[0, 3], 0)
+            .await
+            .unwrap();
+        let sent = http.requests();
+        assert!(matches!(&sent[0].body, Some(Body::Form(f))
+            if f.contains(&("id".to_string(), "0|3".to_string())) && f.contains(&("priority".to_string(), "0".to_string()))));
+        client(&http).set_file_priority("aa", &[], 0).await.unwrap();
+        assert_eq!(http.requests().len(), 1, "no files, no call");
     }
 
     #[tokio::test]

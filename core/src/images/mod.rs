@@ -1000,7 +1000,7 @@ mod tests {
             })
             .unwrap();
         b.add("sequel", b.now, true);
-        let want = b.store.read(|c| missing_urls(c)).unwrap();
+        let want = b.store.read(missing_urls).unwrap();
         assert_eq!(want, vec!["novel".to_string(), "own".to_string()]);
     }
 

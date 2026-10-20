@@ -232,7 +232,7 @@ impl Core {
             http.clone(),
             TVMAZE_GAP,
         )));
-        Ok(Arc::new_cyclic(|me| Core {
+        let core = Arc::new_cyclic(|me| Core {
             paths,
             store,
             bus,
@@ -262,7 +262,17 @@ impl Core {
             kept_load: Mutex::new(None),
             started: AtomicBool::new(false),
             closed: AtomicBool::new(false),
-        }))
+        });
+        // Every SeriesChanged, from whichever job or scan, carries what is
+        // still downloading, the same as a list read does
+        let weak = Arc::downgrade(&core);
+        core.bus
+            .set_cards_hook(Arc::new(move |cards: &mut [SeriesCard]| {
+                if let Some(core) = weak.upgrade() {
+                    crate::downloads::overlay(&core, cards);
+                }
+            }));
+        Ok(core)
     }
 
     /// `None` once the core is shutting down; callers treat that as "the
@@ -302,6 +312,15 @@ impl Core {
     pub fn set_sign_in_hold(&self, hold: std::time::Duration) {
         self.sign_in_hold_ms
             .store(hold.as_millis() as u64, Ordering::SeqCst);
+    }
+
+    /// Turns off, for this core's life, every change the downloads code
+    /// makes on its own: pruning finished feeds, and the replace followups
+    /// that trash old files and cancel or tidy torrents. A shell calls it
+    /// when it runs a library copy against the owner's real anirss and
+    /// qBittorrent, such as a drive script or a sandbox root.
+    pub fn disable_unattended_changes(&self) {
+        self.downloads.disable_unattended();
     }
 
     /// The store itself, for the integration tests' fixtures: they build
@@ -799,6 +818,13 @@ impl Core {
             Call::DownloadReleases { items, name } => Ok(Reply::Started {
                 job: downloads::download(self, items, name)?,
             }),
+            Call::DownloadReleasesWith {
+                items,
+                name,
+                options,
+            } => Ok(Reply::Started {
+                job: downloads::download_with(self, items, name, options)?,
+            }),
             Call::DownloadMovie { link } => Ok(Reply::Started {
                 job: downloads::movie(self, link)?,
             }),
@@ -846,8 +872,16 @@ impl Core {
                 anirss_token.as_deref(),
                 torrent_password.as_deref(),
             ),
+            Call::UseTorrentClient { id } => downloads::use_client(self, id),
             Call::TestTorrentClient => Ok(Reply::Started {
                 job: downloads::test_torrent_client(self)?,
+            }),
+            Call::CheckEndpoints => Ok(Reply::Started {
+                job: downloads::check_endpoints(self)?,
+            }),
+            Call::InspectRelease { link } => downloads::inspect_release(self, link),
+            Call::StartEndpoint { name } => Ok(Reply::Started {
+                job: downloads::start_endpoint(self, name)?,
             }),
             Call::OpenPlayback { file } => Ok(Reply::Playback {
                 session: Box::new(session::open(self, file)?),

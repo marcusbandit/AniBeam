@@ -205,6 +205,14 @@ pub enum EventBody {
         url: String,
         entries: Vec<FeedEntry>,
     },
+    /// A release's torrent file, read for its contents: the whole episode
+    /// numbers its video files carry and how many files it lists. Both
+    /// empty when the link had no file list (a magnet) or could not be read.
+    ReleaseInspected {
+        link: String,
+        episodes: Vec<u32>,
+        files: u64,
+    },
     /// A read that is not a job could not be made: which read, and why.
     DownloadsUnavailable {
         what: String,
