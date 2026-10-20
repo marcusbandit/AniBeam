@@ -162,17 +162,20 @@ Item {
     readonly property var playEpisode: nextEpisode ? nextEpisode : firstWhole
     // Caught up on what is whole while the next one downloads: Continue says so instead of
     // offering a rewatch
-    readonly property bool waitingOnDownload: !nextEpisode && downloadingNow.length > 0 && watchedCount > 0 && !isMovie
+    readonly property bool waitingOnDownload: !nextEpisode && downloadingNow.length > 0 && anyWatched && !isMovie
     readonly property bool tracked: !!detail && detail.progress.watched !== null && detail.progress.watched !== undefined
     readonly property int watchedCount: tracked ? detail.progress.watched : 0
-    readonly property bool caughtUp: tracked && !nextEpisode && watchedCount > 0
-    readonly property string playVerb: nextEpisode && watchedCount > 0 ? "Continue" : caughtUp ? "Watch again" : "Play"
-    // "Continue episode 8", "Play episode 1", "Play" for a lone film
+    // Watched by the tracker or here: an untracked series still has its own completed episodes
+    readonly property bool anyWatched: watchedCount > 0 || episodes.some(function(e) { return !!e.watched })
+    // The core finds no next episode on disk once the last one is watched
+    readonly property bool caughtUp: !!detail && !nextEpisode && anyWatched
+    readonly property string playVerb: nextEpisode && anyWatched ? "Continue" : caughtUp ? "Watch again" : "Play"
+    // "Continue episode 8", "Play episode 1", "Watch again from episode 1", "Play" for a lone film
     readonly property string playText: {
         if (waitingOnDownload) return "Downloading " + Fmt.episodeName("", downloadingNow[0].number).toLowerCase()
         if (!playEpisode) return playVerb
         if (isMovie && episodes.length === 1) return playVerb
-        return playVerb + " " + Fmt.episodeName("", playEpisode.number).toLowerCase()
+        return playVerb + (caughtUp ? " from " : " ") + Fmt.episodeName("", playEpisode.number).toLowerCase()
     }
     readonly property string progressText: {
         if (!detail) return ""
@@ -504,7 +507,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         primary: true
                         tint: page.inkAccent
-                        icon: "play"
+                        icon: page.caughtUp ? "rotate-ccw" : "play"
                         text: page.playText
                         enabled: page.playEpisode !== null && !page.waitingOnDownload
                         onClicked: if (page.playEpisode) page.openFile(page.playEpisode.file)
