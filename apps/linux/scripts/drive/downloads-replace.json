@@ -1,0 +1,88 @@
+[
+ {
+  "log": "picking episodes the library already has, to replace them, with injected releases and an injected in-flight torrent. Nothing is sent: Get is never clicked unless it can only ask for a confirmation, and the confirmation is never clicked. Run it with H=2000 so the plan panel and the confirmation fit without scrolling"
+ },
+ {
+  "click": "rail-downloads"
+ },
+ {
+  "wait": 6000
+ },
+ {
+  "eval": "var p = frame.item.pageItem; var c = p.libCards.filter(function(c) { return /^[dlw]{6}/.test(c.cubes || '') })[0]; p.openGet(p.showFromCard(c)); var items = [], facts = []; for (var n = 1; n <= 26; n += (n === 9 ? 16 : 1)) { items.push({ title: '[Erai-raws] ' + c.title + ' - 0' + n + ' [1080p]', link: 'magnet:?xt=urn:btih:' + n, seeders: 20 + n, leechers: 1, size: '400 MB' }); facts.push({ episode: n, batch: false, group: 'Erai-raws', resolution: '1080p', size_bytes: 419430400 }) } items.push({ title: '[Erai-raws] ' + c.title + ' (01-08) [1080p] [Batch]', link: 'magnet:?xt=urn:btih:99', seeders: 9, size: '3 GB' }); facts.push({ batch: true, first_episode: 1, last_episode: 8, group: 'Erai-raws', resolution: '1080p', size_bytes: 3221225472 }); p.getActive = 'erai'; p.setResult('erai', { state: 'done', query: c.title, items: items, facts: facts }); c.title + ' ' + c.cubes + ' id ' + c.id",
+  "as": "show"
+ },
+ {
+  "wait": 1500
+ },
+ {
+  "wheel": [
+   600,
+   600,
+   -500
+  ]
+ },
+ {
+  "wait": 600
+ },
+ {
+  "shot": "replace-00-grid"
+ },
+ {
+  "eval": "var g = driver.item.findItem('downloads-get'); JSON.stringify([g.rows.map(function(r) { return r.key }), Object.keys(g.picks), g.hadPicked.length, g.replaceOn])",
+  "as": "start"
+ },
+ {
+  "eval": "var g = driver.item.findItem('downloads-get'); g.toggleCube(g.rows[0], 2); g.toggleCube(g.rows[0], 3); JSON.stringify([Object.keys(g.picks), g.hadPicked.map(function(x) { return x.n }), g.planList.length, g.replacing, g.goText])",
+  "as": "picked"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "shot": "replace-01-picked-off"
+ },
+ {
+  "click": "get-replace"
+ },
+ {
+  "wait": 500
+ },
+ {
+  "eval": "var g = driver.item.findItem('downloads-get'); JSON.stringify([g.replacing, g.planList.length, g.goText, JSON.stringify(g.options())])",
+  "as": "on"
+ },
+ {
+  "shot": "replace-02-on"
+ },
+ {
+  "eval": "var g = driver.item.findItem('downloads-get'); g.pickRow(g.rows[1], true); JSON.stringify([Object.keys(g.picks).length, g.pickItems.length, g.hadPicked.length, g.planList.length])",
+  "as": "batch"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "shot": "replace-03-batch"
+ },
+ {
+  "eval": "var g = driver.item.findItem('downloads-get'); var p = frame.item.pageItem; g.clearPicks(); p.torrents = [{ hash: 'ff00', name: '[Erai-raws] x - 25 [1080p].mkv', state: 'downloading', progress: 0.4, size: 400000000, dlspeed: 1500000, upspeed: 0, eta: 300, num_seeds: 5, num_leechs: 1, ratio: 0, save_path: '/mnt/media/x', content_path: '/mnt/media/x/a.mkv', added_on: 1, completion_on: -1, tags: '', category: '', series_id: p.getShow.seriesId, episode: 25, batch: false, files: [], seq_dl: false, f_l_piece_prio: false, tracker: 'nyaa.tracker.wf', group: 'Erai-raws', resolution: '1080p', provider: 'erai' }]; g.toggleCube(g.rows[0], 25); g.toggleCube(g.rows[0], 2); g.replaceOn = true; JSON.stringify([g.hadOnTheWay.length, g.hadOnDisk.length, g.replacing, JSON.stringify(g.options())])",
+  "as": "flight"
+ },
+ {
+  "shot": "replace-04-in-flight-picked"
+ },
+ {
+  "eval": "var g = driver.item.findItem('downloads-get'); JSON.stringify(g.replacing && g.hadOnTheWay.length === 1 && !g.confirming)",
+  "as": "safe",
+  "expect": "true"
+ },
+ {
+  "eval": "var g = driver.item.findItem('downloads-get'); if (g.replacing && g.hadOnTheWay.length === 1 && !g.confirming) g.go(); JSON.stringify([g.confirming, g.acting])",
+  "as": "asked",
+  "expect": "[true,false]"
+ },
+ {
+  "shot": "replace-05-confirm"
+ }
+]

@@ -1,0 +1,132 @@
+[
+ {
+  "log": "the Downloads chrome (#69): no endpoint dropdown, sources as chips, the start-Jackett sheet (cancelled, never confirmed), one search over every source on, the release list and its way back to the grid. Searches only; it adds nothing and starts nothing"
+ },
+ {
+  "click": "rail-downloads"
+ },
+ {
+  "wait": 6000
+ },
+ {
+  "shot": "chrome-00-home"
+ },
+ {
+  "eval": "var p = frame.item.pageItem; JSON.stringify(p.endpoints.map(function(e) { return [e.name, e.on_demand, e.running, p.sourceOn(e.name)] }))",
+  "as": "sources"
+ },
+ {
+  "click": "downloads-source-1337x"
+ },
+ {
+  "wait": 600
+ },
+ {
+  "shot": "chrome-01-start-sheet"
+ },
+ {
+  "click": "start-source-cancel"
+ },
+ {
+  "wait": 400
+ },
+ {
+  "eval": "var p = frame.item.pageItem; p.sourceOn('1337x') + ':' + p.startJob",
+  "as": "after-cancel",
+  "expect": "false:-1"
+ },
+ {
+  "click": "downloads-source-nyaa"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "shot": "chrome-02-nyaa-off"
+ },
+ {
+  "click": "downloads-source-nyaa"
+ },
+ {
+  "wait": 300
+ },
+ {
+  "click": "downloads-search"
+ },
+ {
+  "type": "Frieren"
+ },
+ {
+  "key": "Return"
+ },
+ {
+  "wait": 20000
+ },
+ {
+  "eval": "var p = frame.item.pageItem; JSON.stringify(Object.keys(p.searchResults).map(function(k) { var r = p.searchResults[k]; return [k, r.state, r.search ? r.search.items.length : 0] })) + ' shown=' + p.adoptedFrom",
+  "as": "multi"
+ },
+ {
+  "shot": "chrome-03-search-all-sources"
+ },
+ {
+  "eval": "var p = frame.item.pageItem; p.openGet(p.showFromHit({ title: 'Sousou no Frieren', episodes: 28, format: 'TV', year: 2023 })); p.getShow.title",
+  "as": "show"
+ },
+ {
+  "wait": 800
+ },
+ {
+  "click": "provider-erai"
+ },
+ {
+  "wait": 12000
+ },
+ {
+  "shot": "chrome-04-grid"
+ },
+ {
+  "eval": "var p = frame.item.pageItem; p.listFromGet(p.getActive); p.gridReturn !== null && p.state !== null && p.getShow === null",
+  "as": "list",
+  "expect": true
+ },
+ {
+  "wait": 800
+ },
+ {
+  "shot": "chrome-05-list"
+ },
+ {
+  "click": "downloads-back-to-grid"
+ },
+ {
+  "wait": 800
+ },
+ {
+  "eval": "var p = frame.item.pageItem; (p.getShow !== null) + ':' + (p.state === null) + ':' + p.getActive + ':' + Object.keys(p.getResults).join(',')",
+  "as": "back",
+  "expect": "true:true:erai:erai"
+ },
+ {
+  "shot": "chrome-06-back-on-grid"
+ },
+ {
+  "eval": "var p = frame.item.pageItem; p.listFromGet(p.getActive); p.state !== null",
+  "as": "list2",
+  "expect": true
+ },
+ {
+  "wait": 500
+ },
+ {
+  "key": "Escape"
+ },
+ {
+  "wait": 600
+ },
+ {
+  "eval": "var p = frame.item.pageItem; (p.getShow !== null) + ':' + (p.state === null)",
+  "as": "escape",
+  "expect": "true:true"
+ }
+]

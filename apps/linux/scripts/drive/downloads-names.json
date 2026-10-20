@@ -1,0 +1,23 @@
+[
+ { "log": "names and busy buttons: the app in English, a search typed in romaji keeps the romaji name, a search typed in English finds the show and searches its romaji; Stop and Cancel spin while pending (injected, nothing is sent to the client); warm tooltips" },
+ { "click": "rail-downloads" },
+ { "wait": 6000 },
+ { "eval": "var p = JSON.parse(JSON.stringify(Door.preferences)); p.title_language = 'English'; Door.setPreferences(p); 'English'", "as": "lang" },
+ { "click": "downloads-search" },
+ { "type": "Kino no Tabi" },
+ { "wait": 2500 },
+ { "shot": "names-00-typed-romaji" },
+ { "key": "Ctrl+A" },
+ { "type": "Kino's Journey" },
+ { "wait": 2500 },
+ { "shot": "names-01-typed-english" },
+ { "eval": "var p = frame.item.pageItem; var rows = p.suggestRows; rows.length ? JSON.stringify(rows.slice(0, 3).map(function(r) { return r.lib ? ['lib', p.nameOfCard(r.lib, p.query)] : ['ani', p.nameOfHit(r.ani, p.query), r.ani.romaji, r.ani.english] })) : 'none'", "as": "names" },
+ { "eval": "var p = frame.item.pageItem; var row = p.suggestRows.filter(function(r) { return r.ani })[0] || p.suggestRows[0]; p.pickSuggestion(row); JSON.stringify([p.getShow.title, p.getShow.queries])", "as": "show" },
+ { "wait": 1000 },
+ { "click": "provider-erai" },
+ { "wait": 15000 },
+ { "eval": "var p = frame.item.pageItem; var r = p.getResults['erai'] || {}; r.state + ':' + (r.items || []).length", "as": "erai" },
+ { "eval": "var p = frame.item.pageItem; var t = p.torrents.filter(function(x) { return (x.progress || 0) < 1 })[0]; if (t) { var q = {}; q[t.hash] = { action: 'Start', at: Date.now() }; p.pending = q } t ? t.name.slice(0, 30) : 'none'", "as": "busy" },
+ { "wait": 300 },
+ { "shot": "names-02-show-busy" }
+]

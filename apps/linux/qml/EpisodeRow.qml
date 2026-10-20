@@ -2,7 +2,9 @@
 // in the ledger cut, the title with "Next up" or the resume point beside it, an optional
 // detail line (a stray file's name), the air date at the right, and a thin resume bar along
 // the foot of a half-watched row. The next episode up sits on a filled row; the rest are
-// bare, lifting to the tile fill on hover. Clicking the row plays.
+// bare, lifting to the tile fill on hover. Clicking the row plays. An episode a torrent is
+// still writing reads "Downloading 34%" in the downloading purple with a thin bar along its
+// foot, and does nothing when clicked: it is on disk but not whole, so it never plays.
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -19,14 +21,17 @@ Corner {
     height: Math.max(theme.space(10), words.implicitHeight + theme.space(3))
     radius: theme.radiusMd
     smoothing: theme.cornerSmoothing
-    color: nextUp ? (hover.containsMouse ? theme.raised : theme.tile) : hover.containsMouse ? theme.tile : "transparent"
+    color: nextUp ? (hover.containsMouse ? theme.raised : theme.tile) : hover.containsMouse && !downloading ? theme.tile : "transparent"
 
     property bool watched: !!episode.watched
-    readonly property bool nextUp: !!episode.next_up
+    readonly property bool downloading: episode.downloading !== undefined && episode.downloading !== null
+    readonly property bool nextUp: !!episode.next_up && !downloading
+    readonly property real downloadFraction: downloading ? Math.max(0, Math.min(1, episode.downloading)) : 0
+    readonly property color downloadColor: theme.cubeState("t").fill
     readonly property real resumeFraction: episode.resume && episode.resume.duration > 0 ? episode.resume.position / episode.resume.duration : 0
     readonly property string dateText: episode.air_date ? Qt.formatDate(new Date(episode.air_date * 1000), "d MMM yyyy") : ""
 
-    MouseArea { id: hover; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.play() }
+    MouseArea { id: hover; anchors.fill: parent; hoverEnabled: true; cursorShape: root.downloading ? Qt.ArrowCursor : Qt.PointingHandCursor; onClicked: if (!root.downloading) root.play() }
 
     Row {
         id: line
@@ -71,7 +76,7 @@ Corner {
                     role: "ui"
                     font.weight: root.nextUp ? 600 : theme.roleWeight("ui")
                     font.variableAxes: ({ "wdth": 100, "wght": root.nextUp ? 600 : theme.roleWeight("ui") })
-                    color: root.watched && !root.nextUp ? theme.textDim : theme.text
+                    color: root.downloading || (root.watched && !root.nextUp) ? theme.textDim : theme.text
                     elide: Text.ElideRight
                 }
                 Row {
@@ -79,9 +84,17 @@ Corner {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: theme.space(2)
                     Label { visible: root.nextUp; anchors.verticalCenter: parent.verticalCenter; text: "Next up"; role: "ledger"; color: theme.accent }
+                    Label {
+                        objectName: "episode-downloading"
+                        visible: root.downloading
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Downloading " + Math.floor(root.downloadFraction * 100) + "%"
+                        role: "ledger"
+                        color: root.downloadColor
+                    }
                     Label { visible: root.extra; anchors.verticalCenter: parent.verticalCenter; text: "Extra"; role: "ledger"; color: theme.textFaint }
                     Label {
-                        visible: root.resumeFraction > 0 && root.resumeFraction < 0.97
+                        visible: root.resumeFraction > 0 && root.resumeFraction < 0.97 && !root.downloading
                         anchors.verticalCenter: parent.verticalCenter
                         text: root.episode.resume ? "Resume at " + Fmt.clock(root.episode.resume.position) : ""
                         role: "ledger"
@@ -107,9 +120,26 @@ Corner {
             color: theme.textFaint
         }
     }
+    // The download along the foot of the row, in the downloading purple over a faint track
+    Rectangle {
+        visible: root.downloading
+        x: line.x + mark.width + line.spacing
+        width: parent.width - x - theme.space(3)
+        height: theme.space(0.5)
+        anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(1)
+        radius: height / 2
+        color: Qt.rgba(root.downloadColor.r, root.downloadColor.g, root.downloadColor.b, 0.22)
+        Rectangle {
+            objectName: "episode-download-bar"
+            width: parent.width * root.downloadFraction
+            height: parent.height
+            radius: height / 2
+            color: root.downloadColor
+        }
+    }
     // The resume point along the foot of the row
     Rectangle {
-        visible: root.resumeFraction > 0
+        visible: root.resumeFraction > 0 && !root.downloading
         x: line.x + mark.width + line.spacing
         width: (parent.width - x - theme.space(3)) * Math.min(1, root.resumeFraction)
         height: theme.space(0.5)

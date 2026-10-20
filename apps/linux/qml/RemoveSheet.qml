@@ -30,6 +30,7 @@ Item {
     readonly property bool canTorrents: rule && torrentCount > 0
     readonly property bool canFiles: spec.canFiles === true
     readonly property string confirmText: {
+        if (spec.confirmText) return spec.confirmText
         if (rule) return files ? "Unsubscribe and delete" : torrents ? "Unsubscribe and remove torrents" : "Unsubscribe"
         return files ? "Remove and delete files" : (torrentCount === 1 ? "Remove the torrent" : "Remove torrents")
     }
@@ -38,7 +39,7 @@ Item {
         root.spec = s || {}
         root.done = cb
         root.torrents = false
-        root.files = false
+        root.files = s && s.filesOn === true
         root.prevFocus = frame.hostWindow ? frame.hostWindow.activeFocusItem : null
         if (anchor) {
             var p = anchor.mapToItem(root, 0, 0)
@@ -125,7 +126,7 @@ Item {
                 Row {
                     anchors.right: parent.right
                     spacing: theme.space(2)
-                    Button { objectName: "remove-sheet-cancel"; text: "Cancel"; flat: true; onClicked: root.close() }
+                    Button { objectName: "remove-sheet-cancel"; text: root.spec.keepText || "Cancel"; flat: true; onClicked: root.close() }
                     Button { objectName: "remove-sheet-confirm"; text: root.confirmText; icon: root.files ? "trash-2" : root.rule ? "rss" : "x"; danger: true; onClicked: root.confirm() }
                 }
             }

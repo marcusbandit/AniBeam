@@ -18,9 +18,9 @@ use std::time::Instant;
 
 use anibeam_core::events::Subscription;
 use anibeam_core::{
-    Call, Chapter, CloseReason, CoreError, Direction, DownloadSettings, Event, EventBody,
-    EventListener, FeedSort, JobPhase, Level, MatchTarget, MetadataFilter, Preferences, Provider,
-    RefineOp, Release, Sort, SubscriptionsResult, SubtitleChoice, SubtitleDefaults, Tab,
+    Call, Chapter, CloseReason, CoreError, Direction, DownloadOptions, DownloadSettings, Event,
+    EventBody, EventListener, FeedSort, JobPhase, Level, MatchTarget, MetadataFilter, Preferences,
+    Provider, RefineOp, Release, Sort, SubscriptionsResult, SubtitleChoice, SubtitleDefaults, Tab,
     TorrentAction, TrackRef, Tracker,
 };
 use cxx_qt::{CxxQtType, Threading};
@@ -280,6 +280,16 @@ pub mod qobject {
         ) -> QJsonObject;
         #[qinvokable]
         fn download_releases(self: &Door, items: &QJsonArray, name: &QString) -> QJsonObject;
+        /// `download_releases` plus `{ sequential, provider, series, replace: [{ item,
+        /// episodes }], cancel: [hash] }`: read in order, and the episodes the new torrents
+        /// replace.
+        #[qinvokable]
+        fn download_releases_with(
+            self: &Door,
+            items: &QJsonArray,
+            name: &QString,
+            options: &QJsonObject,
+        ) -> QJsonObject;
         #[qinvokable]
         fn download_movie(self: &Door, link: &QString) -> QJsonObject;
         /// Replies `Ok`; the list arrives as `subscriptionsRead`, or `downloadsUnavailable`.
@@ -466,6 +476,8 @@ pub mod qobject {
         );
         #[qsignal]
         fn feed_read(self: Pin<&mut Door>, url: QString, entries: QJsonArray);
+        #[qsignal]
+        fn release_inspected(self: Pin<&mut Door>, link: QString, episodes: QJsonArray, files: f64);
         #[qsignal]
         fn rule_read(self: Pin<&mut Door>, rule: QJsonObject);
         #[qsignal]
@@ -1054,6 +1066,10 @@ impl qobject::Door {
                     .torrents_read(arr("torrents"), obj("transfer"), arr("shows"))
             }
             EventBody::FeedRead { .. } => self.as_mut().feed_read(s("url"), arr("entries")),
+            EventBody::ReleaseInspected { files, .. } => {
+                self.as_mut()
+                    .release_inspected(s("link"), arr("episodes"), *files as f64)
+            }
             EventBody::RuleRead { .. } => self.as_mut().rule_read(obj("rule")),
             EventBody::SubscriptionRepaired { .. } => self.as_mut().subscription_repaired(
                 job_id,
@@ -1083,6 +1099,10 @@ impl qobject::Door {
                     TorrentAction::Stop => "Stop",
                     TorrentAction::Start => "Start",
                     TorrentAction::Delete { .. } => "Delete",
+                    TorrentAction::Sequential { on: true } => "Sequential",
+                    TorrentAction::Sequential { on: false } => "Unsequential",
+                    TorrentAction::FirstLastPieces { on: true } => "FirstLast",
+                    TorrentAction::FirstLastPieces { on: false } => "UnFirstLast",
                 };
                 self.as_mut()
                     .torrents_controlled(arr("hashes"), QString::from(word))
@@ -1520,6 +1540,22 @@ impl qobject::Door {
             name: non_empty(name),
         }))
     }
+    pub fn download_releases_with(
+        &self,
+        items: &QJsonArray,
+        name: &QString,
+        options: &QJsonObject,
+    ) -> QJsonObject {
+        let options = serde_json::from_value::<DownloadOptions>(from_qjson_object(options))
+            .map_err(|e| CoreError::invalid("options", e.to_string()));
+        self.dispatch(releases(items).and_then(|items| {
+            Ok(Call::DownloadReleasesWith {
+                items,
+                name: non_empty(name),
+                options: options?,
+            })
+        }))
+    }
     pub fn download_movie(&self, link: &QString) -> QJsonObject {
         self.dispatch(Ok(Call::DownloadMovie {
             link: link.to_string(),
@@ -1579,6 +1615,10 @@ impl qobject::Door {
             "Stop" => Ok(TorrentAction::Stop),
             "Start" => Ok(TorrentAction::Start),
             "Delete" => Ok(TorrentAction::Delete { files }),
+            "Sequential" => Ok(TorrentAction::Sequential { on: true }),
+            "Unsequential" => Ok(TorrentAction::Sequential { on: false }),
+            "FirstLast" => Ok(TorrentAction::FirstLastPieces { on: true }),
+            "UnFirstLast" => Ok(TorrentAction::FirstLastPieces { on: false }),
             other => Err(CoreError::invalid(
                 "action",
                 format!("{other} is not a torrent action"),

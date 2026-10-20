@@ -66,7 +66,7 @@
   "shot": "subs-04-sheet-files"
  },
  {
-  "click": "downloads-summary"
+  "key": "Escape"
  },
  {
   "until": "frame.item.removalOpen === false"

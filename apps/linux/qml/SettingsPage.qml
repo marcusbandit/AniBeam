@@ -34,13 +34,14 @@ FocusScope {
         x: page.sideInset
         y: page.topInset
         width: page.width - page.sideInset * 2
-        height: theme.space(14)
+        height: theme.space(20)
         Label {
             id: titleLabel
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             text: "Settings"
             role: "display"
+            font.pointSize: theme.typePage
         }
         Seg {
             id: tabsSeg

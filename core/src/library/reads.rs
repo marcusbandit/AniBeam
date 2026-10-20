@@ -64,7 +64,15 @@ pub(crate) struct KeptLoad {
 /// the time of day (an episode airs, the rail and the tabs move).
 const KEEP_FOR: std::time::Duration = std::time::Duration::from_secs(30);
 
+/// Every card, with what a torrent is still writing laid over them (the
+/// overlay is live state, so it goes on after the cache, never into it).
 fn load_all(core: &Core) -> Result<Loaded, CoreError> {
+    let mut loaded = load_kept(core)?;
+    crate::downloads::overlay(core, &mut loaded.cards);
+    Ok(loaded)
+}
+
+fn load_kept(core: &Core) -> Result<Loaded, CoreError> {
     if !core
         .snapshot_cache
         .load(std::sync::atomic::Ordering::Relaxed)
@@ -246,7 +254,8 @@ pub fn get_series(core: &Core, series: u64) -> Result<Reply, CoreError> {
         Ok((snap.detail(c, series)?, snap.gaps.clone(), poster))
     })?;
     match detail {
-        Some(detail) => {
+        Some(mut detail) => {
+            crate::downloads::overlay_detail(core, &mut detail);
             after_read(core, &gaps, poster.into_iter().collect());
             Ok(Reply::SeriesDetail {
                 detail: Box::new(detail),

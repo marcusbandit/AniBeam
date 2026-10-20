@@ -47,6 +47,7 @@ fn value_of(c: &SeriesCard, sort: Sort) -> Option<f64> {
         },
         Sort::CommunityScore => c.community_score,
         Sort::MyScore => c.my_score,
+        Sort::Downloaded => c.downloaded_at.map(|t| time::to_secs(t) as f64),
         Sort::Alpha => Some(0.0),
     }
 }
@@ -152,6 +153,7 @@ mod tests {
                 aired_unwatched: 0.0,
                 unknown: 0.0,
             },
+            cubes: String::new(),
             community_score: score,
             my_score: my,
             list_status: status,
@@ -159,6 +161,8 @@ mod tests {
             last_viewed_at: viewed.map(|s| UNIX_EPOCH + std::time::Duration::from_secs(s)),
             latest_activity_at: UNIX_EPOCH,
             added_at: UNIX_EPOCH,
+            downloaded_at: None,
+            downloading: Vec::new(),
             franchise: None,
             year: None,
             season: None,

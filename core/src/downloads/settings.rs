@@ -53,6 +53,7 @@ pub fn validate(s: &mut DownloadSettings) -> Result<(), CoreError> {
     s.anirss_url = s.anirss_url.trim().trim_end_matches('/').to_string();
     s.torrent_url = s.torrent_url.trim().trim_end_matches('/').to_string();
     s.torrent_username = s.torrent_username.trim().to_string();
+    s.jackett_command = s.jackett_command.trim().to_string();
     if s.anirss_mode == AnirssMode::Sidecar && s.anirss_command.is_empty() {
         return Err(CoreError::invalid(
             "anirss_command",
@@ -90,12 +91,15 @@ pub fn defaults() -> DownloadSettings {
     DownloadSettings {
         anirss_mode: AnirssMode::Sidecar,
         anirss_command: "anirss".to_string(),
+        // Empty: each endpoint's own start in anirss's config is found when it is started
+        jackett_command: String::new(),
         anirss_url: "http://127.0.0.1:8787".to_string(),
         has_anirss_token: false,
         torrent_client: TorrentClient::Qbittorrent,
         torrent_url: url,
         torrent_username: username,
         has_torrent_password: false,
+        prune_finished_feeds: true,
     }
 }
 

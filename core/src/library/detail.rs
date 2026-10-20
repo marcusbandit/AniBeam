@@ -80,6 +80,7 @@ impl Snapshot {
                 watched: completed_keys.contains(f.episode_key.as_str())
                     || card.watched.is_some_and(|w| f.number <= f64::from(w)),
                 next_up: next == Some(f.id),
+                downloading: None,
             }
         };
 
