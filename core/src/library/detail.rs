@@ -66,6 +66,8 @@ impl Snapshot {
             .unwrap_or_default();
         let episode = |f: &FileRow| {
             let air = self.episode_airing(row, f);
+            let tracked = card.watched.is_some_and(|w| f.number <= f64::from(w));
+            let here = completed_keys.contains(f.episode_key.as_str());
             Episode {
                 file: f.id,
                 number: f.number,
@@ -77,12 +79,41 @@ impl Snapshot {
                 sidecars: f.sidecars.clone(),
                 resume: self.resume_of(id, &f.episode_key),
                 stopped_short: self.stopped_short(id, &f.episode_key),
-                watched: completed_keys.contains(f.episode_key.as_str())
-                    || card.watched.is_some_and(|w| f.number <= f64::from(w)),
+                watched: here || tracked,
                 next_up: next == Some(f.id),
                 downloading: None,
+                cube: if tracked {
+                    "w"
+                } else if here {
+                    "l"
+                } else {
+                    "d"
+                }
+                .to_string(),
             }
         };
+
+        // The aired episodes with no file, read off the card's own cube row
+        // so the page and every cube row agree on what is missing
+        let season = self.card_season(row);
+        let airing = self.airing_of(row);
+        let absent: Vec<AbsentEpisode> = card
+            .cubes
+            .chars()
+            .zip(1u32..)
+            .filter(|(c, _)| matches!(c, 'm' | 'g'))
+            .map(|(c, number)| {
+                let air = airing.iter().find(|a| a.number == number);
+                AbsentEpisode {
+                    number,
+                    season,
+                    code: labels::episode_code(season, f64::from(number)),
+                    title: air.and_then(|a| a.title.clone()),
+                    air_date: air.and_then(|a| a.aired_at).map(time::from_secs),
+                    cube: c.to_string(),
+                }
+            })
+            .collect();
 
         let mut extras: Vec<&FileRow> = files.iter().filter(|f| !f.is_episode).collect();
         extras.sort_by(|a, b| {
@@ -116,6 +147,7 @@ impl Snapshot {
                 .filter(|f| !unmatched.contains(&f.id))
                 .map(|f| episode(f))
                 .collect(),
+            absent,
             extras: extras
                 .iter()
                 .map(|f| {

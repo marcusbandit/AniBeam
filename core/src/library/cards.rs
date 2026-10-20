@@ -93,6 +93,52 @@ pub fn cubes(f: &CubeFacts) -> String {
         .collect()
 }
 
+const DAY: i64 = 86_400;
+const WEEK: i64 = 7 * DAY;
+
+/// The next episode and when it should air, guessed from the episodes
+/// already out, for an airing series whose record names no date ahead (a
+/// real schedule always wins; `card_of` asks only without one). Needs one
+/// dated episode out. The cadence is the gap between the first two
+/// consecutive dated episodes in whole weeks, at least one, else one week;
+/// a later break never changes it. The guess runs on from the newest dated
+/// episode, one cadence per episode, starting past `released` (the furthest
+/// episode known out, a file on disk counts). A guess a full day in the
+/// past with nothing released moves a week later, as many weeks as it takes.
+pub fn predict_next(
+    airing: &[AiringRow],
+    released: u32,
+    total: Option<u32>,
+    status: Option<AiringStatus>,
+    now: i64,
+) -> Option<(u32, i64)> {
+    if status != Some(AiringStatus::Releasing) {
+        return None;
+    }
+    let mut aired: Vec<(u32, i64)> = airing
+        .iter()
+        .filter_map(|a| a.aired_at.filter(|at| *at <= now).map(|at| (a.number, at)))
+        .collect();
+    aired.sort_unstable();
+    let &(last, last_at) = aired.last()?;
+    let next = released.max(last) + 1;
+    if total.is_some_and(|t| t > 0 && next > t) {
+        return None;
+    }
+    let cadence = aired
+        .windows(2)
+        .find(|w| w[1].0 == w[0].0 + 1)
+        .map_or(WEEK, |w| {
+            let weeks = ((w[1].1 - w[0].1) as f64 / WEEK as f64).round() as i64;
+            weeks.max(1) * WEEK
+        });
+    let mut at = last_at + i64::from(next - last) * cadence;
+    if at + DAY <= now {
+        at += ((now - at - DAY) / WEEK + 1) * WEEK;
+    }
+    Some((next, at))
+}
+
 /// The three segments of the strip on a card, as fractions of 0 to 1. The
 /// port of `computeCardProgress`: watched, aired but unwatched (only while
 /// the show is still releasing), and the unknown-total cap.
@@ -442,11 +488,27 @@ impl Snapshot {
                 .map(|s| f64::from(s) / 10.0),
             my_score: entry.and_then(|e| e.score),
             list_status: entry.and_then(|e| e.status),
-            next_airing: next_scheduled.map(|n| Airing {
-                episode: n.number,
-                at: time::from_secs(n.at),
-                season: n.season,
-            }),
+            next_airing: match next_scheduled {
+                Some(n) => Some(Airing {
+                    episode: n.number,
+                    at: time::from_secs(n.at),
+                    season: n.season,
+                    predicted: false,
+                }),
+                None => predict_next(
+                    airing,
+                    latest_aired.max(latest_downloaded),
+                    total,
+                    status,
+                    now,
+                )
+                .map(|(episode, at)| Airing {
+                    episode,
+                    at: time::from_secs(at),
+                    season: self.card_season(row),
+                    predicted: true,
+                }),
+            },
             last_viewed_at: self.views.get(&row.id).map(|(_, at)| time::from_secs(*at)),
             added_at: time::from_secs(row.added_at),
             downloaded_at: files.iter().map(|f| f.mtime).max().map(time::from_secs),
@@ -982,5 +1044,98 @@ mod tests {
             watched_here: &none,
         });
         assert_eq!(empty, "");
+    }
+
+    fn dated(rows: &[(u32, i64)]) -> Vec<AiringRow> {
+        rows.iter()
+            .map(|(number, at)| AiringRow {
+                number: *number,
+                title: None,
+                aired_at: Some(*at),
+            })
+            .collect()
+    }
+
+    const T0: i64 = 1_790_000_000;
+
+    #[test]
+    fn one_episode_out_predicts_a_week_on() {
+        let rows = dated(&[(1, T0)]);
+        let now = T0 + 2 * DAY;
+        let got = predict_next(&rows, 1, Some(12), Some(AiringStatus::Releasing), now);
+        assert_eq!(got, Some((2, T0 + WEEK)));
+    }
+
+    #[test]
+    fn two_weeks_between_the_first_two_means_every_other_week() {
+        // The 1st and the 14th: thirteen days rounds to two weeks
+        let rows = dated(&[(1, T0), (2, T0 + 13 * DAY)]);
+        let now = T0 + 14 * DAY;
+        let got = predict_next(&rows, 2, None, Some(AiringStatus::Releasing), now);
+        assert_eq!(got, Some((3, T0 + 13 * DAY + 2 * WEEK)));
+    }
+
+    #[test]
+    fn a_later_break_keeps_the_weekly_cadence() {
+        // Weekly to episode 4, then a two week break before 5
+        let rows = dated(&[
+            (1, T0),
+            (2, T0 + WEEK),
+            (3, T0 + 2 * WEEK),
+            (4, T0 + 3 * WEEK),
+            (5, T0 + 5 * WEEK),
+        ]);
+        let now = T0 + 5 * WEEK + DAY;
+        let got = predict_next(&rows, 5, None, Some(AiringStatus::Releasing), now);
+        assert_eq!(got, Some((6, T0 + 6 * WEEK)));
+    }
+
+    #[test]
+    fn a_missed_guess_moves_a_week_at_a_time() {
+        let rows = dated(&[(1, T0), (2, T0 + WEEK)]);
+        // Episode 3 was due at T0 + 2 weeks; it is now a day and a bit past
+        let late = T0 + 2 * WEEK + DAY + 1;
+        let got = predict_next(&rows, 2, None, Some(AiringStatus::Releasing), late);
+        assert_eq!(got, Some((3, T0 + 3 * WEEK)));
+        // Within its own day it stands
+        let same_day = T0 + 2 * WEEK + 3600;
+        let got = predict_next(&rows, 2, None, Some(AiringStatus::Releasing), same_day);
+        assert_eq!(got, Some((3, T0 + 2 * WEEK)));
+        // Three weeks overdue: three weeks later
+        let far = T0 + 4 * WEEK + 2 * DAY;
+        let got = predict_next(&rows, 2, None, Some(AiringStatus::Releasing), far);
+        assert_eq!(got, Some((3, T0 + 5 * WEEK)));
+    }
+
+    #[test]
+    fn a_file_on_disk_past_the_dates_counts_as_out() {
+        let rows = dated(&[(1, T0), (2, T0 + WEEK)]);
+        let now = T0 + 2 * WEEK + 2 * DAY;
+        // Episode 3 is on disk with no date: 4 is next, two cadences on from 2
+        let got = predict_next(&rows, 3, None, Some(AiringStatus::Releasing), now);
+        assert_eq!(got, Some((4, T0 + 3 * WEEK)));
+    }
+
+    #[test]
+    fn no_guess_without_a_date_past_the_end_or_off_air() {
+        let none: Vec<AiringRow> = Vec::new();
+        assert_eq!(
+            predict_next(&none, 3, None, Some(AiringStatus::Releasing), T0),
+            None
+        );
+        let rows = dated(&[(11, T0), (12, T0 + WEEK)]);
+        let now = T0 + WEEK + DAY;
+        assert_eq!(
+            predict_next(&rows, 12, Some(12), Some(AiringStatus::Releasing), now),
+            None
+        );
+        assert_eq!(
+            predict_next(&rows, 12, None, Some(AiringStatus::Finished), now),
+            None
+        );
+        assert_eq!(
+            predict_next(&rows, 12, None, Some(AiringStatus::Hiatus), now),
+            None
+        );
     }
 }

@@ -103,6 +103,7 @@ pub fn list(conn: &Connection, images_dir: &Path) -> Result<WatchingList, CoreEr
                 episode,
                 at: time::from_secs(at),
                 season: None,
+                predicted: false,
             });
         }
     }

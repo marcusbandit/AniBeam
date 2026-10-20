@@ -117,22 +117,40 @@ Item {
     // optimisticFile pins the clicked row to the intended state regardless of the number
     // comparison; every other row still reads the integral target normally.
     function marker(ep) {
-        var watched = ep.watched
+        var watched = !!ep.watched
         var target = watched ? Math.max(0, Math.floor(ep.number) - 1) : Math.floor(ep.number)
         optimisticProgress = target
-        optimisticFile = ep.file
+        // An absent episode has no file; its integral number reads the target on its own
+        optimisticFile = ep.file !== undefined ? ep.file : -1
         optimisticWatched = !watched
         var r = Door.setProgress(props.id, target)
         if (r.error) { optimisticProgress = -1; optimisticFile = -1; frame.toast(r.error.message) }
     }
     function watchedWithOptimism(ep) {
-        if (optimisticProgress < 0) return ep.watched
-        if (ep.file === optimisticFile) return optimisticWatched
+        if (optimisticProgress < 0) return !!ep.watched
+        if (ep.file !== undefined && ep.file === optimisticFile) return optimisticWatched
         return ep.number <= optimisticProgress
     }
 
     // ---- What Continue plays: the next episode, else (a film, or caught up) the first
     readonly property var episodes: detail ? detail.episodes : []
+    // The rows: the episodes on disk with the aired ones that have no file between them, in
+    // season then number order
+    readonly property var episodeRows: {
+        if (!detail) return []
+        // A record numbers without seasons while the files may carry one (S04E01): an absent
+        // episode then sits in the season of the newest file, and is coded the same way
+        var fileSeason = episodes.length > 0 ? episodes[episodes.length - 1].season : null
+        function pad(n) { return n < 10 ? "0" + n : String(n) }
+        var absent = (detail.absent || []).map(function(a) {
+            var season = a.season !== null && a.season !== undefined ? a.season : fileSeason
+            var code = season !== null && season !== undefined && season !== a.season ? "S" + pad(season) + "E" + pad(a.number) : a.code
+            return { number: a.number, season: season, code: code, title: a.title, air_date: a.air_date, cube: a.cube, absent: true, watched: false, next_up: false }
+        })
+        return episodes.concat(absent).sort(function(a, b) {
+            return ((a.season || 1) - (b.season || 1)) || (a.number - b.number)
+        })
+    }
     readonly property var nextEpisode: {
         if (!detail || !detail.next_up) return null
         for (var i = 0; i < episodes.length; i++) if (episodes[i].file === detail.next_up) return isDownloading(episodes[i]) ? null : episodes[i]
@@ -461,7 +479,7 @@ Item {
                         id: airing
                         objectName: "fact-airing"
                         visible: page.airsAhead
-                        text: card.next_airing ? (card.next_airing.season && card.next_airing.season !== 1 ? "S" + card.next_airing.season + " " : "") + "Episode " + card.next_airing.episode + " airs in " + Fmt.countdownSeconds(card.next_airing.at - page.nowMs / 1000) : ""
+                        text: card.next_airing ? (card.next_airing.season && card.next_airing.season !== 1 ? "S" + card.next_airing.season + " " : "") + "Episode " + card.next_airing.episode + (card.next_airing.predicted ? " predicted for " + Qt.formatDate(new Date(card.next_airing.at * 1000), "ddd d MMM") + ", in " + Fmt.countdown(card.next_airing.at - page.nowMs / 1000) : " airs in " + Fmt.countdownSeconds(card.next_airing.at - page.nowMs / 1000)) : ""
                         role: "ledger"
                         font.weight: 600; font.variableAxes: ({ "wdth": 88, "wght": 600 })
                         color: page.inkAccent
@@ -574,15 +592,15 @@ Item {
                 // The episodes
                 Column {
                     objectName: "series-episodes"
-                    visible: page.episodes.length > 0
+                    visible: page.episodeRows.length > 0
                     width: parent.width
                     spacing: theme.space(4)
-                    Heading { text: page.isMovie ? "Film" : "Episodes"; count: page.episodes.length; fact: page.episodesFact }
+                    Heading { text: page.isMovie ? "Film" : "Episodes"; count: page.episodeRows.length; fact: page.episodesFact }
                     Column {
                         width: parent.width
                         spacing: theme.space(4)
                         Repeater {
-                            model: page.episodes
+                            model: page.episodeRows
                             EpisodeRow {
                                 required property var modelData
                                 required property int index

@@ -303,7 +303,7 @@ Item {
                 }
                 Label {
                     visible: !!entry.next
-                    text: entry.next ? "at " + Qt.formatTime(new Date(entry.next.at * 1000), "HH:mm") + (entry.today ? ", in " + page.shortCountdown(entry.next.at - page.nowMs / 1000) : "") : ""
+                    text: entry.next ? (entry.next.predicted ? "predicted, " : "at ") + Qt.formatTime(new Date(entry.next.at * 1000), "HH:mm") + (entry.today ? ", in " + page.shortCountdown(entry.next.at - page.nowMs / 1000) : "") : ""
                     role: "ui"
                     color: theme.accent
                 }
