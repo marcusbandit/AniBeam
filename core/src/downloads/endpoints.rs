@@ -26,7 +26,7 @@ async fn writable(core: &Arc<Core>) -> Result<AnirssClient, CoreError> {
             anirss::SERVICE,
             "outdated",
             format!(
-                "anirss {version} cannot add or remove endpoints. Update anirss to 0.6 or later."
+                "anirss {version} cannot add or remove endpoints. Update anirss to a release that can."
             ),
         ));
     }
