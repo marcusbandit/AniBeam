@@ -49,6 +49,17 @@ pub fn validate(pack: &mut EndpointPack) -> Result<(), CoreError> {
         if ep.name.is_empty() {
             return Err(CoreError::invalid("name", "an endpoint has no name"));
         }
+        // anirss's own rule for an [[endpoint]] name.
+        if !ep
+            .name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+        {
+            return Err(CoreError::invalid(
+                "name",
+                format!("{}: use only letters, digits, '.', '_' and '-'", ep.name),
+            ));
+        }
         if !seen.insert(ep.name.to_lowercase()) {
             return Err(CoreError::invalid(
                 "name",
@@ -170,6 +181,7 @@ mod tests {
         let bad = [
             vec![],
             vec![ep("", "nyaa", "https://a.example/")],
+            vec![ep("a b", "nyaa", "https://a.example/")],
             vec![
                 ep("a", "nyaa", "https://a.example/"),
                 ep("A", "nyaa", "https://b.example/"),
