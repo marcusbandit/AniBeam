@@ -1579,7 +1579,7 @@ Item {
                                 text: {
                                     if (srow.c) {
                                         var parts = []
-                                        if (srow.c.next_airing) parts.push("Airing, " + (srow.c.next_airing.through ? "episodes " + srow.c.next_airing.episode + " to " + srow.c.next_airing.through : "episode " + srow.c.next_airing.episode) + (srow.c.next_airing.predicted ? " predicted in " : " in ") + Fmt.countdown(srow.c.next_airing.at - page.nowMs / 1000))
+                                        if (srow.c.next_airing) parts.push("Airing, " + Fmt.episodeSpan(srow.c.next_airing.episode, srow.c.next_airing.through || 0).toLowerCase() + (srow.c.next_airing.predicted ? " predicted in " : " in ") + Fmt.countdown(srow.c.next_airing.at - page.nowMs / 1000))
                                         else if (srow.c.status === "Finished") parts.push("Finished")
                                         var gw = page.gapWords(srow.c)
                                         if (gw) parts.push(gw)
@@ -1821,7 +1821,7 @@ Item {
                             if (!s) return ""
                             var total = s.total_episodes && !s.total_is_estimate ? s.total_episodes : 0
                             var parts = [total ? s.episodes_on_disk + " of " + total + " episodes on disk" : Fmt.plural(s.episodes_on_disk, "episode", "episodes") + " on disk"]
-                            if (s.next_airing && s.next_airing.at * 1000 > page.nowMs) parts.push((s.next_airing.through ? "episodes " + s.next_airing.episode + " to " + s.next_airing.through : "episode " + s.next_airing.episode) + (s.next_airing.predicted ? " predicted in " : " in ") + Fmt.countdown(s.next_airing.at - page.nowMs / 1000))
+                            if (s.next_airing && s.next_airing.at * 1000 > page.nowMs) parts.push(Fmt.episodeSpan(s.next_airing.episode, s.next_airing.through || 0).toLowerCase() + (s.next_airing.predicted ? " predicted in " : " in ") + Fmt.countdown(s.next_airing.at - page.nowMs / 1000))
                             else if (s.complete) parts.push("complete")
                             return parts.join(", ") + "."
                         }
@@ -2184,7 +2184,7 @@ Item {
                         title: modelData.title
                         tag: { var r = page.ruleForSeries(modelData.id); return r ? "Following" : "" }
                         tagDot: theme.green
-                        ledger: modelData.next_airing ? (modelData.next_airing.through ? "Episodes " + modelData.next_airing.episode + " to " + modelData.next_airing.through : "Episode " + modelData.next_airing.episode) + (modelData.next_airing.predicted ? " predicted in " : " in ") + Fmt.countdown(modelData.next_airing.at - page.nowMs / 1000) : "Airing"
+                        ledger: modelData.next_airing ? Fmt.episodeSpan(modelData.next_airing.episode, modelData.next_airing.through || 0) + (modelData.next_airing.predicted ? " predicted in " : " in ") + Fmt.countdown(modelData.next_airing.at - page.nowMs / 1000) : "Airing"
                         cubes: modelData.cubes || ""
                         onOpened: page.openGet(page.showFromCard(modelData))
                     }

@@ -137,6 +137,16 @@ pub fn episode_name(title: Option<&str>, number: f64) -> String {
     }
 }
 
+/// The episodes one airing drop releases: "Episode 7", or "Episodes 7 to 9"
+/// when `through` names a later one landing at the same moment.
+pub fn episode_span(first: u32, through: u32) -> String {
+    if through > first {
+        format!("Episodes {first} to {through}")
+    } else {
+        format!("Episode {first}")
+    }
+}
+
 pub fn plural(n: u64, one: &str, many: &str) -> String {
     if n == 1 {
         format!("{n} {one}")
@@ -191,6 +201,13 @@ mod tests {
         assert_eq!(relative(now - 400.0 * 86400.0, now), "1y 1mo ago");
         assert_eq!(relative(now - 730.0 * 86400.0, now), "2y ago");
         assert_eq!(relative(now + 2.0 * 3600.0, now), "in 2h");
+    }
+
+    #[test]
+    fn episode_spans_name_one_or_several() {
+        assert_eq!(episode_span(7, 0), "Episode 7");
+        assert_eq!(episode_span(7, 7), "Episode 7");
+        assert_eq!(episode_span(7, 9), "Episodes 7 to 9");
     }
 
     #[test]

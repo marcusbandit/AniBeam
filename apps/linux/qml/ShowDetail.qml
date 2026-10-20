@@ -62,7 +62,7 @@ Column {
         else if (airing) parts.push("Airing.")
         if (total > 0) parts.push(have + " of " + total + " episodes here.")
         else parts.push(Fmt.plural(have, "episode", "episodes") + " here.")
-        if (airing) parts.push((show.next_airing.through ? "Episodes " + show.next_airing.episode + " to " + show.next_airing.through : "Episode " + show.next_airing.episode) + (show.next_airing.predicted ? (show.next_airing.through ? " are" : " is") + " predicted in " : show.next_airing.through ? " air in " : " airs in ") + Fmt.countdown(show.next_airing.at - nowMs / 1000) + ".")
+        if (airing) parts.push(Fmt.episodeSpan(show.next_airing.episode, show.next_airing.through || 0) + (show.next_airing.predicted ? (show.next_airing.through ? " are" : " is") + " predicted in " : show.next_airing.through ? " air in " : " airs in ") + Fmt.countdown(show.next_airing.at - nowMs / 1000) + ".")
         if (finished && missing.length) parts.push((missing.length === 1 ? "Episode " : "Episodes ") + missing.slice(0, 8).join(", ") + (missing.length > 8 ? " and " + (missing.length - 8) + " more" : "") + (missing.length === 1 ? " is" : " are") + " not here.")
         return parts.join(" ")
     }

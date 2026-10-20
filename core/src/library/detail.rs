@@ -28,7 +28,7 @@ impl Snapshot {
         let card = self.card_of(row);
         let media = row.media.as_ref();
         let now = time::to_secs(self.now);
-        let (latest_aired, _) = self.aired_and_next(row, now);
+        let (latest_aired, next_scheduled) = self.aired_and_next(row, now);
         let files = self.files_of(id);
         let episodes = self.episodes_on_disk(id);
         let entry = self.tracker(row);
@@ -94,8 +94,14 @@ impl Snapshot {
         };
 
         // The aired episodes with no file, read off the card's own cube row
-        // so the page and every cube row agree on what is missing
-        let season = self.card_season(row);
+        // so the page and every cube row agree on what is missing. Those the
+        // tracker covers ('w') are left out: a series watched elsewhere would
+        // otherwise list every episode it never had. A record numbering
+        // without seasons takes the newest file's, so the rows sort and code
+        // like the files around them (S04E09 after S04E08).
+        let season = self
+            .card_season(row)
+            .or_else(|| episodes.last().and_then(|f| f.season));
         let airing = self.airing_of(row);
         let absent: Vec<AbsentEpisode> = card
             .cubes
@@ -114,27 +120,28 @@ impl Snapshot {
                 }
             })
             .collect();
-        let latest_downloaded = episodes.last().map_or(0.0, |f| f.number).max(0.0) as u32;
-        let upcoming = upcoming(
-            airing,
-            latest_aired.max(latest_downloaded),
+        let released = self.released_of(
+            row,
+            &episodes,
             total,
-            card.status,
-            now,
-        )
-        .into_iter()
-        .map(|(number, at, predicted)| UpcomingEpisode {
-            number,
-            season,
-            code: labels::episode_code(season, f64::from(number)),
-            title: airing
-                .iter()
-                .find(|a| a.number == number)
-                .and_then(|a| a.title.clone()),
-            at: time::from_secs(at),
-            predicted,
-        })
-        .collect();
+            latest_aired,
+            next_scheduled,
+            card.watched,
+        );
+        let upcoming = upcoming(airing, released, total, card.status, now)
+            .into_iter()
+            .map(|(number, at, predicted)| UpcomingEpisode {
+                number,
+                season,
+                code: labels::episode_code(season, f64::from(number)),
+                title: airing
+                    .iter()
+                    .find(|a| a.number == number)
+                    .and_then(|a| a.title.clone()),
+                at: time::from_secs(at),
+                predicted,
+            })
+            .collect();
 
         let mut extras: Vec<&FileRow> = files.iter().filter(|f| !f.is_episode).collect();
         extras.sort_by(|a, b| {

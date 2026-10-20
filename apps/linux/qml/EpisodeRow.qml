@@ -38,7 +38,8 @@ Corner {
         var base = episode.cube || (episode.watched ? "l" : "d")
         if (watched === !!episode.watched) return base
         if (watched) return hasTracker ? "w" : "l"
-        return absent || upcoming ? base : "d"
+        // An untrack leaves a watch made here standing
+        return absent || upcoming || base === "l" ? base : "d"
     }
     readonly property var cubeState: theme.cubeState(cube)
     readonly property bool playable: !downloading && !absent && !upcoming

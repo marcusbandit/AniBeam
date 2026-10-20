@@ -107,7 +107,7 @@ pub fn predict_next(
     status: Option<AiringStatus>,
     now: i64,
 ) -> Option<(u32, i64)> {
-    upcoming(airing, released, total, status, now)
+    plan(airing, released, total, status, now, true)
         .into_iter()
         .find(|u| u.2)
         .map(|(n, at, _)| (n, at))
@@ -130,6 +130,18 @@ pub fn upcoming(
     total: Option<u32>,
     status: Option<AiringStatus>,
     now: i64,
+) -> Vec<(u32, i64, bool)> {
+    plan(airing, released, total, status, now, false)
+}
+
+/// `upcoming`, stopping at the first guess when `first_guess` is set.
+fn plan(
+    airing: &[AiringRow],
+    released: u32,
+    total: Option<u32>,
+    status: Option<AiringStatus>,
+    now: i64,
+    first_guess: bool,
 ) -> Vec<(u32, i64, bool)> {
     let mut dated: Vec<(u32, i64)> = airing
         .iter()
@@ -173,6 +185,9 @@ pub fn upcoming(
             at += ((now - at - DAY) / WEEK + 1) * WEEK;
         }
         out.push((n, at, true));
+        if first_guess {
+            break;
+        }
         anchor = Some((n, at));
     }
     out
@@ -420,6 +435,39 @@ pub(super) fn aired_and_scheduled(airing: &[AiringRow], now: i64) -> (u32, Optio
 }
 
 impl Snapshot {
+    /// The furthest episode known out, the count the upcoming list starts
+    /// past: aired by date, one short of the next scheduled, within the
+    /// tracker's progress, or on disk. Only the card's own season counts
+    /// for a TVmaze match, whose numbers restart, and a file numbered past
+    /// a known total is a stray, not a release.
+    pub(crate) fn released_of(
+        &self,
+        row: &SeriesRow,
+        episodes: &[&FileRow],
+        total: Option<u32>,
+        latest_aired: u32,
+        next_scheduled: Option<NextEpisode>,
+        tracked: Option<u32>,
+    ) -> u32 {
+        let season = self.card_season(row);
+        let total = total.filter(|t| *t > 0);
+        let on_disk = episodes
+            .iter()
+            .filter(|f| season.is_none_or(|s| f.season.unwrap_or(1) == s))
+            .filter(|f| f.number >= 1.0 && f.number.fract() == 0.0)
+            .map(|f| f.number as u32)
+            .filter(|n| total.is_none_or(|t| *n <= t))
+            .max()
+            .unwrap_or(0);
+        let before_next = next_scheduled
+            .filter(|n| n.season == season)
+            .map_or(0, |n| n.number.saturating_sub(1));
+        latest_aired
+            .max(on_disk)
+            .max(before_next)
+            .max(tracked.unwrap_or(0))
+    }
+
     pub fn card(&self, id: u64) -> Option<SeriesCard> {
         self.row(id).map(|row| self.card_of(row))
     }
@@ -541,7 +589,7 @@ impl Snapshot {
                 }),
                 None => predict_next(
                     airing,
-                    latest_aired.max(latest_downloaded),
+                    self.released_of(row, &episodes, total, latest_aired, None, watched),
                     total,
                     status,
                     now,

@@ -138,19 +138,11 @@ Item {
     // ones still to come after, in season then number order
     readonly property var episodeRows: {
         if (!detail) return []
-        // A record numbers without seasons while the files may carry one (S04E01): an absent
-        // episode then sits in the season of the newest file, and is coded the same way
-        var fileSeason = episodes.length > 0 ? episodes[episodes.length - 1].season : null
-        function pad(n) { return n < 10 ? "0" + n : String(n) }
         var absent = (detail.absent || []).map(function(a) {
-            var season = a.season !== null && a.season !== undefined ? a.season : fileSeason
-            var code = season !== null && season !== undefined && season !== a.season ? "S" + pad(season) + "E" + pad(a.number) : a.code
-            return { number: a.number, season: season, code: code, title: a.title, air_date: a.air_date, cube: a.cube, absent: true, watched: false, next_up: false }
+            return { number: a.number, season: a.season, code: a.code, title: a.title, air_date: a.air_date, cube: a.cube, absent: true, watched: false, next_up: false }
         })
         var ahead = (detail.upcoming || []).map(function(u) {
-            var season = u.season !== null && u.season !== undefined ? u.season : fileSeason
-            var code = season !== null && season !== undefined && season !== u.season ? "S" + pad(season) + "E" + pad(u.number) : u.code
-            return { number: u.number, season: season, code: code, title: u.title, air_date: u.at, predicted: u.predicted, cube: "f", upcoming: true, watched: false, next_up: false }
+            return { number: u.number, season: u.season, code: u.code, title: u.title, air_date: u.at, predicted: u.predicted, cube: "f", upcoming: true, watched: false, next_up: false }
         })
         return episodes.concat(absent, ahead).sort(function(a, b) {
             return ((a.season || 1) - (b.season || 1)) || (a.number - b.number)
@@ -488,7 +480,7 @@ Item {
                         id: airing
                         objectName: "fact-airing"
                         visible: page.airsAhead
-                        text: card.next_airing ? (card.next_airing.season && card.next_airing.season !== 1 ? "S" + card.next_airing.season + " " : "") + (card.next_airing.through ? "Episodes " + card.next_airing.episode + " to " + card.next_airing.through : "Episode " + card.next_airing.episode) + (card.next_airing.predicted ? " predicted for " + Qt.formatDate(new Date(card.next_airing.at * 1000), "ddd d MMM") + ", in " + Fmt.countdown(card.next_airing.at - page.nowMs / 1000) : (card.next_airing.through ? " air in " : " airs in ") + Fmt.countdownSeconds(card.next_airing.at - page.nowMs / 1000)) : ""
+                        text: card.next_airing ? (card.next_airing.season && card.next_airing.season !== 1 ? "S" + card.next_airing.season + " " : "") + Fmt.episodeSpan(card.next_airing.episode, card.next_airing.through || 0) + (card.next_airing.predicted ? " predicted for " + Qt.formatDate(new Date(card.next_airing.at * 1000), "ddd d MMM") + ", in " + Fmt.countdown(card.next_airing.at - page.nowMs / 1000) : (card.next_airing.through ? " air in " : " airs in ") + Fmt.countdownSeconds(card.next_airing.at - page.nowMs / 1000)) : ""
                         role: "ledger"
                         font.weight: 600; font.variableAxes: ({ "wdth": 88, "wght": 600 })
                         color: page.inkAccent

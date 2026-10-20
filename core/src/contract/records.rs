@@ -229,8 +229,8 @@ pub struct Episode {
     pub cube: String,
 }
 
-/// An episode that has aired and has no file: a row on the series page
-/// that cannot play. `cube` is `m` (missing, a later episode is on disk) or
+/// An episode that has aired and has no file, and the tracker does not
+/// cover: a row on the series page that cannot play. `cube` is `m` (missing, a later episode is on disk) or
 /// `g` (not downloaded), the codes the card's cube row gives it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct AbsentEpisode {
