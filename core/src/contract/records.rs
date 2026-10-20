@@ -500,10 +500,18 @@ pub struct PlaybackSession {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct Preferences {
+    // Each choice reads leniently: a value another build wrote that this one does not know
+    // (a newer sort, say) falls back to its default instead of failing the whole blob, and
+    // with it every job that reads the preferences.
+    #[serde(deserialize_with = "lenient::title_language")]
     pub title_language: TitleLanguage,
+    #[serde(deserialize_with = "lenient::tab")]
     pub library_tab: Tab,
+    #[serde(deserialize_with = "lenient::sort")]
     pub library_sort: Sort,
+    #[serde(deserialize_with = "lenient::direction")]
     pub library_direction: Direction,
+    #[serde(deserialize_with = "lenient::feed_sort")]
     pub feed_sort: FeedSort,
     /// Whether series that are done with (`cards::watched_out`) also sit in
     /// the main tabs, or only in the Watched tab. Default off: a
@@ -513,7 +521,7 @@ pub struct Preferences {
     pub library_show_watched: bool,
     /// How the library page arranges its cards. `serde(default)` because
     /// older blobs predate it, which is the whole migration.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient::arrange")]
     pub library_arrange: Arrange,
     /// Whether the library pulls a franchise's series (two or more in the
     /// library) out into a section of their own ahead of the cut, or leaves
@@ -524,6 +532,41 @@ pub struct Preferences {
 
 fn default_true() -> bool {
     true
+}
+
+/// Preferences fields that fall back to `Preferences::default()`'s value
+/// when the stored one is not a variant this build knows.
+mod lenient {
+    use super::*;
+    use serde::Deserializer;
+    use serde::de::DeserializeOwned;
+
+    fn or<'de, D: Deserializer<'de>, T: DeserializeOwned>(
+        d: D,
+        fallback: T,
+    ) -> Result<T, D::Error> {
+        let v = serde_json::Value::deserialize(d)?;
+        Ok(serde_json::from_value(v).unwrap_or(fallback))
+    }
+
+    pub fn title_language<'de, D: Deserializer<'de>>(d: D) -> Result<TitleLanguage, D::Error> {
+        or(d, Preferences::default().title_language)
+    }
+    pub fn tab<'de, D: Deserializer<'de>>(d: D) -> Result<Tab, D::Error> {
+        or(d, Preferences::default().library_tab)
+    }
+    pub fn sort<'de, D: Deserializer<'de>>(d: D) -> Result<Sort, D::Error> {
+        or(d, Preferences::default().library_sort)
+    }
+    pub fn direction<'de, D: Deserializer<'de>>(d: D) -> Result<Direction, D::Error> {
+        or(d, Preferences::default().library_direction)
+    }
+    pub fn feed_sort<'de, D: Deserializer<'de>>(d: D) -> Result<FeedSort, D::Error> {
+        or(d, Preferences::default().feed_sort)
+    }
+    pub fn arrange<'de, D: Deserializer<'de>>(d: D) -> Result<Arrange, D::Error> {
+        or(d, Preferences::default().library_arrange)
+    }
 }
 
 fn epoch() -> SystemTime {

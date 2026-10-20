@@ -245,6 +245,13 @@ impl AnirssClient {
         items: &[Release],
         name: Option<&str>,
     ) -> Result<AddedTorrents, CoreError> {
+        let items: Vec<Release> = items
+            .iter()
+            .map(|r| Release {
+                link: url_safe(&r.link),
+                ..r.clone()
+            })
+            .collect();
         let mut body = json!({ "items": items });
         if let Some(n) = name.map(str::trim).filter(|n| !n.is_empty()) {
             body["name"] = Value::String(n.to_string());
@@ -255,7 +262,11 @@ impl AnirssClient {
 
     pub async fn movie(&self, link: &str) -> Result<AddedTorrents, CoreError> {
         let v = self
-            .post("/movie", json!({ "link": link }), Some(STEP_TIMEOUT))
+            .post(
+                "/movie",
+                json!({ "link": url_safe(link) }),
+                Some(STEP_TIMEOUT),
+            )
             .await?;
         Ok(added(&v))
     }
@@ -627,8 +638,53 @@ pub(super) fn child_path() -> Option<String> {
     })
 }
 
+/// A web link with what a URL may not carry raw percent-encoded: erai's
+/// torrent links come with spaces and square brackets in the file name, and
+/// anirss refuses them as they are. A magnet link, and anything already
+/// encoded, passes unchanged.
+pub fn url_safe(link: &str) -> String {
+    if !(link.starts_with("http://") || link.starts_with("https://")) {
+        return link.to_string();
+    }
+    let mut out = String::with_capacity(link.len());
+    for c in link.chars() {
+        match c {
+            ' ' | '"' | '<' | '>' | '`' | '{' | '}' | '|' | '\\' | '^' | '[' | ']' => {
+                out.push_str(&format!("%{:02X}", c as u32))
+            }
+            c if !c.is_ascii() || c.is_ascii_control() => {
+                let mut buf = [0u8; 4];
+                for b in c.encode_utf8(&mut buf).bytes() {
+                    out.push_str(&format!("%{b:02X}"));
+                }
+            }
+            c => out.push(c),
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_erai_link_is_encoded_and_a_magnet_is_not() {
+        assert_eq!(
+            url_safe(
+                "https://t.erai-raws.info/Torrent/2026/Spring/[Erai-raws] Show - 24 [1080p].mkv.torrent"
+            ),
+            "https://t.erai-raws.info/Torrent/2026/Spring/%5BErai-raws%5D%20Show%20-%2024%20%5B1080p%5D.mkv.torrent"
+        );
+        assert_eq!(
+            url_safe("https://x.org/a%20b?q=1&r=2"),
+            "https://x.org/a%20b?q=1&r=2"
+        );
+        assert_eq!(
+            url_safe("magnet:?xt=urn:btih:abc&dn=a b"),
+            "magnet:?xt=urn:btih:abc&dn=a b"
+        );
+        assert_eq!(url_safe("https://x.org/é"), "https://x.org/%C3%A9");
+    }
+
     use super::*;
     use crate::net::FakeHttp;
 
