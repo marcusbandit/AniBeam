@@ -1,0 +1,87 @@
+name: Bug report
+description: Something in AniBeam is broken and you are writing it up yourself.
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. If you use a coding agent such as Claude Code or Codex,
+        the **Triage report** form gets fixed faster: the agent can read the logs for you.
+
+        Please check the [open issues](https://github.com/marcusbandit/AniBeam/issues) first.
+        If yours is already there, add a comment to it instead.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What went wrong
+      description: Describe it in your own words. What did you see?
+      placeholder: When I press play on an episode, the screen stays black but I hear the sound.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      placeholder: The episode plays with picture and sound.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen again
+      description: The steps that lead to the problem, if you know them. "It happens randomly" is a fine answer too.
+      placeholder: |
+        1. Open a series
+        2. Press play on episode 1
+        3. The screen stays black
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: AniBeam version
+      description: Open Settings, go to the Data tab, and look under About. Write "unknown" if you cannot find it.
+      placeholder: 2.0.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How you installed AniBeam
+      options:
+        - AUR package
+        - AppImage
+        - macOS app (dmg)
+        - Built it myself
+        - Android companion
+        - I don't know
+    validations:
+      required: true
+
+  - type: input
+    id: system
+    attributes:
+      label: Your computer
+      description: Operating system, and your graphics card if the problem is with video.
+      placeholder: Arch Linux, NVIDIA RTX 3070
+
+  - type: upload
+    id: screenshots
+    attributes:
+      label: Screenshots or recordings
+      description: A picture of the problem helps a lot.
+    validations:
+      required: false
+      accept: ".png,.jpg,.jpeg,.gif,.webp,.mp4,.mov,.webm,.log,.txt"
+
+  - type: textarea
+    id: anything-else
+    attributes:
+      label: Anything else
+      description: Error messages, or anything you tried that helped. Leave out passwords and tokens.
