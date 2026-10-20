@@ -165,10 +165,13 @@ Item {
     readonly property bool waitingOnDownload: !nextEpisode && downloadingNow.length > 0 && anyWatched && !isMovie
     readonly property bool tracked: !!detail && detail.progress.watched !== null && detail.progress.watched !== undefined
     readonly property int watchedCount: tracked ? detail.progress.watched : 0
-    // Watched by the tracker or here: an untracked series still has its own completed episodes
-    readonly property bool anyWatched: watchedCount > 0 || episodes.some(function(e) { return !!e.watched })
-    // The core finds no next episode on disk once the last one is watched
-    readonly property bool caughtUp: !!detail && !nextEpisode && anyWatched
+    // Watched by the tracker or here: an untracked series still has its own completed episodes.
+    // Read through the rows' optimism so the button flips with them on a marker click.
+    readonly property bool anyWatched: watchedCount > 0 || episodes.some(watchedWithOptimism)
+    // Every whole episode on disk watched. No next episode alone is not enough: the core walks
+    // on from the latest completion, so watching only the finale leaves nothing after it.
+    readonly property bool caughtUp: !!detail && !nextEpisode && firstWhole !== null
+        && episodes.every(function(e) { return isDownloading(e) || watchedWithOptimism(e) })
     readonly property string playVerb: nextEpisode && anyWatched ? "Continue" : caughtUp ? "Watch again" : "Play"
     // "Continue episode 8", "Play episode 1", "Watch again from episode 1", "Play" for a lone film
     readonly property string playText: {
@@ -507,7 +510,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         primary: true
                         tint: page.inkAccent
-                        icon: page.caughtUp ? "rotate-ccw" : "play"
+                        icon: page.caughtUp && !page.waitingOnDownload ? "rotate-ccw" : "play"
                         text: page.playText
                         enabled: page.playEpisode !== null && !page.waitingOnDownload
                         onClicked: if (page.playEpisode) page.openFile(page.playEpisode.file)
