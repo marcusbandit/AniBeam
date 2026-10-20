@@ -152,11 +152,13 @@ Item {
 
         Item { width: 1; height: theme.space(3) }
 
-        // The title language: one pill naming the current one; a click switches
+        // The title language: one pill naming the current one; a click goes to the next
         Rectangle {
             id: lang
             objectName: "title-language"
-            readonly property bool english: Door.preferences.title_language === "English"
+            readonly property var order: ["Romaji", "English", "Native"]
+            readonly property var names: ({ "Romaji": "Romaji", "English": "English", "Native": "日本語" })
+            readonly property string current: order.indexOf(Door.preferences.title_language) >= 0 ? Door.preferences.title_language : "Romaji"
             x: (root.itemWidth - width) / 2
             implicitWidth: langWidest.implicitWidth + theme.space(4)
             width: implicitWidth
@@ -166,11 +168,11 @@ Item {
             scale: langMouse.pressed ? 0.98 : 1
             Label {
                 anchors.centerIn: parent
-                text: lang.english ? "English" : "Romaji"
+                text: lang.names[lang.current]
                 role: "ui"
                 font.pointSize: theme.typeSmall
             }
-            // the wider of the two, so the pill does not change width when switched
+            // the widest of them, so the pill does not change width when switched
             Label { id: langWidest; visible: false; text: "English"; role: "ui"; font.pointSize: theme.typeSmall }
             MouseArea {
                 id: langMouse
@@ -179,11 +181,11 @@ Item {
                 cursorShape: Qt.PointingHandCursor
                 onClicked: {
                     var p = JSON.parse(JSON.stringify(Door.preferences))
-                    p.title_language = lang.english ? "Romaji" : "English"
+                    p.title_language = lang.order[(lang.order.indexOf(lang.current) + 1) % lang.order.length]
                     Door.setPreferences(p)
                 }
             }
-            Tooltip { text: "Title language" }
+            Tooltip { text: "Title language: Romaji, English or Japanese" }
         }
         Label {
             width: root.itemWidth

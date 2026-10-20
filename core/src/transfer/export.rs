@@ -236,6 +236,8 @@ fn entry(row: &Row, lang: TitleLanguage) -> SeriesEntry {
             lang,
             row.romaji.as_deref(),
             row.english.as_deref(),
+            // The file carries no native title, so Native exports romaji
+            None,
             &row.folder_name,
         ),
         hidden: row.hidden,

@@ -261,7 +261,8 @@ impl Snapshot {
             "SELECT r.recommended_id, m.title_romaji, m.title_english, i.path,
                     (SELECT s.id FROM series s WHERE s.anilist_id = m.id ORDER BY s.id LIMIT 1),
                     (SELECT ta.status FROM tracker_entries ta WHERE ta.tracker = 'anilist' AND ta.media_id = m.id),
-                    (SELECT tm.status FROM tracker_entries tm WHERE tm.tracker = 'mal' AND tm.media_id = m.mal_id)
+                    (SELECT tm.status FROM tracker_entries tm WHERE tm.tracker = 'mal' AND tm.media_id = m.mal_id),
+                    m.title_native
              FROM recommendations r
              JOIN anilist_media m ON m.id = r.recommended_id
              LEFT JOIN images i ON i.url = m.cover_url
@@ -273,13 +274,20 @@ impl Snapshot {
             let english: Option<String> = r.get(2)?;
             let anilist_status: Option<String> = r.get(5)?;
             let mal_status: Option<String> = r.get(6)?;
+            let native: Option<String> = r.get(7)?;
             let (main, other) = match self.main_tracker {
                 Tracker::Anilist => (anilist_status, mal_status),
                 Tracker::Mal => (mal_status, anilist_status),
             };
             Ok(Recommendation {
                 anilist_id: r.get::<_, i64>(0)? as u64,
-                title: titles::resolve(self.lang, romaji.as_deref(), english.as_deref(), ""),
+                title: titles::resolve(
+                    self.lang,
+                    romaji.as_deref(),
+                    english.as_deref(),
+                    native.as_deref(),
+                    "",
+                ),
                 poster: r.get::<_, Option<String>>(3)?.map(|p| {
                     Path::new(&self.images_dir)
                         .join(p)

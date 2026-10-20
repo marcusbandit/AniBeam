@@ -477,6 +477,7 @@ impl Snapshot {
             self.lang,
             media.and_then(|m| m.title_romaji.as_deref()),
             media.and_then(|m| m.title_english.as_deref()),
+            media.and_then(|m| m.title_native.as_deref()),
             &row.folder_name,
         )
     }

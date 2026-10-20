@@ -296,6 +296,7 @@ fn own_stub(id: u64, e: &Enrichment) -> StubWrite {
         media_type: e.type_.clone(),
         title_romaji: e.title.as_ref().and_then(|t| t.romaji.clone()),
         title_english: e.title.as_ref().and_then(|t| t.english.clone()),
+        title_native: e.title.as_ref().and_then(|t| t.native.clone()),
         format: e.format.clone(),
         status: e.status.clone(),
         year: e

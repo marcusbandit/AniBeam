@@ -431,6 +431,8 @@ impl SkipSource {
 pub enum TitleLanguage {
     Romaji,
     English,
+    /// The title in its own script: kana and kanji for Japanese shows
+    Native,
 }
 
 impl TitleLanguage {
@@ -438,6 +440,7 @@ impl TitleLanguage {
         match self {
             TitleLanguage::Romaji => "romaji",
             TitleLanguage::English => "english",
+            TitleLanguage::Native => "native",
         }
     }
 
@@ -445,6 +448,7 @@ impl TitleLanguage {
         match s {
             "romaji" => Some(TitleLanguage::Romaji),
             "english" => Some(TitleLanguage::English),
+            "native" => Some(TitleLanguage::Native),
             _ => None,
         }
     }

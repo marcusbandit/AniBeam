@@ -195,7 +195,7 @@ Item {
         cursorShape: Qt.PointingHandCursor
         onHoveredChanged: {
             if (hovered && root.folderName !== "") { tipIntent.interval = frame.tipWarm() ? 1 : 600; tipIntent.restart() }
-            else { tipIntent.stop(); frame.hideTip() }
+            else { tipIntent.stop(); frame.releaseTip(root) }
         }
     }
     Timer { id: tipIntent; interval: 600; onTriggered: frame.showTip(titleText, root.folderName, root) }

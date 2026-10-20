@@ -1,6 +1,7 @@
 // Hover text for one item. The tip itself is drawn by the frame in its overlay after a
 // 600 ms hover intent, so it is never clipped by the item's own parent. Once a tip has
-// shown, the next item's comes at once (the frame's tipWarm), the way desktop tips do.
+// shown, the next item's comes at once (the frame's tipWarm), the way desktop tips do, and
+// moving straight to a neighbour hands the tip over without it blinking off in between.
 //
 // A HoverHandler on the item it describes, not a MouseArea over it. A hovering MouseArea
 // takes the hover from every sibling under it, so a button's own MouseArea declared before
@@ -32,12 +33,14 @@ Item {
         return false
     }
     function hide() { intent.stop(); if (host) host.hideTip() }
+    // The pointer left: let the frame keep the tip through the gap to a neighbour
+    function release() { intent.stop(); if (host) { if (host.releaseTip) host.releaseTip(root.target); else host.hideTip() } }
 
     HoverHandler {
         id: hh
         parent: root.target
         onHoveredChanged: {
-            if (!hovered) { root.hide(); return }
+            if (!hovered) { root.release(); return }
             if (root.text === "") return
             if (root.host && root.host.tipWarm && root.host.tipWarm()) intent.trigger()
             else intent.restart()

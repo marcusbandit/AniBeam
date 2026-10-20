@@ -192,10 +192,16 @@ Item {
                         else root.rangeClicked(cube.index * root.fold, Math.min(root.count, (cube.index + 1) * root.fold) - 1)
                     }
                 }
-                Tooltip {
-                    text: root.count > root.tipLimit || root.fold !== 1 ? ""
-                        : root.tipFor ? root.tipFor(cube.index, cube.code)
-                        : "Episode " + (root.first + cube.index) + ": " + cube.st.label.toLowerCase()
+                // The hover reaches half the gap each way, so neighbouring cubes meet and a
+                // move from one to the next never crosses empty ground
+                Item {
+                    anchors.fill: parent
+                    anchors.margins: -root.gap / 2
+                    Tooltip {
+                        text: root.count > root.tipLimit || root.fold !== 1 ? ""
+                            : root.tipFor ? root.tipFor(cube.index, cube.code)
+                            : "Episode " + (root.first + cube.index) + ": " + cube.st.label.toLowerCase()
+                    }
                 }
             }
         }

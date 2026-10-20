@@ -165,7 +165,7 @@ Item {
         var out = []
         for (var i = 0; i < libCards.length && out.length < 5; i++) {
             var c = libCards[i], t = c.titles || {}
-            var hay = [c.title, t.romaji, t.english, t.folder].join(" ").toLowerCase()
+            var hay = [c.title, t.romaji, t.english, t.native, t.folder].join(" ").toLowerCase()
             if (hay.indexOf(q) >= 0) out.push(c)
         }
         return out
@@ -198,11 +198,12 @@ Item {
     // otherwise the app's title language. Releases are searched by the romaji name, which is
     // what release files carry, and by its other names when that finds nothing.
     function norm(t) { return String(t || "").toLowerCase().replace(/[^a-z0-9\u00c0-\uffff]+/g, " ").trim() }
-    function namesOfHit(h) { return [h.romaji, h.english, h.title].concat(h.synonyms || []).filter(function(n) { return !!n }) }
+    function namesOfHit(h) { return [h.romaji, h.english, h.title, h.native].concat(h.synonyms || []).filter(function(n) { return !!n }) }
     function namesOfCard(c) { var t = c.titles || {}; return [t.romaji, t.english, c.title, t.native].filter(function(n) { return !!n }) }
     function preferredOfHit(h) {
-        var english = (Door.preferences.title_language || "Romaji") === "English"
-        return english ? (h.english || h.romaji || h.title) : (h.romaji || h.title || h.english)
+        var lang = Door.preferences.title_language || "Romaji"
+        if (lang === "Native" && h.native) return h.native
+        return lang === "English" ? (h.english || h.romaji || h.title) : (h.romaji || h.title || h.english)
     }
     function typedName(names, typed) {
         var q = page.norm(typed)
@@ -230,7 +231,6 @@ Item {
     property var pendingFollow: null
     property bool getActing: false
     property string getLine: ""
-    property string getNote: ""
     property string getError: ""
     function lastPart(p) { var f = String(p || "").replace(/\/+$/, ""); var i = f.lastIndexOf("/"); return i >= 0 ? f.slice(i + 1) : f }
     // The torrents that fill a show: linked to its series, or saved under a folder named
@@ -238,7 +238,7 @@ Item {
     function keyOf(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "") }
     function torrentsOfShow(show) {
         if (!show) return []
-        var want = [keyOf(show.folderName), keyOf(show.title)].filter(function(k) { return k !== "" })
+        var want = [keyOf(show.folderName), keyOf(show.saveName), keyOf(show.title)].filter(function(k) { return k !== "" })
         var named = show.hashes || []
         return torrents.filter(function(t) {
             if (show.seriesId >= 0 && t.series_id === show.seriesId) return true
@@ -256,7 +256,10 @@ Item {
     }
     function showFromHit(h, typed) {
         var queries = page.queriesOf(page.namesOfHit(h), h.romaji || h.title)
-        return { title: page.nameOfHit(h, typed || ""), query: queries[0], queries: queries, poster: h.cover_url || "", cubes: h.episodes ? "g".repeat(Math.min(h.episodes, 400)) : "", total: h.episodes || 0,
+        var title = page.nameOfHit(h, typed || "")
+        // A show not in the library is saved under its own name, but never the native one:
+        // the library links folders by their latin titles
+        return { title: title, saveName: title === h.native ? (h.romaji || h.english || h.title) : title, query: queries[0], queries: queries, poster: h.cover_url || "", cubes: h.episodes ? "g".repeat(Math.min(h.episodes, 400)) : "", total: h.episodes || 0,
                  seriesId: -1, status: "", format: h.format || "", year: h.year || 0, nextAiring: null, airing: false, folderName: "" }
     }
     function showFromLink(s) {
@@ -332,7 +335,6 @@ Item {
         page.getLine = ""
         page.getError = ""
         page.pendingFollow = plan.follow ? plan : null
-        page.getNote = plan.options && plan.options.replace.length ? " The files you had for the replaced episodes go to the trash once the new ones finish." : ""
         if (plan.items.length) {
             var r = Door.downloadReleasesWith(plan.items, plan.name, plan.options || {})
             if (r.error) { page.getError = page.errorWords(r.error); return }
@@ -922,11 +924,28 @@ Item {
         page.act(Door.downloadReleases([{ title: e.title, link: e.link, seeders: e.seeders, leechers: e.leechers, downloads: e.downloads, size: e.size, page: e.page }], name))
         frame.toast("Sent " + e.title + " to " + page.clientName)
     }
-    function control(hash, action) {
-        var r = Door.controlTorrents([hash], action, false)
+    function control(hash, action) { controlMany([hash], action) }
+    // The lowest episode a torrent carries, skipped files aside, so the show view and
+    // Activity both list torrents in episode order; one that names none goes last
+    function firstEpisode(t) {
+        var n = Infinity
+        if (t.episode !== null && t.episode !== undefined) n = t.episode
+        var files = t.files || []
+        for (var i = 0; i < files.length; i++) {
+            var e = files[i].episode
+            if (e !== null && e !== undefined && files[i].priority !== 0) n = Math.min(n, e)
+        }
+        return n === Infinity ? 1e9 : n
+    }
+    // Several torrents at once (Stop all and Start all). The client takes a moment: each
+    // button spins until a read shows the change
+    function controlMany(hashes, action) {
+        if (!hashes.length) return
+        var r = Door.controlTorrents(hashes, action, false)
         if (r.error) { frame.toast(page.errorWords(r.error)); return }
-        // The client takes a moment: the button spins until a read shows the change
-        var p = Object.assign({}, page.pending); p[hash] = { action: action, at: Date.now() }; page.pending = p
+        var p = Object.assign({}, page.pending), now = Date.now()
+        hashes.forEach(function(h) { p[h] = { action: action, at: now } })
+        page.pending = p
         Door.listTorrents()
     }
     // ---- Torrent actions on their way: hash -> { action, at }, cleared by the read that
@@ -1032,6 +1051,16 @@ Item {
             filesWhere: "what it has downloaded so far",
             confirmText: "Cancel the download", keepText: "Keep downloading"
         }, function(choice) { page.enqueue([t], choice) })
+    }
+    function askCancelTorrents(anchor, list) {
+        if (list.length === 1) { page.askCancelTorrent(anchor, list[0]); return }
+        frame.askRemoval(anchor, {
+            heading: "Cancel " + Fmt.plural(list.length, "download", "downloads") + "?",
+            base: "Every download of this show stops and leaves " + page.clientName + ".",
+            rule: false, torrentCount: list.length, canFiles: true, filesOn: true,
+            filesWhere: "what they have downloaded so far",
+            confirmText: "Cancel them all", keepText: "Keep downloading"
+        }, function(choice) { page.enqueue(list.map(function(x) { return page.targetForTorrent(x) }), choice) })
     }
     function askRemoveDetail(anchor) {
         if (page.detail === null) return
@@ -1187,13 +1216,13 @@ Item {
             if (job === page.followJob) {
                 page.followJob = -1
                 page.getActing = false
-                page.getLine = (page.getLine !== "" ? page.getLine + " " : "") + "Following as " + result.name + ": new episodes save to " + result.save_path + "."
+                page.getLine = (page.getLine !== "" ? page.getLine + " " : "") + "Subscribed as " + result.name + "."
                 page.loadRules()
                 return
             }
             if (job !== page.actionJob) return
             page.acting = false
-            page.actionLine = "Subscribed as " + result.name + ". New episodes save to " + result.save_path + "."
+            page.actionLine = "Subscribed as " + result.name + "."
             page.watchSubscription(result)
         }
         function onSubscriptionRepaired(job, name, feedUrl, mustContain, found) {
@@ -1219,7 +1248,7 @@ Item {
         function onTorrentsAdded(job, result) {
             if (job === page.getJob) {
                 page.getJob = -1
-                page.getLine = "Sent " + Fmt.plural(result.count, "torrent", "torrents") + " to " + page.clientName + ", saving under " + result.save_path + "." + page.getNote
+                page.getLine = "Sent " + Fmt.plural(result.count, "torrent", "torrents") + " to " + page.clientName + "."
                 page.pollTorrents()
                 if (page.pendingFollow) page.follow(page.pendingFollow)
                 else page.getActing = false
@@ -1227,7 +1256,7 @@ Item {
             }
             if (job !== page.actionJob) return
             page.acting = false
-            page.actionLine = "Added " + Fmt.plural(result.count, "torrent", "torrents") + " under " + result.save_path + "."
+            page.actionLine = "Added " + Fmt.plural(result.count, "torrent", "torrents") + "."
             page.selected = {}
             page.pollTorrents()
         }
@@ -1325,12 +1354,65 @@ Item {
     readonly property real cardWidth: Math.floor((scroll.innerWidth - tileGap * (cols - 1)) / cols)
     readonly property bool home: page.detail === null && page.getShow === null && page.state === null && !page.searching && page.searchError === ""
 
-    // ---- Activity at the right, while the window has the width for it
+    // ---- Activity at the right, while the window has the width for it. Narrower, it folds
+    // to a slim strip: a button with what is moving, which slides the column in over the page
     readonly property bool activityShown: page.width >= theme.space(250)
+    property bool activityOpen: false
+    onActivityShownChanged: if (activityShown) activityOpen = false
+    readonly property int movingCount: page.torrents.filter(function(t) { return activity.moving(t) }).length
+    Item {
+        id: activityStrip
+        objectName: "activity-strip"
+        visible: !page.activityShown
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        width: visible ? theme.space(16) : 0
+        Rectangle { anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom; width: 1; color: theme.line }
+        Column {
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: theme.space(6)
+            spacing: theme.space(2)
+            Button {
+                objectName: "activity-open"
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: theme.space(11); height: width
+                icon: "activity"
+                primary: page.activityOpen
+                onClicked: page.activityOpen = !page.activityOpen
+                Tooltip { text: page.activityOpen ? "Hide activity" : "Activity" }
+            }
+            Label {
+                visible: page.movingCount > 0
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: String(page.movingCount)
+                role: "figure"; font.pointSize: theme.typeSmall; color: theme.textDim
+                Tooltip { text: Fmt.plural(page.movingCount, "download", "downloads") + " moving" }
+            }
+        }
+    }
+    // Over the page, a click beside the column folds it away again
+    MouseArea {
+        visible: page.activityOpen && !page.activityShown
+        z: 4
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.right: activityStrip.left
+        onClicked: page.activityOpen = false
+        onWheel: function(w) { w.accepted = false }
+    }
+    Rectangle {
+        visible: activity.visible && !page.activityShown
+        z: 5
+        anchors.fill: activity
+        color: theme.bg
+    }
     ActivityColumn {
         id: activity
-        visible: page.activityShown
-        anchors.right: parent.right
+        visible: page.activityShown || page.activityOpen
+        z: 5
+        anchors.right: page.activityShown ? parent.right : activityStrip.left
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         width: visible ? theme.space(88) : 0
@@ -1340,18 +1422,21 @@ Item {
         connected: page.torrentOn
         clientName: page.clientName
         busyOf: function(hash) { return page.busyOf(hash) }
+        firstEpisode: function(t) { return page.firstEpisode(t) }
         onCancelTorrent: function(anchor, t) { page.askCancelTorrent(anchor, t) }
         onControl: function(hash, action) { page.control(hash, action) }
+        onControlAll: function(hashes, action) { page.controlMany(hashes, action) }
+        onCancelAll: function(anchor, list) { page.askCancelTorrents(anchor, list) }
         onOpenShow: function(t) { page.openFromTorrent(t) }
     }
-    Rectangle { visible: activity.visible; anchors.right: activity.left; anchors.top: parent.top; anchors.bottom: parent.bottom; width: 1; color: theme.line }
+    Rectangle { visible: activity.visible; z: 5; anchors.right: activity.left; anchors.top: parent.top; anchors.bottom: parent.bottom; width: 1; color: theme.line }
 
     PageScroll {
         id: scroll
         anchors.left: parent.left
         anchors.top: parent.top
         anchors.bottom: parent.bottom
-        anchors.right: activity.visible ? activity.left : parent.right
+        anchors.right: page.activityShown ? activity.left : activityStrip.left
         readonly property real innerWidth: width - theme.space(16)
 
         // ---- The head: back (with a show open), the title, the two halves in plain words
@@ -1554,7 +1639,9 @@ Item {
             visible: page.endpoints.length > 0
             width: parent.width
             spacing: theme.space(2)
-            Label { height: theme.space(10); verticalAlignment: Text.AlignVCenter; text: "Sources"; role: "ui"; color: theme.textFaint; rightPadding: theme.space(2) }
+            // Check stands as tall as the chips beside it
+            readonly property real chipHeight: sourceChips.count > 0 && sourceChips.itemAt(0) ? sourceChips.itemAt(0).height : theme.space(7)
+            Label { height: parent.chipHeight; verticalAlignment: Text.AlignVCenter; text: "Sources"; role: "ui"; color: theme.textFaint; rightPadding: theme.space(2) }
             Repeater {
                 id: sourceChips
                 model: page.endpoints
@@ -1582,7 +1669,7 @@ Item {
             }
             Button {
                 visible: page.endpoints.some(function(e) { return !!e.on_demand })
-                height: theme.space(10)
+                height: parent.chipHeight
                 text: page.checkJob >= 0 ? "Checking" : "Check"
                 icon: "refresh-cw"
                 flat: true
@@ -1937,6 +2024,7 @@ Item {
                 show: page.getShow
                 torrents: page.torrentsOfShow(page.getShow)
                 busyOf: function(hash) { return page.busyOf(hash) }
+                firstEpisode: function(t) { return page.firstEpisode(t) }
                 endpoints: page.endpoints
                 results: page.getResults
                 active: page.getActive
@@ -1953,6 +2041,8 @@ Item {
                 onGetAndFollow: function(plan) { page.getAndFollow(plan) }
                 onControl: function(hash, action) { page.control(hash, action) }
                 onCancelTorrent: function(anchor, t) { page.askCancelTorrent(anchor, t) }
+                onControlAll: function(hashes, action) { page.controlMany(hashes, action) }
+                onCancelAll: function(anchor, list) { page.askCancelTorrents(anchor, list) }
             }
         }
 

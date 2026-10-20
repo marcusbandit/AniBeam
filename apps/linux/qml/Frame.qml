@@ -409,10 +409,32 @@ FocusScope {
         var o = tipArea.mapToItem(overlay, 0, 0)
         return Math.abs(o.x - tipOrigin.x) < 1 && Math.abs(o.y - tipOrigin.y) < 1
     }
-    Timer { interval: 100; repeat: true; running: tip.visible; onTriggered: if (!frame.tipStillTrue()) frame.hideTip() }
-    function showTip(item, text, area) {
+    // A tip whose area moved or went goes at once. One the pointer only left waits out
+    // tipGrace first: crossing the gap to the next item of a row keeps a tip on screen, and
+    // that item's tip takes its place in the same spot instead of blinking off and back.
+    Timer {
+        interval: 100; repeat: true; running: tip.visible
+        onTriggered: {
+            if (frame.tipStillTrue()) { tipGrace.stop(); return }
+            if (!frame.tipArea || !frame.tipArea.visible) { frame.hideTip(); return }
+            var o = frame.tipArea.mapToItem(overlay, 0, 0)
+            if (Math.abs(o.x - frame.tipOrigin.x) >= 1 || Math.abs(o.y - frame.tipOrigin.y) >= 1) frame.hideTip()
+            else if (!tipGrace.running) tipGrace.start()
+        }
+    }
+    Timer { id: tipRetry; interval: 32; property var ask: null; onTriggered: if (ask) frame.showTip(ask.item, ask.text, ask.area, true) }
+    Timer { id: tipGrace; interval: 150; onTriggered: if (!frame.tipStillTrue()) frame.hideTip() }
+    // A hover leaving `area`: its tip goes after the grace, unless another item's tip has
+    // already taken over (the next item's hover can arrive before this one's leave)
+    function releaseTip(area) { if (tip.visible && tipArea === area && !tipGrace.running) tipGrace.start() }
+    // The item's own hover can reach it before the frame's pointerWatch has seen the same
+    // move, so a tip refused for a pointer not yet inside is asked again once, a frame on
+    function showTip(item, text, area, retried) {
         area = area || item
+        if (item && !retried && !frame.pointerInside(area)) { tipRetry.ask = { item: item, text: text, area: area }; tipRetry.restart(); return }
         if (!item || !frame.pointerInside(area)) { frame.hideTip(); return }
+        tipRetry.stop()
+        tipGrace.stop()
         tipArea = area
         tipOrigin = area.mapToItem(overlay, 0, 0)
         var p = item.mapToItem(overlay, item.width / 2, item.height)
@@ -428,7 +450,7 @@ FocusScope {
               : Math.max(theme.space(2), top - tip.height - theme.space(1))
         tip.visible = true
     }
-    function hideTip() { if (tip.visible) tipWarmUntil = Date.now() + 1500; tip.visible = false; tipArea = null }
+    function hideTip() { tipGrace.stop(); tipRetry.stop(); if (tip.visible) tipWarmUntil = Date.now() + 1500; tip.visible = false; tipArea = null }
     // Someone who waited for one tip is reading tips: for a moment after one goes, the next
     // item's tip comes at once instead of after the hover intent
     property real tipWarmUntil: 0

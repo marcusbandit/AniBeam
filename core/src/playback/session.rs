@@ -229,6 +229,7 @@ struct SeriesRow {
     track_choice: TrackChoice,
     title_romaji: Option<String>,
     title_english: Option<String>,
+    title_native: Option<String>,
     total: Option<u32>,
     /// Still putting out episodes, by AniList's or TVmaze's own status.
     airing: bool,
@@ -268,7 +269,8 @@ fn series_row(conn: &Connection, series: u64, images_dir: &Path) -> Result<Serie
         .query_row(
             "SELECT s.kind, s.folder_name, s.anilist_id, s.mal_id, s.track_choice,
                     COALESCE(t.name, m.title_romaji), m.title_english, m.episodes, i.path, t.id,
-                    CASE WHEN t.id IS NOT NULL THEN t.status ELSE m.status END
+                    CASE WHEN t.id IS NOT NULL THEN t.status ELSE m.status END,
+                    m.title_native
              FROM series s
              LEFT JOIN anilist_media m ON m.id = s.anilist_id
              LEFT JOIN tvmaze_shows t ON t.id = s.tvmaze_id AND s.provider = 'tvmaze'
@@ -286,6 +288,7 @@ fn series_row(conn: &Connection, series: u64, images_dir: &Path) -> Result<Serie
                     track_choice: track_choice_of(r.get::<_, Option<String>>(4)?.as_deref()),
                     title_romaji: r.get(5)?,
                     title_english: r.get(6)?,
+                    title_native: r.get(11)?,
                     // A published total of nought is AniList saying it does
                     // not know yet, so it never makes an episode the last.
                     total: r
@@ -511,6 +514,7 @@ pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
             lang,
             s.title_romaji.as_deref(),
             s.title_english.as_deref(),
+            s.title_native.as_deref(),
             &s.folder_name,
         ),
         episode_title,

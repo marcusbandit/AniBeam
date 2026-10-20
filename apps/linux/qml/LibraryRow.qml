@@ -124,7 +124,7 @@ Item {
         cursorShape: Qt.PointingHandCursor
         onClicked: { tipIntent.stop(); frame.hideTip(); root.opened() }
         onEntered: if (root.folderName !== "" && root.folderName !== root.title) { tipIntent.interval = frame.tipWarm() ? 1 : 600; tipIntent.restart() }
-        onExited: { tipIntent.stop(); frame.hideTip() }
+        onExited: { tipIntent.stop(); frame.releaseTip(root) }
         Timer { id: tipIntent; interval: 600; onTriggered: frame.showTip(root, root.folderName) }
     }
 }

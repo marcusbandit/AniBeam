@@ -327,6 +327,7 @@ fn a_stub_fills_blanks_and_never_overwrites_a_value_with_null() {
         media_type: None,
         title_romaji: None,
         title_english: Some("Later English".into()),
+        title_native: None,
         format: None,
         status: None,
         year: None,
