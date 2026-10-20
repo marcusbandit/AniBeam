@@ -100,6 +100,7 @@ fn main() {
             .qml_file("qml/ShowDetail.qml")
             .qml_file("qml/RemoveSheet.qml")
             .qml_file("qml/StartSourceSheet.qml")
+            .qml_file("qml/EndpointSheet.qml")
             .qml_file("qml/TorrentRow.qml")
             .qml_file("qml/SettingsDataTab.qml"),
     )
@@ -157,6 +158,7 @@ fn main() {
         "assets/icons/circle-question-mark.svg",
         "assets/icons/circle-x.svg",
         "assets/icons/clapperboard.svg",
+        "assets/icons/clipboard-paste.svg",
         "assets/icons/clock.svg",
         "assets/icons/copy.svg",
         "assets/icons/database.svg",
@@ -194,6 +196,7 @@ fn main() {
         "assets/icons/minimize.svg",
         "assets/icons/monitor.svg",
         "assets/icons/moon.svg",
+        "assets/icons/package.svg",
         "assets/icons/palette.svg",
         "assets/icons/pause.svg",
         "assets/icons/pencil.svg",

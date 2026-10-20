@@ -351,6 +351,12 @@ pub mod qobject {
         ) -> QJsonObject;
         #[qinvokable]
         fn test_torrent_client(self: &Door) -> QJsonObject;
+        /// A small text file the user picked (an endpoint pack), as `{ reply: { text } }`.
+        #[qinvokable]
+        fn read_text_file(self: &Door, path: &QString) -> QJsonObject;
+        /// Writes `text` to a file the user picked; `{ reply: {} }` or `{ error }`.
+        #[qinvokable]
+        fn write_text_file(self: &Door, path: &QString, text: &QString) -> QJsonObject;
         /// Any call by name, the CLI's door.
         #[qinvokable]
         fn call(self: &Door, name: &QString, args: &QJsonObject) -> QJsonObject;
@@ -1673,6 +1679,31 @@ impl qobject::Door {
     }
     pub fn test_torrent_client(&self) -> QJsonObject {
         self.dispatch(Ok(Call::TestTorrentClient))
+    }
+    pub fn read_text_file(&self, path: &QString) -> QJsonObject {
+        // A pack is a few kilobytes; anything past a megabyte is the wrong file.
+        let path = path.to_string();
+        let read = std::fs::metadata(&path)
+            .map_err(|e| e.to_string())
+            .and_then(|m| {
+                if m.len() > 1 << 20 {
+                    Err("the file is too large to be an endpoint pack".to_string())
+                } else {
+                    std::fs::read_to_string(&path).map_err(|e| e.to_string())
+                }
+            });
+        to_qjson_object(&match read {
+            Ok(text) => json!({ "reply": { "text": text } }),
+            Err(e) => json!({ "error": json::error_json(&CoreError::invalid("path", e)) }),
+        })
+    }
+    pub fn write_text_file(&self, path: &QString, text: &QString) -> QJsonObject {
+        to_qjson_object(&match std::fs::write(path.to_string(), text.to_string()) {
+            Ok(()) => json!({ "reply": {} }),
+            Err(e) => {
+                json!({ "error": json::error_json(&CoreError::invalid("path", e.to_string())) })
+            }
+        })
     }
     pub fn call(&self, name: &QString, args: &QJsonObject) -> QJsonObject {
         self.dispatch(

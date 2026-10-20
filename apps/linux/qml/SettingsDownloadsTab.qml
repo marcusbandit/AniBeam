@@ -4,6 +4,8 @@
 // and saving stops a running sidecar (its environment carries the password), so a save
 // is one deliberate act followed by a reconnect.
 import QtQuick
+import QtCore
+import QtQuick.Dialogs
 import com.marcusrosado.AniBeam
 
 SettingsTab {
@@ -18,6 +20,8 @@ SettingsTab {
     property bool saving: false
     property real testJob: -1
     property bool testing: false
+    property string confirmingRemove: ""
+    property real endpointJob: -1
     readonly property var settings: status ? status.settings : null
     readonly property var anirss: status ? status.anirss : null
     readonly property var torrent: status ? status.torrent : null
@@ -58,6 +62,19 @@ SettingsTab {
         tab.testJob = r.reply.job
         tab.testing = true
     }
+    function removeEndpoint(name) {
+        tab.confirmingRemove = ""
+        var r = Door.call("RemoveEndpoint", { name: name })
+        if (r.error) { frame.toast(r.error.message); return }
+        tab.endpointJob = r.reply.job
+    }
+    function exportPack(path) {
+        var r = Door.call("ExportEndpointPack", {})
+        if (r.error) { frame.toast(r.error.message); return }
+        var w = Door.writeTextFile(path, JSON.stringify(r.reply.pack, null, 2) + "\n")
+        if (w.error) { frame.toast(w.error.message); return }
+        frame.toast("Endpoint pack saved")
+    }
     function connect() {
         var r = Door.connectDownloads()
         if (r.error) frame.toast(r.error.message)
@@ -65,8 +82,12 @@ SettingsTab {
     Connections {
         target: Door
         function onDownloadsStatusChanged(status) { tab.status = status; if (!tab.dirty) tab.draft = JSON.parse(JSON.stringify(status.settings)); tab.testing = false }
-        function onJobFailed(job, kind, error) { if (job === tab.testJob) { tab.testing = false; frame.toast(error.message) } }
-        function onJobCancelled(job, kind) { if (job === tab.testJob) tab.testing = false }
+        function onJobFailed(job, kind, error) {
+            if (job === tab.testJob) { tab.testing = false; frame.toast(error.message) }
+            if (job === tab.endpointJob) { tab.endpointJob = -1; frame.toast(error.message) }
+        }
+        function onJobFinished(job, kind, ok) { if (job === tab.endpointJob) tab.endpointJob = -1 }
+        function onJobCancelled(job, kind) { if (job === tab.testJob) tab.testing = false; if (job === tab.endpointJob) tab.endpointJob = -1 }
     }
     Component.onCompleted: reload()
 
@@ -128,23 +149,36 @@ SettingsTab {
         id: endpointsPanel
         Panel {
             title: "Search endpoints"; icon: "globe"; grows: true
-            helper: "Where searches go, in the order anirss tries them. They live in anirss's own config.toml; a search that finds nothing on the first falls through to the next."
-            Flow {
-                visible: tab.endpoints.length > 0
-                width: parent ? parent.width : theme.space(100)
-                spacing: theme.space(1.5)
-                Repeater {
-                    model: tab.endpoints
-                    Chip {
-                        required property var modelData
-                        required property int index
-                        text: (index + 1) + ". " + modelData.name + " (" + modelData.kind + ")"
-                        small: true
-                        Tooltip { text: modelData.url }
+            helper: "Where searches go, in the order anirss tries them; a search that finds nothing on the first falls through to the next. They live in anirss's own config.toml."
+            Repeater {
+                model: tab.endpoints
+                SettingRow {
+                    id: epRow
+                    required property var modelData
+                    required property int index
+                    width: parent ? parent.width : 0
+                    label: (index + 1) + ". " + modelData.name
+                    line: modelData.url
+                    helper: modelData.on_demand !== null && modelData.on_demand !== undefined ? "Started on demand. Edit it in anirss's config." : ""
+                    Item {
+                        width: tab.confirmingRemove === epRow.modelData.name ? confirmRemove.implicitWidth : removeBtn.implicitWidth
+                        height: theme.controlHeight
+                        Button { id: removeBtn; objectName: "endpoint-remove-" + epRow.modelData.name; visible: tab.confirmingRemove !== epRow.modelData.name; text: "Remove"; icon: "trash-2"; flat: true; enabled: tab.endpointJob === -1; onClicked: tab.confirmingRemove = epRow.modelData.name }
+                        InlineConfirm {
+                            id: confirmRemove
+                            visible: tab.confirmingRemove === epRow.modelData.name
+                            question: "Remove " + epRow.modelData.name + "?"
+                            onAccepted: tab.removeEndpoint(epRow.modelData.name)
+                            onKept: tab.confirmingRemove = ""
+                        }
                     }
                 }
             }
-            Note { visible: tab.endpoints.length === 0; text: tab.anirss && tab.anirss.state === "Ready" ? "anirss has no endpoints configured." : "Connect to anirss to read them." }
+            Note { visible: tab.endpoints.length === 0; text: tab.anirss && tab.anirss.state === "Ready" ? "No endpoints yet. Add one to search from the Downloads page." : "Connect to anirss to read them." }
+            SettingRow { label: "Add or share"; helper: "Paste a site's search or RSS address, or import a pack. Export pack writes these endpoints to a file, tokens in their addresses included, with the best-fit ranking."
+                Row { spacing: theme.space(2)
+                    Button { objectName: "endpoints-add"; text: "Add"; icon: "plus"; enabled: !!(tab.anirss && tab.anirss.state === "Ready"); onClicked: frame.addEndpoints("url") }
+                    Button { objectName: "endpoints-export"; text: "Export pack"; icon: "file-down"; flat: true; enabled: tab.endpoints.length > 0; onClicked: exportDialog.open() } } }
             SettingRow { label: "anirss's config"; helper: (tab.anirss && tab.anirss.config_path ? tab.anirss.config_path : "~/.config/anirss/config.toml") + " holds the endpoints, the save folders, the tags and the best-fit rules."; hairline: false
                 Button { text: "Open"; icon: "external-link"; flat: true; enabled: !!(tab.anirss && tab.anirss.config_path); onClicked: frame.openLink("file://" + tab.anirss.config_path) } }
         }
@@ -179,5 +213,14 @@ SettingsTab {
                     Button { text: "Discard"; flat: true; enabled: tab.dirty; onClicked: tab.discard() }
                     Button { objectName: "downloads-save"; text: "Save"; icon: "check"; primary: true; enabled: tab.dirty; onClicked: tab.save() } } }
         }
+    }
+    FileDialog {
+        id: exportDialog
+        fileMode: FileDialog.SaveFile
+        defaultSuffix: "json"
+        nameFilters: ["Endpoint pack (*.json)"]
+        currentFolder: StandardPaths.writableLocation(StandardPaths.HomeLocation)
+        selectedFile: currentFolder + "/anibeam-endpoints.json"
+        onAccepted: tab.exportPack(decodeURIComponent(String(selectedFile).replace("file://", "")))
     }
 }

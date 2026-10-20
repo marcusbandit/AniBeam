@@ -1925,6 +1925,21 @@ Item {
             }
         }
 
+        // ---- anirss is up with nowhere to search: AniBeam ships with no endpoints
+        Item {
+            objectName: "downloads-no-endpoints"
+            visible: page.anirssReady && page.endpoints.length === 0 && page.state === null && page.detail === null && page.getShow === null
+            width: parent.width
+            height: visible ? theme.space(50) : 0
+            EmptyState {
+                icon: "globe"
+                title: "No endpoints yet"
+                body: "Searches go to the sites you add. Paste the search or RSS address of one you use, or import an endpoint pack you exported before."
+                Button { objectName: "downloads-paste-url"; text: "Paste a search URL"; icon: "link"; primary: true; onClicked: frame.addEndpoints("url") }
+                Button { objectName: "downloads-import-pack"; text: "Import a pack"; icon: "package"; flat: true; onClicked: frame.addEndpoints("pack") }
+            }
+        }
+
         // ---- A show to get: its providers, their releases, the plan
         Loader {
             active: page.getShow !== null

@@ -31,8 +31,13 @@ the owner's and Liam's endpoints and subscriptions stay where they are.
 
 1. Fresh install, Downloads page: an empty state says "No endpoints yet" with
    two buttons, **Paste a search URL** and **Import a pack**.
-2. **Paste a search URL** takes one RSS URL with `{query}` where the search
-   terms go, plus a name. That is a one-endpoint pack under the hood.
+2. **Paste a search URL** takes the address a browser shows, plus an optional
+   name. The core reads it by shape (`pack::from_url`): a nyaa-style site
+   becomes a `nyaa` endpoint at its root, a feed gets `{query}` in its search
+   parameter (`s` when it has none), a torznab API gets `t=search&q={query}`,
+   and a URL that already has `{query}` is used as it is. No site is named in
+   the UI; the shapes are quiet support, so a person sets up without knowing
+   anirss's terms. A token in the address stays in it.
 3. **Import a pack** takes a `.json` file, or pasted text. The dialog shows the
    pack's name, its endpoints in order and, if it carries them, its best-fit
    preferences with a checkbox to apply them. Import adds after the existing
@@ -40,8 +45,13 @@ the owner's and Liam's endpoints and subscriptions stay where they are.
 4. Settings, Downloads tab: the endpoint list with Remove on each row and
    **Export pack** at the bottom, which writes the current list to a file.
 
-The owner exports a pack once and sends it to Liam. AniBeam never hosts,
-lists or links a pack.
+Export reads anirss's own `config.toml`, so URLs come out whole, tokens
+included (owner's call, 2026-10-20): a pack is a backup or a hand-over the
+owner chooses to make. On-demand endpoints are left out. The best-fit ranking
+travels in the pack, and import shows it but does not apply it yet; that needs
+a `[bestfit]` write route in anirss. Liam sets up from scratch by pasting
+URLs, which is the path that has to be easy. AniBeam never hosts, lists or
+links a pack.
 
 ## The pack
 

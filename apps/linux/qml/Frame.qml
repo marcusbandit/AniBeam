@@ -369,6 +369,7 @@ FocusScope {
         z: 600
         Menu { id: menu }
         RemoveSheet { id: removeSheet }
+        EndpointSheet { id: endpointSheet }
         Frost {
             id: tip
             visible: false
@@ -438,6 +439,9 @@ FocusScope {
     // ---- The removal sheet: every removal on the downloads page asks through it
     readonly property bool removalOpen: removeSheet.visible
     function askRemoval(anchor, spec, done) { removeSheet.openAt(anchor, spec, done) }
+    // ---- Adding search endpoints: a pasted URL ("url") or an endpoint pack ("pack"), its
+    // text already in hand when `packText` is given
+    function addEndpoints(which, packText) { endpointSheet.openWith(which); if (packText) endpointSheet.takePack(packText) }
 
     // ---- Downloads: the subscriptions as last read, shared by the rail's badge and the
     // page. Read once a little after start (anirss is a sidecar the core starts), then
