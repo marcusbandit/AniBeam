@@ -362,6 +362,14 @@ pub enum Call {
     ImportEndpointPack {
         text: String,
     },
+    /// Adds one endpoint from a pasted URL, its kind and search parameter
+    /// read off the URL's shape. `name` empty takes one from the host.
+    /// Ends in `DownloadsStatusChanged`.
+    AddEndpointUrl {
+        url: String,
+        #[serde(default)]
+        name: String,
+    },
     /// Takes the named endpoint out of anirss's list. Its subscriptions
     /// keep running. Ends in `DownloadsStatusChanged`.
     RemoveEndpoint {

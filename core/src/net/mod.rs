@@ -44,6 +44,7 @@ pub enum Method {
     Get,
     Post,
     Patch,
+    Delete,
 }
 
 /// The two body shapes the providers between them need: JSON for AniList's
@@ -229,6 +230,7 @@ impl Http for ReqwestHttp {
                 Method::Get => reqwest::Method::GET,
                 Method::Post => reqwest::Method::POST,
                 Method::Patch => reqwest::Method::PATCH,
+                Method::Delete => reqwest::Method::DELETE,
             };
             let mut builder = client.request(method, &req.url);
             if let Some(timeout) = req.timeout {

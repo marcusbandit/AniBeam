@@ -15,6 +15,7 @@
 
 pub mod anirss;
 pub mod contents;
+pub mod endpoints;
 pub mod facts;
 pub mod feed;
 pub mod jackett;
@@ -639,7 +640,10 @@ pub fn search(core: &Core, query: String, endpoint: Option<String>) -> Result<u6
                 let fallback =
                     guard_search(owner.http.as_ref(), &listed, target.as_deref()).await?;
                 phase.store(PHASE_FETCHING, Ordering::Relaxed);
-                let raw = client.search(&query, target.as_deref(), fallback).await?;
+                let raw = client
+                    .search(&query, target.as_deref(), fallback)
+                    .await
+                    .map_err(no_endpoints_plainly)?;
                 phase.store(PHASE_READING, Ordering::Relaxed);
                 let fetched = raw.query.clone();
                 let mut search = if raw.items.is_empty() {
@@ -724,6 +728,19 @@ pub fn search(core: &Core, query: String, endpoint: Option<String>) -> Result<u6
                 body: EventBody::ReleasesFound { search },
             })
         }))
+}
+
+/// anirss's `409 no_endpoints` in words a user can act on. The code stays
+/// `no_endpoints`, so the shell can show its empty state on it.
+fn no_endpoints_plainly(e: CoreError) -> CoreError {
+    match e {
+        CoreError::Service { service, code, .. } if code == "no_endpoints" => CoreError::Service {
+            service,
+            code,
+            message: "No endpoints yet. Paste a search URL or import a pack.".to_string(),
+        },
+        other => other,
+    }
 }
 
 const PHASE_CONNECTING: u8 = 0;

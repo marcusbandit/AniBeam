@@ -104,6 +104,43 @@ impl AnirssClient {
         Ok(serde_json::from_value(v["endpoints"].clone()).unwrap_or_default())
     }
 
+    /// `GET /health`'s `features`: what this anirss can do. One from
+    /// before 0.5.0 lists none.
+    pub async fn features(&self) -> Result<Vec<String>, CoreError> {
+        let v = self.get("/health", &[], None).await?;
+        Ok(strings(&v["features"]))
+    }
+
+    /// `POST /endpoints`: adds one after the others, or replaces the one
+    /// with its name in place. True when it replaced one.
+    pub async fn add_endpoint(&self, ep: &PackEndpoint) -> Result<bool, CoreError> {
+        let mut body = json!({ "name": ep.name, "kind": ep.kind, "url": ep.url });
+        if ep.kind == "nyaa" {
+            if let Some(c) = &ep.category {
+                body["category"] = Value::String(c.clone());
+            }
+            if let Some(f) = &ep.filter {
+                body["filter"] = Value::String(f.clone());
+            }
+        }
+        let v = self.post("/endpoints", body, None).await?;
+        Ok(v["replaced"].as_bool().unwrap_or(false))
+    }
+
+    /// `DELETE /endpoints/{name}`.
+    pub async fn remove_endpoint(&self, name: &str) -> Result<(), CoreError> {
+        let response = self
+            .send(HttpRequest {
+                method: Method::Delete,
+                url: format!("{}/endpoints/{}", self.base, encode(name)),
+                headers: self.headers(),
+                body: None,
+                timeout: None,
+            })
+            .await?;
+        judge(response).map(|_| ())
+    }
+
     pub async fn qbt_status(&self) -> Result<QbtView, CoreError> {
         let v = self.get("/qbt/status", &[], None).await?;
         Ok(QbtView {
