@@ -28,6 +28,7 @@ Item {
     property string active: ""
     property var sourceOn: function(name) { return true }
     property bool acting: false
+    // Set when a Get went through; it clears the picks and is not drawn
     property string actionLine: ""
     property string actionError: ""
     property real nowMs: Date.now()
@@ -43,6 +44,9 @@ Item {
     property var busyOf: function(hash) { return "" }
     // The page asks before it cancels, and moves what the torrent wrote to the trash
     signal cancelTorrent(Item anchor, var torrent)
+    // The same for every torrent in the Downloading list at once
+    signal controlAll(var hashes, string action)
+    signal cancelAll(Item anchor, var torrents)
 
     implicitHeight: body.implicitHeight
 
@@ -125,7 +129,20 @@ Item {
     // The torrents of this show that have not finished, the moving ones first
     function stoppedState(t) { var st = String(t.state || ""); return st.indexOf("paused") === 0 || st.indexOf("stopped") === 0 }
     readonly property var activeTorrents: torrents.filter(function(t) { return (t.progress || 0) < 1 })
-        .sort(function(a, b) { return (root.stoppedState(a) ? 1 : 0) - (root.stoppedState(b) ? 1 : 0) || (b.dlspeed || 0) - (a.dlspeed || 0) })
+        .sort(function(a, b) { return root.firstEpisode(a) - root.firstEpisode(b) || String(a.name || "").localeCompare(String(b.name || "")) })
+    // The lowest episode a torrent carries, for the Downloading list's order; one that names
+    // none goes last
+    function firstEpisode(t) {
+        var n = Infinity
+        if (t.episode !== null && t.episode !== undefined) n = t.episode
+        var files = t.files || []
+        for (var i = 0; i < files.length; i++) {
+            var e = files[i].episode
+            if (e !== null && e !== undefined && files[i].priority !== 0) n = Math.min(n, e)
+        }
+        return n === Infinity ? 1e9 : n
+    }
+    readonly property var runningTorrents: activeTorrents.filter(function(t) { return !root.stoppedState(t) })
     readonly property bool downloading: Object.keys(inFlight).some(function(n) { return inFlight[n] < 1 })
     readonly property int downloadingCount: Object.keys(inFlight).filter(function(n) { return inFlight[n] < 1 }).length
     readonly property var library: {
@@ -409,9 +426,9 @@ Item {
         var n = planList.length
         if (acting) return "Working"
         var swap = replacing ? " and replace" : ""
-        if (n && follow && followRow) return "Get " + Fmt.plural(n, "episode", "episodes") + swap + " and follow"
+        if (n && follow && followRow) return "Get " + Fmt.plural(n, "episode", "episodes") + swap + " and subscribe"
         if (n) return "Get " + Fmt.plural(n, "episode", "episodes") + swap
-        if (follow && followRow) return "Follow new episodes"
+        if (follow && followRow) return "Subscribe for new episodes"
         return pickList.length ? "Nothing new to get" : "Pick an episode"
     }
     function epsWords(list) { var w = episodesPhrase(list); return w.charAt(0).toLowerCase() + w.slice(1) }
@@ -570,6 +587,35 @@ Item {
                 width: parent.width
                 height: theme.space(14)
                 Label { id: dlTitle; anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(2); text: "Downloading"; role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 }) }
+                // Every torrent at once, when there is more than one
+                Row {
+                    visible: root.activeTorrents.length > 1
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    anchors.bottomMargin: theme.space(2)
+                    spacing: theme.space(2)
+                    Button {
+                        objectName: "get-all-toggle"
+                        readonly property bool stopping: root.runningTorrents.length > 0
+                        readonly property var targets: stopping ? root.runningTorrents : root.activeTorrents
+                        busy: targets.some(function(t) { var w = root.busyOf(t.hash); return w === "Stop" || w === "Start" })
+                        primary: !stopping && !busy
+                        text: stopping ? "Stop all" : "Start all"
+                        icon: stopping ? "pause" : "play"
+                        onClicked: root.controlAll(targets.map(function(t) { return t.hash }), stopping ? "Stop" : "Start")
+                        Tooltip { text: parent.stopping ? "Stop every download of this show; what they have stays" : "Start every download of this show again" }
+                    }
+                    Button {
+                        id: cancelAllButton
+                        objectName: "get-all-cancel"
+                        danger: true
+                        busy: root.activeTorrents.some(function(t) { return root.busyOf(t.hash) === "Cancel" })
+                        text: "Cancel all"
+                        icon: "x"
+                        onClicked: root.cancelAll(cancelAllButton, root.activeTorrents)
+                        Tooltip { text: "Cancel every download of this show and move what they wrote to the trash" }
+                    }
+                }
             }
             Repeater {
                 model: root.activeTorrents
@@ -580,7 +626,8 @@ Item {
         // ---- Where to get it, and the plan beside it
         Item {
             width: parent.width
-            height: Math.max(left.implicitHeight, root.wide ? planTile.height : 0)
+            // Narrow, the plan sits under the grid, so the page has to scroll to it
+            height: root.wide ? Math.max(left.implicitHeight, planTile.height) : planTile.y + planTile.height
             Column {
                 id: left
                 width: root.wide ? parent.width - root.planWidth - root.colGap : parent.width
@@ -766,6 +813,7 @@ Item {
             // ---- The plan: what Get will do
             Tile {
                 id: planTile
+                objectName: "get-plan"
                 x: root.wide ? parent.width - root.planWidth : 0
                 y: root.wide ? 0 : left.implicitHeight + theme.space(6)
                 width: root.wide ? root.planWidth : parent.width
@@ -803,13 +851,6 @@ Item {
                             Label { text: root.pickItems.length === 1 ? "torrent" : "torrents"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint } }
                     }
                     Rectangle { width: parent.width; height: 1; color: theme.line }
-                    Column {
-                        width: parent.width
-                        spacing: theme.space(1)
-                        Label { text: "Saves to"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint }
-                        Label { width: parent.width; text: root.show ? (root.inLibrary ? "Its library folder, " + (root.show.folderName || root.show.title) : "A new folder, " + root.show.title) : ""; role: "ui"; wrapMode: Text.Wrap }
-                    }
-                    Rectangle { width: parent.width; height: 1; color: theme.line }
                     // The picks include episodes the library has: say what replacing them does
                     Item {
                         visible: root.hadPicked.length > 0
@@ -831,56 +872,23 @@ Item {
                             Label { objectName: "get-replace-words"; width: parent.width; text: root.replaceWords; role: "ui"; font.pointSize: theme.typeSmall; color: root.replaceOn ? theme.text : theme.textDim; wrapMode: Text.Wrap }
                         }
                     }
-                    Item {
-                        width: parent.width
-                        height: Math.max(orderSwitch.height, orderText.implicitHeight)
-                        Switch {
-                            id: orderSwitch
-                            objectName: "get-sequential"
-                            checked: root.sequential
-                            onToggled: function(on) { root.sequential = on }
-                        }
-                        Column {
-                            id: orderText
-                            anchors.left: orderSwitch.right
-                            anchors.leftMargin: theme.space(4)
-                            anchors.right: parent.right
-                            spacing: theme.space(1)
-                            Label { text: "Download in order"; role: "title"; font.pointSize: theme.typeNormal }
-                            Label {
-                                width: parent.width
-                                text: root.sequential ? "Each new torrent fetches its pieces from the start, so the first episodes finish first and you can watch while the rest comes. A little slower overall."
-                                    : "Off. The client fetches pieces in whatever order the swarm offers them."
-                                role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim; wrapMode: Text.Wrap
-                            }
-                        }
+                    OptionRow {
+                        objectName: "get-sequential"
+                        title: "Download in order"
+                        checked: root.sequential
+                        onToggled: function(on) { root.sequential = on }
+                        tip: root.sequential ? "On: each new torrent fetches its pieces from the start, so the first episodes finish first and you can watch while the rest comes. A little slower overall."
+                            : "Off: the client fetches pieces in whatever order the swarm offers them."
                     }
-                    Rectangle { width: parent.width; height: 1; color: theme.line }
-                    Item {
-                        width: parent.width
-                        height: Math.max(followSwitch.height, followText.implicitHeight)
-                        Switch {
-                            id: followSwitch
-                            objectName: "get-follow"
-                            checked: root.follow
-                            onToggled: function(on) { root.follow = on }
-                        }
-                        Column {
-                            id: followText
-                            anchors.left: followSwitch.right
-                            anchors.leftMargin: theme.space(4)
-                            anchors.right: parent.right
-                            spacing: theme.space(1)
-                            Label { text: "Follow new episodes"; role: "title"; font.pointSize: theme.typeNormal }
-                            Label {
-                                width: parent.width
-                                text: !root.follow ? "Off. New episodes show up here as gaps; nothing downloads by itself."
-                                    : !root.chosenRow ? "Pick a group first: a feed follows one group and quality."
-                                    : !root.followRow ? root.chosenRow.group + " has only the batch here, so there is no feed of single episodes to follow."
-                                    : "A feed for " + root.followRow.group + (root.followRow.resolution ? " " + root.followRow.resolution : "") + " on " + root.active + ". Each new episode downloads as it appears."
-                                role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim; wrapMode: Text.Wrap
-                            }
-                        }
+                    OptionRow {
+                        objectName: "get-follow"
+                        title: "Subscribe for new episodes"
+                        checked: root.follow
+                        onToggled: function(on) { root.follow = on }
+                        tip: !root.follow ? "Off: new episodes show up here as gaps, and nothing downloads by itself."
+                            : !root.chosenRow ? "Pick a group first: a subscription follows one group and quality."
+                            : !root.followRow ? root.chosenRow.group + " has only the batch here, so there is no feed of single episodes to subscribe to."
+                            : "On: a feed for " + root.followRow.group + (root.followRow.resolution ? " " + root.followRow.resolution : "") + " on " + root.active + ". Each new episode downloads as it appears."
                     }
                     // Cancelling a download is asked for here, once, before it goes
                     Column {
@@ -906,16 +914,46 @@ Item {
                         enabled: !root.acting && (root.planList.length > 0 || (root.follow && !!root.followRow))
                         onClicked: root.go()
                     }
-                    Label { visible: root.actionLine !== ""; width: parent.width; text: root.actionLine; role: "ui"; font.pointSize: theme.typeSmall; color: theme.caughtUp; wrapMode: Text.Wrap }
                     Label { visible: root.actionError !== ""; width: parent.width; text: root.actionError; role: "ui"; font.pointSize: theme.typeSmall; color: theme.red; wrapMode: Text.Wrap }
-                    Label {
-                        visible: root.actionLine === "" && root.actionError === ""
-                        width: parent.width
-                        text: "Torrents show up under Activity at once, and in the library when they finish."
-                        role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint; wrapMode: Text.Wrap
-                    }
                 }
             }
+        }
+    }
+
+    // A plan switch: its name, and an info glyph whose hover tip says what on and off do,
+    // so the panel stays two lines instead of two paragraphs
+    component OptionRow: Item {
+        id: opt
+        property string title: ""
+        property string tip: ""
+        property bool checked: false
+        signal toggled(bool on)
+        width: parent ? parent.width : 0
+        height: Math.max(optSwitch.height, optTitle.implicitHeight)
+        Switch {
+            id: optSwitch
+            anchors.verticalCenter: parent.verticalCenter
+            checked: opt.checked
+            onToggled: function(on) { opt.toggled(on) }
+        }
+        Label {
+            id: optTitle
+            anchors.left: optSwitch.right
+            anchors.leftMargin: theme.space(4)
+            anchors.verticalCenter: parent.verticalCenter
+            width: Math.min(implicitWidth, parent.width - optSwitch.width - info.width - theme.space(6))
+            text: opt.title; role: "title"; font.pointSize: theme.typeNormal; elide: Text.ElideRight
+            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: optSwitch.toggle() }
+        }
+        Item {
+            id: info
+            objectName: opt.objectName !== "" ? opt.objectName + "-info" : ""
+            anchors.left: optTitle.right
+            anchors.leftMargin: theme.space(2)
+            anchors.verticalCenter: parent.verticalCenter
+            width: theme.space(7); height: theme.space(7)
+            Icon { anchors.centerIn: parent; glyph: "info"; size: theme.space(4); color: infoTip.hovered ? theme.text : theme.textFaint }
+            Tooltip { id: infoTip; text: opt.tip }
         }
     }
 

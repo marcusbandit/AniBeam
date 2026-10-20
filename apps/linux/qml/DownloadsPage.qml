@@ -230,7 +230,6 @@ Item {
     property var pendingFollow: null
     property bool getActing: false
     property string getLine: ""
-    property string getNote: ""
     property string getError: ""
     function lastPart(p) { var f = String(p || "").replace(/\/+$/, ""); var i = f.lastIndexOf("/"); return i >= 0 ? f.slice(i + 1) : f }
     // The torrents that fill a show: linked to its series, or saved under a folder named
@@ -332,7 +331,6 @@ Item {
         page.getLine = ""
         page.getError = ""
         page.pendingFollow = plan.follow ? plan : null
-        page.getNote = plan.options && plan.options.replace.length ? " The files you had for the replaced episodes go to the trash once the new ones finish." : ""
         if (plan.items.length) {
             var r = Door.downloadReleasesWith(plan.items, plan.name, plan.options || {})
             if (r.error) { page.getError = page.errorWords(r.error); return }
@@ -929,6 +927,16 @@ Item {
         var p = Object.assign({}, page.pending); p[hash] = { action: action, at: Date.now() }; page.pending = p
         Door.listTorrents()
     }
+    // Several torrents at once (the show view's Stop all and Start all)
+    function controlMany(hashes, action) {
+        if (!hashes.length) return
+        var r = Door.controlTorrents(hashes, action, false)
+        if (r.error) { frame.toast(page.errorWords(r.error)); return }
+        var p = Object.assign({}, page.pending), now = Date.now()
+        hashes.forEach(function(h) { p[h] = { action: action, at: now } })
+        page.pending = p
+        Door.listTorrents()
+    }
     // ---- Torrent actions on their way: hash -> { action, at }, cleared by the read that
     // shows them done, or after 20 s so a button never spins forever
     property var pending: ({})
@@ -1032,6 +1040,16 @@ Item {
             filesWhere: "what it has downloaded so far",
             confirmText: "Cancel the download", keepText: "Keep downloading"
         }, function(choice) { page.enqueue([t], choice) })
+    }
+    function askCancelTorrents(anchor, list) {
+        if (list.length === 1) { page.askCancelTorrent(anchor, list[0]); return }
+        frame.askRemoval(anchor, {
+            heading: "Cancel " + Fmt.plural(list.length, "download", "downloads") + "?",
+            base: "Every download of this show stops and leaves " + page.clientName + ".",
+            rule: false, torrentCount: list.length, canFiles: true, filesOn: true,
+            filesWhere: "what they have downloaded so far",
+            confirmText: "Cancel them all", keepText: "Keep downloading"
+        }, function(choice) { page.enqueue(list.map(function(x) { return page.targetForTorrent(x) }), choice) })
     }
     function askRemoveDetail(anchor) {
         if (page.detail === null) return
@@ -1187,13 +1205,13 @@ Item {
             if (job === page.followJob) {
                 page.followJob = -1
                 page.getActing = false
-                page.getLine = (page.getLine !== "" ? page.getLine + " " : "") + "Following as " + result.name + ": new episodes save to " + result.save_path + "."
+                page.getLine = (page.getLine !== "" ? page.getLine + " " : "") + "Subscribed as " + result.name + "."
                 page.loadRules()
                 return
             }
             if (job !== page.actionJob) return
             page.acting = false
-            page.actionLine = "Subscribed as " + result.name + ". New episodes save to " + result.save_path + "."
+            page.actionLine = "Subscribed as " + result.name + "."
             page.watchSubscription(result)
         }
         function onSubscriptionRepaired(job, name, feedUrl, mustContain, found) {
@@ -1219,7 +1237,7 @@ Item {
         function onTorrentsAdded(job, result) {
             if (job === page.getJob) {
                 page.getJob = -1
-                page.getLine = "Sent " + Fmt.plural(result.count, "torrent", "torrents") + " to " + page.clientName + ", saving under " + result.save_path + "." + page.getNote
+                page.getLine = "Sent " + Fmt.plural(result.count, "torrent", "torrents") + " to " + page.clientName + "."
                 page.pollTorrents()
                 if (page.pendingFollow) page.follow(page.pendingFollow)
                 else page.getActing = false
@@ -1227,7 +1245,7 @@ Item {
             }
             if (job !== page.actionJob) return
             page.acting = false
-            page.actionLine = "Added " + Fmt.plural(result.count, "torrent", "torrents") + " under " + result.save_path + "."
+            page.actionLine = "Added " + Fmt.plural(result.count, "torrent", "torrents") + "."
             page.selected = {}
             page.pollTorrents()
         }
@@ -1342,6 +1360,8 @@ Item {
         busyOf: function(hash) { return page.busyOf(hash) }
         onCancelTorrent: function(anchor, t) { page.askCancelTorrent(anchor, t) }
         onControl: function(hash, action) { page.control(hash, action) }
+        onControlAll: function(hashes, action) { page.controlMany(hashes, action) }
+        onCancelAll: function(anchor, list) { page.askCancelTorrents(anchor, list) }
         onOpenShow: function(t) { page.openFromTorrent(t) }
     }
     Rectangle { visible: activity.visible; anchors.right: activity.left; anchors.top: parent.top; anchors.bottom: parent.bottom; width: 1; color: theme.line }
@@ -1953,6 +1973,8 @@ Item {
                 onGetAndFollow: function(plan) { page.getAndFollow(plan) }
                 onControl: function(hash, action) { page.control(hash, action) }
                 onCancelTorrent: function(anchor, t) { page.askCancelTorrent(anchor, t) }
+                onControlAll: function(hashes, action) { page.controlMany(hashes, action) }
+                onCancelAll: function(anchor, list) { page.askCancelTorrents(anchor, list) }
             }
         }
 

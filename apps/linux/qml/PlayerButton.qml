@@ -39,7 +39,7 @@ Corner {
         onClicked: { root.dropTip(); if (root.interactive) root.clicked() }
     }
     Timer { id: tipIntent; interval: 600; onTriggered: root.showTip() }
-    onHoveredChanged: { if (hovered && tip !== "") { tipIntent.interval = frame.tipWarm() ? 1 : 600; tipIntent.restart() } else dropTip() }
+    onHoveredChanged: { if (hovered && tip !== "") { tipIntent.interval = frame.tipWarm() ? 1 : 600; tipIntent.restart() } else { tipIntent.stop(); if (tipShown) frame.releaseTip(root); tipShown = false } }
     // A tip whose text changes under the pointer (Play becoming Pause) follows it.
     onTipChanged: if (tipShown) { if (tip === "") dropTip(); else showTip() }
     // Hidden with the chrome while the pointer rests on it: no exit would ever arrive.

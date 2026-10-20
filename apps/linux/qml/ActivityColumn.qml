@@ -17,6 +17,9 @@ Item {
     signal openShow(var torrent)
     signal cancelTorrent(Item anchor, var torrent)
     signal control(string hash, string action)
+    // A show's torrents shown as one line: stop, start or cancel them together
+    signal controlAll(var hashes, string action)
+    signal cancelAll(Item anchor, var torrents)
     // What a torrent's buttons wait on ("Stop", "Start", "Cancel", or ""), from the page
     property var busyOf: function(hash) { return "" }
 
@@ -32,6 +35,45 @@ Item {
     // download can still be seen and cancelled
     readonly property var active: torrents.filter(function(t) { return root.moving(t) || (root.stopped(t) && (t.progress || 0) < 1) })
         .sort(function(a, b) { return (root.moving(a) ? 0 : 1) - (root.moving(b) ? 0 : 1) || (b.dlspeed || 0) - (a.dlspeed || 0) || (b.added_on || 0) - (a.added_on || 0) })
+    // The lines of Downloading now: a show with more than one torrent moving reads as one
+    // line, the show and its episodes as cubes, the way a batch does; a lone torrent keeps
+    // its own line. A group sits where its first torrent sorted.
+    readonly property var entries: {
+        var out = [], at = {}
+        for (var i = 0; i < active.length; i++) {
+            var t = active[i]
+            var key = showOf(t) ? "s" + t.series_id : "h" + t.hash
+            if (at[key] === undefined) { at[key] = out.length; out.push([t]) }
+            else out[at[key]].push(t)
+        }
+        return out.map(function(m) { return m.length === 1 ? m[0] : root.groupOf(m) })
+    }
+    function firstEpisode(t) {
+        if (t.episode !== null && t.episode !== undefined) return t.episode
+        var e = episodesOf(t)
+        return e.length ? e[0].n : 1e9
+    }
+    // Several torrents of one show as one: summed bytes and rate, the slowest one's time
+    // left, and their episodes as files so the line draws them as cubes
+    function groupOf(members) {
+        members = members.slice().sort(function(a, b) { return root.firstEpisode(a) - root.firstEpisode(b) })
+        var size = 0, got = 0, dl = 0, eta = 0, files = []
+        var allStopped = true, broken = false
+        members.forEach(function(t) {
+            size += t.size || 0
+            got += (t.size || 0) * (t.progress || 0)
+            dl += t.dlspeed || 0
+            if (root.moving(t) && t.eta > 0 && t.eta < 8640000) eta = Math.max(eta, t.eta)
+            if (!root.stopped(t)) allStopped = false
+            if (t.state === "error" || t.state === "missingFiles") broken = true
+            var eps = root.episodesOf(t)
+            if (eps.length) eps.forEach(function(e) { files.push({ episode: e.n, progress: e.p, priority: e.skip ? 0 : 1 }) })
+            else if (t.episode !== null && t.episode !== undefined) files.push({ episode: t.episode, progress: t.progress || 0, priority: 1 })
+        })
+        return { grouped: true, members: members, hash: members[0].hash, name: members[0].name, series_id: members[0].series_id,
+                 size: size, progress: size > 0 ? got / size : 0, dlspeed: dl, eta: eta, files: files, batch: false, episode: null,
+                 state: broken ? "error" : allStopped ? "stoppedDL" : "downloading" }
+    }
     readonly property var finishedToday: {
         var since = new Date(); since.setHours(0, 0, 0, 0)
         var cut = since.getTime() / 1000
@@ -73,6 +115,11 @@ Item {
     // The row's two lines: the show (else the torrent's own name), then what of it this is
     function titleOf(t) { var s = showOf(t); return s ? s.title : t.name }
     function kindOf(t) {
+        if (t.grouped) {
+            var ns = t.files.map(function(f) { return f.episode }).sort(function(a, b) { return a - b })
+            var run = ns.length > 1 && ns.every(function(n, i) { return i === 0 || n === ns[i - 1] + 1 })
+            return run ? "Episodes " + ns[0] + " to " + ns[ns.length - 1] : ns.length ? "Episodes " + ns.join(", ") : t.members.length + " downloads"
+        }
         if (t.batch) return "Batch download"
         if (t.episode !== null && t.episode !== undefined) return "Episode " + t.episode
         return showOf(t) ? "Download" : ""
@@ -115,10 +162,10 @@ Item {
                 spacing: theme.space(1)
                 Label { text: "Downloading now"; role: "title"; font.pointSize: theme.typeNormal; color: theme.textDim; bottomPadding: theme.space(2) }
                 Repeater {
-                    model: root.active.slice(0, 12)
+                    model: root.entries.slice(0, 12)
                     TorrentLine { required property var modelData; t: modelData }
                 }
-                Label { visible: root.active.length > 12; text: "And " + (root.active.length - 12) + " more"; role: "ui"; color: theme.textFaint }
+                Label { visible: root.entries.length > 12; text: "And " + (root.entries.length - 12) + " more"; role: "ui"; color: theme.textFaint }
             }
             Label {
                 visible: root.connected && root.active.length === 0
@@ -179,11 +226,16 @@ Item {
         width: parent ? parent.width : 0
         height: Math.max(thumb.height, info.implicitHeight, actions.implicitHeight) + theme.space(4)
         Rectangle { anchors.fill: parent; radius: theme.radiusMd; color: lineMouse.containsMouse ? theme.glassFloat : "transparent" }
-        MouseArea { id: lineMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.openShow(line.t) }
+        MouseArea { id: lineMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.openShow(line.t.grouped ? line.t.members[0] : line.t) }
         HoverHandler { id: lineHover }
         // Stop or start, and cancel (the torrent goes, and what it wrote so far, asked
-        // first); each spins until the client has done it
-        readonly property string waiting: root.busyOf(t.hash)
+        // first); each spins until the client has done it. A show's group does all of its
+        // torrents: Stop takes the ones still moving, Start the stopped ones.
+        readonly property var members: t.grouped ? t.members : [t]
+        readonly property string waiting: {
+            for (var i = 0; i < members.length; i++) { var w = root.busyOf(members[i].hash); if (w !== "") return w }
+            return ""
+        }
         Column {
             id: actions
             visible: !line.done
@@ -200,7 +252,11 @@ Item {
                 icon: stopped ? "play" : "pause"
                 primary: stopped && !busy
                 busy: line.waiting === "Stop" || line.waiting === "Start"
-                onClicked: root.control(line.t.hash, stopped ? "Start" : "Stop")
+                onClicked: {
+                    if (!line.t.grouped) { root.control(line.t.hash, stopped ? "Start" : "Stop"); return }
+                    var want = stopped ? "Start" : "Stop"
+                    root.controlAll(line.members.filter(function(m) { return root.stopped(m) === stopped }).map(function(m) { return m.hash }), want)
+                }
                 Tooltip { text: toggle.busy ? (line.waiting === "Stop" ? "Stopping" : "Starting") : toggle.stopped ? "Start downloading" : "Stop downloading; what it has stays" }
             }
             Button {
@@ -210,8 +266,8 @@ Item {
                 icon: "x"
                 danger: true
                 busy: line.waiting === "Cancel"
-                onClicked: root.cancelTorrent(cancel, line.t)
-                Tooltip { text: cancel.busy ? "Cancelling" : "Cancel this download" }
+                onClicked: line.t.grouped ? root.cancelAll(cancel, line.members) : root.cancelTorrent(cancel, line.t)
+                Tooltip { text: cancel.busy ? "Cancelling" : line.t.grouped ? "Cancel these downloads" : "Cancel this download" }
             }
         }
         Corner {
