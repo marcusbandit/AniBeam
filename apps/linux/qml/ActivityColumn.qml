@@ -57,12 +57,13 @@ Item {
     // left, and their episodes as files so the line draws them as cubes
     function groupOf(members) {
         members = members.slice().sort(function(a, b) { return root.firstEpisode(a) - root.firstEpisode(b) })
-        var size = 0, got = 0, dl = 0, eta = 0, files = []
+        var size = 0, got = 0, dl = 0, eta = 0, files = [], doneAt = 0
         var allStopped = true, broken = false
         members.forEach(function(t) {
             size += t.size || 0
             got += (t.size || 0) * (t.progress || 0)
             dl += t.dlspeed || 0
+            doneAt = Math.max(doneAt, t.completion_on || 0)
             if (root.moving(t) && t.eta > 0 && t.eta < 8640000) eta = Math.max(eta, t.eta)
             if (!root.stopped(t)) allStopped = false
             if (t.state === "error" || t.state === "missingFiles") broken = true
@@ -71,7 +72,7 @@ Item {
             else if (t.episode !== null && t.episode !== undefined) files.push({ episode: t.episode, progress: t.progress || 0, priority: 1 })
         })
         return { grouped: true, members: members, hash: members[0].hash, name: members[0].name, series_id: members[0].series_id,
-                 size: size, progress: size > 0 ? got / size : 0, dlspeed: dl, eta: eta, files: files, batch: false, episode: null,
+                 size: size, progress: size > 0 ? got / size : 0, dlspeed: dl, eta: eta, files: files, batch: false, episode: null, completion_on: doneAt,
                  state: broken ? "error" : allStopped ? "stoppedDL" : "downloading" }
     }
     readonly property var finishedToday: {
@@ -79,6 +80,20 @@ Item {
         var cut = since.getTime() / 1000
         return torrents.filter(function(t) { return (t.progress || 0) >= 1 && (t.completion_on || 0) >= cut })
                        .sort(function(a, b) { return b.completion_on - a.completion_on })
+    }
+    // Finished today as lines: torrents of one show from one release group that finished
+    // within ten minutes of each other read as one, unless another finish came in between
+    function groupTag(t) { var m = /^\s*\[([^\]]+)\]/.exec(t.name || ""); return m ? m[1].toLowerCase() : "" }
+    readonly property var finishedEntries: {
+        var runs = []
+        finishedToday.forEach(function(t) {
+            var run = runs.length ? runs[runs.length - 1] : null
+            var last = run ? run[run.length - 1] : null
+            if (last && root.showOf(t) && t.series_id === last.series_id && root.groupTag(t) === root.groupTag(last)
+                    && Math.abs((last.completion_on || 0) - (t.completion_on || 0)) <= 600) run.push(t)
+            else runs.push([t])
+        })
+        return runs.map(function(m) { return m.length === 1 ? m[0] : root.groupOf(m) })
     }
 
     // ---- Today's Downloads lines from the log
@@ -176,12 +191,12 @@ Item {
 
             // ---- Finished today
             Column {
-                visible: root.finishedToday.length > 0
+                visible: root.finishedEntries.length > 0
                 width: parent.width
                 spacing: theme.space(1)
                 Label { text: "Finished today"; role: "title"; font.pointSize: theme.typeNormal; color: theme.textDim; bottomPadding: theme.space(2) }
                 Repeater {
-                    model: root.finishedToday.slice(0, 8)
+                    model: root.finishedEntries.slice(0, 8)
                     TorrentLine { required property var modelData; t: modelData }
                 }
             }

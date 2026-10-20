@@ -44,14 +44,10 @@ Item {
     // The site the record came from, named on the button that opens it
     readonly property string siteName: frame.providerName(card.match_info ? card.match_info.provider : "Anilist") || "AniList"
     readonly property var titles: card.titles || ({})
-    // The other language's title under the display one, then the native script
-    readonly property string altTitle: {
-        var t = titles
-        if (t.romaji && t.english && t.romaji !== t.english) return card.title === t.english ? t.romaji : t.english
-        return ""
-    }
-    readonly property string nativeTitle: titles.native && titles.native !== card.title ? titles.native : ""
-    readonly property var otherTitles: [altTitle, nativeTitle].filter(function(s) { return s !== "" })
+    // The show's other titles under the display one: romaji, english, then the native script,
+    // each once and never the one already shown
+    readonly property var otherTitles: [titles.romaji, titles.english, titles.native]
+        .filter(function(s, i, all) { return !!s && s !== card.title && all.indexOf(s) === i })
     // The band's tone, read off the poster; kept as a string for old readers of `tone`
     readonly property string tone: String(toneOf.tone)
 

@@ -320,6 +320,9 @@ pub struct SearchResult {
     pub romaji: Option<String>,
     #[serde(default)]
     pub english: Option<String>,
+    /// The title in its own script, kana and kanji for a Japanese show
+    #[serde(default)]
+    pub native: Option<String>,
     #[serde(default)]
     pub synonyms: Vec<String>,
 }

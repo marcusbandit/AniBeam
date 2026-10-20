@@ -51,7 +51,8 @@ fn fallback_title(anilist_id: u64) -> String {
 /// the page rather than turning it into an external card.
 const LIST_SQL: &str = "SELECT t.media_id, t.progress, t.status, t.score, t.updated_at,
         m.title_romaji, m.title_english, m.episodes, m.site_url, i.path,
-        (SELECT s.id FROM series s WHERE s.anilist_id = t.media_id AND s.missing_since IS NULL ORDER BY s.id LIMIT 1)
+        (SELECT s.id FROM series s WHERE s.anilist_id = t.media_id AND s.missing_since IS NULL ORDER BY s.id LIMIT 1),
+        m.title_native
      FROM tracker_entries t
      LEFT JOIN anilist_media m ON m.id = t.media_id
      LEFT JOIN images i ON i.url = m.cover_url
@@ -118,6 +119,7 @@ pub fn list(conn: &Connection, images_dir: &Path) -> Result<WatchingList, CoreEr
             let updated_at: Option<i64> = r.get(4)?;
             let romaji: Option<String> = r.get(5)?;
             let english: Option<String> = r.get(6)?;
+            let native: Option<String> = r.get(11)?;
             let poster: Option<String> = r.get(9)?;
             Ok((
                 updated_at,
@@ -127,6 +129,7 @@ pub fn list(conn: &Connection, images_dir: &Path) -> Result<WatchingList, CoreEr
                         lang,
                         romaji.as_deref(),
                         english.as_deref(),
+                        native.as_deref(),
                         &fallback_title(anilist_id),
                     ),
                     poster: local_path(images_dir, poster),
@@ -455,7 +458,7 @@ mod tests {
     fn a_media_with_no_titles_at_all_is_named_by_its_id() {
         assert_eq!(fallback_title(154587), "AniList 154587");
         assert_eq!(
-            titles::resolve(TitleLanguage::English, None, None, &fallback_title(1)),
+            titles::resolve(TitleLanguage::English, None, None, None, &fallback_title(1)),
             "AniList 1"
         );
     }

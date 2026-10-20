@@ -1,6 +1,6 @@
 // The show view on the Downloads page: how a show, or a feed for it, gets added. Opening a
 // show never downloads anything. The band says what the show is and what the library has;
-// "Where to get it" lists the providers (anirss's endpoints), each saying whether it can
+// "Available sources" lists the providers (anirss's endpoints), each saying whether it can
 // answer now without asking it anything; clicking one fetches what it has for this show.
 // Its releases open as a grid: one row per release group and quality, one cube per episode,
 // under the library's own row so the gaps line up. Clicking a group picks its releases for
@@ -482,7 +482,7 @@ Item {
         // ---- The band: poster, title, what the library has
         Item {
             width: parent.width
-            height: Math.max(poster.height, bandText.implicitHeight) + theme.space(2)
+            height: Math.max(poster.height, foot.y + foot.height) + theme.space(2)
             Corner {
                 id: poster
                 width: theme.space(34); height: width * 1.5
@@ -551,10 +551,12 @@ Item {
                     }
                 }
             }
+            // At the poster's foot when the title leaves room, else right under the facts
             Column {
+                id: foot
                 anchors.left: bandText.left
                 anchors.right: parent.right
-                anchors.bottom: poster.bottom
+                y: Math.max(bandText.y + bandText.height + theme.space(5), poster.y + poster.height - height)
                 spacing: theme.space(3)
                 Label {
                     objectName: "get-standing"
@@ -623,7 +625,7 @@ Item {
             }
         }
 
-        // ---- Where to get it, and the plan beside it
+        // ---- Available sources, and the plan beside it
         Item {
             width: parent.width
             // Narrow, the plan sits under the grid, so the page has to scroll to it
@@ -636,8 +638,7 @@ Item {
                 Item {
                     width: parent.width
                     height: theme.space(12)
-                    Label { id: whereTitle; anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(2); text: "Where to get it"; role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 }) }
-                    Label { anchors.left: whereTitle.right; anchors.leftMargin: theme.space(3); anchors.baseline: whereTitle.baseline; text: "Pick a provider to see its releases. Nothing downloads until you say so."; role: "ui"; color: theme.textDim; elide: Text.ElideRight; width: parent.width - whereTitle.width - checkButton.width - theme.space(8) }
+                    Label { id: whereTitle; anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(2); text: "Available sources"; role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 }) }
                     Button { id: checkButton; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(1); text: "Check again"; icon: "refresh-cw"; flat: true; small: true; onClicked: root.checkSources(); Tooltip { text: "Asks each on-demand provider whether it is running. Starts nothing." } }
                 }
 
@@ -737,12 +738,6 @@ Item {
                         width: parent.width
                         height: theme.space(14)
                         Label { id: gridTitle; anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(2); text: root.active; role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 }) }
-                        Label {
-                            anchors.left: gridTitle.right; anchors.leftMargin: theme.space(3); anchors.baseline: gridTitle.baseline
-                            width: parent.width - gridTitle.width - listButton.width - theme.space(8)
-                            text: root.rows.length ? "Click a group or a batch to take it for what you are missing, or click any episode, even one you have, to replace it." : "Nothing here names an episode. Every release is in the list."
-                            role: "ui"; color: theme.textDim; elide: Text.ElideRight
-                        }
                         Button { id: listButton; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(1); text: "Every release as a list"; icon: "list"; flat: true; small: true; onClicked: root.openList(root.active) }
                     }
                     // The library's own row first, so the gaps line up
@@ -836,9 +831,9 @@ Item {
                         text: {
                             if (root.planList.length) return root.episodesPhrase(root.planList) + " from " + root.pickGroups.join(" and ") + " on " + root.active + "."
                             if (root.pickList.length) return "The library has " + root.epsWords(root.pickList) + ". Turn on Replace current episodes below to swap " + (root.pickList.length === 1 ? "it" : "them") + "."
-                            if (root.current && root.current.state === "done") return "Click a group or an episode in the grid."
-                            return "Its releases show up here as a grid, an episode to a cube."
+                            return ""
                         }
+                        visible: text !== ""
                         role: "ui"; color: theme.textDim; wrapMode: Text.Wrap
                     }
                     Flow {

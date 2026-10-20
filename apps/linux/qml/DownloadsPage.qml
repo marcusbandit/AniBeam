@@ -165,7 +165,7 @@ Item {
         var out = []
         for (var i = 0; i < libCards.length && out.length < 5; i++) {
             var c = libCards[i], t = c.titles || {}
-            var hay = [c.title, t.romaji, t.english, t.folder].join(" ").toLowerCase()
+            var hay = [c.title, t.romaji, t.english, t.native, t.folder].join(" ").toLowerCase()
             if (hay.indexOf(q) >= 0) out.push(c)
         }
         return out
@@ -198,11 +198,12 @@ Item {
     // otherwise the app's title language. Releases are searched by the romaji name, which is
     // what release files carry, and by its other names when that finds nothing.
     function norm(t) { return String(t || "").toLowerCase().replace(/[^a-z0-9\u00c0-\uffff]+/g, " ").trim() }
-    function namesOfHit(h) { return [h.romaji, h.english, h.title].concat(h.synonyms || []).filter(function(n) { return !!n }) }
+    function namesOfHit(h) { return [h.romaji, h.english, h.title, h.native].concat(h.synonyms || []).filter(function(n) { return !!n }) }
     function namesOfCard(c) { var t = c.titles || {}; return [t.romaji, t.english, c.title, t.native].filter(function(n) { return !!n }) }
     function preferredOfHit(h) {
-        var english = (Door.preferences.title_language || "Romaji") === "English"
-        return english ? (h.english || h.romaji || h.title) : (h.romaji || h.title || h.english)
+        var lang = Door.preferences.title_language || "Romaji"
+        if (lang === "Native" && h.native) return h.native
+        return lang === "English" ? (h.english || h.romaji || h.title) : (h.romaji || h.title || h.english)
     }
     function typedName(names, typed) {
         var q = page.norm(typed)
@@ -1343,12 +1344,65 @@ Item {
     readonly property real cardWidth: Math.floor((scroll.innerWidth - tileGap * (cols - 1)) / cols)
     readonly property bool home: page.detail === null && page.getShow === null && page.state === null && !page.searching && page.searchError === ""
 
-    // ---- Activity at the right, while the window has the width for it
+    // ---- Activity at the right, while the window has the width for it. Narrower, it folds
+    // to a slim strip: a button with what is moving, which slides the column in over the page
     readonly property bool activityShown: page.width >= theme.space(250)
+    property bool activityOpen: false
+    onActivityShownChanged: if (activityShown) activityOpen = false
+    readonly property int movingCount: page.torrents.filter(function(t) { return activity.moving(t) }).length
+    Item {
+        id: activityStrip
+        objectName: "activity-strip"
+        visible: !page.activityShown
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        width: visible ? theme.space(16) : 0
+        Rectangle { anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom; width: 1; color: theme.line }
+        Column {
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: theme.space(6)
+            spacing: theme.space(2)
+            Button {
+                objectName: "activity-open"
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: theme.space(11); height: width
+                icon: "activity"
+                primary: page.activityOpen
+                onClicked: page.activityOpen = !page.activityOpen
+                Tooltip { text: page.activityOpen ? "Hide activity" : "Activity" }
+            }
+            Label {
+                visible: page.movingCount > 0
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: String(page.movingCount)
+                role: "figure"; font.pointSize: theme.typeSmall; color: theme.textDim
+                Tooltip { text: Fmt.plural(page.movingCount, "download", "downloads") + " moving" }
+            }
+        }
+    }
+    // Over the page, a click beside the column folds it away again
+    MouseArea {
+        visible: page.activityOpen && !page.activityShown
+        z: 4
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.right: activityStrip.left
+        onClicked: page.activityOpen = false
+        onWheel: function(w) { w.accepted = false }
+    }
+    Rectangle {
+        visible: activity.visible && !page.activityShown
+        z: 5
+        anchors.fill: activity
+        color: theme.bg
+    }
     ActivityColumn {
         id: activity
-        visible: page.activityShown
-        anchors.right: parent.right
+        visible: page.activityShown || page.activityOpen
+        z: 5
+        anchors.right: page.activityShown ? parent.right : activityStrip.left
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         width: visible ? theme.space(88) : 0
@@ -1364,14 +1418,14 @@ Item {
         onCancelAll: function(anchor, list) { page.askCancelTorrents(anchor, list) }
         onOpenShow: function(t) { page.openFromTorrent(t) }
     }
-    Rectangle { visible: activity.visible; anchors.right: activity.left; anchors.top: parent.top; anchors.bottom: parent.bottom; width: 1; color: theme.line }
+    Rectangle { visible: activity.visible; z: 5; anchors.right: activity.left; anchors.top: parent.top; anchors.bottom: parent.bottom; width: 1; color: theme.line }
 
     PageScroll {
         id: scroll
         anchors.left: parent.left
         anchors.top: parent.top
         anchors.bottom: parent.bottom
-        anchors.right: activity.visible ? activity.left : parent.right
+        anchors.right: page.activityShown ? activity.left : activityStrip.left
         readonly property real innerWidth: width - theme.space(16)
 
         // ---- The head: back (with a show open), the title, the two halves in plain words
@@ -1574,7 +1628,9 @@ Item {
             visible: page.endpoints.length > 0
             width: parent.width
             spacing: theme.space(2)
-            Label { height: theme.space(10); verticalAlignment: Text.AlignVCenter; text: "Sources"; role: "ui"; color: theme.textFaint; rightPadding: theme.space(2) }
+            // Check stands as tall as the chips beside it
+            readonly property real chipHeight: sourceChips.count > 0 && sourceChips.itemAt(0) ? sourceChips.itemAt(0).height : theme.space(7)
+            Label { height: parent.chipHeight; verticalAlignment: Text.AlignVCenter; text: "Sources"; role: "ui"; color: theme.textFaint; rightPadding: theme.space(2) }
             Repeater {
                 id: sourceChips
                 model: page.endpoints
@@ -1602,7 +1658,7 @@ Item {
             }
             Button {
                 visible: page.endpoints.some(function(e) { return !!e.on_demand })
-                height: theme.space(10)
+                height: parent.chipHeight
                 text: page.checkJob >= 0 ? "Checking" : "Check"
                 icon: "refresh-cw"
                 flat: true
