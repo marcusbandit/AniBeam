@@ -55,10 +55,10 @@ body:
     attributes:
       label: How you installed AniBeam
       options:
-        - AUR package
-        - AppImage
-        - macOS app (dmg)
+        - Downloaded it from the GitHub releases page
+        - AUR or PKGBUILD package
         - Built it myself
+        - macOS app
         - Android companion
         - I don't know
     validations:

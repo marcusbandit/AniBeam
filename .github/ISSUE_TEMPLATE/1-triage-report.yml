@@ -32,7 +32,7 @@ body:
     id: steps
     attributes:
       label: Steps to reproduce
-      description: A minimal, deterministic repro if one was found.
+      description: A minimal, deterministic repro. If none was found, say so and list what was tried.
     validations:
       required: true
 
@@ -69,21 +69,24 @@ body:
     attributes:
       label: How AniBeam is installed
       options:
-        - AUR package
-        - AppImage
-        - macOS app (dmg)
+        - Download from a GitHub release
+        - AUR or PKGBUILD package
         - Built from source
+        - macOS app
         - Android companion
         - Unknown
     validations:
       required: true
 
-  - type: input
+  - type: textarea
     id: environment
     attributes:
       label: Environment
       description: OS, desktop or compositor, GPU and driver, Qt and libmpv versions where they matter.
-      placeholder: Arch Linux, Hyprland 0.56, RTX 3090 driver 580, Qt 6.11, libmpv 0.40
+      placeholder: |
+        Arch Linux, Hyprland 0.56
+        RTX 3090, driver 580
+        Qt 6.11, libmpv 0.40
     validations:
       required: true
 
@@ -94,7 +97,7 @@ body:
       description: The most relevant log lines, activity log entries, database rows or backtraces. Redacted.
       render: shell
 
-  - type: input
+  - type: textarea
     id: related
     attributes:
       label: Related issues
