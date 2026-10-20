@@ -238,6 +238,18 @@ pub struct AbsentEpisode {
     pub cube: String,
 }
 
+/// An episode still to come: when the record schedules it, or when it is
+/// guessed to land (`predicted`, `library::cards::upcoming`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct UpcomingEpisode {
+    pub number: u32,
+    pub season: Option<u32>,
+    pub code: String,
+    pub title: Option<String>,
+    pub at: SystemTime,
+    pub predicted: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct Extra {
     pub file: u64,
@@ -266,6 +278,9 @@ pub struct SeriesDetail {
     /// The aired episodes with no file, in number order.
     #[serde(default)]
     pub absent: Vec<AbsentEpisode>,
+    /// The episodes still to come, in number order.
+    #[serde(default)]
+    pub upcoming: Vec<UpcomingEpisode>,
     pub extras: Vec<Extra>,
     pub unmatched_files: Vec<Episode>,
     pub characters: Vec<Person>,

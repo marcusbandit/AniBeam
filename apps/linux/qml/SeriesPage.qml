@@ -134,8 +134,8 @@ Item {
 
     // ---- What Continue plays: the next episode, else (a film, or caught up) the first
     readonly property var episodes: detail ? detail.episodes : []
-    // The rows: the episodes on disk with the aired ones that have no file between them, in
-    // season then number order
+    // The rows: the episodes on disk, the aired ones that have no file between them and the
+    // ones still to come after, in season then number order
     readonly property var episodeRows: {
         if (!detail) return []
         // A record numbers without seasons while the files may carry one (S04E01): an absent
@@ -147,7 +147,12 @@ Item {
             var code = season !== null && season !== undefined && season !== a.season ? "S" + pad(season) + "E" + pad(a.number) : a.code
             return { number: a.number, season: season, code: code, title: a.title, air_date: a.air_date, cube: a.cube, absent: true, watched: false, next_up: false }
         })
-        return episodes.concat(absent).sort(function(a, b) {
+        var ahead = (detail.upcoming || []).map(function(u) {
+            var season = u.season !== null && u.season !== undefined ? u.season : fileSeason
+            var code = season !== null && season !== undefined && season !== u.season ? "S" + pad(season) + "E" + pad(u.number) : u.code
+            return { number: u.number, season: season, code: code, title: u.title, air_date: u.at, predicted: u.predicted, cube: "f", upcoming: true, watched: false, next_up: false }
+        })
+        return episodes.concat(absent, ahead).sort(function(a, b) {
             return ((a.season || 1) - (b.season || 1)) || (a.number - b.number)
         })
     }
@@ -595,7 +600,7 @@ Item {
                     visible: page.episodeRows.length > 0
                     width: parent.width
                     spacing: theme.space(4)
-                    Heading { text: page.isMovie ? "Film" : "Episodes"; count: page.episodeRows.length; fact: page.episodesFact }
+                    Heading { text: page.isMovie ? "Film" : "Episodes"; count: page.episodeRows.filter(function(r) { return !r.upcoming }).length; fact: page.episodesFact }
                     Column {
                         width: parent.width
                         spacing: theme.space(4)

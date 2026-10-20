@@ -6,7 +6,8 @@
 // bare, lifting to the tile fill on hover. Clicking the row plays. An episode a torrent is
 // still writing reads "Downloading 34%" in the downloading purple with a thin bar along its
 // foot, and does nothing when clicked: it is on disk but not whole, so it never plays. An
-// absent episode (aired, no file) names its state beside the title and never plays either.
+// absent episode (aired, no file) names its state beside the title and never plays either,
+// and nor does one still to come, which shows its date, or its predicted date, at the right.
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -28,22 +29,29 @@ Corner {
     property bool watched: !!episode.watched
     // Aired with no file: missing or not downloaded, nothing to play
     readonly property bool absent: !!episode.absent
+    // Not aired yet: scheduled, or a predicted date
+    readonly property bool upcoming: !!episode.upcoming
+    readonly property bool predicted: upcoming && !!episode.predicted
     // The cube's code: the core's, unless a track or untrack is waiting on the core
     readonly property string cube: {
         if (downloading) return "t"
         var base = episode.cube || (episode.watched ? "l" : "d")
         if (watched === !!episode.watched) return base
         if (watched) return hasTracker ? "w" : "l"
-        return absent ? base : "d"
+        return absent || upcoming ? base : "d"
     }
     readonly property var cubeState: theme.cubeState(cube)
-    readonly property bool playable: !downloading && !absent
+    readonly property bool playable: !downloading && !absent && !upcoming
+    readonly property bool trackable: hasTracker && !extra && !upcoming
     readonly property bool downloading: episode.downloading !== undefined && episode.downloading !== null
     readonly property bool nextUp: !!episode.next_up && !downloading
     readonly property real downloadFraction: downloading ? Math.max(0, Math.min(1, episode.downloading)) : 0
     readonly property color downloadColor: theme.cubeState("t").fill
     readonly property real resumeFraction: episode.resume && episode.resume.duration > 0 ? episode.resume.position / episode.resume.duration : 0
-    readonly property string dateText: episode.air_date ? Qt.formatDate(new Date(episode.air_date * 1000), "d MMM yyyy") : ""
+    readonly property string dateText: !episode.air_date ? ""
+        : upcoming && !predicted ? Qt.formatDateTime(new Date(episode.air_date * 1000), "ddd d MMM, HH:mm")
+        : upcoming ? Qt.formatDate(new Date(episode.air_date * 1000), "ddd d MMM")
+        : Qt.formatDate(new Date(episode.air_date * 1000), "d MMM yyyy")
 
     MouseArea { id: hover; anchors.fill: parent; hoverEnabled: true; cursorShape: root.playable ? Qt.PointingHandCursor : Qt.ArrowCursor; onClicked: if (root.playable) root.play() }
 
@@ -70,8 +78,8 @@ Corner {
                 Behavior on scale { enabled: !theme.reducedMotion; NumberAnimation { duration: theme.motionFast } }
                 Behavior on color { enabled: !theme.reducedMotion; ColorAnimation { duration: theme.motionFast } }
             }
-            MouseArea { id: markHover; anchors.fill: parent; anchors.margins: -theme.space(1); hoverEnabled: true; cursorShape: root.hasTracker && !root.extra ? Qt.PointingHandCursor : Qt.ArrowCursor; onClicked: if (root.hasTracker && !root.extra) root.marker() }
-            Tooltip { text: root.cubeState.label + (root.hasTracker && !root.extra ? (root.watched ? ". Click to untrack to here" : ". Click to track to here") : "") }
+            MouseArea { id: markHover; anchors.fill: parent; anchors.margins: -theme.space(1); hoverEnabled: true; cursorShape: root.trackable ? Qt.PointingHandCursor : Qt.ArrowCursor; onClicked: if (root.trackable) root.marker() }
+            Tooltip { text: root.cubeState.label + (root.trackable ? (root.watched ? ". Click to untrack to here" : ". Click to track to here") : "") }
         }
         Label {
             id: code
@@ -97,7 +105,7 @@ Corner {
                     role: "ui"
                     font.weight: root.nextUp ? 600 : theme.roleWeight("ui")
                     font.variableAxes: ({ "wdth": 100, "wght": root.nextUp ? 600 : theme.roleWeight("ui") })
-                    color: root.absent ? theme.textFaint : root.downloading || (root.watched && !root.nextUp) ? theme.textDim : theme.text
+                    color: root.absent || root.upcoming ? theme.textFaint : root.downloading || (root.watched && !root.nextUp) ? theme.textDim : theme.text
                     elide: Text.ElideRight
                 }
                 Row {
@@ -120,6 +128,14 @@ Corner {
                         text: root.cubeState.label
                         role: "ledger"
                         color: root.cube === "m" ? root.cubeState.fill : theme.textFaint
+                    }
+                    Label {
+                        objectName: "episode-predicted"
+                        visible: root.predicted
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Predicted"
+                        role: "ledger"
+                        color: theme.textDim
                     }
                     Label { visible: root.extra; anchors.verticalCenter: parent.verticalCenter; text: "Extra"; role: "ledger"; color: theme.textFaint }
                     Label {

@@ -98,13 +98,8 @@ const WEEK: i64 = 7 * DAY;
 
 /// The next episode and when it should air, guessed from the episodes
 /// already out, for an airing series whose record names no date ahead (a
-/// real schedule always wins; `card_of` asks only without one). Needs one
-/// dated episode out. The cadence is the gap between the first two
-/// consecutive dated episodes in whole weeks, at least one, else one week;
-/// a later break never changes it. The guess runs on from the newest dated
-/// episode, one cadence per episode, starting past `released` (the furthest
-/// episode known out, a file on disk counts). A guess a full day in the
-/// past with nothing released moves a week later, as many weeks as it takes.
+/// real schedule always wins; `card_of` asks only without one). The first
+/// guess `upcoming` makes.
 pub fn predict_next(
     airing: &[AiringRow],
     released: u32,
@@ -112,19 +107,47 @@ pub fn predict_next(
     status: Option<AiringStatus>,
     now: i64,
 ) -> Option<(u32, i64)> {
-    if status != Some(AiringStatus::Releasing) {
-        return None;
-    }
-    let mut aired: Vec<(u32, i64)> = airing
+    upcoming(airing, released, total, status, now)
+        .into_iter()
+        .find(|u| u.2)
+        .map(|(n, at, _)| (n, at))
+}
+
+/// The episodes still to come and when each lands, `(number, at,
+/// predicted)` in number order: every one up to the total when the record
+/// has one, else the scheduled ones, else just the next. A date the record
+/// schedules is kept as it is. Every other is a guess, made only while the
+/// series is airing and one dated episode is out: one cadence on from the
+/// date before it. The cadence is the gap between the first two consecutive
+/// dated episodes in whole weeks, at least one, else one week; a later break
+/// never changes it. `released` is the furthest episode known out, a file
+/// on disk counts. A first guess a full day in the past with nothing
+/// released moves a week later, as many weeks as it takes, and every guess
+/// after it moves with it.
+pub fn upcoming(
+    airing: &[AiringRow],
+    released: u32,
+    total: Option<u32>,
+    status: Option<AiringStatus>,
+    now: i64,
+) -> Vec<(u32, i64, bool)> {
+    let mut dated: Vec<(u32, i64)> = airing
         .iter()
-        .filter_map(|a| a.aired_at.filter(|at| *at <= now).map(|at| (a.number, at)))
+        .filter_map(|a| a.aired_at.map(|at| (a.number, at)))
         .collect();
-    aired.sort_unstable();
-    let &(last, last_at) = aired.last()?;
-    let next = released.max(last) + 1;
-    if total.is_some_and(|t| t > 0 && next > t) {
-        return None;
-    }
+    dated.sort_unstable();
+    let aired: Vec<(u32, i64)> = dated.iter().copied().filter(|(_, at)| *at <= now).collect();
+    let released = released.max(aired.last().map_or(0, |a| a.0));
+    let scheduled: Vec<(u32, i64)> = dated
+        .iter()
+        .copied()
+        .filter(|(n, at)| *at > now && *n > released)
+        .collect();
+    let total = total.filter(|t| *t > 0);
+    let last = match total {
+        Some(t) => t,
+        None => scheduled.last().map_or(released + 1, |s| s.0),
+    };
     let cadence = aired
         .windows(2)
         .find(|w| w[1].0 == w[0].0 + 1)
@@ -132,11 +155,27 @@ pub fn predict_next(
             let weeks = ((w[1].1 - w[0].1) as f64 / WEEK as f64).round() as i64;
             weeks.max(1) * WEEK
         });
-    let mut at = last_at + i64::from(next - last) * cadence;
-    if at + DAY <= now {
-        at += ((now - at - DAY) / WEEK + 1) * WEEK;
+    let can_guess = status == Some(AiringStatus::Releasing);
+    // The date each guess counts on from: the newest one before it
+    let mut anchor = aired.last().copied();
+    let mut out = Vec::new();
+    for n in released + 1..=last.min(released + CUBES_MAX) {
+        if let Some(&(_, at)) = scheduled.iter().find(|s| s.0 == n) {
+            out.push((n, at, false));
+            anchor = Some((n, at));
+            continue;
+        }
+        let Some((an, aat)) = anchor.filter(|_| can_guess) else {
+            continue;
+        };
+        let mut at = aat + i64::from(n - an) * cadence;
+        if at + DAY <= now {
+            at += ((now - at - DAY) / WEEK + 1) * WEEK;
+        }
+        out.push((n, at, true));
+        anchor = Some((n, at));
     }
-    Some((next, at))
+    out
 }
 
 /// The three segments of the strip on a card, as fractions of 0 to 1. The
@@ -1137,5 +1176,31 @@ mod tests {
             predict_next(&rows, 12, None, Some(AiringStatus::Hiatus), now),
             None
         );
+    }
+
+    #[test]
+    fn a_known_total_guesses_every_episode_after_the_schedule() {
+        // 12 episodes, 1 to 3 out weekly, 4 and 5 scheduled, the rest guessed
+        let mut rows = dated(&[(1, T0), (2, T0 + WEEK), (3, T0 + 2 * WEEK)]);
+        rows.extend(dated(&[(4, T0 + 3 * WEEK), (5, T0 + 4 * WEEK + 3600)]));
+        let now = T0 + 2 * WEEK + DAY;
+        let got = upcoming(&rows, 3, Some(12), Some(AiringStatus::Releasing), now);
+        assert_eq!(got.len(), 9);
+        assert_eq!(got[0], (4, T0 + 3 * WEEK, false));
+        assert_eq!(got[1], (5, T0 + 4 * WEEK + 3600, false));
+        assert_eq!(got[2], (6, T0 + 5 * WEEK + 3600, true));
+        assert_eq!(got[8], (12, T0 + 11 * WEEK + 3600, true));
+    }
+
+    #[test]
+    fn an_unknown_total_shows_the_schedule_or_one_guess() {
+        let rows = dated(&[(1, T0), (2, T0 + WEEK)]);
+        let now = T0 + WEEK + DAY;
+        let got = upcoming(&rows, 2, None, Some(AiringStatus::Releasing), now);
+        assert_eq!(got, vec![(3, T0 + 2 * WEEK, true)]);
+        // Off air: the schedule alone, never a guess
+        let sched = dated(&[(1, T0), (2, T0 + WEEK), (3, T0 + 2 * WEEK)]);
+        let got = upcoming(&sched, 2, Some(12), Some(AiringStatus::Hiatus), now);
+        assert_eq!(got, vec![(3, T0 + 2 * WEEK, false)]);
     }
 }

@@ -9,7 +9,7 @@ use rusqlite::{Connection, params_from_iter};
 use serde_json::Value;
 
 use crate::contract::*;
-use crate::library::cards::next_up;
+use crate::library::cards::{next_up, upcoming};
 use crate::library::classifier;
 use crate::library::snapshot::{FileRow, MediaRow, Snapshot, season_of};
 use crate::library::{labels, titles};
@@ -114,6 +114,27 @@ impl Snapshot {
                 }
             })
             .collect();
+        let latest_downloaded = episodes.last().map_or(0.0, |f| f.number).max(0.0) as u32;
+        let upcoming = upcoming(
+            airing,
+            latest_aired.max(latest_downloaded),
+            total,
+            card.status,
+            now,
+        )
+        .into_iter()
+        .map(|(number, at, predicted)| UpcomingEpisode {
+            number,
+            season,
+            code: labels::episode_code(season, f64::from(number)),
+            title: airing
+                .iter()
+                .find(|a| a.number == number)
+                .and_then(|a| a.title.clone()),
+            at: time::from_secs(at),
+            predicted,
+        })
+        .collect();
 
         let mut extras: Vec<&FileRow> = files.iter().filter(|f| !f.is_episode).collect();
         extras.sort_by(|a, b| {
@@ -148,6 +169,7 @@ impl Snapshot {
                 .map(|f| episode(f))
                 .collect(),
             absent,
+            upcoming,
             extras: extras
                 .iter()
                 .map(|f| {
