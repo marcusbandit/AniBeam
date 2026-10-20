@@ -98,6 +98,45 @@ pub struct SearchEndpoint {
     pub running: Option<bool>,
 }
 
+/// A shareable list of endpoints, the one way endpoints reach a fresh
+/// install: AniBeam ships with none. `format` is always `anibeam-endpoints`
+/// and `version` says which shape the file has.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct EndpointPack {
+    pub format: String,
+    pub version: u32,
+    /// What the pack calls itself, shown on import.
+    #[serde(default)]
+    pub name: String,
+    pub endpoints: Vec<PackEndpoint>,
+    /// Best-fit preferences the pack suggests. Import offers them, never
+    /// applies them without asking.
+    #[serde(default)]
+    pub best_fit: Option<BestFitPrefs>,
+}
+
+/// One endpoint in a pack, in anirss's own terms: `kind` is `nyaa` (q, c
+/// and f parameters) or `rss` (a search URL with `{query}` in it).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct PackEndpoint {
+    pub name: String,
+    pub kind: String,
+    pub url: String,
+    #[serde(default)]
+    pub category: Option<String>,
+    #[serde(default)]
+    pub filter: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct BestFitPrefs {
+    #[serde(default)]
+    pub preferred_groups: Vec<String>,
+    /// `highest`, or a height such as `1080`.
+    #[serde(default)]
+    pub preferred_resolution: Option<String>,
+}
+
 /// A search and its first analysis in one: the items, where they came
 /// from (`endpoint` differs from the one asked for when `fell_back`), the
 /// groups they split by and the best fit on offer. `query` and `items` are

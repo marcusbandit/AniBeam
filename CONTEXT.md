@@ -158,6 +158,10 @@ _Avoid_: harness, container, lazy endpoint
 One site a search goes to, as anirss configures it: nyaa-style, or any RSS search URL. They sit in an order; a search that finds nothing on one falls through to the next.
 _Avoid_: tracker site, indexer, source
 
+**Endpoint pack**:
+A JSON file (`anibeam-endpoints`) that lists endpoints in order, with optional best-fit preferences, for one person to hand another. AniBeam ships with no endpoints; a pack or one pasted search URL is how they arrive.
+_Avoid_: source pack, indexer list, preset
+
 **Search state**:
 What the Downloads page holds while a search is up: the endpoint, the query and the releases, plus the groups and the best fit the last step returned, and a trail of earlier states for Back. anirss keeps none of it; every step sends the whole state back.
 _Avoid_: session, result set, context

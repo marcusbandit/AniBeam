@@ -737,6 +737,21 @@ impl Core {
             Call::ConnectDownloads => Ok(Reply::Started {
                 job: downloads::connect(self)?,
             }),
+            // Endpoint packs. The pack is read and checked here; writing
+            // endpoints needs anirss's endpoint API, which it does not have
+            // yet (#97, anirss#14).
+            Call::ImportEndpointPack { text } => {
+                downloads::pack::parse(&text)?;
+                Err(CoreError::Unsupported {
+                    what: "importing endpoints into anirss".into(),
+                })
+            }
+            Call::RemoveEndpoint { .. } => Err(CoreError::Unsupported {
+                what: "removing an anirss endpoint".into(),
+            }),
+            Call::ExportEndpointPack => Err(CoreError::Unsupported {
+                what: "exporting anirss's endpoints".into(),
+            }),
             Call::SearchReleases { query, endpoint } => Ok(Reply::Started {
                 job: downloads::search(self, query, endpoint)?,
             }),

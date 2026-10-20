@@ -356,6 +356,20 @@ pub enum Call {
     InspectRelease {
         link: String,
     },
+    /// Adds the endpoints an endpoint pack lists, after the ones already
+    /// configured; one with a name already in use replaces it in place.
+    /// `text` is the pack's JSON. Ends in `DownloadsStatusChanged`.
+    ImportEndpointPack {
+        text: String,
+    },
+    /// Takes the named endpoint out of anirss's list. Its subscriptions
+    /// keep running. Ends in `DownloadsStatusChanged`.
+    RemoveEndpoint {
+        name: String,
+    },
+    /// The configured endpoints as a pack, to hand to someone else.
+    /// Replies `EndpointPack`.
+    ExportEndpointPack,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Enum)]
@@ -426,5 +440,8 @@ pub enum Reply {
     },
     Downloads {
         status: DownloadsStatus,
+    },
+    EndpointPack {
+        pack: EndpointPack,
     },
 }

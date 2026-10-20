@@ -19,6 +19,7 @@ pub mod facts;
 pub mod feed;
 pub mod jackett;
 pub mod link;
+pub mod pack;
 pub mod prune;
 pub mod qbt;
 pub mod replace;
