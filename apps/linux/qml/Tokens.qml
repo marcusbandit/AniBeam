@@ -261,6 +261,24 @@ Item {
         return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
     }
 
+    // A poster band (the series page's head, Home's hero): the poster's tone over the dark
+    // base, at `mix` or less, so the band's white ink holds 7:1 whatever the poster; a bright
+    // poster gives a deeper band rather than a washed one
+    readonly property color bandDark: Qt.rgba(0.05, 0.055, 0.07, 1)
+    function bandBase(t, mix) {
+        var m = mix
+        while (m > 0 && contrast(Qt.color("#f4f6f8"), tone(bandDark, t, m)) < 7) m -= 0.05
+        return tone(bandDark, t, Math.max(0, m))
+    }
+    // The band's accent: the tone lifted toward white, at least 0.45 and further until it
+    // stands 7:1 off the band, so a highlight never sinks into its own hue
+    function bandAccent(t, base) {
+        var white = Qt.rgba(1, 1, 1, 1)
+        var m = 0.45
+        while (m < 1 && contrast(tone(t, white, m), base) < 7) m += 0.05
+        return tone(t, white, Math.min(1, m))
+    }
+
     // Poster plates (retired by the glass mosaic: no surface takes a poster's tone any more;
     // kept for the token page and any caller still asking). A poster's tone moved toward the
     // ground in steps of `plateStep`. The hover plate is the first step at which the theme's

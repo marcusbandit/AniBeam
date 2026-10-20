@@ -396,8 +396,8 @@ Item {
             // both modes; the ink accent is the tone lifted toward white
             PosterTone { id: toneOf; source: hero.c && hero.c.poster ? "file://" + hero.c.poster : "" }
             readonly property color tone: toneOf.tone
-            readonly property color base: theme.tone(Qt.rgba(0.05, 0.055, 0.07, 1), tone, 0.5)
-            readonly property color inkAccent: theme.tone(tone, Qt.rgba(1, 1, 1, 1), 0.45)
+            readonly property color base: theme.bandBase(tone, 0.5)
+            readonly property color inkAccent: theme.bandAccent(tone, base)
             readonly property color ink: "#f4f6f8"
             readonly property color inkDim: Qt.rgba(1, 1, 1, 0.68)
 

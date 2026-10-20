@@ -224,12 +224,14 @@ Item {
     readonly property var relationNodes: graph ? graph.nodes.filter(function(n) { return !n.current }).sort(function(a, b) { return a.y - b.y || a.x - b.x }) : []
 
     // ---- The band's colour: the poster's tone over a dark base, so white ink holds in
-    // both modes; the ink accent is the tone lifted toward white (HomePage's hero)
+    // both modes; the ink accent is the tone lifted toward white (HomePage's hero). Both
+    // are contrast-checked (Tokens.bandBase, bandAccent), so a bright teal poster still
+    // reads.
     PosterTone { id: toneOf; source: card.poster ? "file://" + card.poster : "" }
     readonly property color bandTone: toneOf.tone
     // No poster, no tone: the base stays close to the dark ground
-    readonly property color bandBase: theme.tone(Qt.rgba(0.05, 0.055, 0.07, 1), bandTone, card.poster ? 0.5 : 0.25)
-    readonly property color inkAccent: theme.tone(bandTone, Qt.rgba(1, 1, 1, 1), 0.45)
+    readonly property color bandBase: theme.bandBase(bandTone, card.poster ? 0.5 : 0.25)
+    readonly property color inkAccent: theme.bandAccent(bandTone, bandBase)
     readonly property color ink: "#f4f6f8"
     readonly property color inkDim: Qt.rgba(1, 1, 1, 0.68)
     // The downloading purple, lifted toward white like the accent so it holds on the band
@@ -325,7 +327,8 @@ Item {
                     }
                 }
                 // The wash shares the band's rounding, so no square corner of it shows past
-                // the band's own; it stays solid until past the art's left edge
+                // the band's own; it stays solid until past the art's left edge, and nearly
+                // solid under the words that run on over the art, so they never sit on it
                 Rectangle {
                     visible: page.showArt
                     anchors.fill: parent
@@ -334,7 +337,8 @@ Item {
                     gradient: Gradient {
                         orientation: Gradient.Horizontal
                         GradientStop { position: 0.33; color: page.bandBase }
-                        GradientStop { position: 0.62; color: Qt.rgba(page.bandBase.r, page.bandBase.g, page.bandBase.b, 0.55) }
+                        GradientStop { position: 0.55; color: Qt.rgba(page.bandBase.r, page.bandBase.g, page.bandBase.b, 0.9) }
+                        GradientStop { position: 0.75; color: Qt.rgba(page.bandBase.r, page.bandBase.g, page.bandBase.b, 0.45) }
                         GradientStop { position: 1; color: Qt.rgba(page.bandBase.r, page.bandBase.g, page.bandBase.b, 0.1) }
                     }
                 }
