@@ -9,8 +9,20 @@ use crate::contract::*;
 use crate::library::cards;
 use crate::time;
 
+/// The title a card sorts by. A native title sorts by its romaji: kanji
+/// carry no reading, so code point order would scatter them.
 fn title_of(c: &SeriesCard) -> String {
-    c.title.to_lowercase()
+    let shown = c.title.as_str();
+    let key = if c.titles.native.as_deref() == Some(shown) {
+        c.titles
+            .romaji
+            .as_deref()
+            .or(c.titles.english.as_deref())
+            .unwrap_or(shown)
+    } else {
+        shown
+    };
+    key.to_lowercase()
 }
 
 /// Finished with it: completed on the tracker, watched at or above a

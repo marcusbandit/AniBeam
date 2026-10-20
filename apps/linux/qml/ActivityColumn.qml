@@ -48,11 +48,8 @@ Item {
         }
         return out.map(function(m) { return m.length === 1 ? m[0] : root.groupOf(m) })
     }
-    function firstEpisode(t) {
-        if (t.episode !== null && t.episode !== undefined) return t.episode
-        var e = episodesOf(t)
-        return e.length ? e[0].n : 1e9
-    }
+    // The lowest episode a torrent carries, from the page, so the show view orders the same way
+    property var firstEpisode: function(t) { return 1e9 }
     // Several torrents of one show as one: summed bytes and rate, the slowest one's time
     // left, and their episodes as files so the line draws them as cubes
     function groupOf(members) {
@@ -72,7 +69,7 @@ Item {
             else if (t.episode !== null && t.episode !== undefined) files.push({ episode: t.episode, progress: t.progress || 0, priority: 1 })
         })
         return { grouped: true, members: members, hash: members[0].hash, name: members[0].name, series_id: members[0].series_id,
-                 size: size, progress: size > 0 ? got / size : 0, dlspeed: dl, eta: eta, files: files, batch: false, episode: null, completion_on: doneAt,
+                 size: size, progress: size > 0 ? got / size : members.every(function(t) { return (t.progress || 0) >= 1 }) ? 1 : 0, dlspeed: dl, eta: eta, files: files, batch: false, episode: null, completion_on: doneAt,
                  state: broken ? "error" : allStopped ? "stoppedDL" : "downloading" }
     }
     readonly property var finishedToday: {
@@ -131,7 +128,9 @@ Item {
     function titleOf(t) { var s = showOf(t); return s ? s.title : t.name }
     function kindOf(t) {
         if (t.grouped) {
-            var ns = t.files.map(function(f) { return f.episode }).sort(function(a, b) { return a - b })
+            // Each episode once, and none the client was told to skip
+            var ns = t.files.filter(function(f) { return f.priority !== 0 }).map(function(f) { return f.episode })
+                .filter(function(n, i, all) { return all.indexOf(n) === i }).sort(function(a, b) { return a - b })
             var run = ns.length > 1 && ns.every(function(n, i) { return i === 0 || n === ns[i - 1] + 1 })
             return run ? "Episodes " + ns[0] + " to " + ns[ns.length - 1] : ns.length ? "Episodes " + ns.join(", ") : t.members.length + " downloads"
         }

@@ -126,22 +126,12 @@ Item {
         }
         return out
     }
-    // The torrents of this show that have not finished, the moving ones first
+    // The torrents of this show that have not finished, in episode order
     function stoppedState(t) { var st = String(t.state || ""); return st.indexOf("paused") === 0 || st.indexOf("stopped") === 0 }
     readonly property var activeTorrents: torrents.filter(function(t) { return (t.progress || 0) < 1 })
         .sort(function(a, b) { return root.firstEpisode(a) - root.firstEpisode(b) || String(a.name || "").localeCompare(String(b.name || "")) })
-    // The lowest episode a torrent carries, for the Downloading list's order; one that names
-    // none goes last
-    function firstEpisode(t) {
-        var n = Infinity
-        if (t.episode !== null && t.episode !== undefined) n = t.episode
-        var files = t.files || []
-        for (var i = 0; i < files.length; i++) {
-            var e = files[i].episode
-            if (e !== null && e !== undefined && files[i].priority !== 0) n = Math.min(n, e)
-        }
-        return n === Infinity ? 1e9 : n
-    }
+    // The lowest episode a torrent carries, from the page, so Activity orders the same way
+    property var firstEpisode: function(t) { return 1e9 }
     readonly property var runningTorrents: activeTorrents.filter(function(t) { return !root.stoppedState(t) })
     readonly property bool downloading: Object.keys(inFlight).some(function(n) { return inFlight[n] < 1 })
     readonly property int downloadingCount: Object.keys(inFlight).filter(function(n) { return inFlight[n] < 1 }).length
@@ -420,7 +410,7 @@ Item {
         return { endpoint: active, query: current ? current.query : "", items: items, options: options(), follow: follow && !!row,
                  followQuery: row ? (current.query + " " + row.group + (row.resolution ? " " + row.resolution : "")).trim() : "",
                  followItems: row ? Object.keys(row.eps).map(function(n) { return current.items[row.eps[n]] }) : [],
-                 name: show ? show.folderName || show.title : "" }
+                 name: show ? show.folderName || show.saveName || show.title : "" }
     }
     readonly property string goText: {
         var n = planList.length

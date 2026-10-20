@@ -238,7 +238,7 @@ Item {
     function keyOf(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "") }
     function torrentsOfShow(show) {
         if (!show) return []
-        var want = [keyOf(show.folderName), keyOf(show.title)].filter(function(k) { return k !== "" })
+        var want = [keyOf(show.folderName), keyOf(show.saveName), keyOf(show.title)].filter(function(k) { return k !== "" })
         var named = show.hashes || []
         return torrents.filter(function(t) {
             if (show.seriesId >= 0 && t.series_id === show.seriesId) return true
@@ -256,7 +256,10 @@ Item {
     }
     function showFromHit(h, typed) {
         var queries = page.queriesOf(page.namesOfHit(h), h.romaji || h.title)
-        return { title: page.nameOfHit(h, typed || ""), query: queries[0], queries: queries, poster: h.cover_url || "", cubes: h.episodes ? "g".repeat(Math.min(h.episodes, 400)) : "", total: h.episodes || 0,
+        var title = page.nameOfHit(h, typed || "")
+        // A show not in the library is saved under its own name, but never the native one:
+        // the library links folders by their latin titles
+        return { title: title, saveName: title === h.native ? (h.romaji || h.english || h.title) : title, query: queries[0], queries: queries, poster: h.cover_url || "", cubes: h.episodes ? "g".repeat(Math.min(h.episodes, 400)) : "", total: h.episodes || 0,
                  seriesId: -1, status: "", format: h.format || "", year: h.year || 0, nextAiring: null, airing: false, folderName: "" }
     }
     function showFromLink(s) {
@@ -921,14 +924,21 @@ Item {
         page.act(Door.downloadReleases([{ title: e.title, link: e.link, seeders: e.seeders, leechers: e.leechers, downloads: e.downloads, size: e.size, page: e.page }], name))
         frame.toast("Sent " + e.title + " to " + page.clientName)
     }
-    function control(hash, action) {
-        var r = Door.controlTorrents([hash], action, false)
-        if (r.error) { frame.toast(page.errorWords(r.error)); return }
-        // The client takes a moment: the button spins until a read shows the change
-        var p = Object.assign({}, page.pending); p[hash] = { action: action, at: Date.now() }; page.pending = p
-        Door.listTorrents()
+    function control(hash, action) { controlMany([hash], action) }
+    // The lowest episode a torrent carries, skipped files aside, so the show view and
+    // Activity both list torrents in episode order; one that names none goes last
+    function firstEpisode(t) {
+        var n = Infinity
+        if (t.episode !== null && t.episode !== undefined) n = t.episode
+        var files = t.files || []
+        for (var i = 0; i < files.length; i++) {
+            var e = files[i].episode
+            if (e !== null && e !== undefined && files[i].priority !== 0) n = Math.min(n, e)
+        }
+        return n === Infinity ? 1e9 : n
     }
-    // Several torrents at once (the show view's Stop all and Start all)
+    // Several torrents at once (Stop all and Start all). The client takes a moment: each
+    // button spins until a read shows the change
     function controlMany(hashes, action) {
         if (!hashes.length) return
         var r = Door.controlTorrents(hashes, action, false)
@@ -1412,6 +1422,7 @@ Item {
         connected: page.torrentOn
         clientName: page.clientName
         busyOf: function(hash) { return page.busyOf(hash) }
+        firstEpisode: function(t) { return page.firstEpisode(t) }
         onCancelTorrent: function(anchor, t) { page.askCancelTorrent(anchor, t) }
         onControl: function(hash, action) { page.control(hash, action) }
         onControlAll: function(hashes, action) { page.controlMany(hashes, action) }
@@ -2013,6 +2024,7 @@ Item {
                 show: page.getShow
                 torrents: page.torrentsOfShow(page.getShow)
                 busyOf: function(hash) { return page.busyOf(hash) }
+                firstEpisode: function(t) { return page.firstEpisode(t) }
                 endpoints: page.endpoints
                 results: page.getResults
                 active: page.getActive

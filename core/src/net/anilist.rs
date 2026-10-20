@@ -154,6 +154,7 @@ pub const ENRICHMENT_QUERY: &str = r"
       title {
         romaji
         english
+        native
       }
       coverImage {
         large
@@ -213,6 +214,7 @@ pub const ENRICHMENT_QUERY: &str = r"
               title {
                 romaji
                 english
+                native
               }
               coverImage {
                 large
@@ -238,6 +240,7 @@ pub const ENRICHMENT_QUERY: &str = r"
             title {
               romaji
               english
+              native
             }
             coverImage {
               large
@@ -297,7 +300,7 @@ pub const WATCHING_LIST_QUERY: &str = r"query ($userId: Int) {
                   siteUrl
                   episodes
                   averageScore
-                  title { romaji english }
+                  title { romaji english native }
                   coverImage { large }
                   nextAiringEpisode { episode airingAt }
                 }
