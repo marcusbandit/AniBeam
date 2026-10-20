@@ -484,7 +484,7 @@ Item {
                         id: airing
                         objectName: "fact-airing"
                         visible: page.airsAhead
-                        text: card.next_airing ? (card.next_airing.season && card.next_airing.season !== 1 ? "S" + card.next_airing.season + " " : "") + "Episode " + card.next_airing.episode + (card.next_airing.predicted ? " predicted for " + Qt.formatDate(new Date(card.next_airing.at * 1000), "ddd d MMM") + ", in " + Fmt.countdown(card.next_airing.at - page.nowMs / 1000) : " airs in " + Fmt.countdownSeconds(card.next_airing.at - page.nowMs / 1000)) : ""
+                        text: card.next_airing ? (card.next_airing.season && card.next_airing.season !== 1 ? "S" + card.next_airing.season + " " : "") + (card.next_airing.through ? "Episodes " + card.next_airing.episode + " to " + card.next_airing.through : "Episode " + card.next_airing.episode) + (card.next_airing.predicted ? " predicted for " + Qt.formatDate(new Date(card.next_airing.at * 1000), "ddd d MMM") + ", in " + Fmt.countdown(card.next_airing.at - page.nowMs / 1000) : (card.next_airing.through ? " air in " : " airs in ") + Fmt.countdownSeconds(card.next_airing.at - page.nowMs / 1000)) : ""
                         role: "ledger"
                         font.weight: 600; font.variableAxes: ({ "wdth": 88, "wght": 600 })
                         color: page.inkAccent

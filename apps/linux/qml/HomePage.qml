@@ -296,7 +296,7 @@ Item {
             Row {
                 spacing: theme.space(1.5)
                 Label {
-                    text: entry.next ? (entry.next.season && entry.next.season !== 1 ? "S" + entry.next.season + " " : "") + Fmt.episodeName("", entry.next.episode) : "No date yet"
+                    text: entry.next ? (entry.next.season && entry.next.season !== 1 ? "S" + entry.next.season + " " : "") + (entry.next.through ? "Episodes " + entry.next.episode + " to " + entry.next.through : Fmt.episodeName("", entry.next.episode)) : "No date yet"
                     role: "ui"
                     font.weight: 600
                     color: entry.next ? theme.text : theme.textDim

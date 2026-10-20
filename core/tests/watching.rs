@@ -227,6 +227,7 @@ fn the_page_paints_the_cache_and_the_refresh_fills_it_behind() {
             at: anibeam_core::time::from_secs(frieren_airs),
             season: None,
             predicted: false,
+            through: None,
         })
     );
 
@@ -250,6 +251,7 @@ fn the_page_paints_the_cache_and_the_refresh_fills_it_behind() {
             at: anibeam_core::time::from_secs(one_piece_airs),
             season: None,
             predicted: false,
+            through: None,
         })
     );
 

@@ -533,6 +533,11 @@ impl Snapshot {
                     at: time::from_secs(n.at),
                     season: n.season,
                     predicted: false,
+                    through: airing
+                        .iter()
+                        .filter(|a| a.aired_at == Some(n.at) && a.number > n.number)
+                        .map(|a| a.number)
+                        .max(),
                 }),
                 None => predict_next(
                     airing,
@@ -546,6 +551,7 @@ impl Snapshot {
                     at: time::from_secs(at),
                     season: self.card_season(row),
                     predicted: true,
+                    through: None,
                 }),
             },
             last_viewed_at: self.views.get(&row.id).map(|(_, at)| time::from_secs(*at)),

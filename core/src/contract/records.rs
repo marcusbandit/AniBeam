@@ -51,6 +51,10 @@ pub struct Airing {
     /// "predicted" beside it.
     #[serde(default)]
     pub predicted: bool,
+    /// The last episode landing at the same moment, when a drop releases
+    /// several at once (7 to 9); None for one episode.
+    #[serde(default)]
+    pub through: Option<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
