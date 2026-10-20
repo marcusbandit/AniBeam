@@ -143,11 +143,24 @@ mod tests {
     /// existed reads as Related, and the five values cross the wire as the
     /// shell spells them, "None" included.
     #[test]
+    fn a_choice_this_build_does_not_know_falls_back() {
+        let blob = r#"{"title_language":"English","library_tab":"Series","library_sort":"SomeNewSort","library_direction":"Sideways","feed_sort":"Recent"}"#;
+        let p: Preferences = serde_json::from_str(blob).unwrap();
+        assert_eq!(p.library_sort, Sort::Alpha);
+        assert_eq!(p.library_direction, Direction::Asc);
+        assert_eq!(p.library_tab, Tab::Series, "a known value is kept");
+        assert_eq!(p.title_language, TitleLanguage::English);
+    }
+
+    #[test]
     fn library_arrange_defaults_for_old_blobs_and_spells_its_values() {
         let old = r#"{"title_language":"English","library_tab":"Movies","library_sort":"MyScore","library_direction":"Desc","feed_sort":"Upcoming","library_show_watched":true}"#;
         let p: Preferences = serde_json::from_str(old).unwrap();
         assert_eq!(p.library_arrange, Arrange::Related);
-        assert!(p.library_group_franchises, "a blob before the toggle groups");
+        assert!(
+            p.library_group_franchises,
+            "a blob before the toggle groups"
+        );
         assert_eq!(p.library_sort, Sort::MyScore);
         for (a, wire) in [
             (Arrange::Related, "Related"),

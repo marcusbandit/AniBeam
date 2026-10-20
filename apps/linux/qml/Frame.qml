@@ -143,15 +143,16 @@ FocusScope {
         id: content
         anchors.left: frame.fullWindow ? parent.left : rail.right
         anchors.right: parent.right; anchors.top: parent.top; anchors.bottom: parent.bottom
-        // The pages sit in a centred column no wider than theme.contentMax; the player
-        // alone takes the whole window
+        // The pages take the whole width so the wheel scrolls them from anywhere; each page
+        // centres its own content in a column no wider than theme.contentMax (PageScroll,
+        // SettingsTab). The status strip sits under that column; the player takes the window.
         readonly property real column: frame.fullWindow ? width : Math.min(width, theme.contentMax)
         readonly property real columnX: frame.fullWindow ? 0 : Math.round((width - column) / 2)
 
         Loader {
             id: page
-            x: content.columnX
-            width: content.column
+            x: 0
+            width: content.width
             anchors.top: parent.top
             anchors.bottom: frame.fullWindow ? parent.bottom : strip.top
             focus: true
@@ -427,7 +428,11 @@ FocusScope {
               : Math.max(theme.space(2), top - tip.height - theme.space(1))
         tip.visible = true
     }
-    function hideTip() { tip.visible = false; tipArea = null }
+    function hideTip() { if (tip.visible) tipWarmUntil = Date.now() + 1500; tip.visible = false; tipArea = null }
+    // Someone who waited for one tip is reading tips: for a moment after one goes, the next
+    // item's tip comes at once instead of after the hover intent
+    property real tipWarmUntil: 0
+    function tipWarm() { return tip.visible || Date.now() < tipWarmUntil }
     function toast(text, seconds) { toastText.text = text; toastBox.visible = true; toastTimer.interval = (seconds || 4) * 1000; toastTimer.restart() }
 
     // ---- The removal sheet: every removal on the downloads page asks through it
@@ -442,6 +447,9 @@ FocusScope {
     // The downloads page's two bands, grid or list, for the session
     property string downloadsSubView: "grid"
     property string downloadsDlView: "grid"
+    // The Downloads page's lens, and the sources switched by hand (name -> on), for the session
+    property string downloadsLens: "gaps"
+    property var downloadsSources: ({})
     property bool downloadsRulesRead: false
     property string downloadsRulesError: ""
     readonly property int downloadsAttention: {
@@ -456,6 +464,9 @@ FocusScope {
         if (!Door.ready) return
         if (frame.removalOpen) { downloadsReread.restart(); return }
         Door.listSubscriptionRules()
+        // One torrent read too, so the library knows what is still downloading before
+        // the Downloads page is ever opened (the core keeps it fresh while it lasts)
+        Door.listTorrents()
     }
     Connections {
         target: Door

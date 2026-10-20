@@ -11,8 +11,19 @@ Corner {
     signal cleared()
     // Return or Enter in the field: a page that searches on demand rather than as you type
     signal accepted()
+    // The Downloads page's one wide field: taller, its text at the large size
+    property bool large: false
+    // A round search button inside the field's right end, for a field whose Return runs a
+    // search worth a button of its own (the Downloads page's release search)
+    property bool goButton: false
+    property bool goBusy: false
+    property string goTip: ""
+    signal go()
+    readonly property bool editing: input.activeFocus
+    // Up and Down in the field, for a list of suggestions under it
+    signal stepped(int by)
     width: Math.min(parent ? parent.width : theme.space(120), theme.space(120))
-    height: theme.controlHeight
+    height: large ? theme.space(15) : theme.controlHeight
     radius: Math.min(theme.radiusTile, height / 2)
     smoothing: theme.cornerSmoothing
     color: input.activeFocus ? theme.raised : theme.tile
@@ -23,20 +34,22 @@ Corner {
     MouseArea { id: hover; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.IBeamCursor; onClicked: input.forceActiveFocus() }
     Icon {
         id: glass
-        anchors.left: parent.left; anchors.leftMargin: theme.space(3); anchors.verticalCenter: parent.verticalCenter
-        glyph: "search"; size: theme.space(4); color: input.activeFocus ? theme.text : theme.textDim
+        anchors.left: parent.left; anchors.leftMargin: root.large ? theme.space(5) : theme.space(3); anchors.verticalCenter: parent.verticalCenter
+        glyph: "search"; size: root.large ? theme.space(5.5) : theme.space(4); color: input.activeFocus ? theme.text : theme.textDim
     }
     TextInput {
         id: input
         anchors.fill: parent
-        anchors.leftMargin: theme.space(9); anchors.rightMargin: theme.space(10)
+        anchors.leftMargin: root.large ? theme.space(14) : theme.space(9); anchors.rightMargin: root.goButton ? theme.space(20) : theme.space(10)
         verticalAlignment: TextInput.AlignVCenter
         color: theme.text
-        font.family: theme.fontFamily; font.pointSize: theme.typeNormal
+        font.family: theme.fontFamily; font.pointSize: root.large ? theme.typeLarge : theme.typeNormal
         font.weight: theme.roleWeight("ui"); font.variableAxes: theme.roleAxes("ui")
         selectionColor: theme.accentSoft; selectedTextColor: theme.text
         clip: true
         onAccepted: root.accepted()
+        Keys.onUpPressed: root.stepped(-1)
+        Keys.onDownPressed: root.stepped(1)
         // With a layer open (a menu, a picker, a sheet) Escape is left to propagate up to
         // the frame, which closes that layer; the query stays.
         Keys.onEscapePressed: function(e) {
@@ -45,14 +58,28 @@ Corner {
         }
         Text { anchors.fill: parent; verticalAlignment: Text.AlignVCenter; visible: !input.text; text: root.placeholder; color: theme.textFaint; font: input.font }
     }
+    Button {
+        id: goButton
+        objectName: root.objectName !== "" ? root.objectName + "-go" : ""
+        visible: root.goButton
+        anchors.right: parent.right; anchors.rightMargin: theme.space(4); anchors.verticalCenter: parent.verticalCenter
+        width: theme.space(8); height: width
+        radius: width / 2
+        primary: true
+        icon: "search"
+        busy: root.goBusy
+        takesFocus: false
+        onClicked: root.go()
+        Tooltip { text: root.goTip }
+    }
     Label {
-        anchors.right: parent.right; anchors.rightMargin: theme.space(3); anchors.verticalCenter: parent.verticalCenter
-        visible: !input.activeFocus && !input.text
+        anchors.right: root.goButton ? goButton.left : parent.right; anchors.rightMargin: theme.space(3); anchors.verticalCenter: parent.verticalCenter
+        visible: !input.activeFocus && !input.text && root.hint !== ""
         text: root.hint; color: theme.textFaint; role: "ledger"
     }
     Icon {
         visible: input.text !== ""
-        anchors.right: parent.right; anchors.rightMargin: theme.space(3); anchors.verticalCenter: parent.verticalCenter
+        anchors.right: root.goButton ? goButton.left : parent.right; anchors.rightMargin: theme.space(3); anchors.verticalCenter: parent.verticalCenter
         glyph: "x"; size: theme.space(4); color: theme.textDim
         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { input.text = ""; root.cleared() } }
     }

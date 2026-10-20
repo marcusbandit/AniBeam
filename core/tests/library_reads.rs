@@ -563,7 +563,11 @@ fn a_kept_snapshot_lasts_until_a_change_event() {
         hidden: true,
     })
     .unwrap();
-    assert_eq!(ids(), vec![second], "SetHidden's event made the read load again");
+    assert_eq!(
+        ids(),
+        vec![second],
+        "SetHidden's event made the read load again"
+    );
 
     core.set_snapshot_cache(false);
     let third = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/C", "C");

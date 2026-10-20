@@ -1,0 +1,81 @@
+[
+ {
+  "log": "a batch downloading: per-episode progress in Activity and the show view, cancel on each row, then Home's recently downloaded shelf and the Library's plain A to Z. Reads only; cancels nothing"
+ },
+ {
+  "click": "rail-downloads"
+ },
+ {
+  "wait": 8000
+ },
+ {
+  "eval": "var p = frame.item.pageItem; JSON.stringify(p.torrents.map(function(t) { return [t.state, t.progress, (t.files || []).length] }))",
+  "as": "torrents"
+ },
+ {
+  "shot": "progress-00-activity"
+ },
+ {
+  "eval": "var p = frame.item.pageItem; p.openGet(p.showFromHit({ title: 'Kino no Tabi: the Beautiful World', episodes: 13, format: 'TV', year: 2003 })); p.getShow.title",
+  "as": "show"
+ },
+ {
+  "wait": 3000
+ },
+ {
+  "shot": "progress-01-show"
+ },
+ {
+  "click": "provider-erai"
+ },
+ {
+  "wait": 12000
+ },
+ {
+  "wheel": [
+   600,
+   600,
+   -900
+  ]
+ },
+ {
+  "wait": 600
+ },
+ {
+  "shot": "progress-01b-show-grid"
+ },
+ {
+  "click": "rail-home"
+ },
+ {
+  "wait": 3000
+ },
+ {
+  "shot": "progress-02-home"
+ },
+ {
+  "click": "rail-library"
+ },
+ {
+  "wait": 2500
+ },
+ {
+  "click": "plain"
+ },
+ {
+  "wait": 1500
+ },
+ {
+  "shot": "progress-03-library-plain"
+ },
+ {
+  "eval": "var p = frame.item.pageItem; p.pickSort('Downloaded'); p.sections.length + ':' + p.cardList.slice(0, 5).map(function(c) { return c.title + '@' + c.downloaded_at + ':' + c.cubes }).join(' | ')",
+  "as": "recent"
+ },
+ {
+  "wait": 1500
+ },
+ {
+  "shot": "progress-04-library-recent"
+ }
+]

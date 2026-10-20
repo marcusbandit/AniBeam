@@ -34,17 +34,29 @@ Item {
     function watchedOf(c) { return c.watched !== null && c.watched !== undefined ? c.watched : 0 }
     function droppedOf(c) { return c.list_status === "Dropped" }
 
-    // The hero: the most recently viewed series with something to go on with. An episode
-    // stopped short of its end comes first, else the series' next episode on disk; a
-    // series with neither is caught up and is passed over for the one viewed before it.
-    // Every viewed series with something to go on with, most recently viewed first: the
-    // first is the hero, the rest the Continue row. At most twelve series are read; a
-    // dropped one is never among them.
+    // The hero: the series to go on with. An episode stopped short of its end comes first,
+    // else the series' next episode on disk; a series with neither is caught up and is
+    // passed over for the next one.
+    // A series counts as started when it was played here or when the tracker says it is
+    // being watched with episodes seen, since plenty get watched somewhere else. They are
+    // ordered by the later of the last play here and, while an episode is out and unseen,
+    // the day that episode arrived: a new episode of a show being followed is the obvious
+    // next watch. The first is the hero, the rest the Continue row. At most sixteen series
+    // are read; a dropped one is never among them.
+    function startedOf(c) {
+        if (page.droppedOf(c) || c.list_status === "Completed") return false
+        if (page.viewedAt(c) > 0) return true
+        return page.watchedOf(c) > 0 && (c.list_status === "Watching" || c.list_status === "Repeating")
+    }
+    function continueAt(c) {
+        var fresh = c.watched_state === "Behind" && c.latest_activity_at ? c.latest_activity_at : 0
+        return Math.max(page.viewedAt(c), fresh)
+    }
     function pickContinue() {
         var out = []
-        var viewed = shelf.filter(function(c) { return page.viewedAt(c) > 0 && !page.droppedOf(c) })
-        for (var i = 0; i < viewed.length && i < 12; i++) {
-            var c = viewed[i]
+        var started = shelf.filter(page.startedOf).sort(function(a, b) { return page.continueAt(b) - page.continueAt(a) })
+        for (var i = 0; i < started.length && i < 16; i++) {
+            var c = started[i]
             var r = Door.getSeries(c.id)
             if (r.error) continue
             var d = r.reply.detail
@@ -52,7 +64,11 @@ Item {
             var partial = null, next = null
             for (var k = 0; k < eps.length; k++) {
                 var e = eps[k]
-                if (!e.watched && e.resume && e.resume.duration > 0 && e.resume.position / e.resume.duration < 0.9)
+                // Stopped before the outro (85 percent when no outro is known): a stop in
+                // the credits is a finished episode, a stop before them is not
+                // An episode a torrent is still writing is never what to go on with
+                if (e.downloading !== undefined && e.downloading !== null) continue
+                if (!e.watched && e.stopped_short && e.resume && e.resume.duration > 0)
                     partial = e
                 if (d.next_up && e.file === d.next_up) next = e
             }
@@ -84,11 +100,12 @@ Item {
     Component.onCompleted: reload()
 
     function playFile(file, title) { if (file) frame.go("player", { file: file }, title) }
+    function wholeFirst(d) { return d && d.episodes && d.episodes.length && (d.episodes[0].downloading === undefined || d.episodes[0].downloading === null) ? d.episodes[0].file : null }
     function openSeries(c) { frame.go("series", { id: c.id }, c.title) }
     function playSeries(c) {
         var r = Door.getSeries(c.id)
         var d = !r.error ? r.reply.detail : null
-        var file = d ? (d.next_up ? d.next_up : (c.kind === "Movie" && d.episodes && d.episodes.length ? d.episodes[0].file : null)) : null
+        var file = d ? (d.next_up ? d.next_up : (c.kind === "Movie" ? page.wholeFirst(d) : null)) : null
         if (file) playFile(file, c.title)
         else openSeries(c)
     }
@@ -147,6 +164,12 @@ Item {
             return page.viewedAt(c) > now - month && c.watched_state !== "CaughtUp"
         })
     }
+    // The series a file arrived in over the last fortnight, newest first
+    readonly property var downloadedList: {
+        var since = nowMs / 1000 - 14 * 86400
+        return shelf.filter(function(c) { return c.downloaded_at && c.downloaded_at >= since })
+            .sort(function(a, b) { return b.downloaded_at - a.downloaded_at })
+    }
     // Never started, best rated first
     readonly property var freshList: {
         var list = shelf.filter(function(c) {
@@ -189,10 +212,122 @@ Item {
             anchors.bottom: parent.bottom
             anchors.bottomMargin: theme.space(2)
             spacing: theme.space(3)
-            Label { id: headingText; text: parent.parent.text; role: "display"; font.pointSize: theme.typeLarge; font.variableAxes: ({ "wdth": 74, "wght": 500 }) }
+            Label { id: headingText; text: parent.parent.text; role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 }) }
             Label { anchors.baseline: headingText.baseline; text: parent.parent.fact; role: "ui"; color: theme.textDim }
         }
         Item { id: actionSlot; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(2); width: childrenRect.width; height: childrenRect.height }
+    }
+
+    // The episodes on disk as a phrase: "On disk 1 to 3" while they run from the first,
+    // else the count and the newest. The newest number comes off the card's code (S02E03,
+    // EP 3).
+    function newestOnDisk(c) {
+        var m = /(\d+(?:\.\d+)?)$/.exec(c.code || "")
+        return m ? Number(m[1]) : 0
+    }
+    function diskText(c) {
+        var n = c.episodes_on_disk || 0, top = newestOnDisk(c)
+        if (n === 0) return "Nothing on disk yet"
+        if (n === 1 && top > 0) return "On disk: episode " + top
+        if (top === n) return "On disk: episodes 1 to " + n
+        return "On disk: " + n + " episodes, newest " + top
+    }
+    // The episodes on disk past the tracker's progress; -1 with no tracker entry
+    function toWatchOf(c) {
+        if (c.watched === null || c.watched === undefined) return -1
+        var n = c.episodes_on_disk || 0, top = newestOnDisk(c)
+        return Math.min(n, Math.max(0, top - c.watched))
+    }
+
+    // ---- One series in the week: the poster as a thumbnail, the title, which episode
+    // lands and at what time, and what is on disk with how much of it is still to watch
+    component WeekEntry: Rectangle {
+        id: entry
+        property var item: ({})
+        property bool today: false
+        readonly property bool gridStop: true
+        readonly property var next: item.next_airing && item.next_airing.at * 1000 > page.nowMs ? item.next_airing : null
+        readonly property int toWatch: page.toWatchOf(item)
+        activeFocusOnTab: true
+        Keys.onReturnPressed: page.openSeries(item)
+        Keys.onEnterPressed: page.openSeries(item)
+        Keys.onSpacePressed: page.playSeries(item)
+        height: theme.space(30)
+        radius: theme.radiusTile
+        color: em.containsMouse ? theme.raised : theme.tile
+        border.width: 1
+        border.color: entry.activeFocus ? theme.accent : em.containsMouse ? theme.lineStrong : "transparent"
+        scale: em.pressed ? 0.98 : 1
+
+        Corner {
+            id: entryThumb
+            x: theme.space(2); anchors.verticalCenter: parent.verticalCenter
+            height: parent.height - theme.space(4); width: Math.round(height * 2 / 3)
+            radius: theme.radiusSm
+            color: theme.tileSunken
+            fillItem: entryPoster.status === Image.Ready ? entryPoster : null
+            Image {
+                id: entryPoster
+                visible: false
+                width: entryThumb.width; height: entryThumb.height
+                source: entry.item.poster ? "file://" + entry.item.poster : ""
+                sourceSize: theme.posterDecodeSize
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+            }
+        }
+        Column {
+            anchors.left: entryThumb.right; anchors.leftMargin: theme.space(3)
+            anchors.right: parent.right; anchors.rightMargin: theme.space(3)
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: theme.space(1)
+            Label {
+                width: parent.width
+                text: entry.item.title || ""
+                role: "title"
+                font.pointSize: theme.typeNormal
+                color: em.containsMouse ? theme.accent : theme.text
+                wrapMode: Text.Wrap
+                maximumLineCount: 2
+                elide: Text.ElideRight
+                lineHeight: 0.95
+            }
+            // What lands: "Episode 4 at 17:30", today with the time left after it
+            Row {
+                spacing: theme.space(1.5)
+                Label {
+                    text: entry.next ? (entry.next.season && entry.next.season !== 1 ? "S" + entry.next.season + " " : "") + Fmt.episodeName("", entry.next.episode) : "No date yet"
+                    role: "ui"
+                    font.weight: 600
+                    color: entry.next ? theme.text : theme.textDim
+                }
+                Label {
+                    visible: !!entry.next
+                    text: entry.next ? "at " + Qt.formatTime(new Date(entry.next.at * 1000), "HH:mm") + (entry.today ? ", in " + page.shortCountdown(entry.next.at - page.nowMs / 1000) : "") : ""
+                    role: "ui"
+                    color: theme.accent
+                }
+            }
+            // What is here: the episodes on disk, then how many of them are still to watch
+            Row {
+                spacing: theme.space(1.5)
+                Label { text: page.diskText(entry.item); role: "ledger"; color: theme.textDim }
+                Label {
+                    visible: (entry.item.episodes_on_disk || 0) > 0 && entry.toWatch >= 0
+                    text: "\u00b7 " + (entry.toWatch > 0 ? entry.toWatch + " to watch" : "all watched")
+                    role: "ledger"
+                    font.weight: entry.toWatch > 0 ? 650 : 400
+                    color: entry.toWatch > 0 ? theme.accent : theme.textFaint
+                }
+            }
+        }
+        MouseArea {
+            id: em
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: { entry.forceActiveFocus(); page.openSeries(entry.item) }
+        }
     }
 
     // ---- A shelf: a heading over a grid of cards
@@ -266,11 +401,11 @@ Item {
             readonly property color ink: "#f4f6f8"
             readonly property color inkDim: Qt.rgba(1, 1, 1, 0.68)
 
-            // The band's colour bleeds up into the page's head, so the whole top of Home
-            // takes the series' tone
+            // The band's colour bleeds up into the page's head and out to the window's edges,
+            // so the whole top of Home takes the series' tone
             Rectangle {
-                x: -theme.space(8); y: -theme.space(7)
-                width: parent.width + theme.space(16); height: parent.height * 0.6 + theme.space(7)
+                x: -scroll.gutter; y: -theme.space(7)
+                width: scroll.width; height: parent.height * 0.6 + theme.space(7)
                 gradient: Gradient {
                     GradientStop { position: 0; color: Qt.rgba(hero.tone.r, hero.tone.g, hero.tone.b, 0.22) }
                     GradientStop { position: 1; color: Qt.rgba(hero.tone.r, hero.tone.g, hero.tone.b, 0) }
@@ -297,12 +432,16 @@ Item {
                         fillMode: Image.PreserveAspectCrop; asynchronous: true
                     }
                 }
+                // The wash shares the band's rounding, so no square corner of it shows past
+                // the band's own; it stays solid until past the art's left edge
                 Rectangle {
                     visible: hero.hasArt
                     anchors.fill: parent
+                    radius: theme.radiusXl
+                    antialiasing: true
                     gradient: Gradient {
                         orientation: Gradient.Horizontal
-                        GradientStop { position: 0.28; color: hero.base }
+                        GradientStop { position: 0.33; color: hero.base }
                         GradientStop { position: 0.62; color: Qt.rgba(hero.base.r, hero.base.g, hero.base.b, 0.55) }
                         GradientStop { position: 1; color: Qt.rgba(hero.base.r, hero.base.g, hero.base.b, 0.1) }
                     }
@@ -359,22 +498,28 @@ Item {
                     color: hero.ink
                     elide: Text.ElideRight
                 }
+                Label {
+                    objectName: "hero-downloading"
+                    visible: !!(hero.c && hero.c.downloading && hero.c.downloading.length > 0)
+                    text: visible ? "Downloading " + Fmt.plural(hero.c.downloading.length, "episode", "episodes") : ""
+                    role: "ledger"
+                    font.weight: 600; font.variableAxes: ({ "wdth": 88, "wght": 600 })
+                    color: theme.tone(theme.cubeState("t").fill, Qt.rgba(1, 1, 1, 1), 0.3)
+                }
                 Row {
                     spacing: theme.space(3)
                     readonly property real frac: hero.r && hero.r.partial
                         ? hero.ep.resume.position / hero.ep.resume.duration
                         : hero.c && hero.c.total_episodes > 0 ? page.watchedOf(hero.c) / hero.c.total_episodes : 0
-                    visible: frac > 0
-                    Rectangle {
+                    visible: frac > 0 || !!(hero.c && hero.c.cubes)
+                    EpisodeCubes {
+                        visible: codes.length > 0
                         anchors.verticalCenter: parent.verticalCenter
-                        width: theme.space(60); height: theme.space(1)
-                        radius: height / 2
-                        color: Qt.rgba(1, 1, 1, 0.2)
-                        Rectangle {
-                            width: parent.width * Math.min(1, parent.parent.frac)
-                            height: parent.height; radius: parent.radius
-                            color: hero.inkAccent
-                        }
+                        width: Math.min(implicitWidth, theme.space(60))
+                        height: implicitHeight
+                        codes: hero.c && hero.c.cubes ? hero.c.cubes : ""
+                        cubeSize: theme.space(2)
+                        maxRows: 1
                     }
                     Label {
                         anchors.verticalCenter: parent.verticalCenter
@@ -403,7 +548,7 @@ Item {
                         tint: hero.inkAccent
                         icon: "play"
                         text: hero.ep ? (hero.r.partial ? "Resume " : "Play ") + Fmt.episodeName("", hero.ep.number).toLowerCase() : ""
-                        onClicked: page.playFile(hero.ep.file, hero.c.title)
+                        onClicked: if (hero.ep) page.playFile(hero.ep.file, hero.c.title)
                     }
                     Button {
                         text: "Open series"
@@ -428,16 +573,26 @@ Item {
         }
         Item { width: 1; height: page.continueList.length > 1 ? theme.space(4) : 0 }
 
+        Shelf {
+            objectName: "home-downloaded"
+            width: parent.width
+            heading: "Recently downloaded"
+            fact: page.downloadedList.length ? Fmt.plural(page.downloadedList.length, "series", "series") + " with new files this fortnight" : ""
+            list: page.downloadedList
+            maxRows: 1
+            onMore: frame.go("library", { sort: "Downloaded", arrange: "None" })
+        }
+        Item { width: 1; height: page.downloadedList.length ? theme.space(4) : 0 }
+
         // ---- The week: one row per day that has an episode landing, today always first
-        // (and marked), every day's posters in one line so nothing hides below the fold;
-        // the series without a date yet close the list
+        // (and marked); each series says which episode lands at what time and what of it is
+        // already on disk. The series without a date yet close the list
         Column {
             objectName: "home-week"
             visible: page.airingRows.length > 0
             width: parent.width
             spacing: theme.space(4)
             readonly property real labelWidth: theme.space(30)
-            readonly property real cardWidth: theme.space(42)
             Heading { text: "This week"; fact: page.weekFact }
             Repeater {
                 model: page.week.filter(function(d) { return d.today || d.cards.length > 0 })
@@ -485,16 +640,15 @@ Item {
                         x: parent.parent.labelWidth
                         width: parent.width - x
                         spacing: theme.space(3)
+                        readonly property int cols: Math.max(1, Math.floor((width + spacing) / (theme.space(84) + spacing)))
                         Repeater {
                             model: day.modelData.cards
-                            Card {
+                            WeekEntry {
                                 required property var modelData
                                 objectName: "week-card-" + modelData.id
                                 item: modelData
-                                posterWidth: day.parent.cardWidth
-                                nowMs: page.nowMs
-                                onOpened: page.openSeries(modelData)
-                                onPlayed: page.playSeries(modelData)
+                                today: day.modelData.today
+                                width: Math.floor((dayCards.width - dayCards.spacing * (dayCards.cols - 1)) / dayCards.cols)
                             }
                         }
                     }

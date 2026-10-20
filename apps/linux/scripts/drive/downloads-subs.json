@@ -3,7 +3,8 @@
   "log": "the rail's badge, then the page: sections by state, posters"
  },
  {
-  "wait": 7000
+  "until": "frame.item.downloadsAttention > 0",
+  "timeout": 20000
  },
  {
   "shot": "subs-00-badge"
@@ -12,7 +13,8 @@
   "click": "rail-downloads"
  },
  {
-  "wait": 9000
+  "until": "driver.item.pageReady('downloads') && frame.item.pageItem.torrentsRead === true && frame.item.pageItem.rulesLoaded === true && driver.item.findItem('show-card') !== null",
+  "timeout": 25000
  },
  {
   "eval": "frame.item.nav.current.page",
@@ -45,7 +47,7 @@
   "click": "show-card-action"
  },
  {
-  "wait": 400
+  "until": "frame.item.removalOpen === true"
  },
  {
   "eval": "frame.item.removalOpen",
@@ -64,10 +66,10 @@
   "shot": "subs-04-sheet-files"
  },
  {
-  "click": "downloads-summary"
+  "key": "Escape"
  },
  {
-  "wait": 300
+  "until": "frame.item.removalOpen === false"
  },
  {
   "eval": "frame.item.removalOpen",
@@ -110,7 +112,7 @@
   "click": "downloads-remove-broken"
  },
  {
-  "wait": 400
+  "until": "frame.item.removalOpen === true"
  },
  {
   "eval": "frame.item.removalOpen",
@@ -123,7 +125,7 @@
   "click": "remove-sheet-cancel"
  },
  {
-  "wait": 300
+  "until": "frame.item.removalOpen === false"
  },
  {
   "eval": "frame.item.removalOpen",
@@ -178,7 +180,8 @@
   "expect": true
  },
  {
-  "wait": 8000
+  "until": "frame.item.pageItem.detail !== null && frame.item.pageItem.feed !== null && frame.item.pageItem.feed.loading === false",
+  "timeout": 20000
  },
  {
   "shot": "subs-09-detail"
@@ -187,7 +190,7 @@
   "click": "show-unsubscribe"
  },
  {
-  "wait": 400
+  "until": "frame.item.removalOpen === true"
  },
  {
   "eval": "frame.item.removalOpen",
@@ -200,7 +203,7 @@
   "click": "remove-sheet-cancel"
  },
  {
-  "wait": 300
+  "until": "frame.item.removalOpen === false"
  },
  {
   "eval": "frame.item.removalOpen",
@@ -210,7 +213,7 @@
   "key": "Escape"
  },
  {
-  "wait": 600
+  "until": "frame.item.pageItem.detail === null"
  },
  {
   "eval": "frame.item.pageItem.detail === null",
@@ -223,7 +226,7 @@
   "click": "downloads-unsubscribe-complete"
  },
  {
-  "wait": 400
+  "until": "frame.item.removalOpen === true"
  },
  {
   "eval": "frame.item.removalOpen",
@@ -236,7 +239,7 @@
   "key": "Escape"
  },
  {
-  "wait": 300
+  "until": "frame.item.removalOpen === false"
  },
  {
   "eval": "frame.item.removalOpen",

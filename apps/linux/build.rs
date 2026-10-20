@@ -74,6 +74,9 @@ fn main() {
             .qml_file("qml/PosterPool.qml")
             .qml_file("qml/StatusDot.qml")
             .qml_file("qml/ScorePicker.qml")
+            .qml_file("qml/ActivityColumn.qml")
+            .qml_file("qml/GetShow.qml")
+            .qml_file("qml/EpisodeCubes.qml")
             .qml_file("qml/EpisodeRow.qml")
             .qml_file("qml/PersonCard.qml")
             .qml_file("qml/RecommendationCard.qml")
@@ -110,6 +113,7 @@ fn main() {
             .qml_file("qml/ShowRow.qml")
             .qml_file("qml/ShowDetail.qml")
             .qml_file("qml/RemoveSheet.qml")
+            .qml_file("qml/StartSourceSheet.qml")
             .qml_file("qml/TorrentRow.qml")
             .qml_file("qml/SettingsDataTab.qml"),
     )
@@ -135,6 +139,8 @@ fn main() {
         "assets/fonts/Archivo-Variable-Regular.ttf",
         "assets/fonts/Archivo-Variable-SemiBold.ttf",
         "assets/fonts/Archivo-Variable-ExtraBold.ttf",
+        "assets/fonts/B612-Regular.ttf",
+        "assets/fonts/B612-Bold.ttf",
         "assets/icons/activity.svg",
         "assets/icons/archive.svg",
         "assets/icons/arrow-down.svg",
@@ -195,6 +201,7 @@ fn main() {
         "assets/icons/list-filter.svg",
         "assets/icons/list-video.svg",
         "assets/icons/list.svg",
+        "assets/icons/loader-circle.svg",
         "assets/icons/log-in.svg",
         "assets/icons/log-out.svg",
         "assets/icons/maximize.svg",

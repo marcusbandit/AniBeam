@@ -6,7 +6,8 @@
   "click": "rail-downloads"
  },
  {
-  "wait": 9000
+  "until": "driver.item.pageReady('downloads') && frame.item.pageItem.rulesLoaded === true && frame.item.downloadsRules.filter(function(x) { return x.name.indexOf('Helluva') === 0 }).length > 0",
+  "timeout": 20000
  },
  {
   "eval": "var p = frame.item.pageItem, r = frame.item.downloadsRules.filter(function(x) { return x.name.indexOf('Helluva') === 0 })[0]; p.watchSubscription({ name: r.name, feed_url: r.feed_url, save_path: r.save_path }); p.detail !== null && p.watching",
@@ -19,7 +20,8 @@
   "shot": "sub-00-settling"
  },
  {
-  "wait": 6000
+  "until": "frame.item.pageItem.ruleView !== null && frame.item.pageItem.feed !== null && frame.item.pageItem.feed.loading === false",
+  "timeout": 20000
  },
  {
   "eval": "frame.item.pageItem.ruleView !== null",
@@ -46,7 +48,7 @@
   "key": "Escape"
  },
  {
-  "wait": 600
+  "until": "frame.item.pageItem.detail === null"
  },
  {
   "log": "a 1337x search narrowed on anirss's side keeps the query the endpoint was asked"
@@ -68,18 +70,32 @@
   "key": "Return"
  },
  {
-  "wait": 20000
+  "until": "frame.item.pageItem.searching === false && (frame.item.pageItem.state !== null || frame.item.pageItem.searchError !== '')",
+  "timeout": 60000
+ },
+ {
+  "eval": "frame.item.pageItem.searchError",
+  "expect": ""
  },
  {
   "eval": "frame.item.pageItem.state.wireQuery",
   "as": "wire"
  },
  {
+  "eval": "frame.item.pageItem.history.length",
+  "as": "hist"
+ },
+ {
   "eval": "frame.item.pageItem.narrow('WEB-DL'); 1",
   "expect": 1
  },
  {
-  "wait": 8000
+  "until": "frame.item.pageItem.searching === false && (frame.item.pageItem.history.length > vars.hist || frame.item.pageItem.searchError !== '')",
+  "timeout": 60000
+ },
+ {
+  "eval": "frame.item.pageItem.searchError",
+  "expect": ""
  },
  {
   "eval": "var s = frame.item.pageItem.state; s.query + ' | wire: ' + s.wireQuery",

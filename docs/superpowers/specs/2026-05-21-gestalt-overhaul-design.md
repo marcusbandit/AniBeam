@@ -1,7 +1,6 @@
 # AniBeam — Gestalt Overhaul Design
 
 **Date:** 2026-05-21
-**Author:** Liam (marcusbandit) + Claude
 **Status:** Approved for implementation planning
 
 ---
@@ -46,6 +45,7 @@ The app feels visually "off" because three system-level primitives never existed
 ```
 
 **Proximity rule** (informs every margin/gap decision):
+
 > Gaps inside a unit must be smaller than gaps between units. Row gap inside a list ≤ s2. Header → list ≤ s4. List → next section ≥ s10.
 
 **Motion tokens:**
@@ -82,16 +82,19 @@ The app feels visually "off" because three system-level primitives never existed
 ### Layer 2 — Layout primitives
 
 **`<Page>`**
+
 - Replaces the `.page` div used at the top of every page component.
 - Provides max-width, default vertical padding (`--s8` top, `--s16` bottom). The scrollbar-gutter rule lives on `.main-content` (the actual scrolling element); `<Page>` doesn't restate it.
 - Slot props: `head` (rendered with `--s6` bottom margin), `children`.
 
 **`<Section title count? action?>`**
+
 - The pattern that's currently `.bare-episode-head` + a sibling content block.
 - Owns the section-gap rule: `--s12` top margin (except the first section in a `<Page>`), `--s4` between the head and the children.
 - The "Related" pixel-brothers bug becomes impossible because section-gap is structural, not decorated by hand on each usage.
 
 **`<Stack gap="s4">` and `<Inline gap="s2" align="center">`**
+
 - Thin wrappers around flexbox column / row with a `gap` prop bound to the spacing scale.
 - Replace the ad-hoc `margin-top`/`margin-bottom` decisions in component-local CSS.
 - Implementation: `<div style={{ display: 'flex', flexDirection, gap: `var(--${gap})` }} />`. Zero runtime cost, no library.
@@ -99,17 +102,20 @@ The app feels visually "off" because three system-level primitives never existed
 ### Layer 3 — Content primitives
 
 **`<Card variant="default" | "internal" | "external">`**
+
 - Replaces the shell of `.show-card`, `.episode-card`, `.relation-card`. Inner content is page-specific and stays in the page's component.
 - `variant` drives the inset edge glow (Layer-1 box-shadow pattern, NOT a `::before` stripe). Default = no glow; internal = teal; external = indigo.
 - Hover lift wired to the motion engine (smooth, frame-rate independent), `--motion-lift-amount` translated on Y. No `transform: scale` on the inner image; the image scales via a CSS transition with the same speed used by the engine for visual coherence.
 - Click handling and routing remain in the page's component — `<Card>` is a button-or-div based on `onClick` presence.
 
 **`<EpisodeRow>`** (specifically replaces `.bare-episode-row`):
+
 - Three slot CSS regions: `[marker | code | title | trailing]` plus a reserved **bottom slot** for the hover-revealed seekbar.
 - Padding is symmetric (`--s3` vertical, `--s4` horizontal). The seekbar lives **outside** the text's bounding box, anchored to the row's bottom edge in a reserved row of height `--s1`.
 - Visual states: `default` / `hovered` / `next-up` / `watched` / `in-progress`. Each adjusts color/border via tokens, never repositions the text.
 
 **`<Pill tone="muted | accent | teal | rose | amber">`**
+
 - Single shape, mono font, consistent letter-spacing.
 - Replaces `.bare-episode-pill`, `.bare-episode-flag`, `.relation-card-pill`, `.genre-pill`, `.show-card-badge` (visual style only — the badge math on ShowCard stays).
 
@@ -150,6 +156,7 @@ Each step is its own commit (and its own `bun run package` per the user's workfl
 11. **Cleanup PR.** Delete now-unused CSS rules in `App.css` whose pages have all migrated.
 
 A page is "migrated" when:
+
 - Its component renders only primitives + page-specific content (no raw `<div className="page">`, `<div className="section-head">`, etc.).
 - Its hover/lift behavior is driven by the motion engine, not local CSS.
 - Its page-local CSS contains no magic spacing numbers — only token references or content-specific layout.

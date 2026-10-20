@@ -163,6 +163,8 @@ SettingsTab {
             SettingRow { visible: !tab.sidecar; label: "Token"; helper: tab.settings && tab.settings.has_anirss_token ? "A token is saved. Type a new one to replace it, or clear the field to remove it." : "The bearer token anirss printed when it started, or ANIRSS_API_TOKEN."
                 Field { text: tab.tokenText; secret: true; mono: true; width: theme.space(50); placeholder: tab.settings && tab.settings.has_anirss_token ? "Saved" : "Not set"
                         onEdited: function(t) { tab.tokenText = t; tab.tokenTouched = true; tab.dirty = true } } }
+            SettingRow { label: "Unsubscribe from finished shows"; helper: "16 days after a show's last episode airs, its RSS feed is removed. The show and its files stay."
+                Switch { objectName: "downloads-prune-finished"; checked: !!tab.draft && tab.draft.prune_finished_feeds !== false; onToggled: function(on) { tab.edit(function(d) { d.prune_finished_feeds = on }) } } }
             SettingRow { label: "State"; line: tab.anirssLine; hairline: false
                 Button { text: tab.anirss && tab.anirss.state === "Starting" ? "Starting" : tab.anirss && tab.anirss.state === "Ready" ? "Reconnect" : "Connect"; icon: "refresh-cw"; flat: true; enabled: !tab.dirty && !(tab.anirss && tab.anirss.state === "Starting"); onClicked: tab.connect() } }
         }

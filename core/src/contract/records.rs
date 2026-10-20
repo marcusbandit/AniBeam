@@ -70,6 +70,11 @@ pub struct SeriesCard {
     pub watched: Option<u32>,
     pub watched_state: WatchedState,
     pub strip: Strip,
+    /// The episode cubes: one state code per episode from 1 to the total,
+    /// at most 400 (`library::cubes`). Empty for a film or a show with no
+    /// count at all. The codes and their colours are one table each side.
+    #[serde(default)]
+    pub cubes: String,
     pub community_score: Option<f64>,
     pub my_score: Option<f64>,
     pub list_status: Option<ListStatus>,
@@ -80,6 +85,15 @@ pub struct SeriesCard {
     /// to start on it, the order they expect a list in.
     #[serde(default = "epoch")]
     pub added_at: SystemTime,
+    /// When the newest file arrived (its mtime), the "recently
+    /// downloaded" order; None with nothing on disk.
+    #[serde(default)]
+    pub downloaded_at: Option<SystemTime>,
+    /// The episodes a torrent is still writing and how far each is, laid on
+    /// by the downloads overlay (`downloads::overlay`), never by the library
+    /// scan. An episode listed here is not playable yet.
+    #[serde(default)]
+    pub downloading: Vec<EpisodeDownload>,
     /// The franchise this series shares with other library series, or None
     /// when it relates to no other series in the library
     /// (`franchise::groups`).
@@ -171,6 +185,13 @@ pub struct Sidecar {
     pub title: Option<String>,
 }
 
+/// One episode of a series that a torrent is still writing, `progress` 0 to 1.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct EpisodeDownload {
+    pub number: u32,
+    pub progress: f64,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct Episode {
     pub file: u64,
@@ -182,8 +203,17 @@ pub struct Episode {
     pub path: String,
     pub sidecars: Vec<Sidecar>,
     pub resume: Option<ResumePoint>,
+    /// A resume point short of the episode's end line: the outro's start
+    /// when one is known, else the 85 percent the tracker mark uses. Past
+    /// that line the episode was seen to its end, whatever is left.
+    pub stopped_short: bool,
     pub watched: bool,
     pub next_up: bool,
+    /// How far a torrent has written this episode, while one is still on it;
+    /// None once it is whole. Laid on by the downloads overlay: a file that is
+    /// being downloaded is on disk but is not playable.
+    #[serde(default)]
+    pub downloading: Option<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
@@ -284,6 +314,14 @@ pub struct SearchResult {
     pub year: Option<u32>,
     pub episodes: Option<u32>,
     pub cover_url: Option<String>,
+    /// Every name the provider knows the show by, so the shell can show
+    /// the one that was searched for and search releases by another.
+    #[serde(default)]
+    pub romaji: Option<String>,
+    #[serde(default)]
+    pub english: Option<String>,
+    #[serde(default)]
+    pub synonyms: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
@@ -462,10 +500,18 @@ pub struct PlaybackSession {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct Preferences {
+    // Each choice reads leniently: a value another build wrote that this one does not know
+    // (a newer sort, say) falls back to its default instead of failing the whole blob, and
+    // with it every job that reads the preferences.
+    #[serde(deserialize_with = "lenient::title_language")]
     pub title_language: TitleLanguage,
+    #[serde(deserialize_with = "lenient::tab")]
     pub library_tab: Tab,
+    #[serde(deserialize_with = "lenient::sort")]
     pub library_sort: Sort,
+    #[serde(deserialize_with = "lenient::direction")]
     pub library_direction: Direction,
+    #[serde(deserialize_with = "lenient::feed_sort")]
     pub feed_sort: FeedSort,
     /// Whether series that are done with (`cards::watched_out`) also sit in
     /// the main tabs, or only in the Watched tab. Default off: a
@@ -475,7 +521,7 @@ pub struct Preferences {
     pub library_show_watched: bool,
     /// How the library page arranges its cards. `serde(default)` because
     /// older blobs predate it, which is the whole migration.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient::arrange")]
     pub library_arrange: Arrange,
     /// Whether the library pulls a franchise's series (two or more in the
     /// library) out into a section of their own ahead of the cut, or leaves
@@ -486,6 +532,41 @@ pub struct Preferences {
 
 fn default_true() -> bool {
     true
+}
+
+/// Preferences fields that fall back to `Preferences::default()`'s value
+/// when the stored one is not a variant this build knows.
+mod lenient {
+    use super::*;
+    use serde::Deserializer;
+    use serde::de::DeserializeOwned;
+
+    fn or<'de, D: Deserializer<'de>, T: DeserializeOwned>(
+        d: D,
+        fallback: T,
+    ) -> Result<T, D::Error> {
+        let v = serde_json::Value::deserialize(d)?;
+        Ok(serde_json::from_value(v).unwrap_or(fallback))
+    }
+
+    pub fn title_language<'de, D: Deserializer<'de>>(d: D) -> Result<TitleLanguage, D::Error> {
+        or(d, Preferences::default().title_language)
+    }
+    pub fn tab<'de, D: Deserializer<'de>>(d: D) -> Result<Tab, D::Error> {
+        or(d, Preferences::default().library_tab)
+    }
+    pub fn sort<'de, D: Deserializer<'de>>(d: D) -> Result<Sort, D::Error> {
+        or(d, Preferences::default().library_sort)
+    }
+    pub fn direction<'de, D: Deserializer<'de>>(d: D) -> Result<Direction, D::Error> {
+        or(d, Preferences::default().library_direction)
+    }
+    pub fn feed_sort<'de, D: Deserializer<'de>>(d: D) -> Result<FeedSort, D::Error> {
+        or(d, Preferences::default().feed_sort)
+    }
+    pub fn arrange<'de, D: Deserializer<'de>>(d: D) -> Result<Arrange, D::Error> {
+        or(d, Preferences::default().library_arrange)
+    }
 }
 
 fn epoch() -> SystemTime {

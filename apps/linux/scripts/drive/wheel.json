@@ -1,14 +1,105 @@
 [
-  {"log": "one wheel notch over the library glides three base steps (~360 px)"},
-  {"eval": "frame.item.nav.current.page", "expect": "library"},
-  {"wait": 500},
-  {"wheel": [1200, 700, -120]},
-  {"wait": 1500},
-  {"eval": "Math.round(frame.item.leavingScroll())", "as": "one"},
-  {"eval": "vars.one > 300 && vars.one < 420", "expect": true},
-  {"log": "a second notch goes as far again"},
-  {"wheel": [1200, 700, -120]},
-  {"wait": 1500},
-  {"eval": "Math.round(frame.item.leavingScroll()) - vars.one > 300", "expect": true},
-  {"shot": "wheel-after"}
+  {
+    "log": "a wheel notch over the library scrolls it, as far as a notch goes in a browser"
+  },
+  {
+    "page": "library"
+  },
+  {
+    "eval": "frame.item.nav.current.page",
+    "expect": "library"
+  },
+  {
+    "until": "driver.item.findItem('library-page') !== null"
+  },
+  {
+    "wheel": [
+      1200,
+      700,
+      -120
+    ]
+  },
+  {
+    "until": "Math.round(frame.item.leavingScroll()) === 100",
+    "timeout": 3000
+  },
+  {
+    "eval": "Math.round(frame.item.leavingScroll())",
+    "as": "one"
+  },
+  {
+    "eval": "vars.one",
+    "expect": 100
+  },
+  {
+    "log": "a second notch goes further"
+  },
+  {
+    "wheel": [
+      1200,
+      700,
+      -120
+    ]
+  },
+  {
+    "until": "Math.round(frame.item.leavingScroll()) === 2 * vars.one",
+    "timeout": 3000
+  },
+  {
+    "eval": "Math.round(frame.item.leavingScroll()) > vars.one",
+    "expect": true
+  },
+  {
+    "log": "a fast spin of five notches goes five notches, not one"
+  },
+  {
+    "eval": "Math.round(frame.item.leavingScroll())",
+    "as": "two"
+  },
+  {
+    "wheel": [
+      1200,
+      700,
+      -120
+    ]
+  },
+  {
+    "wheel": [
+      1200,
+      700,
+      -120
+    ]
+  },
+  {
+    "wheel": [
+      1200,
+      700,
+      -120
+    ]
+  },
+  {
+    "wheel": [
+      1200,
+      700,
+      -120
+    ]
+  },
+  {
+    "wheel": [
+      1200,
+      700,
+      -120
+    ]
+  },
+  {
+    "until": "Math.round(frame.item.leavingScroll()) - vars.two === 500",
+    "timeout": 3000
+  },
+  {
+    "eval": "Math.round(frame.item.leavingScroll()) - vars.two",
+    "expect": 500
+  },
+  {
+    "shot": "wheel-after"
+  }
 ]

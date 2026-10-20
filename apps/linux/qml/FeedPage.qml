@@ -119,7 +119,7 @@ Item {
     function playSeries(s) {
         var r = Door.getSeries(s.id)
         var d = !r.error ? r.reply.detail : null
-        var file = d ? (d.next_up ? d.next_up : (s.kind === "Movie" && d.episodes && d.episodes.length ? d.episodes[0].file : null)) : null
+        var file = d ? (d.next_up ? d.next_up : (s.kind === "Movie" && d.episodes && d.episodes.length && (d.episodes[0].downloading === undefined || d.episodes[0].downloading === null) ? d.episodes[0].file : null)) : null
         if (file) frame.go("player", { file: file }, s.title)
         else frame.go("series", { id: s.id }, s.title)
     }
@@ -150,13 +150,14 @@ Item {
         // ---- The head: the title, this sort's one line beside it, the sort at the right
         Item {
             width: parent.width
-            height: theme.space(14)
+            height: theme.space(20)
             Label {
                 id: titleLabel
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Feed"
                 role: "display"
+                font.pointSize: theme.typePage
             }
             Label {
                 objectName: "feed-summary"
@@ -205,8 +206,8 @@ Item {
                             id: sectionTitle
                             text: section.modelData.title
                             role: "display"
-                            font.pointSize: theme.typeLarge
-                            font.variableAxes: ({ "wdth": 74, "wght": 500 })
+                            font.pointSize: theme.typeHeading
+                            font.variableAxes: ({ "wdth": 70, "wght": 420 })
                             color: section.modelData.accent ? theme.accent : theme.text
                         }
                         Label { anchors.baseline: sectionTitle.baseline; text: section.modelData.cards.length; role: "ledger"; color: theme.textFaint }

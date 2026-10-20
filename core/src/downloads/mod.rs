@@ -14,17 +14,22 @@
 //! shell holds `{endpoint, query, items}` and its own history.
 
 pub mod anirss;
+pub mod contents;
 pub mod facts;
 pub mod feed;
+pub mod jackett;
 pub mod link;
 pub mod managed;
+pub mod prune;
 pub mod qbt;
+pub mod replace;
 pub mod rewire;
 pub mod settings;
 pub mod trash;
 
-use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 use std::time::Duration;
 
 use crate::contract::*;
@@ -43,6 +48,10 @@ pub struct Downloads {
     connecting: tokio::sync::Mutex<()>,
     /// The same for settling the torrent client and starting AniBeam's own.
     torrent_setup: tokio::sync::Mutex<()>,
+    /// Set by a shell that runs against a copy of the library but the
+    /// owner's real anirss (a drive script, a screenshot, a sandbox root):
+    /// finished feeds are never pruned there.
+    unattended_off: AtomicBool,
 }
 
 #[derive(Default)]
@@ -58,6 +67,25 @@ struct State {
     /// settings read before the bump belongs to the old client and is
     /// thrown away rather than kept.
     generation: u64,
+    /// The episodes an unfinished torrent is still writing, by series, with
+    /// how far each is (0 to 1), as of the last torrent read: on disk is not
+    /// in the library until the torrent is done with them (`overlay`).
+    downloading: HashMap<u64, Downloading>,
+    /// The files an unfinished torrent is still writing, by `path_key`: what
+    /// Play refuses. An episode can be downloading while an older, whole
+    /// file of it (one being replaced) stays playable.
+    writing: std::collections::HashSet<std::path::PathBuf>,
+    /// What each series' downloads looked like when its last `SeriesChanged`
+    /// went out, and when: a progress tick only goes out again after
+    /// `PROGRESS_EVERY`, a change of which episodes are downloading at once.
+    announced: HashMap<u64, (std::time::Instant, BTreeMap<u32, u8>)>,
+    /// A re-read of the torrents is already waiting its turn: while anything
+    /// downloads the core looks again every `REREAD_EVERY` by itself, so
+    /// the pages that show progress need no poll of their own.
+    rereading: bool,
+    /// When the torrents were last read, so a library read can ask for a
+    /// fresh look without asking on every read.
+    torrents_at: Option<std::time::Instant>,
 }
 
 impl Default for Downloads {
@@ -66,6 +94,7 @@ impl Default for Downloads {
             state: Mutex::new(State::default()),
             connecting: tokio::sync::Mutex::new(()),
             torrent_setup: tokio::sync::Mutex::new(()),
+            unattended_off: AtomicBool::new(false),
         }
     }
 }
@@ -73,6 +102,14 @@ impl Default for Downloads {
 impl Downloads {
     fn state(&self) -> MutexGuard<'_, State> {
         recover(&self.state)
+    }
+
+    pub(crate) fn disable_unattended(&self) {
+        self.unattended_off.store(true, Ordering::Relaxed);
+    }
+
+    fn unattended_allowed(&self) -> bool {
+        !self.unattended_off.load(Ordering::Relaxed)
     }
 
     /// Kills the sidecar. `Core::shutdown` calls it; `kill_on_drop` is the
@@ -586,6 +623,7 @@ async fn read_anirss(core: &Arc<Core>, client: &AnirssClient) -> Result<(), Core
             e.on_demand = settings::anirss_ondemand(&path, &e.name).map(|o| o.timeout);
         }
     }
+    probe_endpoints(core.http.as_ref(), &mut endpoints).await;
     let view = client.qbt_status().await?;
     let mut st = core.downloads.state();
     st.anirss.state = AnirssState::Ready;
@@ -644,6 +682,186 @@ pub fn test_torrent_client(core: &Core) -> Result<u64, CoreError> {
         }))
 }
 
+/// Whether each on-demand endpoint is up, from its ready URL. A GET and
+/// nothing more: only `start_endpoint`, after a confirm, starts a service
+/// (anirss does too when a search reaches one, which is why `search` checks first).
+async fn probe_endpoints(http: &dyn Http, endpoints: &mut [SearchEndpoint]) {
+    let path = settings::anirss_config_path();
+    for e in endpoints.iter_mut() {
+        let ready = path
+            .as_deref()
+            .and_then(|p| settings::anirss_ondemand(p, &e.name))
+            .map(|o| o.ready)
+            .filter(|r| !r.is_empty());
+        e.running = match ready {
+            Some(url) if e.on_demand.is_some() => Some(probe(http, &url).await),
+            _ => None,
+        };
+    }
+}
+
+/// One ready probe, short: a local service either answers at once or is
+/// not there.
+async fn probe(http: &dyn Http, url: &str) -> bool {
+    http.send(HttpRequest {
+        method: Method::Get,
+        url: url.to_string(),
+        headers: Vec::new(),
+        body: None,
+        timeout: Some(std::time::Duration::from_millis(1500)),
+    })
+    .await
+    .map(|r| r.is_success())
+    .unwrap_or(false)
+}
+
+/// Re-probes the on-demand endpoints the status already lists. Starts
+/// nothing, anirss included: with no endpoint list there is nothing to ask.
+pub fn check_endpoints(core: &Core) -> Result<u64, CoreError> {
+    let owner = core.owner()?;
+    forget_probes();
+    Ok(owner
+        .jobs
+        .clone()
+        .start(JobKind::CheckEndpoints, move |_| async move {
+            let mut endpoints = owner.downloads.state().endpoints.clone();
+            probe_endpoints(owner.http.as_ref(), &mut endpoints).await;
+            let up: Vec<String> = endpoints
+                .iter()
+                .filter(|e| e.running == Some(true))
+                .map(|e| e.name.clone())
+                .collect();
+            owner.downloads.state().endpoints = endpoints;
+            let status = status_async(&owner).await?;
+            Ok(Finished {
+                level: Level::Debug,
+                message: if up.is_empty() {
+                    "No on-demand endpoint is running".to_string()
+                } else {
+                    format!("Running: {}", up.join(", "))
+                },
+                body: EventBody::DownloadsStatusChanged { status },
+            })
+        }))
+}
+
+/// Starts the service behind an on-demand endpoint (Jackett for 1337x) and
+/// probes the endpoints again. The shell calls this only after the user
+/// confirmed; nothing else in the core starts one. The command is the
+/// `jackett_command` setting, else anirss's `start` for the endpoint, else
+/// `jackett`, and it is detached (see `jackett`).
+pub fn start_endpoint(core: &Core, name: String) -> Result<u64, CoreError> {
+    let owner = core.owner()?;
+    forget_probes();
+    let config = settings::anirss_config_path();
+    let ondemand = config
+        .as_deref()
+        .and_then(|p| settings::anirss_ondemand(p, &name))
+        .ok_or_else(|| {
+            CoreError::invalid("name", format!("{name} is not an on-demand endpoint"))
+        })?;
+    let log = std::path::Path::new(&core.paths.state_dir).join("jackett-start.log");
+    Ok(owner
+        .jobs
+        .clone()
+        .start(JobKind::StartEndpoint, move |ctx| async move {
+            let s = load_settings(&owner).await?;
+            let command = jackett::resolve_command(&s.jackett_command, config.as_deref(), &name);
+            ctx.progress(0, None, &format!("Starting {name}"));
+            jackett::start(
+                owner.http.as_ref(),
+                &command,
+                &ondemand.ready,
+                std::time::Duration::from_secs(ondemand.timeout),
+                std::time::Duration::from_millis(500),
+                &log,
+            )
+            .await
+            .map_err(|failure| {
+                let (code, message) = jackett::explain(&name, &failure);
+                service(&name, code, message)
+            })?;
+            forget_probes();
+            let mut endpoints = owner.downloads.state().endpoints.clone();
+            probe_endpoints(owner.http.as_ref(), &mut endpoints).await;
+            owner.downloads.state().endpoints = endpoints;
+            let status = status_async(&owner).await?;
+            Ok(Finished {
+                level: Level::Info,
+                message: format!("{name} is running"),
+                body: EventBody::DownloadsStatusChanged { status },
+            })
+        }))
+}
+
+/// A probe's answer kept for half a minute, so a burst of searches (one per
+/// source, then the show view's) asks each on-demand endpoint once.
+static KEPT: LazyLock<Mutex<HashMap<String, (std::time::Instant, bool)>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Drops every kept probe, for a check or a start that must see the
+/// endpoint as it is now.
+fn forget_probes() {
+    recover(&KEPT).clear();
+}
+
+async fn probe_kept(http: &dyn Http, url: &str) -> bool {
+    if let Some((at, up)) = recover(&KEPT).get(url).copied()
+        && at.elapsed() < std::time::Duration::from_secs(30)
+    {
+        return up;
+    }
+    let up = probe(http, url).await;
+    recover(&KEPT).insert(url.to_string(), (std::time::Instant::now(), up));
+    up
+}
+
+/// The endpoint a search asked for, else the first anirss lists that is not
+/// started on demand: a default search never lands on a stopped 1337x.
+fn default_target(endpoint: Option<String>, listed: &[SearchEndpoint]) -> Option<String> {
+    endpoint.or_else(|| {
+        listed
+            .iter()
+            .find(|e| e.on_demand.is_none())
+            .or_else(|| listed.first())
+            .map(|e| e.name.clone())
+    })
+}
+
+/// The search guard. anirss boots an on-demand endpoint whenever a search
+/// reaches it, so the core makes sure none does unless it already runs:
+/// a search aimed at a stopped one is refused, and anirss's fallback is
+/// switched off while any on-demand endpoint is down. Returns whether the
+/// fallback may stay on.
+async fn guard_search(
+    http: &dyn Http,
+    endpoints: &[SearchEndpoint],
+    target: Option<&str>,
+) -> Result<bool, CoreError> {
+    let path = settings::anirss_config_path();
+    let mut all_up = true;
+    for e in endpoints.iter().filter(|e| e.on_demand.is_some()) {
+        let ready = path
+            .as_deref()
+            .and_then(|p| settings::anirss_ondemand(p, &e.name))
+            .map(|o| o.ready)
+            .unwrap_or_default();
+        let up = !ready.is_empty() && probe_kept(http, &ready).await;
+        if !up && target == Some(e.name.as_str()) {
+            return Err(CoreError::Service {
+                service: e.name.clone(),
+                code: "not_running".to_string(),
+                message: format!(
+                    "{} is not running. Switch it on in the sources and confirm to start it.",
+                    e.name
+                ),
+            });
+        }
+        all_up &= up;
+    }
+    Ok(all_up)
+}
+
 pub fn search(core: &Core, query: String, endpoint: Option<String>) -> Result<u64, CoreError> {
     let query = query.trim().to_string();
     if query.is_empty() {
@@ -652,14 +870,7 @@ pub fn search(core: &Core, query: String, endpoint: Option<String>) -> Result<u6
     let owner = core.owner()?;
     // The endpoint the search starts on, for the progress line: the one
     // asked for, else the first anirss lists
-    let first = endpoint.clone().or_else(|| {
-        owner
-            .downloads
-            .state()
-            .endpoints
-            .first()
-            .map(|e| e.name.clone())
-    });
+    let first = default_target(endpoint.clone(), &owner.downloads.state().endpoints);
     let ondemand = first.as_deref().and_then(|name| {
         settings::anirss_config_path().and_then(|p| settings::anirss_ondemand(&p, name))
     });
@@ -679,8 +890,12 @@ pub fn search(core: &Core, query: String, endpoint: Option<String>) -> Result<u6
             );
             let work = async {
                 let client = ensure_client(&owner).await?;
+                let listed = owner.downloads.state().endpoints.clone();
+                let target = default_target(endpoint.clone(), &listed);
+                let fallback =
+                    guard_search(owner.http.as_ref(), &listed, target.as_deref()).await?;
                 phase.store(PHASE_FETCHING, Ordering::Relaxed);
-                let raw = client.search(&query, endpoint.as_deref(), true).await?;
+                let raw = client.search(&query, target.as_deref(), fallback).await?;
                 phase.store(PHASE_READING, Ordering::Relaxed);
                 let fetched = raw.query.clone();
                 let mut search = if raw.items.is_empty() {
@@ -1085,20 +1300,42 @@ async fn rewire_subscription(
 }
 
 pub fn download(core: &Core, items: Vec<Release>, name: Option<String>) -> Result<u64, CoreError> {
+    download_with(core, items, name, DownloadOptions::default())
+}
+
+/// `download` with what anirss cannot be asked for: the new torrents read in
+/// order, and episodes they replace (`downloads::replace`). anirss adds the
+/// torrents; the rest is applied once qBittorrent lists them. The add
+/// itself is the same call, so a failure there changes nothing: nothing is
+/// cancelled and nothing is recorded.
+pub fn download_with(
+    core: &Core,
+    items: Vec<Release>,
+    name: Option<String>,
+    options: DownloadOptions,
+) -> Result<u64, CoreError> {
     if items.is_empty() {
         return Err(CoreError::invalid("items", "nothing selected to download"));
     }
     let owner = core.owner()?;
+    let followups = replace::prepare(&owner.store, &items, &options)?;
     Ok(owner
         .jobs
         .clone()
         .start(JobKind::Download, move |_| async move {
             let client = ensure_client(&owner).await?;
             let result = client.download(&items, name.as_deref()).await?;
+            let extra = replace::describe(&options, &followups);
+            if options != DownloadOptions::default() || !followups.is_empty() {
+                match qbt_client(&owner).await {
+                    Ok(qbt) => replace::after_add(&owner, &qbt, &items, &options, followups).await,
+                    Err(e) => tracing::warn!("download not followed: {e}"),
+                }
+            }
             Ok(Finished {
                 level: Level::Info,
                 message: format!(
-                    "Added {} to {} under {}",
+                    "Added {} to {} under {}{extra}",
                     plural(result.count, "torrent", "torrents"),
                     owner.downloads.torrent_name(),
                     result.save_path
@@ -1209,6 +1446,22 @@ pub fn control(core: &Core, hashes: Vec<String>, action: TorrentAction) -> Resul
                         "Deleted, files included,"
                     } else {
                         "Removed"
+                    }
+                }
+                TorrentAction::Sequential { on } => {
+                    client.set_sequential(&hashes, *on).await?;
+                    if *on {
+                        "Set download in order on for"
+                    } else {
+                        "Set download in order off for"
+                    }
+                }
+                TorrentAction::FirstLastPieces { on } => {
+                    client.set_first_last(&hashes, *on).await?;
+                    if *on {
+                        "Set first and last pieces first on for"
+                    } else {
+                        "Set first and last pieces first off for"
                     }
                 }
             };
@@ -1378,11 +1631,11 @@ pub fn list_rules(core: &Core) -> Result<Reply, CoreError> {
     let owner = core.owner()?;
     core.handle.spawn(async move {
         let outcome = match ensure_client(&owner).await {
-            Ok(client) => client.subscriptions().await,
+            Ok(client) => client.subscriptions().await.map(|rules| (client, rules)),
             Err(e) => Err(e),
         };
         match outcome {
-            Ok(mut rules) => {
+            Ok((client, mut rules)) => {
                 link_rules(&owner, &mut rules);
                 owner.bus.debug(
                     Stage::Downloads,
@@ -1390,17 +1643,22 @@ pub fn list_rules(core: &Core) -> Result<Reply, CoreError> {
                         "{} read",
                         plural(rules.len() as u64, "subscription", "subscriptions")
                     ),
-                    EventBody::SubscriptionsRead { rules },
-                )
+                    EventBody::SubscriptionsRead {
+                        rules: rules.clone(),
+                    },
+                );
+                prune::after_read(&owner, &client, &rules).await;
             }
-            Err(error) => owner.bus.debug(
-                Stage::Downloads,
-                format!("subscriptions not read: {}", plain(&error)),
-                EventBody::DownloadsUnavailable {
-                    what: "subscriptions".to_string(),
-                    error,
-                },
-            ),
+            Err(error) => {
+                owner.bus.debug(
+                    Stage::Downloads,
+                    format!("subscriptions not read: {}", plain(&error)),
+                    EventBody::DownloadsUnavailable {
+                        what: "subscriptions".to_string(),
+                        error,
+                    },
+                );
+            }
         };
     });
     Ok(Reply::Ok)
@@ -1412,18 +1670,72 @@ pub fn list_torrents(core: &Core) -> Result<Reply, CoreError> {
     core.handle.spawn(async move {
         let outcome = async {
             let client = qbt_client(&owner).await?;
-            let torrents = client.torrents().await?;
+            let mut torrents = client.torrents().await?;
+            // The files of each unfinished torrent, so a batch shows each
+            // episode's progress; a single file adds nothing to the torrent's
+            for t in torrents.iter_mut().filter(|t| t.progress < 1.0) {
+                match client.files(&t.hash).await {
+                    Ok(files) if files.len() > 1 => t.files = files,
+                    Ok(_) => {}
+                    Err(e) => tracing::debug!("files of {} not read: {e}", t.name),
+                }
+            }
             let transfer = client.transfer().await?;
+            if owner.downloads.unattended_allowed() {
+                replace::tick(&owner, &client, &torrents).await;
+            }
             Ok::<_, CoreError>((torrents, transfer))
         }
         .await;
         match outcome {
             Ok((mut torrents, transfer)) => {
-                let shows = link_torrents(&owner, &mut torrents);
-                {
+                let mut shows = link_torrents(&owner, &mut torrents);
+                replace::annotate(&owner, &mut torrents);
+                let downloading = downloading_of(&torrents);
+                let moved: Vec<u64> = {
                     let mut st = owner.downloads.state();
                     st.torrent.connected = true;
                     st.torrent.message.clear();
+                    st.torrents_at = Some(std::time::Instant::now());
+                    let due = due_for_announcing(
+                        &mut st.announced,
+                        &downloading,
+                        std::time::Instant::now(),
+                    );
+                    st.downloading = downloading;
+                    st.writing = writing_of(&torrents);
+                    due
+                };
+                schedule_reread(&owner);
+                for show in shows.iter_mut() {
+                    overlay_cubes(&owner, show.series_id, &mut show.cubes, None);
+                }
+                // A series whose downloading episodes (or, every so often,
+                // their progress) changed reads anew on every page that shows it
+                if !moved.is_empty() {
+                    let images = owner.paths.images_dir();
+                    if let Ok(mut cards) = owner.store.read(|c| {
+                        let snap = crate::library::snapshot::Snapshot::load(
+                            c,
+                            &images,
+                            crate::time::now(),
+                            Some(&moved),
+                        )?;
+                        Ok(moved
+                            .iter()
+                            .filter_map(|id| snap.card(*id))
+                            .collect::<Vec<SeriesCard>>())
+                    }) {
+                        overlay(&owner, &mut cards);
+                        owner.bus.debug(
+                            Stage::Downloads,
+                            format!(
+                                "{} downloading changed",
+                                plural(cards.len() as u64, "series", "series")
+                            ),
+                            EventBody::SeriesChanged { series: cards },
+                        );
+                    }
                 }
                 owner.bus.debug(
                     Stage::Downloads,
@@ -1454,6 +1766,314 @@ pub fn list_torrents(core: &Core) -> Result<Reply, CoreError> {
                 )
             }
         };
+    });
+    Ok(Reply::Ok)
+}
+
+/// The episodes of one series that a torrent is still writing, by number,
+/// with how far each is (0 to 1).
+type Downloading = BTreeMap<u32, f64>;
+
+/// How often the progress of an episode that keeps downloading is announced
+/// as a change of its series, so a page that shows it moves without a
+/// reload on every torrent read.
+const PROGRESS_EVERY: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// How often the core looks at the torrents again by itself while anything
+/// downloads, so an episode that just finished plays within seconds.
+const REREAD_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// After a torrent read: while anything still downloads, one more read in
+/// `REREAD_EVERY`, and only one at a time however many reads land meanwhile.
+fn schedule_reread(owner: &Arc<Core>) {
+    let again = {
+        let mut st = owner.downloads.state();
+        let want = !st.downloading.is_empty() && !st.rereading;
+        st.rereading |= want;
+        want
+    };
+    if again {
+        let later = owner.clone();
+        owner.handle.spawn(async move {
+            tokio::time::sleep(REREAD_EVERY).await;
+            later.downloads.state().rereading = false;
+            let _ = list_torrents(&later);
+        });
+    }
+}
+
+/// The episodes each linked series has in an unfinished torrent, and how far
+/// each is: a file of a batch that is not done (and not skipped) with the
+/// file's progress, or a single-episode torrent that is not done with the
+/// torrent's. An episode two torrents carry counts at the further one.
+fn downloading_of(torrents: &[Torrent]) -> HashMap<u64, Downloading> {
+    let mut out: HashMap<u64, Downloading> = HashMap::new();
+    for t in torrents.iter().filter(|t| t.progress < 1.0) {
+        let Some(id) = t.series_id else { continue };
+        let whole = |n: f64| (n.is_finite() && n >= 1.0 && n.fract() == 0.0).then_some(n as u32);
+        let eps: Vec<(u32, f64)> = if t.files.is_empty() {
+            t.episode
+                .and_then(whole)
+                .map(|n| (n, t.progress))
+                .into_iter()
+                .collect()
+        } else {
+            t.files
+                .iter()
+                .filter(|f| f.progress < 1.0 && f.priority != 0)
+                .filter_map(|f| f.episode.and_then(whole).map(|n| (n, f.progress)))
+                .collect()
+        };
+        for (n, progress) in eps {
+            let progress = if progress.is_finite() {
+                progress.clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            let at = out.entry(id).or_default().entry(n).or_insert(progress);
+            *at = at.max(progress);
+        }
+    }
+    out
+}
+
+/// A path as one key whatever string reaches it: resolved on disk when it
+/// exists (a symlinked source, a doubled slash), else tidied as text.
+fn path_key(p: &str) -> std::path::PathBuf {
+    std::fs::canonicalize(p).unwrap_or_else(|_| std::path::Path::new(p).components().collect())
+}
+
+/// Every file an unfinished torrent is still writing: each unfinished,
+/// wanted file of a batch, or a single file's content path.
+fn writing_of(torrents: &[Torrent]) -> std::collections::HashSet<std::path::PathBuf> {
+    let mut out = std::collections::HashSet::new();
+    for t in torrents.iter().filter(|t| t.progress < 1.0) {
+        if t.files.is_empty() {
+            if !t.content_path.is_empty() {
+                out.insert(path_key(&t.content_path));
+            }
+            continue;
+        }
+        for f in t
+            .files
+            .iter()
+            .filter(|f| f.progress < 1.0 && f.priority != 0)
+        {
+            out.insert(path_key(&format!(
+                "{}/{}",
+                t.save_path.trim_end_matches('/'),
+                f.name
+            )));
+        }
+    }
+    out
+}
+
+/// Whether a torrent is still writing this file.
+pub fn is_writing(core: &Core, path: &str) -> bool {
+    let st = core.downloads.state();
+    !st.writing.is_empty() && st.writing.contains(&path_key(path))
+}
+
+/// The series whose downloads are worth a `SeriesChanged` now, and the
+/// record of what went out updated to match: one whose set of downloading
+/// episodes differs from the last announcement (or that finished), at once;
+/// one whose only change is progress in whole percent, once `PROGRESS_EVERY`
+/// has passed since the last.
+fn due_for_announcing(
+    announced: &mut HashMap<u64, (std::time::Instant, BTreeMap<u32, u8>)>,
+    now_downloading: &HashMap<u64, Downloading>,
+    at: std::time::Instant,
+) -> Vec<u64> {
+    let mut due: BTreeSet<u64> = BTreeSet::new();
+    announced.retain(|id, _| {
+        let kept = now_downloading.contains_key(id);
+        if !kept {
+            due.insert(*id);
+        }
+        kept
+    });
+    for (id, eps) in now_downloading {
+        let pct: BTreeMap<u32, u8> = eps
+            .iter()
+            .map(|(n, p)| (*n, (p * 100.0).floor() as u8))
+            .collect();
+        let go = match announced.get(id) {
+            None => true,
+            Some((_, last)) if last.keys().ne(pct.keys()) => true,
+            Some((sent, last)) => {
+                *last != pct && at.saturating_duration_since(*sent) >= PROGRESS_EVERY
+            }
+        };
+        if go {
+            announced.insert(*id, (at, pct));
+            due.insert(*id);
+        }
+    }
+    due.into_iter().collect()
+}
+
+/// Lays the downloading episodes over a cube row: an episode a torrent is
+/// still writing is `t`, not on disk, whatever the scan found. Watched
+/// episodes keep their mark. Returns how many on-disk cubes it turned.
+fn overlay_cubes(
+    core: &Core,
+    id: u64,
+    cubes: &mut String,
+    known: Option<&HashMap<u64, Downloading>>,
+) -> u64 {
+    let st;
+    let map = match known {
+        Some(m) => m,
+        None => {
+            st = core.downloads.state();
+            &st.downloading
+        }
+    };
+    match map.get(&id) {
+        Some(eps) => lay(eps, cubes),
+        None => 0,
+    }
+}
+
+fn lay(eps: &Downloading, cubes: &mut String) -> u64 {
+    let mut codes: Vec<char> = cubes.chars().collect();
+    let mut turned = 0;
+    for n in eps.keys() {
+        if let Some(c) = codes.get_mut((*n as usize).wrapping_sub(1))
+            && matches!(*c, 'd' | 'g' | 'm' | 'f')
+        {
+            if *c == 'd' {
+                turned += 1;
+            }
+            *c = 't';
+        }
+    }
+    *cubes = codes.into_iter().collect();
+    turned
+}
+
+/// The library's cards with what is still downloading laid over them, and
+/// a fresh torrent read asked for when the last one is stale and something
+/// was downloading then. With nothing downloading it asks for nothing: the
+/// Downloads page's poll is what starts the overlay.
+pub fn overlay(core: &Core, cards: &mut [SeriesCard]) {
+    let stale = {
+        let st = core.downloads.state();
+        for card in cards.iter_mut() {
+            let turned = overlay_cubes(core, card.id, &mut card.cubes, Some(&st.downloading));
+            card.episodes_on_disk = card.episodes_on_disk.saturating_sub(turned);
+            card.downloading = st.downloading.get(&card.id).map_or_else(Vec::new, |eps| {
+                eps.iter()
+                    .map(|(n, p)| EpisodeDownload {
+                        number: *n,
+                        progress: *p,
+                    })
+                    .collect()
+            });
+        }
+        !st.downloading.is_empty()
+            && st
+                .torrents_at
+                .is_none_or(|at| at.elapsed() > std::time::Duration::from_secs(10))
+    };
+    if stale {
+        core.downloads.state().torrents_at = Some(std::time::Instant::now());
+        let _ = list_torrents(core);
+    }
+}
+
+/// How far a torrent has written an episode of a series, while one is still
+/// on it; None for an episode that is whole (or that no torrent carries).
+pub fn episode_progress(core: &Core, series: u64, number: f64) -> Option<f64> {
+    if !(number >= 1.0 && number.fract() == 0.0) {
+        return None;
+    }
+    core.downloads
+        .state()
+        .downloading
+        .get(&series)?
+        .get(&(number as u32))
+        .copied()
+}
+
+/// A series' detail with what is still downloading laid over it: the card as
+/// `overlay` leaves it, each downloading episode marked with its progress
+/// (a file being written is on disk and still not playable), and next up
+/// moved past any of them to the next episode that is whole, else none.
+pub fn overlay_detail(core: &Core, detail: &mut SeriesDetail) {
+    overlay(core, std::slice::from_mut(&mut detail.card));
+    mark_downloading(detail, &|path| is_writing(core, path));
+}
+
+/// Marks the episodes whose file a torrent is still writing. An episode
+/// whose new copy is coming but whose file here is whole (a replacement)
+/// stays playable.
+fn mark_downloading(detail: &mut SeriesDetail, writing: &dyn Fn(&str) -> bool) {
+    if detail.card.downloading.is_empty() {
+        return;
+    }
+    let progress_of = |n: f64| {
+        detail
+            .card
+            .downloading
+            .iter()
+            .find(|d| f64::from(d.number) == n)
+            .map(|d| d.progress)
+    };
+    let marks: Vec<Option<f64>> = detail
+        .episodes
+        .iter()
+        .map(|e| progress_of(e.number).filter(|_| writing(&e.path)))
+        .collect();
+    for (e, m) in detail.episodes.iter_mut().zip(&marks) {
+        e.downloading = *m;
+        if m.is_some() {
+            e.next_up = false;
+        }
+    }
+    let Some(next) = detail.next_up else { return };
+    let Some(at) = detail.episodes.iter().position(|e| e.file == next) else {
+        return;
+    };
+    if marks[at].is_none() {
+        return;
+    }
+    let after = detail.episodes[at + 1..]
+        .iter()
+        .zip(&marks[at + 1..])
+        .find(|(_, m)| m.is_none())
+        .map(|(e, _)| e.file);
+    detail.next_up = after;
+    for e in detail.episodes.iter_mut() {
+        e.next_up = Some(e.file) == after;
+    }
+}
+
+/// Not a job: the show view asks once per batch that names no range.
+pub fn inspect_release(core: &Core, link: String) -> Result<Reply, CoreError> {
+    let link = link.trim().to_string();
+    let owner = core.owner()?;
+    core.handle.spawn(async move {
+        let (episodes, files) = match contents::inspect(owner.http.as_ref(), &link).await {
+            Ok(found) => found,
+            Err(e) => {
+                tracing::debug!("release not inspected: {}", plain(&e));
+                (Vec::new(), 0)
+            }
+        };
+        owner.bus.debug(
+            Stage::Downloads,
+            format!(
+                "{} in a release",
+                plural(episodes.len() as u64, "episode", "episodes")
+            ),
+            EventBody::ReleaseInspected {
+                link,
+                episodes,
+                files,
+            },
+        );
     });
     Ok(Reply::Ok)
 }
@@ -1683,6 +2303,12 @@ fn link_torrents(core: &Core, torrents: &mut [Torrent]) -> Vec<ShowLink> {
         Ok((ids, shows)) => {
             for (t, id) in torrents.iter_mut().zip(ids) {
                 t.series_id = id;
+                let f = facts::read_name(&t.name);
+                t.batch = f.batch || !t.files.is_empty();
+                t.episode = if t.batch { None } else { f.episode };
+                for file in t.files.iter_mut() {
+                    file.episode = facts::read_name(&file.name).episode;
+                }
             }
             let mut out: Vec<ShowLink> = shows.into_values().collect();
             out.sort_by_key(|s| s.series_id);
@@ -1834,6 +2460,175 @@ fn plural(n: u64, one: &str, many: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_batch_downloads_its_unfinished_files_and_lays_them_over_the_cubes() {
+        let file = |name: &str, progress: f64| TorrentFile {
+            name: name.to_string(),
+            size: 1,
+            progress,
+            priority: 1,
+            episode: super::facts::read_name(name).episode,
+        };
+        let dir = "[Erai-raws] Kino no Tabi The Beautiful World - The Animated Series - 01~12 [1080p][Multiple Subtitle]";
+        let mut t = super::qbt::tests_torrent();
+        t.series_id = Some(7);
+        t.progress = 0.4;
+        t.files = vec![
+            file(
+                &format!(
+                    "{dir}/[Erai-raws] Kino no Tabi The Beautiful World - The Animated Series - 01 [1080p][Multiple Subtitle].mkv"
+                ),
+                1.0,
+            ),
+            file(
+                &format!(
+                    "{dir}/[Erai-raws] Kino no Tabi The Beautiful World - The Animated Series - 02 [1080p][Multiple Subtitle].mkv"
+                ),
+                0.3,
+            ),
+            file(
+                &format!(
+                    "{dir}/[Erai-raws] Kino no Tabi The Beautiful World - The Animated Series - 03 [1080p][Multiple Subtitle].mkv"
+                ),
+                0.0,
+            ),
+        ];
+        assert_eq!(t.files[1].episode, Some(2.0));
+        let map = downloading_of(&[t]);
+        assert_eq!(map[&7], Downloading::from([(2, 0.3), (3, 0.0)]));
+        let mut cubes = "dddgw".to_string();
+        let eps: Downloading = [2, 3, 5, 9].into_iter().map(|n| (n, 0.5)).collect();
+        assert_eq!(lay(&eps, &mut cubes), 2);
+        assert_eq!(
+            cubes, "dttgw",
+            "a watched cube keeps its mark, one past the row is ignored"
+        );
+    }
+
+    #[test]
+    fn a_single_episode_torrent_downloads_at_the_torrents_progress() {
+        let mut t = super::qbt::tests_torrent();
+        t.series_id = Some(4);
+        t.episode = Some(6.0);
+        t.progress = 0.34;
+        let mut twin = t.clone();
+        twin.progress = 0.5;
+        let mut done = t.clone();
+        done.episode = Some(7.0);
+        done.progress = 1.0;
+        let map = downloading_of(&[t, twin, done]);
+        assert_eq!(
+            map[&4],
+            Downloading::from([(6, 0.5)]),
+            "the further torrent counts, a finished one does not"
+        );
+    }
+
+    #[test]
+    fn announcing_follows_the_set_at_once_and_progress_every_ten_seconds() {
+        let t0 = std::time::Instant::now();
+        let mut sent = HashMap::new();
+        let at = |eps: &[(u32, f64)]| {
+            HashMap::from([(1u64, eps.iter().copied().collect::<Downloading>())])
+        };
+        assert_eq!(
+            due_for_announcing(&mut sent, &at(&[(2, 0.10)]), t0),
+            vec![1],
+            "first sight"
+        );
+        let s = std::time::Duration::from_secs;
+        assert!(
+            due_for_announcing(&mut sent, &at(&[(2, 0.12)]), t0 + s(3)).is_empty(),
+            "too soon"
+        );
+        assert!(
+            due_for_announcing(&mut sent, &at(&[(2, 0.109)]), t0 + s(11)).is_empty(),
+            "the same percent"
+        );
+        assert_eq!(
+            due_for_announcing(&mut sent, &at(&[(2, 0.20)]), t0 + s(12)),
+            vec![1],
+            "ten seconds on"
+        );
+        assert!(due_for_announcing(&mut sent, &at(&[(2, 0.30)]), t0 + s(14)).is_empty());
+        assert_eq!(
+            due_for_announcing(&mut sent, &at(&[(2, 0.30), (3, 0.0)]), t0 + s(14)),
+            vec![1],
+            "a new episode is not throttled"
+        );
+        assert_eq!(
+            due_for_announcing(&mut sent, &HashMap::new(), t0 + s(15)),
+            vec![1],
+            "finished"
+        );
+        assert!(sent.is_empty());
+    }
+
+    fn detail_of(card_downloading: &[(u32, f64)], next_up: Option<u64>) -> SeriesDetail {
+        let json = serde_json::json!({
+            "card": {
+                "id": 1, "kind": "Show", "path": "", "title": "", "titles": {"folder": ""},
+                "genres": [], "hidden": false, "missing": false, "episodes_on_disk": 0,
+                "extras_on_disk": 0, "total_is_estimate": false, "watched_state": "Unknown",
+                "strip": {"watched": 0.0, "aired_unwatched": 0.0, "unknown": 0.0},
+                "latest_activity_at": {"secs_since_epoch": 0, "nanos_since_epoch": 0}
+            },
+            "genres": [], "tags": [], "synopsis": "",
+            "progress": {"estimate": false, "on_disk": 0},
+            "next_up": next_up,
+            "episodes": (1..=4).map(|n| serde_json::json!({
+                "file": 100 + n, "number": n as f64, "code": "", "path": "", "sidecars": [],
+                "stopped_short": false, "watched": false, "next_up": Some(100 + n as u64) == next_up
+            })).collect::<Vec<_>>(),
+            "extras": [], "unmatched_files": [], "characters": [], "recommendations": [],
+            "has_graph": false
+        });
+        let mut d: SeriesDetail = serde_json::from_value(json).expect("a detail");
+        d.card.downloading = card_downloading
+            .iter()
+            .map(|(number, progress)| EpisodeDownload {
+                number: *number,
+                progress: *progress,
+            })
+            .collect();
+        d
+    }
+
+    #[test]
+    fn a_downloading_episode_is_marked_and_never_next_up() {
+        let mut d = detail_of(&[(2, 0.34), (3, 0.0)], Some(102));
+        mark_downloading(&mut d, &|_| true);
+        let marks: Vec<Option<f64>> = d.episodes.iter().map(|e| e.downloading).collect();
+        assert_eq!(marks, vec![None, Some(0.34), Some(0.0), None]);
+        assert_eq!(
+            d.next_up,
+            Some(104),
+            "next up moves past the downloading run"
+        );
+        assert_eq!(
+            d.episodes.iter().map(|e| e.next_up).collect::<Vec<_>>(),
+            vec![false, false, false, true]
+        );
+        let mut d = detail_of(&[(4, 0.5)], Some(104));
+        mark_downloading(&mut d, &|_| true);
+        assert_eq!(d.next_up, None, "nothing whole after it");
+        assert!(d.episodes.iter().all(|e| !e.next_up));
+        // A replacement: episode 2 has a new copy coming, but the file here is whole
+        let mut d = detail_of(&[(2, 0.34)], Some(102));
+        mark_downloading(&mut d, &|_| false);
+        assert!(
+            d.episodes.iter().all(|e| e.downloading.is_none()),
+            "the old file plays"
+        );
+        assert_eq!(d.next_up, Some(102));
+        let mut d = detail_of(&[(4, 0.5)], Some(101));
+        mark_downloading(&mut d, &|_| true);
+        assert_eq!(d.next_up, Some(101), "a whole next up stays");
+        let mut d = detail_of(&[], Some(102));
+        mark_downloading(&mut d, &|_| true);
+        assert!(d.episodes.iter().all(|e| e.downloading.is_none()) && d.next_up == Some(102));
+    }
     use super::*;
 
     #[test]

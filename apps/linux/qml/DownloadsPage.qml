@@ -1,19 +1,23 @@
-// Downloads: anirss's front, built around what you subscribe to and what you have. The head
-// names the page and says how anirss and the torrent client stand (each a chip that opens
-// the Downloads settings). Under it the search, then, while a search is up, its query line,
-// groups, Narrow and Best fit, the releases and the actions pane.
+// Downloads: anirss's front, shows first. Two columns: the page, and Activity at the right
+// (ActivityColumn: the rate, what is moving, what finished, today's lines of the log), so a
+// click anywhere has somewhere to show its result.
 //
-// With no search up the page is three bands, each a grid of posters or a list (the switch
-// in the band's head, kept by the frame for the session). Downloading, only while
-// something moves: the shows with a torrent moving, their progress and speed. Subscriptions,
-// in sections by where the show stands: Complete (finished airing, every episode on disk:
-// the rule has nothing left to do, and the rail counts these in red), Airing, Incomplete,
-// and Not in the library as short text tiles. Downloaded, in sections by what the
-// client is doing with each show's torrents: Seeding, Done, Stopped, Files missing. A poster
-// or a row opens the show inside the page (ShowDetail). Every removal goes through the
-// frame's removal sheet: unsubscribing always takes the feed and rule, with ticks for the
-// torrents and for the files (which go to the trash and take the torrents along). Removals
-// run one at a time, in the order asked.
+// The head names the page and says how anirss and the torrent client stand. Under it one
+// wide field: typing lists shows (the library's first, then AniList's), Return searches
+// release names the old way (the table, filters, Subscribe), asking every source that is
+// switched on. Under the field the sources: a chip per provider, lit when on and greyed when
+// off, a click flips it. A plain endpoint is on by default; an on-demand one (1337x, a pod
+// behind Jackett) is on only while it runs. Clicking it while it does not run asks, in a
+// small sheet, whether to start Jackett; AniBeam starts it on that confirm and never before,
+// and the core refuses a search that would start it behind your back.
+//
+// With nothing searched the page is four lenses: Gaps in your library (aired episodes not
+// on disk), Airing, Following (the subscriptions, in sections by where the show stands) and
+// Downloaded (the torrents, a show at a time). Every show, wherever it is clicked, opens the
+// show view (GetShow): its providers, a click on one fetches what it has, its releases as a
+// grid of episode cubes, and a plan that says what Get and Follow will do. Opening a show
+// never downloads anything. A subscription or a downloaded show opens the older ShowDetail,
+// with its feed and torrents. Every removal goes through the frame's removal sheet.
 //
 // The subscriptions are the frame's (it reads them for the rail's badge); this page asks
 // for a fresh read on open. The transfers are the one place in the app that polls: every
@@ -28,11 +32,14 @@ Item {
     property var props: ({})
     property string title: "Downloads"
     property alias scrollY: scroll.contentY
-    // Escape closes the show, then the search
+    // Escape closes the show, then the search; out of a release list that came from a show's
+    // grid, it goes back to the grid
     function escapePressed() {
         if (page.searching) { page.cancelSearch(); return true }
         if (page.detail !== null) { page.closeDetail(); return true }
-        if (page.state !== null || page.searchError !== "") { page.state = null; page.history = []; page.searchError = ""; page.notice = ""; return true }
+        if (page.getShow !== null) { page.closeGet(); return true }
+        if (page.state !== null && page.gridReturn !== null) { page.backToGrid(); return true }
+        if (page.state !== null || page.searchError !== "") { page.clearSearch(); return true }
         return false
     }
     function focusSearch() { scroll.contentY = 0; search.focusInput() }
@@ -64,11 +71,331 @@ Item {
     // Set by a switch of client: the list is the new client's once it answers, not at the
     // poll timer's next turn
     property bool repoll: false
-    property int endpointIndex: 0
+
+    // ---- The sources: which providers a search may ask. A plain endpoint is on unless
+    // switched off; an on-demand one is on only while it runs, and switching it on while it
+    // does not asks first (askStart). The flips live in the frame for the session.
+    function endpointNamed(name) { for (var i = 0; i < endpoints.length; i++) if (endpoints[i].name === name) return endpoints[i]; return null }
+    function sourceOn(name) {
+        var e = page.endpointNamed(name)
+        if (e && e.on_demand && e.running !== true) return false
+        var o = frame.downloadsSources[name]
+        return o !== undefined ? o : true
+    }
+    function storeSource(name, on) {
+        var m = JSON.parse(JSON.stringify(frame.downloadsSources))
+        m[name] = on
+        frame.downloadsSources = m
+    }
+    // Switching on a service that is down does not switch it on: it opens the sheet that
+    // asks whether to start it. Everything else flips at once.
+    function setSource(name, on) {
+        var e = page.endpointNamed(name)
+        if (on && e && e.on_demand && e.running !== true) { page.askStart(name); return }
+        page.storeSource(name, on)
+    }
+    function toggleSource(name) { page.setSource(name, !page.sourceOn(name)) }
+    readonly property var enabledEndpoints: { var m = frame.downloadsSources; return endpoints.filter(function(e) { return page.sourceOn(e.name) }) }
+    property real checkJob: -1
+    function checkSources() {
+        var r = Door.call("CheckEndpoints", {})
+        if (r.error) { frame.toast(page.errorWords(r.error)); return }
+        page.checkJob = r.reply.job
+    }
+
+    // ---- Starting a source's service (Jackett, behind 1337x): ask, then the core starts it
+    property real startJob: -1
+    property string startName: ""
+    function askStart(name) {
+        var at = -1
+        for (var i = 0; i < page.endpoints.length; i++) if (page.endpoints[i].name === name) at = i
+        var chip = at >= 0 ? sourceChips.itemAt(at) : null
+        if (page.startJob < 0) startSheet.error = ""
+        startSheet.openAt(chip, name)
+    }
+    function startService(name) {
+        var r = Door.call("StartEndpoint", { name: name })
+        if (r.error) { startSheet.error = page.errorWords(r.error); return }
+        page.startJob = r.reply.job
+        page.startName = name
+        startSheet.error = ""
+        startSheet.busy = true
+    }
+    function startDone(ok, error) {
+        var name = page.startName
+        page.startJob = -1
+        page.startName = ""
+        startSheet.busy = false
+        if (ok) {
+            page.storeSource(name, true)
+            startSheet.close()
+            frame.toast(name + " is running and switched on")
+        } else if (startSheet.visible) startSheet.error = page.errorWords(error)
+        else frame.toast(page.errorWords(error), 6)
+    }
+
+    // ---- The library, for the lenses and the suggestions
+    property var libCards: []
+    function loadLibrary() {
+        var r = Door.listLibrary("All", "", "LastViewed", "Desc", false)
+        if (!r.error) page.libCards = r.reply.series || []
+    }
+    function hasGap(c) {
+        var s = String(c.cubes || "")
+        return c.kind === "Show" && !c.hidden && (s.indexOf("m") >= 0 || (s.indexOf("g") >= 0 && /[dlw]/.test(s)))
+    }
+    readonly property var gapCards: libCards.filter(hasGap)
+    readonly property var airingCards: libCards.filter(function(c) { return c.kind === "Show" && !c.hidden && (c.status === "Releasing" || !!c.next_airing) })
+    // "Episodes 4 and 7 missing, 8 to 12 not downloaded"
+    function runs(ns) {
+        if (!ns.length) return ""
+        var parts = [], a = ns[0], b = ns[0]
+        for (var i = 1; i <= ns.length; i++) {
+            if (i < ns.length && ns[i] === b + 1) { b = ns[i]; continue }
+            parts.push(a === b ? String(a) : a + " to " + b)
+            if (i < ns.length) { a = ns[i]; b = ns[i] }
+        }
+        if (parts.length === 2) return parts[0] + " and " + parts[1]
+        return parts.join(", ")
+    }
+    function gapWords(c) {
+        var s = String(c.cubes || ""), miss = [], tail = []
+        for (var i = 0; i < s.length; i++) { if (s[i] === "m") miss.push(i + 1); else if (s[i] === "g") tail.push(i + 1) }
+        var out = []
+        if (miss.length) out.push((miss.length === 1 ? "Episode " : "Episodes ") + page.runs(miss) + " missing")
+        if (tail.length) out.push((out.length ? "" : tail.length === 1 ? "Episode " : "Episodes ") + page.runs(tail) + " not downloaded")
+        return out.join(", ")
+    }
+    property string lens: frame.downloadsLens
+    onLensChanged: frame.downloadsLens = lens
+
+    // ---- The suggestions under the field: library shows, then AniList's
+    property var aniHits: []
+    property real aniJob: -1
+    property int suggestIndex: 0
+    property bool suggestClosed: false
+    readonly property string query: search.text.trim()
+    readonly property var libHits: {
+        var q = page.query.toLowerCase()
+        if (q.length < 2) return []
+        var out = []
+        for (var i = 0; i < libCards.length && out.length < 5; i++) {
+            var c = libCards[i], t = c.titles || {}
+            var hay = [c.title, t.romaji, t.english, t.folder].join(" ").toLowerCase()
+            if (hay.indexOf(q) >= 0) out.push(c)
+        }
+        return out
+    }
+    readonly property var aniOnly: {
+        var ids = {}
+        for (var i = 0; i < libCards.length; i++) if (libCards[i].match_info && libCards[i].match_info.anilist_id) ids[libCards[i].match_info.anilist_id] = libCards[i]
+        return aniHits.filter(function(h) { return !ids[h.id] }).slice(0, 5)
+    }
+    readonly property var suggestRows: libHits.map(function(c) { return { lib: c } }).concat(aniOnly.map(function(h) { return { ani: h } }))
+    readonly property bool suggesting: !suggestClosed && query.length >= 2 && search.editing && page.state === null && !page.searching
+    Timer {
+        id: aniDebounce
+        interval: 300
+        onTriggered: {
+            if (page.query.length < 2) { page.aniHits = []; return }
+            var r = Door.searchOn("Anilist", page.query, 8)
+            if (!r.error) page.aniJob = r.reply.job
+        }
+    }
+    function pickSuggestion(row) {
+        if (!row) return
+        page.suggestClosed = true
+        if (row.lib) page.openGet(page.showFromCard(row.lib, page.query))
+        else page.openGet(page.showFromHit(row.ani, page.query))
+    }
+
+    // ---- Which name a show goes by here. The one that was typed, when it is one of its
+    // names (search "Kino no Tabi" with the app in English and Kino no Tabi is what shows);
+    // otherwise the app's title language. Releases are searched by the romaji name, which is
+    // what release files carry, and by its other names when that finds nothing.
+    function norm(t) { return String(t || "").toLowerCase().replace(/[^a-z0-9\u00c0-\uffff]+/g, " ").trim() }
+    function namesOfHit(h) { return [h.romaji, h.english, h.title].concat(h.synonyms || []).filter(function(n) { return !!n }) }
+    function namesOfCard(c) { var t = c.titles || {}; return [t.romaji, t.english, c.title, t.native].filter(function(n) { return !!n }) }
+    function preferredOfHit(h) {
+        var english = (Door.preferences.title_language || "Romaji") === "English"
+        return english ? (h.english || h.romaji || h.title) : (h.romaji || h.title || h.english)
+    }
+    function typedName(names, typed) {
+        var q = page.norm(typed)
+        if (q.length < 2) return ""
+        for (var i = 0; i < names.length; i++) if (page.norm(names[i]) === q) return names[i]
+        for (var j = 0; j < names.length; j++) { var n = page.norm(names[j]); if (n.indexOf(q) === 0 || (q.length >= 4 && n.indexOf(q) >= 0)) return names[j] }
+        return ""
+    }
+    function nameOfHit(h, typed) { return page.typedName(page.namesOfHit(h), typed) || page.preferredOfHit(h) }
+    function nameOfCard(c, typed) { return page.typedName(page.namesOfCard(c), typed) || c.title }
+    // The release queries, best first: the romaji, then whatever else it is called
+    function queriesOf(names, first) {
+        var out = [], seen = {}
+        ;[first].concat(names).forEach(function(n) { var k = page.norm(n); if (n && k && !seen[k]) { seen[k] = true; out.push(String(n)) } })
+        return out
+    }
+
+    // ---- The show view: a show, its providers' releases, the plan
+    property var getShow: null
+    property var getResults: ({})
+    property string getActive: ""
+    property var getJobs: ({})
+    property real getJob: -1
+    property real followJob: -1
+    property var pendingFollow: null
+    property bool getActing: false
+    property string getLine: ""
+    property string getNote: ""
+    property string getError: ""
+    function lastPart(p) { var f = String(p || "").replace(/\/+$/, ""); var i = f.lastIndexOf("/"); return i >= 0 ? f.slice(i + 1) : f }
+    // The torrents that fill a show: linked to its series, or saved under a folder named
+    // as it is (a show not scanned into the library yet)
+    function keyOf(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "") }
+    function torrentsOfShow(show) {
+        if (!show) return []
+        var want = [keyOf(show.folderName), keyOf(show.title)].filter(function(k) { return k !== "" })
+        var named = show.hashes || []
+        return torrents.filter(function(t) {
+            if (show.seriesId >= 0 && t.series_id === show.seriesId) return true
+            if (named.indexOf(t.hash) >= 0) return true
+            var k = keyOf(page.lastPart(t.save_path)), c = keyOf(page.lastPart(t.content_path))
+            return want.indexOf(k) >= 0 || want.indexOf(c) >= 0
+        })
+    }
+    function showFromCard(c, typed) {
+        var t = c.titles || {}
+        var queries = page.queriesOf(page.namesOfCard(c), t.romaji || c.title)
+        return { title: page.nameOfCard(c, typed || ""), query: queries[0], queries: queries, poster: c.poster || "", cubes: c.cubes || "", total: c.total_episodes || 0,
+                 seriesId: c.id, status: c.status || "", format: c.format || "", year: c.year || 0, nextAiring: c.next_airing || null,
+                 airing: c.status === "Releasing" || !!c.next_airing, folderName: page.lastPart(c.path) }
+    }
+    function showFromHit(h, typed) {
+        var queries = page.queriesOf(page.namesOfHit(h), h.romaji || h.title)
+        return { title: page.nameOfHit(h, typed || ""), query: queries[0], queries: queries, poster: h.cover_url || "", cubes: h.episodes ? "g".repeat(Math.min(h.episodes, 400)) : "", total: h.episodes || 0,
+                 seriesId: -1, status: "", format: h.format || "", year: h.year || 0, nextAiring: null, airing: false, folderName: "" }
+    }
+    function showFromLink(s) {
+        for (var i = 0; i < libCards.length; i++) if (libCards[i].id === s.series_id) return page.showFromCard(libCards[i])
+        return { title: s.title, query: s.title, poster: s.poster || "", cubes: s.cubes || "", total: s.total_episodes || 0, seriesId: s.series_id,
+                 status: s.status || "", format: "", year: 0, nextAiring: s.next_airing || null, airing: s.status === "Releasing" || !!s.next_airing, folderName: page.lastPart(s.path) }
+    }
+    // A show made from a torrent the library does not know: the name as a release title says
+    // it, cut down to the show, unless the folder it saves into is named for the show
+    function showName(name) {
+        var n = String(name || "").replace(/\.(mkv|mp4|avi)$/i, "")
+        n = n.replace(/\[[^\]]*\]|\([^)]*\)/g, " ").replace(/[._]/g, " ")
+        n = n.replace(/\sS\d{1,2}(E\d{1,4})?\b.*$/i, " ").replace(/\s-\s\d{1,4}(v\d)?\b.*$/, " ")
+        n = n.replace(/\b(batch|complete|2160p|1080p|720p|480p|web-?dl|bluray|bd|x264|x265|hevc|aac|multi-?sub).*$/i, " ")
+        return n.replace(/\s+/g, " ").replace(/[\s-]+$/, "").trim()
+    }
+    function showFromTorrent(t) {
+        var folder = page.lastPart(t.save_path)
+        var title = page.showName(t.name)
+        if (folder !== "" && keyOf(folder) !== "" && keyOf(t.name).indexOf(keyOf(folder)) >= 0) title = folder
+        if (title === "") title = folder !== "" ? folder : String(t.name || "")
+        var total = 0, files = t.files || []
+        for (var i = 0; i < files.length; i++) if (files[i].episode !== null && files[i].episode !== undefined) total = Math.max(total, files[i].episode)
+        if (t.episode !== null && t.episode !== undefined) total = Math.max(total, t.episode)
+        return { title: title, query: title, poster: "", cubes: "", total: total, seriesId: -1, status: "", format: "", year: 0, nextAiring: null, airing: false,
+                 folderName: folder, hashes: [t.hash] }
+    }
+    // An Activity row: the show it fills, or one made from the torrent's name and folder
+    function openFromTorrent(t) {
+        if (t.series_id !== null && t.series_id !== undefined && page.shows[t.series_id]) page.openGet(page.showFromLink(page.shows[t.series_id]))
+        else page.openGet(page.showFromTorrent(t))
+    }
+    function openGet(show) {
+        page.getShow = show
+        page.getResults = ({})
+        page.getActive = ""
+        page.getLine = ""
+        page.getError = ""
+        page.gridReturn = null
+        page.dropSearches()
+        page.state = null
+        page.detail = null
+        page.history = []
+        scroll.contentY = 0
+    }
+    function closeGet() { page.getShow = null; page.getResults = ({}); page.getActive = ""; page.getJobs = ({}) }
+    function setResult(name, r) { var m = Object.assign({}, page.getResults); m[name] = r; page.getResults = m }
+    function fetchGet(name) {
+        if (!page.getShow || !page.sourceOn(name)) return
+        page.getActive = name
+        var have = page.getResults[name]
+        if (have && (have.state === "done" || have.state === "searching")) return
+        page.searchGetAs(name, 0)
+    }
+    // One provider's search by the show's `at`th name; an empty answer moves on to the next
+    function searchGetAs(name, at) {
+        var qs = page.getShow.queries || [page.getShow.query]
+        var r = Door.searchReleases(qs[at], name)
+        if (r.error) { page.setResult(name, { state: "error", error: page.errorWords(r.error) }); return }
+        var j = Object.assign({}, page.getJobs); j[r.reply.job] = name; page.getJobs = j
+        page.setResult(name, { state: "searching", label: at > 0 ? "Trying " + qs[at] : "", elapsed: 0, start: Date.now(), at: at })
+    }
+    Timer {
+        interval: 500; repeat: true
+        running: { for (var k in page.getResults) if (page.getResults[k].state === "searching") return true; return false }
+        onTriggered: {
+            var m = Object.assign({}, page.getResults)
+            for (var k in m) if (m[k].state === "searching") m[k] = Object.assign({}, m[k], { elapsed: (Date.now() - m[k].start) / 1000 })
+            page.getResults = m
+        }
+    }
+    function getAndFollow(plan) {
+        page.getLine = ""
+        page.getError = ""
+        page.pendingFollow = plan.follow ? plan : null
+        page.getNote = plan.options && plan.options.replace.length ? " The files you had for the replaced episodes go to the trash once the new ones finish." : ""
+        if (plan.items.length) {
+            var r = Door.downloadReleasesWith(plan.items, plan.name, plan.options || {})
+            if (r.error) { page.getError = page.errorWords(r.error); return }
+            page.getJob = r.reply.job
+            page.getActing = true
+        } else if (plan.follow) page.follow(plan)
+    }
+    function follow(plan) {
+        page.pendingFollow = null
+        var r = Door.subscribe(plan.followQuery, plan.endpoint, plan.followItems, plan.name, plan.query !== plan.followQuery ? plan.query : "")
+        if (r.error) { page.getActing = false; page.getError = page.errorWords(r.error); return }
+        page.followJob = r.reply.job
+        page.getActing = true
+    }
+    // The release list a show's grid opens is a step away from the grid: the show, what each
+    // provider found and the field's text are kept, so Back to the grid puts them back
+    property var gridReturn: null
+    function listFromGet(name) {
+        var res = page.getResults[name]
+        if (!res || !res.search) return
+        var kept = {}
+        for (var k in page.getResults) if (page.getResults[k].state === "done") kept[k] = page.getResults[k]
+        page.gridReturn = { show: page.getShow, results: kept, active: page.getActive, text: search.text }
+        search.text = res.query
+        page.closeGet()
+        page.adopt(res.search, res.search.fetched_query || res.search.query)
+        scroll.contentY = 0
+    }
+    function backToGrid() {
+        var back = page.gridReturn
+        if (!back) return
+        search.text = back.text
+        page.openGet(back.show)
+        page.getResults = back.results
+        page.getActive = back.active
+    }
 
     // ---- The search: the state anirss asks the client to hold, and the trail for Back
     property var state: null
     property var history: []
+    // A release search asks every source that is on, a job each. `searchJobs` is job to
+    // source; `searchResults` is source to { state: "searching" | "done" | "error" | "idle",
+    // search, error }, kept so a click on a source's chip shows what it found. `state` holds
+    // the one on screen; narrowing it is a step on that source alone (`searchJob`).
+    property var searchJobs: ({})
+    property var searchResults: ({})
+    property string adoptedFrom: ""
     property real searchJob: -1
     property bool searching: false
     property string notice: ""
@@ -203,19 +530,48 @@ Item {
     }
 
     // ---- The search
-    function runSearch() {
+    function pendingNames() { var out = []; for (var k in page.searchResults) if (page.searchResults[k].state === "searching") out.push(k); return out }
+    // Cancels what is still out and forgets what came back; the state on screen stays
+    function dropSearches() {
+        for (var j in page.searchJobs) Door.cancelJob(Number(j))
+        page.searchJobs = ({})
+        page.searchResults = ({})
+        page.adoptedFrom = ""
+    }
+    function clearSearch() {
+        page.dropSearches()
+        page.state = null
+        page.history = []
+        page.searchError = ""
+        page.notice = ""
+    }
+    // One search per source that is on (or per name in `only`), all at once
+    function runSearch(only) {
         var q = search.text.trim()
         if (q === "") { search.focusInput(); return }
-        var endpoint = page.endpoints.length > page.endpointIndex ? page.endpoints[page.endpointIndex].name : ""
-        var r = Door.searchReleases(q, endpoint)
-        if (r.error) { page.searchError = r.error.message; return }
-        page.searchJob = r.reply.job
+        var names = only && only.length ? only : page.enabledEndpoints.map(function(e) { return e.name })
+        if (!names.length) { page.searchError = "Every source is switched off. Switch one on under the search."; return }
+        page.closeGet()
+        page.gridReturn = null
+        page.suggestClosed = true
+        page.dropSearches()
+        page.searchJob = -1
+        var jobs = {}, results = {}, failed = []
+        for (var i = 0; i < names.length; i++) {
+            var r = Door.searchReleases(q, names[i])
+            if (r.error) { results[names[i]] = { state: "error", error: page.errorWords(r.error) }; failed.push(r.error.message); continue }
+            jobs[r.reply.job] = names[i]
+            results[names[i]] = { state: "searching" }
+        }
+        page.searchJobs = jobs
+        page.searchResults = results
+        if (!Object.keys(jobs).length) { page.searchError = failed.join(" "); return }
         page.searching = true
         page.searchStartMs = Date.now()
         page.searchElapsed = 0
+        page.searchEndpoint = ""
         page.searchLabel = ""
-        page.searchTotal = page.endpoints.length > page.endpointIndex && page.endpoints[page.endpointIndex].on_demand ? page.endpoints[page.endpointIndex].on_demand : 0
-        page.searchEndpoint = endpoint
+        page.retarget()
         page.extras = ({})
         page.extrasByTitle = ({})
         page.datesState = "loading"
@@ -230,6 +586,47 @@ Item {
         page.preview = null
         page.actionLine = ""
         page.actionError = ""
+    }
+    // The progress card follows one source: an on-demand one still coming up, else the first
+    // still out
+    function retarget() {
+        if (page.searchJob >= 0) return
+        var pend = page.pendingNames(), pick = pend.length ? pend[0] : ""
+        for (var i = 0; i < pend.length; i++) { var e = page.endpointNamed(pend[i]); if (e && e.on_demand) { pick = pend[i]; break } }
+        if (pick === page.searchEndpoint) return
+        page.searchEndpoint = pick
+        var picked = page.endpointNamed(pick)
+        page.searchTotal = picked && picked.on_demand ? picked.on_demand : 0
+        page.searchLabel = ""
+    }
+    // Puts one source's result on screen, with the trail for Back starting afresh
+    function adoptFrom(name) {
+        var r = page.searchResults[name]
+        if (!r || r.state !== "done") return
+        var s = r.search
+        page.adoptedFrom = name
+        page.history = []
+        page.adopt(s, s.fetched_query || s.query)
+        page.notice = s.auto_resolution ? "Narrowed to " + s.auto_resolution + ", the sharpest on offer" : ""
+    }
+    // After a source answers, fails or is cancelled: the first result with releases goes up
+    // (in the sources' order), and when none has any, the first that answered
+    function settleSearch() {
+        var pend = page.pendingNames().length, withItems = "", firstDone = "", errors = []
+        for (var i = 0; i < page.endpoints.length; i++) {
+            var n = page.endpoints[i].name, r = page.searchResults[n]
+            if (!r) continue
+            if (r.state === "error") errors.push(n + ": " + r.error)
+            if (r.state !== "done") continue
+            if (firstDone === "") firstDone = n
+            if (withItems === "" && r.search.items.length > 0) withItems = n
+        }
+        var cur = page.state
+        if (withItems !== "" && (cur === null || (cur.items.length === 0 && page.history.length === 0 && page.adoptedFrom !== withItems))) page.adoptFrom(withItems)
+        else if (cur === null && pend === 0 && firstDone !== "") page.adoptFrom(firstDone)
+        if (page.searchJob < 0 && (page.state !== null || pend === 0)) page.searching = false
+        if (page.state === null && pend === 0 && errors.length) page.searchError = errors.join(". ")
+        page.retarget()
     }
     function refine(op) {
         if (!page.state || page.searching) return
@@ -276,13 +673,16 @@ Item {
     }
     function feedHost(url) { var m = String(url || "").match(/^[a-z]+:\/\/([^\/?#]+)/i); return m ? m[1] : String(url || "") }
     function cancelSearch() {
-        if (!page.searching || page.searchJob < 0) return
-        Door.cancelJob(page.searchJob)
+        if (!page.searching) return
+        for (var j in page.searchJobs) Door.cancelJob(Number(j))
+        if (page.searchJob >= 0) Door.cancelJob(page.searchJob)
     }
+    // A source's chip, or a Try button: its result when it has one, else a search on it alone
     function searchOn(name) {
-        for (var i = 0; i < page.endpoints.length; i++) if (page.endpoints[i].name === name) page.endpointIndex = i
+        var have = page.searchResults[name]
+        if (have && have.state === "done") { page.adoptFrom(name); return }
         page.cancelSearch()
-        Qt.callLater(page.runSearch)
+        Qt.callLater(function() { page.runSearch([name]) })
     }
     function sortBy(key) {
         if (page.sortKey === key) page.sortDesc = !page.sortDesc
@@ -314,7 +714,6 @@ Item {
         out.groups.sort(byCount); out.quality.sort(byCount); out.other.sort(byCount)
         return out
     }
-    readonly property var otherEndpoints: endpoints.map(function(e) { return e.name }).filter(function(n) { return n !== page.searchEndpoint })
     function reasonWords(reason) {
         if (reason === "zero_results") return "That would leave nothing, so the list stays as it is."
         if (reason === "no_match") return "No release matches that term."
@@ -359,6 +758,7 @@ Item {
     function torrentKey(t) { return t.series_id !== null && t.series_id !== undefined ? "s" + t.series_id : "p" + folderOf(t.save_path) }
     function ruleKey(r) { return r.show ? "s" + r.show.series_id : "p" + folderOf(r.save_path) }
     function titleOf(r) { return r.show ? r.show.title : r.name }
+    function ruleForSeries(id) { for (var i = 0; i < rules.length; i++) if (rules[i].show && rules[i].show.series_id === id) return rules[i]; return null }
     readonly property var ruleByKey: { var m = {}; for (var i = 0; i < rules.length; i++) m[ruleKey(rules[i])] = rules[i]; return m }
 
     // Active is what is moving or waiting to: not done, not stopped, not broken
@@ -412,6 +812,7 @@ Item {
     readonly property var downloading: showGroups.filter(function(g) { return page.groupState(g) === "downloading" })
     readonly property var dlSections: {
         var defs = [
+            { key: "downloading", title: "Downloading", dot: theme.purple, line: "Moving now; Activity at the right has the detail." },
             { key: "seeding", title: "Seeding", dot: theme.green, line: "Downloaded and still sharing." },
             { key: "done", title: "Done", dot: theme.textDim, line: "Downloaded; the client is not sharing them." },
             { key: "stopped", title: "Stopped", dot: theme.textFaint, line: "Stopped before they finished." },
@@ -562,8 +963,35 @@ Item {
     }
     function control(hash, action) {
         var r = Door.controlTorrents([hash], action, false)
-        if (r.error) frame.toast(page.errorWords(r.error))
+        if (r.error) { frame.toast(page.errorWords(r.error)); return }
+        // The client takes a moment: the button spins until a read shows the change
+        var p = Object.assign({}, page.pending); p[hash] = { action: action, at: Date.now() }; page.pending = p
+        Door.listTorrents()
     }
+    // ---- Torrent actions on their way: hash -> { action, at }, cleared by the read that
+    // shows them done, or after 20 s so a button never spins forever
+    property var pending: ({})
+    function stoppedNow(t) { var st = String(t.state || ""); return st.indexOf("paused") === 0 || st.indexOf("stopped") === 0 }
+    function landed(action, t) {
+        if (action === "Stop") return page.stoppedNow(t)
+        if (action === "Start") return !page.stoppedNow(t)
+        if (action === "Sequential" || action === "Unsequential") return !!t.seq_dl === (action === "Sequential")
+        if (action === "FirstLast" || action === "UnFirstLast") return !!t.f_l_piece_prio === (action === "FirstLast")
+        return true
+    }
+    function settlePending() {
+        var keys = Object.keys(page.pending)
+        if (!keys.length) return
+        var by = {}
+        for (var i = 0; i < page.torrents.length; i++) by[page.torrents[i].hash] = page.torrents[i]
+        var p = {}, now = Date.now()
+        keys.forEach(function(h) { var e = page.pending[h], t = by[h]; if (t && now - e.at < 20000 && !page.landed(e.action, t)) p[h] = e })
+        page.pending = p
+    }
+    // What a torrent's buttons wait on: "Stop", "Start", "Cancel" (its removal is queued or
+    // running), or nothing
+    function busyOf(hash) { return page.pending[hash] ? page.pending[hash].action : page.isRemoving("t:" + hash) ? "Cancel" : "" }
+    Timer { interval: 700; repeat: true; running: Object.keys(page.pending).length > 0 && page.visible; onTriggered: Door.listTorrents() }
 
     // ---- Removals: one sheet asks, a queue runs them one at a time
     function sumSize(list) { var n = 0; for (var i = 0; i < list.length; i++) n += list[i].size || 0; return n }
@@ -639,6 +1067,18 @@ Item {
             base: torrent.name,
             rule: false, torrentCount: 1, canFiles: true,
             filesWhere: "what it downloaded"
+        }, function(choice) { page.enqueue([t], choice) })
+    }
+    // Stopping a download part way: the torrent goes, and what it wrote so far with it
+    // unless unticked, since half an episode is no use to anyone
+    function askCancelTorrent(anchor, torrent) {
+        var t = page.targetForTorrent(torrent)
+        frame.askRemoval(anchor, {
+            heading: "Cancel this download?",
+            base: torrent.name,
+            rule: false, torrentCount: 1, canFiles: true, filesOn: true,
+            filesWhere: "what it has downloaded so far",
+            confirmText: "Cancel the download", keepText: "Keep downloading"
         }, function(choice) { page.enqueue([t], choice) })
     }
     function askRemoveDetail(anchor) {
@@ -721,16 +1161,31 @@ Item {
 
     Connections {
         target: Door
+        function onSearchFinished(job, res) {
+            if (job !== page.aniJob) return
+            page.aniHits = res || []
+        }
         function onDownloadsStatusChanged(status) {
             page.status = status
             page.connecting = false
+            page.checkJob = -1
             if (page.anirssReady && !frame.downloadsRulesRead) page.loadRules()
             if (page.repoll && page.torrentOn) { page.repoll = false; page.pollTorrents() }
         }
         function onJobProgress(job, kind, done, total, label) {
             if (job === page.repairJob) { page.repairLabel = label; return }
+            if (page.getJobs[job] !== undefined) {
+                var n = page.getJobs[job], cur = page.getResults[n]
+                if (cur && cur.state === "searching") page.setResult(n, Object.assign({}, cur, { label: label }))
+                return
+            }
+            var sn = page.searchJobs[job]
+            if (sn !== undefined) { if (sn === page.searchEndpoint && page.searchJob < 0) page.searchLabel = label; return }
             if (job !== page.searchJob || !page.searching) return
             page.searchLabel = label
+        }
+        function onJobFinished(job, kind, ok) {
+            if (job === page.startJob && ok) page.startDone(true, null)
         }
         function onReleasesEnriched(query, endpoint, entries) {
             if (!page.state && !page.searching) return
@@ -744,19 +1199,29 @@ Item {
             page.datesState = "ready"
         }
         function onReleasesFound(job, search) {
-            if (job !== page.searchJob) return
-            page.searching = false
-            page.adopt(search, search.fetched_query || search.query)
-            var lines = []
-            if (search.fell_back) {
-                var asked = search.tried && search.tried.length ? search.tried[0].endpoint : ""
-                lines.push(asked + ": no results, switched to " + search.endpoint + " (" + search.items.length + ")")
+            if (page.getJobs[job] !== undefined) {
+                var name = page.getJobs[job]
+                var j = Object.assign({}, page.getJobs); delete j[job]; page.getJobs = j
+                // A fallback answered from another endpoint: none of it is this provider's
+                var own = search.endpoint === name
+                var tried = page.getResults[name] ? page.getResults[name].at || 0 : 0
+                var qs = page.getShow ? page.getShow.queries || [] : []
+                if ((!own || !search.items.length) && tried + 1 < qs.length) { page.searchGetAs(name, tried + 1); return }
+                page.setResult(name, { state: "done", items: own ? search.items : [], facts: own ? search.facts : [], query: search.query, search: search })
+                return
             }
-            if (search.auto_resolution) lines.push("Narrowed to " + search.auto_resolution + ", the sharpest on offer")
-            page.notice = lines.join(". ")
+            var from = page.searchJobs[job]
+            if (from === undefined) return
+            var rest = Object.assign({}, page.searchJobs); delete rest[job]; page.searchJobs = rest
+            // A fallback answered from another endpoint: none of it is this source's, and the
+            // source it fell back to is searched on its own anyway
+            var shown = search.endpoint === from ? search : Object.assign({}, search, { endpoint: from, items: [], groups: [], facts: [], show: null, best_fit: { available: false } })
+            var res = Object.assign({}, page.searchResults); res[from] = { state: "done", search: shown }; page.searchResults = res
+            page.settleSearch()
         }
         function onReleasesRefined(job, refinement) {
             if (job !== page.searchJob) return
+            page.searchJob = -1
             page.searching = false
             if (refinement.applied) {
                 var h = page.history.slice(); h.push(page.state); page.history = h
@@ -768,6 +1233,13 @@ Item {
         }
         function onSubscriptionPreviewed(job, spec) { if (job === page.previewJob) page.preview = spec }
         function onSubscribed(job, result) {
+            if (job === page.followJob) {
+                page.followJob = -1
+                page.getActing = false
+                page.getLine = (page.getLine !== "" ? page.getLine + " " : "") + "Following as " + result.name + ": new episodes save to " + result.save_path + "."
+                page.loadRules()
+                return
+            }
             if (job !== page.actionJob) return
             page.acting = false
             page.actionLine = "Subscribed as " + result.name + ". New episodes save to " + result.save_path + "."
@@ -794,6 +1266,14 @@ Item {
             page.ruleView = rule
         }
         function onTorrentsAdded(job, result) {
+            if (job === page.getJob) {
+                page.getJob = -1
+                page.getLine = "Sent " + Fmt.plural(result.count, "torrent", "torrents") + " to " + page.clientName + ", saving under " + result.save_path + "." + page.getNote
+                page.pollTorrents()
+                if (page.pendingFollow) page.follow(page.pendingFollow)
+                else page.getActing = false
+                return
+            }
             if (job !== page.actionJob) return
             page.acting = false
             page.actionLine = "Added " + Fmt.plural(result.count, "torrent", "torrents") + " under " + result.save_path + "."
@@ -809,6 +1289,7 @@ Item {
             page.transfer = transfer
             page.torrentsRead = true
             page.torrentsError = ""
+            page.settlePending()
         }
         function onFeedRead(url, entries) {
             if (!page.feed || page.feed.url !== url) return
@@ -828,7 +1309,23 @@ Item {
         }
         function onTorrentsControlled(hashes, action) { page.pollTorrents() }
         function onJobFailed(job, kind, error) {
-            if (job === page.searchJob) { page.searching = false; page.searchError = page.errorWords(error) }
+            if (page.getJobs[job] !== undefined) {
+                var gn = page.getJobs[job]
+                var gj = Object.assign({}, page.getJobs); delete gj[job]; page.getJobs = gj
+                page.setResult(gn, { state: "error", error: page.errorWords(error) })
+                return
+            }
+            if (job === page.getJob || job === page.followJob) { page.getJob = -1; page.followJob = -1; page.getActing = false; page.pendingFollow = null; page.getError = page.errorWords(error); return }
+            if (job === page.checkJob) { page.checkJob = -1; frame.toast(page.errorWords(error)); return }
+            if (page.searchJobs[job] !== undefined) {
+                var fn = page.searchJobs[job]
+                var fj = Object.assign({}, page.searchJobs); delete fj[job]; page.searchJobs = fj
+                var fr = Object.assign({}, page.searchResults); fr[fn] = { state: "error", error: page.errorWords(error) }; page.searchResults = fr
+                page.settleSearch()
+                return
+            }
+            if (job === page.startJob) { page.startDone(false, error); return }
+            if (job === page.searchJob) { page.searchJob = -1; page.searching = false; page.searchError = page.errorWords(error) }
             else if (job === page.actionJob) { page.acting = false; page.actionError = page.errorWords(error) }
             else if (job === page.connectJob) { page.connecting = false; frame.toast(page.errorWords(error)) }
             else if (job === page.previewJob) { page.previewJob = -1 }
@@ -842,8 +1339,16 @@ Item {
             } else if (kind === "ControlTorrents") frame.toast(page.errorWords(error))
         }
         function onJobCancelled(job, kind) {
+            if (page.getJobs[job] !== undefined) { var cn = page.getJobs[job]; var cj = Object.assign({}, page.getJobs); delete cj[job]; page.getJobs = cj; page.setResult(cn, { state: "idle" }) }
             if (job === page.runningJob) { page.queue.forEach(function(q) { page.mark(q.keys, false) }); page.queue = []; page.finishRunning(false) }
-            if (job === page.searchJob) page.searching = false
+            if (page.searchJobs[job] !== undefined) {
+                var sn = page.searchJobs[job]
+                var sj = Object.assign({}, page.searchJobs); delete sj[job]; page.searchJobs = sj
+                var sr = Object.assign({}, page.searchResults); sr[sn] = { state: "idle" }; page.searchResults = sr
+                page.settleSearch()
+            }
+            if (job === page.startJob) { page.startJob = -1; page.startName = ""; startSheet.busy = false }
+            if (job === page.searchJob) { page.searchJob = -1; page.searching = false }
             else if (job === page.actionJob) page.acting = false
             else if (job === page.connectJob) page.connecting = false
         }
@@ -857,6 +1362,7 @@ Item {
         connect()
         loadRules()
         pollTorrents()
+        loadLibrary()
         if (props.query) { search.text = props.query; Qt.callLater(page.runSearch) }
     }
 
@@ -866,59 +1372,91 @@ Item {
     readonly property real tileGap: theme.grout
     readonly property int cols: Math.max(1, Math.floor((scroll.innerWidth + tileGap) / (theme.posterWidth + tileGap)))
     readonly property real cardWidth: Math.floor((scroll.innerWidth - tileGap * (cols - 1)) / cols)
-    readonly property bool home: page.detail === null && page.state === null && !page.searching && page.searchError === ""
+    readonly property bool home: page.detail === null && page.getShow === null && page.state === null && !page.searching && page.searchError === ""
+
+    // ---- Activity at the right, while the window has the width for it
+    readonly property bool activityShown: page.width >= theme.space(250)
+    ActivityColumn {
+        id: activity
+        visible: page.activityShown
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        width: visible ? theme.space(88) : 0
+        torrents: page.torrents
+        transfer: page.transfer
+        shows: page.shows
+        connected: page.torrentOn
+        clientName: page.clientName
+        busyOf: function(hash) { return page.busyOf(hash) }
+        onCancelTorrent: function(anchor, t) { page.askCancelTorrent(anchor, t) }
+        onControl: function(hash, action) { page.control(hash, action) }
+        onOpenShow: function(t) { page.openFromTorrent(t) }
+    }
+    Rectangle { visible: activity.visible; anchors.right: activity.left; anchors.top: parent.top; anchors.bottom: parent.bottom; width: 1; color: theme.line }
 
     PageScroll {
         id: scroll
-        anchors.fill: parent
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.right: activity.visible ? activity.left : parent.right
         readonly property real innerWidth: width - theme.space(16)
 
-        // ---- The head: the title, the one line, the two halves as chips
+        // ---- The head: back (with a show open), the title, the two halves in plain words
         Item {
             width: parent.width
-            height: theme.space(14)
+            height: theme.space(20)
+            Button {
+                id: backButton
+                objectName: "downloads-back"
+                visible: page.getShow !== null
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                width: visible ? theme.space(14) : 0
+                height: theme.space(13)
+                radius: theme.space(5)
+                flat: true
+                onClicked: page.closeGet()
+                Icon { anchors.centerIn: parent; glyph: "chevron-left"; size: theme.space(8); color: theme.text }
+                Tooltip { text: "Back to Downloads" }
+            }
             Label {
                 id: titleLabel
-                anchors.left: parent.left
+                anchors.left: backButton.visible ? backButton.right : parent.left
+                anchors.leftMargin: backButton.visible ? theme.space(4) : 0
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Downloads"
                 role: "display"
-            }
-            Label {
-                objectName: "downloads-summary"
-                anchors.left: titleLabel.right
-                anchors.leftMargin: theme.space(3)
-                anchors.right: chips.left
-                anchors.rightMargin: theme.space(4)
-                anchors.baseline: titleLabel.baseline
-                text: page.summary
-                role: "ui"
-                color: theme.textDim
-                elide: Text.ElideRight
+                font.pointSize: theme.typePage
             }
             Row {
                 id: chips
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: theme.space(2)
-                Chip {
+                spacing: theme.space(4)
+                Label {
                     objectName: "downloads-anirss-chip"
-                    icon: "rss"
+                    anchors.verticalCenter: parent.verticalCenter
                     text: page.anirssReady ? "anirss " + page.anirss.version : page.connecting ? "anirss starting" : "anirss off"
-                    textColor: page.anirssReady ? theme.caughtUp : page.connecting ? theme.textDim : theme.red
-                    clickable: true
-                    onClicked: frame.go("settings", { tab: "downloads" })
-                    Tooltip { text: page.anirssReady ? "anirss at " + page.anirss.url : (page.anirss && page.anirss.message ? page.anirss.message : "Open the Downloads settings") }
+                    role: "ledger"; font.pointSize: theme.typeNormal
+                    color: page.anirssReady || page.connecting ? theme.textFaint : theme.red
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: frame.go("settings", { tab: "downloads" }) }
+                    Tooltip { text: page.anirssReady ? "anirss at " + page.anirss.url + ". " + page.summary : (page.anirss && page.anirss.message ? page.anirss.message : "Open the Downloads settings") }
                 }
-                Chip {
+                Label {
                     objectName: "downloads-client-chip"
-                    icon: "download"
+                    anchors.verticalCenter: parent.verticalCenter
                     text: page.torrentOn ? page.activeClientName + " " + page.torrent.version : page.activeClientName + " off"
-                    textColor: page.torrentOn ? theme.caughtUp : theme.red
-                    clickable: true
-                    onClicked: {
-                        if (page.remoteAnirss) { frame.go("settings", { tab: "downloads" }); return }
-                        var p = mapToItem(frame, 0, height); frame.openMenu(p.x, p.y, page.clientMenu())
+                    role: "ledger"; font.pointSize: theme.typeNormal
+                    color: page.torrentOn ? theme.textFaint : theme.red
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (page.remoteAnirss) { frame.go("settings", { tab: "downloads" }); return }
+                            var p = parent.mapToItem(frame, 0, parent.height); frame.openMenu(p.x, p.y, page.clientMenu())
+                        }
                     }
                     Tooltip { text: (page.torrentOn ? page.status.settings.torrent_url : (page.torrent && page.torrent.message ? page.torrent.message : "Not connected")) + (page.remoteAnirss ? "\nA remote anirss uses the client its own config names" : "\nClick to switch clients") }
                 }
@@ -932,43 +1470,182 @@ Item {
             }
         }
 
-        // ---- The search row: the field, the endpoint, Search
-        Row {
+        // ---- The search row: one wide field (shows as you type, release names on Return or
+        // its round button)
+        SearchField {
+            id: search
+            objectName: "downloads-search"
+            large: true
+            width: parent.width
+            placeholder: "Search for a show, or a release name"
+            hint: ""
+            goButton: true
+            goBusy: page.searching
+            goTip: page.enabledEndpoints.length ? "Search release names on " + page.enabledEndpoints.map(function(e) { return e.name }).join(", ") : "Every source is switched off."
+            onGo: page.runSearch()
+            onAccepted: {
+                if (page.suggesting && page.suggestIndex > 0 && page.suggestRows.length >= page.suggestIndex) page.pickSuggestion(page.suggestRows[page.suggestIndex - 1])
+                else page.runSearch()
+            }
+            onStepped: function(by) { if (page.suggesting) page.suggestIndex = Math.max(0, Math.min(page.suggestRows.length, page.suggestIndex + by)) }
+            onTextChanged: { page.suggestClosed = false; page.suggestIndex = 0; aniDebounce.restart() }
+            onCleared: { page.aniHits = [] }
+        }
+
+        // ---- Shows that match what is typed: the library's own, then AniList's
+        Tile {
+            id: suggestTile
+            objectName: "downloads-suggestions"
+            visible: page.suggesting
+            width: parent.width
+            implicitHeight: suggestBody.implicitHeight + padding * 2
+            height: visible ? implicitHeight : 0
+            padding: theme.space(2)
+            lit: false
+            Column {
+                id: suggestBody
+                width: parent.width
+                Repeater {
+                    model: page.suggestRows
+                    Item {
+                        id: srow
+                        required property var modelData
+                        required property int index
+                        readonly property var c: modelData.lib || null
+                        readonly property var h: modelData.ani || null
+                        readonly property bool current: page.suggestIndex === index + 1
+                        width: parent.width
+                        height: theme.space(22)
+                        Rectangle { anchors.fill: parent; radius: theme.radiusMd; color: srow.current || sMouse.containsMouse ? theme.glassFloat : "transparent" }
+                        MouseArea { id: sMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.pickSuggestion(srow.modelData) }
+                        Corner {
+                            id: sPoster
+                            x: theme.space(3)
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: theme.space(12); height: width * 1.45
+                            radius: theme.radiusSm
+                            smoothing: theme.cornerSmoothing
+                            color: theme.tileSunken
+                            Image {
+                                id: sImage
+                                visible: false
+                                anchors.fill: parent
+                                source: srow.c ? (srow.c.poster ? "file://" + srow.c.poster : "") : (srow.h && srow.h.cover_url ? srow.h.cover_url : "")
+                                sourceSize: Qt.size(96, 140)
+                                fillMode: Image.PreserveAspectCrop
+                                asynchronous: true
+                            }
+                            fillItem: sImage.status === Image.Ready ? sImage : null
+                        }
+                        Column {
+                            anchors.left: sPoster.right
+                            anchors.leftMargin: theme.space(5)
+                            anchors.right: sRight.left
+                            anchors.rightMargin: theme.space(5)
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: theme.space(1)
+                            Label { width: parent.width; text: srow.c ? page.nameOfCard(srow.c, page.query) : page.nameOfHit(srow.h, page.query); role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 }); elide: Text.ElideRight }
+                            Label {
+                                width: parent.width
+                                text: {
+                                    if (srow.c) {
+                                        var parts = []
+                                        if (srow.c.next_airing) parts.push("Airing, episode " + srow.c.next_airing.episode + " in " + Fmt.countdown(srow.c.next_airing.at - page.nowMs / 1000))
+                                        else if (srow.c.status === "Finished") parts.push("Finished")
+                                        var gw = page.gapWords(srow.c)
+                                        if (gw) parts.push(gw)
+                                        return parts.join(". ")
+                                    }
+                                    var b = []
+                                    if (srow.h.format) b.push(srow.h.format)
+                                    if (srow.h.year) b.push(String(srow.h.year))
+                                    if (srow.h.episodes) b.push(srow.h.episodes + " episodes")
+                                    return b.join(", ")
+                                }
+                                role: "ui"; color: theme.textDim; elide: Text.ElideRight
+                            }
+                        }
+                        Column {
+                            id: sRight
+                            anchors.right: parent.right
+                            anchors.rightMargin: theme.space(4)
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: theme.space(60)
+                            spacing: theme.space(1.5)
+                            EpisodeCubes {
+                                visible: srow.c !== null && String(srow.c.cubes || "") !== ""
+                                anchors.right: parent.right
+                                width: Math.min(implicitWidth, parent.width)
+                                height: implicitHeight
+                                codes: srow.c ? srow.c.cubes || "" : ""
+                                cubeSize: theme.space(2)
+                                minSize: 2
+                                maxRows: 2
+                                tipLimit: 0
+                            }
+                            Label { anchors.right: parent.right; text: srow.c ? "In your library" : "On AniList, not in your library"; role: "ui"; font.pointSize: theme.typeSmall; color: theme.textFaint }
+                        }
+                    }
+                }
+                Item {
+                    width: parent.width
+                    height: theme.space(14)
+                    Rectangle { anchors.fill: parent; radius: theme.radiusMd; color: page.suggestIndex === 0 ? theme.glassFloat : "transparent" }
+                    Label {
+                        x: theme.space(4)
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Search release names for \u201c" + page.query + "\u201d on " + (page.enabledEndpoints.length ? page.enabledEndpoints.map(function(e) { return e.name }).join(", ") : "no source") + " instead"
+                        role: "ui"; color: theme.textDim
+                    }
+                    Label { anchors.right: parent.right; anchors.rightMargin: theme.space(4); anchors.verticalCenter: parent.verticalCenter; text: "Return"; role: "ledger"; color: theme.textFaint }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.runSearch() }
+                }
+            }
+        }
+
+        // ---- The sources: a chip per provider, lit when on, greyed when off; a click flips it.
+        // An on-demand one that is down says so, and switching it on asks to start it first
+        Flow {
+            objectName: "downloads-sources"
+            visible: page.endpoints.length > 0
             width: parent.width
             spacing: theme.space(2)
-            SearchField {
-                id: search
-                objectName: "downloads-search"
-                width: parent.width - endpointPick.width - go.width - parent.spacing * 2
-                placeholder: "Search the release feeds"
-                hint: "/ then Return"
-                onAccepted: page.runSearch()
-                onCleared: {}
-            }
-            Dropdown {
-                id: endpointPick
-                objectName: "downloads-endpoint"
-                options: page.endpoints.length ? page.endpoints.map(function(e) { return e.name }) : ["(no endpoints)"]
-                index: page.endpointIndex
-                minWidth: theme.space(28)
-                interactive: page.endpoints.length > 0
-                onPicked: function(i) { page.endpointIndex = i; if (page.state) page.runSearch() }
-                Tooltip {
-                    text: {
-                        if (page.endpoints.length <= page.endpointIndex) return "The search endpoints come from anirss's config"
-                        var e = page.endpoints[page.endpointIndex]
-                        return e.on_demand ? e.name + " starts on demand: the first search waits for it, up to " + e.on_demand + " seconds" : e.url
+            Label { height: theme.space(10); verticalAlignment: Text.AlignVCenter; text: "Sources"; role: "ui"; color: theme.textFaint; rightPadding: theme.space(2) }
+            Repeater {
+                id: sourceChips
+                model: page.endpoints
+                Chip {
+                    id: src
+                    required property var modelData
+                    readonly property bool on: page.sourceOn(modelData.name)
+                    readonly property bool down: !!modelData.on_demand && modelData.running !== true
+                    readonly property bool starting: page.startJob >= 0 && page.startName === modelData.name
+                    objectName: "downloads-source-" + modelData.name
+                    text: modelData.name
+                    mono: false
+                    selected: on
+                    dimmed: !on
+                    clickable: true
+                    hint: starting ? "starting" : down ? "not running" : ""
+                    onClicked: page.toggleSource(modelData.name)
+                    Tooltip {
+                        text: src.down
+                            ? modelData.name + " runs behind Jackett, which is not running. Click to start it."
+                            : (src.on ? "Searches ask " + modelData.name + ". Click to switch it off." : "Switched off. Click to ask " + modelData.name + " again.")
+                              + (modelData.on_demand ? "" : " " + modelData.url)
                     }
                 }
             }
             Button {
-                id: go
-                objectName: "downloads-go"
-                text: page.searching ? "Searching" : "Search"
-                icon: "search"
-                primary: true
-                enabled: !page.searching
-                onClicked: page.runSearch()
+                visible: page.endpoints.some(function(e) { return !!e.on_demand })
+                height: theme.space(10)
+                text: page.checkJob >= 0 ? "Checking" : "Check"
+                icon: "refresh-cw"
+                flat: true
+                small: true
+                enabled: page.checkJob < 0
+                onClicked: page.checkSources()
+                Tooltip { text: "Asks whether each on-demand source is running. Starts nothing." }
             }
         }
 
@@ -982,6 +1659,16 @@ Item {
                 width: parent.width
                 height: theme.controlHeight
                 spacing: theme.space(3)
+                Button {
+                    objectName: "downloads-back-to-grid"
+                    visible: page.gridReturn !== null
+                    text: "Back to the grid"
+                    icon: "layout-grid"
+                    small: true
+                    anchors.verticalCenter: parent.verticalCenter
+                    onClicked: page.backToGrid()
+                    Tooltip { text: page.gridReturn ? "Back to " + page.gridReturn.show.title + " and what each provider found. Escape does the same." : "" }
+                }
                 Button { text: "Back"; icon: "arrow-left"; flat: true; small: true; enabled: page.history.length > 0; anchors.verticalCenter: parent.verticalCenter; onClicked: page.back() }
                 Label { visible: !!page.state; text: page.state ? page.state.query : ""; role: "title"; font.pointSize: theme.typeNormal; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideMiddle; width: Math.min(implicitWidth, parent.width * 0.5) }
                 Label { visible: !!page.state; text: page.state ? Fmt.plural(page.items.length, "release", "releases") + " on " + page.state.endpoint : ""; role: "ledger"; color: theme.textDim; anchors.verticalCenter: parent.verticalCenter }
@@ -996,9 +1683,32 @@ Item {
                 elapsed: page.searchElapsed
                 total: page.searchTotal
                 endpoint: page.searchEndpoint
-                others: page.state ? [] : page.otherEndpoints
                 onCancel: page.cancelSearch()
-                onSwitchTo: function(name) { page.searchOn(name) }
+            }
+            // Each source the search asked: what it found, and a click shows it
+            Row {
+                objectName: "downloads-search-sources"
+                visible: Object.keys(page.searchResults).length > 1 && (page.state !== null || page.searching)
+                spacing: theme.space(2)
+                Label { anchors.verticalCenter: parent.verticalCenter; text: "Found on"; role: "ui"; color: theme.textFaint; rightPadding: theme.space(1) }
+                Repeater {
+                    model: page.endpoints.map(function(e) { return e.name }).filter(function(n) { return page.searchResults[n] !== undefined })
+                    Chip {
+                        id: found
+                        required property string modelData
+                        readonly property var res: page.searchResults[modelData]
+                        objectName: "downloads-found-" + modelData
+                        text: modelData
+                        mono: false
+                        small: true
+                        selected: page.adoptedFrom === modelData && page.state !== null
+                        dimmed: !res || res.state === "idle" || res.state === "error"
+                        clickable: !!res && res.state === "done"
+                        hint: !res ? "" : res.state === "searching" ? "searching" : res.state === "error" ? "failed" : res.state === "idle" ? "cancelled" : Fmt.plural(res.search.items.length, "release", "releases")
+                        onClicked: page.adoptFrom(modelData)
+                        Tooltip { text: found.res && found.res.state === "error" && found.res.error ? found.res.error : "" }
+                    }
+                }
             }
             // anirss's groups as filters, by kind: a click narrows to one
             Column {
@@ -1271,6 +1981,37 @@ Item {
             }
         }
 
+        // ---- A show to get: its providers, their releases, the plan
+        Loader {
+            active: page.getShow !== null
+            visible: active
+            width: parent.width
+            height: active && item ? item.implicitHeight : 0
+            sourceComponent: GetShow {
+                objectName: "downloads-get"
+                width: scroll.innerWidth
+                show: page.getShow
+                torrents: page.torrentsOfShow(page.getShow)
+                busyOf: function(hash) { return page.busyOf(hash) }
+                endpoints: page.endpoints
+                results: page.getResults
+                active: page.getActive
+                sourceOn: function(name) { var m = frame.downloadsSources; return page.sourceOn(name) }
+                acting: page.getActing
+                actionLine: page.getLine
+                actionError: page.getError
+                nowMs: page.nowMs
+                onBack: page.closeGet()
+                onFetch: function(name) { page.fetchGet(name) }
+                onSourceToggled: function(name, on) { page.setSource(name, on); if (on) page.fetchGet(name) }
+                onCheckSources: page.checkSources()
+                onOpenList: function(name) { page.listFromGet(name) }
+                onGetAndFollow: function(plan) { page.getAndFollow(plan) }
+                onControl: function(hash, action) { page.control(hash, action) }
+                onCancelTorrent: function(anchor, t) { page.askCancelTorrent(anchor, t) }
+            }
+        }
+
         // ---- The show, inside the page
         Loader {
             active: page.detail !== null
@@ -1305,31 +2046,125 @@ Item {
             }
         }
 
-        // ---- Downloading: the shows with a torrent moving, only while one is
-        Column {
-            visible: page.detail === null && page.downloading.length > 0
+        // ---- The lenses: four ways into what there is to get
+        Item {
+            visible: page.home
             width: parent.width
-            spacing: theme.space(3)
-            BandHead {
-                title: "Downloading"
-                count: page.downloading.length
-                line: {
-                    var parts = []
-                    if (page.transfer && page.transfer.dl_speed > 0) parts.push(Fmt.bytes(page.transfer.dl_speed) + "/s down")
-                    if (page.transfer && page.transfer.up_speed > 0) parts.push(Fmt.bytes(page.transfer.up_speed) + "/s up")
-                    return parts.length ? parts.join(", ") : "Waiting for peers."
-                }
+            height: visible ? theme.space(14) : 0
+            Seg {
+                id: lensSeg
+                objectName: "downloads-lens"
+                anchors.left: parent.left
+                anchors.bottom: parent.bottom
+                options: [
+                    { text: "Gaps in your library  " + page.gapCards.length },
+                    { text: "Airing  " + page.airingCards.length },
+                    { text: "Following  " + page.rules.length },
+                    { text: "Downloaded  " + page.showGroups.length }
+                ]
+                index: ["gaps", "airing", "following", "downloaded"].indexOf(page.lens)
+                onPicked: function(i) { page.lens = ["gaps", "airing", "following", "downloaded"][i] }
             }
-            GroupList { groups: page.downloading; state: "downloading"; grid: frame.downloadsDlView === "grid" }
         }
 
-        // ---- Subscriptions, in sections by where the show stands
+        // ---- Gaps: aired episodes the library does not have, a show a row
         Column {
-            visible: page.home
+            visible: page.home && page.lens === "gaps"
             width: parent.width
             spacing: theme.space(4)
             BandHead {
-                title: "Subscriptions"
+                title: "Gaps in your library"
+                count: page.gapCards.length
+                line: page.gapCards.length ? "Aired episodes that are not on disk. Open a show to see who has them." : "Nothing is missing: every aired episode of every show is on disk."
+            }
+            Flow {
+                width: parent.width
+                spacing: page.tileGap
+                Repeater {
+                    model: page.gapCards
+                    Corner {
+                        id: gap
+                        required property var modelData
+                        objectName: "gap-" + modelData.id
+                        readonly property real cols: Math.max(1, Math.floor((scroll.innerWidth + page.tileGap) / (theme.space(105) + page.tileGap)))
+                        width: Math.floor((scroll.innerWidth - page.tileGap * (cols - 1)) / cols)
+                        height: theme.space(36)
+                        radius: theme.radiusTile
+                        smoothing: theme.cornerSmoothing
+                        color: gapMouse.containsMouse ? theme.glassFloatHover : theme.glassFloat
+                        MouseArea { id: gapMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.openGet(page.showFromCard(gap.modelData)) }
+                        Corner {
+                            id: gapPoster
+                            x: theme.space(3); y: theme.space(3)
+                            width: (parent.height - theme.space(6)) / 1.45; height: parent.height - theme.space(6)
+                            radius: theme.radiusMd
+                            smoothing: theme.cornerSmoothing
+                            color: theme.tileSunken
+                            Image {
+                                id: gapImage
+                                visible: false
+                                anchors.fill: parent
+                                source: gap.modelData.poster ? "file://" + gap.modelData.poster : ""
+                                sourceSize: Qt.size(160, 232)
+                                fillMode: Image.PreserveAspectCrop
+                                asynchronous: true
+                            }
+                            fillItem: gapImage.status === Image.Ready ? gapImage : null
+                        }
+                        Column {
+                            anchors.left: gapPoster.right
+                            anchors.leftMargin: theme.space(5)
+                            anchors.right: parent.right
+                            anchors.rightMargin: theme.space(5)
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: theme.space(2)
+                            Label { width: parent.width; text: gap.modelData.title; role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 }); wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; lineHeight: 0.92 }
+                            Label { width: parent.width; text: page.gapWords(gap.modelData); role: "ui"; color: String(gap.modelData.cubes).indexOf("m") >= 0 ? theme.yellow : theme.textDim; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight }
+                            EpisodeCubes { width: parent.width; height: implicitHeight; codes: gap.modelData.cubes || ""; cubeSize: theme.space(2.5); minSize: 2; maxRows: 2 }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ---- Airing: the library's airing shows, posters with their cubes
+        Column {
+            visible: page.home && page.lens === "airing"
+            width: parent.width
+            spacing: theme.space(4)
+            BandHead {
+                title: "Airing"
+                count: page.airingCards.length
+                line: "Shows in your library with episodes still to come. Open one to follow it."
+            }
+            Flow {
+                width: parent.width
+                spacing: page.tileGap
+                Repeater {
+                    model: page.airingCards
+                    ShowCard {
+                        required property var modelData
+                        width: page.cardWidth
+                        height: implicitHeight
+                        poster: modelData.poster || ""
+                        title: modelData.title
+                        tag: { var r = page.ruleForSeries(modelData.id); return r ? "Following" : "" }
+                        tagDot: theme.green
+                        ledger: modelData.next_airing ? "Episode " + modelData.next_airing.episode + " in " + Fmt.countdown(modelData.next_airing.at - page.nowMs / 1000) : "Airing"
+                        cubes: modelData.cubes || ""
+                        onOpened: page.openGet(page.showFromCard(modelData))
+                    }
+                }
+            }
+        }
+
+        // ---- Following: the subscriptions, in sections by where the show stands
+        Column {
+            visible: page.home && page.lens === "following"
+            width: parent.width
+            spacing: theme.space(4)
+            BandHead {
+                title: "Following"
                 count: page.rules.length
                 line: page.rulesError !== "" ? page.rulesError : page.rulesLoaded ? (page.rules.length ? "Feeds anirss watches, as the shows they fill." : "None yet.") : (page.anirssReady ? "Reading." : "")
                 alarm: page.rulesError !== ""
@@ -1377,6 +2212,7 @@ Item {
                                 tagDot: page.stateDot(page.subState(modelData))
                                 ledger: page.ruleLedger(modelData)
                                 progress: page.ruleProgress(modelData)
+                                cubes: modelData.show && modelData.show.cubes ? modelData.show.cubes : ""
                                 actionText: "Unsubscribe"
                                 actionIcon: "rss"
                                 busy: page.isRemoving("r:" + modelData.name)
@@ -1404,6 +2240,7 @@ Item {
                                 facts: page.ruleLedger(modelData) + (modelData.show ? ", " + Fmt.plural(modelData.torrent_count || 0, "torrent", "torrents") : "")
                                 folder: modelData.save_path
                                 progress: page.ruleProgress(modelData)
+                                cubes: modelData.show && modelData.show.cubes ? modelData.show.cubes : ""
                                 actionText: "Unsubscribe"
                                 actionIcon: "rss"
                                 busy: page.isRemoving("r:" + modelData.name)
@@ -1424,10 +2261,9 @@ Item {
 
         // ---- Downloaded, in sections by what the client is doing with each show
         Column {
-            visible: page.home
+            visible: page.home && page.lens === "downloaded"
             width: parent.width
             spacing: theme.space(4)
-            Item { width: 1; height: theme.space(2) }
             BandHead {
                 title: "Downloaded"
                 count: page.downloadedCount
@@ -1479,6 +2315,13 @@ Item {
         }
     }
 
+    // The confirm before AniBeam starts a source's service; over everything on the page
+    StartSourceSheet {
+        id: startSheet
+        z: 20
+        onStartRequested: function(name) { page.startService(name) }
+    }
+
     // One kind of filter: its name, then a chip per group with its count. Hovering a chip
     // lights its releases in the table; a click narrows to them.
     component FacetRow: Row {
@@ -1528,7 +2371,7 @@ Item {
             anchors.bottom: parent.bottom
             anchors.bottomMargin: theme.space(2)
             spacing: theme.space(3)
-            Label { id: bandTitle; text: band.title; role: "display"; font.pointSize: theme.typeLarge; font.variableAxes: ({ "wdth": 74, "wght": 500 }) }
+            Label { id: bandTitle; text: band.title; role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 }) }
             Label { anchors.baseline: bandTitle.baseline; visible: band.count > 0; text: band.count; role: "ledger"; color: theme.textFaint }
             Label { anchors.baseline: bandTitle.baseline; text: band.line; role: "ui"; color: band.alarm ? theme.red : theme.textDim; elide: Text.ElideRight; width: Math.max(0, Math.min(implicitWidth, parent.width - bandTitle.width - theme.space(20))) }
         }
@@ -1601,6 +2444,8 @@ Item {
                     tagDot: page.stateDot(gl.state)
                     ledger: page.groupLedger(modelData)
                     progress: gl.state === "downloading" ? modelData.have / Math.max(1, modelData.size) : -1
+                    progressCode: "t"
+                    cubes: gl.state !== "downloading" && modelData.show && modelData.show.cubes ? modelData.show.cubes : ""
                     actionText: "Remove"
                     actionIcon: "x"
                     busy: page.isRemoving("g:" + modelData.key)
@@ -1630,6 +2475,8 @@ Item {
                     trouble: modelData.broken > 0 && modelData.broken < modelData.torrents.length ? modelData.broken + " with files missing" : ""
                     folder: modelData.folder
                     progress: gl.state === "downloading" ? modelData.have / Math.max(1, modelData.size) : -1
+                    progressCode: "t"
+                    cubes: gl.state !== "downloading" && modelData.show && modelData.show.cubes ? modelData.show.cubes : ""
                     actionText: "Remove"
                     actionIcon: "x"
                     busy: page.isRemoving("g:" + modelData.key)

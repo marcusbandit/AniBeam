@@ -98,7 +98,13 @@ fn avatar_seven_havens_auto_matches_on_tvmaze_from_a_copy_of_the_real_library() 
     }
     println!("next airing: {:?}", detail.card.next_airing);
     assert_eq!((m.provider, m.tvmaze_id), (Provider::Tvmaze, Some(83073)));
-    assert!(detail.card.poster.as_deref().is_some_and(|p| Path::new(p).exists()));
+    assert!(
+        detail
+            .card
+            .poster
+            .as_deref()
+            .is_some_and(|p| Path::new(p).exists())
+    );
     assert!(!detail.synopsis.is_empty());
     assert_eq!(detail.episodes.len(), 3);
     assert!(detail.episodes.iter().all(|e| e.title.is_some()));
@@ -117,7 +123,10 @@ fn avatar_seven_havens_auto_matches_on_tvmaze_from_a_copy_of_the_real_library() 
     };
     let done = common::wait_for(
         &c,
-        |e| matches!(&e.body, EventBody::SearchFinished { .. }) && e.job.as_ref().is_some_and(|j| j.id == job),
+        |e| {
+            matches!(&e.body, EventBody::SearchFinished { .. })
+                && e.job.as_ref().is_some_and(|j| j.id == job)
+        },
         Duration::from_secs(30),
     );
     if let EventBody::SearchFinished { results } = done.body {

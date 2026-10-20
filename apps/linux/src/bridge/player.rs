@@ -11,6 +11,7 @@ use mpris_server::PlaybackStatus;
 use serde_json::Value;
 
 use crate::dbus::mpris::State;
+use crate::inhibit::Inhibitor;
 use crate::player_config::{self, PlayerSettings};
 
 #[cxx_qt::bridge]
@@ -112,6 +113,11 @@ pub mod qobject {
         #[qinvokable]
         fn mpris_seeked(self: &Player, secs: f64);
 
+        /// Hold the display awake, or let go. The player page asks for it while the main
+        /// player is playing and not paused; asking for the state already held is a no-op.
+        #[qinvokable]
+        fn set_keep_awake(self: &Player, on: bool);
+
         /// One MPRIS command for the page to act on: `next`, `previous`, `play`, `pause`,
         /// `playPause`, `stop`, `seek` (value: the offset in seconds), `setPosition`
         /// (value: seconds) and `setVolume` (value: 0 to 100).
@@ -153,6 +159,8 @@ pub struct PlayerRust {
     config_layers: QStringList,
     owned_options: QJsonArray,
     preview_options: QJsonArray,
+    // Releases its hold in its own Drop, which runs when the engine takes the singleton down.
+    inhibit: Inhibitor,
 }
 
 /// `[[name, value], ...]`: an array of pairs rather than an object, because the order the
@@ -195,6 +203,7 @@ impl Default for PlayerRust {
                     .into_iter()
                     .map(|(k, v)| (k.to_string(), v.to_string())),
             ),
+            inhibit: Inhibitor::new(),
         }
     }
 }
@@ -423,5 +432,9 @@ impl qobject::Player {
                 h.seeked(secs)
             }
         })
+    }
+
+    pub fn set_keep_awake(&self, on: bool) {
+        Self::guard("setKeepAwake", || self.inhibit.set(on))
     }
 }
