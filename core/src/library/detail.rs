@@ -73,7 +73,13 @@ impl Snapshot {
                 number: f.number,
                 season: f.season,
                 code: labels::episode_code(f.season, f.number),
-                title: air.and_then(|a| a.title.clone()),
+                // The provider's title, else whatever the release name
+                // carries after its episode token.
+                title: air.and_then(|a| a.title.clone()).or_else(|| {
+                    Path::new(&f.path)
+                        .file_name()
+                        .and_then(|n| classifier::file_episode_title(&n.to_string_lossy()))
+                }),
                 air_date: air.and_then(|a| a.aired_at).map(time::from_secs),
                 path: f.path.clone(),
                 sidecars: f.sidecars.clone(),
