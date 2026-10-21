@@ -28,7 +28,7 @@ use crate::contract::*;
 use crate::core::Core;
 use crate::library::cards;
 use crate::library::sidecar::sidecars_of;
-use crate::library::{labels, titles};
+use crate::library::{classifier, labels, titles};
 use crate::prefs;
 use crate::time;
 use crate::trackers::writes;
@@ -428,7 +428,7 @@ pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
                 (_, _, true) => None,
                 (Some(show), _, false) => c
                     .query_row(
-                        "SELECT name FROM tvmaze_episodes WHERE show_id = ?1 AND season = ?2 AND number = ?3",
+                        "SELECT NULLIF(name, 'TBA') FROM tvmaze_episodes WHERE show_id = ?1 AND season = ?2 AND number = ?3",
                         params![show as i64, f.season.unwrap_or(1), f.number],
                         |r| r.get(0),
                     )
@@ -444,6 +444,13 @@ pub fn open(core: &Core, file: u64) -> Result<PlaybackSession, CoreError> {
                     .flatten(),
                 (None, None, false) => None,
             };
+            // The provider's title, else whatever the release name carries.
+            let episode_title = episode_title.or_else(|| {
+                (!f.is_extra)
+                    .then(|| Path::new(&f.path).file_name())
+                    .flatten()
+                    .and_then(|n| classifier::file_episode_title(&n.to_string_lossy()))
+            });
             let subtitle_defaults = prefs::load_settings(c)?.subtitle_defaults;
             let lang = prefs::load_preferences(c)?.title_language;
             Ok((
