@@ -529,7 +529,9 @@ impl Snapshot {
                 .to_string(),
         };
         let sql = format!(
-            "SELECT show_id, season, number, name, airstamp FROM tvmaze_episodes WHERE {where_sql} ORDER BY season, number"
+            // TVmaze names an episode it knows nothing about yet "TBA",
+            // which is a placeholder, not a title.
+            "SELECT show_id, season, number, NULLIF(name, 'TBA'), airstamp FROM tvmaze_episodes WHERE {where_sql} ORDER BY season, number"
         );
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map(params_from_iter(ids_as_i64(scope.unwrap_or(&[]))), |r| {

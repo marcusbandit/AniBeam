@@ -238,6 +238,68 @@ pub fn clean_episode_title(file_name: &str) -> String {
     TRAILING_DASH.replace(&stripped, "").trim().to_string()
 }
 
+/// Where a release name says which episode it is. The title, when the
+/// release carries one, follows it. The same tokens `extract_episode` reads,
+/// with `- 12.5` and `- 05v2` taken whole so no part of the number is left
+/// to read as the title.
+static TITLE_ANCHOR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)\bS[0-9]+E[0-9]+\b|\b(?:Episode|Ep\.?)\s*[0-9]+(?:\.[0-9]+)?(?:v[0-9]+)?\b|\bE[0-9]{2,}\b|\s-\s*[0-9]+(?:\.[0-9]+)?(?:v[0-9]+)?\b",
+    )
+    .unwrap()
+});
+static PARENS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s*\([^)]*\)\s*").unwrap());
+/// A word that opens the release tail: resolution, source, codec, audio,
+/// language or edition. The title ends where one starts. Only words no
+/// title would use, so "Magnum Opus" and "The Sub Plot" survive.
+static RELEASE_TOKEN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)^(?:(?:bd|web)?[0-9]{3,4}[pi][0-9]*|[0-9]{3,4}x[0-9]{3,4}|4k|uhd|hdr(?:10)?|web(?:-?dl|-?rip)?|blu-?ray|bdrip|brrip|bdremux|remux|hdtv|hdrip|dvdrip|dvdscr|amzn|dsnp|hmax|atvp|x26[45]|h\.?26[45]|hevc|avc|av1|xvid|divx|hi10p?|10-?bit|8-?bit|aac[0-9]*|ddp?[0-9]*|e?ac3|dts(?:-?hd)?|truehd|flac|repack|eng|ita|ger|jpn|vostfr)$",
+    )
+    .unwrap()
+});
+/// What a fansub release puts where a title would go, and what a release
+/// with no title repeats: `Ep 3`, `Episode 03v2`, `END`.
+static NOT_A_TITLE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)^(?:(?:Episode|Ep\.?)\s*[0-9]+(?:\.[0-9]+)?(?:v[0-9]+)?|end|final|fin|[0-9]+)$",
+    )
+    .unwrap()
+});
+
+/// The episode title a release name carries after its episode token, or
+/// None. `Show.S03E04.A.Trial.of.Errors.1080p.WEB-DL.mkv` is "A Trial of
+/// Errors"; `[Group] Show - 01 [1080p].mkv` carries none.
+pub fn file_episode_title(file_name: &str) -> Option<String> {
+    // A scene name separates with dots and underscores; a name with spaces
+    // of its own keeps its dots, which belong to the title ("Mr. Smith").
+    // Decided on the name as given, before the bracket and paren strips
+    // put spaces of their own into it.
+    let stem = Path::new(file_name).file_stem()?.to_string_lossy();
+    let dotted = !stem.contains(' ');
+    let base = strip_brackets_and_ext(file_name);
+    let anchor = TITLE_ANCHOR.find(&base)?;
+    let rest = &base[anchor.end()..];
+    let rest = if dotted {
+        SEPARATORS.replace_all(rest, " ").into_owned()
+    } else {
+        rest.replace('_', " ")
+    };
+    let rest = PARENS.replace_all(&rest, " ");
+    // A scene group glued to the last release token (`HDTV-LOL`) is still
+    // that token.
+    let words: Vec<&str> = rest
+        .split_whitespace()
+        .take_while(|w| !RELEASE_TOKEN.is_match(w.split('-').next().unwrap_or(w)))
+        .collect();
+    let title = words.join(" ");
+    let title = title.trim_matches(|c: char| c == '-' || c.is_whitespace());
+    if title.is_empty() || NOT_A_TITLE.is_match(title) {
+        return None;
+    }
+    Some(title.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -421,5 +483,68 @@ mod tests {
         );
         assert_eq!(clean_episode_title("Show_Name_03_.mkv"), "Show_Name_03");
         assert_eq!(strip_brackets_and_ext("[A] Show [B] 01 [C].mkv"), "Show 01");
+    }
+
+    #[test]
+    fn titles_come_from_the_release_name_after_the_episode_token() {
+        let t = |n: &str| file_episode_title(n);
+        assert_eq!(
+            t("Helluva.Boss.S03E04.A.Trial.of.Errors.1080p.AMZN.WEB-DL.ENG.ITA.DDP5.1.H264-TBK.mkv")
+                .as_deref(),
+            Some("A Trial of Errors")
+        );
+        assert_eq!(
+            t("Helluva.Boss.S03E01.Turtle.Emoji.1080p.AMZN.WEB-DL.mkv").as_deref(),
+            Some("Turtle Emoji")
+        );
+        assert_eq!(
+            t("[Group] Show - 03 - The Heroine Arrives [1080p].mkv").as_deref(),
+            Some("The Heroine Arrives")
+        );
+        assert_eq!(
+            t("Show S01E02 Mr. Smith Goes (1080p).mkv").as_deref(),
+            Some("Mr. Smith Goes")
+        );
+        assert_eq!(t("[SubsPlease] Show - 01 (1080p) [ABCD1234].mkv"), None);
+        assert_eq!(t("Show.S01E01.720p.HDTV.x264.mkv"), None);
+        assert_eq!(t("Show Episode 3.mkv"), None);
+        assert_eq!(t("Show - 05v2.mkv"), None);
+        assert_eq!(t("Show OP1.mkv"), None);
+        // From the #108 review.
+        assert_eq!(
+            t("Show.S01E02.Some.Title.(2019).1080p.mkv").as_deref(),
+            Some("Some Title")
+        );
+        assert_eq!(
+            t("[Group] Show - 12.5 - Recap Title [1080p].mkv").as_deref(),
+            Some("Recap Title")
+        );
+        assert_eq!(
+            t("Show.S01E05.Magnum.Opus.1080p.mkv").as_deref(),
+            Some("Magnum Opus")
+        );
+        assert_eq!(
+            t("Show.S02E03.The.Sub.Plot.720p.mkv").as_deref(),
+            Some("The Sub Plot")
+        );
+        assert_eq!(
+            t("Show.S01E02.Pilot.HDTV-LOL.mkv").as_deref(),
+            Some("Pilot")
+        );
+        assert_eq!(
+            t("Show.S01E02.Title.HDRip.XviD.mkv").as_deref(),
+            Some("Title")
+        );
+        assert_eq!(
+            t("Show.S01E02.Title.BD1080p.Hi10P.mkv").as_deref(),
+            Some("Title")
+        );
+        assert_eq!(
+            t("Show Ep 03 - The Title.mkv").as_deref(),
+            Some("The Title")
+        );
+        assert_eq!(t("Show S01E03 Ep 3.mkv"), None);
+        assert_eq!(t("Show S01E03 Episode 03v2.mkv"), None);
+        assert_eq!(t("[G] Show - 12 END [1080p].mkv"), None);
     }
 }
