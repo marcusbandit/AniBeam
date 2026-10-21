@@ -1013,6 +1013,10 @@ async fn rewire_subscription(
     if spec.feed_url.is_empty() || spec.feed_url == result.feed_url {
         return Ok(());
     }
+    let feed_url = tightest_feed(core, &spec.feed_url, wire, &terms.must, items).await;
+    if feed_url == result.feed_url {
+        return Ok(());
+    }
     let qbt = qbt_client(core).await?;
     let rules = qbt.rules().await?;
     let Some(def) = rules.get(&result.name) else {
@@ -1022,7 +1026,7 @@ async fn rewire_subscription(
             format!("qBittorrent holds no rule named {}", result.name),
         ));
     };
-    let def = rewire::narrowed(def, terms, &spec.feed_url);
+    let def = rewire::narrowed(def, terms, &feed_url);
     qbt.set_rule(&result.name, &def).await?;
     let feeds = qbt.feeds().await?;
     let old = feeds
@@ -1034,12 +1038,59 @@ async fn rewire_subscription(
     {
         qbt.remove_item(path).await?;
     }
-    qbt.add_feed(&spec.feed_url, old.as_deref().unwrap_or(&result.name))
+    qbt.add_feed(&feed_url, old.as_deref().unwrap_or(&result.name))
         .await?;
-    result.feed_url = spec.feed_url;
+    result.feed_url = feed_url;
     result.must_contain = def["mustContain"].as_str().unwrap_or("").to_string();
     result.must_not_contain = def["mustNotContain"].as_str().unwrap_or("").to_string();
     Ok(())
+}
+
+/// The narrowest feed the endpoint itself can answer. Starting from the
+/// search's feed, each narrowing word is tried in the feed's own search,
+/// and a word stays there when the feed still holds every picked release
+/// and holds fewer than before ("Helluva Boss TBK" works on 1337x where
+/// "Helluva Boss S03 TBK" finds nothing). Only what the feed returns
+/// decides, so it works the same for any endpoint whose feed carries a
+/// search. A feed that cannot be read stops the probing; the rule keeps
+/// every word either way.
+async fn tightest_feed(
+    core: &Arc<Core>,
+    feed_url: &str,
+    wire: &str,
+    words: &[String],
+    items: &[Release],
+) -> String {
+    const MAX_PROBES: usize = 4;
+    let Some((key, _)) = rewire::search_param(feed_url) else {
+        return feed_url.to_string();
+    };
+    if words.is_empty() || items.is_empty() {
+        return feed_url.to_string();
+    }
+    let http = core.http.as_ref();
+    let Ok(now) = feed::read(http, feed_url).await else {
+        return feed_url.to_string();
+    };
+    let mut best = (feed_url.to_string(), now.len());
+    let mut search = wire.trim().to_string();
+    for word in words.iter().take(MAX_PROBES) {
+        let field = if word.contains(' ') {
+            format!("\"{word}\"")
+        } else {
+            word.clone()
+        };
+        let candidate = format!("{search} {field}");
+        let url = rewire::with_search(feed_url, &key, &candidate);
+        let Ok(entries) = feed::read(http, &url).await else {
+            break;
+        };
+        if entries.len() < best.1 && rewire::holds_all(&entries, items) {
+            best = (url, entries.len());
+            search = candidate;
+        }
+    }
+    best.0
 }
 
 pub fn download(core: &Core, items: Vec<Release>, name: Option<String>) -> Result<u64, CoreError> {

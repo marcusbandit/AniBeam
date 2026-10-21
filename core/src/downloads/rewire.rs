@@ -10,13 +10,17 @@
 //! never fires. The fix keeps anirss's rule and moves it: the feed becomes
 //! the one the search actually read, and the words narrowed away from it
 //! go into the rule's own filters, which qBittorrent applies to every
-//! article. Erai is left alone: anirss already moves its terms into the
+//! article. Words the endpoint can answer after all ("TBK" on 1337x) are
+//! probed back into the feed's search, so the feed holds what was picked
+//! and not every release of the show. Erai is left alone: anirss already moves its terms into the
 //! rule (its per-show feed), and nyaa searches server-side.
 
 use std::sync::LazyLock;
 
 use regex::Regex;
 use serde_json::Value;
+
+use crate::contract::{FeedEntry, Release};
 
 /// anirss's own field split: a `-"quoted phrase"`, a `"quoted"` or a word.
 static FIELDS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"-?"[^"]*"|\S+"#).unwrap());
@@ -127,6 +131,20 @@ pub fn narrowed(def: &Value, terms: &LocalTerms, feed_url: &str) -> Value {
     out
 }
 
+/// Whether a feed still holds every picked release, judged by title as
+/// the endpoint writes it (case and spacing aside): a torznab download link
+/// can change from one search to the next, a title does not.
+pub fn holds_all(entries: &[FeedEntry], picked: &[Release]) -> bool {
+    let norm = |t: &str| {
+        t.split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_lowercase()
+    };
+    let titles: Vec<String> = entries.iter().map(|e| norm(&e.title)).collect();
+    picked.iter().all(|r| titles.contains(&norm(&r.title)))
+}
+
 /// Whether any rule but `except` reads `feed_url`.
 pub fn feed_shared(rules: &Value, except: &str, feed_url: &str) -> bool {
     rules.as_object().is_some_and(|map| {
@@ -221,6 +239,32 @@ mod tests {
         assert_eq!(out["savePath"], "/media/Helluva Boss");
         assert_eq!(out["torrentParams"]["tags"], json!(["TV"]));
         assert_eq!(out["enabled"], true);
+    }
+
+    #[test]
+    fn a_feed_holds_the_picked_releases_by_title() {
+        let entry = |t: &str| FeedEntry {
+            title: t.to_string(),
+            link: String::new(),
+            page: String::new(),
+            published: None,
+            size: String::new(),
+            size_bytes: None,
+            seeders: None,
+            leechers: None,
+            downloads: None,
+            info_hash: String::new(),
+        };
+        let pick = |t: &str| -> Release {
+            serde_json::from_value(json!({"title": t, "link": "http://j/dl/other"})).unwrap()
+        };
+        let feed = [entry("Show.S03E04-TBK"), entry("Show  S03E05 TBK")];
+        assert!(holds_all(
+            &feed,
+            &[pick("show.s03e04-tbk"), pick("Show S03E05 TBK")]
+        ));
+        assert!(!holds_all(&feed, &[pick("Show.S03E06-TBK")]));
+        assert!(!holds_all(&[], &[pick("Show.S03E04-TBK")]));
     }
 
     #[test]
