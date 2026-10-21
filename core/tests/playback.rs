@@ -423,11 +423,8 @@ fn a_session_views_marks_completes_and_clears_its_resume_point() {
     // (4) The mark line is also where the episode is done: the resume point
     // goes, the completion is recorded, and the card behind the player is
     // pushed so Next up moves on. The tail has nothing left to add.
-    common::wait_for(
-        &c,
-        |e| matches!(e.body, EventBody::SeriesChanged { .. }),
-        Duration::from_secs(30),
-    );
+    // The completion is written inside the tick, so its events are already
+    // out by the time the mark's job has reported.
     let after: Vec<EventBody> = c.bodies().into_iter().skip(seen).collect();
     assert!(after.iter().any(|b| matches!(b, EventBody::ResumePointChanged { file, position: None } if *file == lib.ep2)), "{after:?}");
     assert!(
