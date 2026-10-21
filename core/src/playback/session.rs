@@ -7,7 +7,9 @@
 //! ordering lives in `effects`, which is pure over the session and testable
 //! without a store; everything that writes is below it.
 //!
-//! The thresholds are Electron's, carried one for one:
+//! The thresholds are Electron's, carried one for one, with one departure:
+//! an episode played across the mark line completes there as well as at
+//! the tail, so a series with no tracker still counts it watched (#105).
 //! `src/main/services/mpvPlayback.ts` (`MAX_TICK_DELTA_SEC`, the one-second
 //! poll and its "only forward movement at roughly real time" rule),
 //! `src/main/services/viewHistory.ts` (`markViewed` and its newer-wins
@@ -145,14 +147,14 @@ pub fn effects(s: &mut Session, position: f64, kind: TickKind) -> Vec<Effect> {
     if !position.is_finite() || position < 0.0 {
         return out;
     }
-    if let Some(last) = s.last_position {
-        let delta = position - last;
-        // Only forward movement at roughly real time counts. A backwards or
-        // oversized jump is a seek, so scrubbing to the credits never reads
-        // as having watched the episode.
-        if !paused && delta > 0.0 && delta <= MAX_TICK_DELTA {
-            s.watched_secs += delta;
-        }
+    // Only forward movement at roughly real time counts. A backwards or
+    // oversized jump is a seek, so scrubbing to the credits never reads as
+    // having watched the episode.
+    let played = !paused
+        && s.last_position
+            .is_some_and(|last| position > last && position - last <= MAX_TICK_DELTA);
+    if played && let Some(last) = s.last_position {
+        s.watched_secs += position - last;
     }
     s.last_position = Some(position);
 
@@ -160,19 +162,23 @@ pub fn effects(s: &mut Session, position: f64, kind: TickKind) -> Vec<Effect> {
         s.viewed = true;
         out.push(Effect::View);
     }
-    if !s.marked && !s.is_extra {
-        // A known outro's start: an episode stopped before its ending
-        // song is not finished, however far through the file that is. 85
-        // percent of the duration only stands in when no outro is known.
-        let at = s.outro_start.or(s.duration.map(|d| d * MARK_FRACTION));
-        if at.is_some_and(|a| position >= a) {
-            s.marked = true;
-            out.push(Effect::Mark);
-        }
+    // A known outro's start: an episode stopped before its ending song is
+    // not finished, however far through the file that is. 85 percent of the
+    // duration only stands in when no outro is known.
+    let finish = s.outro_start.or(s.duration.map(|d| d * MARK_FRACTION));
+    let past_finish = finish.is_some_and(|f| position >= f);
+    if !s.marked && !s.is_extra && past_finish {
+        s.marked = true;
+        out.push(Effect::Mark);
     }
+    // An episode played across that line is finished too, so one the
+    // trackers hear about is one the library counts, tracked or not. Only
+    // played across: completion clears the resume point, so a seek to peek
+    // at the credits must not. A film or an extra keeps to the tail, since
+    // 85 percent of a film is a quarter of an hour before its end.
+    let episode = !s.is_extra && !s.is_film;
     let tail = s.duration.is_some_and(|d| position >= d - RESUME_TAIL);
-    let outro = s.outro_start.is_some_and(|o| position >= o);
-    if !s.completed && (tail || outro) {
+    if !s.completed && (tail || (episode && played && past_finish)) {
         s.completed = true;
         out.push(Effect::Complete);
     } else if !s.completed && position >= RESUME_HEAD {
@@ -934,16 +940,12 @@ mod tests {
             effects(&mut s, 1189.0, TickKind::Playing),
             vec![Effect::Resume(1189.0)]
         );
-        // One second on from the last resume point, so the mark is all
-        // this tick has to say.
+        // The 85 percent line marks and completes on the same tick.
         assert_eq!(
             effects(&mut s, 1190.0, TickKind::Playing),
-            vec![Effect::Mark]
+            vec![Effect::Mark, Effect::Complete]
         );
-        assert_eq!(
-            effects(&mut s, 1200.0, TickKind::Playing),
-            vec![Effect::Resume(1200.0)]
-        );
+        assert_eq!(effects(&mut s, 1200.0, TickKind::Playing), Vec::new());
 
         // An outro past the 85 percent line: 1190 is no mark, 1250 is.
         let mut s = session(false, Some(1400.0));
@@ -973,19 +975,26 @@ mod tests {
         );
 
         // An outro with no duration still carries a mark line of its own.
+        // A seek onto it marks, and playing across it completes.
         let mut s = session(false, None);
         s.outro_start = Some(300.0);
         assert_eq!(
             effects(&mut s, 300.0, TickKind::Playing),
-            vec![Effect::Mark, Effect::Complete]
+            vec![Effect::Mark, Effect::Resume(300.0)]
+        );
+        assert_eq!(
+            effects(&mut s, 301.0, TickKind::Playing),
+            vec![Effect::Complete]
         );
     }
 
-    /// Completion is the tail or the outro, and it replaces the resume point
-    /// rather than sitting beside it.
+    /// Completion is the tail or the mark line, and it replaces the resume
+    /// point rather than sitting beside it. The tail still counts when an
+    /// outro lies past it.
     #[test]
     fn completion_takes_the_tail_and_never_writes_a_resume_point() {
         let mut s = session(false, Some(1400.0));
+        s.outro_start = Some(1390.0);
         s.marked = true;
         assert_eq!(
             effects(&mut s, 1369.0, TickKind::Playing),
@@ -997,6 +1006,56 @@ mod tests {
         );
         assert_eq!(effects(&mut s, 1380.0, TickKind::Playing), Vec::new());
         assert_eq!(effects(&mut s, 1399.0, TickKind::Playing), Vec::new());
+    }
+
+    /// A show with long credits and no known outro, stopped a minute or two
+    /// before the end, is watched: the trackers get their mark and the
+    /// library its completion, whether or not the series has a tracker id.
+    #[test]
+    fn stopping_in_long_credits_still_completes() {
+        let mut s = session(false, Some(1567.0));
+        assert_eq!(
+            effects(&mut s, 1331.0, TickKind::Playing),
+            vec![Effect::Resume(1331.0)]
+        );
+        assert_eq!(
+            effects(&mut s, 1332.0, TickKind::Playing),
+            vec![Effect::Mark, Effect::Complete]
+        );
+        assert_eq!(effects(&mut s, 1332.0, TickKind::Closing), Vec::new());
+    }
+
+    /// A seek past the line to peek at the credits marks, as it always has,
+    /// but leaves the episode unfinished and its resume point in place, and
+    /// a film or an extra played across it still waits for the tail.
+    #[test]
+    fn only_episodes_played_across_the_line_complete_there() {
+        let mut s = session(false, Some(1400.0));
+        effects(&mut s, 600.0, TickKind::Playing);
+        assert_eq!(
+            effects(&mut s, 1250.0, TickKind::Playing),
+            vec![Effect::Mark, Effect::Resume(1250.0)]
+        );
+        assert_eq!(
+            effects(&mut s, 600.0, TickKind::Closing),
+            vec![Effect::Resume(600.0)]
+        );
+
+        let mut film = session(false, Some(7200.0));
+        film.is_film = true;
+        effects(&mut film, 6119.0, TickKind::Playing);
+        assert_eq!(
+            effects(&mut film, 6120.0, TickKind::Playing),
+            vec![Effect::Mark]
+        );
+        assert_eq!(
+            effects(&mut film, 7170.0, TickKind::Playing),
+            vec![Effect::Complete]
+        );
+
+        let mut extra = session(true, Some(1400.0));
+        effects(&mut extra, 1200.0, TickKind::Playing);
+        assert_eq!(effects(&mut extra, 1201.0, TickKind::Playing), Vec::new());
     }
 
     /// An extra shares its number with a real episode, so it never records a
