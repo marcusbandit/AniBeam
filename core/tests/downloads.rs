@@ -865,6 +865,111 @@ fn a_locally_narrowed_subscription_reads_the_searched_feed_and_filters_in_the_ru
     assert_eq!(form_of(&rss[4]), format!("url={wide}&path=Helluva Boss"));
 }
 
+/// The words the endpoint can answer go back into the feed's search: the
+/// feed holds what was picked, not every release of the show. A word stays
+/// only when the feed still holds every picked release and gets smaller;
+/// one that loses a picked release is left to the rule.
+#[test]
+fn a_locally_narrowed_subscription_probes_the_words_the_endpoint_answers() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    isolate_xdg(dir.path());
+    save(&core, remote(), Some("tok"), Some("pw"));
+    http.push_for(
+        "/health",
+        200,
+        json!({"ok": true, "version": "0.3.4"}).to_string(),
+    );
+    http.push_for(
+        "/endpoints",
+        200,
+        json!({"endpoints": [{"name": "1337x", "kind": "rss", "url": "http://127.0.0.1:9117/x?q={query}", "client_side_refine": true}]}).to_string(),
+    );
+    http.push_for(
+        "/qbt/status",
+        200,
+        json!({"url": "http://localhost:9090", "reachable": true, "authenticated": true})
+            .to_string(),
+    );
+    http.push_for("app/version", 200, "v5.2.4");
+    let job = started(&core, Call::ConnectDownloads);
+    common::wait_job(&c, job);
+
+    let tbk4 = "Helluva.Boss.S03E04.A.Trial.of.Errors.1080p.AMZN.WEB-DL.H264-TBK";
+    let tbk5 = "Helluva.Boss.S03E05.The.Auction.1080p.AMZN.WEB-DL.H264-TBK";
+    let item =
+        |t: &str, n: u32| format!("<item><title>{t}</title><link>http://j/dl/{n}</link></item>");
+    let channel = |items: &[String]| format!("<rss><channel>{}</channel></rss>", items.join(""));
+    let narrow = "http://127.0.0.1:9117/x?q=Helluva+Boss+S03+TBK+1080p";
+    let wide = "http://127.0.0.1:9117/x?q=Helluva+Boss+S03";
+    let tight = "http://127.0.0.1:9117/x?q=Helluva%20Boss%20S03%20TBK";
+    http.push_for(
+        "api/v1/subscriptions",
+        201,
+        json!({"name": "Helluva Boss", "feed_url": narrow, "save_path": "/media/TV/Helluva Boss",
+               "must_contain": "", "must_not_contain": "", "tags": ["TV"]})
+        .to_string(),
+    );
+    http.push_for(
+        "subscriptions/preview",
+        200,
+        json!({"feed_url": wide, "must_contain": "", "must_not_contain": "", "endpoint_name": "1337x"}).to_string(),
+    );
+    http.push_for(
+        "q=Helluva+Boss+S03",
+        200,
+        channel(&[
+            item(tbk4, 1),
+            item(tbk5, 2),
+            item("Helluva.Boss.S03E04.1080p.HEVC.x265-MeGusta", 3),
+            item("Hazbin Hotel Season 1 [1080p]", 4),
+        ]),
+    );
+    http.push_for("S03%20TBK%201080p", 200, channel(&[item(tbk4, 1)]));
+    http.push_for("S03%20TBK", 200, channel(&[item(tbk4, 1), item(tbk5, 2)]));
+    http.push_for(
+        "rss/rules",
+        200,
+        json!({"Helluva Boss": {"enabled": true, "mustContain": "", "mustNotContain": "", "affectedFeeds": [narrow],
+                                "savePath": "/media/TV/Helluva Boss"}}).to_string(),
+    );
+    http.push_for("rss/setRule", 200, "");
+    http.push_for(
+        "rss/items",
+        200,
+        json!({"Helluva Boss": {"uid": "u", "url": narrow}}).to_string(),
+    );
+    http.push_for("rss/removeItem", 200, "");
+    http.push_for("rss/addFeed", 200, "");
+
+    let picked: Vec<Release> = [tbk4, tbk5]
+        .iter()
+        .map(|t| serde_json::from_value(json!({"title": t, "link": "http://j/dl/x"})).unwrap())
+        .collect();
+    let job = started(
+        &core,
+        Call::Subscribe {
+            query: "Helluva Boss S03 TBK 1080p".to_string(),
+            endpoint: "1337x".to_string(),
+            items: picked,
+            name: Some("Helluva Boss".to_string()),
+            wire_query: Some("Helluva Boss S03".to_string()),
+        },
+    );
+    let event = common::wait_job(&c, job);
+    let EventBody::Subscribed { result } = &event.body else {
+        panic!("{:?}", event.body)
+    };
+    assert_eq!(result.feed_url, tight);
+    assert_eq!(result.must_contain, "TBK 1080p");
+    let added = http
+        .requests()
+        .into_iter()
+        .find(|r| r.url.contains("rss/addFeed"))
+        .unwrap();
+    assert_eq!(form_of(&added), format!("url={tight}&path=Helluva Boss"));
+}
+
 /// A rule whose feed finds nothing: the core shortens the feed's search
 /// word by word until the endpoint answers, keeps the dropped words in the
 /// rule, and swaps the feed in the order a fresh subscription does.
