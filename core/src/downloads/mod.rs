@@ -930,7 +930,7 @@ pub fn subscribe(
     Ok(owner
         .jobs
         .clone()
-        .start(JobKind::Subscribe, move |_| async move {
+        .start(JobKind::Subscribe, move |ctx| async move {
             let client = ensure_client(&owner).await?;
             let mut result = client
                 .subscribe(&query, &endpoint, &items, name.as_deref())
@@ -948,18 +948,11 @@ pub fn subscribe(
                 )
             } else {
                 let wire = wire_query.clone().unwrap_or_default();
-                rewire_subscription(
-                    &owner,
-                    &client,
-                    &mut result,
-                    &wire,
-                    &endpoint,
-                    &items,
-                    &terms,
-                )
-                .await?;
+                let wide = client.preview(&wire, &endpoint, &items).await?.feed_url;
+                rewire_subscription(&owner, &ctx, &mut result, &wide, &items, &terms).await?;
+                let searched = rewire::search_param(&result.feed_url).map_or(wire, |(_, v)| v);
                 format!(
-                    "Subscribed to {}; {endpoint} is searched for \"{wire}\" and the rule keeps {}",
+                    "Subscribed to {}; {endpoint} is searched for \"{searched}\" and the rule keeps {}",
                     result.name,
                     describe_terms(&terms)
                 )
@@ -995,25 +988,23 @@ fn describe_terms(terms: &rewire::LocalTerms) -> String {
     parts.join(" and ")
 }
 
-/// Points anirss's new rule at the feed the search read and puts the
-/// narrowing words in the rule. In this order, so qBittorrent never holds
-/// the rule unnarrowed beside a feed with articles: the rule first (its old
-/// feed found nothing, and its new one is not there yet), then the empty
-/// feed out (unless another rule reads it), then the search's feed in.
+/// Points anirss's new rule at the feed the search read, narrowed by the
+/// words the endpoint can answer, and puts every narrowing word in the
+/// rule.
+/// `searched` is the feed anirss would make for the query the endpoint was
+/// asked.
 async fn rewire_subscription(
     core: &Arc<Core>,
-    client: &AnirssClient,
+    ctx: &Arc<JobCtx>,
     result: &mut Subscribed,
-    wire: &str,
-    endpoint: &str,
+    searched: &str,
     items: &[Release],
     terms: &rewire::LocalTerms,
 ) -> Result<(), CoreError> {
-    let spec = client.preview(wire, endpoint, items).await?;
-    if spec.feed_url.is_empty() || spec.feed_url == result.feed_url {
+    if searched.is_empty() || searched == result.feed_url {
         return Ok(());
     }
-    let feed_url = tightest_feed(core, &spec.feed_url, wire, &terms.must, items).await;
+    let feed_url = tightest_feed(core, ctx, searched, &terms.must, items).await;
     if feed_url == result.feed_url {
         return Ok(());
     }
@@ -1027,42 +1018,66 @@ async fn rewire_subscription(
         ));
     };
     let def = rewire::narrowed(def, terms, &feed_url);
-    qbt.set_rule(&result.name, &def).await?;
-    let feeds = qbt.feeds().await?;
-    let old = feeds
-        .iter()
-        .find(|(_, url)| *url == result.feed_url)
-        .map(|(path, _)| path.clone());
-    if let Some(path) = &old
-        && !rewire::feed_shared(&rules, &result.name, &result.feed_url)
-    {
-        qbt.remove_item(path).await?;
-    }
-    qbt.add_feed(&feed_url, old.as_deref().unwrap_or(&result.name))
-        .await?;
+    swap_feed(
+        &qbt,
+        &rules,
+        &result.name,
+        &def,
+        &result.feed_url,
+        &feed_url,
+    )
+    .await?;
     result.feed_url = feed_url;
     result.must_contain = def["mustContain"].as_str().unwrap_or("").to_string();
     result.must_not_contain = def["mustNotContain"].as_str().unwrap_or("").to_string();
     Ok(())
 }
 
+/// Moves rule `name` from `old_url` to `new_url`, `def` being the rule as
+/// it should read. In this order, so qBittorrent never holds the rule
+/// unnarrowed beside a feed with articles: the rule first, then the old
+/// feed out (unless another rule reads it), then the new feed in, in the
+/// old one's place.
+async fn swap_feed(
+    qbt: &QbtClient,
+    rules: &serde_json::Value,
+    name: &str,
+    def: &serde_json::Value,
+    old_url: &str,
+    new_url: &str,
+) -> Result<(), CoreError> {
+    qbt.set_rule(name, def).await?;
+    let feeds = qbt.feeds().await?;
+    let old = feeds
+        .iter()
+        .find(|(_, url)| *url == old_url)
+        .map(|(path, _)| path.clone());
+    if let Some(path) = &old
+        && !rewire::feed_shared(rules, name, old_url)
+    {
+        qbt.remove_item(path).await?;
+    }
+    qbt.add_feed(new_url, old.as_deref().unwrap_or(name))
+        .await?;
+    Ok(())
+}
+
 /// The narrowest feed the endpoint itself can answer. Starting from the
-/// search's feed, each narrowing word is tried in the feed's own search,
-/// and a word stays there when the feed still holds every picked release
-/// and holds fewer than before ("Helluva Boss TBK" works on 1337x where
-/// "Helluva Boss S03 TBK" finds nothing). Only what the feed returns
-/// decides, so it works the same for any endpoint whose feed carries a
-/// search. A feed that cannot be read stops the probing; the rule keeps
-/// every word either way.
+/// search the feed carries, each narrowing word is tried in it, and a word
+/// stays when the feed still holds every picked release and holds fewer
+/// than before ("Helluva Boss TBK" works on 1337x where "Helluva Boss S03
+/// TBK" finds nothing). Only what the feed returns decides, so it works the
+/// same for any endpoint whose feed carries a search. A feed that cannot be
+/// read rejects that word; the rule keeps every word either way.
 async fn tightest_feed(
     core: &Arc<Core>,
+    ctx: &Arc<JobCtx>,
     feed_url: &str,
-    wire: &str,
     words: &[String],
     items: &[Release],
 ) -> String {
     const MAX_PROBES: usize = 4;
-    let Some((key, _)) = rewire::search_param(feed_url) else {
+    let Some((key, base)) = rewire::search_param(feed_url) else {
         return feed_url.to_string();
     };
     if words.is_empty() || items.is_empty() {
@@ -1072,18 +1087,24 @@ async fn tightest_feed(
     let Ok(now) = feed::read(http, feed_url).await else {
         return feed_url.to_string();
     };
+    let words: Vec<&String> = words.iter().take(MAX_PROBES).collect();
     let mut best = (feed_url.to_string(), now.len());
-    let mut search = wire.trim().to_string();
-    for word in words.iter().take(MAX_PROBES) {
+    let mut search = base.trim().to_string();
+    for (n, word) in words.iter().enumerate() {
         let field = if word.contains(' ') {
             format!("\"{word}\"")
         } else {
-            word.clone()
+            word.to_string()
         };
         let candidate = format!("{search} {field}");
+        ctx.progress(
+            n as u64,
+            Some(words.len() as u64),
+            &format!("Trying \"{candidate}\""),
+        );
         let url = rewire::with_search(feed_url, &key, &candidate);
         let Ok(entries) = feed::read(http, &url).await else {
-            break;
+            continue;
         };
         if entries.len() < best.1 && rewire::holds_all(&entries, items) {
             best = (url, entries.len());
@@ -1947,15 +1968,7 @@ pub fn repair_subscription(core: &Core, name: String) -> Result<u64, CoreError> 
                 }
                 let terms = rewire::local_terms(&value, &candidate);
                 let narrowed = rewire::narrowed(&def, &terms, &next);
-                qbt.set_rule(&name, &narrowed).await?;
-                let feeds = qbt.feeds().await?;
-                let old = feeds.iter().find(|(_, u)| *u == url).map(|(p, _)| p.clone());
-                if let Some(path) = &old
-                    && !rewire::feed_shared(&rules, &name, &url)
-                {
-                    qbt.remove_item(path).await?;
-                }
-                qbt.add_feed(&next, old.as_deref().unwrap_or(&name)).await?;
+                swap_feed(&qbt, &rules, &name, &narrowed, &url, &next).await?;
                 let must = narrowed["mustContain"].as_str().unwrap_or("").to_string();
                 return Ok(Finished {
                     level: Level::Info,

@@ -141,7 +141,8 @@ pub fn holds_all(entries: &[FeedEntry], picked: &[Release]) -> bool {
             .join(" ")
             .to_lowercase()
     };
-    let titles: Vec<String> = entries.iter().map(|e| norm(&e.title)).collect();
+    let titles: std::collections::HashSet<String> =
+        entries.iter().map(|e| norm(&e.title)).collect();
     picked.iter().all(|r| titles.contains(&norm(&r.title)))
 }
 
