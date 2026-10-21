@@ -403,6 +403,7 @@ fn a_session_views_marks_completes_and_clears_its_resume_point() {
             .any(|b| matches!(b, EventBody::Marked { .. }))
     );
     session::report_chapters(&core, s.session, 1400.0, None);
+    let seen = c.events().len();
     tick(&core, s.session, 1201.0);
     let marked = common::wait_for(
         &c,
@@ -419,11 +420,14 @@ fn a_session_views_marks_completes_and_clears_its_resume_point() {
         other => panic!("{other:?}"),
     }
 
-    // (4) Inside the last thirty seconds the episode is done: the resume
-    // point goes, the completion is recorded, and the card behind the player
-    // is pushed so Next up moves on.
-    let seen = c.events().len();
-    tick(&core, s.session, 1375.0);
+    // (4) The mark line is also where the episode is done: the resume point
+    // goes, the completion is recorded, and the card behind the player is
+    // pushed so Next up moves on. The tail has nothing left to add.
+    common::wait_for(
+        &c,
+        |e| matches!(e.body, EventBody::SeriesChanged { .. }),
+        Duration::from_secs(30),
+    );
     let after: Vec<EventBody> = c.bodies().into_iter().skip(seen).collect();
     assert!(after.iter().any(|b| matches!(b, EventBody::ResumePointChanged { file, position: None } if *file == lib.ep2)), "{after:?}");
     assert!(
