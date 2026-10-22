@@ -340,6 +340,8 @@ fn anilist_line(a: &AniListCache, synced: Option<i64>, now: i64) -> String {
 /// Builds the window from what is stored, starts the sync thread and the clocks, and runs
 /// until the activity goes away.
 pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> Result<(), Box<dyn std::error::Error>> {
+    // The phone's own core runs beside the host view until the new screens replace it.
+    crate::local::start(data_dir.clone());
     let store = Store::open(&data_dir)?;
     let settings = store.settings();
     let address = HostAddress::parse(&settings.address)

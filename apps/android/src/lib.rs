@@ -6,6 +6,7 @@
 slint::include_modules!();
 
 mod app;
+mod local;
 mod posters;
 mod rows;
 mod worker;

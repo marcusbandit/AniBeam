@@ -192,9 +192,24 @@ impl ReqwestHttp {
         // rustls is the only TLS backend the manifest enables, so it is
         // already the default; asking for it by name calls a deprecated
         // builder method. The platform verifier comes with that feature.
-        let client = reqwest::Client::builder()
+        let builder = reqwest::Client::builder()
             .user_agent(format!("AniBeam/{}", crate::VERSION))
-            .timeout(timeout)
+            .timeout(timeout);
+        // Android's platform verifier needs a JNI handle and a Java helper
+        // the app does not carry, so the phone checks against the bundled
+        // Mozilla roots instead.
+        #[cfg(target_os = "android")]
+        let builder = {
+            // Every root has to parse: a silently thinner store would turn
+            // into certificate errors far from their cause.
+            let roots = webpki_root_certs::TLS_SERVER_ROOT_CERTS
+                .iter()
+                .map(|der| reqwest::Certificate::from_der(der))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| CoreError::internal(format!("bundled TLS roots: {e}")))?;
+            builder.tls_certs_only(roots)
+        };
+        let client = builder
             .build()
             .map_err(|e| CoreError::internal(format!("http client: {e}")))?;
         Ok(ReqwestHttp { client })

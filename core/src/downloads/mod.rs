@@ -1682,8 +1682,9 @@ pub fn remove_show(
             }
             if !targets.is_empty() {
                 parts.push(format!(
-                    "{} to the trash",
-                    plural(targets.len() as u64, "path", "paths")
+                    "{} {}",
+                    plural(targets.len() as u64, "path", "paths"),
+                    trash::WHERE
                 ));
             }
             let what = match parts.len() {
