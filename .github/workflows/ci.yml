@@ -46,7 +46,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Clippy
-        run: cargo clippy --locked -p anibeam-core -p anibeam-cli --all-targets -- -D warnings
+        run: cargo clippy --locked -p anibeam-core -p anibeam-host-api -p anibeam-cli --all-targets -- -D warnings
 
       - name: Test
-        run: cargo test --locked -p anibeam-core -p anibeam-cli
+        run: cargo test --locked -p anibeam-core -p anibeam-host-api -p anibeam-cli

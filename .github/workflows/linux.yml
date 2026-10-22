@@ -8,9 +8,6 @@ name: Linux
 # draft release. A pull request that touches the core, the Qt shell or the workspace runs it
 # too. Run it from the Actions tab (Run workflow) for a build without a release.
 on:
-  # Temporary: the integrated branch's first full run. Removed once it is green.
-  push:
-    branches: [feat/tailnet-host]
   pull_request:
     paths:
       - 'core/**'
