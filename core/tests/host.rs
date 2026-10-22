@@ -79,6 +79,10 @@ fn the_preference_starts_and_stops_a_server_that_serves_the_library() {
         torrent_url: "http://localhost:9090".to_string(),
         torrent_username: "me".to_string(),
         has_torrent_password: false,
+        jackett_command: String::new(),
+        saved_clients: Vec::new(),
+        active_client: String::new(),
+        prune_finished_feeds: true,
     };
     core.call(Call::SetDownloadSettings {
         settings,

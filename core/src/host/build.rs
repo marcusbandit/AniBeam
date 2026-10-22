@@ -312,6 +312,15 @@ mod tests {
             tags: String::new(),
             category: String::new(),
             series_id: Some(12),
+            episode: None,
+            batch: false,
+            files: Vec::new(),
+            seq_dl: false,
+            f_l_piece_prio: false,
+            tracker: String::new(),
+            group: String::new(),
+            resolution: String::new(),
+            provider: String::new(),
         };
         let out = torrents(vec![t(8_640_000, -1), t(90, 1_700_000_000)]);
         assert_eq!((out[0].eta, out[0].completed_on), (None, None));
