@@ -199,11 +199,16 @@ impl ReqwestHttp {
         // the app does not carry, so the phone checks against the bundled
         // Mozilla roots instead.
         #[cfg(target_os = "android")]
-        let builder = builder.tls_certs_only(
-            webpki_root_certs::TLS_SERVER_ROOT_CERTS
+        let builder = {
+            // Every root has to parse: a silently thinner store would turn
+            // into certificate errors far from their cause.
+            let roots = webpki_root_certs::TLS_SERVER_ROOT_CERTS
                 .iter()
-                .filter_map(|der| reqwest::Certificate::from_der(der).ok()),
-        );
+                .map(|der| reqwest::Certificate::from_der(der))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| CoreError::internal(format!("bundled TLS roots: {e}")))?;
+            builder.tls_certs_only(roots)
+        };
         let client = builder
             .build()
             .map_err(|e| CoreError::internal(format!("http client: {e}")))?;

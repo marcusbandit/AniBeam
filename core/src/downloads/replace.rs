@@ -712,12 +712,13 @@ async fn cancel_whole(
             })??;
     }
     Ok(format!(
-        "Cancelled {}, {n} to the trash",
+        "Cancelled {}, {n} {}",
         if t.name.is_empty() {
             "a download"
         } else {
             &t.name
-        }
+        },
+        trash::WHERE
     ))
 }
 
@@ -853,9 +854,10 @@ async fn replace_episode(
     core.bus.info(
         Stage::Downloads,
         format!(
-            "Replaced episode {}: {} to the trash",
+            "Replaced episode {}: {} {}",
             entry.episode,
-            plural_files(targets.len())
+            plural_files(targets.len()),
+            trash::WHERE
         ),
         EventBody::Notice,
     );

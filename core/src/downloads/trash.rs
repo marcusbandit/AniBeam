@@ -111,6 +111,12 @@ pub fn targets(
     Ok(kept)
 }
 
+/// Where `move_to_trash` sends paths, as a message says it.
+#[cfg(not(target_os = "android"))]
+pub const WHERE: &str = "to the trash";
+#[cfg(target_os = "android")]
+pub const WHERE: &str = "deleted";
+
 /// Moves the paths to the trash, all or as many as it can before the
 /// first failure, which it reports. Android has no trash, so a phone
 /// deletes them.
@@ -128,7 +134,7 @@ pub fn move_to_trash(paths: &[PathBuf]) -> Result<(), CoreError> {
     })
 }
 
-#[cfg(target_os = "android")]
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
 fn delete_outright(paths: &[PathBuf]) -> Result<(), CoreError> {
     for p in paths {
         let gone = if p.is_dir() {
@@ -153,6 +159,19 @@ fn delete_outright(paths: &[PathBuf]) -> Result<(), CoreError> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn deleting_outright_takes_files_and_folders_and_skips_what_is_gone() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("a.mkv");
+        let folder = dir.path().join("Show");
+        std::fs::write(&file, b"x").unwrap();
+        std::fs::create_dir_all(folder.join("S1")).unwrap();
+        std::fs::write(folder.join("S1/b.mkv"), b"x").unwrap();
+        let gone = dir.path().join("never-there.mkv");
+        delete_outright(&[file.clone(), folder.clone(), gone]).unwrap();
+        assert!(!file.exists() && !folder.exists());
+    }
     use super::*;
 
     fn tree() -> tempfile::TempDir {
