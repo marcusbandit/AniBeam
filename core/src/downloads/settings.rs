@@ -152,7 +152,14 @@ pub fn settle_clients(
         let at = match s.saved_clients.iter().position(|c| c.id == s.active_client) {
             Some(at) => at,
             None => {
-                let id = if s.saved_clients.is_empty() {
+                // The legacy id carries a saved password, so it is only
+                // reused for the server that password belongs to.
+                let id = if s.saved_clients.is_empty()
+                    && retired
+                        .iter()
+                        .filter(|c| c.id == LEGACY_CLIENT)
+                        .all(|c| same_address(&c.url, &s.torrent_url))
+                {
                     LEGACY_CLIENT.to_string()
                 } else {
                     next_id(&s.saved_clients, retired)
@@ -267,10 +274,35 @@ fn address_key(url: &str) -> String {
 
 /// Whether the client in use keeps its downloads on this machine's disk, so
 /// the core may move them to the trash itself. AniBeam's own always does; a
-/// client of the user's does when it is at a local address. A seedbox's paths
-/// are its own, and the same path here is somebody else's folder.
+/// client of the user's does when its address is this machine: loopback,
+/// one of the machine's own addresses, or its name. A seedbox's paths are
+/// its own, and the same path here is somebody else's folder.
 pub fn files_here(s: &DownloadSettings) -> bool {
-    s.torrent_mode == TorrentMode::Managed || is_loopback(&s.torrent_url)
+    s.torrent_mode == TorrentMode::Managed
+        || is_loopback(&s.torrent_url)
+        || is_this_machine(&host_of(&s.torrent_url))
+}
+
+fn is_this_machine(host: &str) -> bool {
+    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+        return crate::host::addr::local_addresses().contains(&ip);
+    }
+    let name = crate::host::server::hostname().to_ascii_lowercase();
+    let first = host.to_ascii_lowercase();
+    let first = first.split('.').next().unwrap_or_default();
+    !name.is_empty() && first == name.split('.').next().unwrap_or_default()
+}
+
+/// The host part of a URL, without port or IPv6 brackets.
+fn host_of(url: &str) -> String {
+    let host = name_for(url);
+    match host.strip_prefix('[') {
+        Some(v6) => v6.split(']').next().unwrap_or(v6).to_string(),
+        None => host
+            .rsplit_once(':')
+            .map_or(host.as_str(), |(h, _)| h)
+            .to_string(),
+    }
 }
 
 /// Whether AniBeam's own may listen at the address in use: it has to be on
@@ -298,15 +330,7 @@ pub fn name_for(url: &str) -> String {
 
 /// Whether `url` points at this machine.
 pub fn is_loopback(url: &str) -> bool {
-    let host = name_for(url);
-    let host = match host.strip_prefix('[') {
-        Some(v6) => v6.split(']').next().unwrap_or(v6).to_string(),
-        None => host
-            .rsplit_once(':')
-            .map_or(host.as_str(), |(h, _)| h)
-            .to_string(),
-    };
-    matches!(host.as_str(), "127.0.0.1" | "localhost" | "::1")
+    matches!(host_of(url).as_str(), "127.0.0.1" | "localhost" | "::1")
 }
 
 fn is_http(url: &str) -> bool {
@@ -434,6 +458,22 @@ mod tests {
         ];
         settle_clients(&mut s, &[client("c2", "gone", "http://192.0.2.3:1")]).unwrap();
         assert_eq!(s.saved_clients[1].id, "c3");
+    }
+
+    #[test]
+    fn a_new_server_does_not_inherit_the_retired_default_and_its_password() {
+        let mut s = defaults();
+        s.torrent_mode = TorrentMode::Existing;
+        s.torrent_url = "http://192.0.2.9:1".to_string();
+        let gone = [client(LEGACY_CLIENT, "old", "http://192.0.2.1:1")];
+        settle_clients(&mut s, &gone).unwrap();
+        assert_ne!(s.active_client, LEGACY_CLIENT);
+
+        let mut same = defaults();
+        same.torrent_mode = TorrentMode::Existing;
+        same.torrent_url = "http://192.0.2.1:1".to_string();
+        settle_clients(&mut same, &gone).unwrap();
+        assert_eq!(same.active_client, LEGACY_CLIENT);
     }
 
     #[test]
