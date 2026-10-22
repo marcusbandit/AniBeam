@@ -63,7 +63,7 @@ impl Snapshot {
                 english: card.titles.english.clone(),
                 native: card.titles.native.clone(),
             },
-            status: card.status.map(|s| format!("{s:?}")),
+            status: card.status.map(|s| wire_status(s).to_string()),
             format: card.format.clone(),
             year: card.year,
             season: card.season.clone(),
@@ -158,6 +158,19 @@ fn episode_code(season: Option<u32>, number: f64) -> String {
     match season {
         Some(s) => format!("S{s:02}E{n}"),
         None => format!("E{n}"),
+    }
+}
+
+/// The status as the host contract spells it. Named here, not taken from
+/// the enum's Debug, so renaming a variant cannot change the wire.
+fn wire_status(s: crate::contract::AiringStatus) -> &'static str {
+    use crate::contract::AiringStatus as A;
+    match s {
+        A::Releasing => "Releasing",
+        A::Finished => "Finished",
+        A::NotYetReleased => "NotYetReleased",
+        A::Cancelled => "Cancelled",
+        A::Hiatus => "Hiatus",
     }
 }
 
