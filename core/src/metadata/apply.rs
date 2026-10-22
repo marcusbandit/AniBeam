@@ -552,6 +552,7 @@ fn to_result(m: &Media) -> SearchResult {
             .and_then(|c| c.extra_large.clone().or_else(|| c.large.clone())),
         romaji: m.title.romaji.clone(),
         english: m.title.english.clone(),
+        native: m.title.native.clone(),
         synonyms: m.synonyms.clone(),
     }
 }
@@ -571,6 +572,7 @@ fn show_result(s: &Show) -> SearchResult {
         cover_url: s.thumbnail_url(),
         romaji: None,
         english: s.name.clone(),
+        native: None,
         synonyms: Vec::new(),
     }
 }

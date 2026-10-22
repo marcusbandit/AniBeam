@@ -9,7 +9,7 @@ use rusqlite::{Connection, params_from_iter};
 use serde_json::Value;
 
 use crate::contract::*;
-use crate::library::cards::next_up;
+use crate::library::cards::{next_up, upcoming};
 use crate::library::classifier;
 use crate::library::snapshot::{FileRow, MediaRow, Snapshot, season_of};
 use crate::library::{labels, titles};
@@ -28,7 +28,7 @@ impl Snapshot {
         let card = self.card_of(row);
         let media = row.media.as_ref();
         let now = time::to_secs(self.now);
-        let (latest_aired, _) = self.aired_and_next(row, now);
+        let (latest_aired, next_scheduled) = self.aired_and_next(row, now);
         let files = self.files_of(id);
         let episodes = self.episodes_on_disk(id);
         let entry = self.tracker(row);
@@ -66,23 +66,88 @@ impl Snapshot {
             .unwrap_or_default();
         let episode = |f: &FileRow| {
             let air = self.episode_airing(row, f);
+            let tracked = card.watched.is_some_and(|w| f.number <= f64::from(w));
+            let here = completed_keys.contains(f.episode_key.as_str());
             Episode {
                 file: f.id,
                 number: f.number,
                 season: f.season,
                 code: labels::episode_code(f.season, f.number),
-                title: air.and_then(|a| a.title.clone()),
+                // The provider's title, else whatever the release name
+                // carries after its episode token.
+                title: air.and_then(|a| a.title.clone()).or_else(|| {
+                    Path::new(&f.path)
+                        .file_name()
+                        .and_then(|n| classifier::file_episode_title(&n.to_string_lossy()))
+                }),
                 air_date: air.and_then(|a| a.aired_at).map(time::from_secs),
                 path: f.path.clone(),
                 sidecars: f.sidecars.clone(),
                 resume: self.resume_of(id, &f.episode_key),
                 stopped_short: self.stopped_short(id, &f.episode_key),
-                watched: completed_keys.contains(f.episode_key.as_str())
-                    || card.watched.is_some_and(|w| f.number <= f64::from(w)),
+                watched: here || tracked,
                 next_up: next == Some(f.id),
                 downloading: None,
+                cube: if tracked {
+                    "w"
+                } else if here {
+                    "l"
+                } else {
+                    "d"
+                }
+                .to_string(),
             }
         };
+
+        // The aired episodes with no file, read off the card's own cube row
+        // so the page and every cube row agree on what is missing. Those the
+        // tracker covers ('w') are left out: a series watched elsewhere would
+        // otherwise list every episode it never had. A record numbering
+        // without seasons takes the newest file's, so the rows sort and code
+        // like the files around them (S04E09 after S04E08).
+        let season = self
+            .card_season(row)
+            .or_else(|| episodes.last().and_then(|f| f.season));
+        let airing = self.airing_of(row);
+        let absent: Vec<AbsentEpisode> = card
+            .cubes
+            .chars()
+            .zip(1u32..)
+            .filter(|(c, _)| matches!(c, 'm' | 'g'))
+            .map(|(c, number)| {
+                let air = airing.iter().find(|a| a.number == number);
+                AbsentEpisode {
+                    number,
+                    season,
+                    code: labels::episode_code(season, f64::from(number)),
+                    title: air.and_then(|a| a.title.clone()),
+                    air_date: air.and_then(|a| a.aired_at).map(time::from_secs),
+                    cube: c.to_string(),
+                }
+            })
+            .collect();
+        let released = self.released_of(
+            row,
+            &episodes,
+            total,
+            latest_aired,
+            next_scheduled,
+            card.watched,
+        );
+        let upcoming = upcoming(airing, released, total, card.status, now)
+            .into_iter()
+            .map(|(number, at, predicted)| UpcomingEpisode {
+                number,
+                season,
+                code: labels::episode_code(season, f64::from(number)),
+                title: airing
+                    .iter()
+                    .find(|a| a.number == number)
+                    .and_then(|a| a.title.clone()),
+                at: time::from_secs(at),
+                predicted,
+            })
+            .collect();
 
         let mut extras: Vec<&FileRow> = files.iter().filter(|f| !f.is_episode).collect();
         extras.sort_by(|a, b| {
@@ -116,6 +181,8 @@ impl Snapshot {
                 .filter(|f| !unmatched.contains(&f.id))
                 .map(|f| episode(f))
                 .collect(),
+            absent,
+            upcoming,
             extras: extras
                 .iter()
                 .map(|f| {
@@ -261,7 +328,8 @@ impl Snapshot {
             "SELECT r.recommended_id, m.title_romaji, m.title_english, i.path,
                     (SELECT s.id FROM series s WHERE s.anilist_id = m.id ORDER BY s.id LIMIT 1),
                     (SELECT ta.status FROM tracker_entries ta WHERE ta.tracker = 'anilist' AND ta.media_id = m.id),
-                    (SELECT tm.status FROM tracker_entries tm WHERE tm.tracker = 'mal' AND tm.media_id = m.mal_id)
+                    (SELECT tm.status FROM tracker_entries tm WHERE tm.tracker = 'mal' AND tm.media_id = m.mal_id),
+                    m.title_native
              FROM recommendations r
              JOIN anilist_media m ON m.id = r.recommended_id
              LEFT JOIN images i ON i.url = m.cover_url
@@ -273,13 +341,20 @@ impl Snapshot {
             let english: Option<String> = r.get(2)?;
             let anilist_status: Option<String> = r.get(5)?;
             let mal_status: Option<String> = r.get(6)?;
+            let native: Option<String> = r.get(7)?;
             let (main, other) = match self.main_tracker {
                 Tracker::Anilist => (anilist_status, mal_status),
                 Tracker::Mal => (mal_status, anilist_status),
             };
             Ok(Recommendation {
                 anilist_id: r.get::<_, i64>(0)? as u64,
-                title: titles::resolve(self.lang, romaji.as_deref(), english.as_deref(), ""),
+                title: titles::resolve(
+                    self.lang,
+                    romaji.as_deref(),
+                    english.as_deref(),
+                    native.as_deref(),
+                    "",
+                ),
                 poster: r.get::<_, Option<String>>(3)?.map(|p| {
                     Path::new(&self.images_dir)
                         .join(p)

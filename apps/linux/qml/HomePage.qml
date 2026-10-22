@@ -296,14 +296,14 @@ Item {
             Row {
                 spacing: theme.space(1.5)
                 Label {
-                    text: entry.next ? (entry.next.season && entry.next.season !== 1 ? "S" + entry.next.season + " " : "") + Fmt.episodeName("", entry.next.episode) : "No date yet"
+                    text: entry.next ? (entry.next.season && entry.next.season !== 1 ? "S" + entry.next.season + " " : "") + Fmt.episodeSpan(entry.next.episode, entry.next.through || 0) : "No date yet"
                     role: "ui"
                     font.weight: 600
                     color: entry.next ? theme.text : theme.textDim
                 }
                 Label {
                     visible: !!entry.next
-                    text: entry.next ? "at " + Qt.formatTime(new Date(entry.next.at * 1000), "HH:mm") + (entry.today ? ", in " + page.shortCountdown(entry.next.at - page.nowMs / 1000) : "") : ""
+                    text: entry.next ? (entry.next.predicted ? "predicted, " : "at ") + Qt.formatTime(new Date(entry.next.at * 1000), "HH:mm") + (entry.today ? ", in " + page.shortCountdown(entry.next.at - page.nowMs / 1000) : "") : ""
                     role: "ui"
                     color: theme.accent
                 }
@@ -396,8 +396,8 @@ Item {
             // both modes; the ink accent is the tone lifted toward white
             PosterTone { id: toneOf; source: hero.c && hero.c.poster ? "file://" + hero.c.poster : "" }
             readonly property color tone: toneOf.tone
-            readonly property color base: theme.tone(Qt.rgba(0.05, 0.055, 0.07, 1), tone, 0.5)
-            readonly property color inkAccent: theme.tone(tone, Qt.rgba(1, 1, 1, 1), 0.45)
+            readonly property color base: theme.bandBase(tone, 0.5)
+            readonly property color inkAccent: theme.bandAccent(tone, base)
             readonly property color ink: "#f4f6f8"
             readonly property color inkDim: Qt.rgba(1, 1, 1, 0.68)
 

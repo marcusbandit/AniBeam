@@ -234,7 +234,9 @@ pub fn write_show(tx: &Transaction, show: &Show, now: i64) -> Result<(), CoreErr
         params![as_i64(show.id)],
     )?;
     let mut insert = tx.prepare(
-        "INSERT INTO tvmaze_episodes (show_id, season, number, name, airstamp, runtime) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        // TVmaze names an episode it knows nothing about yet "TBA", which is
+        // a placeholder, not a title.
+        "INSERT INTO tvmaze_episodes (show_id, season, number, name, airstamp, runtime) VALUES (?1, ?2, ?3, NULLIF(?4, 'TBA'), ?5, ?6)",
     )?;
     for e in show.episodes() {
         insert.execute(params![

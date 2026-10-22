@@ -43,7 +43,7 @@ pub fn load(
     lang: TitleLanguage,
 ) -> Result<HashMap<u64, FranchiseTag>, CoreError> {
     let mut stmt = conn.prepare(
-        "SELECT s.id, s.anilist_id, s.folder_name, m.title_romaji, m.title_english, m.start_date, m.year
+        "SELECT s.id, s.anilist_id, s.folder_name, m.title_romaji, m.title_english, m.start_date, m.year, m.title_native
          FROM series s
          LEFT JOIN anilist_media m ON m.id = s.anilist_id
          WHERE s.anilist_id IS NOT NULL AND s.missing_since IS NULL
@@ -56,10 +56,17 @@ pub fn load(
             let english: Option<String> = r.get(4)?;
             let start: Option<String> = r.get(5)?;
             let year: Option<i64> = r.get(6)?;
+            let native: Option<String> = r.get(7)?;
             Ok(Member {
                 series: as_u64(r.get(0)?),
                 anilist_id: as_u64(r.get(1)?),
-                title: titles::resolve(lang, romaji.as_deref(), english.as_deref(), &folder),
+                title: titles::resolve(
+                    lang,
+                    romaji.as_deref(),
+                    english.as_deref(),
+                    native.as_deref(),
+                    &folder,
+                ),
                 released: start
                     .filter(|s| !s.trim().is_empty())
                     .or_else(|| year.map(|y| y.to_string())),

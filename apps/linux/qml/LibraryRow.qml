@@ -21,7 +21,7 @@ Item {
     readonly property bool totalKnown: item.total_episodes !== null && item.total_episodes !== undefined && item.total_episodes > 0
     readonly property string readout: hasWatched ? (totalKnown ? item.watched + "/" + item.total_episodes : String(item.watched)) : "—"
     readonly property bool caughtUp: item.watched_state === "CaughtUp"
-    readonly property string countdown: item.next_airing && item.next_airing.at * 1000 > nowMs ? Fmt.countdown(item.next_airing.at - nowMs / 1000) : ""
+    readonly property string countdown: item.next_airing && item.next_airing.at * 1000 > nowMs ? (item.next_airing.predicted ? "Predicted in " : "") + Fmt.countdown(item.next_airing.at - nowMs / 1000) : ""
     readonly property string subline: {
         var parts = []
         parts.push(item.format ? item.format.replace(/_/g, " ") : (item.kind === "Movie" ? "Film" : "TV"))
@@ -124,7 +124,7 @@ Item {
         cursorShape: Qt.PointingHandCursor
         onClicked: { tipIntent.stop(); frame.hideTip(); root.opened() }
         onEntered: if (root.folderName !== "" && root.folderName !== root.title) { tipIntent.interval = frame.tipWarm() ? 1 : 600; tipIntent.restart() }
-        onExited: { tipIntent.stop(); frame.hideTip() }
+        onExited: { tipIntent.stop(); frame.releaseTip(root) }
         Timer { id: tipIntent; interval: 600; onTriggered: frame.showTip(root, root.folderName) }
     }
 }

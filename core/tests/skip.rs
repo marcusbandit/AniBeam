@@ -252,17 +252,19 @@ fn aniskip_answers_when_the_file_has_no_chapters_and_its_outro_completes_the_epi
         Some("aniskip".to_string())
     );
 
-    // The outro is the earlier of the two completion lines: 1320 is inside
-    // it but nowhere near the last thirty seconds of 1440.
-    assert_eq!(
-        core.call(Call::Tick {
-            session: s.session,
-            position: 1320.0,
-            paused: false
-        })
-        .unwrap(),
-        Reply::Ok
-    );
+    // The outro is the earlier of the two completion lines: playing across
+    // 1320 finishes the episode, nowhere near the last thirty seconds of 1440.
+    for position in [1319.0, 1320.0] {
+        assert_eq!(
+            core.call(Call::Tick {
+                session: s.session,
+                position,
+                paused: false
+            })
+            .unwrap(),
+            Reply::Ok
+        );
+    }
     assert_eq!(completed_keys(&core, lib.series), vec!["2".to_string()]);
     let cleared = common::wait_for(
         &c,

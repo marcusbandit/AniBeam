@@ -123,6 +123,7 @@ pub struct StubWrite {
     pub media_type: Option<String>,
     pub title_romaji: Option<String>,
     pub title_english: Option<String>,
+    pub title_native: Option<String>,
     pub format: Option<String>,
     pub status: Option<String>,
     pub year: Option<u32>,
@@ -565,13 +566,14 @@ const MEDIA_UPSERT: &str = "INSERT INTO anilist_media (
 /// null a column the fetch had filled.
 const STUB_UPSERT: &str = "INSERT INTO anilist_media (
         id, mal_id, media_type, title_romaji, title_english, format, status, year, cover_url, site_url,
-        episodes, average_score
-     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+        episodes, average_score, title_native
+     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
      ON CONFLICT(id) DO UPDATE SET
         mal_id = coalesce(anilist_media.mal_id, excluded.mal_id),
         media_type = coalesce(anilist_media.media_type, excluded.media_type),
         title_romaji = coalesce(anilist_media.title_romaji, excluded.title_romaji),
         title_english = coalesce(anilist_media.title_english, excluded.title_english),
+        title_native = coalesce(anilist_media.title_native, excluded.title_native),
         format = coalesce(anilist_media.format, excluded.format),
         status = coalesce(anilist_media.status, excluded.status),
         year = coalesce(anilist_media.year, excluded.year),
@@ -675,6 +677,7 @@ pub fn write_stub(tx: &Transaction, s: &StubWrite) -> Result<(), CoreError> {
             s.site_url,
             s.episodes.map(i64::from),
             s.average_score.map(i64::from),
+            s.title_native,
         ],
     )?;
     Ok(())
@@ -690,6 +693,7 @@ pub fn stub_from_node(node: &RelatedNode) -> StubWrite {
         media_type: node.type_.clone(),
         title_romaji: node.title.as_ref().and_then(|t| t.romaji.clone()),
         title_english: node.title.as_ref().and_then(|t| t.english.clone()),
+        title_native: node.title.as_ref().and_then(|t| t.native.clone()),
         format: node.format.clone(),
         status: node.status.clone(),
         year: node

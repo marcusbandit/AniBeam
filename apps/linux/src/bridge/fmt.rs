@@ -39,6 +39,9 @@ pub mod qobject {
         /// An episode's title, else "Episode N"; pass "" for no title.
         #[qinvokable]
         fn episode_name(self: &Fmt, title: &QString, number: f64) -> QString;
+        /// "Episode 7", or "Episodes 7 to 9" for a drop of several; `through` 0 for one.
+        #[qinvokable]
+        fn episode_span(self: &Fmt, first: i32, through: i32) -> QString;
         /// The poster's tone as "#rrggbb", or "" for no poster or an unreadable one. Takes a
         /// path or a file:// URL.
         #[qinvokable]
@@ -89,6 +92,12 @@ impl qobject::Fmt {
     pub fn episode_name(&self, title: &QString, number: f64) -> QString {
         let t = title.to_string();
         QString::from(crate::format::episode_name(Some(t.as_str()), number))
+    }
+    pub fn episode_span(&self, first: i32, through: i32) -> QString {
+        QString::from(&crate::format::episode_span(
+            first.max(0) as u32,
+            through.max(0) as u32,
+        ))
     }
     pub fn poster_tone(&self, path: &QString) -> QString {
         QString::from(&tone(&path.to_string()))

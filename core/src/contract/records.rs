@@ -46,6 +46,15 @@ pub struct Airing {
     /// because older blobs predate it.
     #[serde(default)]
     pub season: Option<u32>,
+    /// A guess from the dates of the episodes already out, where the record
+    /// names no date ahead (`library::cards::predict_next`). The shell says
+    /// "predicted" beside it.
+    #[serde(default)]
+    pub predicted: bool,
+    /// The last episode landing at the same moment, when a drop releases
+    /// several at once (7 to 9); None for one episode.
+    #[serde(default)]
+    pub through: Option<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
@@ -214,6 +223,35 @@ pub struct Episode {
     /// being downloaded is on disk but is not playable.
     #[serde(default)]
     pub downloading: Option<f64>,
+    /// The episode's cube code (`library::cards::cubes`): `w` watched and
+    /// tracked online, `l` watched here and not tracked yet, `d` on disk.
+    #[serde(default)]
+    pub cube: String,
+}
+
+/// An episode that has aired and has no file, and the tracker does not
+/// cover: a row on the series page that cannot play. `cube` is `m` (missing, a later episode is on disk) or
+/// `g` (not downloaded), the codes the card's cube row gives it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct AbsentEpisode {
+    pub number: u32,
+    pub season: Option<u32>,
+    pub code: String,
+    pub title: Option<String>,
+    pub air_date: Option<SystemTime>,
+    pub cube: String,
+}
+
+/// An episode still to come: when the record schedules it, or when it is
+/// guessed to land (`predicted`, `library::cards::upcoming`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct UpcomingEpisode {
+    pub number: u32,
+    pub season: Option<u32>,
+    pub code: String,
+    pub title: Option<String>,
+    pub at: SystemTime,
+    pub predicted: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
@@ -241,6 +279,12 @@ pub struct SeriesDetail {
     pub progress: ProgressLine,
     pub next_up: Option<u64>,
     pub episodes: Vec<Episode>,
+    /// The aired episodes with no file, in number order.
+    #[serde(default)]
+    pub absent: Vec<AbsentEpisode>,
+    /// The episodes still to come, in number order.
+    #[serde(default)]
+    pub upcoming: Vec<UpcomingEpisode>,
     pub extras: Vec<Extra>,
     pub unmatched_files: Vec<Episode>,
     pub characters: Vec<Person>,
@@ -320,6 +364,9 @@ pub struct SearchResult {
     pub romaji: Option<String>,
     #[serde(default)]
     pub english: Option<String>,
+    /// The title in its own script, kana and kanji for a Japanese show
+    #[serde(default)]
+    pub native: Option<String>,
     #[serde(default)]
     pub synonyms: Vec<String>,
 }

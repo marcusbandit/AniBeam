@@ -44,14 +44,10 @@ Item {
     // The site the record came from, named on the button that opens it
     readonly property string siteName: frame.providerName(card.match_info ? card.match_info.provider : "Anilist") || "AniList"
     readonly property var titles: card.titles || ({})
-    // The other language's title under the display one, then the native script
-    readonly property string altTitle: {
-        var t = titles
-        if (t.romaji && t.english && t.romaji !== t.english) return card.title === t.english ? t.romaji : t.english
-        return ""
-    }
-    readonly property string nativeTitle: titles.native && titles.native !== card.title ? titles.native : ""
-    readonly property var otherTitles: [altTitle, nativeTitle].filter(function(s) { return s !== "" })
+    // The show's other titles under the display one: romaji, english, then the native script,
+    // each once and never the one already shown
+    readonly property var otherTitles: [titles.romaji, titles.english, titles.native]
+        .filter(function(s, i, all) { return !!s && s !== card.title && all.indexOf(s) === i })
     // The band's tone, read off the poster; kept as a string for old readers of `tone`
     readonly property string tone: String(toneOf.tone)
 
@@ -121,22 +117,37 @@ Item {
     // optimisticFile pins the clicked row to the intended state regardless of the number
     // comparison; every other row still reads the integral target normally.
     function marker(ep) {
-        var watched = ep.watched
+        var watched = !!ep.watched
         var target = watched ? Math.max(0, Math.floor(ep.number) - 1) : Math.floor(ep.number)
         optimisticProgress = target
-        optimisticFile = ep.file
+        // An absent episode has no file; its integral number reads the target on its own
+        optimisticFile = ep.file !== undefined ? ep.file : -1
         optimisticWatched = !watched
         var r = Door.setProgress(props.id, target)
         if (r.error) { optimisticProgress = -1; optimisticFile = -1; frame.toast(r.error.message) }
     }
     function watchedWithOptimism(ep) {
-        if (optimisticProgress < 0) return ep.watched
-        if (ep.file === optimisticFile) return optimisticWatched
+        if (optimisticProgress < 0) return !!ep.watched
+        if (ep.file !== undefined && ep.file === optimisticFile) return optimisticWatched
         return ep.number <= optimisticProgress
     }
 
     // ---- What Continue plays: the next episode, else (a film, or caught up) the first
     readonly property var episodes: detail ? detail.episodes : []
+    // The rows: the episodes on disk, the aired ones that have no file between them and the
+    // ones still to come after, in season then number order
+    readonly property var episodeRows: {
+        if (!detail) return []
+        var absent = (detail.absent || []).map(function(a) {
+            return { number: a.number, season: a.season, code: a.code, title: a.title, air_date: a.air_date, cube: a.cube, absent: true, watched: false, next_up: false }
+        })
+        var ahead = (detail.upcoming || []).map(function(u) {
+            return { number: u.number, season: u.season, code: u.code, title: u.title, air_date: u.at, predicted: u.predicted, cube: "f", upcoming: true, watched: false, next_up: false }
+        })
+        return episodes.concat(absent, ahead).sort(function(a, b) {
+            return ((a.season || 1) - (b.season || 1)) || (a.number - b.number)
+        })
+    }
     readonly property var nextEpisode: {
         if (!detail || !detail.next_up) return null
         for (var i = 0; i < episodes.length; i++) if (episodes[i].file === detail.next_up) return isDownloading(episodes[i]) ? null : episodes[i]
@@ -151,17 +162,23 @@ Item {
     readonly property var playEpisode: nextEpisode ? nextEpisode : firstWhole
     // Caught up on what is whole while the next one downloads: Continue says so instead of
     // offering a rewatch
-    readonly property bool waitingOnDownload: !nextEpisode && downloadingNow.length > 0 && watchedCount > 0 && !isMovie
+    readonly property bool waitingOnDownload: !nextEpisode && downloadingNow.length > 0 && anyWatched && !isMovie
     readonly property bool tracked: !!detail && detail.progress.watched !== null && detail.progress.watched !== undefined
     readonly property int watchedCount: tracked ? detail.progress.watched : 0
-    readonly property bool caughtUp: tracked && !nextEpisode && watchedCount > 0
-    readonly property string playVerb: nextEpisode && watchedCount > 0 ? "Continue" : caughtUp ? "Watch again" : "Play"
-    // "Continue episode 8", "Play episode 1", "Play" for a lone film
+    // Watched by the tracker or here: an untracked series still has its own completed episodes.
+    // Read through the rows' optimism so the button flips with them on a marker click.
+    readonly property bool anyWatched: watchedCount > 0 || episodes.some(watchedWithOptimism)
+    // Every whole episode on disk watched. No next episode alone is not enough: the core walks
+    // on from the latest completion, so watching only the finale leaves nothing after it.
+    readonly property bool caughtUp: !!detail && !nextEpisode && firstWhole !== null
+        && episodes.every(function(e) { return isDownloading(e) || watchedWithOptimism(e) })
+    readonly property string playVerb: nextEpisode && anyWatched ? "Continue" : caughtUp ? "Watch again" : "Play"
+    // "Continue episode 8", "Play episode 1", "Watch again from episode 1", "Play" for a lone film
     readonly property string playText: {
         if (waitingOnDownload) return "Downloading " + Fmt.episodeName("", downloadingNow[0].number).toLowerCase()
         if (!playEpisode) return playVerb
         if (isMovie && episodes.length === 1) return playVerb
-        return playVerb + " " + Fmt.episodeName("", playEpisode.number).toLowerCase()
+        return playVerb + (caughtUp ? " from " : " ") + Fmt.episodeName("", playEpisode.number).toLowerCase()
     }
     readonly property string progressText: {
         if (!detail) return ""
@@ -205,12 +222,14 @@ Item {
     readonly property var relationNodes: graph ? graph.nodes.filter(function(n) { return !n.current }).sort(function(a, b) { return a.y - b.y || a.x - b.x }) : []
 
     // ---- The band's colour: the poster's tone over a dark base, so white ink holds in
-    // both modes; the ink accent is the tone lifted toward white (HomePage's hero)
+    // both modes; the ink accent is the tone lifted toward white (HomePage's hero). Both
+    // are contrast-checked (Tokens.bandBase, bandAccent), so a bright teal poster still
+    // reads.
     PosterTone { id: toneOf; source: card.poster ? "file://" + card.poster : "" }
     readonly property color bandTone: toneOf.tone
     // No poster, no tone: the base stays close to the dark ground
-    readonly property color bandBase: theme.tone(Qt.rgba(0.05, 0.055, 0.07, 1), bandTone, card.poster ? 0.5 : 0.25)
-    readonly property color inkAccent: theme.tone(bandTone, Qt.rgba(1, 1, 1, 1), 0.45)
+    readonly property color bandBase: theme.bandBase(bandTone, card.poster ? 0.5 : 0.25)
+    readonly property color inkAccent: theme.bandAccent(bandTone, bandBase)
     readonly property color ink: "#f4f6f8"
     readonly property color inkDim: Qt.rgba(1, 1, 1, 0.68)
     // The downloading purple, lifted toward white like the accent so it holds on the band
@@ -306,7 +325,8 @@ Item {
                     }
                 }
                 // The wash shares the band's rounding, so no square corner of it shows past
-                // the band's own; it stays solid until past the art's left edge
+                // the band's own; it stays solid until past the art's left edge, and nearly
+                // solid under the words that run on over the art, so they never sit on it
                 Rectangle {
                     visible: page.showArt
                     anchors.fill: parent
@@ -315,7 +335,8 @@ Item {
                     gradient: Gradient {
                         orientation: Gradient.Horizontal
                         GradientStop { position: 0.33; color: page.bandBase }
-                        GradientStop { position: 0.62; color: Qt.rgba(page.bandBase.r, page.bandBase.g, page.bandBase.b, 0.55) }
+                        GradientStop { position: 0.55; color: Qt.rgba(page.bandBase.r, page.bandBase.g, page.bandBase.b, 0.9) }
+                        GradientStop { position: 0.75; color: Qt.rgba(page.bandBase.r, page.bandBase.g, page.bandBase.b, 0.45) }
                         GradientStop { position: 1; color: Qt.rgba(page.bandBase.r, page.bandBase.g, page.bandBase.b, 0.1) }
                     }
                 }
@@ -465,7 +486,7 @@ Item {
                         id: airing
                         objectName: "fact-airing"
                         visible: page.airsAhead
-                        text: card.next_airing ? (card.next_airing.season && card.next_airing.season !== 1 ? "S" + card.next_airing.season + " " : "") + "Episode " + card.next_airing.episode + " airs in " + Fmt.countdownSeconds(card.next_airing.at - page.nowMs / 1000) : ""
+                        text: card.next_airing ? (card.next_airing.season && card.next_airing.season !== 1 ? "S" + card.next_airing.season + " " : "") + Fmt.episodeSpan(card.next_airing.episode, card.next_airing.through || 0) + (card.next_airing.predicted ? " predicted for " + Qt.formatDate(new Date(card.next_airing.at * 1000), "ddd d MMM") + ", in " + Fmt.countdown(card.next_airing.at - page.nowMs / 1000) : (card.next_airing.through ? " air in " : " airs in ") + Fmt.countdownSeconds(card.next_airing.at - page.nowMs / 1000)) : ""
                         role: "ledger"
                         font.weight: 600; font.variableAxes: ({ "wdth": 88, "wght": 600 })
                         color: page.inkAccent
@@ -489,7 +510,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         primary: true
                         tint: page.inkAccent
-                        icon: "play"
+                        icon: page.caughtUp && !page.waitingOnDownload ? "rotate-ccw" : "play"
                         text: page.playText
                         enabled: page.playEpisode !== null && !page.waitingOnDownload
                         onClicked: if (page.playEpisode) page.openFile(page.playEpisode.file)
@@ -578,15 +599,15 @@ Item {
                 // The episodes
                 Column {
                     objectName: "series-episodes"
-                    visible: page.episodes.length > 0
+                    visible: page.episodeRows.length > 0
                     width: parent.width
                     spacing: theme.space(4)
-                    Heading { text: page.isMovie ? "Film" : "Episodes"; count: page.episodes.length; fact: page.episodesFact }
+                    Heading { text: page.isMovie ? "Film" : "Episodes"; count: page.episodeRows.filter(function(r) { return !r.upcoming }).length; fact: page.episodesFact }
                     Column {
                         width: parent.width
                         spacing: theme.space(4)
                         Repeater {
-                            model: page.episodes
+                            model: page.episodeRows
                             EpisodeRow {
                                 required property var modelData
                                 required property int index
