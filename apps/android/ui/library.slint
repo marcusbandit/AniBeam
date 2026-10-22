@@ -1,8 +1,8 @@
 import { Theme } from "theme.slint";
 import { AppData } from "data.slint";
-import { ShelfHead, TileGrid } from "widgets.slint";
+import { EmptyNote, PageTitle, SearchField, Segmented, TileGrid } from "widgets.slint";
 
-// Every series as a poster: what airs first, then the rest, most recently active first.
+// Everything on this phone, or, picked above, what another AniBeam on the tailnet has.
 export component LibraryPage inherits Rectangle {
     Flickable {
         VerticalLayout {
@@ -11,24 +11,36 @@ export component LibraryPage inherits Rectangle {
             padding-right: Theme.pad;
             padding-top: Theme.unit * 2;
             padding-bottom: Theme.pad * 2;
-            spacing: Theme.gap;
-            for shelf in AppData.library: VerticalLayout {
-                spacing: Theme.gap;
-                padding-bottom: Theme.unit * 2;
-                ShelfHead {
-                    title: shelf.title;
-                    count: shelf.count;
-                    tone: shelf.tone;
-                }
-                TileGrid {
-                    tiles: shelf.tiles;
-                    open(id) => { AppData.open-series(id); }
+            spacing: Theme.unit * 3;
+            PageTitle {
+                title: "Library";
+                note: AppData.library-note;
+            }
+            if AppData.devices.length > 1: Segmented {
+                options: AppData.devices;
+                picked: AppData.device;
+                pick(i) => { AppData.pick-device(i); }
+            }
+            SearchField {
+                placeholder: AppData.device == 0 ? "Search this phone" : "Search " + AppData.devices[AppData.device];
+                text <=> AppData.query;
+                edited(text) => { AppData.search(text); }
+            }
+            if AppData.library.length > 0: TileGrid {
+                tiles: AppData.library;
+                open(id) => {
+                    if (AppData.device == 0) {
+                        AppData.open-series(id);
+                    } else {
+                        AppData.open-remote(id);
+                    }
                 }
             }
-            if AppData.library.length == 0: Text {
-                text: AppData.has-data ? "The library is empty." : "Not synced yet.";
-                color: Theme.dim;
-                horizontal-alignment: center;
+            if AppData.library.length == 0: EmptyNote {
+                title: AppData.library-empty;
+                body: AppData.device == 0 && AppData.query == ""
+                    ? "Episodes you download on this phone land here. Find something to download in More."
+                    : "";
             }
         }
     }

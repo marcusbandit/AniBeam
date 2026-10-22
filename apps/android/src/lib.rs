@@ -5,10 +5,13 @@
 
 slint::include_modules!();
 
+mod android;
 mod app;
 mod local;
+mod phone;
 mod posters;
-mod rows;
+mod prefs;
+mod remote;
 mod worker;
 
 pub use app::run;

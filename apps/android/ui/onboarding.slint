@@ -1,0 +1,146 @@
+import { Theme } from "theme.slint";
+import { AppData } from "data.slint";
+import { Ask } from "more.slint";
+import { Button, ListGroup, ListRow, PageTitle, TextButton } from "widgets.slint";
+
+// The first run, one question a step: who you are on AniList and MAL, Wi-Fi or mobile data,
+// and how much room the phone gives AniBeam. Shown once; More can run it again.
+export component Onboarding inherits Rectangle {
+    background: Theme.ground;
+    property <int> steps: 4;
+    property <[{title: string, note: string}]> pages: [
+        { title: "AniBeam", note: "Your anime, on this phone: download it, watch it, and keep your lists in step." },
+        { title: "Tracking", note: "Sign in so what you watch here counts on your lists. You can do this later in More." },
+        { title: "Downloads", note: "Episodes are big. AniBeam downloads on Wi-Fi unless you say otherwise." },
+        { title: "Storage", note: "How much of this phone AniBeam may fill." },
+    ];
+
+    TouchArea { }
+
+    VerticalLayout {
+        padding: Theme.pad;
+        padding-top: Theme.pad * 2;
+        spacing: Theme.unit * 4;
+        alignment: start;
+
+        HorizontalLayout {
+            spacing: Theme.unit * 1.5;
+            for i in root.steps: Rectangle {
+                height: 3px;
+                border-radius: 1.5px;
+                background: i <= AppData.step ? Theme.accent : Theme.pressed;
+                animate background { duration: 200ms; }
+            }
+        }
+
+        if AppData.step == 0: Image {
+            height: 22 * Theme.unit;
+            width: self.height;
+            source: @image-url("icons/app.png");
+        }
+
+        PageTitle {
+            title: root.pages[AppData.step].title;
+        }
+        Text {
+            text: root.pages[AppData.step].note;
+            color: Theme.dim;
+            wrap: word-wrap;
+        }
+
+        if AppData.step == 1: ListGroup {
+            ListRow {
+                label: "AniList";
+                helper: AppData.anilist-state;
+                tappable: true;
+                clicked => { AppData.connect-tracker(0); }
+            }
+            ListRow {
+                label: "MyAnimeList";
+                helper: AppData.mal-state;
+                tappable: true;
+                last: true;
+                clicked => { AppData.connect-tracker(1); }
+            }
+        }
+
+        if AppData.step == 2: ListGroup {
+            ListRow {
+                label: "Only on Wi-Fi";
+                helper: AppData.wifi-only ? "On. Mobile data asks first." : "Off. Downloads use mobile data too.";
+                last: true;
+                switch: true;
+                on: AppData.wifi-only;
+                toggled => {
+                        if (AppData.wifi-only) {
+                            Ask.mobile = true;
+                        } else {
+                            AppData.set-wifi-only(true);
+                        }
+                    }
+            }
+        }
+
+        if AppData.step == 3: ListGroup {
+            ListRow {
+                label: "Suggested limit";
+                helper: "12 episodes at about 1.5 GB each.";
+            }
+            Rectangle {
+                height: amount.preferred-height + 6 * Theme.unit;
+                amount := VerticalLayout {
+                    x: Theme.pad;
+                    y: 2 * Theme.unit;
+                    width: parent.width - 2 * Theme.pad;
+                    spacing: Theme.unit;
+                    Text {
+                        text: AppData.limit-gb + " GB";
+                        color: Theme.text;
+                        font-size: Theme.display;
+                        font-family: Theme.figure;
+                    }
+                    Text {
+                        text: AppData.free-line;
+                        color: Theme.dim;
+                        font-size: Theme.small;
+                    }
+                }
+                Rectangle {
+                    x: Theme.pad;
+                    y: parent.height - 1px;
+                    width: parent.width - 2 * Theme.pad;
+                    height: 1px;
+                    background: Theme.line;
+                }
+            }
+            ListRow {
+                label: "Use this limit";
+                helper: AppData.limit-on ? "On. Downloads stop at " + AppData.limit-gb + " GB." : "Off. AniBeam warns but never stops a download.";
+                last: true;
+                switch: true;
+                on: AppData.limit-on;
+                toggled => { AppData.set-limit(!AppData.limit-on, AppData.limit-gb); }
+            }
+        }
+
+        VerticalLayout {
+            spacing: Theme.unit;
+            padding-top: Theme.unit * 2;
+            Button {
+                text: AppData.step == root.steps - 1 ? "Start" : "Continue";
+                primary: true;
+                clicked => {
+                    if (AppData.step >= root.steps - 1) {
+                        AppData.finish-onboarding();
+                    } else {
+                        AppData.step += 1;
+                    }
+                }
+            }
+            if AppData.step > 0: TextButton {
+                text: "Back";
+                clicked => { AppData.step -= 1; }
+            }
+        }
+    }
+}

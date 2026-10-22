@@ -1,5 +1,10 @@
-// The one token file. Colours are the desktop's dark palette (apps/linux/themes,
-// tesserae-dark: "Graphite Glass"); the type scale is three sizes and no more.
+// The one token file. Values are the desktop's (apps/linux/qml/Tokens.qml and the
+// tesserae-dark theme), at phone scale: the same colours, radii and faces, a smaller type
+// ramp.
+
+import "fonts/Archivo-Variable-Regular.ttf";
+import "fonts/Archivo-Variable-SemiBold.ttf";
+import "fonts/B612-Regular.ttf";
 
 export global Theme {
     // Ground and surfaces, darkest first.
@@ -14,42 +19,69 @@ export global Theme {
     // Ink.
     out property <color> text: #eef2f5;
     out property <color> dim: #8e959d;
-    out property <color> faint: #616773;
+    out property <color> faint: #61676d;
     // The accent is near white, as on the desktop: hierarchy comes from weight and space.
     out property <color> accent: #f2f4f6;
     out property <color> on-accent: #0c0d10;
+    out property <color> accent-wash: #f2f4f629;
 
     // The few hues, each with one job.
     out property <color> ok: #8cc58a;
     out property <color> warn: #f0955a;
     out property <color> bad: #ff7a4d;
+    out property <color> cyan: #6cc4c0;
+    out property <color> purple: #b49be0;
+    out property <color> yellow: #e0b25a;
 
-    // Type: three sizes for the whole app. Weight, colour and space carry the rest.
-    out property <length> small: 13px;
-    out property <length> normal: 16px;
+    // Faces: Archivo for words, B612 for numbers, as on the desktop.
+    out property <string> face: "Archivo";
+    out property <string> figure: "B612";
+
+    // The type ramp: a page title, a heading, body, and the small ledger line.
+    out property <length> display: 38px;
+    out property <length> heading: 18px;
     out property <length> large: 24px;
-    // The system's monospace face, for every countdown, time and episode code.
-    out property <string> mono: "Droid Sans Mono";
+    out property <length> normal: 15px;
+    out property <length> small: 12px;
 
-    // Space comes in steps of one unit; corners are round and generous.
+    // Space comes in steps of one unit.
     out property <length> unit: 4px;
-    out property <length> gap: 3 * unit;
+    out property <length> gap: 2 * unit;
     out property <length> pad: 4 * unit;
-    out property <length> radius-small: 2 * unit;
-    out property <length> radius: 4 * unit;
-    out property <length> radius-large: 6 * unit;
+    // Corners: tiles 18, bands 28, rows 10, tags 6.
+    out property <length> radius-small: 6px;
+    out property <length> radius-row: 10px;
+    out property <length> radius: 18px;
+    out property <length> radius-large: 28px;
 
-    // The fade under a title on a poster, and the chip on top of one.
-    out property <color> scrim: #08090bf0;
-    out property <color> scrim-mid: #08090ba8;
+    // The fade under a title on a poster, and the glass tag on top of one.
+    out property <color> scrim: #08090beb;
+    out property <color> scrim-mid: #08090b99;
     out property <color> scrim-clear: #08090b00;
     out property <color> chip: #08090b9e;
-    out property <color> track: #ffffff2e;
+    out property <color> track: #ffffff29;
 
     // Posters are 2:3, like the desktop's.
     out property <float> poster-ratio: 1.5;
-    // A card never gets narrower than this; the grid adds columns as the width allows.
-    out property <length> card-min: 340px;
-    // Nor does a poster tile.
+    // A poster tile is never narrower than this; the grid adds columns as the width allows.
     out property <length> tile-min: 104px;
+
+    // The episode cube colours, by the core's codes (library::cards::cubes): watched and
+    // tracked, watched here, on disk, missing, not downloaded, not aired, downloading.
+    out property <color> cube-watched: #8cc58a;
+    out property <color> cube-here: #6cc4c0;
+    out property <color> cube-disk: #f2f4f6;
+    out property <color> cube-missing: #e0b25a;
+    out property <color> cube-none: #ffffff29;
+    out property <color> cube-downloading: #b49be0;
+
+    // The cube colour for a code: 0 w, 1 l, 2 d, 3 m, 4 g, 5 f, 6 t.
+    public pure function cube(code: int) -> color {
+        if (code == 0) { return self.cube-watched; }
+        if (code == 1) { return self.cube-here; }
+        if (code == 2) { return self.cube-disk; }
+        if (code == 3) { return self.cube-missing; }
+        if (code == 6) { return self.cube-downloading; }
+        return self.cube-none;
+    }
 }

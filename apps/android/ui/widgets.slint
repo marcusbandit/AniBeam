@@ -1,8 +1,32 @@
 import { Theme } from "theme.slint";
 import { Tile } from "data.slint";
 
-// A poster with round corners, or the title's initials on a plain tile when the host
-// has no poster for it.
+// Text that wraps onto at most `lines` lines and ends in an ellipsis past that. A Text in
+// a layout grows to its wrapped height whatever max-height says, so this one fixes its
+// own height and clips.
+export component ClampedText inherits Rectangle {
+    in property <string> text;
+    in property <int> lines: 2;
+    in property <length> font-size: Theme.normal;
+    in property <int> font-weight: 400;
+    in property <color> ink: Theme.text;
+    height: Math.min(inner.preferred-height, root.font-size * 1.2 * root.lines);
+    clip: true;
+    inner := Text {
+        width: parent.width;
+        height: parent.height;
+        text: root.text;
+        color: root.ink;
+        font-size: root.font-size;
+        font-weight: root.font-weight;
+        wrap: word-wrap;
+        overflow: elide;
+        vertical-alignment: top;
+    }
+}
+
+// A poster with round corners, or the title's initials on a plain tile when there is no
+// poster yet.
 export component Poster inherits Rectangle {
     in property <image> source;
     in property <bool> has-image;
@@ -20,64 +44,80 @@ export component Poster inherits Rectangle {
         text: root.initials;
         color: Theme.faint;
         font-size: Theme.large;
-        font-weight: 700;
+        font-weight: 600;
         horizontal-alignment: center;
         vertical-alignment: center;
     }
 }
 
-// Text that wraps onto at most `lines` lines and ends in an ellipsis past that. A Text in
-// a layout grows to its wrapped height whatever max-height says, so this one fixes its
-// own height and clips.
-export component ClampedText inherits Rectangle {
-    in property <string> text;
-    in property <int> lines: 2;
-    in property <length> font-size: Theme.normal;
-    in property <int> font-weight: 400;
-    in property <color> ink: Theme.text;
-    // Roboto's ascent plus descent is 1.17 em; 1.25 leaves room without fitting a third line.
-    height: Math.min(inner.preferred-height, root.font-size * 1.25 * root.lines);
-    clip: true;
-    inner := Text {
-        width: parent.width;
-        height: parent.height;
-        text: root.text;
-        color: root.ink;
-        font-size: root.font-size;
-        font-weight: root.font-weight;
-        wrap: word-wrap;
-        overflow: elide;
-        vertical-alignment: top;
+// The desktop's episode cubes: one small square per episode, coloured by its state.
+export component Cubes inherits Rectangle {
+    in property <[int]> codes;
+    in property <length> size: 6px;
+    in property <length> spacing: 2px;
+    // Past this many the row wraps.
+    property <int> per-row: Math.max(1, Math.floor((self.width + self.spacing) / (self.size + self.spacing)));
+    height: self.codes.length == 0 ? 0 : Math.ceil(self.codes.length / self.per-row) * (self.size + self.spacing) - self.spacing;
+    for code[i] in root.codes: Rectangle {
+        x: Math.mod(i, root.per-row) * (root.size + root.spacing);
+        y: Math.floor(i / root.per-row) * (root.size + root.spacing);
+        width: root.size;
+        height: root.size;
+        border-radius: root.size / 4;
+        background: code == 5 ? transparent : Theme.cube(code);
+        border-width: code == 5 ? 1px : 0;
+        border-color: Theme.line-strong;
     }
 }
 
-// A small label: what a row is (subscribed, not on disk), never a button.
-export component Chip inherits Rectangle {
+// A glass tag on a poster: an episode code, an air time, a download's share.
+export component GlassTag inherits Rectangle {
     in property <string> text;
-    in property <color> ink: Theme.dim;
-    in property <bool> mono;
-    height: 6 * Theme.unit;
-    min-width: label.preferred-width + 5 * Theme.unit;
-    border-radius: self.height / 2;
+    in property <color> ink: Theme.text;
+    width: label.preferred-width + 3 * Theme.unit;
+    height: 5.5 * Theme.unit;
+    border-radius: Theme.radius-small;
+    background: Theme.chip;
     border-width: 1px;
     border-color: Theme.line-strong;
     label := Text {
         text: root.text;
         color: root.ink;
         font-size: Theme.small;
-        font-family: root.mono ? Theme.mono : "";
+        font-family: Theme.figure;
         vertical-alignment: center;
         horizontal-alignment: center;
     }
 }
 
-// A status dot: green for a host that answered, orange for one that did not.
-export component Dot inherits Rectangle {
-    in property <color> tone;
-    width: 2 * Theme.unit;
-    height: self.width;
-    border-radius: self.width / 2;
-    background: root.tone;
+// A small outlined label, never a button.
+export component Chip inherits Rectangle {
+    in property <string> text;
+    in property <color> ink: Theme.dim;
+    in property <color> dot: transparent;
+    height: 7 * Theme.unit;
+    min-width: row.preferred-width + 6 * Theme.unit;
+    border-radius: self.height / 2;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.line;
+    row := HorizontalLayout {
+        alignment: center;
+        spacing: 1.5 * Theme.unit;
+        if root.dot != transparent: Rectangle {
+            y: (parent.height - self.height) / 2;
+            width: 1.5 * Theme.unit;
+            height: self.width;
+            border-radius: self.width / 2;
+            background: root.dot;
+        }
+        Text {
+            text: root.text;
+            color: root.ink;
+            font-size: Theme.small;
+            vertical-alignment: center;
+        }
+    }
 }
 
 // A button with a label, filled when it is the main action of its section.
@@ -86,19 +126,19 @@ export component Button inherits Rectangle {
     in property <bool> primary;
     in property <bool> enabled: true;
     callback clicked();
-    height: 12 * Theme.unit;
+    height: 11 * Theme.unit;
     min-width: label.preferred-width + 10 * Theme.unit;
-    border-radius: self.height / 2;
+    border-radius: Theme.radius-row + 6px;
     background: !root.enabled ? Theme.surface
         : root.primary ? (touch.pressed ? Theme.dim : Theme.accent)
         : (touch.pressed ? Theme.pressed : Theme.raised);
     border-width: root.primary ? 0 : 1px;
-    border-color: Theme.line-strong;
+    border-color: Theme.line;
     animate background { duration: 120ms; }
     label := Text {
         text: root.text;
         color: !root.enabled ? Theme.faint : root.primary ? Theme.on-accent : Theme.text;
-        font-weight: 700;
+        font-weight: 600;
         vertical-alignment: center;
         horizontal-alignment: center;
     }
@@ -108,12 +148,28 @@ export component Button inherits Rectangle {
     }
 }
 
-// A round icon-only button, for the header's refresh.
+// Words that act: a quiet text button for the second choice under a primary one.
+export component TextButton inherits Rectangle {
+    in property <string> text;
+    callback clicked();
+    height: 10 * Theme.unit;
+    min-width: label.preferred-width + 6 * Theme.unit;
+    label := Text {
+        text: root.text;
+        color: touch.pressed ? Theme.text : Theme.dim;
+        font-size: Theme.small;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    touch := TouchArea { clicked => { root.clicked(); } }
+}
+
+// A round icon-only button.
 export component IconButton inherits Rectangle {
     in property <image> icon;
     in property <bool> spinning;
     callback clicked();
-    width: 12 * Theme.unit;
+    width: 11 * Theme.unit;
     height: self.width;
     border-radius: self.width / 2;
     background: touch.pressed ? Theme.pressed : Theme.surface;
@@ -125,7 +181,6 @@ export component IconButton inherits Rectangle {
         height: self.width;
         source: root.icon;
         colorize: root.spinning ? Theme.text : Theme.dim;
-        // One turn a second while a sync runs.
         transform-rotation: root.spinning ? (animation-tick() / 1000ms) * 360deg : 0deg;
     }
     touch := TouchArea {
@@ -133,13 +188,34 @@ export component IconButton inherits Rectangle {
     }
 }
 
-// A thin progress line for torrents.
+// An on and off switch, the desktop's: a pill that fills with the accent when on.
+export component Switch inherits Rectangle {
+    in property <bool> on;
+    callback toggled();
+    width: 9 * Theme.unit;
+    height: 5.5 * Theme.unit;
+    border-radius: self.height / 2;
+    background: root.on ? Theme.accent : Theme.pressed;
+    animate background { duration: 150ms; }
+    Rectangle {
+        x: root.on ? parent.width - self.width - 3px : 3px;
+        y: 3px;
+        width: parent.height - 6px;
+        height: self.width;
+        border-radius: self.width / 2;
+        background: root.on ? Theme.on-accent : Theme.dim;
+        animate x { duration: 150ms; easing: ease-out; }
+    }
+    TouchArea { clicked => { root.toggled(); } }
+}
+
+// A thin progress line.
 export component ProgressLine inherits Rectangle {
     in property <float> progress;
-    in property <color> fill: Theme.accent;
-    height: Theme.unit;
+    in property <color> fill: Theme.purple;
+    height: 3px;
     border-radius: self.height / 2;
-    background: Theme.line-strong;
+    background: Theme.track;
     Rectangle {
         x: 0;
         width: parent.width * Math.clamp(root.progress, 0, 1);
@@ -149,12 +225,171 @@ export component ProgressLine inherits Rectangle {
     }
 }
 
-// A small upper-case section label.
-export component SectionLabel inherits Text {
-    color: Theme.faint;
-    font-size: Theme.small;
-    font-weight: 700;
-    letter-spacing: 1.2px;
+// A page's title, in the desktop's display size, with a dim line under it.
+export component PageTitle inherits VerticalLayout {
+    in property <string> title;
+    in property <string> note;
+    spacing: Theme.unit;
+    Text {
+        text: root.title;
+        color: Theme.text;
+        font-size: Theme.display;
+        font-weight: 300;
+    }
+    if root.note != "": Text {
+        text: root.note;
+        color: Theme.dim;
+        font-size: Theme.small;
+        overflow: elide;
+    }
+}
+
+// A shelf's heading: its name, and a faint count beside it.
+export component ShelfHead inherits HorizontalLayout {
+    in property <string> title;
+    in property <string> count;
+    spacing: Theme.unit * 2;
+    alignment: start;
+    Text {
+        text: root.title;
+        color: Theme.text;
+        font-size: Theme.heading;
+        font-weight: 600;
+        vertical-alignment: bottom;
+    }
+    if root.count != "": Text {
+        text: root.count;
+        color: Theme.faint;
+        font-size: Theme.small;
+        font-family: Theme.figure;
+        vertical-alignment: bottom;
+    }
+}
+
+// One row of a settings list: a label, a dim helper line, and a switch at the right when
+// `switch` is set.
+export component ListRow inherits Rectangle {
+    in property <string> label;
+    in property <string> helper;
+    in property <bool> last;
+    in property <bool> tappable;
+    in property <bool> switch;
+    in property <bool> on;
+    callback clicked();
+    callback toggled();
+    height: Math.max(14 * Theme.unit, texts.preferred-height + 6 * Theme.unit);
+    background: touch.pressed && root.tappable ? Theme.raised : transparent;
+    texts := VerticalLayout {
+        x: Theme.pad;
+        width: parent.width - 2 * Theme.pad - (root.switch ? 12 * Theme.unit : 0);
+        alignment: center;
+        spacing: Theme.unit / 2;
+        Text {
+            text: root.label;
+            color: Theme.text;
+            wrap: word-wrap;
+        }
+        if root.helper != "": Text {
+            text: root.helper;
+            color: Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+    }
+    touch := TouchArea {
+        enabled: root.tappable;
+        clicked => { root.clicked(); }
+    }
+    if root.switch: Switch {
+        x: parent.width - Theme.pad - self.width;
+        y: (parent.height - self.height) / 2;
+        on: root.on;
+        toggled => { root.toggled(); }
+    }
+    if !root.last: Rectangle {
+        x: Theme.pad;
+        y: parent.height - 1px;
+        width: parent.width - 2 * Theme.pad;
+        height: 1px;
+        background: Theme.line;
+    }
+}
+
+// A group of ListRows on one rounded surface.
+export component ListGroup inherits Rectangle {
+    background: Theme.surface;
+    border-radius: Theme.radius;
+    clip: true;
+    height: rows.preferred-height;
+    rows := VerticalLayout {
+        @children
+    }
+}
+
+// A segmented control: one choice of a few, the picked one raised.
+export component Segmented inherits Rectangle {
+    in property <[string]> options;
+    in property <int> picked;
+    callback pick(int);
+    height: 10 * Theme.unit;
+    border-radius: self.height / 2;
+    background: Theme.surface;
+    property <length> cell: (self.width - 2 * 3px) / Math.max(1, self.options.length);
+    for option[i] in root.options: Rectangle {
+        x: 3px + i * root.cell;
+        y: 3px;
+        width: root.cell;
+        height: parent.height - 6px;
+        border-radius: self.height / 2;
+        background: i == root.picked ? Theme.pressed : transparent;
+        animate background { duration: 120ms; }
+        Text {
+            text: option;
+            color: i == root.picked ? Theme.text : Theme.dim;
+            font-size: Theme.small;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        TouchArea { clicked => { root.pick(i); } }
+    }
+}
+
+// The page-level search field.
+export component SearchField inherits Rectangle {
+    in property <string> placeholder;
+    in-out property <string> text;
+    callback edited(string);
+    height: 11 * Theme.unit;
+    border-radius: Theme.radius;
+    background: Theme.field;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.line-strong : Theme.line;
+    Image {
+        x: Theme.pad;
+        width: 4.5 * Theme.unit;
+        height: self.width;
+        source: @image-url("icons/search.svg");
+        colorize: Theme.faint;
+    }
+    property <length> text-x: Theme.pad + 7 * Theme.unit;
+    if root.text == "": Text {
+        x: root.text-x;
+        text: root.placeholder;
+        color: Theme.faint;
+        vertical-alignment: center;
+        height: parent.height;
+    }
+    input := TextInput {
+        x: root.text-x;
+        width: parent.width - self.x - Theme.pad;
+        height: parent.height;
+        text <=> root.text;
+        color: Theme.text;
+        vertical-alignment: center;
+        single-line: true;
+        edited => { root.edited(self.text); }
+    }
 }
 
 // One destination in the bottom bar (portrait) or the side rail (landscape).
@@ -168,10 +403,10 @@ export component NavItem inherits Rectangle {
         height: 8 * Theme.unit;
         y: (parent.height - self.height - 5 * Theme.unit) / 2;
         border-radius: self.height / 2;
-        background: root.active ? Theme.pressed : transparent;
+        background: root.active ? Theme.accent-wash : transparent;
         animate background { duration: 120ms; }
         Image {
-            width: 6 * Theme.unit;
+            width: 5.5 * Theme.unit;
             height: self.width;
             source: root.icon;
             colorize: root.active ? Theme.accent : Theme.dim;
@@ -183,7 +418,7 @@ export component NavItem inherits Rectangle {
         text: root.label;
         color: root.active ? Theme.accent : Theme.dim;
         font-size: Theme.small;
-        font-weight: root.active ? 700 : 400;
+        font-weight: root.active ? 600 : 400;
         horizontal-alignment: center;
     }
     TouchArea {
@@ -192,8 +427,7 @@ export component NavItem inherits Rectangle {
 }
 
 // A poster tile, as on the desktop: the title sits on the poster over a fade from the
-// foot, an episode code or air time rides the top-left corner, and a thin strip along the
-// bottom says how much is watched.
+// foot, glass tags ride the top corners, and the episode cubes sit above the title.
 export component PosterTile inherits Rectangle {
     in property <Tile> data;
     callback open(int);
@@ -213,66 +447,51 @@ export component PosterTile inherits Rectangle {
         text: root.data.initials;
         color: Theme.faint;
         font-size: Theme.large;
-        font-weight: 700;
+        font-weight: 600;
         horizontal-alignment: center;
     }
     Rectangle {
-        y: parent.height * 0.4;
+        y: parent.height * 0.42;
         width: parent.width;
-        height: parent.height * 0.6;
+        height: parent.height * 0.58;
         background: @linear-gradient(180deg, Theme.scrim-clear 0%, Theme.scrim-mid 45%, Theme.scrim 100%);
     }
-    if root.data.badge != "": Rectangle {
-        x: Theme.unit * 1.5;
-        y: Theme.unit * 1.5;
-        width: badge.preferred-width + Theme.unit * 3;
-        height: Theme.unit * 5.5;
-        border-radius: Theme.radius-small;
-        background: Theme.chip;
-        border-width: 1px;
-        border-color: Theme.line-strong;
-        badge := Text {
-            text: root.data.badge;
-            color: Theme.text;
-            font-size: Theme.small;
-            font-family: Theme.mono;
-            vertical-alignment: center;
-            horizontal-alignment: center;
-        }
+    if root.data.badge != "": GlassTag {
+        x: Theme.unit * 1.75;
+        y: Theme.unit * 1.75;
+        text: root.data.badge;
+    }
+    if root.data.flag != "": GlassTag {
+        x: parent.width - self.width - Theme.unit * 1.75;
+        y: Theme.unit * 1.75;
+        text: root.data.flag;
+        ink: Theme.purple;
     }
     foot := VerticalLayout {
         x: 0;
-        y: parent.height - self.preferred-height - (root.data.progress >= 0 ? Theme.unit : 0);
+        y: parent.height - self.preferred-height;
         width: parent.width;
-        padding: Theme.unit * 2;
-        spacing: Theme.unit / 2;
+        padding: Theme.unit * 2.25;
+        spacing: Theme.unit;
+        if root.data.cubes.length > 0: Cubes {
+            codes: root.data.cubes;
+            size: 5px;
+            spacing: 2px;
+        }
         ClampedText {
             text: root.data.title;
-            font-size: Theme.small;
-            font-weight: 700;
+            font-size: Theme.small + 1px;
+            font-weight: 600;
         }
         if root.data.ledger != "": Text {
             text: root.data.ledger;
             color: root.data.ledger-tone == 1 ? Theme.accent : root.data.ledger-tone == 2 ? Theme.warn : root.data.ledger-tone == 3 ? Theme.ok : Theme.dim;
-            font-size: Theme.small;
-            font-family: Theme.mono;
-            font-weight: root.data.ledger-tone == 1 ? 700 : 400;
+            font-size: Theme.small - 1px;
+            font-family: Theme.figure;
             overflow: elide;
         }
     }
-    if root.data.progress >= 0: Rectangle {
-        y: parent.height - Theme.unit;
-        width: parent.width;
-        height: Theme.unit;
-        background: Theme.track;
-        Rectangle {
-            x: 0;
-            width: parent.width * Math.clamp(root.data.progress, 0, 1);
-            height: parent.height;
-            background: Theme.accent;
-        }
-    }
-    TouchArea {
+    touch := TouchArea {
         enabled: root.data.id >= 0;
         clicked => { root.open(root.data.id); }
     }
@@ -299,22 +518,43 @@ export component TileGrid inherits Rectangle {
     }
 }
 
-// A shelf's heading: its name, and a faint count beside it.
-export component ShelfHead inherits HorizontalLayout {
+// One row of tiles that scrolls sideways, for Home's shelves.
+export component TileRow inherits Rectangle {
+    in property <[Tile]> tiles;
+    in property <length> tile-width: 112px;
+    callback open(int);
+    height: self.tile-width * Theme.poster-ratio;
+    Flickable {
+        content-width: Math.max(self.width, root.tiles.length * (root.tile-width + Theme.gap) - Theme.gap);
+        for tile[i] in root.tiles: PosterTile {
+            x: i * (root.tile-width + Theme.gap);
+            width: root.tile-width;
+            height: root.height;
+            data: tile;
+            open(id) => { root.open(id); }
+        }
+    }
+}
+
+// What an empty page says, centred: a line in the body colour and a dim line under it.
+export component EmptyNote inherits VerticalLayout {
     in property <string> title;
-    in property <string> count;
-    // 0: plain, 1: accent, 2: warning.
-    in property <int> tone;
+    in property <string> body;
     spacing: Theme.unit * 2;
-    alignment: start;
+    padding-top: Theme.pad * 2;
+    padding-bottom: Theme.pad * 2;
     Text {
         text: root.title;
-        color: root.tone == 1 ? Theme.accent : root.tone == 2 ? Theme.warn : Theme.text;
-        font-weight: 700;
+        color: Theme.text;
+        font-weight: 600;
+        horizontal-alignment: center;
+        wrap: word-wrap;
     }
-    Text {
-        text: root.count;
-        color: Theme.faint;
-        font-family: Theme.mono;
+    if root.body != "": Text {
+        text: root.body;
+        color: Theme.dim;
+        font-size: Theme.small;
+        wrap: word-wrap;
+        horizontal-alignment: center;
     }
 }

@@ -1,0 +1,156 @@
+import { Theme } from "theme.slint";
+import { AppData } from "data.slint";
+import { Button, ListGroup, ListRow, PageTitle, ShelfHead } from "widgets.slint";
+
+// Questions a page asks over everything else; the window draws them.
+export global Ask {
+    // "Download over mobile data?", before Wi-Fi only goes off.
+    in-out property <bool> mobile;
+}
+
+// The host address, editable in place, with its last test underneath.
+component HostRow inherits Rectangle {
+    height: column.preferred-height;
+    column := VerticalLayout {
+        padding: Theme.pad;
+        spacing: Theme.unit * 2;
+        Text {
+            text: "Another AniBeam on your tailnet";
+            color: Theme.text;
+        }
+        Text {
+            text: "Its library shows in Library, read only. A name like banditbox or an address like 100.94.40.21.";
+            color: Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        Rectangle {
+            height: 11 * Theme.unit;
+            border-radius: Theme.radius-row;
+            background: Theme.field;
+            border-width: 1px;
+            border-color: input.has-focus ? Theme.line-strong : Theme.line;
+            input := TextInput {
+                x: Theme.unit * 3;
+                width: parent.width - 6 * Theme.unit;
+                height: parent.height;
+                text <=> AppData.host-address;
+                color: Theme.text;
+                font-family: Theme.figure;
+                vertical-alignment: center;
+                single-line: true;
+            }
+        }
+        if AppData.host-result != "": Text {
+            text: AppData.host-result;
+            color: AppData.host-tone == 0 ? Theme.ok : AppData.host-tone == 1 ? Theme.warn : Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            spacing: Theme.gap;
+            alignment: start;
+            Button {
+                text: "Test";
+                clicked => { AppData.test-host(AppData.host-address); }
+            }
+            Button {
+                text: "Save";
+                primary: true;
+                clicked => { AppData.save-host(AppData.host-address); }
+            }
+        }
+    }
+}
+
+export component MorePage inherits Rectangle {
+    Flickable {
+        VerticalLayout {
+            alignment: start;
+            padding-left: Theme.pad;
+            padding-right: Theme.pad;
+            padding-top: Theme.unit * 2;
+            padding-bottom: Theme.pad * 2;
+            spacing: Theme.unit * 3;
+            PageTitle {
+                title: "More";
+                note: AppData.wifi-only ? "Downloads on Wi-Fi only" : "Downloads on Wi-Fi and mobile data";
+            }
+
+            ShelfHead { title: "Downloads"; }
+            ListGroup {
+                ListRow {
+                    label: "Search and download";
+                    helper: "Finding releases on nyaa and erai and downloading them to this phone comes in the next version.";
+                    last: true;
+                }
+            }
+
+            ShelfHead { title: "Network and storage"; }
+            ListGroup {
+                ListRow {
+                    label: "Only on Wi-Fi";
+                    helper: "Mobile data asks first.";
+                    switch: true;
+                    on: AppData.wifi-only;
+                    toggled => {
+                            if (AppData.wifi-only) {
+                                Ask.mobile = true;
+                            } else {
+                                AppData.set-wifi-only(true);
+                            }
+                        }
+                }
+                ListRow {
+                    label: "Storage limit, " + AppData.limit-gb + " GB";
+                    helper: AppData.limit-on ? "Downloads stop at the limit." : "Off: AniBeam shows what it uses but never stops a download.";
+                    switch: true;
+                    on: AppData.limit-on;
+                    toggled => { AppData.set-limit(!AppData.limit-on, AppData.limit-gb); }
+                }
+                ListRow {
+                    label: "On this phone";
+                    helper: AppData.storage-line;
+                    last: true;
+                }
+            }
+
+            ShelfHead { title: "Tracking"; }
+            ListGroup {
+                ListRow {
+                    label: "AniList";
+                    helper: AppData.anilist-state;
+                    tappable: true;
+                    clicked => { AppData.connect-tracker(0); }
+                }
+                ListRow {
+                    label: "MyAnimeList";
+                    helper: AppData.mal-state;
+                    tappable: true;
+                    last: true;
+                    clicked => { AppData.connect-tracker(1); }
+                }
+            }
+
+            ShelfHead { title: "Devices"; }
+            ListGroup {
+                HostRow { }
+            }
+
+            ShelfHead { title: "About"; }
+            ListGroup {
+                ListRow {
+                    label: "Set up again";
+                    helper: "Walk through the first-run questions once more.";
+                    tappable: true;
+                    clicked => { AppData.restart-onboarding(); }
+                }
+                ListRow {
+                    label: "Version";
+                    helper: AppData.version;
+                    last: true;
+                }
+            }
+        }
+    }
+}

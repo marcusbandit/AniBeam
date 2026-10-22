@@ -1,60 +1,63 @@
 import { Theme } from "theme.slint";
 import { AppData, EpisodeLine } from "data.slint";
-import { ClampedText, Poster, ProgressLine, SectionLabel } from "widgets.slint";
+import { ClampedText, Cubes, Poster, ShelfHead } from "widgets.slint";
 
-// One episode: a tick that fills once it is watched, the code, the title, and when it
-// aired or airs.
+// One episode, the desktop's row: its cube, the code, the title and a state word, and when
+// it aired or airs at the right.
 component EpisodeItem inherits Rectangle {
     in property <EpisodeLine> data;
-    height: Theme.unit * 12;
-    border-radius: Theme.radius-small;
-    background: root.data.state == 1 ? Theme.surface : transparent;
-    HorizontalLayout {
-        padding-left: Theme.gap;
-        padding-right: Theme.gap;
-        spacing: Theme.gap;
-        Rectangle {
-            width: Theme.unit * 5.5;
-            Rectangle {
-                y: (parent.height - self.height) / 2;
-                width: parent.width;
-                height: parent.width;
-                border-radius: self.width / 2;
-                border-width: root.data.state == 0 ? 0 : 1.5px;
-                border-color: root.data.state == 3 ? Theme.warn : root.data.state == 2 ? Theme.line-strong : Theme.dim;
-                background: root.data.state == 0 ? Theme.pressed : transparent;
-                if root.data.state == 0: Image {
-                    x: (parent.width - self.width) / 2;
-                    y: (parent.height - self.height) / 2;
-                    width: parent.width * 0.6;
-                    height: self.width;
-                    source: @image-url("icons/check.svg");
-                    colorize: Theme.ok;
-                }
+    // Episodes still to air are quieter.
+    property <bool> later: root.data.cube == 5;
+    height: Math.max(Theme.unit * 11, texts.preferred-height + 3 * Theme.unit);
+    border-radius: Theme.radius-row;
+    background: root.data.note == "Next up" ? Theme.surface : transparent;
+    Rectangle {
+        x: Theme.unit * 3;
+        y: (parent.height - self.height) / 2;
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+        background: root.later ? transparent : Theme.cube(root.data.cube);
+        border-width: root.later ? 1px : 0;
+        border-color: Theme.line-strong;
+    }
+    texts := VerticalLayout {
+        x: Theme.unit * 8;
+        width: parent.width - self.x - date.width - Theme.unit * 5;
+        alignment: center;
+        spacing: 2px;
+        HorizontalLayout {
+            spacing: Theme.unit * 2;
+            Text {
+                text: root.data.code;
+                color: root.later ? Theme.faint : Theme.dim;
+                font-size: Theme.small;
+                font-family: Theme.figure;
+                vertical-alignment: center;
+            }
+            Text {
+                text: root.data.title;
+                color: root.later ? Theme.faint : Theme.text;
+                vertical-alignment: center;
+                overflow: elide;
+                horizontal-stretch: 1;
             }
         }
-        Text {
-            width: Theme.unit * 17;
-            text: root.data.code;
-            color: root.data.state == 2 ? Theme.faint : Theme.dim;
-            font-size: Theme.small;
-            font-family: Theme.mono;
-            vertical-alignment: center;
+        if root.data.note != "": Text {
+            text: root.data.note;
+            color: root.data.note == "Next up" ? Theme.accent : root.data.note == "Missing" ? Theme.yellow : Theme.purple;
+            font-size: Theme.small - 1px;
+            font-weight: root.data.note == "Next up" ? 600 : 400;
         }
-        Text {
-            text: root.data.title;
-            color: root.data.state == 0 ? Theme.dim : root.data.state == 2 ? Theme.faint : Theme.text;
-            vertical-alignment: center;
-            overflow: elide;
-            horizontal-stretch: 1;
-        }
-        Text {
-            text: root.data.date;
-            color: root.data.state == 3 ? Theme.warn : root.data.state == 2 ? Theme.accent : Theme.faint;
-            font-size: Theme.small;
-            font-family: Theme.mono;
-            vertical-alignment: center;
-        }
+    }
+    date := Text {
+        x: parent.width - self.width - Theme.unit * 3;
+        height: parent.height;
+        text: root.data.date;
+        color: root.later ? Theme.dim : Theme.faint;
+        font-size: Theme.small - 1px;
+        font-family: Theme.figure;
+        vertical-alignment: center;
     }
 }
 
@@ -63,57 +66,57 @@ component SeriesBand inherits Rectangle {
     background: AppData.series.band;
     border-radius: Theme.radius-large;
     height: body.preferred-height;
-    body := HorizontalLayout {
-        padding: Theme.pad;
-        spacing: Theme.pad;
-        Poster {
-            width: 34 * Theme.unit;
-            height: self.width * Theme.poster-ratio;
-            source: AppData.series.poster;
-            has-image: AppData.series.has-poster;
-            initials: AppData.series.initials;
-        }
-        VerticalLayout {
-            alignment: center;
-            spacing: Theme.unit * 2;
-            ClampedText {
-                text: AppData.series.title;
-                font-size: Theme.large;
-                font-weight: 700;
-                lines: 4;
+    body := VerticalLayout {
+        padding: Theme.unit * 3;
+        spacing: Theme.unit * 3;
+        HorizontalLayout {
+            spacing: Theme.unit * 3;
+            Poster {
+                width: 26 * Theme.unit;
+                height: self.width * Theme.poster-ratio;
+                source: AppData.series.poster;
+                has-image: AppData.series.has-poster;
+                initials: AppData.series.initials;
             }
-            if AppData.series.alt-title != "": ClampedText {
-                text: AppData.series.alt-title;
-                font-size: Theme.small;
-                ink: Theme.dim;
-            }
-            Text {
-                text: AppData.series.facts;
-                color: Theme.dim;
-                font-size: Theme.small;
-                font-family: Theme.mono;
-                wrap: word-wrap;
-            }
-            if AppData.series.next != "": Text {
-                text: AppData.series.next;
-                color: AppData.series.ink;
-                font-size: Theme.small;
-                font-family: Theme.mono;
-                font-weight: 700;
-                wrap: word-wrap;
-            }
-            if AppData.series.progress >= 0: VerticalLayout {
-                spacing: Theme.unit;
-                Text {
-                    text: AppData.series.progress-text;
-                    color: Theme.text;
+            VerticalLayout {
+                alignment: center;
+                spacing: Theme.unit * 1.5;
+                ClampedText {
+                    text: AppData.series.title;
+                    font-size: Theme.large;
+                    font-weight: 300;
+                    lines: 4;
+                }
+                if AppData.series.alt-title != "": ClampedText {
+                    text: AppData.series.alt-title;
                     font-size: Theme.small;
+                    ink: Theme.dim;
                 }
-                ProgressLine {
-                    progress: AppData.series.progress;
-                    fill: AppData.series.ink;
+                Text {
+                    text: AppData.series.facts;
+                    color: Theme.dim;
+                    font-size: Theme.small - 1px;
+                    font-family: Theme.figure;
+                    wrap: word-wrap;
+                }
+                if AppData.series.next != "": Text {
+                    text: AppData.series.next;
+                    color: AppData.series.ink;
+                    font-size: Theme.small;
+                    font-family: Theme.figure;
+                    wrap: word-wrap;
                 }
             }
+        }
+        if AppData.series.cubes.length > 0: Cubes {
+            codes: AppData.series.cubes;
+            size: 9px;
+            spacing: 3px;
+        }
+        if AppData.series.progress-text != "": Text {
+            text: AppData.series.progress-text;
+            color: Theme.text;
+            font-size: Theme.small;
         }
     }
 }
@@ -129,37 +132,23 @@ export component SeriesPage inherits Rectangle {
             padding-right: Theme.pad;
             padding-top: Theme.unit * 2;
             padding-bottom: Theme.pad * 2;
-            spacing: Theme.gap;
+            spacing: Theme.unit * 2;
             SeriesBand { }
-            if AppData.series.rule != "": Rectangle {
-                height: rule-body.preferred-height;
-                border-radius: Theme.radius;
-                border-width: 1px;
-                border-color: AppData.series.rule-note != "" ? Theme.warn : Theme.line-strong;
-                rule-body := VerticalLayout {
-                    padding: Theme.gap;
-                    spacing: Theme.unit;
-                    Text {
-                        text: AppData.series.rule;
-                        color: Theme.text;
-                        font-size: Theme.small;
-                        wrap: word-wrap;
-                    }
-                    if AppData.series.rule-note != "": Text {
-                        text: AppData.series.rule-note;
-                        color: Theme.warn;
-                        font-size: Theme.small;
-                        wrap: word-wrap;
-                    }
-                }
+            if AppData.series.synopsis != "": ClampedText {
+                text: AppData.series.synopsis;
+                font-size: Theme.small;
+                ink: Theme.dim;
+                lines: 5;
             }
-            SectionLabel {
-                text: "EPISODES";
+            ShelfHead {
+                title: "Episodes";
+                count: AppData.episodes.length > 0 ? "" + AppData.episodes.length : "";
             }
             for line in AppData.episodes: EpisodeItem { data: line; }
             if AppData.episodes.length == 0: Text {
-                text: "No episodes on disk and none scheduled.";
+                text: "No episodes on this phone and none scheduled.";
                 color: Theme.dim;
+                font-size: Theme.small;
             }
         }
     }
