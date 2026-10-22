@@ -170,6 +170,10 @@ pub enum Call {
     SetPreferences {
         preferences: Preferences,
     },
+    /// The tailnet host's state as last known: off, waiting for Tailscale,
+    /// or serving and on which URLs. Never touches the network; changes
+    /// arrive as `HostChanged`.
+    GetHost,
     GetSettings,
     SetSubtitleDefaults {
         defaults: SubtitleDefaults,
@@ -339,6 +343,13 @@ pub enum Call {
     /// Tries the torrent client with the saved settings. Ends in
     /// `DownloadsStatusChanged`.
     TestTorrentClient,
+    /// Switches the downloads to another torrent client: the saved client
+    /// `id`, or AniBeam's own when `id` is `None`. A running sidecar is
+    /// stopped, as a save stops it; `ConnectDownloads` starts it again on
+    /// the new client. Emits `DownloadsStatusChanged`.
+    UseTorrentClient {
+        id: Option<String>,
+    },
     /// Asks every on-demand endpoint's ready URL whether it is up, and
     /// nothing else: it never starts one. Ends in `DownloadsStatusChanged`.
     CheckEndpoints,
@@ -414,6 +425,9 @@ pub enum Reply {
     },
     Preferences {
         preferences: Preferences,
+    },
+    Host {
+        status: HostStatus,
     },
     Settings {
         settings: Settings,

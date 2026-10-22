@@ -104,8 +104,14 @@ mod tests {
     #[test]
     fn xdg_paths_end_in_anibeam() {
         let p = CorePaths::xdg().unwrap();
-        for dir in [&p.data_dir, &p.config_dir, &p.cache_dir, &p.state_dir] {
+        for dir in [&p.data_dir, &p.config_dir, &p.cache_dir] {
             assert!(dir.ends_with("/anibeam"), "{dir}");
+        }
+        // A Mac has no state directory, so the core keeps one inside its data directory.
+        if cfg!(target_os = "macos") {
+            assert!(p.state_dir.ends_with("/anibeam/state"), "{}", p.state_dir);
+        } else {
+            assert!(p.state_dir.ends_with("/anibeam"), "{}", p.state_dir);
         }
         assert!(p.db_path().ends_with("anibeam/anibeam.db"));
         assert!(p.secrets_path().ends_with("anibeam/secrets.json"));

@@ -12,7 +12,8 @@ Qt 6.11 QML over the Rust core through cxx-qt 0.10, built with Cargo alone. Spec
     scripts/bench.sh player 2 keep                  # the real window on the main monitor's workspace 2
     packaging/package.sh                            # build, package, install (Task 25)
 
-Environment the shell sets for itself: QSG_RENDER_LOOP=threaded, QT_XCB_GL_INTEGRATION=xcb_egl.
+Environment the shell sets for itself: QSG_RENDER_LOOP=threaded (not on a Mac, where AppKit
+forbids an OpenGL context off the main thread), QT_XCB_GL_INTEGRATION=xcb_egl.
 ANIBEAM_THEMES_DIR and ANIBEAM_MPV_CONF point a dev run at the checkout's themes/ and mpv.conf.
 
 `ANIBEAM_QML_DIR=qml` (run from `apps/linux/`, like every command here) loads the shell's QML from that directory instead of the copy compiled
@@ -132,3 +133,22 @@ would only show empty states. `target/debug/anibeam-cli --root <dir> list` print
 `anibeam-cli --root <dir> import <export.json> --wait` seeds a root from an export file:
 
     ANIBEAM_ROOT=<dir> scripts/drive.sh scripts/drive/capture-pages.json   # one PNG per page in captures/
+
+## macOS
+
+The same shell builds for Apple silicon, from `.github/workflows/macos.yml` on a macos-15
+runner; nothing here builds it on Linux. `packaging/macos/` holds the steps the workflow runs:
+
+    deps.sh <prefix>        libmpv 0.41 (lean: no Lua, VapourSynth or Vulkan) and MpvQt 1.2 into a prefix
+    MPVQT_PREFIX=<prefix> MPV_PREFIX=<prefix> QMAKE=$(brew --prefix qtbase)/bin/qmake \
+      cargo build --release -p anibeam -p anibeam-cli
+    DEPS_PREFIX=<prefix> packaging/macos/bundle.sh dist   AniBeam.app and the dmg, ad-hoc signed
+    packaging/macos/smoke.sh dist/AniBeam.app target/release/anibeam-cli smoke
+
+`bundle.sh` runs macdeployqt, then `fix-dylibs.py`, which copies in whatever still loads from
+outside the bundle and fails if anything does. `smoke.sh` seeds a library of generated clips,
+shoots the pages and drives the player from the bundle; the workflow runs it with Homebrew
+moved away, and `crash-report.py` prints the crashed thread when a run dies. On a Mac the
+themes and the bundled mpv.conf come from `Contents/Resources`, the lock from `$TMPDIR`, and
+tokens go to the login keychain. A runner's only OpenGL is Apple's software renderer, so the
+smoke's second player run uses a cheap mpv profile to show the picture reaching the window.

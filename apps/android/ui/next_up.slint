@@ -1,0 +1,102 @@
+import { Theme } from "theme.slint";
+import { AppData } from "data.slint";
+import { Chip, ClampedText, Poster, SectionLabel, ShelfHead, TileGrid } from "widgets.slint";
+
+// The next episode to air, on a band in its poster's hue.
+component HeroBand inherits Rectangle {
+    background: AppData.hero.band;
+    border-radius: Theme.radius-large;
+    height: body.preferred-height;
+    body := HorizontalLayout {
+        padding: Theme.pad;
+        spacing: Theme.pad;
+        Poster {
+            width: 34 * Theme.unit;
+            height: self.width * Theme.poster-ratio;
+            source: AppData.hero.poster;
+            has-image: AppData.hero.has-poster;
+            initials: AppData.hero.initials;
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: Theme.unit * 2;
+            SectionLabel {
+                text: "NEXT TO AIR";
+                color: AppData.hero.ink;
+            }
+            ClampedText {
+                text: AppData.hero.title;
+                font-size: Theme.large;
+                font-weight: 700;
+                lines: 3;
+            }
+            Text {
+                text: AppData.hero.episode;
+                color: Theme.text;
+                font-size: Theme.small;
+                font-family: Theme.mono;
+                wrap: word-wrap;
+            }
+            Text {
+                text: AppData.hero.countdown;
+                color: AppData.hero.ink;
+                font-size: Theme.large;
+                font-family: Theme.mono;
+                font-weight: 700;
+            }
+            if AppData.hero.subscribed: HorizontalLayout {
+                alignment: start;
+                Chip { text: "Subscribed"; ink: Theme.text; }
+            }
+        }
+    }
+    TouchArea {
+        clicked => { AppData.open-series(AppData.hero.id); }
+    }
+}
+
+export component NextUpPage inherits Rectangle {
+    flick := Flickable {
+        VerticalLayout {
+            alignment: start;
+            padding-left: Theme.pad;
+            padding-right: Theme.pad;
+            padding-top: Theme.unit * 2;
+            padding-bottom: Theme.pad * 2;
+            spacing: Theme.gap;
+            if AppData.hero.show: HeroBand { }
+            for shelf in AppData.next-shelves: VerticalLayout {
+                spacing: Theme.gap;
+                padding-top: Theme.unit * 2;
+                ShelfHead {
+                    title: shelf.title;
+                    count: shelf.count;
+                    tone: shelf.tone;
+                }
+                TileGrid {
+                    tiles: shelf.tiles;
+                    open(id) => { AppData.open-series(id); }
+                }
+            }
+            if !AppData.hero.show && AppData.next-shelves.length == 0: VerticalLayout {
+                spacing: Theme.unit * 2;
+                padding-top: Theme.pad * 2;
+                Text {
+                    text: AppData.has-data ? "Nothing subscribed or airing." : "Not synced yet.";
+                    color: Theme.text;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: AppData.has-data
+                        ? "Shows the host is airing or subscribed to appear here, soonest first."
+                        : "Set the host's address in Settings; the app syncs on its own after that.";
+                    color: Theme.dim;
+                    font-size: Theme.small;
+                    wrap: word-wrap;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+    }
+}

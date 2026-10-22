@@ -312,6 +312,7 @@ mod tests {
             runtime_dir: dir.path().join("runtime"),
             builtin_themes: std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("themes"),
             bundled_mpv_conf_override: None,
+            mpv_config_home: None,
         };
         let inputs = read_inputs(&paths, Portal::default());
         let r = resolve(inputs);

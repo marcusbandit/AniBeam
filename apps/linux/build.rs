@@ -1,10 +1,24 @@
 // One build script, no CMake. cxx-qt-build finds Qt through qmake6, runs moc, rcc,
 // qmlcachegen and qmltyperegistrar, compiles the C++ beside the generated bridge and
 // links the pacman Qt. MpvQt has no .pc file, so its two libraries are named here.
+//
+// On Arch both live under /usr. Elsewhere (the macOS workflow builds MpvQt from source
+// into its own prefix and takes mpv from Homebrew) MPVQT_PREFIX and MPV_PREFIX say where.
 use cxx_qt_build::{CxxQtBuilder, QmlModule};
 
 fn main() {
-    CxxQtBuilder::new_qml_module(
+    println!("cargo:rerun-if-env-changed=MPVQT_PREFIX");
+    println!("cargo:rerun-if-env-changed=MPV_PREFIX");
+    let mpvqt_prefix = std::env::var("MPVQT_PREFIX").unwrap_or_else(|_| "/usr".to_string());
+    // The prefixes the system does not already search. /usr is never named: -I/usr/include
+    // breaks libstdc++'s #include_next, and /usr/lib is on the linker's path anyway.
+    let mut extra: Vec<String> = [Some(mpvqt_prefix.clone()), std::env::var("MPV_PREFIX").ok()]
+        .into_iter()
+        .flatten()
+        .filter(|p| p != "/usr")
+        .collect();
+    extra.dedup();
+    let mut builder = CxxQtBuilder::new_qml_module(
         QmlModule::new("com.marcusrosado.AniBeam")
             .version(1, 0)
             .qml_file("qml/Main.qml")
@@ -115,7 +129,7 @@ fn main() {
     ])
     .include_dir("cpp")
     // mpvqt_export.h includes mpvqt_version.h bare; CMake's target used to supply this.
-    .include_dir("/usr/include/MpvQt")
+    .include_dir(format!("{mpvqt_prefix}/include/MpvQt"))
     .cpp_files(["cpp/helpers.cpp", "cpp/videoitem.h", "cpp/videoitem.cpp"])
     // qrc:/qt/qml/com/marcusrosado/AniBeam/assets/...; a name left out of this list is a
     // blank icon at runtime, not a build error, so it is generated:
@@ -230,9 +244,29 @@ fn main() {
         "assets/icons/volume-x.svg",
         "assets/icons/wrench.svg",
         "assets/icons/x.svg",
-    ])
-    .build();
+    ]);
+    // include_dir() copies a directory's headers into the build rather than adding a -I, and
+    // skips names with no extension (MpvQt/MpvAbstractItem), so a prefix the compiler does
+    // not search already goes in as a real -I.
+    for prefix in &extra {
+        let dir = format!("{prefix}/include");
+        // SAFETY: only adds an include path to cxx-qt's own cc::Build.
+        builder = unsafe {
+            builder.cc_builder(|cc| {
+                cc.include(&dir);
+            })
+        };
+    }
+    builder.build();
 
+    for prefix in &extra {
+        println!("cargo:rustc-link-search=native={prefix}/lib");
+        // Both install names are @rpath/... on a Mac; the bundle step rewrites them to the
+        // app's own Frameworks, and this rpath is how a bare cargo run finds them.
+        if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+            println!("cargo:rustc-link-arg=-Wl,-rpath,{prefix}/lib");
+        }
+    }
     println!("cargo:rustc-link-lib=MpvQt");
     println!("cargo:rustc-link-lib=mpv");
 }

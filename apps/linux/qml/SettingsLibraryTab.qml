@@ -38,7 +38,16 @@ SettingsTab {
         var last = found.length ? Fmt.relative(found[0].at, Date.now() / 1000) : "never"
         stats = { series: m.reply.counts.series, films: m.reply.counts.movies, episodes: eps, lastScan: last }
     }
-    Component.onCompleted: reload()
+    // The tailnet host: whether it is on, what it says about itself and the URLs it serves
+    property var host: ({ enabled: false, urls: [], message: "" })
+    function reloadHost() { var r = Door.getHost(); if (!r.error) host = r.reply.status }
+    function setSharing(on) {
+        var p = JSON.parse(JSON.stringify(Door.preferences))
+        p.share_over_tailscale = on
+        var r = Door.setPreferences(p)
+        if (r.error) frame.toast(r.error.message)
+    }
+    Component.onCompleted: { reload(); reloadHost() }
     // The match providers, first tried first; the core keeps the order and says what it is
     readonly property var providerOrder: Door.settings && Door.settings.provider_order && Door.settings.provider_order.length ? Door.settings.provider_order : ["Anilist", "Tvmaze"]
     readonly property var providerAbout: ({ Anilist: "Anime: series, films and their relations. Episodes you watch are marked on your trackers.",
@@ -61,12 +70,13 @@ SettingsTab {
         function onSeriesChanged(c) { debounce.restart() }
         function onSeriesRemoved(ids) { debounce.restart() }
         function onProgressRefreshed() { frame.toast("Tracker progress synced") }
+        function onHostChanged(status) { tab.host = status }
     }
 
     SettingsPair {
         split: 3 / 5
         leftPanels: [ statStones, foldersPanel, scansPanel ]
-        rightPanels: [ trackersPanel, providersPanel, optionsPanel, diskPanel ]
+        rightPanels: [ trackersPanel, providersPanel, optionsPanel, sharePanel, diskPanel ]
     }
     Component {
         id: statStones
@@ -187,6 +197,23 @@ SettingsTab {
                 Button { text: "Open"; icon: "download"; onClicked: frame.go("downloads") } }
             SettingRow { label: "Metadata"; helper: "Every series, the record it is matched to, and its files on disk."
                 Button { text: "Open"; icon: "database"; onClicked: frame.go("metadata") } }
+        }
+    }
+    // The phone app's door: the core serves a read-only copy of the library, the
+    // subscriptions and the downloads on this computer's Tailscale addresses while it is on
+    Component {
+        id: sharePanel
+        Panel {
+            objectName: "settings-share"
+            title: "Phone app"; icon: "radio"
+            helper: "Your phone's AniBeam app reads your library, subscriptions and downloads from here. Only devices on your tailnet can reach it."
+            SettingRow {
+                label: "Share over Tailscale"
+                line: tab.host.message
+                status: tab.host.urls.join("\n")
+                hairline: false
+                Switch { objectName: "settings-share-switch"; checked: !!Door.preferences.share_over_tailscale; onToggled: function(on) { tab.setSharing(on) } }
+            }
         }
     }
     // Every series with files, most episodes first: a ledger of what the folders hold

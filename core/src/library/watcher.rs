@@ -11,9 +11,9 @@ use std::sync::{Arc, Mutex, TryLockError, Weak};
 use std::time::Duration;
 
 use notify::event::{AccessKind, AccessMode, CreateKind, EventKind, Flag, ModifyKind, RenameMode};
-use notify::{RecommendedWatcher, RecursiveMode};
+use notify::{RecommendedWatcher, RecursiveMode, Watcher as NotifyWatcher};
 use notify_debouncer_full::{
-    DebounceEventResult, DebouncedEvent, Debouncer, RecommendedCache, new_debouncer,
+    DebounceEventResult, DebouncedEvent, Debouncer, RecommendedCache, new_debouncer_opt,
 };
 
 use crate::contract::*;
@@ -37,7 +37,17 @@ pub enum Trigger {
     NewDirectory(String),
     /// Events were missed, or the OS ran out of watches. Scan everything.
     Rescan,
+    /// A video is being written by a backend that never says a write is
+    /// finished (FSEvents on a Mac): it becomes an `Ingest` once its size
+    /// holds still. Linux's inotify has close-write and never makes one.
+    Settling(String),
 }
+
+/// How often a settling file's size is looked at, and how long it has to
+/// hold still before it counts as written: chokidar's `awaitWriteFinish`,
+/// which the Electron line ran on every platform.
+pub const SETTLE_POLL: Duration = Duration::from_millis(100);
+pub const SETTLE_HOLD: Duration = Duration::from_millis(500);
 
 /// A dot entry, or the name a downloader gives an unfinished file, anywhere
 /// below the watched root. The root's own components are exempt: the walk
@@ -114,6 +124,37 @@ pub fn classify(event: &DebouncedEvent, roots: &[String]) -> Vec<Trigger> {
             .filter(|p| is_video(&name(p)) || p.extension().is_none())
             .map(|p| Trigger::Removed(text(p)))
             .collect(),
+        // FSEvents has no close-write: a video that was created or written
+        // to is ready once its size holds still, which the core waits for
+        // off this thread.
+        #[cfg(not(target_os = "linux"))]
+        EventKind::Create(CreateKind::File | CreateKind::Any)
+        | EventKind::Modify(ModifyKind::Data(_) | ModifyKind::Any)
+            if kept.iter().any(|p| is_video(&name(p))) =>
+        {
+            kept.into_iter()
+                .filter(|p| is_video(&name(p)))
+                .map(|p| Trigger::Settling(text(p)))
+                .collect()
+        }
+        // FSEvents does not pair a rename either. The debouncer stitches the
+        // halves it can match by file id; what reaches here is the half it
+        // could not, a move in from outside the watch or a move out of it,
+        // told apart by whether the path is still there.
+        #[cfg(not(target_os = "linux"))]
+        EventKind::Modify(ModifyKind::Name(RenameMode::Any)) => kept
+            .into_iter()
+            .filter_map(|p| {
+                if p.is_dir() {
+                    Some(Trigger::NewDirectory(text(p)))
+                } else if p.exists() {
+                    is_video(&name(p)).then(|| Trigger::Ingest(text(p)))
+                } else {
+                    (is_video(&name(p)) || p.extension().is_none())
+                        .then(|| Trigger::Removed(text(p)))
+                }
+            })
+            .collect(),
         EventKind::Create(CreateKind::Folder) => kept
             .into_iter()
             .map(|p| Trigger::NewDirectory(text(p)))
@@ -138,18 +179,80 @@ pub fn parent_series_path(p: &str) -> String {
         .unwrap_or_else(|| p.to_string())
 }
 
-/// The macOS fallback for a backend with no close-write. Not built on Linux,
-/// and never on an exported item.
-///
-/// FSEvents reports `Create` and `Modify(Data)` and never says a write is
-/// finished, so readiness has to be inferred from the size holding still.
-/// The Mac shell's own task builds that; until then a file already there
-/// when a directory is walked is still taken in, and a file written into a
-/// watched folder is picked up by the next scan.
-#[cfg(not(target_os = "linux"))]
-#[allow(dead_code)]
-fn size_stable_fallback(_paths: &[PathBuf]) -> Vec<Trigger> {
-    Vec::new()
+/// The fallback for a backend with no close-write: true once `path`'s size
+/// has held for `hold`, looked at every `poll`; false as soon as the file is
+/// gone, since its removal is an event of its own. Built everywhere so its
+/// test runs on Linux too, but only a `Settling` trigger ever waits on it.
+pub async fn size_holds(path: &Path, poll: Duration, hold: Duration) -> bool {
+    let mut last = None;
+    let mut since = tokio::time::Instant::now();
+    loop {
+        let Ok(meta) = tokio::fs::metadata(path).await else {
+            return false;
+        };
+        if last != Some(meta.len()) {
+            last = Some(meta.len());
+            since = tokio::time::Instant::now();
+        } else if since.elapsed() >= hold {
+            return true;
+        }
+        tokio::time::sleep(poll).await;
+    }
+}
+
+/// The notify backend under the debouncer. On a Mac it is FSEvents behind
+/// the stale-create filter below; everywhere else notify's own choice.
+#[cfg(target_os = "macos")]
+type Backend = WithoutStaleCreates<RecommendedWatcher>;
+#[cfg(not(target_os = "macos"))]
+type Backend = RecommendedWatcher;
+
+/// FSEvents keeps an item's flags while the item is fresh, so the event for
+/// a file deleted soon after it arrived still says "created". notify turns
+/// that into a `Create` and then a `Remove` for the same path, and the
+/// debouncer reads the pair as a file that came and went inside one window
+/// and reports neither: the deletion is lost. A create for a path that is
+/// already gone is that stale flag, and dropping it before the debouncer
+/// sees it leaves the `Remove` to arrive.
+pub fn is_stale_create(event: &notify::Event) -> bool {
+    matches!(event.kind, EventKind::Create(_)) && event.paths.iter().all(|p| !p.exists())
+}
+
+/// A notify watcher with [`is_stale_create`] events taken out of its stream.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub struct WithoutStaleCreates<W>(W);
+
+impl<W: NotifyWatcher> NotifyWatcher for WithoutStaleCreates<W> {
+    fn new<F: notify::EventHandler>(
+        mut handler: F,
+        config: notify::Config,
+    ) -> notify::Result<Self> {
+        let inner = W::new(
+            move |event: notify::Result<notify::Event>| {
+                if !matches!(&event, Ok(e) if is_stale_create(e)) {
+                    handler.handle_event(event);
+                }
+            },
+            config,
+        )?;
+        Ok(WithoutStaleCreates(inner))
+    }
+
+    fn watch(&mut self, path: &Path, recursive_mode: RecursiveMode) -> notify::Result<()> {
+        self.0.watch(path, recursive_mode)
+    }
+
+    fn unwatch(&mut self, path: &Path) -> notify::Result<()> {
+        self.0.unwatch(path)
+    }
+
+    fn configure(&mut self, option: notify::Config) -> notify::Result<bool> {
+        self.0.configure(option)
+    }
+
+    fn kind() -> notify::WatcherKind {
+        W::kind()
+    }
 }
 
 /// One debouncer and the roots it watches. Dropping this stops the watch.
@@ -163,7 +266,7 @@ pub struct Watcher {
     /// this lock is held for as long as that walk takes. Keeping it here
     /// rather than on the core's slot is what stops everything else that
     /// touches the watcher from waiting on the walk.
-    debouncer: Mutex<Option<Debouncer<RecommendedWatcher, RecommendedCache>>>,
+    debouncer: Mutex<Option<Debouncer<Backend, RecommendedCache>>>,
     /// Shared with the handler, which needs them to tell a hidden entry in
     /// the library from a hidden directory the library merely sits under.
     /// Never held across a call into the debouncer, so it can never take
@@ -183,7 +286,7 @@ pub struct Watcher {
 /// undoing the install.
 fn drain_unwatches(
     pending: &Mutex<Vec<String>>,
-    debouncer: &mut Debouncer<RecommendedWatcher, RecommendedCache>,
+    debouncer: &mut Debouncer<Backend, RecommendedCache>,
     installed: Option<&str>,
 ) {
     for waiting in std::mem::take(&mut *recover(pending)) {
@@ -195,7 +298,7 @@ fn drain_unwatches(
 }
 
 /// One drop against a debouncer that may already have been stopped.
-fn drop_watch(debouncer: Option<&mut Debouncer<RecommendedWatcher, RecommendedCache>>, path: &str) {
+fn drop_watch(debouncer: Option<&mut Debouncer<Backend, RecommendedCache>>, path: &str) {
     if let Some(debouncer) = debouncer {
         let _ = debouncer.unwatch(Path::new(path));
     }
@@ -205,7 +308,7 @@ impl Watcher {
     pub fn new(core: Weak<Core>) -> Result<Watcher, CoreError> {
         let roots: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let handler_roots = roots.clone();
-        let debouncer = new_debouncer(DEBOUNCE, None, move |result: DebounceEventResult| {
+        let handler = move |result: DebounceEventResult| {
             // The core is already going away: there is nothing left to tell.
             let Some(core) = core.upgrade() else { return };
             match result {
@@ -234,7 +337,15 @@ impl Watcher {
                     }
                 }
             }
-        })
+        };
+        // new_debouncer() with the backend named, so a Mac gets the filter.
+        let debouncer = new_debouncer_opt::<_, Backend, RecommendedCache>(
+            DEBOUNCE,
+            None,
+            handler,
+            RecommendedCache::new(),
+            notify::Config::default(),
+        )
         .map_err(|e| CoreError::internal(format!("watcher: {e}")))?;
         Ok(Watcher {
             debouncer: Mutex::new(Some(debouncer)),
@@ -311,9 +422,7 @@ impl Watcher {
         recover(&self.pending_unwatch).len()
     }
 
-    fn debouncer(
-        &self,
-    ) -> std::sync::MutexGuard<'_, Option<Debouncer<RecommendedWatcher, RecommendedCache>>> {
+    fn debouncer(&self) -> std::sync::MutexGuard<'_, Option<Debouncer<Backend, RecommendedCache>>> {
         self.debouncer.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
@@ -324,6 +433,86 @@ mod tests {
     use notify::Event as RawEvent;
     use notify::event::RemoveKind;
     use std::time::Instant;
+
+    /// A file still growing is not ready; once the writes stop it is, after
+    /// the hold and not long past it.
+    #[tokio::test]
+    async fn a_growing_file_settles_once_its_size_holds() {
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ep01.mkv");
+        let mut file = std::fs::File::create(&path).unwrap();
+        let writer = std::thread::spawn(move || {
+            for _ in 0..8 {
+                file.write_all(&[0u8; 4096]).unwrap();
+                file.flush().unwrap();
+                std::thread::sleep(Duration::from_millis(60));
+            }
+        });
+        let began = Instant::now();
+        let (poll, hold) = (Duration::from_millis(20), Duration::from_millis(200));
+        assert!(size_holds(&path, poll, hold).await);
+        writer.join().unwrap();
+        let waited = began.elapsed();
+        assert!(
+            waited >= Duration::from_millis(8 * 60) + hold - Duration::from_millis(80),
+            "settled while the file was still growing, after {waited:?}"
+        );
+        assert!(waited < Duration::from_secs(3), "took {waited:?}");
+    }
+
+    #[tokio::test]
+    async fn a_file_that_goes_away_never_settles() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("gone.mkv");
+        assert!(!size_holds(&path, Duration::from_millis(10), Duration::from_millis(50)).await);
+    }
+
+    /// A create for a path that is still there is real; one for a path
+    /// already gone is FSEvents repeating an old flag on the deletion.
+    #[test]
+    fn a_create_for_a_vanished_path_is_stale() {
+        let dir = tempfile::tempdir().unwrap();
+        let here = dir.path().join("ep01.mkv");
+        std::fs::write(&here, b"x").unwrap();
+        let create = |p: &Path| {
+            notify::Event::new(EventKind::Create(CreateKind::File)).add_path(p.to_path_buf())
+        };
+        assert!(!is_stale_create(&create(&here)));
+        assert!(is_stale_create(&create(&dir.path().join("gone.mkv"))));
+        let removal = notify::Event::new(EventKind::Remove(RemoveKind::File))
+            .add_path(dir.path().join("gone.mkv"));
+        assert!(!is_stale_create(&removal), "only creates are ever dropped");
+    }
+
+    /// Off Linux a create or a write is a file still being written; a
+    /// rename the debouncer could not pair is a move in or out.
+    #[cfg(not(target_os = "linux"))]
+    #[test]
+    fn without_close_write_a_written_video_settles_first() {
+        use notify::event::DataChange;
+        let created = event(EventKind::Create(CreateKind::File), &["/lib/Show/ep1.mkv"]);
+        assert_eq!(
+            classify(&created, &["/lib".into()]),
+            vec![Trigger::Settling("/lib/Show/ep1.mkv".into())]
+        );
+        let written = event(
+            EventKind::Modify(ModifyKind::Data(DataChange::Content)),
+            &["/lib/Show/ep1.mkv", "/lib/Show/notes.txt"],
+        );
+        assert_eq!(
+            classify(&written, &["/lib".into()]),
+            vec![Trigger::Settling("/lib/Show/ep1.mkv".into())]
+        );
+        let gone = event(
+            EventKind::Modify(ModifyKind::Name(RenameMode::Any)),
+            &["/nowhere/Show/ep1.mkv"],
+        );
+        assert_eq!(
+            classify(&gone, &["/nowhere".into()]),
+            vec![Trigger::Removed("/nowhere/Show/ep1.mkv".into())]
+        );
+    }
 
     fn event(kind: EventKind, paths: &[&str]) -> DebouncedEvent {
         let mut e = RawEvent::new(kind);
@@ -521,7 +710,11 @@ mod tests {
     #[test]
     fn a_created_file_is_never_an_ingest() {
         let e = event(EventKind::Create(CreateKind::File), &["/lib/a/ep.mkv"]);
-        assert!(classify(&e, &[]).is_empty());
+        let triggers = classify(&e, &[]);
+        assert!(!triggers.iter().any(|t| matches!(t, Trigger::Ingest(_))));
+        // Off Linux it is a Settling file instead, waiting for its size.
+        #[cfg(target_os = "linux")]
+        assert!(triggers.is_empty());
     }
 
     #[test]

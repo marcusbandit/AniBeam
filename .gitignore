@@ -34,5 +34,9 @@ out/
 
 /target/
 !core/tests/fixtures/**/*.json
+!host-api/fixtures/*.json
 apps/linux/captures/
 apps/linux/.qmlls.ini
+
+# Python bytecode from the packaging scripts
+__pycache__/

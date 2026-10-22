@@ -4,18 +4,19 @@ use std::fs;
 use std::io::Write;
 use std::time::Duration;
 
-/// The watcher end to end on inotify: a finished write is ingested, a folder
-/// that appears is walked, the settle timer fires for a series that has
-/// never been matched and hands it to the auto-match, and a deleted file
-/// takes its episode away again.
+/// The watcher end to end on inotify, and on FSEvents: a finished write is
+/// ingested, a folder that appears is walked, the settle timer fires for a
+/// series that has never been matched and hands it to the auto-match, and a
+/// deleted file takes its episode away again. On a Mac "finished" means the
+/// size held still, since FSEvents has no close-write.
 ///
 /// The network is canned, because the settle timer's whole point is that it
 /// ends in a search. Every reply is an empty page, so every series the
 /// walks produce misses and is stamped, which is the quietest outcome the
 /// chain has: nothing is fetched and nothing is written.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
-fn a_file_landing_in_a_watched_source_is_ingested_after_close_write() {
+fn a_file_landing_in_a_watched_source_is_ingested_once_written() {
     let http = anibeam_core::net::FakeHttp::new();
     for _ in 0..6 {
         http.push_for(
@@ -25,7 +26,9 @@ fn a_file_landing_in_a_watched_source_is_ingested_after_close_write() {
         );
     }
     let (dir, core, c) = common::open_core_with_http(http);
-    let lib = dir.path().join("lib");
+    // Canonical, because a Mac's temp directory sits behind the /var ->
+    // /private/var link and FSEvents reports the real path.
+    let lib = dir.path().canonicalize().unwrap().join("lib");
     fs::create_dir_all(lib.join("Show")).unwrap();
     fs::write(lib.join("Show").join("Show - 01.mkv"), b"x").unwrap();
     core.call(Call::AddSource {
@@ -39,8 +42,9 @@ fn a_file_landing_in_a_watched_source_is_ingested_after_close_write() {
         Duration::from_secs(10),
     );
 
-    // Written in two goes with a pause between them: only the close, not
-    // either write, may be taken as the file being ready.
+    // Written in two goes with a pause between them: only the close (or on
+    // a Mac the size holding still), not either write, may be taken as the
+    // file being ready.
     {
         let mut f = fs::File::create(lib.join("Show").join("Show - 02.mkv")).unwrap();
         f.write_all(b"partial").unwrap();

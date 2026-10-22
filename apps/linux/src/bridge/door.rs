@@ -240,6 +240,10 @@ pub mod qobject {
         fn cancel_job(self: &Door, job: f64) -> QJsonObject;
         // Downloads (anirss and the torrent client). Every item list crosses as anirss's
         // own Item shape; the page sends back what it was given.
+        /// The tailnet host's state: whether it is on, the URLs it serves on and one
+        /// plain sentence. No network; changes arrive as `hostChanged`.
+        #[qinvokable]
+        fn get_host(self: &Door) -> QJsonObject;
         /// The status as last known, settings and endpoints included. No network.
         #[qinvokable]
         fn get_downloads(self: &Door) -> QJsonObject;
@@ -351,6 +355,9 @@ pub mod qobject {
         ) -> QJsonObject;
         #[qinvokable]
         fn test_torrent_client(self: &Door) -> QJsonObject;
+        /// Switches to the saved torrent client `id`; an empty id is AniBeam's own.
+        #[qinvokable]
+        fn use_torrent_client(self: &Door, id: &QString) -> QJsonObject;
         /// Any call by name, the CLI's door.
         #[qinvokable]
         fn call(self: &Door, name: &QString, args: &QJsonObject) -> QJsonObject;
@@ -452,6 +459,8 @@ pub mod qobject {
         fn export_finished(self: Pin<&mut Door>, path: QString);
         #[qsignal]
         fn import_finished(self: Pin<&mut Door>, summary: QJsonObject);
+        #[qsignal]
+        fn host_changed(self: Pin<&mut Door>, status: QJsonObject);
         // Downloads
         #[qsignal]
         fn downloads_status_changed(self: Pin<&mut Door>, status: QJsonObject);
@@ -1048,6 +1057,7 @@ impl qobject::Door {
             },
             EventBody::ExportFinished { .. } => self.as_mut().export_finished(s("path")),
             EventBody::ImportFinished { .. } => self.as_mut().import_finished(obj("summary")),
+            EventBody::HostChanged { .. } => self.as_mut().host_changed(obj("status")),
             EventBody::DownloadsStatusChanged { .. } => {
                 self.as_mut().downloads_status_changed(obj("status"))
             }
@@ -1477,6 +1487,9 @@ impl qobject::Door {
     pub fn cancel_job(&self, job: f64) -> QJsonObject {
         self.dispatch(Ok(Call::CancelJob { job: id(job) }))
     }
+    pub fn get_host(&self) -> QJsonObject {
+        self.dispatch(Ok(Call::GetHost))
+    }
     // Downloads
     pub fn get_downloads(&self) -> QJsonObject {
         self.dispatch(Ok(Call::GetDownloads))
@@ -1673,6 +1686,12 @@ impl qobject::Door {
     }
     pub fn test_torrent_client(&self) -> QJsonObject {
         self.dispatch(Ok(Call::TestTorrentClient))
+    }
+    pub fn use_torrent_client(&self, id: &QString) -> QJsonObject {
+        let id = id.to_string();
+        self.dispatch(Ok(Call::UseTorrentClient {
+            id: (!id.is_empty()).then_some(id),
+        }))
     }
     pub fn call(&self, name: &QString, args: &QJsonObject) -> QJsonObject {
         self.dispatch(

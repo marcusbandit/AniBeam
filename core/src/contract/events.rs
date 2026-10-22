@@ -140,6 +140,11 @@ pub enum EventBody {
         preferences: Preferences,
     },
     SettingsChanged,
+    /// The tailnet host started, stopped, or found a different state
+    /// (Tailscale came up, the port was taken).
+    HostChanged {
+        status: HostStatus,
+    },
     ExportFinished {
         path: String,
     },

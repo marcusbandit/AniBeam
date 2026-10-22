@@ -16,6 +16,7 @@ fn preferences_and_settings_round_trip_with_events() {
         library_show_watched: true,
         library_arrange: Arrange::WatchState,
         library_group_franchises: true,
+        share_over_tailscale: false,
     };
     assert!(matches!(
         core.call(Call::SetPreferences {

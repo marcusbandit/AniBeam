@@ -575,6 +575,11 @@ pub struct Preferences {
     /// every series under its own season, type or genre. Default on.
     #[serde(default = "default_true")]
     pub library_group_franchises: bool,
+    /// Whether the core serves the library, subscriptions and downloads as
+    /// read-only JSON on this machine's Tailscale addresses, for the phone
+    /// app (`host`). Default off, and per machine: an export never carries it.
+    #[serde(default)]
+    pub share_over_tailscale: bool,
 }
 
 fn default_true() -> bool {
@@ -728,6 +733,7 @@ impl Default for Preferences {
             library_show_watched: false,
             library_arrange: Arrange::Related,
             library_group_franchises: true,
+            share_over_tailscale: false,
         }
     }
 }
@@ -740,4 +746,17 @@ impl Default for Settings {
             provider_order: MATCH_PROVIDERS.to_vec(),
         }
     }
+}
+
+/// What the tailnet host is doing, for the Settings page: whether the
+/// preference is on, the URLs it answers on, and one plain sentence for the
+/// state ("Serving on 100.65.105.9", "Tailscale is not connected").
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct HostStatus {
+    pub enabled: bool,
+    /// `http://<address>:<port>` for every address it is bound to, then the
+    /// MagicDNS name's when `tailscale` could say it. Empty while it is not
+    /// serving.
+    pub urls: Vec<String>,
+    pub message: String,
 }

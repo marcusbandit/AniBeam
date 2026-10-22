@@ -1,0 +1,35 @@
+import { Theme } from "theme.slint";
+import { AppData } from "data.slint";
+import { ShelfHead, TileGrid } from "widgets.slint";
+
+// Every series as a poster: what airs first, then the rest, most recently active first.
+export component LibraryPage inherits Rectangle {
+    Flickable {
+        VerticalLayout {
+            alignment: start;
+            padding-left: Theme.pad;
+            padding-right: Theme.pad;
+            padding-top: Theme.unit * 2;
+            padding-bottom: Theme.pad * 2;
+            spacing: Theme.gap;
+            for shelf in AppData.library: VerticalLayout {
+                spacing: Theme.gap;
+                padding-bottom: Theme.unit * 2;
+                ShelfHead {
+                    title: shelf.title;
+                    count: shelf.count;
+                    tone: shelf.tone;
+                }
+                TileGrid {
+                    tiles: shelf.tiles;
+                    open(id) => { AppData.open-series(id); }
+                }
+            }
+            if AppData.library.length == 0: Text {
+                text: AppData.has-data ? "The library is empty." : "Not synced yet.";
+                color: Theme.dim;
+                horizontal-alignment: center;
+            }
+        }
+    }
+}

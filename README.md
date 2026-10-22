@@ -5,30 +5,43 @@
 AniBeam browses, plays and tracks a local anime library. It scans the folders you point it
 at, matches each series against AniList (TVmaze for what AniList does not carry), plays
 video in the window through libmpv, and syncs watch progress with AniList and MyAnimeList.
-
-Since 2.0 it is a native app: a Qt 6 QML shell over a Rust core. Linux is the supported
-platform. The Electron app it replaced was retired in October 2026; the zip on v2.0.0 is
-its last build, and the `v2.0.0` tag holds its source.
-
-## Install
-
-[v2.0.0](https://github.com/marcusbandit/AniBeam/releases/tag/v2.0.0) carries `anibeam-2.0.0`, a
-Linux x86_64 binary built on Arch against Qt 6, MpvQt 1.2 and libmpv. Those have to be
-installed beside it; on Arch:
-
-```bash
-sudo pacman -S qt6-base qt6-declarative qt6-svg mpv mpvqt
-```
-
-Rename it to `anibeam`, put it on your PATH and run it. For a launcher entry, copy
-`apps/linux/com.marcusrosado.AniBeam.desktop` into `~/.local/share/applications/`.
-
-There is no package yet. An AUR package, an AppImage and a Mac dmg are in progress on the
-`feat/release-pipeline` branch.
+It runs on Linux and on Apple silicon Macs: a Qt 6 shell over a Rust core. The Electron app
+it replaced was retired in October 2026; the `v2.0.0` tag holds its source.
 
 ## Getting started
 
-### Add your library
+One install is all AniBeam needs, on every platform. The video player, anirss (which
+searches release feeds) and a qBittorrent for downloads all come with it.
+
+### 1. Install
+
+**Mac** (Apple silicon, macOS 15 or later)
+
+1. Download `AniBeam-<version>-macos-arm64.dmg` from [Releases](https://github.com/marcusbandit/AniBeam/releases).
+2. Open it and drag AniBeam into Applications.
+3. Open AniBeam once. macOS stops it, because the build is not notarized: go to
+   System Settings > Privacy & Security, scroll to the AniBeam line and click Open Anyway.
+   From a terminal, `xattr -dr com.apple.quarantine /Applications/AniBeam.app` does the same.
+
+**Arch Linux**
+
+```bash
+yay -S anibeam        # or: paru -S anibeam
+```
+
+The AUR package builds the latest release and pulls in anirss and qbittorrent-nox.
+
+**Any other Linux** (glibc 2.39 or newer: Ubuntu 24.04, Debian 13, Fedora 40 and later)
+
+Download `AniBeam-<version>-x86_64.AppImage` from
+[Releases](https://github.com/marcusbandit/AniBeam/releases), then:
+
+```bash
+chmod +x AniBeam-*-x86_64.AppImage
+./AniBeam-*-x86_64.AppImage
+```
+
+### 2. Add your library
 
 The first time AniBeam opens, Home says "No series yet". Click Add a folder (or go to
 Settings > Library > Folders > Add folder) and pick the folder your anime lives in. One
@@ -39,31 +52,76 @@ anime), and fetches posters, synopses and airing dates. Files that land in the f
 show up by themselves. A show it could not match says "Needs a match": open it, click Find
 a match, and pick the right one.
 
-### Connect AniList or MyAnimeList (optional)
+### 3. Connect AniList or MyAnimeList (optional)
 
 Settings > Library > Trackers > Connect. Your browser opens; sign in, approve AniBeam, and
 come back. From then on, watching most of an episode marks it on your list, and the cards
 show your progress. Main tracker picks whose progress wins when you connect both.
 
-### Watch
+### 4. Watch
 
 Click a show, then an episode. Space plays and pauses, and `?` shows every key. AniBeam
 remembers where you stopped and offers the next episode when one ends.
 
-### Download new episodes (optional)
+### 5. Download new episodes (optional)
 
-The Downloads page fronts [anirss](https://github.com/marcusbandit/anirss), which searches
-the release feeds, and a qBittorrent with its Web UI turned on. Neither ships with AniBeam
-yet: install both (`yay -S anirss qbittorrent-nox` on Arch), then point Settings >
-Downloads > Torrent client at your qBittorrent. Search for a show, look over the releases,
-and click Subscribe; new episodes then download by themselves. Add the download folder to
-your library so they show up there.
+Open Downloads (the arrow in the left rail). There is nothing to install or set up first:
 
-### Where things are kept
+- AniBeam starts its own anirss, the tool that searches the release feeds.
+- If a qBittorrent of yours is already running with its Web UI on, AniBeam uses it.
+  If not, AniBeam sets up its own qBittorrent the first time you open the page, and
+  says so in the status line at the bottom.
 
-`~/.local/share/anibeam`, `~/.config/anibeam` and `~/.cache/anibeam`. Tracker tokens go to
-the Secret Service keyring (GNOME Keyring, KWallet) or, without one, to a file only you can
-read. "Use my mpv settings" reads `~/.config/mpv/mpv.conf`.
+Search for a show (`Frieren 1080p`), look over the releases, and click Subscribe. New
+episodes then download by themselves as they come out, into `~/Downloads/Anime` unless you
+pick another folder. Add that folder to your library (step 2) so they show up there. Download
+grabs a single release instead.
+
+AniBeam's own qBittorrent keeps running after you close AniBeam, so subscriptions keep
+downloading. Settings > Downloads > Torrent client shows which qBittorrent is in use. To
+switch to your own, turn on its Web UI (in qBittorrent: Preferences > Web UI, tick the box,
+set a username and password), choose Mine, fill in the address, username and password, and
+Save.
+
+### When something is off
+
+- **macOS says AniBeam "cannot be opened"**: that is the Open Anyway step in 1.
+- **The AppImage does not start and mentions FUSE**: install `libfuse2` (`libfuse2t64` on
+  Ubuntu 24.04), or run it with `--appimage-extract-and-run`.
+- **Downloads says qBittorrent did not answer**: open Settings > Downloads > Torrent client
+  and press Test; the State line says what went wrong. Choosing "Pick for me" and saving
+  makes AniBeam look again on the next connect.
+- **Sign-in stays on "Finish in your browser"**: approve AniBeam in the browser tab it
+  opened. If that tab is gone, click Open the sign-in page again.
+- **Where things are kept**: on a Mac in `~/Library/Application Support/anibeam`, tracker
+  tokens in the login keychain. On Linux in `~/.local/share/anibeam` and
+  `~/.config/anibeam`, tracker tokens in the Secret Service keyring (GNOME Keyring, KWallet)
+  or, without one, in a file only you can read. "Use my mpv.conf" reads
+  `~/.config/mpv/mpv.conf` on both.
+
+## Share over Tailscale
+
+AniBeam can share a read-only copy of your library with the AniBeam app on your phone.
+Turn on Settings > Library > Phone app > Share over Tailscale. It needs
+[Tailscale](https://tailscale.com) running on this computer and on the phone, signed in to
+the same tailnet. The phone app lives in `apps/android`; its README covers building it,
+sideloading it and pointing it at this computer.
+
+When the switch is on, AniBeam listens on port 8790, on this computer's Tailscale addresses
+only. Nothing on your home network or the internet can reach it, so the tailnet is the
+lock. The setting shows the addresses it answers on, and the MagicDNS name when the
+`tailscale` command can say it. If Tailscale is not connected yet, AniBeam says so and looks
+again every minute.
+
+The phone reads three things and changes none of them: your library with its watched
+progress and airing times, your anirss subscriptions, and the torrents qBittorrent holds. If
+anirss or qBittorrent is not running, the phone gets the rest and a short note about which
+half is missing.
+
+You can see what it serves with `curl http://<address>:8790/api/v1/hello` and
+`/api/v1/snapshot`. For development, `ANIBEAM_HOST_BIND=127.0.0.1:8790` picks the address by
+hand. `0.0.0.0:8790` lets an Android emulator reach it at `10.0.2.2`. The file
+`host-api/src/lib.rs` describes the JSON.
 
 ## Build from source
 
@@ -86,22 +144,21 @@ ANIBEAM_THEMES_DIR=apps/linux/themes ANIBEAM_MPV_CONF=apps/linux/mpv.conf \
   target/release/anibeam --root /tmp/anibeam-dev
 ```
 
+A build from source finds anirss and qbittorrent-nox on your PATH (anirss 0.5.0 or newer,
+`yay -S anirss qbittorrent-nox` on Arch).
+
 A build from source has no AniList or MyAnimeList app registration of its own, so the
 Trackers tab asks for a client ID the first time you connect. To bundle your own, copy
 `.env.example` to `.env.local` and fill it in before building; it explains where to
 register.
 
-## macOS
-
-The core and the CLI build and run on a Mac with Cargo as they are. The Qt shell does not
-build on `main` yet: its build looks for MpvQt under `/usr`. The port
-(MpvQt from source, the Keychain for tokens, an `AniBeam.app` and a dmg) is on the
-`feat/release-pipeline` branch. The longer-term Mac shell is SwiftUI over the same core;
-Appendix A of `docs/superpowers/specs/2026-09-04-native-line-design.md` describes it.
+On a Mac, `apps/linux/packaging/macos/deps.sh` builds libmpv and MpvQt, and `bundle.sh`
+turns the binary into `AniBeam.app` and a dmg. `.github/workflows/macos.yml` runs both.
 
 ## Development
 
-The Rust core lives in `core/`, the Qt shell in `apps/linux/`, and a terminal shell over the
+The Rust core lives in `core/`, the Qt shell in `apps/linux/` (it builds for the Mac
+too), and a terminal shell over the
 same core in `apps/cli/`. Cargo builds all three.
 
 ```bash
@@ -131,18 +188,20 @@ anibeam-cli list --tab all --sort alpha --direction asc
 
 ## Releasing
 
-Nothing builds a release on `main` yet. The native `anibeam` binary is built locally and
-attached by hand, as it was for v2.0.0. Bump `version` in the root `Cargo.toml` and merge
-that first, then tag the merged commit before building, so `git describe` stamps the
-binary with the tag:
+Push a version tag. `.github/workflows/release.yml` builds the Mac dmg and the Linux
+AppImage, runs both smoke tests, and leaves a draft release with the files and install
+notes on it. Read the draft, then press Publish.
 
 ```bash
-git switch main && git pull
-git tag v2.1.0 && git push origin v2.1.0
-cargo build --release -p anibeam
-cp target/release/anibeam /tmp/anibeam-2.1.0
-gh release create v2.1.0 --verify-tag --generate-notes /tmp/anibeam-2.1.0
+git tag v2.1.0
+git push origin v2.1.0
 ```
 
-The tag-driven workflows for the AppImage, the dmg and the AUR package are on the
-`feat/release-pipeline` branch.
+Once the release is published, point the AUR at it:
+
+```bash
+apps/linux/packaging/aur/publish.sh 2.1.0
+```
+
+Bump `version` in the workspace `Cargo.toml` before tagging: a build from the AUR's
+tarball has no git history and reports the Cargo version.

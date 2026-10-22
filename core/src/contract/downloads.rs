@@ -502,9 +502,40 @@ impl TorrentClient {
     }
 }
 
+/// Whose torrent client the downloads use.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, uniffi::Enum)]
+pub enum TorrentMode {
+    /// Not settled yet. The first connect picks `Existing` when a qBittorrent
+    /// Web UI answers at the address, else `Managed` when AniBeam can run
+    /// one, and saves the choice.
+    #[default]
+    Auto,
+    /// The user's own client, at `torrent_url`.
+    Existing,
+    /// The qbittorrent-nox AniBeam runs itself: a profile of its own under
+    /// AniBeam's data, the Web UI on loopback and open to it without a login.
+    Managed,
+}
+
+/// One of the user's own qBittorrents, saved by name so the downloads can
+/// switch between several: a seedbox and the one on this machine, say. Its
+/// password lives in the secret store under a key of its own.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct SavedTorrentClient {
+    /// Fixed for the life of the entry, since it names the password's key:
+    /// letters, digits, `-` and `_`. Left empty on a new entry that is not
+    /// the active one, the core picks it on save.
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    pub username: String,
+    #[serde(default)]
+    pub has_password: bool,
+}
+
 /// The downloads settings, secrets left out. The anirss token (remote mode)
-/// and the torrent client's password live in the secret store; the two
-/// `has_*` flags say whether one is held.
+/// and the torrent clients' passwords live in the secret store; the `has_*`
+/// flags say whether one is held.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct DownloadSettings {
     pub anirss_mode: AnirssMode,
@@ -520,15 +551,33 @@ pub struct DownloadSettings {
     #[serde(default)]
     pub has_anirss_token: bool,
     pub torrent_client: TorrentClient,
+    /// A blob saved before the mode existed belongs to someone who had set
+    /// up a client by hand, so it reads as `Existing`; fresh settings start
+    /// at `Auto`.
+    #[serde(default = "existing_mode")]
+    pub torrent_mode: TorrentMode,
     pub torrent_url: String,
     pub torrent_username: String,
+    /// Whether the client in use has a password saved here.
     #[serde(default)]
     pub has_torrent_password: bool,
+    /// The user's own clients. In `Existing` mode `active_client` names the
+    /// one in use, and `torrent_url` and `torrent_username` are its address
+    /// and user: a save writes them into it, and a blob from before the list
+    /// existed reads as one client made of them.
+    #[serde(default)]
+    pub saved_clients: Vec<SavedTorrentClient>,
+    #[serde(default)]
+    pub active_client: String,
     /// Remove a finished show's RSS feed once its run ended long enough
     /// ago that no more episodes are due (`downloads::prune`). Settings
     /// saved before this existed read as on.
     #[serde(default = "default_true")]
     pub prune_finished_feeds: bool,
+}
+
+fn existing_mode() -> TorrentMode {
+    TorrentMode::Existing
 }
 
 /// Where the sidecar is in its life.

@@ -106,12 +106,14 @@ fn main() {
         }
     };
 
-    // Both of these have to run before the core does: set_render_loop_env is a setenv, and
+    // These have to run before the core does: set_render_loop_env is a setenv, as is naming
+    // the bundled helpers, and
     // setenv is not safe once another thread exists, which the core's tokio runtime is.
     // The one setenv that cannot obey this rule is raise_window's, in cpp/helpers.cpp;
     // the comment there says why Qt leaves no other way and what the risk comes to.
     bridge::helpers::ffi::set_render_loop_env();
     bridge::helpers::ffi::use_opengl_scene_graph();
+    paths::name_bundled_helpers();
 
     // The core is open before the engine, so the Door singleton the first QML file names
     // finds it already there. A run under --root keeps its secrets in that root's own

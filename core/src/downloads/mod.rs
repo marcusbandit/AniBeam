@@ -19,6 +19,7 @@ pub mod facts;
 pub mod feed;
 pub mod jackett;
 pub mod link;
+pub mod managed;
 pub mod prune;
 pub mod qbt;
 pub mod replace;
@@ -29,6 +30,7 @@ pub mod trash;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
+use std::time::Duration;
 
 use crate::contract::*;
 use crate::core::Core;
@@ -44,6 +46,8 @@ pub struct Downloads {
     /// One sidecar start at a time: two jobs that both find it down must
     /// not each spawn one.
     connecting: tokio::sync::Mutex<()>,
+    /// The same for settling the torrent client and starting AniBeam's own.
+    torrent_setup: tokio::sync::Mutex<()>,
     /// Set by a shell that runs against a copy of the library but the
     /// owner's real anirss (a drive script, a screenshot, a sandbox root):
     /// finished feeds are never pruned there.
@@ -59,6 +63,10 @@ struct State {
     /// The torrent client with its session, built from the settings on
     /// first use and dropped when they change or a test is asked for.
     qbt: Option<Arc<QbtClient>>,
+    /// Bumped by every settings change. A sidecar or a session built from
+    /// settings read before the bump belongs to the old client and is
+    /// thrown away rather than kept.
+    generation: u64,
     /// The episodes an unfinished torrent is still writing, by series, with
     /// how far each is (0 to 1), as of the last torrent read: on disk is not
     /// in the library until the torrent is done with them (`overlay`).
@@ -85,6 +93,7 @@ impl Default for Downloads {
         Downloads {
             state: Mutex::new(State::default()),
             connecting: tokio::sync::Mutex::new(()),
+            torrent_setup: tokio::sync::Mutex::new(()),
             unattended_off: AtomicBool::new(false),
         }
     }
@@ -143,20 +152,39 @@ fn assemble(core: &Core, settings: DownloadSettings) -> DownloadsStatus {
 }
 
 async fn load_settings(core: &Arc<Core>) -> Result<DownloadSettings, CoreError> {
-    let (has_token, has_password) = with_secrets(core, |s| {
-        Ok((
-            s.has(settings::ANIRSS_TOKEN),
-            s.has(settings::TORRENT_PASSWORD),
-        ))
+    let mut s = core.store.read(settings::load_stored)?;
+    let mut keys = vec![settings::ANIRSS_TOKEN.to_string()];
+    keys.extend(settings::active_password_key(&s));
+    keys.extend(
+        s.saved_clients
+            .iter()
+            .map(|c| settings::password_key(&c.id)),
+    );
+    let held = with_secrets(core, move |sec| {
+        Ok(keys.into_iter().filter(|k| sec.has(k)).collect::<Vec<_>>())
     })
     .await?;
-    let mut s = core.store.read(settings::load_stored)?;
-    s.has_anirss_token = has_token;
-    s.has_torrent_password = has_password;
+    settings::fill_secret_flags(&mut s, |key| held.iter().any(|h| h == key));
     Ok(s)
 }
 
 // The clients ----------------------------------------------------------------
+
+/// The anirss client when one is already there: the remote server, or a
+/// sidecar that is alive. Starts nothing.
+async fn running_client(core: &Arc<Core>) -> Result<Option<AnirssClient>, CoreError> {
+    let s = load_settings(core).await?;
+    if s.anirss_mode == AnirssMode::Remote {
+        return ensure_client(core).await.map(Some);
+    }
+    let mut st = core.downloads.state();
+    let Some(sc) = st.sidecar.as_mut() else {
+        return Ok(None);
+    };
+    Ok(sc
+        .alive()
+        .then(|| AnirssClient::new(&sc.server(), &sc.token, core.http.clone())))
+}
 
 /// The anirss client, starting the sidecar when that is the mode and it is
 /// not up. The status in the state follows every step, so a shell that
@@ -177,8 +205,8 @@ async fn ensure_client(core: &Arc<Core>) -> Result<AnirssClient, CoreError> {
         }
         return Ok(AnirssClient::new(&s.anirss_url, &token, core.http.clone()));
     }
-    let _one_at_a_time = core.downloads.connecting.lock().await;
-    {
+    let one_at_a_time = core.downloads.connecting.lock().await;
+    let generation = {
         let mut st = core.downloads.state();
         if let Some(sc) = st.sidecar.as_mut() {
             if sc.alive() {
@@ -195,15 +223,36 @@ async fn ensure_client(core: &Arc<Core>) -> Result<AnirssClient, CoreError> {
         st.anirss.state = AnirssState::Starting;
         st.anirss.message.clear();
         st.anirss.url.clear();
-    }
-    let (password, _) = resolve_password(core).await?;
-    let mut sidecar = match Sidecar::spawn(&s.anirss_command, password.as_deref()) {
+        st.generation
+    };
+    // anirss is pointed at the client the core uses, so that has to be
+    // settled first. It still starts without one: the page then says why
+    // the torrent half is down.
+    let s = match ensure_torrent(core).await {
+        Ok(settled) => settled,
+        Err(_) => load_settings(core).await?,
+    };
+    let (password, _) = resolve_password(core, &s).await?;
+    let command = anirss::sidecar_command(&s.anirss_command);
+    let login = anirss::QbtLogin {
+        url: &s.torrent_url,
+        username: &s.torrent_username,
+        password: password.as_deref(),
+    };
+    let mut sidecar = match Sidecar::spawn(&command, &login) {
         Ok(sc) => sc,
         Err(SpawnFailure::Missing) => {
-            let message = format!(
-                "{} was not found. Install anirss, or point Settings at a running server.",
-                s.anirss_command
+            let hint = format!(
+                "{}. Or point Settings at a running server.",
+                anirss::install_hint()
             );
+            // The shell already says anirss is not installed; a command
+            // the user typed in is worth naming, the default is not.
+            let message = if s.anirss_command == "anirss" {
+                hint
+            } else {
+                format!("{} was not found. {hint}", s.anirss_command)
+            };
             set_anirss_failure(core, AnirssState::Missing, &message);
             return Err(service(anirss::SERVICE, "missing", message));
         }
@@ -215,16 +264,49 @@ async fn ensure_client(core: &Arc<Core>) -> Result<AnirssClient, CoreError> {
     };
     let client = AnirssClient::new(&sidecar.server(), &sidecar.token, core.http.clone());
     match sidecar.wait_ready(&client).await {
-        Ok(version) => {
-            let mut st = core.downloads.state();
-            st.anirss.state = AnirssState::Ready;
-            st.anirss.version = version;
-            st.anirss.url = sidecar.server();
-            st.anirss.message.clear();
-            st.sidecar = Some(sidecar);
+        // One that serves but does not say it keeps each client's login apart
+        // is not used: it would carry one client's login to another. Its
+        // version is not the question; a fork or a checkout can say anything.
+        Ok(health) if !health.has(anirss::SIDECAR_FEATURE) => {
+            sidecar.stop();
+            let message = anirss::lacks_feature_message(&health.version);
+            set_anirss_failure(core, AnirssState::Failed, &message);
+            Err(service(anirss::SERVICE, "failed", message))
+        }
+        Ok(health) => {
+            let kept = {
+                let mut st = core.downloads.state();
+                let current = st.generation == generation;
+                if current {
+                    st.anirss.state = AnirssState::Ready;
+                    st.anirss.version = health.version;
+                    st.anirss.url = sidecar.server();
+                    st.anirss.message.clear();
+                    st.sidecar = Some(sidecar);
+                } else {
+                    // The client was switched while this one started: it
+                    // points at the old one.
+                    sidecar.stop();
+                }
+                current
+            };
+            if !kept {
+                // Start again for the one now in use
+                drop(one_at_a_time);
+                return Box::pin(ensure_client(core)).await;
+            }
             Ok(client)
         }
         Err(message) => {
+            // An anirss from before the server mode exits on `--serve`
+            // with a usage line that says nothing about versions.
+            let message = match anirss::installed_version(&command)
+                .await
+                .and_then(|text| anirss::too_old(&text))
+            {
+                Some(version) => anirss::too_old_message(&version),
+                None => message,
+            };
             set_anirss_failure(core, AnirssState::Failed, &message);
             Err(service(anirss::SERVICE, "failed", message))
         }
@@ -240,17 +322,26 @@ fn set_anirss_failure(core: &Core, state: AnirssState, message: &str) {
     st.endpoints.clear();
 }
 
-/// The torrent client's password and where it came from: the one saved
-/// here, else the one anirss's CLI saved, else none.
-async fn resolve_password(core: &Arc<Core>) -> Result<(Option<String>, &'static str), CoreError> {
-    let saved = with_secrets(core, |s| {
-        Ok(s.get(settings::TORRENT_PASSWORD, None)?.map(|(v, _)| v))
-    })
-    .await?;
+/// The password of the client in use and where it came from: the one saved
+/// here for it, else the one anirss's CLI saved, else none. anirss's is only
+/// borrowed for the client at the address anirss's own config names: it is
+/// that server's password, and no other client's business.
+async fn resolve_password(
+    core: &Arc<Core>,
+    s: &DownloadSettings,
+) -> Result<(Option<String>, &'static str), CoreError> {
+    let Some(key) = settings::active_password_key(s) else {
+        return Ok((None, "none"));
+    };
+    let saved = with_secrets(core, move |sec| Ok(sec.get(&key, None)?.map(|(v, _)| v))).await?;
     if let Some(pw) = saved {
         return Ok((Some(pw), "anibeam"));
     }
-    match settings::anirss_saved_password() {
+    let anirss_url = settings::anirss_config_path().and_then(|p| settings::anirss_config_qbt(&p));
+    let borrowed = anirss_url
+        .filter(|(url, _)| settings::same_address(url, &s.torrent_url))
+        .and_then(|_| settings::anirss_saved_password());
+    match borrowed {
         Some(pw) => Ok((Some(pw), "anirss")),
         None => Ok((None, "none")),
     }
@@ -258,21 +349,191 @@ async fn resolve_password(core: &Arc<Core>) -> Result<(Option<String>, &'static 
 
 /// The torrent client, built on first use and kept with its session.
 async fn qbt_client(core: &Arc<Core>) -> Result<Arc<QbtClient>, CoreError> {
-    if let Some(c) = core.downloads.state().qbt.clone() {
-        return Ok(c);
-    }
-    let s = load_settings(core).await?;
-    let (password, source) = resolve_password(core).await?;
+    let generation = {
+        let st = core.downloads.state();
+        if let Some(c) = st.qbt.clone() {
+            return Ok(c);
+        }
+        st.generation
+    };
+    let s = ensure_torrent(core).await?;
+    let (password, source) = resolve_password(core, &s).await?;
     let client = Arc::new(QbtClient::new(
         &s.torrent_url,
         &s.torrent_username,
         password.as_deref().unwrap_or(""),
         core.http.clone(),
     ));
-    let mut st = core.downloads.state();
-    st.torrent.password_source = source.to_string();
-    st.qbt = Some(client.clone());
+    let kept = {
+        let mut st = core.downloads.state();
+        // One built from settings a switch has since replaced is not kept
+        let current = st.generation == generation;
+        if current {
+            st.torrent.password_source = source.to_string();
+            st.qbt = Some(client.clone());
+        }
+        current
+    };
+    if !kept {
+        return Box::pin(qbt_client(core)).await;
+    }
     Ok(client)
+}
+
+/// How long a client gets to answer when the core is only asking whether
+/// one is there.
+const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Settles whose torrent client the downloads use and, when it is AniBeam's
+/// own, has it running. A fresh install decides here, once: a qBittorrent
+/// that answers at the address wins, else AniBeam sets up its own, and the
+/// choice is saved.
+async fn ensure_torrent(core: &Arc<Core>) -> Result<DownloadSettings, CoreError> {
+    let _one_at_a_time = core.downloads.torrent_setup.lock().await;
+    let mut s = load_settings(core).await?;
+    if s.torrent_mode == TorrentMode::Auto {
+        s = decide_torrent(core, s).await?;
+    }
+    if s.torrent_mode == TorrentMode::Managed {
+        start_managed(core, &s).await?;
+    }
+    Ok(s)
+}
+
+async fn decide_torrent(
+    core: &Arc<Core>,
+    mut s: DownloadSettings,
+) -> Result<DownloadSettings, CoreError> {
+    // AniBeam's own, set up on an earlier day, is still AniBeam's: asked to
+    // pick again, it must not mistake its own Web UI for the user's client.
+    let own_port = managed::configured_port(&managed::profile_dir(&core.paths.data_dir));
+    if let Some(port) = own_port {
+        let own = format!("http://127.0.0.1:{port}");
+        let probe = QbtClient::new(&own, managed::USERNAME, "", core.http.clone());
+        let running = matches!(
+            tokio::time::timeout(PROBE_TIMEOUT, probe.version()).await,
+            Ok(Ok(_))
+        );
+        if running || s.torrent_url == own {
+            s.torrent_url = own;
+        }
+    }
+    let (password, _) = resolve_password(core, &s).await?;
+    let probe = QbtClient::new(
+        &s.torrent_url,
+        &s.torrent_username,
+        password.as_deref().unwrap_or(""),
+        core.http.clone(),
+    );
+    let answered = match tokio::time::timeout(PROBE_TIMEOUT, probe.version()).await {
+        Ok(Ok(_)) => true,
+        // A login it refused still came from qBittorrent
+        Ok(Err(CoreError::Service { code, .. })) => code == "unauthorized" || code == "banned",
+        _ => false,
+    };
+    let is_own = own_port.is_some_and(|port| s.torrent_url == format!("http://127.0.0.1:{port}"));
+    let message = if is_own && (answered || managed::binary().is_some()) {
+        s.torrent_mode = TorrentMode::Managed;
+        s.torrent_username = managed::USERNAME.to_string();
+        "Downloads use AniBeam's own qBittorrent".to_string()
+    } else if answered {
+        s.torrent_mode = TorrentMode::Existing;
+        // The client it found becomes a saved one, the first on the list
+        settings::settle_clients(&mut s, &[])?;
+        format!("Downloads use the qBittorrent at {}", s.torrent_url)
+    } else if managed::binary().is_some() {
+        // The port an earlier setup chose, so the profile and the address agree
+        let port = match own_port {
+            Some(port) => port,
+            None => anirss::free_port()
+                .map_err(|e| service(qbt::SERVICE, "failed", format!("no free port: {e}")))?,
+        };
+        s.torrent_mode = TorrentMode::Managed;
+        s.torrent_url = format!("http://127.0.0.1:{port}");
+        s.torrent_username = managed::USERNAME.to_string();
+        "qBittorrent is a dependency of Downloads and none was running, so AniBeam set up its own"
+            .to_string()
+    } else {
+        return Err(service(
+            qbt::SERVICE,
+            "missing",
+            format!(
+                "No qBittorrent answers at {}, and AniBeam has none of its own to run. Install \
+                 qBittorrent and turn on its Web UI, or install qbittorrent-nox, which AniBeam \
+                 then runs for you",
+                s.torrent_url
+            ),
+        ));
+    };
+    let stored = s.clone();
+    core.store.write(move |c| settings::save(c, &stored))?;
+    let status = assemble(core, s.clone());
+    core.bus.info(
+        Stage::Downloads,
+        message,
+        EventBody::DownloadsStatusChanged { status },
+    );
+    Ok(s)
+}
+
+/// Where AniBeam's own qBittorrent listens: the port an earlier setup chose,
+/// else a free one.
+fn own_address(core: &Core) -> Result<String, CoreError> {
+    let port = match managed::configured_port(&managed::profile_dir(&core.paths.data_dir)) {
+        Some(port) => port,
+        None => anirss::free_port()
+            .map_err(|e| service(qbt::SERVICE, "failed", format!("no free port: {e}")))?,
+    };
+    Ok(format!("http://127.0.0.1:{port}"))
+}
+
+/// AniBeam's own qBittorrent, started when its Web UI does not answer.
+async fn start_managed(core: &Arc<Core>, s: &DownloadSettings) -> Result<(), CoreError> {
+    let client = QbtClient::new(&s.torrent_url, managed::USERNAME, "", core.http.clone());
+    let answers = || async {
+        matches!(
+            tokio::time::timeout(PROBE_TIMEOUT, client.version()).await,
+            Ok(Ok(_))
+        )
+    };
+    if answers().await {
+        return Ok(());
+    }
+    let failed = |message: String| service(qbt::SERVICE, "failed", message);
+    let binary = managed::binary().ok_or_else(|| {
+        service(
+            qbt::SERVICE,
+            "missing",
+            "AniBeam's qBittorrent is gone: qbittorrent-nox is not installed. Reinstall \
+             AniBeam, or point Settings at a qBittorrent of your own"
+                .to_string(),
+        )
+    })?;
+    let port = s
+        .torrent_url
+        .rsplit(':')
+        .next()
+        .and_then(|p| p.trim_end_matches('/').parse::<u16>().ok())
+        .ok_or_else(|| failed(format!("no port in {}", s.torrent_url)))?;
+    let profile = managed::profile_dir(&core.paths.data_dir);
+    managed::write_config(&profile, port, managed::save_dir().as_deref())
+        .map_err(|e| failed(format!("cannot write qBittorrent's settings: {e}")))?;
+    managed::spawn(&binary, &profile, port)
+        .map_err(|e| failed(format!("{} could not start: {e}", binary.display())))?;
+    let started = tokio::time::Instant::now();
+    loop {
+        tokio::time::sleep(managed::READY_POLL).await;
+        if answers().await {
+            tracing::info!("started AniBeam's qBittorrent on port {port}");
+            return Ok(());
+        }
+        if started.elapsed() > managed::READY_TIMEOUT {
+            return Err(failed(format!(
+                "AniBeam's qBittorrent did not start{}",
+                managed::log_tail(&profile)
+            )));
+        }
+    }
 }
 
 /// Tries the torrent client afresh and writes what it said into the state.
@@ -341,7 +602,17 @@ async fn run_connect(core: Arc<Core>) -> Result<Finished, CoreError> {
         Err(e) => Some(plain(&e)),
     };
     probe_torrent(&core).await;
-    let status = status_async(&core).await?;
+    // Any other call may have started anirss again while the torrent half
+    // was probed. Its outcome is the one to report: a status read in the
+    // middle says Starting, and nothing would follow it to the shell.
+    let status = {
+        let _settled = core.downloads.connecting.lock().await;
+        status_async(&core).await?
+    };
+    let anirss_failure = match status.anirss.state {
+        AnirssState::Ready => None,
+        _ => anirss_failure.or_else(|| Some(status.anirss.message.clone())),
+    };
     let after = (status.anirss.state, status.torrent.connected);
     let level = if after == before {
         Level::Debug
@@ -359,7 +630,9 @@ async fn run_connect(core: Arc<Core>) -> Result<Finished, CoreError> {
 
 /// Health, endpoints and anirss's view of qBittorrent, into the state.
 async fn read_anirss(core: &Arc<Core>, client: &AnirssClient) -> Result<(), CoreError> {
-    let version = client.health().await?;
+    // No feature is asked of a server the user runs: AniBeam never points it
+    // at a client, so it reads its own config and keeps its own logins.
+    let version = client.health().await?.version;
     let mut endpoints = client.endpoints().await?;
     if let Some(path) = settings::anirss_config_path() {
         for e in &mut endpoints {
@@ -1326,9 +1599,13 @@ pub fn remove_show(
         .jobs
         .clone()
         .start(JobKind::RemoveShow, move |_| async move {
+            // A client on another machine wrote its files there: they are out
+            // of the trash's reach, and its own delete takes them instead.
+            let here = settings::files_here(&load_settings(&owner).await?);
+            let client_deletes_files = takes_files && takes_torrents && !here;
             // What the torrents wrote, read before they go, and the series' folder
             let mut candidates = Vec::new();
-            if takes_files && !hashes.is_empty() {
+            if takes_files && here && !hashes.is_empty() {
                 let client = qbt_client(&owner).await?;
                 for t in client.torrents().await? {
                     if hashes.contains(&t.hash.to_ascii_lowercase()) {
@@ -1377,8 +1654,12 @@ pub fn remove_show(
                     .await?;
             }
             if takes_torrents {
-                // Never the client's own delete-with-files: what goes, goes to the trash
-                qbt_client(&owner).await?.delete(&hashes, false).await?;
+                // Never the client's own delete-with-files on this machine:
+                // what goes, goes to the trash
+                qbt_client(&owner)
+                    .await?
+                    .delete(&hashes, client_deletes_files)
+                    .await?;
             }
             if !targets.is_empty() {
                 let paths = targets.clone();
@@ -1395,6 +1676,9 @@ pub fn remove_show(
             }
             if takes_torrents {
                 parts.push(plural(hashes.len() as u64, "torrent", "torrents"));
+            }
+            if client_deletes_files {
+                parts.push("their files on the torrent client".to_string());
             }
             if !targets.is_empty() {
                 parts.push(format!(
@@ -2127,7 +2411,15 @@ pub fn set_settings(
     anirss_token: Option<&str>,
     torrent_password: Option<&str>,
 ) -> Result<Reply, CoreError> {
-    settings::validate(&mut settings)?;
+    // AniBeam's own listens on this machine; an address left over from a
+    // client elsewhere would have it started at somebody else's port.
+    // The same for one of the user's own on this machine: its port is theirs.
+    if settings.torrent_mode == TorrentMode::Managed && !settings::fits_managed(&settings) {
+        settings.torrent_url = own_address(core)?;
+        settings.torrent_username = managed::USERNAME.to_string();
+    }
+    let before = core.store.read(settings::load_stored)?;
+    settings::validate(&mut settings, &before.saved_clients)?;
     match anirss_token.map(str::trim) {
         Some("") => {
             core.secrets().delete(settings::ANIRSS_TOKEN)?;
@@ -2138,27 +2430,30 @@ pub fn set_settings(
         None => {}
     }
     // A password is the one secret where whitespace can be the point, so
-    // it is not trimmed; only an empty one is a removal.
-    match torrent_password {
-        Some("") => {
-            core.secrets().delete(settings::TORRENT_PASSWORD)?;
+    // it is not trimmed; only an empty one is a removal. It is the password
+    // of the client in use; AniBeam's own has none to set.
+    if let Some(key) = settings::active_password_key(&settings) {
+        match torrent_password {
+            Some("") => {
+                core.secrets().delete(&key)?;
+            }
+            Some(pw) => {
+                core.secrets().set(&key, pw)?;
+            }
+            None => {}
         }
-        Some(pw) => {
-            core.secrets().set(settings::TORRENT_PASSWORD, pw)?;
-        }
-        None => {}
     }
-    let stored = settings.clone();
-    core.store.write(move |c| settings::save(c, &stored))?;
-    {
-        let mut st = core.downloads.state();
-        if let Some(mut sc) = st.sidecar.take() {
-            sc.stop();
-        }
-        st.anirss = AnirssStatus::default();
-        st.torrent = TorrentClientStatus::default();
-        st.endpoints.clear();
-        st.qbt = None;
+    let gone: Vec<String> = before
+        .saved_clients
+        .iter()
+        .filter(|old| !settings.saved_clients.iter().any(|c| c.id == old.id))
+        .map(|old| settings::password_key(&old.id))
+        .collect();
+    restart(core, settings)?;
+    // A client taken off the list takes its password with it, once the
+    // list without it is saved: a failed save keeps both.
+    for key in gone {
+        core.secrets().delete(&key)?;
     }
     let status = status(core)?;
     core.bus.debug(
@@ -2167,6 +2462,65 @@ pub fn set_settings(
         EventBody::DownloadsStatusChanged { status },
     );
     Ok(Reply::Ok)
+}
+
+/// Switches the downloads to the saved client `id`, or to AniBeam's own
+/// when there is none. The rest of the settings stay as they are.
+pub fn use_client(core: &Core, id: Option<String>) -> Result<Reply, CoreError> {
+    let mut s = core.store.read(settings::load_stored)?;
+    let in_use = match id.as_deref() {
+        Some(id) => s.torrent_mode == TorrentMode::Existing && s.active_client == id,
+        None => s.torrent_mode == TorrentMode::Managed,
+    };
+    if in_use {
+        // Picking the one in use keeps its sidecar and its session
+        return Ok(Reply::Ok);
+    }
+    let name = match id.as_deref() {
+        Some(id) => {
+            let c = s.saved_clients.iter().find(|c| c.id == id).ok_or_else(|| {
+                CoreError::invalid("id", format!("no saved torrent client {id:?}"))
+            })?;
+            let name = c.name.clone();
+            s.torrent_url = c.url.clone();
+            s.torrent_username = c.username.clone();
+            s.torrent_mode = TorrentMode::Existing;
+            s.active_client = id.to_string();
+            name
+        }
+        None => {
+            s.torrent_url = own_address(core)?;
+            s.torrent_username = managed::USERNAME.to_string();
+            s.torrent_mode = TorrentMode::Managed;
+            "AniBeam's own qBittorrent".to_string()
+        }
+    };
+    settings::validate(&mut s, &[])?;
+    restart(core, s)?;
+    let status = status(core)?;
+    core.bus.info(
+        Stage::Downloads,
+        format!("Downloads use {name}"),
+        EventBody::DownloadsStatusChanged { status },
+    );
+    Ok(Reply::Ok)
+}
+
+/// Saves the settings and drops everything built from the old ones: the
+/// sidecar (its environment names the client), both statuses, the endpoints
+/// and the torrent client's session.
+fn restart(core: &Core, settings: DownloadSettings) -> Result<(), CoreError> {
+    core.store.write(move |c| settings::save(c, &settings))?;
+    let mut st = core.downloads.state();
+    if let Some(mut sc) = st.sidecar.take() {
+        sc.stop();
+    }
+    st.anirss = AnirssStatus::default();
+    st.torrent = TorrentClientStatus::default();
+    st.endpoints.clear();
+    st.qbt = None;
+    st.generation += 1;
+    Ok(())
 }
 
 impl Downloads {
@@ -2182,6 +2536,58 @@ fn plural(n: u64, one: &str, many: &str) -> String {
     } else {
         format!("{n} {many}")
     }
+}
+
+/// The two reads the tailnet host serves, each with the library's links
+/// filled in and each held to `limit`, so a stopped anirss or a hung
+/// torrent client costs a snapshot one half and some seconds, never the
+/// whole. A timeout is a `Service` error with the code `timeout`.
+pub(crate) async fn host_read(
+    core: &Arc<Core>,
+    limit: std::time::Duration,
+) -> (
+    Result<Vec<SubscriptionRule>, CoreError>,
+    Result<Vec<Torrent>, CoreError>,
+) {
+    // The host only reads: it uses a client that is already up and never
+    // starts, decides or saves anything for a device that asked.
+    let idle = |what: &str| {
+        service(
+            what,
+            "not_running",
+            "is not running on the host".to_string(),
+        )
+    };
+    let rules = async {
+        let client = running_client(core).await?.ok_or_else(|| idle("anirss"))?;
+        let mut rules = client.subscriptions().await?;
+        link_rules(core, &mut rules);
+        Ok(rules)
+    };
+    let torrents = async {
+        // A client the user runs is only asked; AniBeam's own, or a mode
+        // not decided yet, waits for the user to open Downloads here.
+        let held = core.downloads.state().qbt.clone();
+        let client = match held {
+            Some(c) => c,
+            None if load_settings(core).await?.torrent_mode == TorrentMode::Existing => {
+                qbt_client(core).await?
+            }
+            None => return Err(idle("qBittorrent")),
+        };
+        let mut torrents = client.torrents().await?;
+        link_torrents(core, &mut torrents);
+        Ok(torrents)
+    };
+    let late = |what: &str| service(what, "timeout", "did not answer in time".to_string());
+    let (rules, torrents) = tokio::join!(
+        tokio::time::timeout(limit, rules),
+        tokio::time::timeout(limit, torrents)
+    );
+    (
+        rules.unwrap_or_else(|_| Err(late("anirss"))),
+        torrents.unwrap_or_else(|_| Err(late("qBittorrent"))),
+    )
 }
 
 #[cfg(test)]
