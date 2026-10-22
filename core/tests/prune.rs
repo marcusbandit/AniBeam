@@ -33,9 +33,12 @@ fn remote(prune: bool) -> DownloadSettings {
         anirss_url: "http://anirss.test".to_string(),
         has_anirss_token: false,
         torrent_client: TorrentClient::Qbittorrent,
+        torrent_mode: TorrentMode::Existing,
         torrent_url: "http://localhost:9090".to_string(),
         torrent_username: "me".to_string(),
         has_torrent_password: false,
+        saved_clients: Vec::new(),
+        active_client: String::new(),
         prune_finished_feeds: prune,
     }
 }
