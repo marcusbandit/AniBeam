@@ -1,6 +1,6 @@
 import { Theme } from "theme.slint";
-import { AppData } from "data.slint";
-import { Button, ListGroup, ListRow, PageTitle, ShelfHead } from "widgets.slint";
+import { AppData, DownloadRow } from "data.slint";
+import { Button, ListGroup, ListRow, PageTitle, ProgressLine, ShelfHead, Slider, TextButton } from "widgets.slint";
 
 // Questions a page asks over everything else; the window draws them.
 export global Ask {
@@ -63,6 +63,115 @@ component HostRow inherits Rectangle {
     }
 }
 
+// One download: its name, a line of facts, the progress, and pause or resume and remove.
+component DownloadItem inherits Rectangle {
+    in property <DownloadRow> data;
+    height: column.preferred-height + 5 * Theme.unit;
+    column := VerticalLayout {
+        x: Theme.pad;
+        y: Theme.unit * 2.5;
+        width: parent.width - 2 * Theme.pad;
+        spacing: Theme.unit * 1.5;
+        Text {
+            text: root.data.name;
+            color: Theme.text;
+            font-size: Theme.small + 1px;
+            wrap: word-wrap;
+        }
+        Text {
+            text: root.data.state + (root.data.facts == "" ? "" : ",  " + root.data.facts);
+            color: Theme.dim;
+            font-size: Theme.small - 1px;
+            font-family: Theme.figure;
+            wrap: word-wrap;
+        }
+        if !root.data.done: ProgressLine {
+            progress: root.data.progress;
+            fill: root.data.paused ? Theme.faint : Theme.purple;
+        }
+        HorizontalLayout {
+            spacing: Theme.gap;
+            alignment: start;
+            if !root.data.done: TextButton {
+                text: root.data.paused ? "Resume" : "Pause";
+                clicked => { AppData.torrent-action(root.data.hash, root.data.paused ? 1 : 0); }
+            }
+            TextButton {
+                text: root.data.done ? "Remove from list" : "Cancel";
+                clicked => { AppData.torrent-action(root.data.hash, 2); }
+            }
+        }
+    }
+    Rectangle {
+        x: Theme.pad;
+        y: parent.height - 1px;
+        width: parent.width - 2 * Theme.pad;
+        height: 1px;
+        background: Theme.line;
+    }
+}
+
+// A plain one-line text field.
+component Field inherits Rectangle {
+    in-out property <string> text;
+    in property <string> placeholder;
+    height: 11 * Theme.unit;
+    border-radius: Theme.radius-row;
+    background: Theme.field;
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.line-strong : Theme.line;
+    if root.text == "": Text {
+        x: Theme.unit * 3;
+        height: parent.height;
+        text: root.placeholder;
+        color: Theme.faint;
+        vertical-alignment: center;
+    }
+    input := TextInput {
+        x: Theme.unit * 3;
+        width: parent.width - 6 * Theme.unit;
+        height: parent.height;
+        text <=> root.text;
+        color: Theme.text;
+        vertical-alignment: center;
+        single-line: true;
+    }
+}
+
+// Adding a source: a name and an address with {query} where the search goes.
+component SourceForm inherits Rectangle {
+    height: column.preferred-height;
+    column := VerticalLayout {
+        padding: Theme.pad;
+        spacing: Theme.unit * 2;
+        Text {
+            text: "Add a source";
+            color: Theme.text;
+        }
+        Text {
+            text: "Any RSS feed with {query} where the search goes. For erai, paste your feed address from erai-raws.info with s={query}.";
+            color: Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        Field { text <=> AppData.new-source-name; placeholder: "Name, like erai"; }
+        Field { text <=> AppData.new-source-url; placeholder: "https://...{query}..."; }
+        if AppData.source-error != "": Text {
+            text: AppData.source-error;
+            color: Theme.warn;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            alignment: start;
+            Button {
+                text: "Add";
+                clicked => { AppData.add-source(AppData.new-source-name, AppData.new-source-url); }
+            }
+        }
+    }
+}
+
 export component MorePage inherits Rectangle {
     Flickable {
         VerticalLayout {
@@ -77,13 +186,24 @@ export component MorePage inherits Rectangle {
                 note: AppData.wifi-only ? "Downloads on Wi-Fi only" : "Downloads on Wi-Fi and mobile data";
             }
 
-            ShelfHead { title: "Downloads"; }
-            ListGroup {
-                ListRow {
-                    label: "Search and download";
-                    helper: "Finding releases on nyaa and erai and downloading them to this phone comes in the next version.";
-                    last: true;
-                }
+            Button {
+                text: "Find something to download";
+                primary: true;
+                clicked => { AppData.open-search(""); }
+            }
+
+            ShelfHead {
+                title: "Downloads";
+                count: AppData.downloads.length > 0 ? "" + AppData.downloads.length : "";
+            }
+            if AppData.downloads-note != "": Text {
+                text: AppData.downloads-note;
+                color: Theme.dim;
+                font-size: Theme.small;
+                wrap: word-wrap;
+            }
+            if AppData.downloads.length > 0: ListGroup {
+                for row in AppData.downloads: DownloadItem { data: row; }
             }
 
             ShelfHead { title: "Network and storage"; }
@@ -102,17 +222,43 @@ export component MorePage inherits Rectangle {
                         }
                 }
                 ListRow {
-                    label: "Storage limit, " + AppData.limit-gb + " GB";
-                    helper: AppData.limit-on ? "Downloads stop at the limit." : "Off: AniBeam shows what it uses but never stops a download.";
+                    label: "Storage cap, " + AppData.limit-label;
+                    helper: AppData.limit-on ? "At the cap, nothing more downloads until you delete episodes." : "Off: AniBeam downloads until the phone is full.";
                     switch: true;
                     on: AppData.limit-on;
                     toggled => { AppData.set-limit(!AppData.limit-on, AppData.limit-gb); }
+                }
+                Rectangle {
+                    height: limit-column.preferred-height;
+                    limit-column := VerticalLayout {
+                        padding-left: Theme.pad;
+                        padding-right: Theme.pad;
+                        padding-bottom: Theme.unit * 3;
+                        spacing: Theme.unit;
+                        Slider {
+                            minimum: 1;
+                            maximum: AppData.disk-gb;
+                            value: AppData.limit-gb;
+                            moved(gb) => { AppData.set-limit(AppData.limit-on, gb); }
+                        }
+                    }
                 }
                 ListRow {
                     label: "On this phone";
                     helper: AppData.storage-line;
                     last: true;
                 }
+            }
+
+            ShelfHead { title: "Sources"; }
+            ListGroup {
+                for source[i] in AppData.sources: ListRow {
+                    label: source.name;
+                    helper: source.url;
+                    tappable: i > 0;
+                    clicked => { AppData.remove-source(i); }
+                }
+                SourceForm { }
             }
 
             ShelfHead { title: "Tracking"; }

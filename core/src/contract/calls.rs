@@ -367,6 +367,38 @@ pub enum Call {
     InspectRelease {
         link: String,
     },
+    // The phone's own downloads: search and a torrent engine inside the
+    // core, no anirss and no qBittorrent. Built with the `phone` feature;
+    // without it each answers `Unsupported`. Not jobs: they block the
+    // calling thread, so a shell calls them off its UI thread.
+    /// The sources the phone searches, in order.
+    PhoneSources,
+    SetPhoneSources {
+        sources: Vec<PhoneSource>,
+    },
+    /// Searches one source, or the first enabled one, and ranks the
+    /// results; `best` points at the one a single tap should take.
+    PhoneSearch {
+        query: String,
+        source: Option<String>,
+    },
+    /// Adds a release to the engine; its files land in the library folder
+    /// under the show's own folder. `limit_bytes`, when set, refuses a
+    /// release that would take the library past it.
+    PhoneDownload {
+        release: Release,
+        limit_bytes: Option<u64>,
+    },
+    PhoneTorrents,
+    PhoneControl {
+        hashes: Vec<String>,
+        action: PhoneAction,
+    },
+    /// Holds every download (no Wi-Fi and no consent for mobile data), or
+    /// lets them run again.
+    SetPhoneHeld {
+        held: bool,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Enum)]
@@ -440,5 +472,17 @@ pub enum Reply {
     },
     Downloads {
         status: DownloadsStatus,
+    },
+    PhoneSources {
+        sources: Vec<PhoneSource>,
+    },
+    PhoneResults {
+        source: String,
+        results: Vec<PhoneRelease>,
+        best: Option<u64>,
+    },
+    PhoneTorrents {
+        torrents: Vec<Torrent>,
+        held: bool,
     },
 }

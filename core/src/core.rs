@@ -118,6 +118,9 @@ pub struct Core {
     /// The tailnet host: the read-only API the phone app reads, served on
     /// this machine's Tailscale addresses while the preference is on.
     pub(crate) host: crate::host::Host,
+    /// The phone's own sources and torrent engine (`Phone*` calls).
+    #[cfg_attr(not(feature = "phone"), allow(dead_code))]
+    pub(crate) phone: crate::phone::Phone,
     /// Jobs need an `Arc<Core>` of their own; exported methods take `&self`,
     /// so the core keeps a `Weak` to itself from `Arc::new_cyclic` and
     /// upgrades it.
@@ -256,6 +259,7 @@ impl Core {
             sessions: Arc::new(Sessions::default()),
             crawl_recent: Mutex::new(HashMap::new()),
             downloads: Arc::new(crate::downloads::Downloads::default()),
+            phone: crate::phone::Phone::default(),
             host,
             me: me.clone(),
             snapshot_cache: AtomicBool::new(false),
@@ -880,6 +884,18 @@ impl Core {
                 job: downloads::check_endpoints(self)?,
             }),
             Call::InspectRelease { link } => downloads::inspect_release(self, link),
+            Call::PhoneSources => Ok(Reply::PhoneSources {
+                sources: crate::phone::sources(self),
+            }),
+            Call::SetPhoneSources { sources } => crate::phone::set_sources(self, sources),
+            Call::PhoneSearch { query, source } => crate::phone::search(self, query, source),
+            Call::PhoneDownload {
+                release,
+                limit_bytes,
+            } => crate::phone::download(self, release, limit_bytes),
+            Call::PhoneTorrents => crate::phone::torrents(self),
+            Call::PhoneControl { hashes, action } => crate::phone::control(self, hashes, action),
+            Call::SetPhoneHeld { held } => crate::phone::set_held(self, held),
             Call::StartEndpoint { name } => Ok(Reply::Started {
                 job: downloads::start_endpoint(self, name)?,
             }),

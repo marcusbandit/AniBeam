@@ -20,6 +20,7 @@ pub mod metadata;
 pub mod net;
 pub mod paths;
 pub(crate) mod percent;
+pub mod phone;
 pub mod playback;
 pub mod prefs;
 pub mod store;
