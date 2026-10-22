@@ -99,10 +99,12 @@ pub fn name_bundled_helpers() {
     }
 }
 
-/// `<prefix>/share/anibeam` when that directory exists.
+/// `<prefix>/share/anibeam` when it holds the package's themes. A binary in
+/// `~/.local/bin` has the core's own data directory at that path, which
+/// does not.
 fn beside_bin(prefix: Option<&std::path::Path>) -> Option<PathBuf> {
     let dir = prefix?.join("share/anibeam");
-    dir.is_dir().then_some(dir)
+    dir.join("themes").is_dir().then_some(dir)
 }
 
 /// `$XDG_CONFIG_HOME`, else `~/.config`, on a Mac; `None` elsewhere, where the core's own
@@ -224,6 +226,12 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         assert_eq!(beside_bin(Some(root.path())), None);
         std::fs::create_dir_all(root.path().join("share/anibeam")).unwrap();
+        assert_eq!(
+            beside_bin(Some(root.path())),
+            None,
+            "a data dir is not a share dir"
+        );
+        std::fs::create_dir_all(root.path().join("share/anibeam/themes")).unwrap();
         assert_eq!(
             beside_bin(Some(root.path())),
             Some(root.path().join("share/anibeam"))
