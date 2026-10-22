@@ -135,12 +135,29 @@ pub fn subscriptions(rules: Vec<SubscriptionRule>) -> Vec<wire::Subscription> {
 /// Query parameters that carry a credential. A Jackett or Torznab feed puts
 /// the indexer's key in the URL, and every device on the tailnet reads the
 /// snapshot.
-const SECRET_PARAMS: [&str; 5] = ["apikey", "api_key", "passkey", "token", "key"];
+const SECRET_PARAMS: [&str; 15] = [
+    "apikey",
+    "api_key",
+    "jackett_apikey",
+    "passkey",
+    "torrent_pass",
+    "authkey",
+    "auth",
+    "token",
+    "key",
+    "rsskey",
+    "secret",
+    "sig",
+    "pass",
+    "password",
+    "uid",
+];
 
 /// `url` without its credential parameters. A feed that needed one will not
 /// open from a phone, which is the point; a public feed such as nyaa's has
 /// none and passes through unchanged.
 pub fn without_secrets(url: &str) -> String {
+    let url = &without_userinfo(url);
     let Some((base, query)) = url.split_once('?') else {
         return url.to_string();
     };
@@ -155,6 +172,18 @@ pub fn without_secrets(url: &str) -> String {
         base.to_string()
     } else {
         format!("{base}?{}", kept.join("&"))
+    }
+}
+
+/// `url` without a `user:password@` in front of its host.
+fn without_userinfo(url: &str) -> String {
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return url.to_string();
+    };
+    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    match rest[..end].rfind('@') {
+        Some(at) => format!("{scheme}://{}", &rest[at + 1..]),
+        None => url.to_string(),
     }
 }
 
@@ -227,6 +256,22 @@ pub async fn snapshot(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_feed_url_loses_userinfo_and_tracker_keys() {
+        assert_eq!(
+            without_secrets("https://user:pw@t.example/rss?torrent_pass=X&cat=5"),
+            "https://t.example/rss?cat=5"
+        );
+        assert_eq!(
+            without_secrets("https://t.example/rss?authkey=Y"),
+            "https://t.example/rss"
+        );
+        assert_eq!(
+            without_secrets("https://nyaa.si/?page=rss&q=a@b"),
+            "https://nyaa.si/?page=rss&q=a@b"
+        );
+    }
 
     #[test]
     fn a_feed_url_loses_its_credentials_and_keeps_the_rest() {
