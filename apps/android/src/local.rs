@@ -5,20 +5,42 @@
 //! `AniBeamCore` until the screens read them.
 
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 
 use anibeam_core::trackers::Secrets;
 use anibeam_core::events::Subscription;
-use anibeam_core::{Call, Core, CorePaths, Event, EventListener, Reply};
+use anibeam_core::{Call, Core, CorePaths, Event, EventBody, EventListener, Level, Reply};
 
 /// Where downloads land and what the library scans.
 pub const LIBRARY_DIR: &str = "Anime";
+
+/// Set by any event that can change what a page shows; the UI's clock reads and clears it.
+static CHANGED: AtomicBool = AtomicBool::new(true);
+
+/// Whether the core said something since the last call.
+pub fn take_changed() -> bool {
+    CHANGED.swap(false, Ordering::AcqRel)
+}
+
+/// The process's core, once it is open.
+pub fn core() -> Option<Arc<Core>> {
+    CORE.get().map(|(core, _)| core.clone())
+}
 
 struct Logcat;
 
 impl EventListener for Logcat {
     fn on_event(&self, event: Event) {
-        log(&format!("{:?} {:?} {}", event.level, event.stage, event.message));
+        if let EventBody::AuthUrlReady { open_url, .. } = &event.body {
+            crate::android::open_url(open_url);
+        }
+        // Debug events are progress chatter; the state changes the pages show come as Info
+        // and above, so only those make the UI read the core again.
+        if !matches!(event.level, Level::Debug) {
+            log(&format!("{:?} {:?} {}", event.level, event.stage, event.message));
+            CHANGED.store(true, Ordering::Release);
+        }
     }
 }
 
@@ -53,6 +75,7 @@ pub fn start(data_dir: PathBuf) {
         match open(&data_dir) {
             Ok(opened) => {
                 let _ = CORE.set(opened);
+                CHANGED.store(true, Ordering::Release);
             }
             Err(e) => log(&format!("core did not open: {e}")),
         }

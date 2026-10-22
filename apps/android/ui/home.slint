@@ -1,0 +1,147 @@
+import { Theme } from "theme.slint";
+import { AppData } from "data.slint";
+import { ClampedText, EmptyNote, PageTitle, Poster, ShelfHead, TileGrid, TileRow } from "widgets.slint";
+
+// The next episode to air, on a band in its poster's hue.
+component HeroBand inherits Rectangle {
+    background: AppData.hero.band;
+    border-radius: Theme.radius-large;
+    height: body.preferred-height;
+    body := HorizontalLayout {
+        padding: Theme.unit * 3;
+        spacing: Theme.unit * 3;
+        Poster {
+            width: 22 * Theme.unit;
+            height: self.width * Theme.poster-ratio;
+            source: AppData.hero.poster;
+            has-image: AppData.hero.has-poster;
+            initials: AppData.hero.initials;
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: Theme.unit * 1.5;
+            Text {
+                text: "NEXT TO AIR";
+                color: AppData.hero.ink;
+                font-size: Theme.small - 1px;
+                font-family: Theme.figure;
+                letter-spacing: 1.2px;
+            }
+            ClampedText {
+                text: AppData.hero.title;
+                font-size: Theme.large;
+                font-weight: 300;
+                lines: 2;
+            }
+            Text {
+                text: AppData.hero.episode;
+                color: Theme.dim;
+                font-size: Theme.small;
+                font-family: Theme.figure;
+            }
+            Text {
+                text: AppData.hero.countdown;
+                color: AppData.hero.ink;
+                font-size: Theme.heading + 2px;
+                font-family: Theme.figure;
+            }
+        }
+    }
+    TouchArea {
+        clicked => { AppData.open-series(AppData.hero.id); }
+    }
+}
+
+// Seven days from Monday; a day with something on gets a dot, today is filled.
+component WeekStrip inherits Rectangle {
+    height: 17 * Theme.unit;
+    property <length> cell: (self.width - 6 * Theme.unit) / 7;
+    for day[i] in AppData.days: Rectangle {
+        x: i * (root.cell + Theme.unit);
+        width: root.cell;
+        height: parent.height;
+        border-radius: Theme.radius-row;
+        background: i == AppData.day ? Theme.accent : touch.pressed ? Theme.pressed : Theme.surface;
+        animate background { duration: 120ms; }
+        VerticalLayout {
+            alignment: center;
+            spacing: Theme.unit / 2;
+            Text {
+                text: day.weekday;
+                color: i == AppData.day ? Theme.on-accent : Theme.dim;
+                font-size: Theme.small - 2px;
+                font-family: Theme.figure;
+                horizontal-alignment: center;
+            }
+            Text {
+                text: day.date;
+                color: i == AppData.day ? Theme.on-accent : Theme.text;
+                font-size: Theme.normal;
+                font-weight: 600;
+                horizontal-alignment: center;
+            }
+            Rectangle {
+                height: 5px;
+                Rectangle {
+                    width: 5px;
+                    height: 5px;
+                    border-radius: 2.5px;
+                    background: day.count == 0 ? transparent : i == AppData.day ? Theme.on-accent : Theme.cyan;
+                }
+            }
+        }
+        if day.today && i != AppData.day: Rectangle {
+            border-radius: parent.border-radius;
+            border-width: 1px;
+            border-color: Theme.line-strong;
+        }
+        touch := TouchArea { clicked => { AppData.pick-day(i); } }
+    }
+}
+
+export component HomePage inherits Rectangle {
+    Flickable {
+        VerticalLayout {
+            alignment: start;
+            padding-left: Theme.pad;
+            padding-right: Theme.pad;
+            padding-top: Theme.unit * 2;
+            padding-bottom: Theme.pad * 2;
+            spacing: Theme.unit * 3;
+            PageTitle {
+                title: "Home";
+                note: AppData.home-note;
+            }
+            if AppData.hero.show: HeroBand { }
+            ShelfHead { title: "This week"; }
+            WeekStrip { }
+            HorizontalLayout {
+                Text {
+                    text: AppData.day-title;
+                    color: Theme.dim;
+                    font-size: Theme.small;
+                }
+            }
+            if AppData.day-tiles.length > 0: TileGrid {
+                tiles: AppData.day-tiles;
+                open(id) => { AppData.open-series(id); }
+            }
+            for shelf in AppData.home-shelves: VerticalLayout {
+                spacing: Theme.unit * 2;
+                padding-top: Theme.unit * 2;
+                ShelfHead {
+                    title: shelf.title;
+                    count: shelf.count;
+                }
+                TileRow {
+                    tiles: shelf.tiles;
+                    open(id) => { AppData.open-series(id); }
+                }
+            }
+            if !AppData.hero.show && AppData.home-shelves.length == 0: EmptyNote {
+                title: "Nothing on this phone yet.";
+                body: "Shows you download here, and what airs for them, show up on Home.";
+            }
+        }
+    }
+}

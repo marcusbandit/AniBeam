@@ -100,12 +100,17 @@ dependencies = [
 
 [[package]]
 name = "anibeam-android"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anibeam-companion",
  "anibeam-core",
  "chrono",
  "image",
+ "jni 0.21.1",
+ "ndk-context",
+ "rustix 1.1.5",
+ "serde",
+ "serde_json",
  "slint",
  "slint-build",
 ]

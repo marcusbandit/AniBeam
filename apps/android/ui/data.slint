@@ -1,6 +1,6 @@
 // Everything the pages show, set from Rust, and the actions they send back.
 
-// One poster in a grid: Next up, the calendar and the library all use it.
+// One poster in a grid: Home's shelves, the calendar's day and the library all use it.
 export struct Tile {
     // The series it opens; -1 for none.
     id: int,
@@ -10,24 +10,24 @@ export struct Tile {
     initials: string,
     // Top-left on the poster: an episode code or an air time.
     badge: string,
-    // Under the title: "in 2d 4h", "6 of 12 watched".
+    // Top-right: a download's share, "42%". Empty for none.
+    flag: string,
+    // Under the title: "in 2d 4h", "3 on phone".
     ledger: string,
     // 0: quiet, 1: accent, 2: warning, 3: good.
     ledger-tone: int,
-    // 0 to 1 along the foot; below 0 for no strip.
-    progress: float,
+    // One code per episode (Theme.cube); empty for no cube row.
+    cubes: [int],
 }
 
 // A titled run of tiles.
 export struct Shelf {
     title: string,
     count: string,
-    // 0: plain, 1: accent, 2: warning.
-    tone: int,
     tiles: [Tile],
 }
 
-// The next episode to air, at the top of Next up.
+// The next episode to air, at the top of Home.
 export struct Hero {
     show: bool,
     id: int,
@@ -35,16 +35,15 @@ export struct Hero {
     poster: image,
     has-poster: bool,
     initials: string,
-    // "Episode 8  Today 17:56".
+    // "E12  Tomorrow 05:00".
     episode: string,
     countdown: string,
     // The poster's own hue, darkened for the band and lightened for the ink.
     band: color,
     ink: color,
-    subscribed: bool,
 }
 
-// One day in the calendar's week strip.
+// One day in Home's week strip.
 export struct Day {
     weekday: string,
     date: string,
@@ -64,81 +63,81 @@ export struct SeriesHead {
     initials: string,
     band: color,
     ink: color,
-    // "Episode 8 airs in 1d 22h 05m 07s", or empty.
+    // "Episode 8 airs in 1d 22h", or empty.
     next: string,
-    // "6 of 12 watched".
+    // "6 of 12 watched, 3 on this phone".
     progress-text: string,
-    progress: float,
-    // "Subscribed: Sousou no Frieren 1080p [SubsPlease]", or empty.
-    rule: string,
-    // "2 aired episodes not found yet", or empty.
-    rule-note: string,
+    cubes: [int],
+    synopsis: string,
 }
 
 // One episode row on a series page.
 export struct EpisodeLine {
     code: string,
     title: string,
-    // "17 Oct", "in 2d 4h".
+    // "17 Oct", "in 2d 4h", "predicted for Mon 3 Nov".
     date: string,
-    // 0: watched, 1: on disk, 2: still to air, 3: aired and not on disk.
-    state: int,
-}
-
-export struct TorrentRow {
-    name: string,
-    // "Downloading", "Seeding", "Stalled", ...
-    state: string,
-    // "1.2 GB of 4.5 GB, 3.4 MB/s, 12m left".
-    facts: string,
-    progress: float,
-    // 0: moving, 1: quiet, 2: stuck or broken.
-    tone: int,
-}
-
-// One anirss subscription on Downloads.
-export struct RuleRow {
-    id: int,
-    title: string,
-    // "Airing", "Complete", "Paused".
-    state: string,
-    // "7 files  next E08 in 1d 22h".
-    facts: string,
-    // 0: plain, 1: accent, 2: warning.
-    tone: int,
+    // "Next up", "Missing", "Downloading 34%", or empty.
+    note: string,
+    // Theme.cube's code.
+    cube: int,
 }
 
 export global AppData {
-    // Next up.
+    // Home.
     in property <Hero> hero;
-    in property <[Shelf]> next-shelves;
-    in property <bool> has-data;
-    // Calendar.
-    in property <string> week-label;
-    in property <string> week-note;
-    in property <bool> week-is-current: true;
     in property <[Day]> days;
     in property <int> day;
     in property <string> day-title;
-    in property <string> day-note;
     in property <[Tile]> day-tiles;
-    // Library.
-    in property <[Shelf]> library;
-    // Downloads.
-    in property <[TorrentRow]> torrents;
-    in property <bool> torrents-known: true;
-    in property <[RuleRow]> rules;
-    in property <[string]> problems;
-    in property <string> freshness;
-    in property <bool> live;
+    in property <[Shelf]> home-shelves;
+    in property <string> home-note;
+
+    // Library: the devices it can show (this phone first), the one picked, and its tiles.
+    in property <[string]> devices;
+    in-out property <int> device;
+    in-out property <string> query;
+    in property <string> library-note;
+    in property <[Tile]> library;
+    in property <string> library-empty;
+
+    // More.
+    in property <bool> wifi-only: true;
+    in property <bool> limit-on;
+    in property <int> limit-gb: 18;
+    in property <string> storage-line;
+    in property <string> free-line;
+    in property <string> trackers-line;
+    in property <string> version;
+    // Devices: the host address and what the last test said.
+    in-out property <string> host-address;
+    in property <string> host-result;
+    in property <int> host-tone: 2;
+
+    // Onboarding, over everything until it is done.
+    in property <bool> onboarding;
+    in-out property <int> step;
+    in property <string> anilist-state;
+    in property <string> mal-state;
+
     // The series page, over whichever page opened it.
     in property <bool> series-open;
     in property <SeriesHead> series;
     in property <[EpisodeLine]> episodes;
 
     callback open-series(int);
+    // A series from the other device's library, read only.
+    callback open-remote(int);
     callback close-series();
-    // -1 and +1 move a week; 0 goes back to this week.
-    callback shift-week(int);
     callback pick-day(int);
+    callback pick-device(int);
+    callback search(string);
+    callback set-wifi-only(bool);
+    callback set-limit(bool, int);
+    callback connect-tracker(int);
+    callback finish-onboarding();
+    callback restart-onboarding();
+    callback test-host(string);
+    callback save-host(string);
+    callback refresh();
 }

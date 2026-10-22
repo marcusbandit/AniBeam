@@ -1,35 +1,32 @@
 # AniBeam for Android
 
-A phone companion to the desktop AniBeam. It shows what airs next for everything you
-subscribe to or are watching, and what the desktop has on disk. It syncs with the desktop
-over your tailnet while that machine is on, and keeps working from the last sync when it
-is off.
+AniBeam on the phone, as its own app: it runs the same core as the desktop over its own
+library, so what you keep on the phone is the phone's, and only tracking is shared through
+AniList and MyAnimeList. It can also show another AniBeam's library over your tailnet, read
+only.
 
 Everything is Rust: the UI is [Slint](https://slint.dev) on its Android backend, behind
-the stock `android.app.NativeActivity`. There is no Java or Kotlin in the app and no
-Gradle in the build.
+the stock `android.app.NativeActivity`, and the core is `anibeam-core` from `core/`. There
+is no Gradle in the build.
 
 ## What it does
 
-- **Next up** leads with the next episode to air, on a band in its poster's colour, then
-  shelves of posters: what aired but was not on the host's disk at the last sync, what
-  comes next with a live countdown, and the subscriptions with no air time.
-- **Calendar** shows one week at a time: the seven days with how many episodes each has,
-  and the picked day's posters with their air times and whether they are on disk.
-- **Library** is every series as a poster, the airing ones first, with how much is watched.
-  Tap any poster, here or elsewhere, for its series page: the facts, the next episode
-  counting down to the second, the anirss rule, and every episode with a tick once watched.
-- **Downloads** lists the anirss subscriptions and the torrents with their progress, under a
-  line that says whether this is live or how old it is.
-- **Settings** holds the host address, a connection test, and what the last sync and the
-  last AniList refresh did.
+- **Onboarding** runs once: AniList and MAL sign-in, Wi-Fi only (on by default; turning it
+  off asks first), and a storage limit, suggested at 18 GB and off unless chosen. More can
+  run it again.
+- **Home** is this phone's: the next episode to air on a band in its poster's colour, this
+  week with a dot on each day something airs, and the recently watched and recently
+  downloaded shelves.
+- **Library** is every show on the phone as a poster with the desktop's episode cubes, with
+  search. When another AniBeam on the tailnet has answered, a switcher above shows its
+  library instead. Tap a poster for its series page: the facts, the cubes, the synopsis and
+  every episode, on the phone, missing or still to air.
+- **More** holds the Wi-Fi and storage settings, tracker sign-in, the other device's
+  address, and the version. Search and download come in the next version (#111).
 
-It syncs on launch, when it comes back to the foreground, from the button in the header,
-and every five minutes while open: hello, then the snapshot, then any poster whose tag
-changed. The snapshot and the posters live in the app's internal storage, so everything
-shows offline. While the host does not answer, the countdowns keep running from the cached
-schedule, and the app asks AniList's public API for fresh airing times, all shows in one
-request and at most once an hour.
+The core keeps its database and cache under the app's `files/core`; episodes live in
+`files/Anime`, the one library folder. The other device's snapshot and posters are cached
+too, so its library still shows when it is off.
 
 ## Using it on a phone
 
@@ -40,13 +37,13 @@ request and at most once an hour.
    (Android asks once to allow installs from that app), or with USB debugging on:
 
    ```sh
-   adb install -r dist/AniBeam-0.2.0.apk
+   adb install -r dist/AniBeam-0.3.0.apk
    ```
 
 4. Open AniBeam. It starts out pointed at `banditbox:8790`, the desktop's MagicDNS name.
-   If the phone cannot resolve the short name, use the full one in Settings,
-   `banditbox.tail24c6a9.ts.net:8790`, or the machine's `100.x.y.z` address. **Test
-   connection** says whether AniBeam answered and which version it is.
+   If the phone cannot resolve the short name, use the full one in More,
+   `banditbox.tail24c6a9.ts.net:8790`, or the machine's `100.x.y.z` address. **Test**
+   says whether AniBeam answered and which version it is.
 
 The APK is signed with the debug key in `~/.android/debug.keystore`. Android only installs
 an update over an existing install when both are signed with the same key, so build
@@ -103,8 +100,11 @@ python3 scripts/mock-host.py --aired   # an episode that aired just before the s
 android/            AndroidManifest.xml (package, version, NativeActivity), icons, theme
 companion/          the logic, no UI: client, store, AniList, Next up rows, On disk rows,
                     sync. Tests run on the desktop; tests/mock_host.rs syncs with the mock.
-src/                the app: android_main, the UI thread, the sync thread, poster decoding
-ui/                 the Slint screens; theme.slint is the one token file
+src/                the app: android_main, the UI thread (app.rs), the phone's core
+                    (local.rs, phone.rs), the other device (remote.rs, worker.rs), the
+                    phone's settings (prefs.rs), JNI for the browser (android.rs)
+ui/                 the Slint screens; theme.slint is the one token file, fonts/ holds
+                    Archivo and B612 as on the desktop
 scripts/            the build and emulator loop, and the mock host
 ```
 
