@@ -4,10 +4,11 @@
 //! library is one folder the app owns, `files/Anime`. Events go to logcat under the tag
 //! `AniBeamCore` until the screens read them.
 
-use std::path::Path;
-use std::sync::Arc;
+use std::path::{Component, Path, PathBuf};
+use std::sync::{Arc, OnceLock};
 
 use anibeam_core::trackers::Secrets;
+use anibeam_core::events::Subscription;
 use anibeam_core::{Call, Core, CorePaths, Event, EventListener, Reply};
 
 /// Where downloads land and what the library scans.
@@ -37,13 +38,38 @@ pub fn log(line: &str) {
     eprintln!("AniBeamCore: {line}");
 }
 
-/// Opens and starts the core, with the library folder as its one source.
-pub fn open(data_dir: &Path) -> Result<Arc<Core>, Box<dyn std::error::Error>> {
+/// The process's one core and the logcat listener on it. Android may destroy and recreate
+/// the activity in the same process; the core outlives that, and later the download
+/// service, so it is opened once and kept for the life of the process.
+static CORE: OnceLock<(Arc<Core>, Arc<Subscription>)> = OnceLock::new();
+
+/// Opens and starts the core on its own thread, so migrations and the first scan never hold
+/// up the first frame. A second call in the same process does nothing.
+pub fn start(data_dir: PathBuf) {
+    let spawned = std::thread::Builder::new().name("core-open".into()).spawn(move || {
+        if CORE.get().is_some() {
+            return;
+        }
+        match open(&data_dir) {
+            Ok(opened) => {
+                let _ = CORE.set(opened);
+            }
+            Err(e) => log(&format!("core did not open: {e}")),
+        }
+    });
+    if let Err(e) = spawned {
+        log(&format!("core thread did not start: {e}"));
+    }
+}
+
+fn open(data_dir: &Path) -> Result<(Arc<Core>, Arc<Subscription>), Box<dyn std::error::Error>> {
+    // `/data/data/<pkg>` and `/data/user/0/<pkg>` are the same folder; one spelling keeps
+    // the library from being added twice under two names.
+    let data_dir = data_dir.canonicalize().unwrap_or_else(|_| data_dir.to_path_buf());
     let paths = CorePaths::under(&data_dir.join("core"));
     let secrets = Secrets::file_only(paths.secrets_path());
     let core = Core::open_with_secrets(paths, secrets)?;
-    // The subscription lives as long as the core; dropping it would stop the log.
-    std::mem::forget(core.subscribe(Arc::new(Logcat)));
+    let listener = core.subscribe(Arc::new(Logcat));
 
     let library = data_dir.join(LIBRARY_DIR);
     std::fs::create_dir_all(&library)?;
@@ -58,7 +84,7 @@ pub fn open(data_dir: &Path) -> Result<Arc<Core>, Box<dyn std::error::Error>> {
     }
     core.start()?;
     log("core started");
-    Ok(core)
+    Ok((core, listener))
 }
 
 /// A test hook: each line of `/data/local/tmp/anibeam-seed` names a file to create, empty,
@@ -67,7 +93,13 @@ fn seed(library: &Path) {
     let Ok(list) = std::fs::read_to_string("/data/local/tmp/anibeam-seed") else {
         return;
     };
-    for name in list.lines().map(str::trim).filter(|l| !l.is_empty() && !l.contains("..")) {
+    for name in list.lines().map(str::trim).filter(|l| !l.is_empty()) {
+        // Only a plain relative path stays inside the library: an absolute one would
+        // replace it in `join`, and `..` would climb out of it.
+        if !Path::new(name).components().all(|c| matches!(c, Component::Normal(_))) {
+            log(&format!("seed refused {name}"));
+            continue;
+        }
         let path = library.join(name);
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
