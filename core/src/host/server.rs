@@ -52,7 +52,47 @@ pub fn router(core: Weak<Core>) -> Router {
         .route("/api/v1/posters/{id}", get(poster))
         .fallback(not_found)
         .method_not_allowed_fallback(not_allowed)
+        .layer(axum::middleware::from_fn(known_host))
         .with_state(served)
+}
+
+/// Refuses a request whose `Host` names somewhere other than this machine,
+/// so a web page that rebinds its own domain to a tailnet address cannot
+/// read the library. An address, the machine's name, or a tailnet name
+/// passes.
+async fn known_host(request: axum::extract::Request, next: axum::middleware::Next) -> Response {
+    let host = request
+        .headers()
+        .get(header::HOST)
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("");
+    if host_allowed(host, &hostname()) {
+        next.run(request).await
+    } else {
+        error(StatusCode::MISDIRECTED_REQUEST, "unknown host")
+    }
+}
+
+pub fn host_allowed(host: &str, machine: &str) -> bool {
+    let name = match host.strip_prefix('[') {
+        Some(v6) => {
+            return v6
+                .split(']')
+                .next()
+                .is_some_and(|ip| ip.parse::<std::net::Ipv6Addr>().is_ok());
+        }
+        None => host.rsplit_once(':').map_or(host, |(h, _)| h),
+    }
+    .trim_end_matches('.')
+    .to_ascii_lowercase();
+    if name.parse::<std::net::IpAddr>().is_ok() {
+        return true;
+    }
+    let machine = machine.to_ascii_lowercase();
+    let first = name.split('.').next().unwrap_or_default();
+    name.ends_with(".ts.net")
+        || name == "localhost"
+        || (!machine.is_empty() && first == machine.split('.').next().unwrap_or_default())
 }
 
 fn error(status: StatusCode, message: &str) -> Response {
@@ -219,6 +259,21 @@ pub fn content_type(path: &FsPath, bytes: &[u8]) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn only_this_machine_or_an_address_passes_the_host_check() {
+        use super::host_allowed;
+        assert!(host_allowed("100.94.40.21:8790", "banditbox"));
+        assert!(host_allowed("[fd7a:115c:a1e0::1]:8790", "banditbox"));
+        assert!(host_allowed(
+            "banditbox.tail24c6a9.ts.net:8790",
+            "banditbox"
+        ));
+        assert!(host_allowed("banditbox:8790", "banditbox"));
+        assert!(!host_allowed("evil.example:8790", "banditbox"));
+        assert!(!host_allowed("", "banditbox"));
+    }
+
     use super::*;
 
     #[test]
