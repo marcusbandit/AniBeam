@@ -99,6 +99,7 @@ struct App {
     day: usize,
     open: Option<Open>,
     ticks: u32,
+    devices: Vec<SharedString>,
     home_shelves: Shelves,
     days: Rc<VecModel<Day>>,
     day_tiles: Rc<VecModel<Tile>>,
@@ -195,10 +196,12 @@ impl App {
             }
         }
         if let Some(Open::Phone(id)) = self.open {
-            self.detail = match core.call(Call::GetSeries { series: id }) {
-                Ok(Reply::SeriesDetail { detail }) => Some(*detail),
-                _ => None,
-            };
+            // A failed read keeps the page as it was; only a series that is gone closes it.
+            match core.call(Call::GetSeries { series: id }) {
+                Ok(Reply::SeriesDetail { detail }) => self.detail = Some(*detail),
+                Err(anibeam_core::CoreError::NotFound { .. }) => self.detail = None,
+                _ => {}
+            }
         }
         if let Ok(Reply::Trackers { state }) = core.call(Call::GetTrackers) {
             self.trackers = Some((state.anilist, state.mal));
@@ -244,19 +247,14 @@ impl App {
         let query = data.get_query().to_string();
         let tiles = if device == 0 {
             let q = query.trim().to_lowercase();
-            let cards: Vec<SeriesCard> = self
-                .cards
-                .iter()
-                .filter(|c| {
-                    q.is_empty()
-                        || [Some(&c.title), c.titles.english.as_ref(), c.titles.romaji.as_ref()]
-                            .into_iter()
-                            .flatten()
-                            .any(|t| t.to_lowercase().contains(&q))
-                })
-                .cloned()
-                .collect();
-            crate::phone::library(&cards, &self.art, now)
+            let matches = |c: &&SeriesCard| {
+                q.is_empty()
+                    || [Some(&c.title), c.titles.english.as_ref(), c.titles.romaji.as_ref()]
+                        .into_iter()
+                        .flatten()
+                        .any(|t| t.to_lowercase().contains(&q))
+            };
+            crate::phone::library(self.cards.iter().filter(matches), &self.art, now)
         } else {
             crate::remote::library(self.cache.as_ref(), &self.anilist, &self.remote_art, now, &query)
         };
@@ -281,7 +279,10 @@ impl App {
             .into(),
         );
         update(&self.library, tiles);
-        data.set_devices(ModelRc::new(VecModel::from(devices)));
+        if devices != self.devices {
+            data.set_devices(ModelRc::new(VecModel::from(devices.clone())));
+            self.devices = devices;
+        }
         data.set_device(device as i32);
 
         // The series page.
@@ -318,11 +319,20 @@ impl App {
         self.ticks = self.ticks.wrapping_add(1);
     }
 
+    /// Walks the library folder on a thread of its own and sets the storage lines when done,
+    /// so a big library never holds up a frame.
     fn storage(&self) {
-        let data = self.data();
         let library = self.data_dir.join(crate::local::LIBRARY_DIR);
-        let used = crate::android::used(&library);
-        let free = crate::android::space(&self.data_dir).map(|(free, _)| free);
+        let data_dir = self.data_dir.clone();
+        let _ = std::thread::Builder::new().name("storage".into()).spawn(move || {
+            let used = crate::android::used(&library);
+            let free = crate::android::space(&data_dir).map(|(free, _)| free);
+            let _ = slint::invoke_from_event_loop(move || with_app(|app| app.show_storage(used, free)));
+        });
+    }
+
+    fn show_storage(&self, used: u64, free: Option<u64>) {
+        let data = self.data();
         let free_text = free.map(|f| format!("{} free", format::bytes(f))).unwrap_or_default();
         data.set_storage_line(
             format!(
@@ -334,10 +344,11 @@ impl App {
             .into(),
         );
         let limit = u64::from(self.prefs.limit_gb) * 1_000_000_000;
+        let below = if self.prefs.limit_on { "less than the limit" } else { "less than the suggested limit" };
         data.set_free_line(
             free.map(|f| {
                 if f < limit {
-                    format!("This phone has {} free, less than the limit.", format::bytes(f))
+                    format!("This phone has {} free, {below}.", format::bytes(f))
                 } else {
                     format!("This phone has {} free.", format::bytes(f))
                 }
@@ -360,6 +371,7 @@ impl App {
             crate::local::log(&format!("could not save the phone's settings: {e}"));
         }
         self.show_prefs();
+        self.storage();
     }
 
     fn open_series(&mut self, id: i32, remote: bool) {
@@ -387,7 +399,15 @@ impl App {
 
     fn connect_tracker(&mut self, which: i32) {
         let tracker = if which == 0 { Tracker::Anilist } else { Tracker::Mal };
-        let Some(core) = crate::local::core() else { return };
+        let Some(core) = crate::local::core() else {
+            let line: SharedString = "AniBeam is still starting. Try again in a moment.".into();
+            if which == 0 {
+                self.data().set_anilist_state(line);
+            } else {
+                self.data().set_mal_state(line);
+            }
+            return;
+        };
         if let Err(e) = core.call(Call::ConnectTracker { tracker }) {
             crate::local::log(&format!("sign-in did not start: {e}"));
         }
@@ -531,6 +551,7 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
         day: today_index(now),
         open: None,
         ticks: 0,
+        devices: Vec::new(),
         home_shelves,
         days,
         day_tiles,

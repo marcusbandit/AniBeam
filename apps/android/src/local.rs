@@ -32,13 +32,15 @@ struct Logcat;
 
 impl EventListener for Logcat {
     fn on_event(&self, event: Event) {
-        if !matches!(event.level, Level::Debug) {
-            log(&format!("{:?} {:?} {}", event.level, event.stage, event.message));
-        }
         if let EventBody::AuthUrlReady { open_url, .. } = &event.body {
             crate::android::open_url(open_url);
         }
-        CHANGED.store(true, Ordering::Release);
+        // Debug events are progress chatter; the state changes the pages show come as Info
+        // and above, so only those make the UI read the core again.
+        if !matches!(event.level, Level::Debug) {
+            log(&format!("{:?} {:?} {}", event.level, event.stage, event.message));
+            CHANGED.store(true, Ordering::Release);
+        }
     }
 }
 

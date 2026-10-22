@@ -94,8 +94,8 @@ fn library_tile(card: &SeriesCard, art: &Art, now: i64) -> Tile {
     t
 }
 
-pub fn library(cards: &[SeriesCard], art: &Art, now: i64) -> Vec<Tile> {
-    cards.iter().map(|c| library_tile(c, art, now)).collect()
+pub fn library<'a>(cards: impl IntoIterator<Item = &'a SeriesCard>, art: &Art, now: i64) -> Vec<Tile> {
+    cards.into_iter().map(|c| library_tile(c, art, now)).collect()
 }
 
 /// Home, in one read of the cards: the hero, the week, the picked day's tiles, and the
@@ -259,7 +259,8 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
         synopsis: detail.synopsis.clone().into(),
     };
 
-    let mut lines: Vec<(f64, EpisodeLine)> = Vec::new();
+    // Sorted by season, then number: a show with S1 and S2 lists each season in order.
+    let mut lines: Vec<((u32, f64), EpisodeLine)> = Vec::new();
     for e in &detail.episodes {
         let note = if let Some(p) = e.downloading {
             format!("Downloading {}%", (p * 100.0).round() as i64)
@@ -270,7 +271,7 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
         };
         let title = e.title.clone().unwrap_or_else(|| if movie { card.title.clone() } else { format!("Episode {}", e.number) });
         lines.push((
-            e.number,
+            (e.season.unwrap_or(1), e.number),
             EpisodeLine {
                 code: e.code.clone().into(),
                 title: title.into(),
@@ -282,7 +283,7 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
     }
     for a in &detail.absent {
         lines.push((
-            f64::from(a.number),
+            (a.season.unwrap_or(1), f64::from(a.number)),
             EpisodeLine {
                 code: a.code.clone().into(),
                 title: a.title.clone().unwrap_or_else(|| format!("Episode {}", a.number)).into(),
@@ -302,7 +303,7 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
             format::day_month(at)
         };
         lines.push((
-            f64::from(u.number),
+            (u.season.unwrap_or(1), f64::from(u.number)),
             EpisodeLine {
                 code: u.code.clone().into(),
                 title: u.title.clone().unwrap_or_else(|| format!("Episode {}", u.number)).into(),
@@ -312,7 +313,7 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
             },
         ));
     }
-    lines.sort_by(|a, b| a.0.total_cmp(&b.0));
+    lines.sort_by(|a, b| a.0.0.cmp(&b.0.0).then(a.0.1.total_cmp(&b.0.1)));
     (head, lines.into_iter().map(|(_, l)| l).collect())
 }
 
