@@ -34,6 +34,10 @@ use crate::sync::recover;
 const RECHECK: Duration = Duration::from_secs(60);
 /// How long a stopping server gets to finish its answers before it is cut.
 const GRACE: Duration = Duration::from_secs(2);
+/// A port the stopped servers still hold is tried this often, this far
+/// apart: a little past `GRACE` in all.
+const BIND_TRIES: u32 = 6;
+const BIND_PAUSE: Duration = Duration::from_millis(500);
 /// How long `tailscale status` gets to name this machine.
 const NAME_LIMIT: Duration = Duration::from_secs(2);
 
@@ -170,7 +174,10 @@ pub fn sync(core: &Core) {
 /// What the supervisor is serving right now.
 struct Serving {
     wanted: Vec<SocketAddr>,
+    /// The wanted addresses that took; the rest are tried again each check.
+    took: Vec<SocketAddr>,
     bound: Vec<SocketAddr>,
+    router: axum::Router,
     name: Option<String>,
     token: CancellationToken,
     tasks: Vec<JoinHandle<()>>,
@@ -229,6 +236,19 @@ async fn supervise(
                 status.put(Some(&cancel), waiting("Tailscale is not connected"));
             }
             Ok(wanted) => {
+                if let Some(s) = serving.as_mut()
+                    && s.wanted == wanted
+                    && s.took.len() < wanted.len()
+                {
+                    let missing: Vec<SocketAddr> = wanted
+                        .iter()
+                        .filter(|w| !s.took.contains(w))
+                        .copied()
+                        .collect();
+                    if s.bind(&missing).await.0 > 0 {
+                        status.put(Some(&cancel), s.status());
+                    }
+                }
                 if serving.as_ref().is_none_or(|s| s.wanted != wanted) {
                     if let Some(old) = serving.take() {
                         old.stop().await;
@@ -263,43 +283,67 @@ async fn supervise(
 /// Binds every wanted address and serves on each that took. Fails with the
 /// sentence for the status only when none did.
 async fn listen(core: &Weak<Core>, wanted: Vec<SocketAddr>) -> Result<Serving, String> {
-    let router = server::router(core.clone());
-    let token = CancellationToken::new();
-    let mut bound = Vec::new();
-    let mut tasks = Vec::new();
-    let mut failure: Option<String> = None;
-    for want in &wanted {
-        match TcpListener::bind(want).await {
-            Ok(listener) => {
-                let at = listener.local_addr().unwrap_or(*want);
-                let stop = token.clone();
-                let app = router.clone();
-                tasks.push(tokio::spawn(async move {
-                    let served = axum::serve(listener, app)
-                        .with_graceful_shutdown(async move { stop.cancelled().await })
-                        .await;
-                    if let Err(e) = served {
-                        tracing::warn!("host server on {at} ended: {e}");
-                    }
-                }));
-                bound.push(at);
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
-                failure = Some(format!("Port {} is taken", want.port()));
-            }
-            Err(e) => failure = Some(format!("Could not listen on {want}: {e}")),
-        }
-    }
-    if bound.is_empty() {
+    let mut serving = Serving {
+        wanted: wanted.clone(),
+        took: Vec::new(),
+        bound: Vec::new(),
+        router: server::router(core.clone()),
+        name: None,
+        token: CancellationToken::new(),
+        tasks: Vec::new(),
+    };
+    let (_, failure) = serving.bind(&wanted).await;
+    if serving.bound.is_empty() {
         return Err(failure.unwrap_or_else(|| "Could not listen".to_string()));
     }
-    Ok(Serving {
-        wanted,
-        bound,
-        name: None,
-        token,
-        tasks,
-    })
+    Ok(serving)
+}
+
+impl Serving {
+    /// Binds each of `wants` and serves on it. A port still held by the
+    /// servers just stopped is tried again for a little longer than their
+    /// grace, so switching sharing off and on does not wait a whole check.
+    /// Returns how many took, and the sentence for the last that did not.
+    async fn bind(&mut self, wants: &[SocketAddr]) -> (usize, Option<String>) {
+        let mut failure = None;
+        let mut took = 0;
+        for want in wants {
+            let mut tries = 0;
+            let listener = loop {
+                match TcpListener::bind(want).await {
+                    Ok(l) => break Ok(l),
+                    Err(e) if e.kind() == std::io::ErrorKind::AddrInUse && tries < BIND_TRIES => {
+                        tries += 1;
+                        tokio::time::sleep(BIND_PAUSE).await;
+                    }
+                    Err(e) => break Err(e),
+                }
+            };
+            match listener {
+                Ok(listener) => {
+                    let at = listener.local_addr().unwrap_or(*want);
+                    let stop = self.token.clone();
+                    let app = self.router.clone();
+                    self.tasks.push(tokio::spawn(async move {
+                        let served = axum::serve(listener, app)
+                            .with_graceful_shutdown(async move { stop.cancelled().await })
+                            .await;
+                        if let Err(e) = served {
+                            tracing::warn!("host server on {at} ended: {e}");
+                        }
+                    }));
+                    self.took.push(*want);
+                    self.bound.push(at);
+                    took += 1;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+                    failure = Some(format!("Port {} is taken", want.port()));
+                }
+                Err(e) => failure = Some(format!("Could not listen on {want}: {e}")),
+            }
+        }
+        (took, failure)
+    }
 }
 
 /// This machine's MagicDNS name from `tailscale status --json`, when the
