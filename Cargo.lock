@@ -125,6 +125,7 @@ dependencies = [
  "trash",
  "uniffi",
  "walkdir",
+ "webpki-root-certs",
  "zbus-secret-service-keyring-store",
 ]
 

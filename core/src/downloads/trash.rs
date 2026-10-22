@@ -112,16 +112,43 @@ pub fn targets(
 }
 
 /// Moves the paths to the trash, all or as many as it can before the
-/// first failure, which it reports.
+/// first failure, which it reports. Android has no trash, so a phone
+/// deletes them.
 pub fn move_to_trash(paths: &[PathBuf]) -> Result<(), CoreError> {
     if paths.is_empty() {
         return Ok(());
     }
+    #[cfg(target_os = "android")]
+    return delete_outright(paths);
+    #[cfg(not(target_os = "android"))]
     trash::delete_all(paths).map_err(|e| CoreError::Service {
         service: "trash".to_string(),
         code: "failed".to_string(),
         message: e.to_string(),
     })
+}
+
+#[cfg(target_os = "android")]
+fn delete_outright(paths: &[PathBuf]) -> Result<(), CoreError> {
+    for p in paths {
+        let gone = if p.is_dir() {
+            std::fs::remove_dir_all(p)
+        } else {
+            std::fs::remove_file(p)
+        };
+        match gone {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                return Err(CoreError::Service {
+                    service: "trash".to_string(),
+                    code: "failed".to_string(),
+                    message: format!("{}: {e}", p.display()),
+                });
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
