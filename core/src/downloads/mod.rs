@@ -170,6 +170,22 @@ async fn load_settings(core: &Arc<Core>) -> Result<DownloadSettings, CoreError> 
 
 // The clients ----------------------------------------------------------------
 
+/// The anirss client when one is already there: the remote server, or a
+/// sidecar that is alive. Starts nothing.
+async fn running_client(core: &Arc<Core>) -> Result<Option<AnirssClient>, CoreError> {
+    let s = load_settings(core).await?;
+    if s.anirss_mode == AnirssMode::Remote {
+        return ensure_client(core).await.map(Some);
+    }
+    let mut st = core.downloads.state();
+    let Some(sc) = st.sidecar.as_mut() else {
+        return Ok(None);
+    };
+    Ok(sc
+        .alive()
+        .then(|| AnirssClient::new(&sc.server(), &sc.token, core.http.clone())))
+}
+
 /// The anirss client, starting the sidecar when that is the mode and it is
 /// not up. The status in the state follows every step, so a shell that
 /// reads `GetDownloads` after a failure sees why.
@@ -2533,14 +2549,32 @@ pub(crate) async fn host_read(
     Result<Vec<SubscriptionRule>, CoreError>,
     Result<Vec<Torrent>, CoreError>,
 ) {
+    // The host only reads: it uses a client that is already up and never
+    // starts, decides or saves anything for a device that asked.
+    let idle = |what: &str| {
+        service(
+            what,
+            "not_running",
+            "is not running on the host".to_string(),
+        )
+    };
     let rules = async {
-        let client = ensure_client(core).await?;
+        let client = running_client(core).await?.ok_or_else(|| idle("anirss"))?;
         let mut rules = client.subscriptions().await?;
         link_rules(core, &mut rules);
         Ok(rules)
     };
     let torrents = async {
-        let client = qbt_client(core).await?;
+        // A client the user runs is only asked; AniBeam's own, or a mode
+        // not decided yet, waits for the user to open Downloads here.
+        let held = core.downloads.state().qbt.clone();
+        let client = match held {
+            Some(c) => c,
+            None if load_settings(core).await?.torrent_mode == TorrentMode::Existing => {
+                qbt_client(core).await?
+            }
+            None => return Err(idle("qBittorrent")),
+        };
         let mut torrents = client.torrents().await?;
         link_torrents(core, &mut torrents);
         Ok(torrents)
