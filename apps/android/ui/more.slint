@@ -1,4 +1,5 @@
 import { Theme } from "theme.slint";
+import { FindData } from "find.slint";
 import { AppData, DownloadRow } from "data.slint";
 import { Button, ListGroup, ListRow, PageTitle, ProgressLine, ShelfHead, Slider, TextButton } from "widgets.slint";
 
@@ -191,7 +192,7 @@ export component MorePage inherits Rectangle {
             Button {
                 text: "Find something to download";
                 primary: true;
-                clicked => { AppData.open-search(""); }
+                clicked => { FindData.open(""); }
             }
 
             ShelfHead {

@@ -13,6 +13,7 @@ use crate::contract::{CoreError, Provider};
 
 pub mod anilist;
 pub mod aniskip;
+pub mod doh;
 pub mod imdb;
 pub mod jikan;
 pub mod limiter;
@@ -207,7 +208,17 @@ impl ReqwestHttp {
                 .map(|der| reqwest::Certificate::from_der(der))
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| CoreError::internal(format!("bundled TLS roots: {e}")))?;
-            builder.tls_certs_only(roots)
+            // Names are looked up over HTTPS: phone networks that block release sites by
+            // name do it in plain DNS (see doh.rs). The resolvers' own client goes by
+            // address, so it needs no lookup of its own.
+            let resolvers = reqwest::Client::builder()
+                .user_agent(format!("AniBeam/{}", crate::VERSION))
+                .tls_certs_only(roots.clone())
+                .build()
+                .map_err(|e| CoreError::internal(format!("dns client: {e}")))?;
+            builder
+                .tls_certs_only(roots)
+                .dns_resolver(std::sync::Arc::new(doh::Doh::new(resolvers)))
         };
         let client = builder
             .build()

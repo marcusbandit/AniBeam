@@ -7,6 +7,7 @@ slint::include_modules!();
 
 mod android;
 mod app;
+mod find;
 mod local;
 mod phone;
 mod posters;

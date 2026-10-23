@@ -15,8 +15,7 @@ use anibeam_companion::address::HostAddress;
 use anibeam_companion::format;
 use anibeam_companion::store::{AniListCache, Cache, Store};
 use anibeam_core::{
-    Call, Direction, PhoneAction, PhoneRelease, PhoneSource, Reply, SeriesCard, SeriesDetail, Sort, Tab, Torrent, Tracker,
-    TrackerAccount,
+    Call, Direction, PhoneAction, PhoneSource, Reply, SeriesCard, SeriesDetail, Sort, Tab, Torrent, Tracker, TrackerAccount,
 };
 use chrono::Datelike;
 use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, Timer, TimerMode, VecModel};
@@ -24,7 +23,7 @@ use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, Timer, TimerMo
 use crate::prefs::{self, Prefs};
 use crate::remote::Art;
 use crate::worker::{self, Command, Commands, Event};
-use crate::{AppData, AppWindow, Day, DownloadRow, EpisodeLine, ResultRow, Shelf, SourceRow, Tile};
+use crate::{AppData, AppWindow, Day, DownloadRow, EpisodeLine, Shelf, SourceRow, Tile};
 
 /// How often the app looks at the other device while it is open.
 const SYNC_EVERY: Duration = Duration::from_secs(5 * 60);
@@ -108,17 +107,12 @@ struct App {
     day_tiles: Rc<VecModel<Tile>>,
     library: Rc<VecModel<Tile>>,
     episodes: Rc<VecModel<EpisodeLine>>,
-    // Search and downloads.
-    found: Vec<PhoneRelease>,
+    // Downloads.
     sources: Vec<PhoneSource>,
-    results: Rc<VecModel<ResultRow>>,
     downloads: Rc<VecModel<DownloadRow>>,
     polling: bool,
-    /// Bumped by each search; an answer for an older one is dropped.
-    search_seq: u64,
     held: Option<bool>,
     service: Option<String>,
-    asked_notifications: bool,
 }
 
 thread_local! {
@@ -354,92 +348,7 @@ impl App {
             .map(|s| SourceRow { name: s.name.clone().into(), url: hide_token(&s.url).into(), enabled: s.enabled })
             .collect();
         data.set_sources(ModelRc::new(VecModel::from(rows)));
-        let names: Vec<SharedString> = sources.iter().map(|s| SharedString::from(s.name.as_str())).collect();
-        data.set_source_names(ModelRc::new(VecModel::from(names)));
         self.sources = sources;
-    }
-
-    fn open_search(&mut self, query: String) {
-        if self.sources.is_empty() {
-            self.load_sources();
-        }
-        let data = self.data();
-        data.set_search_open(true);
-        if !query.trim().is_empty() {
-            data.set_search_query(query.clone().into());
-            self.run_search(query);
-        }
-    }
-
-    fn run_search(&mut self, query: String) {
-        let Some(core) = crate::local::core() else { return };
-        if query.trim().is_empty() {
-            return;
-        }
-        let source = self.sources.get(self.data().get_source().max(0) as usize).map(|s| s.name.clone());
-        self.search_seq += 1;
-        let seq = self.search_seq;
-        let data = self.data();
-        data.set_search_busy(true);
-        data.set_search_note(format!("Searching {}...", source.clone().unwrap_or_default()).into());
-        let _ = std::thread::Builder::new().name("search".into()).spawn(move || {
-            let answer = core.call(Call::PhoneSearch { query, source });
-            let _ = slint::invoke_from_event_loop(move || {
-                with_app(|app| {
-                    if seq == app.search_seq {
-                        app.show_results(answer);
-                    }
-                })
-            });
-        });
-    }
-
-    fn show_results(&mut self, answer: Result<Reply, anibeam_core::CoreError>) {
-        let data = self.data();
-        data.set_search_busy(false);
-        match answer {
-            Ok(Reply::PhoneResults { source, results, best }) => {
-                let rows = results.iter().enumerate().map(|(i, r)| result_row(r, best == Some(i as u64))).collect();
-                update(&self.results, rows);
-                data.set_search_note(
-                    match results.len() {
-                        0 => format!("Nothing on {source} for that."),
-                        1 => format!("1 result on {source}."),
-                        n => format!("{n} results on {source}."),
-                    }
-                    .into(),
-                );
-                self.found = results;
-            }
-            Ok(_) => {}
-            Err(e) => data.set_search_note(format!("The search did not work: {e}").into()),
-        }
-    }
-
-    fn download(&mut self, index: i32) {
-        let Some(core) = crate::local::core() else { return };
-        let Some(found) = usize::try_from(index).ok().and_then(|i| self.found.get(i)) else { return };
-        let release = found.release.clone();
-        let limit_bytes = self.prefs.limit_on.then(|| (self.prefs.limit_gb * 1e9) as u64);
-        if !self.asked_notifications {
-            self.asked_notifications = true;
-            crate::android::ask_notifications();
-        }
-        self.data().set_search_note(format!("Adding {}...", release.title).into());
-        let _ = std::thread::Builder::new().name("download".into()).spawn(move || {
-            let title = release.title.clone();
-            let answer = core.call(Call::PhoneDownload { release, limit_bytes });
-            let _ = slint::invoke_from_event_loop(move || {
-                with_app(|app| {
-                    let note = match answer {
-                        Ok(_) => format!("Downloading {title}. Follow it in More."),
-                        Err(e) => format!("Not added: {e}"),
-                    };
-                    app.data().set_search_note(note.into());
-                    app.poll_torrents();
-                })
-            });
-        });
     }
 
     fn torrent_action(&mut self, hash: String, action: i32) {
@@ -715,31 +624,6 @@ fn hide_token(url: &str) -> String {
     out
 }
 
-fn result_row(r: &PhoneRelease, best: bool) -> ResultRow {
-    let mut facts: Vec<String> = Vec::new();
-    if !r.facts.group.is_empty() {
-        facts.push(r.facts.group.clone());
-    }
-    if !r.facts.resolution.is_empty() {
-        facts.push(r.facts.resolution.clone());
-    }
-    if r.facts.batch {
-        facts.push("batch".into());
-    }
-    if let Some(b) = r.size_bytes {
-        facts.push(format::bytes(b));
-    }
-    if let Some(s) = r.release.seeders {
-        facts.push(if s == 1 { "1 seeder".into() } else { format!("{s} seeders") });
-    }
-    ResultRow {
-        title: r.release.title.clone().into(),
-        facts: facts.join("  ").into(),
-        best,
-        tone: if r.release.seeders == Some(0) { 2 } else { 0 },
-    }
-}
-
 fn download_row(t: &Torrent, held: bool) -> DownloadRow {
     let done = t.progress >= 1.0;
     let paused = t.state.starts_with("paused") && !done;
@@ -809,8 +693,7 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
 
     let home_shelves = Shelves::new();
     let (days, day_tiles, library, episodes) = (list(), list(), list(), list());
-    let (results, downloads) = (list(), list());
-    data.set_results(results.clone().into());
+    let downloads = list();
     data.set_downloads(downloads.clone().into());
     data.set_home_shelves(home_shelves.shelves.clone().into());
     data.set_days(days.clone().into());
@@ -863,17 +746,6 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
     });
     data.on_test_host(|text| with_app(|app| app.test_host(&text)));
     data.on_save_host(|text| with_app(|app| app.save_host(&text)));
-    data.on_open_search(|query| with_app(|app| app.open_search(query.to_string())));
-    data.on_close_search(|| with_app(|app| app.data().set_search_open(false)));
-    data.on_run_search(|query| with_app(|app| app.run_search(query.to_string())));
-    data.on_pick_source(|i| {
-        with_app(|app| {
-            app.data().set_source(i);
-            let query = app.data().get_search_query().to_string();
-            app.run_search(query);
-        })
-    });
-    data.on_download_result(|i| with_app(|app| app.download(i)));
     data.on_torrent_action(|hash, action| with_app(|app| app.torrent_action(hash.to_string(), action)));
     data.on_add_source(|name, url| with_app(|app| app.add_source(name.to_string(), url.to_string())));
     data.on_remove_source(|i| with_app(|app| app.remove_source(i)));
@@ -883,6 +755,8 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
             let _ = commands.send(Command::Sync);
         }
     });
+
+    crate::find::install(&window, data_dir.clone());
 
     let now = anibeam_companion::now();
     let mut app = App {
@@ -908,15 +782,11 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
         day_tiles,
         library,
         episodes,
-        found: Vec::new(),
         sources: Vec::new(),
-        results,
         downloads,
         polling: false,
-        search_seq: 0,
         held: None,
         service: None,
-        asked_notifications: false,
     };
     app.show_prefs();
     app.tick();

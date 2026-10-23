@@ -1,4 +1,5 @@
 import { Theme } from "theme.slint";
+import { FindData } from "find.slint";
 import { AppData } from "data.slint";
 import { Button, EmptyNote, PageTitle, SearchField, Segmented, TileGrid } from "widgets.slint";
 
@@ -28,7 +29,7 @@ export component LibraryPage inherits Rectangle {
             }
             if AppData.device == 0 && AppData.query != "": Button {
                 text: "Find \"" + AppData.query + "\" to download";
-                clicked => { AppData.open-search(AppData.query); }
+                clicked => { FindData.open(AppData.query); }
             }
             if AppData.library.length > 0: TileGrid {
                 tiles: AppData.library;

@@ -83,16 +83,6 @@ export struct EpisodeLine {
     cube: int,
 }
 
-// One search result.
-export struct ResultRow {
-    title: string,
-    // "SubsPlease  1080p  1.4 GB  120 seeders".
-    facts: string,
-    best: bool,
-    // 0: plain, 2: no seeders.
-    tone: int,
-}
-
 // One download on this phone.
 export struct DownloadRow {
     hash: string,
@@ -154,15 +144,6 @@ export global AppData {
     in property <string> anilist-state;
     in property <string> mal-state;
 
-    // Search, over everything while open.
-    in property <bool> search-open;
-    in-out property <string> search-query;
-    in property <bool> search-busy;
-    in property <string> search-note;
-    in property <[ResultRow]> results;
-    in property <[string]> source-names;
-    in-out property <int> source;
-
     // Downloads and sources, on More.
     in property <[DownloadRow]> downloads;
     in property <string> downloads-note;
@@ -192,11 +173,6 @@ export global AppData {
     callback test-host(string);
     callback save-host(string);
     callback refresh();
-    callback open-search(string);
-    callback close-search();
-    callback run-search(string);
-    callback pick-source(int);
-    callback download-result(int);
     // 0 pause, 1 resume, 2 cancel and delete, 3 take a finished one off the list.
     callback torrent-action(string, int);
     callback add-source(string, string);

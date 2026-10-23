@@ -281,7 +281,8 @@ pub fn rows(items: &[Release], facts: &[ReleaseFacts], total: u32, provider: &st
             .map(|&i| facts[i].size_bytes.unwrap_or(0))
             .sum();
     }
-    order.extend(packs);
+    // A batch of another season (29-38 under a 28-episode show) holds nothing here.
+    order.extend(packs.into_iter().filter(|p| p.count > 0));
     // A stable sort, as the desktop's JavaScript sort is.
     order.sort_by(|a, b| {
         b.count

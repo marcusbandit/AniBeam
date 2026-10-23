@@ -103,13 +103,23 @@ impl Engine {
     }
 
     /// Adds `release` to download into `<root>/<folder>`, held at once when downloads are.
-    pub async fn add(&self, release: &Release, folder: &str) -> Result<String, CoreError> {
+    /// `torrent` is the `.torrent` file when the core fetched it itself (an http link), so
+    /// the engine never looks the host up on its own.
+    pub async fn add(
+        &self,
+        release: &Release,
+        folder: &str,
+        torrent: Option<Vec<u8>>,
+    ) -> Result<String, CoreError> {
         let held = self.held();
         let output = self.root.join(folder);
         let added = tokio::time::timeout(
             std::time::Duration::from_secs(60),
             self.session.add_torrent(
-                AddTorrent::from_url(&release.link),
+                match torrent {
+                    Some(bytes) => AddTorrent::from_bytes(bytes),
+                    None => AddTorrent::from_url(&release.link),
+                },
                 Some(AddTorrentOptions {
                     output_folder: Some(output.to_string_lossy().into_owned()),
                     overwrite: true,

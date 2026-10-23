@@ -162,7 +162,7 @@ fn test_download(core: &Arc<Core>, data_dir: &Path) {
         infomkv: String::new(),
         linktype: "magnet".to_string(),
     };
-    match core.call(Call::PhoneDownload { release, limit_bytes: None }) {
+    match core.call(Call::PhoneDownload { items: vec![release], name: None, limit_bytes: None }) {
         Ok(_) => log(&format!("test download added: {title}")),
         Err(e) => log(&format!("test download refused: {e}")),
     }
