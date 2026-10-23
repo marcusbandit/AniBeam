@@ -27,21 +27,38 @@ fn sources_path(core: &Core) -> PathBuf {
     PathBuf::from(&core.paths.config_dir).join("phone-sources.json")
 }
 
-/// nyaa, which needs no key. erai needs the person's own token, so it is added by them.
+/// nyaa and its mirror AnimeTosho, which need no key. erai needs the person's own token, so
+/// it is added by them.
 pub fn default_sources() -> Vec<PhoneSource> {
-    vec![PhoneSource {
-        name: "nyaa".into(),
-        kind: "nyaa".into(),
-        url: "https://nyaa.si/".into(),
-        enabled: true,
-    }]
+    vec![
+        PhoneSource {
+            name: "nyaa".into(),
+            kind: "nyaa".into(),
+            url: "https://nyaa.si/".into(),
+            enabled: true,
+        },
+        // nyaa's releases mirrored, for networks that block nyaa.
+        PhoneSource {
+            name: "animetosho".into(),
+            kind: "tosho".into(),
+            url: crate::releases::tosho::SEARCH_URL.into(),
+            enabled: true,
+        },
+    ]
 }
 
 pub fn sources(core: &Core) -> Vec<PhoneSource> {
-    std::fs::read(sources_path(core))
+    let saved: Option<Vec<PhoneSource>> = std::fs::read(sources_path(core))
         .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_else(default_sources)
+        .and_then(|b| serde_json::from_slice(&b).ok());
+    let Some(mut sources) = saved else {
+        return default_sources();
+    };
+    // A list saved before AnimeTosho was built in gains it, after the person's own.
+    if !sources.iter().any(|s| s.kind == "tosho") {
+        sources.extend(default_sources().into_iter().filter(|s| s.kind == "tosho"));
+    }
+    sources
 }
 
 pub fn set_sources(core: &Core, sources: Vec<PhoneSource>) -> Result<Reply, CoreError> {
@@ -58,7 +75,7 @@ pub fn set_sources(core: &Core, sources: Vec<PhoneSource>) -> Result<Reply, Core
                 ),
             ));
         }
-        if s.kind != "nyaa" && !s.url.contains("{query}") {
+        if s.kind == "rss" && !s.url.contains("{query}") {
             return Err(CoreError::invalid(
                 "sources",
                 format!(

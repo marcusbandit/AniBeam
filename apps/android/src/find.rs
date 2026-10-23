@@ -541,6 +541,20 @@ impl Find {
                 Err(e) => state.sources[i].1 = Answer::Failed(words(&e)),
             }
             if f.show.as_ref().and_then(|s| s.active) == Some(i) {
+                // A source that failed, or had nothing of this show, hands over to the next
+                // one nobody has asked yet, as a person would tap it.
+                let nothing = match f.current() {
+                    Some((items, ..)) => items.is_empty(),
+                    None => true,
+                };
+                let next = f
+                    .show
+                    .as_ref()
+                    .and_then(|s| s.sources.iter().skip(i + 1).position(|(_, a)| matches!(a, Answer::Idle)).map(|p| i + 1 + p));
+                if nothing && let Some(next) = next {
+                    f.fetch(next as i32);
+                    return;
+                }
                 f.auto_pick();
             }
             f.draw_show();

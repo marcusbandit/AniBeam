@@ -22,7 +22,8 @@ const ERAI_NS: &str = "https://www.erai-raws.info/rss-page/";
 const TORZNAB_NS: &str = "http://torznab.com/schemas/2015/feed";
 
 /// erai-raws (Cloudflare) 502s non-browser User-Agents, so present as a stock Firefox.
-const USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0";
+pub const USER_AGENT: &str =
+    "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0";
 
 /// Newznab top-level category ids (Jackett and Prowlarr torznab feeds).
 fn torznab_category(id: &str) -> &'static str {

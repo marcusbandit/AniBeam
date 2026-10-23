@@ -16,7 +16,8 @@ use crate::contract::{CoreError, Release, SubscriptionSpec};
 use crate::net::{BoxFuture, Http};
 
 /// anirss `endpoints.VALID_KINDS`.
-pub const VALID_KINDS: [&str; 2] = ["nyaa", "rss"];
+/// `tosho` is AniBeam's own: AnimeTosho's JSON feed (tosho.rs).
+pub const VALID_KINDS: [&str; 3] = ["nyaa", "rss", "tosho"];
 
 /// Splits a query into fields, keeping `-"quoted phrase"` and `"quoted"` intact
 /// (anirss `endpoints.FIELD_RE`, shared with refine's positional-insert logic).
@@ -406,6 +407,13 @@ pub async fn fetch_items(
     let timeout = seconds(ep.timeout);
     if ep.kind == "nyaa" {
         return fetch::fetch_rss(http, &search_url(ep, query), &ep.name, timeout).await;
+    }
+    if ep.kind == "tosho" {
+        // Exclusions are applied here: AnimeTosho's search does not take `-tag`.
+        let (positive, excluded) = split_exclusions(query);
+        let items =
+            super::tosho::fetch(http, &search_url(ep, &positive), &ep.name, timeout).await?;
+        return Ok(filter_excluded(items, &excluded));
     }
     let (positive, excluded) = split_exclusions(query);
     let (positive, quality) = erai_split(ep, &positive);
