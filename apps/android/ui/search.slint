@@ -1,0 +1,92 @@
+import { Theme } from "theme.slint";
+import { AppData, ResultRow } from "data.slint";
+import { EmptyNote, IconButton, PageTitle, SearchField, Segmented } from "widgets.slint";
+
+// One release: its name, what it is, and a Best fit tag on the one a tap should take.
+component ResultItem inherits Rectangle {
+    in property <ResultRow> data;
+    callback picked();
+    height: column.preferred-height + 5 * Theme.unit;
+    border-radius: Theme.radius-row;
+    background: touch.pressed ? Theme.pressed : root.data.best ? Theme.raised : Theme.surface;
+    border-width: root.data.best ? 1px : 0;
+    border-color: Theme.line-strong;
+    column := VerticalLayout {
+        x: Theme.unit * 3;
+        y: Theme.unit * 2.5;
+        width: parent.width - Theme.unit * 6;
+        spacing: Theme.unit;
+        if root.data.best: Text {
+            text: "BEST FIT";
+            color: Theme.accent;
+            font-size: Theme.small - 2px;
+            font-family: Theme.figure;
+            letter-spacing: 1.2px;
+        }
+        Text {
+            text: root.data.title;
+            color: Theme.text;
+            font-size: Theme.small + 1px;
+            wrap: word-wrap;
+        }
+        Text {
+            text: root.data.facts;
+            color: root.data.tone == 2 ? Theme.bad : Theme.dim;
+            font-size: Theme.small - 1px;
+            font-family: Theme.figure;
+            wrap: word-wrap;
+        }
+    }
+    touch := TouchArea { clicked => { root.picked(); } }
+}
+
+// Find a release on the phone's sources and download it with one tap.
+export component SearchPage inherits Rectangle {
+    background: Theme.ground;
+    TouchArea { }
+    Flickable {
+        VerticalLayout {
+            alignment: start;
+            padding-left: Theme.pad;
+            padding-right: Theme.pad;
+            padding-top: Theme.unit * 2;
+            padding-bottom: Theme.pad * 2;
+            spacing: Theme.unit * 3;
+            HorizontalLayout {
+                spacing: Theme.unit * 3;
+                VerticalLayout {
+                    alignment: center;
+                    IconButton {
+                        icon: @image-url("icons/arrow-left.svg");
+                        clicked => { AppData.close-search(); }
+                    }
+                }
+                PageTitle { title: "Find"; }
+            }
+            if AppData.source-names.length > 1: Segmented {
+                options: AppData.source-names;
+                picked: AppData.source;
+                pick(i) => { AppData.pick-source(i); }
+            }
+            SearchField {
+                placeholder: "A show, like Frieren 1080p";
+                text <=> AppData.search-query;
+                accepted(text) => { AppData.run-search(text); }
+            }
+            if AppData.search-note != "": Text {
+                text: AppData.search-note;
+                color: AppData.search-busy ? Theme.dim : Theme.faint;
+                font-size: Theme.small;
+                wrap: word-wrap;
+            }
+            for row[i] in AppData.results: ResultItem {
+                data: row;
+                picked => { AppData.download-result(i); }
+            }
+            if AppData.results.length == 0 && !AppData.search-busy && AppData.search-query == "": EmptyNote {
+                title: "Search nyaa, or your own sources.";
+                body: "Tap a result to download it to this phone. The best fit is marked: 1080p, a trusted group, seeded.";
+            }
+        }
+    }
+}

@@ -1,7 +1,7 @@
 [package]
 name = "anibeam-android"
 description = "AniBeam for Android: what airs next and what the host has on disk"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 rust-version = "1.95"
 license = "GPL-3.0-or-later"
@@ -18,7 +18,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 anibeam-companion = { path = "companion" }
-anibeam-core = { path = "../../core" }
+anibeam-core = { path = "../../core", features = ["phone"] }
 slint = { version = "1.18", default-features = false, features = ["std", "compat-1-2", "backend-android-activity-06", "renderer-skia"] }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }

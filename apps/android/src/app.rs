@@ -14,14 +14,17 @@ use std::time::Duration;
 use anibeam_companion::address::HostAddress;
 use anibeam_companion::format;
 use anibeam_companion::store::{AniListCache, Cache, Store};
-use anibeam_core::{Call, Direction, Reply, SeriesCard, SeriesDetail, Sort, Tab, Tracker, TrackerAccount};
+use anibeam_core::{
+    Call, Direction, PhoneAction, PhoneRelease, PhoneSource, Reply, SeriesCard, SeriesDetail, Sort, Tab, Torrent, Tracker,
+    TrackerAccount,
+};
 use chrono::Datelike;
 use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, Timer, TimerMode, VecModel};
 
 use crate::prefs::{self, Prefs};
 use crate::remote::Art;
 use crate::worker::{self, Command, Commands, Event};
-use crate::{AppData, AppWindow, Day, EpisodeLine, Shelf, Tile};
+use crate::{AppData, AppWindow, Day, DownloadRow, EpisodeLine, ResultRow, Shelf, SourceRow, Tile};
 
 /// How often the app looks at the other device while it is open.
 const SYNC_EVERY: Duration = Duration::from_secs(5 * 60);
@@ -105,6 +108,17 @@ struct App {
     day_tiles: Rc<VecModel<Tile>>,
     library: Rc<VecModel<Tile>>,
     episodes: Rc<VecModel<EpisodeLine>>,
+    // Search and downloads.
+    found: Vec<PhoneRelease>,
+    sources: Vec<PhoneSource>,
+    results: Rc<VecModel<ResultRow>>,
+    downloads: Rc<VecModel<DownloadRow>>,
+    polling: bool,
+    /// Bumped by each search; an answer for an older one is dropped.
+    search_seq: u64,
+    held: Option<bool>,
+    service: Option<String>,
+    asked_notifications: bool,
 }
 
 thread_local! {
@@ -313,10 +327,239 @@ impl App {
                 [("AniList", anilist), ("MAL", mal)].iter().filter(|(_, a)| a.connected).map(|(n, _)| *n).collect();
             data.set_trackers_line(if signed.is_empty() { "Not signed in".into() } else { signed.join(" and ").into() });
         }
+        if self.ticks.is_multiple_of(2) {
+            self.poll_torrents();
+        }
+        if self.ticks.is_multiple_of(5) {
+            self.hold_for_network();
+        }
         if self.ticks.is_multiple_of(STORAGE_EVERY) {
             self.storage();
         }
         self.ticks = self.ticks.wrapping_add(1);
+    }
+
+    /// Reads the sources once the core is open, for the search page and More.
+    fn load_sources(&mut self) {
+        let Some(core) = crate::local::core() else { return };
+        if let Ok(Reply::PhoneSources { sources }) = core.call(Call::PhoneSources) {
+            self.show_sources(sources);
+        }
+    }
+
+    fn show_sources(&mut self, sources: Vec<PhoneSource>) {
+        let data = self.data();
+        let rows: Vec<SourceRow> = sources
+            .iter()
+            .map(|s| SourceRow { name: s.name.clone().into(), url: hide_token(&s.url).into(), enabled: s.enabled })
+            .collect();
+        data.set_sources(ModelRc::new(VecModel::from(rows)));
+        let names: Vec<SharedString> = sources.iter().map(|s| SharedString::from(s.name.as_str())).collect();
+        data.set_source_names(ModelRc::new(VecModel::from(names)));
+        self.sources = sources;
+    }
+
+    fn open_search(&mut self, query: String) {
+        if self.sources.is_empty() {
+            self.load_sources();
+        }
+        let data = self.data();
+        data.set_search_open(true);
+        if !query.trim().is_empty() {
+            data.set_search_query(query.clone().into());
+            self.run_search(query);
+        }
+    }
+
+    fn run_search(&mut self, query: String) {
+        let Some(core) = crate::local::core() else { return };
+        if query.trim().is_empty() {
+            return;
+        }
+        let source = self.sources.get(self.data().get_source().max(0) as usize).map(|s| s.name.clone());
+        self.search_seq += 1;
+        let seq = self.search_seq;
+        let data = self.data();
+        data.set_search_busy(true);
+        data.set_search_note(format!("Searching {}...", source.clone().unwrap_or_default()).into());
+        let _ = std::thread::Builder::new().name("search".into()).spawn(move || {
+            let answer = core.call(Call::PhoneSearch { query, source });
+            let _ = slint::invoke_from_event_loop(move || {
+                with_app(|app| {
+                    if seq == app.search_seq {
+                        app.show_results(answer);
+                    }
+                })
+            });
+        });
+    }
+
+    fn show_results(&mut self, answer: Result<Reply, anibeam_core::CoreError>) {
+        let data = self.data();
+        data.set_search_busy(false);
+        match answer {
+            Ok(Reply::PhoneResults { source, results, best }) => {
+                let rows = results.iter().enumerate().map(|(i, r)| result_row(r, best == Some(i as u64))).collect();
+                update(&self.results, rows);
+                data.set_search_note(
+                    match results.len() {
+                        0 => format!("Nothing on {source} for that."),
+                        1 => format!("1 result on {source}."),
+                        n => format!("{n} results on {source}."),
+                    }
+                    .into(),
+                );
+                self.found = results;
+            }
+            Ok(_) => {}
+            Err(e) => data.set_search_note(format!("The search did not work: {e}").into()),
+        }
+    }
+
+    fn download(&mut self, index: i32) {
+        let Some(core) = crate::local::core() else { return };
+        let Some(found) = usize::try_from(index).ok().and_then(|i| self.found.get(i)) else { return };
+        let release = found.release.clone();
+        let limit_bytes = self.prefs.limit_on.then(|| (self.prefs.limit_gb * 1e9) as u64);
+        if !self.asked_notifications {
+            self.asked_notifications = true;
+            crate::android::ask_notifications();
+        }
+        self.data().set_search_note(format!("Adding {}...", release.title).into());
+        let _ = std::thread::Builder::new().name("download".into()).spawn(move || {
+            let title = release.title.clone();
+            let answer = core.call(Call::PhoneDownload { release, limit_bytes });
+            let _ = slint::invoke_from_event_loop(move || {
+                with_app(|app| {
+                    let note = match answer {
+                        Ok(_) => format!("Downloading {title}. Follow it in More."),
+                        Err(e) => format!("Not added: {e}"),
+                    };
+                    app.data().set_search_note(note.into());
+                    app.poll_torrents();
+                })
+            });
+        });
+    }
+
+    fn torrent_action(&mut self, hash: String, action: i32) {
+        let Some(core) = crate::local::core() else { return };
+        let action = match action {
+            0 => PhoneAction::Pause,
+            1 => PhoneAction::Resume,
+            3 => PhoneAction::Forget,
+            _ => PhoneAction::Remove,
+        };
+        let _ = std::thread::Builder::new().name("torrent".into()).spawn(move || {
+            if let Err(e) = core.call(Call::PhoneControl { hashes: vec![hash], action }) {
+                crate::local::log(&format!("torrent action failed: {e}"));
+            }
+            let _ = slint::invoke_from_event_loop(|| with_app(App::poll_torrents));
+        });
+    }
+
+    fn add_source(&mut self, name: String, url: String) {
+        let Some(core) = crate::local::core() else { return };
+        let mut sources = self.sources.clone();
+        sources.push(PhoneSource { name: name.trim().to_string(), kind: "rss".into(), url: url.trim().to_string(), enabled: true });
+        match core.call(Call::SetPhoneSources { sources }) {
+            Ok(Reply::PhoneSources { sources }) => {
+                self.show_sources(sources);
+                let data = self.data();
+                data.set_source_error("".into());
+                data.set_new_source_name("".into());
+                data.set_new_source_url("".into());
+            }
+            Ok(_) => {}
+            Err(e) => self.data().set_source_error(e.to_string().into()),
+        }
+    }
+
+    fn remove_source(&mut self, index: i32) {
+        let Some(core) = crate::local::core() else { return };
+        let Ok(index) = usize::try_from(index) else { return };
+        // nyaa, the first, stays: a phone with no source cannot search.
+        if index == 0 || index >= self.sources.len() {
+            return;
+        }
+        let mut sources = self.sources.clone();
+        sources.remove(index);
+        if let Ok(Reply::PhoneSources { sources }) = core.call(Call::SetPhoneSources { sources }) {
+            self.show_sources(sources);
+        }
+    }
+
+    /// Asks the engine for its torrents on a thread, one ask at a time.
+    fn poll_torrents(&mut self) {
+        if self.polling {
+            return;
+        }
+        let Some(core) = crate::local::core() else { return };
+        if self.sources.is_empty() {
+            self.load_sources();
+        }
+        self.polling = true;
+        let _ = std::thread::Builder::new().name("torrents".into()).spawn(move || {
+            let answer = core.call(Call::PhoneTorrents);
+            let _ = slint::invoke_from_event_loop(move || {
+                with_app(|app| {
+                    app.polling = false;
+                    if let Ok(Reply::PhoneTorrents { torrents, held }) = answer {
+                        app.show_torrents(torrents, held);
+                    }
+                })
+            });
+        });
+    }
+
+    fn show_torrents(&mut self, torrents: Vec<Torrent>, held: bool) {
+        // The service is for torrents that are moving: one in error, stuck with no peers or
+        // paused does not keep a notification up.
+        let active: Vec<&Torrent> =
+            torrents.iter().filter(|t| t.progress < 1.0 && matches!(t.state.as_str(), "downloading" | "checkingDL")).collect();
+        update(&self.downloads, torrents.iter().map(|t| download_row(t, held)).collect());
+        let note = if held && torrents.iter().any(|t| t.progress < 1.0) {
+            "Waiting for Wi-Fi. Downloads go on by themselves when the phone is on Wi-Fi."
+        } else if torrents.is_empty() {
+            "Nothing downloading."
+        } else {
+            ""
+        };
+        self.data().set_downloads_note(note.into());
+
+        // The service runs while something downloads, with how many in its notification.
+        let text = match active.len() {
+            0 => None,
+            1 => Some(format!("Downloading {}", active[0].name)),
+            n => Some(format!("Downloading {n} episodes")),
+        };
+        if text != self.service {
+            let done = match &text {
+                Some(t) => crate::android::start_service(t),
+                None => {
+                    crate::android::stop_service();
+                    true
+                }
+            };
+            if done {
+                self.service = text;
+            }
+        }
+    }
+
+    /// Holds downloads off Wi-Fi when the person wants Wi-Fi only.
+    fn hold_for_network(&mut self) {
+        let Some(core) = crate::local::core() else { return };
+        let held = self.prefs.wifi_only && crate::android::unmetered() != Some(true);
+        if self.held == Some(held) {
+            return;
+        }
+        self.held = Some(held);
+        let _ = std::thread::Builder::new().name("hold".into()).spawn(move || {
+            if let Err(e) = core.call(Call::SetPhoneHeld { held }) {
+                crate::local::log(&format!("could not hold downloads: {e}"));
+            }
+        });
     }
 
     /// Walks the library folder on a thread of its own and sets the storage lines when done,
@@ -326,13 +569,30 @@ impl App {
         let data_dir = self.data_dir.clone();
         let _ = std::thread::Builder::new().name("storage".into()).spawn(move || {
             let used = crate::android::used(&library);
-            let free = crate::android::space(&data_dir).map(|(free, _)| free);
-            let _ = slint::invoke_from_event_loop(move || with_app(|app| app.show_storage(used, free)));
+            let space = crate::android::space(&data_dir);
+            let _ = slint::invoke_from_event_loop(move || with_app(|app| app.show_storage(used, space)));
         });
     }
 
-    fn show_storage(&self, used: u64, free: Option<u64>) {
+    fn show_storage(&self, used: u64, space: Option<(u64, u64)>) {
         let data = self.data();
+        let free = space.map(|(free, _)| free);
+        if let Some((_, total)) = space {
+            let disk = (total as f64 / 1e9).floor().max(1.0);
+            data.set_disk_gb(disk as f32);
+            // A phone smaller than the suggestion starts at its whole size; once the person
+            // has been through onboarding the cap is theirs, whatever it is.
+            if !self.prefs.onboarded && self.prefs.limit_gb > disk {
+                let mut prefs = self.prefs.clone();
+                prefs.limit_gb = disk;
+                let _ = slint::invoke_from_event_loop(move || {
+                    with_app(|app| {
+                        app.prefs.limit_gb = prefs.limit_gb;
+                        app.save_prefs();
+                    })
+                });
+            }
+        }
         let free_text = free.map(|f| format!("{} free", format::bytes(f))).unwrap_or_default();
         data.set_storage_line(
             format!(
@@ -343,8 +603,8 @@ impl App {
             )
             .into(),
         );
-        let limit = u64::from(self.prefs.limit_gb) * 1_000_000_000;
-        let below = if self.prefs.limit_on { "less than the limit" } else { "less than the suggested limit" };
+        let limit = (self.prefs.limit_gb * 1e9) as u64;
+        let below = "less than the cap: the phone fills up before AniBeam stops";
         data.set_free_line(
             free.map(|f| {
                 if f < limit {
@@ -363,7 +623,8 @@ impl App {
         data.set_onboarding(!self.prefs.onboarded);
         data.set_wifi_only(self.prefs.wifi_only);
         data.set_limit_on(self.prefs.limit_on);
-        data.set_limit_gb(self.prefs.limit_gb as i32);
+        data.set_limit_gb(self.prefs.limit_gb as f32);
+        data.set_limit_label(prefs::limit_label(self.prefs.limit_gb).into());
     }
 
     fn save_prefs(&mut self) {
@@ -441,6 +702,79 @@ impl App {
     }
 }
 
+/// A source's address with any key in it cut short, for the list on More.
+fn hide_token(url: &str) -> String {
+    let mut out = url.to_string();
+    for key in ["token=", "apikey=", "passkey="] {
+        if let Some(at) = out.find(key) {
+            let start = at + key.len();
+            let end = out[start..].find('&').map_or(out.len(), |e| start + e);
+            out.replace_range(start..end, "...");
+        }
+    }
+    out
+}
+
+fn result_row(r: &PhoneRelease, best: bool) -> ResultRow {
+    let mut facts: Vec<String> = Vec::new();
+    if !r.facts.group.is_empty() {
+        facts.push(r.facts.group.clone());
+    }
+    if !r.facts.resolution.is_empty() {
+        facts.push(r.facts.resolution.clone());
+    }
+    if r.facts.batch {
+        facts.push("batch".into());
+    }
+    if let Some(b) = r.size_bytes {
+        facts.push(format::bytes(b));
+    }
+    if let Some(s) = r.release.seeders {
+        facts.push(if s == 1 { "1 seeder".into() } else { format!("{s} seeders") });
+    }
+    ResultRow {
+        title: r.release.title.clone().into(),
+        facts: facts.join("  ").into(),
+        best,
+        tone: if r.release.seeders == Some(0) { 2 } else { 0 },
+    }
+}
+
+fn download_row(t: &Torrent, held: bool) -> DownloadRow {
+    let done = t.progress >= 1.0;
+    let paused = t.state.starts_with("paused") && !done;
+    let state = match t.state.as_str() {
+        _ if done => "Done",
+        "pausedDL" if held => "Waiting for Wi-Fi",
+        "pausedDL" => "Paused",
+        "stalledDL" => "Looking for peers",
+        "checkingDL" => "Checking",
+        "error" => "Stopped by an error",
+        _ => "Downloading",
+    };
+    let mut facts = Vec::new();
+    if done {
+        facts.push(format::bytes(t.size));
+    } else {
+        facts.push(format!("{} of {}", format::bytes((t.progress * t.size as f64) as u64), format::bytes(t.size)));
+        if t.dlspeed > 0 {
+            facts.push(format!("{}/s", format::bytes(t.dlspeed)));
+        }
+        if t.eta > 0 && t.eta < 8_640_000 {
+            facts.push(format!("{} left", format::countdown(t.eta)));
+        }
+    }
+    DownloadRow {
+        hash: t.hash.clone().into(),
+        name: t.name.clone().into(),
+        state: state.into(),
+        facts: facts.join(", ").into(),
+        progress: t.progress as f32,
+        paused,
+        done,
+    }
+}
+
 /// Reads poster files off the UI thread and hands each decoded one back.
 fn start_poster_loader() -> Sender<(u64, String)> {
     let (tx, rx) = std::sync::mpsc::channel::<(u64, String)>();
@@ -475,6 +809,9 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
 
     let home_shelves = Shelves::new();
     let (days, day_tiles, library, episodes) = (list(), list(), list(), list());
+    let (results, downloads) = (list(), list());
+    data.set_results(results.clone().into());
+    data.set_downloads(downloads.clone().into());
     data.set_home_shelves(home_shelves.shelves.clone().into());
     data.set_days(days.clone().into());
     data.set_day_tiles(day_tiles.clone().into());
@@ -506,7 +843,7 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
     data.on_set_limit(|on, gb| {
         with_app(|app| {
             app.prefs.limit_on = on;
-            app.prefs.limit_gb = u32::try_from(gb).unwrap_or(prefs::SUGGESTED_LIMIT_GB);
+            app.prefs.limit_gb = prefs::snap_limit(f64::from(gb));
             app.save_prefs();
         })
     });
@@ -526,6 +863,20 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
     });
     data.on_test_host(|text| with_app(|app| app.test_host(&text)));
     data.on_save_host(|text| with_app(|app| app.save_host(&text)));
+    data.on_open_search(|query| with_app(|app| app.open_search(query.to_string())));
+    data.on_close_search(|| with_app(|app| app.data().set_search_open(false)));
+    data.on_run_search(|query| with_app(|app| app.run_search(query.to_string())));
+    data.on_pick_source(|i| {
+        with_app(|app| {
+            app.data().set_source(i);
+            let query = app.data().get_search_query().to_string();
+            app.run_search(query);
+        })
+    });
+    data.on_download_result(|i| with_app(|app| app.download(i)));
+    data.on_torrent_action(|hash, action| with_app(|app| app.torrent_action(hash.to_string(), action)));
+    data.on_add_source(|name, url| with_app(|app| app.add_source(name.to_string(), url.to_string())));
+    data.on_remove_source(|i| with_app(|app| app.remove_source(i)));
     data.on_refresh({
         let commands = commands.clone();
         move || {
@@ -557,6 +908,15 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
         day_tiles,
         library,
         episodes,
+        found: Vec::new(),
+        sources: Vec::new(),
+        results,
+        downloads,
+        polling: false,
+        search_seq: 0,
+        held: None,
+        service: None,
+        asked_notifications: false,
     };
     app.show_prefs();
     app.tick();

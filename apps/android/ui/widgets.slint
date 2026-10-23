@@ -360,6 +360,7 @@ export component SearchField inherits Rectangle {
     in property <string> placeholder;
     in-out property <string> text;
     callback edited(string);
+    callback accepted(string);
     height: 11 * Theme.unit;
     border-radius: Theme.radius;
     background: Theme.field;
@@ -389,6 +390,7 @@ export component SearchField inherits Rectangle {
         vertical-alignment: center;
         single-line: true;
         edited => { root.edited(self.text); }
+        accepted => { root.accepted(self.text); }
     }
 }
 
@@ -556,5 +558,52 @@ export component EmptyNote inherits VerticalLayout {
         font-size: Theme.small;
         wrap: word-wrap;
         horizontal-alignment: center;
+    }
+}
+
+// A slider for an amount between `minimum` and `maximum`, the desktop's: a thin track, the
+// filled part in the accent, and a round thumb. Drag or tap anywhere on it.
+export component Slider inherits Rectangle {
+    in property <float> minimum: 0;
+    in property <float> maximum: 100;
+    in property <float> value;
+    callback moved(float);
+    height: 11 * Theme.unit;
+    property <length> thumb: 6 * Theme.unit;
+    property <length> track-width: self.width - self.thumb;
+    property <float> share: self.maximum > self.minimum ? Math.clamp((self.value - self.minimum) / (self.maximum - self.minimum), 0, 1) : 0;
+    Rectangle {
+        x: root.thumb / 2;
+        width: root.track-width;
+        height: 4px;
+        border-radius: 2px;
+        background: Theme.track;
+    }
+    Rectangle {
+        x: root.thumb / 2;
+        width: root.track-width * root.share;
+        height: 4px;
+        border-radius: 2px;
+        background: Theme.accent;
+    }
+    Rectangle {
+        x: root.track-width * root.share;
+        width: root.thumb;
+        height: root.thumb;
+        border-radius: root.thumb / 2;
+        background: Theme.accent;
+        border-width: touch.pressed ? 3px : 0;
+        border-color: Theme.accent-wash;
+    }
+    function at(px: length) {
+        root.moved(root.minimum + Math.clamp((px - root.thumb / 2) / root.track-width, 0, 1) * (root.maximum - root.minimum));
+    }
+    touch := TouchArea {
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down) {
+                root.at(self.mouse-x);
+            }
+        }
+        moved => { root.at(self.mouse-x); }
     }
 }

@@ -1,7 +1,7 @@
 import { Theme } from "theme.slint";
 import { AppData } from "data.slint";
 import { Ask } from "more.slint";
-import { Button, ListGroup, ListRow, PageTitle, TextButton } from "widgets.slint";
+import { Button, ListGroup, ListRow, PageTitle, Slider, TextButton } from "widgets.slint";
 
 // The first run, one question a step: who you are on AniList and MAL, Wi-Fi or mobile data,
 // and how much room the phone gives AniBeam. Shown once; More can run it again.
@@ -12,7 +12,7 @@ export component Onboarding inherits Rectangle {
         { title: "AniBeam", note: "Your anime, on this phone: download it, watch it, and keep your lists in step." },
         { title: "Tracking", note: "Sign in so what you watch here counts on your lists. You can do this later in More." },
         { title: "Downloads", note: "Episodes are big. AniBeam downloads on Wi-Fi unless you say otherwise." },
-        { title: "Storage", note: "How much of this phone AniBeam may fill." },
+        { title: "Storage", note: "A cap on how much AniBeam may download. It reserves nothing: the space stays free for everything else until episodes fill it." },
     ];
 
     TouchArea { }
@@ -83,8 +83,8 @@ export component Onboarding inherits Rectangle {
 
         if AppData.step == 3: ListGroup {
             ListRow {
-                label: "Suggested limit";
-                helper: "12 episodes at about 1.5 GB each.";
+                label: "Cap";
+                helper: "18 GB is suggested, about 12 episodes. Slide it anywhere up to the phone's whole storage.";
             }
             Rectangle {
                 height: amount.preferred-height + 6 * Theme.unit;
@@ -94,15 +94,22 @@ export component Onboarding inherits Rectangle {
                     width: parent.width - 2 * Theme.pad;
                     spacing: Theme.unit;
                     Text {
-                        text: AppData.limit-gb + " GB";
+                        text: AppData.limit-label;
                         color: Theme.text;
                         font-size: Theme.display;
                         font-family: Theme.figure;
+                    }
+                    Slider {
+                        minimum: 1;
+                        maximum: AppData.disk-gb;
+                        value: AppData.limit-gb;
+                        moved(gb) => { AppData.set-limit(AppData.limit-on, gb); }
                     }
                     Text {
                         text: AppData.free-line;
                         color: Theme.dim;
                         font-size: Theme.small;
+                        wrap: word-wrap;
                     }
                 }
                 Rectangle {
@@ -114,8 +121,10 @@ export component Onboarding inherits Rectangle {
                 }
             }
             ListRow {
-                label: "Use this limit";
-                helper: AppData.limit-on ? "On. Downloads stop at " + AppData.limit-gb + " GB." : "Off. AniBeam warns but never stops a download.";
+                label: "Use this cap";
+                helper: AppData.limit-on
+                    ? "On. At " + AppData.limit-label + ", AniBeam downloads nothing more until you delete episodes. Set it above the space you have and the phone runs out first."
+                    : "Off. AniBeam downloads until the phone is full.";
                 last: true;
                 switch: true;
                 on: AppData.limit-on;

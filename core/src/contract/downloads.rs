@@ -646,3 +646,34 @@ pub struct DownloadsStatus {
     pub torrent: TorrentClientStatus,
     pub endpoints: Vec<SearchEndpoint>,
 }
+
+/// A place the phone searches. `kind` is `nyaa` (the site's RSS with its
+/// `q`, `c` and `f` parameters) or `rss` (any feed whose URL holds
+/// `{query}`, erai's among them).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct PhoneSource {
+    pub name: String,
+    pub kind: String,
+    pub url: String,
+    pub enabled: bool,
+}
+
+/// One search result on the phone: the release, what its name says, and
+/// its rank among the results.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct PhoneRelease {
+    pub release: Release,
+    pub facts: ReleaseFacts,
+    pub size_bytes: Option<u64>,
+    pub score: i64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, uniffi::Enum)]
+pub enum PhoneAction {
+    Pause,
+    Resume,
+    /// Takes the torrent out and deletes what it wrote.
+    Remove,
+    /// Takes a finished torrent off the list and keeps its files.
+    Forget,
+}
