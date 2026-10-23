@@ -8,11 +8,9 @@ use super::bestfit;
 use super::titles::{RES_RE, poster_of, title_tokens};
 use super::{BestfitConfig, Endpoint};
 use crate::contract::{BestFit, CoreError, RefineOp, Release, ReleaseGroup};
-use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::LazyLock;
 
 /// A boxed, sendable future, what the refetch and enrich callbacks hand back.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -26,25 +24,8 @@ pub type FetchFn<'f> = dyn for<'a> Fn(&'a Endpoint, &'a str) -> BoxFuture<'a, Re
 /// Fills in what a feed left out (seeders and the like) on freshly fetched releases.
 pub type EnrichFn<'f> = dyn Fn(Vec<Release>) -> BoxFuture<'static, Vec<Release>> + Send + Sync + 'f;
 
-// TODO(port): use endpoints::FIELD_RE once it is public there.
-/// A query field: a quoted run (with its optional leading `-`) or a bare word.
-static FIELD_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"-?"[^"]*"|\S+"#).expect("field pattern compiles"));
-
-// TODO(port): use erai::metadata_hit once it is public there.
-/// Does `token` match the item's structured erai fields? Resolution, category and
-/// linktype by equality, infomkv by substring. False for items without erai metadata (all
-/// fields empty), so nyaa and generic feeds are unaffected.
-fn metadata_hit(item: &Release, token: &str) -> bool {
-    if item.resolution.is_empty() && item.infomkv.is_empty() && item.linktype.is_empty() {
-        return false;
-    }
-    let lc = token.to_lowercase();
-    lc == item.resolution.to_lowercase()
-        || item.infomkv.to_lowercase().contains(&lc)
-        || lc == item.linktype.to_lowercase()
-        || lc == item.category.to_lowercase()
-}
+use super::endpoints::FIELD_RE;
+use super::erai::metadata_hit;
 
 /// What `auto_resolution` decided.
 #[derive(Clone, Debug, PartialEq)]

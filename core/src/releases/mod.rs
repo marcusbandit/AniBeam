@@ -67,7 +67,9 @@ impl Default for BestfitConfig {
     fn default() -> Self {
         BestfitConfig {
             preferred_groups: Vec::new(),
-            source_order: ["BluRay", "WEB-DL", "WEB", "WEBRip", "HDTV"].map(String::from).to_vec(),
+            source_order: ["BluRay", "WEB-DL", "WEB", "WEBRip", "HDTV"]
+                .map(String::from)
+                .to_vec(),
             preferred_resolution: "highest".to_string(),
             target_mib_per_episode: 1000.0,
             max_size_ratio: 3.0,
