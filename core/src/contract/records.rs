@@ -369,6 +369,9 @@ pub struct SearchResult {
     pub native: Option<String>,
     #[serde(default)]
     pub synonyms: Vec<String>,
+    /// Still getting episodes, or not started yet: worth following for new ones.
+    #[serde(default)]
+    pub airing: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]

@@ -222,6 +222,7 @@ export component DownloadsPage inherits Rectangle {
                 placeholder: "A show, or a release name";
                 text <=> FindData.text;
                 edited(t) => {
+                    FindData.suggest-done = false;
                     root.pending = t;
                     debounce.running = false;
                     debounce.running = true;
@@ -290,7 +291,7 @@ export component DownloadsPage inherits Rectangle {
                 spacing: 0;
                 SectionHead {
                     title: "Finished";
-                    note: AppData.finished-count == 1 ? "1 episode, in your library" : AppData.finished-count + " downloads, in your library";
+                    note: AppData.finished-count == 1 ? "1 download, in your library" : AppData.finished-count + " downloads, in your library";
                 }
                 Rectangle { height: Theme.unit; }
                 for row in AppData.downloads: VerticalLayout {

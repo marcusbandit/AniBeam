@@ -554,6 +554,10 @@ pub(crate) fn to_result(m: &Media) -> SearchResult {
         english: m.title.english.clone(),
         native: m.title.native.clone(),
         synonyms: m.synonyms.clone(),
+        airing: matches!(
+            m.status.as_deref(),
+            Some("RELEASING") | Some("NOT_YET_RELEASED")
+        ),
     }
 }
 
@@ -574,6 +578,7 @@ fn show_result(s: &Show) -> SearchResult {
         english: s.name.clone(),
         native: None,
         synonyms: Vec::new(),
+        airing: false,
     }
 }
 

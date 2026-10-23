@@ -130,17 +130,28 @@ pub fn find_shows(core: &Core, query: String, limit: u32) -> Result<Reply, CoreE
         .map(crate::metadata::apply::to_result)
         .collect();
     let urls: Vec<String> = shows.iter().filter_map(|s| s.cover_url.clone()).collect();
-    // The hits go back after COVER_WAIT at most: a cover still on its way finishes into
-    // the cache on its own task (the cache's sweep bounds it), so the same search shows it
-    // next time, and a slow network never holds the list back.
-    let images = core.images.clone();
-    let fetching = core.handle.spawn(async move { images.ensure(&urls).await });
-    let fetched = core
-        .handle
-        .block_on(async move { tokio::time::timeout(COVER_WAIT, fetching).await })
-        .ok()
-        .and_then(Result::ok)
-        .unwrap_or_default();
+    // The hits go back after COVER_WAIT at most. Each cover is its own task, so the ones
+    // already cached or quick come back and a slow one only loses its own poster; it still
+    // finishes into the cache (the cache's sweep bounds it), so the same search shows it
+    // next time.
+    let fetching: Vec<_> = urls
+        .into_iter()
+        .map(|url| {
+            let images = core.images.clone();
+            core.handle
+                .spawn(async move { images.ensure(&[url]).await })
+        })
+        .collect();
+    let fetched = core.handle.block_on(async move {
+        let deadline = tokio::time::Instant::now() + COVER_WAIT;
+        let mut fetched = Vec::new();
+        for task in fetching {
+            if let Ok(Ok(found)) = tokio::time::timeout_at(deadline, task).await {
+                fetched.extend(found);
+            }
+        }
+        fetched
+    });
     let posters = shows
         .iter()
         .map(|s| {

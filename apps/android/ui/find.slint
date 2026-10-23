@@ -70,6 +70,10 @@ export global FindData {
     // The shows as you type.
     in property <[Suggestion]> suggestions;
     in property <bool> suggesting;
+    // An answer came for the words in the field; false while typing or waiting to ask.
+    in-out property <bool> suggest-done;
+    // Why AniList could not be asked, when it could not.
+    in property <string> suggest-error;
 
     // The lenses.
     in property <[string]> lenses;
@@ -229,7 +233,11 @@ export component Suggestions inherits VerticalLayout {
     spacing: Theme.unit * 3;
     SectionHead {
         title: "Shows";
-        note: FindData.suggesting ? "Asking AniList..." : FindData.suggestions.length == 0 ? "No show by that name. Return searches release names instead." : "Tap one to see who has it. Return searches release names.";
+        note: FindData.suggesting ? "Asking AniList..."
+            : FindData.suggest-error != "" ? FindData.suggest-error
+            : FindData.suggestions.length > 0 ? "Tap one to see who has it. Return searches release names."
+            : FindData.suggest-done ? "No show by that name. Return searches release names instead."
+            : "Shows come up as you type. Return searches release names.";
     }
     if FindData.suggestions.length > 0: ListGroup {
         for s[i] in FindData.suggestions: SuggestionItem {

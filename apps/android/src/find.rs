@@ -91,6 +91,10 @@ struct Find {
     suggestions: Vec<Offer>,
     /// The typed text the AniList answer is for; an answer for older text is dropped.
     suggest_for: String,
+    /// The last answer and the text it was for, so going back to the same words lists
+    /// them again without asking AniList twice.
+    answered_for: String,
+    answered: Vec<Offer>,
 }
 
 thread_local! {
@@ -154,6 +158,8 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
             posters: BTreeMap::new(),
             suggestions: Vec::new(),
             suggest_for: String::new(),
+            answered_for: String::new(),
+            answered: Vec::new(),
         })
     });
     let d = window.global::<FindData>();
@@ -166,10 +172,18 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
         with(|f| {
             f.with_data(|d| d.set_shown(true));
             f.refresh();
+            f.with_data(|d| d.set_text(SharedString::new()));
+            f.clear_suggestions();
             let card = f.cards.iter().find(|c| c.id as i32 == id).cloned();
-            if let Some(card) = card {
-                f.clear_suggestions();
-                f.open_show(Find::offer_of(&card));
+            match card {
+                Some(card) => f.open_show(Find::offer_of(&card)),
+                None => {
+                    f.show = None;
+                    f.list = None;
+                    f.set_view(0);
+                    f.show_lens();
+                    f.line("", "That show is no longer in the library on this phone.");
+                }
             }
         })
     });
@@ -509,42 +523,73 @@ impl Find {
             self.clear_suggestions();
             return;
         }
+        // The same words as the last answer: list it again, AniList already said.
+        if text == self.answered_for {
+            self.suggestions = self.answered.clone();
+            self.suggest_for = text;
+            self.with_data(|d| {
+                d.set_suggesting(false);
+                d.set_suggest_done(true);
+                d.set_suggest_error(SharedString::new());
+            });
+            self.draw_suggestions();
+            return;
+        }
         let needle = text.to_lowercase();
-        let mut offers: Vec<Offer> = self
-            .cards
-            .iter()
-            .filter(|c| names_of(c).iter().any(|n| n.to_lowercase().contains(&needle)))
-            .take(5)
-            .map(|c| {
-                let mut offer = Self::offer_of(c);
-                offer.ledger = library_line(c);
-                offer
-            })
-            .collect();
-        let known: Vec<String> = self.cards.iter().flat_map(names_of).map(|n| n.to_lowercase()).collect();
+        let shown: Vec<&SeriesCard> =
+            self.cards.iter().filter(|c| names_of(c).iter().any(|n| n.to_lowercase().contains(&needle))).take(5).collect();
+        let mut ids: Vec<u64> = shown.iter().map(|c| c.id).collect();
+        let mut offers: Vec<Offer> = shown.into_iter().map(library_offer).collect();
         self.suggestions = offers.clone();
         self.suggest_for = text.clone();
-        self.with_data(|d| d.set_suggesting(true));
+        self.with_data(|d| {
+            d.set_suggesting(true);
+            d.set_suggest_done(false);
+            d.set_suggest_error(SharedString::new());
+        });
         self.draw_suggestions();
         ask(Call::PhoneFindShows { query: text.clone(), limit: 8 }, move |f, answer| {
             if f.suggest_for != text {
                 return;
             }
-            f.with_data(|d| d.set_suggesting(false));
-            if let Ok(Reply::PhoneShows { shows, posters }) = answer {
-                for (hit, poster) in shows.iter().zip(posters) {
-                    let names = hit_names(hit);
-                    if names.iter().any(|n| known.contains(&n.to_lowercase())) {
-                        continue;
+            match answer {
+                Ok(Reply::PhoneShows { shows, posters }) => {
+                    for (hit, poster) in shows.iter().zip(posters) {
+                        if offers.len() >= 10 {
+                            break;
+                        }
+                        // A hit that is a library show is that show, from the library: listed
+                        // once, with what the phone has, even past the first five matches.
+                        let names: Vec<String> = primary_names(hit).iter().map(|n| n.to_lowercase()).collect();
+                        let card = f.cards.iter().find(|c| names_of(c).iter().any(|n| names.contains(&n.to_lowercase())));
+                        match card {
+                            Some(c) if ids.contains(&c.id) => {}
+                            Some(c) => {
+                                ids.push(c.id);
+                                offers.push(library_offer(c));
+                            }
+                            None => offers.push(offer_of_hit(hit, poster)),
+                        }
                     }
-                    if offers.len() >= 10 {
-                        break;
-                    }
-                    offers.push(offer_of_hit(hit, poster));
+                    f.answered_for = text.clone();
+                    f.answered = offers.clone();
+                    f.suggestions = offers;
+                    f.with_data(|d| {
+                        d.set_suggesting(false);
+                        d.set_suggest_done(true);
+                    });
+                    f.load_posters(&f.suggestions.clone());
+                    f.draw_suggestions();
                 }
-                f.suggestions = offers;
-                f.load_posters(&f.suggestions.clone());
-                f.draw_suggestions();
+                Ok(_) => f.with_data(|d| d.set_suggesting(false)),
+                Err(e) => {
+                    let why = SharedString::from(format!("AniList could not be asked: {}", words(&e)));
+                    f.with_data(|d| {
+                        d.set_suggesting(false);
+                        d.set_suggest_done(true);
+                        d.set_suggest_error(why);
+                    });
+                }
             }
         });
     }
@@ -552,7 +597,11 @@ impl Find {
     fn clear_suggestions(&mut self) {
         self.suggestions.clear();
         self.suggest_for.clear();
-        self.with_data(|d| d.set_suggesting(false));
+        self.with_data(|d| {
+            d.set_suggesting(false);
+            d.set_suggest_done(false);
+            d.set_suggest_error(SharedString::new());
+        });
         self.draw_suggestions();
     }
 
@@ -1155,6 +1204,13 @@ fn names_of(c: &SeriesCard) -> Vec<String> {
     names
 }
 
+/// A library show as a suggestion, with what the phone has of it.
+fn library_offer(c: &SeriesCard) -> Offer {
+    let mut offer = Find::offer_of(c);
+    offer.ledger = library_line(c);
+    offer
+}
+
 /// What a library show has on this phone, for its suggestion row.
 fn library_line(c: &SeriesCard) -> String {
     let here = c.cubes.chars().filter(|k| matches!(k, 'w' | 'l' | 'd')).count();
@@ -1166,15 +1222,39 @@ fn library_line(c: &SeriesCard) -> String {
     }
 }
 
-/// Every name an AniList hit goes by, the latin ones first: release files carry those.
-fn hit_names(h: &SearchResult) -> Vec<String> {
-    let mut names = Vec::new();
-    for n in [h.romaji.as_ref(), h.english.as_ref(), Some(&h.title)].into_iter().flatten().chain(h.synonyms.iter()) {
+/// The names an AniList hit is known by first: romaji, English, its title.
+fn primary_names(h: &SearchResult) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    for n in [h.romaji.as_ref(), h.english.as_ref(), Some(&h.title)].into_iter().flatten() {
         if !names.contains(n) {
             names.push(n.clone());
         }
     }
     names
+}
+
+/// The names to search releases by: the primary ones, then at most two synonyms that
+/// release files could carry (latin script, long enough not to match everything).
+fn hit_names(h: &SearchResult) -> Vec<String> {
+    let mut names = primary_names(h);
+    let latin = |n: &str| n.chars().all(|c| c.is_ascii() || (c.is_alphabetic() && (c as u32) < 0x0250));
+    for n in h.synonyms.iter().filter(|n| n.chars().count() >= 5 && latin(n)).take(2) {
+        if !names.contains(n) {
+            names.push(n.clone());
+        }
+    }
+    names
+}
+
+/// A title as a folder name: a slash or backslash would make it a path, so it becomes a
+/// space (Fate/Zero goes into "Fate Zero"), and control characters go.
+fn folder_name(title: &str) -> String {
+    let cleaned: String = title.chars().map(|c| if c == '/' || c == '\\' { ' ' } else { c }).filter(|c| !c.is_control()).collect();
+    let folded = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+    match folded.as_str() {
+        "" | "." | ".." => "Show".to_string(),
+        _ => folded,
+    }
 }
 
 /// A show found on AniList, not in the library: searched by its latin names, saved under
@@ -1198,9 +1278,9 @@ fn offer_of_hit(h: &SearchResult, poster: String) -> Offer {
             title: title.clone(),
             queries,
             total,
-            airing: false,
+            airing: h.airing,
             cubes: "g".repeat(total.min(400) as usize),
-            folder: title,
+            folder: folder_name(&title),
         },
         in_library: false,
         poster: (!poster.is_empty()).then_some(poster),
