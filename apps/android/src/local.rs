@@ -107,8 +107,6 @@ fn open(data_dir: &Path) -> Result<(Arc<Core>, Arc<Subscription>), Box<dyn std::
     }
     core.start()?;
     log("core started");
-    let (tester, dir) = (core.clone(), data_dir.clone());
-    let _ = std::thread::Builder::new().name("test-download".into()).spawn(move || test_download(&tester, &dir));
     Ok((core, listener))
 }
 
@@ -132,38 +130,5 @@ fn seed(library: &Path) {
         if std::fs::write(&path, b"").is_ok() {
             log(&format!("seeded {name}"));
         }
-    }
-}
-
-/// A test hook: `/data/local/tmp/anibeam-download` holds a title on its first line and a
-/// magnet or torrent link on its second, and the core downloads it once, so the engine can
-/// be tried with a legal file without a search.
-fn test_download(core: &Arc<Core>, data_dir: &Path) {
-    let Ok(text) = std::fs::read_to_string("/data/local/tmp/anibeam-download") else { return };
-    // Once per file: the same file on the next start adds nothing.
-    let seen = data_dir.join("test-download.seen");
-    if std::fs::read_to_string(&seen).is_ok_and(|s| s == text) {
-        return;
-    }
-    let _ = std::fs::write(&seen, &text);
-    let mut lines = text.lines().map(str::trim).filter(|l| !l.is_empty());
-    let (Some(title), Some(link)) = (lines.next(), lines.next()) else { return };
-    let release = anibeam_core::Release {
-        title: title.to_string(),
-        link: link.to_string(),
-        seeders: None,
-        leechers: None,
-        downloads: None,
-        size: String::new(),
-        category: String::new(),
-        page: String::new(),
-        source: "test".to_string(),
-        resolution: String::new(),
-        infomkv: String::new(),
-        linktype: "magnet".to_string(),
-    };
-    match core.call(Call::PhoneDownload { items: vec![release], name: None, limit_bytes: None }) {
-        Ok(_) => log(&format!("test download added: {title}")),
-        Err(e) => log(&format!("test download refused: {e}")),
     }
 }

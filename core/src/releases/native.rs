@@ -264,7 +264,7 @@ impl Native {
 }
 
 /// A URL with any key in it cut short, for a list a person reads.
-fn mask(url: &str) -> String {
+pub fn mask(url: &str) -> String {
     let mut out = url.to_string();
     for key in ["token=", "apikey=", "passkey=", "api_key="] {
         let mut from = 0;

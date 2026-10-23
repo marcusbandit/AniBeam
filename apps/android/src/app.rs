@@ -347,7 +347,7 @@ impl App {
         let data = self.data();
         let rows: Vec<SourceRow> = sources
             .iter()
-            .map(|s| SourceRow { name: s.name.clone().into(), url: hide_token(&s.url).into(), enabled: s.enabled })
+            .map(|s| SourceRow { name: s.name.clone().into(), url: anibeam_core::releases::native::mask(&s.url).into(), enabled: s.enabled })
             .collect();
         data.set_sources(ModelRc::new(VecModel::from(rows)));
         self.sources = sources;
@@ -496,18 +496,19 @@ impl App {
         }
     }
 
-    /// Holds downloads off Wi-Fi when the person wants Wi-Fi only.
+    /// Holds downloads off Wi-Fi when the person wants Wi-Fi only. The state is noted once
+    /// the core took it, so a refusal is tried again on the next look.
     fn hold_for_network(&mut self) {
         let Some(core) = crate::local::core() else { return };
         let held = self.prefs.wifi_only && crate::android::unmetered() != Some(true);
         if self.held == Some(held) {
             return;
         }
-        self.held = Some(held);
-        let _ = std::thread::Builder::new().name("hold".into()).spawn(move || {
-            if let Err(e) = core.call(Call::SetPhoneHeld { held }) {
-                crate::local::log(&format!("could not hold downloads: {e}"));
+        let _ = std::thread::Builder::new().name("hold".into()).spawn(move || match core.call(Call::SetPhoneHeld { held }) {
+            Ok(_) => {
+                let _ = slint::invoke_from_event_loop(move || with_app(|app| app.held = Some(held)));
             }
+            Err(e) => crate::local::log(&format!("could not hold downloads: {e}")),
         });
     }
 
@@ -649,19 +650,6 @@ impl App {
             }
         }
     }
-}
-
-/// A source's address with any key in it cut short, for the list on More.
-fn hide_token(url: &str) -> String {
-    let mut out = url.to_string();
-    for key in ["token=", "apikey=", "passkey="] {
-        if let Some(at) = out.find(key) {
-            let start = at + key.len();
-            let end = out[start..].find('&').map_or(out.len(), |e| start + e);
-            out.replace_range(start..end, "...");
-        }
-    }
-    out
 }
 
 fn download_row(t: &Torrent, held: bool) -> DownloadRow {

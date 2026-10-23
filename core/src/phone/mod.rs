@@ -22,6 +22,9 @@ pub struct Phone {
     /// Whether the subscription poller runs.
     #[cfg(feature = "phone")]
     polling: std::sync::atomic::AtomicBool,
+    /// Held by one poll round at a time.
+    #[cfg(feature = "phone")]
+    poll_lock: tokio::sync::Mutex<()>,
 }
 
 fn sources_path(core: &Core) -> PathBuf {
@@ -327,7 +330,7 @@ pub fn download(
                     .list()
                     .await
                     .iter()
-                    .map(|t| t.size - (t.progress * t.size as f64) as u64)
+                    .map(|t| t.size.saturating_sub((t.progress * t.size as f64) as u64))
                     .sum(),
                 Err(_) => 0,
             }
@@ -394,7 +397,25 @@ pub fn subscribe(
         .handle
         .block_on(native.preview(&query, &endpoint, &items))?;
     let name = name_for(name.as_deref(), &items, &query)?;
-    let (_, subscribed) = rules_store(core).subscribe(&name, &spec, &library_dir(core))?;
+    let store = rules_store(core);
+    let (_, subscribed) = store.subscribe(&name, &spec, &library_dir(core))?;
+    // What the feed holds now for episodes the library already has is taken, so the first
+    // round does not download them again (qBittorrent's previously matched episodes).
+    if let Ok(now) = core
+        .handle
+        .block_on(feed(core, &spec.feed_url, &subscribed.name))
+    {
+        let (facts, _) = crate::downloads::annotate(core, &query, &now);
+        let had: Vec<String> = now
+            .iter()
+            .zip(&facts)
+            .filter(|(_, f)| f.on_disk)
+            .map(|(i, _)| i.link.clone())
+            .collect();
+        if !had.is_empty() {
+            store.mark_taken(&subscribed.name, &had)?;
+        }
+    }
     core.bus.info(
         Stage::Downloads,
         format!("Subscribed to {}", subscribed.name),
@@ -446,12 +467,25 @@ pub fn unsubscribe(core: &Core, names: Vec<String>, files: bool) -> Result<Reply
                     .map(|t| t.hash)
                     .collect();
                 engine.control(&hashes, PhoneAction::Remove).await?;
-                let _ = std::fs::remove_dir_all(&rule.save_path);
+                // The folder is the show's, shared with downloads made by hand: it goes only
+                // when the rule's torrents took the last of it.
+                let _ = std::fs::remove_dir(&rule.save_path);
             }
             Ok::<(), CoreError>(())
         })?;
     }
     Ok(Reply::Ok)
+}
+
+/// A subscription's feed: AnimeTosho's JSON search, or RSS.
+#[cfg(feature = "phone")]
+async fn feed(core: &Core, url: &str, name: &str) -> Result<Vec<Release>, CoreError> {
+    let timeout = crate::releases::fetch::DEFAULT_TIMEOUT;
+    if url.contains("animetosho.org/feed/json") {
+        crate::releases::tosho::fetch(core.http.as_ref(), url, name, timeout).await
+    } else {
+        crate::releases::fetch::fetch_rss(core.http.as_ref(), url, name, timeout).await
+    }
 }
 
 /// How often the core reads the subscriptions' feeds: qBittorrent's default.
@@ -470,16 +504,11 @@ pub async fn poll(core: &Core) {
 
 #[cfg(feature = "phone")]
 async fn poll_with(core: &Core, engine: &engine::Engine) {
+    // One round at a time: a subscribe's round and the timer's would add the same releases.
+    let _one = core.phone.poll_lock.lock().await;
     let store = rules_store(core);
     for rule in store.load().into_iter().filter(|r| r.enabled) {
-        let items = match crate::releases::fetch::fetch_rss(
-            core.http.as_ref(),
-            &rule.feed_url,
-            &rule.name,
-            crate::releases::fetch::DEFAULT_TIMEOUT,
-        )
-        .await
-        {
+        let items = match feed(core, &rule.feed_url, &rule.name).await {
             Ok(items) => items,
             Err(e) => {
                 tracing::warn!("subscription {} not read: {e}", rule.name);

@@ -17,6 +17,8 @@ const RESOLVERS: [&str; 2] = ["https://1.1.1.1/dns-query", "https://8.8.8.8/reso
 const ASK_TIMEOUT: Duration = Duration::from_secs(5);
 /// The longest an answer is kept, whatever its TTL says.
 const MAX_TTL: u64 = 3600;
+/// How long the resolvers are left alone after none answered.
+const DOWN_FOR: Duration = Duration::from_secs(300);
 
 /// Name to its addresses and when they go stale.
 type Cache = HashMap<String, (Vec<IpAddr>, Instant)>;
@@ -25,6 +27,9 @@ type Cache = HashMap<String, (Vec<IpAddr>, Instant)>;
 pub struct Doh {
     client: reqwest::Client,
     cache: Arc<Mutex<Cache>>,
+    /// Until when no resolver is asked: set when none answered, so a network that drops
+    /// them costs one wait, not one per host.
+    down_until: Arc<Mutex<Option<Instant>>>,
 }
 
 impl Doh {
@@ -33,6 +38,7 @@ impl Doh {
         Doh {
             client,
             cache: Arc::new(Mutex::new(HashMap::new())),
+            down_until: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -62,11 +68,21 @@ impl Doh {
         {
             return Some(ips.clone());
         }
+        if self
+            .down_until
+            .lock()
+            .unwrap()
+            .is_some_and(|until| until > Instant::now())
+        {
+            return None;
+        }
+        let mut answered = false;
         for resolver in RESOLVERS {
             let (v4, v6) = tokio::join!(
                 self.ask(resolver, name, "A"),
                 self.ask(resolver, name, "AAAA")
             );
+            answered |= v4.is_some() || v6.is_some();
             let ttl = v4
                 .as_ref()
                 .map(|(_, t)| *t)
@@ -87,6 +103,9 @@ impl Doh {
                     .insert(name.to_string(), (ips.clone(), until));
                 return Some(ips);
             }
+        }
+        if !answered {
+            *self.down_until.lock().unwrap() = Some(Instant::now() + DOWN_FOR);
         }
         None
     }

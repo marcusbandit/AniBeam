@@ -138,7 +138,9 @@ impl Engine {
             }
         };
         let handle = match added {
-            AddTorrentResponse::Added(_, h) | AddTorrentResponse::AlreadyManaged(_, h) => h,
+            AddTorrentResponse::Added(_, h) => h,
+            // One the engine has already keeps its record: its files stay where they are.
+            AddTorrentResponse::AlreadyManaged(_, h) => return Ok(h.info_hash().as_string()),
             AddTorrentResponse::ListOnly(_) => {
                 return Err(fail("the engine only listed the torrent"));
             }
