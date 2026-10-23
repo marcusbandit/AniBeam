@@ -51,6 +51,20 @@ double tap on either side jumps ten seconds. mpv draws each frame through its re
 into a texture on a GL context shared with Slint's (`src/video.rs`), so it never touches
 the context Slint draws with.
 
+**Casting**: the cast button at the player's top right looks for Chromecasts (mDNS) and
+DLNA TVs (SSDP) on the Wi-Fi while its sheet is up, and hands the episode over from where it
+is, with the audio and subtitles playing here. The phone stays the remote: play, pause,
+seek, skip intro, the next episode, and the position comes back from the TV for progress and
+tracking. Nothing is re-encoded: a Chromecast gets HLS cut on keyframes from the Matroska
+file (fragmented MP4, so HEVC works where the device decodes it), a DLNA TV gets the file as
+it is, or the same fragments as one stream if it refuses. Subtitles go as text (WebVTT for
+Chromecast, SRT for TVs that read it), so ASS styling is lost. 10-bit H.264 (Hi10P) is refused
+with a reason until the transcode (#141) lands. The core's cast code is in `core/src/cast/`;
+`core/examples/cast_drive.rs` drives a whole cast from the desktop. To try it from the
+emulator, which cannot see the LAN's multicast, write `/data/local/tmp/anibeam-cast-dev` with
+`renderer=<a DLNA description URL>`, `port=47000` and `advertise=127.0.0.1:47000`, and
+`adb forward tcp:47000 tcp:47000`.
+
 Downloads run in the core's own torrent engine (`librqbit`, the core's `phone` feature),
 held while the phone is off Wi-Fi unless mobile data was allowed. While anything
 downloads, a small Java service (`android/java/`) keeps a notification up so Android does
@@ -71,7 +85,7 @@ too, so its library still shows when it is off.
    (Android asks once to allow installs from that app), or with USB debugging on:
 
    ```sh
-   adb install -r dist/AniBeam-0.7.0.apk
+   adb install -r dist/AniBeam-0.8.0.apk
    ```
 
 4. Open AniBeam. It starts out pointed at `banditbox:8790`, the desktop's MagicDNS name.

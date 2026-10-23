@@ -54,6 +54,10 @@ export global PlayerData {
     in property <string> picker-title;
     in property <[PickRow]> picker-rows;
     in property <string> error;
+    // Casting: the device's name, and a line for what it is doing ("Connecting", "Paused").
+    in property <bool> casting;
+    in property <string> cast-device;
+    in property <string> cast-line;
     // Where the island's top edge is, so the subtitles can be lifted clear of it.
     in-out property <length> controls-top;
     in-out property <length> page-height;
@@ -73,6 +77,8 @@ export global PlayerData {
     callback close-picker();
     callback mark();
     callback notice-clicked();
+    // Opens the Cast to sheet, which looks for devices while it is up.
+    callback cast();
     // Any touch on the chrome keeps it up for another 2.5 s.
     callback touched();
 }
@@ -271,6 +277,35 @@ export component PlayerPage inherits Rectangle {
         image-fit: fill;
     }
 
+    // Casting: the TV has the picture; the phone says where it went.
+    if PlayerData.casting: Rectangle {
+        background: Theme.ground;
+        VerticalLayout {
+            alignment: center;
+            spacing: Theme.unit * 3;
+            Image {
+                height: 16 * Theme.unit;
+                source: @image-url("icons/tv.svg");
+                colorize: Theme.dim;
+                image-fit: contain;
+            }
+            Text {
+                text: "Playing on " + PlayerData.cast-device;
+                color: Theme.text;
+                font-family: Theme.display-face;
+                font-size: Theme.section;
+                horizontal-alignment: center;
+                overflow: elide;
+            }
+            Text {
+                text: PlayerData.cast-line;
+                color: Theme.dim;
+                font-size: Theme.small + 1px;
+                horizontal-alignment: center;
+            }
+        }
+    }
+
     // The picture: one tap for the chrome, two on a side to jump.
     TouchArea {
         clicked => {
@@ -375,10 +410,17 @@ export component PlayerPage inherits Rectangle {
             icon: @image-url("icons/arrow-left.svg");
             clicked => { PlayerData.back(); }
         }
+        PlayerButton {
+            x: parent.width - self.width - root.side-right;
+            y: root.inset-top + Theme.unit * 2;
+            icon: @image-url("icons/cast.svg");
+            active: PlayerData.casting;
+            clicked => { PlayerData.cast(); }
+        }
         VerticalLayout {
             x: root.side-left + 14 * Theme.unit;
             y: root.inset-top + Theme.unit * 2;
-            width: parent.width - self.x - root.side-right;
+            width: parent.width - self.x - root.side-right - 14 * Theme.unit;
             height: self.preferred-height;
             spacing: 1px;
             Text {
@@ -397,8 +439,9 @@ export component PlayerPage inherits Rectangle {
         }
     }
 
-    // The middle: back ten, play or pause, on ten. Only while nothing has ended.
-    if !PlayerData.replay && PlayerData.loaded: HorizontalLayout {
+    // The middle: back ten, play or pause, on ten. Only while nothing has ended, and not while
+    // casting, where the page's middle says where the picture went.
+    if !PlayerData.replay && PlayerData.loaded && !PlayerData.casting: HorizontalLayout {
         x: (parent.width - self.preferred-width) / 2;
         y: (parent.height - 18 * Theme.unit) / 2;
         height: 18 * Theme.unit;

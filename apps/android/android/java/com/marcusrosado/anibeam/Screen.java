@@ -1,7 +1,9 @@
 package com.marcusrosado.anibeam;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.pm.ActivityInfo;
+import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.view.View;
 import android.view.Window;
@@ -16,6 +18,26 @@ import android.view.WindowManager;
  */
 public final class Screen {
     private Screen() {}
+
+    private static WifiManager.MulticastLock multicast;
+
+    /**
+     * Holds or lets go of Wi-Fi multicast while the player looks for Chromecasts and TVs:
+     * without it many phones drop the mDNS and SSDP answers to save battery.
+     */
+    public static synchronized void multicast(final Activity activity, final boolean on) {
+        if (on) {
+            if (multicast == null) {
+                WifiManager wifi = (WifiManager) activity.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+                if (wifi == null) return;
+                multicast = wifi.createMulticastLock("anibeam-cast");
+                multicast.setReferenceCounted(false);
+            }
+            multicast.acquire();
+        } else if (multicast != null && multicast.isHeld()) {
+            multicast.release();
+        }
+    }
 
     public static void player(final Activity activity, final boolean on) {
         activity.runOnUiThread(new Runnable() {

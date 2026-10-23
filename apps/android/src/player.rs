@@ -16,8 +16,8 @@ use std::time::Duration;
 
 use anibeam_core::playback::{options, tracks};
 use anibeam_core::{
-    AutoSkip, Call, Chapter, CloseReason, EventBody, PlaybackSession, Reply, SkipKind, SkipWindow, SubtitleChoice,
-    Tracker, TrackerOutcome,
+    AutoSkip, Call, CastDevice, CastKind, CastPlayState, CastState, CastSubtitle, Chapter, CloseReason, EventBody,
+    PlaybackSession, Reply, SkipKind, SkipWindow, SubtitleChoice, Tracker, TrackerOutcome,
 };
 use slint::{ComponentHandle, Model, ModelRc, Timer, TimerMode, VecModel};
 
@@ -219,6 +219,15 @@ pub fn chapters(json: &str) -> Vec<Chapter> {
         .unwrap_or_default()
 }
 
+/// A cast in progress from this page: the device has the picture, the page is the remote.
+struct Casting {
+    device: CastDevice,
+    state: CastPlayState,
+}
+
+/// How long the page holds Wi-Fi multicast open while it looks for devices.
+const LOOK_FOR: Duration = Duration::from_secs(10);
+
 /// What the notice's action does.
 enum Undo {
     Skip { to: f64, kind: SkipKind },
@@ -252,12 +261,24 @@ struct Player {
     next: Timer,
     notice: Timer,
     fallback: Timer,
+    /// The cast this page is the remote for.
+    cast: Option<Casting>,
+    /// A device to cast to as soon as the file's tracks are known: the next episode after
+    /// one that finished on the TV.
+    cast_on_load: Option<CastDevice>,
+    /// mpv's track list as it last came, for the track numbers a cast names.
+    track_json: String,
+    look: Timer,
 }
 
 thread_local! {
     static PLAYER: RefCell<Option<Player>> = const { RefCell::new(None) };
     /// Set by `open` before the player exists, read by the rendering notifier.
     static WINDOW: RefCell<Option<slint::Weak<AppWindow>>> = const { RefCell::new(None) };
+    /// The Chromecasts and TVs found on this network, kept across episodes.
+    static DEVICES: RefCell<Vec<CastDevice>> = const { RefCell::new(Vec::new()) };
+    /// Carried from one episode's page to the next's when the cast goes on.
+    static PENDING_CAST: RefCell<Option<CastDevice>> = const { RefCell::new(None) };
 }
 
 fn with_player(f: impl FnOnce(&mut Player)) {
@@ -302,6 +323,7 @@ pub fn install(window: &AppWindow) {
     d.on_mark(|| with_player(|p| p.mark()));
     d.on_notice_clicked(|| with_player(|p| p.notice_clicked()));
     d.on_touched(|| with_player(|p| p.show_chrome()));
+    d.on_cast(|| with_player(|p| p.open_picker(4)));
 
     let weak = window.as_weak();
     let r = window.window().set_rendering_notifier(move |state, _api| match state {
@@ -434,8 +456,13 @@ pub fn open(file: u64) {
         next: Timer::default(),
         notice: Timer::default(),
         fallback: Timer::default(),
+        cast: None,
+        cast_on_load: PENDING_CAST.with(|c| c.borrow_mut().take()),
+        track_json: String::new(),
+        look: Timer::default(),
     };
     player.start();
+    player.show_cast();
     // The file waits for the renderer, but never forever: with no picture after three
     // seconds it plays on sound, and the page says why.
     let session_id = player.session.session;
@@ -522,6 +549,12 @@ fn neighbour(forward: bool) {
         if !p.session.is_extra {
             target = if forward { p.session.next } else { p.session.prev };
         }
+        // A cast goes on with the next episode on the same device.
+        if target.is_some()
+            && let Some(c) = &p.cast
+        {
+            PENDING_CAST.with(|pc| *pc.borrow_mut() = Some(c.device.clone()));
+        }
     });
     if let Some(file) = target {
         close_page(CloseReason::Switched);
@@ -532,9 +565,21 @@ fn neighbour(forward: bool) {
 /// The core's playback events: AniSkip's windows and the tracker's answers.
 pub fn core_event(body: &EventBody) {
     let body = match body {
-        EventBody::SkipWindowsReady { .. } | EventBody::Marked { .. } | EventBody::Scored { .. } => body.clone(),
+        EventBody::SkipWindowsReady { .. }
+        | EventBody::Marked { .. }
+        | EventBody::Scored { .. }
+        | EventBody::CastChanged { .. }
+        | EventBody::CastDevicesChanged { .. } => body.clone(),
         _ => return,
     };
+    if let EventBody::CastDevicesChanged { devices } = &body {
+        let devices = devices.clone();
+        let _ = slint::invoke_from_event_loop(move || {
+            DEVICES.with(|d| *d.borrow_mut() = devices);
+            with_player(|p| p.show_tracks());
+        });
+        return;
+    }
     let _ = slint::invoke_from_event_loop(move || {
         with_player(|p| match body {
             EventBody::SkipWindowsReady { session, windows } if session == p.session.session => {
@@ -549,6 +594,7 @@ pub fn core_event(body: &EventBody) {
                 let ok = outcomes.iter().all(|o| o.ok);
                 p.flash(if ok { "Rated" } else { "Could not save the score" }, None);
             }
+            EventBody::CastChanged { state } => p.on_cast(state),
             _ => {}
         });
     });
@@ -572,6 +618,10 @@ impl Player {
         self.mpv.set("volume", "100");
         let start = self.session.resume_from.map(|r| r.to_string()).unwrap_or_else(|| "none".into());
         self.mpv.set("start", &start);
+        // The next episode of a cast plays on the TV, not here.
+        if self.cast_on_load.is_some() {
+            self.mpv.set("pause", "yes");
+        }
         // The file loads once the renderer is up: see `video_started`.
     }
 
@@ -721,11 +771,19 @@ impl Player {
         let pick = tracks::pick(&self.tracks, &self.session.track_choice, &self.session.subtitle_defaults);
         self.mpv.set("aid", &pick.aid.map(|a| a.to_string()).unwrap_or_else(|| "no".into()));
         self.mpv.set("sid", &pick.sid.map(|s| s.to_string()).unwrap_or_else(|| "no".into()));
+        self.aid = pick.aid.unwrap_or(-1);
+        self.sid = pick.sid.unwrap_or(-1);
+        if let Some(j) = self.mpv.get("track-list") {
+            self.track_json = j;
+        }
         self.show_tracks();
         self.d(|d| {
             d.set_loaded(true);
             d.set_duration(duration as f32);
         });
+        if let Some(dev) = self.cast_on_load.take() {
+            self.start_cast(dev, None);
+        }
         self.show_bands();
         // Once a second while playing; the pause, seek and close send their own.
         let weak = self.session.session;
@@ -791,6 +849,7 @@ impl Player {
             }
             ("track-list", Value::Text(j)) => {
                 self.tracks = parse_tracks(&j);
+                self.track_json = j;
                 self.show_tracks();
             }
             ("aid", v) => {
@@ -834,6 +893,15 @@ impl Player {
         }
         self.closed = true;
         self.tick.stop();
+        self.look.stop();
+        crate::android::multicast(false);
+        let carried = PENDING_CAST.with(|c| c.borrow().is_some());
+        if self.cast.is_some()
+            && !(reason == CloseReason::Switched && carried)
+            && let Some(core) = crate::local::core()
+        {
+            let _ = core.call(Call::CastStop);
+        }
         if let Some(core) = crate::local::core() {
             let _ = core.call(Call::ClosePlayback { session: self.session.session, position: self.rules.position, reason });
         }
@@ -841,13 +909,23 @@ impl Player {
     }
 
     fn toggle_pause(&mut self) {
+        if let Some(c) = &self.cast {
+            let call = if c.state == CastPlayState::Playing { Call::CastPause } else { Call::CastPlay };
+            self.cast_call(call);
+            self.show_chrome();
+            return;
+        }
         self.mpv.set("pause", if self.paused { "no" } else { "yes" });
         self.show_chrome();
     }
 
     fn seek(&mut self, t: f64) {
         let t = if self.rules.duration > 0.0 { t.clamp(0.0, self.rules.duration) } else { t.max(0.0) };
-        self.mpv.command(&["seek", &t.to_string(), "absolute"]);
+        if self.cast.is_some() {
+            self.cast_call(Call::CastSeek { to: t });
+        } else {
+            self.mpv.command(&["seek", &t.to_string(), "absolute"]);
+        }
         // The next jump starts from here, not from a time-pos that has not caught up yet.
         self.rules.position = t;
         self.d(|d| d.set_position(t as f32));
@@ -964,6 +1042,23 @@ impl Player {
                 );
                 ("Subtitles".into(), rows)
             }
+            4 => {
+                let mut rows = Vec::new();
+                if let Some(c) = &self.cast {
+                    rows.push(PickRow { label: format!("Stop casting to {}", c.device.name).into(), active: false });
+                }
+                let devices = DEVICES.with(|d| d.borrow().clone());
+                for dev in &devices {
+                    let kind = match dev.kind {
+                        CastKind::Chromecast => dev.model.clone().unwrap_or_else(|| "Chromecast".into()),
+                        CastKind::Dlna => "TV".into(),
+                    };
+                    let active = self.cast.as_ref().is_some_and(|c| c.device.id == dev.id);
+                    rows.push(PickRow { label: format!("{}   {kind}", dev.name).into(), active });
+                }
+                let title = if devices.is_empty() { "Looking for Chromecasts and TVs" } else { "Cast to" };
+                (title.into(), rows)
+            }
             _ => {
                 let mut speed = 1.0;
                 self.d(|d| speed = d.get_speed() as f64);
@@ -996,6 +1091,9 @@ impl Player {
     }
 
     fn open_picker(&mut self, kind: i32) {
+        if kind == 4 {
+            self.look_for_devices();
+        }
         self.d(|d| d.set_picker_rows(ModelRc::default()));
         self.fill_picker(kind);
         self.d(|d| d.set_picker(kind));
@@ -1020,6 +1118,8 @@ impl Player {
                 let r = tracks::track_ref(&t);
                 self.session.track_choice.audio = Some(r.clone());
                 self.store_choice();
+                self.aid = t.id;
+                self.recast();
             }
             2 => {
                 if i == 0 {
@@ -1029,8 +1129,21 @@ impl Player {
                     let Some(t) = self.tracks.iter().filter(|t| t.kind == "sub").nth(i - 1).cloned() else { return };
                     self.mpv.set("sid", &t.id.to_string());
                     self.session.track_choice.subtitle = Some(SubtitleChoice::Track { track: tracks::track_ref(&t) });
+                    self.sid = t.id;
+                }
+                if i == 0 {
+                    self.sid = -1;
                 }
                 self.store_choice();
+                self.recast();
+            }
+            4 => {
+                let offset = usize::from(self.cast.is_some());
+                if self.cast.is_some() && i == 0 {
+                    self.cast_call(Call::CastStop);
+                } else if let Some(dev) = DEVICES.with(|d| d.borrow().get(i - offset).cloned()) {
+                    self.start_cast(dev, None);
+                }
             }
             3 => {
                 let Some(s) = SPEEDS.get(i) else { return };
@@ -1040,6 +1153,154 @@ impl Player {
             _ => {}
         }
         self.close_picker();
+    }
+
+    /// Looks around the network while the Cast to sheet is up, holding Wi-Fi multicast open
+    /// for that long.
+    fn look_for_devices(&mut self) {
+        crate::android::multicast(true);
+        if let Some(core) = crate::local::core()
+            && let Ok(Reply::CastDevices { devices }) = core.call(Call::CastDevices)
+        {
+            DEVICES.with(|d| *d.borrow_mut() = devices);
+        }
+        self.look.start(TimerMode::SingleShot, LOOK_FOR, || crate::android::multicast(false));
+    }
+
+    /// The Matroska track numbers of the audio and subtitles playing here, from mpv's list:
+    /// an embedded track's number is its ffmpeg index plus one; a subtitle file beside the
+    /// episode goes by its path.
+    fn cast_tracks(&self) -> (Option<u64>, CastSubtitle) {
+        let list: serde_json::Value = serde_json::from_str(&self.track_json).unwrap_or_default();
+        let entry = |id: i64, kind: &str| {
+            list.as_array().and_then(|a| a.iter().find(|t| t["id"].as_i64() == Some(id) && t["type"] == kind)).cloned()
+        };
+        let audio = entry(self.aid, "audio").and_then(|t| t["ff-index"].as_u64()).map(|i| i + 1);
+        let subtitle = match entry(self.sid, "sub") {
+            Some(t) if t["external"].as_bool() == Some(true) => match t["external-filename"].as_str() {
+                Some(path) => CastSubtitle::File { path: path.to_string() },
+                None => CastSubtitle::None,
+            },
+            Some(t) => t["ff-index"].as_u64().map(|i| CastSubtitle::Track { number: i + 1 }).unwrap_or(CastSubtitle::None),
+            None => CastSubtitle::None,
+        };
+        (audio, subtitle)
+    }
+
+    /// Hands the episode to `device` from where it is now, with the tracks chosen here.
+    fn start_cast(&mut self, device: CastDevice, at: Option<f64>) {
+        let Some(core) = crate::local::core() else { return };
+        let (audio_track, subtitle) = self.cast_tracks();
+        self.mpv.set("pause", "yes");
+        let start = at.unwrap_or(self.rules.position);
+        self.cast = Some(Casting { device: device.clone(), state: CastPlayState::Connecting });
+        self.show_cast();
+        let call = Call::CastStart { device: device.id.clone(), file: self.session.file, start, audio_track, subtitle };
+        if let Err(e) = core.call(call) {
+            self.cast = None;
+            self.show_cast();
+            self.flash(&e.to_string(), None);
+        }
+        crate::local::touch();
+    }
+
+    /// A new audio or subtitle choice while casting starts the cast again with it.
+    fn recast(&mut self) {
+        if let Some(c) = &self.cast {
+            let dev = c.device.clone();
+            self.start_cast(dev, None);
+        }
+    }
+
+    fn cast_call(&mut self, call: Call) {
+        if let Some(core) = crate::local::core()
+            && let Err(e) = core.call(call)
+        {
+            self.flash(&e.to_string(), None);
+        }
+    }
+
+    /// What the device said: its position drives the page and the ticks the same as local
+    /// playback would; an end, a failure or a stop hands the episode back to the phone.
+    fn on_cast(&mut self, st: CastState) {
+        let Some(c) = self.cast.as_mut() else { return };
+        if st.file != self.session.file {
+            return;
+        }
+        c.state = st.state;
+        match st.state {
+            CastPlayState::Playing | CastPlayState::Paused | CastPlayState::Buffering => {
+                if st.duration > 0.0 {
+                    self.rules.duration = st.duration;
+                    self.d(|d| d.set_duration(st.duration as f32));
+                }
+                let was = self.paused;
+                self.paused = st.state != CastPlayState::Playing;
+                let paused = self.paused;
+                self.d(|d| d.set_paused(paused));
+                if was != paused {
+                    self.send_tick();
+                }
+                self.d(|d| d.set_position(st.position as f32));
+                for step in self.rules.moved(st.position) {
+                    self.apply(step);
+                }
+                self.show_next();
+                self.show_skip();
+            }
+            CastPlayState::Ended => {
+                self.rules.position = st.position.max(self.rules.position);
+                if self.rules.has_next && !self.rules.next_dismissed {
+                    let dev = c.device.clone();
+                    PENDING_CAST.with(|pc| *pc.borrow_mut() = Some(dev));
+                    let _ = slint::invoke_from_event_loop(|| neighbour(true));
+                } else {
+                    self.close(CloseReason::Ended);
+                    self.d(|d| d.set_replay(true));
+                }
+            }
+            CastPlayState::Failed | CastPlayState::Stopped => {
+                if let Some(e) = &st.error {
+                    self.flash(e, None);
+                }
+                self.cast = None;
+                // The phone takes over where the TV was, paused.
+                let at = st.position.max(0.0);
+                if at > 0.0 {
+                    self.mpv.command(&["seek", &at.to_string(), "absolute"]);
+                    self.rules.position = at;
+                }
+                self.paused = true;
+                self.d(|d| d.set_paused(true));
+            }
+            CastPlayState::Connecting => {}
+        }
+        self.show_cast();
+    }
+
+    fn show_cast(&self) {
+        let (casting, device, line) = match &self.cast {
+            Some(c) => (
+                true,
+                c.device.name.clone(),
+                match c.state {
+                    CastPlayState::Connecting => "Connecting",
+                    CastPlayState::Buffering => "Loading",
+                    CastPlayState::Playing => "Playing",
+                    CastPlayState::Paused => "Paused",
+                    CastPlayState::Ended => "Finished",
+                    CastPlayState::Failed => "Stopped",
+                    CastPlayState::Stopped => "Stopped",
+                }
+                .to_string(),
+            ),
+            None => (false, String::new(), String::new()),
+        };
+        self.d(|d| {
+            d.set_casting(casting);
+            d.set_cast_device(device.into());
+            d.set_cast_line(line.into());
+        });
     }
 
     fn store_choice(&self) {

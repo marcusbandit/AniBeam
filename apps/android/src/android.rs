@@ -303,6 +303,14 @@ pub fn player_screen(on: bool) {
     let _ = on;
 }
 
+/// Holds Wi-Fi multicast while devices are being looked for.
+pub fn multicast(on: bool) {
+    #[cfg(target_os = "android")]
+    screen("multicast", on);
+    #[cfg(not(target_os = "android"))]
+    let _ = on;
+}
+
 /// Keeps the display on while a file plays, and lets it sleep when paused or closed.
 pub fn player_awake(on: bool) {
     #[cfg(target_os = "android")]

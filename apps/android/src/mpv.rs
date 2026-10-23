@@ -138,6 +138,8 @@ pub(crate) mod ffi {
     pub const EVENT_NONE: c_int = 0;
     pub const EVENT_SHUTDOWN: c_int = 1;
     pub const EVENT_LOG_MESSAGE: c_int = 2;
+    pub const EVENT_SET_PROPERTY_REPLY: c_int = 4;
+    pub const EVENT_COMMAND_REPLY: c_int = 5;
     pub const EVENT_END_FILE: c_int = 7;
     pub const EVENT_FILE_LOADED: c_int = 8;
     pub const EVENT_PROPERTY_CHANGE: c_int = 22;
@@ -336,6 +338,10 @@ mod imp {
             match e.event_id {
                 EVENT_SHUTDOWN => return,
                 EVENT_FILE_LOADED => listener(MpvEvent::FileLoaded),
+                // The async sets and commands answer here; only a refusal is worth a line.
+                EVENT_SET_PROPERTY_REPLY | EVENT_COMMAND_REPLY if e.error < 0 => {
+                    crate::local::log(&format!("mpv: an async request failed: {}", super::imp::error(e.error)));
+                }
                 EVENT_LOG_MESSAGE => {
                     let m = unsafe { &*(e.data as *const mpv_event_log_message) };
                     let (prefix, text) = unsafe { (CStr::from_ptr(m.prefix), CStr::from_ptr(m.text)) };
