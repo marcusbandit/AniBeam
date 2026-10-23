@@ -46,6 +46,17 @@ static EXTRA_PATTERNS: LazyLock<Vec<(ExtraKind, Regex)>> = LazyLock::new(|| {
             ExtraKind::Sp,
             Regex::new(r"(?i)^(?:SP|Special|Specials)([0-9]+)?([a-z])?$").unwrap(),
         ),
+        // An OVA is a special. A number glued on is its index; one apart
+        // (`OVA 2`) is a token of its own, as with `SP 2`.
+        (
+            ExtraKind::Sp,
+            Regex::new(r"(?i)^(?:OVA|OAD|OAV)([0-9]+)?$").unwrap(),
+        ),
+        // A season's extra in an `SxxEyy` slot: `S05EEX`, `S01ESP2`.
+        (
+            ExtraKind::Sp,
+            Regex::new(r"(?i)^S[0-9]+E(?:EX|SP)([0-9]+)?$").unwrap(),
+        ),
     ]
 });
 const OTHER_TOKENS: [&str; 5] = ["menu", "cm", "bonus", "extra", "extras"];
@@ -74,6 +85,12 @@ static EPISODE_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
 /// resolution (`1920x1080`) out.
 static SEASON_X_EPISODE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)[\s._-]([0-9]{1,2})x([0-9]{1,3})\b").unwrap());
+/// `- 6.5`, a recap or half episode after the dash, which the title anchor
+/// already takes whole. Tried after `01x36`, so a title of `1.28` after one
+/// never stands in for the episode, and ahead of the fallback, which would
+/// otherwise take the `5`.
+static DASH_DECIMAL: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)\s-\s*([0-9]+\.[0-9]+)(?:v[0-9]+)?(?:\s|$)").unwrap());
 static ANY_NUMBER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[0-9]+").unwrap());
 /// A revision suffix glued to a number (`07v2`), dropped before the
 /// fallback counts numbers so the `2` never reads as the episode.
@@ -154,6 +171,9 @@ fn extract_episode(file_name: &str) -> (Option<u32>, f64) {
     }
     if let Some(m) = SEASON_X_EPISODE.captures(&base) {
         return finalize(m[1].parse().ok(), m[2].parse().unwrap_or(1.0));
+    }
+    if let Some(m) = DASH_DECIMAL.captures(&base) {
+        return finalize(None, m[1].parse().unwrap_or(1.0));
     }
     let unrevised = REVISION.replace_all(&base, "$1");
     let survivors: Vec<u64> = ANY_NUMBER
@@ -441,6 +461,40 @@ mod tests {
         // Season 1 keys by the bare number, as a name with no season does.
         let name = "Death Note - 01x36 - 1.28.mkv";
         assert_eq!(episode_key(&ep(name), name), "36");
+    }
+
+    #[test]
+    fn an_ova_and_a_season_extra_are_specials() {
+        let c = ep("Dorohedoro - OVA .mkv");
+        assert_eq!(
+            (c.extra, c.extra_index, c.season),
+            (Some(ExtraKind::Sp), None, Some(0))
+        );
+        let c = ep("Show OVA2 [1080p].mkv");
+        assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Sp), Some(2)));
+        assert_eq!(ep("Show - OAD.mkv").extra, Some(ExtraKind::Sp));
+        let c = ep("Monogatari Series S05EEX.mkv");
+        assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Sp), None));
+        let c = ep("Show S01ESP2.mkv");
+        assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Sp), Some(2)));
+        // A word that only starts like one is not.
+        let c = ep("Show - 03 - Ovation.mkv");
+        assert_eq!((c.extra, c.number), (None, 3.0));
+        let c = ep("Monogatari Series - S05E05.mkv");
+        assert_eq!((c.extra, c.number, c.season), (None, 5.0, Some(5)));
+    }
+
+    #[test]
+    fn a_decimal_after_the_dash_is_the_episode() {
+        let c = ep("Kara no Kyoukai - 6.5 - Remix - Gate of Seventh Heaven (recap).mkv");
+        assert_eq!((c.extra, c.number, c.season), (None, 6.5, None));
+        assert_eq!(
+            ep("[Group] Show - 12.5 - Recap Title [1080p].mkv").number,
+            12.5
+        );
+        assert_eq!(ep("Show - 07.5v2 [1080p].mkv").number, 7.5);
+        // `01x36` comes first, so the title after it stays a title.
+        assert_eq!(ep("Death Note - 01x36 - 1.28.mkv").number, 36.0);
     }
 
     #[test]
