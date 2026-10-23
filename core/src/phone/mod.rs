@@ -109,10 +109,10 @@ fn native(core: &Core) -> crate::releases::native::Native {
     crate::releases::native::Native::new(core.http.clone(), endpoints)
 }
 
-/// The desktop's search, on the phone (`SearchReleases`, run by the core's port of
-/// anirss): fallback across the sources, seeders filled in where a feed has none,
-/// auto-resolution, the refine groups and best fit, and each release's facts.
-/// The show search: AniList's hits for `query` with their covers cached, so the phone
+/// How long the show search waits for covers before answering without them.
+const COVER_WAIT: std::time::Duration = std::time::Duration::from_millis(1500);
+
+/// The show search: AniList's hits for `query` with the covers that came in time, so the phone
 /// can list shows before anyone looks at a release.
 pub fn find_shows(core: &Core, query: String, limit: u32) -> Result<Reply, CoreError> {
     let query = query.trim().to_string();
@@ -130,10 +130,17 @@ pub fn find_shows(core: &Core, query: String, limit: u32) -> Result<Reply, CoreE
         .map(crate::metadata::apply::to_result)
         .collect();
     let urls: Vec<String> = shows.iter().filter_map(|s| s.cover_url.clone()).collect();
+    // The hits go back after COVER_WAIT at most: a cover still on its way finishes into
+    // the cache on its own task (the cache's sweep bounds it), so the same search shows it
+    // next time, and a slow network never holds the list back.
     let images = core.images.clone();
+    let fetching = core.handle.spawn(async move { images.ensure(&urls).await });
     let fetched = core
         .handle
-        .block_on(async move { images.ensure(&urls).await });
+        .block_on(async move { tokio::time::timeout(COVER_WAIT, fetching).await })
+        .ok()
+        .and_then(Result::ok)
+        .unwrap_or_default();
     let posters = shows
         .iter()
         .map(|s| {
@@ -147,6 +154,9 @@ pub fn find_shows(core: &Core, query: String, limit: u32) -> Result<Reply, CoreE
     Ok(Reply::PhoneShows { shows, posters })
 }
 
+/// The desktop's search, on the phone (`SearchReleases`, run by the core's port of
+/// anirss): fallback across the sources, seeders filled in where a feed has none,
+/// auto-resolution, the refine groups and best fit, and each release's facts.
 pub fn search(
     core: &Core,
     query: String,

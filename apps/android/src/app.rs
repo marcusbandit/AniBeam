@@ -481,6 +481,7 @@ impl App {
         let finished = torrents.iter().filter(|t| t.progress >= 1.0).count();
         self.data().set_finished_count(finished as i32);
         self.data().set_downloading_count((torrents.len() - finished) as i32);
+        self.data().set_moving_count(active.len() as i32);
 
         // The service runs while something downloads, with how many in its notification.
         let text = match active.len() {
@@ -672,18 +673,6 @@ fn download_row(t: &Torrent, held: bool) -> DownloadRow {
         "error" => "Stopped by an error",
         _ => "Downloading",
     };
-    let mut facts = Vec::new();
-    if done {
-        facts.push(format::bytes(t.size));
-    } else {
-        facts.push(format!("{} of {}", format::bytes((t.progress * t.size as f64) as u64), format::bytes(t.size)));
-        if t.dlspeed > 0 {
-            facts.push(format!("{}/s", format::bytes(t.dlspeed)));
-        }
-        if t.eta > 0 && t.eta < 8_640_000 {
-            facts.push(format!("{} left", format::countdown(t.eta)));
-        }
-    }
     let amount = if done {
         format::bytes(t.size)
     } else {
@@ -696,7 +685,10 @@ fn download_row(t: &Torrent, held: bool) -> DownloadRow {
     if !done && t.eta > 0 && t.eta < 8_640_000 {
         speed.push(format!("{} left", format::countdown(t.eta)));
     }
-    let mut episodes: Vec<f64> = t.files.iter().filter_map(|f| f.episode).collect();
+    let speed = speed.join(", ");
+    let facts = if speed.is_empty() { amount.clone() } else { format!("{amount}, {speed}") };
+    // Only the files picked to download: a skipped one has no cube and is not coming.
+    let mut episodes: Vec<f64> = t.files.iter().filter(|f| f.priority != 0).filter_map(|f| f.episode).collect();
     episodes.sort_by(f64::total_cmp);
     let what = match (t.episode, episodes.first(), episodes.last()) {
         (Some(e), _, _) if !t.batch => format!("Episode {e}"),
@@ -723,14 +715,14 @@ fn download_row(t: &Torrent, held: bool) -> DownloadRow {
         hash: t.hash.clone().into(),
         name: t.name.clone().into(),
         state: state.into(),
-        facts: facts.join(", ").into(),
+        facts: facts.into(),
         progress: t.progress as f32,
         paused,
         done,
         percent: format!("{}%", (t.progress * 100.0).floor() as i64).into(),
         what: what.into(),
         amount: amount.into(),
-        speed: speed.join(", ").into(),
+        speed: speed.into(),
         release: release.into(),
         folder: folder.into(),
         cubes: ModelRc::new(VecModel::from(cubes)),
