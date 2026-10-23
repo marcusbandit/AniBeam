@@ -93,6 +93,14 @@ export component AppWindow inherits Window {
 
     forward-focus: keys;
 
+    // A view that goes away can take the focused field with it (the search field when a show
+    // opens), and with no focus left Back goes to Android and closes the app. Whenever the
+    // view changes, the window takes the keys back.
+    property <int> find-view: FindData.view;
+    property <bool> series-shown: AppData.series-open;
+    changed find-view => { keys.focus(); }
+    changed series-shown => { keys.focus(); }
+
     function go(to: int) {
         AppData.close-series();
         // Downloads opens on its lenses; a show or a list left open stays as it was.
