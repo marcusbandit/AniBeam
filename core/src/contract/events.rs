@@ -124,6 +124,13 @@ pub enum EventBody {
         fetched: u64,
         deferred: u64,
     },
+    CastDevicesChanged {
+        devices: Vec<CastDevice>,
+    },
+    /// A cast session moved: a new state, or a new position about once a second.
+    CastChanged {
+        state: CastState,
+    },
     SkipWindowsReady {
         session: u64,
         windows: Vec<SkipWindow>,

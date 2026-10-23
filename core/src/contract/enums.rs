@@ -467,6 +467,29 @@ pub enum TrackKind {
     Sidecar,
 }
 
+/// The kind of device an episode is cast to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
+pub enum CastKind {
+    Chromecast,
+    Dlna,
+}
+
+/// Where a cast session is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
+pub enum CastPlayState {
+    /// Reaching the device and reading the episode.
+    Connecting,
+    Buffering,
+    Playing,
+    Paused,
+    /// The episode played to its end.
+    Ended,
+    /// It stopped with `error` saying why.
+    Failed,
+    /// The session was stopped from here or on the device.
+    Stopped,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
 pub enum CloseReason {
     Ended,

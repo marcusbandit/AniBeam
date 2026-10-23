@@ -44,11 +44,18 @@ anibeam-host-api.workspace = true
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 if-addrs = "0.13"
 rustix = { version = "1", features = ["system"] }
+# Casting: the Matroska reader for cutting segments, mDNS for finding Chromecasts, and rustls
+# for their TLS. Only the shells that cast turn it on.
+matroska-demuxer = { version = "0.8", optional = true }
+mdns-sd = { version = "0.21", optional = true }
+rustls = { version = "0.23", default-features = false, features = ["std", "ring", "tls12"], optional = true }
+futures-core = { version = "0.3", optional = true }
 # The phone's torrent engine; only the Android app turns it on.
 librqbit = { version = "9", default-features = false, features = ["rust-tls"], optional = true }
 
 [features]
 phone = ["dep:librqbit"]
+cast = ["dep:matroska-demuxer", "dep:mdns-sd", "dep:rustls", "dep:futures-core", "axum/query", "tokio-util/io"]
 
 # The machine's keyring: the Secret Service over D-Bus everywhere but a Mac, the login
 # keychain there. `keychain` rather than `protected`: the protected store needs a
@@ -68,3 +75,15 @@ trash = "5"
 
 [target.'cfg(target_os = "android")'.dependencies]
 webpki-root-certs = "1"
+
+[[example]]
+name = "cast_hls"
+required-features = ["cast"]
+
+[[example]]
+name = "cast_serve"
+required-features = ["cast"]
+
+[[example]]
+name = "cast_drive"
+required-features = ["cast"]

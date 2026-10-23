@@ -432,6 +432,27 @@ pub enum Call {
     SetPhoneHeld {
         held: bool,
     },
+    // Casting
+    /// The devices found so far; asking starts a look around the network, and what turns up
+    /// arrives as `CastDevicesChanged`.
+    CastDevices,
+    /// Plays a file on a device from `start` seconds, with one audio track (a Matroska track
+    /// number; the first when None) and the subtitles. Refused with the reason when the
+    /// device cannot decode the file.
+    CastStart {
+        device: String,
+        file: u64,
+        start: f64,
+        audio_track: Option<u64>,
+        subtitle: CastSubtitle,
+    },
+    CastPlay,
+    CastPause,
+    CastSeek {
+        to: f64,
+    },
+    CastStop,
+    CastStatus,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Enum)]
@@ -533,5 +554,11 @@ pub enum Reply {
     PhoneTorrents {
         torrents: Vec<Torrent>,
         held: bool,
+    },
+    CastDevices {
+        devices: Vec<CastDevice>,
+    },
+    CastState {
+        state: Option<CastState>,
     },
 }

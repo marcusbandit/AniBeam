@@ -121,6 +121,9 @@ pub struct Core {
     /// The phone's own sources and torrent engine (`Phone*` calls).
     #[cfg_attr(not(feature = "phone"), allow(dead_code))]
     pub(crate) phone: crate::phone::Phone,
+    /// Casting to Chromecasts and DLNA TVs (`Cast*` calls).
+    #[cfg_attr(not(feature = "cast"), allow(dead_code))]
+    pub(crate) cast: crate::cast::Cast,
     /// Jobs need an `Arc<Core>` of their own; exported methods take `&self`,
     /// so the core keeps a `Weak` to itself from `Arc::new_cyclic` and
     /// upgrades it.
@@ -260,6 +263,7 @@ impl Core {
             crawl_recent: Mutex::new(HashMap::new()),
             downloads: Arc::new(crate::downloads::Downloads::default()),
             phone: crate::phone::Phone::default(),
+            cast: crate::cast::Cast::default(),
             host,
             me: me.clone(),
             snapshot_cache: AtomicBool::new(false),
@@ -916,6 +920,13 @@ impl Core {
                 crate::phone::unsubscribe(self, names, files)
             }
             Call::PhoneTorrents => crate::phone::torrents(self),
+            c @ (Call::CastDevices
+            | Call::CastStart { .. }
+            | Call::CastPlay
+            | Call::CastPause
+            | Call::CastSeek { .. }
+            | Call::CastStop
+            | Call::CastStatus) => crate::cast::call(self, c),
             Call::PhoneNetCheck => Ok(Reply::PhoneNetCheck {
                 checks: self.handle.block_on(crate::phone::check::run(self)),
             }),
