@@ -243,6 +243,8 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
         }
         _ => format!("{} on this phone", detail.progress.on_disk),
     };
+    // Play opens the next one up, the desktop hero's rule, when it is whole on the phone.
+    let play = detail.episodes.iter().find(|e| e.next_up && e.downloading.is_none());
     let head = SeriesHead {
         id: id(card.id),
         title: card.title.clone().into(),
@@ -257,6 +259,14 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
         progress_text: progress_text.into(),
         cubes: std::rc::Rc::new(slint::VecModel::from(cube_codes(&card.cubes))).into(),
         synopsis: detail.synopsis.clone().into(),
+        play_file: play.map(|e| e.file as i32).unwrap_or(0),
+        play_label: play
+            .map(|e| {
+                let what = if movie { "the film".to_string() } else { format!("episode {}", e.number) };
+                if e.resume.is_some() { format!("Resume {what}") } else { format!("Play {what}") }
+            })
+            .unwrap_or_default()
+            .into(),
     };
 
     // Sorted by season, then number: a show with S1 and S2 lists each season in order.
@@ -266,6 +276,8 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
             format!("Downloading {}%", (p * 100.0).round() as i64)
         } else if e.next_up {
             "Next up".to_string()
+        } else if let Some(r) = &e.resume {
+            format!("Resume at {}", clock(r.position))
         } else {
             String::new()
         };
@@ -278,6 +290,8 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
                 date: e.air_date.map(|t| date(secs(t), now)).unwrap_or_default().into(),
                 note: note.into(),
                 cube: e.cube.chars().next().map(cube_code).unwrap_or(2),
+                // A file a torrent is still writing is on disk but not playable.
+                file: if e.downloading.is_none() { e.file as i32 } else { 0 },
             },
         ));
     }
@@ -290,6 +304,7 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
                 date: a.air_date.map(|t| date(secs(t), now)).unwrap_or_default().into(),
                 note: "Missing".into(),
                 cube: a.cube.chars().next().map(cube_code).unwrap_or(3),
+                file: 0,
             },
         ));
     }
@@ -310,11 +325,19 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
                 date: date.into(),
                 note: Default::default(),
                 cube: 5,
+                file: 0,
             },
         ));
     }
     lines.sort_by(|a, b| a.0.0.cmp(&b.0.0).then(a.0.1.total_cmp(&b.0.1)));
     (head, lines.into_iter().map(|(_, l)| l).collect())
+}
+
+/// m:ss, or h:mm:ss past an hour: the desktop's Fmt.clock.
+fn clock(secs: f64) -> String {
+    let t = secs.max(0.0) as u64;
+    let (h, m, s) = (t / 3600, t % 3600 / 60, t % 60);
+    if h > 0 { format!("{h}:{m:02}:{s:02}") } else { format!("{m}:{s:02}") }
 }
 
 #[cfg(test)]

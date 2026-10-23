@@ -12,7 +12,7 @@ component EpisodeItem inherits Rectangle {
     property <bool> next: root.data.note == "Next up";
     height: Math.max(Theme.unit * 13, texts.preferred-height + 4 * Theme.unit);
     border-radius: Theme.radius-row + 4px;
-    background: root.next ? Theme.raised : transparent;
+    background: touch.pressed && root.data.file != 0 ? Theme.pressed : root.next ? Theme.raised : transparent;
     border-width: root.next ? 1px : 0;
     border-color: Theme.line-strong;
     Rectangle {
@@ -60,6 +60,11 @@ component EpisodeItem inherits Rectangle {
         font-size: Theme.small - 1px;
         font-family: Theme.figure;
         vertical-alignment: center;
+    }
+    // A whole episode on the phone plays at a tap.
+    touch := TouchArea {
+        enabled: root.data.file != 0;
+        clicked => { AppData.play(root.data.file); }
     }
 }
 
@@ -140,11 +145,19 @@ export component SeriesPage inherits Rectangle {
             // read only.
             if AppData.device == 0 || Nav.page == 0: HorizontalLayout {
                 alignment: start;
+                spacing: Theme.unit * 2;
+                if AppData.series.play-file != 0: Button {
+                    text: AppData.series.play-label;
+                    icon: @image-url("icons/play.svg");
+                    has-icon: true;
+                    primary: true;
+                    clicked => { AppData.play(AppData.series.play-file); }
+                }
                 Button {
                     text: "Get episodes";
                     icon: @image-url("icons/download.svg");
                     has-icon: true;
-                    primary: true;
+                    primary: AppData.series.play-file == 0;
                     clicked => {
                         FindData.find-series(AppData.series.id);
                         AppData.close-series();

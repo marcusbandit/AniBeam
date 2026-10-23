@@ -24,7 +24,8 @@ Four tabs:
 - **Library** is every show on the phone as a poster with the desktop's episode cubes, with
   search. When another AniBeam on the tailnet has answered, a switcher above shows its
   library instead. Tap a poster for its series page: the facts, the cubes, the synopsis,
-  every episode, and Get episodes, which opens the show in Downloads.
+  every episode, Play for the next one up, and Get episodes, which opens the show in
+  Downloads. A tap on any whole episode plays it.
 - **Downloads** works the way the desktop's does, shows first. Typing lists shows, the
   library's and then AniList's; a show opens its view: where to get it (every source and
   what it answered), its releases as rows of episode cubes to tap, and a plan that says
@@ -39,10 +40,22 @@ Four tabs:
 off asks first), and the storage cap, suggested at 18 GB and off unless chosen. More can
 run it again.
 
+**The player** is the desktop's, on the same libmpv: the core opens the session, keeps the
+resume point and the history, and marks the trackers; the track pick and AniBeam's mpv
+options are the core's too, so a file plays the same on both. The screen turns to landscape
+with the system bars hidden. The controls island has the time, the groove with the skip
+windows on it, previous, play and next, Skip intro or outro while inside one, the audio and
+subtitle pickers, speed and Mark watched; the auto-next pill rises at the outro and counts
+five seconds, and Replay sits on the last frame. A tap shows or hides the controls, and a
+double tap on either side jumps ten seconds. mpv draws each frame through its render API
+into a texture on a GL context shared with Slint's (`src/video.rs`), so it never touches
+the context Slint draws with.
+
 Downloads run in the core's own torrent engine (`librqbit`, the core's `phone` feature),
 held while the phone is off Wi-Fi unless mobile data was allowed. While anything
 downloads, a small Java service (`android/java/`) keeps a notification up so Android does
-not cut the network with the screen off. A finished download stops: the phone does not
+not cut the network with the screen off. The player's screen calls, landscape and the bars
+and keeping the display awake, are Java too, since only Android's UI thread may make them. A finished download stops: the phone does not
 seed.
 
 The core keeps its database and cache under the app's `files/core`; episodes live in
@@ -58,7 +71,7 @@ too, so its library still shows when it is off.
    (Android asks once to allow installs from that app), or with USB debugging on:
 
    ```sh
-   adb install -r dist/AniBeam-0.5.4.apk
+   adb install -r dist/AniBeam-0.7.0.apk
    ```
 
 4. Open AniBeam. It starts out pointed at `banditbox:8790`, the desktop's MagicDNS name.
@@ -77,6 +90,9 @@ You need:
 - rustup with the Android targets: `rustup target add aarch64-linux-android x86_64-linux-android`
 - the Android SDK (`~/Android/Sdk` or `$ANDROID_HOME`) with `platforms;android-36`, a
   recent `build-tools`, and the NDK (the newest under `ndk/` is used)
+- curl and unzip: `build.sh` runs `scripts/fetch-mpv.sh` first, which takes libmpv and its
+  ffmpeg out of a pinned mpv-android release APK (checked by hash) into `vendor/mpv/`,
+  about 30 MB per ABI and not in git
 - JDK 17 at `/usr/lib/jvm/java-17-openjdk` or `$JAVA_HOME`. Slint compiles its small
   keyboard helper with javac and d8 during the build; that is Slint's code, not the app's.
 

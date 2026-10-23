@@ -75,6 +75,7 @@ fi
 
 triple() { case "$1" in x86_64) echo x86_64-linux-android ;; arm64-v8a) echo aarch64-linux-android ;; esac; }
 
+scripts/fetch-mpv.sh
 for abi in "${abis[@]}"; do
   echo "build.sh: cargo build --release for $abi"
   cargo build --release --lib --target "$(triple "$abi")"
@@ -86,12 +87,14 @@ mkdir -p "$stage"
 for abi in "${abis[@]}"; do
   mkdir -p "$stage/lib/$abi"
   cp "target/$(triple "$abi")/release/libanibeam.so" "$stage/lib/$abi/"
+  # The player: libmpv, its ffmpeg and the C++ runtime they share.
+  cp vendor/mpv/"$abi"/*.so "$stage/lib/$abi/"
 done
 
 "$BT/aapt2" compile --dir android/res -o "$stage/res.zip"
 "$BT/aapt2" link -o "$stage/base.apk" -I "$PLATFORM_JAR" --manifest "$manifest" "$stage/res.zip"
-# The one Java class, the foreground service that keeps downloads alive: javac, then d8,
-# into classes.dex at the APK root.
+# The Java side, the download service's notification and the player's screen calls:
+# javac, then d8, into classes.dex at the APK root.
 rm -rf "$stage/java" && mkdir -p "$stage/java/classes" "$stage/java/dex"
 "$JAVA_HOME/bin/javac" --release 8 -Xlint:-options -classpath "$PLATFORM_JAR" -d "$stage/java/classes" \
   $(find android/java -name '*.java')

@@ -8,8 +8,9 @@ import { SeriesPage } from "series.slint";
 import { Onboarding } from "onboarding.slint";
 import { FindData, GridRow, GroupChip, ReleaseRow, SourceChip, Suggestion } from "find.slint";
 import { DownloadsPage } from "downloads.slint";
+import { Band, PickRow, PlayerData, PlayerPage } from "player.slint";
 
-export { AppData, CheckRow, Day, DownloadRow, EpisodeLine, FindData, GridRow, GroupChip, Hero, ReleaseRow, SeriesHead, Shelf, SourceChip, SourceRow, Suggestion, Tile }
+export { AppData, Band, CheckRow, Day, DownloadRow, EpisodeLine, FindData, GridRow, GroupChip, Hero, PickRow, PlayerData, ReleaseRow, SeriesHead, Shelf, SourceChip, SourceRow, Suggestion, Tile }
 
 // "Download over mobile data?": asked before Wi-Fi only goes off, from More or onboarding.
 // A sheet from the foot, the floating glass of the desktop's sheets.
@@ -98,8 +99,10 @@ export component AppWindow inherits Window {
     // view changes, the window takes the keys back.
     property <int> find-view: FindData.view;
     property <bool> series-shown: AppData.series-open;
+    property <bool> player-shown: PlayerData.open;
     changed find-view => { keys.focus(); }
     changed series-shown => { keys.focus(); }
+    changed player-shown => { keys.focus(); }
 
     function go(to: int) {
         AppData.close-series();
@@ -117,6 +120,14 @@ export component AppWindow inherits Window {
         key-pressed(event) => {
             if (event.text != Key.Back) {
                 return reject;
+            }
+            if (PlayerData.open && PlayerData.picker != 0) {
+                PlayerData.close-picker();
+                return accept;
+            }
+            if (PlayerData.open) {
+                PlayerData.back();
+                return accept;
             }
             if (Ask.mobile) {
                 Ask.mobile = false;
@@ -204,6 +215,16 @@ export component AppWindow inherits Window {
         }
 
         if Ask.mobile: MobileDataQuestion {
+            inset-bottom: root.inset-bottom;
+        }
+
+        // The player covers everything, the bars included: Android hides them while it plays.
+        if PlayerData.open: PlayerPage {
+            width: root.width;
+            height: root.height;
+            inset-left: root.inset-left;
+            inset-right: root.inset-right;
+            inset-top: root.inset-top;
             inset-bottom: root.inset-bottom;
         }
     }
