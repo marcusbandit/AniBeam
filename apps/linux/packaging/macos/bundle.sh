@@ -73,6 +73,11 @@ echo "== the rest of the libraries"
 python3 "$here/fix-dylibs.py" "$app"
 
 echo "== signing"
+# A checkout on a Mac can carry extended attributes that cp brings along (Finder info and
+# File Provider tags under an iCloud-synced folder), and codesign refuses a bundle with any.
+# A runner's fresh clone has none. Out-dirs inside a synced folder can be re-tagged while
+# this runs, so bundle into one outside it.
+xattr -cr "$app"
 # anirss.sh signed the Python tree already; --deep does not treat Mach-O files in Resources
 # as nested code.
 codesign --force --deep --sign - --timestamp=none "$app"
