@@ -371,13 +371,13 @@ mod imp {
                 });
                 Ok(Reply::CastState { state: Some(state) })
             }
-            Call::CastPlay => control(core, |c| match c {
+            Call::CastPlay => control(core, |c, id| match c {
                 Ctl::Cast(c) => c.send(castv2::Command::Play),
-                Ctl::Dlna(d) => spawn_dlna(core, async move { d.play().await }),
+                Ctl::Dlna(d) => spawn_dlna(core, id, async move { d.play().await }),
             }),
-            Call::CastPause => control(core, |c| match c {
+            Call::CastPause => control(core, |c, id| match c {
                 Ctl::Cast(c) => c.send(castv2::Command::Pause),
-                Ctl::Dlna(d) => spawn_dlna(core, async move { d.pause().await }),
+                Ctl::Dlna(d) => spawn_dlna(core, id, async move { d.pause().await }),
             }),
             Call::CastSeek { to } => seek(core, to),
             Call::CastStop => {
@@ -393,42 +393,35 @@ mod imp {
         Dlna(Arc<dlna::Client>),
     }
 
-    fn control(core: &Core, f: impl FnOnce(Ctl<'_>)) -> Result<Reply, CoreError> {
+    /// Runs `f` with the session's controller and id. The session lock is held for the
+    /// call, so `f` must not take it again: a DLNA action only spawns its request.
+    fn control(core: &Core, f: impl FnOnce(Ctl<'_>, u64)) -> Result<Reply, CoreError> {
         let inner = inner(core);
         let s = inner.session.lock().unwrap_or_else(|e| e.into_inner());
-        match s.as_ref().map(|s| &s.control) {
-            Some(Control::Cast(c)) => f(Ctl::Cast(c)),
-            Some(Control::Dlna { client, .. }) => f(Ctl::Dlna(client.clone())),
-            Some(Control::Starting) => {
+        let Some(session) = s.as_ref() else {
+            return Err(CoreError::invalid("cast", "Nothing is casting"));
+        };
+        match &session.control {
+            Control::Cast(c) => f(Ctl::Cast(c), session.id),
+            Control::Dlna { client, .. } => f(Ctl::Dlna(client.clone()), session.id),
+            Control::Starting => {
                 return Err(CoreError::invalid("cast", "The device is still starting"));
             }
-            None => return Err(CoreError::invalid("cast", "Nothing is casting")),
         }
         Ok(Reply::Ok)
     }
 
     fn spawn_dlna(
         core: &Core,
+        id: u64,
         f: impl std::future::Future<Output = Result<(), String>> + Send + 'static,
     ) {
         let Some(arc) = core.arc() else { return };
-        let id = current_id(core);
         core.handle.spawn(async move {
-            if let Err(e) = f.await
-                && let Some(id) = id
-            {
+            if let Err(e) = f.await {
                 fail(&arc, id, e);
             }
         });
-    }
-
-    fn current_id(core: &Core) -> Option<u64> {
-        inner(core)
-            .session
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .as_ref()
-            .map(|s| s.id)
     }
 
     fn seek(core: &Core, to: f64) -> Result<Reply, CoreError> {
@@ -453,19 +446,19 @@ mod imp {
                 let url = format!("{base}/stream.mp4?t={to:.3}");
                 let offset = prepared.map(|p| p.stream_start(to)).unwrap_or(to);
                 update(core, id, |s| s.mode = Mode::Progressive { offset });
-                control(core, |c| {
+                control(core, |c, id| {
                     if let Ctl::Dlna(d) = c {
                         let meta = dlna::didl(&url, "video/mp4", &title, None);
-                        spawn_dlna(core, async move {
+                        spawn_dlna(core, id, async move {
                             d.set_uri(&url, &meta).await?;
                             d.play().await
                         });
                     }
                 })
             }
-            _ => control(core, |c| match c {
+            _ => control(core, |c, id| match c {
                 Ctl::Cast(c) => c.send(castv2::Command::Seek(to)),
-                Ctl::Dlna(d) => spawn_dlna(core, async move { d.seek(to).await }),
+                Ctl::Dlna(d) => spawn_dlna(core, id, async move { d.seek(to).await }),
             }),
         }
     }
