@@ -152,6 +152,8 @@ pub fn series(cache: Option<&Cache>, anilist: &AniListCache, art: &Art, series_i
                 date: e.aired_at.map(format::day_month).unwrap_or_default().into(),
                 note: Default::default(),
                 cube: if e.watched { 0 } else { 2 },
+                // Another device's file does not play here.
+                file: 0,
             };
             ((e.season.unwrap_or(1), e.number), line)
         })
@@ -163,6 +165,7 @@ pub fn series(cache: Option<&Cache>, anilist: &AniListCache, art: &Art, series_i
             date: "aired".into(),
             note: "Missing".into(),
             cube: 3,
+            file: 0,
         };
         lines.push(((1, f64::from(*n)), line));
     }
@@ -176,6 +179,7 @@ pub fn series(cache: Option<&Cache>, anilist: &AniListCache, art: &Art, series_i
             date: if soon { format::countdown(a.at - now) } else { format::day_month(a.at) }.into(),
             note: Default::default(),
             cube: 5,
+            file: 0,
         });
     }
     Some((head, lines))

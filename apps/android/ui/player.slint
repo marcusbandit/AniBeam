@@ -1,0 +1,691 @@
+import { Theme } from "theme.slint";
+import { Button, TextButton } from "widgets.slint";
+
+// The player, the desktop's PlayerChrome at phone size: the picture fills the screen, the
+// header sits over its top, and the controls island over its foot carries the time, the
+// seek groove with the skip windows on it, and the buttons. The auto-next tile and Replay
+// are not chrome and stay up when the chrome hides. A tap shows or hides the chrome; a
+// double tap on either side jumps ten seconds, as phone players do.
+
+export struct PickRow {
+    label: string,
+    active: bool,
+}
+
+// A skip window on the groove, as fractions of the duration.
+export struct Band {
+    start: float,
+    end: float,
+    intro: bool,
+}
+
+export global PlayerData {
+    in property <bool> open;
+    in property <image> frame;
+    in property <bool> has-frame;
+    in property <string> title;
+    in property <string> episode;
+    in property <string> code;
+    // Seconds.
+    in property <float> position;
+    in property <float> duration;
+    in property <bool> paused;
+    in property <bool> buffering;
+    in property <bool> loaded;
+    in-out property <bool> chrome: true;
+    in property <bool> has-prev;
+    in property <bool> has-next;
+    in property <[Band]> bands;
+    // "Skip intro", "Skip outro", or empty while the position is in neither window.
+    in property <string> skip-label;
+    in property <bool> next-visible;
+    in property <bool> next-counting;
+    in property <int> next-count-ms: 5000;
+    in property <bool> replay;
+    in property <bool> audio-choice;
+    in property <bool> subs-available;
+    in property <bool> subs-on;
+    in property <bool> can-mark;
+    in property <float> speed: 1;
+    in property <string> notice;
+    in property <string> notice-action;
+    // 0 none, 1 audio, 2 subtitles, 3 speed.
+    in property <int> picker;
+    in property <string> picker-title;
+    in property <[PickRow]> picker-rows;
+    in property <string> error;
+    // Casting: the device's name, and a line for what it is doing ("Connecting", "Paused").
+    in property <bool> casting;
+    in property <string> cast-device;
+    in property <string> cast-line;
+    // Where the island's top edge is, so the subtitles can be lifted clear of it.
+    in-out property <length> controls-top;
+    in-out property <length> page-height;
+
+    callback back();
+    callback toggle-pause();
+    // Seconds. A scrub seeks once, where the finger lifts, as the desktop's bar does.
+    callback seek(float);
+    callback seek-by(float);
+    callback skip();
+    callback next();
+    callback prev();
+    callback stay();
+    callback replay-clicked();
+    callback open-picker(int);
+    callback pick(int);
+    callback close-picker();
+    callback mark();
+    callback notice-clicked();
+    // Opens the Cast to sheet, which looks for devices while it is up.
+    callback cast();
+    // Any touch on the chrome keeps it up for another 2.5 s.
+    callback touched();
+}
+
+// The time and speed as the desktop's Fmt writes them.
+global Fmt {
+    // m:ss, or h:mm:ss past an hour: the desktop's Fmt.clock.
+    public pure function clock(secs: float) -> string {
+        if (secs < 0) {
+            return "0:00";
+        }
+        let total = Math.floor(secs);
+        let h = Math.floor(total / 3600);
+        let m = Math.floor(Math.mod(total, 3600) / 60);
+        let s = Math.mod(total, 60);
+        let ss = s < 10 ? "0" + s : "" + s;
+        if (h > 0) {
+            return h + ":" + (m < 10 ? "0" + m : "" + m) + ":" + ss;
+        }
+        m + ":" + ss
+    }
+
+    public pure function speed(v: float) -> string {
+        (Math.round(v * 100) / 100) + "×"
+    }
+}
+
+// A round glyph button on the video glass. Quieter when there is nothing to do.
+component PlayerButton inherits Rectangle {
+    in property <image> icon;
+    in property <bool> interactive: true;
+    in property <bool> active;
+    in property <length> size: 11 * Theme.unit;
+    in property <length> glyph: 5.5 * Theme.unit;
+    callback clicked();
+    width: root.size;
+    height: root.size;
+    border-radius: self.width / 2;
+    background: touch.pressed && root.interactive ? Theme.pressed : transparent;
+    opacity: root.interactive ? 1 : 0.35;
+    Image {
+        width: root.glyph;
+        height: self.width;
+        source: root.icon;
+        colorize: root.active ? Theme.accent : Theme.text;
+    }
+    touch := TouchArea {
+        enabled: root.interactive;
+        clicked => {
+            PlayerData.touched();
+            root.clicked();
+        }
+    }
+}
+
+// The groove, the desktop's SeekBar: the skip windows as white bands under the played
+// part, and the knob. A drag shows where it would land and seeks once on release; the bar
+// then holds that spot until mpv gets there, or 1.5 s, so the knob never jumps back.
+component SeekBar inherits Rectangle {
+    in property <float> position;
+    in property <float> duration;
+    in property <[Band]> bands;
+    out property <bool> scrubbing: touch.pressed;
+    out property <float> scrub-to;
+    property <bool> settling;
+    property <bool> holding: touch.pressed || (root.settling && Math.abs(root.position - root.scrub-to) >= 2);
+    height: 9 * Theme.unit;
+    property <length> knob: 4 * Theme.unit;
+    property <length> groove: self.width - self.knob;
+    property <float> shown: root.duration > 0 ? Math.clamp((root.holding ? root.scrub-to : root.position) / root.duration, 0, 1) : 0;
+    settle := Timer {
+        interval: 1500ms;
+        running: false;
+        triggered => {
+            root.settling = false;
+            self.running = false;
+        }
+    }
+    Rectangle {
+        x: root.knob / 2;
+        width: root.groove;
+        height: 4px;
+        border-radius: 2px;
+        background: Theme.track;
+    }
+    for band in root.bands: Rectangle {
+        x: root.knob / 2 + root.groove * band.start;
+        width: root.groove * (band.end - band.start);
+        height: 4px;
+        background: band.intro ? #ffffff61 : #ffffff3d;
+    }
+    Rectangle {
+        x: root.knob / 2;
+        width: root.groove * root.shown;
+        height: 4px;
+        border-radius: 2px;
+        background: Theme.accent;
+    }
+    Rectangle {
+        x: root.groove * root.shown;
+        width: root.knob;
+        height: root.knob;
+        border-radius: root.knob / 2;
+        background: Theme.accent;
+        border-width: touch.pressed ? 4px : 0;
+        border-color: Theme.accent-soft;
+    }
+    function at(px: length) -> float {
+        Math.clamp((px - root.knob / 2) / root.groove, 0, 1) * root.duration
+    }
+    touch := TouchArea {
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down) {
+                settle.running = false;
+                root.settling = false;
+                root.scrub-to = root.at(self.mouse-x);
+                PlayerData.touched();
+            } else if (event.kind == PointerEventKind.up) {
+                root.scrub-to = root.at(self.mouse-x);
+                PlayerData.seek(root.scrub-to);
+                root.settling = true;
+                settle.running = true;
+            }
+        }
+        moved => {
+            root.scrub-to = root.at(self.mouse-x);
+            PlayerData.touched();
+        }
+    }
+}
+
+// The picker sheet for audio, subtitles and speed: rows over the floating glass.
+component Picker inherits Rectangle {
+    background: #00000080;
+    TouchArea { clicked => { PlayerData.close-picker(); } }
+    sheet := Rectangle {
+        width: Math.min(parent.width - 2 * Theme.grout, 110 * Theme.unit);
+        height: Math.min(parent.height - 2 * Theme.grout, body.preferred-height);
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        background: Theme.float;
+        border-radius: Theme.radius;
+        border-width: 1px;
+        border-color: Theme.line-strong;
+        clip: true;
+        TouchArea { }
+        Flickable {
+            content-height: body.preferred-height;
+            body := VerticalLayout {
+                padding: Theme.pad;
+                spacing: Theme.unit;
+                Text {
+                    text: PlayerData.picker-title;
+                    color: Theme.text;
+                    font-size: Theme.large;
+                    font-family: Theme.display-face;
+                }
+                Rectangle { height: Theme.unit; }
+                for row[i] in PlayerData.picker-rows: Rectangle {
+                    height: 12 * Theme.unit;
+                    border-radius: Theme.radius-row + 4px;
+                    background: row-touch.pressed ? Theme.pressed : row.active ? Theme.raised : transparent;
+                    border-width: row.active ? 1px : 0;
+                    border-color: Theme.line-strong;
+                    Text {
+                        x: Theme.unit * 4;
+                        width: parent.width - 8 * Theme.unit;
+                        height: parent.height;
+                        text: row.label;
+                        color: row.active ? Theme.text : Theme.dim;
+                        font-family: row.active ? Theme.strong-face : Theme.face;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    row-touch := TouchArea { clicked => { PlayerData.pick(i); } }
+                }
+            }
+        }
+    }
+}
+
+export component PlayerPage inherits Rectangle {
+    in property <length> inset-left;
+    in property <length> inset-right;
+    in property <length> inset-top;
+    in property <length> inset-bottom;
+    background: black;
+
+    changed height => { PlayerData.page-height = self.height; }
+    init => { PlayerData.page-height = self.height; }
+
+    if PlayerData.has-frame: Image {
+        width: parent.width;
+        height: parent.height;
+        source: PlayerData.frame;
+        image-fit: fill;
+    }
+
+    // Casting: the TV has the picture; the phone says where it went.
+    if PlayerData.casting: Rectangle {
+        background: Theme.ground;
+        VerticalLayout {
+            alignment: center;
+            spacing: Theme.unit * 3;
+            Image {
+                height: 16 * Theme.unit;
+                source: @image-url("icons/tv.svg");
+                colorize: Theme.dim;
+                image-fit: contain;
+            }
+            Text {
+                text: "Playing on " + PlayerData.cast-device;
+                color: Theme.text;
+                font-family: Theme.display-face;
+                font-size: Theme.section;
+                horizontal-alignment: center;
+                overflow: elide;
+            }
+            Text {
+                text: PlayerData.cast-line;
+                color: Theme.dim;
+                font-size: Theme.small + 1px;
+                horizontal-alignment: center;
+            }
+        }
+    }
+
+    // The picture: one tap for the chrome, two on a side to jump.
+    TouchArea {
+        clicked => {
+            PlayerData.chrome = !PlayerData.chrome;
+            if (PlayerData.chrome) {
+                PlayerData.touched();
+            }
+        }
+        double-clicked => {
+            if (self.mouse-x < self.width / 3) {
+                PlayerData.seek-by(-10);
+                jump.text = "−10 s";
+                jump.left = true;
+            } else if (self.mouse-x > self.width * 2 / 3) {
+                PlayerData.seek-by(10);
+                jump.text = "+10 s";
+                jump.left = false;
+            } else {
+                PlayerData.toggle-pause();
+            }
+            if (self.mouse-x < self.width / 3 || self.mouse-x > self.width * 2 / 3) {
+                jump.shown = true;
+                jump-hide.running = false;
+                jump-hide.running = true;
+            }
+        }
+    }
+
+    jump := Rectangle {
+        in-out property <string> text;
+        in-out property <bool> left;
+        in-out property <bool> shown;
+        x: self.left ? parent.width / 6 - self.width / 2 : parent.width * 5 / 6 - self.width / 2;
+        y: (parent.height - self.height) / 2;
+        width: label.preferred-width + 8 * Theme.unit;
+        height: 12 * Theme.unit;
+        border-radius: self.height / 2;
+        background: Theme.chip;
+        opacity: self.shown ? 1 : 0;
+        animate opacity { duration: 150ms; }
+        label := Text {
+            text: jump.text;
+            color: Theme.on-poster;
+            font-family: Theme.figure;
+            font-size: Theme.heading;
+        }
+    }
+    jump-hide := Timer {
+        interval: 700ms;
+        running: false;
+        triggered => {
+            jump.shown = false;
+            self.running = false;
+        }
+    }
+
+    if PlayerData.buffering || (!PlayerData.loaded && PlayerData.error == ""): Rectangle {
+        width: 12 * Theme.unit;
+        height: self.width;
+        Image {
+            width: 8 * Theme.unit;
+            height: self.width;
+            source: @image-url("icons/refresh-cw.svg");
+            colorize: Theme.on-poster-dim;
+            transform-rotation: (animation-tick() / 1000ms) * 360deg;
+        }
+    }
+
+    if PlayerData.error != "": Rectangle {
+        width: Math.min(parent.width - 8 * Theme.grout, 140 * Theme.unit);
+        height: err.preferred-height + 2 * Theme.pad;
+        background: Theme.float;
+        border-radius: Theme.radius;
+        border-width: 1px;
+        border-color: Theme.bad-edge;
+        err := Text {
+            width: parent.width - 2 * Theme.pad;
+            text: PlayerData.error;
+            color: Theme.text;
+            wrap: word-wrap;
+            horizontal-alignment: center;
+        }
+    }
+
+    // ---- Chrome
+    property <bool> chrome-shown: PlayerData.chrome || seek.scrubbing;
+    property <length> side-left: Math.max(root.inset-left, Theme.grout);
+    property <length> side-right: Math.max(root.inset-right, Theme.grout);
+
+    // The header: back, the series, the episode, over a scrim from the top.
+    Rectangle {
+        y: 0;
+        height: root.inset-top + 26 * Theme.unit;
+        opacity: root.chrome-shown ? 1 : 0;
+        visible: self.opacity > 0;
+        animate opacity { duration: 200ms; }
+        background: @linear-gradient(180deg, #08090bcc 0%, #08090b00 100%);
+        TouchArea { clicked => { PlayerData.chrome = false; } }
+        PlayerButton {
+            x: root.side-left;
+            y: root.inset-top + Theme.unit * 2;
+            icon: @image-url("icons/arrow-left.svg");
+            clicked => { PlayerData.back(); }
+        }
+        PlayerButton {
+            x: parent.width - self.width - root.side-right;
+            y: root.inset-top + Theme.unit * 2;
+            icon: @image-url("icons/cast.svg");
+            active: PlayerData.casting;
+            clicked => { PlayerData.cast(); }
+        }
+        VerticalLayout {
+            x: root.side-left + 14 * Theme.unit;
+            y: root.inset-top + Theme.unit * 2;
+            width: parent.width - self.x - root.side-right - 14 * Theme.unit;
+            height: self.preferred-height;
+            spacing: 1px;
+            Text {
+                text: PlayerData.title;
+                color: Theme.on-poster;
+                font-family: Theme.title-face;
+                font-size: Theme.heading;
+                overflow: elide;
+            }
+            Text {
+                text: PlayerData.code == "" ? PlayerData.episode : PlayerData.code + "  " + PlayerData.episode;
+                color: Theme.on-poster-dim;
+                font-size: Theme.small;
+                overflow: elide;
+            }
+        }
+    }
+
+    // The middle: back ten, play or pause, on ten. Only while nothing has ended, and not while
+    // casting, where the page's middle says where the picture went.
+    if !PlayerData.replay && PlayerData.loaded && !PlayerData.casting: HorizontalLayout {
+        x: (parent.width - self.preferred-width) / 2;
+        y: (parent.height - 18 * Theme.unit) / 2;
+        height: 18 * Theme.unit;
+        spacing: 10 * Theme.unit;
+        opacity: root.chrome-shown ? 1 : 0;
+        visible: self.opacity > 0;
+        animate opacity { duration: 200ms; }
+        PlayerButton {
+            y: 2 * Theme.unit;
+            size: 14 * Theme.unit;
+            glyph: 7 * Theme.unit;
+            icon: @image-url("icons/rotate-ccw.svg");
+            clicked => { PlayerData.seek-by(-10); }
+        }
+        Rectangle {
+            width: 18 * Theme.unit;
+            height: self.width;
+            border-radius: self.width / 2;
+            background: play-touch.pressed ? Theme.pressed : Theme.chip;
+            border-width: 1px;
+            border-color: Theme.chip-edge;
+            Image {
+                width: 8 * Theme.unit;
+                height: self.width;
+                source: PlayerData.paused ? @image-url("icons/play.svg") : @image-url("icons/pause.svg");
+                colorize: Theme.on-poster;
+            }
+            play-touch := TouchArea {
+                clicked => {
+                    PlayerData.touched();
+                    PlayerData.toggle-pause();
+                }
+            }
+        }
+        PlayerButton {
+            y: 2 * Theme.unit;
+            size: 14 * Theme.unit;
+            glyph: 7 * Theme.unit;
+            icon: @image-url("icons/rotate-cw.svg");
+            clicked => { PlayerData.seek-by(10); }
+        }
+    }
+
+    // ---- The controls island: the time as a ledger line, the groove, then the buttons.
+    controls := Rectangle {
+        x: root.side-left;
+        width: parent.width - root.side-left - root.side-right;
+        height: island.preferred-height;
+        y: parent.height - self.height - Math.max(root.inset-bottom, Theme.grout);
+        changed y => { PlayerData.controls-top = self.y; }
+        init => { PlayerData.controls-top = self.y; }
+        background: Theme.chip;
+        border-radius: Theme.radius;
+        border-width: 1px;
+        border-color: Theme.chip-edge;
+        opacity: root.chrome-shown ? 1 : 0;
+        visible: self.opacity > 0;
+        animate opacity { duration: 200ms; }
+        TouchArea { clicked => { PlayerData.touched(); } }
+        island := VerticalLayout {
+            padding: 3 * Theme.unit;
+            padding-bottom: 2 * Theme.unit;
+            spacing: 0;
+            HorizontalLayout {
+                Text {
+                    text: Fmt.clock(seek.scrubbing ? seek.scrub-to : PlayerData.position);
+                    color: Theme.on-poster;
+                    font-family: Theme.figure;
+                    font-size: Theme.small;
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    horizontal-alignment: center;
+                    text: PlayerData.speed != 1 ? "Speed " + Fmt.speed(PlayerData.speed) : "";
+                    color: Theme.accent;
+                    font-family: Theme.figure;
+                    font-size: Theme.small;
+                }
+                Text {
+                    text: Fmt.clock(PlayerData.duration);
+                    color: Theme.on-poster-dim;
+                    font-family: Theme.figure;
+                    font-size: Theme.small;
+                }
+            }
+            seek := SeekBar {
+                position: PlayerData.position;
+                duration: PlayerData.duration;
+                bands: PlayerData.bands;
+            }
+            HorizontalLayout {
+                spacing: Theme.unit;
+                alignment: start;
+                PlayerButton {
+                    icon: @image-url("icons/skip-back.svg");
+                    interactive: PlayerData.has-prev;
+                    clicked => { PlayerData.prev(); }
+                }
+                PlayerButton {
+                    icon: PlayerData.paused ? @image-url("icons/play.svg") : @image-url("icons/pause.svg");
+                    clicked => { PlayerData.toggle-pause(); }
+                }
+                PlayerButton {
+                    icon: @image-url("icons/skip-forward.svg");
+                    interactive: PlayerData.has-next;
+                    clicked => { PlayerData.next(); }
+                }
+                if PlayerData.skip-label != "": Rectangle {
+                    width: skip-button.min-width;
+                    skip-button := Button {
+                        y: (parent.height - self.height) / 2;
+                        width: parent.width;
+                        small: true;
+                        primary: true;
+                        has-icon: true;
+                        icon: @image-url("icons/chevrons-right.svg");
+                        text: PlayerData.skip-label;
+                        clicked => {
+                            PlayerData.touched();
+                            PlayerData.skip();
+                        }
+                    }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                if PlayerData.audio-choice: PlayerButton {
+                    icon: @image-url("icons/audio-lines.svg");
+                    clicked => { PlayerData.open-picker(1); }
+                }
+                if PlayerData.subs-available: PlayerButton {
+                    icon: @image-url("icons/captions.svg");
+                    active: PlayerData.subs-on;
+                    clicked => { PlayerData.open-picker(2); }
+                }
+                Rectangle {
+                    width: speed-label.preferred-width + 6 * Theme.unit;
+                    height: 11 * Theme.unit;
+                    border-radius: self.height / 2;
+                    background: speed-touch.pressed ? Theme.pressed : transparent;
+                    speed-label := Text {
+                        text: Fmt.speed(PlayerData.speed);
+                        color: PlayerData.speed != 1 ? Theme.accent : Theme.text;
+                        font-family: Theme.figure;
+                        font-size: Theme.normal;
+                    }
+                    speed-touch := TouchArea {
+                        clicked => {
+                            PlayerData.touched();
+                            PlayerData.open-picker(3);
+                        }
+                    }
+                }
+                if PlayerData.can-mark: PlayerButton {
+                    icon: @image-url("icons/check-check.svg");
+                    clicked => { PlayerData.mark(); }
+                }
+            }
+        }
+    }
+
+    // ---- Auto-next: Stay and Next, a grout above the island's place on the right. It
+    // stays up when the chrome hides: it is the only thing that says what happens next.
+    if PlayerData.next-visible: Rectangle {
+        x: parent.width - self.width - root.side-right;
+        y: controls.y - self.height - Theme.grout;
+        width: next-row.preferred-width + 3 * Theme.unit;
+        height: next-row.preferred-height + 3 * Theme.unit;
+        background: Theme.chip;
+        border-radius: Theme.radius;
+        border-width: 1px;
+        border-color: Theme.chip-edge;
+        TouchArea { }
+        next-row := HorizontalLayout {
+            padding: 1.5 * Theme.unit;
+            spacing: 1.5 * Theme.unit;
+            TextButton {
+                text: "Stay";
+                ink: Theme.on-poster;
+                clicked => { PlayerData.stay(); }
+            }
+            Rectangle {
+                width: next-label.preferred-width + 12 * Theme.unit;
+                height: Theme.control;
+                border-radius: self.height / 2;
+                background: Theme.raised;
+                border-width: 1px;
+                border-color: Theme.accent;
+                clip: true;
+                Rectangle {
+                    x: 0;
+                    width: PlayerData.next-counting ? parent.width : 0;
+                    animate width { duration: PlayerData.next-counting ? PlayerData.next-count-ms * 1ms : 0ms; }
+                    background: Theme.accent.with-alpha(0.35);
+                }
+                next-label := Text {
+                    text: "Next";
+                    color: Theme.text;
+                    font-family: Theme.title-face;
+                }
+                TouchArea { clicked => { PlayerData.next(); } }
+            }
+        }
+    }
+
+    // ---- Replay: keep-open holds the last frame, and this sits on it.
+    if PlayerData.replay: Button {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        primary: true;
+        has-icon: true;
+        icon: @image-url("icons/rotate-ccw.svg");
+        text: "Replay";
+        clicked => { PlayerData.replay-clicked(); }
+    }
+
+    // ---- A notice: what the tracker said, or "Skipped intro" with Undo.
+    if PlayerData.notice != "": Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: root.inset-top + 6 * Theme.unit;
+        width: Math.min(parent.width - 2 * Theme.grout, notice-row.preferred-width);
+        height: notice-row.preferred-height;
+        background: Theme.float;
+        border-radius: self.height / 2;
+        border-width: 1px;
+        border-color: Theme.line-strong;
+        notice-row := HorizontalLayout {
+            padding-left: 5 * Theme.unit;
+            padding-right: PlayerData.notice-action != "" ? Theme.unit : 5 * Theme.unit;
+            padding-top: Theme.unit;
+            padding-bottom: Theme.unit;
+            spacing: 2 * Theme.unit;
+            Text {
+                text: PlayerData.notice;
+                color: Theme.text;
+                font-size: Theme.small + 0.5px;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            if PlayerData.notice-action != "": TextButton {
+                text: PlayerData.notice-action;
+                ink: Theme.accent;
+                clicked => { PlayerData.notice-clicked(); }
+            }
+        }
+    }
+
+    if PlayerData.picker != 0: Picker { }
+}

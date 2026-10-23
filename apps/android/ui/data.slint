@@ -69,6 +69,10 @@ export struct SeriesHead {
     progress-text: string,
     cubes: [int],
     synopsis: string,
+    // The episode Play opens, the next one up, and what the button says: "Resume episode
+    // 5". Zero when nothing on the phone is next.
+    play-file: int,
+    play-label: string,
 }
 
 // One episode row on a series page.
@@ -81,6 +85,8 @@ export struct EpisodeLine {
     note: string,
     // Theme.cube's code.
     cube: int,
+    // The file a tap plays; zero for an episode that is not whole on the phone.
+    file: int,
 }
 
 // One download on this phone, the desktop's Downloading panel.
@@ -203,6 +209,8 @@ export global AppData {
     // A series from the other device's library, read only.
     callback open-remote(int);
     callback close-series();
+    // Opens the player on a file of this phone's.
+    callback play(int);
     callback pick-day(int);
     callback pick-device(int);
     callback search(string);

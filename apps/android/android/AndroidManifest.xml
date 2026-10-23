@@ -3,8 +3,8 @@
      leaves the machine; build.sh refuses to build when versionName and Cargo.toml disagree. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.marcusrosado.anibeam"
-    android:versionCode="13"
-    android:versionName="0.6.1">
+    android:versionCode="15"
+    android:versionName="0.8.0">
 
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="36" />
     <uses-permission android:name="android.permission.INTERNET" />
@@ -14,8 +14,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Casting: finding Chromecasts and TVs on the Wi-Fi with mDNS and SSDP. -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
 
-    <!-- The app is libanibeam.so behind the stock NativeActivity, plus one Java service.
+    <!-- The app is libanibeam.so and libmpv behind the stock NativeActivity, plus a Java
+         service and the player's screen calls.
          enableOnBackInvokedCallback="false" keeps Back arriving as a key, which the app
          turns into "go to Next up"; with targetSdk 36 the system would finish the
          activity instead. -->
@@ -40,7 +44,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <!-- The one Java class: it only holds a notification so Android keeps the process,
+        <!-- The download service: it only holds a notification so Android keeps the process,
              and the downloads in it, running with the screen off. -->
         <service
             android:name="com.marcusrosado.anibeam.TorrentService"

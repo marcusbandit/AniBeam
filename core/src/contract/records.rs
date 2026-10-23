@@ -527,6 +527,43 @@ pub struct TrackChoice {
     pub subtitle: Option<SubtitleChoice>,
 }
 
+/// A Chromecast or a DLNA TV found on this network.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct CastDevice {
+    pub id: String,
+    pub name: String,
+    pub kind: CastKind,
+    /// The model the device names, "Chromecast" or "Google TV Streamer", when it says.
+    pub model: Option<String>,
+    pub address: String,
+}
+
+/// The subtitles to send with a cast.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Enum)]
+pub enum CastSubtitle {
+    None,
+    /// A text track in the file, by its Matroska track number.
+    Track {
+        number: u64,
+    },
+    /// A subtitle file beside the episode.
+    File {
+        path: String,
+    },
+}
+
+/// What a cast session is doing. Positions are seconds into the episode.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct CastState {
+    pub device: String,
+    pub kind: CastKind,
+    pub file: u64,
+    pub state: CastPlayState,
+    pub position: f64,
+    pub duration: f64,
+    pub error: Option<String>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct PlaybackSession {
     pub session: u64,

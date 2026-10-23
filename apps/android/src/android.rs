@@ -1,5 +1,5 @@
-//! The few things only Java can do, reached over JNI: opening a link in the browser, and
-//! asking how much room the phone has left.
+//! The few things only Java can do, reached over JNI: opening a link in the browser,
+//! asking how much room the phone has left, and turning the screen for the player.
 
 /// Opens `url` in the user's browser: AniList and MAL sign in there, then send the browser
 /// back to the core's local callback.
@@ -248,4 +248,73 @@ pub fn copy_text(label: &str, text: &str) -> bool {
         let _ = (label, text);
         false
     }
+}
+
+/// The Activity's global reference, set by `android_main`.
+#[cfg(target_os = "android")]
+static ACTIVITY: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+#[cfg(target_os = "android")]
+pub fn set_activity(activity: *mut std::ffi::c_void) {
+    ACTIVITY.store(activity as usize, std::sync::atomic::Ordering::Release);
+}
+
+/// Calls one of `Screen.java`'s static methods with the activity and a flag. The class is
+/// the app's own, so it is loaded through the activity's class loader: a lookup from a
+/// native thread would only see the system's classes.
+#[cfg(target_os = "android")]
+fn screen(method: &str, on: bool) {
+    let raw = ACTIVITY.load(std::sync::atomic::Ordering::Acquire);
+    if raw == 0 {
+        return;
+    }
+    // `with_env`'s context is the Application, and Screen needs the Activity.
+    let r = with_env(|env, _app| {
+        use jni::objects::{JClass, JObject, JValue};
+        // The thread stays attached for the life of the app, so the local references made
+        // here are freed with a frame of their own rather than piling up per call.
+        env.with_local_frame(8, |env| -> Result<(), Box<dyn std::error::Error>> {
+            let activity = &unsafe { JObject::from_raw(raw as jni::sys::jobject) };
+            let loader = env.call_method(activity, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])?.l()?;
+            let name = env.new_string("com.marcusrosado.anibeam.Screen")?;
+            let class = env
+                .call_method(&loader, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;", &[JValue::Object(&name)])?
+                .l()?;
+            let class = JClass::from(class);
+            env.call_static_method(
+                &class,
+                method,
+                "(Landroid/app/Activity;Z)V",
+                &[JValue::Object(activity), JValue::Bool(on.into())],
+            )?;
+            Ok(())
+        })
+    });
+    if let Err(e) = r {
+        crate::local::log(&format!("Screen.{method}: {e}"));
+    }
+}
+
+/// The player's screen: landscape with the system bars hidden, or back as it was.
+pub fn player_screen(on: bool) {
+    #[cfg(target_os = "android")]
+    screen("player", on);
+    #[cfg(not(target_os = "android"))]
+    let _ = on;
+}
+
+/// Holds Wi-Fi multicast while devices are being looked for.
+pub fn multicast(on: bool) {
+    #[cfg(target_os = "android")]
+    screen("multicast", on);
+    #[cfg(not(target_os = "android"))]
+    let _ = on;
+}
+
+/// Keeps the display on while a file plays, and lets it sleep when paused or closed.
+pub fn player_awake(on: bool) {
+    #[cfg(target_os = "android")]
+    screen("awake", on);
+    #[cfg(not(target_os = "android"))]
+    let _ = on;
 }

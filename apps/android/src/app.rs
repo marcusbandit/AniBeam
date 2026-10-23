@@ -756,6 +756,7 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
         .unwrap_or_else(|_| HostAddress::parse(anibeam_companion::address::DEFAULT_ADDRESS).unwrap());
 
     let window = AppWindow::new()?;
+    crate::player::install(&window);
     let data = window.global::<AppData>();
     data.set_version(
         format!("AniBeam for Android {} (build {})", env!("CARGO_PKG_VERSION"), env!("ANIBEAM_VERSION_CODE")).into(),
@@ -775,6 +776,7 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
     data.on_open_series(|id| with_app(|app| app.open_series(id, false)));
     data.on_open_remote(|id| with_app(|app| app.open_series(id, true)));
     data.on_close_series(|| with_app(App::close_series));
+    data.on_play(|file| crate::player::open(file as u64));
     data.on_pick_day(|day| {
         with_app(|app| {
             app.day = usize::try_from(day).unwrap_or(0).min(6);

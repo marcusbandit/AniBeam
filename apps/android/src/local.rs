@@ -23,6 +23,11 @@ pub fn take_changed() -> bool {
     CHANGED.swap(false, Ordering::AcqRel)
 }
 
+/// Asks the pages to read the core again, after a call that changed what they show.
+pub fn touch() {
+    CHANGED.store(true, Ordering::Release);
+}
+
 /// The process's core, once it is open.
 pub fn core() -> Option<Arc<Core>> {
     CORE.get().map(|(core, _)| core.clone())
@@ -35,6 +40,7 @@ impl EventListener for Logcat {
         if let EventBody::AuthUrlReady { open_url, .. } = &event.body {
             crate::android::open_url(open_url);
         }
+        crate::player::core_event(&event.body);
         // Debug events are progress chatter; the state changes the pages show come as Info
         // and above, so only those make the UI read the core again.
         if !matches!(event.level, Level::Debug) {
@@ -111,12 +117,17 @@ fn open(data_dir: &Path) -> Result<(Arc<Core>, Arc<Subscription>), Box<dyn std::
 }
 
 /// A test hook: each line of `/data/local/tmp/anibeam-seed` names a file to create, empty,
-/// under the library folder, so a scan and a match can be tried without a download.
+/// under the library folder, so a scan and a match can be tried without a download. A line
+/// `name < /data/local/tmp/file.mkv` copies that file there instead, for the player.
 fn seed(library: &Path) {
     let Ok(list) = std::fs::read_to_string("/data/local/tmp/anibeam-seed") else {
         return;
     };
-    for name in list.lines().map(str::trim).filter(|l| !l.is_empty()) {
+    for line in list.lines().map(str::trim).filter(|l| !l.is_empty()) {
+        let (name, source) = match line.split_once(" < ") {
+            Some((name, source)) => (name.trim(), Some(source.trim())),
+            None => (line, None),
+        };
         // Only a plain relative path stays inside the library: an absolute one would
         // replace it in `join`, and `..` would climb out of it.
         if !Path::new(name).components().all(|c| matches!(c, Component::Normal(_))) {
@@ -127,7 +138,13 @@ fn seed(library: &Path) {
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        if std::fs::write(&path, b"").is_ok() {
+        let done = match source {
+            // Copied once: a second launch finds it there and leaves it.
+            Some(_) if path.exists() => continue,
+            Some(source) => std::fs::copy(source, &path).is_ok(),
+            None => std::fs::write(&path, b"").is_ok(),
+        };
+        if done {
             log(&format!("seeded {name}"));
         }
     }

@@ -288,7 +288,7 @@ impl qobject::Player {
         defaults: &QJsonObject,
     ) -> QJsonObject {
         Self::guard("pickTracks", || {
-            let list = crate::tracks::parse(&Value::Array(
+            let list = anibeam_core::playback::tracks::parse(&Value::Array(
                 track_list
                     .iter()
                     .map(|v| crate::json::from_qjson(&v))
@@ -300,7 +300,7 @@ impl qobject::Player {
             let d: SubtitleDefaults =
                 serde_json::from_value(crate::json::from_qjson_object(defaults))
                     .unwrap_or_default();
-            let p = crate::tracks::pick(&list, &choice, &d);
+            let p = anibeam_core::playback::tracks::pick(&list, &choice, &d);
             crate::json::to_qjson_object(&serde_json::json!({
                 "aid": p.aid.unwrap_or(-1),
                 "sid": p.sid.unwrap_or(-1),
@@ -311,18 +311,25 @@ impl qobject::Player {
     /// One entry of `track-list` as the line a picker draws.
     pub fn track_label(&self, track: &QJsonObject) -> QString {
         Self::guard("trackLabel", || {
-            let list =
-                crate::tracks::parse(&Value::Array(vec![crate::json::from_qjson_object(track)]));
-            QString::from(&list.first().map(crate::tracks::label).unwrap_or_default())
+            let list = anibeam_core::playback::tracks::parse(&Value::Array(vec![
+                crate::json::from_qjson_object(track),
+            ]));
+            QString::from(
+                &list
+                    .first()
+                    .map(anibeam_core::playback::tracks::label)
+                    .unwrap_or_default(),
+            )
         })
     }
 
     /// One entry of `track-list` as the `TrackRef` the core stores.
     pub fn track_ref(&self, track: &QJsonObject) -> QJsonObject {
         Self::guard("trackRef", || {
-            let list =
-                crate::tracks::parse(&Value::Array(vec![crate::json::from_qjson_object(track)]));
-            let r = list.first().map(crate::tracks::track_ref);
+            let list = anibeam_core::playback::tracks::parse(&Value::Array(vec![
+                crate::json::from_qjson_object(track),
+            ]));
+            let r = list.first().map(anibeam_core::playback::tracks::track_ref);
             crate::json::to_qjson_object(&serde_json::to_value(r).unwrap_or(Value::Null))
         })
     }

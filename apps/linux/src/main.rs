@@ -12,7 +12,6 @@ mod player_config;
 mod read_cache;
 mod runtime;
 mod theme;
-mod tracks;
 
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
 
