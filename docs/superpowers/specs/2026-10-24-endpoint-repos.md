@@ -41,8 +41,8 @@ in an app update, through Play, like any other change.
 | Mihon | AniBeam |
 | --- | --- |
 | Repo URL pasted in Settings | Same |
-| `index.min.json` | `index.json`, format `anibeam-endpoint-repo` v1 |
-| APK per extension, signed | JSON per endpoint, checked by a SHA-256 in a signed index |
+| `index.min.json` | `repo.json`, format `anibeam-endpoint-repo` v1 |
+| APK per extension, signed | JSON definitions inside one signed file |
 | Signing key in the repo store | ed25519 public key, pinned when the repo is added |
 | `code` decides updates | `version` decides updates |
 | Extension settings screen for keys and logins | `auth` fields in the definition, asked for at install |
@@ -53,45 +53,54 @@ in an app update, through Play, like any other change.
 `marcusbandit/anibeam-endpoints`, laid out like this:
 
 ```
-index.json          built by CI from endpoints/
-index.json.sig      ed25519 signature over the exact bytes of index.json
+repo.json           built and signed by CI from endpoints/
 endpoints/
-  <id>.json         one definition per endpoint
+  <id>.json         one definition per endpoint, the source CI reads
 schema/
   endpoint.schema.json
+scripts/check.sh
 scripts/build-index.sh
 .github/workflows/publish.yml
 ```
 
-The URL a user pastes is the raw URL of `index.json`. The app derives every other
-URL from it, relative to the same directory.
+The URL a user pastes is the raw URL of `repo.json`. It is the only file the app
+ever fetches.
 
-### index.json
+### repo.json
+
+One file, so a CDN that caches each file on its own can never hand the app a new
+index with an old signature:
 
 ```json
 {
   "format": "anibeam-endpoint-repo",
   "version": 1,
-  "name": "Marcus's endpoints",
-  "key": "ed25519:9d2f...base64",
-  "endpoints": [
-    {
-      "id": "example-rss",
-      "name": "Example",
-      "version": 3,
-      "lang": "en",
-      "kind": "rss",
-      "auth": ["api_key"],
-      "nsfw": false,
-      "file": "endpoints/example-rss.json",
-      "sha256": "4b1c..."
-    }
-  ]
+  "payload": "<base64 of the index JSON>",
+  "signature": "<base64 of the ed25519 signature over the payload's bytes>"
 }
 ```
 
-The index repeats `kind` and the names of the `auth` fields so the list can show
-"needs an API key" before anything is installed.
+The payload is base64 so the signed bytes reach the app exactly as CI wrote them,
+with no JSON canonicalisation between jq and serde. Decoded, it is the index:
+
+```json
+{
+  "name": "Marcus's endpoints",
+  "key": "ed25519:9d2f...base64",
+  "serial": 1793050000,
+  "endpoints": [ { "id": "example-rss", "version": 3, "...": "the full definition" } ]
+}
+```
+
+- The index carries every definition whole. A repo of a few dozen endpoints is a
+  few kilobytes, and installing needs no second fetch.
+- `serial` is the publish time in seconds and only goes up. The core refuses an
+  index whose serial is lower than the last one it accepted from that repo, so a
+  stale mirror or a replayed old file cannot hide an update or bring back an
+  endpoint the owner pulled. There is no expiry: an offline phone must keep
+  working with the index it has.
+- A fetch that fails, or fails its checks, keeps the last good index and says so
+  on the repo's row. It never removes anything.
 
 ### An endpoint definition
 
@@ -122,13 +131,23 @@ The index repeats `kind` and the names of the `auth` fields so the list can show
 
 - `id` is stable forever; renaming is a new `name`, not a new `id`.
 - `url` takes `{query}` plus one placeholder per `auth` key. The core fills them
-  at request time, so a stored URL never holds a secret.
+  at request time, so a stored URL never holds a secret. Values are
+  percent-encoded when filled. Errors, the activity log and anything else that
+  prints a URL print the template, never the filled URL. Recognising a URL as
+  belonging to an endpoint (`Endpoint::owns_url`) compares against the template
+  with its placeholders filled, so an auth placeholder before `{query}` works.
 - `auth` is empty for an endpoint that needs nothing. A login with username and
   password is two fields; a flow that needs a browser (OAuth, a cookie behind a
   captcha) is out of scope until one endpoint actually needs it.
 - `front` is the fronting host from `core/src/net/front.rs`, moved out of the
-  code and into data. The store build then names no site anywhere.
-- `rate` feeds the limiter. Every call still goes through `net/limiter.rs`.
+  code and into data. The store build then names no site anywhere. A fronted
+  connection still goes to the URL host's own address (`FrontResolve`), so a
+  front can only change which certificate name is checked there. The install
+  screen shows both hosts.
+- `rate` can only slow the core down. The limiter takes the lower of the
+  definition's rate and the core's own floor for that host (#135), and the
+  budget is per host, so two endpoints on one site share it. Every call still
+  goes through `net/limiter.rs`.
 - `min_core` hides the endpoint from a core too old for its kind or fields.
 - `category` and `filter` are for `nyaa` only, as in `releases::Endpoint`.
 
@@ -139,8 +158,11 @@ The index repeats `kind` and the names of the `auth` fields so the list can show
   and the key's fingerprint, and the user accepts it. The key is pinned from then
   on: an index signed by a different key is refused with a plain message, and the
   user has to remove and re-add the repo to accept a new key.
-- Installing an endpoint fetches its file and checks the SHA-256 the signed index
-  gives for it. A mismatch is refused.
+- Installing an endpoint takes its definition from the verified index; there is
+  nothing else to fetch or check.
+- Trusting a repo means trusting where its endpoints send requests. The owner's
+  repo is the only one this design is built for; a third-party repo gets the same
+  fingerprint screen and nothing more.
 - A definition is data. Nothing in it runs: no commands, no scripts. That is also
   why on-demand endpoints (Jackett pods with start and stop commands) stay out of
   repos, as #97 already decided for packs.
@@ -150,19 +172,27 @@ The index repeats `kind` and the names of the `auth` fields so the list can show
 - The core refreshes repo indexes at launch and when the user pulls to refresh
   the list. No intervals, the same rule as the library watcher.
 - An installed endpoint with a higher `version` in the index is shown as having
-  an update. Updating fetches the new file, checks it, and keeps the stored
-  credentials when the `auth` keys are unchanged; a new key asks the user again.
+  an update. Updating keeps the stored credentials only when the `auth` keys are
+  unchanged and the hosts of `url` and `front` are unchanged. A new key, or a
+  credential that would now go to a different host, asks the user again and
+  shows the new host.
 - An endpoint removed from the index stays installed and is marked as no longer
   offered. The user removes it.
 
 ## Core
 
-- A store table, `endpoint_repos` (url, name, key, last index, fetched at), and
-  `installed_endpoints` (id, repo url, version, definition JSON, enabled, order).
-  Installed endpoints join the phone's ordered endpoint list in
-  `phone::sources`; on the desktop they are written to anirss the way an
-  imported pack is (#97).
-- Credentials go to `secrets.json` under `endpoint:<repo>:<id>:<key>`. They never
+- A store table, `endpoint_repos` (url, name, key, serial, last good index,
+  fetched at), and `installed_endpoints` (install id, repo url, endpoint id,
+  version, definition JSON, enabled, order). An installed endpoint is identified
+  by repo plus endpoint id, so two repos that both offer `example` never collide;
+  the install id is a UUID the rest of the core uses. Installed endpoints join the
+  phone's ordered endpoint list in `phone::sources`.
+- Desktop: anirss cannot read `secrets.json`, and a filled URL in its
+  `config.toml` would put the credential on disk outside it. So endpoints without
+  `auth` are written to anirss the way an imported pack is (#97), and endpoints
+  with `auth` are phone-only until the desktop searches through the core's own
+  port of anirss (`releases::native`).
+- Credentials go to `secrets.json` under `endpoint/<install id>/<key>`. They never
   enter the database, an export or a pack, and the activity log never prints them.
 - Contract calls: `AddEndpointRepo { url }` replies with the repo and its
   fingerprint before it is saved; `TrustEndpointRepo { url, key }` saves it;
@@ -196,11 +226,13 @@ One at a time, by hand:
    root.
 3. Open a PR in `anibeam-endpoints`. CI validates every file against the schema
    and refuses a duplicate `id` or a `version` that did not go up.
-4. Merge. CI rebuilds `index.json`, signs it with the key stored as a repo
-   secret, and commits both.
+4. Merge. CI rebuilds `repo.json`, signs it with the key stored as a repo
+   secret, and commits it.
 
 The repo has to be public for the app to read it: a raw URL of a private repo
-needs a GitHub token. It starts private while the format settles.
+needs a GitHub token. It starts private while the format settles. Until then the
+core and `anibeam-cli` also accept a local path to `repo.json`, which is how the
+fixture tests and step 2 above work, and the owner's builds preload nothing.
 
 ## Later, not now
 
