@@ -341,28 +341,30 @@ fn used_bytes(dir: &std::path::Path) -> u64 {
 }
 
 /// The `.torrent` behind an http link, fetched by the core so its lookup goes over HTTPS
-/// like every other request; None for a magnet, or when it could not be had (the engine
-/// then tries the link itself).
+/// like every other request; None for a magnet, or when the site answered with something
+/// else (the engine then tries the link itself). Err when the site did not answer: the
+/// engine would only ask it again, so the caller stops there (#135).
 #[cfg(feature = "phone")]
-async fn torrent_file(core: &Core, link: &str) -> Option<Vec<u8>> {
+async fn torrent_file(core: &Core, link: &str) -> Result<Option<Vec<u8>>, CoreError> {
     if !(link.starts_with("http://") || link.starts_with("https://")) {
-        return None;
+        return Ok(None);
     }
     let reply = core
         .http
         .send(crate::net::HttpRequest {
             method: crate::net::Method::Get,
             url: link.to_string(),
-            headers: vec![(
-                "User-Agent".into(),
-                "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0".into(),
-            )],
+            headers: Vec::new(),
             body: None,
             timeout: Some(std::time::Duration::from_secs(30)),
         })
         .await
-        .ok()?;
-    (reply.is_success() && reply.body.first() == Some(&b'd')).then(|| reply.body.to_vec())
+        .map_err(|e| CoreError::Service {
+            service: crate::downloads::feed::host_of(link),
+            code: "unreachable".to_string(),
+            message: e.message,
+        })?;
+    Ok((reply.is_success() && reply.body.first() == Some(&b'd')).then(|| reply.body.to_vec()))
 }
 
 #[cfg(feature = "phone")]
@@ -409,7 +411,7 @@ pub fn download(
     core.handle.block_on(async {
         let engine = engine(core).await?;
         for item in &items {
-            let file = torrent_file(core, &item.link).await;
+            let file = torrent_file(core, &item.link).await?;
             engine.add(item, &folder, file).await?;
         }
         Ok::<(), CoreError>(())
@@ -577,7 +579,14 @@ async fn poll_with(core: &Core, engine: &engine::Engine) {
             .unwrap_or_else(|| rule.name.clone());
         let mut taken = Vec::new();
         for item in crate::releases::rules::due(&rule, &items) {
-            let file = torrent_file(core, &item.link).await;
+            let file = match torrent_file(core, &item.link).await {
+                Ok(file) => file,
+                // The rest are left for the next round, like a feed that does not answer.
+                Err(e) => {
+                    tracing::warn!("subscription {} stopped: {e}", rule.name);
+                    break;
+                }
+            };
             match engine.add(item, &folder, file).await {
                 Ok(_) => {
                     core.bus.info(

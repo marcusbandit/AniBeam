@@ -8,7 +8,8 @@ plugins; this catches what it leaves behind (libmpv and the FFmpeg tree under it
 Whatever a Mach-O loads from outside the bundle is copied into Contents/Frameworks and the
 load command is pointed at @executable_path/../Frameworks/<name>, which resolves the same
 from the executable, a framework and a dlopen'd plugin alike. Rpaths that lead outside the
-bundle are deleted. --check changes nothing and exits 1 when anything still leaks out.
+bundle are deleted, and every install id is made relative. --check changes nothing and
+exits 1 when anything still leaks out or names an absolute path.
 
 The signatures this invalidates are redone by bundle.sh afterwards.
 
@@ -163,6 +164,25 @@ def fix(app: Path) -> None:
             if rp.startswith("@") or inside(Path(rp), app):
                 continue
             run("install_name_tool", "-delete_rpath", rp, str(binary))
+    relative_ids(app)
+
+
+def relative_ids(app: Path) -> None:
+    """Gives every library in the bundle a relative install id.
+
+    An id is not how dyld finds a library, but it is what anything linked against it
+    records, and an absolute one names the build machine's Homebrew. macdeployqt leaves the
+    ids of the frameworks the QML imports pull in as it found them, and so it does for a
+    library it reached through @loader_path (libbrotlicommon). The Python tree keeps its
+    own @rpath ids, which resolve from its own executable."""
+    contents = app / "Contents"
+    for binary in machos(app):
+        if inside(binary, app / PYTHON_HOME):
+            continue
+        own = install_id(binary)
+        if own and own.startswith("/"):
+            rel = binary.relative_to(contents)
+            run("install_name_tool", "-id", f"@executable_path/../{rel}", str(binary))
 
 
 def leaks(app: Path) -> list[str]:
@@ -171,6 +191,9 @@ def leaks(app: Path) -> list[str]:
     for binary in machos(app):
         rel = binary.relative_to(app)
         exe = exe_for(binary, app)
+        own = install_id(binary)
+        if own and own.startswith("/"):
+            found.append(f"{rel}: id {own}")
         for ref in loads(binary):
             if ref.startswith(SYSTEM):
                 continue
