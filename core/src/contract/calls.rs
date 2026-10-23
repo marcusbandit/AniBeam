@@ -376,18 +376,40 @@ pub enum Call {
     SetPhoneSources {
         sources: Vec<PhoneSource>,
     },
-    /// Searches one source, or the first enabled one, and ranks the
-    /// results; `best` points at the one a single tap should take.
+    /// The desktop's search on the phone: one source (else the first) with fallback
+    /// to the others, auto-resolution, the refine groups and best fit, as
+    /// `SearchReleases` gives them, from the core's own port of anirss.
     PhoneSearch {
         query: String,
-        source: Option<String>,
+        endpoint: Option<String>,
     },
-    /// Adds a release to the engine; its files land in the library folder
-    /// under the show's own folder. `limit_bytes`, when set, refuses a
-    /// release that would take the library past it.
+    /// One refine step, as `RefineReleases`.
+    PhoneRefine {
+        query: String,
+        endpoint: String,
+        items: Vec<Release>,
+        op: RefineOp,
+    },
+    /// Downloads releases into the library folder under `name`, else the show's own
+    /// name. `limit_bytes`, when set, refuses what would take the library past it.
     PhoneDownload {
-        release: Release,
+        items: Vec<Release>,
+        name: Option<String>,
         limit_bytes: Option<u64>,
+    },
+    /// Subscribes to a search, as `Subscribe`: its feed and rule are kept by the core,
+    /// which checks the feed and downloads each new episode once.
+    PhoneSubscribe {
+        query: String,
+        endpoint: String,
+        items: Vec<Release>,
+        name: Option<String>,
+    },
+    PhoneRules,
+    /// Takes subscriptions out; with `files`, their downloads and episodes too.
+    PhoneUnsubscribe {
+        names: Vec<String>,
+        files: bool,
     },
     PhoneTorrents,
     PhoneControl {
@@ -476,10 +498,17 @@ pub enum Reply {
     PhoneSources {
         sources: Vec<PhoneSource>,
     },
-    PhoneResults {
-        source: String,
-        results: Vec<PhoneRelease>,
-        best: Option<u64>,
+    PhoneSearch {
+        search: ReleaseSearch,
+    },
+    PhoneRefined {
+        refinement: Refinement,
+    },
+    PhoneSubscribed {
+        subscribed: Subscribed,
+    },
+    PhoneRules {
+        rules: Vec<SubscriptionRule>,
     },
     PhoneTorrents {
         torrents: Vec<Torrent>,

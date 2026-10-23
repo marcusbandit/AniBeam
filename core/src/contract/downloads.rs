@@ -658,16 +658,6 @@ pub struct PhoneSource {
     pub enabled: bool,
 }
 
-/// One search result on the phone: the release, what its name says, and
-/// its rank among the results.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
-pub struct PhoneRelease {
-    pub release: Release,
-    pub facts: ReleaseFacts,
-    pub size_bytes: Option<u64>,
-    pub score: i64,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, uniffi::Enum)]
 pub enum PhoneAction {
     Pause,

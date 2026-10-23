@@ -888,11 +888,28 @@ impl Core {
                 sources: crate::phone::sources(self),
             }),
             Call::SetPhoneSources { sources } => crate::phone::set_sources(self, sources),
-            Call::PhoneSearch { query, source } => crate::phone::search(self, query, source),
+            Call::PhoneSearch { query, endpoint } => crate::phone::search(self, query, endpoint),
+            Call::PhoneRefine {
+                query,
+                endpoint,
+                items,
+                op,
+            } => crate::phone::refine(self, query, endpoint, items, op),
             Call::PhoneDownload {
-                release,
+                items,
+                name,
                 limit_bytes,
-            } => crate::phone::download(self, release, limit_bytes),
+            } => crate::phone::download(self, items, name, limit_bytes),
+            Call::PhoneSubscribe {
+                query,
+                endpoint,
+                items,
+                name,
+            } => crate::phone::subscribe(self, query, endpoint, items, name),
+            Call::PhoneRules => crate::phone::rules(self),
+            Call::PhoneUnsubscribe { names, files } => {
+                crate::phone::unsubscribe(self, names, files)
+            }
             Call::PhoneTorrents => crate::phone::torrents(self),
             Call::PhoneControl { hashes, action } => crate::phone::control(self, hashes, action),
             Call::SetPhoneHeld { held } => crate::phone::set_held(self, held),
