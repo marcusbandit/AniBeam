@@ -212,7 +212,10 @@ Item {
         anchors.bottom: nextTile.visible ? nextTile.top : controls.top; anchors.bottomMargin: theme.grout
         width: skipButton.implicitWidth + padding * 2; height: skipButton.implicitHeight + padding * 2
         MouseArea { enabled: page.chromeVisible; anchors.fill: parent; anchors.margins: -skipTile.padding }
-        Button { id: skipButton; objectName: "player-skip-intro"; anchors.centerIn: parent; text: "Skip intro"; icon: "chevrons-right"; primary: true; takesFocus: false; onClicked: page.skipIntroAndHide() }
+        Button { id: skipButton; objectName: "player-skip-intro"; anchors.centerIn: parent; text: "Skip intro"; icon: "chevrons-right"; primary: true; takesFocus: false
+            onClicked: page.skipIntroAndHide(page.mapFromItem(null, skipHover.point.scenePosition))
+            // Where the pointer is for the click, so the page knows the spot it then rests on.
+            HoverHandler { id: skipHover } }
     }
 
     // ---- Replay: the last frame is still on screen because keep-open holds it, so this sits

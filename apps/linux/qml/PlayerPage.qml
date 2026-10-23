@@ -232,7 +232,7 @@ FocusScope {
             else if (name === "frame-drop-count") page.drops = Number(value || 0)
             else page.onObserved(name, value)
         }
-        MouseArea { anchors.fill: parent; onClicked: page.togglePause(); hoverEnabled: true; onPositionChanged: page.showChrome(); cursorShape: page.chromeVisible ? Qt.ArrowCursor : Qt.BlankCursor }
+        MouseArea { anchors.fill: parent; onClicked: page.togglePause(); hoverEnabled: true; onPositionChanged: function(mouse) { page.pointerMoved(mapToItem(page, mouse.x, mouse.y)) }; cursorShape: page.chromeVisible ? Qt.ArrowCursor : Qt.BlankCursor }
     }
     // The one place the track list is asked for rather than observed: the pick has to be
     // made before the first frame, and the observation for `track-list` may not have
@@ -381,7 +381,17 @@ FocusScope {
     // The skip intro tile's click: the same skip, then the controls and the pointer go at once
     // rather than staying up for the 2.5 s seekTo gives them, so the picture is clear the
     // moment the intro is. Ctrl+Right still brings them up, as every handled key does.
-    function skipIntroAndHide() { skipWindow(intro); hideTimer.stop(); chromeVisible = false }
+    // `at` is where the pointer rested for the click, in page coordinates.
+    function skipIntroAndHide(at) { skipWindow(intro); hideTimer.stop(); chromeVisible = false; restingAt = at }
+    // Once the seek lands the tile leaves from under the resting pointer, and Qt hovers the
+    // picture at that same spot with nothing having moved. That hover must not call the
+    // controls back up; the first real move does, and clears the spot.
+    property var restingAt: null
+    function pointerMoved(p) {
+        if (restingAt && Math.abs(p.x - restingAt.x) < 1 && Math.abs(p.y - restingAt.y) < 1) return
+        restingAt = null
+        showChrome()
+    }
     function skipForward() {
         if (inside(intro, timePos)) skipWindow(intro)
         else if (inside(outro, timePos)) skipWindow(outro)
