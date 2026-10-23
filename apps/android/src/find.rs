@@ -24,6 +24,8 @@ const LENSES: [&str; 4] = ["Gaps", "Airing", "Following", "Downloaded"];
 #[derive(Clone, Debug, Default)]
 struct Offer {
     show: grid::Show,
+    /// A library series, not one found only on AniList.
+    in_library: bool,
     poster: Option<String>,
     ledger: String,
 }
@@ -290,6 +292,9 @@ impl Find {
                 self.set_view(0);
                 self.line("", "");
                 self.show_lens();
+                // Back to the field as it was left: the typed words list their shows again.
+                let typed = self.data().map(|w| w.global::<FindData>().get_text().to_string()).unwrap_or_default();
+                self.suggest(typed);
             }
             _ => self.close(),
         }
@@ -325,23 +330,18 @@ impl Find {
     }
 
     fn offer_of(card: &SeriesCard) -> Offer {
-        let mut queries = vec![card.title.clone()];
-        for t in [&card.titles.romaji, &card.titles.english].into_iter().flatten() {
-            if !queries.contains(t) {
-                queries.push(t.clone());
-            }
-        }
         let folder = std::path::Path::new(&card.path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         Offer {
             show: grid::Show {
                 title: card.title.clone(),
-                queries,
+                queries: names_of(card),
                 total: card.total_episodes.unwrap_or(0),
                 airing: card.next_airing.is_some()
                     || matches!(card.status, Some(anibeam_core::AiringStatus::Releasing)),
                 cubes: card.cubes.clone(),
                 folder,
             },
+            in_library: true,
             poster: card.poster.clone(),
             ledger: String::new(),
         }
@@ -364,6 +364,7 @@ impl Find {
                 cubes: String::new(),
                 folder: folder.to_string(),
             },
+            in_library: false,
             poster: None,
             ledger: String::new(),
         }
@@ -570,7 +571,7 @@ impl Find {
                     poster,
                     has_poster,
                     initials: format::initials(&o.show.title).into(),
-                    library: !o.show.folder.is_empty() && self.cards.iter().any(|c| c.path.ends_with(&format!("/{}", o.show.folder))),
+                    library: o.in_library,
                     cubes: model(crate::phone::cube_codes(&o.show.cubes)),
                 }
             })
@@ -1142,11 +1143,14 @@ impl Find {
     }
 }
 
-/// Every name a library card goes by.
+/// Every name a library card goes by, the shown title first, each once. A show's
+/// releases are searched by these in order.
 fn names_of(c: &SeriesCard) -> Vec<String> {
     let mut names = vec![c.title.clone()];
     for t in [&c.titles.romaji, &c.titles.english].into_iter().flatten() {
-        names.push(t.clone());
+        if !names.contains(t) {
+            names.push(t.clone());
+        }
     }
     names
 }
@@ -1198,6 +1202,7 @@ fn offer_of_hit(h: &SearchResult, poster: String) -> Offer {
             cubes: "g".repeat(total.min(400) as usize),
             folder: title,
         },
+        in_library: false,
         poster: (!poster.is_empty()).then_some(poster),
         ledger: facts.join(", "),
     }

@@ -184,8 +184,8 @@ component Home inherits VerticalLayout {
             caption: "up";
         }
         Figure {
-            value: AppData.downloading-count + "";
-            caption: "downloading";
+            value: AppData.moving-count + "";
+            caption: "downloading now";
         }
     }
 }
@@ -272,12 +272,15 @@ export component DownloadsPage inherits Rectangle {
 
             if root.typing: Suggestions { }
 
+            // Spacing 0: a finished download is an empty item here, and spacing between
+            // empty items would stack up as gaps. Each panel brings its own space under it.
             if FindData.view == 0 && !root.typing && AppData.downloading-count > 0: VerticalLayout {
-                spacing: Theme.unit * 3;
+                spacing: 0;
                 SectionHead {
                     title: "Downloading";
                     note: AppData.downloads-note != "" ? AppData.downloads-note : "Cancel deletes what it had; Pause keeps it.";
                 }
+                Rectangle { height: Theme.unit * 3; }
                 for row in AppData.downloads: VerticalLayout {
                     padding-bottom: row.done ? 0 : Theme.unit * 3;
                     if !row.done: DownloadPanel { data: row; }

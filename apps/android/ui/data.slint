@@ -181,7 +181,9 @@ export global AppData {
     // The rates across every download, "3.2 MB/s".
     in property <string> rate-down: "0 B/s";
     in property <string> rate-up: "0 B/s";
+    // Not finished, whatever their state; and of those, the ones actually moving.
     in property <int> downloading-count;
+    in property <int> moving-count;
     in property <int> finished-count;
     in property <[SourceRow]> sources;
     in-out property <string> new-source-name;
