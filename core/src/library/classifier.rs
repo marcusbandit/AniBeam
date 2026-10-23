@@ -65,6 +65,15 @@ static EPISODE_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
         Regex::new(r"(?i)\s([0-9]{1,3})(?:v[0-9]+)?(?:\s|$)").unwrap(),
     ]
 });
+/// `01x36`, the `<season>x<episode>` form Sonarr and many scene releases
+/// write. Tried after the patterns above and ahead of the fallback, which
+/// would otherwise take the last number in the name, a title's included:
+/// `Death Note - 01x36 - 1.28` is episode 36, not 28. A separator has to
+/// come first, so a series name that opens the file (`3x3.Eyes.01`) is
+/// never read as one, and two digits at most before the `x` keep a
+/// resolution (`1920x1080`) out.
+static SEASON_X_EPISODE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)[\s._-]([0-9]{1,2})x([0-9]{1,3})\b").unwrap());
 static ANY_NUMBER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[0-9]+").unwrap());
 /// A revision suffix glued to a number (`07v2`), dropped before the
 /// fallback counts numbers so the `2` never reads as the episode.
@@ -142,6 +151,9 @@ fn extract_episode(file_name: &str) -> (Option<u32>, f64) {
         if let Some(m) = re.captures(&base) {
             return finalize(None, m[1].parse().unwrap_or(1.0));
         }
+    }
+    if let Some(m) = SEASON_X_EPISODE.captures(&base) {
+        return finalize(m[1].parse().ok(), m[2].parse().unwrap_or(1.0));
     }
     let unrevised = REVISION.replace_all(&base, "$1");
     let survivors: Vec<u64> = ANY_NUMBER
@@ -244,7 +256,7 @@ pub fn clean_episode_title(file_name: &str) -> String {
 /// to read as the title.
 static TITLE_ANCHOR: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?i)\bS[0-9]+E[0-9]+\b|\b(?:Episode|Ep\.?)\s*[0-9]+(?:\.[0-9]+)?(?:v[0-9]+)?\b|\bE[0-9]{2,}\b|\s-\s*[0-9]+(?:\.[0-9]+)?(?:v[0-9]+)?\b",
+        r"(?i)\bS[0-9]+E[0-9]+\b|\b(?:Episode|Ep\.?)\s*[0-9]+(?:\.[0-9]+)?(?:v[0-9]+)?\b|\bE[0-9]{2,}\b|\s-\s*[0-9]+(?:\.[0-9]+)?(?:v[0-9]+)?\b|[\s._-][0-9]{1,2}x[0-9]{1,3}\b",
     )
     .unwrap()
 });
@@ -414,6 +426,24 @@ mod tests {
     }
 
     #[test]
+    fn season_x_episode_beats_a_number_in_the_title() {
+        let c = ep("Death Note - 01x36 - 1.28.mkv");
+        assert_eq!((c.extra, c.number, c.season), (None, 36.0, Some(1)));
+        let c = ep("Death Note - 01x30 - Justice.mkv");
+        assert_eq!((c.number, c.season), (30.0, Some(1)));
+        let c = ep("Show.2x05.The.Title.720p.mkv");
+        assert_eq!((c.number, c.season), (5.0, Some(2)));
+        // A series name that opens the file is not a season and episode.
+        assert_eq!(ep("3x3 Eyes - 01.mkv").number, 1.0);
+        assert_eq!(ep("3x3.Eyes.01.mkv").number, 1.0);
+        // Nor is a resolution.
+        assert_eq!(ep("Show 1920x1080 - 07.mkv").number, 7.0);
+        // Season 1 keys by the bare number, as a name with no season does.
+        let name = "Death Note - 01x36 - 1.28.mkv";
+        assert_eq!(episode_key(&ep(name), name), "36");
+    }
+
+    #[test]
     fn the_fallback_drops_years_and_big_numbers_and_defaults_to_one() {
         assert_eq!(ep("Show.Name.2019.1080p.Part7.mkv").number, 7.0);
         assert_eq!(ep("Show Name.mkv").number, 1.0);
@@ -546,5 +576,10 @@ mod tests {
         assert_eq!(t("Show S01E03 Ep 3.mkv"), None);
         assert_eq!(t("Show S01E03 Episode 03v2.mkv"), None);
         assert_eq!(t("[G] Show - 12 END [1080p].mkv"), None);
+        assert_eq!(
+            t("Death Note - 01x30 - Justice.mkv").as_deref(),
+            Some("Justice")
+        );
+        assert_eq!(t("Death Note - 01x36 - 1.28.mkv").as_deref(), Some("1.28"));
     }
 }
