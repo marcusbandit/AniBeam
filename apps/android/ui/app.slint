@@ -1,49 +1,57 @@
 import { Theme } from "theme.slint";
-import { AppData, CheckRow, Day, DownloadRow, EpisodeLine, Hero, SeriesHead, Shelf, SourceRow, Tile } from "data.slint";
-import { Button, IconButton, NavItem, TextButton } from "widgets.slint";
+import { AppData, CheckRow, Day, DownloadRow, EpisodeLine, Hero, Nav, SeriesHead, Shelf, SourceRow, Tile } from "data.slint";
+import { Button, NavItem, Pane } from "widgets.slint";
 import { HomePage } from "home.slint";
 import { LibraryPage } from "library.slint";
 import { Ask, MorePage } from "more.slint";
 import { SeriesPage } from "series.slint";
 import { Onboarding } from "onboarding.slint";
-import { FindData, FindPage, GridRow, GroupChip, ReleaseRow, SourceChip } from "find.slint";
+import { FindData, GridRow, GroupChip, ReleaseRow, SourceChip, Suggestion } from "find.slint";
+import { DownloadsPage } from "downloads.slint";
 
-export { AppData, CheckRow, Day, DownloadRow, EpisodeLine, FindData, GridRow, GroupChip, Hero, ReleaseRow, SeriesHead, Shelf, SourceChip, SourceRow, Tile }
+export { AppData, CheckRow, Day, DownloadRow, EpisodeLine, FindData, GridRow, GroupChip, Hero, ReleaseRow, SeriesHead, Shelf, SourceChip, SourceRow, Suggestion, Tile }
 
 // "Download over mobile data?": asked before Wi-Fi only goes off, from More or onboarding.
+// A sheet from the foot, the floating glass of the desktop's sheets.
 component MobileDataQuestion inherits Rectangle {
-    background: #000000a8;
+    in property <length> inset-bottom;
+    background: #000000b0;
     TouchArea { clicked => { Ask.mobile = false; } }
-    card := Rectangle {
-        x: Theme.pad;
-        width: parent.width - 2 * Theme.pad;
-        y: (parent.height - self.height) / 2;
+    sheet := Rectangle {
+        x: Theme.grout;
+        width: parent.width - 2 * Theme.grout;
+        y: parent.height - self.height - root.inset-bottom - Theme.grout;
         height: body.preferred-height;
-        background: Theme.raised;
-        border-radius: Theme.radius-large;
+        background: Theme.float;
+        border-radius: Theme.radius + 6px;
+        border-width: 1px;
+        border-color: Theme.line-strong;
         TouchArea { }
         body := VerticalLayout {
-            padding: Theme.pad * 1.5;
+            padding: Theme.pad;
+            padding-top: Theme.pad + Theme.unit;
             spacing: Theme.unit * 3;
             Text {
                 text: "Download over mobile data?";
                 color: Theme.text;
-                font-size: Theme.heading + 2px;
-                font-weight: 600;
+                font-size: Theme.section;
+                font-family: Theme.display-face;
                 wrap: word-wrap;
             }
             Text {
                 text: "One episode is often 1 to 2 GB. On a capped plan that can use up a month of data in an evening.";
                 color: Theme.dim;
+                font-size: Theme.small + 1px;
                 wrap: word-wrap;
             }
+            Rectangle { height: Theme.unit; }
             Button {
                 text: "Keep Wi-Fi only";
                 primary: true;
                 clicked => { Ask.mobile = false; }
             }
-            TextButton {
-                text: "Yes, use mobile data too";
+            Button {
+                text: "Use mobile data too";
                 clicked => {
                     Ask.mobile = false;
                     AppData.set-wifi-only(false);
@@ -59,12 +67,13 @@ export component AppWindow inherits Window {
     default-font-size: Theme.normal;
     default-font-family: Theme.face;
 
-    in-out property <int> page: 0;
+    property <int> page: Nav.page;
 
     property <bool> wide: self.width > self.height;
     property <[{icon: image, label: string}]> destinations: [
         { icon: @image-url("icons/house.svg"), label: "Home" },
         { icon: @image-url("icons/layers.svg"), label: "Library" },
+        { icon: @image-url("icons/download.svg"), label: "Downloads" },
         { icon: @image-url("icons/ellipsis.svg"), label: "More" },
     ];
 
@@ -86,7 +95,11 @@ export component AppWindow inherits Window {
 
     function go(to: int) {
         AppData.close-series();
-        root.page = to;
+        // Downloads opens on its lenses; a show or a list left open stays as it was.
+        if (to == 2 && !FindData.shown) {
+            FindData.open("");
+        }
+        Nav.page = to;
         keys.focus();
     }
 
@@ -109,12 +122,12 @@ export component AppWindow inherits Window {
                 AppData.close-series();
                 return accept;
             }
-            if (FindData.shown) {
+            if (root.page == 2 && FindData.shown && FindData.view > 0) {
                 FindData.back();
                 return accept;
             }
             if (root.page != 0) {
-                root.page = 0;
+                Nav.page = 0;
                 return accept;
             }
             reject
@@ -133,27 +146,16 @@ export component AppWindow inherits Window {
             LibraryPage {
                 visible: root.page == 1;
             }
-            MorePage {
+            DownloadsPage {
                 visible: root.page == 2;
             }
-            if FindData.shown: FindPage { }
+            MorePage {
+                visible: root.page == 3;
+            }
             if AppData.series-open: Rectangle {
                 background: Theme.ground;
                 TouchArea { }
-                SeriesPage {
-                    y: back.height;
-                    height: parent.height - self.y;
-                }
-                back := Rectangle {
-                    y: 0;
-                    height: 14 * Theme.unit;
-                    background: Theme.ground;
-                    IconButton {
-                        x: Theme.pad;
-                        icon: @image-url("icons/arrow-left.svg");
-                        clicked => { AppData.close-series(); }
-                    }
-                }
+                SeriesPage { }
             }
         }
 
@@ -163,7 +165,7 @@ export component AppWindow inherits Window {
             y: root.wide ? 0 : root.height - root.bar-height - root.inset-bottom;
             width: root.wide ? root.inset-left + root.rail-width : root.width;
             height: root.wide ? root.height : root.bar-height + root.inset-bottom;
-            background: Theme.surface;
+            background: Theme.ground;
             Rectangle {
                 x: root.wide ? parent.width - 1px : 0;
                 y: 0;
@@ -193,6 +195,8 @@ export component AppWindow inherits Window {
             height: root.height - root.inset-top - root.inset-bottom;
         }
 
-        if Ask.mobile: MobileDataQuestion { }
+        if Ask.mobile: MobileDataQuestion {
+            inset-bottom: root.inset-bottom;
+        }
     }
 }

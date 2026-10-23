@@ -1,154 +1,161 @@
 import { Theme } from "theme.slint";
 import { AppData } from "data.slint";
 import { Ask } from "more.slint";
-import { Button, ListGroup, ListRow, PageTitle, Slider, TextButton } from "widgets.slint";
+import { Button, Figure, ListGroup, ListRow, Slider, TextButton } from "widgets.slint";
 
 // The first run, one question a step: who you are on AniList and MAL, Wi-Fi or mobile data,
-// and how much room the phone gives AniBeam. Shown once; More can run it again.
+// and how much room the phone gives AniBeam. Shown once; More can run it again. Each step
+// is a page in the desktop's idiom: the step's title in the display cut, a dim line, the
+// one pane it asks about, and the buttons at the foot where a thumb is.
 export component Onboarding inherits Rectangle {
     background: Theme.ground;
     property <int> steps: 4;
     property <[{title: string, note: string}]> pages: [
-        { title: "AniBeam", note: "Your anime, on this phone: download it, watch it, and keep your lists in step." },
-        { title: "Tracking", note: "Sign in so what you watch here counts on your lists. You can do this later in More." },
-        { title: "Downloads", note: "Episodes are big. AniBeam downloads on Wi-Fi unless you say otherwise." },
-        { title: "Storage", note: "A cap on how much AniBeam may download. It reserves nothing: the space stays free for everything else until episodes fill it." },
+        { title: "AniBeam", note: "Your anime on this phone. Find a show, see who has it, download it, and keep your lists in step." },
+        { title: "Your lists", note: "Sign in so what you watch here counts on AniList or MyAnimeList. You can do this later in More." },
+        { title: "Wi-Fi only", note: "Episodes are big. AniBeam downloads on Wi-Fi unless you say otherwise." },
+        { title: "Storage", note: "A cap on how much AniBeam may download. It reserves nothing: the space stays free until episodes fill it." },
     ];
 
     TouchArea { }
 
-    VerticalLayout {
-        padding: Theme.pad;
-        padding-top: Theme.pad * 2;
-        spacing: Theme.unit * 4;
-        alignment: start;
+    // Where you are: one segment a step, the ones done in the accent.
+    HorizontalLayout {
+        x: Theme.pad;
+        y: Theme.pad;
+        width: parent.width - 2 * Theme.pad;
+        height: 3px;
+        spacing: Theme.unit * 1.5;
+        for i in root.steps: Rectangle {
+            border-radius: 1.5px;
+            background: i <= AppData.step ? Theme.accent : Theme.pressed;
+            animate background { duration: 200ms; }
+        }
+    }
 
-        HorizontalLayout {
-            spacing: Theme.unit * 1.5;
-            for i in root.steps: Rectangle {
-                height: 3px;
-                border-radius: 1.5px;
-                background: i <= AppData.step ? Theme.accent : Theme.pressed;
-                animate background { duration: 200ms; }
+    Flickable {
+        y: Theme.pad + 3px;
+        height: foot.y - self.y;
+        VerticalLayout {
+            alignment: start;
+            padding-left: Theme.pad;
+            padding-right: Theme.pad;
+            padding-top: Theme.pad * 2;
+            padding-bottom: Theme.pad;
+            spacing: Theme.unit * 4;
+
+            if AppData.step == 0: Image {
+                height: 20 * Theme.unit;
+                width: self.height;
+                source: @image-url("icons/app.png");
             }
-        }
-
-        if AppData.step == 0: Image {
-            height: 22 * Theme.unit;
-            width: self.height;
-            source: @image-url("icons/app.png");
-        }
-
-        PageTitle {
-            title: root.pages[AppData.step].title;
-        }
-        Text {
-            text: root.pages[AppData.step].note;
-            color: Theme.dim;
-            wrap: word-wrap;
-        }
-
-        if AppData.step == 1: ListGroup {
-            ListRow {
-                label: "AniList";
-                helper: AppData.anilist-state;
-                tappable: true;
-                clicked => { AppData.connect-tracker(0); }
+            Text {
+                text: root.pages[AppData.step].title;
+                color: Theme.text;
+                font-size: AppData.step == 0 ? 72px : Theme.page + 6px;
+                font-family: Theme.display-face;
+                wrap: word-wrap;
             }
-            ListRow {
-                label: "MyAnimeList";
-                helper: AppData.mal-state;
-                tappable: true;
-                last: true;
-                clicked => { AppData.connect-tracker(1); }
+            Text {
+                text: root.pages[AppData.step].note;
+                color: Theme.dim;
+                font-size: Theme.normal + 1px;
+                wrap: word-wrap;
             }
-        }
+            Rectangle { height: Theme.unit * 2; }
 
-        if AppData.step == 2: ListGroup {
-            ListRow {
-                label: "Only on Wi-Fi";
-                helper: AppData.wifi-only ? "On. Mobile data asks first." : "Off. Downloads use mobile data too.";
-                last: true;
-                switch: true;
-                on: AppData.wifi-only;
-                toggled => {
+            if AppData.step == 1: ListGroup {
+                ListRow {
+                    label: "AniList";
+                    helper: AppData.anilist-state;
+                    tappable: true;
+                    chevron: true;
+                    clicked => { AppData.connect-tracker(0); }
+                }
+                ListRow {
+                    label: "MyAnimeList";
+                    helper: AppData.mal-state;
+                    tappable: true;
+                    chevron: true;
+                    last: true;
+                    clicked => { AppData.connect-tracker(1); }
+                }
+            }
+
+            if AppData.step == 2: ListGroup {
+                ListRow {
+                    label: "Only on Wi-Fi";
+                    helper: AppData.wifi-only ? "On. Mobile data asks first." : "Off. Downloads use mobile data too.";
+                    last: true;
+                    switch: true;
+                    on: AppData.wifi-only;
+                    toggled => {
                         if (AppData.wifi-only) {
                             Ask.mobile = true;
                         } else {
                             AppData.set-wifi-only(true);
                         }
                     }
+                }
+            }
+
+            if AppData.step == 3: VerticalLayout {
+                spacing: Theme.unit * 4;
+                Figure {
+                    value: AppData.limit-label;
+                    caption: "18 GB is about 12 episodes. Slide it anywhere up to the phone's whole storage.";
+                }
+                Slider {
+                    minimum: 1;
+                    maximum: AppData.disk-gb;
+                    value: AppData.limit-gb;
+                    moved(gb) => { AppData.set-limit(AppData.limit-on, gb); }
+                }
+                if AppData.free-line != "": Text {
+                    text: AppData.free-line;
+                    color: Theme.dim;
+                    font-size: Theme.small;
+                    wrap: word-wrap;
+                }
+                ListGroup {
+                    ListRow {
+                        label: "Use this cap";
+                        helper: AppData.limit-on
+                            ? "On. At " + AppData.limit-label + ", AniBeam downloads nothing more until you delete episodes."
+                            : "Off. AniBeam downloads until the phone is full.";
+                        last: true;
+                        switch: true;
+                        on: AppData.limit-on;
+                        toggled => { AppData.set-limit(!AppData.limit-on, AppData.limit-gb); }
+                    }
+                }
             }
         }
+    }
 
-        if AppData.step == 3: ListGroup {
-            ListRow {
-                label: "Cap";
-                helper: "18 GB is suggested, about 12 episodes. Slide it anywhere up to the phone's whole storage.";
-            }
-            Rectangle {
-                height: amount.preferred-height + 6 * Theme.unit;
-                amount := VerticalLayout {
-                    x: Theme.pad;
-                    y: 2 * Theme.unit;
-                    width: parent.width - 2 * Theme.pad;
-                    spacing: Theme.unit;
-                    Text {
-                        text: AppData.limit-label;
-                        color: Theme.text;
-                        font-size: Theme.display;
-                        font-family: Theme.figure;
-                    }
-                    Slider {
-                        minimum: 1;
-                        maximum: AppData.disk-gb;
-                        value: AppData.limit-gb;
-                        moved(gb) => { AppData.set-limit(AppData.limit-on, gb); }
-                    }
-                    Text {
-                        text: AppData.free-line;
-                        color: Theme.dim;
-                        font-size: Theme.small;
-                        wrap: word-wrap;
-                    }
+    foot := VerticalLayout {
+        x: Theme.pad;
+        width: parent.width - 2 * Theme.pad;
+        y: parent.height - self.preferred-height;
+        padding-bottom: Theme.pad;
+        spacing: Theme.unit;
+        Button {
+            text: AppData.step == root.steps - 1 ? "Start" : "Continue";
+            primary: true;
+            clicked => {
+                if (AppData.step >= root.steps - 1) {
+                    AppData.finish-onboarding();
+                } else {
+                    AppData.step += 1;
                 }
-                Rectangle {
-                    x: Theme.pad;
-                    y: parent.height - 1px;
-                    width: parent.width - 2 * Theme.pad;
-                    height: 1px;
-                    background: Theme.line;
-                }
-            }
-            ListRow {
-                label: "Use this cap";
-                helper: AppData.limit-on
-                    ? "On. At " + AppData.limit-label + ", AniBeam downloads nothing more until you delete episodes. Set it above the space you have and the phone runs out first."
-                    : "Off. AniBeam downloads until the phone is full.";
-                last: true;
-                switch: true;
-                on: AppData.limit-on;
-                toggled => { AppData.set-limit(!AppData.limit-on, AppData.limit-gb); }
             }
         }
-
-        VerticalLayout {
-            spacing: Theme.unit;
-            padding-top: Theme.unit * 2;
-            Button {
-                text: AppData.step == root.steps - 1 ? "Start" : "Continue";
-                primary: true;
-                clicked => {
-                    if (AppData.step >= root.steps - 1) {
-                        AppData.finish-onboarding();
-                    } else {
-                        AppData.step += 1;
-                    }
+        TextButton {
+            text: AppData.step > 0 ? "Back" : "";
+            clicked => {
+                if (AppData.step > 0) {
+                    AppData.step -= 1;
                 }
-            }
-            if AppData.step > 0: TextButton {
-                text: "Back";
-                clicked => { AppData.step -= 1; }
             }
         }
     }

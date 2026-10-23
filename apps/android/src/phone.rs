@@ -127,7 +127,7 @@ pub fn home(cards: &[SeriesCard], art: &Art, now: i64, day: usize) -> HomeView {
         .map(|&d| {
             let (start, end) = bounds(d);
             Day {
-                weekday: d.format("%a").to_string().to_uppercase().into(),
+                weekday: d.format("%a").to_string().into(),
                 date: d.day().to_string().into(),
                 count: upcoming.iter().filter(|(_, at)| *at >= start && *at < end).count() as i32,
                 today: d == today,

@@ -1,7 +1,10 @@
+// More: the settings, in the desktop's flat sections. Each section is a heading in the
+// display cut with its line of fact, over one pane of rows closed by hairlines; storage
+// stands on the ground as figures over their captions.
+
 import { Theme } from "theme.slint";
-import { FindData } from "find.slint";
-import { AppData, DownloadRow } from "data.slint";
-import { Button, ListGroup, ListRow, PageTitle, ProgressLine, ShelfHead, Slider, TextButton } from "widgets.slint";
+import { AppData } from "data.slint";
+import { Button, Field, Figure, ListGroup, ListRow, PageTitle, SectionHead, Slider } from "widgets.slint";
 
 // Questions a page asks over everything else; the window draws them.
 export global Ask {
@@ -9,15 +12,16 @@ export global Ask {
     in-out property <bool> mobile;
 }
 
-// The host address, editable in place, with its last test underneath.
+// The other device's address, editable in place, with its last test underneath.
 component HostRow inherits Rectangle {
     height: column.preferred-height;
     column := VerticalLayout {
         padding: Theme.pad;
-        spacing: Theme.unit * 2;
+        spacing: Theme.unit * 3;
         Text {
             text: "Another AniBeam on your tailnet";
             color: Theme.text;
+            font-family: Theme.strong-face;
         }
         Text {
             text: "Its library shows in Library, read only. A name like banditbox or an address like 100.94.40.21.";
@@ -25,38 +29,39 @@ component HostRow inherits Rectangle {
             font-size: Theme.small;
             wrap: word-wrap;
         }
-        Rectangle {
-            height: 11 * Theme.unit;
-            border-radius: Theme.radius-row;
-            background: Theme.field;
-            border-width: 1px;
-            border-color: input.has-focus ? Theme.line-strong : Theme.line;
-            input := TextInput {
-                x: Theme.unit * 3;
-                width: parent.width - 6 * Theme.unit;
-                height: parent.height;
-                text <=> AppData.host-address;
-                color: Theme.text;
-                font-family: Theme.figure;
-                vertical-alignment: center;
-                single-line: true;
-            }
+        Field {
+            text <=> AppData.host-address;
+            figure: true;
+            placeholder: "banditbox:8790";
         }
-        if AppData.host-result != "": Text {
-            text: AppData.host-result;
-            color: AppData.host-tone == 0 ? Theme.ok : AppData.host-tone == 1 ? Theme.warn : Theme.dim;
-            font-size: Theme.small;
-            wrap: word-wrap;
+        if AppData.host-result != "": HorizontalLayout {
+            spacing: Theme.unit * 2;
+            Rectangle {
+                y: (parent.height - self.height) / 2;
+                width: 2.5 * Theme.unit;
+                height: self.width;
+                border-radius: self.width / 2;
+                background: AppData.host-tone == 0 ? Theme.ok : AppData.host-tone == 1 ? Theme.bad : Theme.dim;
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: AppData.host-result;
+                color: Theme.dim;
+                font-size: Theme.small;
+                wrap: word-wrap;
+            }
         }
         HorizontalLayout {
             spacing: Theme.gap;
             alignment: start;
             Button {
                 text: "Test";
+                small: true;
                 clicked => { AppData.test-host(AppData.host-address); }
             }
             Button {
                 text: "Save";
+                small: true;
                 primary: true;
                 clicked => { AppData.save-host(AppData.host-address); }
             }
@@ -64,46 +69,39 @@ component HostRow inherits Rectangle {
     }
 }
 
-// One download: its name, a line of facts, the progress, and pause or resume and remove.
-component DownloadItem inherits Rectangle {
-    in property <DownloadRow> data;
-    height: column.preferred-height + 5 * Theme.unit;
+// One source the phone searches: its name, its address in the faint ledger cut, Remove.
+component SourceItem inherits Rectangle {
+    in property <string> name;
+    in property <string> url;
+    in property <bool> removable;
+    callback remove();
+    height: column.preferred-height + 7 * Theme.unit;
     column := VerticalLayout {
         x: Theme.pad;
-        y: Theme.unit * 2.5;
-        width: parent.width - 2 * Theme.pad;
-        spacing: Theme.unit * 1.5;
+        y: 3.5 * Theme.unit;
+        width: parent.width - 2 * Theme.pad - (root.removable ? 24 * Theme.unit : 0);
+        spacing: Theme.unit;
         Text {
-            text: root.data.name;
+            text: root.name;
             color: Theme.text;
-            font-size: Theme.small + 1px;
-            wrap: word-wrap;
+            font-size: Theme.large;
+            font-family: Theme.display-face;
         }
         Text {
-            text: root.data.state + (root.data.facts == "" ? "" : ",  " + root.data.facts);
-            color: Theme.dim;
+            text: root.url;
+            color: Theme.faint;
             font-size: Theme.small - 1px;
-            font-family: Theme.figure;
-            wrap: word-wrap;
+            font-family: Theme.ledger-face;
+            overflow: elide;
         }
-        if !root.data.done: ProgressLine {
-            progress: root.data.progress;
-            fill: root.data.paused ? Theme.faint : Theme.purple;
-        }
-        HorizontalLayout {
-            spacing: Theme.gap;
-            alignment: start;
-            if !root.data.done && root.data.state != "Waiting for Wi-Fi": TextButton {
-                text: root.data.paused ? "Resume" : "Pause";
-                clicked => { AppData.torrent-action(root.data.hash, root.data.paused ? 1 : 0); }
-            }
-            TextButton {
-                text: root.data.done ? "Remove from list" : "Cancel";
-                // A finished one leaves the list and keeps its episode; Cancel deletes what a
-                // download had written so far.
-                clicked => { AppData.torrent-action(root.data.hash, root.data.done ? 3 : 2); }
-            }
-        }
+    }
+    if root.removable: Button {
+        x: parent.width - self.width - Theme.pad;
+        y: (parent.height - self.height) / 2;
+        text: "Remove";
+        small: true;
+        danger: true;
+        clicked => { root.remove(); }
     }
     Rectangle {
         x: Theme.pad;
@@ -114,42 +112,16 @@ component DownloadItem inherits Rectangle {
     }
 }
 
-// A plain one-line text field.
-component Field inherits Rectangle {
-    in-out property <string> text;
-    in property <string> placeholder;
-    height: 11 * Theme.unit;
-    border-radius: Theme.radius-row;
-    background: Theme.field;
-    border-width: 1px;
-    border-color: input.has-focus ? Theme.line-strong : Theme.line;
-    if root.text == "": Text {
-        x: Theme.unit * 3;
-        height: parent.height;
-        text: root.placeholder;
-        color: Theme.faint;
-        vertical-alignment: center;
-    }
-    input := TextInput {
-        x: Theme.unit * 3;
-        width: parent.width - 6 * Theme.unit;
-        height: parent.height;
-        text <=> root.text;
-        color: Theme.text;
-        vertical-alignment: center;
-        single-line: true;
-    }
-}
-
 // Adding a source: a name and an address with {query} where the search goes.
 component SourceForm inherits Rectangle {
     height: column.preferred-height;
     column := VerticalLayout {
         padding: Theme.pad;
-        spacing: Theme.unit * 2;
+        spacing: Theme.unit * 3;
         Text {
             text: "Add a source";
             color: Theme.text;
+            font-family: Theme.strong-face;
         }
         Text {
             text: "Any RSS feed with {query} where the search goes. For erai, paste your feed address from erai-raws.info with s={query}.";
@@ -161,14 +133,17 @@ component SourceForm inherits Rectangle {
         Field { text <=> AppData.new-source-url; placeholder: "https://...{query}..."; }
         if AppData.source-error != "": Text {
             text: AppData.source-error;
-            color: Theme.warn;
+            color: Theme.bad;
             font-size: Theme.small;
             wrap: word-wrap;
         }
         HorizontalLayout {
             alignment: start;
             Button {
-                text: "Add";
+                text: "Add source";
+                small: true;
+                icon: @image-url("icons/rss.svg");
+                has-icon: true;
                 clicked => { AppData.add-source(AppData.new-source-name, AppData.new-source-url); }
             }
         }
@@ -179,54 +154,40 @@ export component MorePage inherits Rectangle {
     Flickable {
         VerticalLayout {
             alignment: start;
-            padding-left: Theme.pad;
-            padding-right: Theme.pad;
-            padding-top: Theme.unit * 2;
+            padding-left: Theme.grout + Theme.unit;
+            padding-right: Theme.grout + Theme.unit;
+            padding-top: Theme.unit * 4;
             padding-bottom: Theme.pad * 2;
-            spacing: Theme.unit * 3;
+            spacing: Theme.unit * 4;
             PageTitle {
                 title: "More";
-                note: AppData.wifi-only ? "Downloads on Wi-Fi only" : "Downloads on Wi-Fi and mobile data";
+                note: "Settings";
             }
 
-            Button {
-                text: "Find something to download";
-                primary: true;
-                clicked => { FindData.open(""); }
+            SectionHead {
+                title: "Storage";
+                note: AppData.limit-on ? "Capped at " + AppData.limit-label : "No cap";
             }
-
-            ShelfHead {
-                title: "Downloads";
-                count: AppData.downloads.length > 0 ? "" + AppData.downloads.length : "";
+            HorizontalLayout {
+                spacing: Theme.unit * 8;
+                alignment: start;
+                Figure {
+                    value: AppData.used-figure;
+                    caption: "episodes";
+                }
+                Figure {
+                    value: AppData.limit-on ? AppData.limit-label : "None";
+                    caption: "cap";
+                }
+                if AppData.free-figure != "": Figure {
+                    value: AppData.free-figure;
+                    caption: "free on the phone";
+                }
             }
-            if AppData.downloads-note != "": Text {
-                text: AppData.downloads-note;
-                color: Theme.dim;
-                font-size: Theme.small;
-                wrap: word-wrap;
-            }
-            if AppData.downloads.length > 0: ListGroup {
-                for row in AppData.downloads: DownloadItem { data: row; }
-            }
-
-            ShelfHead { title: "Network and storage"; }
             ListGroup {
                 ListRow {
-                    label: "Only on Wi-Fi";
-                    helper: "Mobile data asks first.";
-                    switch: true;
-                    on: AppData.wifi-only;
-                    toggled => {
-                            if (AppData.wifi-only) {
-                                Ask.mobile = true;
-                            } else {
-                                AppData.set-wifi-only(true);
-                            }
-                        }
-                }
-                ListRow {
-                    label: "Storage cap, " + AppData.limit-label;
-                    helper: AppData.limit-on ? "At the cap, nothing more downloads until you delete episodes." : "Off: AniBeam downloads until the phone is full.";
+                    label: "Storage cap";
+                    helper: AppData.limit-on ? "At " + AppData.limit-label + ", nothing more downloads until you delete episodes." : "Off: AniBeam downloads until the phone is full.";
                     switch: true;
                     on: AppData.limit-on;
                     toggled => { AppData.set-limit(!AppData.limit-on, AppData.limit-gb); }
@@ -236,8 +197,7 @@ export component MorePage inherits Rectangle {
                     limit-column := VerticalLayout {
                         padding-left: Theme.pad;
                         padding-right: Theme.pad;
-                        padding-bottom: Theme.unit * 3;
-                        spacing: Theme.unit;
+                        padding-bottom: Theme.unit * 2;
                         Slider {
                             minimum: 1;
                             maximum: AppData.disk-gb;
@@ -246,103 +206,149 @@ export component MorePage inherits Rectangle {
                         }
                     }
                 }
+            }
+
+            SectionHead {
+                title: "Network";
+                note: AppData.wifi-only ? "Wi-Fi only" : "Wi-Fi and mobile data";
+            }
+            ListGroup {
                 ListRow {
-                    label: "On this phone";
-                    helper: AppData.storage-line;
+                    label: "Only on Wi-Fi";
+                    helper: AppData.wifi-only ? "On. Downloads wait for Wi-Fi; mobile data asks first." : "Off. Downloads use mobile data too.";
+                    switch: true;
+                    on: AppData.wifi-only;
                     last: true;
+                    toggled => {
+                        if (AppData.wifi-only) {
+                            Ask.mobile = true;
+                        } else {
+                            AppData.set-wifi-only(true);
+                        }
+                    }
                 }
             }
 
-            ShelfHead { title: "Sources"; }
+            SectionHead {
+                title: "Sources";
+                note: "Where Downloads looks";
+            }
             ListGroup {
-                for source[i] in AppData.sources: Rectangle {
-                    height: source-row.height;
-                    source-row := ListRow {
-                        label: source.name;
-                        helper: source.url;
-                    }
-                    if i > 0: TextButton {
-                        x: parent.width - self.width - Theme.pad;
-                        y: (parent.height - self.height) / 2;
-                        text: "Remove";
-                        clicked => { AppData.remove-source(i); }
-                    }
+                for source[i] in AppData.sources: SourceItem {
+                    name: source.name;
+                    url: source.url;
+                    removable: i > 0;
+                    remove => { AppData.remove-source(i); }
                 }
                 SourceForm { }
             }
 
-            ShelfHead { title: "Connection"; }
+            SectionHead {
+                title: "Connection";
+                note: AppData.checking ? "Checking..." : "Where a source stops";
+            }
             ListGroup {
                 ListRow {
                     label: AppData.checking ? "Checking..." : "Check the connection";
                     helper: AppData.check-summary != "" ? AppData.check-summary : "Tests each step between this phone and the sources: DNS, encrypted DNS, connecting, and HTTPS.";
                     tappable: !AppData.checking;
+                    chevron: !AppData.checking;
                     last: AppData.checks.length == 0;
                     clicked => { AppData.run-check(); }
                 }
+                for c[i] in AppData.checks: Rectangle {
+                    height: check-row.preferred-height + 5 * Theme.unit;
+                    check-row := HorizontalLayout {
+                        x: Theme.pad;
+                        y: 2.5 * Theme.unit;
+                        width: parent.width - 2 * Theme.pad;
+                        spacing: Theme.unit * 3;
+                        Rectangle {
+                            y: Theme.unit * 1.5;
+                            width: 2.5 * Theme.unit;
+                            height: self.width;
+                            border-radius: self.width / 2;
+                            background: c.ok ? Theme.ok : Theme.bad;
+                        }
+                        VerticalLayout {
+                            horizontal-stretch: 1;
+                            spacing: Theme.unit / 2;
+                            Text {
+                                text: c.name;
+                                color: Theme.text;
+                                font-family: Theme.strong-face;
+                            }
+                            Text {
+                                text: c.detail;
+                                color: Theme.dim;
+                                font-size: Theme.small - 0.5px;
+                                font-family: Theme.ledger-face;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+                    Rectangle {
+                        x: Theme.pad;
+                        y: parent.height - 1px;
+                        width: parent.width - 2 * Theme.pad;
+                        height: 1px;
+                        background: Theme.line;
+                    }
+                }
                 if AppData.checks.length > 0 && !AppData.checking: Rectangle {
-                    height: copy-row.preferred-height + 2 * Theme.unit;
+                    height: copy-row.preferred-height + 6 * Theme.unit;
                     copy-row := HorizontalLayout {
                         x: Theme.pad;
+                        y: 3 * Theme.unit;
                         alignment: start;
                         Button {
                             text: "Copy the results";
+                            small: true;
                             clicked => { AppData.copy-check(); }
-                        }
-                    }
-                }
-                for c[i] in AppData.checks: Rectangle {
-                    height: check-text.preferred-height + 3 * Theme.unit;
-                    check-text := VerticalLayout {
-                        x: Theme.pad;
-                        y: 1.5 * Theme.unit;
-                        width: parent.width - 2 * Theme.pad;
-                        spacing: 1px;
-                        Text {
-                            text: (c.ok ? "OK    " : "FAIL  ") + c.name;
-                            color: c.ok ? Theme.text : Theme.warn;
-                            font-size: Theme.small;
-                            font-family: Theme.figure;
-                        }
-                        Text {
-                            text: c.detail;
-                            color: Theme.dim;
-                            font-size: Theme.small - 1px;
-                            font-family: Theme.figure;
-                            wrap: word-wrap;
                         }
                     }
                 }
             }
 
-            ShelfHead { title: "Tracking"; }
+            SectionHead {
+                title: "Tracking";
+                note: "Your lists";
+            }
             ListGroup {
                 ListRow {
                     label: "AniList";
                     helper: AppData.anilist-state;
                     tappable: true;
+                    chevron: true;
                     clicked => { AppData.connect-tracker(0); }
                 }
                 ListRow {
                     label: "MyAnimeList";
                     helper: AppData.mal-state;
                     tappable: true;
+                    chevron: true;
                     last: true;
                     clicked => { AppData.connect-tracker(1); }
                 }
             }
 
-            ShelfHead { title: "Devices"; }
+            SectionHead {
+                title: "Devices";
+                note: "Read only";
+            }
             ListGroup {
                 HostRow { }
             }
 
-            ShelfHead { title: "About"; }
+            SectionHead {
+                title: "About";
+            }
             ListGroup {
                 ListRow {
                     label: "Set up again";
                     helper: "Walk through the first-run questions once more.";
                     tappable: true;
+                    chevron: true;
                     clicked => { AppData.restart-onboarding(); }
                 }
                 ListRow {

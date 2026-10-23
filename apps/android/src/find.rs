@@ -11,12 +11,12 @@ use anibeam_companion::format;
 use anibeam_core::releases::grid;
 use anibeam_core::{
     Call, CoreError, Direction, Refinement, RefineOp, Release, ReleaseFacts, ReleaseGroup, ReleaseSearch, Reply,
-    SeriesCard, Sort, SubscriptionRule, Tab, Torrent, BestFit,
+    SearchResult, SeriesCard, Sort, SubscriptionRule, Tab, Torrent, BestFit,
 };
 use slint::{ComponentHandle, Image, ModelRc, SharedString, VecModel, Weak};
 
 use crate::prefs;
-use crate::{AppWindow, FindData, GridRow, GroupChip, ReleaseRow, SourceChip, Tile};
+use crate::{AppWindow, FindData, GridRow, GroupChip, ReleaseRow, SourceChip, Suggestion, Tile};
 
 const LENSES: [&str; 4] = ["Gaps", "Airing", "Following", "Downloaded"];
 
@@ -84,6 +84,11 @@ struct Find {
     list_from_show: bool,
     asked_notifications: bool,
     posters: BTreeMap<String, Image>,
+    /// The shows under the field as you type, the desktop's suggestions: the library's
+    /// first, then AniList's.
+    suggestions: Vec<Offer>,
+    /// The typed text the AniList answer is for; an answer for older text is dropped.
+    suggest_for: String,
 }
 
 thread_local! {
@@ -145,6 +150,8 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
             list_from_show: false,
             asked_notifications: false,
             posters: BTreeMap::new(),
+            suggestions: Vec::new(),
+            suggest_for: String::new(),
         })
     });
     let d = window.global::<FindData>();
@@ -153,6 +160,25 @@ pub fn install(window: &AppWindow, data_dir: PathBuf) {
     d.on_close(|| with(Find::close));
     d.on_back(|| with(Find::back));
     d.on_search(|text| with(|f| f.search(text.to_string())));
+    d.on_find_series(|id| {
+        with(|f| {
+            f.with_data(|d| d.set_shown(true));
+            f.refresh();
+            let card = f.cards.iter().find(|c| c.id as i32 == id).cloned();
+            if let Some(card) = card {
+                f.clear_suggestions();
+                f.open_show(Find::offer_of(&card));
+            }
+        })
+    });
+    d.on_suggest(|text| with(|f| f.suggest(text.to_string())));
+    d.on_pick_suggestion(|i| {
+        with(|f| {
+            let Some(offer) = usize::try_from(i).ok().and_then(|i| f.suggestions.get(i)).cloned() else { return };
+            f.clear_suggestions();
+            f.open_show(offer);
+        })
+    });
     d.on_pick_lens(|i| {
         with(|f| {
             f.lens = usize::try_from(i).unwrap_or(0).min(3);
@@ -467,10 +493,89 @@ impl Find {
                         f.posters.insert(path, Image::from_rgba8(decoded.buffer));
                         f.show_lens();
                         f.draw_show();
+                        f.draw_suggestions();
                     })
                 });
             }
         });
+    }
+
+    // ---- The suggestions: shows first, the way the desktop's field works
+
+    fn suggest(&mut self, text: String) {
+        let text = text.trim().to_string();
+        if text.chars().count() < 2 {
+            self.clear_suggestions();
+            return;
+        }
+        let needle = text.to_lowercase();
+        let mut offers: Vec<Offer> = self
+            .cards
+            .iter()
+            .filter(|c| names_of(c).iter().any(|n| n.to_lowercase().contains(&needle)))
+            .take(5)
+            .map(|c| {
+                let mut offer = Self::offer_of(c);
+                offer.ledger = library_line(c);
+                offer
+            })
+            .collect();
+        let known: Vec<String> = self.cards.iter().flat_map(names_of).map(|n| n.to_lowercase()).collect();
+        self.suggestions = offers.clone();
+        self.suggest_for = text.clone();
+        self.with_data(|d| d.set_suggesting(true));
+        self.draw_suggestions();
+        ask(Call::PhoneFindShows { query: text.clone(), limit: 8 }, move |f, answer| {
+            if f.suggest_for != text {
+                return;
+            }
+            f.with_data(|d| d.set_suggesting(false));
+            if let Ok(Reply::PhoneShows { shows, posters }) = answer {
+                for (hit, poster) in shows.iter().zip(posters) {
+                    let names = hit_names(hit);
+                    if names.iter().any(|n| known.contains(&n.to_lowercase())) {
+                        continue;
+                    }
+                    if offers.len() >= 10 {
+                        break;
+                    }
+                    offers.push(offer_of_hit(hit, poster));
+                }
+                f.suggestions = offers;
+                f.load_posters(&f.suggestions.clone());
+                f.draw_suggestions();
+            }
+        });
+    }
+
+    fn clear_suggestions(&mut self) {
+        self.suggestions.clear();
+        self.suggest_for.clear();
+        self.with_data(|d| d.set_suggesting(false));
+        self.draw_suggestions();
+    }
+
+    fn draw_suggestions(&self) {
+        let rows: Vec<Suggestion> = self
+            .suggestions
+            .iter()
+            .map(|o| {
+                let (poster, has_poster) = match o.poster.as_ref().and_then(|p| self.posters.get(p)) {
+                    Some(img) => (img.clone(), true),
+                    None => (Image::default(), false),
+                };
+                Suggestion {
+                    title: o.show.title.clone().into(),
+                    line: o.ledger.clone().into(),
+                    poster,
+                    has_poster,
+                    initials: format::initials(&o.show.title).into(),
+                    library: !o.show.folder.is_empty() && self.cards.iter().any(|c| c.path.ends_with(&format!("/{}", o.show.folder))),
+                    cubes: model(crate::phone::cube_codes(&o.show.cubes)),
+                }
+            })
+            .collect();
+        self.with_data(|d| d.set_suggestions(model(rows)));
     }
 
     // ---- The show view
@@ -1034,5 +1139,66 @@ impl Find {
                 Err(e) => f.line("", &format!("Not subscribed: {}", words(&e))),
             },
         );
+    }
+}
+
+/// Every name a library card goes by.
+fn names_of(c: &SeriesCard) -> Vec<String> {
+    let mut names = vec![c.title.clone()];
+    for t in [&c.titles.romaji, &c.titles.english].into_iter().flatten() {
+        names.push(t.clone());
+    }
+    names
+}
+
+/// What a library show has on this phone, for its suggestion row.
+fn library_line(c: &SeriesCard) -> String {
+    let here = c.cubes.chars().filter(|k| matches!(k, 'w' | 'l' | 'd')).count();
+    let total = c.cubes.chars().filter(|k| *k != 'f').count();
+    match (here, total) {
+        (_, 0) => "In your library".to_string(),
+        (0, t) => format!("In your library, none of {t} on this phone"),
+        (h, t) => format!("In your library, {h} of {t} on this phone"),
+    }
+}
+
+/// Every name an AniList hit goes by, the latin ones first: release files carry those.
+fn hit_names(h: &SearchResult) -> Vec<String> {
+    let mut names = Vec::new();
+    for n in [h.romaji.as_ref(), h.english.as_ref(), Some(&h.title)].into_iter().flatten().chain(h.synonyms.iter()) {
+        if !names.contains(n) {
+            names.push(n.clone());
+        }
+    }
+    names
+}
+
+/// A show found on AniList, not in the library: searched by its latin names, saved under
+/// its romaji one.
+fn offer_of_hit(h: &SearchResult, poster: String) -> Offer {
+    let queries = hit_names(h);
+    let title = h.romaji.clone().or_else(|| h.english.clone()).unwrap_or_else(|| h.title.clone());
+    let total = h.episodes.unwrap_or(0);
+    let mut facts = Vec::new();
+    if let Some(f) = &h.format {
+        facts.push(f.replace('_', " "));
+    }
+    if let Some(y) = h.year {
+        facts.push(y.to_string());
+    }
+    if total > 0 {
+        facts.push(if total == 1 { "1 episode".to_string() } else { format!("{total} episodes") });
+    }
+    Offer {
+        show: grid::Show {
+            title: title.clone(),
+            queries,
+            total,
+            airing: false,
+            cubes: "g".repeat(total.min(400) as usize),
+            folder: title,
+        },
+        poster: (!poster.is_empty()).then_some(poster),
+        ledger: facts.join(", "),
     }
 }
