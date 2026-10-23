@@ -3,9 +3,9 @@
 // rules; the shell sends ticks and shows what comes back.
 //
 // The page holds the session, the mpv wiring, the rules and the keys; PlayerChrome.qml holds
-// the header, the island, the auto-next pill and the replay button, and reads its state from
-// here. The page contract the frame relies on (props, fullWindow, title, escapePressed,
-// scrollY) stays on this object.
+// the header, the island, the skip intro tile, the auto-next pill and the replay button, and
+// reads its state from here. The page contract the frame relies on (props, fullWindow,
+// title, escapePressed, scrollY) stays on this object.
 import QtQuick
 import QtQuick.Window
 import com.marcusrosado.AniBeam
@@ -378,6 +378,10 @@ FocusScope {
     readonly property var outro: windowOf("Outro")
     function inside(w, t) { return !!w && t >= w.start && t < w.end }
     function skipWindow(w) { if (w) seekTo(w.end + 1) }
+    // The skip intro tile's click: the same skip, then the controls and the pointer go at once
+    // rather than staying up for the 2.5 s seekTo gives them, so the picture is clear the
+    // moment the intro is. Ctrl+Right still brings them up, as every handled key does.
+    function skipIntroAndHide() { skipWindow(intro); hideTimer.stop(); chromeVisible = false }
     function skipForward() {
         if (inside(intro, timePos)) skipWindow(intro)
         else if (inside(outro, timePos)) skipWindow(outro)
@@ -573,7 +577,8 @@ FocusScope {
         }
     }
 
-    // ---- The chrome: header, preview, island, the auto-next pill and the replay button
+    // ---- The chrome: header, preview, island, the skip intro tile, the auto-next pill and
+    // the replay button
     PlayerChrome { id: chrome }
 
     // ---- The pickers. They fill the page and hold the chrome while they are up. The chrome
