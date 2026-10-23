@@ -808,7 +808,7 @@ impl Find {
         };
         let mut facts_line = Vec::new();
         if show.total > 0 {
-            facts_line.push(format!("{} episodes", show.total));
+            facts_line.push(if show.total == 1 { "1 episode".to_string() } else { format!("{} episodes", show.total) });
         }
         if show.airing {
             facts_line.push("Airing".into());
@@ -832,7 +832,11 @@ impl Find {
             let rows = grid::rows(&items, &facts, total, &provider);
             library_codes = library.iter().map(|c| Self::library_code(*c)).collect();
             if dropped > 0 {
-                dropped_line = format!("{dropped} releases that do not name this show are left out.");
+                dropped_line = if dropped == 1 {
+                    "1 release that does not name this show is left out.".to_string()
+                } else {
+                    format!("{dropped} releases that do not name this show are left out.")
+                };
             }
             grid_rows = rows
                 .iter()
