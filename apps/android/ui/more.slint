@@ -271,6 +271,39 @@ export component MorePage inherits Rectangle {
                 SourceForm { }
             }
 
+            ShelfHead { title: "Connection"; }
+            ListGroup {
+                ListRow {
+                    label: AppData.checking ? "Checking..." : "Check the connection";
+                    helper: AppData.check-summary != "" ? AppData.check-summary : "Tests each step between this phone and the sources: DNS, encrypted DNS, connecting, and HTTPS.";
+                    tappable: !AppData.checking;
+                    last: AppData.checks.length == 0;
+                    clicked => { AppData.run-check(); }
+                }
+                for c[i] in AppData.checks: Rectangle {
+                    height: check-text.preferred-height + 3 * Theme.unit;
+                    check-text := VerticalLayout {
+                        x: Theme.pad;
+                        y: 1.5 * Theme.unit;
+                        width: parent.width - 2 * Theme.pad;
+                        spacing: 1px;
+                        Text {
+                            text: (c.ok ? "OK    " : "FAIL  ") + c.name;
+                            color: c.ok ? Theme.text : Theme.warn;
+                            font-size: Theme.small;
+                            font-family: Theme.figure;
+                        }
+                        Text {
+                            text: c.detail;
+                            color: Theme.dim;
+                            font-size: Theme.small - 1px;
+                            font-family: Theme.figure;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+            }
+
             ShelfHead { title: "Tracking"; }
             ListGroup {
                 ListRow {

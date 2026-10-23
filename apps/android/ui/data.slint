@@ -96,6 +96,13 @@ export struct DownloadRow {
     done: bool,
 }
 
+// One line of the connection check.
+export struct CheckRow {
+    name: string,
+    detail: string,
+    ok: bool,
+}
+
 // One place the phone searches.
 export struct SourceRow {
     name: string,
@@ -151,6 +158,10 @@ export global AppData {
     in-out property <string> new-source-name;
     in-out property <string> new-source-url;
     in property <string> source-error;
+    // The connection check: its lines, and whether it is running.
+    in property <[CheckRow]> checks;
+    in property <bool> checking;
+    in property <string> check-summary;
 
     // The series page, over whichever page opened it.
     in property <bool> series-open;
@@ -177,4 +188,5 @@ export global AppData {
     callback torrent-action(string, int);
     callback add-source(string, string);
     callback remove-source(int);
+    callback run-check();
 }

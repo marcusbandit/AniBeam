@@ -915,6 +915,9 @@ impl Core {
                 crate::phone::unsubscribe(self, names, files)
             }
             Call::PhoneTorrents => crate::phone::torrents(self),
+            Call::PhoneNetCheck => Ok(Reply::PhoneNetCheck {
+                checks: self.handle.block_on(crate::phone::check::run(self)),
+            }),
             Call::PhoneControl { hashes, action } => crate::phone::control(self, hashes, action),
             Call::SetPhoneHeld { held } => crate::phone::set_held(self, held),
             Call::StartEndpoint { name } => Ok(Reply::Started {

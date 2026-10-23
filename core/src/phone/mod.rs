@@ -2,6 +2,7 @@
 //! torrent engine inside the core. The desktop keeps anirss and qBittorrent; these calls
 //! are the phone's, and they block the calling thread rather than run as jobs.
 
+pub mod check;
 #[cfg(feature = "phone")]
 pub mod engine;
 

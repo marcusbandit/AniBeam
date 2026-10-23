@@ -23,7 +23,7 @@ use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, Timer, TimerMo
 use crate::prefs::{self, Prefs};
 use crate::remote::Art;
 use crate::worker::{self, Command, Commands, Event};
-use crate::{AppData, AppWindow, Day, DownloadRow, EpisodeLine, Shelf, SourceRow, Tile};
+use crate::{AppData, AppWindow, CheckRow, Day, DownloadRow, EpisodeLine, Shelf, SourceRow, Tile};
 
 /// How often the app looks at the other device while it is open.
 const SYNC_EVERY: Duration = Duration::from_secs(5 * 60);
@@ -398,6 +398,37 @@ impl App {
         }
     }
 
+    /// Runs the connection check on a thread and lists what it found, failures first.
+    fn run_check(&mut self) {
+        let Some(core) = crate::local::core() else { return };
+        self.data().set_checking(true);
+        self.data().set_check_summary("".into());
+        let _ = std::thread::Builder::new().name("check".into()).spawn(move || {
+            let answer = core.call(Call::PhoneNetCheck);
+            let _ = slint::invoke_from_event_loop(move || {
+                with_app(|app| {
+                    let data = app.data();
+                    data.set_checking(false);
+                    let Ok(Reply::PhoneNetCheck { checks }) = answer else { return };
+                    let failed = checks.iter().filter(|c| !c.ok).count();
+                    data.set_check_summary(
+                        if failed == 0 { "Every step went through.".to_string() } else { format!("{failed} of {} steps failed. A screenshot of this list says where.", checks.len()) }
+                            .into(),
+                    );
+                    let rows: Vec<CheckRow> = checks
+                        .iter()
+                        .map(|c| CheckRow {
+                            name: format!("{}  {} ms", c.name, c.ms).into(),
+                            detail: c.detail.clone().into(),
+                            ok: c.ok,
+                        })
+                        .collect();
+                    data.set_checks(ModelRc::new(VecModel::from(rows)));
+                })
+            });
+        });
+    }
+
     /// Asks the engine for its torrents on a thread, one ask at a time.
     fn poll_torrents(&mut self) {
         if self.polling {
@@ -749,6 +780,7 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
     data.on_torrent_action(|hash, action| with_app(|app| app.torrent_action(hash.to_string(), action)));
     data.on_add_source(|name, url| with_app(|app| app.add_source(name.to_string(), url.to_string())));
     data.on_remove_source(|i| with_app(|app| app.remove_source(i)));
+    data.on_run_check(|| with_app(App::run_check));
     data.on_refresh({
         let commands = commands.clone();
         move || {

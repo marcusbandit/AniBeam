@@ -415,6 +415,8 @@ pub enum Call {
         files: bool,
     },
     PhoneTorrents,
+    /// Checks each layer between the phone and the sources: DNS, DNS over HTTPS, TCP, HTTPS.
+    PhoneNetCheck,
     PhoneControl {
         hashes: Vec<String>,
         action: PhoneAction,
@@ -512,6 +514,9 @@ pub enum Reply {
     },
     PhoneRules {
         rules: Vec<SubscriptionRule>,
+    },
+    PhoneNetCheck {
+        checks: Vec<NetCheck>,
     },
     PhoneTorrents {
         torrents: Vec<Torrent>,

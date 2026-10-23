@@ -227,6 +227,24 @@ impl ReqwestHttp {
     }
 }
 
+/// A client for the DNS-over-HTTPS resolvers, which it reaches by address: the phone's
+/// bundled roots on Android, the system's elsewhere.
+pub fn resolver_client() -> Result<reqwest::Client, CoreError> {
+    let builder = reqwest::Client::builder().user_agent(format!("AniBeam/{}", crate::VERSION));
+    #[cfg(target_os = "android")]
+    let builder = {
+        let roots = webpki_root_certs::TLS_SERVER_ROOT_CERTS
+            .iter()
+            .map(|der| reqwest::Certificate::from_der(der))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| CoreError::internal(format!("bundled TLS roots: {e}")))?;
+        builder.tls_certs_only(roots)
+    };
+    builder
+        .build()
+        .map_err(|e| CoreError::internal(format!("dns client: {e}")))
+}
+
 /// A transport error as a person reads it: the host, what went wrong and
 /// why, never the request URL. reqwest's own text carries the whole URL, and
 /// a Torznab feed URL holds the indexer's API key in its query, so that text
