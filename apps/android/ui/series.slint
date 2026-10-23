@@ -1,16 +1,20 @@
 import { Theme } from "theme.slint";
-import { AppData, EpisodeLine } from "data.slint";
-import { ClampedText, Cubes, Poster, ShelfHead } from "widgets.slint";
+import { AppData, EpisodeLine, Nav } from "data.slint";
+import { FindData } from "find.slint";
+import { Button, ClampedText, Cubes, PageTitle, Poster, SectionHead } from "widgets.slint";
 
 // One episode, the desktop's row: its cube, the code, the title and a state word, and when
-// it aired or airs at the right.
+// it aired or airs at the right. The next one up sits on a lit row.
 component EpisodeItem inherits Rectangle {
     in property <EpisodeLine> data;
     // Episodes still to air are quieter.
     property <bool> later: root.data.cube == 5;
-    height: Math.max(Theme.unit * 11, texts.preferred-height + 3 * Theme.unit);
-    border-radius: Theme.radius-row;
-    background: root.data.note == "Next up" ? Theme.surface : transparent;
+    property <bool> next: root.data.note == "Next up";
+    height: Math.max(Theme.unit * 13, texts.preferred-height + 4 * Theme.unit);
+    border-radius: Theme.radius-row + 4px;
+    background: root.next ? Theme.raised : transparent;
+    border-width: root.next ? 1px : 0;
+    border-color: Theme.line-strong;
     Rectangle {
         x: Theme.unit * 3;
         y: (parent.height - self.height) / 2;
@@ -21,33 +25,31 @@ component EpisodeItem inherits Rectangle {
         border-width: root.later ? 1px : 0;
         border-color: Theme.line-strong;
     }
-    texts := VerticalLayout {
+    code := Text {
         x: Theme.unit * 8;
-        width: parent.width - self.x - date.width - Theme.unit * 5;
+        width: Theme.unit * 10;
+        height: parent.height;
+        text: root.data.code;
+        color: root.later ? Theme.faint : Theme.dim;
+        font-size: Theme.small;
+        font-family: Theme.figure;
+        vertical-alignment: center;
+    }
+    texts := VerticalLayout {
+        x: code.x + code.width;
+        width: parent.width - self.x - date.width - Theme.unit * 6;
         alignment: center;
         spacing: 2px;
-        HorizontalLayout {
-            spacing: Theme.unit * 2;
-            Text {
-                text: root.data.code;
-                color: root.later ? Theme.faint : Theme.dim;
-                font-size: Theme.small;
-                font-family: Theme.figure;
-                vertical-alignment: center;
-            }
-            Text {
-                text: root.data.title;
-                color: root.later ? Theme.faint : Theme.text;
-                vertical-alignment: center;
-                overflow: elide;
-                horizontal-stretch: 1;
-            }
+        Text {
+            text: root.data.title;
+            color: root.later ? Theme.faint : Theme.text;
+            font-family: root.next ? Theme.strong-face : Theme.face;
+            overflow: elide;
         }
         if root.data.note != "": Text {
             text: root.data.note;
-            color: root.data.note == "Next up" ? Theme.accent : root.data.note == "Missing" ? Theme.yellow : Theme.purple;
-            font-size: Theme.small - 1px;
-            font-weight: root.data.note == "Next up" ? 600 : 400;
+            color: root.next ? Theme.accent : root.data.note == "Missing" ? Theme.yellow : Theme.purple;
+            font-size: Theme.small - 0.5px;
         }
     }
     date := Text {
@@ -61,63 +63,58 @@ component EpisodeItem inherits Rectangle {
     }
 }
 
-// The band at the top of a series page, in the poster's hue.
-component SeriesBand inherits Rectangle {
-    background: AppData.series.band;
-    border-radius: Theme.radius-large;
-    height: body.preferred-height;
-    body := VerticalLayout {
-        padding: Theme.unit * 3;
-        spacing: Theme.unit * 3;
-        HorizontalLayout {
-            spacing: Theme.unit * 3;
-            Poster {
-                width: 26 * Theme.unit;
-                height: self.width * Theme.poster-ratio;
-                source: AppData.series.poster;
-                has-image: AppData.series.has-poster;
-                initials: AppData.series.initials;
+// The head of a series, the desktop show view's: the poster, the title in the display cut,
+// its other name, the facts, when the next one airs, and the cubes with the progress.
+component SeriesHeadView inherits VerticalLayout {
+    spacing: Theme.unit * 4;
+    HorizontalLayout {
+        spacing: Theme.unit * 4;
+        Poster {
+            width: 30 * Theme.unit;
+            height: self.width * Theme.poster-ratio;
+            source: AppData.series.poster;
+            has-image: AppData.series.has-poster;
+            initials: AppData.series.initials;
+        }
+        VerticalLayout {
+            alignment: end;
+            spacing: Theme.unit * 2;
+            ClampedText {
+                text: AppData.series.title;
+                font-size: Theme.page - 8px;
+                face: Theme.display-face;
+                lines: 4;
+                leading: 1.05;
             }
-            VerticalLayout {
-                alignment: center;
-                spacing: Theme.unit * 1.5;
-                ClampedText {
-                    text: AppData.series.title;
-                    font-size: Theme.large;
-                    font-weight: 300;
-                    lines: 4;
-                }
-                if AppData.series.alt-title != "": ClampedText {
-                    text: AppData.series.alt-title;
-                    font-size: Theme.small;
-                    ink: Theme.dim;
-                }
-                Text {
-                    text: AppData.series.facts;
-                    color: Theme.dim;
-                    font-size: Theme.small - 1px;
-                    font-family: Theme.figure;
-                    wrap: word-wrap;
-                }
-                if AppData.series.next != "": Text {
-                    text: AppData.series.next;
-                    color: AppData.series.ink;
-                    font-size: Theme.small;
-                    font-family: Theme.figure;
-                    wrap: word-wrap;
-                }
+            if AppData.series.alt-title != "": ClampedText {
+                text: AppData.series.alt-title;
+                font-size: Theme.small;
+                ink: Theme.dim;
+            }
+            Text {
+                text: AppData.series.facts;
+                color: Theme.dim;
+                font-size: Theme.small;
+                wrap: word-wrap;
             }
         }
-        if AppData.series.cubes.length > 0: Cubes {
-            codes: AppData.series.cubes;
-            size: 9px;
-            spacing: 3px;
-        }
-        if AppData.series.progress-text != "": Text {
-            text: AppData.series.progress-text;
-            color: Theme.text;
-            font-size: Theme.small;
-        }
+    }
+    if AppData.series.next != "": Text {
+        text: AppData.series.next;
+        color: AppData.series.ink;
+        font-size: Theme.normal;
+        font-family: Theme.figure;
+        wrap: word-wrap;
+    }
+    if AppData.series.cubes.length > 0: Cubes {
+        codes: AppData.series.cubes;
+        size: 11px;
+        spacing: 3px;
+    }
+    if AppData.series.progress-text != "": Text {
+        text: AppData.series.progress-text;
+        color: Theme.text;
+        font-size: Theme.small + 0.5px;
     }
 }
 
@@ -128,23 +125,48 @@ export component SeriesPage inherits Rectangle {
     Flickable {
         VerticalLayout {
             alignment: start;
-            padding-left: Theme.pad;
-            padding-right: Theme.pad;
-            padding-top: Theme.unit * 2;
+            padding-left: Theme.grout + Theme.unit;
+            padding-right: Theme.grout + Theme.unit;
+            padding-top: Theme.unit * 4;
             padding-bottom: Theme.pad * 2;
-            spacing: Theme.unit * 2;
-            SeriesBand { }
+            spacing: Theme.unit * 4;
+            PageTitle {
+                back: Nav.page == 0 ? "Home" : Nav.page == 1 ? "Library" : Nav.page == 2 ? "Downloads" : "Back";
+                title: "";
+                go-back => { AppData.close-series(); }
+            }
+            SeriesHeadView { }
+            // A series of this phone's goes straight to who has it; another device's is
+            // read only.
+            if AppData.device == 0 || Nav.page == 0: HorizontalLayout {
+                alignment: start;
+                Button {
+                    text: "Get episodes";
+                    icon: @image-url("icons/download.svg");
+                    has-icon: true;
+                    primary: true;
+                    clicked => {
+                        FindData.find-series(AppData.series.id);
+                        AppData.close-series();
+                        Nav.page = 2;
+                    }
+                }
+            }
             if AppData.series.synopsis != "": ClampedText {
                 text: AppData.series.synopsis;
-                font-size: Theme.small;
+                font-size: Theme.small + 1px;
                 ink: Theme.dim;
-                lines: 5;
+                lines: 6;
+                leading: 1.4;
             }
-            ShelfHead {
+            SectionHead {
                 title: "Episodes";
-                count: AppData.episodes.length > 0 ? "" + AppData.episodes.length : "";
+                note: AppData.episodes.length > 0 ? "" + AppData.episodes.length : "";
             }
-            for line in AppData.episodes: EpisodeItem { data: line; }
+            VerticalLayout {
+                spacing: Theme.unit;
+                for line in AppData.episodes: EpisodeItem { data: line; }
+            }
             if AppData.episodes.length == 0: Text {
                 text: "No episodes on this phone and none scheduled.";
                 color: Theme.dim;

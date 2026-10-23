@@ -526,7 +526,7 @@ fn candidates(conn: &rusqlite::Connection, sql: &str) -> Result<Vec<Candidate>, 
 
 /// One search hit as the modal draws it. AniList orders by relevance and
 /// the shell keeps that order, so nothing here sorts or filters.
-fn to_result(m: &Media) -> SearchResult {
+pub(crate) fn to_result(m: &Media) -> SearchResult {
     let title = m
         .title
         .romaji
@@ -554,6 +554,10 @@ fn to_result(m: &Media) -> SearchResult {
         english: m.title.english.clone(),
         native: m.title.native.clone(),
         synonyms: m.synonyms.clone(),
+        airing: matches!(
+            m.status.as_deref(),
+            Some("RELEASING") | Some("NOT_YET_RELEASED")
+        ),
     }
 }
 
@@ -574,6 +578,7 @@ fn show_result(s: &Show) -> SearchResult {
         english: s.name.clone(),
         native: None,
         synonyms: Vec::new(),
+        airing: false,
     }
 }
 

@@ -83,7 +83,7 @@ export struct EpisodeLine {
     cube: int,
 }
 
-// One download on this phone.
+// One download on this phone, the desktop's Downloading panel.
 export struct DownloadRow {
     hash: string,
     name: string,
@@ -94,6 +94,22 @@ export struct DownloadRow {
     progress: float,
     paused: bool,
     done: bool,
+    // "21%".
+    percent: string,
+    // "Episode 5", "Episodes 1 to 12", or empty.
+    what: string,
+    // "420 MB of 1.4 GB".
+    amount: string,
+    // "3.2 MB/s, 5m left", or empty.
+    speed: string,
+    // "SubsPlease, 1080p", or empty.
+    release: string,
+    // The folder it saves to, its last part.
+    folder: string,
+    // One cube per file of a batch (Theme.cube's codes: 2 done, 6 coming, 4 not started).
+    cubes: [int],
+    // The state's dot: 0 moving, 1 paused, 2 waiting, 3 trouble, 4 done.
+    tone: int,
 }
 
 // One line of the connection check.
@@ -108,6 +124,11 @@ export struct SourceRow {
     name: string,
     url: string,
     enabled: bool,
+}
+
+// Which tab is up: 0 Home, 1 Library, 2 Downloads, 3 More. A page can send you to another.
+export global Nav {
+    in-out property <int> page;
 }
 
 export global AppData {
@@ -137,6 +158,9 @@ export global AppData {
     // "18 GB", "31.5 GB".
     in property <string> limit-label: "18 GB";
     in property <string> storage-line;
+    // The same as figures: what AniBeam's episodes take, and what the phone has free.
+    in property <string> used-figure;
+    in property <string> free-figure;
     in property <string> free-line;
     in property <string> trackers-line;
     in property <string> version;
@@ -154,6 +178,13 @@ export global AppData {
     // Downloads and sources, on More.
     in property <[DownloadRow]> downloads;
     in property <string> downloads-note;
+    // The rates across every download, "3.2 MB/s".
+    in property <string> rate-down: "0 B/s";
+    in property <string> rate-up: "0 B/s";
+    // Not finished, whatever their state; and of those, the ones actually moving.
+    in property <int> downloading-count;
+    in property <int> moving-count;
+    in property <int> finished-count;
     in property <[SourceRow]> sources;
     in-out property <string> new-source-name;
     in-out property <string> new-source-url;

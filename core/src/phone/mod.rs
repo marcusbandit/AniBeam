@@ -109,6 +109,62 @@ fn native(core: &Core) -> crate::releases::native::Native {
     crate::releases::native::Native::new(core.http.clone(), endpoints)
 }
 
+/// How long the show search waits for covers before answering without them.
+const COVER_WAIT: std::time::Duration = std::time::Duration::from_millis(1500);
+
+/// The show search: AniList's hits for `query` with the covers that came in time, so the phone
+/// can list shows before anyone looks at a release.
+pub fn find_shows(core: &Core, query: String, limit: u32) -> Result<Reply, CoreError> {
+    let query = query.trim().to_string();
+    if query.chars().count() < 2 {
+        return Ok(Reply::PhoneShows {
+            shows: Vec::new(),
+            posters: Vec::new(),
+        });
+    }
+    let media = core
+        .handle
+        .block_on(core.anilist.search(&query, limit.clamp(1, 20)))?;
+    let shows: Vec<SearchResult> = media
+        .iter()
+        .map(crate::metadata::apply::to_result)
+        .collect();
+    let urls: Vec<String> = shows.iter().filter_map(|s| s.cover_url.clone()).collect();
+    // The hits go back after COVER_WAIT at most. Each cover is its own task, so the ones
+    // already cached or quick come back and a slow one only loses its own poster; it still
+    // finishes into the cache (the cache's sweep bounds it), so the same search shows it
+    // next time.
+    let fetching: Vec<_> = urls
+        .into_iter()
+        .map(|url| {
+            let images = core.images.clone();
+            core.handle
+                .spawn(async move { images.ensure(&[url]).await })
+        })
+        .collect();
+    let fetched = core.handle.block_on(async move {
+        let deadline = tokio::time::Instant::now() + COVER_WAIT;
+        let mut fetched = Vec::new();
+        for task in fetching {
+            if let Ok(Ok(found)) = tokio::time::timeout_at(deadline, task).await {
+                fetched.extend(found);
+            }
+        }
+        fetched
+    });
+    let posters = shows
+        .iter()
+        .map(|s| {
+            s.cover_url
+                .as_ref()
+                .and_then(|u| fetched.iter().find(|(k, _)| k == u))
+                .and_then(|(_, r)| r.as_ref().ok().cloned())
+                .unwrap_or_default()
+        })
+        .collect();
+    Ok(Reply::PhoneShows { shows, posters })
+}
+
 /// The desktop's search, on the phone (`SearchReleases`, run by the core's port of
 /// anirss): fallback across the sources, seeders filled in where a feed has none,
 /// auto-resolution, the refine groups and best fit, and each release's facts.

@@ -11,23 +11,33 @@ is no Gradle in the build.
 
 ## What it does
 
-- **Onboarding** runs once: AniList and MAL sign-in, Wi-Fi only (on by default; turning it
-  off asks first), and a storage limit, suggested at 18 GB and off unless chosen. More can
-  run it again.
-- **Home** is this phone's: the next episode to air on a band in its poster's colour, this
-  week with a dot on each day something airs, and the recently watched and recently
-  downloaded shelves.
+The look is the desktop's Downloads page at phone size: flat glass panes with hairline
+edges, pills for every control, page and section titles in Archivo's tall condensed cut with
+a dim line of fact beside them, and B612 for figures. Slint cannot set a variable font's
+axes, so `scripts/cut-fonts.py` cuts each of the desktop's Archivo roles into a static font
+under `ui/fonts/`.
+
+Four tabs:
+
+- **Home** is this phone's: the next episode to air, this week with a dot on each day
+  something airs, and the recently watched and recently downloaded shelves.
 - **Library** is every show on the phone as a poster with the desktop's episode cubes, with
   search. When another AniBeam on the tailnet has answered, a switcher above shows its
-  library instead. Tap a poster for its series page: the facts, the cubes, the synopsis and
-  every episode, on the phone, missing or still to air.
-- **Find** searches nyaa, or any RSS source added in More (erai with your own feed
-  address), and puts the best fit first: 1080p, a trusted group, seeded. A tap downloads
-  it into the phone's library, in the show's own folder.
-- **More** lists the downloads with progress, pause and cancel, the sources, the Wi-Fi only
-  switch and the storage cap (a slider up to the phone's whole storage; at the cap nothing
-  more downloads until episodes are deleted), tracker sign-in, the other device's address,
-  and the version.
+  library instead. Tap a poster for its series page: the facts, the cubes, the synopsis,
+  every episode, and Get episodes, which opens the show in Downloads.
+- **Downloads** works the way the desktop's does, shows first. Typing lists shows, the
+  library's and then AniList's; a show opens its view: where to get it (every source and
+  what it answered), its releases as rows of episode cubes to tap, and a plan that says
+  what Get and Follow will do. Return searches release names instead, with the desktop's
+  refine steps and best fit. With nothing typed it shows what is downloading, what finished,
+  and four lenses: Gaps, Airing, Following, Downloaded.
+- **More** holds the settings: storage and its cap (a slider up to the phone's whole
+  storage), Wi-Fi only, the sources (nyaa, and any RSS feed such as erai with your own
+  address), tracker sign-in, the other device's address, and the version.
+
+**Onboarding** runs once: AniList and MAL sign-in, Wi-Fi only (on by default; turning it
+off asks first), and the storage cap, suggested at 18 GB and off unless chosen. More can
+run it again.
 
 Downloads run in the core's own torrent engine (`librqbit`, the core's `phone` feature),
 held while the phone is off Wi-Fi unless mobile data was allowed. While anything

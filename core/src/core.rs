@@ -893,6 +893,7 @@ impl Core {
                 endpoint,
                 fallback,
             } => crate::phone::search(self, query, endpoint, fallback),
+            Call::PhoneFindShows { query, limit } => crate::phone::find_shows(self, query, limit),
             Call::PhoneRefine {
                 query,
                 endpoint,

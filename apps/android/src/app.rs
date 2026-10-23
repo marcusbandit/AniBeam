@@ -475,6 +475,13 @@ impl App {
             ""
         };
         self.data().set_downloads_note(note.into());
+        let (down, up) = torrents.iter().fold((0u64, 0u64), |(d, u), t| (d + t.dlspeed, u + t.upspeed));
+        self.data().set_rate_down(format!("{}/s", format::bytes(down)).into());
+        self.data().set_rate_up(format!("{}/s", format::bytes(up)).into());
+        let finished = torrents.iter().filter(|t| t.progress >= 1.0).count();
+        self.data().set_finished_count(finished as i32);
+        self.data().set_downloading_count((torrents.len() - finished) as i32);
+        self.data().set_moving_count(active.len() as i32);
 
         // The service runs while something downloads, with how many in its notification.
         let text = match active.len() {
@@ -544,6 +551,8 @@ impl App {
             }
         }
         let free_text = free.map(|f| format!("{} free", format::bytes(f))).unwrap_or_default();
+        data.set_used_figure(format::bytes(used).into());
+        data.set_free_figure(free.map(format::bytes).unwrap_or_default().into());
         data.set_storage_line(
             format!(
                 "{} used{}{}",
@@ -664,26 +673,60 @@ fn download_row(t: &Torrent, held: bool) -> DownloadRow {
         "error" => "Stopped by an error",
         _ => "Downloading",
     };
-    let mut facts = Vec::new();
-    if done {
-        facts.push(format::bytes(t.size));
+    let amount = if done {
+        format::bytes(t.size)
     } else {
-        facts.push(format!("{} of {}", format::bytes((t.progress * t.size as f64) as u64), format::bytes(t.size)));
-        if t.dlspeed > 0 {
-            facts.push(format!("{}/s", format::bytes(t.dlspeed)));
-        }
-        if t.eta > 0 && t.eta < 8_640_000 {
-            facts.push(format!("{} left", format::countdown(t.eta)));
-        }
+        format!("{} of {}", format::bytes((t.progress * t.size as f64) as u64), format::bytes(t.size))
+    };
+    let mut speed = Vec::new();
+    if !done && t.dlspeed > 0 {
+        speed.push(format!("{}/s", format::bytes(t.dlspeed)));
     }
+    if !done && t.eta > 0 && t.eta < 8_640_000 {
+        speed.push(format!("{} left", format::countdown(t.eta)));
+    }
+    let speed = speed.join(", ");
+    let facts = if speed.is_empty() { amount.clone() } else { format!("{amount}, {speed}") };
+    // Only the files picked to download: a skipped one has no cube and is not coming.
+    let mut episodes: Vec<f64> = t.files.iter().filter(|f| f.priority != 0).filter_map(|f| f.episode).collect();
+    episodes.sort_by(f64::total_cmp);
+    let what = match (t.episode, episodes.first(), episodes.last()) {
+        (Some(e), _, _) if !t.batch => format!("Episode {e}"),
+        (_, Some(a), Some(b)) if a != b => format!("Episodes {a} to {b}"),
+        (_, Some(a), _) => format!("Episode {a}"),
+        _ if t.batch => "A batch".to_string(),
+        _ => String::new(),
+    };
+    let release = [t.group.as_str(), t.resolution.as_str()].iter().filter(|s| !s.is_empty()).copied().collect::<Vec<_>>().join(", ");
+    let folder = std::path::Path::new(&t.save_path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let cubes: Vec<i32> = if t.files.len() > 1 {
+        t.files.iter().filter(|f| f.priority != 0).map(|f| if f.progress >= 1.0 { 2 } else if f.progress > 0.0 { 6 } else { 4 }).collect()
+    } else {
+        Vec::new()
+    };
+    let tone = match state {
+        "Done" => 4,
+        "Waiting for Wi-Fi" => 2,
+        "Stopped by an error" => 3,
+        _ if paused => 1,
+        _ => 0,
+    };
     DownloadRow {
         hash: t.hash.clone().into(),
         name: t.name.clone().into(),
         state: state.into(),
-        facts: facts.join(", ").into(),
+        facts: facts.into(),
         progress: t.progress as f32,
         paused,
         done,
+        percent: format!("{}%", (t.progress * 100.0).floor() as i64).into(),
+        what: what.into(),
+        amount: amount.into(),
+        speed: speed.into(),
+        release: release.into(),
+        folder: folder.into(),
+        cubes: ModelRc::new(VecModel::from(cubes)),
+        tone,
     }
 }
 

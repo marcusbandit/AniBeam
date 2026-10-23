@@ -1,12 +1,13 @@
-// Find: the desktop's Downloads flow on the phone. With nothing searched, four lenses into
-// what there is to get: Gaps, Airing, Following, Downloaded. A show opens the show view
-// (the desktop's GetShow): its sources, a tap fetches what one has, its releases as rows of
-// episode cubes under the library's own row, and a plan that says what Get and Follow will
-// do. Typed text opens the release list with the desktop's refine steps.
+// Find: the desktop's Downloads flow on the phone, shows first. Typing lists shows (the
+// library's, then AniList's); a show opens the show view (the desktop's GetShow): who has
+// it, a tap asks that source, its releases as rows of episode cubes under the library's own
+// row, and a plan that says what Get and Follow will do. Return searches release names
+// instead, the release list with the desktop's refine steps. With nothing typed, four
+// lenses into what there is to get: Gaps, Airing, Following, Downloaded.
 
 import { Theme } from "theme.slint";
 import { Tile } from "data.slint";
-import { Button, Chip, EmptyNote, IconButton, PageTitle, Poster, Segmented, SearchField, ShelfHead, Switch, TextButton, TileGrid } from "widgets.slint";
+import { Button, Chip, ClampedText, Cubes, EmptyNote, Field, ListGroup, Pane, PageTitle, Poster, SectionHead, ShelfHead, Switch, TextButton, TileGrid } from "widgets.slint";
 
 // One source in the show view: its name and what asking it gave.
 export struct SourceChip {
@@ -45,6 +46,18 @@ export struct GroupChip {
     count: int,
 }
 
+// One show under the field as you type.
+export struct Suggestion {
+    title: string,
+    // "In your library, 3 of 12 on this phone", "TV, 2023, 28 episodes".
+    line: string,
+    poster: image,
+    has-poster: bool,
+    initials: string,
+    library: bool,
+    cubes: [int],
+}
+
 export global FindData {
     // Which view: 0 lenses, 1 show view, 2 release list.
     in property <bool> shown;
@@ -53,6 +66,14 @@ export global FindData {
     in property <bool> busy;
     in property <string> line;
     in property <string> error;
+
+    // The shows as you type.
+    in property <[Suggestion]> suggestions;
+    in property <bool> suggesting;
+    // An answer came for the words in the field; false while typing or waiting to ask.
+    in-out property <bool> suggest-done;
+    // Why AniList could not be asked, when it could not.
+    in property <string> suggest-error;
 
     // The lenses.
     in property <[string]> lenses;
@@ -91,6 +112,10 @@ export global FindData {
     callback close();
     callback back();
     callback search(string);
+    callback suggest(string);
+    // A library series straight into the show view, from its series page.
+    callback find-series(int);
+    callback pick-suggestion(int);
     callback pick-lens(int);
     callback open-tile(int);
     callback fetch(int);
@@ -109,184 +134,329 @@ export global FindData {
     callback subscribe();
 }
 
-// A cube row that answers taps: the grid's rows.
+// The grid's cube colours, the desktop's: there to take is glass with an edge, picked is
+// the accent, what the library has is faint glass, on its way the download purple.
+component GridCube inherits Rectangle {
+    in property <int> code;
+    border-radius: Math.max(2px, self.width / 4);
+    background: root.code == 2 ? Theme.accent : root.code == 1 ? #ffffff1a : root.code == 3 ? #ffffff0d : root.code == 4 ? Theme.purple : transparent;
+    border-width: root.code == 1 ? 1px : 0;
+    border-color: #ffffff52;
+}
+
+// A cube row that answers taps: the grid's rows. A finger is wider than a cube, so each one
+// takes the touches from the gap around it too.
 component TapCubes inherits Rectangle {
     in property <[int]> codes;
-    in property <length> size: 13px;
-    in property <length> spacing: 3px;
+    in property <length> size: 14px;
+    in property <length> spacing: 4px;
     callback tapped(int);
     property <int> per-row: Math.max(1, Math.floor((self.width + self.spacing) / (self.size + self.spacing)));
     height: self.codes.length == 0 ? 0 : Math.ceil(self.codes.length / self.per-row) * (self.size + self.spacing) - self.spacing;
-    for code[i] in root.codes: Rectangle {
+    for code[i] in root.codes: GridCube {
         x: Math.mod(i, root.per-row) * (root.size + root.spacing);
         y: Math.floor(i / root.per-row) * (root.size + root.spacing);
         width: root.size;
         height: root.size;
-        border-radius: 3px;
-        background: code == 2 ? Theme.accent : code == 1 ? Theme.track : code == 3 ? #8cc58a59 : code == 4 ? Theme.purple : transparent;
-        border-width: code == 0 ? 1px : 0;
-        border-color: Theme.line;
+        code: code;
         TouchArea {
+            x: -root.spacing / 2;
+            y: -root.spacing / 2;
+            width: parent.width + root.spacing;
+            height: parent.height + root.spacing;
             enabled: code != 0;
             clicked => { root.tapped(i); }
         }
     }
 }
 
-// The library's own row, the cube colours of the rest of the app.
-component LibraryCubes inherits Rectangle {
-    in property <[int]> codes;
-    property <length> size: 13px;
-    property <length> spacing: 3px;
-    property <int> per-row: Math.max(1, Math.floor((self.width + self.spacing) / (self.size + self.spacing)));
-    height: self.codes.length == 0 ? 0 : Math.ceil(self.codes.length / self.per-row) * (self.size + self.spacing) - self.spacing;
-    for code[i] in root.codes: Rectangle {
-        x: Math.mod(i, root.per-row) * (root.size + root.spacing);
-        y: Math.floor(i / root.per-row) * (root.size + root.spacing);
-        width: root.size;
-        height: root.size;
-        border-radius: 3px;
-        background: code == 5 ? transparent : Theme.cube(code);
-        border-width: code == 5 ? 1px : 0;
-        border-color: Theme.line-strong;
-    }
-}
-
-component SourceButton inherits Rectangle {
-    in property <SourceChip> data;
-    in property <bool> active;
+// One show under the field, the desktop's ShowRow: a poster thumbnail, the title, one line
+// of what it is, and its cubes.
+component SuggestionItem inherits Rectangle {
+    in property <Suggestion> data;
+    in property <bool> last;
     callback clicked();
-    height: 13 * Theme.unit;
-    width: Math.max(26 * Theme.unit, column.preferred-width + 6 * Theme.unit);
-    border-radius: Theme.radius-row;
-    background: root.active ? Theme.raised : Theme.surface;
-    border-width: root.active ? 1px : 0;
-    border-color: Theme.line-strong;
-    column := VerticalLayout {
+    height: Math.max(25 * Theme.unit, column.preferred-height + 5 * Theme.unit);
+    background: touch.pressed ? Theme.raised : transparent;
+    thumb := Poster {
         x: Theme.unit * 3;
+        y: (parent.height - self.height) / 2;
+        width: 13 * Theme.unit;
+        height: self.width * Theme.poster-ratio;
+        source: root.data.poster;
+        has-image: root.data.has-poster;
+        initials: root.data.initials;
+    }
+    column := VerticalLayout {
+        x: thumb.x + thumb.width + Theme.unit * 4;
+        width: parent.width - self.x - Theme.unit * 10;
         alignment: center;
-        spacing: 2px;
-        Text {
-            text: root.data.name;
-            color: Theme.text;
-            font-weight: 600;
+        spacing: Theme.unit * 1.25;
+        ClampedText {
+            text: root.data.title;
+            font-size: Theme.heading;
+            face: Theme.title-face;
+            leading: 1.1;
         }
         Text {
             text: root.data.line;
-            color: root.data.state == "error" ? Theme.warn : Theme.dim;
-            font-size: Theme.small - 1px;
-            font-family: Theme.figure;
+            color: root.data.library ? Theme.text : Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        if root.data.cubes.length > 0: Cubes {
+            codes: root.data.cubes;
+            size: 7px;
+            spacing: 2px;
         }
     }
-    TouchArea { clicked => { root.clicked(); } }
+    Image {
+        x: parent.width - self.width - Theme.unit * 3;
+        y: (parent.height - self.height) / 2;
+        width: 5 * Theme.unit;
+        height: self.width;
+        source: @image-url("icons/chevron-right.svg");
+        colorize: Theme.faint;
+    }
+    touch := TouchArea { clicked => { root.clicked(); } }
+    if !root.last: Rectangle {
+        x: Theme.unit * 3;
+        y: parent.height - 1px;
+        width: parent.width - Theme.unit * 6;
+        height: 1px;
+        background: Theme.line;
+    }
 }
 
-component ShowView inherits VerticalLayout {
+// The shows that match what is typed, library first: the way in to the show view.
+export component Suggestions inherits VerticalLayout {
     spacing: Theme.unit * 3;
+    SectionHead {
+        title: "Shows";
+        note: FindData.suggesting ? "Asking AniList..."
+            : FindData.suggest-error != "" ? FindData.suggest-error
+            : FindData.suggestions.length > 0 ? "Tap one to see who has it. Return searches release names."
+            : FindData.suggest-done ? "No show by that name. Return searches release names instead."
+            : "Shows come up as you type. Return searches release names.";
+    }
+    if FindData.suggestions.length > 0: ListGroup {
+        for s[i] in FindData.suggestions: SuggestionItem {
+            data: s;
+            last: i == FindData.suggestions.length - 1;
+            clicked => { FindData.pick-suggestion(i); }
+        }
+    }
+}
+
+// One source in "Where to get it": a dot for how asking it went, its name, what it said, a
+// chevron. The one being looked at is lit.
+component SourceItem inherits Rectangle {
+    in property <SourceChip> data;
+    in property <bool> active;
+    in property <bool> last;
+    callback clicked();
+    height: 17 * Theme.unit;
+    background: touch.pressed ? Theme.pressed : root.active ? Theme.raised : transparent;
+    property <color> state-ink: root.data.state == "error" ? Theme.bad : root.data.state == "done" ? Theme.ok : root.data.state == "searching" ? Theme.accent : Theme.faint;
+    if root.data.state != "searching": Rectangle {
+        x: Theme.pad;
+        y: (parent.height - self.height) / 2;
+        width: 2.5 * Theme.unit;
+        height: self.width;
+        border-radius: self.width / 2;
+        background: root.data.state == "idle" ? transparent : root.state-ink;
+        border-width: root.data.state == "idle" ? 1.5px : 0;
+        border-color: Theme.faint;
+    }
+    if root.data.state == "searching": Image {
+        x: Theme.pad - 1.25 * Theme.unit;
+        y: (parent.height - self.height) / 2;
+        width: 5 * Theme.unit;
+        height: self.width;
+        source: @image-url("icons/refresh-cw.svg");
+        colorize: Theme.accent;
+        transform-rotation: (animation-tick() / 1100ms) * 360deg;
+    }
+    names := VerticalLayout {
+        x: Theme.pad + 7 * Theme.unit;
+        width: parent.width - self.x - 14 * Theme.unit;
+        alignment: center;
+        spacing: Theme.unit / 2;
+        Text {
+            text: root.data.name;
+            color: Theme.text;
+            font-size: Theme.large;
+            font-family: Theme.display-face;
+        }
+        Text {
+            text: root.data.line;
+            color: root.data.state == "error" ? Theme.bad : Theme.dim;
+            font-size: Theme.small;
+            overflow: elide;
+        }
+    }
+    Image {
+        x: parent.width - self.width - Theme.pad;
+        y: (parent.height - self.height) / 2;
+        width: 5 * Theme.unit;
+        height: self.width;
+        source: @image-url("icons/chevron-right.svg");
+        colorize: root.active ? Theme.text : Theme.faint;
+    }
+    touch := TouchArea { clicked => { root.clicked(); } }
+    if !root.last: Rectangle {
+        x: Theme.pad;
+        y: parent.height - 1px;
+        width: parent.width - 2 * Theme.pad;
+        height: 1px;
+        background: Theme.line;
+    }
+}
+
+// One release group of the grid: its name, its facts, and a cube per episode to tap.
+component GridItem inherits Rectangle {
+    in property <GridRow> data;
+    callback picked();
+    callback tapped(int);
+    height: column.preferred-height + 7 * Theme.unit;
+    border-radius: Theme.radius;
+    background: root.data.chosen ? Theme.raised : Theme.surface;
+    border-width: 1px;
+    border-color: root.data.chosen ? Theme.accent-edge : Theme.line;
+    column := VerticalLayout {
+        x: Theme.unit * 4;
+        y: Theme.unit * 3.5;
+        width: parent.width - Theme.unit * 8;
+        spacing: Theme.unit * 2;
+        Rectangle {
+            height: head.preferred-height;
+            head := VerticalLayout {
+                spacing: Theme.unit;
+                Text {
+                    text: root.data.label;
+                    color: Theme.text;
+                    font-size: Theme.heading;
+                    font-family: Theme.title-face;
+                    overflow: elide;
+                }
+                Text {
+                    text: root.data.meta;
+                    color: Theme.dim;
+                    font-size: Theme.small - 0.5px;
+                    font-family: Theme.figure;
+                }
+            }
+            TouchArea { clicked => { root.picked(); } }
+        }
+        TapCubes {
+            codes: root.data.cubes;
+            tapped(n) => { root.tapped(n); }
+        }
+    }
+}
+
+// The show view: the head, who has it, what the picked one has, and the plan.
+export component ShowView inherits VerticalLayout {
+    spacing: Theme.unit * 4;
+    PageTitle {
+        back: "Downloads";
+        title: "";
+        go-back => { FindData.back(); }
+    }
     HorizontalLayout {
-        spacing: Theme.unit * 3;
+        spacing: Theme.unit * 4;
         Poster {
-            width: 20 * Theme.unit;
+            width: 27 * Theme.unit;
             height: self.width * Theme.poster-ratio;
             source: FindData.show-poster;
             has-image: FindData.show-has-poster;
             initials: "";
         }
         VerticalLayout {
-            alignment: center;
-            spacing: Theme.unit;
-            Text {
+            alignment: end;
+            spacing: Theme.unit * 2;
+            ClampedText {
                 text: FindData.show-title;
-                color: Theme.text;
-                font-size: Theme.large;
-                font-weight: 300;
-                wrap: word-wrap;
+                font-size: Theme.page - 8px;
+                face: Theme.display-face;
+                lines: 4;
+                leading: 1.05;
             }
             Text {
                 text: FindData.show-facts;
                 color: Theme.dim;
-                font-size: Theme.small - 1px;
-                font-family: Theme.figure;
+                font-size: Theme.small;
                 wrap: word-wrap;
             }
-        }
-    }
-    ShelfHead { title: "Available sources"; }
-    Rectangle {
-        height: 13 * Theme.unit;
-        Flickable {
-            content-width: chips.preferred-width;
-            chips := HorizontalLayout {
-                spacing: Theme.gap;
-                for chip[i] in FindData.sources: SourceButton {
-                    data: chip;
-                    active: i == FindData.source;
-                    clicked => { FindData.fetch(i); }
-                }
+            if FindData.library.length > 0: Cubes {
+                codes: FindData.library;
+                size: 8px;
+                spacing: 3px;
             }
         }
     }
-    if FindData.rows.length > 0 || FindData.library.length > 0: VerticalLayout {
+
+    SectionHead {
+        title: "Where to get it";
+        note: FindData.source < 0 ? "Pick a source to see what it has." : "Nothing downloads until you say so.";
+    }
+    if FindData.sources.length > 0: ListGroup {
+        for chip[i] in FindData.sources: SourceItem {
+            data: chip;
+            active: i == FindData.source;
+            last: i == FindData.sources.length - 1;
+            clicked => { FindData.fetch(i); }
+        }
+    }
+    if FindData.sources.length == 0: EmptyNote {
+        title: "No sources on";
+        body: "Switch on nyaa or erai, or add an RSS feed, in More.";
+    }
+
+    if FindData.rows.length > 0: SectionHead {
+        title: "What it has";
+        note: "Tap a row to take it, or single cubes.";
+    }
+    if FindData.rows.length > 0 && FindData.library.length > 0: VerticalLayout {
         spacing: Theme.unit * 2;
+        padding-left: Theme.unit * 4;
+        padding-right: Theme.unit * 4;
         Text {
-            text: "In your library";
-            color: Theme.dim;
+            text: "On this phone";
+            color: Theme.faint;
             font-size: Theme.small;
         }
-        LibraryCubes { codes: FindData.library; }
+        Cubes {
+            codes: FindData.library;
+            size: 14px;
+            spacing: 4px;
+        }
+    }
+    for row[r] in FindData.rows: GridItem {
+        data: row;
+        picked => { FindData.pick-row(r); }
+        tapped(n) => { FindData.toggle-cube(r, n); }
     }
     if FindData.dropped != "": Text {
         text: FindData.dropped;
         color: Theme.faint;
-        font-size: Theme.small - 1px;
+        font-size: Theme.small - 0.5px;
         wrap: word-wrap;
     }
-    for row[r] in FindData.rows: Rectangle {
-        height: row-column.preferred-height + 5 * Theme.unit;
-        border-radius: Theme.radius-row;
-        background: row.chosen ? Theme.raised : Theme.surface;
-        border-width: row.chosen ? 1px : 0;
-        border-color: Theme.line-strong;
-        row-column := VerticalLayout {
-            x: Theme.unit * 3;
-            y: Theme.unit * 2.5;
-            width: parent.width - Theme.unit * 6;
-            spacing: Theme.unit * 1.5;
-            Rectangle {
-                height: label.preferred-height;
-                label := Text {
-                    width: parent.width;
-                    text: row.label;
-                    color: Theme.text;
-                    font-weight: 600;
-                    overflow: elide;
-                }
-                TouchArea { clicked => { FindData.pick-row(r); } }
-            }
-            Text {
-                text: row.meta;
-                color: Theme.dim;
-                font-size: Theme.small - 1px;
-                font-family: Theme.figure;
-            }
-            TapCubes {
-                codes: row.cubes;
-                tapped(n) => { FindData.toggle-cube(r, n); }
-            }
-        }
-    }
     if FindData.rows.length > 0: Rectangle {
-        height: plan-column.preferred-height + 6 * Theme.unit;
+        height: plan-column.preferred-height;
+        background: Theme.raised;
         border-radius: Theme.radius;
-        background: Theme.surface;
+        border-width: 1px;
+        border-color: Theme.line-strong;
         plan-column := VerticalLayout {
-            x: Theme.pad;
-            y: Theme.unit * 3;
-            width: parent.width - 2 * Theme.pad;
-            spacing: Theme.unit * 2;
+            padding: Theme.pad;
+            spacing: Theme.unit * 3;
             Text {
                 text: FindData.plan;
                 color: Theme.text;
+                font-size: Theme.large;
+                font-family: Theme.display-face;
                 wrap: word-wrap;
             }
             if FindData.plan-detail != "": Text {
@@ -297,73 +467,103 @@ component ShowView inherits VerticalLayout {
             }
             if FindData.can-follow: HorizontalLayout {
                 spacing: Theme.gap;
-                Text {
-                    text: "Follow new episodes";
-                    color: Theme.text;
-                    vertical-alignment: center;
+                VerticalLayout {
+                    alignment: center;
                     horizontal-stretch: 1;
+                    Text {
+                        text: "Follow new episodes";
+                        color: Theme.text;
+                        font-family: Theme.strong-face;
+                    }
+                    Text {
+                        text: "They download by themselves as they air.";
+                        color: Theme.dim;
+                        font-size: Theme.small;
+                        wrap: word-wrap;
+                    }
                 }
-                Switch {
-                    on: FindData.follow;
-                    toggled => { FindData.set-follow(!FindData.follow); }
+                VerticalLayout {
+                    alignment: center;
+                    Switch {
+                        on: FindData.follow;
+                        toggled => { FindData.set-follow(!FindData.follow); }
+                    }
                 }
             }
             if FindData.has-had: HorizontalLayout {
                 spacing: Theme.gap;
-                Text {
-                    text: "Replace current episodes";
-                    color: Theme.text;
-                    vertical-alignment: center;
+                VerticalLayout {
+                    alignment: center;
                     horizontal-stretch: 1;
+                    Text {
+                        text: "Replace what you have";
+                        color: Theme.text;
+                        font-family: Theme.strong-face;
+                    }
+                    Text {
+                        text: "Downloads the picked episodes again over the ones on this phone.";
+                        color: Theme.dim;
+                        font-size: Theme.small;
+                        wrap: word-wrap;
+                    }
                 }
-                Switch {
-                    on: FindData.replace;
-                    toggled => { FindData.set-replace(!FindData.replace); }
+                VerticalLayout {
+                    alignment: center;
+                    Switch {
+                        on: FindData.replace;
+                        toggled => { FindData.set-replace(!FindData.replace); }
+                    }
                 }
             }
             Button {
                 text: FindData.go-text;
+                icon: @image-url("icons/download.svg");
+                has-icon: true;
                 primary: true;
                 enabled: FindData.can-go && !FindData.busy;
                 clicked => { FindData.go(); }
             }
-            TextButton {
-                text: "See every release from this source";
+            Button {
+                text: "Every release from this source";
+                icon: @image-url("icons/search.svg");
+                has-icon: true;
+                small: true;
                 clicked => { FindData.list-all(); }
             }
         }
     }
+    if FindData.rows.length == 0 && FindData.source < 0 && FindData.sources.length > 0: EmptyNote {
+        title: "Pick a source";
+        body: "Its releases show up here as a grid, an episode to a cube.";
+    }
 }
 
+// One release: tags for best fit and on disk, the name, its facts, and Download.
 component ReleaseItem inherits Rectangle {
     in property <ReleaseRow> data;
     callback download();
-    height: column.preferred-height + 5 * Theme.unit;
-    border-radius: Theme.radius-row;
+    height: column.preferred-height + 7 * Theme.unit;
+    border-radius: Theme.radius;
     background: root.data.best ? Theme.raised : Theme.surface;
-    border-width: root.data.best ? 1px : 0;
-    border-color: Theme.line-strong;
+    border-width: 1px;
+    border-color: root.data.best ? Theme.accent-edge : Theme.line;
     column := VerticalLayout {
-        x: Theme.unit * 3;
-        y: Theme.unit * 2.5;
-        width: parent.width - Theme.unit * 6;
-        spacing: Theme.unit;
+        x: Theme.unit * 4;
+        y: Theme.unit * 3.5;
+        width: parent.width - Theme.unit * 8;
+        spacing: Theme.unit * 2;
         if root.data.best || root.data.on-disk: HorizontalLayout {
-            spacing: Theme.gap;
+            spacing: Theme.unit * 1.5;
             alignment: start;
-            if root.data.best: Text {
-                text: "BEST FIT";
-                color: Theme.accent;
-                font-size: Theme.small - 2px;
-                font-family: Theme.figure;
-                letter-spacing: 1.2px;
+            if root.data.best: Chip {
+                text: "Best fit";
+                small: true;
+                selected: true;
             }
-            if root.data.on-disk: Text {
-                text: "ON DISK";
-                color: Theme.ok;
-                font-size: Theme.small - 2px;
-                font-family: Theme.figure;
-                letter-spacing: 1.2px;
+            if root.data.on-disk: Chip {
+                text: "On disk";
+                small: true;
+                dot: Theme.ok;
             }
         }
         Text {
@@ -372,41 +572,62 @@ component ReleaseItem inherits Rectangle {
             font-size: Theme.small + 1px;
             wrap: word-wrap;
         }
-        Text {
-            text: root.data.facts;
-            color: root.data.tone == 2 ? Theme.bad : Theme.dim;
-            font-size: Theme.small - 1px;
-            font-family: Theme.figure;
-            wrap: word-wrap;
-        }
         HorizontalLayout {
-            alignment: start;
-            TextButton {
-                text: "Download";
-                clicked => { root.download(); }
+            spacing: Theme.gap;
+            Text {
+                horizontal-stretch: 1;
+                text: root.data.facts;
+                color: root.data.tone == 2 ? Theme.bad : Theme.dim;
+                font-size: Theme.small - 0.5px;
+                font-family: Theme.figure;
+                wrap: word-wrap;
+                vertical-alignment: center;
+            }
+            VerticalLayout {
+                alignment: end;
+                Button {
+                    text: "Get";
+                    icon: @image-url("icons/download.svg");
+                    has-icon: true;
+                    small: true;
+                    clicked => { root.download(); }
+                }
             }
         }
     }
 }
 
-component ReleaseList inherits VerticalLayout {
+// The release list: what a name search found, with the desktop's refine steps.
+export component ReleaseList inherits VerticalLayout {
     spacing: Theme.unit * 3;
-    HorizontalLayout {
+    PageTitle {
+        back: "Downloads";
+        title: FindData.text;
+        note: FindData.releases.length == 1 ? "1 release" : FindData.releases.length + " releases";
+        go-back => { FindData.back(); }
+    }
+    if FindData.best-fit || FindData.can-undo: HorizontalLayout {
         spacing: Theme.gap;
         alignment: start;
         if FindData.best-fit: Button {
-            text: "Try best fit";
+            text: "Best fit";
+            icon: @image-url("icons/sparkles.svg");
+            has-icon: true;
+            small: true;
             clicked => { FindData.apply-best-fit(); }
         }
         if FindData.can-undo: Button {
             text: "Back a step";
+            icon: @image-url("icons/arrow-left.svg");
+            has-icon: true;
+            small: true;
             clicked => { FindData.undo(); }
         }
     }
     if FindData.best-fit-line != "": Text {
         text: FindData.best-fit-line;
         color: Theme.faint;
-        font-size: Theme.small - 1px;
+        font-size: Theme.small - 0.5px;
         wrap: word-wrap;
     }
     if FindData.groups.length > 0: Rectangle {
@@ -415,32 +636,19 @@ component ReleaseList inherits VerticalLayout {
             content-width: group-row.preferred-width;
             group-row := HorizontalLayout {
                 spacing: Theme.unit * 1.5;
-                for g[i] in FindData.groups: Rectangle {
-                    height: 9 * Theme.unit;
-                    width: chip-text.preferred-width + 6 * Theme.unit;
-                    border-radius: self.height / 2;
-                    background: touch.pressed ? Theme.pressed : Theme.surface;
-                    border-width: 1px;
-                    border-color: Theme.line;
-                    chip-text := Text {
-                        text: g.label + "  " + g.count;
-                        color: Theme.text;
-                        font-size: Theme.small;
-                        vertical-alignment: center;
-                        horizontal-alignment: center;
-                    }
-                    touch := TouchArea { clicked => { FindData.apply-group(i); } }
+                for g[i] in FindData.groups: Chip {
+                    text: g.label;
+                    hint: "" + g.count;
+                    tappable: true;
+                    clicked => { FindData.apply-group(i); }
                 }
             }
         }
     }
-    HorizontalLayout {
-        spacing: Theme.gap;
-        SearchField {
-            placeholder: "Narrow, or -word to leave out";
-            text <=> FindData.narrow;
-            accepted(t) => { FindData.apply-narrow(t); }
-        }
+    Field {
+        placeholder: "Narrow, or -word to leave out";
+        text <=> FindData.narrow;
+        accepted(t) => { FindData.apply-narrow(t); }
     }
     for row[i] in FindData.releases: ReleaseItem {
         data: row;
@@ -449,76 +657,45 @@ component ReleaseList inherits VerticalLayout {
     if FindData.releases.length > 0: HorizontalLayout {
         spacing: Theme.gap;
         Button {
-            text: "Download all " + FindData.releases.length;
+            horizontal-stretch: 1;
+            text: "Get all " + FindData.releases.length;
             clicked => { FindData.download-all(); }
         }
         Button {
+            horizontal-stretch: 1;
             text: "Subscribe";
+            icon: @image-url("icons/rss.svg");
+            has-icon: true;
             primary: true;
             clicked => { FindData.subscribe(); }
         }
     }
 }
 
-export component FindPage inherits Rectangle {
-    background: Theme.ground;
-    TouchArea { }
-    Flickable {
-        VerticalLayout {
-            alignment: start;
-            padding-left: Theme.pad;
-            padding-right: Theme.pad;
-            padding-top: Theme.unit * 2;
-            padding-bottom: Theme.pad * 2;
-            spacing: Theme.unit * 3;
-            HorizontalLayout {
-                spacing: Theme.unit * 3;
-                VerticalLayout {
-                    alignment: center;
-                    IconButton {
-                        icon: @image-url("icons/arrow-left.svg");
-                        clicked => { FindData.back(); }
-                    }
-                }
-                PageTitle { title: "Downloads"; }
-            }
-            SearchField {
-                placeholder: "A show, or a release name";
-                text <=> FindData.text;
-                accepted(t) => { FindData.search(t); }
-            }
-            if FindData.line != "": Text {
-                text: FindData.line;
-                color: Theme.dim;
-                font-size: Theme.small;
-                wrap: word-wrap;
-            }
-            if FindData.error != "": Text {
-                text: FindData.error;
-                color: Theme.warn;
-                font-size: Theme.small;
-                wrap: word-wrap;
-            }
-            if FindData.view == 0: VerticalLayout {
-                spacing: Theme.unit * 3;
-                Segmented {
-                    options: FindData.lenses;
-                    picked: FindData.lens;
-                    pick(i) => { FindData.pick-lens(i); }
-                }
-                if FindData.lens-line != "": Text {
-                    text: FindData.lens-line;
-                    color: Theme.dim;
-                    font-size: Theme.small;
-                    wrap: word-wrap;
-                }
-                TileGrid {
-                    tiles: FindData.lens-tiles;
-                    open(i) => { FindData.open-tile(i); }
+// What there is to get with nothing typed: four lenses.
+export component Lenses inherits VerticalLayout {
+    spacing: Theme.unit * 3;
+    SectionHead {
+        title: "What to get";
+        note: FindData.lens-line;
+    }
+    Rectangle {
+        height: 9 * Theme.unit;
+        Flickable {
+            content-width: lens-row.preferred-width;
+            lens-row := HorizontalLayout {
+                spacing: Theme.unit * 1.5;
+                for l[i] in FindData.lenses: Chip {
+                    text: l;
+                    selected: i == FindData.lens;
+                    tappable: true;
+                    clicked => { FindData.pick-lens(i); }
                 }
             }
-            if FindData.view == 1: ShowView { }
-            if FindData.view == 2: ReleaseList { }
         }
+    }
+    TileGrid {
+        tiles: FindData.lens-tiles;
+        open(i) => { FindData.open-tile(i); }
     }
 }

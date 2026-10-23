@@ -376,6 +376,12 @@ pub enum Call {
     SetPhoneSources {
         sources: Vec<PhoneSource>,
     },
+    /// The phone's show search, the desktop's suggestions under the Downloads field:
+    /// AniList's hits for `query`, with the covers that came in time.
+    PhoneFindShows {
+        query: String,
+        limit: u32,
+    },
     /// The desktop's search on the phone: one source (else the first) with fallback
     /// to the others, auto-resolution, the refine groups and best fit, as
     /// `SearchReleases` gives them, from the core's own port of anirss.
@@ -505,6 +511,12 @@ pub enum Reply {
     },
     PhoneSearch {
         search: ReleaseSearch,
+    },
+    /// AniList's hits, and beside each the path of its cached cover, empty
+    /// when it has none or the fetch failed.
+    PhoneShows {
+        shows: Vec<SearchResult>,
+        posters: Vec<String>,
     },
     PhoneRefined {
         refinement: Refinement,
