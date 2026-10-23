@@ -7,7 +7,7 @@
 
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 
@@ -28,6 +28,48 @@ pub fn fronted(url: &str) -> Option<(String, String)> {
     let host = &rest[..end];
     let (_, front) = FRONTS.iter().find(|(h, _)| *h == host)?;
     Some((format!("https://{front}{}", &rest[end..]), host.to_string()))
+}
+
+/// The gap between the end of one fronted request and the start of the next. DDoS-Guard, in
+/// front of nyaa, quietly stops answering an address that asks for dozens of pages within
+/// seconds, which a new subscription or a batch pick on a long show used to do (#135).
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub const GAP: Duration = Duration::from_secs(1);
+/// How long a front is left alone after a request it did not answer, so an address it has
+/// stopped answering is not asked again and again, each time for a whole timeout.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub const QUIET: Duration = Duration::from_secs(120);
+
+/// Paces the requests to fronted hosts. Held for the whole of one request, so they go one at
+/// a time, `GAP` apart, and none during `QUIET` after one that went unanswered.
+#[derive(Default)]
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub struct Gate {
+    done: Option<Instant>,
+    quiet_until: Option<Instant>,
+}
+
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+impl Gate {
+    /// How long a request at `now` waits before it goes; Err with what is left of the
+    /// quiet when it must not go at all.
+    pub fn admit(&self, now: Instant) -> Result<Duration, Duration> {
+        if let Some(until) = self.quiet_until
+            && now < until
+        {
+            return Err(until - now);
+        }
+        Ok(self.done.map_or(Duration::ZERO, |done| {
+            (done + GAP).saturating_duration_since(now)
+        }))
+    }
+
+    /// A request ended at `now`; `answered` when the server sent a response, whatever its
+    /// status.
+    pub fn finished(&mut self, now: Instant, answered: bool) {
+        self.done = Some(now);
+        self.quiet_until = (!answered).then(|| now + QUIET);
+    }
 }
 
 /// Looks a front's name up as the host it stands for: the connection must reach that site's
@@ -103,6 +145,45 @@ mod tests {
         assert_eq!(fronted("http://nyaa.si/"), None);
         assert_eq!(fronted("https://animetosho.org/feed/json?q=x"), None);
         assert_eq!(fronted("https://sub.nyaa.si/"), None);
+    }
+
+    #[test]
+    fn the_first_request_goes_at_once() {
+        assert_eq!(Gate::default().admit(Instant::now()), Ok(Duration::ZERO));
+    }
+
+    #[test]
+    fn a_request_right_after_another_waits_out_the_gap() {
+        let mut g = Gate::default();
+        let now = Instant::now();
+        g.finished(now - Duration::from_millis(300), true);
+        assert_eq!(g.admit(now), Ok(Duration::from_millis(700)));
+        g.finished(now - Duration::from_secs(5), true);
+        assert_eq!(g.admit(now), Ok(Duration::ZERO));
+    }
+
+    #[test]
+    fn the_gap_counts_from_the_end_of_a_slow_request() {
+        let mut g = Gate::default();
+        let start = Instant::now();
+        // Started long ago, answered just now: the next still waits the whole gap.
+        let end = start + Duration::from_secs(30);
+        g.finished(end, true);
+        assert_eq!(g.admit(end), Ok(GAP));
+    }
+
+    #[test]
+    fn an_unanswered_request_keeps_the_front_quiet_for_a_while() {
+        let mut g = Gate::default();
+        let now = Instant::now();
+        g.finished(now, false);
+        assert_eq!(
+            g.admit(now + Duration::from_secs(20)),
+            Err(QUIET - Duration::from_secs(20))
+        );
+        assert_eq!(g.admit(now + QUIET), Ok(Duration::ZERO));
+        g.finished(now + QUIET, true);
+        assert_eq!(g.admit(now + QUIET + GAP), Ok(Duration::ZERO));
     }
 
     /// Fetches nyaa's feed through the front, from wherever the test runs.
