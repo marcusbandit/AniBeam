@@ -226,7 +226,10 @@ impl ReqwestHttp {
                 .map_err(|e| CoreError::internal(format!("dns client: {e}")))?;
             let doh = doh::Doh::new(resolvers);
             fronted = Some(front::client(&doh, Some(roots.clone()), timeout)?);
+            // DDoS-Guard, in front of nyaa, hands out cookies and treats a client that
+            // never sends them back as a bot (#135).
             builder
+                .cookie_store(true)
                 .tls_certs_only(roots)
                 .dns_resolver(std::sync::Arc::new(doh))
         };

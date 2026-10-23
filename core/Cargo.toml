@@ -24,7 +24,7 @@ rusqlite_migration = "2.6"
 directories = "6"
 notify = "8.2"
 notify-debouncer-full = "0.7"
-reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "form", "http2"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "form", "http2", "cookies"] }
 governor = "0.10"
 backon = { version = "1.6", features = ["tokio-sleep"] }
 keyring-core = "1.0"
