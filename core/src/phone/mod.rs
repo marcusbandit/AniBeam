@@ -147,15 +147,28 @@ pub fn download(
     limit_bytes: Option<u64>,
 ) -> Result<Reply, CoreError> {
     if let Some(limit) = limit_bytes {
+        // On disk, plus what the engine still has to write, plus this release; one whose
+        // size the feed did not give counts as a typical episode.
         let used = used_bytes(&library_dir(core));
-        let size = crate::downloads::facts::size_bytes(&release.size).unwrap_or(0);
-        if used + size > limit {
+        let pending = core.handle.block_on(async {
+            match engine(core).await {
+                Ok(e) => e
+                    .list()
+                    .await
+                    .iter()
+                    .map(|t| t.size - (t.progress * t.size as f64) as u64)
+                    .sum(),
+                Err(_) => 0,
+            }
+        });
+        let size = crate::downloads::facts::size_bytes(&release.size).unwrap_or(1_500_000_000);
+        if used + pending + size > limit {
             return Err(CoreError::invalid(
                 "limit",
                 format!(
-                    "this would take AniBeam past its storage limit ({} of {} GB used)",
-                    used / 1_000_000_000,
-                    limit / 1_000_000_000
+                    "this would take AniBeam past its storage cap ({:.1} of {:.1} GB used or on the way); delete episodes or raise the cap",
+                    (used + pending) as f64 / 1e9,
+                    limit as f64 / 1e9
                 ),
             ));
         }

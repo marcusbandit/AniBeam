@@ -114,6 +114,8 @@ struct App {
     results: Rc<VecModel<ResultRow>>,
     downloads: Rc<VecModel<DownloadRow>>,
     polling: bool,
+    /// Bumped by each search; an answer for an older one is dropped.
+    search_seq: u64,
     held: Option<bool>,
     service: Option<String>,
     asked_notifications: bool,
@@ -375,12 +377,20 @@ impl App {
             return;
         }
         let source = self.sources.get(self.data().get_source().max(0) as usize).map(|s| s.name.clone());
+        self.search_seq += 1;
+        let seq = self.search_seq;
         let data = self.data();
         data.set_search_busy(true);
         data.set_search_note(format!("Searching {}...", source.clone().unwrap_or_default()).into());
         let _ = std::thread::Builder::new().name("search".into()).spawn(move || {
             let answer = core.call(Call::PhoneSearch { query, source });
-            let _ = slint::invoke_from_event_loop(move || with_app(|app| app.show_results(answer)));
+            let _ = slint::invoke_from_event_loop(move || {
+                with_app(|app| {
+                    if seq == app.search_seq {
+                        app.show_results(answer);
+                    }
+                })
+            });
         });
     }
 
@@ -437,6 +447,7 @@ impl App {
         let action = match action {
             0 => PhoneAction::Pause,
             1 => PhoneAction::Resume,
+            3 => PhoneAction::Forget,
             _ => PhoneAction::Remove,
         };
         let _ = std::thread::Builder::new().name("torrent".into()).spawn(move || {
@@ -502,7 +513,10 @@ impl App {
     }
 
     fn show_torrents(&mut self, torrents: Vec<Torrent>, held: bool) {
-        let active: Vec<&Torrent> = torrents.iter().filter(|t| t.progress < 1.0 && t.state != "pausedDL" || held && t.progress < 1.0).collect();
+        // The service is for torrents that are moving: one in error, stuck with no peers or
+        // paused does not keep a notification up.
+        let active: Vec<&Torrent> =
+            torrents.iter().filter(|t| t.progress < 1.0 && matches!(t.state.as_str(), "downloading" | "checkingDL")).collect();
         update(&self.downloads, torrents.iter().map(|t| download_row(t, held)).collect());
         let note = if held && torrents.iter().any(|t| t.progress < 1.0) {
             "Waiting for Wi-Fi. Downloads go on by themselves when the phone is on Wi-Fi."
@@ -514,18 +528,22 @@ impl App {
         self.data().set_downloads_note(note.into());
 
         // The service runs while something downloads, with how many in its notification.
-        let running: Vec<&&Torrent> = active.iter().filter(|t| t.state != "pausedDL").collect();
-        let text = match running.len() {
+        let text = match active.len() {
             0 => None,
-            1 => Some(format!("Downloading {}", running[0].name)),
+            1 => Some(format!("Downloading {}", active[0].name)),
             n => Some(format!("Downloading {n} episodes")),
         };
         if text != self.service {
-            match &text {
+            let done = match &text {
                 Some(t) => crate::android::start_service(t),
-                None => crate::android::stop_service(),
+                None => {
+                    crate::android::stop_service();
+                    true
+                }
+            };
+            if done {
+                self.service = text;
             }
-            self.service = text;
         }
     }
 
@@ -895,6 +913,7 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
         results,
         downloads,
         polling: false,
+        search_seq: 0,
         held: None,
         service: None,
         asked_notifications: false,

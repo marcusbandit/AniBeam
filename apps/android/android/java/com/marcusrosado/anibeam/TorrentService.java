@@ -39,6 +39,15 @@ public class TorrentService extends Service {
         return START_NOT_STICKY;
     }
 
+    /**
+     * Android 15 gives a dataSync service six hours a day and stops the app if the service
+     * outlives them. It stops here instead; downloads go on the next time the app is open.
+     */
+    @Override
+    public void onTimeout(int startId, int fgsType) {
+        stopSelf();
+    }
+
     @Override
     public IBinder onBind(Intent intent) {
         return null;

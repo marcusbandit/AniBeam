@@ -98,7 +98,9 @@ component DownloadItem inherits Rectangle {
             }
             TextButton {
                 text: root.data.done ? "Remove from list" : "Cancel";
-                clicked => { AppData.torrent-action(root.data.hash, 2); }
+                // A finished one leaves the list and keeps its episode; Cancel deletes what a
+                // download had written so far.
+                clicked => { AppData.torrent-action(root.data.hash, root.data.done ? 3 : 2); }
             }
         }
     }
@@ -252,11 +254,18 @@ export component MorePage inherits Rectangle {
 
             ShelfHead { title: "Sources"; }
             ListGroup {
-                for source[i] in AppData.sources: ListRow {
-                    label: source.name;
-                    helper: source.url;
-                    tappable: i > 0;
-                    clicked => { AppData.remove-source(i); }
+                for source[i] in AppData.sources: Rectangle {
+                    height: source-row.height;
+                    source-row := ListRow {
+                        label: source.name;
+                        helper: source.url;
+                    }
+                    if i > 0: TextButton {
+                        x: parent.width - self.width - Theme.pad;
+                        y: (parent.height - self.height) / 2;
+                        text: "Remove";
+                        clicked => { AppData.remove-source(i); }
+                    }
                 }
                 SourceForm { }
             }

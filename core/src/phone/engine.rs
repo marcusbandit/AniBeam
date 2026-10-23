@@ -106,18 +106,27 @@ impl Engine {
     pub async fn add(&self, release: &Release, folder: &str) -> Result<String, CoreError> {
         let held = self.held();
         let output = self.root.join(folder);
-        let added = self
-            .session
-            .add_torrent(
+        let added = tokio::time::timeout(
+            std::time::Duration::from_secs(60),
+            self.session.add_torrent(
                 AddTorrent::from_url(&release.link),
                 Some(AddTorrentOptions {
                     output_folder: Some(output.to_string_lossy().into_owned()),
                     overwrite: true,
                     ..Default::default()
                 }),
-            )
-            .await
-            .map_err(fail)?;
+            ),
+        )
+        .await;
+        let added = match added {
+            Ok(Ok(added)) => added,
+            Ok(Err(e)) => return Err(fail(e)),
+            Err(_) => {
+                return Err(fail(
+                    "no peer sent the torrent's details within a minute; try a release with more seeders",
+                ));
+            }
+        };
         let handle = match added {
             AddTorrentResponse::Added(_, h) | AddTorrentResponse::AlreadyManaged(_, h) => h,
             AddTorrentResponse::ListOnly(_) => {
@@ -294,9 +303,10 @@ impl Engine {
                         self.session.unpause(&h).await.map_err(fail)?;
                     }
                 }
-                PhoneAction::Remove => {
+                PhoneAction::Remove | PhoneAction::Forget => {
+                    let files = action == PhoneAction::Remove;
                     self.session
-                        .delete(librqbit::api::TorrentIdOrHash::Hash(h.info_hash()), true)
+                        .delete(librqbit::api::TorrentIdOrHash::Hash(h.info_hash()), files)
                         .await
                         .map_err(fail)?;
                     self.entries.lock().unwrap().remove(hash);
@@ -323,10 +333,17 @@ impl Engine {
                 .unwrap()
                 .get(&h.info_hash().as_string())
                 .is_some_and(|e| e.paused_by_user);
-            if held && !h.is_paused() {
-                self.session.pause(&h).await.map_err(fail)?;
+            // One torrent the engine will not pause or start (in error, say) must not leave
+            // the rest running on mobile data: each is tried, failures only logged.
+            let r = if held && !h.is_paused() {
+                self.session.pause(&h).await
             } else if !held && !by_user && h.is_paused() {
-                self.session.unpause(&h).await.map_err(fail)?;
+                self.session.unpause(&h).await
+            } else {
+                Ok(())
+            };
+            if let Err(e) = r {
+                tracing::warn!("hold {held} for {}: {e}", h.info_hash().as_string());
             }
         }
         Ok(())

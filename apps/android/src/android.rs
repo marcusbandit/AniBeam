@@ -69,9 +69,12 @@ fn with_env<R>(
     let mut env = vm.attach_current_thread()?;
     let activity = unsafe { JObject::from_raw(ctx.context().cast()) };
     let out = f(&mut env, &activity);
-    // A Java exception left pending would fail the next call on this thread.
+    // A Java exception left pending would fail the next call on this thread, and means the
+    // call did not do what it was asked.
     if env.exception_check().unwrap_or(false) {
+        let _ = env.exception_describe();
         let _ = env.exception_clear();
+        return Err("Java threw".into());
     }
     out
 }
@@ -95,7 +98,9 @@ fn service_intent<'a>(
 }
 
 /// Starts the download service, or updates its notification to `text` when it runs.
-pub fn start_service(text: &str) {
+/// False when Android refused, as it does for an app in the background on Android 12 and
+/// later; the caller tries again on its next look.
+pub fn start_service(text: &str) -> bool {
     #[cfg(target_os = "android")]
     {
         let r = with_env(|env, activity| {
@@ -119,10 +124,15 @@ pub fn start_service(text: &str) {
         });
         if let Err(e) = r {
             crate::local::log(&format!("the download service did not start: {e}"));
+            return false;
         }
+        true
     }
     #[cfg(not(target_os = "android"))]
-    let _ = text;
+    {
+        let _ = text;
+        true
+    }
 }
 
 /// Stops the download service once nothing is downloading.

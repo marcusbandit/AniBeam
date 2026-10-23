@@ -159,7 +159,8 @@ pub fn rank(releases: Vec<Release>) -> (Vec<PhoneRelease>, Option<u64>) {
     match results
         .iter()
         .enumerate()
-        .max_by_key(|(_, r)| r.score)
+        // On a tie the earlier one wins: the feed lists the newest first.
+        .max_by_key(|(i, r)| (r.score, std::cmp::Reverse(*i)))
         .map(|(i, _)| i)
     {
         Some(best) => {
@@ -210,6 +211,8 @@ pub fn show_name(title: &str) -> String {
         })
         .collect();
     let clean = clean.split_whitespace().collect::<Vec<_>>().join(" ");
+    // A name of only dots would be `.` or `..`, a folder outside the library.
+    let clean = clean.trim_start_matches('.').trim().to_string();
     if clean.is_empty() {
         "Downloads".to_string()
     } else {
@@ -262,6 +265,8 @@ mod tests {
         );
         assert_eq!(show_name("Show.Name S01E02 1080p"), "Show.Name");
         assert_eq!(show_name("[Group] Re:Zero"), "Re Zero");
+        assert_eq!(show_name("[Group] .. - 01"), "Downloads");
+        assert_eq!(show_name(".hack Sign - 01"), "hack Sign");
     }
 
     #[test]

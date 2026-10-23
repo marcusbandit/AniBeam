@@ -674,4 +674,6 @@ pub enum PhoneAction {
     Resume,
     /// Takes the torrent out and deletes what it wrote.
     Remove,
+    /// Takes a finished torrent off the list and keeps its files.
+    Forget,
 }
