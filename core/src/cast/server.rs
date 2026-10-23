@@ -54,9 +54,9 @@ impl Registry {
     }
 }
 
-/// Binds on every interface, any free port, and serves until the runtime ends.
-pub async fn serve(registry: Arc<Registry>) -> std::io::Result<SocketAddr> {
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:0").await?;
+/// Binds on every interface, on `port` or any free one, and serves until the runtime ends.
+pub async fn serve(registry: Arc<Registry>, port: u16) -> std::io::Result<SocketAddr> {
+    let listener = tokio::net::TcpListener::bind(("0.0.0.0", port)).await?;
     let at = listener.local_addr()?;
     let app = Router::new()
         .route("/c/{token}/{name}", get(file).options(preflight))

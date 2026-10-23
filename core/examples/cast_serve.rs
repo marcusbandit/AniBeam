@@ -21,7 +21,7 @@ async fn main() {
             prepared: Some(p),
         },
     );
-    let at = serve(reg).await.unwrap();
+    let at = serve(reg, 0).await.unwrap();
     println!("http://127.0.0.1:{}/c/t/master.m3u8", at.port());
     std::future::pending::<()>().await;
 }

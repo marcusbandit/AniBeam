@@ -99,10 +99,18 @@ pub async fn renderers(wait: Duration, found: impl Fn(Found)) -> Result<(), Stri
     })
     .await
     .map_err(|e| e.to_string())??;
-    let http = reqwest::Client::builder()
+    describe(locations, &found).await;
+    Ok(())
+}
+
+/// Reads each renderer's description and reports the ones that can play.
+pub async fn describe(locations: Vec<String>, found: &impl Fn(Found)) {
+    let Ok(http) = reqwest::Client::builder()
         .timeout(Duration::from_secs(4))
         .build()
-        .map_err(|e| e.to_string())?;
+    else {
+        return;
+    };
     for loc in locations {
         let Ok(r) = http.get(&loc).send().await else {
             continue;
@@ -132,7 +140,40 @@ pub async fn renderers(wait: Duration, found: impl Fn(Found)) -> Result<(), Stri
             control: Some(renderer.control),
         });
     }
-    Ok(())
+}
+
+/// A test hook, like the library's seed file: `key=value` lines that point casting at what
+/// discovery cannot see, an emulator being behind NAT. `renderer=<description URL>` adds a
+/// DLNA renderer, `port=` fixes the server's port and `advertise=host:port` is the address
+/// the receiver is told to fetch from (an `adb forward` on the host, say). Read from
+/// `/data/local/tmp/anibeam-cast-dev` on Android and the file `ANIBEAM_CAST_DEV` names
+/// elsewhere; absent in normal use.
+#[derive(Clone, Debug, Default)]
+pub struct Dev {
+    pub renderers: Vec<String>,
+    pub port: Option<u16>,
+    pub advertise: Option<String>,
+}
+
+pub fn dev() -> Dev {
+    let path = if cfg!(target_os = "android") {
+        Some("/data/local/tmp/anibeam-cast-dev".to_string())
+    } else {
+        std::env::var("ANIBEAM_CAST_DEV").ok()
+    };
+    let Some(text) = path.and_then(|p| std::fs::read_to_string(p).ok()) else {
+        return Dev::default();
+    };
+    let mut d = Dev::default();
+    for line in text.lines() {
+        match line.trim().split_once('=') {
+            Some(("renderer", v)) => d.renderers.push(v.trim().to_string()),
+            Some(("port", v)) => d.port = v.trim().parse().ok(),
+            Some(("advertise", v)) => d.advertise = Some(v.trim().to_string()),
+            _ => {}
+        }
+    }
+    d
 }
 
 /// Whether a Chromecast model is known to decode HEVC. A plain "Chromecast" may be an old

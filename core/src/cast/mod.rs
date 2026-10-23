@@ -166,6 +166,11 @@ mod imp {
         let dlna_core = arc.clone();
         core.handle.spawn(async move {
             let c = dlna_core.clone();
+            let extra = discover::dev().renderers;
+            if !extra.is_empty() {
+                let c = c.clone();
+                discover::describe(extra, &move |f| found(&c, f)).await;
+            }
             if let Err(e) = discover::renderers(Duration::from_secs(4), move |f| found(&c, f)).await
             {
                 tracing::warn!("cast: {e}");
@@ -273,7 +278,9 @@ mod imp {
         let reg = inner.registry.clone();
         inner
             .server
-            .get_or_try_init(|| async move { super::server::serve(reg).await })
+            .get_or_try_init(|| async move {
+                super::server::serve(reg, discover::dev().port.unwrap_or(0)).await
+            })
             .await
             .copied()
             .map_err(|e| format!("could not serve the episode: {e}"))
@@ -508,7 +515,10 @@ mod imp {
         let port = server(&inner).await?.port();
         let peer: IpAddr = found.addr.ip();
         let ip = discover::local_ip_for(peer).ok_or("this device has no route to the TV")?;
-        let base = format!("http://{ip}:{port}/c/{token}");
+        let host = discover::dev()
+            .advertise
+            .unwrap_or_else(|| format!("{ip}:{port}"));
+        let base = format!("http://{host}/c/{token}");
         let mkv = is_matroska(&path);
         let receiver = match found.device.kind {
             CastKind::Chromecast => Receiver::Cast,
