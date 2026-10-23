@@ -153,7 +153,7 @@ SettingsTab {
         id: aboutPanel
         Panel {
             title: "About"; icon: "info"
-            SettingRow { label: "Version"; Label { text: tab.about.version || ""; role: "ledger" } }
+            SettingRow { label: "Version"; Label { text: Shell.release; role: "ledger" } }
             // IMDb's terms ask for this line wherever its data is used
             SettingRow { label: "Ratings"; helper: "Information courtesy of IMDb (https://www.imdb.com). Used with permission." }
             Repeater {
