@@ -17,11 +17,24 @@ searches release feeds) and a qBittorrent for downloads all come with it.
 
 **Mac** (Apple silicon, macOS 15 or later)
 
+With Homebrew:
+
+```bash
+brew tap marcusbandit/anibeam https://github.com/marcusbandit/AniBeam
+brew install --cask marcusbandit/anibeam/anibeam
+```
+
+The full name in the install trusts the tap's cask, which Homebrew asks for before it loads
+one from outside its own taps. `brew upgrade` picks up each new release.
+
+Or by hand:
+
 1. Download `AniBeam-<version>-macos-arm64.dmg` from [Releases](https://github.com/marcusbandit/AniBeam/releases).
 2. Open it and drag AniBeam into Applications.
-3. Open AniBeam once. macOS stops it, because the build is not notarized: go to
-   System Settings > Privacy & Security, scroll to the AniBeam line and click Open Anyway.
-   From a terminal, `xattr -dr com.apple.quarantine /Applications/AniBeam.app` does the same.
+
+Either way, open AniBeam once. macOS stops it, because the build is not notarized: go to
+System Settings > Privacy & Security, scroll to the AniBeam line and click Open Anyway.
+From a terminal, `xattr -dr com.apple.quarantine /Applications/AniBeam.app` does the same.
 
 **Arch Linux**
 
@@ -201,6 +214,13 @@ Once the release is published, point the AUR at it:
 
 ```bash
 apps/linux/packaging/aur/publish.sh 2.1.0
+```
+
+and point the Homebrew cask at its dmg, then open a PR with the change to
+`Casks/anibeam.rb`:
+
+```bash
+apps/linux/packaging/brew/bump.sh 2.1.0
 ```
 
 Bump `version` in the workspace `Cargo.toml` before tagging: a build from the AUR's
