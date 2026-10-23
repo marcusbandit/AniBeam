@@ -1,15 +1,16 @@
-// The player's furniture: the header, the seek preview, the controls island, the auto-next
-// pill and the replay button. Split out of PlayerPage.qml so the page holds the session, the
-// mpv wiring and the rules while this file holds what they look like. Every value drawn here
-// is a property on `page`, reached through the context chain, and every control calls one of
-// the page's own functions; this file keeps no state of its own beyond the preview's.
+// The player's furniture: the header, the seek preview, the controls island, the skip intro
+// tile, the auto-next pill and the replay button. Split out of PlayerPage.qml so the page
+// holds the session, the mpv wiring and the rules while this file holds what they look like.
+// Every value drawn here is a property on `page`, reached through the context chain, and
+// every control calls one of the page's own functions; this file keeps no state of its own
+// beyond the preview's.
 //
 // Glass mosaic: the chrome is two square panes of the video glass (black at 0.55, a faint
 // edge, the top highlight) set a grout in from the window's edge, the header at the top left
 // as small as its text and the controls island at the foot. Nothing else is drawn on the
-// picture except the seek preview, the auto-next tile, the replay button and the page's own
-// notices, each a pane of its own; there is no scrim and no blur. PlayerPage forces its
-// tokens dark, so this reads the same on a light theme.
+// picture except the seek preview, the skip intro tile, the auto-next tile, the replay button
+// and the page's own notices, each a pane of its own; there is no scrim and no blur.
+// PlayerPage forces its tokens dark, so this reads the same on a light theme.
 import QtQuick
 import QtQuick.Window
 import com.marcusrosado.AniBeam
@@ -145,11 +146,9 @@ Item {
             // Up and Down keys to step the volume by 5.
             SliderRow { objectName: "player-volume"; anchors.verticalCenter: parent.verticalCenter; from: 0; to: 100; value: Player.mute ? 0 : page.volume; stepSize: 1; trackWidth: theme.space(24)
                 takesFocus: false; ground: theme.raised; onMoved: function(v) { page.setVolume(v) } }
-            // The two skip buttons, each up only while the position is inside its own
-            // window, and there whether or not auto-skip is on. Two, not a Repeater over
-            // the windows: SkipKind is a closed pair in the contract, and a model rebuilt
-            // from a filter on every observed time-pos would rebuild its delegates with it.
-            Button { objectName: "player-skip-intro"; visible: page.inside(page.intro, page.timePos); anchors.verticalCenter: parent.verticalCenter; text: "Skip intro"; icon: "chevrons-right"; primary: true; small: true; takesFocus: false; onClicked: page.skipWindow(page.intro) }
+            // Skip outro, up only while the position is inside the outro window, and there
+            // whether or not auto-skip is on. Skip intro is a tile of its own, below: the
+            // corner it takes belongs to the auto-next tile during the outro.
             Button { objectName: "player-skip-outro"; visible: page.inside(page.outro, page.timePos); anchors.verticalCenter: parent.verticalCenter; text: "Skip outro"; icon: "chevrons-right"; primary: true; small: true; takesFocus: false; onClicked: page.skipWindow(page.outro) }
             // The slot takes its height from what it holds, not from the row: the row
             // takes its own height from its children, and parent.height here would be a loop.
@@ -195,6 +194,28 @@ Item {
                 MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: page.openNext() }
             }
         }
+    }
+
+    // ---- Skip intro. Not chrome either, and in the auto-next tile's corner: it is up for as
+    // long as the position is inside the intro window, whether or not the controls are, and
+    // whether or not auto-skip is on. A click lets the controls go rather than calling them
+    // up, so the picture is clear the moment the intro is. The two never share the corner in
+    // practice; if they ever do, this one sits above.
+    Tile {
+        id: skipTile
+        objectName: "player-skip-intro-tile"
+        visible: page.inside(page.intro, page.timePos)
+        raised: true
+        color: theme.glassVideo; borderColor: Qt.rgba(1, 1, 1, 0.1)
+        padding: theme.space(1.5)
+        anchors.right: parent.right; anchors.rightMargin: theme.grout
+        anchors.bottom: nextTile.visible ? nextTile.top : controls.top; anchors.bottomMargin: theme.grout
+        width: skipButton.implicitWidth + padding * 2; height: skipButton.implicitHeight + padding * 2
+        MouseArea { enabled: page.chromeVisible; anchors.fill: parent; anchors.margins: -skipTile.padding }
+        Button { id: skipButton; objectName: "player-skip-intro"; anchors.centerIn: parent; text: "Skip intro"; icon: "chevrons-right"; primary: true; takesFocus: false
+            onClicked: page.skipIntroAndHide(page.mapFromItem(null, skipHover.point.scenePosition))
+            // Where the pointer is for the click, so the page knows the spot it then rests on.
+            HoverHandler { id: skipHover } }
     }
 
     // ---- Replay: the last frame is still on screen because keep-open holds it, so this sits
