@@ -213,3 +213,39 @@ pub fn ask_notifications() {
         }
     }
 }
+
+/// Puts `text` on the clipboard, so a connection check can be pasted into a message.
+pub fn copy_text(label: &str, text: &str) -> bool {
+    #[cfg(target_os = "android")]
+    {
+        let r = with_env(|env, activity| {
+            use jni::objects::JValue;
+            let name = env.new_string("clipboard")?;
+            let manager = env
+                .call_method(activity, "getSystemService", "(Ljava/lang/String;)Ljava/lang/Object;", &[JValue::Object(&name)])?
+                .l()?;
+            let label = env.new_string(label)?;
+            let text = env.new_string(text)?;
+            let clip = env
+                .call_static_method(
+                    "android/content/ClipData",
+                    "newPlainText",
+                    "(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Landroid/content/ClipData;",
+                    &[JValue::Object(&label), JValue::Object(&text)],
+                )?
+                .l()?;
+            env.call_method(&manager, "setPrimaryClip", "(Landroid/content/ClipData;)V", &[JValue::Object(&clip)])?;
+            Ok(())
+        });
+        if let Err(e) = r {
+            crate::local::log(&format!("could not copy: {e}"));
+            return false;
+        }
+        true
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (label, text);
+        false
+    }
+}

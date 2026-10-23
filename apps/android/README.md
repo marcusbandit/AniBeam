@@ -48,7 +48,7 @@ too, so its library still shows when it is off.
    (Android asks once to allow installs from that app), or with USB debugging on:
 
    ```sh
-   adb install -r dist/AniBeam-0.5.3.apk
+   adb install -r dist/AniBeam-0.5.4.apk
    ```
 
 4. Open AniBeam. It starts out pointed at `banditbox:8790`, the desktop's MagicDNS name.

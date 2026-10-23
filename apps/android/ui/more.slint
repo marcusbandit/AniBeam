@@ -280,6 +280,17 @@ export component MorePage inherits Rectangle {
                     last: AppData.checks.length == 0;
                     clicked => { AppData.run-check(); }
                 }
+                if AppData.checks.length > 0 && !AppData.checking: Rectangle {
+                    height: copy-row.preferred-height + 2 * Theme.unit;
+                    copy-row := HorizontalLayout {
+                        x: Theme.pad;
+                        alignment: start;
+                        Button {
+                            text: "Copy the results";
+                            clicked => { AppData.copy-check(); }
+                        }
+                    }
+                }
                 for c[i] in AppData.checks: Rectangle {
                     height: check-text.preferred-height + 3 * Theme.unit;
                     check-text := VerticalLayout {

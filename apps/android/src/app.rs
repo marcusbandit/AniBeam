@@ -102,6 +102,8 @@ struct App {
     open: Option<Open>,
     ticks: u32,
     devices: Vec<SharedString>,
+    /// The last connection check as plain text, for Copy.
+    check_text: String,
     home_shelves: Shelves,
     days: Rc<VecModel<Day>>,
     day_tiles: Rc<VecModel<Tile>>,
@@ -407,9 +409,16 @@ impl App {
             let answer = core.call(Call::PhoneNetCheck);
             let _ = slint::invoke_from_event_loop(move || {
                 with_app(|app| {
-                    let data = app.data();
+                    let window = app.window.clone_strong();
+                    let data = window.global::<AppData>();
                     data.set_checking(false);
                     let Ok(Reply::PhoneNetCheck { checks }) = answer else { return };
+                    app.check_text = std::iter::once(format!("AniBeam {} connection check", env!("CARGO_PKG_VERSION")))
+                        .chain(checks.iter().map(|c| {
+                            format!("{} {}: {} ({} ms)", if c.ok { "OK  " } else { "FAIL" }, c.name, c.detail, c.ms)
+                        }))
+                        .collect::<Vec<_>>()
+                        .join("\n");
                     let failed = checks.iter().filter(|c| !c.ok).count();
                     data.set_check_summary(
                         if failed == 0 { "Every step went through.".to_string() } else { format!("{failed} of {} steps failed. A screenshot of this list says where.", checks.len()) }
@@ -781,6 +790,12 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
     data.on_add_source(|name, url| with_app(|app| app.add_source(name.to_string(), url.to_string())));
     data.on_remove_source(|i| with_app(|app| app.remove_source(i)));
     data.on_run_check(|| with_app(App::run_check));
+    data.on_copy_check(|| {
+        with_app(|app| {
+            let copied = crate::android::copy_text("AniBeam connection check", &app.check_text);
+            app.data().set_check_summary(if copied { "Copied. Paste it in a message.".into() } else { "Could not copy.".into() });
+        })
+    });
     data.on_refresh({
         let commands = commands.clone();
         move || {
@@ -809,6 +824,7 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
         open: None,
         ticks: 0,
         devices: Vec::new(),
+        check_text: String::new(),
         home_shelves,
         days,
         day_tiles,
