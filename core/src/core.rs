@@ -888,7 +888,11 @@ impl Core {
                 sources: crate::phone::sources(self),
             }),
             Call::SetPhoneSources { sources } => crate::phone::set_sources(self, sources),
-            Call::PhoneSearch { query, endpoint } => crate::phone::search(self, query, endpoint),
+            Call::PhoneSearch {
+                query,
+                endpoint,
+                fallback,
+            } => crate::phone::search(self, query, endpoint, fallback),
             Call::PhoneRefine {
                 query,
                 endpoint,

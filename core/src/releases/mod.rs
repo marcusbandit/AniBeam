@@ -11,6 +11,7 @@ pub mod bestfit;
 pub mod endpoints;
 pub mod erai;
 pub mod fetch;
+pub mod grid;
 pub mod native;
 pub mod refinement;
 pub mod rules;

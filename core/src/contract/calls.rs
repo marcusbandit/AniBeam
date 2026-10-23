@@ -382,6 +382,9 @@ pub enum Call {
     PhoneSearch {
         query: String,
         endpoint: Option<String>,
+        /// Try the other sources when this one has nothing; the show view asks each source
+        /// on its own and turns this off.
+        fallback: bool,
     },
     /// One refine step, as `RefineReleases`.
     PhoneRefine {

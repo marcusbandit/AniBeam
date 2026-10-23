@@ -91,11 +91,16 @@ fn native(core: &Core) -> crate::releases::native::Native {
 /// The desktop's search, on the phone (`SearchReleases`, run by the core's port of
 /// anirss): fallback across the sources, seeders filled in where a feed has none,
 /// auto-resolution, the refine groups and best fit, and each release's facts.
-pub fn search(core: &Core, query: String, endpoint: Option<String>) -> Result<Reply, CoreError> {
+pub fn search(
+    core: &Core,
+    query: String,
+    endpoint: Option<String>,
+    fallback: bool,
+) -> Result<Reply, CoreError> {
     let native = native(core);
     let found = core
         .handle
-        .block_on(native.search(&query, endpoint.as_deref(), true))?;
+        .block_on(native.search(&query, endpoint.as_deref(), fallback))?;
     let fell_back = found.fell_back();
     let items = if found.items.iter().any(|i| i.seeders.is_none()) {
         core.handle.block_on(native.enrich(found.items.clone()))
