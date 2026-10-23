@@ -154,12 +154,21 @@ pub fn rank(releases: Vec<Release>) -> (Vec<PhoneRelease>, Option<u64>) {
             }
         })
         .collect();
-    let best = results
+    let mut results = results;
+    // The best fit leads the list; the rest keep the feed's order.
+    match results
         .iter()
         .enumerate()
         .max_by_key(|(_, r)| r.score)
-        .map(|(i, _)| i as u64);
-    (results, best)
+        .map(|(i, _)| i)
+    {
+        Some(best) => {
+            let top = results.remove(best);
+            results.insert(0, top);
+            (results, Some(0))
+        }
+        None => (results, None),
+    }
 }
 
 /// The show's own name from a release title, for its folder in the library:
@@ -276,7 +285,8 @@ mod tests {
             r("[SubsPlease] Frieren - 01 (1080p)", 120),
             r("[SubsPlease] Frieren - 01 (1080p)", 0),
         ]);
-        assert_eq!(best, Some(1));
-        assert!(results[2].score < results[0].score, "no seeders ranks last");
+        assert_eq!(best, Some(0));
+        assert_eq!(results[0].release.seeders, Some(120), "the best fit leads");
+        assert!(results[2].score < results[1].score, "no seeders ranks last");
     }
 }

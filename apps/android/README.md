@@ -21,8 +21,19 @@ is no Gradle in the build.
   search. When another AniBeam on the tailnet has answered, a switcher above shows its
   library instead. Tap a poster for its series page: the facts, the cubes, the synopsis and
   every episode, on the phone, missing or still to air.
-- **More** holds the Wi-Fi and storage settings, tracker sign-in, the other device's
-  address, and the version. Search and download come in the next version (#111).
+- **Find** searches nyaa, or any RSS source added in More (erai with your own feed
+  address), and puts the best fit first: 1080p, a trusted group, seeded. A tap downloads
+  it into the phone's library, in the show's own folder.
+- **More** lists the downloads with progress, pause and cancel, the sources, the Wi-Fi only
+  switch and the storage cap (a slider up to the phone's whole storage; at the cap nothing
+  more downloads until episodes are deleted), tracker sign-in, the other device's address,
+  and the version.
+
+Downloads run in the core's own torrent engine (`librqbit`, the core's `phone` feature),
+held while the phone is off Wi-Fi unless mobile data was allowed. While anything
+downloads, a small Java service (`android/java/`) keeps a notification up so Android does
+not cut the network with the screen off. A finished download stops: the phone does not
+seed.
 
 The core keeps its database and cache under the app's `files/core`; episodes live in
 `files/Anime`, the one library folder. The other device's snapshot and posters are cached
@@ -37,7 +48,7 @@ too, so its library still shows when it is off.
    (Android asks once to allow installs from that app), or with USB debugging on:
 
    ```sh
-   adb install -r dist/AniBeam-0.3.0.apk
+   adb install -r dist/AniBeam-0.4.0.apk
    ```
 
 4. Open AniBeam. It starts out pointed at `banditbox:8790`, the desktop's MagicDNS name.
@@ -97,12 +108,14 @@ python3 scripts/mock-host.py --aired   # an episode that aired just before the s
 ## Layout
 
 ```text
-android/            AndroidManifest.xml (package, version, NativeActivity), icons, theme
+android/            AndroidManifest.xml (package, version, NativeActivity), icons, theme,
+                    java/ with the one download service
 companion/          the logic, no UI: client, store, AniList, Next up rows, On disk rows,
                     sync. Tests run on the desktop; tests/mock_host.rs syncs with the mock.
 src/                the app: android_main, the UI thread (app.rs), the phone's core
                     (local.rs, phone.rs), the other device (remote.rs, worker.rs), the
-                    phone's settings (prefs.rs), JNI for the browser (android.rs)
+                    phone's settings (prefs.rs), JNI for the browser, the service and the network
+                    (android.rs)
 ui/                 the Slint screens; theme.slint is the one token file, fonts/ holds
                     Archivo and B612 as on the desktop
 scripts/            the build and emulator loop, and the mock host

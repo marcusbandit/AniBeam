@@ -82,7 +82,7 @@ impl Engine {
             root: root.to_path_buf(),
             entries_path,
             entries: Mutex::new(entries),
-            held: Mutex::new(false),
+            held: Mutex::new(true),
         })
     }
 
@@ -96,6 +96,8 @@ impl Engine {
         }
     }
 
+    /// Held from the start: nothing downloads until the app has looked at the network and
+    /// said Wi-Fi or allowed mobile data.
     pub fn held(&self) -> bool {
         *self.held.lock().unwrap()
     }
@@ -111,7 +113,6 @@ impl Engine {
                 Some(AddTorrentOptions {
                     output_folder: Some(output.to_string_lossy().into_owned()),
                     overwrite: true,
-                    paused: held,
                     ..Default::default()
                 }),
             )
@@ -123,6 +124,11 @@ impl Engine {
                 return Err(fail("the engine only listed the torrent"));
             }
         };
+        // A magnet has to fetch its few kilobytes of metadata before it can pause, so it is
+        // added running and held right after: on mobile data only that little goes out.
+        if held {
+            self.session.pause(&handle).await.map_err(fail)?;
+        }
         let hash = handle.info_hash().as_string();
         self.entries.lock().unwrap().insert(
             hash.clone(),

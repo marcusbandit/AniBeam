@@ -92,7 +92,7 @@ component DownloadItem inherits Rectangle {
         HorizontalLayout {
             spacing: Theme.gap;
             alignment: start;
-            if !root.data.done: TextButton {
+            if !root.data.done && root.data.state != "Waiting for Wi-Fi": TextButton {
                 text: root.data.paused ? "Resume" : "Pause";
                 clicked => { AppData.torrent-action(root.data.hash, root.data.paused ? 1 : 0); }
             }
