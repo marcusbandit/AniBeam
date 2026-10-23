@@ -22,6 +22,7 @@ pub mod paths;
 pub(crate) mod percent;
 pub mod playback;
 pub mod prefs;
+pub mod releases;
 pub mod store;
 pub mod subscriptions;
 pub(crate) mod sync;

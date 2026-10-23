@@ -29,6 +29,8 @@ governor = "0.10"
 backon = { version = "1.6", features = ["tokio-sleep"] }
 keyring-core = "1.0"
 regex = "1"
+# anirss's title patterns use lookaround, which `regex` does not do.
+fancy-regex = "0.14"
 sha2 = "0.11"
 walkdir = "2"
 time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
