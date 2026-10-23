@@ -1049,7 +1049,11 @@ async fn answers(http: &dyn Http, url: &str) -> bool {
 /// The facts read off each release, and the library series the query
 /// names with each release's episode checked against its files. A library
 /// that cannot be read leaves the show out and every `on_disk` false.
-fn annotate(core: &Core, query: &str, items: &[Release]) -> (Vec<ReleaseFacts>, Option<ShowLink>) {
+pub(crate) fn annotate(
+    core: &Core,
+    query: &str,
+    items: &[Release],
+) -> (Vec<ReleaseFacts>, Option<ShowLink>) {
     let mut facts: Vec<ReleaseFacts> = items.iter().map(facts::read).collect();
     if items.is_empty() {
         return (facts, None);

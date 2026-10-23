@@ -13,6 +13,8 @@ use crate::contract::{CoreError, Provider};
 
 pub mod anilist;
 pub mod aniskip;
+pub mod doh;
+pub mod front;
 pub mod imdb;
 pub mod jikan;
 pub mod limiter;
@@ -185,6 +187,8 @@ impl Upstream {
 /// timeout applied per request.
 pub struct ReqwestHttp {
     client: reqwest::Client,
+    /// The client for fronted hosts (front.rs), on the phone; None elsewhere.
+    fronted: Option<reqwest::Client>,
 }
 
 impl ReqwestHttp {
@@ -192,6 +196,11 @@ impl ReqwestHttp {
         // rustls is the only TLS backend the manifest enables, so it is
         // already the default; asking for it by name calls a deprecated
         // builder method. The platform verifier comes with that feature.
+        // Set on the phone only (front.rs).
+        #[cfg(not(target_os = "android"))]
+        let fronted = None;
+        #[cfg(target_os = "android")]
+        let fronted;
         let builder = reqwest::Client::builder()
             .user_agent(format!("AniBeam/{}", crate::VERSION))
             .timeout(timeout);
@@ -207,13 +216,43 @@ impl ReqwestHttp {
                 .map(|der| reqwest::Certificate::from_der(der))
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(|e| CoreError::internal(format!("bundled TLS roots: {e}")))?;
-            builder.tls_certs_only(roots)
+            // Names are looked up over HTTPS: phone networks that block release sites by
+            // name do it in plain DNS (see doh.rs). The resolvers' own client goes by
+            // address, so it needs no lookup of its own.
+            let resolvers = reqwest::Client::builder()
+                .user_agent(format!("AniBeam/{}", crate::VERSION))
+                .tls_certs_only(roots.clone())
+                .build()
+                .map_err(|e| CoreError::internal(format!("dns client: {e}")))?;
+            let doh = doh::Doh::new(resolvers);
+            fronted = Some(front::client(&doh, Some(roots.clone()), timeout)?);
+            builder
+                .tls_certs_only(roots)
+                .dns_resolver(std::sync::Arc::new(doh))
         };
         let client = builder
             .build()
             .map_err(|e| CoreError::internal(format!("http client: {e}")))?;
-        Ok(ReqwestHttp { client })
+        Ok(ReqwestHttp { client, fronted })
     }
+}
+
+/// A client for the DNS-over-HTTPS resolvers, which it reaches by address: the phone's
+/// bundled roots on Android, the system's elsewhere.
+pub fn resolver_client() -> Result<reqwest::Client, CoreError> {
+    let builder = reqwest::Client::builder().user_agent(format!("AniBeam/{}", crate::VERSION));
+    #[cfg(target_os = "android")]
+    let builder = {
+        let roots = webpki_root_certs::TLS_SERVER_ROOT_CERTS
+            .iter()
+            .map(|der| reqwest::Certificate::from_der(der))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| CoreError::internal(format!("bundled TLS roots: {e}")))?;
+        builder.tls_certs_only(roots)
+    };
+    builder
+        .build()
+        .map_err(|e| CoreError::internal(format!("dns client: {e}")))
 }
 
 /// A transport error as a person reads it: the host, what went wrong and
@@ -238,14 +277,21 @@ fn describe(e: reqwest::Error) -> String {
 
 impl Http for ReqwestHttp {
     fn send(&self, req: HttpRequest) -> BoxFuture<'_, Result<HttpResponse, HttpError>> {
-        let client = self.client.clone();
+        // A host a network blocks by name goes to its server under its front's name.
+        let (client, url, host) = match (&self.fronted, front::fronted(&req.url)) {
+            (Some(fronted), Some((url, host))) => (fronted.clone(), url, Some(host)),
+            _ => (self.client.clone(), req.url.clone(), None),
+        };
         Box::pin(async move {
             let method = match req.method {
                 Method::Get => reqwest::Method::GET,
                 Method::Post => reqwest::Method::POST,
                 Method::Patch => reqwest::Method::PATCH,
             };
-            let mut builder = client.request(method, &req.url);
+            let mut builder = client.request(method, &url);
+            if let Some(host) = host {
+                builder = builder.header("Host", host);
+            }
             if let Some(timeout) = req.timeout {
                 builder = builder.timeout(timeout);
             }

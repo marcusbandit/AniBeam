@@ -29,6 +29,8 @@ governor = "0.10"
 backon = { version = "1.6", features = ["tokio-sleep"] }
 keyring-core = "1.0"
 regex = "1"
+# anirss's title patterns use lookaround, which `regex` does not do.
+fancy-regex = "0.14"
 sha2 = "0.11"
 walkdir = "2"
 time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
@@ -42,6 +44,11 @@ anibeam-host-api.workspace = true
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 if-addrs = "0.13"
 rustix = { version = "1", features = ["system"] }
+# The phone's torrent engine; only the Android app turns it on.
+librqbit = { version = "9", default-features = false, features = ["rust-tls"], optional = true }
+
+[features]
+phone = ["dep:librqbit"]
 
 # The machine's keyring: the Secret Service over D-Bus everywhere but a Mac, the login
 # keychain there. `keychain` rather than `protected`: the protected store needs a

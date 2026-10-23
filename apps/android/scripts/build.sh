@@ -90,6 +90,14 @@ done
 
 "$BT/aapt2" compile --dir android/res -o "$stage/res.zip"
 "$BT/aapt2" link -o "$stage/base.apk" -I "$PLATFORM_JAR" --manifest "$manifest" "$stage/res.zip"
+# The one Java class, the foreground service that keeps downloads alive: javac, then d8,
+# into classes.dex at the APK root.
+rm -rf "$stage/java" && mkdir -p "$stage/java/classes" "$stage/java/dex"
+"$JAVA_HOME/bin/javac" --release 8 -Xlint:-options -classpath "$PLATFORM_JAR" -d "$stage/java/classes" \
+  $(find android/java -name '*.java')
+"$BT/d8" --lib "$PLATFORM_JAR" --min-api "$MIN_API" --output "$stage/java/dex" \
+  $(find "$stage/java/classes" -name '*.class')
+(cd "$stage/java/dex" && zip -q ../../base.apk classes.dex)
 # Native libraries go in stored, not deflated, and zipalign puts them on 16 KB page
 # boundaries, so the loader maps them straight out of the APK (extractNativeLibs=false).
 (cd "$stage" && zip -q -0 -r base.apk lib)

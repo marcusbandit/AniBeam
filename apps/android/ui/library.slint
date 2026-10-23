@@ -1,6 +1,7 @@
 import { Theme } from "theme.slint";
+import { FindData } from "find.slint";
 import { AppData } from "data.slint";
-import { EmptyNote, PageTitle, SearchField, Segmented, TileGrid } from "widgets.slint";
+import { Button, EmptyNote, PageTitle, SearchField, Segmented, TileGrid } from "widgets.slint";
 
 // Everything on this phone, or, picked above, what another AniBeam on the tailnet has.
 export component LibraryPage inherits Rectangle {
@@ -25,6 +26,10 @@ export component LibraryPage inherits Rectangle {
                 placeholder: AppData.device == 0 ? "Search this phone" : "Search " + AppData.devices[AppData.device];
                 text <=> AppData.query;
                 edited(text) => { AppData.search(text); }
+            }
+            if AppData.device == 0 && AppData.query != "": Button {
+                text: "Find \"" + AppData.query + "\" to download";
+                clicked => { FindData.open(AppData.query); }
             }
             if AppData.library.length > 0: TileGrid {
                 tiles: AppData.library;

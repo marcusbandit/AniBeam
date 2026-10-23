@@ -367,6 +367,65 @@ pub enum Call {
     InspectRelease {
         link: String,
     },
+    // The phone's own downloads: search and a torrent engine inside the
+    // core, no anirss and no qBittorrent. Built with the `phone` feature;
+    // without it each answers `Unsupported`. Not jobs: they block the
+    // calling thread, so a shell calls them off its UI thread.
+    /// The sources the phone searches, in order.
+    PhoneSources,
+    SetPhoneSources {
+        sources: Vec<PhoneSource>,
+    },
+    /// The desktop's search on the phone: one source (else the first) with fallback
+    /// to the others, auto-resolution, the refine groups and best fit, as
+    /// `SearchReleases` gives them, from the core's own port of anirss.
+    PhoneSearch {
+        query: String,
+        endpoint: Option<String>,
+        /// Try the other sources when this one has nothing; the show view asks each source
+        /// on its own and turns this off.
+        fallback: bool,
+    },
+    /// One refine step, as `RefineReleases`.
+    PhoneRefine {
+        query: String,
+        endpoint: String,
+        items: Vec<Release>,
+        op: RefineOp,
+    },
+    /// Downloads releases into the library folder under `name`, else the show's own
+    /// name. `limit_bytes`, when set, refuses what would take the library past it.
+    PhoneDownload {
+        items: Vec<Release>,
+        name: Option<String>,
+        limit_bytes: Option<u64>,
+    },
+    /// Subscribes to a search, as `Subscribe`: its feed and rule are kept by the core,
+    /// which checks the feed and downloads each new episode once.
+    PhoneSubscribe {
+        query: String,
+        endpoint: String,
+        items: Vec<Release>,
+        name: Option<String>,
+    },
+    PhoneRules,
+    /// Takes subscriptions out; with `files`, their downloads and episodes too.
+    PhoneUnsubscribe {
+        names: Vec<String>,
+        files: bool,
+    },
+    PhoneTorrents,
+    /// Checks each layer between the phone and the sources: DNS, DNS over HTTPS, TCP, HTTPS.
+    PhoneNetCheck,
+    PhoneControl {
+        hashes: Vec<String>,
+        action: PhoneAction,
+    },
+    /// Holds every download (no Wi-Fi and no consent for mobile data), or
+    /// lets them run again.
+    SetPhoneHeld {
+        held: bool,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Enum)]
@@ -440,5 +499,27 @@ pub enum Reply {
     },
     Downloads {
         status: DownloadsStatus,
+    },
+    PhoneSources {
+        sources: Vec<PhoneSource>,
+    },
+    PhoneSearch {
+        search: ReleaseSearch,
+    },
+    PhoneRefined {
+        refinement: Refinement,
+    },
+    PhoneSubscribed {
+        subscribed: Subscribed,
+    },
+    PhoneRules {
+        rules: Vec<SubscriptionRule>,
+    },
+    PhoneNetCheck {
+        checks: Vec<NetCheck>,
+    },
+    PhoneTorrents {
+        torrents: Vec<Torrent>,
+        held: bool,
     },
 }

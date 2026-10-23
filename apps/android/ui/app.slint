@@ -1,13 +1,14 @@
 import { Theme } from "theme.slint";
-import { AppData, Day, EpisodeLine, Hero, SeriesHead, Shelf, Tile } from "data.slint";
+import { AppData, CheckRow, Day, DownloadRow, EpisodeLine, Hero, SeriesHead, Shelf, SourceRow, Tile } from "data.slint";
 import { Button, IconButton, NavItem, TextButton } from "widgets.slint";
 import { HomePage } from "home.slint";
 import { LibraryPage } from "library.slint";
 import { Ask, MorePage } from "more.slint";
 import { SeriesPage } from "series.slint";
 import { Onboarding } from "onboarding.slint";
+import { FindData, FindPage, GridRow, GroupChip, ReleaseRow, SourceChip } from "find.slint";
 
-export { AppData, Day, EpisodeLine, Hero, SeriesHead, Shelf, Tile }
+export { AppData, CheckRow, Day, DownloadRow, EpisodeLine, FindData, GridRow, GroupChip, Hero, ReleaseRow, SeriesHead, Shelf, SourceChip, SourceRow, Tile }
 
 // "Download over mobile data?": asked before Wi-Fi only goes off, from More or onboarding.
 component MobileDataQuestion inherits Rectangle {
@@ -108,6 +109,10 @@ export component AppWindow inherits Window {
                 AppData.close-series();
                 return accept;
             }
+            if (FindData.shown) {
+                FindData.back();
+                return accept;
+            }
             if (root.page != 0) {
                 root.page = 0;
                 return accept;
@@ -131,6 +136,7 @@ export component AppWindow inherits Window {
             MorePage {
                 visible: root.page == 2;
             }
+            if FindData.shown: FindPage { }
             if AppData.series-open: Rectangle {
                 background: Theme.ground;
                 TouchArea { }

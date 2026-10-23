@@ -83,6 +83,33 @@ export struct EpisodeLine {
     cube: int,
 }
 
+// One download on this phone.
+export struct DownloadRow {
+    hash: string,
+    name: string,
+    // "Downloading", "Paused", "Waiting for Wi-Fi", "Done".
+    state: string,
+    // "420 MB of 1.4 GB, 3.2 MB/s, 5m left".
+    facts: string,
+    progress: float,
+    paused: bool,
+    done: bool,
+}
+
+// One line of the connection check.
+export struct CheckRow {
+    name: string,
+    detail: string,
+    ok: bool,
+}
+
+// One place the phone searches.
+export struct SourceRow {
+    name: string,
+    url: string,
+    enabled: bool,
+}
+
 export global AppData {
     // Home.
     in property <Hero> hero;
@@ -104,7 +131,11 @@ export global AppData {
     // More.
     in property <bool> wifi-only: true;
     in property <bool> limit-on;
-    in property <int> limit-gb: 18;
+    // The limit in GB, set with a slider from 1 GB to the whole of the phone's storage.
+    in-out property <float> limit-gb: 18;
+    in property <float> disk-gb: 128;
+    // "18 GB", "31.5 GB".
+    in property <string> limit-label: "18 GB";
     in property <string> storage-line;
     in property <string> free-line;
     in property <string> trackers-line;
@@ -120,6 +151,18 @@ export global AppData {
     in property <string> anilist-state;
     in property <string> mal-state;
 
+    // Downloads and sources, on More.
+    in property <[DownloadRow]> downloads;
+    in property <string> downloads-note;
+    in property <[SourceRow]> sources;
+    in-out property <string> new-source-name;
+    in-out property <string> new-source-url;
+    in property <string> source-error;
+    // The connection check: its lines, and whether it is running.
+    in property <[CheckRow]> checks;
+    in property <bool> checking;
+    in property <string> check-summary;
+
     // The series page, over whichever page opened it.
     in property <bool> series-open;
     in property <SeriesHead> series;
@@ -133,11 +176,18 @@ export global AppData {
     callback pick-device(int);
     callback search(string);
     callback set-wifi-only(bool);
-    callback set-limit(bool, int);
+    // On or off, and the amount in GB.
+    callback set-limit(bool, float);
     callback connect-tracker(int);
     callback finish-onboarding();
     callback restart-onboarding();
     callback test-host(string);
     callback save-host(string);
     callback refresh();
+    // 0 pause, 1 resume, 2 cancel and delete, 3 take a finished one off the list.
+    callback torrent-action(string, int);
+    callback add-source(string, string);
+    callback remove-source(int);
+    callback run-check();
+    callback copy-check();
 }
