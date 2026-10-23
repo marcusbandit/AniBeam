@@ -1,6 +1,6 @@
 import { Theme } from "theme.slint";
 import { FindData } from "find.slint";
-import { AppData } from "data.slint";
+import { AppData, Nav } from "data.slint";
 import { Button, EmptyNote, PageTitle, SearchField, Segmented, TileGrid } from "widgets.slint";
 
 // Everything on this phone, or, picked above, what another AniBeam on the tailnet has.
@@ -8,11 +8,11 @@ export component LibraryPage inherits Rectangle {
     Flickable {
         VerticalLayout {
             alignment: start;
-            padding-left: Theme.pad;
-            padding-right: Theme.pad;
-            padding-top: Theme.unit * 2;
+            padding-left: Theme.grout + Theme.unit;
+            padding-right: Theme.grout + Theme.unit;
+            padding-top: Theme.unit * 4;
             padding-bottom: Theme.pad * 2;
-            spacing: Theme.unit * 3;
+            spacing: Theme.unit * 4;
             PageTitle {
                 title: "Library";
                 note: AppData.library-note;
@@ -27,9 +27,21 @@ export component LibraryPage inherits Rectangle {
                 text <=> AppData.query;
                 edited(text) => { AppData.search(text); }
             }
-            if AppData.device == 0 && AppData.query != "": Button {
-                text: "Find \"" + AppData.query + "\" to download";
-                clicked => { FindData.open(AppData.query); }
+            // Not here: the same words in Downloads, which looks for the show itself.
+            if AppData.device == 0 && AppData.query != "": HorizontalLayout {
+                alignment: start;
+                Button {
+                    text: "Find \"" + AppData.query + "\" in Downloads";
+                    icon: @image-url("icons/download.svg");
+                    has-icon: true;
+                    small: true;
+                    clicked => {
+                        FindData.open("");
+                        FindData.text = AppData.query;
+                        FindData.suggest(AppData.query);
+                        Nav.page = 2;
+                    }
+                }
             }
             if AppData.library.length > 0: TileGrid {
                 tiles: AppData.library;
@@ -44,7 +56,7 @@ export component LibraryPage inherits Rectangle {
             if AppData.library.length == 0: EmptyNote {
                 title: AppData.library-empty;
                 body: AppData.device == 0 && AppData.query == ""
-                    ? "Episodes you download on this phone land here. Find something to download in More."
+                    ? "Episodes you download on this phone land here. Find a show in Downloads."
                     : "";
             }
         }

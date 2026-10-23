@@ -1,64 +1,90 @@
-// The one token file. Values are the desktop's (apps/linux/qml/Tokens.qml and the
-// tesserae-dark theme), at phone scale: the same colours, radii and faces, a smaller type
-// ramp.
+// The one token file. The look is the desktop's Downloads page (apps/linux/qml/Tokens.qml,
+// tesserae-dark) at phone scale: flat glass panes on a near-black ground, hairline edges,
+// pills for every control, the tall condensed display cut for page and section titles with
+// a dim line of fact beside them, and B612 for figures.
 
-import "fonts/Archivo-Variable-Regular.ttf";
-import "fonts/Archivo-Variable-SemiBold.ttf";
+import "fonts/Archivo-Display.ttf";
+import "fonts/Archivo-Title.ttf";
+import "fonts/Archivo-Ledger.ttf";
+import "fonts/Archivo-UI.ttf";
+import "fonts/Archivo-UI-Strong.ttf";
 import "fonts/B612-Regular.ttf";
 
 export global Theme {
-    // Ground and surfaces, darkest first.
-    out property <color> ground: #0c0d10;
-    out property <color> surface: #16181b;
-    out property <color> raised: #1c1e21;
-    out property <color> pressed: #2b2e33;
+    // Ground and glass. A pane is white at a low alpha over the ground, so panes nest.
+    out property <color> ground: #0e1013;
+    out property <color> surface: #ffffff09;
+    out property <color> raised: #ffffff10;
+    out property <color> pressed: #ffffff1c;
+    out property <color> sunken: #00000047;
     out property <color> field: #00000047;
-    out property <color> line: #ffffff0f;
-    out property <color> line-strong: #ffffff24;
+    out property <color> line: #ffffff10;
+    out property <color> line-strong: #ffffff26;
+    // Menus and sheets that float over the page: the ground lifted, opaque.
+    out property <color> float: #1a1c20;
 
     // Ink.
     out property <color> text: #eef2f5;
-    out property <color> dim: #8e959d;
-    out property <color> faint: #61676d;
-    // The accent is near white, as on the desktop: hierarchy comes from weight and space.
+    out property <color> dim: #9aa3ad;
+    out property <color> faint: #646c75;
+    // The accent is near white, as on the desktop: the primary pill is white with ground ink.
     out property <color> accent: #f2f4f6;
-    out property <color> on-accent: #0c0d10;
-    out property <color> accent-wash: #f2f4f629;
+    out property <color> on-accent: #0e1013;
+    out property <color> accent-soft: #f2f4f62b;
+    out property <color> accent-edge: #f2f4f680;
 
     // The few hues, each with one job.
     out property <color> ok: #8cc58a;
-    out property <color> warn: #f0955a;
+    out property <color> warn: #e0b25a;
     out property <color> bad: #ff7a4d;
+    out property <color> bad-soft: #ff7a4d24;
+    out property <color> bad-edge: #ff7a4d55;
     out property <color> cyan: #6cc4c0;
     out property <color> purple: #b49be0;
     out property <color> yellow: #e0b25a;
 
-    // Faces: Archivo for words, B612 for numbers, as on the desktop.
-    out property <string> face: "Archivo";
+    // Faces, one per role, cut from Archivo's axes by scripts/cut-fonts.py.
+    // display: page and section titles, tall and light. title: names of shows. ui: body and
+    // controls. strong: a button's label, a row's name. ledger: small facts. figure: B612,
+    // for sizes, rates, times and counts.
+    out property <string> display-face: "Archivo Display";
+    out property <string> title-face: "Archivo Title";
+    out property <string> face: "Archivo UI";
+    out property <string> strong-face: "Archivo UI Strong";
+    out property <string> ledger-face: "Archivo Ledger";
     out property <string> figure: "B612";
 
-    // The type ramp: a page title, a heading, body, and the small ledger line.
-    out property <length> display: 38px;
-    out property <length> heading: 18px;
-    out property <length> large: 24px;
+    // The type ramp. The display sizes are the desktop's page (4x) and heading (2.2x) at a
+    // phone's body size.
+    out property <length> page: 46px;
+    out property <length> display: 46px;
+    out property <length> section: 31px;
+    out property <length> large: 22px;
+    out property <length> heading: 17px;
     out property <length> normal: 15px;
-    out property <length> small: 12px;
+    out property <length> small: 12.5px;
 
-    // Space comes in steps of one unit.
+    // Space comes in steps of one unit; the grout is also the page margin.
     out property <length> unit: 4px;
     out property <length> gap: 2 * unit;
-    out property <length> pad: 4 * unit;
-    // Corners: tiles 18, bands 28, rows 10, tags 6.
+    out property <length> grout: 3 * unit;
+    out property <length> pad: 5 * unit;
+    // Corners: a pane 18, a row or tag inside one 6; controls are pills at half their height.
     out property <length> radius-small: 6px;
-    out property <length> radius-row: 10px;
+    out property <length> radius-row: 6px;
     out property <length> radius: 18px;
-    out property <length> radius-large: 28px;
+    out property <length> radius-large: 18px;
+    out property <length> control: 11 * unit;
+    out property <length> control-small: 8 * unit;
 
-    // The fade under a title on a poster, and the glass tag on top of one.
+    // The poster's foot scrim and the dark glass tag on top of a poster.
     out property <color> scrim: #08090beb;
-    out property <color> scrim-mid: #08090b99;
+    out property <color> scrim-mid: #08090ba6;
     out property <color> scrim-clear: #08090b00;
-    out property <color> chip: #08090b9e;
+    out property <color> chip: #08090bb8;
+    out property <color> chip-edge: #ffffff24;
+    out property <color> on-poster: #eef2f5;
+    out property <color> on-poster-dim: #aab2bb;
     out property <color> track: #ffffff29;
 
     // Posters are 2:3, like the desktop's.
@@ -70,7 +96,7 @@ export global Theme {
     // tracked, watched here, on disk, missing, not downloaded, not aired, downloading.
     out property <color> cube-watched: #8cc58a;
     out property <color> cube-here: #6cc4c0;
-    out property <color> cube-disk: #f2f4f6;
+    out property <color> cube-disk: #ffffff;
     out property <color> cube-missing: #e0b25a;
     out property <color> cube-none: #ffffff29;
     out property <color> cube-downloading: #b49be0;

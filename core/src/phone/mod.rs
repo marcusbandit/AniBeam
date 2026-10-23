@@ -112,6 +112,41 @@ fn native(core: &Core) -> crate::releases::native::Native {
 /// The desktop's search, on the phone (`SearchReleases`, run by the core's port of
 /// anirss): fallback across the sources, seeders filled in where a feed has none,
 /// auto-resolution, the refine groups and best fit, and each release's facts.
+/// The show search: AniList's hits for `query` with their covers cached, so the phone
+/// can list shows before anyone looks at a release.
+pub fn find_shows(core: &Core, query: String, limit: u32) -> Result<Reply, CoreError> {
+    let query = query.trim().to_string();
+    if query.chars().count() < 2 {
+        return Ok(Reply::PhoneShows {
+            shows: Vec::new(),
+            posters: Vec::new(),
+        });
+    }
+    let media = core
+        .handle
+        .block_on(core.anilist.search(&query, limit.clamp(1, 20)))?;
+    let shows: Vec<SearchResult> = media
+        .iter()
+        .map(crate::metadata::apply::to_result)
+        .collect();
+    let urls: Vec<String> = shows.iter().filter_map(|s| s.cover_url.clone()).collect();
+    let images = core.images.clone();
+    let fetched = core
+        .handle
+        .block_on(async move { images.ensure(&urls).await });
+    let posters = shows
+        .iter()
+        .map(|s| {
+            s.cover_url
+                .as_ref()
+                .and_then(|u| fetched.iter().find(|(k, _)| k == u))
+                .and_then(|(_, r)| r.as_ref().ok().cloned())
+                .unwrap_or_default()
+        })
+        .collect();
+    Ok(Reply::PhoneShows { shows, posters })
+}
+
 pub fn search(
     core: &Core,
     query: String,

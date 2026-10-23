@@ -526,7 +526,7 @@ fn candidates(conn: &rusqlite::Connection, sql: &str) -> Result<Vec<Candidate>, 
 
 /// One search hit as the modal draws it. AniList orders by relevance and
 /// the shell keeps that order, so nothing here sorts or filters.
-fn to_result(m: &Media) -> SearchResult {
+pub(crate) fn to_result(m: &Media) -> SearchResult {
     let title = m
         .title
         .romaji
