@@ -44,7 +44,7 @@ fn fail(e: impl std::fmt::Display) -> CoreError {
 }
 
 fn now() -> i64 {
-    crate::time::now_secs() as i64
+    crate::time::now_secs()
 }
 
 impl Engine {
@@ -163,14 +163,16 @@ impl Engine {
         for h in handles {
             let hash = h.info_hash().as_string();
             let stats = h.stats();
-            let mut entries = self.entries.lock().unwrap();
-            let entry = entries.entry(hash.clone()).or_default();
-            if stats.finished && entry.completion_on == 0 {
-                entry.completion_on = now();
-                changed = true;
-            }
-            let entry = entry.clone();
-            drop(entries);
+            // The lock is held only in this block: the engine is awaited below.
+            let entry = {
+                let mut entries = self.entries.lock().unwrap();
+                let entry = entries.entry(hash.clone()).or_default();
+                if stats.finished && entry.completion_on == 0 {
+                    entry.completion_on = now();
+                    changed = true;
+                }
+                entry.clone()
+            };
             if stats.finished && !h.is_paused() {
                 let _ = self.session.pause(&h).await;
             }
