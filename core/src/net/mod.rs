@@ -188,7 +188,70 @@ impl Upstream {
 pub struct ReqwestHttp {
     client: reqwest::Client,
     /// The client for fronted hosts (front.rs), on the phone; None elsewhere.
-    fronted: Option<reqwest::Client>,
+    fronted: Option<Front>,
+}
+
+/// Fronted requests' client, cookies and pace. DDoS-Guard hands out cookies for the site
+/// asked for and treats a client that never sends them back as a bot (#135). The URL names
+/// the front, so a cookie store on the client would file them under the front's name and
+/// turn away their `Domain=.nyaa.si`; the jar is kept by the real host instead.
+struct Front {
+    client: reqwest::Client,
+    #[cfg(target_os = "android")]
+    jar: reqwest::cookie::Jar,
+    gate: tokio::sync::Mutex<front::Gate>,
+}
+
+impl Front {
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    fn new(client: reqwest::Client) -> Front {
+        Front {
+            client,
+            #[cfg(target_os = "android")]
+            jar: reqwest::cookie::Jar::default(),
+            gate: Default::default(),
+        }
+    }
+
+    async fn send(
+        &self,
+        #[cfg_attr(not(target_os = "android"), allow(unused_mut))] mut req: HttpRequest,
+        url: String,
+        host: String,
+    ) -> Result<HttpResponse, HttpError> {
+        let mut gate = self.gate.lock().await;
+        let wait = gate
+            .admit(std::time::Instant::now())
+            .map_err(|left| HttpError {
+                message: format!(
+                    "{host}: timed out a moment ago; AniBeam waits {} s before asking it again",
+                    left.as_secs().max(1)
+                ),
+            })?;
+        tokio::time::sleep(wait).await;
+        #[cfg(target_os = "android")]
+        let real = reqwest::Url::parse(&req.url).ok();
+        #[cfg(target_os = "android")]
+        if let Some(real) = &real
+            && let Some(cookies) = reqwest::cookie::CookieStore::cookies(&self.jar, real)
+            && let Ok(cookies) = cookies.to_str()
+        {
+            req.headers.push(("Cookie".into(), cookies.to_string()));
+        }
+        let answer = request(self.client.clone(), req, url, Some(host)).await;
+        gate.finished(std::time::Instant::now(), answer.is_ok());
+        #[cfg(target_os = "android")]
+        if let (Ok(response), Some(real)) = (&answer, &real) {
+            let set: Vec<reqwest::header::HeaderValue> = response
+                .headers
+                .iter()
+                .filter(|(name, _)| name.eq_ignore_ascii_case("set-cookie"))
+                .filter_map(|(_, value)| reqwest::header::HeaderValue::from_str(value).ok())
+                .collect();
+            reqwest::cookie::CookieStore::set_cookies(&self.jar, &mut set.iter(), real);
+        }
+        answer
+    }
 }
 
 impl ReqwestHttp {
@@ -225,11 +288,12 @@ impl ReqwestHttp {
                 .build()
                 .map_err(|e| CoreError::internal(format!("dns client: {e}")))?;
             let doh = doh::Doh::new(resolvers);
-            fronted = Some(front::client(&doh, Some(roots.clone()), timeout)?);
-            // DDoS-Guard, in front of nyaa, hands out cookies and treats a client that
-            // never sends them back as a bot (#135).
+            fronted = Some(Front::new(front::client(
+                &doh,
+                Some(roots.clone()),
+                timeout,
+            )?));
             builder
-                .cookie_store(true)
                 .tls_certs_only(roots)
                 .dns_resolver(std::sync::Arc::new(doh))
         };
@@ -281,59 +345,69 @@ fn describe(e: reqwest::Error) -> String {
 impl Http for ReqwestHttp {
     fn send(&self, req: HttpRequest) -> BoxFuture<'_, Result<HttpResponse, HttpError>> {
         // A host a network blocks by name goes to its server under its front's name.
-        let (client, url, host) = match (&self.fronted, front::fronted(&req.url)) {
-            (Some(fronted), Some((url, host))) => (fronted.clone(), url, Some(host)),
-            _ => (self.client.clone(), req.url.clone(), None),
-        };
-        Box::pin(async move {
-            let method = match req.method {
-                Method::Get => reqwest::Method::GET,
-                Method::Post => reqwest::Method::POST,
-                Method::Patch => reqwest::Method::PATCH,
-            };
-            let mut builder = client.request(method, &url);
-            if let Some(host) = host {
-                builder = builder.header("Host", host);
+        match (&self.fronted, front::fronted(&req.url)) {
+            (Some(fronted), Some((url, host))) => Box::pin(fronted.send(req, url, host)),
+            _ => {
+                let url = req.url.clone();
+                Box::pin(request(self.client.clone(), req, url, None))
             }
-            if let Some(timeout) = req.timeout {
-                builder = builder.timeout(timeout);
-            }
-            for (name, value) in &req.headers {
-                builder = builder.header(name, value);
-            }
-            builder = match &req.body {
-                Some(Body::Json(value)) => builder.json(value),
-                Some(Body::Form(pairs)) => builder.form(pairs),
-                None => builder,
-            };
-            let response = builder.send().await.map_err(|e| HttpError {
-                message: describe(e),
-            })?;
-            let status = response.status().as_u16();
-            let headers = response
-                .headers()
-                .iter()
-                .map(|(name, value)| {
-                    (
-                        name.as_str().to_string(),
-                        value.to_str().unwrap_or_default().to_string(),
-                    )
-                })
-                .collect();
-            let body = response
-                .bytes()
-                .await
-                .map_err(|e| HttpError {
-                    message: describe(e),
-                })?
-                .to_vec();
-            Ok(HttpResponse {
-                status,
-                headers,
-                body,
-            })
-        })
+        }
     }
+}
+
+/// One request on `client` to `url`, with `host` as its Host header when it is fronted.
+async fn request(
+    client: reqwest::Client,
+    req: HttpRequest,
+    url: String,
+    host: Option<String>,
+) -> Result<HttpResponse, HttpError> {
+    let method = match req.method {
+        Method::Get => reqwest::Method::GET,
+        Method::Post => reqwest::Method::POST,
+        Method::Patch => reqwest::Method::PATCH,
+    };
+    let mut builder = client.request(method, &url);
+    if let Some(host) = host {
+        builder = builder.header("Host", host);
+    }
+    if let Some(timeout) = req.timeout {
+        builder = builder.timeout(timeout);
+    }
+    for (name, value) in &req.headers {
+        builder = builder.header(name, value);
+    }
+    builder = match &req.body {
+        Some(Body::Json(value)) => builder.json(value),
+        Some(Body::Form(pairs)) => builder.form(pairs),
+        None => builder,
+    };
+    let response = builder.send().await.map_err(|e| HttpError {
+        message: describe(e),
+    })?;
+    let status = response.status().as_u16();
+    let headers = response
+        .headers()
+        .iter()
+        .map(|(name, value)| {
+            (
+                name.as_str().to_string(),
+                value.to_str().unwrap_or_default().to_string(),
+            )
+        })
+        .collect();
+    let body = response
+        .bytes()
+        .await
+        .map_err(|e| HttpError {
+            message: describe(e),
+        })?
+        .to_vec();
+    Ok(HttpResponse {
+        status,
+        headers,
+        body,
+    })
 }
 
 /// One canned reply. `matcher` is `None` for a reply that answers any url.

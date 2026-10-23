@@ -25,9 +25,6 @@ pub struct Phone {
     /// Held by one poll round at a time.
     #[cfg(feature = "phone")]
     poll_lock: tokio::sync::Mutex<()>,
-    /// When the last `.torrent` fetch started, held while the next one waits its turn.
-    #[cfg(feature = "phone")]
-    fetched: tokio::sync::Mutex<Option<std::time::Instant>>,
 }
 
 fn sources_path(core: &Core) -> PathBuf {
@@ -343,35 +340,14 @@ fn used_bytes(dir: &std::path::Path) -> u64 {
         .sum()
 }
 
-/// The gap between two `.torrent` fetches. DDoS-Guard, in front of nyaa, quietly stops
-/// answering an address that pulls dozens of files within seconds, which is what a new
-/// subscription or a batch pick on a long show did (#135).
-#[cfg(feature = "phone")]
-const FETCH_GAP: std::time::Duration = std::time::Duration::from_secs(1);
-
-/// How long a fetch waits so it starts `gap` after the one before it.
-#[cfg(feature = "phone")]
-fn wait_for(
-    last: Option<std::time::Instant>,
-    now: std::time::Instant,
-    gap: std::time::Duration,
-) -> std::time::Duration {
-    last.map_or(std::time::Duration::ZERO, |l| (l + gap).saturating_duration_since(now))
-}
-
 /// The `.torrent` behind an http link, fetched by the core so its lookup goes over HTTPS
-/// like every other request; None for a magnet, or when it could not be had (the engine
-/// then tries the link itself).
+/// like every other request; None for a magnet, or when the site answered with something
+/// else (the engine then tries the link itself). Err when the site did not answer: the
+/// engine would only ask it again, so the caller stops there (#135).
 #[cfg(feature = "phone")]
-async fn torrent_file(core: &Core, link: &str) -> Option<Vec<u8>> {
+async fn torrent_file(core: &Core, link: &str) -> Result<Option<Vec<u8>>, CoreError> {
     if !(link.starts_with("http://") || link.starts_with("https://")) {
-        return None;
-    }
-    {
-        let mut last = core.phone.fetched.lock().await;
-        let now = std::time::Instant::now();
-        tokio::time::sleep(wait_for(*last, now, FETCH_GAP)).await;
-        *last = Some(std::time::Instant::now());
+        return Ok(None);
     }
     let reply = core
         .http
@@ -383,8 +359,12 @@ async fn torrent_file(core: &Core, link: &str) -> Option<Vec<u8>> {
             timeout: Some(std::time::Duration::from_secs(30)),
         })
         .await
-        .ok()?;
-    (reply.is_success() && reply.body.first() == Some(&b'd')).then(|| reply.body.to_vec())
+        .map_err(|e| CoreError::Service {
+            service: crate::downloads::feed::host_of(link),
+            code: "unreachable".to_string(),
+            message: e.message,
+        })?;
+    Ok((reply.is_success() && reply.body.first() == Some(&b'd')).then(|| reply.body.to_vec()))
 }
 
 #[cfg(feature = "phone")]
@@ -431,7 +411,7 @@ pub fn download(
     core.handle.block_on(async {
         let engine = engine(core).await?;
         for item in &items {
-            let file = torrent_file(core, &item.link).await;
+            let file = torrent_file(core, &item.link).await?;
             engine.add(item, &folder, file).await?;
         }
         Ok::<(), CoreError>(())
@@ -599,7 +579,14 @@ async fn poll_with(core: &Core, engine: &engine::Engine) {
             .unwrap_or_else(|| rule.name.clone());
         let mut taken = Vec::new();
         for item in crate::releases::rules::due(&rule, &items) {
-            let file = torrent_file(core, &item.link).await;
+            let file = match torrent_file(core, &item.link).await {
+                Ok(file) => file,
+                // The rest are left for the next round, like a feed that does not answer.
+                Err(e) => {
+                    tracing::warn!("subscription {} stopped: {e}", rule.name);
+                    break;
+                }
+            };
             match engine.add(item, &folder, file).await {
                 Ok(_) => {
                     core.bus.info(
@@ -696,29 +683,4 @@ pub fn control(_: &Core, _: Vec<String>, _: PhoneAction) -> Result<Reply, CoreEr
 #[cfg(not(feature = "phone"))]
 pub fn set_held(_: &Core, _: bool) -> Result<Reply, CoreError> {
     Err(unsupported())
-}
-
-#[cfg(all(test, feature = "phone"))]
-mod fetch_gap_tests {
-    use super::*;
-    use std::time::{Duration, Instant};
-
-    #[test]
-    fn the_first_fetch_goes_at_once() {
-        assert_eq!(wait_for(None, Instant::now(), FETCH_GAP), Duration::ZERO);
-    }
-
-    #[test]
-    fn a_fetch_right_after_another_waits_out_the_gap() {
-        let now = Instant::now();
-        let last = now - Duration::from_millis(300);
-        assert_eq!(wait_for(Some(last), now, FETCH_GAP), Duration::from_millis(700));
-    }
-
-    #[test]
-    fn a_fetch_long_after_the_last_does_not_wait() {
-        let now = Instant::now();
-        let last = now - Duration::from_secs(5);
-        assert_eq!(wait_for(Some(last), now, FETCH_GAP), Duration::ZERO);
-    }
 }
