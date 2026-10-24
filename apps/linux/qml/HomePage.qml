@@ -451,38 +451,38 @@ Item {
                 }
             }
         }
+        // Both groups share one parent, placed by x, so the arrow keys cross from Continue
+        // into On hold (GridKeys steps among one parent's children); a Row would drop the
+        // empty item a second gap needs, since it lays out nothing of width nought
         Item {
             width: row.width
             height: Math.round(row.cardWidth * 1.5)
-            Row {
-                spacing: page.gap
-                Repeater {
-                    model: row.continueCards.slice(0, row.lead)
-                    Card {
-                        required property var modelData
-                        objectName: "card-" + modelData.id   // a --drive target
-                        item: modelData
-                        posterWidth: row.cardWidth
-                        nowMs: page.nowMs
-                        onOpened: page.openSeries(modelData)
-                        onPlayed: page.playSeries(modelData)
-                    }
+            Repeater {
+                model: row.continueCards.slice(0, row.lead)
+                Card {
+                    required property var modelData
+                    required property int index
+                    objectName: "card-" + modelData.id   // a --drive target
+                    x: index * (row.cardWidth + page.gap)
+                    item: modelData
+                    posterWidth: row.cardWidth
+                    nowMs: page.nowMs
+                    onOpened: page.openSeries(modelData)
+                    onPlayed: page.playSeries(modelData)
                 }
             }
-            Row {
-                x: row.holdX
-                spacing: page.gap
-                Repeater {
-                    model: row.holdCards.slice(0, row.holdShown)
-                    Card {
-                        required property var modelData
-                        objectName: "card-" + modelData.id
-                        item: modelData
-                        posterWidth: row.cardWidth
-                        nowMs: page.nowMs
-                        onOpened: page.openSeries(modelData)
-                        onPlayed: page.playSeries(modelData)
-                    }
+            Repeater {
+                model: row.holdCards.slice(0, row.holdShown)
+                Card {
+                    required property var modelData
+                    required property int index
+                    objectName: "card-" + modelData.id
+                    x: row.holdX + index * (row.cardWidth + page.gap)
+                    item: modelData
+                    posterWidth: row.cardWidth
+                    nowMs: page.nowMs
+                    onOpened: page.openSeries(modelData)
+                    onPlayed: page.playSeries(modelData)
                 }
             }
         }

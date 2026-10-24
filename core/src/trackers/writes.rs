@@ -29,11 +29,12 @@ use crate::metadata::apply::card_for;
 use crate::metadata::fetch::message_of;
 use crate::net::HttpResponse;
 use crate::net::anilist::{
-    MEDIA_LIST_ENTRY_QUERY, SAVE_PROGRESS_MUTATION, SAVE_SCORE_MUTATION, SAVE_STATUS_MUTATION,
+    MEDIA_LIST_ENTRY_QUERY, ON_HOLD_ENTRY_QUERY, SAVE_PROGRESS_MUTATION, SAVE_SCORE_MUTATION,
+    SAVE_STATUS_MUTATION,
 };
 use crate::prefs;
 use crate::time;
-use crate::trackers::{NO_TOKEN, TRACKER_TIMEOUT, accounts, as_count, cache};
+use crate::trackers::{NO_TOKEN, TRACKER_TIMEOUT, accounts, as_count, as_u32, cache, on_hold};
 
 /// MAL's list API. AniList's address lives with its queries.
 const MAL_API: &str = "https://api.myanimelist.net/v2";
@@ -513,8 +514,8 @@ async fn attempt(
             } else {
                 ListStatus::Watching
             };
-            send_progress(core, t, media_id, &token, episode, status).await?;
-            record_progress(core, t, media_id, episode, status).await?;
+            let stamp = send_progress(core, t, media_id, &token, episode, status).await?;
+            record_progress(core, t, media_id, episode, status, stamp).await?;
             // The terminal event carries every tracker's outcome, so a
             // line per tracker here would say the same thing twice.
             ctx.emit(
@@ -538,8 +539,8 @@ async fn attempt(
             } else {
                 ListStatus::Watching
             };
-            send_progress(core, t, media_id, &token, progress, status).await?;
-            record_progress(core, t, media_id, progress, status).await?;
+            let stamp = send_progress(core, t, media_id, &token, progress, status).await?;
+            record_progress(core, t, media_id, progress, status, stamp).await?;
             ctx.emit(
                 Level::Debug,
                 format!(
@@ -561,8 +562,8 @@ async fn attempt(
             // also saying it is finished, which is what the list should
             // have said all along.
             let completed = target.total.is_some_and(|total| current >= total);
-            let sent = send_score(core, t, media_id, &token, score, completed).await?;
-            record_score(core, t, media_id, sent, completed).await?;
+            let (sent, stamp) = send_score(core, t, media_id, &token, score, completed).await?;
+            record_score(core, t, media_id, sent, completed, stamp).await?;
             let tail = if completed { " + completed" } else { "" };
             ctx.emit(
                 Level::Debug,
@@ -632,6 +633,79 @@ async fn read_entry(
     }
 }
 
+/// The progress and the status, answering with the tracker's own stamp for
+/// the write when its reply carried one.
+/// An entry as the tracker has it now, with the media's airing state, for
+/// On hold's last look before a status write. `None` is an entry the list
+/// no longer holds. MAL has no broadcast schedule, so its `next` is empty
+/// and the library's schedule rows date its next episode.
+pub(crate) async fn read_live(
+    core: &Arc<Core>,
+    t: Tracker,
+    media_id: u64,
+    user_id: Option<u64>,
+    token: &str,
+) -> Result<Option<on_hold::Live>, CoreError> {
+    match t {
+        Tracker::Anilist => {
+            let user_id = user_id
+                .ok_or_else(|| accounts::tracker_error(t, "the account carries no user id"))?;
+            let variables = serde_json::json!({ "userId": user_id, "mediaId": media_id });
+            let data = match core
+                .anilist
+                .graphql_within(ON_HOLD_ENTRY_QUERY, variables, Some(token), TRACKER_TIMEOUT)
+                .await
+            {
+                Ok(data) => data,
+                Err(e) if e.is_provider_not_found() => return Ok(None),
+                Err(e) => return Err(e),
+            };
+            let entry = &data["MediaList"];
+            if entry.is_null() {
+                return Ok(None);
+            }
+            let media = &entry["media"];
+            let next = &media["nextAiringEpisode"];
+            Ok(Some(on_hold::Live {
+                status: cache::normalize_status(t, entry["status"].as_str(), false),
+                progress: as_count(entry["progress"].as_u64()),
+                updated_at: entry["updatedAt"].as_i64().filter(|at| *at > 0),
+                total: as_u32(media["episodes"].as_u64()).filter(|n| *n > 0),
+                still_coming: media["status"].as_str().is_some_and(on_hold::still_coming),
+                next: as_u32(next["episode"].as_u64()).zip(next["airingAt"].as_i64()),
+            }))
+        }
+        Tracker::Mal => {
+            let url =
+                format!("{MAL_API}/anime/{media_id}?fields=my_list_status,status,num_episodes");
+            let response = core.mal.get(&url, token).await?;
+            if response.status == 404 {
+                return Ok(None);
+            }
+            if !response.is_success() {
+                return Err(mal_failure(&response));
+            }
+            let body: serde_json::Value = response.json()?;
+            let list = &body["my_list_status"];
+            if list.is_null() {
+                return Ok(None);
+            }
+            Ok(Some(on_hold::Live {
+                status: cache::normalize_status(
+                    t,
+                    list["status"].as_str(),
+                    list["is_rewatching"].as_bool().unwrap_or(false),
+                ),
+                progress: as_count(list["num_episodes_watched"].as_u64()),
+                updated_at: list["updated_at"].as_str().and_then(cache::mal_instant),
+                total: as_u32(body["num_episodes"].as_u64()).filter(|n| *n > 0),
+                still_coming: body["status"].as_str().is_some_and(on_hold::still_coming),
+                next: None,
+            }))
+        }
+    }
+}
+
 async fn send_progress(
     core: &Arc<Core>,
     t: Tracker,
@@ -639,11 +713,12 @@ async fn send_progress(
     token: &str,
     progress: u32,
     status: ListStatus,
-) -> Result<(), CoreError> {
+) -> Result<Option<i64>, CoreError> {
     match t {
         Tracker::Anilist => {
             let variables = serde_json::json!({ "mediaId": media_id, "progress": progress, "status": anilist_status(status) });
-            core.anilist
+            let data = core
+                .anilist
                 .graphql_within(
                     SAVE_PROGRESS_MUTATION,
                     variables,
@@ -651,6 +726,7 @@ async fn send_progress(
                     TRACKER_TIMEOUT,
                 )
                 .await?;
+            Ok(anilist_stamp(&data))
         }
         Tracker::Mal => {
             let form = vec![
@@ -664,16 +740,33 @@ async fn send_progress(
             if !response.is_success() {
                 return Err(mal_failure(&response));
             }
+            Ok(mal_stamp(&response))
         }
     }
-    Ok(())
+}
+
+/// The stamp a `SaveMediaListEntry` reply carries.
+fn anilist_stamp(data: &serde_json::Value) -> Option<i64> {
+    data["SaveMediaListEntry"]["updatedAt"]
+        .as_i64()
+        .filter(|at| *at > 0)
+}
+
+/// MAL answers a list PATCH with the whole list status, its `updated_at`
+/// among it.
+fn mal_stamp(response: &HttpResponse) -> Option<i64> {
+    response
+        .json::<serde_json::Value>()
+        .ok()
+        .and_then(|body| body["updated_at"].as_str().and_then(cache::mal_instant))
 }
 
 /// The score each tracker actually receives, which is not the same number:
 /// AniList takes `scoreRaw` out of a hundred, so one write works whatever
 /// display format the user picked and a decimal survives it; MAL takes a
 /// whole number and rounds the way its own UI rounds a typed decimal. What
-/// was sent comes back, so the cache and the log line agree with the list.
+/// was sent comes back, so the cache and the log line agree with the list,
+/// and beside it the tracker's stamp for the write when its reply carried one.
 async fn send_score(
     core: &Arc<Core>,
     t: Tracker,
@@ -681,7 +774,7 @@ async fn send_score(
     token: &str,
     score: f64,
     completed: bool,
-) -> Result<f64, CoreError> {
+) -> Result<(f64, Option<i64>), CoreError> {
     match t {
         Tracker::Anilist => {
             let mut variables = serde_json::json!({ "mediaId": media_id, "scoreRaw": (score * 10.0).round() as i64 });
@@ -692,10 +785,11 @@ async fn send_score(
                 variables["status"] =
                     serde_json::Value::String(anilist_status(ListStatus::Completed).to_string());
             }
-            core.anilist
+            let data = core
+                .anilist
                 .graphql_within(SAVE_SCORE_MUTATION, variables, Some(token), TRACKER_TIMEOUT)
                 .await?;
-            Ok(score)
+            Ok((score, anilist_stamp(&data)))
         }
         Tracker::Mal => {
             let rounded = score.round();
@@ -713,7 +807,7 @@ async fn send_score(
             if !response.is_success() {
                 return Err(mal_failure(&response));
             }
-            Ok(rounded)
+            Ok((rounded, mal_stamp(&response)))
         }
     }
 }
@@ -742,9 +836,7 @@ pub(crate) async fn send_status(
                     TRACKER_TIMEOUT,
                 )
                 .await?;
-            Ok(data["SaveMediaListEntry"]["updatedAt"]
-                .as_i64()
-                .filter(|at| *at > 0))
+            Ok(anilist_stamp(&data))
         }
         Tracker::Mal => {
             let form = vec![("status".to_string(), mal_status(status).to_string())];
@@ -755,12 +847,7 @@ pub(crate) async fn send_status(
             if !response.is_success() {
                 return Err(mal_failure(&response));
             }
-            // MAL answers a PATCH with the whole list status, its
-            // `updated_at` among it.
-            Ok(response
-                .json::<serde_json::Value>()
-                .ok()
-                .and_then(|body| body["updated_at"].as_str().and_then(cache::mal_instant)))
+            Ok(mal_stamp(&response))
         }
     }
 }
@@ -798,12 +885,13 @@ async fn record_progress(
     media_id: u64,
     progress: u32,
     status: ListStatus,
+    stamp: Option<i64>,
 ) -> Result<(), CoreError> {
     let now = time::now_secs();
     core.store
         .tx_async(move |tx| {
             mark_synced(tx, t, now)?;
-            cache::patch_progress(tx, t, media_id, progress, Some(status), now)
+            cache::patch_progress(tx, t, media_id, progress, Some(status), stamp, now)
         })
         .await
 }
@@ -817,6 +905,7 @@ async fn record_score(
     media_id: u64,
     score: f64,
     completed: bool,
+    stamp: Option<i64>,
 ) -> Result<(), CoreError> {
     let now = time::now_secs();
     let rated = (score > 0.0).then_some(score);
@@ -824,25 +913,25 @@ async fn record_score(
     core.store
         .tx_async(move |tx| {
             mark_synced(tx, t, now)?;
-            cache::patch_score(tx, t, media_id, rated, status, now)
+            cache::patch_score(tx, t, media_id, rated, status, stamp, now)
         })
         .await
 }
 
-/// The same for a status the On hold sweep sent. `updated_at` is the
-/// tracker's own stamp when the reply carried one, else now.
+/// The same for a status On hold sent, with the tracker's stamp for it
+/// when the reply carried one.
 pub(crate) async fn record_status(
     core: &Arc<Core>,
     t: Tracker,
     media_id: u64,
     status: ListStatus,
-    updated_at: Option<i64>,
+    stamp: Option<i64>,
 ) -> Result<(), CoreError> {
     let now = time::now_secs();
     core.store
         .tx_async(move |tx| {
             mark_synced(tx, t, now)?;
-            cache::patch_status(tx, t, media_id, status, updated_at.unwrap_or(now), now)
+            cache::patch_status(tx, t, media_id, status, stamp, now)
         })
         .await
 }

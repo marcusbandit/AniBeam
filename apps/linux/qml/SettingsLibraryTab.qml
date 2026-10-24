@@ -57,18 +57,17 @@ SettingsTab {
         var r = Door.setPreferences(p)
         if (r.error) frame.toast(r.error.message)
     }
-    // The days are written once the slider rests, so a drag is one write
+    // The days are written once the slider rests, so a drag is one write; a tab left before
+    // then writes them on its way out
     property int pendingDays: 60
-    Timer {
-        id: daysDebounce
-        interval: 400
-        onTriggered: {
-            var p = JSON.parse(JSON.stringify(Door.preferences))
-            p.on_hold_days = tab.pendingDays
-            var r = Door.setPreferences(p)
-            if (r.error) frame.toast(r.error.message)
-        }
+    function saveDays() {
+        var p = JSON.parse(JSON.stringify(Door.preferences))
+        p.on_hold_days = tab.pendingDays
+        var r = Door.setPreferences(p)
+        if (r.error) frame.toast(r.error.message)
     }
+    Timer { id: daysDebounce; interval: 400; onTriggered: tab.saveDays() }
+    Component.onDestruction: if (daysDebounce.running) tab.saveDays()
     // The match providers, first tried first; the core keeps the order and says what it is
     readonly property var providerOrder: Door.settings && Door.settings.provider_order && Door.settings.provider_order.length ? Door.settings.provider_order : ["Anilist", "Tvmaze"]
     readonly property var providerAbout: ({ Anilist: "Anime: series, films and their relations. Episodes you watch are marked on your trackers.",
@@ -178,7 +177,7 @@ SettingsTab {
             SettingRow { label: "Main tracker"; helper: "Whose progress the cards show. The other tracker still gets every update."
                 Seg { options: ["AniList", "MyAnimeList"]; index: Door.trackers.main === "Mal" ? 1 : 0; onPicked: function(i) { var r = Door.setMainTracker(i === 1 ? "Mal" : "Anilist"); if (r.error) frame.toast(r.error.message) } } }
             SettingRow { visible: tab.tracked; label: "Move to On hold"
-                helper: "A Watching series nobody has touched for the days set below moves to On hold on your trackers. One waiting for its next episode stays. Checked when AniBeam starts and on Sync."
+                helper: "A Watching series nobody has touched for the days set below moves to On hold on your trackers, and playing it puts it back. One waiting for its next episode stays. Checked when AniBeam starts and on Sync."
                 Switch { objectName: "settings-on-hold"; checked: Door.preferences.on_hold_auto !== false; onToggled: function(on) { tab.setOnHold(on) } } }
             SettingRow { visible: tab.tracked && Door.preferences.on_hold_auto !== false; label: "Days untouched"
                 SliderRow { objectName: "settings-on-hold-days"; from: 7; to: 365; stepSize: 1; value: Door.preferences.on_hold_days || 60

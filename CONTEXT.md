@@ -53,7 +53,7 @@ The outcome of the 85 percent rule: the episode is reported as completed to a co
 _Avoid_: complete, progress update, sync
 
 **On hold**:
-A tracker list: AniList calls it Paused, MAL calls it On Hold. With the On hold switch on, which is the default, the core moves a Watching entry there once nothing has touched it for the set number of days, 60 unless changed. A touch is any change either tracker dates, or a play here. An episode past the entry's progress coming out starts the count again, and an entry waiting for its next episode never moves. The check runs after each tracker refresh: at launch, on Sync, on a new connection, and when the switch goes on. A mark puts the entry back on Watching. Home shows the series on hold after Continue, in the same row, whenever Continue leaves room there.
+A tracker list: AniList calls it Paused, MAL calls it On Hold. With the On hold switch on, which is the default, the core moves a Watching entry there once nothing has touched it for the set number of days, 60 unless changed. A touch is any change either tracker dates, or a play here. An episode past the entry's progress coming out starts the count again, and an entry waiting for its next episode never moves. The check runs after each tracker refresh: at launch, on Sync, on a new connection, and when the switch goes on. Each entry is read live from its tracker just before it moves. A view of the series here, or a mark, puts the entry back on Watching. The desktop runs all of this and the phone none of it. Home shows the series on hold after Continue, in the same row, whenever Continue leaves room there, and a card on hold says so in a tag.
 _Avoid_: paused, idle, stale, backlog
 
 **Resume point**:

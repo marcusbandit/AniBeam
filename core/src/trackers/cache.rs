@@ -238,9 +238,10 @@ pub fn replace(tx: &Transaction, t: Tracker, entries: &[Entry], now: i64) -> Res
 
 /// One entry's progress, after a mark or a set: the score and the rewatch
 /// count are the list's and are left alone, and a status of `None` keeps
-/// the one already cached. The write moved the tracker's own `updated_at`
-/// to now, so the row says so before the next fetch does, and On hold
-/// never reads a series just marked as untouched. Electron's
+/// the one already cached. `updated_at` is the tracker's own stamp for the
+/// write when its reply carried one, so the row says the entry was touched
+/// before the next fetch does; with none the stored stamp stands, since the
+/// column is the tracker's clock and never this machine's. Electron's
 /// `setProgressEntry`.
 pub fn patch_progress(
     conn: &Connection,
@@ -248,60 +249,76 @@ pub fn patch_progress(
     media_id: u64,
     progress: u32,
     status: Option<ListStatus>,
+    updated_at: Option<i64>,
     now: i64,
 ) -> Result<(), CoreError> {
     conn.execute(
         "INSERT INTO tracker_entries (tracker, media_id, status, progress, score, repeat, updated_at, fetched_at)
-         VALUES (?1, ?2, ?3, ?4, NULL, 0, ?5, ?5)
+         VALUES (?1, ?2, ?3, ?4, NULL, 0, ?5, ?6)
          ON CONFLICT(tracker, media_id) DO UPDATE SET
              progress = excluded.progress,
              status = COALESCE(excluded.status, tracker_entries.status),
-             updated_at = excluded.updated_at,
+             updated_at = COALESCE(excluded.updated_at, tracker_entries.updated_at),
              fetched_at = excluded.fetched_at",
-        params![t.as_str(), media_id as i64, status.map(ListStatus::as_str), i64::from(progress), now],
+        params![
+            t.as_str(),
+            media_id as i64,
+            status.map(ListStatus::as_str),
+            i64::from(progress),
+            updated_at,
+            now
+        ],
     )?;
     Ok(())
 }
 
 /// One entry's score, after a rating: the progress and the rewatch count
 /// are left alone, a score of `None` is stored as unrated rather than
-/// dropped, and `updated_at` moves to now as `patch_progress`'s does.
-/// Electron's `setProgressScoreAndStatus`.
+/// dropped, and `updated_at` follows `patch_progress`'s rule. Electron's
+/// `setProgressScoreAndStatus`.
 pub fn patch_score(
     conn: &Connection,
     t: Tracker,
     media_id: u64,
     score: Option<f64>,
     status: Option<ListStatus>,
+    updated_at: Option<i64>,
     now: i64,
 ) -> Result<(), CoreError> {
     conn.execute(
         "INSERT INTO tracker_entries (tracker, media_id, status, progress, score, repeat, updated_at, fetched_at)
-         VALUES (?1, ?2, ?3, 0, ?4, 0, ?5, ?5)
+         VALUES (?1, ?2, ?3, 0, ?4, 0, ?5, ?6)
          ON CONFLICT(tracker, media_id) DO UPDATE SET
              score = excluded.score,
              status = COALESCE(excluded.status, tracker_entries.status),
-             updated_at = excluded.updated_at,
+             updated_at = COALESCE(excluded.updated_at, tracker_entries.updated_at),
              fetched_at = excluded.fetched_at",
-        params![t.as_str(), media_id as i64, status.map(ListStatus::as_str), score, now],
+        params![
+            t.as_str(),
+            media_id as i64,
+            status.map(ListStatus::as_str),
+            score,
+            updated_at,
+            now
+        ],
     )?;
     Ok(())
 }
 
-/// One entry's status, after the On hold sweep moved it: the progress, the
-/// score and the rewatch count are the list's and are left alone, and
-/// `updated_at` is the stamp the change carried. A row the cache does not
-/// hold stays absent, since the sweep only ever moves a cached entry.
+/// One entry's status, after On hold moved it: the progress, the score and
+/// the rewatch count are the list's and are left alone, and `updated_at`
+/// follows `patch_progress`'s rule. A row the cache does not hold stays
+/// absent, since On hold only ever moves a cached entry.
 pub fn patch_status(
     conn: &Connection,
     t: Tracker,
     media_id: u64,
     status: ListStatus,
-    updated_at: i64,
+    updated_at: Option<i64>,
     now: i64,
 ) -> Result<(), CoreError> {
     conn.execute(
-        "UPDATE tracker_entries SET status = ?3, updated_at = ?4, fetched_at = ?5
+        "UPDATE tracker_entries SET status = ?3, updated_at = COALESCE(?4, updated_at), fetched_at = ?5
          WHERE tracker = ?1 AND media_id = ?2",
         params![
             t.as_str(),
@@ -344,6 +361,9 @@ async fn run(
     let mut pending: Option<(Tracker, usize)> = None;
     let mut refreshed: Vec<Tracker> = Vec::new();
     let mut failure: Option<CoreError> = None;
+    // A list inside the window is as good as one just fetched for On hold,
+    // so a Sync pressed a minute after the launch's fetch still sweeps.
+    let mut fresh = false;
 
     for t in wanted {
         ctx.checkpoint()?;
@@ -363,6 +383,7 @@ async fn run(
                 format!("{} progress is fresh", t.as_str()),
                 EventBody::Notice,
             );
+            fresh = true;
             continue;
         }
         match fetch_and_replace(&core, t, row.user_id).await {
@@ -397,7 +418,10 @@ async fn run(
     if !refreshed.is_empty() {
         let cards = matched_cards(&core, &refreshed).await?;
         ctx.changed_all(cards);
-        // A list just fetched is the one On hold decides on.
+    }
+    // A list just fetched, or one still inside the window, is the one On
+    // hold decides on.
+    if !refreshed.is_empty() || fresh {
         on_hold::after_refresh(&core).await;
     }
     match pending {
