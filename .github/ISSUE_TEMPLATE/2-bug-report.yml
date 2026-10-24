@@ -2,6 +2,7 @@ name: Bug report
 description: Something in AniBeam is broken and you are writing it up yourself.
 labels:
   - bug
+  - needs-triage
 body:
   - type: markdown
     attributes:

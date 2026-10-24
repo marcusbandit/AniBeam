@@ -1,0 +1,30 @@
+name: Issue labels
+
+# Creates the labels the issue forms and triage use (docs/agents/triage.md) with these colours
+# and descriptions, and puts them back when the forms or this list change on main, or when one
+# of them is deleted.
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/ISSUE_TEMPLATE/**
+      - .github/workflows/issue-labels.yml
+  label:
+    types: [deleted]
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - run: |
+          gh label create "needs-triage" --force --color fbca04 --description "Waiting for a triage pass."
+          gh label create "needs more info" --force --color 671411 --description "Triage could not reproduce it and asked the reporter for more."
+          gh label create "via-triage" --force --color 7dd3fc --description "Filed by a coding agent through the triage report form"
