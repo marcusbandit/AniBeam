@@ -100,7 +100,7 @@ dependencies = [
 
 [[package]]
 name = "anibeam-android"
-version = "2.0.8"
+version = "2.1.0"
 dependencies = [
  "anibeam-companion",
  "anibeam-core",
@@ -128,7 +128,7 @@ dependencies = [
 
 [[package]]
 name = "anibeam-core"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "anibeam-host-api",
  "apple-native-keyring-store",
@@ -174,7 +174,7 @@ dependencies = [
 
 [[package]]
 name = "anibeam-host-api"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "serde",
 ]
