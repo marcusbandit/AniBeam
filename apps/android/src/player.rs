@@ -12,7 +12,7 @@
 use std::cell::RefCell;
 use std::num::NonZeroU32;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use anibeam_core::playback::{options, tracks};
 use anibeam_core::{
@@ -251,11 +251,8 @@ struct Player {
     video_gen: u64,
     paused: bool,
     seeking: bool,
-    /// A drag on the bar: the newest spot under the finger, and when the last preview seek
-    /// went out. The auto-skip rules sit out until the release seeks for real.
+    /// A drag on the bar is on: the preview bubble takes frames, the episode stays put.
     scrubbing: bool,
-    scrub_to: Option<f64>,
-    scrub_sent: Option<Instant>,
     /// The preview core, opened on the first drag.
     thumbs: Option<Thumbs>,
     ended: bool,
@@ -312,6 +309,7 @@ pub fn install(window: &AppWindow) {
     d.on_back(|| close_page(CloseReason::Stopped));
     d.on_toggle_pause(|| with_player(|p| p.toggle_pause()));
     d.on_scrub(|t| with_player(|p| p.scrub(t as f64)));
+    d.on_scrub_cancel(|| with_player(|p| p.scrubbing = false));
     d.on_seek(|t| with_player(|p| p.seek(t as f64)));
     d.on_seek_by(|by| with_player(|p| p.seek(p.rules.position + by as f64)));
     d.on_skip(|| with_player(|p| p.skip()));
@@ -456,8 +454,6 @@ pub fn open(file: u64) {
         paused: false,
         seeking: false,
         scrubbing: false,
-        scrub_to: None,
-        scrub_sent: None,
         thumbs: None,
         ended: false,
         closed: false,
@@ -815,9 +811,6 @@ impl Player {
         match (name, value) {
             ("time-pos", Value::Double(t)) => {
                 self.d(|d| d.set_position(t as f32));
-                if self.scrubbing {
-                    return;
-                }
                 for step in self.rules.moved(t) {
                     self.apply(step);
                 }
@@ -848,8 +841,6 @@ impl Player {
                 self.seeking = s;
                 if was && !s {
                     self.send_tick();
-                    self.scrub_sent = None;
-                    self.send_scrub();
                 }
             }
             ("paused-for-cache", Value::Flag(b)) => self.d(|d| d.set_buffering(b)),
@@ -938,8 +929,8 @@ impl Player {
         self.show_chrome();
     }
 
-    /// A preview seek to the keyframe nearest the finger. One in flight at a time, so a fast
-    /// drag never queues a backlog: the newest spot goes out once mpv lands the last one.
+    /// The finger is on the bar at `t`: the bubble asks the preview core for that frame. The
+    /// episode itself does not move until the release.
     fn scrub(&mut self, t: f64) {
         if self.cast.is_some() {
             return;
@@ -950,8 +941,6 @@ impl Player {
             self.d(|d| d.set_preview(slint::Image::default()));
         }
         self.scrubbing = true;
-        self.scrub_to = Some(t);
-        self.send_scrub();
         if self.thumbs.is_none() {
             let session_id = self.session.session;
             self.thumbs = Thumbs::open(&self.session.path, move |shot: Shot| {
@@ -978,19 +967,8 @@ impl Player {
         self.d(|d| d.set_preview(slint::Image::from_rgba8(buf)));
     }
 
-    fn send_scrub(&mut self) {
-        if !self.scrubbing || self.scrub_sent.is_some_and(|s| s.elapsed() < Duration::from_millis(400)) {
-            return;
-        }
-        let Some(t) = self.scrub_to.take() else { return };
-        self.mpv.command(&["seek", &t.to_string(), "absolute+keyframes"]);
-        self.scrub_sent = Some(Instant::now());
-    }
-
     fn seek(&mut self, t: f64) {
         self.scrubbing = false;
-        self.scrub_to = None;
-        self.scrub_sent = None;
         let t = if self.rules.duration > 0.0 { t.clamp(0.0, self.rules.duration) } else { t.max(0.0) };
         if self.cast.is_some() {
             self.cast_call(Call::CastSeek { to: t });
