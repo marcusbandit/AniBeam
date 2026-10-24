@@ -2,11 +2,12 @@
 // name. A floating pane over a Blocker, like the match panel: one row per file with its name,
 // how it reads now and what it should be (a kind and a number), the page's own suggestion one
 // click away, and Apply with a small, unticked check beside it that files the fix as a GitHub
-// issue. Applying writes the fixes at once (FixFiles) and every later scan keeps them; a fixed
-// row can go back to reading its name. With the check ticked the frame drafts the issue
-// (frame.reportFix) and opens it in the browser when it is ready, a coding agent's triage
-// included when one is installed. Escape, the X, Cancel and a press on the shield all close
-// it through close().
+// issue. Opened from the page's suggestion it comes filled in; from Fix files it does not, and
+// the suggestion waits behind Fill in. An edited row can be left as it reads, and a fixed row
+// can go back to reading its name. Apply hands the fixes to the frame (frame.applyFixes), which
+// writes them (FixFiles) and, with the check ticked, drafts the issue and opens it in the
+// browser once any triage is done, even after the page is gone. Escape, the X, Cancel and a
+// press on the shield all close it through close().
 import QtQuick
 import QtQuick.Controls.Basic as QC
 import com.marcusrosado.AniBeam
@@ -18,8 +19,11 @@ Corner {
     property string seriesTitle: ""
     // { file, name, reading: { Episode: { number, season } } or { Extra: { kind, index } }, fixed }
     property var rows: []
-    // file -> { kind, number, undo }: what the user has set so far, by row
+    // file -> { kind, number, season, undo }: what the user has set so far, by row
     property var edits: ({})
+    // The fixes on their way, as sent: edits made since do not count
+    property var sent: []
+    property string error: ""
     property var suggestion: null
     property bool report: false
     // The coding agent that would triage the issue, by name, or ""
@@ -47,9 +51,18 @@ Corner {
         var i = reading.Extra.index
         return kinds[kindOf(reading)] + (i === null || i === undefined ? "" : " " + i)
     }
+    function seasonOf(reading) {
+        var s = reading && reading.Episode ? reading.Episode.season : null
+        return s === undefined ? null : s
+    }
     function stateOf(row) {
         var e = edits[row.file]
-        return e ? e : { kind: kindOf(row.reading), number: numberOf(row.reading), undo: false }
+        return e ? e : { kind: kindOf(row.reading), number: numberOf(row.reading), season: seasonOf(row.reading), undo: false }
+    }
+    function clearEdit(row) {
+        var next = Object.assign({}, edits)
+        delete next[row.file]
+        edits = next
     }
     function setEdit(row, patch) {
         var next = Object.assign({}, edits)
@@ -61,8 +74,7 @@ Corner {
         var text = String(e.number).trim()
         if (e.kind === 0) {
             if (!/^\d{1,5}(\.\d+)?$/.test(text) || Number(text) > 10000) return null
-            var season = row.reading.Episode ? row.reading.Episode.season : null
-            return { Episode: { number: Number(text), season: season === undefined ? null : season } }
+            return { Episode: { number: Number(text), season: e.season === undefined ? null : e.season } }
         }
         if (text !== "" && (!/^\d{1,5}$/.test(text) || Number(text) > 10000)) return null
         return { Extra: { kind: extraKinds[e.kind], index: text === "" ? null : Number(text) } }
@@ -70,8 +82,9 @@ Corner {
     function same(a, b) {
         if (!a || !b || (!a.Episode && !a.Extra) || (!b.Episode && !b.Extra)) return false
         if (!!a.Episode !== !!b.Episode) return false
-        if (a.Episode) return a.Episode.number === b.Episode.number && (a.Episode.season || null) === (b.Episode.season || null)
-        return a.Extra.kind === b.Extra.kind && (a.Extra.index || null) === (b.Extra.index || null)
+        function norm(v) { return v === undefined || v === null ? null : v }
+        if (a.Episode) return a.Episode.number === b.Episode.number && norm(a.Episode.season) === norm(b.Episode.season)
+        return a.Extra.kind === b.Extra.kind && norm(a.Extra.index) === norm(b.Extra.index)
     }
     function invalid(row) { var e = edits[row.file]; return !!e && !e.undo && readingFrom(row, e) === null }
     function changed(row) {
@@ -91,20 +104,25 @@ Corner {
         return !row || (!!edits[f.file] && !edits[f.file].undo && same(readingFrom(row, edits[f.file]), f.reading))
     })
 
-    function openFor(id, title, files, suggested) {
+    // `fill`: the suggestion goes into the rows at once (the page's Quick fix); without it the
+    // suggestion waits behind Fill in (Fix files)
+    function openFor(id, title, files, suggested, fill) {
         root.seriesId = id
         root.seriesTitle = title
         root.rows = files
         root.edits = ({})
+        root.sent = []
+        root.error = ""
         root.report = false
         root.applyToken = -1
         root.suggestion = suggested || null
         var r = Door.call("TriageAgent", {})
         root.agent = !r.error && r.reply && r.reply.name ? r.reply.name : ""
-        if (root.suggestion) root.useSuggestion()
+        if (root.suggestion && fill) root.useSuggestion()
         list.contentY = 0
         visible = true
-        frame.escapeStack.push("popover", root)
+        // A sheet, not a popover: tooltips stay on, so an elided file name can be read whole
+        frame.escapeStack.push("sheet", root)
         panelFocus.forceActiveFocus()
     }
     function close() {
@@ -118,28 +136,26 @@ Corner {
         var next = Object.assign({}, root.edits)
         root.suggestion.fixes.forEach(function(f) {
             if (!f.reading) return
-            next[f.file] = { kind: root.kindOf(f.reading), number: root.numberOf(f.reading), undo: false }
+            next[f.file] = { kind: root.kindOf(f.reading), number: root.numberOf(f.reading), season: root.seasonOf(f.reading), undo: false }
         })
         root.edits = next
     }
     function apply() {
         if (root.applying || root.changes.length === 0 || root.anyInvalid) return
-        root.applyToken = Door.callAsync("FixFiles", { series: root.seriesId, fixes: root.changes })
-        if (root.applyToken < 0) frame.toast("Could not apply the fixes")
+        root.error = ""
+        root.sent = root.changes
+        root.applyToken = frame.applyFixes(root.seriesId, root.sent, root.report, root.agent)
+        if (root.applyToken < 0) root.error = "Could not apply the fixes."
     }
+    // The frame owns what follows a reply (the toast, the issue); the sheet closes, or says
+    // why not and stays
     Connections {
         target: Door
         function onCallDone(token, reply) {
             if (token !== root.applyToken) return
             root.applyToken = -1
-            if (reply.error) { frame.toast(frame.errorText(reply.error)); return }
-            var fixed = root.changes.filter(function(c) { return c.reading !== null }).map(function(c) { return c.file })
-            var n = root.changes.length
-            var file = n === 1 ? "1 file" : n + " files"
-            var wantReport = root.report && fixed.length > 0
+            if (reply.error) { root.error = frame.errorText(reply.error); return }
             root.close()
-            if (wantReport) frame.reportFix(root.seriesId, fixed, root.agent)
-            else frame.toast("Fixed how " + file + " read")
         }
     }
 
@@ -165,8 +181,6 @@ Corner {
         id: panelFocus
         focus: true
         Keys.onEscapePressed: root.close()
-        Keys.onReturnPressed: root.apply()
-        Keys.onEnterPressed: root.apply()
     }
 
     Column {
@@ -220,6 +234,7 @@ Corner {
                 }
                 Button {
                     id: useBtn
+                    objectName: "fix-fill"
                     anchors.verticalCenter: parent.verticalCenter
                     small: true
                     text: root.suggestionUsed ? "Filled in" : "Fill in"
@@ -299,7 +314,7 @@ Corner {
                     minWidth: root.kindWidth
                     options: root.kinds
                     index: line.st.kind
-                    interactive: !line.st.undo
+                    interactive: !line.st.undo && !root.applying
                     opacity: line.st.undo ? 0.4 : 1
                     onPicked: function(i) { root.setEdit(line.modelData, { kind: i, undo: false }) }
                 }
@@ -311,7 +326,7 @@ Corner {
                     mono: true
                     placeholder: line.st.kind === 0 ? "No." : "None"
                     text: line.st.number
-                    enabled: !line.st.undo
+                    enabled: !line.st.undo && !root.applying
                     opacity: line.st.undo ? 0.4 : 1
                     onTextChanged: if (text !== String(line.st.number)) root.setEdit(line.modelData, { number: text, undo: false })
                     // A number this kind cannot take: the field's edge in red
@@ -327,30 +342,44 @@ Corner {
                 Item {
                     anchors.verticalCenter: parent.verticalCenter
                     width: root.undoWidth; height: theme.controlHeight
+                    // An edit, an undo or a fixed row: leave it, keep it, or read it by name again
+                    readonly property bool edited: !!root.edits[line.modelData.file]
                     Button {
+                        objectName: "fix-row-reset-" + line.index
                         anchors.centerIn: parent
-                        visible: line.modelData.fixed
+                        visible: parent.edited || line.modelData.fixed
+                        enabled: !root.applying
                         small: true; flat: true
-                        icon: line.st.undo ? "x" : "rotate-ccw"
+                        icon: parent.edited ? "x" : "rotate-ccw"
                         text: ""
-                        onClicked: root.setEdit(line.modelData, { undo: !line.st.undo })
-                        Tooltip { text: line.st.undo ? "Keep the fix" : "Read this file by its name again" }
+                        onClicked: if (parent.edited) root.clearEdit(line.modelData); else root.setEdit(line.modelData, { undo: true })
+                        Tooltip { text: line.st.undo ? "Keep the fix" : parent.parent.edited ? "Leave this file as it reads" : "Read this file by its name again" }
                     }
                 }
             }
         }
     }
 
-    // Apply, with the small check that also files it as an issue
+    // Apply, with the small check that also files it as an issue, and why it did not work
     Item {
         id: foot
         x: root.pad
         y: root.height - root.pad - height
         width: root.width - root.pad * 2
-        height: Math.max(reportCheck.height, buttons.height)
+        height: Math.max(reportCheck.height, buttons.height) + (root.error !== "" ? errorLine.implicitHeight + theme.space(2) : 0)
+        Label {
+            id: errorLine
+            objectName: "fix-error"
+            visible: root.error !== ""
+            anchors.bottom: parent.bottom
+            width: parent.width
+            text: root.error
+            role: "ui"; font.pointSize: theme.typeSmall; color: theme.red; wrapMode: Text.Wrap
+        }
         Item {
             id: reportCheck
             objectName: "fix-report"
+            anchors.top: parent.top
             width: parent.width - buttons.width - theme.space(6)
             height: Math.max(box.height, words.implicitHeight)
             Rectangle {
@@ -377,12 +406,12 @@ Corner {
                     role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim; wrapMode: Text.Wrap
                 }
             }
-            MouseArea { id: checkMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.report = !root.report }
+            MouseArea { id: checkMouse; anchors.fill: parent; hoverEnabled: true; enabled: !root.applying; cursorShape: Qt.PointingHandCursor; onClicked: root.report = !root.report }
         }
         Row {
             id: buttons
             anchors.right: parent.right
-            anchors.bottom: parent.bottom
+            anchors.top: parent.top
             spacing: theme.space(2)
             Button { objectName: "fix-cancel"; text: "Cancel"; flat: true; onClicked: root.close() }
             Button {

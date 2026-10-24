@@ -461,9 +461,22 @@ FocusScope {
     readonly property bool removalOpen: removeSheet.visible
     function askRemoval(anchor, spec, done) { removeSheet.openAt(anchor, spec, done) }
 
-    // ---- A quick fix's GitHub issue (#170). Drafted off the Qt thread, a coding agent's
-    // triage first when one is installed, which can take minutes; the frame waits for it so
-    // the issue still opens after the series page has gone. token -> the agent's name or ""
+    // ---- Quick fixes (#170). The frame sends them and takes the reply, so what follows a fix
+    // (the toast, a ticked issue) still happens after the sheet or the page has gone. token ->
+    // { series, fixed: [file], n, undone, report, agent }
+    property var fixApplies: ({})
+    function applyFixes(series, changes, report, agent) {
+        var token = Door.callAsync("FixFiles", { series: series, fixes: changes })
+        if (token < 0) return -1
+        var fixed = changes.filter(function(c) { return c.reading !== null }).map(function(c) { return c.file })
+        var next = Object.assign({}, frame.fixApplies)
+        next[token] = { series: series, fixed: fixed, n: changes.length, undone: changes.length - fixed.length,
+                        report: !!report && fixed.length > 0, agent: agent || "" }
+        frame.fixApplies = next
+        return token
+    }
+    // A quick fix's GitHub issue: drafted off the Qt thread, a coding agent's triage first when
+    // one is installed, which can take minutes. token -> the agent's name or ""
     property var fixReports: ({})
     function reportFix(series, files, agent) {
         var token = Door.callAsync("ReportFix", { series: series, files: files, app: Shell.release })
@@ -476,6 +489,18 @@ FocusScope {
     Connections {
         target: Door
         function onCallDone(token, reply) {
+            var applied = frame.fixApplies[token]
+            if (applied !== undefined) {
+                var rest = Object.assign({}, frame.fixApplies)
+                delete rest[token]
+                frame.fixApplies = rest
+                // The sheet says why when it is still up; the toast says it when it is not
+                if (reply.error) { frame.toast("The fix did not save: " + frame.errorText(reply.error), 8); return }
+                if (applied.report) frame.reportFix(applied.series, applied.fixed, applied.agent)
+                else if (applied.undone === applied.n) frame.toast(Fmt.plural(applied.n, "file", "files") + " read by name again")
+                else frame.toast("Fixed how " + Fmt.plural(applied.n, "file", "files") + " read")
+                return
+            }
             if (frame.fixReports[token] === undefined) return
             var next = Object.assign({}, frame.fixReports)
             delete next[token]

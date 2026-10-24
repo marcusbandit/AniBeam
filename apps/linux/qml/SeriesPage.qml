@@ -74,7 +74,7 @@ Item {
         : episodeRows.length > 0 ? "episodes" : detail && detail.extras.length > 0 ? "extras" : "stray"
     readonly property string pickNoun: deletePicked.every(function(f) { return page.episodeFiles.indexOf(f) >= 0 })
         ? (isMovie ? "film" : "episode") : "file"
-    function pickWords(n) { return n === 1 ? "1 " + pickNoun : n + " " + pickNoun + "s" }
+    function pickWords(n) { return Fmt.plural(n, pickNoun, pickNoun + "s") }
     function startDelete() { page.deletePicked = []; page.deleteError = ""; page.deleting = true }
     function togglePick(file) {
         var i = deletePicked.indexOf(file), next = deletePicked.slice()
@@ -86,9 +86,13 @@ Item {
         deletePicked = deletePicked.filter(function(f) { return page.pageFiles.indexOf(f) >= 0 })
     // Off the Qt thread: trashing big files can take a while. The picks stay until it worked.
     property real deleteToken: -1
+    // What the toast names once the trash answers: the picks as sent, since a reload while the
+    // call runs can drop picks whose files are already gone
+    property string deleteWords: ""
     function deletePickedFiles() {
         if (deleteToken >= 0 || deletePicked.length === 0) return
         page.deleteError = ""
+        page.deleteWords = page.pickWords(deletePicked.length)
         deleteToken = Door.callAsync("DeleteEpisodes", { series: page.props.id, files: deletePicked.slice() })
     }
     Connections {
@@ -97,10 +101,9 @@ Item {
             if (token !== page.deleteToken) return
             page.deleteToken = -1
             if (reply.error) { page.deleteError = frame.errorText(reply.error); return }
-            var words = page.pickWords(page.deletePicked.length)
             page.deleting = false
             page.deletePicked = []
-            frame.toast(words + " moved to the trash")
+            frame.toast(page.deleteWords + " moved to the trash")
         }
     }
     // Get episodes (#169): the Downloads page's show view for this series
@@ -128,7 +131,9 @@ Item {
             return x.length - y.length
         })
     }
-    function openFix(suggested) { fixSheet.openFor(page.props.id, page.title, page.fixRows(), suggested || null) }
+    // From the page's Quick fix the sheet comes filled in; from Fix files the suggestion waits
+    // behind Fill in, so a fix of another file never carries it along
+    function openFix(suggested, fill) { fixSheet.openFor(page.props.id, page.title, page.fixRows(), suggested || null, !!fill) }
     function rescan() { var r = Door.rescanSeries(page.props.id); frame.toast(r.error ? r.error.message : "Rescan started") }
     function load() {
         var r = Door.getSeries(props.id)
@@ -722,7 +727,7 @@ Item {
                         visible: page.filesHere > 0
                         small: true; ghost: true
                         text: "Fix files"; icon: "wrench"
-                        onClicked: page.openFix(page.detail ? page.detail.suggested_fix : null)
+                        onClicked: page.openFix(page.detail ? page.detail.suggested_fix : null, false)
                         Tooltip { text: "Say what a file really is when its name read wrong" }
                     }
                     Button { small: true; ghost: true; text: "Rescan"; icon: "refresh-cw"; onClicked: page.rescan() }
@@ -777,7 +782,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             small: true; primary: true
                             text: "Quick fix"; icon: "wrench"
-                            onClicked: page.openFix(page.detail.suggested_fix)
+                            onClicked: page.openFix(page.detail.suggested_fix, true)
                         }
                     }
                 }
