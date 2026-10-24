@@ -16,6 +16,7 @@ mod player;
 mod posters;
 mod prefs;
 mod remote;
+mod repos;
 mod video;
 mod worker;
 

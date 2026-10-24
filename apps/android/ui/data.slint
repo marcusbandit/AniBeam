@@ -192,6 +192,8 @@ export global AppData {
     in property <int> moving-count;
     in property <int> finished-count;
     in property <[SourceRow]> sources;
+    // What a search tries, in order: these and the endpoints installed from repos.
+    in property <[SourceRow]> search-sources;
     in-out property <string> new-source-name;
     in-out property <string> new-source-url;
     in property <string> source-error;

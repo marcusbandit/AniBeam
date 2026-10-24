@@ -5,6 +5,7 @@
 import { Theme } from "theme.slint";
 import { AppData } from "data.slint";
 import { Button, Field, Figure, ListGroup, ListRow, PageTitle, SectionHead, Slider } from "widgets.slint";
+import { RepoData, RepoPanes } from "repos.slint";
 
 // Questions a page asks over everything else; the window draws them.
 export global Ask {
@@ -98,6 +99,7 @@ component SourceItem inherits Rectangle {
     if root.removable: Button {
         x: parent.width - self.width - Theme.pad;
         y: (parent.height - self.height) / 2;
+        width: self.min-width;
         text: "Remove";
         small: true;
         danger: true;
@@ -230,8 +232,14 @@ export component MorePage inherits Rectangle {
             }
 
             SectionHead {
-                title: "Sources";
-                note: "Where Downloads looks";
+                title: "Endpoints";
+                note: RepoData.repos.length == 0 ? "No repo yet" : RepoData.repos.length == 1 ? "From 1 repo" : "From " + RepoData.repos.length + " repos";
+            }
+            RepoPanes { }
+
+            SectionHead {
+                title: "Your own feeds";
+                note: "Searched before the endpoints";
             }
             ListGroup {
                 for source[i] in AppData.sources: SourceItem {

@@ -684,7 +684,10 @@ export component Field inherits Rectangle {
     in-out property <string> text;
     in property <string> placeholder;
     in property <bool> figure;
+    // Typed as dots: a token, a password.
+    in property <bool> secret;
     callback accepted(string);
+    callback edited(string);
     height: 12 * Theme.unit;
     border-radius: Theme.radius-row + 4px;
     background: Theme.field;
@@ -708,7 +711,9 @@ export component Field inherits Rectangle {
         font-family: root.figure ? Theme.figure : Theme.face;
         vertical-alignment: center;
         single-line: true;
+        input-type: root.secret ? InputType.password : InputType.text;
         accepted => { root.accepted(self.text); }
+        edited => { root.edited(self.text); }
     }
 }
 

@@ -65,6 +65,16 @@ fn normal_url(url: &str) -> Result<String, CoreError> {
             "paste the address of a repo",
         ));
     }
+    // A phone keyboard capitalises the first letter: "Http://" is still an address.
+    let url = match url.split_once("://") {
+        Some((scheme, rest))
+            if scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https") =>
+        {
+            format!("{}://{rest}", scheme.to_ascii_lowercase())
+        }
+        _ => url.to_string(),
+    };
+    let url = url.as_str();
     if url.starts_with("http://") && !is_local_http(url) {
         return Err(CoreError::invalid("repo url", "the address must be https"));
     }
@@ -753,5 +763,9 @@ mod tests {
         assert!(normal_url("https://example.com/x.json").is_ok());
         assert!(normal_url("/tmp/general.json").is_ok());
         assert!(normal_url("  ").is_err());
+        assert_eq!(
+            normal_url("Https://example.com/x.json").unwrap(),
+            "https://example.com/x.json"
+        );
     }
 }
