@@ -108,6 +108,19 @@ pub async fn fetch_and_write(
     // then draws a blank poster for the next few seconds is worse than a
     // match that takes those seconds to report.
     core.images.ensure(&urls).await;
+
+    // A record of specials or OVAs reads a series' numbered specials as its
+    // episodes, and any other record reads them as specials (#167). When the
+    // series holds such files, the record that just landed is worth a scan.
+    let reread = core
+        .store
+        .write_async(move |c| crate::library::readings::record_matters(c, series))
+        .await
+        .unwrap_or(false);
+    if reread {
+        // A source that is away right now gets its scan when it is back.
+        let _ = crate::library::scan::rescan_series(core, series);
+    }
     Ok(())
 }
 

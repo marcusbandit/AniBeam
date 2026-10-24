@@ -316,6 +316,29 @@ pub enum Call {
         series: u64,
         files: Vec<u64>,
     },
+    /// Says what files of a series are, against how the scan read their names
+    /// (#170): each fix is stored by the file's path, so every later scan reads
+    /// the file the same way, and its watch history moves to the new key. A fix
+    /// with no reading hands the file back to the scan. Every file must belong
+    /// to `series`. Starts a scan of the series and replies with its job.
+    FixFiles {
+        series: u64,
+        fixes: Vec<FileFix>,
+    },
+    /// A filled in GitHub issue for the fixes on `files` of `series`, for the
+    /// user to read and send. With Claude Code or Codex installed, it runs one
+    /// read only triage first and the issue carries what it found; that can
+    /// take minutes, so call it off the shell's own thread.
+    ReportFix {
+        series: u64,
+        files: Vec<u64>,
+        /// The app's version as its shell reports it, for the issue; the
+        /// core's own when None.
+        #[serde(default)]
+        app: Option<String>,
+    },
+    /// Which coding agent `ReportFix` would ask for a triage, if any.
+    TriageAgent,
     /// Takes a show out of downloads in one go, as far as asked: the
     /// subscription (`rule`: its feed and download rule), with `torrents`
     /// the client's torrents for it (`hashes`), and with `files` what they
@@ -628,5 +651,12 @@ pub enum Reply {
     },
     CastState {
         state: Option<CastState>,
+    },
+    FixReport {
+        report: FixReport,
+    },
+    /// `Claude Code`, `Codex`, or None.
+    TriageAgent {
+        name: Option<String>,
     },
 }

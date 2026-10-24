@@ -96,6 +96,7 @@ impl Snapshot {
                     "d"
                 }
                 .to_string(),
+                fixed: f.fixed,
             }
         };
 
@@ -154,6 +155,16 @@ impl Snapshot {
             })
             .collect();
 
+        let absent_numbers: Vec<u32> = absent.iter().map(|a| a.number).collect();
+        let suggested_fix = suggest(
+            row.kind,
+            media.and_then(|m| m.format.as_deref()),
+            total,
+            row.provider == Some(Provider::Tvmaze),
+            files,
+            &absent_numbers,
+        );
+
         let mut extras: Vec<&FileRow> = files.iter().filter(|f| !f.is_episode).collect();
         extras.sort_by(|a, b| {
             extra_order(a.extra_kind)
@@ -200,6 +211,8 @@ impl Snapshot {
                         path: f.path.clone(),
                         sidecars: f.sidecars.clone(),
                         resume: self.resume_of(id, &f.episode_key),
+                        index: f.extra_index,
+                        fixed: f.fixed,
                     }
                 })
                 .collect(),
@@ -213,6 +226,7 @@ impl Snapshot {
             has_graph: row
                 .anilist_id
                 .is_some_and(|a| self.graph_seeds.contains(&a)),
+            suggested_fix,
             card,
         }))
     }
@@ -374,6 +388,146 @@ impl Snapshot {
     }
 }
 
+/// A misreading of a series' files the page can see on its own (#170), and
+/// the fixes that would undo it. The first of these that fits, never touching
+/// a file the user already fixed:
+///
+/// - A one-episode record (a film in its own folder, a lone OVA) holding one
+///   file that is not read as that episode: `Dai 63-kai ... - Movie` read as
+///   episode 63.
+/// - Numbered specials where the episodes they number are missing.
+/// - Every episode numbered past the record's count, in one unbroken run no
+///   longer than the count: a later season numbered on from the first, 13 to
+///   24 for this record's 1 to 12. A TVmaze match counts within its season and
+///   is left out.
+fn suggest(
+    kind: SeriesKind,
+    format: Option<&str>,
+    total: Option<u32>,
+    tvmaze: bool,
+    files: &[FileRow],
+    absent: &[u32],
+) -> Option<SuggestedFix> {
+    if kind != SeriesKind::Show || files.is_empty() || files.iter().any(|f| f.fixed) {
+        return None;
+    }
+    let to_episode = |f: &FileRow, number: u32| FileFix {
+        file: f.id,
+        reading: Some(FileReading::Episode {
+            number: f64::from(number),
+            season: None,
+        }),
+    };
+
+    if let ([only], Some(1)) = (files, total)
+        && !(only.is_episode && only.number == 1.0)
+    {
+        let read = if only.is_episode {
+            format!("episode {}", classifier::format_number(only.number))
+        } else {
+            only.label.to_lowercase()
+        };
+        let what = if format == Some("MOVIE") {
+            "the film"
+        } else {
+            "its one episode"
+        };
+        return Some(SuggestedFix {
+            text: format!("The one file here reads as {read}. It looks like {what}."),
+            fixes: vec![to_episode(only, 1)],
+        });
+    }
+
+    let specials: Vec<&FileRow> = files
+        .iter()
+        .filter(|f| !f.is_episode && f.extra_kind == Some(ExtraKind::Sp))
+        .collect();
+    let indexes: Vec<u32> = specials.iter().filter_map(|f| f.extra_index).collect();
+    let distinct: HashSet<u32> = indexes.iter().copied().collect();
+    if !specials.is_empty()
+        && indexes.len() == specials.len()
+        && distinct.len() == indexes.len()
+        && indexes.iter().all(|n| absent.contains(n))
+    {
+        let mut numbers = indexes.clone();
+        numbers.sort_unstable();
+        return Some(SuggestedFix {
+            text: format!(
+                "{} look like the missing {} {}.",
+                plural(specials.len(), "special", "specials"),
+                if numbers.len() == 1 {
+                    "episode"
+                } else {
+                    "episodes"
+                },
+                runs(&numbers)
+            ),
+            fixes: specials
+                .iter()
+                .map(|f| to_episode(f, f.extra_index.unwrap_or(0)))
+                .collect(),
+        });
+    }
+
+    let episodes: Vec<&FileRow> = files.iter().filter(|f| f.is_episode).collect();
+    if let (Some(total), false, false) = (total, tvmaze, episodes.is_empty()) {
+        let whole: Option<Vec<u32>> = episodes
+            .iter()
+            .map(|f| {
+                (f.number.fract() == 0.0 && f.season.is_none_or(|s| s <= 1))
+                    .then_some(f.number as u32)
+            })
+            .collect();
+        if let Some(mut numbers) = whole {
+            numbers.sort_unstable();
+            let first = numbers[0];
+            let last = numbers[numbers.len() - 1];
+            let unbroken = numbers.windows(2).all(|w| w[1] == w[0] + 1);
+            if first > total && unbroken && last - first < total {
+                let shift = first - 1;
+                return Some(SuggestedFix {
+                    text: format!(
+                        "Episodes {} look like this record's {}, numbered on from an earlier season.",
+                        runs(&numbers),
+                        runs(&numbers.iter().map(|n| n - shift).collect::<Vec<_>>())
+                    ),
+                    fixes: episodes
+                        .iter()
+                        .map(|f| to_episode(f, f.number as u32 - shift))
+                        .collect(),
+                });
+            }
+        }
+    }
+    None
+}
+
+fn plural(n: usize, one: &str, many: &str) -> String {
+    if n == 1 {
+        format!("1 {one}")
+    } else {
+        format!("{n} {many}")
+    }
+}
+
+/// Sorted whole numbers in words: `1 to 6`, `2, 4 and 7`, `1 and 2`, `3`.
+fn runs(numbers: &[u32]) -> String {
+    match numbers {
+        [] => String::new(),
+        [only] => only.to_string(),
+        [first, _, .., last] if numbers.windows(2).all(|w| w[1] == w[0] + 1) => {
+            format!("{first} to {last}")
+        }
+        [init @ .., last] => format!(
+            "{} and {last}",
+            init.iter()
+                .map(u32::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    }
+}
+
 /// Openings, then endings, previews, specials and the rest.
 fn extra_order(kind: Option<ExtraKind>) -> u8 {
     match kind.unwrap_or(ExtraKind::Other) {
@@ -403,4 +557,173 @@ fn tags_of(raw: &Value) -> Vec<Tag> {
 
 fn json_array(v: &Value) -> &[Value] {
     v.as_array().map(Vec::as_slice).unwrap_or(&[])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn file(id: u64, name: &str, episode: Option<f64>, special: Option<Option<u32>>) -> FileRow {
+        FileRow {
+            id,
+            series_id: 1,
+            path: format!("/lib/Show/{name}"),
+            mtime: 0,
+            is_episode: episode.is_some(),
+            number: episode.unwrap_or(0.0),
+            season: None,
+            extra_kind: special.map(|_| ExtraKind::Sp),
+            extra_index: special.flatten(),
+            label: if episode.is_some() {
+                name.to_string()
+            } else {
+                "Special".to_string()
+            },
+            episode_key: name.to_string(),
+            sidecars: Vec::new(),
+            fixed: false,
+        }
+    }
+
+    fn numbers(fix: &SuggestedFix) -> Vec<(u64, f64)> {
+        fix.fixes
+            .iter()
+            .map(|f| match f.reading {
+                Some(FileReading::Episode { number, .. }) => (f.file, number),
+                _ => panic!("not an episode"),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_film_folder_whose_one_file_reads_as_another_number() {
+        // Girls und Panzer der Film: `Dai 63-kai ... - Movie` read as episode 63.
+        let files = [file(7, "GuP - Dai 63-kai - Movie.mkv", Some(63.0), None)];
+        let fix = suggest(
+            SeriesKind::Show,
+            Some("MOVIE"),
+            Some(1),
+            false,
+            &files,
+            &[1],
+        )
+        .unwrap();
+        assert_eq!(
+            fix.text,
+            "The one file here reads as episode 63. It looks like the film."
+        );
+        assert_eq!(numbers(&fix), vec![(7, 1.0)]);
+        // Already episode 1, or a loose film file: nothing to say.
+        let files = [file(7, "Film.mkv", Some(1.0), None)];
+        assert!(suggest(SeriesKind::Show, Some("MOVIE"), Some(1), false, &files, &[]).is_none());
+        let files = [file(7, "Film 2019.mkv", Some(63.0), None)];
+        assert!(
+            suggest(
+                SeriesKind::Movie,
+                Some("MOVIE"),
+                Some(1),
+                false,
+                &files,
+                &[]
+            )
+            .is_none()
+        );
+    }
+
+    fn ovas() -> Vec<FileRow> {
+        (1..=6)
+            .map(|n| file(n, &format!("OVA {n}.mkv"), None, Some(Some(n as u32))))
+            .collect()
+    }
+
+    #[test]
+    fn numbered_specials_where_their_episodes_are_missing() {
+        let all = [1, 2, 3, 4, 5, 6];
+        let fix = suggest(SeriesKind::Show, Some("TV"), Some(6), false, &ovas(), &all).unwrap();
+        assert_eq!(
+            fix.text,
+            "6 specials look like the missing episodes 1 to 6."
+        );
+        assert_eq!(numbers(&fix)[5], (6, 6.0));
+        // A special whose episode is on disk, or one with no number, is no such case.
+        assert!(
+            suggest(
+                SeriesKind::Show,
+                Some("TV"),
+                Some(6),
+                false,
+                &ovas(),
+                &[1, 2, 3]
+            )
+            .is_none()
+        );
+        let mut loose = ovas();
+        loose[0].extra_index = None;
+        assert!(suggest(SeriesKind::Show, Some("TV"), Some(6), false, &loose, &all).is_none());
+        // Nor a series the user already fixed.
+        let mut fixed = ovas();
+        fixed[2].fixed = true;
+        assert!(suggest(SeriesKind::Show, Some("TV"), Some(6), false, &fixed, &all).is_none());
+    }
+
+    fn numbered_on() -> Vec<FileRow> {
+        (13..=24)
+            .map(|n| file(n, &format!("Show - {n}.mkv"), Some(n as f64), None))
+            .collect()
+    }
+
+    #[test]
+    fn a_season_numbered_on_from_the_last() {
+        let fix = suggest(
+            SeriesKind::Show,
+            Some("TV"),
+            Some(12),
+            false,
+            &numbered_on(),
+            &[],
+        )
+        .unwrap();
+        assert_eq!(
+            fix.text,
+            "Episodes 13 to 24 look like this record's 1 to 12, numbered on from an earlier season."
+        );
+        assert_eq!(numbers(&fix)[0], (13, 1.0));
+        // A gap, a run longer than the count, a TVmaze match or one file in range: no.
+        assert!(
+            suggest(
+                SeriesKind::Show,
+                Some("TV"),
+                Some(12),
+                true,
+                &numbered_on(),
+                &[]
+            )
+            .is_none()
+        );
+        assert!(
+            suggest(
+                SeriesKind::Show,
+                Some("TV"),
+                Some(11),
+                false,
+                &numbered_on(),
+                &[]
+            )
+            .is_none()
+        );
+        let mut gap = numbered_on();
+        gap.remove(3);
+        assert!(suggest(SeriesKind::Show, Some("TV"), Some(12), false, &gap, &[]).is_none());
+        let mut mixed = numbered_on();
+        mixed.push(file(99, "Show - 01.mkv", Some(1.0), None));
+        assert!(suggest(SeriesKind::Show, Some("TV"), Some(12), false, &mixed, &[]).is_none());
+    }
+
+    #[test]
+    fn numbers_in_words() {
+        assert_eq!(runs(&[3]), "3");
+        assert_eq!(runs(&[1, 2, 3]), "1 to 3");
+        assert_eq!(runs(&[2, 4, 7]), "2, 4 and 7");
+        assert_eq!(runs(&[1, 2]), "1 and 2");
+    }
 }

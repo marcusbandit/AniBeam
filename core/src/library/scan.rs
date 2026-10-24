@@ -14,6 +14,7 @@ use crate::contract::*;
 use crate::core::Core;
 use crate::jobs::{Finished, JobCtx};
 use crate::library::cards;
+use crate::library::readings;
 use crate::library::walk::{self, ScannedSeries};
 use crate::paths::{normalise, under};
 use crate::store::sql::placeholders;
@@ -202,6 +203,8 @@ pub fn reconcile_source(
         }
     }
 
+    // What the user said files are (#170), by path; few, so read once.
+    let fixes = readings::load_fixes(tx)?;
     let mut seen: HashSet<u64> = HashSet::new();
     // Series that lost a file to another one during this reconcile. A file
     // changes series without moving on disk whenever the walk reclassifies
@@ -227,6 +230,11 @@ pub fn reconcile_source(
             }
         };
         seen.insert(id);
+        // The names as the walk read them, then what the series' own record
+        // and the user's fixes say they are (`readings`).
+        let mut files = s.files.clone();
+        let format = readings::record_format(tx, id)?;
+        readings::apply(format.as_deref(), &mut files, &fixes);
 
         let mut old: HashMap<String, (u64, i64)> = HashMap::new();
         {
@@ -245,14 +253,14 @@ pub fn reconcile_source(
         }
 
         let mut file_changed = false;
-        let new_paths: HashSet<&str> = s.files.iter().map(|f| f.path.as_str()).collect();
+        let new_paths: HashSet<&str> = files.iter().map(|f| f.path.as_str()).collect();
         for (path, (file_id, _)) in &old {
             if !new_paths.contains(path.as_str()) {
                 tx.execute("DELETE FROM files WHERE id = ?1", params![*file_id as i64])?;
                 file_changed = true;
             }
         }
-        for f in &s.files {
+        for f in &files {
             let kind = if f.classified.extra.is_some() {
                 "extra"
             } else {

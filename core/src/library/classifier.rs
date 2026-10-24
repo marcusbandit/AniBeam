@@ -47,7 +47,7 @@ static EXTRA_PATTERNS: LazyLock<Vec<(ExtraKind, Regex)>> = LazyLock::new(|| {
             Regex::new(r"(?i)^(?:SP|Special|Specials)([0-9]+)?([a-z])?$").unwrap(),
         ),
         // An OVA is a special. A number glued on is its index; one apart
-        // (`OVA 2`) is a token of its own, as with `SP 2`.
+        // (`OVA 2`) is read by `index_apart`, as with `SP 2`.
         (
             ExtraKind::Sp,
             Regex::new(r"(?i)^(?:OVA|OAD|OAV)([0-9]+)?$").unwrap(),
@@ -122,13 +122,37 @@ struct ExtraHit {
     raw_label: String,
 }
 
+/// A bare number of up to three digits, a release revision allowed (`2v2`).
+/// A year has four, so `Special 2019` keeps no index.
+static BARE_INDEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^([0-9]{1,3})(?:v[0-9]+)?$").unwrap());
+
+/// The index of a special or a preview whose number stands apart from its
+/// token: `OVA 1`, `SP 2`, `Special - 03`, `PV 2`. One lone dash may sit
+/// between the two (#167).
+fn index_apart(rest: &[&str]) -> Option<u32> {
+    let next = match rest {
+        ["-", after, ..] => after,
+        [next, ..] => next,
+        [] => return None,
+    };
+    BARE_INDEX.captures(next)?.get(1)?.as_str().parse().ok()
+}
+
 fn find_extra_token(file_name: &str) -> Option<ExtraHit> {
-    for token in normalise_for_tokens(file_name).split_whitespace() {
+    let normalised = normalise_for_tokens(file_name);
+    let tokens: Vec<&str> = normalised.split_whitespace().collect();
+    for (at, token) in tokens.iter().enumerate() {
         for (kind, re) in EXTRA_PATTERNS.iter() {
             if let Some(m) = re.captures(token) {
+                let glued = m.get(1).and_then(|g| g.as_str().parse().ok());
+                let apart = || match kind {
+                    ExtraKind::Sp | ExtraKind::Pv => index_apart(&tokens[at + 1..]),
+                    _ => None,
+                };
                 return Some(ExtraHit {
                     kind: *kind,
-                    index: m.get(1).and_then(|g| g.as_str().parse().ok()),
+                    index: glued.or_else(apart),
                     variant: m.get(2).map(|g| g.as_str().to_lowercase()),
                     raw_label: token.to_string(),
                 });
@@ -482,6 +506,28 @@ mod tests {
         assert_eq!((c.extra, c.number), (None, 3.0));
         let c = ep("Monogatari Series - S05E05.mkv");
         assert_eq!((c.extra, c.number, c.season), (None, 5.0, Some(5)));
+    }
+
+    #[test]
+    fn a_number_apart_from_the_token_is_its_index() {
+        // The Girls und Panzer OVA Series files (#167).
+        let c = ep("[ak-Submarines] Girls und Panzer - OVA 1 [BD 1080p][F37D267C].mkv");
+        assert_eq!(
+            (c.extra, c.extra_index, c.number, c.season),
+            (Some(ExtraKind::Sp), Some(1), 1.0, Some(0))
+        );
+        assert_eq!(ep("Show - OVA 6 [1080p].mkv").extra_index, Some(6));
+        assert_eq!(ep("Show SP 2.mkv").extra_index, Some(2));
+        assert_eq!(ep("Show - Special 03 - The Title.mkv").extra_index, Some(3));
+        assert_eq!(ep("Show Special - 04.mkv").extra_index, Some(4));
+        assert_eq!(ep("Show OAD 2v2.mkv").extra_index, Some(2));
+        assert_eq!(ep("Show PV 2.mkv").extra_index, Some(2));
+        // A glued number still wins, and a year or a word is no index.
+        assert_eq!(ep("Show OVA2 3.mkv").extra_index, Some(2));
+        assert_eq!(ep("Show Special 2019.mkv").extra_index, None);
+        assert_eq!(ep("Show OVA Recap.mkv").extra_index, None);
+        // An opening needs its number glued on, as before.
+        assert_eq!(ep("Show - OP 2.mkv").extra, None);
     }
 
     #[test]

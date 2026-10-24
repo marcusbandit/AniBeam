@@ -601,6 +601,13 @@ impl Core {
             Call::DeleteEpisodes { series, files } => {
                 crate::library::delete::delete_episodes(self, series, files)
             }
+            Call::FixFiles { series, fixes } => {
+                crate::library::fixes::fix_files(self, series, fixes)
+            }
+            Call::ReportFix { series, files, app } => {
+                crate::library::report::report_fix(self, series, files, app)
+            }
+            Call::TriageAgent => crate::library::report::triage_agent(),
             // `reveal_hidden` is the shell's tab visibility, not a filter:
             // the Hidden tab always lists what it holds.
             Call::ListSeries {
