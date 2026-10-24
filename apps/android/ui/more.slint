@@ -5,6 +5,7 @@
 import { Theme } from "theme.slint";
 import { AppData } from "data.slint";
 import { Button, Field, Figure, ListGroup, ListRow, PageTitle, SectionHead, Slider } from "widgets.slint";
+import { RepoData, RepoPanes } from "repos.slint";
 
 // Questions a page asks over everything else; the window draws them.
 export global Ask {
@@ -98,6 +99,7 @@ component SourceItem inherits Rectangle {
     if root.removable: Button {
         x: parent.width - self.width - Theme.pad;
         y: (parent.height - self.height) / 2;
+        width: self.min-width;
         text: "Remove";
         small: true;
         danger: true;
@@ -109,44 +111,6 @@ component SourceItem inherits Rectangle {
         width: parent.width - 2 * Theme.pad;
         height: 1px;
         background: Theme.line;
-    }
-}
-
-// Adding a source: a name and an address with {query} where the search goes.
-component SourceForm inherits Rectangle {
-    height: column.preferred-height;
-    column := VerticalLayout {
-        padding: Theme.pad;
-        spacing: Theme.unit * 3;
-        Text {
-            text: "Add a source";
-            color: Theme.text;
-            font-family: Theme.strong-face;
-        }
-        Text {
-            text: "Any RSS feed with {query} where the search goes. For erai, paste your feed address from erai-raws.info with s={query}.";
-            color: Theme.dim;
-            font-size: Theme.small;
-            wrap: word-wrap;
-        }
-        Field { text <=> AppData.new-source-name; placeholder: "Name, like erai"; }
-        Field { text <=> AppData.new-source-url; placeholder: "https://...{query}..."; }
-        if AppData.source-error != "": Text {
-            text: AppData.source-error;
-            color: Theme.bad;
-            font-size: Theme.small;
-            wrap: word-wrap;
-        }
-        HorizontalLayout {
-            alignment: start;
-            Button {
-                text: "Add source";
-                small: true;
-                icon: @image-url("icons/rss.svg");
-                has-icon: true;
-                clicked => { AppData.add-source(AppData.new-source-name, AppData.new-source-url); }
-            }
-        }
     }
 }
 
@@ -230,8 +194,14 @@ export component MorePage inherits Rectangle {
             }
 
             SectionHead {
-                title: "Sources";
-                note: "Where Downloads looks";
+                title: "Endpoints";
+                note: RepoData.repos.length == 0 ? "No repo yet" : RepoData.repos.length == 1 ? "From 1 repo" : "From " + RepoData.repos.length + " repos";
+            }
+            RepoPanes { }
+
+            SectionHead {
+                title: "Built in";
+                note: "Searched before the endpoints";
             }
             ListGroup {
                 for source[i] in AppData.sources: SourceItem {
@@ -240,7 +210,6 @@ export component MorePage inherits Rectangle {
                     removable: i > 0;
                     remove => { AppData.remove-source(i); }
                 }
-                SourceForm { }
             }
 
             SectionHead {

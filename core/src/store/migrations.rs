@@ -14,12 +14,13 @@ pub static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
         M::up(include_str!("sql/0004_imdb.sql")).foreign_key_check(),
         M::up(include_str!("sql/0005_events_without_keys.sql")).foreign_key_check(),
         M::up(include_str!("sql/0006_unmatch_imported_shorts.sql")).foreign_key_check(),
+        M::up(include_str!("sql/0007_endpoint_repos.sql")).foreign_key_check(),
     ])
 });
 
 /// The count. Private to the crate so this `usize` never crosses the
 /// contract boundary (constraint 10 forbids `usize` in any exported type).
-pub(crate) const SCHEMA_VERSION: usize = 6;
+pub(crate) const SCHEMA_VERSION: usize = 7;
 
 /// Refuses a database written by a newer build, then applies what is pending
 /// inside rusqlite_migration's own transaction.

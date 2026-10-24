@@ -107,8 +107,11 @@ impl EventListener for ChannelListener {
 /// `secrets.json` and never probes the machine's keyring: a sandbox is
 /// asked for precisely so it touches nothing outside itself, and a keyring
 /// prompt on the owner's screen is the opposite of that. Without a root the
-/// core makes the choice itself, keyring first.
+/// core makes the choice itself, keyring first. A root also runs against the
+/// owner's real anirss and qBittorrent, so it changes nothing there on its
+/// own, as the desktop's sandbox runs do: no pruning, no endpoint writes.
 fn open(root: Option<PathBuf>) -> Arc<Core> {
+    let sandbox = root.is_some();
     let opened = match root {
         Some(r) => {
             let paths = CorePaths::under(&r);
@@ -123,10 +126,14 @@ fn open(root: Option<PathBuf>) -> Arc<Core> {
             Core::open(paths)
         }
     };
-    opened.unwrap_or_else(|e| {
+    let core = opened.unwrap_or_else(|e| {
         eprintln!("{e}");
         std::process::exit(2);
-    })
+    });
+    if sandbox {
+        core.disable_unattended_changes();
+    }
+    core
 }
 
 /// Sends one call, prints the reply as JSON, and with `wait` set, stays

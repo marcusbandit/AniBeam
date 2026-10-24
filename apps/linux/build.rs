@@ -106,6 +106,7 @@ fn main() {
             .qml_file("qml/SubtitlePreview.qml")
             .qml_file("qml/SettingsPlaybackTab.qml")
             .qml_file("qml/SettingsDownloadsTab.qml")
+            .qml_file("qml/EndpointReposPanel.qml")
             .qml_file("qml/DownloadsPage.qml")
             .qml_file("qml/ReleaseTable.qml")
             .qml_file("qml/SearchProgress.qml")

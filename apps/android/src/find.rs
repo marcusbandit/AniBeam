@@ -637,7 +637,7 @@ impl Find {
 
     fn open_show(&mut self, offer: Offer) {
         let sources = crate::local::core()
-            .and_then(|c| match c.call(Call::PhoneSources) {
+            .and_then(|c| match c.call(Call::PhoneSearchSources) {
                 Ok(Reply::PhoneSources { sources }) => Some(sources),
                 _ => None,
             })

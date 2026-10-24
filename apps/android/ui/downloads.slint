@@ -232,7 +232,7 @@ export component DownloadsPage inherits Rectangle {
                     FindData.search(t);
                 }
             }
-            if FindData.view == 0 && AppData.sources.length > 0: HorizontalLayout {
+            if FindData.view == 0 && AppData.search-sources.length > 0: HorizontalLayout {
                 spacing: Theme.unit * 1.5;
                 alignment: start;
                 Text {
@@ -241,7 +241,7 @@ export component DownloadsPage inherits Rectangle {
                     font-size: Theme.small + 0.5px;
                     vertical-alignment: center;
                 }
-                for s in AppData.sources: Chip {
+                for s in AppData.search-sources: Chip {
                     text: s.name;
                     small: true;
                     dimmed: !s.enabled;

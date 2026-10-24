@@ -25,6 +25,7 @@ pub mod phone;
 pub mod playback;
 pub mod prefs;
 pub mod releases;
+pub mod repos;
 pub mod store;
 pub mod subscriptions;
 pub(crate) mod sync;

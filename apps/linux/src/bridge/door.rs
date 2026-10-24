@@ -361,6 +361,11 @@ pub mod qobject {
         /// Any call by name, the CLI's door.
         #[qinvokable]
         fn call(self: &Door, name: &QString, args: &QJsonObject) -> QJsonObject;
+        /// The same off the Qt thread, for a call that waits on the network (fetching an
+        /// endpoint repo): returns a token at once, and the reply comes back as
+        /// `callDone(token, reply)` in the shape `call` returns.
+        #[qinvokable]
+        fn call_async(self: &Door, name: &QString, args: &QJsonObject) -> f64;
         #[qinvokable]
         fn mark_log_seen(self: Pin<&mut Door>);
 
@@ -369,6 +374,8 @@ pub mod qobject {
         fn event(self: Pin<&mut Door>, envelope: QJsonObject);
         #[qsignal]
         fn job_finished(self: Pin<&mut Door>, job: f64, kind: QString, ok: bool);
+        #[qsignal]
+        fn call_done(self: Pin<&mut Door>, token: f64, reply: QJsonObject);
         // One per event body. `ready` is `ready()` in QML; the Rust name steps aside so the
         // `ready` property keeps its generated getter.
         #[qsignal]
@@ -1695,6 +1702,30 @@ impl qobject::Door {
             id: (!id.is_empty()).then_some(id),
         }))
     }
+    pub fn call_async(&self, name: &QString, args: &QJsonObject) -> f64 {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        let token = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed) as f64;
+        let call = json::call_from(&name.to_string(), from_qjson_object(args))
+            .map_err(|e| CoreError::invalid("call", e));
+        let qt = self.qt_thread();
+        let spawned = std::thread::Builder::new()
+            .name("door-call".into())
+            .spawn(move || {
+                let reply = match call {
+                    Ok(c) => json::reply_json(crate::runtime::core().call(c)),
+                    Err(e) => json!({ "error": json::error_json(&e) }),
+                };
+                qt.queue(move |door: Pin<&mut qobject::Door>| {
+                    door.call_done(token, to_qjson_object(&reply))
+                })
+                .ok();
+            });
+        if spawned.is_err() {
+            return -1.0;
+        }
+        token
+    }
+
     pub fn call(&self, name: &QString, args: &QJsonObject) -> QJsonObject {
         self.dispatch(
             json::call_from(&name.to_string(), from_qjson_object(args))

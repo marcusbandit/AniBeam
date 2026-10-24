@@ -121,6 +121,11 @@ thread_local! {
     static APP: RefCell<Option<App>> = const { RefCell::new(None) };
 }
 
+/// Endpoints were installed, removed or switched: the search page's chips follow.
+pub fn endpoints_changed() {
+    with_app(App::show_search_sources);
+}
+
 fn with_app(f: impl FnOnce(&mut App)) {
     APP.with(|app| {
         if let Some(app) = app.borrow_mut().as_mut() {
@@ -351,6 +356,18 @@ impl App {
             .collect();
         data.set_sources(ModelRc::new(VecModel::from(rows)));
         self.sources = sources;
+        self.show_search_sources();
+    }
+
+    /// The Downloads chips: the sources and the installed endpoints, in search order.
+    fn show_search_sources(&mut self) {
+        let Some(core) = crate::local::core() else { return };
+        let Ok(Reply::PhoneSources { sources }) = core.call(Call::PhoneSearchSources) else { return };
+        let rows: Vec<SourceRow> = sources
+            .iter()
+            .map(|s| SourceRow { name: s.name.clone().into(), url: s.url.clone().into(), enabled: s.enabled })
+            .collect();
+        self.data().set_search_sources(ModelRc::new(VecModel::from(rows)));
     }
 
     fn torrent_action(&mut self, hash: String, action: i32) {
@@ -447,6 +464,7 @@ impl App {
         if self.sources.is_empty() {
             self.load_sources();
         }
+        crate::repos::opened();
         self.polling = true;
         let _ = std::thread::Builder::new().name("torrents".into()).spawn(move || {
             let answer = core.call(Call::PhoneTorrents);
@@ -837,6 +855,7 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
     });
 
     crate::find::install(&window, data_dir.clone());
+    crate::repos::install(&window);
 
     let now = anibeam_companion::now();
     let mut app = App {

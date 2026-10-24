@@ -121,6 +121,8 @@ pub struct Core {
     /// The phone's own sources and torrent engine (`Phone*` calls).
     #[cfg_attr(not(feature = "phone"), allow(dead_code))]
     pub(crate) phone: crate::phone::Phone,
+    /// Repo indexes fetched for a preview and not trusted yet.
+    pub(crate) repos: crate::repos::Pending,
     /// Casting to Chromecasts and DLNA TVs (`Cast*` calls).
     #[cfg_attr(not(feature = "cast"), allow(dead_code))]
     pub(crate) cast: crate::cast::Cast,
@@ -263,6 +265,7 @@ impl Core {
             crawl_recent: Mutex::new(HashMap::new()),
             downloads: Arc::new(crate::downloads::Downloads::default()),
             phone: crate::phone::Phone::default(),
+            repos: crate::repos::Pending::default(),
             cast: crate::cast::Cast::default(),
             host,
             me: me.clone(),
@@ -892,6 +895,38 @@ impl Core {
                 sources: crate::phone::sources(self),
             }),
             Call::SetPhoneSources { sources } => crate::phone::set_sources(self, sources),
+            Call::PhoneSearchSources => Ok(Reply::PhoneSources {
+                sources: crate::phone::search_sources(self),
+            }),
+            Call::ListRepoEndpoints => Ok(Reply::EndpointCatalog {
+                catalog: crate::repos::catalog(self)?,
+            }),
+            Call::AddEndpointRepo { url } => crate::repos::add_repo(self, url),
+            Call::TrustEndpointRepo { url, key } => crate::repos::trust_repo(self, url, key),
+            Call::RemoveEndpointRepo { url } => crate::repos::remove_repo(self, url),
+            Call::RefreshEndpointRepos => crate::repos::refresh(self),
+            Call::InstallEndpoint {
+                repo,
+                id,
+                credentials,
+            } => crate::repos::install(self, repo, id, credentials),
+            Call::UpdateEndpoint {
+                install,
+                credentials,
+            } => crate::repos::update(self, install, credentials),
+            Call::RemoveEndpoint { install } => crate::repos::remove(self, install),
+            Call::SetEndpointCredentials {
+                install,
+                credentials,
+            } => crate::repos::set_credentials(self, install, credentials),
+            Call::SetEndpointEnabled { install, enabled } => {
+                crate::repos::set_enabled(self, install, enabled)
+            }
+            Call::AddCustomEndpoint {
+                name,
+                url,
+                credentials,
+            } => crate::repos::add_custom(self, name, url, credentials),
             Call::PhoneSearch {
                 query,
                 endpoint,
