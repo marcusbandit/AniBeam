@@ -2,7 +2,7 @@
 // places the app is for, Home and Library, each a glyph over its name. The rest of the app
 // (Feed, Watching, Metadata, Downloads, Settings) is a quiet stack of round glyph buttons near the
 // foot, named by their tips, and the foot itself holds the title-language switch and the
-// version. The active place takes the soft accent; nothing else is lit.
+// version, which opens What's new. The active place takes the soft accent; nothing else is lit.
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -13,6 +13,7 @@ Item {
     // Complete subscriptions waiting to be cleared: a red count on Downloads
     property int downloadsBadge: 0
     signal picked(int index)
+    signal versionClicked()
 
     readonly property var primary: [
         { index: 0, text: "Home", icon: "house" }, { index: 1, text: "Library", icon: "layers" }
@@ -187,13 +188,17 @@ Item {
             }
             Tooltip { text: "Title language: Romaji, English or Japanese" }
         }
+        // The version: a click opens What's new
         Label {
+            objectName: "rail-version"
             width: root.itemWidth
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.Wrap
             text: Shell.release
             role: "ledger"
-            color: theme.textFaint
+            color: versionMouse.containsMouse ? theme.text : theme.textFaint
+            MouseArea { id: versionMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.versionClicked() }
+            Tooltip { text: "What's new" }
         }
     }
 }

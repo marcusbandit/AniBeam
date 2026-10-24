@@ -72,10 +72,10 @@ FocusScope {
     // Frame-owned overlays outlive a page. A navigation clears the stack, so they are
     // pushed back after the clear, in the order they were opened.
     function reclaimFrameOwned() {
-        var keep = escapeStack.entries.filter(function(e) { return e.closer === drawer || e.closer === connectSheet })
+        var keep = escapeStack.entries.filter(function(e) { return e.closer === drawer || e.closer === connectSheet || e.closer === whatsNew })
         escapeStack.clear()
         keep.forEach(function(e) {
-            if (e.closer === drawer ? drawer.open : connectSheet.visible) escapeStack.push(e.kind, e.closer)
+            if (e.closer === drawer ? drawer.open : e.closer.visible) escapeStack.push(e.kind, e.closer)
         })
     }
 
@@ -137,6 +137,7 @@ FocusScope {
         active: nav.railIndex
         downloadsBadge: frame.downloadsAttention
         onPicked: function(i) { if (i !== nav.railIndex || nav.current.page !== nav.railPages[i]) frame.go(nav.railPages[i]) }
+        onVersionClicked: frame.openWhatsNew()
     }
 
     Item {
@@ -160,6 +161,7 @@ FocusScope {
             onLoaded: {
                 if (nav.pendingScroll > 0 && item.scrollY !== undefined) Qt.callLater(function() { if (page.item) page.item.scrollY = nav.pendingScroll })
                 item.forceActiveFocus()
+                frame.startNotes()
             }
         }
 
@@ -369,6 +371,7 @@ FocusScope {
         z: 600
         Menu { id: menu }
         RemoveSheet { id: removeSheet }
+        WhatsNew { id: whatsNew }
         Frost {
             id: tip
             visible: false
@@ -387,6 +390,18 @@ FocusScope {
             Timer { id: toastTimer; onTriggered: toastBox.visible = false }
         }
     }
+    // What's new: once the first page is up, so the page taking focus as it loads does not
+    // take the keys from the sheet. Never in a capture run, which draws what it was asked to;
+    // a drive opens it with frame.openWhatsNew().
+    property bool notesStarted: false
+    function startNotes() {
+        if (notesStarted) return
+        notesStarted = true
+        if (Shell.shoot === "" && Shell.driveOut === "") whatsNew.start()
+    }
+    function openWhatsNew() { whatsNew.open() }
+    readonly property alias notesPanel: whatsNew
+
     function openMenu(x, y, items) { menu.openAt(x, y, items) }
     function closeMenu() { menu.close() }
     // A tip belongs to the area the pointer is over (`area`, the anchor item itself unless a

@@ -3,8 +3,9 @@
 //! the JSON props that page opens with. A --drive run also carries its script's text and
 //! the directory its shots land in, and the input invokables the QML driver sends through.
 //! The url of shell.conf, in the config directory, rides along for the few things QML keeps
-//! for itself (the library's tracker nudge, once dismissed), so a --root run keeps them
-//! inside its sandbox too.
+//! for itself (the library's tracker nudge, once dismissed, and the versions What's new has
+//! shown), so a --root run keeps them inside its sandbox too. What's new reads the built-in
+//! CHANGELOG.md through here.
 //!
 //! It is also where the session bus starts, because this object exists exactly once and
 //! exists as soon as the engine loads Main.qml. Its thread handle is what the
@@ -92,6 +93,10 @@ pub mod qobject {
         /// Hyprland. False when xdg-open could not start.
         #[qinvokable]
         fn open_url(self: &Self, url: &QString) -> bool;
+        /// What's new for this build, from the two versions QML keeps in shell.conf: whether
+        /// it opens by itself, what to keep now and once it closes, and what it shows. JSON.
+        #[qinvokable]
+        fn whats_new(self: &Self, seen: &QString, from: &QString) -> QString;
     }
 
     impl cxx_qt::Threading for Shell {}
@@ -154,6 +159,29 @@ fn settings_url(config_dir: &std::path::Path) -> QString {
     let file = std::path::absolute(&file).unwrap_or(file);
     let url = cxx_qt_lib::QUrl::from_local_file(&QString::from(file.to_string_lossy().as_ref()));
     QString::from(String::from_utf8_lossy(url.to_encoded().as_slice()).as_ref())
+}
+
+/// The desktop's notes, built in. The core's tests hold the newest heading to the workspace
+/// version, which is this crate's.
+const NOTES: &str = include_str!("../../CHANGELOG.md");
+
+impl qobject::Shell {
+    pub fn whats_new(&self, seen: &QString, from: &QString) -> QString {
+        use anibeam_core::changelog::{self, Seen};
+        let seen = Seen {
+            version: seen.to_string(),
+            from: from.to_string(),
+        };
+        let current = env!("CARGO_PKG_VERSION");
+        let used = crate::runtime::used_before();
+        let state = serde_json::json!({
+            "due": seen.due(current, used),
+            "started": seen.started(current, used),
+            "closed": seen.closed(current),
+            "view": changelog::view(&changelog::parse(NOTES), current, &seen, used),
+        });
+        QString::from(state.to_string().as_str())
+    }
 }
 
 impl cxx_qt::Initialize for qobject::Shell {

@@ -118,6 +118,7 @@ fn main() {
     // finds it already there. A run under --root keeps its secrets in that root's own
     // secrets.json and never probes the machine's keyring: a sandbox is asked for
     // precisely so it touches nothing outside itself.
+    runtime::install_used_before(runtime::paths().core.db_path().exists());
     let core = {
         let core_paths = runtime::paths().core.clone();
         let opened = match runtime::args().root.as_deref() {
