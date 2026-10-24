@@ -170,6 +170,7 @@ impl Snapshot {
                 .unwrap_or_default(),
             year: media.and_then(|m| m.year),
             studio: media.and_then(|m| m.studio.clone()),
+            episode_minutes: media.and_then(|m| m.duration).filter(|m| *m > 0),
             genres: media.map(|m| m.genres.clone()).unwrap_or_default(),
             tags: media.map(|m| tags_of(&m.tags)).unwrap_or_default(),
             rewatch_count: entry.map(|e| e.repeat).filter(|r| *r > 0),

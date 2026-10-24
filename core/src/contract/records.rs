@@ -277,6 +277,11 @@ pub struct SeriesDetail {
     pub synopsis: String,
     pub year: Option<u32>,
     pub studio: Option<String>,
+    /// How many minutes an episode runs, a film's runtime for a film: the
+    /// AniList record's duration, or the TVmaze show's average runtime.
+    /// None when the record gives no figure.
+    #[serde(default)]
+    pub episode_minutes: Option<u32>,
     pub genres: Vec<String>,
     pub tags: Vec<Tag>,
     pub rewatch_count: Option<u32>,

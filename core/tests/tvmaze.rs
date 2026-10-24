@@ -162,6 +162,8 @@ fn assert_avatar_drawn(core: &Core, series: u64) {
     assert!(!d.synopsis.contains('<'), "{}", d.synopsis);
     assert_eq!(d.year, Some(2026));
     assert_eq!(d.studio.as_deref(), Some("Paramount+"));
+    // The show's averageRuntime.
+    assert_eq!(d.episode_minutes, Some(22));
     assert_eq!(
         d.genres,
         vec!["Action".to_string(), "Adventure".to_string()]
@@ -1085,6 +1087,8 @@ fn an_ended_multi_season_show_judges_each_file_against_its_own_season() {
 
     let d = detail(&core, series);
     assert!(d.unmatched_files.is_empty(), "{:#?}", d.unmatched_files);
+    // A show stored with no averageRuntime gives no length.
+    assert_eq!(d.episode_minutes, None);
     assert_eq!(d.episodes.len(), 18);
     assert_eq!(
         (d.card.total_episodes, d.card.total_is_estimate),

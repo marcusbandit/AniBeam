@@ -110,6 +110,16 @@ pub fn clock_ms(secs: f64) -> String {
     }
 }
 
+/// How long an episode or a film runs: "24 min", "1 h 52 min", or "2 h" on the hour. An
+/// unknown length is the caller's to leave out, never a 0 passed here.
+pub fn runtime(minutes: u32) -> String {
+    match (minutes / 60, minutes % 60) {
+        (0, m) => format!("{m} min"),
+        (h, 0) => format!("{h} h"),
+        (h, m) => format!("{h} h {m} min"),
+    }
+}
+
 pub fn bytes(n: u64) -> String {
     const UNITS: [&str; 4] = ["B", "KB", "MB", "GB"];
     let mut v = n as f64;
@@ -233,6 +243,15 @@ mod tests {
         assert_eq!(clock_ms(95.9705), "1:35.971");
         assert_eq!(clock_ms(3600.5), "1:00:00.500");
         assert_eq!(clock_ms(f64::NAN), "0:00.000");
+    }
+
+    #[test]
+    fn runtimes_read_in_hours_and_minutes() {
+        assert_eq!(runtime(24), "24 min");
+        assert_eq!(runtime(59), "59 min");
+        assert_eq!(runtime(60), "1 h");
+        assert_eq!(runtime(112), "1 h 52 min");
+        assert_eq!(runtime(120), "2 h");
     }
 
     #[test]
