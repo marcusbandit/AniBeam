@@ -226,7 +226,7 @@ export component RepoAdd inherits Rectangle {
                 }
             }
         }
-        if RepoData.error != "": Text {
+        if RepoData.error != "" && !RepoData.asking: Text {
             text: RepoData.error;
             color: Theme.bad;
             font-size: Theme.small;
@@ -358,13 +358,11 @@ export component EndpointItem inherits Rectangle {
                 clicked => { root.act(); }
             }
         }
-        // One line: a wrapped line here misreports its height and pushes the buttons out of
-        // the row.
         if root.endpoint.note != "": Text {
             text: root.endpoint.note;
             color: root.endpoint.warn ? Theme.warn : Theme.dim;
             font-size: Theme.small;
-            overflow: elide;
+            wrap: word-wrap;
         }
         if root.endpoint.installed: HorizontalLayout {
             spacing: Theme.gap;
@@ -434,6 +432,12 @@ export component AskValues inherits Rectangle {
                 placeholder: f.label;
                 edited(t) => { RepoData.set-value(i, t); }
             }
+        }
+        if RepoData.error != "": Text {
+            text: RepoData.error;
+            color: Theme.bad;
+            font-size: Theme.small;
+            wrap: word-wrap;
         }
         HorizontalLayout {
             spacing: Theme.gap;

@@ -386,23 +386,6 @@ impl App {
         });
     }
 
-    fn add_source(&mut self, name: String, url: String) {
-        let Some(core) = crate::local::core() else { return };
-        let mut sources = self.sources.clone();
-        sources.push(PhoneSource { name: name.trim().to_string(), kind: "rss".into(), url: url.trim().to_string(), enabled: true });
-        match core.call(Call::SetPhoneSources { sources }) {
-            Ok(Reply::PhoneSources { sources }) => {
-                self.show_sources(sources);
-                let data = self.data();
-                data.set_source_error("".into());
-                data.set_new_source_name("".into());
-                data.set_new_source_url("".into());
-            }
-            Ok(_) => {}
-            Err(e) => self.data().set_source_error(e.to_string().into()),
-        }
-    }
-
     fn remove_source(&mut self, index: i32) {
         let Some(core) = crate::local::core() else { return };
         let Ok(index) = usize::try_from(index) else { return };
@@ -837,7 +820,6 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
     data.on_test_host(|text| with_app(|app| app.test_host(&text)));
     data.on_save_host(|text| with_app(|app| app.save_host(&text)));
     data.on_torrent_action(|hash, action| with_app(|app| app.torrent_action(hash.to_string(), action)));
-    data.on_add_source(|name, url| with_app(|app| app.add_source(name.to_string(), url.to_string())));
     data.on_remove_source(|i| with_app(|app| app.remove_source(i)));
     data.on_run_check(|| with_app(App::run_check));
     data.on_copy_check(|| {

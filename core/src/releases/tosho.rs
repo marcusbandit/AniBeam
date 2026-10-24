@@ -1,15 +1,11 @@
 //! AnimeTosho, a mirror of nyaa's (and other trackers') releases with a JSON feed. Not an
-//! anirss endpoint kind: the phone carries it as a second built-in source, for networks that
-//! block nyaa. Its releases come with magnet links, so nothing is fetched from nyaa itself.
+//! anirss endpoint kind: the `tosho` kind a repo definition can name, for networks that block
+//! nyaa. The JSON feed lives at the site's own path; `feed.animetosho.org` does not resolve. Its releases come with magnet links, so nothing is fetched from nyaa itself.
 
 use std::time::Duration;
 
 use crate::contract::*;
 use crate::net::{Http, HttpRequest, Method};
-
-/// The JSON feed's search URL. `feed.animetosho.org` does not resolve; the site's own path
-/// serves the same feed.
-pub const SEARCH_URL: &str = "https://animetosho.org/feed/json?q={query}";
 
 /// One entry of the JSON feed, as far as a release needs.
 #[derive(serde::Deserialize)]
