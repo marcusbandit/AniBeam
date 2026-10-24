@@ -194,7 +194,6 @@ Item {
             text: Shell.release
             role: "ledger"
             color: theme.textFaint
-            Tooltip { text: Shell.version }
         }
     }
 }
