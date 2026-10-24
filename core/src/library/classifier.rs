@@ -127,16 +127,28 @@ struct ExtraHit {
 static BARE_INDEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)^([0-9]{1,3})(?:v[0-9]+)?$").unwrap());
 
+/// A season and episode code standing in for the number: `S01E03`, its
+/// episode the index.
+static CODE_INDEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^S[0-9]{1,2}E([0-9]{1,3})(?:v[0-9]+)?$").unwrap());
+
 /// The index of a special or a preview whose number stands apart from its
-/// token: `OVA 1`, `SP 2`, `Special - 03`, `PV 2`. One lone dash may sit
-/// between the two (#167).
+/// token: `OVA 1`, `SP 2`, `Special - 03`, `PV 2`, and `OVA - S01E03`, where
+/// a folder of OVAs numbers them as episodes of a season. One lone dash may
+/// sit between the two (#167).
 fn index_apart(rest: &[&str]) -> Option<u32> {
     let next = match rest {
         ["-", after, ..] => after,
         [next, ..] => next,
         [] => return None,
     };
-    BARE_INDEX.captures(next)?.get(1)?.as_str().parse().ok()
+    BARE_INDEX
+        .captures(next)
+        .or_else(|| CODE_INDEX.captures(next))?
+        .get(1)?
+        .as_str()
+        .parse()
+        .ok()
 }
 
 fn find_extra_token(file_name: &str) -> Option<ExtraHit> {
@@ -528,6 +540,18 @@ mod tests {
         assert_eq!(ep("Show OVA Recap.mkv").extra_index, None);
         // An opening needs its number glued on, as before.
         assert_eq!(ep("Show - OP 2.mkv").extra, None);
+        // A season and episode code after the token: a folder of OVAs that
+        // numbers them as a season's episodes (LiamPalmqvist's layout, #177).
+        let c = ep("Seitokai Yakuindomo OVA - S01E03.mkv");
+        assert_eq!((c.extra, c.extra_index), (Some(ExtraKind::Sp), Some(3)));
+        assert_eq!(
+            ep("Seitokai Yakuindomo OVA - S02E10.mkv").extra_index,
+            Some(10)
+        );
+        assert_eq!(ep("Show OVA S01E02v2.mkv").extra_index, Some(2));
+        // The series' own episodes beside them are untouched.
+        let c = ep("Seitokai Yakuindomo S1 - S01E01.mkv");
+        assert_eq!((c.extra, c.number, c.season), (None, 1.0, Some(1)));
     }
 
     #[test]

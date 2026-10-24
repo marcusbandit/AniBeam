@@ -278,6 +278,23 @@ mod tests {
     }
 
     #[test]
+    fn ovas_numbered_as_a_season_read_as_the_records_episodes() {
+        // `Season 1 OVAs/Seitokai Yakuindomo OVA - S01E01.mkv` and on, the
+        // folder matched to the OVA record (AniList 10119, 8 episodes).
+        let mut files: Vec<ScannedFile> = (1..=8)
+            .map(|n| {
+                walked(&format!(
+                    "/lib/Season 1 OVAs/Seitokai Yakuindomo OVA - S01E{n:02}.mkv"
+                ))
+            })
+            .collect();
+        apply(Some("OVA"), &mut files, &HashMap::new());
+        let numbers: Vec<f64> = files.iter().map(|f| f.classified.number).collect();
+        assert!(files.iter().all(|f| f.classified.extra.is_none()));
+        assert_eq!(numbers, (1..=8).map(f64::from).collect::<Vec<_>>());
+    }
+
+    #[test]
     fn any_other_record_or_a_regular_episode_leaves_them_specials() {
         for format in [None, Some("TV"), Some("MOVIE")] {
             let mut files = gup();
