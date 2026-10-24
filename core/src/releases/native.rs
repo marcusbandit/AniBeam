@@ -74,7 +74,7 @@ impl Native {
         if self.endpoints.is_empty() {
             return Err(CoreError::invalid(
                 "endpoint",
-                "no sources to search; add one first",
+                "no endpoints yet: add a repo, or one by hand, under Endpoints in More",
             ));
         }
         match name {

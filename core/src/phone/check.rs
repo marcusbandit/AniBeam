@@ -1,7 +1,8 @@
 //! The connection check: what stands between the phone and each source, one layer at a
 //! time, so a person (or whoever helps them) sees where a search stops. For each host: the
 //! network's own DNS, DNS over HTTPS, a plain TCP connection to each address, and a whole
-//! HTTPS request. A site no network blocks is checked the same way, as the yardstick.
+//! HTTPS request. The hosts are the ones this phone's searches go to; a site no network
+//! blocks is checked the same way, as the yardstick.
 
 use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, Instant};
@@ -12,20 +13,33 @@ use crate::net::{HttpRequest, Method};
 
 const STEP: Duration = Duration::from_secs(6);
 
-/// The hosts checked: the sources, the DNS-over-HTTPS resolvers, and the yardstick.
-const HOSTS: [(&str, &str); 5] = [
-    ("nyaa.si", "https://nyaa.si/?page=rss&q=frieren"),
-    (
-        "animetosho.org",
-        "https://animetosho.org/feed/json?q=frieren",
-    ),
-    ("www.erai-raws.info", "https://www.erai-raws.info/"),
+/// Checked beside the sources: the DNS-over-HTTPS resolver, and a site no network blocks as
+/// the yardstick.
+const ALWAYS: [(&str, &str); 2] = [
     (
         "one.one.one.one",
-        "https://1.1.1.1/dns-query?name=nyaa.si&type=A",
+        "https://1.1.1.1/dns-query?name=example.com&type=A",
     ),
     ("example.com", "https://example.com/"),
 ];
+
+/// The hosts a search on this phone goes to, one each, with the site's front page to fetch.
+fn searched_hosts(core: &Core) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    for s in super::search_sources(core) {
+        let host = crate::repos::index::host_of(&s.url);
+        if host.is_empty() || out.iter().any(|(h, _)| *h == host) {
+            continue;
+        }
+        let scheme = if s.url.starts_with("http://") {
+            "http"
+        } else {
+            "https"
+        };
+        out.push((host.clone(), format!("{scheme}://{host}/")));
+    }
+    out
+}
 
 fn ms(since: Instant) -> u64 {
     since.elapsed().as_millis() as u64
@@ -168,13 +182,23 @@ pub async fn run(core: &Core) -> Vec<NetCheck> {
         Err(e) => return vec![line("setup".into(), false, e.to_string(), 0)],
     };
     let doh = crate::net::doh::Doh::new(client);
-    let [a, b, c, d, e] = HOSTS;
-    let (a, b, c, d, e) = tokio::join!(
-        host(core, &doh, a.0, a.1),
-        host(core, &doh, b.0, b.1),
-        host(core, &doh, c.0, c.1),
-        host(core, &doh, d.0, d.1),
-        host(core, &doh, e.0, e.1),
-    );
-    [a, b, c, d, e].concat()
+    let Ok(owner) = core.owner() else {
+        return Vec::new();
+    };
+    let mut hosts = searched_hosts(core);
+    hosts.extend(ALWAYS.iter().map(|(h, u)| (h.to_string(), u.to_string())));
+    // All at once, as before: a dropped host costs one timeout, not one each.
+    let tasks: Vec<_> = hosts
+        .into_iter()
+        .map(|(name, url)| {
+            let (owner, doh) = (owner.clone(), doh.clone());
+            core.handle
+                .spawn(async move { host(&owner, &doh, &name, &url).await })
+        })
+        .collect();
+    let mut out = Vec::new();
+    for t in tasks {
+        out.extend(t.await.unwrap_or_default());
+    }
+    out
 }

@@ -78,7 +78,7 @@ fn install_id(c: &EndpointCatalog, id: &str) -> String {
 fn the_general_group_reads_and_verifies() {
     let (_dir, core, _) = common::open_core();
     let p = preview(&core, &fixture("general.json"));
-    assert_eq!(p.name, "Marcus's endpoints");
+    assert_eq!(p.name, "Bandit's endpoints");
     assert!(!p.nsfw);
     assert!(!p.trusted);
     assert_eq!(p.fingerprint.split(' ').count(), 8);
@@ -169,12 +169,31 @@ fn an_endpoint_without_auth_installs_and_joins_the_search() {
         panic!()
     };
     let names: Vec<&str> = sources.iter().map(|s| s.name.as_str()).collect();
-    assert_eq!(names, ["nyaa", "animetosho", "knaben"]);
+    // Nothing is preloaded: the installed endpoint is the whole list.
+    assert_eq!(names, ["knaben"]);
 }
 
 #[test]
 fn an_installed_endpoint_takes_the_place_of_a_source_with_its_name() {
     let (_dir, core, _) = common::open_core();
+    // A list saved before repos existed.
+    let saved = |name: &str, kind: &str, url: &str| anibeam_core::PhoneSource {
+        name: name.into(),
+        kind: kind.into(),
+        url: url.into(),
+        enabled: true,
+    };
+    core.call(Call::SetPhoneSources {
+        sources: vec![
+            saved("nyaa", "nyaa", "https://nyaa.si/"),
+            saved(
+                "animetosho",
+                "tosho",
+                "https://animetosho.org/feed/json?q={query}&old=1",
+            ),
+        ],
+    })
+    .unwrap();
     trust(&core, &fixture("general.json"));
     for id in ["animetosho", "nyaa"] {
         core.call(Call::InstallEndpoint {
@@ -721,4 +740,13 @@ fn a_repo_removed_during_a_refresh_stays_removed() {
     catalog(core.call(Call::RemoveEndpointRepo { url: url.clone() }));
     let c = catalog(core.call(Call::RefreshEndpointRepos));
     assert!(c.repos.is_empty());
+}
+
+#[test]
+fn the_phone_ships_with_no_source() {
+    let (_dir, core, _) = common::open_core();
+    let Reply::PhoneSources { sources } = core.call(Call::PhoneSources).unwrap() else {
+        panic!()
+    };
+    assert!(sources.is_empty());
 }

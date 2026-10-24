@@ -194,9 +194,6 @@ export global AppData {
     in property <[SourceRow]> sources;
     // What a search tries, in order: these and the endpoints installed from repos.
     in property <[SourceRow]> search-sources;
-    in-out property <string> new-source-name;
-    in-out property <string> new-source-url;
-    in property <string> source-error;
     // The connection check: its lines, and whether it is running.
     in property <[CheckRow]> checks;
     in property <bool> checking;
@@ -227,7 +224,6 @@ export global AppData {
     callback refresh();
     // 0 pause, 1 resume, 2 cancel and delete, 3 take a finished one off the list.
     callback torrent-action(string, int);
-    callback add-source(string, string);
     callback remove-source(int);
     callback run-check();
     callback copy-check();

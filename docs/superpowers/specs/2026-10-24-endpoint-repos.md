@@ -85,7 +85,7 @@ with no JSON canonicalisation between jq and serde. Decoded, it is the index:
 
 ```json
 {
-  "name": "Marcus's endpoints",
+  "name": "Bandit's endpoints",
   "key": "ed25519:9d2f...base64",
   "serial": 1793050000,
   "endpoints": [ { "id": "example-rss", "version": 3, "...": "the full definition" } ]

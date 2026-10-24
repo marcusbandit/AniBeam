@@ -199,15 +199,16 @@ export component MorePage inherits Rectangle {
             }
             RepoPanes { }
 
-            SectionHead {
-                title: "Built in";
+            // Feeds saved on this phone before repos existed; a new phone has none.
+            if AppData.sources.length > 0: SectionHead {
+                title: "Your own feeds";
                 note: "Searched before the endpoints";
             }
-            ListGroup {
+            if AppData.sources.length > 0: ListGroup {
                 for source[i] in AppData.sources: SourceItem {
                     name: source.name;
                     url: source.url;
-                    removable: i > 0;
+                    removable: true;
                     remove => { AppData.remove-source(i); }
                 }
             }

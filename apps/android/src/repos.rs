@@ -79,6 +79,7 @@ pub fn install(window: &AppWindow) {
     d.on_act(|i| with(|r| r.act(i)));
     d.on_remove_endpoint(|i| with(|r| r.remove_endpoint(i)));
     d.on_toggle(|i| with(|r| r.toggle(i)));
+    d.on_open(|i| with(|r| r.open(i)));
     d.on_set_value(|i, text| {
         with(|r| {
             if let Some(a) = r.asking.as_mut()
@@ -161,22 +162,26 @@ impl Repos {
         let mut rows = Vec::new();
         let mut lines = Vec::new();
         for i in &catalog.installed {
-            let note = if !i.missing.is_empty() {
+            // The note under the row, and whether it is something to fix (yellow) or a hint.
+            let (note, warn) = if !i.missing.is_empty() {
                 let labels: Vec<&str> = i
                     .auth
                     .iter()
                     .filter(|a| i.missing.contains(&a.key))
                     .map(|a| a.label.as_str())
                     .collect();
-                format!("Needs its {} before it searches", labels.join(", "))
+                (format!("Needs its {} before it searches", labels.join(", ")), true)
             } else if let Some(note) = &i.desktop_note {
-                note.clone()
+                (note.clone(), true)
             } else if !i.offered {
-                "No longer offered by its repo".into()
+                ("No longer offered by its repo".into(), true)
             } else if let Some(host) = &i.update_host {
-                format!("The update sends requests to {host}")
+                (format!("The update sends requests to {host}"), true)
+            } else if !i.auth.is_empty() {
+                let labels: Vec<&str> = i.auth.iter().map(|a| a.label.as_str()).collect();
+                (format!("Tap to change its {}", labels.join(", ")), false)
             } else {
-                String::new()
+                (String::new(), false)
             };
             lines.push(EndpointRow {
                 name: i.name.clone().into(),
@@ -196,6 +201,8 @@ impl Repos {
                     None => String::new(),
                 }
                 .into(),
+                editable: !i.auth.is_empty(),
+                warn,
             });
             rows.push(Row::Installed {
                 install: i.install_id.clone(),
@@ -213,6 +220,8 @@ impl Repos {
                 nsfw: o.nsfw,
                 note: if needs.is_empty() { String::new() } else { format!("Asks for your {}", needs.join(", ")) }.into(),
                 update: "".into(),
+                editable: false,
+                warn: !o.auth.is_empty(),
             });
             rows.push(Row::Offered { repo: o.repo_url.clone(), id: o.id.clone() });
         }
@@ -340,7 +349,12 @@ impl Repos {
                 let Some(e) = catalog.installed.iter().find(|e| &e.install_id == install) else { return };
                 let fields = e.auth.iter().filter(|a| e.missing.contains(&a.key)).cloned().collect();
                 let fill = Row::Fill { install: install.clone() };
-                self.ask(fill, e.name.clone(), fields, "Kept on this phone only, never in the library or an export.".into());
+                self.ask(
+                    fill,
+                    format!("{} needs a value", e.name),
+                    fields,
+                    "Kept on this phone only, never in the library or an export.".into(),
+                );
                 return;
             }
             Row::Installed { install, update, .. } => {
@@ -369,10 +383,10 @@ impl Repos {
             },
             _ => "Kept on this phone only, never in the library or an export.".into(),
         };
-        self.ask(row, name, fields, note);
+        self.ask(row, format!("{name} needs a value"), fields, note);
     }
 
-    fn ask(&mut self, row: Row, name: String, fields: Vec<anibeam_core::EndpointField>, note: String) {
+    fn ask(&mut self, row: Row, title: String, fields: Vec<anibeam_core::EndpointField>, note: String) {
         let rows: Vec<AuthRow> = fields
             .iter()
             .map(|f| AuthRow {
@@ -382,13 +396,19 @@ impl Repos {
                 secret: f.secret,
             })
             .collect();
+        let action = match &row {
+            Row::Offered { .. } => "Install",
+            Row::Installed { .. } => "Update",
+            Row::Fill { .. } => "Save",
+        };
         self.asking = Some(Asking {
             row,
             keys: fields.iter().map(|f| f.key.clone()).collect(),
             values: vec![String::new(); fields.len()],
         });
         self.data(|d| {
-            d.set_asking_title(format!("{name} needs a value").into());
+            d.set_asking_action(action.into());
+            d.set_asking_title(title.into());
             d.set_asking_note(note.into());
             d.set_fields(ModelRc::new(VecModel::from(rows)));
             d.set_asking(true);
@@ -396,8 +416,36 @@ impl Repos {
         });
     }
 
+    /// Opens an installed endpoint's values: every field, to add one that is missing or
+    /// change one that is stored. A field left empty keeps its value.
+    fn open(&mut self, i: i32) {
+        let Some(Row::Installed { install, update, fill }) = self.row(i) else { return };
+        // A row still missing a value asks for just that, as its button does.
+        if fill && !update {
+            self.act(i);
+            return;
+        }
+        let Some(e) = self.catalog.as_ref().and_then(|c| c.installed.iter().find(|e| e.install_id == install)).cloned()
+        else {
+            return;
+        };
+        if e.auth.is_empty() {
+            return;
+        }
+        self.ask(
+            Row::Fill { install },
+            format!("{}'s values", e.name),
+            e.auth.clone(),
+            "Kept on this phone only. A field left empty keeps what is stored.".into(),
+        );
+    }
+
     fn confirm(&mut self) {
         let Some(a) = &self.asking else { return };
+        if matches!(a.row, Row::Fill { .. }) && a.values.iter().all(|v| v.trim().is_empty()) {
+            self.data(|d| d.set_error("Type a value first.".into()));
+            return;
+        }
         let credentials = a
             .keys
             .iter()
