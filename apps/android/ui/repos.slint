@@ -56,6 +56,10 @@ export global RepoData {
     in property <string> asking-title;
     in property <string> asking-note;
     in property <[AuthRow]> fields;
+    // An endpoint added by hand.
+    in-out property <string> custom-name;
+    in-out property <string> custom-url;
+    in property <string> custom-error;
 
     callback add(string);
     callback trust();
@@ -70,6 +74,44 @@ export global RepoData {
     callback confirm();
     callback dismiss();
     callback open-link(string);
+    callback add-custom(string, string);
+}
+
+// An endpoint no repo carries, added by hand beside them: a name and an address.
+export component CustomAdd inherits Rectangle {
+    height: column.preferred-height;
+    column := VerticalLayout {
+        padding: Theme.pad;
+        spacing: Theme.unit * 3;
+        Text {
+            text: "Add one by hand";
+            color: Theme.text;
+            font-family: Theme.strong-face;
+        }
+        Text {
+            text: "For a site no repo carries. Any feed with {query} where the search goes, a Jackett or Prowlarr feed among them. A key or token in the address is moved to this phone's secret store.";
+            color: Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        Field { text <=> RepoData.custom-name; placeholder: "Name"; }
+        Field { text <=> RepoData.custom-url; placeholder: "https://...{query}..."; }
+        if RepoData.custom-error != "": Text {
+            text: RepoData.custom-error;
+            color: Theme.bad;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            alignment: start;
+            Button {
+                text: "Add endpoint";
+                small: true;
+                enabled: RepoData.custom-name != "" && RepoData.custom-url != "";
+                clicked => { RepoData.add-custom(RepoData.custom-name, RepoData.custom-url); }
+            }
+        }
+    }
 }
 
 // The address field, Add, and the preview to trust.
@@ -420,7 +462,7 @@ export component RepoPanes inherits VerticalLayout {
             AskValues { }
         }
     }
-    if RepoData.endpoints.length > 0: Rectangle {
+    Rectangle {
         background: Theme.surface;
         border-radius: Theme.radius;
         border-width: 1px;
@@ -434,6 +476,7 @@ export component RepoPanes inherits VerticalLayout {
                 remove => { RepoData.remove-endpoint(i); }
                 toggle => { RepoData.toggle(i); }
             }
+            CustomAdd { }
         }
     }
 }

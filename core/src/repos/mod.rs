@@ -306,6 +306,8 @@ pub fn catalog(core: &Core) -> Result<EndpointCatalog, CoreError> {
         .collect();
     let secrets = core.secrets();
     let shadowed = shadowed_in_anirss(core);
+    // Only a desktop has an anirss list to read.
+    let desktop = !crate::downloads::anirss_endpoint_names(core).is_empty();
     let installed = installed
         .iter()
         .map(|i| {
@@ -335,12 +337,19 @@ pub fn catalog(core: &Core) -> Result<EndpointCatalog, CoreError> {
                     .collect(),
                 custom: i.repo_url == CUSTOM,
                 offered: next.is_some() || i.repo_url == CUSTOM,
-                desktop_note: shadowed.contains(&i.def.id).then(|| {
-                    format!(
+                desktop_note: if shadowed.contains(&i.def.id) {
+                    Some(format!(
                         "anirss has its own {}, written by hand; the desktop searches that one",
                         i.def.id
-                    )
-                }),
+                    ))
+                } else if desktop && !ANIRSS_KINDS.contains(&i.def.kind.as_str()) {
+                    Some(format!(
+                        "anirss cannot search the {} kind, so the desktop leaves it out; the phone searches it",
+                        i.def.kind
+                    ))
+                } else {
+                    None
+                },
                 update: update.map(|d| d.version),
                 update_asks: update.is_some_and(|d| !i.def.keeps_credentials(d)),
                 update_host: update
@@ -882,16 +891,26 @@ fn shadowed_in_anirss(core: &Core) -> Vec<String> {
     theirs.into_iter().filter(|n| !synced.contains(n)).collect()
 }
 
+/// The kinds anirss itself can search; `tosho` is AniBeam's own.
+const ANIRSS_KINDS: [&str; 2] = ["nyaa", "rss"];
+
 /// Puts the installed endpoints into the desktop's anirss, which searches only what its own
 /// config lists: each enabled one with its credentials, under its id. Only names AniBeam
 /// wrote are ever changed or removed; one anirss already had from its config stays as it was.
 /// anirss keeps the address as it is given, so a credential lands in its config.toml, the way
-/// a hand-written one does today; the secret store stays the record AniBeam reads.
-pub(crate) async fn sync_anirss(core: &Core, client: &crate::downloads::anirss::AnirssClient) {
-    let Ok(have) = client.endpoints().await else {
-        return;
-    };
-    let want = runnable(core);
+/// a hand-written one does today; the secret store stays the record AniBeam reads. A kind
+/// anirss cannot search (`tosho`) stays out.
+/// `have` is anirss's list as just read; true when anirss was changed and its list needs
+/// reading again.
+pub(crate) async fn sync_anirss(
+    core: &Core,
+    client: &crate::downloads::anirss::AnirssClient,
+    have: &[SearchEndpoint],
+) -> bool {
+    let want: Vec<Runnable> = runnable(core)
+        .into_iter()
+        .filter(|r| ANIRSS_KINDS.contains(&r.endpoint.kind.as_str()))
+        .collect();
     let mut synced: Vec<String> = core
         .store
         .read(|c| crate::store::settings::get(c, crate::store::settings::ANIRSS_SYNCED_ENDPOINTS))
@@ -899,6 +918,7 @@ pub(crate) async fn sync_anirss(core: &Core, client: &crate::downloads::anirss::
         .flatten()
         .unwrap_or_default();
     let before = synced.clone();
+    let mut changed = false;
     for r in &want {
         let e = &r.endpoint;
         let theirs = have.iter().find(|h| h.name == e.name);
@@ -915,6 +935,7 @@ pub(crate) async fn sync_anirss(core: &Core, client: &crate::downloads::anirss::
         }
         match client.put_endpoint(spec).await {
             Ok(()) => {
+                changed = true;
                 if !synced.contains(&e.name) {
                     synced.push(e.name.clone());
                 }
@@ -926,17 +947,19 @@ pub(crate) async fn sync_anirss(core: &Core, client: &crate::downloads::anirss::
         if want.iter().any(|r| r.endpoint.name == name) {
             continue;
         }
-        if have.iter().any(|h| h.name == name)
-            && let Err(err) = client.delete_endpoint(&name).await
-        {
-            tracing::warn!("anirss kept the endpoint {name}: {err}");
-            continue;
+        if have.iter().any(|h| h.name == name) {
+            if let Err(err) = client.delete_endpoint(&name).await {
+                tracing::warn!("anirss kept the endpoint {name}: {err}");
+                continue;
+            }
+            changed = true;
         }
         synced.retain(|n| n != &name);
     }
     let _ = core.store.write(move |c| {
         crate::store::settings::set(c, crate::store::settings::ANIRSS_SYNCED_ENDPOINTS, &synced)
     });
+    changed
 }
 
 // For the search --------------------------------------------------------------------------
@@ -1037,16 +1060,21 @@ mod tests {
         let anirss = AnirssClient::new("http://127.0.0.1:1", "tok", http.clone());
 
         // anirss has its own 1337x from config.toml; AniBeam writes only "mine".
-        http.push_json(
-            200,
-            serde_json::json!({"endpoints": [{"name": "1337x", "kind": "rss", "url": "http://elsewhere/"}]}),
-        );
+        let theirs = |name: &str, url: &str| SearchEndpoint {
+            name: name.into(),
+            kind: "rss".into(),
+            url: url.into(),
+            client_side_refine: false,
+            on_demand: None,
+            running: None,
+        };
         http.push_json(201, serde_json::json!({}));
-        core.handle.block_on(sync_anirss(&core, &anirss));
+        let have = vec![theirs("1337x", "http://elsewhere/")];
+        assert!(core.handle.block_on(sync_anirss(&core, &anirss, &have)));
         let sent = http.requests();
-        assert_eq!(sent.len(), 2);
-        assert_eq!(sent[1].method, crate::net::Method::Post);
-        let body = format!("{:?}", sent[1].body);
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0].method, crate::net::Method::Post);
+        let body = format!("{:?}", sent[0].body);
         assert!(
             body.contains("\"mine\"") && body.contains("token=t1"),
             "{body}"
@@ -1069,19 +1097,20 @@ mod tests {
                 Ok(())
             })
             .unwrap();
-        http.push_json(
-            200,
-            serde_json::json!({"endpoints": [
-                {"name": "1337x", "kind": "rss", "url": "http://elsewhere/"},
-                {"name": "mine", "kind": "rss", "url": "https://a.example/rss?q={query}&token=t1"}
-            ]}),
-        );
         http.push_json(200, serde_json::json!({}));
-        core.handle.block_on(sync_anirss(&core, &anirss));
+        let have = vec![
+            theirs("1337x", "http://elsewhere/"),
+            theirs("mine", "https://a.example/rss?q={query}&token={token}"),
+        ];
+        assert!(core.handle.block_on(sync_anirss(&core, &anirss, &have)));
         let sent = http.requests();
-        assert_eq!(sent.len(), 4);
-        assert_eq!(sent[3].method, crate::net::Method::Delete);
-        assert!(sent[3].url.ends_with("/endpoints/mine"));
+        assert_eq!(sent.len(), 2);
+        assert_eq!(sent[1].method, crate::net::Method::Delete);
+        assert!(sent[1].url.ends_with("/endpoints/mine"));
+        // Nothing left to do: nothing is sent.
+        let have = vec![theirs("1337x", "http://elsewhere/")];
+        assert!(!core.handle.block_on(sync_anirss(&core, &anirss, &have)));
+        assert_eq!(http.requests().len(), 2);
         core.shutdown();
     }
 

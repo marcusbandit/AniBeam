@@ -187,11 +187,23 @@ with no JSON canonicalisation between jq and serde. Decoded, it is the index:
   by repo plus endpoint id, so two repos that both offer `example` never collide;
   the install id is a UUID the rest of the core uses. Installed endpoints join the
   phone's ordered endpoint list in `phone::sources`.
-- Desktop: anirss cannot read `secrets.json`, and a filled URL in its
-  `config.toml` would put the credential on disk outside it. So endpoints without
-  `auth` are written to anirss the way an imported pack is (#97), and endpoints
-  with `auth` are phone-only until the desktop searches through the core's own
-  port of anirss (`releases::native`).
+- Desktop (built 2026-10-24, changed from the first draft at the owner's ask): the
+  desktop searches through anirss, which reads only its own `config.toml`. The
+  core writes each enabled installed endpoint into AniBeam's own anirss sidecar
+  through anirss 0.6's endpoint API, filled URL included, so a credential does
+  land in `config.toml` the way a hand-written one already does; the secret store
+  stays the record AniBeam reads. Only names AniBeam wrote are changed or
+  removed (`anirss_synced_endpoints` in settings); an endpoint anirss already has
+  from its config keeps its place and the catalog says so. A kind anirss cannot
+  search (`tosho`) stays out and says so. A remote anirss, a sandbox root and a
+  drive are never written to. Searching through `releases::native` on the
+  desktop would remove the credential from `config.toml`, and stays the goal.
+- Endpoints added by hand (`AddCustomEndpoint`, owner's ask 2026-10-24): a name
+  and an address, beside whatever repos there are, for a site no repo carries
+  (1337x through Jackett). A secret in the address (`apikey=`, `token=`,
+  `passkey=`) moves to the secret store and the address keeps a placeholder.
+  Plain http is allowed for these, for a Jackett on the same machine. They are
+  stored with an empty repo url and behave like installed endpoints otherwise.
 - Credentials go to `secrets.json` under `endpoint/<install id>/<key>`. They never
   enter the database, an export or a pack, and the activity log never prints them.
 - Contract calls: `AddEndpointRepo { url }` replies with the repo and its

@@ -114,44 +114,6 @@ component SourceItem inherits Rectangle {
     }
 }
 
-// Adding a source: a name and an address with {query} where the search goes.
-component SourceForm inherits Rectangle {
-    height: column.preferred-height;
-    column := VerticalLayout {
-        padding: Theme.pad;
-        spacing: Theme.unit * 3;
-        Text {
-            text: "Add a source";
-            color: Theme.text;
-            font-family: Theme.strong-face;
-        }
-        Text {
-            text: "Any RSS feed with {query} where the search goes. For erai, paste your feed address from erai-raws.info with s={query}.";
-            color: Theme.dim;
-            font-size: Theme.small;
-            wrap: word-wrap;
-        }
-        Field { text <=> AppData.new-source-name; placeholder: "Name, like erai"; }
-        Field { text <=> AppData.new-source-url; placeholder: "https://...{query}..."; }
-        if AppData.source-error != "": Text {
-            text: AppData.source-error;
-            color: Theme.bad;
-            font-size: Theme.small;
-            wrap: word-wrap;
-        }
-        HorizontalLayout {
-            alignment: start;
-            Button {
-                text: "Add source";
-                small: true;
-                icon: @image-url("icons/rss.svg");
-                has-icon: true;
-                clicked => { AppData.add-source(AppData.new-source-name, AppData.new-source-url); }
-            }
-        }
-    }
-}
-
 export component MorePage inherits Rectangle {
     Flickable {
         VerticalLayout {
@@ -238,7 +200,7 @@ export component MorePage inherits Rectangle {
             RepoPanes { }
 
             SectionHead {
-                title: "Your own feeds";
+                title: "Built in";
                 note: "Searched before the endpoints";
             }
             ListGroup {
@@ -248,7 +210,6 @@ export component MorePage inherits Rectangle {
                     removable: i > 0;
                     remove => { AppData.remove-source(i); }
                 }
-                SourceForm { }
             }
 
             SectionHead {

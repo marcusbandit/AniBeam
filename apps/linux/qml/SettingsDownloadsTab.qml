@@ -146,7 +146,7 @@ SettingsTab {
     SettingsPair {
         split: 1 / 2
         leftPanels: [ anirssPanel, endpointsPanel ]
-        rightPanels: [ clientPanel, savePanel ]
+        rightPanels: [ clientPanel, savePanel, reposPanel ]
     }
     Component {
         id: anirssPanel
@@ -168,6 +168,10 @@ SettingsTab {
             SettingRow { label: "State"; line: tab.anirssLine; hairline: false
                 Button { text: tab.anirss && tab.anirss.state === "Starting" ? "Starting" : tab.anirss && tab.anirss.state === "Ready" ? "Reconnect" : "Connect"; icon: "refresh-cw"; flat: true; enabled: !tab.dirty && !(tab.anirss && tab.anirss.state === "Starting"); onClicked: tab.connect() } }
         }
+    }
+    Component {
+        id: reposPanel
+        EndpointReposPanel { }
     }
     Component {
         id: endpointsPanel

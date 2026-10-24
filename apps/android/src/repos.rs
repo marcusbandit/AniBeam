@@ -88,6 +88,7 @@ pub fn install(window: &AppWindow) {
     d.on_confirm(|| with(Repos::confirm));
     d.on_dismiss(|| with(Repos::dismiss));
     d.on_open_link(|url| crate::android::open_url(&url));
+    d.on_add_custom(|name, url| with(|r| r.add_custom(name.to_string(), url.to_string())));
 }
 
 /// The core is open: show what is saved, then fetch every repo again, as the core does at
@@ -165,6 +166,8 @@ impl Repos {
                     .map(|a| a.label.as_str())
                     .collect();
                 format!("Needs its {} before it searches", labels.join(", "))
+            } else if let Some(note) = &i.desktop_note {
+                note.clone()
             } else if !i.offered {
                 "No longer offered by its repo".into()
             } else if let Some(host) = &i.update_host {
@@ -174,7 +177,12 @@ impl Repos {
             };
             lines.push(EndpointRow {
                 name: i.name.clone().into(),
-                line: format!("{}  {}  v{}", i.host, i.kind, i.version).into(),
+                line: if i.custom {
+                    format!("{}  {}  added by you", i.host, i.kind)
+                } else {
+                    format!("{}  {}  v{}", i.host, i.kind, i.version)
+                }
+                .into(),
                 installed: true,
                 enabled: i.enabled,
                 nsfw: i.nsfw,
@@ -235,6 +243,28 @@ impl Repos {
                 Err(e) => {
                     let text = e.to_string();
                     r.data(|d| d.set_error(text.into()));
+                }
+            }
+        });
+    }
+
+    fn add_custom(&mut self, name: String, url: String) {
+        self.data(|d| d.set_custom_error("".into()));
+        spawn(Call::AddCustomEndpoint { name, url, credentials: Vec::new() }, |r, answer| {
+            match answer {
+                Ok(Reply::EndpointCatalog { catalog }) => {
+                    r.show(catalog);
+                    crate::local::touch();
+                    crate::app::endpoints_changed();
+                    r.data(|d| {
+                        d.set_custom_name("".into());
+                        d.set_custom_url("".into());
+                    });
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    let text = e.to_string();
+                    r.data(|d| d.set_custom_error(text.into()));
                 }
             }
         });

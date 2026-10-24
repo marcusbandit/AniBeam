@@ -676,10 +676,10 @@ async fn read_anirss(core: &Arc<Core>, client: &AnirssClient) -> Result<(), Core
     // No feature is asked of a server the user runs: AniBeam never points it
     // at a client, so it reads its own config and keeps its own logins.
     let version = client.health().await?.version;
-    if syncs_endpoints(core).await {
-        crate::repos::sync_anirss(core, client).await;
-    }
     let mut endpoints = client.endpoints().await?;
+    if syncs_endpoints(core).await && crate::repos::sync_anirss(core, client, &endpoints).await {
+        endpoints = client.endpoints().await?;
+    }
     if let Some(path) = settings::anirss_config_path() {
         for e in &mut endpoints {
             e.on_demand = settings::anirss_ondemand(&path, &e.name).map(|o| o.timeout);
