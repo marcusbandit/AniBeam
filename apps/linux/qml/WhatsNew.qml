@@ -2,11 +2,12 @@
 // notes, a version over its sections over one short line per change. A line marks how far
 // is new: what sits above it came after the version this install had, and what sits under
 // it reads dimmer. The frame opens it by itself once after an update; the version in the
-// rail and in Settings, Data, About open it any time. Got it, Escape or a press outside
-// closes it, and closing it counts the notes as read.
+// rail and in Settings, Data, About open it any time. Got it, Return, Escape, a press
+// outside or a move to another page closes it, and closing it counts the notes as read.
 //
-// The two versions that takes live in shell.conf; every rule about them is the core's
-// (changelog::Seen), reached through Shell.whatsNew.
+// The two versions that takes live in shell.conf. Every rule about them, where the line
+// goes and what reads dimmer included, is the core's (changelog), reached through
+// Shell.whatsNew; this only draws the answer.
 import QtQuick
 import QtQuick.Controls.Basic as QC
 import QtCore
@@ -17,7 +18,6 @@ Item {
     objectName: "whats-new"
     anchors.fill: parent
     visible: false
-    z: 20
 
     Settings {
         id: kept
@@ -28,15 +28,9 @@ Item {
         property string from: ""
     }
 
-    property var view: ({ note: "", line: "", releases: [] })
-    // The versions above the line
-    readonly property int fresh: {
-        var n = 0
-        for (var i = 0; i < view.releases.length; i++) if (view.releases[i].fresh) n++
-        return n
-    }
+    property var view: ({ note: "", line: "", above: 0, versions: [] })
 
-    function ask() { return JSON.parse(Shell.whatsNew(kept.version, kept.from)) }
+    function ask() { return Shell.whatsNew(kept.version, kept.from) }
     // A change's dot sits on its first line, however many lines it wraps to
     Label { id: body; visible: false; text: "x" }
     FontMetrics { id: bodyMetrics; font: body.font }
@@ -81,7 +75,8 @@ Item {
 
         // The keys scroll through the wheel's target, so they glide as a notch does
         Keys.onPressed: function(event) {
-            if (event.modifiers !== Qt.NoModifier) return
+            // A Mac's arrows, and the keypad's, come with the keypad flag
+            if ((event.modifiers & ~Qt.KeypadModifier) !== Qt.NoModifier) return
             var k = event.key, page = list.height - theme.space(10)
             var to = k === Qt.Key_Down ? wheel.target + wheel.notch
                    : k === Qt.Key_Up ? wheel.target - wheel.notch
@@ -95,6 +90,7 @@ Item {
             event.accepted = true
         }
         Keys.onReturnPressed: root.close()
+        Keys.onEnterPressed: root.close()
 
         // The head: the title, where this install came from and where it is now
         Item {
@@ -141,13 +137,12 @@ Item {
                 id: notes
                 width: list.width - theme.space(4)
                 Repeater {
-                    model: root.view.releases
+                    model: root.view.versions
                     Column {
                         id: release
                         required property var modelData
                         required property int index
-                        // Dimmer under the line; with no line every version reads alike
-                        readonly property bool dim: root.fresh > 0 && !modelData.fresh
+                        readonly property bool dim: !modelData.lit
                         width: notes.width
                         topPadding: index === 0 ? 0 : theme.space(9)
                         spacing: theme.space(1.5)
@@ -212,7 +207,7 @@ Item {
                         // The line, under the last version that is new: everything above it
                         // came after the version this install had.
                         Item {
-                            visible: root.view.line !== "" && release.index === root.fresh - 1
+                            visible: root.view.line !== "" && release.index === root.view.above - 1
                             objectName: "whats-new-line"
                             width: release.width
                             height: visible ? pill.height + theme.space(9) : 0

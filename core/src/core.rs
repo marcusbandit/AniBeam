@@ -149,6 +149,11 @@ const HTTP_TIMEOUT: Duration = Duration::from_secs(30);
 /// cancellation before it stops waiting and closes the store anyway.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
 
+/// The line every start logs, around the version: "AniBeam core 2.1.0
+/// ready". `earlier_starts` reads the version back out of it.
+const READY_BEFORE: &str = "AniBeam core ";
+const READY_AFTER: &str = " ready";
+
 /// The loopback port both providers redirect back to. Registered on their
 /// developer panels, so it is a constant rather than a preference.
 const DEFAULT_OAUTH_PORT: u16 = 53682;
@@ -323,6 +328,30 @@ impl Core {
     pub fn set_sign_in_hold(&self, hold: std::time::Duration) {
         self.sign_in_hold_ms
             .store(hold.as_millis() as u64, Ordering::SeqCst);
+    }
+
+    /// The version each earlier start logged, newest first, while the
+    /// activity log still holds its line: `2.1.0`, `2.1.0.r6.gf1d3824`.
+    /// Read it before `start`, which logs this run's. An empty list is a
+    /// core that never started here, or a log that was cleared. What's new
+    /// takes the version an install ran before it kept a record of its own
+    /// from here (`changelog::version_of`).
+    pub fn earlier_starts(&self) -> Vec<String> {
+        self.store
+            .write(|c| {
+                let mut stmt = c.prepare(
+                    "SELECT message FROM events WHERE body = '\"Ready\"' ORDER BY seq DESC",
+                )?;
+                let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+                Ok(rows
+                    .filter_map(Result::ok)
+                    .filter_map(|m| {
+                        let v = m.strip_prefix(READY_BEFORE)?.strip_suffix(READY_AFTER)?;
+                        Some(v.to_string())
+                    })
+                    .collect())
+            })
+            .unwrap_or_default()
     }
 
     /// Turns off, for this core's life, every change the downloads code
@@ -519,7 +548,7 @@ impl Core {
         }
         self.bus.info(
             Stage::System,
-            format!("AniBeam core {} ready", crate::VERSION),
+            format!("{READY_BEFORE}{}{READY_AFTER}", crate::VERSION),
             EventBody::Ready,
         );
         // Asking the Secret Service whether it exists is a D-Bus round

@@ -72,10 +72,10 @@ FocusScope {
     // Frame-owned overlays outlive a page. A navigation clears the stack, so they are
     // pushed back after the clear, in the order they were opened.
     function reclaimFrameOwned() {
-        var keep = escapeStack.entries.filter(function(e) { return e.closer === drawer || e.closer === connectSheet || e.closer === whatsNew })
+        var keep = escapeStack.entries.filter(function(e) { return e.closer === drawer || e.closer === connectSheet })
         escapeStack.clear()
         keep.forEach(function(e) {
-            if (e.closer === drawer ? drawer.open : e.closer.visible) escapeStack.push(e.kind, e.closer)
+            if (e.closer === drawer ? drawer.open : connectSheet.visible) escapeStack.push(e.kind, e.closer)
         })
     }
 
@@ -128,7 +128,7 @@ FocusScope {
     // reclaimFrameOwned() keeps their entries, in this same handler, so Escape still
     // reaches them; a second Connections on nav.changed would race this one with no
     // ordering guarantee between them.
-    Connections { target: nav; function onChanged() { frame.loadPage(); frame.hideTip(); frame.closeMenu(); removeSheet.close(); frame.reclaimFrameOwned() } }
+    Connections { target: nav; function onChanged() { frame.loadPage(); frame.hideTip(); frame.closeMenu(); removeSheet.close(); whatsNew.close(); frame.reclaimFrameOwned() } }
 
     Rail {
         id: rail
@@ -523,9 +523,10 @@ FocusScope {
     Timer { id: downloadsSettle; interval: 10000; onTriggered: frame.readDownloadsRules() }
     Timer { id: downloadsReread; interval: 1500; onTriggered: frame.readDownloadsRules() }
 
-    Shortcut { sequence: "Ctrl+K"; onActivated: { if (nav.current.page !== "library") frame.go("library"); Qt.callLater(function() { if (page.item && page.item.focusSearch) page.item.focusSearch() }) } }
+    // A search behind What's new would take the keys the sheet still shows, so both close it
+    Shortcut { sequence: "Ctrl+K"; onActivated: { whatsNew.close(); if (nav.current.page !== "library") frame.go("library"); Qt.callLater(function() { if (page.item && page.item.focusSearch) page.item.focusSearch() }) } }
     // Any page with a search takes "/" (the library, metadata)
-    Shortcut { sequence: "/"; enabled: !!(page.item && page.item.focusSearch); onActivated: if (page.item && page.item.focusSearch) page.item.focusSearch() }
+    Shortcut { sequence: "/"; enabled: !!(page.item && page.item.focusSearch); onActivated: { whatsNew.close(); if (page.item && page.item.focusSearch) page.item.focusSearch() } }
     Shortcut { sequence: "Ctrl+,"; onActivated: if (nav.current.page !== "settings") frame.go("settings") }
     Shortcut { sequence: "Ctrl+L"; enabled: !frame.fullWindow; onActivated: frame.toggleDrawer() }
     Shortcut { sequence: "Ctrl+Q"; onActivated: Qt.quit() }

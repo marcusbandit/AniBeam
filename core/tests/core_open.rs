@@ -59,3 +59,20 @@ fn a_recent_limit_past_the_ring_is_the_ring() {
     );
     core.shutdown();
 }
+
+/// What's new on the desktop reads the version an install ran before it kept
+/// a record of its own from these lines: none on a fresh database, and this
+/// core's own version once it has started.
+#[test]
+fn earlier_starts_list_the_version_each_start_logged() {
+    let (_dir, core, c) = common::open_core();
+    assert!(core.earlier_starts().is_empty());
+    core.start().unwrap();
+    common::wait_for(
+        &c,
+        |e| matches!(e.body, EventBody::Ready),
+        std::time::Duration::from_secs(2),
+    );
+    assert_eq!(core.earlier_starts(), [VERSION]);
+    core.shutdown();
+}

@@ -45,6 +45,11 @@ pub fn limit_label(gb: f64) -> String {
     if gb.fract() == 0.0 { format!("{gb:.0} GB") } else { format!("{gb:.1} GB") }
 }
 
+/// Whether the phone has saved its settings before.
+pub fn exists(data_dir: &Path) -> bool {
+    file(data_dir).exists()
+}
+
 pub fn load(data_dir: &Path) -> Prefs {
     std::fs::read(file(data_dir)).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
 }

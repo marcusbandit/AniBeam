@@ -73,7 +73,7 @@ if [ "$version_name" != "$crate_version" ]; then
   exit 1
 fi
 # What's new reads CHANGELOG.md into the APK: a build ships with its own version's notes.
-notes_version=$(sed -n 's/^## \([0-9][0-9.]*\) .*/\1/p' CHANGELOG.md | head -1)
+notes_version=$(sed -n 's/^## \([^ ]*\).*/\1/p' CHANGELOG.md | head -1)
 if [ "$notes_version" != "$version_name" ]; then
   echo "build.sh: the newest heading in CHANGELOG.md is ${notes_version:-missing}, but versionName is $version_name. Add its notes first." >&2
   exit 1

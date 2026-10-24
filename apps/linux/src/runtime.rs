@@ -1,6 +1,7 @@
 //! The process-wide singletons the QML engine cannot be handed through a constructor: the
-//! tokio runtime, the core, the parsed arguments and whether this install ran before. `main`
-//! installs each once; the bridge objects, which the QML engine constructs, find them here.
+//! tokio runtime, the core, the parsed arguments and what the core logged at its earlier
+//! starts. `main` installs each once; the bridge objects, which the QML engine constructs,
+//! find them here.
 
 use std::sync::{Arc, OnceLock};
 
@@ -13,7 +14,7 @@ static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
 static CORE: OnceLock<Arc<Core>> = OnceLock::new();
 static ARGS: OnceLock<Args> = OnceLock::new();
 static PATHS: OnceLock<ShellPaths> = OnceLock::new();
-static USED_BEFORE: OnceLock<bool> = OnceLock::new();
+static EARLIER: OnceLock<Earlier> = OnceLock::new();
 
 pub fn runtime() -> &'static tokio::runtime::Runtime {
     RUNTIME.get_or_init(|| {
@@ -54,12 +55,20 @@ pub fn args() -> &'static Args {
         .expect("the arguments are installed before the QML engine loads")
 }
 
-/// Whether the library database was there before this run opened it: an install in use
-/// before What's new kept a record gets the notes after its update; a fresh one does not.
-pub fn install_used_before(used: bool) {
-    USED_BEFORE.set(used).ok();
+/// What the core logged at its starts before this run, read before this run's own: whether
+/// the app ever started here, and the newest app version among them. What's new takes them
+/// for an install that ran before it kept a record of its own. Never installed means never
+/// started.
+#[derive(Clone, Debug, Default)]
+pub struct Earlier {
+    pub started: bool,
+    pub version: Option<String>,
 }
 
-pub fn used_before() -> bool {
-    USED_BEFORE.get().copied().unwrap_or(false)
+pub fn install_earlier(earlier: Earlier) {
+    EARLIER.set(earlier).ok();
+}
+
+pub fn earlier() -> Earlier {
+    EARLIER.get().cloned().unwrap_or_default()
 }

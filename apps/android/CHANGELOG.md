@@ -29,6 +29,9 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ### New
 - A thumbnail of the frame under your finger while you drag the seek bar
 
+### Changed
+- The video follows your finger while you drag the seek bar
+
 ## 2.0.4 · 2026-10-24
 
 ### New
@@ -48,7 +51,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.0.0 · 2026-10-24
 
 ### Changed
-- Android joins 2.x: the first number is AniBeam's, shared with the desktop
+- The version jumps to 2.0.0, in step with the desktop
 - Tap an installed endpoint to add or change its token
 
 ### Removed
@@ -108,7 +111,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 0.5.1 · 2026-10-23
 
 ### Changed
-- Site names are looked up over HTTPS
+- Sources blocked by a network's DNS load anyway
 - A blocked source says so
 
 ## 0.4.0 · 2026-10-23

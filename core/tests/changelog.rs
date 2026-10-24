@@ -25,10 +25,22 @@ fn the_desktop_notes_are_whole_and_name_its_version() {
 
 #[test]
 fn the_phone_notes_are_whole_and_name_its_version() {
-    let manifest = read("apps/android/Cargo.toml");
-    let version = manifest
+    let cargo = read("apps/android/Cargo.toml");
+    let version = cargo
         .lines()
         .find_map(|l| l.strip_prefix("version = \"")?.strip_suffix('"'))
         .expect("a version in apps/android/Cargo.toml");
+    // The APK's own version is the manifest's; build.sh checks the two agree, and so does
+    // this, since CI never runs build.sh.
+    let manifest = read("apps/android/android/AndroidManifest.xml");
+    let name = manifest
+        .split("android:versionName=\"")
+        .nth(1)
+        .and_then(|rest| rest.split('"').next())
+        .expect("a versionName in the manifest");
+    assert_eq!(
+        name, version,
+        "the manifest's versionName and Cargo.toml's version differ"
+    );
     check("apps/android/CHANGELOG.md", version);
 }

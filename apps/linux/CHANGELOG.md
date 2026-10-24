@@ -34,6 +34,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Episode cubes on the series page, missing and upcoming episodes included
 - Predicted air dates for episodes not announced yet
 - Episodes take their title from the file name when no provider has one
+- Arrow keys move between cards; Return opens one, Space plays it
 - Install on a Mac with brew
 
 ### Changed
@@ -42,6 +43,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Home's Continue row follows what your tracker says you started
 - The week on Home says which episode lands, and when
 - Skip intro sits where Next does
+- Group franchises is a switch, kept over any order in the library
 - Metadata is one grid of tiles, with an episodes pane
 
 ### Fixed
@@ -50,6 +52,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - An episode counts as watched at the mark line, not only at its very end
 - The series page's play button counts what you watched here
 - The seek bar scrubs, and a release off the groove still seeks
+- The removal sheet removes what it says
 - Tracker progress counts the season the files are in
 - An airing show's newest episode is not taken for its last
 - File names like 01x36, OVAs and S05E extras read the right episode
@@ -61,7 +64,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.0.0 · 2026-10-13
 
 ### New
-- AniBeam is a native app: a Rust core under a Qt window
+- AniBeam is rebuilt as a native app
 - Home: the series to go on with, the week ahead, episodes waiting
 - The library as sections of one grid, filtered by a genre picked on Home
 - A slim sidebar with Home and Library first
@@ -73,7 +76,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 1.0.0 · 2026-09-03
 
 ### New
-- The first release, built on Electron
+- The first release
 - MyAnimeList is the default search
 
 ### Changed

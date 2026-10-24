@@ -136,15 +136,15 @@ export component NotesPage inherits Rectangle {
                 title: "What's new";
                 note: AppData.notes-note;
             }
-            for line in AppData.notes: VerticalLayout {
-                if line.kind == 0: VersionHead { line: line; }
-                if line.kind == 1: VerticalLayout {
+            for row in AppData.notes: VerticalLayout {
+                if row.kind == 0: VersionHead { line: row; }
+                if row.kind == 1: VerticalLayout {
                     padding-top: 4 * Theme.unit;
                     padding-bottom: Theme.unit;
-                    SectionName { line: line; }
+                    SectionName { line: row; }
                 }
-                if line.kind == 2: Change { line: line; }
-                if line.kind == 3: Marker { line: line; }
+                if row.kind == 2: Change { line: row; }
+                if row.kind == 3: Marker { line: row; }
             }
         }
     }

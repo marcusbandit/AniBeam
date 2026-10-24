@@ -14,13 +14,15 @@
 use core::pin::Pin;
 
 use cxx_qt::Threading;
-use cxx_qt_lib::QString;
+use cxx_qt_lib::{QJsonObject, QString};
 
 #[cxx_qt::bridge]
 pub mod qobject {
     unsafe extern "C++" {
         include!("cxx-qt-lib/qstring.h");
         type QString = cxx_qt_lib::QString;
+        include!("cxx-qt-lib/qjsonobject.h");
+        type QJsonObject = cxx_qt_lib::QJsonObject;
     }
 
     #[auto_cxx_name]
@@ -94,9 +96,9 @@ pub mod qobject {
         #[qinvokable]
         fn open_url(self: &Self, url: &QString) -> bool;
         /// What's new for this build, from the two versions QML keeps in shell.conf: whether
-        /// it opens by itself, what to keep now and once it closes, and what it shows. JSON.
+        /// it opens by itself, what to keep now and once it closes, and what it shows.
         #[qinvokable]
-        fn whats_new(self: &Self, seen: &QString, from: &QString) -> QString;
+        fn whats_new(self: &Self, seen: &QString, from: &QString) -> QJsonObject;
     }
 
     impl cxx_qt::Threading for Shell {}
@@ -166,21 +168,29 @@ fn settings_url(config_dir: &std::path::Path) -> QString {
 const NOTES: &str = include_str!("../../CHANGELOG.md");
 
 impl qobject::Shell {
-    pub fn whats_new(&self, seen: &QString, from: &QString) -> QString {
+    pub fn whats_new(&self, seen: &QString, from: &QString) -> QJsonObject {
         use anibeam_core::changelog::{self, Seen};
-        let seen = Seen {
+        let mut seen = Seen {
             version: seen.to_string(),
             from: from.to_string(),
         };
         let current = env!("CARGO_PKG_VERSION");
-        let used = crate::runtime::used_before();
+        // An install from before What's new kept a record: the version its core last logged
+        // stands in for the notes it last read.
+        let earlier = crate::runtime::earlier();
+        if seen.version.is_empty()
+            && let Some(version) = earlier.version
+        {
+            seen.version = version;
+        }
+        let used = earlier.started;
         let state = serde_json::json!({
             "due": seen.due(current, used),
             "started": seen.started(current, used),
             "closed": seen.closed(current),
-            "view": changelog::view(&changelog::parse(NOTES), current, &seen, used),
+            "view": changelog::whats_new(&changelog::parse(NOTES), current, &seen, used),
         });
-        QString::from(state.to_string().as_str())
+        crate::json::to_qjson_object(&state)
     }
 }
 

@@ -1,7 +1,8 @@
 //! Patch notes: an app's CHANGELOG.md read into its versions, newest first, and where What's
 //! new draws the line between what a person has read and what is new to them. Each shell
-//! keeps a [`Seen`] between runs and draws the [`View`] this hands back; the rules for both
-//! live here, so the desktop and the phone open, mark and close the notes the same way.
+//! keeps a [`Seen`] between runs and draws the [`WhatsNew`] this hands back; every rule for
+//! both lives here, so the desktop and the phone open, mark, dim and close the notes the same
+//! way.
 //!
 //! The file, which [`lint`] holds every app's copy to:
 //!
@@ -13,12 +14,12 @@
 //! ```
 //!
 //! A heading per version, newest first, with the day it was made; under it one or more of
-//! the sections New, Changed, Fixed and Removed; under each, one line per change. The `# `
-//! title and `<!-- -->` comments are skipped.
+//! the sections New, Changed, Fixed and Removed, in that order; under each, one line per
+//! change. The `# ` title and `<!-- -->` comments are skipped.
 
 use serde::{Deserialize, Serialize};
 
-/// The section names a version may use, in the order they read best.
+/// The section names a version may use, in the order a version lists them.
 pub const KINDS: [&str; 4] = ["New", "Changed", "Fixed", "Removed"];
 
 /// The most characters a line may have: two lines on a phone.
@@ -26,7 +27,7 @@ pub const MAX_LINE: usize = 80;
 
 /// One version's notes.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-pub struct Release {
+pub struct Notes {
     pub version: String,
     /// `2026-10-24`, as the heading has it; empty when it has none.
     pub date: String,
@@ -44,25 +45,25 @@ pub struct Section {
 /// The versions in `text`, in the file's order. Forgiving: a line it cannot place is
 /// skipped, so a slip in the file costs that line, never the sheet. [`lint`] is the strict
 /// reading.
-pub fn parse(text: &str) -> Vec<Release> {
-    let mut out: Vec<Release> = Vec::new();
+pub fn parse(text: &str) -> Vec<Notes> {
+    let mut out: Vec<Notes> = Vec::new();
     for (_, line) in read(text) {
         match line {
-            Line::Heading { version, date, .. } => out.push(Release {
+            Line::Heading { version, date, .. } => out.push(Notes {
                 version,
                 date,
                 sections: Vec::new(),
             }),
             Line::Section(kind) => {
-                if let Some(r) = out.last_mut() {
-                    r.sections.push(Section {
+                if let Some(n) = out.last_mut() {
+                    n.sections.push(Section {
                         kind,
                         lines: Vec::new(),
                     });
                 }
             }
             Line::Item(text) => {
-                if let Some(s) = out.last_mut().and_then(|r| r.sections.last_mut()) {
+                if let Some(s) = out.last_mut().and_then(|n| n.sections.last_mut()) {
                     s.lines.push(text);
                 }
             }
@@ -138,14 +139,25 @@ pub fn lint(text: &str, version: &str) -> Vec<String> {
                 if above.is_none() {
                     problems.push(format!("line {n}: a section before any version"));
                 }
-                if !KINDS.contains(&kind.as_str()) {
-                    problems.push(format!(
+                let rank = KINDS.iter().position(|k| *k == kind);
+                match rank {
+                    None => problems.push(format!(
                         "line {n}: \"### {kind}\" is not one of {}",
                         KINDS.join(", ")
-                    ));
-                }
-                if kinds.contains(&kind) {
-                    problems.push(format!("line {n}: a second {kind} section in one version"));
+                    )),
+                    Some(r) => {
+                        if kinds.contains(&kind) {
+                            problems
+                                .push(format!("line {n}: a second {kind} section in one version"));
+                        } else if let Some(last) = kinds.last()
+                            && KINDS.iter().position(|k| *k == *last) > Some(r)
+                        {
+                            problems.push(format!(
+                                "line {n}: {kind} comes before {last}; the order is {}",
+                                KINDS.join(", ")
+                            ));
+                        }
+                    }
                 }
                 kinds.push(kind);
                 open = Some((n, 0));
@@ -197,6 +209,20 @@ pub fn newer(a: &str, b: &str) -> bool {
     }
 }
 
+/// The app version in one the core logged as it started: `2.1.0` out of `2.1.0`,
+/// `2.1.0.r6.gf1d3824` or `2.1.0.dirty`. None when it does not start with three numbers,
+/// as a build described from one of the phone's tags (`android.v2.0.4`) does not.
+pub fn version_of(logged: &str) -> Option<String> {
+    let mut numbers = logged.splitn(4, '.');
+    let version = format!(
+        "{}.{}.{}",
+        numbers.next()?,
+        numbers.next()?,
+        numbers.next()?
+    );
+    parts(&version).map(|_| version)
+}
+
 /// What a shell keeps between runs, so the notes know what this person has read: the newest
 /// version whose notes they closed, and the version they had before it. Both empty on an
 /// install that has never closed them.
@@ -240,13 +266,15 @@ impl Seen {
 
 /// The notes as What's new shows them.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-pub struct View {
+pub struct WhatsNew {
     /// Under the title: "2.0.4 → 2.0.8", "Updated to 2.0.8", or "Version 2.0.8".
     pub note: String,
-    /// The words on the line under what is new, "You were on 2.0.4"; empty for no line.
+    /// The words on the line, "You were on 2.0.4"; empty for no line.
     pub line: String,
+    /// How many versions sit above the line, which goes under the last of them; 0 for none.
+    pub above: usize,
     /// The versions, newest first, none newer than the app.
-    pub releases: Vec<Shown>,
+    pub versions: Vec<Shown>,
 }
 
 /// One version as What's new lists it.
@@ -255,55 +283,63 @@ pub struct Shown {
     pub version: String,
     /// "24 Oct 2026", or empty.
     pub day: String,
-    /// Above the line: new since the version the person came from.
-    pub fresh: bool,
+    /// Drawn at full strength: every version, except those under a line that marks where
+    /// the person came from, which they have read.
+    pub lit: bool,
     pub sections: Vec<Section>,
 }
 
 /// What's new for `current`, read with `seen` and whether this install ran before the
-/// notes existed. While the notes are due the line sits at the version last closed; once
-/// they are closed it stays at the version the last update came from.
-pub fn view(notes: &[Release], current: &str, seen: &Seen, used_before: bool) -> View {
+/// notes existed. While the notes are due the line sits at the version last closed. Once
+/// they are closed it stays at the version that update came from, when that was known; an
+/// update from a version that kept no record, or a downgrade, has no line once closed.
+pub fn whats_new(notes: &[Notes], current: &str, seen: &Seen, used_before: bool) -> WhatsNew {
+    let versions: Vec<&Notes> = notes
+        .iter()
+        .filter(|n| !newer(&n.version, current))
+        .collect();
     let due = seen.due(current, used_before);
     let from = if due {
         seen.version.as_str()
+    } else if newer(&seen.version, current) {
+        ""
     } else {
         seen.from.as_str()
     };
-    let releases: Vec<&Release> = notes
-        .iter()
-        .filter(|r| !newer(&r.version, current))
-        .collect();
-    let fresh = if !from.is_empty() {
-        releases
+    let (above, known) = if !from.is_empty() {
+        let n = versions
             .iter()
-            .take_while(|r| newer(&r.version, from))
-            .count()
+            .take_while(|n| newer(&n.version, from))
+            .count();
+        (n, n > 0)
     } else if due {
-        // Updated from a version that kept no record: only this one's notes are new.
-        usize::from(releases.first().is_some_and(|r| r.version == current))
+        // From a version that kept no record: this version's notes go above the line, and
+        // nothing under it is dimmed, since nobody knows what was read.
+        let n = usize::from(versions.first().is_some_and(|n| n.version == current));
+        (n, false)
     } else {
-        0
+        (0, false)
     };
-    let (note, line) = match (fresh, from) {
+    let (note, line) = match (above, known) {
         (0, _) => (format!("Version {current}"), String::new()),
-        (_, "") => (
+        (_, false) => (
             format!("Updated to {current}"),
             "Before this update".to_string(),
         ),
-        (_, from) => (format!("{from} → {current}"), format!("You were on {from}")),
+        (_, true) => (format!("{from} → {current}"), format!("You were on {from}")),
     };
-    View {
+    WhatsNew {
         note,
         line,
-        releases: releases
+        above,
+        versions: versions
             .into_iter()
             .enumerate()
-            .map(|(i, r)| Shown {
-                version: r.version.clone(),
-                day: day(&r.date),
-                fresh: i < fresh,
-                sections: r.sections.clone(),
+            .map(|(i, n)| Shown {
+                version: n.version.clone(),
+                day: day(&n.date),
+                lit: !known || i < above,
+                sections: n.sections.clone(),
             })
             .collect(),
     }
@@ -409,8 +445,16 @@ fn day_parts(date: &str) -> Option<(i32, u32, u32)> {
     if it.next().is_some() || y.len() != 4 || m.len() != 2 || d.len() != 2 {
         return None;
     }
-    let (y, m, d) = (y.parse().ok()?, m.parse().ok()?, d.parse().ok()?);
-    ((1..=12).contains(&m) && (1..=31).contains(&d)).then_some((y, m, d))
+    let (y, m, d): (i32, u32, u32) = (y.parse().ok()?, m.parse().ok()?, d.parse().ok()?);
+    let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+    let days = match m {
+        2 if leap => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        1..=12 => 31,
+        _ => return None,
+    };
+    (1..=days).contains(&d).then_some((y, m, d))
 }
 
 #[cfg(test)]
@@ -442,6 +486,10 @@ How to write a line.
 - The preloaded sources
 ";
 
+    fn lit(w: &WhatsNew) -> Vec<bool> {
+        w.versions.iter().map(|v| v.lit).collect()
+    }
+
     #[test]
     fn a_file_reads_into_its_versions_sections_and_lines() {
         let notes = parse(NOTES);
@@ -471,6 +519,11 @@ How to write a line.
 wraps onto a second line
 ## 2.0.9 · 2026-10-25
 ### New
+## 2.0.8 · 2026-02-30
+### Fixed
+- One
+### New
+- Two
 ";
         let problems = lint(bad, "2.1.0");
         let has = |s: &str| problems.iter().any(|p| p.contains(s));
@@ -491,6 +544,8 @@ wraps onto a second line
         );
         assert!(has("line 6: 2.0.9 is not older than 2.0.9"), "{problems:?}");
         assert!(has("line 7: a section with no lines"), "{problems:?}");
+        assert!(has("line 8: \"2026-02-30\" is not a day"), "{problems:?}");
+        assert!(has("line 11: New comes before Fixed"), "{problems:?}");
     }
 
     #[test]
@@ -513,6 +568,15 @@ wraps onto a second line
         assert!(newer("2.0.8", ""));
         assert!(!newer("", "2.0.8"));
         assert!(!newer("2.0", "1.0.0"));
+    }
+
+    #[test]
+    fn a_logged_version_reads_as_the_app_version_it_starts_with() {
+        assert_eq!(version_of("2.1.0").as_deref(), Some("2.1.0"));
+        assert_eq!(version_of("2.1.0.r6.gf1d3824").as_deref(), Some("2.1.0"));
+        assert_eq!(version_of("2.1.0.dirty").as_deref(), Some("2.1.0"));
+        assert_eq!(version_of("android.v2.0.4"), None);
+        assert_eq!(version_of("2.1"), None);
     }
 
     #[test]
@@ -540,14 +604,12 @@ wraps onto a second line
             from: "2.0.2".into(),
         };
         assert!(seen.due("2.0.8", true));
-        let v = view(&notes, "2.0.8", &seen, true);
-        assert_eq!(v.note, "2.0.4 → 2.0.8");
-        assert_eq!(v.line, "You were on 2.0.4");
-        assert_eq!(
-            v.releases.iter().map(|r| r.fresh).collect::<Vec<_>>(),
-            [true, true, false]
-        );
-        assert_eq!(v.releases[0].day, "24 Oct 2026");
+        let w = whats_new(&notes, "2.0.8", &seen, true);
+        assert_eq!(w.note, "2.0.4 → 2.0.8");
+        assert_eq!(w.line, "You were on 2.0.4");
+        assert_eq!(w.above, 2);
+        assert_eq!(lit(&w), [true, true, false]);
+        assert_eq!(w.versions[0].day, "24 Oct 2026");
 
         // Closed: it does not open again, and opened by hand it still shows the update.
         let kept = seen.closed("2.0.8");
@@ -560,54 +622,56 @@ wraps onto a second line
         );
         assert!(!kept.due("2.0.8", true));
         assert_eq!(kept.closed("2.0.8"), kept);
-        let again = view(&notes, "2.0.8", &kept, true);
+        let again = whats_new(&notes, "2.0.8", &kept, true);
         assert_eq!(again.line, "You were on 2.0.4");
-        assert_eq!(again.releases.iter().filter(|r| r.fresh).count(), 2);
+        assert_eq!(lit(&again), [true, true, false]);
     }
 
     #[test]
-    fn a_version_from_before_the_notes_marks_only_the_newest_as_new() {
+    fn a_version_from_before_the_notes_marks_the_newest_and_dims_nothing() {
         let notes = parse(NOTES);
-        let v = view(&notes, "2.0.8", &Seen::default(), true);
-        assert_eq!(v.note, "Updated to 2.0.8");
-        assert_eq!(v.line, "Before this update");
-        assert_eq!(v.releases.iter().filter(|r| r.fresh).count(), 1);
+        let w = whats_new(&notes, "2.0.8", &Seen::default(), true);
+        assert_eq!(w.note, "Updated to 2.0.8");
+        assert_eq!(w.line, "Before this update");
+        assert_eq!(w.above, 1);
+        assert_eq!(lit(&w), [true, true, true]);
     }
 
     #[test]
     fn a_fresh_install_opened_by_hand_shows_no_line() {
         let notes = parse(NOTES);
         let kept = Seen::default().started("2.0.8", false).unwrap();
-        let v = view(&notes, "2.0.8", &kept, false);
-        assert_eq!(v.note, "Version 2.0.8");
-        assert_eq!(v.line, "");
-        assert!(v.releases.iter().all(|r| !r.fresh));
+        let w = whats_new(&notes, "2.0.8", &kept, false);
+        assert_eq!(w.note, "Version 2.0.8");
+        assert_eq!((w.line.as_str(), w.above), ("", 0));
+        assert_eq!(lit(&w), [true, true, true]);
     }
 
     #[test]
     fn notes_newer_than_the_app_stay_out_and_an_unlisted_version_still_places_the_line() {
         let notes = parse(NOTES);
-        let v = view(
-            &notes,
-            "2.0.7",
-            &Seen {
-                version: "2.0.6".into(),
-                from: String::new(),
-            },
-            true,
-        );
-        assert_eq!(v.releases[0].version, "2.0.7");
-        assert_eq!(v.releases.iter().filter(|r| r.fresh).count(), 1);
-        assert_eq!(v.line, "You were on 2.0.6");
+        let seen = Seen {
+            version: "2.0.6".into(),
+            from: String::new(),
+        };
+        let w = whats_new(&notes, "2.0.7", &seen, true);
+        assert_eq!(w.versions[0].version, "2.0.7");
+        assert_eq!(w.above, 1);
+        assert_eq!(w.line, "You were on 2.0.6");
     }
 
     #[test]
-    fn a_downgrade_opens_nothing_and_keeps_what_was_read() {
+    fn a_downgrade_opens_nothing_keeps_what_was_read_and_draws_no_line() {
+        let notes = parse(NOTES);
         let seen = Seen {
             version: "2.0.8".into(),
             from: "2.0.4".into(),
         };
         assert!(!seen.due("2.0.7", true));
         assert_eq!(seen.closed("2.0.7"), seen);
+        let w = whats_new(&notes, "2.0.7", &seen, true);
+        assert_eq!(w.note, "Version 2.0.7");
+        assert_eq!((w.line.as_str(), w.above), ("", 0));
+        assert_eq!(lit(&w), [true, true]);
     }
 }
