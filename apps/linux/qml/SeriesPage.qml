@@ -30,7 +30,8 @@ Item {
     // the fallback branch, the dependency on nav.current drops, and this relabel is the
     // only write left standing.
     onTitleChanged: if (frame.nav.current.label !== title) frame.nav.relabel(title)
-    function escapePressed() { return false }
+    // Escape leaves picking files to delete before it leaves the page
+    function escapePressed() { if (page.deleting) { page.deleting = false; page.deleteError = ""; return true } return false }
     property bool spoilers: false
     property bool synopsisOpen: false
     property bool tagsOpen: false
@@ -57,33 +58,77 @@ Item {
             { text: "Open in Metadata", icon: "database", action: function() { frame.go("metadata", { q: page.title }) } }
         ]
     }
-    // Deleting episodes (#158): the picked files, by id.
+    // Deleting (#158, #168), the phone's way: Delete in the first section's heading, then a bar
+    // that counts the picks and says where they go, and any row with a file picks on a click:
+    // episodes, extras and the stray files alike. The picked files, by id.
     property bool deleting: false
     property var deletePicked: []
-    readonly property int filesHere: episodeRows.filter(function(r) { return !!r.file && !r.absent && !r.upcoming }).length
+    property string deleteError: ""
+    // Every file on the page, and which of them are episodes
+    readonly property var episodeFiles: detail ? detail.episodes.map(function(e) { return e.file }) : []
+    readonly property var pageFiles: detail ? episodeFiles
+        .concat(detail.extras.map(function(x) { return x.file }), detail.unmatched_files.map(function(e) { return e.file })) : []
+    readonly property int filesHere: pageFiles.length
+    // The section whose heading carries Delete and whose head the bar sits under
+    readonly property string deleteAt: filesHere === 0 ? ""
+        : episodeRows.length > 0 ? "episodes" : detail && detail.extras.length > 0 ? "extras" : "stray"
+    readonly property string pickNoun: deletePicked.every(function(f) { return page.episodeFiles.indexOf(f) >= 0 })
+        ? (isMovie ? "film" : "episode") : "file"
+    function pickWords(n) { return n === 1 ? "1 " + pickNoun : n + " " + pickNoun + "s" }
+    function startDelete() { page.deletePicked = []; page.deleteError = ""; page.deleting = true }
     function togglePick(file) {
         var i = deletePicked.indexOf(file), next = deletePicked.slice()
         if (i >= 0) next.splice(i, 1); else next.push(file)
         deletePicked = next
     }
+    // A pick whose file went away (a scan, a delete elsewhere) drops out
+    onPageFilesChanged: if (deletePicked.some(function(f) { return page.pageFiles.indexOf(f) < 0 }))
+        deletePicked = deletePicked.filter(function(f) { return page.pageFiles.indexOf(f) >= 0 })
     // Off the Qt thread: trashing big files can take a while. The picks stay until it worked.
     property real deleteToken: -1
     function deletePickedFiles() {
-        var files = deletePicked.slice()
-        deleteToken = Door.callAsync("DeleteEpisodes", { series: page.props.id, files: files })
+        if (deleteToken >= 0 || deletePicked.length === 0) return
+        page.deleteError = ""
+        deleteToken = Door.callAsync("DeleteEpisodes", { series: page.props.id, files: deletePicked.slice() })
     }
     Connections {
         target: Door
         function onCallDone(token, reply) {
             if (token !== page.deleteToken) return
             page.deleteToken = -1
-            if (reply.error) { frame.toast(frame.errorText(reply.error)); return }
-            var n = page.deletePicked.length
+            if (reply.error) { page.deleteError = frame.errorText(reply.error); return }
+            var words = page.pickWords(page.deletePicked.length)
             page.deleting = false
             page.deletePicked = []
-            frame.toast((n === 1 ? "1 episode" : n + " episodes") + " moved to the trash")
+            frame.toast(words + " moved to the trash")
         }
     }
+    // Get episodes (#169): the Downloads page's show view for this series
+    function getEpisodes() { frame.go("downloads", { series: page.props.id }, "Downloads") }
+    // The quick fix (#170): every file on the page as the sheet lists them, by name
+    function fixRows() {
+        if (!detail) return []
+        function name(path) { return String(path || "").split("/").pop() }
+        function season(e) { return e.season === undefined ? null : e.season }
+        var rows = detail.episodes.concat(detail.unmatched_files).map(function(e) {
+            return { file: e.file, name: name(e.path), reading: { Episode: { number: e.number, season: season(e) } }, fixed: !!e.fixed }
+        }).concat(detail.extras.map(function(x) {
+            return { file: x.file, name: name(x.path), reading: { Extra: { kind: x.kind, index: x.index === undefined ? null : x.index } }, fixed: !!x.fixed }
+        }))
+        // Natural order: OVA 2 before OVA 10
+        function chunks(s) { return String(s).toLowerCase().match(/\d+|\D+/g) || [] }
+        return rows.sort(function(a, b) {
+            var x = chunks(a.name), y = chunks(b.name)
+            for (var i = 0; i < Math.min(x.length, y.length); i++) {
+                if (x[i] === y[i]) continue
+                var nx = /^\d/.test(x[i]), ny = /^\d/.test(y[i])
+                if (nx && ny) return Number(x[i]) - Number(y[i]) || x[i].length - y[i].length
+                return x[i] < y[i] ? -1 : 1
+            }
+            return x.length - y.length
+        })
+    }
+    function openFix(suggested) { fixSheet.openFor(page.props.id, page.title, page.fixRows(), suggested || null) }
     function rescan() { var r = Door.rescanSeries(page.props.id); frame.toast(r.error ? r.error.message : "Rescan started") }
     function load() {
         var r = Door.getSeries(props.id)
@@ -307,6 +352,67 @@ Item {
         role: "ui"
         font.pointSize: theme.typeSmall
         color: theme.textDim
+    }
+    // Delete, at the right of the first section with a file, while nothing is being picked
+    component DeleteButton: Button {
+        property string where: ""
+        objectName: "delete-files-" + where
+        visible: page.deleteAt === where && !page.deleting
+        small: true; flat: true
+        icon: "trash-2"
+        text: "Delete"
+        onClicked: page.startDelete()
+    }
+    // The phone's delete bar: how many are picked, what deleting does, and the two ways out
+    component DeleteBar: Corner {
+        id: bar
+        property string where: ""
+        objectName: "delete-bar-" + where
+        visible: page.deleting && page.deleteAt === where
+        width: parent ? parent.width : 0
+        height: visible ? barCol.implicitHeight + theme.space(4) * 2 : 0
+        radius: theme.radiusTile
+        smoothing: theme.cornerSmoothing
+        color: theme.tile
+        borderColor: theme.line
+        borderWidth: 1
+        Column {
+            id: barCol
+            x: theme.space(5)
+            y: theme.space(4)
+            width: parent.width - theme.space(10)
+            spacing: theme.space(2)
+            Label {
+                width: parent.width
+                text: page.deletePicked.length === 0 ? "Click the files to delete." : page.pickWords(page.deletePicked.length) + " picked."
+                role: "title"; font.pointSize: theme.typeNormal
+            }
+            Label {
+                width: parent.width
+                text: "They go to the trash, where you can get them back. What you watched stays tracked."
+                role: "ui"; font.pointSize: theme.typeSmall; color: theme.textDim; wrapMode: Text.Wrap
+            }
+            Label {
+                width: parent.width
+                visible: page.deleteError !== ""
+                text: page.deleteError
+                role: "ui"; font.pointSize: theme.typeSmall; color: theme.red; wrapMode: Text.Wrap
+            }
+            Item { width: 1; height: theme.space(1) }
+            Row {
+                spacing: theme.space(2)
+                Button {
+                    objectName: "delete-confirm"
+                    danger: true; small: true
+                    icon: "trash-2"
+                    busy: page.deleteToken >= 0
+                    enabled: page.deletePicked.length > 0 && page.deleteToken < 0
+                    text: page.deletePicked.length === 0 ? "Move to the trash" : "Move " + page.pickWords(page.deletePicked.length) + " to the trash"
+                    onClicked: page.deletePickedFiles()
+                }
+                Button { objectName: "delete-cancel"; small: true; flat: true; text: "Cancel"; onClicked: { page.deleting = false; page.deleteError = "" } }
+            }
+        }
     }
 
     PageScroll {
@@ -542,6 +648,18 @@ Item {
                         enabled: page.playEpisode !== null && !page.waitingOnDownload
                         onClicked: if (page.playEpisode) page.openFile(page.playEpisode.file)
                     }
+                    // The phone's Get episodes: primary when there is nothing to play
+                    Button {
+                        objectName: "series-get"
+                        visible: !!page.detail && !page.isMovie
+                        anchors.verticalCenter: parent.verticalCenter
+                        primary: page.playEpisode === null
+                        ghost: page.playEpisode !== null
+                        tint: page.inkAccent
+                        icon: "download"
+                        text: "Get episodes"
+                        onClicked: page.getEpisodes()
+                    }
                     Row {
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: theme.space(3)
@@ -599,6 +717,14 @@ Item {
                         Tooltip { text: page.hasTracker ? "Hidden from every list, and tracker sync stops" : "Hidden from every list" }
                     }
                     Button { objectName: "series-site"; visible: !!(page.detail && page.detail.site_url); small: true; ghost: true; text: page.siteName; icon: "external-link"; onClicked: frame.openLink(page.detail.site_url) }
+                    Button {
+                        objectName: "series-fix"
+                        visible: page.filesHere > 0
+                        small: true; ghost: true
+                        text: "Fix files"; icon: "wrench"
+                        onClicked: page.openFix(page.detail ? page.detail.suggested_fix : null)
+                        Tooltip { text: "Say what a file really is when its name read wrong" }
+                    }
                     Button { small: true; ghost: true; text: "Rescan"; icon: "refresh-cw"; onClicked: page.rescan() }
                 }
             }
@@ -623,29 +749,52 @@ Item {
                 width: body.twoCol ? Math.floor((body.width - body.gap) * 0.6) : body.width
                 spacing: body.sectionGap
 
+                // A misreading the core can see, with its fix one click away (#170)
+                Corner {
+                    objectName: "series-suggested-fix"
+                    visible: !!page.detail && !!page.detail.suggested_fix && !page.deleting
+                    width: parent.width
+                    height: visible ? suggestedRow.implicitHeight + theme.space(3) * 2 : 0
+                    radius: theme.radiusTile
+                    smoothing: theme.cornerSmoothing
+                    color: theme.accentSoft
+                    Row {
+                        id: suggestedRow
+                        x: theme.space(4)
+                        width: parent.width - theme.space(8)
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: theme.space(3)
+                        Icon { anchors.verticalCenter: parent.verticalCenter; glyph: "sparkles"; size: theme.space(4.5); color: theme.accent }
+                        Label {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - theme.space(7.5) - suggestedFix.width - parent.spacing * 2
+                            text: page.detail && page.detail.suggested_fix ? page.detail.suggested_fix.text : ""
+                            role: "ui"; color: theme.text; wrapMode: Text.Wrap
+                        }
+                        Button {
+                            id: suggestedFix
+                            objectName: "series-suggested-fix-open"
+                            anchors.verticalCenter: parent.verticalCenter
+                            small: true; primary: true
+                            text: "Quick fix"; icon: "wrench"
+                            onClicked: page.openFix(page.detail.suggested_fix)
+                        }
+                    }
+                }
+
                 // The episodes
                 Column {
                     objectName: "series-episodes"
                     visible: page.episodeRows.length > 0
                     width: parent.width
                     spacing: theme.space(4)
-                    Heading { text: page.isMovie ? "Film" : "Episodes"; count: page.episodeRows.filter(function(r) { return !r.upcoming }).length; fact: page.episodesFact }
-                    // Deleting episodes: a button to start, then pick rows and confirm.
-                    Row {
-                        visible: !page.isMovie && page.filesHere > 0
-                        spacing: theme.space(3)
-                        Button { visible: !page.deleting; objectName: "delete-episodes"; text: "Delete episodes"; icon: "trash-2"; flat: true; small: true; onClicked: { page.deletePicked = []; page.deleting = true } }
-                        Label { visible: page.deleting && page.deletePicked.length === 0; anchors.verticalCenter: parent.verticalCenter; text: "Click the episodes to delete."; color: theme.textDim }
-                        InlineConfirm {
-                            objectName: "delete-episodes-confirm"
-                            visible: page.deleting && page.deletePicked.length > 0
-                            question: "Move " + (page.deletePicked.length === 1 ? "1 episode" : page.deletePicked.length + " episodes") + " to the trash?"
-                            confirmText: "Move to trash"
-                            onAccepted: page.deletePickedFiles()
-                            onKept: page.deleting = false
-                        }
-                        Button { visible: page.deleting && page.deletePicked.length === 0; text: "Cancel"; flat: true; small: true; onClicked: page.deleting = false }
+                    Heading {
+                        text: page.isMovie ? "Film" : "Episodes"
+                        count: page.episodeRows.filter(function(r) { return !r.upcoming }).length
+                        fact: page.episodesFact
+                        action: DeleteButton { where: "episodes" }
                     }
+                    DeleteBar { where: "episodes" }
                     Column {
                         width: parent.width
                         spacing: theme.space(4)
@@ -664,6 +813,8 @@ Item {
                                 picking: page.deleting
                                 picked: page.deletePicked.indexOf(modelData.file) >= 0
                                 onPick: page.togglePick(modelData.file)
+                                gettable: !page.isMovie
+                                onDownload: page.getEpisodes()
                             }
                         }
                     }
@@ -674,7 +825,8 @@ Item {
                     visible: !!page.detail && page.detail.extras.length > 0
                     width: parent.width
                     spacing: theme.space(4)
-                    Heading { text: "Openings, endings and more"; count: page.detail ? page.detail.extras.length : 0 }
+                    Heading { text: "Openings, endings and more"; count: page.detail ? page.detail.extras.length : 0; action: DeleteButton { where: "extras" } }
+                    DeleteBar { where: "extras" }
                     Repeater {
                         model: [["Op", "Openings"], ["Ed", "Endings"], ["Pv", "Previews and trailers"], ["Sp", "Specials"], ["Other", "Other"]]
                         Column {
@@ -687,7 +839,18 @@ Item {
                             Column {
                                 width: parent.width
                                 spacing: theme.space(4)
-                                Repeater { model: group; EpisodeRow { required property var modelData; episode: ({ code: modelData.code, title: modelData.label, resume: modelData.resume, watched: false, next_up: false }); title: modelData.label; onPlay: page.openFile(modelData.file) } }
+                                Repeater {
+                                    model: group
+                                    EpisodeRow {
+                                        required property var modelData
+                                        episode: ({ code: modelData.code, title: modelData.label, resume: modelData.resume, watched: false, next_up: false })
+                                        title: modelData.label
+                                        onPlay: page.openFile(modelData.file)
+                                        picking: page.deleting
+                                        picked: page.deletePicked.indexOf(modelData.file) >= 0
+                                        onPick: page.togglePick(modelData.file)
+                                    }
+                                }
                             }
                         }
                     }
@@ -699,7 +862,8 @@ Item {
                     visible: !!page.detail && page.detail.unmatched_files.length > 0
                     width: parent.width
                     spacing: theme.space(4)
-                    Heading { text: "Extra files"; count: page.detail ? page.detail.unmatched_files.length : 0 }
+                    Heading { text: "Extra files"; count: page.detail ? page.detail.unmatched_files.length : 0; action: DeleteButton { where: "stray" } }
+                    DeleteBar { where: "stray" }
                     Row {
                         width: parent.width
                         spacing: theme.space(2)
@@ -714,7 +878,16 @@ Item {
                         width: parent.width
                         spacing: theme.space(4)
                         Repeater { model: page.detail ? page.detail.unmatched_files : []
-                            EpisodeRow { required property var modelData; episode: modelData; extra: true; title: Fmt.episodeName(modelData.title || "", modelData.number); detailText: modelData.path.split("/").pop(); onPlay: page.openFile(modelData.file) } }
+                            EpisodeRow {
+                                required property var modelData
+                                episode: modelData; extra: true
+                                title: Fmt.episodeName(modelData.title || "", modelData.number)
+                                detailText: modelData.path.split("/").pop()
+                                onPlay: page.openFile(modelData.file)
+                                picking: page.deleting
+                                picked: page.deletePicked.indexOf(modelData.file) >= 0
+                                onPick: page.togglePick(modelData.file)
+                            } }
                     }
                 }
             }
@@ -890,6 +1063,21 @@ Item {
     ScorePicker { id: scorePicker; parent: frame.overlay
         onSaved: function(v) { var r = Door.setScore(page.props.id, v); if (r.error) frame.toast(r.error.message) }
         onCleared: { var r = Door.setScore(page.props.id, -1); if (r.error) frame.toast(r.error.message) } }
+
+    // The quick fix (#170), over the overlay like the match
+    FixSheet {
+        id: fixSheet
+        parent: frame.overlay
+        anchors.centerIn: parent
+    }
+    Blocker {
+        parent: frame.overlay
+        anchors.fill: parent
+        z: -1
+        visible: fixSheet.visible
+        dismissOnPress: true
+        onDismissed: fixSheet.close()
+    }
 
     // The match, for an unmatched series: the same popover Metadata opens, over the overlay
     MatchPanel {

@@ -461,6 +461,33 @@ FocusScope {
     readonly property bool removalOpen: removeSheet.visible
     function askRemoval(anchor, spec, done) { removeSheet.openAt(anchor, spec, done) }
 
+    // ---- A quick fix's GitHub issue (#170). Drafted off the Qt thread, a coding agent's
+    // triage first when one is installed, which can take minutes; the frame waits for it so
+    // the issue still opens after the series page has gone. token -> the agent's name or ""
+    property var fixReports: ({})
+    function reportFix(series, files, agent) {
+        var token = Door.callAsync("ReportFix", { series: series, files: files, app: Shell.release })
+        if (token < 0) { frame.toast("Fixed. The issue could not be drafted"); return }
+        var next = Object.assign({}, frame.fixReports)
+        next[token] = agent || ""
+        frame.fixReports = next
+        frame.toast(agent ? "Fixed. " + agent + " is looking into it, and the issue opens when it is done" : "Fixed. Opening the issue", agent ? 8 : 4)
+    }
+    Connections {
+        target: Door
+        function onCallDone(token, reply) {
+            if (frame.fixReports[token] === undefined) return
+            var next = Object.assign({}, frame.fixReports)
+            delete next[token]
+            frame.fixReports = next
+            if (reply.error) { frame.toast("The issue could not be drafted: " + frame.errorText(reply.error), 8); return }
+            var report = reply.reply.report
+            frame.openLink(report.url)
+            frame.toast(report.triage_error ? "The issue is open in your browser, without a triage. " + report.triage_error
+                        : "The issue is open in your browser, ready to send", 8)
+        }
+    }
+
     // ---- Downloads: the subscriptions as last read, shared by the rail's badge and the
     // page. Read once a little after start (anirss is a sidecar the core starts), then
     // again when the library has settled after a change, since a new episode on disk can
