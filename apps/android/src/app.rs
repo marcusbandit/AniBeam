@@ -112,6 +112,8 @@ struct App {
     /// Picking episodes to delete on the open series page, and the files picked.
     deleting: bool,
     picked: HashSet<i32>,
+    /// A delete is on its way to the core.
+    delete_busy: bool,
     // Downloads.
     sources: Vec<PhoneSource>,
     downloads: Rc<VecModel<DownloadRow>>,
@@ -612,6 +614,9 @@ impl App {
 
     fn open_series(&mut self, id: i32, remote: bool) {
         let Ok(id) = u64::try_from(id) else { return };
+        // Picking to delete belongs to the page it started on.
+        self.deleting = false;
+        self.picked.clear();
         self.open = Some(if remote { Open::Remote(id) } else { Open::Phone(id) });
         self.detail = None;
         self.reload_open();
@@ -621,14 +626,18 @@ impl App {
     fn confirm_delete(&mut self) {
         let (Some(Open::Phone(series)), Some(core)) = (self.open, crate::local::core()) else { return };
         let files: Vec<u64> = self.picked.iter().filter_map(|f| u64::try_from(*f).ok()).collect();
-        if files.is_empty() {
+        if files.is_empty() || self.delete_busy {
             return;
         }
+        self.delete_busy = true;
+        self.data().set_delete_busy(true);
         self.data().set_delete_error("".into());
         let _ = std::thread::Builder::new().name("delete".into()).spawn(move || {
             let answer = core.call(Call::DeleteEpisodes { series, files });
             let _ = slint::invoke_from_event_loop(move || {
                 with_app(|app| {
+                    app.delete_busy = false;
+                    app.data().set_delete_busy(false);
                     match answer {
                         Ok(_) => {
                             app.deleting = false;
@@ -932,6 +941,7 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
         episodes,
         deleting: false,
         picked: HashSet::new(),
+        delete_busy: false,
         sources: Vec::new(),
         downloads,
         polling: false,

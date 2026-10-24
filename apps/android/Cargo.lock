@@ -100,7 +100,7 @@ dependencies = [
 
 [[package]]
 name = "anibeam-android"
-version = "2.0.3"
+version = "2.0.4"
 dependencies = [
  "anibeam-companion",
  "anibeam-core",

@@ -66,12 +66,23 @@ Item {
         if (i >= 0) next.splice(i, 1); else next.push(file)
         deletePicked = next
     }
+    // Off the Qt thread: trashing big files can take a while. The picks stay until it worked.
+    property real deleteToken: -1
     function deletePickedFiles() {
         var files = deletePicked.slice()
-        deleting = false
-        deletePicked = []
-        var r = Door.call("DeleteEpisodes", { series: page.props.id, files: files })
-        frame.toast(r.error ? frame.errorText(r.error) : (files.length === 1 ? "1 episode" : files.length + " episodes") + " moved to the trash")
+        deleteToken = Door.callAsync("DeleteEpisodes", { series: page.props.id, files: files })
+    }
+    Connections {
+        target: Door
+        function onCallDone(token, reply) {
+            if (token !== page.deleteToken) return
+            page.deleteToken = -1
+            if (reply.error) { frame.toast(frame.errorText(reply.error)); return }
+            var n = page.deletePicked.length
+            page.deleting = false
+            page.deletePicked = []
+            frame.toast((n === 1 ? "1 episode" : n + " episodes") + " moved to the trash")
+        }
     }
     function rescan() { var r = Door.rescanSeries(page.props.id); frame.toast(r.error ? r.error.message : "Rescan started") }
     function load() {

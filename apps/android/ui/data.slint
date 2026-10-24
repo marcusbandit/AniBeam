@@ -215,6 +215,7 @@ export global AppData {
     // The open series has an episode on this phone.
     in property <bool> series-has-files;
     in property <int> delete-count;
+    in property <bool> delete-busy;
     in property <string> delete-error;
     callback start-delete();
     callback toggle-delete(int);

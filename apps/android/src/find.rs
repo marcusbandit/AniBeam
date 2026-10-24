@@ -1223,7 +1223,8 @@ fn library_offer(c: &SeriesCard) -> Offer {
 /// What a library show has on this phone, for its suggestion row.
 fn library_line(c: &SeriesCard) -> String {
     let here = c.episodes_here.len();
-    let total = c.cubes.chars().filter(|k| *k != 'f').count();
+    // Files numbered past the record's count (absolute numbering) still count as here.
+    let total = c.cubes.chars().filter(|k| *k != 'f').count().max(here);
     match (here, total) {
         (_, 0) => "In your library".to_string(),
         (0, t) => format!("In your library, none of {t} on this phone"),

@@ -124,7 +124,7 @@ component DeleteBar inherits Rectangle {
                 text: AppData.delete-count == 1 ? "Delete 1 episode" : "Delete " + AppData.delete-count + " episodes";
                 small: true;
                 danger: true;
-                enabled: AppData.delete-count > 0;
+                enabled: AppData.delete-count > 0 && !AppData.delete-busy;
                 clicked => { AppData.confirm-delete(); }
             }
             Button {

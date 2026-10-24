@@ -14,6 +14,8 @@ use crate::core::Core;
 struct Row {
     series: u64,
     path: String,
+    /// The episode number, for counting episodes rather than files.
+    number: Option<f64>,
     sidecars: Vec<Sidecar>,
 }
 
@@ -58,7 +60,9 @@ fn paths(
                     ),
                 ));
             }
-            if p != main && !Path::new(&p).exists() {
+            // Already gone (a sidecar, or a file removed by hand that the library still
+            // lists): nothing to move, and the rescan below drops its row.
+            if !Path::new(&p).exists() {
                 continue;
             }
             out.push(p);
@@ -78,7 +82,7 @@ pub fn delete_episodes(core: &Core, series: u64, files: Vec<u64>) -> Result<Repl
         for id in &files {
             let row = c
                 .query_row(
-                    "SELECT series_id, path, sidecars FROM files WHERE id = ?1",
+                    "SELECT series_id, path, sidecars, number FROM files WHERE id = ?1",
                     params![*id as i64],
                     |r| {
                         Ok(Row {
@@ -86,6 +90,7 @@ pub fn delete_episodes(core: &Core, series: u64, files: Vec<u64>) -> Result<Repl
                             path: r.get(1)?,
                             sidecars: serde_json::from_str(&r.get::<_, String>(2)?)
                                 .unwrap_or_default(),
+                            number: r.get(3)?,
                         })
                     },
                 )
@@ -106,24 +111,37 @@ pub fn delete_episodes(core: &Core, series: u64, files: Vec<u64>) -> Result<Repl
         Ok((rows, sources, title))
     })?;
     let targets = paths(&rows, series, &sources)?;
-    crate::downloads::trash::move_to_trash(&targets)?;
-    let n = files.len();
-    core.bus.info(
-        Stage::Library,
-        format!(
-            "{} {} of {title} {}",
-            n,
-            if n == 1 { "episode" } else { "episodes" },
-            if crate::downloads::trash::WHERE == "deleted" {
-                "deleted"
-            } else {
-                "moved to the trash"
-            }
-        ),
-        EventBody::Notice,
-    );
-    // Read the folder again now; the watcher would get there too, a moment later.
-    super::scan::rescan_series(core, series)
+    // Episodes, not files: two releases of one episode are one episode deleted.
+    let mut numbers: Vec<String> = rows
+        .iter()
+        .filter_map(|(_, r)| r.as_ref())
+        .map(|r| r.number.map_or_else(|| r.path.clone(), |n| n.to_string()))
+        .collect();
+    numbers.sort();
+    numbers.dedup();
+    let n = numbers.len();
+    // A trash that fails part way has still moved what it moved: the library is read again
+    // either way, and the failure is reported after.
+    let moved = crate::downloads::trash::move_to_trash(&targets);
+    if moved.is_ok() {
+        core.bus.info(
+            Stage::Library,
+            format!(
+                "{} {} of {title} {}",
+                n,
+                if n == 1 { "episode" } else { "episodes" },
+                if crate::downloads::trash::WHERE == "deleted" {
+                    "deleted"
+                } else {
+                    "moved to the trash"
+                }
+            ),
+            EventBody::Notice,
+        );
+    }
+    let scan = super::scan::rescan_series(core, series);
+    moved?;
+    scan
 }
 
 #[cfg(test)]
@@ -134,21 +152,44 @@ mod tests {
         Some(Row {
             series,
             path: path.into(),
+            number: Some(1.0),
             sidecars: Vec::new(),
         })
     }
 
     #[test]
     fn only_files_of_the_series_inside_a_library_folder() {
-        let lib = vec!["/lib".to_string()];
+        let dir = tempfile::tempdir().unwrap();
+        let lib = dir.path().join("lib");
+        std::fs::create_dir_all(lib.join("Show")).unwrap();
+        let ep = lib.join("Show/01.mkv");
+        std::fs::write(&ep, b"x").unwrap();
+        let outside = dir.path().join("01.mkv");
+        std::fs::write(&outside, b"x").unwrap();
+        let sources = vec![lib.to_string_lossy().into_owned()];
+        let p = |s: &std::path::Path| s.to_string_lossy().into_owned();
         assert_eq!(
-            paths(&[(1, row(7, "/lib/Show/01.mkv"))], 7, &lib).unwrap(),
-            vec![PathBuf::from("/lib/Show/01.mkv")]
+            paths(&[(1, row(7, &p(&ep)))], 7, &sources).unwrap(),
+            vec![ep.clone()]
         );
-        assert!(paths(&[(1, row(8, "/lib/Show/01.mkv"))], 7, &lib).is_err());
-        assert!(paths(&[(1, row(7, "/elsewhere/01.mkv"))], 7, &lib).is_err());
-        assert!(paths(&[(1, row(7, "/lib"))], 7, &lib).is_err());
-        assert!(paths(&[(1, row(7, "/lib/Show/../../etc/x"))], 7, &lib).is_err());
-        assert!(paths(&[(1, None)], 7, &lib).is_err());
+        assert!(paths(&[(1, row(8, &p(&ep)))], 7, &sources).is_err());
+        assert!(paths(&[(1, row(7, &p(&outside)))], 7, &sources).is_err());
+        assert!(paths(&[(1, row(7, &p(&lib)))], 7, &sources).is_err());
+        assert!(
+            paths(
+                &[(1, row(7, &format!("{}/Show/../../01.mkv", p(&lib))))],
+                7,
+                &sources
+            )
+            .is_err()
+        );
+        assert!(paths(&[(1, None)], 7, &sources).is_err());
+        // A file the library still lists but that is already gone is left to the rescan.
+        let gone = lib.join("Show/02.mkv");
+        assert!(
+            paths(&[(2, row(7, &p(&gone)))], 7, &sources)
+                .unwrap()
+                .is_empty()
+        );
     }
 }

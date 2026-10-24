@@ -308,14 +308,6 @@ pub enum Call {
         torrents: bool,
         files: bool,
     },
-    /// Takes a show out of downloads in one go, as far as asked: the
-    /// subscription (`rule`: its feed and download rule), with `torrents`
-    /// the client's torrents for it (`hashes`), and with `files` what they
-    /// downloaded and the library series' folder (`series`), moved to the
-    /// trash rather than deleted. `files` implies `torrents`. Every file
-    /// target is checked before anything is removed: a library root, the
-    /// home folder or anything holding one is refused and nothing changes.
-    /// `title` names the show in the log. Ends in `ShowRemoved`.
     /// Deletes episodes' files, with their subtitle sidecars, from a library series: to
     /// the trash on a desktop, outright on a phone. Each file must belong to `series`
     /// and sit inside a library folder, or nothing is removed. Starts a scan of the
@@ -324,6 +316,14 @@ pub enum Call {
         series: u64,
         files: Vec<u64>,
     },
+    /// Takes a show out of downloads in one go, as far as asked: the
+    /// subscription (`rule`: its feed and download rule), with `torrents`
+    /// the client's torrents for it (`hashes`), and with `files` what they
+    /// downloaded and the library series' folder (`series`), moved to the
+    /// trash rather than deleted. `files` implies `torrents`. Every file
+    /// target is checked before anything is removed: a library root, the
+    /// home folder or anything holding one is refused and nothing changes.
+    /// `title` names the show in the log. Ends in `ShowRemoved`.
     RemoveShow {
         title: String,
         rule: Option<String>,

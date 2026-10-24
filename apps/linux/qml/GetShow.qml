@@ -137,6 +137,8 @@ Item {
     readonly property int downloadingCount: Object.keys(inFlight).filter(function(n) { return inFlight[n] < 1 }).length
     // The episodes with a file here, from the card. The cubes mark one watched elsewhere as
     // watched with no file here, so with this list only what is in it counts as had (#156).
+    // The same rule as the core's releases::grid::library, which the phone uses; keep the two
+    // alike.
     readonly property var here: show && show.here ? show.here : null
     readonly property int lastHere: here && here.length ? here[here.length - 1] : 0
     readonly property var library: {
