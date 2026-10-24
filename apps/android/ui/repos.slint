@@ -58,9 +58,10 @@ export global RepoData {
     // An install or update asking for values, in the row of `asking-index`.
     in property <bool> asking;
     in property <int> asking-index: -1;
-    in property <string> asking-title;
     in property <string> asking-note;
     in property <[AuthRow]> fields;
+    // What went wrong with the form's own call, shown inside it.
+    in property <string> asking-error;
     // What the form's button does: Install, Update or Save.
     in property <string> asking-action: "Install";
     // An endpoint added by hand.
@@ -248,7 +249,7 @@ export component RepoAdd inherits Rectangle {
         spacing: Theme.unit * 3;
         if !RepoData.previewing: RepoForm { }
         if RepoData.previewing: RepoPreview { }
-        if RepoData.error != "" && !RepoData.asking: Text {
+        if RepoData.error != "": Text {
             text: RepoData.error;
             color: Theme.bad;
             font-size: Theme.small;
@@ -367,8 +368,8 @@ component AskValues inherits Rectangle {
             field: f;
             index: i;
         }
-        if RepoData.error != "": Text {
-            text: RepoData.error;
+        if RepoData.asking-error != "": Text {
+            text: RepoData.asking-error;
             color: Theme.bad;
             font-size: Theme.small;
             wrap: word-wrap;
