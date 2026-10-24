@@ -2,6 +2,7 @@ name: Triage report
 description: Filed by a coding agent (Claude Code, Codex or another) that looked into the problem on your machine. This is the preferred way to report a problem.
 labels:
   - via-triage
+  - needs-triage
 body:
   - type: markdown
     attributes:

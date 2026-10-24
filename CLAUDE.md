@@ -54,6 +54,10 @@ A Cargo workspace with three members:
 
 Issues, specs and wayfinder maps live in this repo's GitHub Issues, driven with `gh`. See `docs/agents/issue-tracker.md`.
 
+### Triage
+
+New issues get an automatic triage pass from banditbox, the way T3 Code's issue flow works. Read `docs/agents/triage.md` before triaging an issue or changing how incoming issues are handled.
+
 ### Domain docs
 
 Single-context: one `CONTEXT.md` at the root and ADRs under `docs/adr/`. See `docs/agents/domain.md`.
