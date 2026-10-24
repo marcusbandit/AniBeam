@@ -95,14 +95,17 @@ Panel {
             var o = root.catalog.offered[i]
             if (o.repo_url === e.repo_url && o.id === e.id) fields = o.auth
         }
-        root.asking = { call: "UpdateEndpoint", args: { install: e.install_id }, fields: fields, values: fields.map(function() { return "" }),
+        root.asking = { call: "UpdateEndpoint", action: "Update", args: { install: e.install_id }, fields: fields, values: fields.map(function() { return "" }),
                         title: e.name + " version " + e.update + " asks again",
                         note: e.update_host ? "The new version sends this to " + e.update_host + "." : "Its fields changed." }
     }
-    function fill(e) {
-        var fields = e.auth.filter(function(a) { return e.missing.indexOf(a.key) >= 0 })
+    // The values an installed endpoint is missing, or with `all` every one, to change: a
+    // field left empty keeps what is stored.
+    function fill(e, all) {
+        var fields = all ? e.auth : e.auth.filter(function(a) { return e.missing.indexOf(a.key) >= 0 })
         root.asking = { call: "SetEndpointCredentials", args: { install: e.install_id }, fields: fields, values: fields.map(function() { return "" }),
-                        title: e.name + " needs a value", note: "Kept in this machine's secret store, never in the library or an export." }
+                        action: "Save", title: all ? e.name + "'s values" : e.name + " needs a value",
+                        note: "Kept in this machine's secret store, never in the library or an export." + (all ? " A field left empty keeps what is stored." : "") }
     }
     function confirm() {
         var a = root.asking, creds = []
@@ -186,7 +189,7 @@ Panel {
         }
         Row {
             spacing: theme.space(1.5)
-            Button { text: root.busy ? "Saving" : "Install"; primary: true; busy: root.busy; onClicked: root.confirm() }
+            Button { text: root.busy ? "Saving" : (root.asking && root.asking.action ? root.asking.action : "Install"); primary: true; busy: root.busy; onClicked: root.confirm() }
             Button { text: "Cancel"; flat: true; onClicked: root.asking = null }
         }
     }
@@ -202,7 +205,8 @@ Panel {
             Row {
                 spacing: theme.space(1.5)
                 Button { visible: modelData.update !== null && modelData.update !== undefined; text: "Update to v" + modelData.update; small: true; primary: true; onClicked: root.update(modelData) }
-                Button { visible: modelData.missing.length > 0 && !(modelData.update !== null && modelData.update !== undefined); text: "Add its value"; small: true; primary: true; onClicked: root.fill(modelData) }
+                Button { visible: modelData.missing.length > 0 && !(modelData.update !== null && modelData.update !== undefined); text: "Add its value"; small: true; primary: true; onClicked: root.fill(modelData, false) }
+                Button { visible: modelData.auth.length > 0 && modelData.missing.length === 0; text: "Change " + modelData.auth.map(function(a) { return a.label }).join(", "); small: true; flat: true; onClicked: root.fill(modelData, true) }
                 Switch { anchors.verticalCenter: parent.verticalCenter; checked: modelData.enabled; onToggled: function(on) { root.take(Door.call("SetEndpointEnabled", { install: modelData.install_id, enabled: on })) } }
                 Button { text: "Remove"; icon: "trash-2"; flat: true; small: true; onClicked: root.later("RemoveEndpoint", { install: modelData.install_id }, root.take) }
             }

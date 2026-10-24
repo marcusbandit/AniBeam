@@ -27,6 +27,10 @@ export struct EndpointRow {
     note: string,
     // "Update to version 2", or empty.
     update: string,
+    // Installed with values of its own, so a tap opens them.
+    editable: bool,
+    // The note is something to fix, not a hint.
+    warn: bool,
 }
 
 // One value an install asks for.
@@ -56,6 +60,8 @@ export global RepoData {
     in property <string> asking-title;
     in property <string> asking-note;
     in property <[AuthRow]> fields;
+    // What the form's button does: Install, Update or Save.
+    in property <string> asking-action: "Install";
     // An endpoint added by hand.
     in-out property <string> custom-name;
     in-out property <string> custom-url;
@@ -70,6 +76,8 @@ export global RepoData {
     callback act(int);
     callback remove-endpoint(int);
     callback toggle(int);
+    // A tap on an installed endpoint: its values, to add or change.
+    callback open(int);
     callback set-value(int, string);
     callback confirm();
     callback dismiss();
@@ -235,6 +243,8 @@ export component RepoItem inherits Rectangle {
     column := VerticalLayout {
         x: Theme.pad;
         y: 3.5 * Theme.unit;
+        // Its own height, not the row's, which already holds the padding around it.
+        height: self.preferred-height;
         width: parent.width - 2 * Theme.pad - 24 * Theme.unit;
         spacing: Theme.unit;
         HorizontalLayout {
@@ -291,10 +301,19 @@ export component EndpointItem inherits Rectangle {
     callback act();
     callback remove();
     callback toggle();
+    callback open();
     height: column.preferred-height + 7 * Theme.unit;
+    background: tap.pressed && root.endpoint.editable ? Theme.pressed : transparent;
+    // Under the buttons and the switch, which take their own taps.
+    tap := TouchArea {
+        enabled: root.endpoint.editable;
+        clicked => { root.open(); }
+    }
     column := VerticalLayout {
         x: Theme.pad;
         y: 3.5 * Theme.unit;
+        // Its own height, not the row's, which already holds the padding around it.
+        height: self.preferred-height;
         width: parent.width - 2 * Theme.pad;
         spacing: Theme.unit * 1.5;
         HorizontalLayout {
@@ -339,11 +358,13 @@ export component EndpointItem inherits Rectangle {
                 clicked => { root.act(); }
             }
         }
+        // One line: a wrapped line here misreports its height and pushes the buttons out of
+        // the row.
         if root.endpoint.note != "": Text {
             text: root.endpoint.note;
-            color: Theme.warn;
+            color: root.endpoint.warn ? Theme.warn : Theme.dim;
             font-size: Theme.small;
-            wrap: word-wrap;
+            overflow: elide;
         }
         if root.endpoint.installed: HorizontalLayout {
             spacing: Theme.gap;
@@ -418,7 +439,7 @@ export component AskValues inherits Rectangle {
             spacing: Theme.gap;
             alignment: start;
             Button {
-                text: RepoData.busy ? "Saving..." : "Install";
+                text: RepoData.busy ? "Saving..." : RepoData.asking-action;
                 small: true;
                 primary: true;
                 enabled: !RepoData.busy;
@@ -475,6 +496,7 @@ export component RepoPanes inherits VerticalLayout {
                 act => { RepoData.act(i); }
                 remove => { RepoData.remove-endpoint(i); }
                 toggle => { RepoData.toggle(i); }
+                open => { RepoData.open(i); }
             }
             CustomAdd { }
         }

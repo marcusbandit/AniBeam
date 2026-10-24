@@ -79,6 +79,7 @@ pub fn install(window: &AppWindow) {
     d.on_act(|i| with(|r| r.act(i)));
     d.on_remove_endpoint(|i| with(|r| r.remove_endpoint(i)));
     d.on_toggle(|i| with(|r| r.toggle(i)));
+    d.on_open(|i| with(|r| r.open(i)));
     d.on_set_value(|i, text| {
         with(|r| {
             if let Some(a) = r.asking.as_mut()
@@ -175,9 +176,13 @@ impl Repos {
                 "No longer offered by its repo".into()
             } else if let Some(host) = &i.update_host {
                 format!("The update sends requests to {host}")
+            } else if !i.auth.is_empty() {
+                let labels: Vec<&str> = i.auth.iter().map(|a| a.label.as_str()).collect();
+                format!("Tap to change its {}", labels.join(", "))
             } else {
                 String::new()
             };
+            let warn = !i.missing.is_empty() || i.desktop_note.is_some() || !i.offered || i.update_host.is_some();
             lines.push(EndpointRow {
                 name: i.name.clone().into(),
                 line: if i.custom {
@@ -196,6 +201,8 @@ impl Repos {
                     None => String::new(),
                 }
                 .into(),
+                editable: !i.auth.is_empty(),
+                warn,
             });
             rows.push(Row::Installed {
                 install: i.install_id.clone(),
@@ -213,6 +220,8 @@ impl Repos {
                 nsfw: o.nsfw,
                 note: if needs.is_empty() { String::new() } else { format!("Asks for your {}", needs.join(", ")) }.into(),
                 update: "".into(),
+                editable: false,
+                warn: !o.auth.is_empty(),
             });
             rows.push(Row::Offered { repo: o.repo_url.clone(), id: o.id.clone() });
         }
@@ -382,18 +391,44 @@ impl Repos {
                 secret: f.secret,
             })
             .collect();
+        let action = match &row {
+            Row::Offered { .. } => "Install",
+            Row::Installed { .. } => "Update",
+            Row::Fill { .. } => "Save",
+        };
         self.asking = Some(Asking {
             row,
             keys: fields.iter().map(|f| f.key.clone()).collect(),
             values: vec![String::new(); fields.len()],
         });
         self.data(|d| {
+            d.set_asking_action(action.into());
             d.set_asking_title(format!("{name} needs a value").into());
             d.set_asking_note(note.into());
             d.set_fields(ModelRc::new(VecModel::from(rows)));
             d.set_asking(true);
             d.set_error("".into());
         });
+    }
+
+    /// Opens an installed endpoint's values: every field, to add one that is missing or
+    /// change one that is stored. A field left empty keeps its value.
+    fn open(&mut self, i: i32) {
+        let Some(Row::Installed { install, .. }) = self.row(i) else { return };
+        let Some(e) = self.catalog.as_ref().and_then(|c| c.installed.iter().find(|e| e.install_id == install)).cloned()
+        else {
+            return;
+        };
+        if e.auth.is_empty() {
+            return;
+        }
+        self.ask(
+            Row::Fill { install },
+            e.name.clone(),
+            e.auth.clone(),
+            "Kept on this phone only. A field left empty keeps what is stored.".into(),
+        );
+        self.data(|d| d.set_asking_title(format!("{}'s values", e.name).into()));
     }
 
     fn confirm(&mut self) {

@@ -406,8 +406,7 @@ impl App {
     fn remove_source(&mut self, index: i32) {
         let Some(core) = crate::local::core() else { return };
         let Ok(index) = usize::try_from(index) else { return };
-        // nyaa, the first, stays: a phone with no source cannot search.
-        if index == 0 || index >= self.sources.len() {
+        if index >= self.sources.len() {
             return;
         }
         let mut sources = self.sources.clone();

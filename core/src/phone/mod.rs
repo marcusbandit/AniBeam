@@ -31,38 +31,13 @@ fn sources_path(core: &Core) -> PathBuf {
     PathBuf::from(&core.paths.config_dir).join("phone-sources.json")
 }
 
-/// nyaa and its mirror AnimeTosho, which need no key. erai needs the person's own token, so
-/// it is added by them.
-pub fn default_sources() -> Vec<PhoneSource> {
-    vec![
-        PhoneSource {
-            name: "nyaa".into(),
-            kind: "nyaa".into(),
-            url: "https://nyaa.si/".into(),
-            enabled: true,
-        },
-        // nyaa's releases mirrored, for networks that block nyaa.
-        PhoneSource {
-            name: "animetosho".into(),
-            kind: "tosho".into(),
-            url: crate::releases::tosho::SEARCH_URL.into(),
-            enabled: true,
-        },
-    ]
-}
-
+/// The phone ships with no source of its own (#152): endpoints come from a repo the person
+/// adds, or by hand. This list is only what someone saved here before repos existed.
 pub fn sources(core: &Core) -> Vec<PhoneSource> {
-    let saved: Option<Vec<PhoneSource>> = std::fs::read(sources_path(core))
+    std::fs::read(sources_path(core))
         .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok());
-    let Some(mut sources) = saved else {
-        return default_sources();
-    };
-    // A list saved before AnimeTosho was built in gains it, after the person's own.
-    if !sources.iter().any(|s| s.kind == "tosho") {
-        sources.extend(default_sources().into_iter().filter(|s| s.kind == "tosho"));
-    }
-    sources
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default()
 }
 
 pub fn set_sources(core: &Core, sources: Vec<PhoneSource>) -> Result<Reply, CoreError> {
