@@ -6,9 +6,9 @@ the branch, every commit, the PR title and the squash commit it becomes.
 ## The flow
 
 1. **Issue first.** Anything bigger than a typo starts as a GitHub issue. The
-   title states the outcome, the body says what done looks like. An issue from
-   anyone but the owner gets an agent's triage pass within about 10 minutes;
-   [`docs/agents/triage.md`](docs/agents/triage.md) says what that pass does.
+   title states the outcome, the body says what done looks like. What happens
+   to an issue once it is filed is in
+   [`docs/agents/triage.md`](docs/agents/triage.md).
 2. **Branch** off `main` as `<type>/<issue>-<slug>`.
 3. **Commit** as you go, each message `<type>(<scope>): <outcome>`.
 4. **Try it live** in a sandbox run of the branch's own build. See below.

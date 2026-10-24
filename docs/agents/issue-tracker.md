@@ -15,7 +15,7 @@ Infer the repo from `git remote -v`; `gh` does this automatically when run insid
 
 ## Triage
 
-Incoming issues get an automatic triage pass. The labels, the watcher that starts it and how to reproduce a report here are in [`triage.md`](triage.md).
+The triage labels and what happens to an issue once it is filed: [`triage.md`](triage.md).
 
 ## Pull requests as a triage surface
 

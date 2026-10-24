@@ -56,7 +56,7 @@ Issues, specs and wayfinder maps live in this repo's GitHub Issues, driven with 
 
 ### Triage
 
-New issues get an automatic triage pass from banditbox, the way T3 Code's issue flow works. Read `docs/agents/triage.md` before triaging an issue or changing how incoming issues are handled.
+Read `docs/agents/triage.md` before triaging an issue or changing how incoming issues get triaged.
 
 ### Domain docs
 

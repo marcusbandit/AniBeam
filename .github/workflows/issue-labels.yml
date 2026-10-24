@@ -1,14 +1,16 @@
 name: Issue labels
 
-# Creates the labels the issue forms and triage use (docs/agents/triage.md), and puts their
-# colour and description back when someone changes them by hand. Runs when the forms or this
-# list change on main.
+# Creates the labels the issue forms and triage use (docs/agents/triage.md) with these colours
+# and descriptions, and puts them back when the forms or this list change on main, or when one
+# of them is deleted.
 on:
   push:
     branches: [main]
     paths:
       - .github/ISSUE_TEMPLATE/**
       - .github/workflows/issue-labels.yml
+  label:
+    types: [deleted]
   workflow_dispatch:
 
 permissions:
@@ -18,25 +20,11 @@ jobs:
   sync:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
     steps:
-      - uses: actions/github-script@v7
-        with:
-          script: |
-            const managed = [
-              { name: "needs-triage", color: "fbca04", description: "Waiting for a triage pass." },
-              { name: "needs more info", color: "671411", description: "Triage could not reproduce it and asked the reporter for more." },
-              { name: "via-triage", color: "7dd3fc", description: "Filed by a coding agent through the triage report form" },
-              { name: "quick-fix", color: "c5def5", description: "Filed from the app's quick fix: files the scanner read wrong." },
-            ];
-            const repo = { owner: context.repo.owner, repo: context.repo.repo };
-            for (const label of managed) {
-              try {
-                const { data } = await github.rest.issues.getLabel({ ...repo, name: label.name });
-                if (data.color !== label.color || (data.description ?? "") !== label.description) {
-                  await github.rest.issues.updateLabel({ ...repo, ...label });
-                }
-              } catch (error) {
-                if (error.status !== 404) throw error;
-                await github.rest.issues.createLabel({ ...repo, ...label });
-              }
-            }
+      - run: |
+          gh label create "needs-triage" --force --color fbca04 --description "Waiting for a triage pass."
+          gh label create "needs more info" --force --color 671411 --description "Triage could not reproduce it and asked the reporter for more."
+          gh label create "via-triage" --force --color 7dd3fc --description "Filed by a coding agent through the triage report form"
