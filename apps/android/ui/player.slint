@@ -66,9 +66,10 @@ export global PlayerData {
 
     callback back();
     callback toggle-pause();
-    // Seconds. A drag on the bar previews with fast keyframe seeks under the finger, then
-    // seeks exactly once, where the finger lifts.
+    // Seconds. A drag on the bar shows the frame under the finger in the bubble and seeks
+    // once, where the finger lifts; a lift near where the knob started does not seek.
     callback scrub(float);
+    callback scrub-cancel();
     callback seek(float);
     callback seek-by(float);
     callback skip();
@@ -139,8 +140,9 @@ component PlayerButton inherits Rectangle {
 }
 
 // The groove, the desktop's SeekBar: the skip windows as white bands under the played
-// part, and the knob. A drag shows the frame under the finger and seeks once on release; the bar
-// then holds that spot until mpv gets there, or 1.5 s, so the knob never jumps back.
+// part, and the knob. A drag shows the frame under the finger in the bubble and seeks once on
+// release; the bar then holds that spot until mpv gets there, or 1.5 s, so the knob never
+// jumps back. A release within `still` of where the knob was at the press does not seek.
 component SeekBar inherits Rectangle {
     in property <float> position;
     in property <float> duration;
@@ -149,6 +151,8 @@ component SeekBar inherits Rectangle {
     out property <float> scrub-to;
     out property <length> knob-x: root.groove * root.shown + root.knob / 2;
     property <bool> settling;
+    property <length> start-x;
+    property <length> still: 8 * Theme.unit;
     property <bool> holding: touch.pressed || (root.settling && Math.abs(root.position - root.scrub-to) >= 2);
     height: 9 * Theme.unit;
     property <length> knob: 4 * Theme.unit;
@@ -199,14 +203,20 @@ component SeekBar inherits Rectangle {
             if (event.kind == PointerEventKind.down) {
                 settle.running = false;
                 root.settling = false;
+                // From the position, not `shown`: the press already made the bar hold.
+                root.start-x = root.knob / 2 + root.groove * (root.duration > 0 ? Math.clamp(root.position / root.duration, 0, 1) : 0);
                 root.scrub-to = root.at(self.mouse-x);
                 PlayerData.scrub(root.scrub-to);
                 PlayerData.touched();
+            } else if (event.kind == PointerEventKind.up && Math.abs(self.mouse-x - root.start-x) < root.still) {
+                PlayerData.scrub-cancel();
             } else if (event.kind == PointerEventKind.up) {
                 root.scrub-to = root.at(self.mouse-x);
                 PlayerData.seek(root.scrub-to);
                 root.settling = true;
                 settle.running = true;
+            } else if (event.kind == PointerEventKind.cancel) {
+                PlayerData.scrub-cancel();
             }
         }
         moved => {
