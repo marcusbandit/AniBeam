@@ -55,11 +55,13 @@ export global RepoData {
     in property <[RepoRow]> repos;
     // Installed first, in search order, then what the repos offer.
     in property <[EndpointRow]> endpoints;
-    // An install or update asking for values.
+    // An install or update asking for values, in the row of `asking-index`.
     in property <bool> asking;
-    in property <string> asking-title;
+    in property <int> asking-index: -1;
     in property <string> asking-note;
     in property <[AuthRow]> fields;
+    // What went wrong with the form's own call, shown inside it.
+    in property <string> asking-error;
     // What the form's button does: Install, Update or Save.
     in property <string> asking-action: "Install";
     // An endpoint added by hand.
@@ -87,9 +89,12 @@ export global RepoData {
 
 // An endpoint no repo carries, added by hand beside them: a name and an address.
 export component CustomAdd inherits Rectangle {
-    height: column.preferred-height;
+    height: column.preferred-height + 7 * Theme.unit;
     column := VerticalLayout {
-        padding: Theme.pad;
+        x: Theme.pad;
+        y: 3.5 * Theme.unit;
+        width: parent.width - 2 * Theme.pad;
+        height: self.preferred-height;
         spacing: Theme.unit * 3;
         Text {
             text: "Add one by hand";
@@ -122,111 +127,129 @@ export component CustomAdd inherits Rectangle {
     }
 }
 
+// A block of a card: its height is its own layout's, and that layout's width is set
+// outright. That is ListRow's shape, the one that measures wrapped text right inside an `if`
+// or a `for`; a bare layout there measures it as one line and the card comes out short.
+component RepoForm inherits Rectangle {
+    height: col.preferred-height;
+    col := VerticalLayout {
+        width: parent.width;
+        spacing: Theme.unit * 3;
+        Text {
+            text: "Add a repo";
+            color: Theme.text;
+            font-family: Theme.strong-face;
+        }
+        Text {
+            text: "Paste the address of a repo's index. AniBeam checks its signature and shows you its key before anything is saved.";
+            color: Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        Field {
+            text <=> RepoData.url;
+            placeholder: "https://.../index.json";
+            accepted(t) => { RepoData.add(t); }
+        }
+        HorizontalLayout {
+            alignment: start;
+            Button {
+                text: RepoData.busy ? "Checking..." : "Add repo";
+                small: true;
+                enabled: !RepoData.busy && RepoData.url != "";
+                clicked => { RepoData.add(RepoData.url); }
+            }
+        }
+    }
+}
+
+component RepoPreview inherits Rectangle {
+    height: col.preferred-height;
+    col := VerticalLayout {
+        width: parent.width;
+        spacing: Theme.unit * 2;
+        Text {
+            text: "Trust this repo?";
+            color: Theme.text;
+            font-family: Theme.strong-face;
+        }
+        HorizontalLayout {
+            spacing: Theme.unit * 2;
+            alignment: start;
+            Text {
+                text: RepoData.preview-name;
+                color: Theme.text;
+                font-size: Theme.large;
+                font-family: Theme.display-face;
+                wrap: word-wrap;
+            }
+            if RepoData.preview-nsfw: GlassTag {
+                y: (parent.height - self.height) / 2;
+                text: "18+";
+                ink: Theme.bad;
+            }
+        }
+        Text {
+            text: RepoData.preview-url;
+            color: Theme.faint;
+            font-size: Theme.small - 1px;
+            font-family: Theme.ledger-face;
+            wrap: word-wrap;
+        }
+        Text {
+            text: RepoData.preview-line;
+            color: Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        Text {
+            text: "Key fingerprint";
+            color: Theme.dim;
+            font-size: Theme.small;
+        }
+        Text {
+            text: RepoData.preview-fingerprint;
+            color: Theme.text;
+            font-family: Theme.figure;
+            wrap: word-wrap;
+        }
+        Text {
+            text: "Its endpoints decide where your searches go. Trust a repo only from someone you trust.";
+            color: Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            spacing: Theme.gap;
+            alignment: start;
+            Button {
+                text: "Trust";
+                small: true;
+                primary: true;
+                enabled: !RepoData.busy;
+                clicked => { RepoData.trust(); }
+            }
+            Button {
+                text: "Cancel";
+                small: true;
+                clicked => { RepoData.cancel(); }
+            }
+        }
+    }
+}
+
 // The address field, Add, and the preview to trust.
 export component RepoAdd inherits Rectangle {
-    height: column.preferred-height;
+    height: column.preferred-height + 7 * Theme.unit;
     column := VerticalLayout {
-        padding: Theme.pad;
+        x: Theme.pad;
+        y: 3.5 * Theme.unit;
+        width: parent.width - 2 * Theme.pad;
+        height: self.preferred-height;
         spacing: Theme.unit * 3;
-        if !RepoData.previewing: VerticalLayout {
-            spacing: Theme.unit * 3;
-            Text {
-                text: "Add a repo";
-                color: Theme.text;
-                font-family: Theme.strong-face;
-            }
-            Text {
-                text: "Paste the address of a repo's index. AniBeam checks its signature and shows you its key before anything is saved.";
-                color: Theme.dim;
-                font-size: Theme.small;
-                wrap: word-wrap;
-            }
-            Field {
-                text <=> RepoData.url;
-                placeholder: "https://.../index.json";
-                accepted(t) => { RepoData.add(t); }
-            }
-            HorizontalLayout {
-                alignment: start;
-                Button {
-                    text: RepoData.busy ? "Checking..." : "Add repo";
-                    small: true;
-                    enabled: !RepoData.busy && RepoData.url != "";
-                    clicked => { RepoData.add(RepoData.url); }
-                }
-            }
-        }
-        if RepoData.previewing: VerticalLayout {
-            spacing: Theme.unit * 2;
-            Text {
-                text: "Trust this repo?";
-                color: Theme.text;
-                font-family: Theme.strong-face;
-            }
-            HorizontalLayout {
-                spacing: Theme.unit * 2;
-                alignment: start;
-                Text {
-                    text: RepoData.preview-name;
-                    color: Theme.text;
-                    font-size: Theme.large;
-                    font-family: Theme.display-face;
-                    wrap: word-wrap;
-                }
-                if RepoData.preview-nsfw: GlassTag {
-                    y: (parent.height - self.height) / 2;
-                    text: "18+";
-                    ink: Theme.bad;
-                }
-            }
-            Text {
-                text: RepoData.preview-url;
-                color: Theme.faint;
-                font-size: Theme.small - 1px;
-                font-family: Theme.ledger-face;
-                wrap: word-wrap;
-            }
-            Text {
-                text: RepoData.preview-line;
-                color: Theme.dim;
-                font-size: Theme.small;
-                wrap: word-wrap;
-            }
-            Text {
-                text: "Key fingerprint";
-                color: Theme.dim;
-                font-size: Theme.small;
-            }
-            Text {
-                text: RepoData.preview-fingerprint;
-                color: Theme.text;
-                font-family: Theme.figure;
-                wrap: word-wrap;
-            }
-            Text {
-                text: "Its endpoints decide where your searches go. Trust a repo only from someone you trust.";
-                color: Theme.dim;
-                font-size: Theme.small;
-                wrap: word-wrap;
-            }
-            HorizontalLayout {
-                spacing: Theme.gap;
-                alignment: start;
-                Button {
-                    text: "Trust";
-                    small: true;
-                    primary: true;
-                    enabled: !RepoData.busy;
-                    clicked => { RepoData.trust(); }
-                }
-                Button {
-                    text: "Cancel";
-                    small: true;
-                    clicked => { RepoData.cancel(); }
-                }
-            }
-        }
-        if RepoData.error != "" && !RepoData.asking: Text {
+        if !RepoData.previewing: RepoForm { }
+        if RepoData.previewing: RepoPreview { }
+        if RepoData.error != "": Text {
             text: RepoData.error;
             color: Theme.bad;
             font-size: Theme.small;
@@ -295,9 +318,86 @@ export component RepoItem inherits Rectangle {
     }
 }
 
+// What an install needs from the person, inside the endpoint's own row: one field per value,
+// with where to find it, and the row's buttons.
+component AskField inherits Rectangle {
+    in property <AuthRow> field;
+    in property <int> index;
+    height: col.preferred-height;
+    col := VerticalLayout {
+        width: parent.width;
+        spacing: Theme.unit * 2;
+        Text {
+            text: root.field.label;
+            color: Theme.text;
+        }
+        if root.field.help != "": Text {
+            text: root.field.help;
+            color: Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        if root.field.help-url != "": HorizontalLayout {
+            alignment: start;
+            TextButton {
+                text: "Open " + root.field.help-url;
+                ink: Theme.accent;
+                clicked => { RepoData.open-link(root.field.help-url); }
+            }
+        }
+        Field {
+            secret: root.field.secret;
+            placeholder: root.field.label;
+            edited(t) => { RepoData.set-value(root.index, t); }
+        }
+    }
+}
+
+component AskValues inherits Rectangle {
+    height: col.preferred-height;
+    col := VerticalLayout {
+        width: parent.width;
+        spacing: Theme.unit * 3;
+        if RepoData.asking-note != "": Text {
+            text: RepoData.asking-note;
+            color: Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        for f[i] in RepoData.fields: AskField {
+            field: f;
+            index: i;
+        }
+        if RepoData.asking-error != "": Text {
+            text: RepoData.asking-error;
+            color: Theme.bad;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            spacing: Theme.gap;
+            alignment: start;
+            Button {
+                text: RepoData.busy ? "Saving..." : RepoData.asking-action;
+                small: true;
+                primary: true;
+                enabled: !RepoData.busy;
+                clicked => { RepoData.confirm(); }
+            }
+            Button {
+                text: "Cancel";
+                small: true;
+                clicked => { RepoData.dismiss(); }
+            }
+        }
+    }
+}
+
 // An endpoint: installed ones carry their switch and Remove, offered ones Install.
 export component EndpointItem inherits Rectangle {
     in property <EndpointRow> endpoint;
+    // This row is asking for its values.
+    in property <bool> asking;
     callback act();
     callback remove();
     callback toggle();
@@ -306,7 +406,7 @@ export component EndpointItem inherits Rectangle {
     background: tap.pressed && root.endpoint.editable ? Theme.pressed : transparent;
     // Under the buttons and the switch, which take their own taps.
     tap := TouchArea {
-        enabled: root.endpoint.editable;
+        enabled: root.endpoint.editable && !root.asking;
         clicked => { root.open(); }
     }
     column := VerticalLayout {
@@ -350,7 +450,7 @@ export component EndpointItem inherits Rectangle {
                 on: root.endpoint.enabled;
                 toggled => { root.toggle(); }
             }
-            if !root.endpoint.installed: Button {
+            if !root.endpoint.installed && !root.asking: Button {
                 y: (parent.height - self.height) / 2;
                 text: "Install";
                 small: true;
@@ -358,13 +458,14 @@ export component EndpointItem inherits Rectangle {
                 clicked => { root.act(); }
             }
         }
-        if root.endpoint.note != "": Text {
+        if root.endpoint.note != "" && !root.asking: Text {
             text: root.endpoint.note;
             color: root.endpoint.warn ? Theme.warn : Theme.dim;
             font-size: Theme.small;
             wrap: word-wrap;
         }
-        if root.endpoint.installed: HorizontalLayout {
+        if root.asking: AskValues { }
+        if root.endpoint.installed && !root.asking: HorizontalLayout {
             spacing: Theme.gap;
             alignment: start;
             if root.endpoint.update != "": Button {
@@ -390,74 +491,6 @@ export component EndpointItem inherits Rectangle {
     }
 }
 
-// What an install needs from the person, one field per value, with where to find it.
-export component AskValues inherits Rectangle {
-    height: column.preferred-height;
-    column := VerticalLayout {
-        padding: Theme.pad;
-        spacing: Theme.unit * 3;
-        Text {
-            text: RepoData.asking-title;
-            color: Theme.text;
-            font-family: Theme.strong-face;
-        }
-        if RepoData.asking-note != "": Text {
-            text: RepoData.asking-note;
-            color: Theme.dim;
-            font-size: Theme.small;
-            wrap: word-wrap;
-        }
-        for f[i] in RepoData.fields: VerticalLayout {
-            spacing: Theme.unit * 2;
-            Text {
-                text: f.label;
-                color: Theme.text;
-            }
-            if f.help != "": Text {
-                text: f.help;
-                color: Theme.dim;
-                font-size: Theme.small;
-                wrap: word-wrap;
-            }
-            if f.help-url != "": HorizontalLayout {
-                alignment: start;
-                TextButton {
-                    text: "Open " + f.help-url;
-                    ink: Theme.accent;
-                    clicked => { RepoData.open-link(f.help-url); }
-                }
-            }
-            Field {
-                secret: f.secret;
-                placeholder: f.label;
-                edited(t) => { RepoData.set-value(i, t); }
-            }
-        }
-        if RepoData.error != "": Text {
-            text: RepoData.error;
-            color: Theme.bad;
-            font-size: Theme.small;
-            wrap: word-wrap;
-        }
-        HorizontalLayout {
-            spacing: Theme.gap;
-            alignment: start;
-            Button {
-                text: RepoData.busy ? "Saving..." : RepoData.asking-action;
-                small: true;
-                primary: true;
-                enabled: !RepoData.busy;
-                clicked => { RepoData.confirm(); }
-            }
-            Button {
-                text: "Cancel";
-                small: true;
-                clicked => { RepoData.dismiss(); }
-            }
-        }
-    }
-}
-
 // The repos, then what they offer: More shows all of it, the first run the same list.
 export component RepoPanes inherits VerticalLayout {
     spacing: Theme.unit * 4;
@@ -476,17 +509,6 @@ export component RepoPanes inherits VerticalLayout {
             RepoAdd { }
         }
     }
-    if RepoData.asking: Rectangle {
-        background: Theme.surface;
-        border-radius: Theme.radius;
-        border-width: 1px;
-        border-color: Theme.line-strong;
-        clip: true;
-        height: ask.preferred-height;
-        ask := VerticalLayout {
-            AskValues { }
-        }
-    }
     Rectangle {
         background: Theme.surface;
         border-radius: Theme.radius;
@@ -497,6 +519,7 @@ export component RepoPanes inherits VerticalLayout {
         list := VerticalLayout {
             for e[i] in RepoData.endpoints: EndpointItem {
                 endpoint: e;
+                asking: RepoData.asking && RepoData.asking-index == i;
                 act => { RepoData.act(i); }
                 remove => { RepoData.remove-endpoint(i); }
                 toggle => { RepoData.toggle(i); }

@@ -80,6 +80,7 @@ component SourceItem inherits Rectangle {
     column := VerticalLayout {
         x: Theme.pad;
         y: 3.5 * Theme.unit;
+        height: self.preferred-height;
         width: parent.width - 2 * Theme.pad - (root.removable ? 24 * Theme.unit : 0);
         spacing: Theme.unit;
         Text {

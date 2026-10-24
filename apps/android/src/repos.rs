@@ -31,6 +31,9 @@ struct Repos {
     catalog: Option<EndpointCatalog>,
     preview: Option<EndpointRepoPreview>,
     rows: Vec<Row>,
+    /// The endpoint list, kept and updated row by row: a row that did not change keeps its
+    /// element, so an open form's field keeps what was typed when the list is read again.
+    lines: std::rc::Rc<VecModel<EndpointRow>>,
     asking: Option<Asking>,
     /// The saved catalog was read and the launch refresh sent.
     opened: bool,
@@ -60,9 +63,22 @@ fn spawn(call: Call, done: impl FnOnce(&mut Repos, Result<Reply, CoreError>) + S
 pub fn install(window: &AppWindow) {
     REPOS.with(|cell| {
         *cell.borrow_mut() =
-            Some(Repos { window: window.as_weak(), catalog: None, preview: None, rows: Vec::new(), asking: None, opened: false })
+            Some(Repos {
+                window: window.as_weak(),
+                catalog: None,
+                preview: None,
+                rows: Vec::new(),
+                lines: std::rc::Rc::new(VecModel::default()),
+                asking: None,
+                opened: false,
+            })
     });
     let d = window.global::<RepoData>();
+    REPOS.with(|cell| {
+        if let Some(r) = cell.borrow().as_ref() {
+            d.set_endpoints(ModelRc::from(r.lines.clone()));
+        }
+    });
     d.on_add(|url| with(|r| r.add(url.trim().to_string())));
     d.on_trust(|| with(Repos::trust));
     d.on_cancel(|| {
@@ -106,6 +122,32 @@ pub fn opened() {
         r.load();
         r.refresh();
     });
+}
+
+/// Whether two rows stand for the same endpoint, whatever state each row is in.
+fn same(a: &Row, b: &Row) -> bool {
+    let install = |r: &Row| match r {
+        Row::Installed { install, .. } | Row::Fill { install } => Some(install.clone()),
+        Row::Offered { .. } => None,
+    };
+    match (a, b) {
+        (Row::Offered { repo, id }, Row::Offered { repo: r, id: i }) => repo == r && id == i,
+        _ => install(a).is_some() && install(a) == install(b),
+    }
+}
+
+/// Puts a list's rows in place, touching only the rows that changed.
+fn update_rows(model: &VecModel<EndpointRow>, rows: Vec<EndpointRow>) {
+    use slint::Model;
+    if model.row_count() != rows.len() {
+        model.set_vec(rows);
+        return;
+    }
+    for (i, row) in rows.into_iter().enumerate() {
+        if model.row_data(i).as_ref() != Some(&row) {
+            model.set_row_data(i, row);
+        }
+    }
 }
 
 impl Repos {
@@ -225,11 +267,34 @@ impl Repos {
             });
             rows.push(Row::Offered { repo: o.repo_url.clone(), id: o.id.clone() });
         }
+        // An open form follows its endpoint to wherever the list now has it, and closes when
+        // the endpoint is gone. A form that moved gets a new, empty field, so what was typed
+        // is dropped too, and what is sent always matches what is on screen.
+        if let Some(a) = &self.asking {
+            let target = match &a.row {
+                Row::Fill { install } | Row::Installed { install, .. } => rows.iter().position(
+                    |r| matches!(r, Row::Installed { install: i, .. } if i == install),
+                ),
+                Row::Offered { repo, id } => rows
+                    .iter()
+                    .position(|r| matches!(r, Row::Offered { repo: rr, id: ii } if rr == repo && ii == id)),
+            };
+            let before = self.rows.iter().position(|r| same(r, &a.row));
+            match target {
+                None => self.dismiss(),
+                Some(at) => {
+                    if Some(at) != before
+                        && let Some(a) = self.asking.as_mut()
+                    {
+                        a.values.iter_mut().for_each(String::clear);
+                    }
+                    self.data(|d| d.set_asking_index(at as i32));
+                }
+            }
+        }
         self.rows = rows;
-        self.data(|d| {
-            d.set_repos(ModelRc::new(VecModel::from(repos)));
-            d.set_endpoints(ModelRc::new(VecModel::from(lines)));
-        });
+        update_rows(&self.lines, lines);
+        self.data(|d| d.set_repos(ModelRc::new(VecModel::from(repos))));
         self.catalog = Some(catalog);
     }
 
@@ -339,10 +404,10 @@ impl Repos {
     fn act(&mut self, i: i32) {
         let Some(row) = self.row(i) else { return };
         let Some(catalog) = &self.catalog else { return };
-        let (name, fields, asks) = match &row {
+        let (fields, asks) = match &row {
             Row::Offered { repo, id } => {
                 let Some(o) = catalog.offered.iter().find(|o| &o.repo_url == repo && &o.id == id) else { return };
-                (o.name.clone(), o.auth.clone(), !o.auth.is_empty())
+                (o.auth.clone(), !o.auth.is_empty())
             }
             Row::Fill { .. } => return,
             Row::Installed { install, update: false, fill: true } => {
@@ -350,8 +415,8 @@ impl Repos {
                 let fields = e.auth.iter().filter(|a| e.missing.contains(&a.key)).cloned().collect();
                 let fill = Row::Fill { install: install.clone() };
                 self.ask(
+                    i,
                     fill,
-                    format!("{} needs a value", e.name),
                     fields,
                     "Kept on this phone only, never in the library or an export.".into(),
                 );
@@ -369,7 +434,7 @@ impl Repos {
                     .find(|o| o.repo_url == e.repo_url && o.id == e.id)
                     .map(|o| o.auth.clone())
                     .unwrap_or_default();
-                (e.name.clone(), fields, e.update_asks)
+                (fields, e.update_asks)
             }
         };
         if !asks {
@@ -383,10 +448,10 @@ impl Repos {
             },
             _ => "Kept on this phone only, never in the library or an export.".into(),
         };
-        self.ask(row, format!("{name} needs a value"), fields, note);
+        self.ask(i, row, fields, note);
     }
 
-    fn ask(&mut self, row: Row, title: String, fields: Vec<anibeam_core::EndpointField>, note: String) {
+    fn ask(&mut self, index: i32, row: Row, fields: Vec<anibeam_core::EndpointField>, note: String) {
         let rows: Vec<AuthRow> = fields
             .iter()
             .map(|f| AuthRow {
@@ -408,11 +473,11 @@ impl Repos {
         });
         self.data(|d| {
             d.set_asking_action(action.into());
-            d.set_asking_title(title.into());
+            d.set_asking_index(index);
             d.set_asking_note(note.into());
             d.set_fields(ModelRc::new(VecModel::from(rows)));
             d.set_asking(true);
-            d.set_error("".into());
+            d.set_asking_error("".into());
         });
     }
 
@@ -433,8 +498,8 @@ impl Repos {
             return;
         }
         self.ask(
+            i,
             Row::Fill { install },
-            format!("{}'s values", e.name),
             e.auth.clone(),
             "Kept on this phone only. A field left empty keeps what is stored.".into(),
         );
@@ -443,7 +508,7 @@ impl Repos {
     fn confirm(&mut self) {
         let Some(a) = &self.asking else { return };
         if matches!(a.row, Row::Fill { .. }) && a.values.iter().all(|v| v.trim().is_empty()) {
-            self.data(|d| d.set_error("Type a value first.".into()));
+            self.data(|d| d.set_asking_error("Type a value first.".into()));
             return;
         }
         let credentials = a
@@ -470,9 +535,16 @@ impl Repos {
             Row::Fill { install } => Call::SetEndpointCredentials { install, credentials },
         };
         self.busy(true);
-        spawn(call, |r, answer| {
-            if r.answer(answer) {
-                r.dismiss();
+        spawn(call, |r, answer| match answer {
+            Err(e) => {
+                r.busy(false);
+                let text = e.to_string();
+                r.data(|d| d.set_asking_error(text.into()));
+            }
+            ok => {
+                if r.answer(ok) {
+                    r.dismiss();
+                }
             }
         });
     }
