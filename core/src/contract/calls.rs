@@ -308,6 +308,14 @@ pub enum Call {
         torrents: bool,
         files: bool,
     },
+    /// Deletes episodes' files, with their subtitle sidecars, from a library series: to
+    /// the trash on a desktop, outright on a phone. Each file must belong to `series`
+    /// and sit inside a library folder, or nothing is removed. Starts a scan of the
+    /// series and replies with its job.
+    DeleteEpisodes {
+        series: u64,
+        files: Vec<u64>,
+    },
     /// Takes a show out of downloads in one go, as far as asked: the
     /// subscription (`rule`: its feed and download rule), with `torrents`
     /// the client's torrents for it (`hashes`), and with `files` what they

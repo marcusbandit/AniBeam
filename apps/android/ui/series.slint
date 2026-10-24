@@ -12,10 +12,10 @@ component EpisodeItem inherits Rectangle {
     property <bool> next: root.data.note == "Next up";
     height: Math.max(Theme.unit * 13, texts.preferred-height + 4 * Theme.unit);
     border-radius: Theme.radius-row + 4px;
-    background: touch.pressed && root.data.file != 0 ? Theme.pressed : root.next ? Theme.raised : transparent;
+    background: touch.pressed && root.data.file != 0 ? Theme.pressed : root.data.picked ? Theme.bad-soft : root.next && !AppData.deleting ? Theme.raised : transparent;
     border-width: root.next ? 1px : 0;
     border-color: Theme.line-strong;
-    Rectangle {
+    if !AppData.deleting || root.data.file == 0: Rectangle {
         x: Theme.unit * 3;
         y: (parent.height - self.height) / 2;
         width: 12px;
@@ -23,6 +23,18 @@ component EpisodeItem inherits Rectangle {
         border-radius: 3px;
         background: root.later ? transparent : Theme.cube(root.data.cube);
         border-width: root.later ? 1px : 0;
+        border-color: Theme.line-strong;
+        opacity: AppData.deleting ? 0.4 : 1;
+    }
+    // While deleting, an episode on the phone shows whether it is picked.
+    if AppData.deleting && root.data.file != 0: Rectangle {
+        x: Theme.unit * 2;
+        y: (parent.height - self.height) / 2;
+        width: 18px;
+        height: 18px;
+        border-radius: 9px;
+        background: root.data.picked ? Theme.bad : transparent;
+        border-width: root.data.picked ? 0 : 1.5px;
         border-color: Theme.line-strong;
     }
     code := Text {
@@ -61,10 +73,66 @@ component EpisodeItem inherits Rectangle {
         font-family: Theme.figure;
         vertical-alignment: center;
     }
-    // A whole episode on the phone plays at a tap.
+    // A whole episode on the phone plays at a tap, or is picked while deleting.
     touch := TouchArea {
         enabled: root.data.file != 0;
-        clicked => { AppData.play(root.data.file); }
+        clicked => {
+            if (AppData.deleting) {
+                AppData.toggle-delete(root.data.file);
+            } else {
+                AppData.play(root.data.file);
+            }
+        }
+    }
+}
+
+// While deleting: how many are picked, what deleting does, and Delete or Cancel.
+component DeleteBar inherits Rectangle {
+    height: col.preferred-height + 7 * Theme.unit;
+    background: Theme.surface;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.line;
+    col := VerticalLayout {
+        x: Theme.pad;
+        y: 3.5 * Theme.unit;
+        width: parent.width - 2 * Theme.pad;
+        height: self.preferred-height;
+        spacing: Theme.unit * 3;
+        Text {
+            text: AppData.delete-count == 0 ? "Tap the episodes to delete."
+                : AppData.delete-count == 1 ? "1 episode picked." : AppData.delete-count + " episodes picked.";
+            color: Theme.text;
+            font-family: Theme.strong-face;
+        }
+        Text {
+            text: "Their files are deleted from this phone. What you watched stays tracked.";
+            color: Theme.dim;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        if AppData.delete-error != "": Text {
+            text: AppData.delete-error;
+            color: Theme.bad;
+            font-size: Theme.small;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            spacing: Theme.gap;
+            alignment: start;
+            Button {
+                text: AppData.delete-count == 1 ? "Delete 1 episode" : "Delete " + AppData.delete-count + " episodes";
+                small: true;
+                danger: true;
+                enabled: AppData.delete-count > 0 && !AppData.delete-busy;
+                clicked => { AppData.confirm-delete(); }
+            }
+            Button {
+                text: "Cancel";
+                small: true;
+                clicked => { AppData.cancel-delete(); }
+            }
+        }
     }
 }
 
@@ -125,6 +193,7 @@ component SeriesHeadView inherits VerticalLayout {
 
 export component SeriesPage inherits Rectangle {
     background: Theme.ground;
+
     // Swallow touches so nothing under the page reacts.
     TouchArea { }
     Flickable {
@@ -176,6 +245,17 @@ export component SeriesPage inherits Rectangle {
                 title: "Episodes";
                 note: AppData.episodes.length > 0 ? "" + AppData.episodes.length : "";
             }
+            // Deleting: off, a button to start; on, what it will do and the two ways out.
+            if (AppData.device == 0 || Nav.page == 0) && !AppData.deleting && AppData.series-has-files: HorizontalLayout {
+                alignment: start;
+                Button {
+                    text: "Delete episodes";
+                    small: true;
+                    danger: true;
+                    clicked => { AppData.start-delete(); }
+                }
+            }
+            if AppData.deleting: DeleteBar { }
             VerticalLayout {
                 spacing: Theme.unit;
                 for line in AppData.episodes: EpisodeItem { data: line; }

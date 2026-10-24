@@ -84,6 +84,11 @@ pub struct SeriesCard {
     /// count at all. The codes and their colours are one table each side.
     #[serde(default)]
     pub cubes: String,
+    /// The whole episode numbers with a file in the library, in order. The cubes put
+    /// watched ahead of on disk, so an episode watched elsewhere reads `w` with no file
+    /// here; this is what is actually here (#156).
+    #[serde(default)]
+    pub episodes_here: Vec<u32>,
     pub community_score: Option<f64>,
     pub my_score: Option<f64>,
     pub list_status: Option<ListStatus>,

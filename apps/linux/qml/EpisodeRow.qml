@@ -20,11 +20,18 @@ Corner {
     property string detailText: ""
     signal play()
     signal marker()
+    // Picking episodes to delete: a click picks this one instead of playing it.
+    property bool picking: false
+    property bool picked: false
+    signal pick()
     width: parent ? parent.width : implicitWidth
     height: Math.max(theme.space(10), words.implicitHeight + theme.space(3))
     radius: theme.radiusMd
     smoothing: theme.cornerSmoothing
-    color: nextUp ? (hover.containsMouse ? theme.raised : theme.tile) : hover.containsMouse && playable ? theme.tile : "transparent"
+    color: picked ? theme.redSoft
+         : picking ? (hover.containsMouse && playable ? theme.tile : "transparent")
+         : nextUp ? (hover.containsMouse ? theme.raised : theme.tile) : hover.containsMouse && playable ? theme.tile : "transparent"
+    opacity: picking && !playable ? 0.45 : 1
 
     property bool watched: !!episode.watched
     // Aired with no file: missing or not downloaded, nothing to play
@@ -54,7 +61,7 @@ Corner {
         : upcoming ? Qt.formatDate(new Date(episode.air_date * 1000), "ddd d MMM")
         : Qt.formatDate(new Date(episode.air_date * 1000), "d MMM yyyy")
 
-    MouseArea { id: hover; anchors.fill: parent; hoverEnabled: true; cursorShape: root.playable ? Qt.PointingHandCursor : Qt.ArrowCursor; onClicked: if (root.playable) root.play() }
+    MouseArea { id: hover; anchors.fill: parent; hoverEnabled: true; cursorShape: root.playable ? Qt.PointingHandCursor : Qt.ArrowCursor; onClicked: if (root.playable) { if (root.picking) root.pick(); else root.play() } }
 
     Row {
         id: line

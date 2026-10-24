@@ -109,6 +109,11 @@ struct App {
     day_tiles: Rc<VecModel<Tile>>,
     library: Rc<VecModel<Tile>>,
     episodes: Rc<VecModel<EpisodeLine>>,
+    /// Picking episodes to delete on the open series page, and the files picked.
+    deleting: bool,
+    picked: HashSet<i32>,
+    /// A delete is on its way to the core.
+    delete_busy: bool,
     // Downloads.
     sources: Vec<PhoneSource>,
     downloads: Rc<VecModel<DownloadRow>>,
@@ -307,10 +312,23 @@ impl App {
             None => None,
         };
         match page {
-            Some((head, lines)) => {
+            Some((head, mut lines)) => {
                 if data.get_series() != head {
                     data.set_series(head);
                 }
+                // A picked file that is gone (deleted, or the scan moved on) is dropped.
+                let files: HashSet<i32> = lines.iter().map(|l| l.file).filter(|f| *f != 0).collect();
+                self.picked.retain(|f| files.contains(f));
+                for l in &mut lines {
+                    l.picked = self.picked.contains(&l.file);
+                }
+                let local = matches!(self.open, Some(Open::Phone(_)));
+                data.set_series_has_files(local && !files.is_empty());
+                if self.deleting && files.is_empty() {
+                    self.deleting = false;
+                }
+                data.set_deleting(self.deleting);
+                data.set_delete_count(self.picked.len() as i32);
                 update(&self.episodes, lines);
                 data.set_series_open(true);
             }
@@ -596,10 +614,42 @@ impl App {
 
     fn open_series(&mut self, id: i32, remote: bool) {
         let Ok(id) = u64::try_from(id) else { return };
+        // Picking to delete belongs to the page it started on.
+        self.deleting = false;
+        self.picked.clear();
         self.open = Some(if remote { Open::Remote(id) } else { Open::Phone(id) });
         self.detail = None;
         self.reload_open();
         self.tick();
+    }
+
+    fn confirm_delete(&mut self) {
+        let (Some(Open::Phone(series)), Some(core)) = (self.open, crate::local::core()) else { return };
+        let files: Vec<u64> = self.picked.iter().filter_map(|f| u64::try_from(*f).ok()).collect();
+        if files.is_empty() || self.delete_busy {
+            return;
+        }
+        self.delete_busy = true;
+        self.data().set_delete_busy(true);
+        self.data().set_delete_error("".into());
+        let _ = std::thread::Builder::new().name("delete".into()).spawn(move || {
+            let answer = core.call(Call::DeleteEpisodes { series, files });
+            let _ = slint::invoke_from_event_loop(move || {
+                with_app(|app| {
+                    app.delete_busy = false;
+                    app.data().set_delete_busy(false);
+                    match answer {
+                        Ok(_) => {
+                            app.deleting = false;
+                            app.picked.clear();
+                        }
+                        Err(e) => app.data().set_delete_error(e.to_string().into()),
+                    }
+                    app.reload_open();
+                    app.tick();
+                })
+            });
+        });
     }
 
     fn reload_open(&mut self) {
@@ -612,6 +662,8 @@ impl App {
     }
 
     fn close_series(&mut self) {
+        self.deleting = false;
+        self.picked.clear();
         self.open = None;
         self.detail = None;
         self.data().set_series_open(false);
@@ -683,7 +735,7 @@ fn download_row(t: &Torrent, held: bool) -> DownloadRow {
         speed.push(format!("{}/s", format::bytes(t.dlspeed)));
     }
     if !done && t.eta > 0 && t.eta < 8_640_000 {
-        speed.push(format!("{} left", format::countdown(t.eta)));
+        speed.push(format!("{} left", format::countdown(t.eta).trim_start_matches("in ")));
     }
     let speed = speed.join(", ");
     let facts = if speed.is_empty() { amount.clone() } else { format!("{amount}, {speed}") };
@@ -804,6 +856,30 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
         })
     });
     data.on_connect_tracker(|which| with_app(|app| app.connect_tracker(which)));
+    data.on_start_delete(|| {
+        with_app(|app| {
+            app.deleting = true;
+            app.picked.clear();
+            app.data().set_delete_error("".into());
+            app.tick();
+        })
+    });
+    data.on_toggle_delete(|file| {
+        with_app(|app| {
+            if !app.picked.remove(&file) {
+                app.picked.insert(file);
+            }
+            app.tick();
+        })
+    });
+    data.on_cancel_delete(|| {
+        with_app(|app| {
+            app.deleting = false;
+            app.picked.clear();
+            app.tick();
+        })
+    });
+    data.on_confirm_delete(|| with_app(App::confirm_delete));
     data.on_finish_onboarding(|| {
         with_app(|app| {
             app.prefs.onboarded = true;
@@ -863,6 +939,9 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
         day_tiles,
         library,
         episodes,
+        deleting: false,
+        picked: HashSet::new(),
+        delete_busy: false,
         sources: Vec::new(),
         downloads,
         polling: false,

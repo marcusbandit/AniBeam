@@ -135,10 +135,17 @@ Item {
     readonly property var runningTorrents: activeTorrents.filter(function(t) { return !root.stoppedState(t) })
     readonly property bool downloading: Object.keys(inFlight).some(function(n) { return inFlight[n] < 1 })
     readonly property int downloadingCount: Object.keys(inFlight).filter(function(n) { return inFlight[n] < 1 }).length
+    // The episodes with a file here, from the card. The cubes mark one watched elsewhere as
+    // watched with no file here, so with this list only what is in it counts as had (#156).
+    // The same rule as the core's releases::grid::library, which the phone uses; keep the two
+    // alike.
+    readonly property var here: show && show.here ? show.here : null
+    readonly property int lastHere: here && here.length ? here[here.length - 1] : 0
     readonly property var library: {
         var out = []
         for (var n = 1; n <= total; n++) {
             var c = n <= libCodes.length ? libCodes[n - 1] : "g"
+            if ((c === "w" || c === "l") && here && here.indexOf(n) < 0) c = n < lastHere ? "m" : "g"
             var p = inFlight[n]
             if (p !== undefined && c !== "w" && c !== "l") c = p >= 1 ? "d" : "t"
             out.push(c)
