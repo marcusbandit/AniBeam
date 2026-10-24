@@ -350,6 +350,7 @@ impl Repos {
                 let fields = e.auth.iter().filter(|a| e.missing.contains(&a.key)).cloned().collect();
                 let fill = Row::Fill { install: install.clone() };
                 self.ask(
+                    i,
                     fill,
                     format!("{} needs a value", e.name),
                     fields,
@@ -383,10 +384,10 @@ impl Repos {
             },
             _ => "Kept on this phone only, never in the library or an export.".into(),
         };
-        self.ask(row, format!("{name} needs a value"), fields, note);
+        self.ask(i, row, format!("{name} needs a value"), fields, note);
     }
 
-    fn ask(&mut self, row: Row, title: String, fields: Vec<anibeam_core::EndpointField>, note: String) {
+    fn ask(&mut self, index: i32, row: Row, title: String, fields: Vec<anibeam_core::EndpointField>, note: String) {
         let rows: Vec<AuthRow> = fields
             .iter()
             .map(|f| AuthRow {
@@ -409,6 +410,7 @@ impl Repos {
         self.data(|d| {
             d.set_asking_action(action.into());
             d.set_asking_title(title.into());
+            d.set_asking_index(index);
             d.set_asking_note(note.into());
             d.set_fields(ModelRc::new(VecModel::from(rows)));
             d.set_asking(true);
@@ -433,6 +435,7 @@ impl Repos {
             return;
         }
         self.ask(
+            i,
             Row::Fill { install },
             format!("{}'s values", e.name),
             e.auth.clone(),
