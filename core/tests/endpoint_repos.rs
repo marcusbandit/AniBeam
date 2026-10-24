@@ -590,3 +590,99 @@ fn a_repo_over_https_is_fetched_through_the_core_client() {
     assert_eq!(p.endpoints.len(), 6);
     assert_eq!(http.requests().len(), 1);
 }
+
+// Endpoints added by hand -------------------------------------------------------------------
+
+fn add_custom(core: &anibeam_core::Core, name: &str, url: &str) -> Result<Reply, CoreError> {
+    core.call(Call::AddCustomEndpoint {
+        name: name.into(),
+        url: url.into(),
+        credentials: vec![],
+    })
+}
+
+#[test]
+fn a_jackett_feed_added_by_hand_keeps_its_key_out_of_the_database() {
+    let http = FakeHttp::new();
+    http.push_for(
+        "127.0.0.1:9117",
+        200,
+        "<?xml version=\"1.0\"?><rss><channel><title>t</title></channel></rss>",
+    );
+    let (dir, core, _) = common::open_core_with_http(http.clone());
+    // Beside a repo, not instead of one.
+    trust(&core, &fixture("general.json"));
+    let secret = "jackettkey0123456789";
+    let c = catalog(add_custom(
+        &core,
+        "1337x",
+        &format!(
+            "http://127.0.0.1:9117/api/v2.0/indexers/1337x/results/torznab/api?apikey={secret}&t=search&q={{query}}"
+        ),
+    ));
+    let x = c.installed.iter().find(|i| i.id == "1337x").unwrap();
+    assert!(x.custom && x.offered && x.missing.is_empty());
+    assert_eq!(x.auth[0].key, "apikey");
+    assert_eq!(c.repos.len(), 1);
+
+    let Reply::PhoneSources { sources } = core.call(Call::PhoneSearchSources).unwrap() else {
+        panic!()
+    };
+    let shown = sources.iter().find(|s| s.name == "1337x").unwrap();
+    assert!(shown.url.contains("apikey={apikey}"), "{}", shown.url);
+
+    let _ = core.call(Call::PhoneSearch {
+        query: "Frieren".into(),
+        endpoint: Some("1337x".into()),
+        fallback: false,
+    });
+    let sent: Vec<String> = http.requests().into_iter().map(|r| r.url).collect();
+    assert!(
+        sent.iter()
+            .any(|u| u.contains(&format!("apikey={secret}")) && u.contains("q=Frieren")),
+        "{sent:?}"
+    );
+
+    core.shutdown();
+    for f in std::fs::read_dir(dir.path().join("data")).unwrap() {
+        let path = f.unwrap().path();
+        if path
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("anibeam.db")
+        {
+            let bytes = std::fs::read(&path).unwrap();
+            assert!(!bytes.windows(secret.len()).any(|w| w == secret.as_bytes()));
+        }
+    }
+}
+
+#[test]
+fn an_endpoint_by_hand_needs_a_search_and_a_free_name() {
+    let (_dir, core, _) = common::open_core();
+    let e = add_custom(&core, "plain", "https://a.example/feed").unwrap_err();
+    assert!(matches!(e, CoreError::Invalid { .. }), "{e:?}");
+    add_custom(&core, "Mine", "https://a.example/rss?q={query}").unwrap();
+    let e = add_custom(&core, "mine", "https://b.example/rss?q={query}").unwrap_err();
+    assert!(matches!(e, CoreError::Invalid { .. }), "{e:?}");
+    // A placeholder of its own needs its value.
+    let e = add_custom(&core, "other", "https://c.example/rss?q={query}&u={user}").unwrap_err();
+    assert!(matches!(e, CoreError::Invalid { .. }), "{e:?}");
+    let c = catalog(core.call(Call::AddCustomEndpoint {
+        name: "other".into(),
+        url: "https://c.example/rss?q={query}&u={user}".into(),
+        credentials: vec![EndpointCredential {
+            key: "user".into(),
+            value: "me".into(),
+        }],
+    }));
+    assert_eq!(c.installed.len(), 2);
+}
+
+#[test]
+fn a_bare_nyaa_address_by_hand_is_the_nyaa_kind() {
+    let (_dir, core, _) = common::open_core();
+    let c = catalog(add_custom(&core, "nyaa-mirror", "https://nyaa.land/"));
+    assert_eq!(c.installed[0].kind, "nyaa");
+}

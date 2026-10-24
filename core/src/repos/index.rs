@@ -310,6 +310,16 @@ fn placeholders(url: &str) -> Vec<&str> {
 /// A definition this core can run safely: a known kind, an https address on a real host,
 /// and placeholders that are exactly `{query}` and its own `auth` keys.
 pub fn check(def: &Definition) -> Result<(), String> {
+    check_with(def, false)
+}
+
+/// The same for an endpoint the person typed in, which may be plain http: a Jackett or a
+/// Prowlarr on this machine or the home network.
+pub fn check_custom(def: &Definition) -> Result<(), String> {
+    check_with(def, true)
+}
+
+fn check_with(def: &Definition, http: bool) -> Result<(), String> {
     if !plain_id(&def.id) {
         return Err(format!(
             "{:?}: the id may hold a-z, 0-9, '.', '_', '-'",
@@ -322,8 +332,17 @@ pub fn check(def: &Definition) -> Result<(), String> {
     if !VALID_KINDS.contains(&def.kind.as_str()) {
         return Err(format!("{}: unknown kind {:?}", def.id, def.kind));
     }
-    if !def.url.starts_with("https://") || def.host().is_empty() {
-        return Err(format!("{}: the address must be https", def.id));
+    let scheme_ok = def.url.starts_with("https://") || (http && def.url.starts_with("http://"));
+    if !scheme_ok || def.host().is_empty() {
+        return Err(format!(
+            "{}: the address must start with {}",
+            def.id,
+            if http {
+                "http:// or https://"
+            } else {
+                "https://"
+            }
+        ));
     }
     let mut keys = Vec::new();
     for field in &def.auth {

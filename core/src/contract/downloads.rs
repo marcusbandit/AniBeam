@@ -736,6 +736,10 @@ pub struct InstalledEndpoint {
     pub auth: Vec<EndpointField>,
     pub nsfw: bool,
     pub enabled: bool,
+    /// Added by hand, outside any repo.
+    pub custom: bool,
+    /// On the desktop: why anirss searches its own endpoint of this name instead.
+    pub desktop_note: Option<String>,
     /// `auth` keys with no value stored; the endpoint is left out of searches until they
     /// are filled.
     pub missing: Vec<String>,

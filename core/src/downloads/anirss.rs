@@ -151,6 +151,26 @@ impl AnirssClient {
         Ok(serde_json::from_value(v["endpoints"].clone()).unwrap_or_default())
     }
 
+    /// `POST /endpoints` (anirss 0.6): writes an endpoint into anirss's config, or replaces
+    /// the one with its name.
+    pub async fn put_endpoint(&self, spec: Value) -> Result<(), CoreError> {
+        self.post("/endpoints", spec, None).await.map(|_| ())
+    }
+
+    /// `DELETE /endpoints/<name>` (anirss 0.6).
+    pub async fn delete_endpoint(&self, name: &str) -> Result<(), CoreError> {
+        let response = self
+            .send(HttpRequest {
+                method: Method::Delete,
+                url: format!("{}/endpoints/{}", self.base, encode(name)),
+                headers: self.headers(),
+                body: None,
+                timeout: None,
+            })
+            .await?;
+        judge(response).map(|_| ())
+    }
+
     pub async fn qbt_status(&self) -> Result<QbtView, CoreError> {
         let v = self.get("/qbt/status", &[], None).await?;
         Ok(QbtView {

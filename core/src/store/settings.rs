@@ -19,6 +19,9 @@ pub const IMDB_RATINGS_LAST_MODIFIED: &str = "imdb_ratings_last_modified";
 pub const IMDB_LINKS_FETCHED_AT: &str = "imdb_links_fetched_at";
 /// The downloads settings (`downloads::settings`), secrets left out.
 pub const DOWNLOADS: &str = "downloads";
+/// The endpoint names AniBeam wrote into anirss from repos (#143), so a sync only ever
+/// changes its own and never one written by hand.
+pub const ANIRSS_SYNCED_ENDPOINTS: &str = "anirss_synced_endpoints";
 
 pub fn get<T: DeserializeOwned>(conn: &Connection, key: &str) -> Result<Option<T>, CoreError> {
     let raw: Option<String> = conn

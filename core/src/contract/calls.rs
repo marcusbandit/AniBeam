@@ -477,6 +477,15 @@ pub enum Call {
         install: String,
         enabled: bool,
     },
+    /// Adds an endpoint by hand, outside any repo: a name, and an address with `{query}`
+    /// where the search goes (or a bare nyaa-style site). A secret in the address
+    /// (`apikey=`, `token=`, `passkey=`) moves to the secret store; other placeholders take
+    /// their value from `credentials`.
+    AddCustomEndpoint {
+        name: String,
+        url: String,
+        credentials: Vec<EndpointCredential>,
+    },
     // Casting
     /// The devices found so far; asking starts a look around the network, and what turns up
     /// arrives as `CastDevicesChanged`.

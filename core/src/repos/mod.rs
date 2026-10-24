@@ -305,6 +305,7 @@ pub fn catalog(core: &Core) -> Result<EndpointCatalog, CoreError> {
         })
         .collect();
     let secrets = core.secrets();
+    let shadowed = shadowed_in_anirss(core);
     let installed = installed
         .iter()
         .map(|i| {
@@ -332,7 +333,14 @@ pub fn catalog(core: &Core) -> Result<EndpointCatalog, CoreError> {
                     .filter(|a| !secrets.has(&secret_key(&i.install_id, &a.key)))
                     .map(|a| a.key.clone())
                     .collect(),
-                offered: next.is_some(),
+                custom: i.repo_url == CUSTOM,
+                offered: next.is_some() || i.repo_url == CUSTOM,
+                desktop_note: shadowed.contains(&i.def.id).then(|| {
+                    format!(
+                        "anirss has its own {}, written by hand; the desktop searches that one",
+                        i.def.id
+                    )
+                }),
                 update: update.map(|d| d.version),
                 update_asks: update.is_some_and(|d| !i.def.keeps_credentials(d)),
                 update_host: update
@@ -364,6 +372,12 @@ fn reply(core: &Core) -> Result<Reply, CoreError> {
     Ok(Reply::EndpointCatalog {
         catalog: catalog(core)?,
     })
+}
+
+/// The reply after a change to what is installed: the desktop's anirss follows first.
+fn changed(core: &Core) -> Result<Reply, CoreError> {
+    crate::downloads::repo_endpoints_changed(core);
+    reply(core)
 }
 
 fn stored_repo(core: &Core, url: &str) -> Result<Option<RepoRow>, CoreError> {
@@ -580,7 +594,7 @@ pub fn install(
         format!("Installed the endpoint {}", def.name),
         EventBody::Notice,
     );
-    reply(core)
+    changed(core)
 }
 
 pub fn update(
@@ -624,7 +638,7 @@ pub fn update(
         ),
         EventBody::Notice,
     );
-    reply(core)
+    changed(core)
 }
 
 pub fn remove(core: &Core, install: String) -> Result<Reply, CoreError> {
@@ -644,7 +658,7 @@ pub fn remove(core: &Core, install: String) -> Result<Reply, CoreError> {
         format!("Removed the endpoint {}", row.def.name),
         EventBody::Notice,
     );
-    reply(core)
+    changed(core)
 }
 
 pub fn set_credentials(
@@ -655,23 +669,274 @@ pub fn set_credentials(
     let row = find_install(core, &install)?;
     let values = credentials_for(&row.def, &credentials, false)?;
     store_credentials(core, &install, &values)?;
-    reply(core)
+    changed(core)
 }
 
 pub fn set_enabled(core: &Core, install: String, enabled: bool) -> Result<Reply, CoreError> {
-    let changed = core.store.write(move |conn| {
+    let rows = core.store.write(move |conn| {
         Ok(conn.execute(
             "UPDATE installed_endpoints SET enabled = ?2 WHERE install_id = ?1",
             params![install, enabled],
         )?)
     })?;
-    if changed == 0 {
+    if rows == 0 {
         return Err(CoreError::invalid(
             "endpoint",
             "no installed endpoint with that id",
         ));
     }
-    reply(core)
+    changed(core)
+}
+
+// Endpoints added by hand ---------------------------------------------------------------
+
+/// The repo url of an endpoint the person added by hand, outside any repo.
+pub const CUSTOM: &str = "";
+
+/// Query parameters that hold a secret: their value moves to the secret store and the
+/// address keeps a placeholder (the same names `releases::native::mask` hides).
+const SECRET_PARAMS: [(&str, &str); 4] = [
+    ("apikey", "API key"),
+    ("api_key", "API key"),
+    ("token", "Token"),
+    ("passkey", "Passkey"),
+];
+
+/// An id from a name: lower case, anything but a-z, 0-9, '.', '_' and '-' becomes '-'.
+fn id_of(name: &str) -> String {
+    let id: String = name
+        .trim()
+        .to_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '.' | '_' | '-') {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    id.trim_matches('-').to_string()
+}
+
+/// Takes the secret values out of a pasted address: each `apikey=...`, `token=...` and the
+/// like becomes a placeholder and an `auth` field, and its value a credential. Any other
+/// placeholder the person wrote (`{user}`) becomes a field too, to be filled from `given`.
+fn lift_secrets(url: &str) -> (String, Vec<index::AuthField>, Vec<(String, String)>) {
+    let mut fields: Vec<index::AuthField> = Vec::new();
+    let mut lifted: Vec<(String, String)> = Vec::new();
+    let (base, query) = match url.split_once('?') {
+        Some((b, q)) => (b.to_string(), Some(q.to_string())),
+        None => (url.to_string(), None),
+    };
+    let mut template = base;
+    if let Some(query) = query {
+        let pairs: Vec<String> = query
+            .split('&')
+            .map(|pair| {
+                let Some((k, v)) = pair.split_once('=') else {
+                    return pair.to_string();
+                };
+                let lower = k.to_lowercase();
+                let Some((_, label)) = SECRET_PARAMS.iter().find(|(p, _)| *p == lower) else {
+                    return pair.to_string();
+                };
+                if v.is_empty() || v.starts_with('{') {
+                    return pair.to_string();
+                }
+                if !fields.iter().any(|f| f.key == lower) {
+                    fields.push(index::AuthField {
+                        key: lower.clone(),
+                        label: label.to_string(),
+                        secret: true,
+                        help: String::new(),
+                        help_url: None,
+                    });
+                    lifted.push((lower.clone(), crate::releases::endpoints::unquote_plus(v)));
+                }
+                format!("{k}={{{lower}}}")
+            })
+            .collect();
+        template = format!("{template}?{}", pairs.join("&"));
+    }
+    // Placeholders the person wrote themselves.
+    let mut rest = template.as_str();
+    while let Some(open) = rest.find('{') {
+        let after = &rest[open + 1..];
+        let Some(close) = after.find('}') else { break };
+        let key = &after[..close];
+        if key != "query" && !fields.iter().any(|f| f.key == key) {
+            fields.push(index::AuthField {
+                key: key.to_string(),
+                label: key.to_string(),
+                secret: true,
+                help: String::new(),
+                help_url: None,
+            });
+        }
+        rest = &after[close + 1..];
+    }
+    (template, fields, lifted)
+}
+
+/// Adds an endpoint by hand, beside whatever repos there are: a name and an address, for a
+/// site no repo carries (1337x through Jackett, a private tracker's feed). A secret in the
+/// address goes to the secret store like a repo endpoint's.
+pub fn add_custom(
+    core: &Core,
+    name: String,
+    url: String,
+    credentials: Vec<EndpointCredential>,
+) -> Result<Reply, CoreError> {
+    let name = name.trim().to_string();
+    let id = id_of(&name);
+    if id.is_empty() {
+        return Err(CoreError::invalid("endpoint name", "give it a name"));
+    }
+    let url = url.trim();
+    let url = match url.split_once("://") {
+        Some((scheme, rest)) => format!("{}://{rest}", scheme.to_ascii_lowercase()),
+        None => url.to_string(),
+    };
+    let (template, auth, lifted) = lift_secrets(&url);
+    // An address with the search in it is a feed; a bare site address is nyaa's kind,
+    // which adds its own search.
+    let kind = if template.contains("{query}") {
+        "rss"
+    } else if index::host_of(&template).contains("nyaa") {
+        "nyaa"
+    } else {
+        return Err(CoreError::invalid(
+            "endpoint url",
+            "put {query} in the address where the search goes",
+        ));
+    };
+    let def = Definition {
+        id: id.clone(),
+        name: name.clone(),
+        version: 1,
+        lang: String::new(),
+        kind: kind.to_string(),
+        url: template,
+        auth,
+        front: None,
+        rate: None,
+        nsfw: false,
+        category: None,
+        filter: None,
+        min_core: None,
+    };
+    index::check_custom(&def).map_err(|e| CoreError::invalid("endpoint", e))?;
+    let installed = core.store.read(read_installed)?;
+    if installed.iter().any(|i| i.def.id == id) {
+        return Err(CoreError::invalid(
+            "endpoint name",
+            format!("an endpoint called {id} is already installed"),
+        ));
+    }
+    let mut given = credentials;
+    for (key, value) in lifted {
+        if !given.iter().any(|c| c.key == key) {
+            given.push(EndpointCredential { key, value });
+        }
+    }
+    let values = credentials_for(&def, &given, true)?;
+    let install_id = new_install_id();
+    store_credentials(core, &install_id, &values)?;
+    let (row_id, row_def, json) = (
+        install_id.clone(),
+        def.id.clone(),
+        serde_json::to_string(&def).map_err(|e| CoreError::internal(e.to_string()))?,
+    );
+    core.store.write(move |conn| {
+        conn.execute(
+            "INSERT INTO installed_endpoints (install_id, repo_url, endpoint_id, version, definition, enabled, position)
+             VALUES (?1, ?2, ?3, 1, ?4, 1, (SELECT COALESCE(MAX(position), 0) + 1 FROM installed_endpoints))",
+            params![row_id, CUSTOM, row_def, json],
+        )?;
+        Ok(())
+    })?;
+    core.bus.info(
+        Stage::Downloads,
+        format!("Added the endpoint {name}"),
+        EventBody::Notice,
+    );
+    changed(core)
+}
+
+// The desktop's anirss ------------------------------------------------------------------
+
+/// Installed endpoints whose name anirss already holds from someone's own hand: the sync
+/// leaves those alone.
+fn shadowed_in_anirss(core: &Core) -> Vec<String> {
+    let theirs = crate::downloads::anirss_endpoint_names(core);
+    if theirs.is_empty() {
+        return Vec::new();
+    }
+    let synced: Vec<String> = core
+        .store
+        .read(|c| crate::store::settings::get(c, crate::store::settings::ANIRSS_SYNCED_ENDPOINTS))
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    theirs.into_iter().filter(|n| !synced.contains(n)).collect()
+}
+
+/// Puts the installed endpoints into the desktop's anirss, which searches only what its own
+/// config lists: each enabled one with its credentials, under its id. Only names AniBeam
+/// wrote are ever changed or removed; one anirss already had from its config stays as it was.
+/// anirss keeps the address as it is given, so a credential lands in its config.toml, the way
+/// a hand-written one does today; the secret store stays the record AniBeam reads.
+pub(crate) async fn sync_anirss(core: &Core, client: &crate::downloads::anirss::AnirssClient) {
+    let Ok(have) = client.endpoints().await else {
+        return;
+    };
+    let want = runnable(core);
+    let mut synced: Vec<String> = core
+        .store
+        .read(|c| crate::store::settings::get(c, crate::store::settings::ANIRSS_SYNCED_ENDPOINTS))
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    let before = synced.clone();
+    for r in &want {
+        let e = &r.endpoint;
+        let theirs = have.iter().find(|h| h.name == e.name);
+        if theirs.is_some() && !synced.contains(&e.name) {
+            continue;
+        }
+        if theirs.is_some_and(|h| h.url == e.url && h.kind == e.kind) {
+            continue;
+        }
+        let mut spec = serde_json::json!({"name": e.name, "kind": e.kind, "url": e.url});
+        if e.kind == "nyaa" {
+            spec["category"] = e.category.clone().into();
+            spec["filter"] = e.filter.clone().into();
+        }
+        match client.put_endpoint(spec).await {
+            Ok(()) => {
+                if !synced.contains(&e.name) {
+                    synced.push(e.name.clone());
+                }
+            }
+            Err(err) => tracing::warn!("anirss refused the endpoint {}: {err}", e.name),
+        }
+    }
+    for name in before {
+        if want.iter().any(|r| r.endpoint.name == name) {
+            continue;
+        }
+        if have.iter().any(|h| h.name == name)
+            && let Err(err) = client.delete_endpoint(&name).await
+        {
+            tracing::warn!("anirss kept the endpoint {name}: {err}");
+            continue;
+        }
+        synced.retain(|n| n != &name);
+    }
+    let _ = core.store.write(move |c| {
+        crate::store::settings::set(c, crate::store::settings::ANIRSS_SYNCED_ENDPOINTS, &synced)
+    });
 }
 
 // For the search --------------------------------------------------------------------------
@@ -747,6 +1012,79 @@ pub fn paced_http(core: &Core, runnable: &[Runnable]) -> Arc<dyn crate::net::Htt
 mod tests {
     use super::*;
 
+    use crate::downloads::anirss::AnirssClient;
+    use crate::net::FakeHttp;
+    use crate::trackers::Secrets;
+    use crate::{CorePaths, core::Core};
+
+    fn custom(core: &Core, name: &str, url: &str) {
+        add_custom(core, name.into(), url.into(), Vec::new()).unwrap();
+    }
+
+    #[test]
+    fn anirss_gets_ours_and_keeps_what_was_written_by_hand() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = CorePaths::under(dir.path());
+        let http = FakeHttp::new();
+        let core = Core::open_with_http_and_secrets(
+            paths.clone(),
+            http.clone(),
+            Secrets::file_only(paths.secrets_path()),
+        )
+        .unwrap();
+        custom(&core, "mine", "https://a.example/rss?q={query}&token=t1");
+        custom(&core, "1337x", "http://127.0.0.1:9117/x?apikey=k&q={query}");
+        let anirss = AnirssClient::new("http://127.0.0.1:1", "tok", http.clone());
+
+        // anirss has its own 1337x from config.toml; AniBeam writes only "mine".
+        http.push_json(
+            200,
+            serde_json::json!({"endpoints": [{"name": "1337x", "kind": "rss", "url": "http://elsewhere/"}]}),
+        );
+        http.push_json(201, serde_json::json!({}));
+        core.handle.block_on(sync_anirss(&core, &anirss));
+        let sent = http.requests();
+        assert_eq!(sent.len(), 2);
+        assert_eq!(sent[1].method, crate::net::Method::Post);
+        let body = format!("{:?}", sent[1].body);
+        assert!(
+            body.contains("\"mine\"") && body.contains("token=t1"),
+            "{body}"
+        );
+
+        // Switched off: it comes out of anirss again, and the hand-written one stays.
+        let mine = core
+            .store
+            .read(read_installed)
+            .unwrap()
+            .into_iter()
+            .find(|r| r.def.id == "mine")
+            .unwrap();
+        core.store
+            .write(move |c| {
+                c.execute(
+                    "UPDATE installed_endpoints SET enabled = 0 WHERE install_id = ?1",
+                    params![mine.install_id],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        http.push_json(
+            200,
+            serde_json::json!({"endpoints": [
+                {"name": "1337x", "kind": "rss", "url": "http://elsewhere/"},
+                {"name": "mine", "kind": "rss", "url": "https://a.example/rss?q={query}&token=t1"}
+            ]}),
+        );
+        http.push_json(200, serde_json::json!({}));
+        core.handle.block_on(sync_anirss(&core, &anirss));
+        let sent = http.requests();
+        assert_eq!(sent.len(), 4);
+        assert_eq!(sent[3].method, crate::net::Method::Delete);
+        assert!(sent[3].url.ends_with("/endpoints/mine"));
+        core.shutdown();
+    }
+
     #[test]
     fn install_ids_are_version_4_uuids() {
         let id = new_install_id();
@@ -754,6 +1092,40 @@ mod tests {
         assert_eq!(&id[14..15], "4");
         assert!(matches!(&id[19..20], "8" | "9" | "a" | "b"));
         assert_ne!(id, new_install_id());
+    }
+
+    #[test]
+    fn a_pasted_api_key_moves_out_of_the_address() {
+        let (template, fields, lifted) = lift_secrets(
+            "http://127.0.0.1:9117/api/v2.0/indexers/1337x/results/torznab/api?apikey=abc123&t=search&q={query}",
+        );
+        assert_eq!(
+            template,
+            "http://127.0.0.1:9117/api/v2.0/indexers/1337x/results/torznab/api?apikey={apikey}&t=search&q={query}"
+        );
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].label, "API key");
+        assert_eq!(lifted, vec![("apikey".to_string(), "abc123".to_string())]);
+    }
+
+    #[test]
+    fn a_placeholder_written_by_hand_becomes_a_field() {
+        let (template, fields, lifted) =
+            lift_secrets("https://t.example/rss?q={query}&user={user}&passkey=zz");
+        assert_eq!(
+            template,
+            "https://t.example/rss?q={query}&user={user}&passkey={passkey}"
+        );
+        let keys: Vec<&str> = fields.iter().map(|f| f.key.as_str()).collect();
+        assert_eq!(keys, ["passkey", "user"]);
+        assert_eq!(lifted.len(), 1);
+    }
+
+    #[test]
+    fn ids_come_from_names() {
+        assert_eq!(id_of("1337x"), "1337x");
+        assert_eq!(id_of(" My Tracker! "), "my-tracker");
+        assert_eq!(id_of("!!"), "");
     }
 
     #[test]

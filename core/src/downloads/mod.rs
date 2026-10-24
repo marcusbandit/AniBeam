@@ -628,11 +628,57 @@ async fn run_connect(core: Arc<Core>) -> Result<Finished, CoreError> {
     })
 }
 
+/// The names of the endpoints anirss lists, as last read; empty where there is no anirss.
+pub(crate) fn anirss_endpoint_names(core: &Core) -> Vec<String> {
+    core.downloads
+        .state()
+        .endpoints
+        .iter()
+        .map(|e| e.name.clone())
+        .collect()
+}
+
+/// Whether the endpoints installed from repos go into this anirss: AniBeam's own sidecar,
+/// in a run that may change the owner's setup. A server the person runs themselves keeps
+/// its own config, and a sandbox root or a drive never writes into the real one.
+async fn syncs_endpoints(core: &Arc<Core>) -> bool {
+    core.downloads.unattended_allowed()
+        && load_settings(core)
+            .await
+            .is_ok_and(|s| s.anirss_mode != AnirssMode::Remote)
+}
+
+/// What is installed from repos changed (#143): a running anirss gets it, and the page
+/// reads the endpoint list again. Nothing is started for this; the next connect syncs.
+pub(crate) fn repo_endpoints_changed(core: &Core) {
+    let Ok(owner) = core.owner() else { return };
+    core.handle.spawn(async move {
+        if !syncs_endpoints(&owner).await {
+            return;
+        }
+        let Ok(Some(client)) = running_client(&owner).await else {
+            return;
+        };
+        if read_anirss(&owner, &client).await.is_ok()
+            && let Ok(status) = status_async(&owner).await
+        {
+            owner.bus.debug(
+                Stage::Downloads,
+                "Search endpoints synced with anirss",
+                EventBody::DownloadsStatusChanged { status },
+            );
+        }
+    });
+}
+
 /// Health, endpoints and anirss's view of qBittorrent, into the state.
 async fn read_anirss(core: &Arc<Core>, client: &AnirssClient) -> Result<(), CoreError> {
     // No feature is asked of a server the user runs: AniBeam never points it
     // at a client, so it reads its own config and keeps its own logins.
     let version = client.health().await?.version;
+    if syncs_endpoints(core).await {
+        crate::repos::sync_anirss(core, client).await;
+    }
     let mut endpoints = client.endpoints().await?;
     if let Some(path) = settings::anirss_config_path() {
         for e in &mut endpoints {

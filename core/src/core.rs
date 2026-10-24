@@ -922,6 +922,11 @@ impl Core {
             Call::SetEndpointEnabled { install, enabled } => {
                 crate::repos::set_enabled(self, install, enabled)
             }
+            Call::AddCustomEndpoint {
+                name,
+                url,
+                credentials,
+            } => crate::repos::add_custom(self, name, url, credentials),
             Call::PhoneSearch {
                 query,
                 endpoint,
