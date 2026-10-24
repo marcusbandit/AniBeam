@@ -501,6 +501,11 @@ impl Snapshot {
                 .map(|f| labels::episode_code(f.season, f.number)),
         };
 
+        let on_disk: BTreeSet<u32> = episodes
+            .iter()
+            .filter(|f| f.number >= 1.0 && f.number.fract() == 0.0)
+            .map(|f| f.number as u32)
+            .collect();
         SeriesCard {
             id: row.id,
             kind: row.kind,
@@ -534,14 +539,10 @@ impl Snapshot {
             code,
             watched,
             watched_state: watched_state(watched, total, latest_aired, latest_downloaded),
+            episodes_here: on_disk.iter().copied().collect(),
             cubes: if row.kind == SeriesKind::Movie {
                 String::new()
             } else {
-                let on_disk: BTreeSet<u32> = episodes
-                    .iter()
-                    .filter(|f| f.number >= 1.0 && f.number.fract() == 0.0)
-                    .map(|f| f.number as u32)
-                    .collect();
                 let done: HashSet<&str> = self
                     .completed
                     .get(&row.id)
@@ -971,6 +972,7 @@ mod tests {
                 unknown: 0.0,
             },
             cubes: String::new(),
+            episodes_here: Vec::new(),
             community_score: None,
             my_score: None,
             list_status: None,

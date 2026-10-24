@@ -581,6 +581,7 @@ mod tests {
                 unknown: 0.0,
             },
             cubes: String::new(),
+            episodes_here: Vec::new(),
             community_score: None,
             my_score: None,
             list_status: None,

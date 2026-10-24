@@ -109,11 +109,16 @@ impl Snapshot {
             .card_season(row)
             .or_else(|| episodes.last().and_then(|f| f.season));
         let airing = self.airing_of(row);
+        // Every aired episode with no file here, a watched one included: watched elsewhere is
+        // still not on this device (#156). Its cube stays watched, so it reads as tracked.
         let absent: Vec<AbsentEpisode> = card
             .cubes
             .chars()
             .zip(1u32..)
-            .filter(|(c, _)| matches!(c, 'm' | 'g'))
+            .filter(|(c, n)| {
+                matches!(c, 'm' | 'g')
+                    || (matches!(c, 'w' | 'l') && !card.episodes_here.contains(n))
+            })
             .map(|(c, number)| {
                 let air = airing.iter().find(|a| a.number == number);
                 AbsentEpisode {

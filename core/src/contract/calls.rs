@@ -316,6 +316,14 @@ pub enum Call {
     /// target is checked before anything is removed: a library root, the
     /// home folder or anything holding one is refused and nothing changes.
     /// `title` names the show in the log. Ends in `ShowRemoved`.
+    /// Deletes episodes' files, with their subtitle sidecars, from a library series: to
+    /// the trash on a desktop, outright on a phone. Each file must belong to `series`
+    /// and sit inside a library folder, or nothing is removed. Starts a scan of the
+    /// series and replies with its job.
+    DeleteEpisodes {
+        series: u64,
+        files: Vec<u64>,
+    },
     RemoveShow {
         title: String,
         rule: Option<String>,

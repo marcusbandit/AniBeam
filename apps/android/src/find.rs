@@ -353,6 +353,7 @@ impl Find {
                 airing: card.next_airing.is_some()
                     || matches!(card.status, Some(anibeam_core::AiringStatus::Releasing)),
                 cubes: card.cubes.clone(),
+                here: Some(card.episodes_here.clone()),
                 folder,
             },
             in_library: true,
@@ -376,6 +377,7 @@ impl Find {
                 total: 0,
                 airing: true,
                 cubes: String::new(),
+                here: None,
                 folder: folder.to_string(),
             },
             in_library: false,
@@ -405,7 +407,7 @@ impl Find {
                 airing
                     .into_iter()
                     .map(|(c, at)| Offer {
-                        ledger: if at > now { format!("in {}", format::countdown(at - now)) } else { "aired".into() },
+                        ledger: if at > now { format::countdown(at - now) } else { "aired".into() },
                         ..Self::offer_of(c)
                     })
                     .collect()
@@ -813,7 +815,10 @@ impl Find {
         if show.airing {
             facts_line.push("Airing".into());
         }
-        let on_phone = show.cubes.chars().filter(|c| matches!(c, 'd' | 'l' | 'w')).count();
+        let on_phone = match &show.here {
+            Some(here) => here.len(),
+            None => show.cubes.chars().filter(|c| matches!(c, 'd' | 'l' | 'w')).count(),
+        };
         facts_line.push(if on_phone == 1 { "1 on this phone".into() } else { format!("{on_phone} on this phone") });
 
         let mut library_codes = Vec::new();
@@ -1217,7 +1222,7 @@ fn library_offer(c: &SeriesCard) -> Offer {
 
 /// What a library show has on this phone, for its suggestion row.
 fn library_line(c: &SeriesCard) -> String {
-    let here = c.cubes.chars().filter(|k| matches!(k, 'w' | 'l' | 'd')).count();
+    let here = c.episodes_here.len();
     let total = c.cubes.chars().filter(|k| *k != 'f').count();
     match (here, total) {
         (_, 0) => "In your library".to_string(),
@@ -1284,6 +1289,7 @@ fn offer_of_hit(h: &SearchResult, poster: String) -> Offer {
             total,
             airing: h.airing,
             cubes: "g".repeat(total.min(400) as usize),
+            here: None,
             folder: folder_name(&title),
         },
         in_library: false,

@@ -266,7 +266,7 @@ Item {
     function showFromCard(c, typed) {
         var t = c.titles || {}
         var queries = page.queriesOf(page.namesOfCard(c), t.romaji || c.title)
-        return { title: page.nameOfCard(c, typed || ""), query: queries[0], queries: queries, poster: c.poster || "", cubes: c.cubes || "", total: c.total_episodes || 0,
+        return { title: page.nameOfCard(c, typed || ""), query: queries[0], queries: queries, poster: c.poster || "", cubes: c.cubes || "", here: c.episodes_here || null, total: c.total_episodes || 0,
                  seriesId: c.id, status: c.status || "", format: c.format || "", year: c.year || 0, nextAiring: c.next_airing || null,
                  airing: c.status === "Releasing" || !!c.next_airing, folderName: page.lastPart(c.path) }
     }

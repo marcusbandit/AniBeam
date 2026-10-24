@@ -199,7 +199,7 @@ fn hero(card: &SeriesCard, at: i64, art: &Art, now: i64) -> Hero {
         has_poster,
         initials: format::initials(title(card)).into(),
         episode: format!("{}  {}", next_code(card).unwrap_or_default(), format::when(at, now)).into(),
-        countdown: format!("in {}", format::countdown(at - now)).into(),
+        countdown: format::countdown(at - now).into(),
         band: posters::band(tone),
         ink: posters::ink(tone),
     }
@@ -292,6 +292,7 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
                 cube: e.cube.chars().next().map(cube_code).unwrap_or(2),
                 // A file a torrent is still writing is on disk but not playable.
                 file: if e.downloading.is_none() { e.file as i32 } else { 0 },
+                picked: false,
             },
         ));
     }
@@ -302,9 +303,11 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
                 code: a.code.clone().into(),
                 title: a.title.clone().unwrap_or_else(|| format!("Episode {}", a.number)).into(),
                 date: a.air_date.map(|t| date(secs(t), now)).unwrap_or_default().into(),
-                note: "Missing".into(),
+                // Watched somewhere else: tracked, but no file on this phone.
+                note: if matches!(a.cube.as_str(), "w" | "l") { "Not on this phone" } else { "Missing" }.into(),
                 cube: a.cube.chars().next().map(cube_code).unwrap_or(3),
                 file: 0,
+                picked: false,
             },
         ));
     }
@@ -313,7 +316,7 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
         let date = if u.predicted {
             format!("about {}", format::day_month(at))
         } else if at - now < 7 * 86_400 {
-            format!("in {}", format::countdown(at - now))
+            format::countdown(at - now)
         } else {
             format::day_month(at)
         };
@@ -326,6 +329,7 @@ pub fn series(detail: &SeriesDetail, art: &Art, now: i64) -> (SeriesHead, Vec<Ep
                 note: Default::default(),
                 cube: 5,
                 file: 0,
+                picked: false,
             },
         ));
     }

@@ -57,6 +57,22 @@ Item {
             { text: "Open in Metadata", icon: "database", action: function() { frame.go("metadata", { q: page.title }) } }
         ]
     }
+    // Deleting episodes (#158): the picked files, by id.
+    property bool deleting: false
+    property var deletePicked: []
+    readonly property int filesHere: episodeRows.filter(function(r) { return !!r.file && !r.absent && !r.upcoming }).length
+    function togglePick(file) {
+        var i = deletePicked.indexOf(file), next = deletePicked.slice()
+        if (i >= 0) next.splice(i, 1); else next.push(file)
+        deletePicked = next
+    }
+    function deletePickedFiles() {
+        var files = deletePicked.slice()
+        deleting = false
+        deletePicked = []
+        var r = Door.call("DeleteEpisodes", { series: page.props.id, files: files })
+        frame.toast(r.error ? frame.errorText(r.error) : (files.length === 1 ? "1 episode" : files.length + " episodes") + " moved to the trash")
+    }
     function rescan() { var r = Door.rescanSeries(page.props.id); frame.toast(r.error ? r.error.message : "Rescan started") }
     function load() {
         var r = Door.getSeries(props.id)
@@ -603,6 +619,22 @@ Item {
                     width: parent.width
                     spacing: theme.space(4)
                     Heading { text: page.isMovie ? "Film" : "Episodes"; count: page.episodeRows.filter(function(r) { return !r.upcoming }).length; fact: page.episodesFact }
+                    // Deleting episodes: a button to start, then pick rows and confirm.
+                    Row {
+                        visible: !page.isMovie && page.filesHere > 0
+                        spacing: theme.space(3)
+                        Button { visible: !page.deleting; objectName: "delete-episodes"; text: "Delete episodes"; icon: "trash-2"; flat: true; small: true; onClicked: { page.deletePicked = []; page.deleting = true } }
+                        Label { visible: page.deleting && page.deletePicked.length === 0; anchors.verticalCenter: parent.verticalCenter; text: "Click the episodes to delete."; color: theme.textDim }
+                        InlineConfirm {
+                            objectName: "delete-episodes-confirm"
+                            visible: page.deleting && page.deletePicked.length > 0
+                            question: "Move " + (page.deletePicked.length === 1 ? "1 episode" : page.deletePicked.length + " episodes") + " to the trash?"
+                            confirmText: "Move to trash"
+                            onAccepted: page.deletePickedFiles()
+                            onKept: page.deleting = false
+                        }
+                        Button { visible: page.deleting && page.deletePicked.length === 0; text: "Cancel"; flat: true; small: true; onClicked: page.deleting = false }
+                    }
                     Column {
                         width: parent.width
                         spacing: theme.space(4)
@@ -618,6 +650,9 @@ Item {
                                 watched: page.watchedWithOptimism(modelData)
                                 onPlay: page.openFile(modelData.file)
                                 onMarker: page.marker(modelData)
+                                picking: page.deleting
+                                picked: page.deletePicked.indexOf(modelData.file) >= 0
+                                onPick: page.togglePick(modelData.file)
                             }
                         }
                     }

@@ -87,6 +87,8 @@ export struct EpisodeLine {
     cube: int,
     // The file a tap plays; zero for an episode that is not whole on the phone.
     file: int,
+    // Picked for deleting.
+    picked: bool,
 }
 
 // One download on this phone, the desktop's Downloading panel.
@@ -208,6 +210,16 @@ export global AppData {
     // A series from the other device's library, read only.
     callback open-remote(int);
     callback close-series();
+    // Deleting episodes from the series page: pick them, then confirm.
+    in property <bool> deleting;
+    // The open series has an episode on this phone.
+    in property <bool> series-has-files;
+    in property <int> delete-count;
+    in property <string> delete-error;
+    callback start-delete();
+    callback toggle-delete(int);
+    callback cancel-delete();
+    callback confirm-delete();
     // Opens the player on a file of this phone's.
     callback play(int);
     callback pick-day(int);

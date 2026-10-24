@@ -598,6 +598,9 @@ impl Core {
             Call::ForgetSeries { series } => scan::forget_series(self, series),
             Call::Scan { source } => scan::scan(self, source),
             Call::RescanSeries { series } => scan::rescan_series(self, series),
+            Call::DeleteEpisodes { series, files } => {
+                crate::library::delete::delete_episodes(self, series, files)
+            }
             // `reveal_hidden` is the shell's tab visibility, not a filter:
             // the Hidden tab always lists what it holds.
             Call::ListSeries {

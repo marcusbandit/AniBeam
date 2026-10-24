@@ -22,6 +22,10 @@ pub struct Show {
     pub airing: bool,
     /// The library's cube row (`library::cards::cubes`).
     pub cubes: String,
+    /// The episodes with a file here (`SeriesCard::episodes_here`). The cubes mark an
+    /// episode watched elsewhere as watched with no file here; with this set, only what is
+    /// in it counts as had. None trusts the cubes alone.
+    pub here: Option<Vec<u32>>,
     /// The folder downloads go into.
     pub folder: String,
 }
@@ -167,9 +171,21 @@ pub fn total(show: &Show, facts: &[ReleaseFacts], flight: &BTreeMap<u32, f64>) -
 /// The library's row: its cube codes, with episodes a torrent carries shown on the way.
 pub fn library(show: &Show, total: u32, flight: &BTreeMap<u32, f64>) -> Vec<char> {
     let codes: Vec<char> = show.cubes.chars().collect();
+    let last_here = show
+        .here
+        .as_ref()
+        .and_then(|h| h.iter().max().copied())
+        .unwrap_or(0);
     (1..=total)
         .map(|n| {
             let mut c = codes.get(n as usize - 1).copied().unwrap_or('g');
+            // Watched, but the file is not here: as far as getting it goes, it is not had.
+            if matches!(c, 'w' | 'l')
+                && let Some(here) = &show.here
+                && !here.contains(&n)
+            {
+                c = if n < last_here { 'm' } else { 'g' };
+            }
             if let Some(p) = flight.get(&n)
                 && c != 'w'
                 && c != 'l'
@@ -537,8 +553,23 @@ mod tests {
             total: 4,
             airing: false,
             cubes: cubes.into(),
+            here: None,
             folder: "Sousou no Frieren".into(),
         }
+    }
+
+    #[test]
+    fn an_episode_watched_elsewhere_is_not_had_here() {
+        let mut s = show("wwwg");
+        s.total = 4;
+        s.here = Some(vec![1]);
+        let row = library(&s, 4, &BTreeMap::new());
+        assert_eq!(row, vec!['w', 'g', 'g', 'g']);
+        assert!(have(&row, 1));
+        assert!(!have(&row, 2) && !have(&row, 3));
+        // Without the set, the cubes alone decide, as before.
+        s.here = None;
+        assert!(have(&library(&s, 4, &BTreeMap::new()), 2));
     }
 
     #[test]
