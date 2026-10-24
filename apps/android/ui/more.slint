@@ -316,6 +316,13 @@ export component MorePage inherits Rectangle {
             }
             ListGroup {
                 ListRow {
+                    label: "What's new";
+                    helper: "What changed in each version, newest first.";
+                    tappable: true;
+                    chevron: true;
+                    clicked => { AppData.open-notes(); }
+                }
+                ListRow {
                     label: "Set up again";
                     helper: "Walk through the first-run questions once more.";
                     tappable: true;

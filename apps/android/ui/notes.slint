@@ -1,0 +1,174 @@
+// What's new: the app's notes, newest version first, the way Mojang writes patch notes, a
+// version over its sections over one short line per change. A line marks how far is new:
+// everything above it came after the version this phone had, and reads brighter. It opens
+// by itself once after an update, and from More; Got it or Back closes it.
+
+import { Theme } from "theme.slint";
+import { AppData, NoteLine } from "data.slint";
+import { Button, PageTitle } from "widgets.slint";
+
+// A version: its number in the display cut, the day it was made beside it on the number's
+// baseline, the way a section head carries its note.
+component VersionHead inherits Rectangle {
+    in property <NoteLine> line;
+    property <length> size: Theme.section;
+    height: number.y + number.preferred-height;
+    number := Text {
+        x: 0;
+        y: 8 * Theme.unit;
+        width: self.preferred-width;
+        height: self.preferred-height;
+        text: root.line.text;
+        color: root.line.lit ? Theme.text : Theme.dim;
+        font-size: root.size;
+        font-family: Theme.display-face;
+        letter-spacing: -0.3px;
+    }
+    // The display cut's descent is about a fifth of its size.
+    Text {
+        x: number.preferred-width + 3 * Theme.unit;
+        y: number.y + number.preferred-height - root.size * 0.24 - self.preferred-height * 0.8;
+        width: self.preferred-width;
+        height: self.preferred-height;
+        text: root.line.note;
+        color: Theme.faint;
+        font-size: Theme.small + 1px;
+    }
+}
+
+// A section's name, quiet: New, Changed, Fixed, Removed.
+component SectionName inherits Text {
+    in property <NoteLine> line;
+    text: root.line.text;
+    color: root.line.lit ? Theme.dim : Theme.faint;
+    font-size: Theme.small;
+    font-family: Theme.strong-face;
+    letter-spacing: 0.6px;
+}
+
+// One change: a dot, then the line, wrapping when it has to.
+component Change inherits HorizontalLayout {
+    in property <NoteLine> line;
+    spacing: 3 * Theme.unit;
+    padding-top: Theme.unit;
+    Rectangle {
+        width: 5px;
+        Rectangle {
+            y: (Theme.normal * 1.25 - self.height) / 2;
+            width: 5px;
+            height: 5px;
+            border-radius: 2.5px;
+            background: root.line.lit ? Theme.text : Theme.faint;
+        }
+    }
+    Text {
+        horizontal-stretch: 1;
+        text: root.line.text;
+        color: root.line.lit ? Theme.text : Theme.dim;
+        wrap: word-wrap;
+    }
+}
+
+// The line: what is above it is new to this phone. "You were on 2.0.4".
+component Marker inherits HorizontalLayout {
+    in property <NoteLine> line;
+    padding-top: 9 * Theme.unit;
+    spacing: 3 * Theme.unit;
+    Rectangle {
+        horizontal-stretch: 1;
+        Rectangle {
+            y: (parent.height - self.height) / 2;
+            height: 2px;
+            border-radius: 1px;
+            background: Theme.accent;
+        }
+    }
+    Rectangle {
+        width: label.preferred-width + 6 * Theme.unit;
+        height: Theme.control-small;
+        border-radius: self.height / 2;
+        background: Theme.accent;
+        label := Text {
+            text: root.line.text;
+            color: Theme.on-accent;
+            font-size: Theme.small + 0.5px;
+            font-family: Theme.strong-face;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+    Rectangle {
+        horizontal-stretch: 1;
+        Rectangle {
+            y: (parent.height - self.height) / 2;
+            height: 2px;
+            border-radius: 1px;
+            background: Theme.accent;
+        }
+    }
+}
+
+export component NotesPage inherits Rectangle {
+    in property <length> inset-top;
+    in property <length> inset-bottom;
+    in property <length> inset-left;
+    in property <length> inset-right;
+    background: Theme.ground;
+    // Nothing under the page takes a tap.
+    TouchArea { }
+
+    // Got it, in a bar along the foot over the bottom inset.
+    property <length> bar: Theme.control + 2 * Theme.grout;
+    property <length> side: Theme.grout + Theme.unit;
+
+    Flickable {
+        x: root.inset-left;
+        y: root.inset-top;
+        width: root.width - root.inset-left - root.inset-right;
+        height: root.height - root.inset-top - root.inset-bottom - root.bar;
+        VerticalLayout {
+            alignment: start;
+            padding-left: root.side;
+            padding-right: root.side;
+            padding-top: Theme.unit * 4;
+            padding-bottom: Theme.pad * 2;
+            PageTitle {
+                title: "What's new";
+                note: AppData.notes-note;
+            }
+            for line in AppData.notes: VerticalLayout {
+                if line.kind == 0: VersionHead { line: line; }
+                if line.kind == 1: VerticalLayout {
+                    padding-top: 4 * Theme.unit;
+                    padding-bottom: Theme.unit;
+                    SectionName { line: line; }
+                }
+                if line.kind == 2: Change { line: line; }
+                if line.kind == 3: Marker { line: line; }
+            }
+        }
+    }
+
+    Rectangle {
+        x: 0;
+        y: root.height - root.inset-bottom - root.bar;
+        width: root.width;
+        height: root.bar + root.inset-bottom;
+        background: Theme.ground;
+        Rectangle {
+            y: 0;
+            height: 1px;
+            background: Theme.line;
+        }
+        Button {
+            x: root.inset-left + root.side;
+            y: Theme.grout;
+            width: root.width - root.inset-left - root.inset-right - 2 * root.side;
+            text: "Got it";
+            icon: @image-url("icons/thumbs-up.svg");
+            has-icon: true;
+            primary: true;
+            clicked => { AppData.close-notes(); }
+        }
+    }
+}

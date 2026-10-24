@@ -11,6 +11,7 @@ mod app;
 mod find;
 mod local;
 mod mpv;
+mod notes;
 mod phone;
 mod player;
 mod posters;

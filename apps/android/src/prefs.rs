@@ -1,8 +1,9 @@
-//! The phone's own choices: whether onboarding is done, Wi-Fi only, and the storage limit.
-//! One small JSON file beside the core's folder.
+//! The phone's own choices: whether onboarding is done, Wi-Fi only, the storage limit, and
+//! which version's notes were last read. One small JSON file beside the core's folder.
 
 use std::path::{Path, PathBuf};
 
+use anibeam_core::changelog::Seen;
 use serde::{Deserialize, Serialize};
 
 /// 12 episodes at about 1.5 GB each.
@@ -18,11 +19,13 @@ pub struct Prefs {
     pub limit_on: bool,
     /// Any amount from 1 GB to the phone's whole storage, set with a slider.
     pub limit_gb: f64,
+    /// The newest version whose What's new was closed, and the one before it.
+    pub notes: Seen,
 }
 
 impl Default for Prefs {
     fn default() -> Self {
-        Prefs { onboarded: false, wifi_only: true, limit_on: false, limit_gb: SUGGESTED_LIMIT_GB }
+        Prefs { onboarded: false, wifi_only: true, limit_on: false, limit_gb: SUGGESTED_LIMIT_GB, notes: Seen::default() }
     }
 }
 
@@ -79,13 +82,16 @@ mod tests {
     fn an_old_whole_number_limit_still_loads() {
         let p: Prefs = serde_json::from_str(r#"{"onboarded":true,"limit_gb":18}"#).unwrap();
         assert_eq!(p.limit_gb, 18.0);
+        // A file from before What's new has read no notes.
+        assert_eq!(p.notes, Seen::default());
     }
 
     #[test]
     fn prefs_survive_a_save_and_a_load() {
         let dir = std::env::temp_dir().join(format!("anibeam-prefs-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let p = Prefs { onboarded: true, wifi_only: false, limit_on: true, limit_gb: 31.2 };
+        let notes = Seen { version: "2.1.0".into(), from: "2.0.8".into() };
+        let p = Prefs { onboarded: true, wifi_only: false, limit_on: true, limit_gb: 31.2, notes };
         save(&dir, &p).unwrap();
         assert_eq!(load(&dir), p);
         let _ = std::fs::remove_dir_all(dir);

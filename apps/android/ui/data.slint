@@ -134,6 +134,18 @@ export struct SourceRow {
     enabled: bool,
 }
 
+// One row of What's new, read top to bottom: a version, a section of it, one change, or
+// the line under what is new since the version this phone had.
+export struct NoteLine {
+    // 0 a version (text, and its day in note), 1 a section's name, 2 a change, 3 the line.
+    kind: int,
+    text: string,
+    note: string,
+    // Read brighter: above the line, new since the version this phone came from, or every
+    // version when there is no line.
+    lit: bool,
+}
+
 // Which tab is up: 0 Home, 1 Library, 2 Downloads, 3 More. A page can send you to another.
 export global Nav {
     in-out property <int> page;
@@ -200,6 +212,15 @@ export global AppData {
     in property <[CheckRow]> checks;
     in property <bool> checking;
     in property <string> check-summary;
+
+    // What's new, over everything: opens by itself once after an update, and from More.
+    in property <bool> notes-open;
+    // "2.0.4 → 2.1.0", "Updated to 2.1.0" or "Version 2.1.0".
+    in property <string> notes-note;
+    in property <[NoteLine]> notes;
+    callback open-notes();
+    // Got it or Back: the notes count as read.
+    callback close-notes();
 
     // The series page, over whichever page opened it.
     in property <bool> series-open;
