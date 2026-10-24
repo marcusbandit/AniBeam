@@ -64,7 +64,9 @@ export global PlayerData {
 
     callback back();
     callback toggle-pause();
-    // Seconds. A scrub seeks once, where the finger lifts, as the desktop's bar does.
+    // Seconds. A drag on the bar previews with fast keyframe seeks under the finger, then
+    // seeks exactly once, where the finger lifts.
+    callback scrub(float);
     callback seek(float);
     callback seek-by(float);
     callback skip();
@@ -135,7 +137,7 @@ component PlayerButton inherits Rectangle {
 }
 
 // The groove, the desktop's SeekBar: the skip windows as white bands under the played
-// part, and the knob. A drag shows where it would land and seeks once on release; the bar
+// part, and the knob. A drag shows the frame under the finger and seeks once on release; the bar
 // then holds that spot until mpv gets there, or 1.5 s, so the knob never jumps back.
 component SeekBar inherits Rectangle {
     in property <float> position;
@@ -195,6 +197,7 @@ component SeekBar inherits Rectangle {
                 settle.running = false;
                 root.settling = false;
                 root.scrub-to = root.at(self.mouse-x);
+                PlayerData.scrub(root.scrub-to);
                 PlayerData.touched();
             } else if (event.kind == PointerEventKind.up) {
                 root.scrub-to = root.at(self.mouse-x);
@@ -205,6 +208,7 @@ component SeekBar inherits Rectangle {
         }
         moved => {
             root.scrub-to = root.at(self.mouse-x);
+            PlayerData.scrub(root.scrub-to);
             PlayerData.touched();
         }
     }
