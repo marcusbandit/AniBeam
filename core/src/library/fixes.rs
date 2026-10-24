@@ -1,15 +1,16 @@
 //! Quick fixes (#170): the user saying what a file is when its name read
 //! wrong. A fix is stored by the file's path with the reading it replaced, the
 //! row is rewritten at once so the page follows without waiting on a scan, and
-//! the file's watch history moves to its new key. Every later scan reads the
-//! file the same way (`readings::apply`). Undoing a fix puts the replaced
-//! reading back and lets the scan read the name again.
+//! the file's watch history moves to its new key (`history::follow`). Every
+//! later scan reads the file the same way (`readings::apply`). Undoing a fix
+//! puts the replaced reading back, then a scan reads the name again, and the
+//! history follows whatever it reads today.
 
 use rusqlite::{OptionalExtension, Transaction, params};
 
 use crate::contract::*;
 use crate::core::Core;
-use crate::library::{cards, readings};
+use crate::library::{cards, history, readings};
 use crate::time;
 
 /// One file row as a fix needs it.
@@ -72,42 +73,6 @@ fn check(reading: &FileReading) -> Result<(), CoreError> {
     Ok(())
 }
 
-/// Moves a file's watch history from its old key to its new one, unless
-/// another file of the series still carries the old key (a second release of
-/// the same episode keeps it) or the new key has history of its own.
-fn move_history(
-    tx: &Transaction,
-    series: u64,
-    file: u64,
-    from: &str,
-    to: &str,
-) -> Result<(), CoreError> {
-    if from == to {
-        return Ok(());
-    }
-    let shared: i64 = tx.query_row(
-        "SELECT count(*) FROM files WHERE series_id = ?1 AND episode_key = ?2 AND id <> ?3",
-        params![series as i64, from, file as i64],
-        |r| r.get(0),
-    )?;
-    if shared > 0 {
-        return Ok(());
-    }
-    for table in ["completed", "resume_points", "skip_windows"] {
-        tx.execute(
-            &format!(
-                "UPDATE OR IGNORE {table} SET episode_key = ?3 WHERE series_id = ?1 AND episode_key = ?2"
-            ),
-            params![series as i64, from, to],
-        )?;
-    }
-    tx.execute(
-        "UPDATE views SET episode_key = ?3 WHERE series_id = ?1 AND episode_key = ?2",
-        params![series as i64, from, to],
-    )?;
-    Ok(())
-}
-
 /// Writes one reading onto a file row: kind, numbers, label and key.
 fn rewrite(
     tx: &Transaction,
@@ -140,7 +105,7 @@ pub(crate) fn write_fixes(
     fixes: &[FileFix],
     now: i64,
 ) -> Result<usize, CoreError> {
-    let mut changed = 0;
+    let mut moves = Vec::new();
     for fix in fixes {
         let row = row(tx, fix.file)?.ok_or_else(|| {
             CoreError::invalid("fixes", format!("no file {} in the library", fix.file))
@@ -188,11 +153,16 @@ pub(crate) fn write_fixes(
         };
         if target != row.reading {
             let key = rewrite(tx, fix.file, &row.path, &target)?;
-            move_history(tx, series, fix.file, &row.key, &key)?;
-            changed += 1;
+            moves.push(history::Move {
+                file: fix.file,
+                from: row.key,
+                to: key,
+            });
         }
     }
-    Ok(changed)
+    // Once every row carries its new key, so a renumbered run moves as one.
+    history::follow(tx, series, &moves)?;
+    Ok(moves.len())
 }
 
 pub fn fix_files(core: &Core, series: u64, fixes: Vec<FileFix>) -> Result<Reply, CoreError> {
@@ -204,6 +174,7 @@ pub fn fix_files(core: &Core, series: u64, fixes: Vec<FileFix>) -> Result<Reply,
     }
     let now = time::now_secs();
     let undo = fixes.iter().all(|f| f.reading.is_none());
+    let undoes = fixes.iter().any(|f| f.reading.is_none());
     let n = fixes.len();
     let changed = core.store.tx(move |tx| {
         let found: Option<i64> = tx
@@ -242,9 +213,14 @@ pub fn fix_files(core: &Core, series: u64, fixes: Vec<FileFix>) -> Result<Reply,
             EventBody::SeriesChanged { series: cards },
         );
     }
-    // The walk reads the names again, the fixes on top, so an undone file
-    // lands on whatever its name says today.
-    super::scan::rescan_series(core, series)
+    // An undone file is read by its name again, which may say something else
+    // today than when it was fixed; the scan reads it and its history follows.
+    // A source away right now reads it when it is back: the fixes took effect
+    // either way, so that is no error of this call.
+    if undoes && let Ok(reply) = super::scan::rescan_series(core, series) {
+        return Ok(reply);
+    }
+    Ok(Reply::Ok)
 }
 
 #[cfg(test)]

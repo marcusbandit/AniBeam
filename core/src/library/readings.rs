@@ -143,6 +143,11 @@ pub(crate) fn describe(reading: &FileReading) -> String {
             number,
             season: Some(s),
         } => format!("Season {s} episode {}", classifier::format_number(number)),
+        // The sheet's word for the last kind, not the label's "Bonus".
+        FileReading::Extra {
+            kind: ExtraKind::Other,
+            index,
+        } => index.map_or_else(|| "Other".to_string(), |i| format!("Other {i}")),
         FileReading::Extra { kind, index } => labels::extra_label(kind, index, None, None),
     }
 }
@@ -175,17 +180,55 @@ pub(crate) fn record_format(conn: &Connection, series: u64) -> Result<Option<Str
         .flatten())
 }
 
-/// Whether a record landing for `series` can change how its files read: a
-/// file's name reads as a numbered special, which the record rule reads one
-/// way or the other. Then the series is worth a scan.
+/// Whether the series' rows disagree with what its record now says: the
+/// record rule would read its numbered specials as episodes and the rows do
+/// not, or the other way round. A match that changed is worth a scan only
+/// then, so a TV series with an `SP1` beside its episodes never queues one.
 pub(crate) fn record_matters(conn: &Connection, series: u64) -> Result<bool, CoreError> {
-    let mut stmt = conn.prepare("SELECT path FROM files WHERE series_id = ?1")?;
-    let paths = stmt
-        .query_map(params![series as i64], |r| r.get::<_, String>(0))?
+    let format = record_format(conn, series)?;
+    let mut stmt = conn.prepare(
+        "SELECT f.path, f.kind, EXISTS (SELECT 1 FROM file_fixes x WHERE x.path = f.path)
+         FROM files f WHERE f.series_id = ?1",
+    )?;
+    let rows = stmt
+        .query_map(params![series as i64], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, bool>(2)?,
+            ))
+        })?
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(paths
+    let named: Vec<(Classified, &str, bool)> = rows
         .iter()
-        .any(|p| numbered_special(&classifier::classify(&file_name(p)))))
+        .map(|(path, kind, fixed)| {
+            (
+                classifier::classify(&file_name(path)),
+                kind.as_str(),
+                *fixed,
+            )
+        })
+        .collect();
+    let would = specials_are_episodes(format.as_deref())
+        && named.iter().all(|(c, _, _)| c.extra.is_some())
+        && named.iter().any(|(c, _, _)| numbered_special(c));
+    let does = named
+        .iter()
+        .any(|(c, kind, fixed)| !fixed && numbered_special(c) && *kind == "episode");
+    Ok(would != does)
+}
+
+/// Rescans `series` when its rows disagree with its record (`record_matters`).
+/// For the places a match changes outside a job: clearing one, say.
+pub(crate) fn reread_if_record_matters(core: &crate::core::Core, series: u64) {
+    if core
+        .store
+        .read(|c| record_matters(c, series))
+        .unwrap_or(false)
+    {
+        // A source away right now gets its scan when it is back.
+        let _ = super::scan::rescan_series(core, series);
+    }
 }
 
 #[cfg(test)]

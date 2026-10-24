@@ -5,14 +5,16 @@
 //! user sends it or not.
 //!
 //! With Claude Code or Codex installed, the core first asks that agent for a
-//! short triage of the misreading: no tools, no project files, nothing saved,
-//! the name reader's own source in the prompt, run in an empty folder. What it
-//! answers goes into the issue. An agent that fails or runs out of time costs
-//! the issue nothing but its triage.
+//! short triage of the misreading, run in an empty folder with the name
+//! reader's own source in the prompt: Claude Code with no tools at all and
+//! nothing saved, Codex in its read only sandbox with its shell tool off. What
+//! it answers goes into the issue, which the user reads before sending. An
+//! agent that fails or runs out of time costs the issue nothing but its triage.
 
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -213,19 +215,44 @@ fn find_agent() -> Option<Agent> {
         })
 }
 
-fn drain(pipe: Option<impl Read + Send + 'static>) -> thread::JoinHandle<String> {
+/// A pipe read to its end on a thread of its own, its text sent once it ends.
+fn drain(pipe: Option<impl Read + Send + 'static>) -> mpsc::Receiver<String> {
+    let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
         let mut out = String::new();
         if let Some(mut pipe) = pipe {
             let _ = pipe.read_to_string(&mut out);
         }
-        out
-    })
+        let _ = tx.send(out);
+    });
+    rx
+}
+
+/// How long the pipes may stay open after the agent itself has exited: a
+/// helper it left behind can hold them open for good.
+const PIPE_GRACE: Duration = Duration::from_secs(5);
+
+/// Ends the agent and everything it started. It runs in a process group of its
+/// own (`process_group(0)`), so the group shares its pid; a wrapper such as an
+/// npm shim takes the real agent down with it. Called only while the agent or
+/// something it started is still running, so the group id is still theirs.
+fn end_group(child: &mut std::process::Child) {
+    #[cfg(unix)]
+    {
+        let _ = Command::new("kill")
+            .args(["-KILL", "--", &format!("-{}", child.id())])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 /// One read only run of the agent on `prompt`, fed on stdin in a fresh empty
 /// folder: Claude Code with no tools, no customisations and nothing saved,
-/// Codex in its read only sandbox. Its answer, or why there is none.
+/// Codex in its read only sandbox with its shell tool off. Its answer, or why
+/// there is none.
 fn run_agent(agent: &Agent, prompt: &str, timeout: Duration) -> Result<String, String> {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -248,11 +275,16 @@ fn run_agent(agent: &Agent, prompt: &str, timeout: Duration) -> Result<String, S
             ]);
         }
         AgentKind::Codex => {
+            // The read only sandbox still reads the whole disk, and the prompt
+            // carries names from torrent releases, so the shell tool goes off
+            // too: an answer in text, nothing run.
             cmd.args([
                 "exec",
                 "--skip-git-repo-check",
                 "--sandbox",
                 "read-only",
+                "-c",
+                "features.shell_tool=false",
                 "--output-last-message",
             ])
             .arg(&answer)
@@ -273,6 +305,11 @@ fn run_agent(agent: &Agent, prompt: &str, timeout: Duration) -> Result<String, S
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
     let result = (|| {
         let mut child = cmd.spawn().map_err(|e| e.to_string())?;
         let stdin = child.stdin.take();
@@ -289,17 +326,26 @@ fn run_agent(agent: &Agent, prompt: &str, timeout: Duration) -> Result<String, S
             match child.try_wait() {
                 Ok(Some(status)) => break status,
                 Ok(None) if Instant::now() >= deadline => {
-                    let _ = child.kill();
-                    let _ = child.wait();
+                    end_group(&mut child);
                     return Err(format!("no answer within {}", span(timeout)));
                 }
                 Ok(None) => thread::sleep(Duration::from_millis(200)),
-                Err(e) => return Err(e.to_string()),
+                Err(e) => {
+                    end_group(&mut child);
+                    return Err(e.to_string());
+                }
             }
         };
+        let stdout = out.recv_timeout(PIPE_GRACE);
+        let stderr = err.recv_timeout(PIPE_GRACE);
+        // A pipe still open means something the agent started still holds it,
+        // so its group is alive and goes too. Only then: once the group is gone
+        // its id is free for another process to take.
+        if stdout.is_err() || stderr.is_err() {
+            end_group(&mut child);
+        }
+        let (stdout, stderr) = (stdout.unwrap_or_default(), stderr.unwrap_or_default());
         let _ = writer.join();
-        let stdout = out.join().unwrap_or_default();
-        let stderr = err.join().unwrap_or_default();
         if !status.success() {
             let why = stderr
                 .lines()
@@ -391,6 +437,8 @@ fn prompt(f: &Facts) -> String {
 fn format_word(format: &str) -> String {
     match format {
         "TV" => "TV".to_string(),
+        // The app's own word for it.
+        "MOVIE" => "Film".to_string(),
         "TV_SHORT" => "TV short".to_string(),
         "OVA" | "ONA" => format.to_string(),
         other => {
@@ -477,7 +525,7 @@ fn body(f: &Facts, shown: usize, triage: Option<(&str, &str)>) -> String {
     for x in f.files.iter().take(shown) {
         out.push(format!(
             "| `{}` | {} | {} |",
-            x.name.replace('|', "\\|").replace('`', "'"),
+            cell(&x.name),
             readings::describe(&x.was),
             readings::describe(&x.now)
         ));
@@ -521,6 +569,14 @@ fn body(f: &Facts, shown: usize, triage: Option<(&str, &str)>) -> String {
         format!("AniBeam {} on {}", f.app, os_word()),
     ]);
     out.join("\n")
+}
+
+/// A file name as a table cell: inside backticks, so nothing in it renders,
+/// with what would end the cell or the code span replaced.
+fn cell(name: &str) -> String {
+    name.replace(['\n', '\r'], " ")
+        .replace('|', "\\|")
+        .replace('`', "'")
 }
 
 fn os_word() -> &'static str {

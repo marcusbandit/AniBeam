@@ -25,6 +25,7 @@ pub mod classifier;
 pub mod delete;
 pub mod detail;
 pub mod fixes;
+pub(crate) mod history;
 pub(crate) mod hostview;
 pub mod labels;
 pub mod readings;

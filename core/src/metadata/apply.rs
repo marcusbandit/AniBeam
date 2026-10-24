@@ -226,6 +226,8 @@ pub fn apply_match(core: &Core, series: u64, target: MatchTarget) -> Result<u64,
                         if let Some(card) = card_for(&owner, series).await? {
                             ctx.changed(card);
                         }
+                        // A MAL-only match carries no record format.
+                        fetch::reread_after_record(&owner, series).await;
                         return Ok(Finished {
                             level: Level::Info,
                             message: format!("Matched {folder} to MyAnimeList {id}"),

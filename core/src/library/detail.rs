@@ -393,13 +393,14 @@ impl Snapshot {
 /// a file the user already fixed:
 ///
 /// - A one-episode record (a film in its own folder, a lone OVA) holding one
-///   file that is not read as that episode: `Dai 63-kai ... - Movie` read as
-///   episode 63.
-/// - Numbered specials where the episodes they number are missing.
-/// - Every episode numbered past the record's count, in one unbroken run no
-///   longer than the count: a later season numbered on from the first, 13 to
-///   24 for this record's 1 to 12. A TVmaze match counts within its season and
-///   is left out.
+///   file, an episode or a special, that is not read as that episode:
+///   `Dai 63-kai ... - Movie` read as episode 63.
+/// - Numbered specials where the episodes they number are missing and no
+///   regular episode is on disk.
+/// - Every episode numbered past the record's count, two or more in one
+///   unbroken run no longer than the count: a later season numbered on from
+///   the first, 13 to 24 for this record's 1 to 12. A TVmaze match counts
+///   within its season and is left out.
 fn suggest(
     kind: SeriesKind,
     format: Option<&str>,
@@ -421,6 +422,7 @@ fn suggest(
 
     if let ([only], Some(1)) = (files, total)
         && !(only.is_episode && only.number == 1.0)
+        && (only.is_episode || only.extra_kind == Some(ExtraKind::Sp))
     {
         let read = if only.is_episode {
             format!("episode {}", classifier::format_number(only.number))
@@ -444,7 +446,10 @@ fn suggest(
         .collect();
     let indexes: Vec<u32> = specials.iter().filter_map(|f| f.extra_index).collect();
     let distinct: HashSet<u32> = indexes.iter().copied().collect();
+    // Only where no regular episode is on disk at all: beside episodes, a
+    // numbered special is a special, whatever is missing around it.
     if !specials.is_empty()
+        && files.iter().all(|f| !f.is_episode)
         && indexes.len() == specials.len()
         && distinct.len() == indexes.len()
         && indexes.iter().all(|n| absent.contains(n))
@@ -483,7 +488,7 @@ fn suggest(
             let first = numbers[0];
             let last = numbers[numbers.len() - 1];
             let unbroken = numbers.windows(2).all(|w| w[1] == w[0] + 1);
-            if first > total && unbroken && last - first < total {
+            if numbers.len() > 1 && first > total && unbroken && last - first < total {
                 let shift = first - 1;
                 return Some(SuggestedFix {
                     text: format!(
@@ -717,6 +722,44 @@ mod tests {
         let mut mixed = numbered_on();
         mixed.push(file(99, "Show - 01.mkv", Some(1.0), None));
         assert!(suggest(SeriesKind::Show, Some("TV"), Some(12), false, &mixed, &[]).is_none());
+    }
+
+    #[test]
+    fn no_suggestion_for_what_is_likely_right() {
+        // Recap specials beside the series' own episodes, 1 and 2 deleted after watching.
+        let mut beside: Vec<FileRow> = (3..=12)
+            .map(|n| file(n, &format!("Show - {n}.mkv"), Some(n as f64), None))
+            .collect();
+        beside.push(file(21, "Show SP1.mkv", None, Some(Some(1))));
+        beside.push(file(22, "Show SP2.mkv", None, Some(Some(2))));
+        assert!(
+            suggest(
+                SeriesKind::Show,
+                Some("TV"),
+                Some(12),
+                false,
+                &beside,
+                &[1, 2]
+            )
+            .is_none()
+        );
+        // One file past the end is a bonus episode as likely as a renumbering.
+        let lone = [file(13, "Show - 13.mkv", Some(13.0), None)];
+        assert!(suggest(SeriesKind::Show, Some("TV"), Some(12), false, &lone, &[]).is_none());
+        // A lone opening is not the film.
+        let mut opening = file(7, "Show NCOP1.mkv", None, None);
+        opening.extra_kind = Some(ExtraKind::Op);
+        assert!(
+            suggest(
+                SeriesKind::Show,
+                Some("MOVIE"),
+                Some(1),
+                false,
+                &[opening],
+                &[1]
+            )
+            .is_none()
+        );
     }
 
     #[test]
