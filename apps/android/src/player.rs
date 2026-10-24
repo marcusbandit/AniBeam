@@ -22,6 +22,7 @@ use anibeam_core::{
 use slint::{ComponentHandle, Model, ModelRc, Timer, TimerMode, VecModel};
 
 use crate::mpv::{Mpv, MpvEvent, Value};
+use crate::thumbs::{Shot, Thumbs};
 use crate::video::{Frame, Share, Video};
 use crate::{AppWindow, Band, PickRow, PlayerData};
 
@@ -255,6 +256,8 @@ struct Player {
     scrubbing: bool,
     scrub_to: Option<f64>,
     scrub_sent: Option<Instant>,
+    /// The preview core, opened on the first drag.
+    thumbs: Option<Thumbs>,
     ended: bool,
     closed: bool,
     episode_number: Option<f64>,
@@ -434,6 +437,7 @@ pub fn open(file: u64) {
         d.set_notice_action("".into());
         d.set_picker(0);
         d.set_chrome(true);
+        d.set_preview(slint::Image::default());
     });
     crate::android::player_screen(true);
 
@@ -454,6 +458,7 @@ pub fn open(file: u64) {
         scrubbing: false,
         scrub_to: None,
         scrub_sent: None,
+        thumbs: None,
         ended: false,
         closed: false,
         episode_number,
@@ -939,9 +944,31 @@ impl Player {
         if self.cast.is_some() {
             return;
         }
+        let t = if self.rules.duration > 0.0 { t.clamp(0.0, self.rules.duration) } else { t.max(0.0) };
         self.scrubbing = true;
-        self.scrub_to = Some(if self.rules.duration > 0.0 { t.clamp(0.0, self.rules.duration) } else { t.max(0.0) });
+        self.scrub_to = Some(t);
         self.send_scrub();
+        if self.thumbs.is_none() {
+            let session_id = self.session.session;
+            self.thumbs = Thumbs::open(&self.session.path, move |shot: Shot| {
+                let _ = slint::invoke_from_event_loop(move || {
+                    with_player(|p| {
+                        if p.session.session == session_id {
+                            p.show_preview(shot);
+                        }
+                    })
+                });
+            });
+        }
+        if let Some(thumbs) = &self.thumbs {
+            thumbs.at(t);
+        }
+    }
+
+    fn show_preview(&mut self, shot: Shot) {
+        let mut buf = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(shot.width, shot.height);
+        buf.make_mut_bytes().copy_from_slice(&shot.rgba);
+        self.d(|d| d.set_preview(slint::Image::from_rgba8(buf)));
     }
 
     fn send_scrub(&mut self) {
