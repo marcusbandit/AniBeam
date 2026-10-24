@@ -12,8 +12,11 @@ use crate::{AppWindow, AuthRow, EndpointRow, RepoData, RepoRow};
 /// What a tap on a row of the endpoint list stands for.
 #[derive(Clone)]
 enum Row {
-    Installed { install: String, update: bool },
+    /// `fill` when it still needs a value of its own.
+    Installed { install: String, update: bool, fill: bool },
     Offered { repo: String, id: String },
+    /// The values an installed endpoint is missing, asked for.
+    Fill { install: String },
 }
 
 /// An install or update waiting for the person's values.
@@ -187,9 +190,18 @@ impl Repos {
                 enabled: i.enabled,
                 nsfw: i.nsfw,
                 note: note.into(),
-                update: i.update.map(|v| format!("Update to v{v}")).unwrap_or_default().into(),
+                update: match i.update {
+                    Some(v) => format!("Update to v{v}"),
+                    None if !i.missing.is_empty() => "Add its value".into(),
+                    None => String::new(),
+                }
+                .into(),
             });
-            rows.push(Row::Installed { install: i.install_id.clone(), update: i.update.is_some() });
+            rows.push(Row::Installed {
+                install: i.install_id.clone(),
+                update: i.update.is_some(),
+                fill: !i.missing.is_empty(),
+            });
         }
         for o in catalog.offered.iter().filter(|o| o.installed.is_none()) {
             let needs: Vec<&str> = o.auth.iter().map(|a| a.label.as_str()).collect();
@@ -323,7 +335,15 @@ impl Repos {
                 let Some(o) = catalog.offered.iter().find(|o| &o.repo_url == repo && &o.id == id) else { return };
                 (o.name.clone(), o.auth.clone(), !o.auth.is_empty())
             }
-            Row::Installed { install, update } => {
+            Row::Fill { .. } => return,
+            Row::Installed { install, update: false, fill: true } => {
+                let Some(e) = catalog.installed.iter().find(|e| &e.install_id == install) else { return };
+                let fields = e.auth.iter().filter(|a| e.missing.contains(&a.key)).cloned().collect();
+                let fill = Row::Fill { install: install.clone() };
+                self.ask(fill, e.name.clone(), fields, "Kept on this phone only, never in the library or an export.".into());
+                return;
+            }
+            Row::Installed { install, update, .. } => {
                 if !update {
                     return;
                 }
@@ -349,6 +369,10 @@ impl Repos {
             },
             _ => "Kept on this phone only, never in the library or an export.".into(),
         };
+        self.ask(row, name, fields, note);
+    }
+
+    fn ask(&mut self, row: Row, name: String, fields: Vec<anibeam_core::EndpointField>, note: String) {
         let rows: Vec<AuthRow> = fields
             .iter()
             .map(|f| AuthRow {
@@ -395,6 +419,7 @@ impl Repos {
         let call = match row {
             Row::Offered { repo, id } => Call::InstallEndpoint { repo, id, credentials },
             Row::Installed { install, .. } => Call::UpdateEndpoint { install, credentials },
+            Row::Fill { install } => Call::SetEndpointCredentials { install, credentials },
         };
         self.busy(true);
         spawn(call, |r, answer| {

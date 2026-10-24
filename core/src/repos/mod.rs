@@ -239,6 +239,35 @@ fn save_index(core: &Core, url: &str, idx: &Index) -> Result<(), CoreError> {
     })
 }
 
+/// The same for a repo already saved; nothing when it was removed in the meantime.
+fn update_index(core: &Core, url: &str, idx: &Index) -> Result<(), CoreError> {
+    let (url, name, nsfw, key, serial, payload) = (
+        url.to_string(),
+        idx.name.clone(),
+        idx.nsfw,
+        idx.key.clone(),
+        idx.serial as i64,
+        idx.payload.clone(),
+    );
+    core.store.write(move |conn| {
+        conn.execute(
+            "UPDATE endpoint_repos SET name = ?2, nsfw = ?3, serial = ?5, payload = ?6,
+                 fetched_at = ?7, error = NULL
+             WHERE url = ?1 AND key = ?4",
+            params![
+                url,
+                name,
+                nsfw,
+                key,
+                serial,
+                payload,
+                crate::time::now_secs()
+            ],
+        )?;
+        Ok(())
+    })
+}
+
 fn save_error(core: &Core, url: &str, error: &str) -> Result<(), CoreError> {
     let (url, error) = (url.to_string(), error.to_string());
     core.store.write(move |conn| {
@@ -305,9 +334,7 @@ pub fn catalog(core: &Core) -> Result<EndpointCatalog, CoreError> {
         })
         .collect();
     let secrets = core.secrets();
-    let shadowed = shadowed_in_anirss(core);
-    // Only a desktop has an anirss list to read.
-    let desktop = !crate::downloads::anirss_endpoint_names(core).is_empty();
+    let synced = read_synced(core);
     let installed = installed
         .iter()
         .map(|i| {
@@ -337,19 +364,7 @@ pub fn catalog(core: &Core) -> Result<EndpointCatalog, CoreError> {
                     .collect(),
                 custom: i.repo_url == CUSTOM,
                 offered: next.is_some() || i.repo_url == CUSTOM,
-                desktop_note: if shadowed.contains(&i.def.id) {
-                    Some(format!(
-                        "anirss has its own {}, written by hand; the desktop searches that one",
-                        i.def.id
-                    ))
-                } else if desktop && !ANIRSS_KINDS.contains(&i.def.kind.as_str()) {
-                    Some(format!(
-                        "anirss cannot search the {} kind, so the desktop leaves it out; the phone searches it",
-                        i.def.kind
-                    ))
-                } else {
-                    None
-                },
+                desktop_note: desktop_note(core, &i.def, &synced),
                 update: update.map(|d| d.version),
                 update_asks: update.is_some_and(|d| !i.def.keeps_credentials(d)),
                 update_host: update
@@ -425,11 +440,10 @@ pub fn add_repo(core: &Core, url: String) -> Result<Reply, CoreError> {
             .collect(),
         trusted,
     };
-    core.repos
-        .indexes
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .insert(url, idx);
+    // One preview at a time: a shell shows one, so an older one is let go.
+    let mut held = core.repos.indexes.lock().unwrap_or_else(|e| e.into_inner());
+    held.clear();
+    held.insert(url, idx);
     Ok(Reply::EndpointRepoPreview { preview })
 }
 
@@ -488,16 +502,29 @@ pub fn remove_repo(core: &Core, url: String) -> Result<Reply, CoreError> {
 /// nothing is ever removed by a refresh.
 pub fn refresh(core: &Core) -> Result<Reply, CoreError> {
     let repos = core.store.read(read_repos)?;
-    let fetched = core.handle.block_on(async {
+    let owner = core.owner()?;
+    // All at once, so a dead repo costs one timeout, not one each.
+    let tasks: Vec<_> = repos
+        .iter()
+        .map(|r| {
+            let (owner, url) = (owner.clone(), r.url.clone());
+            core.handle.spawn(async move { fetch(&owner, &url).await })
+        })
+        .collect();
+    let fetched: Vec<Result<Index, RepoFault>> = core.handle.block_on(async {
         let mut out = Vec::new();
-        for r in &repos {
-            out.push(fetch(core, &r.url).await);
+        for t in tasks {
+            out.push(
+                t.await
+                    .unwrap_or_else(|e| Err(RepoFault::new("unreachable", e.to_string()))),
+            );
         }
         out
     });
     for (stored, got) in repos.iter().zip(fetched) {
         match got.and_then(|idx| admit(stored, &idx).map(|()| idx)) {
-            Ok(idx) => save_index(core, &stored.url, &idx)?,
+            // An update only: a repo removed while its fetch ran stays removed.
+            Ok(idx) => update_index(core, &stored.url, &idx)?,
             Err(fault) => save_error(core, &stored.url, &fault.message)?,
         }
     }
@@ -572,13 +599,21 @@ pub fn install(
     let def = offered_def(core, &repo, &id)?;
     let values = credentials_for(&def, &credentials, true)?;
     let existing = core.store.read(read_installed)?;
-    if existing
-        .iter()
-        .any(|i| i.repo_url == repo && i.def.id == id)
-    {
+    if let Some(other) = existing.iter().find(|i| i.def.id == id) {
         return Err(CoreError::invalid(
             "endpoint",
-            format!("{} is already installed", def.name),
+            if other.repo_url == repo {
+                format!("{} is already installed", def.name)
+            } else {
+                format!(
+                    "an endpoint called {id} is already installed ({}); remove it first",
+                    if other.repo_url == CUSTOM {
+                        "added by you"
+                    } else {
+                        "from another repo"
+                    }
+                )
+            },
         ));
     }
     let install_id = new_install_id();
@@ -849,7 +884,9 @@ pub fn add_custom(
             given.push(EndpointCredential { key, value });
         }
     }
-    let values = credentials_for(&def, &given, true)?;
+    // A placeholder the person typed may be filled in afterwards; until it is, the endpoint
+    // says what it needs and is left out of searches.
+    let values = credentials_for(&def, &given, false)?;
     let install_id = new_install_id();
     store_credentials(core, &install_id, &values)?;
     let (row_id, row_def, json) = (
@@ -875,90 +912,132 @@ pub fn add_custom(
 
 // The desktop's anirss ------------------------------------------------------------------
 
-/// Installed endpoints whose name anirss already holds from someone's own hand: the sync
-/// leaves those alone.
-fn shadowed_in_anirss(core: &Core) -> Vec<String> {
-    let theirs = crate::downloads::anirss_endpoint_names(core);
-    if theirs.is_empty() {
-        return Vec::new();
-    }
-    let synced: Vec<String> = core
-        .store
+/// The kinds anirss itself can search; `tosho` is AniBeam's own.
+const ANIRSS_KINDS: [&str; 2] = ["nyaa", "rss"];
+
+/// The first anirss with the endpoint API (`POST` and `DELETE /endpoints`).
+const ANIRSS_ENDPOINT_API: (u64, u64, u64) = (0, 6, 0);
+
+/// What AniBeam last wrote into anirss: endpoint name to a hash of the spec it sent. anirss
+/// lists its endpoints with their secrets masked, so a listed address can never be compared
+/// with the one AniBeam holds; the hash says whether anything changed since.
+type Synced = std::collections::BTreeMap<String, String>;
+
+fn read_synced(core: &Core) -> Synced {
+    core.store
         .read(|c| crate::store::settings::get(c, crate::store::settings::ANIRSS_SYNCED_ENDPOINTS))
         .ok()
         .flatten()
-        .unwrap_or_default();
-    theirs.into_iter().filter(|n| !synced.contains(n)).collect()
+        .unwrap_or_default()
 }
 
-/// The kinds anirss itself can search; `tosho` is AniBeam's own.
-const ANIRSS_KINDS: [&str; 2] = ["nyaa", "rss"];
+/// Whether this anirss can take endpoint writes.
+pub(crate) fn anirss_takes_endpoints(version: &str) -> bool {
+    index::semver_of(version).is_some_and(|v| v >= ANIRSS_ENDPOINT_API)
+}
+
+/// Why the desktop does not search an installed endpoint, when it does not: anirss has its own
+/// of that name from its config, cannot search the kind, or is too old to take endpoints.
+/// None on the phone, and before the desktop has read its anirss.
+fn desktop_note(core: &Core, def: &Definition, synced: &Synced) -> Option<String> {
+    let (version, theirs) = crate::downloads::anirss_view(core)?;
+    if !anirss_takes_endpoints(&version) {
+        return Some(format!(
+            "anirss {version} cannot take endpoints from AniBeam; anirss 0.6 or later can, so update it for the desktop to search this"
+        ));
+    }
+    if !ANIRSS_KINDS.contains(&def.kind.as_str()) {
+        return Some(format!(
+            "anirss cannot search the {} kind, so the desktop leaves it out; the phone searches it",
+            def.kind
+        ));
+    }
+    (theirs.contains(&def.id) && !synced.contains_key(&def.id)).then(|| {
+        format!(
+            "anirss has its own {}, written by hand; the desktop searches that one",
+            def.id
+        )
+    })
+}
+
+fn spec_of(e: &crate::releases::Endpoint) -> serde_json::Value {
+    let mut spec = serde_json::json!({"name": e.name, "kind": e.kind, "url": e.url});
+    if e.kind == "nyaa" {
+        spec["category"] = e.category.clone().into();
+        spec["filter"] = e.filter.clone().into();
+    }
+    spec
+}
+
+fn hash_of(spec: &serde_json::Value) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(spec.to_string().as_bytes())[..16]
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
 
 /// Puts the installed endpoints into the desktop's anirss, which searches only what its own
 /// config lists: each enabled one with its credentials, under its id. Only names AniBeam
 /// wrote are ever changed or removed; one anirss already had from its config stays as it was.
 /// anirss keeps the address as it is given, so a credential lands in its config.toml, the way
 /// a hand-written one does today; the secret store stays the record AniBeam reads. A kind
-/// anirss cannot search (`tosho`) stays out.
+/// anirss cannot search (`tosho`) stays out, and an anirss older than 0.6 is left alone.
 /// `have` is anirss's list as just read; true when anirss was changed and its list needs
 /// reading again.
 pub(crate) async fn sync_anirss(
     core: &Core,
     client: &crate::downloads::anirss::AnirssClient,
+    version: &str,
     have: &[SearchEndpoint],
 ) -> bool {
+    if !anirss_takes_endpoints(version) {
+        return false;
+    }
     let want: Vec<Runnable> = runnable(core)
         .into_iter()
         .filter(|r| ANIRSS_KINDS.contains(&r.endpoint.kind.as_str()))
         .collect();
-    let mut synced: Vec<String> = core
-        .store
-        .read(|c| crate::store::settings::get(c, crate::store::settings::ANIRSS_SYNCED_ENDPOINTS))
-        .ok()
-        .flatten()
-        .unwrap_or_default();
+    let mut synced = read_synced(core);
     let before = synced.clone();
     let mut changed = false;
     for r in &want {
         let e = &r.endpoint;
-        let theirs = have.iter().find(|h| h.name == e.name);
-        if theirs.is_some() && !synced.contains(&e.name) {
+        let listed = have.iter().any(|h| h.name == e.name);
+        if listed && !synced.contains_key(&e.name) {
             continue;
         }
-        if theirs.is_some_and(|h| h.url == e.url && h.kind == e.kind) {
+        let spec = spec_of(e);
+        let hash = hash_of(&spec);
+        if listed && synced.get(&e.name) == Some(&hash) {
             continue;
-        }
-        let mut spec = serde_json::json!({"name": e.name, "kind": e.kind, "url": e.url});
-        if e.kind == "nyaa" {
-            spec["category"] = e.category.clone().into();
-            spec["filter"] = e.filter.clone().into();
         }
         match client.put_endpoint(spec).await {
             Ok(()) => {
                 changed = true;
-                if !synced.contains(&e.name) {
-                    synced.push(e.name.clone());
-                }
+                synced.insert(e.name.clone(), hash);
             }
             Err(err) => tracing::warn!("anirss refused the endpoint {}: {err}", e.name),
         }
     }
-    for name in before {
-        if want.iter().any(|r| r.endpoint.name == name) {
+    for name in before.keys() {
+        if want.iter().any(|r| &r.endpoint.name == name) {
             continue;
         }
-        if have.iter().any(|h| h.name == name) {
-            if let Err(err) = client.delete_endpoint(&name).await {
+        if have.iter().any(|h| &h.name == name) {
+            if let Err(err) = client.delete_endpoint(name).await {
                 tracing::warn!("anirss kept the endpoint {name}: {err}");
                 continue;
             }
             changed = true;
         }
-        synced.retain(|n| n != &name);
+        synced.remove(name);
     }
-    let _ = core.store.write(move |c| {
-        crate::store::settings::set(c, crate::store::settings::ANIRSS_SYNCED_ENDPOINTS, &synced)
-    });
+    if synced != before {
+        let _ = core.store.write(move |c| {
+            crate::store::settings::set(c, crate::store::settings::ANIRSS_SYNCED_ENDPOINTS, &synced)
+        });
+    }
     changed
 }
 
@@ -1068,9 +1147,20 @@ mod tests {
             on_demand: None,
             running: None,
         };
-        http.push_json(201, serde_json::json!({}));
+        // anirss 0.5 has no endpoint API: nothing is sent.
         let have = vec![theirs("1337x", "http://elsewhere/")];
-        assert!(core.handle.block_on(sync_anirss(&core, &anirss, &have)));
+        assert!(
+            !core
+                .handle
+                .block_on(sync_anirss(&core, &anirss, "0.5.0", &have))
+        );
+        assert!(http.requests().is_empty());
+
+        http.push_json(201, serde_json::json!({}));
+        assert!(
+            core.handle
+                .block_on(sync_anirss(&core, &anirss, "0.6.0", &have))
+        );
         let sent = http.requests();
         assert_eq!(sent.len(), 1);
         assert_eq!(sent[0].method, crate::net::Method::Post);
@@ -1079,6 +1169,18 @@ mod tests {
             body.contains("\"mine\"") && body.contains("token=t1"),
             "{body}"
         );
+
+        // Listed back with its token masked, as anirss lists it: unchanged, so not sent again.
+        let have = vec![
+            theirs("1337x", "http://elsewhere/"),
+            theirs("mine", "https://a.example/rss?q={query}&token=***"),
+        ];
+        assert!(
+            !core
+                .handle
+                .block_on(sync_anirss(&core, &anirss, "0.6.0", &have))
+        );
+        assert_eq!(http.requests().len(), 1);
 
         // Switched off: it comes out of anirss again, and the hand-written one stays.
         let mine = core
@@ -1102,14 +1204,21 @@ mod tests {
             theirs("1337x", "http://elsewhere/"),
             theirs("mine", "https://a.example/rss?q={query}&token={token}"),
         ];
-        assert!(core.handle.block_on(sync_anirss(&core, &anirss, &have)));
+        assert!(
+            core.handle
+                .block_on(sync_anirss(&core, &anirss, "0.6.0", &have))
+        );
         let sent = http.requests();
         assert_eq!(sent.len(), 2);
         assert_eq!(sent[1].method, crate::net::Method::Delete);
         assert!(sent[1].url.ends_with("/endpoints/mine"));
         // Nothing left to do: nothing is sent.
         let have = vec![theirs("1337x", "http://elsewhere/")];
-        assert!(!core.handle.block_on(sync_anirss(&core, &anirss, &have)));
+        assert!(
+            !core
+                .handle
+                .block_on(sync_anirss(&core, &anirss, "0.6.0", &have))
+        );
         assert_eq!(http.requests().len(), 2);
         core.shutdown();
     }

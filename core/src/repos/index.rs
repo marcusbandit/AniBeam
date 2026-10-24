@@ -396,6 +396,11 @@ pub fn runs_on(def: &Definition, core_version: &str) -> bool {
     }
 }
 
+/// A version as numbers, "v" and any pre-release part dropped.
+pub fn semver_of(v: &str) -> Option<(u64, u64, u64)> {
+    semver(v)
+}
+
 fn semver(v: &str) -> Option<(u64, u64, u64)> {
     let v = v.trim().trim_start_matches('v');
     let v = v.split(['-', '+']).next()?;

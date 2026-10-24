@@ -628,14 +628,16 @@ async fn run_connect(core: Arc<Core>) -> Result<Finished, CoreError> {
     })
 }
 
-/// The names of the endpoints anirss lists, as last read; empty where there is no anirss.
-pub(crate) fn anirss_endpoint_names(core: &Core) -> Vec<String> {
-    core.downloads
-        .state()
-        .endpoints
-        .iter()
-        .map(|e| e.name.clone())
-        .collect()
+/// The anirss this core last read: its version and the names of its endpoints. None until
+/// one has been read, and always on the phone, which has none.
+pub(crate) fn anirss_view(core: &Core) -> Option<(String, Vec<String>)> {
+    let st = core.downloads.state();
+    (st.anirss.state == AnirssState::Ready).then(|| {
+        (
+            st.anirss.version.clone(),
+            st.endpoints.iter().map(|e| e.name.clone()).collect(),
+        )
+    })
 }
 
 /// Whether the endpoints installed from repos go into this anirss: AniBeam's own sidecar,
@@ -677,7 +679,9 @@ async fn read_anirss(core: &Arc<Core>, client: &AnirssClient) -> Result<(), Core
     // at a client, so it reads its own config and keeps its own logins.
     let version = client.health().await?.version;
     let mut endpoints = client.endpoints().await?;
-    if syncs_endpoints(core).await && crate::repos::sync_anirss(core, client, &endpoints).await {
+    if syncs_endpoints(core).await
+        && crate::repos::sync_anirss(core, client, &version, &endpoints).await
+    {
         endpoints = client.endpoints().await?;
     }
     if let Some(path) = settings::anirss_config_path() {

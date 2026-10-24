@@ -3,13 +3,14 @@
 // and endpoints added by hand beside them for a site no repo carries (1337x through
 // Jackett). What is installed goes into AniBeam's own anirss, so the search sees it; one
 // anirss already has from its own config.toml keeps its place and the row says so.
-// The calls that fetch block for as long as the fetch takes, which for a repo is one small
-// file; the tab refreshes the repos once a session, the first time it opens.
+// The calls that fetch or store a secret run off the Qt thread (Door.callAsync), so a slow or
+// dead repo never freezes the window; the tab refreshes the repos each time it opens.
 import QtQuick
 import com.marcusrosado.AniBeam
 
 Panel {
     id: root
+    objectName: "endpoint-repos"
     title: "Endpoint repos"; icon: "archive"; grows: true
     helper: "A repo is a signed list of search endpoints, added by its address. AniBeam checks the signature and shows you the key before anything is saved, then you install the endpoints you want. Installed ones join anirss's list."
 
@@ -41,13 +42,28 @@ Panel {
         if (r && r.error) root.error = frame.errorText(r.error)
         return false
     }
+    // Replies to calls run off the Qt thread, by token.
+    property var waiting: ({})
+    function later(call, args, done) {
+        var t = Door.callAsync(call, args)
+        if (t < 0) { root.busy = false; root.error = "AniBeam could not start that call."; return }
+        root.waiting[t] = done
+    }
+    Connections {
+        target: Door
+        function onCallDone(token, reply) {
+            var done = root.waiting[token]
+            if (!done) return
+            delete root.waiting[token]
+            done(reply)
+        }
+    }
     function load() { take(Door.call("ListRepoEndpoints", {})) }
-    function refresh() { root.busy = true; Qt.callLater(function() { take(Door.call("RefreshEndpointRepos", {})) }) }
+    function refresh() { root.busy = true; later("RefreshEndpointRepos", {}, root.take) }
     function add() {
         if (root.repoUrl.trim() === "") return
         root.busy = true; root.error = ""
-        Qt.callLater(function() {
-            var r = Door.call("AddEndpointRepo", { url: root.repoUrl.trim() })
+        later("AddEndpointRepo", { url: root.repoUrl.trim() }, function(r) {
             root.busy = false
             var p = replyOf(r, "EndpointRepoPreview")
             if (p) root.preview = p.preview
@@ -58,14 +74,14 @@ Panel {
         if (!root.preview) return
         root.busy = true
         var p = root.preview
-        Qt.callLater(function() {
-            if (take(Door.call("TrustEndpointRepo", { url: p.url, key: p.key }))) { root.preview = null; root.repoUrl = "" }
+        later("TrustEndpointRepo", { url: p.url, key: p.key }, function(r) {
+            if (root.take(r)) { root.preview = null; root.repoUrl = "" }
         })
     }
     function hostLine(e) { return e.host + "  " + e.kind + (e.lang ? "  " + e.lang : "") }
     function run(call, args) {
         root.busy = true
-        Qt.callLater(function() { if (take(Door.call(call, args))) root.asking = null })
+        later(call, args, function(r) { if (root.take(r)) root.asking = null })
     }
     function install(o) {
         if (o.auth.length === 0) { run("InstallEndpoint", { repo: o.repo_url, id: o.id, credentials: [] }); return }
@@ -83,6 +99,11 @@ Panel {
                         title: e.name + " version " + e.update + " asks again",
                         note: e.update_host ? "The new version sends this to " + e.update_host + "." : "Its fields changed." }
     }
+    function fill(e) {
+        var fields = e.auth.filter(function(a) { return e.missing.indexOf(a.key) >= 0 })
+        root.asking = { call: "SetEndpointCredentials", args: { install: e.install_id }, fields: fields, values: fields.map(function() { return "" }),
+                        title: e.name + " needs a value", note: "Kept in this machine's secret store, never in the library or an export." }
+    }
     function confirm() {
         var a = root.asking, creds = []
         for (var i = 0; i < a.fields.length; i++) creds.push({ key: a.fields[i].key, value: a.values[i] })
@@ -91,10 +112,11 @@ Panel {
     }
     function addCustom() {
         root.customError = ""
-        var r = Door.call("AddCustomEndpoint", { name: root.customName.trim(), url: root.customUrl.trim(), credentials: [] })
-        var c = replyOf(r, "EndpointCatalog")
-        if (c) { root.catalog = c.catalog; root.customName = ""; root.customUrl = "" }
-        else if (r.error) root.customError = frame.errorText(r.error)
+        later("AddCustomEndpoint", { name: root.customName.trim(), url: root.customUrl.trim(), credentials: [] }, function(r) {
+            var c = replyOf(r, "EndpointCatalog")
+            if (c) { root.catalog = c.catalog; root.customName = ""; root.customUrl = "" }
+            else if (r.error) root.customError = frame.errorText(r.error)
+        })
     }
     function installedNote(e) {
         if (e.missing.length > 0) return "Needs its " + e.auth.filter(function(a) { return e.missing.indexOf(a.key) >= 0 }).map(function(a) { return a.label }).join(", ") + " before it searches."
@@ -104,10 +126,9 @@ Panel {
         return ""
     }
 
-    property bool refreshed: false
     Component.onCompleted: {
         load()
-        if (!refreshed && repos.length > 0) { refreshed = true; refresh() }
+        if (repos.length > 0) refresh()
     }
 
     // The repos.
@@ -181,8 +202,9 @@ Panel {
             Row {
                 spacing: theme.space(1.5)
                 Button { visible: modelData.update !== null && modelData.update !== undefined; text: "Update to v" + modelData.update; small: true; primary: true; onClicked: root.update(modelData) }
+                Button { visible: modelData.missing.length > 0 && !(modelData.update !== null && modelData.update !== undefined); text: "Add its value"; small: true; primary: true; onClicked: root.fill(modelData) }
                 Switch { anchors.verticalCenter: parent.verticalCenter; checked: modelData.enabled; onToggled: function(on) { root.take(Door.call("SetEndpointEnabled", { install: modelData.install_id, enabled: on })) } }
-                Button { text: "Remove"; icon: "trash-2"; flat: true; small: true; onClicked: root.take(Door.call("RemoveEndpoint", { install: modelData.install_id })) }
+                Button { text: "Remove"; icon: "trash-2"; flat: true; small: true; onClicked: root.later("RemoveEndpoint", { install: modelData.install_id }, root.take) }
             }
         }
     }

@@ -666,18 +666,26 @@ fn an_endpoint_by_hand_needs_a_search_and_a_free_name() {
     add_custom(&core, "Mine", "https://a.example/rss?q={query}").unwrap();
     let e = add_custom(&core, "mine", "https://b.example/rss?q={query}").unwrap_err();
     assert!(matches!(e, CoreError::Invalid { .. }), "{e:?}");
-    // A placeholder of its own needs its value.
-    let e = add_custom(&core, "other", "https://c.example/rss?q={query}&u={user}").unwrap_err();
-    assert!(matches!(e, CoreError::Invalid { .. }), "{e:?}");
-    let c = catalog(core.call(Call::AddCustomEndpoint {
-        name: "other".into(),
-        url: "https://c.example/rss?q={query}&u={user}".into(),
+    // A placeholder of its own may be filled afterwards; until then it is not searched.
+    let c = catalog(add_custom(
+        &core,
+        "other",
+        "https://c.example/rss?q={query}&u={user}",
+    ));
+    let other = c.installed.iter().find(|i| i.id == "other").unwrap();
+    assert_eq!(other.missing, ["user"]);
+    let Reply::PhoneSources { sources } = core.call(Call::PhoneSearchSources).unwrap() else {
+        panic!()
+    };
+    assert!(sources.iter().all(|s| s.name != "other"));
+    let c = catalog(core.call(Call::SetEndpointCredentials {
+        install: other.install_id.clone(),
         credentials: vec![EndpointCredential {
             key: "user".into(),
             value: "me".into(),
         }],
     }));
-    assert_eq!(c.installed.len(), 2);
+    assert!(c.installed.iter().all(|i| i.missing.is_empty()));
 }
 
 #[test]
@@ -685,4 +693,32 @@ fn a_bare_nyaa_address_by_hand_is_the_nyaa_kind() {
     let (_dir, core, _) = common::open_core();
     let c = catalog(add_custom(&core, "nyaa-mirror", "https://nyaa.land/"));
     assert_eq!(c.installed[0].kind, "nyaa");
+}
+
+#[test]
+fn a_repo_endpoint_cannot_take_the_name_of_one_added_by_hand() {
+    let (_dir, core, _) = common::open_core();
+    trust(&core, &fixture("general.json"));
+    add_custom(&core, "nyaa", "https://nyaa.land/").unwrap();
+    let e = core
+        .call(Call::InstallEndpoint {
+            repo: fixture("general.json"),
+            id: "nyaa".into(),
+            credentials: vec![],
+        })
+        .unwrap_err();
+    assert!(e.to_string().contains("added by you"), "{e}");
+}
+
+#[test]
+fn a_repo_removed_during_a_refresh_stays_removed() {
+    let (dir, core, _) = common::open_core();
+    let path = dir.path().join("repo.json");
+    let url = path.to_string_lossy().into_owned();
+    write_repo(&path, &key(1), 1, vec![]);
+    trust(&core, &url);
+    write_repo(&path, &key(1), 2, vec![]);
+    catalog(core.call(Call::RemoveEndpointRepo { url: url.clone() }));
+    let c = catalog(core.call(Call::RefreshEndpointRepos));
+    assert!(c.repos.is_empty());
 }
