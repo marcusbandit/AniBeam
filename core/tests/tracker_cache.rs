@@ -244,7 +244,8 @@ fn the_mal_list_pages_until_a_short_page_and_promotes_a_rewatch() {
         urls[0].contains("offset=0") && urls[0].contains("limit=1000"),
         "{urls:?}"
     );
-    assert!(urls[0].contains("fields=list_status{status,num_episodes_watched,is_rewatching,num_times_rewatched,score}"), "{urls:?}");
+    // `updated_at` is what On hold reads as the last touch.
+    assert!(urls[0].contains("fields=list_status{status,num_episodes_watched,is_rewatching,num_times_rewatched,score,updated_at}"), "{urls:?}");
     assert!(urls[1].contains("offset=1000"), "{urls:?}");
     assert!(
         http.requests()[1]

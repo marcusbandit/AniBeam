@@ -33,7 +33,7 @@ use crate::library::sidecar::sidecars_of;
 use crate::library::{classifier, labels, titles};
 use crate::prefs;
 use crate::time;
-use crate::trackers::writes;
+use crate::trackers::{on_hold, writes};
 
 /// Seconds of forward playback before the series counts as viewed.
 pub const VIEW_SECS: f64 = 30.0;
@@ -652,6 +652,8 @@ fn record_view(core: &Core, s: &Session) -> Result<(), CoreError> {
             episode: s.episode_key.clone(),
         },
     );
+    // Watching a series on hold again takes it off hold.
+    on_hold::played(core, s.series);
     Ok(())
 }
 

@@ -17,6 +17,8 @@ fn preferences_and_settings_round_trip_with_events() {
         library_arrange: Arrange::WatchState,
         library_group_franchises: true,
         share_over_tailscale: false,
+        on_hold_auto: false,
+        on_hold_days: 90,
     };
     assert!(matches!(
         core.call(Call::SetPreferences {

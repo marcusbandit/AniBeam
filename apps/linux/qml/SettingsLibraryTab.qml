@@ -1,8 +1,9 @@
 // The Library tab, flat sections: the figures (the same counts the Metadata filter
 // shows), Folders sized to its sources, and the recent scans growing into the rest of
-// the column, as many as it holds; beside them Trackers, the metadata providers in the
-// order matching tries them, the library options at their own height, and the series on
-// disk, most files first, filling the rest.
+// the column, as many as it holds; beside them Trackers (with On hold under the accounts
+// while one is connected), the metadata providers in the order matching tries them, the
+// library options at their own height, and the series on disk, most files first, filling
+// the rest.
 import QtQuick
 import QtQuick.Dialogs
 import com.marcusrosado.AniBeam
@@ -48,6 +49,25 @@ SettingsTab {
         if (r.error) frame.toast(r.error.message)
     }
     Component.onCompleted: { reload(); reloadHost() }
+    // On hold is a list on a tracker, so its two rows show only while one is connected
+    readonly property bool tracked: !!(Door.trackers.anilist && Door.trackers.anilist.connected) || !!(Door.trackers.mal && Door.trackers.mal.connected)
+    function setOnHold(on) {
+        var p = JSON.parse(JSON.stringify(Door.preferences))
+        p.on_hold_auto = on
+        var r = Door.setPreferences(p)
+        if (r.error) frame.toast(r.error.message)
+    }
+    // The days are written once the slider rests, so a drag is one write; a tab left before
+    // then writes them on its way out
+    property int pendingDays: 60
+    function saveDays() {
+        var p = JSON.parse(JSON.stringify(Door.preferences))
+        p.on_hold_days = tab.pendingDays
+        var r = Door.setPreferences(p)
+        if (r.error) frame.toast(r.error.message)
+    }
+    Timer { id: daysDebounce; interval: 400; onTriggered: tab.saveDays() }
+    Component.onDestruction: if (daysDebounce.running) tab.saveDays()
     // The match providers, first tried first; the core keeps the order and says what it is
     readonly property var providerOrder: Door.settings && Door.settings.provider_order && Door.settings.provider_order.length ? Door.settings.provider_order : ["Anilist", "Tvmaze"]
     readonly property var providerAbout: ({ Anilist: "Anime: series, films and their relations. Episodes you watch are marked on your trackers.",
@@ -156,6 +176,12 @@ SettingsTab {
                 onDisconnect: { var r = Door.disconnectTracker("Mal"); if (r.error) frame.toast(r.error.message) } }
             SettingRow { label: "Main tracker"; helper: "Whose progress the cards show. The other tracker still gets every update."
                 Seg { options: ["AniList", "MyAnimeList"]; index: Door.trackers.main === "Mal" ? 1 : 0; onPicked: function(i) { var r = Door.setMainTracker(i === 1 ? "Mal" : "Anilist"); if (r.error) frame.toast(r.error.message) } } }
+            SettingRow { visible: tab.tracked; label: "Move to On hold"
+                helper: "A Watching series nobody has touched for the days set below moves to On hold on your trackers, and playing it puts it back. One waiting for its next episode stays. Checked when AniBeam starts and on Sync."
+                Switch { objectName: "settings-on-hold"; checked: Door.preferences.on_hold_auto !== false; onToggled: function(on) { tab.setOnHold(on) } } }
+            SettingRow { visible: tab.tracked && Door.preferences.on_hold_auto !== false; label: "Days untouched"
+                SliderRow { objectName: "settings-on-hold-days"; from: 7; to: 365; stepSize: 1; value: Door.preferences.on_hold_days || 60
+                    onMoved: function(v) { tab.pendingDays = Math.round(v); daysDebounce.restart() } } }
             SettingRow { label: "Sync progress now"; helper: "Reads your lists from every connected tracker again."
                 Button { objectName: "settings-sync-trackers"; text: "Sync"; icon: "refresh-cw"; enabled: !!(Door.trackers.anilist && Door.trackers.anilist.connected) || !!(Door.trackers.mal && Door.trackers.mal.connected)
                     onClicked: { var r = Door.refreshProgress(""); frame.toast(r.error ? r.error.message : "Syncing tracker progress") } } }

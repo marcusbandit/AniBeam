@@ -15,5 +15,5 @@ Corner {
          : status === "Dropped" ? theme.statusDropped
          : theme.statusPlanning
     visible: status !== ""
-    Tooltip { text: "On your list: " + (status === "Repeating" ? "Rewatching" : status) }
+    Tooltip { text: "On your list: " + (status === "Repeating" ? "Rewatching" : status === "Paused" ? "On hold" : status) }
 }

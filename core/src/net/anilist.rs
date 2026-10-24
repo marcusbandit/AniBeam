@@ -261,10 +261,12 @@ pub const VIEWER_QUERY: &str = r"query { Viewer { id name } }";
 /// bearer token and answers with some other user's entry.
 pub const MEDIA_LIST_ENTRY_QUERY: &str = r"query ($userId: Int, $mediaId: Int) { MediaList(userId: $userId, mediaId: $mediaId) { progress status } }";
 
-/// Electron's progress mutation, trackerHandler.ts:445-449.
+/// Electron's progress mutation, trackerHandler.ts:445-449. The reply's
+/// `updatedAt` is the tracker's own stamp for the write, which the cache
+/// keeps rather than this machine's clock.
 pub const SAVE_PROGRESS_MUTATION: &str = r"mutation ($mediaId: Int, $progress: Int, $status: MediaListStatus) {
       SaveMediaListEntry(mediaId: $mediaId, progress: $progress, status: $status) {
-        id progress status
+        id progress status updatedAt
       }
     }";
 
@@ -273,14 +275,33 @@ pub const SAVE_PROGRESS_MUTATION: &str = r"mutation ($mediaId: Int, $progress: I
 /// works whatever their list format is.
 pub const SAVE_SCORE_MUTATION: &str = r"mutation ($mediaId: Int, $scoreRaw: Int, $status: MediaListStatus) {
       SaveMediaListEntry(mediaId: $mediaId, scoreRaw: $scoreRaw, status: $status) {
-        id score status
+        id score status updatedAt
+      }
+    }";
+
+/// One entry as On hold decides on it, read live just before a status
+/// write: its status, progress and stamp, and the media's airing state. The
+/// user id is not optional, for the reason `MEDIA_LIST_ENTRY_QUERY` gives.
+pub const ON_HOLD_ENTRY_QUERY: &str = r"query ($userId: Int, $mediaId: Int) {
+      MediaList(userId: $userId, mediaId: $mediaId) {
+        status progress updatedAt
+        media { status episodes nextAiringEpisode { episode airingAt } }
+      }
+    }";
+
+/// A status alone, for the On hold sweep. A `SaveMediaListEntry` that names
+/// no progress and no score leaves both as the list has them, and the
+/// reply's `updatedAt` is the tracker's own stamp for the change.
+pub const SAVE_STATUS_MUTATION: &str = r"mutation ($mediaId: Int, $status: MediaListStatus) {
+      SaveMediaListEntry(mediaId: $mediaId, status: $status) {
+        id status updatedAt
       }
     }";
 
 /// Electron's progress sweep, trackerHandler.ts:775-779.
 pub const MEDIA_LIST_COLLECTION_QUERY: &str = r"query ($userId: Int) {
         MediaListCollection(userId: $userId, type: ANIME) {
-          lists { entries { progress status score(format: POINT_10_DECIMAL) repeat media { id } } }
+          lists { entries { progress status score(format: POINT_10_DECIMAL) repeat updatedAt media { id } } }
         }
       }";
 

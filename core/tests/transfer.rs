@@ -227,6 +227,8 @@ fn the_spec_document_imports_and_a_second_import_changes_nothing() {
                 library_arrange: Arrange::Related,
                 library_group_franchises: true,
                 share_over_tailscale: false,
+                on_hold_auto: true,
+                on_hold_days: ON_HOLD_DAYS,
             }
         ),
         other => panic!("{other:?}"),
@@ -286,6 +288,8 @@ fn a_private_export_round_trips_into_a_fresh_core() {
         library_arrange: Arrange::Related,
         library_group_franchises: true,
         share_over_tailscale: false,
+        on_hold_auto: true,
+        on_hold_days: ON_HOLD_DAYS,
     };
     core.call(Call::SetPreferences {
         preferences: preferences.clone(),
