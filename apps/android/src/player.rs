@@ -945,6 +945,10 @@ impl Player {
             return;
         }
         let t = if self.rules.duration > 0.0 { t.clamp(0.0, self.rules.duration) } else { t.max(0.0) };
+        // A new drag drops the last one's frame, so the bubble never shows the wrong spot.
+        if !self.scrubbing {
+            self.d(|d| d.set_preview(slint::Image::default()));
+        }
         self.scrubbing = true;
         self.scrub_to = Some(t);
         self.send_scrub();
@@ -966,6 +970,9 @@ impl Player {
     }
 
     fn show_preview(&mut self, shot: Shot) {
+        if !self.scrubbing {
+            return;
+        }
         let mut buf = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(shot.width, shot.height);
         buf.make_mut_bytes().copy_from_slice(&shot.rgba);
         self.d(|d| d.set_preview(slint::Image::from_rgba8(buf)));
