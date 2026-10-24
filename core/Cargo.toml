@@ -36,6 +36,8 @@ walkdir = "2"
 time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
 rand = "0.10"
 base64 = "0.23"
+# Endpoint repos (#143): the ed25519 check on a repo's signed index.
+ed25519-dalek = "2"
 tracing = "0.1"
 flate2 = "1"
 toml = "1"

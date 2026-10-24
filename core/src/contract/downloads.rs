@@ -658,6 +658,113 @@ pub struct PhoneSource {
     pub enabled: bool,
 }
 
+// Endpoint repos (#143) ------------------------------------------------------------------
+
+/// A signed index the person added by its URL. Several can come from one site, one per group
+/// it publishes.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct EndpointRepo {
+    pub url: String,
+    pub name: String,
+    /// The group is adult content.
+    pub nsfw: bool,
+    /// What to compare by eye: a short hash of the pinned key.
+    pub fingerprint: String,
+    pub serial: u64,
+    /// When the index in hand was last fetched and passed its checks, in Unix seconds.
+    pub fetched_at: i64,
+    /// Why the last refresh kept the older index; None when it went through.
+    pub error: Option<String>,
+}
+
+/// A repo fetched and checked but not trusted yet: what the person sees before saying yes.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct EndpointRepoPreview {
+    pub url: String,
+    pub name: String,
+    pub nsfw: bool,
+    /// The key as the index states it, `ed25519:<base64>`; `TrustEndpointRepo` sends it back.
+    pub key: String,
+    pub fingerprint: String,
+    pub serial: u64,
+    pub endpoints: Vec<OfferedEndpoint>,
+    /// The repo is already trusted with this key, so trusting it again only refreshes it.
+    pub trusted: bool,
+}
+
+/// One value an endpoint needs from the person: a token, a key, a user name.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct EndpointField {
+    pub key: String,
+    pub label: String,
+    /// Shown as dots and kept only in the secret store.
+    pub secret: bool,
+    pub help: String,
+    pub help_url: Option<String>,
+}
+
+/// An endpoint a trusted repo offers, as its index defines it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct OfferedEndpoint {
+    pub repo_url: String,
+    pub id: String,
+    pub name: String,
+    pub version: u32,
+    pub lang: String,
+    pub kind: String,
+    /// The host requests go to.
+    pub host: String,
+    /// The name connections carry instead, for a fronted host.
+    pub front: Option<String>,
+    pub auth: Vec<EndpointField>,
+    pub nsfw: bool,
+    /// The install id when it is installed.
+    pub installed: Option<String>,
+}
+
+/// An endpoint installed from a repo.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct InstalledEndpoint {
+    pub install_id: String,
+    pub repo_url: String,
+    pub id: String,
+    pub name: String,
+    pub version: u32,
+    pub kind: String,
+    pub host: String,
+    pub front: Option<String>,
+    pub auth: Vec<EndpointField>,
+    pub nsfw: bool,
+    pub enabled: bool,
+    /// `auth` keys with no value stored; the endpoint is left out of searches until they
+    /// are filled.
+    pub missing: Vec<String>,
+    /// The repo still offers it.
+    pub offered: bool,
+    /// The version the repo offers, when it is higher than this one.
+    pub update: Option<u32>,
+    /// Taking the update needs the credentials again: its fields changed, or they would now
+    /// go to a different host (`update_host`).
+    pub update_asks: bool,
+    pub update_host: Option<String>,
+}
+
+/// A value for one `auth` field.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct EndpointCredential {
+    pub key: String,
+    pub value: String,
+}
+
+/// The repos, what they offer, and what is installed, in one read.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct EndpointCatalog {
+    pub repos: Vec<EndpointRepo>,
+    pub offered: Vec<OfferedEndpoint>,
+    /// In search order.
+    pub installed: Vec<InstalledEndpoint>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, uniffi::Enum)]
 pub enum PhoneAction {
     Pause,

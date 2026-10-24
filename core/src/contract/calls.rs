@@ -432,6 +432,51 @@ pub enum Call {
     SetPhoneHeld {
         held: bool,
     },
+    /// The phone's sources and the endpoints installed from repos, in the order a search
+    /// tries them, with secrets left out of each address.
+    PhoneSearchSources,
+    // Endpoint repos (#143). Not jobs: the ones that fetch block the calling thread, so a
+    // shell calls them off its UI thread.
+    /// The repos, what they offer and what is installed.
+    ListRepoEndpoints,
+    /// Fetches and checks a repo's index and replies with it, unsaved, for the person to
+    /// compare its fingerprint. `url` is an https address, or a local path to the file.
+    AddEndpointRepo {
+        url: String,
+    },
+    /// Saves a repo, pinning `key`, the one the preview showed.
+    TrustEndpointRepo {
+        url: String,
+        key: String,
+    },
+    /// Forgets a repo. What was installed from it stays.
+    RemoveEndpointRepo {
+        url: String,
+    },
+    /// Fetches every repo's index again. One that fails keeps its last good index.
+    RefreshEndpointRepos,
+    /// Installs an endpoint from a trusted repo, with a value for each of its `auth` fields.
+    InstallEndpoint {
+        repo: String,
+        id: String,
+        credentials: Vec<EndpointCredential>,
+    },
+    /// Takes the repo's newer version. `credentials` is needed when `update_asks` says so.
+    UpdateEndpoint {
+        install: String,
+        credentials: Vec<EndpointCredential>,
+    },
+    RemoveEndpoint {
+        install: String,
+    },
+    SetEndpointCredentials {
+        install: String,
+        credentials: Vec<EndpointCredential>,
+    },
+    SetEndpointEnabled {
+        install: String,
+        enabled: bool,
+    },
     // Casting
     /// The devices found so far; asking starts a look around the network, and what turns up
     /// arrives as `CastDevicesChanged`.
@@ -554,6 +599,12 @@ pub enum Reply {
     PhoneTorrents {
         torrents: Vec<Torrent>,
         held: bool,
+    },
+    EndpointCatalog {
+        catalog: EndpointCatalog,
+    },
+    EndpointRepoPreview {
+        preview: EndpointRepoPreview,
     },
     CastDevices {
         devices: Vec<CastDevice>,

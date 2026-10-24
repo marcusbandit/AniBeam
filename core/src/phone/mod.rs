@@ -99,14 +99,48 @@ pub fn set_sources(core: &Core, sources: Vec<PhoneSource>) -> Result<Reply, Core
     Ok(Reply::PhoneSources { sources })
 }
 
-/// The sources as the ported anirss endpoints, enabled ones in order.
+/// What a search tries, in order: the enabled sources, then the endpoints installed from repos.
+/// An installed endpoint whose id is a source's name takes that source's place, so installing
+/// nyaa from a repo replaces the built-in one rather than searching it twice.
+fn searched(core: &Core) -> Vec<(PhoneSource, crate::releases::Endpoint)> {
+    let mut installed = crate::repos::runnable(core);
+    let mut out = Vec::new();
+    for s in sources(core).into_iter().filter(|s| s.enabled) {
+        if let Some(at) = installed.iter().position(|r| r.endpoint.name == s.name) {
+            let r = installed.remove(at);
+            out.push((installed_source(&r), r.endpoint));
+        } else {
+            let endpoint = crate::releases::Endpoint::new(&s.name, &s.kind, &s.url);
+            out.push((s, endpoint));
+        }
+    }
+    for r in installed {
+        out.push((installed_source(&r), r.endpoint));
+    }
+    out
+}
+
+fn installed_source(r: &crate::repos::Runnable) -> PhoneSource {
+    PhoneSource {
+        name: r.endpoint.name.clone(),
+        kind: r.endpoint.kind.clone(),
+        url: r.shown_url.clone(),
+        enabled: true,
+    }
+}
+
+/// `searched`'s sources, as the search page lists them.
+pub fn search_sources(core: &Core) -> Vec<PhoneSource> {
+    searched(core).into_iter().map(|(s, _)| s).collect()
+}
+
+/// The sources as the ported anirss endpoints, enabled ones in order, each host held to the
+/// pace its repo definition asks for.
 fn native(core: &Core) -> crate::releases::native::Native {
-    let endpoints = sources(core)
-        .into_iter()
-        .filter(|s| s.enabled)
-        .map(|s| crate::releases::Endpoint::new(&s.name, &s.kind, &s.url))
-        .collect();
-    crate::releases::native::Native::new(core.http.clone(), endpoints)
+    let installed = crate::repos::runnable(core);
+    let http = crate::repos::paced_http(core, &installed);
+    let endpoints = searched(core).into_iter().map(|(_, e)| e).collect();
+    crate::releases::native::Native::new(http, endpoints)
 }
 
 /// How long the show search waits for covers before answering without them.
