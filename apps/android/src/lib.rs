@@ -17,6 +17,7 @@ mod posters;
 mod prefs;
 mod remote;
 mod repos;
+mod thumbs;
 mod video;
 mod worker;
 

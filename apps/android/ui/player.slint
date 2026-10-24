@@ -22,6 +22,8 @@ export struct Band {
 export global PlayerData {
     in property <bool> open;
     in property <image> frame;
+    // The seek preview: the frame nearest the finger during a drag on the bar.
+    in property <image> preview;
     in property <bool> has-frame;
     in property <string> title;
     in property <string> episode;
@@ -64,7 +66,9 @@ export global PlayerData {
 
     callback back();
     callback toggle-pause();
-    // Seconds. A scrub seeks once, where the finger lifts, as the desktop's bar does.
+    // Seconds. A drag on the bar previews with fast keyframe seeks under the finger, then
+    // seeks exactly once, where the finger lifts.
+    callback scrub(float);
     callback seek(float);
     callback seek-by(float);
     callback skip();
@@ -135,7 +139,7 @@ component PlayerButton inherits Rectangle {
 }
 
 // The groove, the desktop's SeekBar: the skip windows as white bands under the played
-// part, and the knob. A drag shows where it would land and seeks once on release; the bar
+// part, and the knob. A drag shows the frame under the finger and seeks once on release; the bar
 // then holds that spot until mpv gets there, or 1.5 s, so the knob never jumps back.
 component SeekBar inherits Rectangle {
     in property <float> position;
@@ -143,6 +147,7 @@ component SeekBar inherits Rectangle {
     in property <[Band]> bands;
     out property <bool> scrubbing: touch.pressed;
     out property <float> scrub-to;
+    out property <length> knob-x: root.groove * root.shown + root.knob / 2;
     property <bool> settling;
     property <bool> holding: touch.pressed || (root.settling && Math.abs(root.position - root.scrub-to) >= 2);
     height: 9 * Theme.unit;
@@ -195,6 +200,7 @@ component SeekBar inherits Rectangle {
                 settle.running = false;
                 root.settling = false;
                 root.scrub-to = root.at(self.mouse-x);
+                PlayerData.scrub(root.scrub-to);
                 PlayerData.touched();
             } else if (event.kind == PointerEventKind.up) {
                 root.scrub-to = root.at(self.mouse-x);
@@ -205,6 +211,7 @@ component SeekBar inherits Rectangle {
         }
         moved => {
             root.scrub-to = root.at(self.mouse-x);
+            PlayerData.scrub(root.scrub-to);
             PlayerData.touched();
         }
     }
@@ -482,6 +489,47 @@ export component PlayerPage inherits Rectangle {
             glyph: 7 * Theme.unit;
             icon: @image-url("icons/rotate-cw.svg");
             clicked => { PlayerData.seek-by(10); }
+        }
+    }
+
+    // ---- The seek preview: the frame under the finger in a bubble over the knob, with its
+    // time under it, while a drag on the bar lasts.
+    preview := Rectangle {
+        property <length> pic-width: Math.min(root.width * 0.3, 240px);
+        property <float> aspect: PlayerData.preview.width > 0 ? PlayerData.preview.height / PlayerData.preview.width : 9 / 16;
+        width: self.pic-width + 2px;
+        height: self.pic-width * self.aspect + 2px + 7 * Theme.unit;
+        x: Math.clamp(controls.x + seek.x + seek.knob-x - self.width / 2, Theme.grout, root.width - self.width - Theme.grout);
+        y: controls.y - self.height - 2 * Theme.unit;
+        visible: seek.scrubbing && root.chrome-shown;
+        background: Theme.chip;
+        border-radius: Theme.radius;
+        border-width: 1px;
+        border-color: Theme.chip-edge;
+        clip: true;
+        Rectangle {
+            x: 1px;
+            y: 1px;
+            width: parent.pic-width;
+            height: parent.pic-width * parent.aspect;
+            background: #000000;
+            Image {
+                width: parent.width;
+                height: parent.height;
+                source: PlayerData.preview;
+                image-fit: contain;
+            }
+        }
+        Text {
+            y: parent.height - 7 * Theme.unit;
+            width: parent.width;
+            height: 7 * Theme.unit;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            text: Fmt.clock(seek.scrub-to);
+            color: Theme.on-poster;
+            font-family: Theme.figure;
+            font-size: Theme.small;
         }
     }
 
