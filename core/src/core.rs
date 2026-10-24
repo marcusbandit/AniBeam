@@ -33,6 +33,7 @@ use crate::time;
 use crate::trackers::accounts;
 use crate::trackers::cache;
 use crate::trackers::oauth;
+use crate::trackers::on_hold;
 use crate::trackers::secrets::{KEYRING_UNAVAILABLE, Secrets};
 use crate::trackers::watching;
 use crate::trackers::writes;
@@ -693,10 +694,22 @@ impl Core {
                 preferences: self.store.read(prefs::load_preferences)?,
             }),
             Call::SetPreferences { preferences } => {
+                prefs::validate_preferences(&preferences)?;
                 let p = preferences.clone();
-                self.store.write(move |c| prefs::save_preferences(c, &p))?;
+                let before = self.store.write(move |c| {
+                    let before = prefs::load_preferences(c)?;
+                    prefs::save_preferences(c, &p)?;
+                    Ok(before)
+                })?;
                 self.host
                     .set_enabled(self, preferences.share_over_tailscale);
+                // On hold switched on: the entries due now move without
+                // waiting for the next launch.
+                if on_hold::wants_sweep(&before, &preferences)
+                    && let Some(core) = self.arc()
+                {
+                    on_hold::kick(&core);
+                }
                 self.bus.debug(
                     Stage::Store,
                     "preferences changed",

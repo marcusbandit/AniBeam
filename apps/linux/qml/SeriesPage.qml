@@ -126,7 +126,7 @@ Item {
     }
     function isDownloading(ep) { return ep.downloading !== undefined && ep.downloading !== null }
     function status(s) { return { Releasing: "Airing", Finished: "Finished", NotYetReleased: "Upcoming", Cancelled: "Cancelled", Hiatus: "On hiatus" }[s] || s }
-    function listStatus(s) { return { Watching: "Watching", Planning: "Planning", Completed: "Completed", Paused: "Paused", Dropped: "Dropped", Repeating: "Rewatching" }[s] || s }
+    function listStatus(s) { return { Watching: "Watching", Planning: "Planning", Completed: "Completed", Paused: "On hold", Dropped: "Dropped", Repeating: "Rewatching" }[s] || s }
     function formatLabel(f) { return isMovie ? "Film" : !f ? "Series" : ({ TV: "TV", TV_SHORT: "TV short", OVA: "OVA", ONA: "ONA", SPECIAL: "Special", MOVIE: "Film" })[f] || f.replace(/_/g, " ") }
     function relationLabel(r) { if (!r) return ""; var s = String(r).replace(/_/g, " ").toLowerCase(); return s.charAt(0).toUpperCase() + s.slice(1) }
     // An episode's name: Fmt.episodeName, the one rule the player and the feed share (its

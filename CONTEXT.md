@@ -52,6 +52,10 @@ _Avoid_: watched, seen, play
 The outcome of the 85 percent rule: the episode is reported as completed to a connected tracker.
 _Avoid_: complete, progress update, sync
 
+**On hold**:
+A tracker list: AniList calls it Paused, MAL calls it On Hold. With the On hold switch on, which is the default, the core moves a Watching entry there once nothing has touched it for the set number of days, 60 unless changed. A touch is any change either tracker dates, or a play here. An episode past the entry's progress coming out starts the count again, and an entry waiting for its next episode never moves. The check runs after each tracker refresh: at launch, on Sync, on a new connection, and when the switch goes on. A mark puts the entry back on Watching. Home shows the series on hold after Continue, in the same row, whenever Continue leaves room there.
+_Avoid_: paused, idle, stale, backlog
+
 **Resume point**:
 The position playback restarts from the next time an episode opens. Not recorded for a session the player never reported on.
 _Avoid_: position, progress, bookmark

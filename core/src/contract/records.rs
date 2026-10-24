@@ -625,10 +625,27 @@ pub struct Preferences {
     /// app (`host`). Default off, and per machine: an export never carries it.
     #[serde(default)]
     pub share_over_tailscale: bool,
+    /// Whether the core moves a Watching entry nobody has touched in
+    /// `on_hold_days` days to On hold on every connected tracker (AniList's
+    /// Paused, MAL's On Hold), after each tracker refresh (`trackers::on_hold`).
+    /// Default on. `serde(default)` because older blobs predate it.
+    #[serde(default = "default_true")]
+    pub on_hold_auto: bool,
+    /// How many days a Watching entry sits untouched before `on_hold_auto`
+    /// moves it, `ON_HOLD_DAYS` by default.
+    #[serde(default = "default_on_hold_days")]
+    pub on_hold_days: u32,
 }
+
+/// The default for `Preferences::on_hold_days`: two months untouched.
+pub const ON_HOLD_DAYS: u32 = 60;
 
 fn default_true() -> bool {
     true
+}
+
+fn default_on_hold_days() -> u32 {
+    ON_HOLD_DAYS
 }
 
 /// Preferences fields that fall back to `Preferences::default()`'s value
@@ -779,6 +796,8 @@ impl Default for Preferences {
             library_arrange: Arrange::Related,
             library_group_franchises: true,
             share_over_tailscale: false,
+            on_hold_auto: true,
+            on_hold_days: ON_HOLD_DAYS,
         }
     }
 }

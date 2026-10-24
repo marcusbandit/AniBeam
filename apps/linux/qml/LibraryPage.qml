@@ -100,8 +100,10 @@ Item {
         if (f === "MUSIC") return "Music"
         return "Unknown"
     }
+    // On hold is the tracker's list (AniList's Paused), whatever the episodes say
     function stateOf(c) {
         var w = c.watched
+        if (c.list_status === "Paused") return "On hold"
         if (c.watched_state === "CaughtUp") return "Caught up"
         if (c.watched_state === "Behind") return "Watching"
         return w !== null && w !== undefined && w > 0 ? "Watching" : "Not started"
@@ -226,6 +228,9 @@ Item {
             if (!buckets[g.key]) { buckets[g.key] = { title: g.title, cards: [] }; order.push(g.key) }
             buckets[g.key].cards.push(rest[j])
         }
+        // On hold closes the watch states, right before Dropped
+        var held = order.indexOf("On hold")
+        if (held >= 0) order.push(order.splice(held, 1)[0])
         for (var s = 0; s < order.length; s++) {
             var bb = buckets[order[s]]
             out.push({ title: bb.title, cards: bb.cards, airing: bb.cards.some(function(x) { return airingIds[x.id] === true }) })

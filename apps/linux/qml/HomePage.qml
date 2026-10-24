@@ -1,12 +1,13 @@
 // Home: the page the app opens on, ordered by what the app is for. First, the series to go
 // on with (an episode left half-way, or the next one on disk), set on a band in that
-// series' own colour, read off its poster. Then the week: seven day columns from today with
-// the airing series' posters placed on the day their next episode lands, and a Later column
-// for the rest. Then the series with episodes waiting, a row not started yet, and the
-// library's genres as a way in. A series dropped on the tracker is in none of those: it
-// closes the page on a shelf of its own, a reminder of what can leave the disk. Every
-// shelf is a plain grid whose column count comes from the width, and a shelf that could
-// run long stops at a row or two with "See all".
+// series' own colour, read off its poster. With a tracker connected, the series on hold
+// there follow Continue in the same row whenever Continue leaves room. Then the week:
+// seven day columns from today with the airing series' posters placed on the day their
+// next episode lands, and a Later column for the rest. Then the series with episodes
+// waiting, a row not started yet, and the library's genres as a way in. A series dropped
+// on the tracker is in none of those: it closes the page on a shelf of its own, a reminder
+// of what can leave the disk. Every shelf is a plain grid whose column count comes from the
+// width, and a shelf that could run long stops at a row or two with "See all".
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -33,6 +34,10 @@ Item {
     function viewedAt(c) { return c.last_viewed_at ? c.last_viewed_at : 0 }
     function watchedOf(c) { return c.watched !== null && c.watched !== undefined ? c.watched : 0 }
     function droppedOf(c) { return c.list_status === "Dropped" }
+    function pausedOf(c) { return c.list_status === "Paused" }
+    // On hold is a list on a tracker, so with none connected none of it shows
+    readonly property bool tracked: !!Door.trackers && ((!!Door.trackers.anilist && Door.trackers.anilist.connected === true)
+                                                      || (!!Door.trackers.mal && Door.trackers.mal.connected === true))
 
     // The hero: the series to go on with. An episode stopped short of its end comes first,
     // else the series' next episode on disk; a series with neither is caught up and is
@@ -42,9 +47,10 @@ Item {
     // ordered by the later of the last play here and, while an episode is out and unseen,
     // the day that episode arrived: a new episode of a show being followed is the obvious
     // next watch. The first is the hero, the rest the Continue row. At most sixteen series
-    // are read; a dropped one is never among them.
+    // are read; a dropped one is never among them, and one on hold sits in its own group.
     function startedOf(c) {
         if (page.droppedOf(c) || c.list_status === "Completed") return false
+        if (page.tracked && page.pausedOf(c)) return false
         if (page.viewedAt(c) > 0) return true
         return page.watchedOf(c) > 0 && (c.list_status === "Watching" || c.list_status === "Repeating")
     }
@@ -178,6 +184,16 @@ Item {
         })
         return list.sort(function(a, b) { return (b.community_score || 0) - (a.community_score || 0) })
     }
+    // On hold on the tracker: the ones with an episode on disk to play first, then the one
+    // touched here or given a new episode most lately
+    function lastTouchOf(c) { return Math.max(page.viewedAt(c), c.latest_activity_at || 0) }
+    readonly property var holdList: {
+        if (!tracked) return []
+        return shelf.filter(page.pausedOf).sort(function(a, b) {
+            var pa = page.toWatchOf(a) > 0 ? 1 : 0, pb = page.toWatchOf(b) > 0 ? 1 : 0
+            return pb - pa || page.lastTouchOf(b) - page.lastTouchOf(a)
+        })
+    }
     // Dropped on the tracker and still on disk
     readonly property var droppedList: shelf.filter(page.droppedOf)
     readonly property int droppedFiles: droppedList.reduce(function(n, c) { return n + (c.episodes_on_disk || 0) }, 0)
@@ -202,18 +218,29 @@ Item {
     // ---- A section heading: the name in the display cut, its one fact beside it, and an
     // action at the right
     component Heading: Item {
+        id: heading
         property string text: ""
         property string fact: ""
         property alias action: actionSlot.data
         width: parent ? parent.width : 0
         height: theme.space(12)
         Row {
+            id: headingRow
             anchors.left: parent.left
             anchors.bottom: parent.bottom
             anchors.bottomMargin: theme.space(2)
             spacing: theme.space(3)
-            Label { id: headingText; text: parent.parent.text; role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 }) }
-            Label { anchors.baseline: headingText.baseline; text: parent.parent.fact; role: "ui"; color: theme.textDim }
+            Label { id: headingText; text: heading.text; role: "display"; font.pointSize: theme.typeHeading; font.variableAxes: ({ "wdth": 70, "wght": 420 }) }
+            // Whole or not at all: a heading too narrow for its fact (On hold's split row)
+            // drops it rather than running it into the action or the next heading
+            Label {
+                anchors.baseline: headingText.baseline
+                text: heading.fact
+                role: "ui"
+                color: theme.textDim
+                visible: implicitWidth <= heading.width - headingText.implicitWidth - headingRow.spacing
+                                          - (actionSlot.visibleChildren.length > 0 ? actionSlot.width + theme.space(3) : 0)
+            }
         }
         Item { id: actionSlot; anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.bottomMargin: theme.space(2); width: childrenRect.width; height: childrenRect.height }
     }
@@ -369,6 +396,93 @@ Item {
                     nowMs: page.nowMs
                     onOpened: page.openSeries(modelData)
                     onPlayed: page.playSeries(modelData)
+                }
+            }
+        }
+    }
+
+    // ---- Continue, with On hold after it in the same row: while Continue leaves room, the
+    // series on hold take the rest of the row after a double gap, under a heading of their
+    // own on the same line. A Continue that fills the row is the row, as it always was.
+    component ContinueRow: Column {
+        id: row
+        property var continueCards: []
+        property var holdCards: []
+        readonly property int cols: Math.max(1, Math.floor((width + page.gap) / (theme.posterWidth + page.gap)))
+        readonly property int lead: Math.min(continueCards.length, cols)
+        readonly property bool split: holdCards.length > 0 && continueCards.length < cols
+        readonly property int holdShown: split ? Math.min(holdCards.length, cols - lead) : 0
+        // The second gap between the groups comes out of the cards, an equal share each, so
+        // the row still ends at the page's edge with as many cards as any other
+        readonly property real cardWidth: Math.floor((width - page.gap * (cols - 1) - (split && lead > 0 ? page.gap : 0)) / cols)
+        readonly property real leadWidth: lead > 0 ? lead * cardWidth + (lead - 1) * page.gap : 0
+        readonly property real holdX: lead > 0 ? leadWidth + page.gap * 2 : 0
+        visible: lead > 0 || holdShown > 0
+        spacing: theme.space(3)
+        Item {
+            width: row.width
+            height: theme.space(12)
+            Heading {
+                visible: row.lead > 0
+                width: row.split ? row.leadWidth : row.width
+                text: "Continue"
+                fact: page.continueList.length > 1 ? Fmt.plural(page.continueList.length - 1, "more series", "more series") + " to go on with" : ""
+                action: Button {
+                    visible: !row.split && row.continueCards.length > row.lead
+                    text: "See all"
+                    small: true
+                    flat: true
+                    onClicked: frame.go("library", { arrange: "WatchState" })
+                }
+            }
+            Heading {
+                objectName: "home-on-hold"
+                visible: row.split
+                x: row.holdX
+                width: row.width - row.holdX
+                text: "On hold"
+                fact: Fmt.plural(row.holdCards.length, "series", "series") + " to come back to"
+                action: Button {
+                    visible: row.holdCards.length > row.holdShown
+                    text: "See all"
+                    small: true
+                    flat: true
+                    onClicked: frame.go("library", { arrange: "WatchState" })
+                }
+            }
+        }
+        Item {
+            width: row.width
+            height: Math.round(row.cardWidth * 1.5)
+            Row {
+                spacing: page.gap
+                Repeater {
+                    model: row.continueCards.slice(0, row.lead)
+                    Card {
+                        required property var modelData
+                        objectName: "card-" + modelData.id   // a --drive target
+                        item: modelData
+                        posterWidth: row.cardWidth
+                        nowMs: page.nowMs
+                        onOpened: page.openSeries(modelData)
+                        onPlayed: page.playSeries(modelData)
+                    }
+                }
+            }
+            Row {
+                x: row.holdX
+                spacing: page.gap
+                Repeater {
+                    model: row.holdCards.slice(0, row.holdShown)
+                    Card {
+                        required property var modelData
+                        objectName: "card-" + modelData.id
+                        item: modelData
+                        posterWidth: row.cardWidth
+                        nowMs: page.nowMs
+                        onOpened: page.openSeries(modelData)
+                        onPlayed: page.playSeries(modelData)
+                    }
                 }
             }
         }
@@ -561,17 +675,16 @@ Item {
 
         Item { width: 1; height: hero.visible ? theme.space(4) : 0 }
 
-        // ---- Continue: the other series with an episode to go on with, after the hero
-        Shelf {
+        // ---- Continue: the other series with an episode to go on with, after the hero, and
+        // On hold in what is left of the row
+        ContinueRow {
+            id: continueRow
             objectName: "home-continue"
             width: parent.width
-            heading: "Continue"
-            fact: page.continueList.length > 1 ? Fmt.plural(page.continueList.length - 1, "more series", "more series") + " to go on with" : ""
-            list: page.continueList.slice(1).map(function(e) { return e.card })
-            maxRows: 1
-            onMore: frame.go("library", { arrange: "WatchState" })
+            continueCards: page.continueList.slice(1).map(function(e) { return e.card })
+            holdCards: page.holdList
         }
-        Item { width: 1; height: page.continueList.length > 1 ? theme.space(4) : 0 }
+        Item { width: 1; height: continueRow.visible ? theme.space(4) : 0 }
 
         Shelf {
             objectName: "home-downloaded"

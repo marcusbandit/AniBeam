@@ -614,6 +614,8 @@ pub enum JobKind {
     Score,
     RefreshProgress,
     RefreshWatching,
+    /// The sweep that moves Watching entries left untouched to On hold.
+    OnHold,
     Crawl,
     SkipWindows,
     Export,
@@ -640,9 +642,8 @@ impl JobKind {
             Scan | Subscriptions => Stage::Library,
             AutoMatch | Search | ResolveLink | ApplyMatch | Refresh | RefreshAll
             | RefreshAiring | RefreshImdb | ClearImages | FillImages => Stage::Metadata,
-            ConnectTracker | Mark | SetProgress | Score | RefreshProgress | RefreshWatching => {
-                Stage::Trackers
-            }
+            ConnectTracker | Mark | SetProgress | Score | RefreshProgress | RefreshWatching
+            | OnHold => Stage::Trackers,
             Crawl => Stage::Franchise,
             SkipWindows => Stage::Playback,
             Export | Import => Stage::Store,
@@ -663,6 +664,7 @@ impl JobKind {
                 | Crawl
                 | RefreshProgress
                 | RefreshWatching
+                | OnHold
                 | FillImages
                 | Subscriptions
                 | ConnectDownloads
@@ -693,6 +695,7 @@ impl JobKind {
             Score => "Score",
             RefreshProgress => "RefreshProgress",
             RefreshWatching => "RefreshWatching",
+            OnHold => "OnHold",
             Crawl => "Crawl",
             SkipWindows => "SkipWindows",
             Export => "Export",
@@ -733,6 +736,7 @@ impl JobKind {
             "Score" => Some(Score),
             "RefreshProgress" => Some(RefreshProgress),
             "RefreshWatching" => Some(RefreshWatching),
+            "OnHold" => Some(OnHold),
             "Crawl" => Some(Crawl),
             "SkipWindows" => Some(SkipWindows),
             "Export" => Some(Export),

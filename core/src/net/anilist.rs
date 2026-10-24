@@ -277,10 +277,19 @@ pub const SAVE_SCORE_MUTATION: &str = r"mutation ($mediaId: Int, $scoreRaw: Int,
       }
     }";
 
+/// A status alone, for the On hold sweep. A `SaveMediaListEntry` that names
+/// no progress and no score leaves both as the list has them, and the
+/// reply's `updatedAt` is the tracker's own stamp for the change.
+pub const SAVE_STATUS_MUTATION: &str = r"mutation ($mediaId: Int, $status: MediaListStatus) {
+      SaveMediaListEntry(mediaId: $mediaId, status: $status) {
+        id status updatedAt
+      }
+    }";
+
 /// Electron's progress sweep, trackerHandler.ts:775-779.
 pub const MEDIA_LIST_COLLECTION_QUERY: &str = r"query ($userId: Int) {
         MediaListCollection(userId: $userId, type: ANIME) {
-          lists { entries { progress status score(format: POINT_10_DECIMAL) repeat media { id } } }
+          lists { entries { progress status score(format: POINT_10_DECIMAL) repeat updatedAt media { id } } }
         }
       }";
 

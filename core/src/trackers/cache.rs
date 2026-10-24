@@ -26,6 +26,7 @@ use crate::library::cards;
 use crate::net::anilist::MEDIA_LIST_COLLECTION_QUERY;
 use crate::time;
 use crate::trackers::accounts;
+use crate::trackers::on_hold;
 use crate::trackers::writes;
 use crate::trackers::{NO_TOKEN, TRACKER_TIMEOUT, as_count};
 
@@ -117,10 +118,10 @@ pub async fn fetch_anilist(
                 status: normalize_status(Tracker::Anilist, entry["status"].as_str(), false),
                 score: entry["score"].as_f64().filter(|s| *s > 0.0),
                 repeat: as_count(entry["repeat"].as_u64()),
-                // The collection query asks for no timestamp, so an entry
-                // brings none and `replace` keeps whatever the watching
-                // list left behind.
-                updated_at: None,
+                // When the entry last changed anywhere, which is what On
+                // hold reads as the user's last touch. Nought is AniList
+                // having none, and `replace` then keeps the stored one.
+                updated_at: entry["updatedAt"].as_i64().filter(|at| *at > 0),
             });
         }
     }
@@ -135,7 +136,7 @@ pub async fn fetch_mal(core: &Arc<Core>, token: &str) -> Result<Vec<Entry>, Core
     let mut offset = 0u64;
     for _page in 0..MAL_MAX_PAGES {
         let url = format!(
-            "https://api.myanimelist.net/v2/users/@me/animelist?fields=list_status{{status,num_episodes_watched,is_rewatching,num_times_rewatched,score}}&limit={MAL_PAGE}&offset={offset}"
+            "https://api.myanimelist.net/v2/users/@me/animelist?fields=list_status{{status,num_episodes_watched,is_rewatching,num_times_rewatched,score,updated_at}}&limit={MAL_PAGE}&offset={offset}"
         );
         let response = core.mal.get(&url, token).await?;
         if !response.is_success() {
@@ -163,7 +164,7 @@ pub async fn fetch_mal(core: &Arc<Core>, token: &str) -> Result<Vec<Entry>, Core
                 ),
                 score: status["score"].as_f64().filter(|s| *s > 0.0),
                 repeat: as_count(status["num_times_rewatched"].as_u64()),
-                updated_at: None,
+                updated_at: status["updated_at"].as_str().and_then(mal_instant),
             });
         }
         if body["paging"]["next"].as_str().is_none() || (page_entries.len() as u64) < MAL_PAGE {
@@ -174,12 +175,21 @@ pub async fn fetch_mal(core: &Arc<Core>, token: &str) -> Result<Vec<Entry>, Core
     Ok(entries)
 }
 
+/// MAL's `updated_at`, an RFC 3339 instant ("2017-11-11T19:51:22+00:00"),
+/// as Unix seconds. Anything else is no timestamp rather than a guess.
+pub(crate) fn mal_instant(raw: &str) -> Option<i64> {
+    ::time::OffsetDateTime::parse(raw, &::time::format_description::well_known::Rfc3339)
+        .ok()
+        .map(|at| at.unix_timestamp())
+        .filter(|at| *at > 0)
+}
+
 // The table ------------------------------------------------------------------
 
 /// A tracker's whole list, replacing whatever was cached for it. The list
 /// is the truth about itself, so a row the tracker no longer carries goes;
-/// what survives is an `updated_at` the fetch had none of, since the
-/// collection query carries no timestamp and the watching list does.
+/// what survives is an `updated_at` for an entry the fetch brought none
+/// for, so a timestamp once known is never lost to a provider's blank.
 pub fn replace(tx: &Transaction, t: Tracker, entries: &[Entry], now: i64) -> Result<(), CoreError> {
     let mut kept: HashMap<u64, i64> = HashMap::new();
     {
@@ -228,7 +238,10 @@ pub fn replace(tx: &Transaction, t: Tracker, entries: &[Entry], now: i64) -> Res
 
 /// One entry's progress, after a mark or a set: the score and the rewatch
 /// count are the list's and are left alone, and a status of `None` keeps
-/// the one already cached. Electron's `setProgressEntry`.
+/// the one already cached. The write moved the tracker's own `updated_at`
+/// to now, so the row says so before the next fetch does, and On hold
+/// never reads a series just marked as untouched. Electron's
+/// `setProgressEntry`.
 pub fn patch_progress(
     conn: &Connection,
     t: Tracker,
@@ -239,10 +252,11 @@ pub fn patch_progress(
 ) -> Result<(), CoreError> {
     conn.execute(
         "INSERT INTO tracker_entries (tracker, media_id, status, progress, score, repeat, updated_at, fetched_at)
-         VALUES (?1, ?2, ?3, ?4, NULL, 0, NULL, ?5)
+         VALUES (?1, ?2, ?3, ?4, NULL, 0, ?5, ?5)
          ON CONFLICT(tracker, media_id) DO UPDATE SET
              progress = excluded.progress,
              status = COALESCE(excluded.status, tracker_entries.status),
+             updated_at = excluded.updated_at,
              fetched_at = excluded.fetched_at",
         params![t.as_str(), media_id as i64, status.map(ListStatus::as_str), i64::from(progress), now],
     )?;
@@ -250,8 +264,9 @@ pub fn patch_progress(
 }
 
 /// One entry's score, after a rating: the progress and the rewatch count
-/// are left alone, and a score of `None` is stored as unrated rather than
-/// dropped. Electron's `setProgressScoreAndStatus`.
+/// are left alone, a score of `None` is stored as unrated rather than
+/// dropped, and `updated_at` moves to now as `patch_progress`'s does.
+/// Electron's `setProgressScoreAndStatus`.
 pub fn patch_score(
     conn: &Connection,
     t: Tracker,
@@ -262,12 +277,39 @@ pub fn patch_score(
 ) -> Result<(), CoreError> {
     conn.execute(
         "INSERT INTO tracker_entries (tracker, media_id, status, progress, score, repeat, updated_at, fetched_at)
-         VALUES (?1, ?2, ?3, 0, ?4, 0, NULL, ?5)
+         VALUES (?1, ?2, ?3, 0, ?4, 0, ?5, ?5)
          ON CONFLICT(tracker, media_id) DO UPDATE SET
              score = excluded.score,
              status = COALESCE(excluded.status, tracker_entries.status),
+             updated_at = excluded.updated_at,
              fetched_at = excluded.fetched_at",
         params![t.as_str(), media_id as i64, status.map(ListStatus::as_str), score, now],
+    )?;
+    Ok(())
+}
+
+/// One entry's status, after the On hold sweep moved it: the progress, the
+/// score and the rewatch count are the list's and are left alone, and
+/// `updated_at` is the stamp the change carried. A row the cache does not
+/// hold stays absent, since the sweep only ever moves a cached entry.
+pub fn patch_status(
+    conn: &Connection,
+    t: Tracker,
+    media_id: u64,
+    status: ListStatus,
+    updated_at: i64,
+    now: i64,
+) -> Result<(), CoreError> {
+    conn.execute(
+        "UPDATE tracker_entries SET status = ?3, updated_at = ?4, fetched_at = ?5
+         WHERE tracker = ?1 AND media_id = ?2",
+        params![
+            t.as_str(),
+            media_id as i64,
+            status.as_str(),
+            updated_at,
+            now
+        ],
     )?;
     Ok(())
 }
@@ -355,6 +397,8 @@ async fn run(
     if !refreshed.is_empty() {
         let cards = matched_cards(&core, &refreshed).await?;
         ctx.changed_all(cards);
+        // A list just fetched is the one On hold decides on.
+        on_hold::after_refresh(&core).await;
     }
     match pending {
         Some((t, count)) => Ok(Finished {
@@ -443,7 +487,7 @@ async fn matched_cards(
 /// Whether a tracker's cache is inside the five minute window. A stamp in
 /// the future is a clock that moved rather than a stale cache, so it
 /// counts as fresh.
-fn is_fresh(fetched_at: Option<SystemTime>, now: SystemTime) -> bool {
+pub(crate) fn is_fresh(fetched_at: Option<SystemTime>, now: SystemTime) -> bool {
     let Some(at) = fetched_at else { return false };
     match now.duration_since(at) {
         Ok(elapsed) => elapsed < PROGRESS_FRESH,

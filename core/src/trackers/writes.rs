@@ -1,7 +1,8 @@
-//! The three writes a tracker takes: a mark, a corrective progress and a
-//! score. Every one of them answers the shell before a request is made if
-//! it can, and otherwise becomes a job that writes to every connected
-//! tracker the match carries an id for.
+//! The three writes a shell asks a tracker for: a mark, a corrective
+//! progress and a score. Every one of them answers the shell before a
+//! request is made if it can, and otherwise becomes a job that writes to
+//! every connected tracker the match carries an id for. The On hold sweep
+//! (`on_hold`) sends a fourth, the status alone, through `send_status`.
 //!
 //! Three rules shape the file. A write goes to *both* trackers, because a
 //! user with two accounts connected expects both lists to move, so the
@@ -27,7 +28,9 @@ use crate::jobs::{Finished, JobCtx};
 use crate::metadata::apply::card_for;
 use crate::metadata::fetch::message_of;
 use crate::net::HttpResponse;
-use crate::net::anilist::{MEDIA_LIST_ENTRY_QUERY, SAVE_PROGRESS_MUTATION, SAVE_SCORE_MUTATION};
+use crate::net::anilist::{
+    MEDIA_LIST_ENTRY_QUERY, SAVE_PROGRESS_MUTATION, SAVE_SCORE_MUTATION, SAVE_STATUS_MUTATION,
+};
 use crate::prefs;
 use crate::time;
 use crate::trackers::{NO_TOKEN, TRACKER_TIMEOUT, accounts, as_count, cache};
@@ -715,6 +718,53 @@ async fn send_score(
     }
 }
 
+/// A status alone, which is what the On hold sweep sends: the progress and
+/// the score stay as the list has them on both trackers, since neither
+/// write names them. Answers with the tracker's own stamp for the change
+/// when its reply carried one.
+pub(crate) async fn send_status(
+    core: &Arc<Core>,
+    t: Tracker,
+    media_id: u64,
+    token: &str,
+    status: ListStatus,
+) -> Result<Option<i64>, CoreError> {
+    match t {
+        Tracker::Anilist => {
+            let variables =
+                serde_json::json!({ "mediaId": media_id, "status": anilist_status(status) });
+            let data = core
+                .anilist
+                .graphql_within(
+                    SAVE_STATUS_MUTATION,
+                    variables,
+                    Some(token),
+                    TRACKER_TIMEOUT,
+                )
+                .await?;
+            Ok(data["SaveMediaListEntry"]["updatedAt"]
+                .as_i64()
+                .filter(|at| *at > 0))
+        }
+        Tracker::Mal => {
+            let form = vec![("status".to_string(), mal_status(status).to_string())];
+            let response = core
+                .mal
+                .patch_form(&list_status_url(media_id), token, form)
+                .await?;
+            if !response.is_success() {
+                return Err(mal_failure(&response));
+            }
+            // MAL answers a PATCH with the whole list status, its
+            // `updated_at` among it.
+            Ok(response
+                .json::<serde_json::Value>()
+                .ok()
+                .and_then(|body| body["updated_at"].as_str().and_then(cache::mal_instant)))
+        }
+    }
+}
+
 fn list_status_url(media_id: u64) -> String {
     format!("{MAL_API}/anime/{media_id}/my_list_status")
 }
@@ -775,6 +825,24 @@ async fn record_score(
         .tx_async(move |tx| {
             mark_synced(tx, t, now)?;
             cache::patch_score(tx, t, media_id, rated, status, now)
+        })
+        .await
+}
+
+/// The same for a status the On hold sweep sent. `updated_at` is the
+/// tracker's own stamp when the reply carried one, else now.
+pub(crate) async fn record_status(
+    core: &Arc<Core>,
+    t: Tracker,
+    media_id: u64,
+    status: ListStatus,
+    updated_at: Option<i64>,
+) -> Result<(), CoreError> {
+    let now = time::now_secs();
+    core.store
+        .tx_async(move |tx| {
+            mark_synced(tx, t, now)?;
+            cache::patch_status(tx, t, media_id, status, updated_at.unwrap_or(now), now)
         })
         .await
 }

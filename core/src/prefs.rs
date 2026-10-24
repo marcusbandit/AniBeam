@@ -6,6 +6,7 @@ use rusqlite::Connection;
 
 use crate::contract::*;
 use crate::store::settings;
+use crate::trackers::on_hold;
 
 pub fn load_preferences(conn: &Connection) -> Result<Preferences, CoreError> {
     settings::get_or_default(conn, settings::PREFERENCES)
@@ -88,6 +89,23 @@ pub fn validate_provider_order(order: &[Provider]) -> Result<(), CoreError> {
                 ),
             ));
         }
+    }
+    Ok(())
+}
+
+/// The one preference with bounds: On hold's days. Under a week would move
+/// a show the user skipped one weekend.
+pub fn validate_preferences(p: &Preferences) -> Result<(), CoreError> {
+    if !(on_hold::MIN_DAYS..=on_hold::MAX_DAYS).contains(&p.on_hold_days) {
+        return Err(CoreError::invalid(
+            "on_hold_days",
+            format!(
+                "{} is outside {} to {}",
+                p.on_hold_days,
+                on_hold::MIN_DAYS,
+                on_hold::MAX_DAYS
+            ),
+        ));
     }
     Ok(())
 }

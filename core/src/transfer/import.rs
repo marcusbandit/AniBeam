@@ -776,6 +776,9 @@ async fn import_preferences(
                 library_group_franchises: current.library_group_franchises,
                 // Whether this machine shares itself is its own business.
                 share_over_tailscale: current.share_over_tailscale,
+                // The export format predates On hold too.
+                on_hold_auto: current.on_hold_auto,
+                on_hold_days: current.on_hold_days,
             };
             prefs::save_preferences(tx, &preferences)?;
             if let Some(auto_skip) = &entry.auto_skip {

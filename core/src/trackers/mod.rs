@@ -4,6 +4,7 @@
 pub mod accounts;
 pub mod cache;
 pub mod oauth;
+pub mod on_hold;
 pub mod secrets;
 pub mod watching;
 pub mod writes;
