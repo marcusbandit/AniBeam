@@ -70,21 +70,23 @@ fn facts(
             what: Entity::Series,
             id: series,
         })?;
-    let (folder, anilist, mal, tvmaze, format, episodes) = conn.query_row(
-        "SELECT s.folder_name, s.anilist_id, s.mal_id, s.tvmaze_id, m.format, m.episodes
+    let (kind, path, anilist, mal, tvmaze, format, episodes) = conn.query_row(
+        "SELECT s.kind, s.path, s.anilist_id, s.mal_id, s.tvmaze_id, m.format, m.episodes
          FROM series s LEFT JOIN anilist_media m ON m.id = s.anilist_id WHERE s.id = ?1",
         params![series as i64],
         |r| {
             Ok((
                 r.get::<_, String>(0)?,
-                r.get::<_, Option<i64>>(1)?.map(|v| v as u64),
+                r.get::<_, String>(1)?,
                 r.get::<_, Option<i64>>(2)?.map(|v| v as u64),
                 r.get::<_, Option<i64>>(3)?.map(|v| v as u64),
-                r.get::<_, Option<String>>(4)?,
-                r.get::<_, Option<i64>>(5)?.map(|v| v as u32),
+                r.get::<_, Option<i64>>(4)?.map(|v| v as u64),
+                r.get::<_, Option<String>>(5)?,
+                r.get::<_, Option<i64>>(6)?.map(|v| v as u32),
             ))
         },
     )?;
+    let folder = folder_of(&kind, &path);
     let mut fixed = Vec::new();
     if !files.is_empty() {
         let sql = format!(
@@ -105,7 +107,7 @@ fn facts(
             let (path, was, now) = row?;
             if let (Ok(was), Ok(now)) = (serde_json::from_str(&was), serde_json::from_str(&now)) {
                 fixed.push(Fixed {
-                    name: readings::file_name(&path),
+                    name: plain(readings::file_name(&path)).unwrap_or_else(|| "file".to_string()),
                     was,
                     now,
                 });
@@ -123,6 +125,33 @@ fn facts(
         episodes,
         files: fixed,
     })
+}
+
+/// One plain path component: what the triage process (docs/agents/triage.md)
+/// makes a file or folder of, so it refuses anything else. Not empty, not `.`
+/// or `..`, no `/`, no NUL.
+fn plain(component: String) -> Option<String> {
+    let ok = !component.is_empty()
+        && component != "."
+        && component != ".."
+        && !component.contains(['/', '\0']);
+    ok.then_some(component)
+}
+
+/// The folder the series' files sit in, by its name on disk: a show's own
+/// folder (a `Season 2` subfolder stays `Season 2`, where the series is titled
+/// off its parent), a film's parent folder. The scan reads names in that
+/// folder's context, so the triage rebuilds the case in a folder named the same.
+fn folder_of(kind: &str, path: &str) -> String {
+    let path = Path::new(path);
+    let dir = if kind == "movie" {
+        path.parent()
+    } else {
+        Some(path)
+    };
+    dir.and_then(Path::file_name)
+        .and_then(|n| plain(n.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| "series".to_string())
 }
 
 // The agents --------------------------------------------------------------
@@ -791,6 +820,25 @@ mod tests {
             run_agent(&agent, "prompt", Duration::from_secs(20)).unwrap_err(),
             "not logged in"
         );
+    }
+
+    #[test]
+    fn the_record_names_the_folder_on_disk_as_one_plain_component() {
+        assert_eq!(folder_of("show", "/lib/Takagi-san/Season 2"), "Season 2");
+        assert_eq!(
+            folder_of("show", "/lib/Girls und Panzer/Girls und Panzer - Specials"),
+            "Girls und Panzer - Specials"
+        );
+        assert_eq!(
+            folder_of("movie", "/lib/Movies/Perfect Blue (1997).mkv"),
+            "Movies"
+        );
+        assert_eq!(folder_of("show", "/"), "series");
+        assert_eq!(plain("..".into()), None);
+        assert_eq!(plain("".into()), None);
+        assert_eq!(plain("a/b".into()), None);
+        assert_eq!(plain("a\\b".into()).as_deref(), Some("a\\b"));
+        assert_eq!(plain("OVA 1.mkv".into()).as_deref(), Some("OVA 1.mkv"));
     }
 
     #[test]
