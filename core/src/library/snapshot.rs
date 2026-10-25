@@ -203,7 +203,9 @@ fn show_media(r: &rusqlite::Row) -> rusqlite::Result<MediaRow> {
         season: None,
         start_date: premiered,
         episodes: None,
-        duration: r.get::<_, Option<i64>>(49)?.map(|v| v as u32),
+        duration: r
+            .get::<_, Option<i64>>(49)?
+            .and_then(|v| u32::try_from(v).ok()),
         description: r.get(42)?,
         average_score: rating
             .filter(|v| v.is_finite() && *v >= 0.0)
@@ -396,7 +398,9 @@ impl Snapshot {
                     season: r.get(46)?,
                     start_date: r.get(47)?,
                     episodes: r.get::<_, Option<i64>>(22)?.map(|v| v as u32),
-                    duration: r.get::<_, Option<i64>>(48)?.map(|v| v as u32),
+                    duration: r
+                        .get::<_, Option<i64>>(48)?
+                        .and_then(|v| u32::try_from(v).ok()),
                     description: r.get(23)?,
                     average_score: r.get::<_, Option<i64>>(24)?.map(|v| v as u32),
                     genres: json_strings(&r.get::<_, String>(25)?),
