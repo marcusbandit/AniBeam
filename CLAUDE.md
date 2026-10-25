@@ -47,6 +47,7 @@ A Cargo workspace with three members:
 - **One window, play on when hidden**: never a second window or an external mpv process, never auto-pause when the window is hidden.
 - **App behaviour is self-contained**: no Hyprland windowrules, hyprctl or other compositor coupling.
 - **Scrolling is native**: every Flickable gets `qml/WheelStep.qml`'s wheel handling, 100 px a notch glided to one target.
+- **Patch notes ship with the change**: anything a person can notice adds one short line to `apps/linux/CHANGELOG.md`, `apps/android/CHANGELOG.md` or both, in the same PR. The apps show them as What's new after an update. Mojang style, 80 characters at most, never a paragraph; a version bump adds a heading. Rules in CONTRIBUTING.md under Patch notes.
 
 ## Agent skills
 

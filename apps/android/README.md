@@ -121,8 +121,9 @@ scripts/build.sh cargo test -p anibeam-companion   # any cargo command, same lim
 (`ANIBEAM_BUILD_MEM` changes the cap), and refuses to start with less than 7 GB free.
 
 The version lives in `android/AndroidManifest.xml` (`versionCode` and `versionName`).
-Bump both for every build that leaves the machine; `build.sh` stops if `versionName` and
-the `version` in `Cargo.toml` disagree.
+Bump both for every build that leaves the machine, and give the new version its heading in
+`CHANGELOG.md`, which the app shows as What's new; `build.sh` stops if `versionName`, the
+`version` in `Cargo.toml` and the newest heading in `CHANGELOG.md` disagree.
 
 ## The emulator loop
 

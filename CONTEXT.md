@@ -240,6 +240,14 @@ _Avoid_: badge, unread, error count
 The guard on a destructive action: the row's controls give way to a line naming the consequence, a red confirm button and Keep. There is no modal dialog.
 _Avoid_: confirm dialog, modal, alert
 
+**Patch notes**:
+An app's `CHANGELOG.md`: every version newest first, each a few one-line changes under New, Changed, Fixed or Removed. The desktop and the phone keep their own, since each has its own version, and each build carries its own copy.
+_Avoid_: release notes (the GitHub page), changelog entry, commit log
+
+**What's new**:
+The sheet that shows the patch notes. It opens by itself once after an update, with a line at the version the install came from; the rail's version, Settings and More open it again. Closing it marks the notes read.
+_Avoid_: changelog dialog, update popup, splash
+
 ### Route
 
 **Parity checklist**:

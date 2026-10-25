@@ -102,8 +102,43 @@ Not:
   test output otherwise.
 - `Closes #<issue>` on its own line.
 
+## Patch notes
+
+Each app keeps its own `CHANGELOG.md`: `apps/linux/CHANGELOG.md` for the desktop,
+`apps/android/CHANGELOG.md` for the phone. The app builds it in and shows it as What's new
+after an update, so it is written for the person using the app, the way Mojang writes
+Minecraft's patch notes: a version, a few sections, one short line per change.
+
+- A change someone can notice gets one line, in the same PR. One that reaches both apps
+  gets a line in both files. Tests, CI, refactors and docs get none.
+- The line goes under the newest heading, in New, Changed, Fixed or Removed. Use only the
+  sections you need, in that order.
+- Say what the person sees. No why, no how, no issue numbers, no file names, no full stop.
+  80 characters at most; most lines fit in 50.
+- The newest heading is the app's version, with the day: `## 2.1.1 · 2026-10-25`. Bumping
+  the version adds a heading, and a heading for a new version bumps the version in the
+  same PR. Never add a line under a version that has shipped.
+
+Good:
+
+    ### New
+    - Delete episodes from a series page
+
+    ### Fixed
+    - The seek bar no longer jumps back after a drag
+
+Not:
+
+    - Fixed a bug where the seek bar would sometimes jump back after the user
+      released it, caused by a stale position in the player (#160).
+
+`cargo test -p anibeam-core --test changelog` checks both files, and CI runs it on every
+pull request. The phone's `build.sh` refuses an APK whose newest heading is not its
+`versionName`.
+
 ## Before you open it
 
 - The test, clippy and fmt commands in the README's Development section pass.
 - A visible change has a capture in the PR body, taken against a sandbox root.
+- A change someone can notice has its line in the app's `CHANGELOG.md`.
 - A new word for something in the domain has its entry in `CONTEXT.md`.

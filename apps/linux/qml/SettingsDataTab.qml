@@ -153,7 +153,8 @@ SettingsTab {
         id: aboutPanel
         Panel {
             title: "About"; icon: "info"
-            SettingRow { label: "Version"; Label { text: Shell.release; role: "ledger" } }
+            SettingRow { label: "Version"; line: Shell.release
+                Button { objectName: "data-whats-new"; text: "What's new"; icon: "sparkles"; small: true; onClicked: frame.openWhatsNew() } }
             // IMDb's terms ask for this line wherever its data is used
             SettingRow { label: "Ratings"; helper: "Information courtesy of IMDb (https://www.imdb.com). Used with permission." }
             Repeater {

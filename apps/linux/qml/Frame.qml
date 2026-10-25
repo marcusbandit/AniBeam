@@ -128,7 +128,7 @@ FocusScope {
     // reclaimFrameOwned() keeps their entries, in this same handler, so Escape still
     // reaches them; a second Connections on nav.changed would race this one with no
     // ordering guarantee between them.
-    Connections { target: nav; function onChanged() { frame.loadPage(); frame.hideTip(); frame.closeMenu(); removeSheet.close(); frame.reclaimFrameOwned() } }
+    Connections { target: nav; function onChanged() { frame.loadPage(); frame.hideTip(); frame.closeMenu(); removeSheet.close(); whatsNew.close(); frame.reclaimFrameOwned() } }
 
     Rail {
         id: rail
@@ -137,6 +137,7 @@ FocusScope {
         active: nav.railIndex
         downloadsBadge: frame.downloadsAttention
         onPicked: function(i) { if (i !== nav.railIndex || nav.current.page !== nav.railPages[i]) frame.go(nav.railPages[i]) }
+        onVersionClicked: frame.openWhatsNew()
     }
 
     Item {
@@ -160,6 +161,7 @@ FocusScope {
             onLoaded: {
                 if (nav.pendingScroll > 0 && item.scrollY !== undefined) Qt.callLater(function() { if (page.item) page.item.scrollY = nav.pendingScroll })
                 item.forceActiveFocus()
+                frame.startNotes()
             }
         }
 
@@ -369,6 +371,7 @@ FocusScope {
         z: 600
         Menu { id: menu }
         RemoveSheet { id: removeSheet }
+        WhatsNew { id: whatsNew }
         Frost {
             id: tip
             visible: false
@@ -387,6 +390,18 @@ FocusScope {
             Timer { id: toastTimer; onTriggered: toastBox.visible = false }
         }
     }
+    // What's new: once the first page is up, so the page taking focus as it loads does not
+    // take the keys from the sheet. Never in a capture run, which draws what it was asked to;
+    // a drive opens it with frame.openWhatsNew().
+    property bool notesStarted: false
+    function startNotes() {
+        if (notesStarted) return
+        notesStarted = true
+        if (Shell.shoot === "" && Shell.driveOut === "") whatsNew.start()
+    }
+    function openWhatsNew() { whatsNew.open() }
+    readonly property alias notesPanel: whatsNew
+
     function openMenu(x, y, items) { menu.openAt(x, y, items) }
     function closeMenu() { menu.close() }
     // A tip belongs to the area the pointer is over (`area`, the anchor item itself unless a
@@ -508,9 +523,10 @@ FocusScope {
     Timer { id: downloadsSettle; interval: 10000; onTriggered: frame.readDownloadsRules() }
     Timer { id: downloadsReread; interval: 1500; onTriggered: frame.readDownloadsRules() }
 
-    Shortcut { sequence: "Ctrl+K"; onActivated: { if (nav.current.page !== "library") frame.go("library"); Qt.callLater(function() { if (page.item && page.item.focusSearch) page.item.focusSearch() }) } }
+    // A search behind What's new would take the keys the sheet still shows, so both close it
+    Shortcut { sequence: "Ctrl+K"; onActivated: { whatsNew.close(); if (nav.current.page !== "library") frame.go("library"); Qt.callLater(function() { if (page.item && page.item.focusSearch) page.item.focusSearch() }) } }
     // Any page with a search takes "/" (the library, metadata)
-    Shortcut { sequence: "/"; enabled: !!(page.item && page.item.focusSearch); onActivated: if (page.item && page.item.focusSearch) page.item.focusSearch() }
+    Shortcut { sequence: "/"; enabled: !!(page.item && page.item.focusSearch); onActivated: { whatsNew.close(); if (page.item && page.item.focusSearch) page.item.focusSearch() } }
     Shortcut { sequence: "Ctrl+,"; onActivated: if (nav.current.page !== "settings") frame.go("settings") }
     Shortcut { sequence: "Ctrl+L"; enabled: !frame.fullWindow; onActivated: frame.toggleDrawer() }
     Shortcut { sequence: "Ctrl+Q"; onActivated: Qt.quit() }

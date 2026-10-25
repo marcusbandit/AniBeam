@@ -135,6 +135,15 @@ fn main() {
             }
         }
     };
+    // What's new: whether the app started here before and the version it last logged, read
+    // now because the Door's start logs this run's.
+    let starts = core.earlier_starts();
+    runtime::install_earlier(runtime::Earlier {
+        started: !starts.is_empty(),
+        version: starts
+            .iter()
+            .find_map(|v| anibeam_core::changelog::version_of(v)),
+    });
     // A drive, a shot or a sandbox root runs a copy of the library against the owner's real
     // anirss and qBittorrent, so nothing may change there on its own: no unsubscribing, no
     // replacing.

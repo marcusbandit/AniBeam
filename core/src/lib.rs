@@ -2,6 +2,7 @@
 //! contract in `contract`.
 
 pub mod cast;
+pub mod changelog;
 pub mod contract;
 pub mod core;
 pub mod downloads;

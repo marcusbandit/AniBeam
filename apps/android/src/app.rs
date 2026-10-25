@@ -86,6 +86,9 @@ struct App {
     commands: Commands,
     data_dir: PathBuf,
     prefs: Prefs,
+    // The phone had saved its settings before this run: it was in use before What's new kept
+    // a record, so an update opens the notes rather than counting them as read.
+    used_before: bool,
     // This phone.
     cards: Vec<SeriesCard>,
     detail: Option<SeriesDetail>,
@@ -612,6 +615,35 @@ impl App {
         self.storage();
     }
 
+    /// What's new as the app starts: a fresh install counts this version's notes as read,
+    /// and the first start after an update opens them.
+    fn start_notes(&mut self) {
+        if let Some(seen) = self.prefs.notes.started(crate::notes::VERSION, self.used_before) {
+            self.prefs.notes = seen;
+            self.save_prefs();
+        } else if self.prefs.notes.due(crate::notes::VERSION, self.used_before) {
+            self.show_notes();
+        }
+    }
+
+    fn show_notes(&self) {
+        let view = crate::notes::view(&self.prefs.notes, self.used_before);
+        let data = self.data();
+        data.set_notes_note(view.note.as_str().into());
+        data.set_notes(ModelRc::new(VecModel::from(crate::notes::lines(&view))));
+        data.set_notes_open(true);
+    }
+
+    /// Closed by Got it or Back: from now on the line stays at the version this one replaced.
+    fn close_notes(&mut self) {
+        self.data().set_notes_open(false);
+        let read = self.prefs.notes.closed(crate::notes::VERSION);
+        if read != self.prefs.notes {
+            self.prefs.notes = read;
+            self.save_prefs();
+        }
+    }
+
     fn open_series(&mut self, id: i32, remote: bool) {
         let Ok(id) = u64::try_from(id) else { return };
         // Picking to delete belongs to the page it started on.
@@ -886,6 +918,8 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
             app.save_prefs();
         })
     });
+    data.on_open_notes(|| with_app(|app| app.show_notes()));
+    data.on_close_notes(|| with_app(App::close_notes));
     data.on_restart_onboarding(|| {
         with_app(|app| {
             app.prefs.onboarded = false;
@@ -919,6 +953,8 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
         window: window.clone_strong(),
         commands: commands.clone(),
         data_dir: data_dir.clone(),
+        // Read before anything here writes the file.
+        used_before: prefs::exists(&data_dir),
         prefs: prefs::load(&data_dir),
         cards: Vec::new(),
         detail: None,
@@ -949,6 +985,7 @@ pub fn run(data_dir: PathBuf, commands: Commands, inbox: Receiver<Command>) -> R
         service: None,
     };
     app.show_prefs();
+    app.start_notes();
     app.tick();
     APP.with(|cell| *cell.borrow_mut() = Some(app));
 

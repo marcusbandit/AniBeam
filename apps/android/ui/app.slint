@@ -1,5 +1,5 @@
 import { Theme } from "theme.slint";
-import { AppData, CheckRow, Day, DownloadRow, EpisodeLine, Hero, Nav, SeriesHead, Shelf, SourceRow, Tile } from "data.slint";
+import { AppData, CheckRow, Day, DownloadRow, EpisodeLine, Hero, Nav, NoteLine, SeriesHead, Shelf, SourceRow, Tile } from "data.slint";
 import { Button, NavItem, Pane } from "widgets.slint";
 import { HomePage } from "home.slint";
 import { LibraryPage } from "library.slint";
@@ -10,8 +10,9 @@ import { FindData, GridRow, GroupChip, ReleaseRow, SourceChip, Suggestion } from
 import { DownloadsPage } from "downloads.slint";
 import { AuthRow, EndpointRow, RepoData, RepoRow } from "repos.slint";
 import { Band, PickRow, PlayerData, PlayerPage } from "player.slint";
+import { NotesPage } from "notes.slint";
 
-export { AppData, AuthRow, Band, CheckRow, Day, DownloadRow, EpisodeLine, FindData, GridRow, GroupChip, Hero, PickRow, PlayerData, ReleaseRow, EndpointRow, RepoData, RepoRow, SeriesHead, Shelf, SourceChip, SourceRow, Suggestion, Tile }
+export { AppData, AuthRow, Band, CheckRow, Day, DownloadRow, EpisodeLine, FindData, GridRow, GroupChip, Hero, NoteLine, PickRow, PlayerData, ReleaseRow, EndpointRow, RepoData, RepoRow, SeriesHead, Shelf, SourceChip, SourceRow, Suggestion, Tile }
 
 // "Download over mobile data?": asked before Wi-Fi only goes off, from More or onboarding.
 // A sheet from the foot, the floating glass of the desktop's sheets.
@@ -101,7 +102,9 @@ export component AppWindow inherits Window {
     property <int> find-view: FindData.view;
     property <bool> series-shown: AppData.series-open;
     property <bool> player-shown: PlayerData.open;
+    property <bool> notes-shown: AppData.notes-open;
     changed find-view => { keys.focus(); }
+    changed notes-shown => { keys.focus(); }
     changed series-shown => { keys.focus(); }
     changed player-shown => { keys.focus(); }
 
@@ -128,6 +131,10 @@ export component AppWindow inherits Window {
             }
             if (PlayerData.open) {
                 PlayerData.back();
+                return accept;
+            }
+            if (AppData.notes-open) {
+                AppData.close-notes();
                 return accept;
             }
             if (Ask.mobile) {
@@ -216,6 +223,16 @@ export component AppWindow inherits Window {
         }
 
         if Ask.mobile: MobileDataQuestion {
+            inset-bottom: root.inset-bottom;
+        }
+
+        // What's new covers the pages and the bars, onboarding included.
+        if AppData.notes-open: NotesPage {
+            width: root.width;
+            height: root.height;
+            inset-left: root.inset-left;
+            inset-right: root.inset-right;
+            inset-top: root.inset-top;
             inset-bottom: root.inset-bottom;
         }
 

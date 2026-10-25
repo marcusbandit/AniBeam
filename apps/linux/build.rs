@@ -47,6 +47,7 @@ fn main() {
             .qml_file("qml/Menu.qml")
             .qml_file("qml/Tooltip.qml")
             .qml_file("qml/InlineConfirm.qml")
+            .qml_file("qml/WhatsNew.qml")
             .qml_file("qml/EmptyState.qml")
             .qml_file("qml/SectionHeader.qml")
             .qml_file("qml/PagePlaceholder.qml")
@@ -233,6 +234,7 @@ fn main() {
         "assets/icons/step-back.svg",
         "assets/icons/step-forward.svg",
         "assets/icons/sun.svg",
+        "assets/icons/thumbs-up.svg",
         "assets/icons/trash-2.svg",
         "assets/icons/trash.svg",
         "assets/icons/triangle-alert.svg",
