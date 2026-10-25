@@ -19,6 +19,9 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Add an endpoint by hand, such as 1337x through Jackett
 - Change an installed endpoint's token
 - Move episodes to the trash from a series page
+- Watching shows untouched for 60 days move to On hold on your tracker
+- Home shows On hold beside Continue; playing one puts it back on Watching
+- Settings, Library, Trackers sets the days, or turns the move off
 
 ### Fixed
 - Episodes watched on another device no longer count as on disk
