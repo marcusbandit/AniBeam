@@ -232,7 +232,11 @@ FocusScope {
             else if (name === "frame-drop-count") page.drops = Number(value || 0)
             else page.onObserved(name, value)
         }
-        MouseArea { anchors.fill: parent; onClicked: page.togglePause(); hoverEnabled: true; onPositionChanged: function(mouse) { page.pointerMoved(mapToItem(page, mouse.x, mouse.y)) }; cursorShape: page.chromeVisible ? Qt.ArrowCursor : Qt.BlankCursor }
+        // A click on the picture pauses, a double-click toggles fullscreen. The click waits out
+        // the double-click interval first, so a double-click never pauses at all: a pause is not
+        // free, it ticks the core and cancels a running auto-next countdown.
+        Timer { id: clickPause; interval: Qt.styleHints.mouseDoubleClickInterval; onTriggered: page.togglePause() }
+        MouseArea { anchors.fill: parent; onClicked: clickPause.restart(); onDoubleClicked: function() { clickPause.stop(); page.toggleFullscreen() }; hoverEnabled: true; onPositionChanged: function(mouse) { page.pointerMoved(mapToItem(page, mouse.x, mouse.y)) }; cursorShape: page.chromeVisible ? Qt.ArrowCursor : Qt.BlankCursor }
     }
     // The one place the track list is asked for rather than observed: the pick has to be
     // made before the first frame, and the observation for `track-list` may not have
