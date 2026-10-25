@@ -108,7 +108,23 @@ pub async fn fetch_and_write(
     // then draws a blank poster for the next few seconds is worse than a
     // match that takes those seconds to report.
     core.images.ensure(&urls).await;
+    reread_after_record(core, series).await;
     Ok(())
+}
+
+/// A record of specials or OVAs reads a series' numbered specials as its
+/// episodes, and any other record, or none, reads them as specials (#167).
+/// When the series' rows disagree with the record it has now, it is scanned.
+pub(crate) async fn reread_after_record(core: &Core, series: u64) {
+    let reread = core
+        .store
+        .write_async(move |c| crate::library::readings::record_matters(c, series))
+        .await
+        .unwrap_or(false);
+    if reread {
+        // A source that is away right now gets its scan when it is back.
+        let _ = crate::library::scan::rescan_series(core, series);
+    }
 }
 
 /// The series' match columns and nothing else: what `ApplyMatch` writes
@@ -168,6 +184,7 @@ pub async fn fetch_and_write_tvmaze(
         })
         .await?;
     core.images.ensure(&urls).await;
+    reread_after_record(core, series).await;
     Ok(())
 }
 

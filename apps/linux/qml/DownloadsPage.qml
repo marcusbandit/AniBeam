@@ -1393,6 +1393,13 @@ Item {
         pollTorrents()
         loadLibrary()
         if (props.query) { search.text = props.query; Qt.callLater(page.runSearch) }
+        // A series page's Get episodes (#169): straight to that show's view
+        if (props.series !== undefined && props.series !== null) page.openSeries(props.series)
+    }
+    function openSeries(id) {
+        var r = Door.getSeries(id)
+        if (r.error || !r.reply || !r.reply.detail) { frame.toast("That show is no longer in the library"); return }
+        page.openGet(page.showFromCard(r.reply.detail.card))
     }
 
     // ---- The geometry

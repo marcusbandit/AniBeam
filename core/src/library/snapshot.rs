@@ -87,6 +87,8 @@ pub struct FileRow {
     pub label: String,
     pub episode_key: String,
     pub sidecars: Vec<Sidecar>,
+    /// Read this way by the user's quick fix (#170), not by its name.
+    pub fixed: bool,
 }
 
 pub struct AiringRow {
@@ -450,7 +452,8 @@ impl Snapshot {
             None => String::new(),
         };
         let sql = format!(
-            "SELECT id, series_id, path, mtime, kind, number, season, extra_kind, extra_index, label, episode_key, sidecars
+            "SELECT id, series_id, path, mtime, kind, number, season, extra_kind, extra_index, label, episode_key, sidecars,
+                    EXISTS (SELECT 1 FROM file_fixes x WHERE x.path = files.path)
              FROM files{where_sql}
              ORDER BY series_id, season, number, path"
         );
@@ -474,6 +477,7 @@ impl Snapshot {
                 label: r.get(9)?,
                 episode_key: r.get(10)?,
                 sidecars: sidecars_of(&r.get::<_, String>(11)?),
+                fixed: r.get(12)?,
             })
         })?;
         for row in rows {

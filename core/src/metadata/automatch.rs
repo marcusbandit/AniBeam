@@ -490,6 +490,8 @@ pub fn clear_match(core: &Core, series: u64) -> Result<Reply, CoreError> {
         format!("match cleared: {title}"),
         EventBody::SeriesChanged { series: cards },
     );
+    // No record, no record rule: specials it read as episodes read as specials again.
+    crate::library::readings::reread_if_record_matters(core, series);
     Ok(Reply::Ok)
 }
 

@@ -14,6 +14,8 @@ use crate::contract::*;
 use crate::core::Core;
 use crate::jobs::{Finished, JobCtx};
 use crate::library::cards;
+use crate::library::history;
+use crate::library::readings;
 use crate::library::walk::{self, ScannedSeries};
 use crate::paths::{normalise, under};
 use crate::store::sql::placeholders;
@@ -154,6 +156,23 @@ pub enum ScanScope {
     Paths(Vec<String>),
 }
 
+/// A file row as it stood before this reconcile: what decides whether its
+/// series changed, and where its history sits.
+struct OldRow {
+    id: u64,
+    mtime: i64,
+    /// kind, number, season, extra kind, extra index, label
+    reading: (
+        String,
+        Option<f64>,
+        Option<u32>,
+        Option<String>,
+        Option<u32>,
+        String,
+    ),
+    key: String,
+}
+
 #[derive(Default, Debug)]
 pub struct Reconciled {
     pub added: Vec<u64>,
@@ -202,6 +221,8 @@ pub fn reconcile_source(
         }
     }
 
+    // What the user said files are (#170), by path; few, so read once.
+    let fixes = readings::load_fixes(tx)?;
     let mut seen: HashSet<u64> = HashSet::new();
     // Series that lost a file to another one during this reconcile. A file
     // changes series without moving on disk whenever the walk reclassifies
@@ -227,15 +248,33 @@ pub fn reconcile_source(
             }
         };
         seen.insert(id);
+        // The names as the walk read them, then what the series' own record
+        // and the user's fixes say they are (`readings`).
+        let mut files = s.files.clone();
+        let format = readings::record_format(tx, id)?;
+        readings::apply(format.as_deref(), &mut files, &fixes);
 
-        let mut old: HashMap<String, (u64, i64)> = HashMap::new();
+        let mut old: HashMap<String, OldRow> = HashMap::new();
         {
-            let mut stmt =
-                tx.prepare_cached("SELECT id, path, mtime FROM files WHERE series_id = ?1")?;
+            let mut stmt = tx.prepare_cached(
+                "SELECT id, path, mtime, kind, number, season, extra_kind, extra_index, label, episode_key FROM files WHERE series_id = ?1",
+            )?;
             let rows = stmt.query_map(params![id as i64], |r| {
                 Ok((
                     r.get::<_, String>(1)?,
-                    (r.get::<_, i64>(0)? as u64, r.get::<_, i64>(2)?),
+                    OldRow {
+                        id: r.get::<_, i64>(0)? as u64,
+                        mtime: r.get(2)?,
+                        reading: (
+                            r.get(3)?,
+                            r.get(4)?,
+                            r.get::<_, Option<i64>>(5)?.map(|v| v as u32),
+                            r.get(6)?,
+                            r.get::<_, Option<i64>>(7)?.map(|v| v as u32),
+                            r.get(8)?,
+                        ),
+                        key: r.get(9)?,
+                    },
                 ))
             })?;
             for row in rows {
@@ -245,14 +284,17 @@ pub fn reconcile_source(
         }
 
         let mut file_changed = false;
-        let new_paths: HashSet<&str> = s.files.iter().map(|f| f.path.as_str()).collect();
-        for (path, (file_id, _)) in &old {
+        // Files whose key changed: their history follows them once every row
+        // carries its new key.
+        let mut moves: Vec<history::Move> = Vec::new();
+        let new_paths: HashSet<&str> = files.iter().map(|f| f.path.as_str()).collect();
+        for (path, row) in &old {
             if !new_paths.contains(path.as_str()) {
-                tx.execute("DELETE FROM files WHERE id = ?1", params![*file_id as i64])?;
+                tx.execute("DELETE FROM files WHERE id = ?1", params![row.id as i64])?;
                 file_changed = true;
             }
         }
-        for f in &s.files {
+        for f in &files {
             let kind = if f.classified.extra.is_some() {
                 "extra"
             } else {
@@ -260,9 +302,26 @@ pub fn reconcile_source(
             };
             let sidecars = serde_json::to_string(&f.sidecars)?;
             match old.get(&f.path) {
-                Some((file_id, mtime)) => {
-                    if *mtime != f.mtime {
+                Some(row) => {
+                    let file_id = &row.id;
+                    // A new reading changes the page as surely as a new file.
+                    let reading = (
+                        kind.to_string(),
+                        episode_number(f),
+                        f.classified.season,
+                        f.classified.extra.map(|k| k.as_str().to_string()),
+                        f.classified.extra_index,
+                        f.label.clone(),
+                    );
+                    if row.mtime != f.mtime || row.reading != reading || row.key != f.episode_key {
                         file_changed = true;
+                    }
+                    if row.key != f.episode_key {
+                        moves.push(history::Move {
+                            file: row.id,
+                            from: row.key.clone(),
+                            to: f.episode_key.clone(),
+                        });
                     }
                     tx.execute(
                         "UPDATE files SET size = ?2, mtime = ?3, kind = ?4, number = ?5, season = ?6, extra_kind = ?7, extra_index = ?8, label = ?9, episode_key = ?10, sidecars = ?11, seen_at = ?12 WHERE id = ?1",
@@ -317,6 +376,7 @@ pub fn reconcile_source(
                 }
             }
         }
+        history::follow(tx, id, &moves)?;
 
         if is_new {
             out.added.push(id);
@@ -1180,6 +1240,101 @@ mod tests {
             .unwrap();
         assert_eq!(rows, 1);
         assert_eq!(owner as u64, r.added[0]);
+        store.close();
+    }
+
+    /// The Girls und Panzer OVA folder as the walk reads it: `OVA n` names,
+    /// numbered specials by name (#167).
+    fn ova_folder() -> ScannedSeries {
+        let files = (1..=2)
+            .map(|n| {
+                let name = format!("Girls und Panzer - OVA {n} [BD 1080p].mkv");
+                let classified = crate::library::classifier::classify(&name);
+                walk::ScannedFile {
+                    path: format!("/lib/GuP/{name}"),
+                    size: 1,
+                    mtime: 1,
+                    episode_key: crate::library::classifier::episode_key(&classified, &name),
+                    label: "Special".to_string(),
+                    classified,
+                    sidecars: Vec::new(),
+                }
+            })
+            .collect();
+        ScannedSeries {
+            kind: SeriesKind::Show,
+            path: "/lib/GuP".into(),
+            name: "GuP".into(),
+            season_hint: None,
+            part_hint: None,
+            files,
+        }
+    }
+
+    /// A record of OVAs landing turns the series' numbered specials into its
+    /// episodes on the next reconcile: the series counts as changed though no
+    /// file moved, and what was watched as a special follows it to its new key.
+    #[test]
+    fn a_record_reading_moves_the_history_and_counts_as_a_change() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(&dir.path().join("anibeam.db")).unwrap();
+        let series = store
+            .tx(|tx| {
+                tx.execute(
+                    "INSERT INTO sources (path, available, added_at) VALUES ('/lib', 1, 0)",
+                    [],
+                )?;
+                let r = reconcile_source(tx, 1, &[ova_folder()], None, 10)?;
+                Ok(r.added[0])
+            })
+            .unwrap();
+        let first = "Girls und Panzer - OVA 1 [BD 1080p].mkv";
+        store
+            .tx(move |tx| {
+                tx.execute(
+                    "INSERT INTO completed (series_id, episode_key, at) VALUES (?1, ?2, 5)",
+                    params![series as i64, first],
+                )?;
+                tx.execute(
+                    "INSERT INTO anilist_media (id, format, episodes) VALUES (15811, 'OVA', 2)",
+                    [],
+                )?;
+                tx.execute(
+                    "UPDATE series SET provider = 'anilist', anilist_id = 15811 WHERE id = ?1",
+                    params![series as i64],
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        let r = store
+            .tx(|tx| reconcile_source(tx, 1, &[ova_folder()], None, 20))
+            .unwrap();
+        assert_eq!(r.changed, vec![series]);
+        let (kinds, completed): (Vec<(String, String)>, String) = store
+            .read(|c| {
+                let mut stmt = c.prepare("SELECT kind, episode_key FROM files ORDER BY path")?;
+                let kinds = stmt
+                    .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok((
+                    kinds,
+                    c.query_row("SELECT episode_key FROM completed", [], |r| r.get(0))?,
+                ))
+            })
+            .unwrap();
+        assert_eq!(
+            kinds,
+            vec![
+                ("episode".into(), "1".into()),
+                ("episode".into(), "2".into())
+            ]
+        );
+        assert_eq!(completed, "1");
+        // A reconcile with nothing new to say says nothing.
+        let r = store
+            .tx(|tx| reconcile_source(tx, 1, &[ova_folder()], None, 30))
+            .unwrap();
+        assert!(r.changed.is_empty());
         store.close();
     }
 

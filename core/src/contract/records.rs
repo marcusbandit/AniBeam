@@ -232,6 +232,9 @@ pub struct Episode {
     /// tracked online, `l` watched here and not tracked yet, `d` on disk.
     #[serde(default)]
     pub cube: String,
+    /// Read this way because the user said so (`FixFiles`), not by its name.
+    #[serde(default)]
+    pub fixed: bool,
 }
 
 /// An episode that has aired and has no file, and the tracker does not
@@ -268,6 +271,50 @@ pub struct Extra {
     pub path: String,
     pub sidecars: Vec<Sidecar>,
     pub resume: Option<ResumePoint>,
+    /// The extra's own index, `1` in `OP1`; None without one.
+    #[serde(default)]
+    pub index: Option<u32>,
+    /// As `Episode::fixed`.
+    #[serde(default)]
+    pub fixed: bool,
+}
+
+/// What a file is, as the user says it (#170): an episode with its number and
+/// season, or an extra of a kind with its index. `FixFiles` stores it against
+/// the file's path, and every scan after reads the file this way.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Enum)]
+pub enum FileReading {
+    Episode { number: f64, season: Option<u32> },
+    Extra { kind: ExtraKind, index: Option<u32> },
+}
+
+/// One file's fix. `reading` None hands the file back to the scan's own
+/// reading of its name.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct FileFix {
+    pub file: u64,
+    pub reading: Option<FileReading>,
+}
+
+/// A misreading the series page can see on its own, said in one sentence,
+/// and the fixes that would undo it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct SuggestedFix {
+    pub text: String,
+    pub fixes: Vec<FileFix>,
+}
+
+/// A filled in GitHub issue for a quick fix (`ReportFix`): the page to open,
+/// and whose triage it carries when a coding agent ran one.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct FixReport {
+    pub url: String,
+    pub title: String,
+    pub body: String,
+    /// `Claude Code` or `Codex` when its triage is in the body.
+    pub triaged_by: Option<String>,
+    /// Why an agent that was found wrote no triage: it failed or ran out of time.
+    pub triage_error: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
@@ -295,6 +342,9 @@ pub struct SeriesDetail {
     pub characters: Vec<Person>,
     pub recommendations: Vec<Recommendation>,
     pub has_graph: bool,
+    /// A misreading of this series' files the core can see, with its fix.
+    #[serde(default)]
+    pub suggested_fix: Option<SuggestedFix>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Enum)]

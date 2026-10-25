@@ -114,6 +114,14 @@ _Avoid_: secrets, credentials, settings
 The job that merges an export into the library. The file wins for matches, flags, accounts and preferences; the newer timestamp wins for history; nothing is deleted.
 _Avoid_: restore, load, sync
 
+**Reading**:
+What the core takes a file to be: an episode with its number and season, or an extra (an opening, ending, preview, special or other) with its index. The scan reads it from the file's name, then from the series' own record, where a run of specials or OVAs reads its numbered specials as its episodes, then from any quick fix.
+_Avoid_: classification, label, parse
+
+**Quick fix**:
+The user saying what a file's reading should be when its name read wrong. It is stored by the file's path, so it outlives every scan, and the file's history follows it to its new key. The series page offers one by itself when it sees a likely misreading, and applying one can file it as a GitHub issue, triaged first by Claude Code or Codex when one is installed.
+_Avoid_: override, correction, remap, manual match
+
 ### Look
 
 **Token**:

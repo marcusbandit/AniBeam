@@ -8,6 +8,9 @@
 // foot, and does nothing when clicked: it is on disk but not whole, so it never plays. An
 // absent episode (aired, no file) names its state beside the title and never plays either,
 // and nor does one still to come, which shows its date, or its predicted date, at the right.
+// With `gettable` set, an absent row reads "Get episode" on hover and a click asks for it
+// (#169). While the page picks files to delete, the cube gives way to the phone's circle,
+// filled red once picked, and a click on the row or the circle picks (#168).
 import QtQuick
 import com.marcusrosado.AniBeam
 
@@ -20,16 +23,21 @@ Corner {
     property string detailText: ""
     signal play()
     signal marker()
-    // Picking episodes to delete: a click picks this one instead of playing it.
+    // Picking files to delete: a click picks this one instead of playing it.
     property bool picking: false
     property bool picked: false
     signal pick()
+    // An absent episode that a click goes and gets (the Downloads show view)
+    property bool gettable: false
+    signal download()
+    readonly property bool getting: gettable && absent && !picking
     width: parent ? parent.width : implicitWidth
     height: Math.max(theme.space(10), words.implicitHeight + theme.space(3))
     radius: theme.radiusMd
     smoothing: theme.cornerSmoothing
     color: picked ? theme.redSoft
          : picking ? (hover.containsMouse && playable ? theme.tile : "transparent")
+         : getting && hover.containsMouse ? theme.tile
          : nextUp ? (hover.containsMouse ? theme.raised : theme.tile) : hover.containsMouse && playable ? theme.tile : "transparent"
     opacity: picking && !playable ? 0.45 : 1
 
@@ -61,7 +69,16 @@ Corner {
         : upcoming ? Qt.formatDate(new Date(episode.air_date * 1000), "ddd d MMM")
         : Qt.formatDate(new Date(episode.air_date * 1000), "d MMM yyyy")
 
-    MouseArea { id: hover; anchors.fill: parent; hoverEnabled: true; cursorShape: root.playable ? Qt.PointingHandCursor : Qt.ArrowCursor; onClicked: if (root.playable) { if (root.picking) root.pick(); else root.play() } }
+    MouseArea {
+        id: hover
+        anchors.fill: parent
+        hoverEnabled: true
+        cursorShape: root.playable || root.getting ? Qt.PointingHandCursor : Qt.ArrowCursor
+        onClicked: {
+            if (root.playable) { if (root.picking) root.pick(); else root.play() }
+            else if (root.getting) root.download()
+        }
+    }
 
     Row {
         id: line
@@ -74,8 +91,21 @@ Corner {
             id: mark
             anchors.verticalCenter: parent.verticalCenter
             width: theme.space(5); height: width
+            // While picking, the phone's circle: filled red once picked
+            Rectangle {
+                objectName: "episode-pick"
+                visible: root.picking && root.playable
+                anchors.centerIn: parent
+                width: theme.space(4.5); height: width
+                radius: width / 2
+                color: root.picked ? theme.red : "transparent"
+                border.width: root.picked ? 0 : 1.5
+                border.color: markHover.containsMouse || hover.containsMouse ? theme.textDim : theme.lineStrong
+                Icon { visible: root.picked; anchors.centerIn: parent; glyph: "check"; size: theme.space(3); color: theme.contrast(theme.red, Qt.rgba(1, 1, 1, 1)) >= 4.5 ? "#ffffff" : "#0d0e11" }
+            }
             Rectangle {
                 objectName: "episode-cube"
+                visible: !(root.picking && root.playable)
                 anchors.centerIn: parent
                 width: theme.space(3.5); height: width
                 radius: Math.max(1, width * 0.3)
@@ -86,8 +116,17 @@ Corner {
                 Behavior on scale { enabled: !theme.reducedMotion; NumberAnimation { duration: theme.motionFast } }
                 Behavior on color { enabled: !theme.reducedMotion; ColorAnimation { duration: theme.motionFast } }
             }
-            MouseArea { id: markHover; anchors.fill: parent; anchors.margins: -theme.space(1); hoverEnabled: true; cursorShape: root.trackable ? Qt.PointingHandCursor : Qt.ArrowCursor; onClicked: if (root.trackable) root.marker() }
-            Tooltip { text: root.cubeState.label + (root.trackable ? (root.watched ? ". Click to untrack to here" : ". Click to track to here") : "") }
+            MouseArea {
+                id: markHover
+                anchors.fill: parent; anchors.margins: -theme.space(1)
+                hoverEnabled: true
+                cursorShape: root.trackable || (root.picking && root.playable) ? Qt.PointingHandCursor : Qt.ArrowCursor
+                onClicked: {
+                    if (root.picking) { if (root.playable) root.pick() }
+                    else if (root.trackable) root.marker()
+                }
+            }
+            Tooltip { text: root.picking ? "" : root.cubeState.label + (root.trackable ? (root.watched ? ". Click to untrack to here" : ". Click to track to here") : "") }
         }
         Label {
             id: code
@@ -131,11 +170,11 @@ Corner {
                     }
                     Label {
                         objectName: "episode-absent"
-                        visible: root.absent && !root.watched
+                        visible: root.absent && (!root.watched || (root.getting && hover.containsMouse))
                         anchors.verticalCenter: parent.verticalCenter
-                        text: root.cubeState.label
+                        text: root.getting && hover.containsMouse ? "Get episode" : root.cubeState.label
                         role: "ledger"
-                        color: root.cube === "m" ? root.cubeState.fill : theme.textFaint
+                        color: root.getting && hover.containsMouse ? theme.accent : root.cube === "m" ? root.cubeState.fill : theme.textFaint
                     }
                     Label {
                         objectName: "episode-predicted"
