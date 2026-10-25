@@ -63,6 +63,9 @@ pub struct MediaRow {
     /// or day with 01); TVmaze's `premiered` on the show path.
     pub start_date: Option<String>,
     pub episodes: Option<u32>,
+    /// Minutes an episode runs (a film's runtime): AniList's `duration`,
+    /// TVmaze's `averageRuntime` on the show path.
+    pub duration: Option<u32>,
     pub description: Option<String>,
     pub average_score: Option<u32>,
     pub genres: Vec<String>,
@@ -180,9 +183,10 @@ fn json_value(raw: &str) -> Value {
 }
 
 /// A TVmaze show read into the media row every reader already draws:
-/// columns 35 to 45 of the series query. TVmaze's own status becomes the
-/// AniList word for it, its 0 to 10 rating the 0 to 100 the row stores,
-/// and its network the studio.
+/// columns 35 to 45 and 49 of the series query. TVmaze's own status
+/// becomes the AniList word for it, its 0 to 10 rating the 0 to 100 the
+/// row stores, its network the studio and its average runtime the
+/// duration.
 fn show_media(r: &rusqlite::Row) -> rusqlite::Result<MediaRow> {
     let status: Option<String> = r.get(37)?;
     let premiered: Option<String> = r.get(38)?;
@@ -201,6 +205,9 @@ fn show_media(r: &rusqlite::Row) -> rusqlite::Result<MediaRow> {
         season: None,
         start_date: premiered,
         episodes: None,
+        duration: r
+            .get::<_, Option<i64>>(49)?
+            .and_then(|v| u32::try_from(v).ok()),
         description: r.get(42)?,
         average_score: rating
             .filter(|v| v.is_finite() && *v >= 0.0)
@@ -355,7 +362,8 @@ impl Snapshot {
                     m.description, m.average_score, m.genres, m.studio, m.tags, m.characters, m.site_url,
                     m.cover_url, m.banner_url, ip.path, ib.path,
                     s.tvmaze_id, t.id, t.name, t.status, t.premiered, t.rating, t.genres, t.network, t.summary,
-                    t.url, t.poster_url, t.background_url, m.season, m.start_date
+                    t.url, t.poster_url, t.background_url, m.season, m.start_date, m.duration,
+                    t.average_runtime
              FROM series s
              LEFT JOIN anilist_media m ON m.id = s.anilist_id
              LEFT JOIN tvmaze_shows t ON t.id = s.tvmaze_id AND s.provider = 'tvmaze'
@@ -392,6 +400,9 @@ impl Snapshot {
                     season: r.get(46)?,
                     start_date: r.get(47)?,
                     episodes: r.get::<_, Option<i64>>(22)?.map(|v| v as u32),
+                    duration: r
+                        .get::<_, Option<i64>>(48)?
+                        .and_then(|v| u32::try_from(v).ok()),
                     description: r.get(23)?,
                     average_score: r.get::<_, Option<i64>>(24)?.map(|v| v as u32),
                     genres: json_strings(&r.get::<_, String>(25)?),

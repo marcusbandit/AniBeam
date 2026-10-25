@@ -29,6 +29,9 @@ pub mod qobject {
         fn clock_ms(self: &Fmt, secs: f64) -> QString;
         #[qinvokable]
         fn bytes(self: &Fmt, n: f64) -> QString;
+        /// "24 min", "1 h 52 min" or "2 h"; an unknown length (0, negative, NaN) reads empty.
+        #[qinvokable]
+        fn runtime(self: &Fmt, minutes: f64) -> QString;
         #[qinvokable]
         fn plural(self: &Fmt, n: f64, one: &QString, many: &QString) -> QString;
         /// `watched` and `total` are -1 for none.
@@ -70,6 +73,12 @@ impl qobject::Fmt {
     }
     pub fn bytes(&self, n: f64) -> QString {
         QString::from(&crate::format::bytes(n.max(0.0) as u64))
+    }
+    pub fn runtime(&self, minutes: f64) -> QString {
+        if minutes.is_nan() || minutes < 0.5 {
+            return QString::default();
+        }
+        QString::from(&crate::format::runtime(minutes.round() as u32))
     }
     pub fn plural(&self, n: f64, one: &QString, many: &QString) -> QString {
         QString::from(&crate::format::plural(

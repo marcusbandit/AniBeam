@@ -467,6 +467,56 @@ fn refresh_refuses_an_unmatched_series_and_refetches_a_matched_one() {
     core.shutdown();
 }
 
+/// The page says how long an episode runs, read off the AniList record the
+/// match fetched. A record with no figure, or a 0, says nothing.
+#[test]
+fn the_detail_carries_how_long_an_episode_runs() {
+    let http = anibeam_core::net::FakeHttp::new();
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let src = fixtures::insert_source(&core, "/lib");
+    let series = fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Frieren", "Frieren");
+    let minutes = |core: &Core| match core.call(Call::GetSeries { series }).unwrap() {
+        Reply::SeriesDetail { detail } => detail.episode_minutes,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(minutes(&core), None, "unmatched");
+
+    // No MAL id and no cover, so each fetch is the three AniList calls.
+    let fetch = |duration: serde_json::Value| {
+        let mut media = media_json(3, "Sousou no Frieren", None, false);
+        media["duration"] = duration;
+        http.push_json(200, serde_json::json!({ "data": { "Media": media } }));
+        http.push_json(200, bare_enrichment(3, None));
+        http.push_json(200, empty_schedule(3));
+    };
+
+    fetch(serde_json::json!(24));
+    let job = started(
+        &core,
+        Call::ApplyMatch {
+            series,
+            target: MatchTarget::Anilist {
+                id: 3,
+                season: None,
+            },
+        },
+    );
+    assert_eq!(common::wait_job(&c, job).level, Level::Info);
+    assert_eq!(minutes(&core), Some(24));
+
+    fetch(serde_json::Value::Null);
+    let job = started(&core, Call::RefreshSeries { series });
+    assert_eq!(common::wait_job(&c, job).level, Level::Info);
+    assert_eq!(minutes(&core), None, "a null duration");
+
+    fetch(serde_json::json!(0));
+    let job = started(&core, Call::RefreshSeries { series });
+    assert_eq!(common::wait_job(&c, job).level, Level::Info);
+    assert_eq!(minutes(&core), None, "a 0 duration is unknown, not nought");
+
+    core.shutdown();
+}
+
 /// A MAL id AniList has never heard of is still a match the user asked
 /// for: it is written MAL-only, titled by the folder, with no record and
 /// no poster behind it, and the auto-match leaves it alone.
