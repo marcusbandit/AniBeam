@@ -283,7 +283,13 @@ mod tests {
     #[test]
     fn the_settings_url_is_absolute_and_escaped() {
         let url = super::settings_url(std::path::Path::new("/tmp/a #b?c%d/anibeam")).to_string();
-        assert_eq!(url, "file:///tmp/a%20%23b%3Fc%25d/anibeam/shell.conf");
+        // Windows puts the current drive in front: file:///D:/tmp/...
+        let tail = "/tmp/a%20%23b%3Fc%25d/anibeam/shell.conf";
+        if cfg!(windows) {
+            assert!(url.starts_with("file:///") && url.ends_with(tail), "{url}");
+        } else {
+            assert_eq!(url, format!("file://{tail}"));
+        }
         let relative = super::settings_url(std::path::Path::new("rel/anibeam")).to_string();
         let cwd = std::env::current_dir().unwrap();
         assert!(relative.starts_with("file:///"), "{relative}");

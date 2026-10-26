@@ -347,7 +347,7 @@ mod tests {
         let first = tone(&p);
         assert_eq!(first.len(), 7);
         assert_eq!(
-            tone(&format!("file://{p}")),
+            tone(&file_url(&p, cfg!(windows))),
             first,
             "a URL reads the same file"
         );
