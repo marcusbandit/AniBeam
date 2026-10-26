@@ -180,7 +180,7 @@ Column {
                     id: posterImage
                     visible: false
                     anchors.fill: parent
-                    source: root.show && root.show.poster ? "file://" + root.show.poster : ""
+                    source: root.show && root.show.poster ? Fmt.fileUrl(root.show.poster) : ""
                     sourceSize: Qt.size(theme.posterDecodeSize.width * 2, theme.posterDecodeSize.height * 2)
                     fillMode: Image.PreserveAspectCrop
                     smooth: true

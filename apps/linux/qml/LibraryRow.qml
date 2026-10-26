@@ -47,7 +47,7 @@ Item {
                 id: poster
                 visible: false
                 width: thumb.width; height: thumb.height
-                source: root.item.poster ? "file://" + root.item.poster : ""
+                source: root.item.poster ? Fmt.fileUrl(root.item.poster) : ""
                 sourceSize: theme.posterDecodeSize
                 fillMode: Image.PreserveAspectCrop
                 smooth: true

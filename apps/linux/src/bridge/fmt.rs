@@ -2,6 +2,7 @@
 //! except `posterTone`, which reads (and caches) a poster's average colour.
 
 use cxx_qt_lib::{QColor, QString};
+use percent_encoding::{AsciiSet, CONTROLS, percent_decode_str, utf8_percent_encode};
 
 #[cxx_qt::bridge]
 pub mod qobject {
@@ -49,6 +50,14 @@ pub mod qobject {
         /// path or a file:// URL.
         #[qinvokable]
         fn poster_tone(self: &Fmt, path: &QString) -> QString;
+        /// The URL of a local path for an Image source or openLink, "" for "". A value that
+        /// already carries a scheme (file:, qrc:, http:, https:, image:) comes back as given.
+        #[qinvokable]
+        fn file_url(self: &Fmt, path: &QString) -> QString;
+        /// The local path of a file URL, percent-decoded; anything that is not a file URL
+        /// comes back as given.
+        #[qinvokable]
+        fn local_path(self: &Fmt, url: &QString) -> QString;
     }
 }
 
@@ -111,16 +120,79 @@ impl qobject::Fmt {
     pub fn poster_tone(&self, path: &QString) -> QString {
         QString::from(&tone(&path.to_string()))
     }
+    pub fn file_url(&self, path: &QString) -> QString {
+        QString::from(&file_url(&path.to_string(), cfg!(windows)))
+    }
+    pub fn local_path(&self, url: &QString) -> QString {
+        QString::from(&local_path(&url.to_string(), cfg!(windows)))
+    }
+}
+
+/// The characters a URL would read as syntax inside a path: `%`, `#` and `?`. Spaces and
+/// non-ASCII stay as they are, which is how QML has always been handed these paths.
+const URL_PATH: &AsciiSet = &CONTROLS.add(b'%').add(b'#').add(b'?');
+
+const SCHEMES: [&str; 5] = ["file:", "qrc:", "http:", "https:", "image:"];
+
+/// A local path as a URL. `windows` turns backslashes into slashes and puts a drive path
+/// under `file:///`; a `\\host\share` path becomes `file://host/share`.
+fn file_url(path: &str, windows: bool) -> String {
+    if path.is_empty() || SCHEMES.iter().any(|s| path.starts_with(s)) {
+        return path.to_string();
+    }
+    let path = if windows {
+        path.replace('\\', "/")
+    } else {
+        path.to_string()
+    };
+    let enc = |p: &str| utf8_percent_encode(p, URL_PATH).to_string();
+    if windows && path.starts_with("//") {
+        format!("file:{}", enc(&path))
+    } else if path.starts_with('/') {
+        format!("file://{}", enc(&path))
+    } else {
+        format!("file:///{}", enc(&path))
+    }
+}
+
+/// The local path of a `file:` URL. `windows` drops the slash before a drive letter.
+fn local_path(url: &str, windows: bool) -> String {
+    let Some(rest) = url.strip_prefix("file:") else {
+        return url.to_string();
+    };
+    let decode = |p: &str| percent_decode_str(p).decode_utf8_lossy().into_owned();
+    let Some(after) = rest.strip_prefix("//") else {
+        return decode(rest);
+    };
+    // file://host/path: an empty or "localhost" host is this machine
+    let (host, path) = match after.find('/') {
+        Some(i) => after.split_at(i),
+        None => (after, ""),
+    };
+    let path = decode(path);
+    if !host.is_empty() && host != "localhost" {
+        return format!("//{host}{path}");
+    }
+    let bytes = path.as_bytes();
+    if windows
+        && bytes.len() >= 3
+        && bytes[0] == b'/'
+        && bytes[1].is_ascii_alphabetic()
+        && bytes[2] == b':'
+    {
+        return path[1..].to_string();
+    }
+    path
 }
 
 /// The poster tone of a path or file:// URL as "#rrggbb", "" when there is none.
 fn tone(path: &str) -> String {
-    let path = path.strip_prefix("file://").unwrap_or(path);
+    let path = local_path(path, cfg!(windows));
     if path.is_empty() {
         return String::new();
     }
     hex(&crate::bridge::helpers::ffi::poster_tone(&QString::from(
-        path,
+        path.as_str(),
     )))
 }
 
@@ -133,7 +205,80 @@ fn hex(c: &QColor) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::tone;
+    use super::{file_url, local_path, tone};
+
+    #[test]
+    fn file_url_by_platform() {
+        assert_eq!(file_url("", false), "");
+        assert_eq!(file_url("/home/x/a b.jpg", false), "file:///home/x/a b.jpg");
+        assert_eq!(file_url("/a/#b/c?.png", false), "file:///a/%23b/c%3F.png");
+        assert_eq!(file_url("/a/100%.png", false), "file:///a/100%25.png");
+        assert_eq!(file_url("/home/x\\y", false), "file:///home/x\\y");
+        assert_eq!(
+            file_url("C:\\Users\\x\\AppData\\a.jpg", true),
+            "file:///C:/Users/x/AppData/a.jpg"
+        );
+        assert_eq!(file_url("C:/lib/Show", true), "file:///C:/lib/Show");
+        assert_eq!(
+            file_url("\\\\nas\\share\\a.jpg", true),
+            "file://nas/share/a.jpg"
+        );
+        assert_eq!(
+            file_url("C:\\lib\\a #1.jpg", true),
+            "file:///C:/lib/a %231.jpg"
+        );
+    }
+
+    #[test]
+    fn file_url_passes_urls_through() {
+        for u in [
+            "file:///C:/x.jpg",
+            "qrc:/a.png",
+            "http://h/a.jpg",
+            "https://h/a.jpg",
+            "image://thumb/1",
+        ] {
+            assert_eq!(file_url(u, true), u);
+            assert_eq!(file_url(u, false), u);
+        }
+    }
+
+    #[test]
+    fn local_path_by_platform() {
+        assert_eq!(local_path("file:///home/x", false), "/home/x");
+        assert_eq!(local_path("file:///C:/lib", true), "C:/lib");
+        assert_eq!(local_path("file:///C:/lib", false), "/C:/lib");
+        assert_eq!(local_path("file:///a/b%20c%23d", false), "/a/b c#d");
+        assert_eq!(
+            local_path("file:///C:/My%20Anime/%E3%81%82", true),
+            "C:/My Anime/\u{3042}"
+        );
+        assert_eq!(local_path("file://localhost/home/x", false), "/home/x");
+        assert_eq!(local_path("file://nas/share/a", true), "//nas/share/a");
+        assert_eq!(local_path("file:/home/x", false), "/home/x");
+        assert_eq!(local_path("/plain/100%20path", false), "/plain/100%20path");
+        assert_eq!(local_path("C:\\plain", true), "C:\\plain");
+        assert_eq!(local_path("", true), "");
+    }
+
+    #[test]
+    fn local_path_inverts_file_url() {
+        for (p, w) in [
+            ("/a/#b/c?.png", false),
+            ("/x/100%/y z.jpg", false),
+            ("C:\\a #\\b%.jpg", true),
+        ] {
+            let back = local_path(&file_url(p, w), w);
+            assert_eq!(
+                back,
+                if w {
+                    p.replace('\\', "/")
+                } else {
+                    p.to_string()
+                }
+            );
+        }
+    }
 
     /// A binary PPM (Qt reads it with no plugin): `w` x `h`, pixel (x, y) from `at`.
     fn ppm(

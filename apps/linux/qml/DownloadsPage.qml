@@ -248,7 +248,7 @@ Item {
     property bool getActing: false
     property string getLine: ""
     property string getError: ""
-    function lastPart(p) { var f = String(p || "").replace(/\/+$/, ""); var i = f.lastIndexOf("/"); return i >= 0 ? f.slice(i + 1) : f }
+    function lastPart(p) { var f = String(p || "").replace(/[\\/]+$/, ""); var i = Math.max(f.lastIndexOf("/"), f.lastIndexOf("\\")); return i >= 0 ? f.slice(i + 1) : f }
     // The torrents that fill a show: linked to its series, or saved under a folder named
     // as it is (a show not scanned into the library yet)
     function keyOf(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "") }
@@ -755,8 +755,8 @@ Item {
 
     // ---- Folders and shows. A torrent and a rule meet on the series their folder fills,
     // or on the folder itself when the library has no series for it.
-    function folderOf(path) { return String(path || "").replace(/\/+$/, "") }
-    function lastName(path) { var f = folderOf(path); var i = f.lastIndexOf("/"); return i >= 0 ? f.slice(i + 1) : f }
+    function folderOf(path) { return String(path || "").replace(/[\\/]+$/, "") }
+    function lastName(path) { var f = folderOf(path); var i = Math.max(f.lastIndexOf("/"), f.lastIndexOf("\\")); return i >= 0 ? f.slice(i + 1) : f }
     function torrentKey(t) { return t.series_id !== null && t.series_id !== undefined ? "s" + t.series_id : "p" + folderOf(t.save_path) }
     function ruleKey(r) { return r.show ? "s" + r.show.series_id : "p" + folderOf(r.save_path) }
     function titleOf(r) { return r.show ? r.show.title : r.name }
@@ -1622,7 +1622,7 @@ Item {
                                 id: sImage
                                 visible: false
                                 anchors.fill: parent
-                                source: srow.c ? (srow.c.poster ? "file://" + srow.c.poster : "") : (srow.h && srow.h.cover_url ? srow.h.cover_url : "")
+                                source: srow.c ? (srow.c.poster ? Fmt.fileUrl(srow.c.poster) : "") : (srow.h && srow.h.cover_url ? srow.h.cover_url : "")
                                 sourceSize: Qt.size(96, 140)
                                 fillMode: Image.PreserveAspectCrop
                                 asynchronous: true
@@ -1861,7 +1861,7 @@ Item {
                         id: stripImage
                         visible: false
                         anchors.fill: parent
-                        source: page.searchShow && page.searchShow.poster ? "file://" + page.searchShow.poster : ""
+                        source: page.searchShow && page.searchShow.poster ? Fmt.fileUrl(page.searchShow.poster) : ""
                         sourceSize: theme.posterDecodeSize
                         fillMode: Image.PreserveAspectCrop
                         asynchronous: true
@@ -2201,7 +2201,7 @@ Item {
                                 id: gapImage
                                 visible: false
                                 anchors.fill: parent
-                                source: gap.modelData.poster ? "file://" + gap.modelData.poster : ""
+                                source: gap.modelData.poster ? Fmt.fileUrl(gap.modelData.poster) : ""
                                 sourceSize: Qt.size(160, 232)
                                 fillMode: Image.PreserveAspectCrop
                                 asynchronous: true

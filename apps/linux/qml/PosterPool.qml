@@ -17,7 +17,7 @@ Item {
     visible: false
 
     Repeater {
-        model: root.paths.slice(0, root.capacity).map(function(p) { return "file://" + p })
+        model: root.paths.slice(0, root.capacity).map(function(p) { return Fmt.fileUrl(p) })
         Image {
             required property var modelData
             source: modelData

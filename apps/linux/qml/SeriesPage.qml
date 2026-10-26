@@ -111,7 +111,7 @@ Item {
     // The quick fix (#170): every file on the page as the sheet lists them, by name
     function fixRows() {
         if (!detail) return []
-        function name(path) { return String(path || "").split("/").pop() }
+        function name(path) { return String(path || "").split(/[\\/]/).pop() }
         function season(e) { return e.season === undefined ? null : e.season }
         var rows = detail.episodes.concat(detail.unmatched_files).map(function(e) {
             return { file: e.file, name: name(e.path), reading: { Episode: { number: e.number, season: season(e) } }, fixed: !!e.fixed }
@@ -307,7 +307,7 @@ Item {
     // both modes; the ink accent is the tone lifted toward white (HomePage's hero). Both
     // are contrast-checked (Tokens.bandBase, bandAccent), so a bright teal poster still
     // reads.
-    PosterTone { id: toneOf; source: card.poster ? "file://" + card.poster : "" }
+    PosterTone { id: toneOf; source: card.poster ? Fmt.fileUrl(card.poster) : "" }
     readonly property color bandTone: toneOf.tone
     // No poster, no tone: the base stays close to the dark ground
     readonly property color bandBase: theme.bandBase(bandTone, card.poster ? 0.5 : 0.25)
@@ -463,7 +463,7 @@ Item {
                     Image {
                         id: art; visible: false
                         width: parent.width; height: parent.height
-                        source: page.hasBanner ? "file://" + page.detail.banner : ""
+                        source: page.hasBanner ? Fmt.fileUrl(page.detail.banner) : ""
                         fillMode: Image.PreserveAspectCrop; asynchronous: true
                     }
                 }
@@ -498,7 +498,7 @@ Item {
                 Image {
                     id: poster; visible: false
                     anchors.fill: parent
-                    source: card.poster ? "file://" + card.poster : ""
+                    source: card.poster ? Fmt.fileUrl(card.poster) : ""
                     sourceSize: Qt.size(theme.posterDecodeSize.width * 2, theme.posterDecodeSize.height * 2)
                     fillMode: Image.PreserveAspectCrop; asynchronous: true
                 }
@@ -892,7 +892,7 @@ Item {
                                 required property var modelData
                                 episode: modelData; extra: true
                                 title: Fmt.episodeName(modelData.title || "", modelData.number)
-                                detailText: modelData.path.split("/").pop()
+                                detailText: modelData.path.split(/[\\/]/).pop()
                                 onPlay: page.openFile(modelData.file)
                                 picking: page.deleting
                                 picked: page.deletePicked.indexOf(modelData.file) >= 0
@@ -1045,7 +1045,7 @@ Item {
             color: theme.tileSunken
             fillItem: relArt.status === Image.Ready ? relArt : null
             Image { id: relArt; visible: false; width: parent.width; height: parent.height
-                source: rel.node.poster ? "file://" + rel.node.poster : ""
+                source: rel.node.poster ? Fmt.fileUrl(rel.node.poster) : ""
                 sourceSize: Qt.size(Math.ceil(parent.width * theme.devicePixelRatio), Math.ceil(parent.height * theme.devicePixelRatio))
                 fillMode: Image.PreserveAspectCrop; asynchronous: true }
         }

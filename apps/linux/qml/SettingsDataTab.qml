@@ -24,8 +24,8 @@ SettingsTab {
     }
     readonly property var about: Door.about || ({})
     function loadStorage() { var r = Door.getStorage(); if (!r.error) storage = r.reply }
-    function path(url) { return decodeURIComponent(String(url).replace("file://", "")) }
-    function dir(p) { var i = String(p || "").lastIndexOf("/"); return i > 0 ? p.slice(0, i) : p }
+    function path(url) { return Fmt.localPath(String(url)) }
+    function dir(p) { var i = Math.max(String(p || "").lastIndexOf("/"), String(p || "").lastIndexOf("\\")); return i > 0 ? p.slice(0, i) : p }
     Component.onCompleted: { loadStorage(); loadPosters() }
     Connections {
         target: Door
@@ -140,7 +140,7 @@ SettingsTab {
                             width: wallBox.w; height: wallBox.h
                             color: theme.raised
                             clip: true
-                            Image { anchors.fill: parent; source: "file://" + cell.modelData.poster; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize: theme.posterDecodeSize }
+                            Image { anchors.fill: parent; source: Fmt.fileUrl(cell.modelData.poster); fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize: theme.posterDecodeSize }
                             MouseArea { id: m; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: frame.go("series", { id: cell.modelData.id }, cell.modelData.title) }
                             Tooltip { text: cell.modelData.title }
                         }
@@ -163,7 +163,7 @@ SettingsTab {
                     required property var modelData
                     label: modelData[0]
                     line: tab.about[modelData[1]] || ""
-                    Button { text: "Open"; icon: "folder-open"; small: true; onClicked: frame.openLink("file://" + (modelData[2] ? tab.dir(tab.about[modelData[1]]) : tab.about[modelData[1]])) }
+                    Button { text: "Open"; icon: "folder-open"; small: true; onClicked: frame.openLink(Fmt.fileUrl(modelData[2] ? tab.dir(tab.about[modelData[1]]) : tab.about[modelData[1]])) }
                 }
             }
         }
@@ -173,7 +173,7 @@ SettingsTab {
         title: "Export the library"
         fileMode: FileDialog.SaveFile
         defaultSuffix: "json"
-        currentFile: "file://" + (tab.about.data_dir ? tab.dir(tab.about.data_dir) : "") + "/anibeam-export.json"
+        currentFile: Fmt.fileUrl((tab.about.data_dir ? tab.dir(tab.about.data_dir) : "") + "/anibeam-export.json")
         nameFilters: ["AniBeam export (*.json)"]
         onAccepted: { var r = Door.exportLibrary(tab.path(selectedFile), tab.includePrivate); frame.toast(r.error ? r.error.message : "Exporting") }
     }

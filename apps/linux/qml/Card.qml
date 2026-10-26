@@ -246,7 +246,7 @@ Item {
                 id: posterImage
                 visible: false
                 anchors.fill: parent
-                source: "file://" + root.item.poster
+                source: Fmt.fileUrl(root.item.poster)
                 sourceSize: root.hero ? Qt.size(theme.posterDecodeSize.width * 2, theme.posterDecodeSize.height * 2) : theme.posterDecodeSize
                 fillMode: Image.PreserveAspectCrop
                 smooth: true

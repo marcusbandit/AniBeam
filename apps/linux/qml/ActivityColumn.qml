@@ -297,7 +297,7 @@ Item {
                 id: thumbImage
                 visible: false
                 anchors.fill: parent
-                source: line.show && line.show.poster ? "file://" + line.show.poster : ""
+                source: line.show && line.show.poster ? Fmt.fileUrl(line.show.poster) : ""
                 sourceSize: Qt.size(80, 116)
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true

@@ -1,6 +1,7 @@
 // A character as a small round portrait with the name under it and the role in sentence
 // case under that. No portrait: a users glyph on the tile fill.
 import QtQuick
+import com.marcusrosado.AniBeam
 Item {
     id: root
     property var person: ({})
@@ -23,7 +24,7 @@ Item {
             Image {
                 id: art; visible: false
                 width: parent.width; height: parent.height
-                source: root.person.image ? "file://" + root.person.image : ""
+                source: root.person.image ? Fmt.fileUrl(root.person.image) : ""
                 sourceSize: Qt.size(Math.ceil(width * theme.devicePixelRatio), Math.ceil(height * theme.devicePixelRatio))
                 fillMode: Image.PreserveAspectCrop; asynchronous: true; smooth: true
             }
