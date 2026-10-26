@@ -36,7 +36,7 @@ QBT_TAG=release-5.2.4_v2.0.15
 QBT_SHA=14d29323f1c12c1e8892ac69496f8b51ddebb74b4b590fc13e343aa213fecaf4
 
 # The PKGBUILD's pkgver rule: v2.0.0 -> 2.0.0, v2.0.0-21-gabc1234 -> 2.0.0.r21.gabc1234.
-describe="$(git -C "$repo" describe --tags --dirty 2>/dev/null || echo v0.0.0)"
+describe="$(git -C "$repo" describe --tags --match 'v*' --dirty 2>/dev/null || echo v0.0.0)"
 pkgver="$(sed -E 's/^v//; s/-([0-9]+)-g/.r\1.g/; s/-dirty$/.dirty/' <<<"$describe")"
 
 # fetch <url> <sha256> <name>: into the downloads directory, checked every time.
