@@ -10,11 +10,14 @@
 set -euo pipefail
 export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'
 
-here="$(cd "$(dirname "$0")" && pwd)"
-shell="$(cd "$here/../.." && pwd)"
-repo="$(cd "$shell/../.." && pwd)"
+# D:/a/... rather than Git Bash's /d/a/...: path conversion is off, so every path a native
+# tool (windeployqt, python.exe, 7z, ISCC) is handed has to be one Windows reads.
+mixed() { cygpath -m "$(cd "$1" && pwd)"; }
+here="$(mixed "$(dirname "$0")")"
+shell="$(mixed "$here/../..")"
+repo="$(mixed "$shell/../..")"
 mkdir -p "$1"
-out="$(cd "$1" && pwd)"
+out="$(mixed "$1")"
 bin="${ANIBEAM_BIN:-$repo/target/release/anibeam.exe}"
 deps="${DEPS_PREFIX:?DEPS_PREFIX names the prefix deps.sh built into}"
 

@@ -16,8 +16,9 @@ PBS_SHA256=56cde3b1a1dcc36576753cb408ee0c3568d211baafa0eee40423adc147c480f2
 ANIRSS_VERSION=0.6.1
 ANIRSS_SHA256=ee700625e89e8002c6a39b89c3faabee1ac3004d7e9313232ff2913701b7d22a
 
-dest="$(cd "$1" && pwd)/anirss"
-work="$(mktemp -d)"
+# D:/a/... rather than Git Bash's /d/a/..., since python.exe is handed these paths.
+dest="$(cygpath -m "$(cd "$1" && pwd)")/anirss"
+work="$(cygpath -m "$(mktemp -d)")"
 trap 'rm -rf "$work"' EXIT
 rm -rf "$dest"
 mkdir -p "$dest/app"
@@ -31,7 +32,7 @@ echo "== Python $PBS_PYTHON (python-build-standalone $PBS_RELEASE)"
 pbs="cpython-$PBS_PYTHON+$PBS_RELEASE-x86_64-pc-windows-msvc-install_only_stripped.tar.gz"
 fetch "https://github.com/astral-sh/python-build-standalone/releases/download/$PBS_RELEASE/${pbs//+/%2B}" \
   "$PBS_SHA256" "$work/python.tar.gz"
-tar -xzf "$work/python.tar.gz" -C "$work"
+tar --force-local -xzf "$work/python.tar.gz" -C "$work"
 mv "$work/python" "$dest/python"
 
 py="$dest/python"
@@ -45,7 +46,7 @@ rm -rf "$lib"/site-packages/*
 echo "== anirss $ANIRSS_VERSION"
 fetch "https://github.com/marcusbandit/anirss/archive/refs/tags/v$ANIRSS_VERSION.tar.gz" \
   "$ANIRSS_SHA256" "$work/anirss.tar.gz"
-tar -xzf "$work/anirss.tar.gz" -C "$work"
+tar --force-local -xzf "$work/anirss.tar.gz" -C "$work"
 src="$work/anirss-$ANIRSS_VERSION"
 cp "$src/anirss" "$dest/app/anirss"
 cp -R "$src/anirss_lib" "$dest/app/anirss_lib"
