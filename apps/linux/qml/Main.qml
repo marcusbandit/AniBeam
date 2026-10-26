@@ -99,6 +99,8 @@ Window {
             // drawer's rise has the whole shoot delay to settle at its open height.
             if (window.pageAction === "drawer" && item.toggleDrawer) item.toggleDrawer()
             if (window.pageAction === "connect" && item.openConnect) item.openConnect("Anilist")
+            // "onboarding" or "onboarding<N>" opens the first run at step N (0 to 4)
+            if (window.pageAction.indexOf("onboarding") === 0 && item.openOnboarding) item.openOnboarding(parseInt(window.pageAction.slice(10)) || 0)
             window.maybeShoot()
         }
     }

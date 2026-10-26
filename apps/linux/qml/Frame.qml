@@ -72,10 +72,10 @@ FocusScope {
     // Frame-owned overlays outlive a page. A navigation clears the stack, so they are
     // pushed back after the clear, in the order they were opened.
     function reclaimFrameOwned() {
-        var keep = escapeStack.entries.filter(function(e) { return e.closer === drawer || e.closer === connectSheet })
+        var keep = escapeStack.entries.filter(function(e) { return e.closer === drawer || e.closer === connectSheet || e.closer === onboarding })
         escapeStack.clear()
         keep.forEach(function(e) {
-            if (e.closer === drawer ? drawer.open : connectSheet.visible) escapeStack.push(e.kind, e.closer)
+            if (e.closer === drawer ? drawer.open : e.closer.visible) escapeStack.push(e.kind, e.closer)
         })
     }
 
@@ -363,6 +363,15 @@ FocusScope {
         z: 10
     }
 
+    // The first run (#193): over the whole frame, the rail included, and under the overlay,
+    // so the connect sheet, the folder dialog's toasts and tips still draw over it.
+    Onboarding {
+        id: onboarding
+        z: 550
+    }
+    function openOnboarding(step) { whatsNew.close(); onboarding.open(step) }
+    readonly property alias onboardingPanel: onboarding
+
     // Overlay: menus, tips, toasts, sheets. Above the drawer (z 500), so a menu or a
     // sheet opened over the drawer's region draws over it, not under it.
     Item {
@@ -397,6 +406,8 @@ FocusScope {
     function startNotes() {
         if (notesStarted) return
         notesStarted = true
+        // A fresh install gets the first run instead; What's new only records the version then
+        onboarding.start()
         if (Shell.shoot === "" && Shell.driveOut === "") whatsNew.start()
     }
     function openWhatsNew() { whatsNew.open() }

@@ -155,6 +155,8 @@ SettingsTab {
             title: "About"; icon: "info"
             SettingRow { label: "Version"; line: Shell.release
                 Button { objectName: "data-whats-new"; text: "What's new"; icon: "sparkles"; small: true; onClicked: frame.openWhatsNew() } }
+            SettingRow { label: "Setup"; line: "The first-run walkthrough: library, list and downloads"
+                Button { objectName: "data-run-setup"; text: "Run setup again"; icon: "rotate-ccw"; small: true; onClicked: frame.openOnboarding(0) } }
             // IMDb's terms ask for this line wherever its data is used
             SettingRow { label: "Ratings"; helper: "Information courtesy of IMDb (https://www.imdb.com). Used with permission." }
             Repeater {

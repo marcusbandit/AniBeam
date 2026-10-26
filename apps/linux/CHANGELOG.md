@@ -10,6 +10,12 @@ The app shows this file in What's new, newest version first. Keep it short.
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
+## 2.3.0 · 2026-10-26
+
+### New
+- A first-run setup walks you through your folder, your list and downloads
+- Run setup again from Settings, Data
+
 ## 2.2.0 · 2026-10-26
 
 ### New
