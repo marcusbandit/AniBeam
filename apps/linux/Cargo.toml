@@ -29,7 +29,6 @@ notify = "8.2"
 notify-debouncer-full = "0.7"
 material-colors = { version = "=0.4.2", default-features = false, features = ["std"] }
 toml_edit = "0.25"
-rustix = { version = "1", features = ["fs"] }
 percent-encoding = "2"
 
 [build-dependencies]

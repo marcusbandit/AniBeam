@@ -11,10 +11,12 @@ use std::time::Duration;
 
 use tokio::sync::{Mutex, watch};
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", windows)))]
 use crate::dbus::inhibit::{Backend, Hold};
 #[cfg(target_os = "macos")]
 use crate::iokit::{Backend, Hold};
+#[cfg(windows)]
+use crate::winpower::{Backend, Hold};
 
 /// A quit must not hang on a bus that never answers. The OS drops the hold with the
 /// process anyway, so giving up is safe.

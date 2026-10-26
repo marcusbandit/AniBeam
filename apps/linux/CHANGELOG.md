@@ -10,6 +10,11 @@ The app shows this file in What's new, newest version first. Keep it short.
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
+## 2.3.0 · 2026-10-26
+
+### New
+- AniBeam runs on Windows: an installer, or a zip to run from anywhere
+
 ## 2.2.0 · 2026-10-26
 
 ### New

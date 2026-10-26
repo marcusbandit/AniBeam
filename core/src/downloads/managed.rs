@@ -34,11 +34,17 @@ pub fn binary() -> Option<PathBuf> {
     which(NAME, &path)
 }
 
-/// `name` in the first directory of `path` that has it as a file.
+/// `name` in the first directory of `path` that has it as a file, with
+/// `.exe` on Windows.
 fn which(name: &str, path: &str) -> Option<PathBuf> {
-    path.split(':')
-        .filter(|dir| !dir.is_empty())
-        .map(|dir| Path::new(dir).join(name))
+    let name = if cfg!(windows) {
+        format!("{name}.exe")
+    } else {
+        name.to_string()
+    };
+    std::env::split_paths(path)
+        .filter(|dir| !dir.as_os_str().is_empty())
+        .map(|dir| dir.join(&name))
         .find(|candidate| candidate.is_file())
 }
 
@@ -50,11 +56,7 @@ pub fn profile_dir(data_dir: &str) -> PathBuf {
 /// Where finished downloads go unless anirss names a folder: the same
 /// `~/Downloads/Anime` anirss itself defaults to.
 pub fn save_dir() -> Option<PathBuf> {
-    Some(
-        PathBuf::from(std::env::var_os("HOME")?)
-            .join("Downloads")
-            .join("Anime"),
-    )
+    Some(std::env::home_dir()?.join("Downloads").join("Anime"))
 }
 
 /// The Web UI port an earlier setup wrote into the profile, if there was one.
@@ -107,7 +109,9 @@ pub fn write_config(profile: &Path, port: u16, save: Option<&Path>) -> std::io::
         text = set_ini(&text, section, key, value, true);
     }
     if let Some(save) = save {
-        let save = save.to_string_lossy();
+        // A backslash is an escape in a QSettings file; qBittorrent writes
+        // Windows paths with forward slashes.
+        let save = save.to_string_lossy().replace('\\', "/");
         text = set_ini(
             &text,
             "BitTorrent",
@@ -176,6 +180,9 @@ pub fn spawn(binary: &Path, profile: &Path, port: u16) -> std::io::Result<()> {
         .kill_on_drop(false);
     #[cfg(unix)]
     cmd.process_group(0);
+    // CREATE_NEW_PROCESS_GROUP, so a console Ctrl+C never reaches it either.
+    #[cfg(windows)]
+    cmd.creation_flags(crate::process::NO_WINDOW | 0x0000_0200);
     let mut child = cmd.spawn()?;
     tokio::spawn(async move {
         let _ = child.wait().await;

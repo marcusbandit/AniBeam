@@ -18,7 +18,7 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::{Child, Command};
+use tokio::process::Child;
 
 use crate::contract::*;
 use crate::net::{Body, Http, HttpRequest, HttpResponse, Method};
@@ -587,7 +587,7 @@ impl Sidecar {
     pub fn spawn(command: &str, qbt: &QbtLogin<'_>) -> Result<Sidecar, SpawnFailure> {
         let port = free_port().map_err(|e| SpawnFailure::Io(format!("no free port: {e}")))?;
         let token = random_token();
-        let mut cmd = Command::new(command);
+        let mut cmd = crate::process::command(command);
         cmd.arg("--serve")
             .arg("--port")
             .arg(port.to_string())
@@ -698,7 +698,7 @@ impl Sidecar {
 /// Asked after a sidecar failed to come up, to tell an anirss too old for
 /// `--serve` from one that broke some other way.
 pub async fn installed_version(command: &str) -> Option<String> {
-    let mut cmd = Command::new(command);
+    let mut cmd = crate::process::command(command);
     cmd.arg("--version")
         .stdin(Stdio::null())
         .stderr(Stdio::null())
@@ -802,6 +802,10 @@ fn random_token() -> String {
 /// `/usr/bin:/bin:/usr/sbin:/sbin`, so there Homebrew's two prefixes join it.
 /// `None` when nothing needs changing. The subscriptions call uses it too.
 pub(crate) fn child_path() -> Option<String> {
+    // Windows apps get the user's whole PATH; there is nothing to add.
+    if cfg!(windows) {
+        return None;
+    }
     let home = std::env::var("HOME").ok()?;
     let mut wanted = vec![format!("{home}/.local/bin")];
     if cfg!(target_os = "macos") {

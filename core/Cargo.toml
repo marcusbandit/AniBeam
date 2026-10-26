@@ -45,7 +45,6 @@ roxmltree = "0.20"
 anibeam-host-api.workspace = true
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 if-addrs = "0.13"
-rustix = { version = "1", features = ["system"] }
 # Casting: the Matroska reader for cutting segments, mDNS for finding Chromecasts, and rustls
 # for their TLS. Only the shells that cast turn it on.
 matroska-demuxer = { version = "0.8", optional = true }
@@ -59,14 +58,21 @@ librqbit = { version = "9", default-features = false, features = ["rust-tls"], o
 phone = ["dep:librqbit"]
 cast = ["dep:matroska-demuxer", "dep:mdns-sd", "dep:rustls", "dep:futures-core", "axum/query", "tokio-util/io"]
 
-# The machine's keyring: the Secret Service over D-Bus everywhere but a Mac, the login
-# keychain there. `keychain` rather than `protected`: the protected store needs a
-# provisioning profile, and the Mac build is ad-hoc signed.
-[target.'cfg(not(target_os = "macos"))'.dependencies]
+# The machine's keyring: the Secret Service over D-Bus on Linux, the login keychain on a
+# Mac, the Credential Manager on Windows. `keychain` rather than `protected`: the
+# protected store needs a provisioning profile, and the Mac build is ad-hoc signed.
+[target.'cfg(not(any(target_os = "macos", windows)))'.dependencies]
 zbus-secret-service-keyring-store = { version = "1.0", features = ["rt-tokio-crypto-rust"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 apple-native-keyring-store = { version = "1.0", default-features = false, features = ["keychain"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-native-keyring-store = "1.1"
+
+# uname for the host's name; Windows reads COMPUTERNAME instead.
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1", features = ["system"] }
 
 [dev-dependencies]
 tempfile = "3"

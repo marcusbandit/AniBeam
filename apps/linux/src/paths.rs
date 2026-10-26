@@ -5,7 +5,9 @@
 //! `/usr/share/anibeam`, the lock sits in the per-user `$TMPDIR`, since macOS has no
 //! `$XDG_RUNTIME_DIR`, and the user's own mpv.conf is still `~/.config/mpv/mpv.conf`, which
 //! is where mpv itself reads it on a Mac, not beside the core's `Application Support`
-//! directory. Nothing else differs.
+//! directory. On Windows the packaged files sit beside `anibeam.exe`, the lock sits in the
+//! per-user temp directory and the user's own mpv.conf is `%APPDATA%\mpv\mpv.conf`, where
+//! mpv reads it there. Nothing else differs.
 
 use std::path::{Path, PathBuf};
 
@@ -64,6 +66,13 @@ impl ShellPaths {
 /// AppImage, which is mounted somewhere new on every run. A binary with no such directory
 /// beside it, such as a cargo build, reads the installed package's.
 pub fn share_dir() -> PathBuf {
+    #[cfg(windows)]
+    if let Some(dir) = std::env::current_exe()
+        .ok()
+        .and_then(|exe| Some(exe.parent()?.to_path_buf()))
+    {
+        return dir;
+    }
     let prefix = std::env::current_exe()
         .ok()
         .and_then(|exe| Some(exe.parent()?.parent()?.to_path_buf()));
@@ -75,20 +84,35 @@ pub fn share_dir() -> PathBuf {
 }
 
 /// Names the Downloads helpers a package carries to the core, which looks for them in these
-/// variables: anirss under the share dir, qbittorrent-nox beside the binary (the Mac app and
-/// the AppImage carry both). A variable already set is left alone, so a run can point at
-/// another copy. A setenv, so it has to run before any thread exists.
+/// variables: anirss under the share dir, qbittorrent-nox beside the binary (the Mac app, the
+/// AppImage and the Windows install carry both). On Windows anirss is the bare script and
+/// ANIBEAM_PYTHON names the Python that runs it. A variable already set is left alone, so a
+/// run can point at another copy. A setenv, so it has to run before any thread exists.
 pub fn name_bundled_helpers() {
+    let nox = if cfg!(windows) {
+        "qbittorrent-nox.exe"
+    } else {
+        "qbittorrent-nox"
+    };
     let beside_exe = std::env::current_exe()
         .ok()
-        .and_then(|exe| Some(exe.parent()?.join("qbittorrent-nox")));
-    let helpers = [
-        (
-            "ANIBEAM_ANIRSS",
-            Some(share_dir().join("anirss/bin/anirss")),
-        ),
-        ("ANIBEAM_QBITTORRENT_NOX", beside_exe),
-    ];
+        .and_then(|exe| Some(exe.parent()?.join(nox)));
+    let anirss = share_dir().join("anirss");
+    let helpers = if cfg!(windows) {
+        vec![
+            ("ANIBEAM_ANIRSS", Some(anirss.join("app").join("anirss"))),
+            (
+                "ANIBEAM_PYTHON",
+                Some(anirss.join("python").join("python.exe")),
+            ),
+            ("ANIBEAM_QBITTORRENT_NOX", beside_exe),
+        ]
+    } else {
+        vec![
+            ("ANIBEAM_ANIRSS", Some(anirss.join("bin/anirss"))),
+            ("ANIBEAM_QBITTORRENT_NOX", beside_exe),
+        ]
+    };
     for (name, path) in helpers {
         if let Some(path) = path.filter(|p| p.is_file())
             && std::env::var_os(name).is_none()
@@ -107,9 +131,12 @@ fn beside_bin(prefix: Option<&std::path::Path>) -> Option<PathBuf> {
     dir.join("themes").is_dir().then_some(dir)
 }
 
-/// `$XDG_CONFIG_HOME`, else `~/.config`, on a Mac; `None` elsewhere, where the core's own
-/// config directory already sits in it.
+/// `$XDG_CONFIG_HOME`, else `~/.config`, on a Mac; `%APPDATA%` on Windows; `None` elsewhere,
+/// where the core's own config directory already sits in it.
 fn mac_config_home() -> Option<PathBuf> {
+    if cfg!(windows) {
+        return std::env::var_os("APPDATA").map(PathBuf::from);
+    }
     if !cfg!(target_os = "macos") {
         return None;
     }
@@ -126,7 +153,8 @@ fn user_runtime_dir() -> Result<PathBuf, String> {
     if let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR") {
         return Ok(PathBuf::from(dir));
     }
-    if cfg!(target_os = "macos") {
+    // Windows' temp directory is per user too.
+    if cfg!(any(target_os = "macos", windows)) {
         return Ok(std::env::temp_dir());
     }
     Err("XDG_RUNTIME_DIR is not set".to_string())

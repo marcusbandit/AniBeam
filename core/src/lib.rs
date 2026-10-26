@@ -25,6 +25,7 @@ pub(crate) mod percent;
 pub mod phone;
 pub mod playback;
 pub mod prefs;
+pub(crate) mod process;
 pub mod releases;
 pub mod repos;
 pub mod store;

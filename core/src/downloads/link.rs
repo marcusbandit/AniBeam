@@ -86,7 +86,7 @@ impl Linker {
 
 fn trim(path: &str) -> &str {
     let t = path.trim();
-    let t = t.trim_end_matches('/');
+    let t = t.trim_end_matches(std::path::is_separator);
     if t.is_empty() && path.trim().starts_with('/') {
         "/"
     } else {
@@ -95,7 +95,7 @@ fn trim(path: &str) -> &str {
 }
 
 fn last(path: &str) -> &str {
-    path.rsplit('/').next().unwrap_or(path)
+    path.rsplit(std::path::is_separator).next().unwrap_or(path)
 }
 
 /// Letters and digits, lower case. Empty for a name of only punctuation,

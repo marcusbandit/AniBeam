@@ -1,0 +1,152 @@
+name: Windows
+
+# Builds AniBeam for 64-bit Windows on a windows-2025 runner: the installer and a portable
+# zip, each carrying Qt, libmpv, MpvQt, qbittorrent-nox and anirss on its own Python. Runs
+# the core and shell tests there, then smoke-tests the bundled app, the two helpers and the
+# Downloads page starting them on a fresh install. release.yml calls it for a version tag
+# and puts the installer and the zip on the draft release. A pull request that touches the
+# core, the Qt shell or the workspace runs it too. Run it from the Actions tab (Run
+# workflow) for a build without a release.
+on:
+  pull_request:
+    paths:
+      - 'core/**'
+      - 'host-api/**'
+      - 'apps/linux/**'
+      - 'apps/cli/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/windows.yml'
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  QT_VERSION: '6.11.3'
+  # The project's own AniList and MAL app registrations, so a release signs in with one
+  # click. Empty on a fork's pull request, whose build then asks for a client ID instead.
+  ANIBEAM_ANILIST_CLIENT_ID: ${{ secrets.ANIBEAM_ANILIST_CLIENT_ID }}
+  ANIBEAM_MAL_CLIENT_ID: ${{ secrets.ANIBEAM_MAL_CLIENT_ID }}
+
+jobs:
+  build-windows:
+    runs-on: windows-2025
+    timeout-minutes: 150
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # git describe names the version
+
+      - name: MSVC developer environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: win64_msvc2022_64
+          modules: qtshadertools
+          cache: true
+
+      - name: Paths
+        run: |
+          deps="$(cygpath -m "$RUNNER_TEMP/anibeam-deps")"
+          {
+            echo "DEPS_PREFIX=$deps"
+            echo "MPVQT_PREFIX=$deps"
+            echo "MPV_PREFIX=$deps"
+            echo "QMAKE=$(cygpath -m "$QT_ROOT_DIR")/bin/qmake.exe"
+          } >> "$GITHUB_ENV"
+          echo "$(cygpath -w "$RUNNER_TEMP/anibeam-deps/bin")" >> "$GITHUB_PATH"
+
+      - name: Dependency cache key
+        id: depkey
+        run: |
+          key="$(cat apps/linux/packaging/windows/deps.sh | sha256sum | cut -c1-16)"
+          echo "key=windows-2025-qt$QT_VERSION-deps-$key" >> "$GITHUB_OUTPUT"
+
+      - name: Restore libmpv, MpvQt and qbittorrent-nox
+        id: deps
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/anibeam-deps
+          key: ${{ steps.depkey.outputs.key }}
+
+      - name: Build libmpv, MpvQt and qbittorrent-nox
+        if: steps.deps.outputs.cache-hit != 'true'
+        run: apps/linux/packaging/windows/deps.sh "$DEPS_PREFIX"
+
+      # Saved here rather than at the end, so a run that fails later keeps them.
+      - name: Save libmpv, MpvQt and qbittorrent-nox
+        if: steps.deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/anibeam-deps
+          key: ${{ steps.depkey.outputs.key }}
+
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustc --version
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      # aws-lc-sys (rustls' crypto) assembles with NASM; its prebuilt copy saves installing it.
+      # PowerShell, because Git Bash puts its own link.exe ahead of MSVC's.
+      - name: Build
+        shell: pwsh
+        env:
+          AWS_LC_SYS_PREBUILT_NASM: '1'
+        run: cargo build --release --locked -p anibeam -p anibeam-cli
+
+      - name: Test the core and the shell
+        shell: pwsh
+        env:
+          AWS_LC_SYS_PREBUILT_NASM: '1'
+        run: cargo test --locked -p anibeam-core -p anibeam
+
+      - name: Bundle
+        run: apps/linux/packaging/windows/bundle.sh dist
+
+      - name: ffmpeg for the smoke library
+        shell: pwsh
+        run: choco install ffmpeg -y --no-progress
+
+      # The Qt and deps directories leave PATH first, so a DLL the bundle forgot fails here.
+      - name: Smoke test
+        run: |
+          export PATH="$(echo "$PATH" | tr ':' '\n' | grep -v -i -E 'anibeam-deps|/Qt/' | paste -sd: -)"
+          apps/linux/packaging/windows/smoke.sh dist/AniBeam target/release/anibeam-cli.exe smoke
+
+      - name: Upload the build
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: anibeam-windows-x64
+          path: |
+            dist/*.exe
+            dist/*.zip
+          if-no-files-found: ignore
+
+      - name: Upload the smoke captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-captures-windows
+          path: |
+            smoke/*.png
+            smoke/*.log
+            smoke/drive/*.png
+            smoke/downloads-drive/*.png
+            smoke/downloads-state/**
+          if-no-files-found: ignore

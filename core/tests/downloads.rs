@@ -4,6 +4,8 @@
 //! case that needs a real process, the sidecar, runs a fake `anirss` from a
 //! temp `PATH`. Every sidecar case lives in one test because `PATH` and
 //! `HOME` are process-wide and this binary runs its tests side by side.
+//! The fakes are shell scripts, so the file is Unix only.
+#![cfg(unix)]
 
 mod common;
 

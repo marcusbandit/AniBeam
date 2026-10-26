@@ -66,7 +66,14 @@ impl CorePaths {
 /// inside `/lib`. The rule the scan reconciles with and the import
 /// attaches a series with.
 pub(crate) fn under(path: &str, root: &str) -> bool {
-    path == root || path.starts_with(&format!("{}/", root.trim_end_matches('/')))
+    if path == root {
+        return true;
+    }
+    // Windows takes `\` and `/` alike, and one path can carry both.
+    let root = root.trim_end_matches(std::path::is_separator);
+    path.strip_prefix(root)
+        .and_then(|rest| rest.chars().next())
+        .is_some_and(std::path::is_separator)
 }
 
 /// A trailing separator is not part of a path's identity, so it never
@@ -74,7 +81,7 @@ pub(crate) fn under(path: &str, root: &str) -> bool {
 /// stays itself. Every path a source or an import writes goes through
 /// this, so the two always agree about what one path is.
 pub(crate) fn normalise(path: &str) -> String {
-    let trimmed = path.trim().trim_end_matches('/');
+    let trimmed = path.trim().trim_end_matches(std::path::is_separator);
     if trimmed.is_empty() {
         "/".to_string()
     } else {
@@ -101,7 +108,9 @@ mod tests {
         assert_eq!(normalise("  /lib/anime/  "), "/lib/anime");
     }
 
+    // Windows adds a data, config or cache element after the app's name.
     #[test]
+    #[cfg(unix)]
     fn xdg_paths_end_in_anibeam() {
         let p = CorePaths::xdg().unwrap();
         for dir in [&p.data_dir, &p.config_dir, &p.cache_dir] {

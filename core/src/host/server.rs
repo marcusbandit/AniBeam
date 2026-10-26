@@ -33,10 +33,13 @@ pub struct Served {
 
 /// The machine's name, for `Hello::host`.
 pub fn hostname() -> String {
-    rustix::system::uname()
+    #[cfg(unix)]
+    return rustix::system::uname()
         .nodename()
         .to_string_lossy()
-        .into_owned()
+        .into_owned();
+    #[cfg(not(unix))]
+    return std::env::var("COMPUTERNAME").unwrap_or_else(|_| "Windows".to_string());
 }
 
 pub fn router(core: Weak<Core>) -> Router {

@@ -9,7 +9,6 @@ use std::time::Duration;
 
 use cxx_qt::CxxQtThread;
 use cxx_qt_lib::QString;
-use rustix::fs::{FlockOperation, flock};
 use zbus::zvariant::{OwnedValue, Value};
 
 use crate::bridge::shell::qobject::Shell;
@@ -72,10 +71,11 @@ pub fn try_lock(path: &Path) -> std::io::Result<Option<Lock>> {
         .create(true)
         .truncate(false)
         .open(path)?;
-    match flock(&file, FlockOperation::NonBlockingLockExclusive) {
+    // flock on Linux and the Mac, LockFileEx on Windows.
+    match file.try_lock() {
         Ok(()) => Ok(Some(Lock(file))),
-        Err(rustix::io::Errno::WOULDBLOCK) => Ok(None),
-        Err(e) => Err(e.into()),
+        Err(std::fs::TryLockError::WouldBlock) => Ok(None),
+        Err(std::fs::TryLockError::Error(e)) => Err(e),
     }
 }
 

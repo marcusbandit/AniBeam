@@ -58,7 +58,7 @@ dependencies = [
 
 [[package]]
 name = "anibeam"
-version = "2.2.0"
+version = "2.3.0"
 dependencies = [
  "anibeam-core",
  "cxx",
@@ -71,7 +71,6 @@ dependencies = [
  "notify",
  "notify-debouncer-full",
  "percent-encoding",
- "rustix",
  "serde",
  "serde_json",
  "tempfile",
@@ -82,7 +81,7 @@ dependencies = [
 
 [[package]]
 name = "anibeam-cli"
-version = "2.2.0"
+version = "2.3.0"
 dependencies = [
  "anibeam-core",
  "clap",
@@ -91,7 +90,7 @@ dependencies = [
 
 [[package]]
 name = "anibeam-core"
-version = "2.2.0"
+version = "2.3.0"
 dependencies = [
  "anibeam-host-api",
  "apple-native-keyring-store",
@@ -133,12 +132,13 @@ dependencies = [
  "uniffi",
  "walkdir",
  "webpki-root-certs",
+ "windows-native-keyring-store",
  "zbus-secret-service-keyring-store",
 ]
 
 [[package]]
 name = "anibeam-host-api"
-version = "2.2.0"
+version = "2.3.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -5392,6 +5392,19 @@ name = "windows-link"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5"
+
+[[package]]
+name = "windows-native-keyring-store"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "063426e76fdec7438d56bb777f67e318a84a25c707b07e575cb8b78e10c028f8"
+dependencies = [
+ "byteorder",
+ "keyring-core",
+ "regex",
+ "windows-sys 0.61.2",
+ "zeroize",
+]
 
 [[package]]
 name = "windows-numerics"

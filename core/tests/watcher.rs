@@ -1,3 +1,5 @@
+#![cfg(any(target_os = "linux", target_os = "macos"))]
+
 mod common;
 use anibeam_core::*;
 use std::fs;
@@ -14,7 +16,6 @@ use std::time::Duration;
 /// ends in a search. Every reply is an empty page, so every series the
 /// walks produce misses and is stamped, which is the quietest outcome the
 /// chain has: nothing is fetched and nothing is written.
-#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
 fn a_file_landing_in_a_watched_source_is_ingested_once_written() {
     let http = anibeam_core::net::FakeHttp::new();

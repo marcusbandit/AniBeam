@@ -18,8 +18,6 @@ use std::path::Path;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
-use tokio::process::Command;
-
 use crate::net::{Http, HttpRequest, Method};
 
 /// How long a command with no ready URL to wait for is given to fail
@@ -146,10 +144,8 @@ pub async fn start(
     let err = out
         .try_clone()
         .map_err(|e| StartFailure::Failed(e.to_string()))?;
-    let mut cmd = Command::new("sh");
-    cmd.arg("-c")
-        .arg(command)
-        .stdin(Stdio::null())
+    let mut cmd = crate::process::shell(command);
+    cmd.stdin(Stdio::null())
         .stdout(out)
         .stderr(err)
         .kill_on_drop(false);
@@ -165,7 +161,8 @@ pub async fn start(
     let mut exited_clean = false;
     loop {
         if !exited_clean && let Some(status) = child.try_wait().ok().flatten() {
-            if status.code() == Some(127) {
+            // 127 from sh, 9009 from cmd: the command is not there.
+            if matches!(status.code(), Some(127 | 9009)) {
                 return Err(StartFailure::Missing(program(command)));
             }
             if !status.success() {

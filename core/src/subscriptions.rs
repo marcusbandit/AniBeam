@@ -12,8 +12,6 @@
 use std::process::Stdio;
 use std::time::Duration;
 
-use tokio::process::Command;
-
 use crate::contract::*;
 use crate::core::Core;
 use crate::jobs::Finished;
@@ -52,7 +50,7 @@ pub fn start(core: &Core) -> Result<u64, CoreError> {
 /// child in, and so does a cancelled job, and both send the kill the same
 /// way.
 async fn run() -> Result<SubscriptionsResult, CoreError> {
-    let mut command = Command::new("anirss");
+    let mut command = crate::process::command(&crate::downloads::anirss::sidecar_command("anirss"));
     command
         .arg("-Qj")
         .stdin(Stdio::null())
