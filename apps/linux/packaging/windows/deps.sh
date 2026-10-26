@@ -124,6 +124,9 @@ cmake -S "$work/qBittorrent-release-$QBT_VERSION" -B "$work/qbt-build" -G Ninja 
   -DLibtorrentRasterbar_DIR="$work/libtorrent/lib/cmake/LibtorrentRasterbar" \
   -DMSVC_RUNTIME_DYNAMIC=ON \
   -DGUI=OFF -DWEBUI=ON -DSTACKTRACE=OFF -DTESTING=OFF
+# The Web UI's .qm files come from their own target first, as in qBittorrent's Windows CI;
+# a plain build asks for them and has no rule to make them.
+cmake --build "$work/qbt-build" --target qbt_update_translations
 cmake --build "$work/qbt-build"
 cp "$work/qbt-build/qbittorrent-nox.exe" "$prefix/bin/"
 
