@@ -600,9 +600,13 @@ pub struct RollingSettings {
     /// The episode count above which a download rolls by itself.
     #[serde(default = "default_over")]
     pub over: u32,
-    /// A watched episode leaves the disk once a later one is watched.
+    /// Watched episodes leave the disk; off keeps them all.
     #[serde(default = "default_true")]
     pub delete_watched: bool,
+    /// Watched episodes kept behind the last one watched: with 1, finishing
+    /// episode 3 deletes episode 1 and keeps 2.
+    #[serde(default = "default_keep")]
+    pub keep_watched: u32,
 }
 
 impl Default for RollingSettings {
@@ -612,8 +616,13 @@ impl Default for RollingSettings {
             ahead: default_ahead(),
             over: default_over(),
             delete_watched: true,
+            keep_watched: default_keep(),
         }
     }
+}
+
+fn default_keep() -> u32 {
+    1
 }
 
 fn default_ahead() -> u32 {

@@ -18,8 +18,9 @@
 //! show seen once before and fetched again to rewatch starts at the start,
 //! and a tracker's progress never moves the window.
 //!
-//! With `delete_watched`, a watched episode leaves the disk once a later
-//! one is watched, so the one just finished is still there to go back to.
+//! With `delete_watched`, a watched episode leaves the disk once it falls
+//! more than `keep_watched` behind the last one watched: with 1, finishing
+//! episode 3 deletes episode 1, so 2 and 3 are still there to go back to.
 //! A single-episode torrent is removed with its file. A batch file is
 //! deleted from the disk only when the client keeps its files on this
 //! machine and the path sits inside the torrent's save folder; the torrent
@@ -82,6 +83,9 @@ pub struct Roll {
     pub name: Option<String>,
     pub ahead: u32,
     pub delete_watched: bool,
+    /// Watched episodes kept behind the last one watched.
+    #[serde(default = "one")]
+    pub keep_watched: u32,
     /// Rolls only if, once its files are counted, it holds more episodes
     /// than this; `None` rolls whatever the count.
     #[serde(default)]
@@ -184,6 +188,7 @@ pub fn plan(
         name: name.map(str::to_string),
         ahead,
         delete_watched: s.delete_watched,
+        keep_watched: s.keep_watched.min(MAX_AHEAD),
         over,
         until: None,
         released: false,
@@ -455,6 +460,11 @@ pub struct Moves {
 pub fn moves(roll: &Roll) -> Moves {
     let keys = order(roll);
     let w = window(roll, &keys);
+    // The last watched and the ones kept behind it keep their files
+    let kept = |pos: usize| {
+        w.last
+            .is_some_and(|last| pos <= last && pos + roll.keep_watched as usize >= last)
+    };
     let mut m = Moves::default();
     for (pos, &k) in keys.iter().enumerate() {
         let (part, u) = (&roll.parts[k.0], unit(roll, k));
@@ -469,9 +479,9 @@ pub fn moves(roll: &Roll) -> Moves {
             continue;
         }
         let wanted = if roll.released {
-            !u.watched || Some(pos) == w.last
+            !u.watched || kept(pos)
         } else {
-            (pos >= w.start && pos < w.end) || Some(pos) == w.last
+            (pos >= w.start && pos < w.end) || kept(pos)
         };
         if part.single {
             if wanted && !part.added {
@@ -490,6 +500,7 @@ pub fn moves(roll: &Roll) -> Moves {
         if roll.delete_watched
             && u.watched
             && w.last.is_some_and(|last| pos < last)
+            && !kept(pos)
             && (part.added || !part.single)
         {
             m.delete.push(k);
@@ -1070,6 +1081,10 @@ async fn step(
     Step::Keep
 }
 
+fn one() -> u32 {
+    1
+}
+
 fn plural(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
 }
@@ -1268,6 +1283,7 @@ mod tests {
             name: None,
             ahead,
             delete_watched: true,
+            keep_watched: 0,
             over: None,
             until: None,
             released: false,
@@ -1375,6 +1391,25 @@ mod tests {
             "only watched episodes before the last go"
         );
         assert!(m.add.is_empty());
+    }
+
+    #[test]
+    fn one_kept_behind_means_episode_three_deletes_episode_one() {
+        let mut r = batch(20, 3);
+        r.keep_watched = 1;
+        watch(&mut r, 2);
+        assert!(moves(&r).delete.is_empty(), "episode 1 is one behind 2");
+        watch(&mut r, 3);
+        assert_eq!(moves(&r).delete, vec![(0, 0)]);
+        watch(&mut r, 4);
+        assert_eq!(moves(&r).delete, vec![(0, 0), (0, 1)]);
+        let wish: HashMap<usize, i64> = moves(&r).priorities[&0].iter().copied().collect();
+        let p = |n: usize| wish[&r.parts[0].units[n - 1].file.unwrap()];
+        assert_eq!(
+            (p(2), p(3), p(4)),
+            (SKIP, NORMAL, NORMAL),
+            "3 is kept, 2 goes"
+        );
     }
 
     #[test]

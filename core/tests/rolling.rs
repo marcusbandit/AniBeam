@@ -452,7 +452,7 @@ fn roll_more_widens_the_window_and_set_roll_off_fetches_the_rest_and_ends_the_ro
 }
 
 #[test]
-fn a_watched_episode_moves_the_window_and_leaves_the_disk_once_a_later_one_is_watched() {
+fn a_watched_episode_moves_the_window_and_leaves_the_disk_once_two_later_ones_are_watched() {
     let http = FakeHttp::new();
     let (dir, core, c) = common::open_core_with_http(http.clone());
     isolate_xdg(dir.path());
@@ -487,11 +487,12 @@ fn a_watched_episode_moves_the_window_and_leaves_the_disk_once_a_later_one_is_wa
         );
     }
     let key = |n: usize| classifier::number_key(None, n as f64);
-    // Episodes 1 and 2 finished after the roll begins; episode 4 was seen
+    // Episodes 1 to 3 finished after the roll begins; episode 4 was seen
     // long before it and must not move the window.
     let later = time::now_secs() + 3600;
     fixtures::insert_completed(&core, series, &key(1), later);
     fixtures::insert_completed(&core, series, &key(2), later + 1);
+    fixtures::insert_completed(&core, series, &key(3), later + 2);
     fixtures::insert_completed(&core, series, &key(4), 1);
 
     let hash = "cd".repeat(20);
@@ -529,19 +530,19 @@ fn a_watched_episode_moves_the_window_and_leaves_the_disk_once_a_later_one_is_wa
     );
     assert!(
         !on_disk(1).exists(),
-        "episode 1 was watched before the last one watched"
+        "episode 1 is more than one behind episode 3"
     );
     assert!(
-        on_disk(2).exists(),
-        "the one just finished stays to go back to"
+        on_disk(2).exists() && on_disk(3).exists(),
+        "the one just finished and the one kept behind it stay"
     );
     assert!(
-        on_disk(3).exists() && on_disk(4).exists(),
-        "an unwatched episode, and one seen before the roll, stay"
+        on_disk(4).exists(),
+        "an episode seen before the roll counts as not watched yet"
     );
-    // Two watched: the window starts at episode 3 and reaches 12 ahead.
+    // Three watched: the window starts at episode 4 and reaches 12 ahead.
     let calls = prio_calls(&http);
     let top = calls.iter().find(|p| p.priority == 7).expect("a top call");
-    assert_eq!(top.ids, "2", "episode 3 is the next to watch");
+    assert_eq!(top.ids, "3", "episode 4 is the next to watch");
     core.shutdown();
 }

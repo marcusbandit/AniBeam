@@ -14,7 +14,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 
 ### New
 - Long shows download a few episodes at a time, 12 ahead by default
-- Each episode you finish starts the next, and watched ones leave the disk
+- Each episode you finish starts the next; older watched ones leave the disk
 - Get more episodes now, or all of them, from a rolling download
 - Rolling download settings in Settings, Downloads
 
