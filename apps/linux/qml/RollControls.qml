@@ -10,7 +10,7 @@ Column {
     id: root
     property var roll: null
     readonly property bool on: !!roll
-    readonly property int left: on ? Math.max(0, roll.total - roll.through) : 0
+    readonly property int remaining: on ? Math.max(0, roll.total - roll.through) : 0
     property bool confirming: false
     visible: on
     spacing: theme.space(1.5)
@@ -31,40 +31,54 @@ Column {
               + (root.roll.watched > 0 ? ", " + root.roll.watched + " watched" : "")
         role: "ui"
         color: theme.textDim
-        elide: Text.ElideRight
+        wrapMode: Text.Wrap
     }
-    Row {
+    // Wraps under itself in a narrow column rather than running off its edge
+    Flow {
         visible: !root.confirming
+        width: parent.width
         spacing: theme.space(1.5)
         Button {
             objectName: "roll-more"
-            text: "Get " + Math.min(root.on ? root.roll.ahead : 0, root.left) + " more"
+            text: "Get " + Math.min(root.on ? root.roll.ahead : 0, root.remaining) + " more"
             icon: "download"
             small: true
-            enabled: root.left > 0
+            enabled: root.remaining > 0
             onClicked: root.send("RollMore", { id: root.roll.id, count: root.roll.ahead })
             Tooltip { text: "Download the next episodes now. Rolling carries on once you catch up." }
         }
-        Button { objectName: "roll-fewer"; icon: "chevron-down"; small: true; flat: true; enabled: root.on && root.roll.ahead > 1; onClicked: root.setAhead(root.roll.ahead - 1)
-                 Tooltip { text: "Keep one fewer ahead" } }
-        Label { anchors.verticalCenter: parent.verticalCenter; text: root.on ? root.roll.ahead + " ahead" : ""; role: "figure"; color: theme.textDim }
-        Button { objectName: "roll-further"; icon: "chevron-up"; small: true; flat: true; enabled: root.on; onClicked: root.setAhead(root.roll.ahead + 1)
-                 Tooltip { text: "Keep one more ahead" } }
+        // The stepper wraps as one piece
+        Row {
+            spacing: theme.space(1)
+            Button { objectName: "roll-fewer"; icon: "chevron-down"; small: true; flat: true; enabled: root.on && root.roll.ahead > 1; onClicked: root.setAhead(root.roll.ahead - 1)
+                     Tooltip { text: "Keep one fewer ahead" } }
+            Label { height: theme.space(6); verticalAlignment: Text.AlignVCenter; text: root.on ? root.roll.ahead + " ahead" : ""; role: "figure"; color: theme.textDim }
+            Button { objectName: "roll-further"; icon: "chevron-up"; small: true; flat: true; enabled: root.on; onClicked: root.setAhead(root.roll.ahead + 1)
+                     Tooltip { text: "Keep one more ahead" } }
+        }
         Button {
             objectName: "roll-all"
             text: "Get all"
             icon: "layers"
             small: true
             flat: true
-            enabled: root.left > 0
+            enabled: root.remaining > 0
             onClicked: root.confirming = true
             Tooltip { text: "Stop rolling and download every episode left" }
         }
     }
+    // The question over its buttons, so it fits a narrow column
+    Label {
+        visible: root.confirming
+        width: parent.width
+        text: "Download all " + root.remaining + " episodes left?"
+        role: "ui"
+        wrapMode: Text.Wrap
+    }
     InlineConfirm {
         objectName: "roll-all-confirm"
         visible: root.confirming
-        question: "Download all " + root.left + " episodes left?"
+        question: ""
         confirmText: "Get all"
         confirmIcon: "download"
         onAccepted: { root.confirming = false; root.send("SetRoll", { id: root.roll.id, ahead: null, on: false, delete_watched: null }) }

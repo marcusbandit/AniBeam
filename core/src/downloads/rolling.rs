@@ -250,7 +250,10 @@ pub fn plan(
                 seen: false,
                 gone: false,
             };
-            base(r.title.clone(), over, vec![part])
+            let title = name
+                .map(str::to_string)
+                .unwrap_or_else(|| show_title(&r.title));
+            base(title, over, vec![part])
         })
         .collect();
     Plan {
