@@ -275,11 +275,20 @@ mod tests {
         http.push(200, "ok");
         run(&http, "echo starting", READY, &dir).await.unwrap();
         assert_eq!(http.requests().len(), 4);
-        assert!(
+        // The fake answers on its own schedule, so the echo can land just after the
+        // start returns; give the child a moment rather than racing it.
+        let logged = || {
             std::fs::read_to_string(log(&dir))
                 .unwrap()
                 .contains("starting")
-        );
+        };
+        for _ in 0..50 {
+            if logged() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert!(logged());
     }
 
     #[tokio::test]
