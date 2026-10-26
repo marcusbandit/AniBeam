@@ -10,7 +10,7 @@ The app shows this file in What's new, newest version first. Keep it short.
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
-## 2.2.0 · 2026-10-25
+## 2.2.0 · 2026-10-26
 
 ### New
 - What's new opens after an update, marked at the version you came from
@@ -19,9 +19,15 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Add an endpoint by hand, such as 1337x through Jackett
 - Change an installed endpoint's token
 - Move episodes to the trash from a series page
+- Get episodes straight from a series page
+- Fix files that read as the wrong episode from the series page
+- The series page says how long an episode runs
+- Watching series untouched for 60 days move to On hold, beside Continue
+- Double-click the picture to toggle fullscreen
 
 ### Fixed
 - Episodes watched on another device no longer count as on disk
+- Numbered specials and OVAs keep their own episode numbers
 
 ## 2.1.0 · 2026-10-24
 
