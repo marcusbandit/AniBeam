@@ -27,8 +27,11 @@
 //!
 //! Rolls are kept as JSON in the settings table. A pass runs right after
 //! the add (a short burst until each torrent is found), on every torrent
-//! read, and when the player records an episode as finished, never in a
-//! shell that disabled unattended changes.
+//! read, when the player records an episode as finished, and when the user
+//! changes a roll. The passes nobody asked for at that moment, the torrent
+//! read's and the player's, never run in a shell that disabled unattended
+//! changes; the ones the user's own download or click starts do, since
+//! they act on that user's roll.
 
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
@@ -89,6 +92,10 @@ pub struct Roll {
     /// Stop rolling: fetch everything, then drop the roll.
     #[serde(default)]
     pub released: bool,
+    /// Turn on download in order for each torrent as the client lists it,
+    /// the held singles added later included.
+    #[serde(default)]
+    pub sequential: bool,
     pub parts: Vec<Part>,
 }
 
@@ -105,6 +112,10 @@ pub struct Part {
     pub hash: String,
     /// Handed to the client. A held single is not, yet.
     pub added: bool,
+    /// When it was handed over; a part the client never lists goes after
+    /// a while counted from here.
+    #[serde(default)]
+    pub added_at: i64,
     /// One episode in the torrent, rather than a batch.
     pub single: bool,
     /// The episodes, once known: a single's at once, a batch's when the
@@ -176,74 +187,26 @@ pub fn plan(
         over,
         until: None,
         released: false,
+        sequential: options.sequential,
         parts,
     };
-    if read.iter().all(single) {
-        let rolls = items.len() > 1 && (wish == Some(true) || items.len() > s.over as usize);
-        if !rolls {
-            return Plan {
-                now: items.to_vec(),
-                rolls: Vec::new(),
-            };
-        }
-        let mut order: Vec<usize> = (0..items.len()).collect();
-        order.sort_by(|&a, &b| {
-            let (fa, fb) = (&read[a], &read[b]);
-            fa.season.unwrap_or(1).cmp(&fb.season.unwrap_or(1)).then(
-                fa.episode
-                    .partial_cmp(&fb.episode)
-                    .unwrap_or(Ordering::Equal),
-            )
-        });
-        let parts: Vec<Part> = order
-            .iter()
-            .enumerate()
-            .map(|(n, &i)| {
-                let r = &items[i];
-                Part {
-                    release: r.clone(),
-                    hash: magnet_hash(&r.link).unwrap_or_default(),
-                    added: n < ahead as usize,
-                    single: true,
-                    units: vec![Unit {
-                        file: None,
-                        name: r.title.clone(),
-                        watched: false,
-                        gone: false,
-                    }],
-                    counted: true,
-                    seen: false,
-                    gone: false,
-                }
-            })
-            .collect();
-        let now_items = parts
-            .iter()
-            .filter(|p| p.added)
-            .map(|p| p.release.clone())
-            .collect();
-        let title = name
-            .map(str::to_string)
-            .unwrap_or_else(|| show_title(&items[order[0]].title));
-        return Plan {
-            now: now_items,
-            rolls: vec![base(title, None, parts)],
-        };
-    }
+    let (singles, others): (Vec<usize>, Vec<usize>) =
+        (0..items.len()).partition(|&i| single(&read[i]));
     let over = if wish == Some(true) {
         None
     } else {
         Some(s.over)
     };
-    let rolls = items
+    // Every batch rolls on its own, judged by its count once it is known
+    let mut rolls: Vec<Roll> = others
         .iter()
-        .zip(&read)
-        .filter(|(_, f)| !single(f))
-        .map(|(r, _)| {
+        .map(|&i| {
+            let r = &items[i];
             let part = Part {
                 release: r.clone(),
                 hash: magnet_hash(&r.link).unwrap_or_default(),
                 added: true,
+                added_at: now,
                 single: false,
                 units: Vec::new(),
                 counted: false,
@@ -256,8 +219,54 @@ pub fn plan(
             base(title, over, vec![part])
         })
         .collect();
+    let mut now_items: Vec<Release> = others.iter().map(|&i| items[i].clone()).collect();
+    // The single episodes of the pick roll together, in episode order
+    let roll_singles = singles.len() > 1 && (wish == Some(true) || singles.len() > s.over as usize);
+    if !roll_singles {
+        return Plan {
+            now: items.to_vec(),
+            rolls,
+        };
+    }
+    let mut order = singles;
+    order.sort_by(|&a, &b| {
+        let (fa, fb) = (&read[a], &read[b]);
+        fa.season.unwrap_or(1).cmp(&fb.season.unwrap_or(1)).then(
+            fa.episode
+                .partial_cmp(&fb.episode)
+                .unwrap_or(Ordering::Equal),
+        )
+    });
+    let parts: Vec<Part> = order
+        .iter()
+        .enumerate()
+        .map(|(n, &i)| {
+            let r = &items[i];
+            Part {
+                release: r.clone(),
+                hash: magnet_hash(&r.link).unwrap_or_default(),
+                added: n < ahead as usize,
+                added_at: now,
+                single: true,
+                units: vec![Unit {
+                    file: None,
+                    name: r.title.clone(),
+                    watched: false,
+                    gone: false,
+                }],
+                counted: true,
+                seen: false,
+                gone: false,
+            }
+        })
+        .collect();
+    now_items.extend(parts.iter().filter(|p| p.added).map(|p| p.release.clone()));
+    let title = name
+        .map(str::to_string)
+        .unwrap_or_else(|| show_title(&items[order[0]].title));
+    rolls.push(base(title, None, parts));
     Plan {
-        now: items.to_vec(),
+        now: now_items,
         rolls,
     }
 }
@@ -449,7 +458,14 @@ pub fn moves(roll: &Roll) -> Moves {
     let mut m = Moves::default();
     for (pos, &k) in keys.iter().enumerate() {
         let (part, u) = (&roll.parts[k.0], unit(roll, k));
-        if u.gone || part.gone {
+        if part.gone {
+            continue;
+        }
+        // A file the roll deleted stays skipped, or the client fetches it again
+        if u.gone {
+            if let (false, Some(file)) = (part.single, u.file) {
+                m.priorities.entry(k.0).or_default().push((file, SKIP));
+            }
             continue;
         }
         let wanted = if roll.released {
@@ -596,7 +612,7 @@ pub fn finished(roll: &Roll, now: i64) -> bool {
     if roll
         .parts
         .iter()
-        .any(|p| p.added && !p.seen && now - roll.created_at > UNBOUND_AGE_SECS)
+        .any(|p| p.added && !p.seen && now - p.added_at.max(roll.created_at) > UNBOUND_AGE_SECS)
     {
         return true;
     }
@@ -680,17 +696,24 @@ pub fn load(core: &Core) -> Result<Vec<Roll>, CoreError> {
         .read(|c| Ok(kv::get::<Vec<Roll>>(c, ROLLS)?.unwrap_or_default()))
 }
 
-/// Applies a pass's changes by id onto what is stored now, so a roll
-/// changed or added while the pass ran is kept as it is.
+/// What the user sets on a roll; a pass never changes these.
+fn users_part(r: &Roll) -> (u32, bool, Option<Key>, bool) {
+    (r.ahead, r.delete_watched, r.until, r.released)
+}
+
+/// Applies a pass's changes by id onto what is stored now. A roll added
+/// while the pass ran is kept as it is, and one the user changed meanwhile
+/// (`SetRoll`, `RollMore`) keeps the change: the pass's copy takes the
+/// user's settings, and a roll the pass would drop stays for the next pass.
 fn save_changes(core: &Core, before: &[Roll], after: &[Roll]) -> Result<(), CoreError> {
-    let mut changes: HashMap<u64, Option<Roll>> = HashMap::new();
+    let mut changes: HashMap<u64, (Roll, Option<Roll>)> = HashMap::new();
     for b in before {
         match after.iter().find(|a| a.id == b.id) {
             None => {
-                changes.insert(b.id, None);
+                changes.insert(b.id, (b.clone(), None));
             }
             Some(a) if a != b => {
-                changes.insert(b.id, Some(a.clone()));
+                changes.insert(b.id, (b.clone(), Some(a.clone())));
             }
             _ => {}
         }
@@ -704,8 +727,18 @@ fn save_changes(core: &Core, before: &[Roll], after: &[Roll]) -> Result<(), Core
             .into_iter()
             .filter_map(|r| match changes.get(&r.id) {
                 None => Some(r),
-                Some(None) => None,
-                Some(Some(new)) => Some(new.clone()),
+                Some((b, change)) => {
+                    let edited = users_part(&r) != users_part(b);
+                    match change {
+                        None if edited => Some(r),
+                        None => None,
+                        Some(new) => {
+                            let mut n = new.clone();
+                            (n.ahead, n.delete_watched, n.until, n.released) = users_part(&r);
+                            Some(n)
+                        }
+                    }
+                }
             })
             .collect();
         kv::set(c, ROLLS, &next)
@@ -809,6 +842,14 @@ async fn step(
             }
             continue;
         };
+        if !part.seen
+            && roll.sequential
+            && let Err(e) = client
+                .set_sequential(std::slice::from_ref(&t.hash), true)
+                .await
+        {
+            tracing::warn!("{} not set to download in order: {e}", t.name);
+        }
         part.seen = true;
         if part.single {
             continue;
@@ -885,15 +926,33 @@ async fn step(
     }
     let m = moves(roll);
     let mut acted: Vec<String> = Vec::new();
-    // Batch files in and out of the window
+    // Every batch still in the client must have had its file list read, or
+    // its priorities are not known to be right
+    let mut all_set = roll
+        .parts
+        .iter()
+        .enumerate()
+        .all(|(i, p)| p.single || p.gone || !p.added || files_of.contains_key(&i));
+    // Batch files in and out of the window, the client's priorities kept
+    // up to date with what was set
     for (part, wish) in &m.priorities {
-        let Some(files) = files_of.get(part) else {
+        let Some(files) = files_of.get_mut(part) else {
             continue;
         };
         let hash = roll.parts[*part].hash.clone();
         for (priority, ids) in priority_changes(wish, files) {
-            if let Err(e) = client.set_file_priority(&hash, &ids, priority).await {
-                tracing::warn!("{}: file priorities not set: {e}", roll.title);
+            match client.set_file_priority(&hash, &ids, priority).await {
+                Ok(()) => {
+                    for &i in &ids {
+                        if let Some(f) = files.get_mut(i) {
+                            f.priority = priority;
+                        }
+                    }
+                }
+                Err(e) => {
+                    all_set = false;
+                    tracing::warn!("{}: file priorities not set: {e}", roll.title);
+                }
             }
         }
     }
@@ -950,7 +1009,14 @@ async fn step(
             }
             continue;
         }
-        if !here {
+        // Only a file the client has been told to skip, or it fetches it again
+        let skipped = part.units[u].file.is_some_and(|f| {
+            files_of
+                .get(&p)
+                .and_then(|fs| fs.get(f))
+                .is_some_and(|f| f.priority == SKIP)
+        });
+        if !here || !skipped {
             continue;
         }
         let name = &part.units[u].name;
@@ -998,7 +1064,7 @@ async fn step(
         }
         core.bus.info(Stage::Downloads, line, EventBody::Notice);
     }
-    if roll.released && m.add.is_empty() {
+    if roll.released && m.add.is_empty() && all_set {
         return Step::Drop;
     }
     Step::Keep
@@ -1074,8 +1140,13 @@ pub fn nudge(core: &Core) {
     handle.spawn(async move { pass_now(&owner).await });
 }
 
-/// A pass with a fresh read, then a torrent read for the page.
+/// A pass with a fresh read, then a torrent read for the page. Where the
+/// read runs the pass itself, the read alone.
 async fn pass_now(core: &Arc<Core>) {
+    if core.downloads.unattended_allowed() {
+        let _ = super::list_torrents(core);
+        return;
+    }
     let client = match super::qbt_client(core).await {
         Ok(c) => c,
         Err(e) => {
@@ -1200,10 +1271,12 @@ mod tests {
             over: None,
             until: None,
             released: false,
+            sequential: false,
             parts: vec![Part {
                 release: release("[G] Show (01-170) [Batch]"),
                 hash: "aa".into(),
                 added: true,
+                added_at: 100,
                 single: false,
                 units: units_of(&files),
                 counted: true,
@@ -1452,6 +1525,57 @@ mod tests {
         let mut parts: Vec<&mut Part> = r.parts.iter_mut().collect();
         take_hashes(&mut parts, &["a".repeat(40), "b".repeat(40)]);
         assert!(r.parts[0].hash.is_empty());
+    }
+
+    #[test]
+    fn a_held_single_added_late_is_given_its_own_time_to_show() {
+        let titles: Vec<String> = (1..=40).map(|i| format!("[G] Show - {i:02}.mkv")).collect();
+        let items = singles(&titles.iter().map(String::as_str).collect::<Vec<_>>());
+        let mut r = plan(
+            &items,
+            &DownloadOptions::default(),
+            &RollingSettings::default(),
+            None,
+            0,
+        )
+        .rolls
+        .remove(0);
+        for p in r.parts.iter_mut().filter(|p| p.added) {
+            p.seen = true;
+        }
+        // Day 10: the thirteenth is handed over and not listed yet
+        let day = 86_400;
+        r.parts[12].added = true;
+        r.parts[12].added_at = 10 * day;
+        assert!(!finished(&r, 10 * day + 60));
+        assert!(finished(&r, 14 * day));
+    }
+
+    #[test]
+    fn a_pick_with_one_odd_title_still_rolls_its_singles() {
+        let mut titles: Vec<String> = (1..=40).map(|i| format!("[G] Show - {i:02}.mkv")).collect();
+        titles.push("[G] Show OVA [Batch]".into());
+        let items = singles(&titles.iter().map(String::as_str).collect::<Vec<_>>());
+        let p = plan(
+            &items,
+            &DownloadOptions::default(),
+            &RollingSettings::default(),
+            None,
+            5,
+        );
+        assert_eq!(p.now.len(), 13, "the odd one and the first twelve");
+        assert_eq!(p.rolls.len(), 2);
+    }
+
+    #[test]
+    fn a_deleted_file_stays_skipped() {
+        let mut r = batch(20, 3);
+        watch(&mut r, 3);
+        r.parts[0].units[0].gone = true;
+        let m = moves(&r);
+        let f = r.parts[0].units[0].file.unwrap();
+        assert!(m.priorities[&0].contains(&(f, SKIP)));
+        assert!(!m.delete.contains(&(0, 0)));
     }
 
     #[test]

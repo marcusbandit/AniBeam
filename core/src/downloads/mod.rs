@@ -1461,20 +1461,22 @@ pub fn download_with(
         return Err(CoreError::invalid("items", "nothing selected to download"));
     }
     let owner = core.owner()?;
-    let followups = replace::prepare(&owner.store, &items, &options)?;
+    // What rolls is held back before anything else is asked of it, so a
+    // held episode gets no followup that would wait days for its torrent
+    let roll_settings = owner.store.read(settings::load_stored)?.rolling;
+    let plan = rolling::plan(
+        &items,
+        &options,
+        &roll_settings,
+        name.as_deref(),
+        crate::time::now_secs(),
+    );
+    let followups = replace::prepare(&owner.store, &plan.now, &options)?;
     Ok(owner
         .jobs
         .clone()
         .start(JobKind::Download, move |_| async move {
             let client = ensure_client(&owner).await?;
-            let roll_settings = owner.store.read(settings::load_stored)?.rolling;
-            let plan = rolling::plan(
-                &items,
-                &options,
-                &roll_settings,
-                name.as_deref(),
-                crate::time::now_secs(),
-            );
             let result = client.download(&plan.now, name.as_deref()).await?;
             let mut extra = replace::describe(&options, &followups);
             extra.push_str(&rolling::describe(&plan));

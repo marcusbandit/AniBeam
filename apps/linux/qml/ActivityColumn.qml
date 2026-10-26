@@ -351,7 +351,8 @@ Item {
             }
             RollControls {
                 width: parent.width
-                roll: (line.t.grouped ? line.t.members[0].roll : line.t.roll) || null
+                // A group shows the roll of whichever member belongs to one
+                roll: (line.t.grouped ? (line.t.members.filter(function(m) { return !!m.roll })[0] || {}).roll : line.t.roll) || null
             }
             EpisodeCubes {
                 visible: !line.done && line.eps.length <= 1
