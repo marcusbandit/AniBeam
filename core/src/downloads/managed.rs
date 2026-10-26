@@ -279,9 +279,15 @@ mod tests {
     fn which_takes_the_first_directory_that_has_it() {
         let a = tempfile::tempdir().unwrap();
         let b = tempfile::tempdir().unwrap();
-        std::fs::write(b.path().join(NAME), "").unwrap();
-        let path = format!("{}:{}", a.path().display(), b.path().display());
-        assert_eq!(which(NAME, &path), Some(b.path().join(NAME)));
+        let file = if cfg!(windows) {
+            format!("{NAME}.exe")
+        } else {
+            NAME.to_string()
+        };
+        std::fs::write(b.path().join(&file), "").unwrap();
+        let path = std::env::join_paths([a.path(), b.path()]).unwrap();
+        let path = path.to_string_lossy();
+        assert_eq!(which(NAME, &path), Some(b.path().join(&file)));
         assert_eq!(which(NAME, &a.path().display().to_string()), None);
     }
 }

@@ -501,7 +501,9 @@ mod tests {
 
     #[test]
     fn unknown_fields_come_back_by_name() {
+        // A Windows checkout can carry the fixture with CRLF line ends.
         let text = FIXTURE
+            .replace("\r\n", "\n")
             .replace(
                 "\"format\": \"anibeam-export\",",
                 "\"format\": \"anibeam-export\",\n  \"foo\": 1,",

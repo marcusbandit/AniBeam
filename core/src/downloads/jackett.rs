@@ -122,6 +122,24 @@ fn program(command: &str) -> String {
         .to_string()
 }
 
+/// Whether cmd can start `program`: a cmd builtin, a file that exists, or a name on PATH
+/// with one of PATHEXT's extensions.
+#[cfg(windows)]
+fn on_path(program: &str) -> bool {
+    const BUILTINS: [&str; 6] = ["start", "call", "echo", "cd", "set", "exit"];
+    let program = program.trim_matches('"');
+    if BUILTINS.contains(&program.to_ascii_lowercase().as_str()) || Path::new(program).is_file() {
+        return true;
+    }
+    let exts = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into());
+    let exts: Vec<&str> = std::iter::once("").chain(exts.split(';')).collect();
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    std::env::split_paths(&path).any(|dir| {
+        exts.iter()
+            .any(|ext| dir.join(format!("{program}{ext}")).is_file())
+    })
+}
+
 /// Runs `command` and waits until `ready` answers. A service that already
 /// answers is left alone and the command never runs. Output goes to `log`.
 /// With an empty `ready` there is nothing to wait for: the command counts
@@ -136,6 +154,12 @@ pub async fn start(
 ) -> Result<(), StartFailure> {
     if !ready.is_empty() && answers(http, ready).await {
         return Ok(());
+    }
+    // cmd says "not recognized" in the machine's own language and exits 1, so on Windows
+    // the program is looked up before the line runs.
+    #[cfg(windows)]
+    if !on_path(&program(command)) {
+        return Err(StartFailure::Missing(program(command)));
     }
     if let Some(dir) = log.parent() {
         let _ = std::fs::create_dir_all(dir);
@@ -306,6 +330,8 @@ mod tests {
         assert!(message.starts_with("Jackett is not installed"));
     }
 
+    // sh syntax.
+    #[cfg(unix)]
     #[tokio::test]
     async fn a_command_that_fails_reports_the_last_line_it_wrote() {
         let dir = tempfile::tempdir().unwrap();

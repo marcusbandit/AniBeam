@@ -187,6 +187,8 @@ mod tests {
         d.path().join(p).to_string_lossy().into_owned()
     }
 
+    // /srv/gone is not an absolute path on Windows.
+    #[cfg(unix)]
     #[test]
     fn the_series_folder_and_what_the_torrents_wrote_go_inner_paths_folded() {
         let d = tree();
