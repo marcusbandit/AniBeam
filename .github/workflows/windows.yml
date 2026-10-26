@@ -48,9 +48,12 @@ jobs:
         with:
           arch: x64
 
+      # aqtinstall 3.3.0, the newest on PyPI, cannot read Qt 6.11's repository layout; the
+      # fix (miurahr/aqtinstall#959) is on its main branch only, so the action runs that.
       - name: Qt
         uses: jurplel/install-qt-action@v4
         with:
+          aqtsource: git+https://github.com/miurahr/aqtinstall.git@076e1659807d0b362a3ed684d54c2e9c775eb9c7
           version: ${{ env.QT_VERSION }}
           arch: win64_msvc2022_64
           modules: qtshadertools
