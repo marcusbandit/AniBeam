@@ -41,6 +41,7 @@ Item {
         if ((root.t.upspeed || 0) > 0) parts.push(Fmt.bytes(root.t.upspeed) + "/s up")
         if (!root.done && (root.t.dlspeed || 0) > 0 && root.t.eta > 0 && root.t.eta < 8640000) parts.push(Fmt.countdown(root.t.eta) + " left")
         if (!root.done) parts.push(String(root.t.num_seeds || 0) + " seeds")
+        if (root.t.roll) parts.push("rolling, episodes " + root.t.roll.next + " to " + root.t.roll.through + " of " + root.t.roll.total)
         return parts.join(", ")
     }
 

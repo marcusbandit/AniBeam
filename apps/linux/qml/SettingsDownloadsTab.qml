@@ -22,6 +22,7 @@ SettingsTab {
     readonly property var settings: status ? status.settings : null
     readonly property var anirss: status ? status.anirss : null
     readonly property var torrent: status ? status.torrent : null
+    readonly property var roll: draft && draft.rolling ? draft.rolling : ({ big: true, ahead: 12, over: 30, delete_watched: true })
     readonly property bool sidecar: !!draft && draft.anirss_mode === "Sidecar"
     readonly property var clients: [{ name: "qBittorrent", id: "Qbittorrent" }]
     readonly property var endpoints: status && status.endpoints ? status.endpoints : []
@@ -45,6 +46,8 @@ SettingsTab {
         if (!tab.dirty) tab.draft = JSON.parse(JSON.stringify(r.reply.status.settings))
     }
     function edit(f) { var d = JSON.parse(JSON.stringify(draft)); f(d); draft = d; dirty = true }
+    // Settings saved before rolling existed carry none; fill the defaults the core reads
+    function rolling(d) { if (!d.rolling) d.rolling = { big: true, ahead: 12, over: 30, delete_watched: true }; return d.rolling }
     function entryOf(d, id) { for (var i = 0; i < d.saved_clients.length; i++) if (d.saved_clients[i].id === id) return d.saved_clients[i]; return null }
     // A field edit lands in the client in use too, so picking another keeps what was typed
     function setActive(d, key, value) { var c = d.torrent_mode === "Existing" ? entryOf(d, d.active_client) : null; if (c) c[key] = value }
@@ -145,7 +148,7 @@ SettingsTab {
 
     SettingsPair {
         split: 1 / 2
-        leftPanels: [ anirssPanel, endpointsPanel ]
+        leftPanels: [ anirssPanel, rollingPanel, endpointsPanel ]
         rightPanels: [ clientPanel, savePanel, reposPanel ]
     }
     Component {
@@ -167,6 +170,23 @@ SettingsTab {
                 Switch { objectName: "downloads-prune-finished"; checked: !!tab.draft && tab.draft.prune_finished_feeds !== false; onToggled: function(on) { tab.edit(function(d) { d.prune_finished_feeds = on }) } } }
             SettingRow { label: "State"; line: tab.anirssLine; hairline: false
                 Button { text: tab.anirss && tab.anirss.state === "Starting" ? "Starting" : tab.anirss && tab.anirss.state === "Ready" ? "Reconnect" : "Connect"; icon: "refresh-cw"; flat: true; enabled: !tab.dirty && !(tab.anirss && tab.anirss.state === "Starting"); onClicked: tab.connect() } }
+        }
+    }
+    Component {
+        id: rollingPanel
+        Panel {
+            title: "Rolling download"; icon: "layers"
+            helper: "A long show downloads a few episodes at a time. Each episode you finish starts the next one, so the whole run never has to fit on the disk."
+            SettingRow { label: "Roll long downloads"; helper: "A download of more than " + tab.roll.over + " episodes rolls by itself. Its row can still switch it to everything at once."
+                Switch { objectName: "downloads-roll-big"; checked: tab.roll.big !== false; onToggled: function(on) { tab.edit(function(d) { tab.rolling(d).big = on }) } } }
+            SettingRow { label: "Episodes ahead"; helper: "How many stay downloaded past the one you are on. 12 is about a season."
+                SliderRow { objectName: "downloads-roll-ahead"; from: 1; to: 52; stepSize: 1; trackWidth: theme.space(32); value: tab.roll.ahead
+                            onMoved: function(v) { tab.edit(function(d) { tab.rolling(d).ahead = Math.round(v) }) } } }
+            SettingRow { label: "Roll above"; helper: "Downloads with more episodes than this roll."
+                SliderRow { objectName: "downloads-roll-over"; from: 12; to: 200; stepSize: 1; trackWidth: theme.space(32); value: tab.roll.over
+                            onMoved: function(v) { tab.edit(function(d) { tab.rolling(d).over = Math.round(v) }) } } }
+            SettingRow { label: "Delete watched episodes"; helper: "An episode you finished leaves the disk once you finish the next one. Off keeps every file."; hairline: false
+                Switch { objectName: "downloads-roll-delete"; checked: tab.roll.delete_watched !== false; onToggled: function(on) { tab.edit(function(d) { tab.rolling(d).delete_watched = on }) } } }
         }
     }
     Component {

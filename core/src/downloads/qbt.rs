@@ -243,6 +243,12 @@ impl QbtClient {
         self.call("torrents/filePrio", Some(form)).await.map(|_| ())
     }
 
+    /// Has the client check the torrents' data against their hashes again.
+    pub async fn recheck(&self, hashes: &[String]) -> Result<(), CoreError> {
+        let form = vec![("hashes".to_string(), hashes.join("|"))];
+        self.call("torrents/recheck", Some(form)).await.map(|_| ())
+    }
+
     pub async fn delete(&self, hashes: &[String], files: bool) -> Result<(), CoreError> {
         let form = vec![
             ("hashes".to_string(), hashes.join("|")),
@@ -480,6 +486,7 @@ fn torrent(v: &Value) -> Torrent {
         group: String::new(),
         resolution: String::new(),
         provider: String::new(),
+        roll: None,
     }
 }
 

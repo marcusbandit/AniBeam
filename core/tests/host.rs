@@ -83,6 +83,7 @@ fn the_preference_starts_and_stops_a_server_that_serves_the_library() {
         saved_clients: Vec::new(),
         active_client: String::new(),
         prune_finished_feeds: true,
+        rolling: Default::default(),
     };
     core.call(Call::SetDownloadSettings {
         settings,

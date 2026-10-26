@@ -379,6 +379,9 @@ pub struct Torrent {
     /// torrents carry none.
     #[serde(default)]
     pub provider: String,
+    /// The rolling download this torrent belongs to, if any.
+    #[serde(default)]
+    pub roll: Option<RollView>,
 }
 
 /// One file inside a torrent: its name, size and progress, and the episode
@@ -471,6 +474,11 @@ pub struct DownloadOptions {
     /// fetching is being replaced; otherwise only those files are skipped.
     #[serde(default)]
     pub cancel: Vec<String>,
+    /// Hold the download to a rolling window of episodes
+    /// (`downloads::rolling`): `Some(true)` always, `Some(false)` never,
+    /// `None` when the settings say so for one this long.
+    #[serde(default)]
+    pub rolling: Option<bool>,
 }
 
 /// One item of a download and the episodes it replaces.
@@ -574,6 +582,62 @@ pub struct DownloadSettings {
     /// saved before this existed read as on.
     #[serde(default = "default_true")]
     pub prune_finished_feeds: bool,
+    /// How long downloads roll (`downloads::rolling`).
+    #[serde(default)]
+    pub rolling: RollingSettings,
+}
+
+/// Rolling download: a long show is fetched a window of episodes at a
+/// time, and each one watched moves the window on.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct RollingSettings {
+    /// Roll a download of more than `over` episodes without being asked.
+    #[serde(default = "default_true")]
+    pub big: bool,
+    /// Episodes kept downloaded ahead of the one being watched.
+    #[serde(default = "default_ahead")]
+    pub ahead: u32,
+    /// The episode count above which a download rolls by itself.
+    #[serde(default = "default_over")]
+    pub over: u32,
+    /// A watched episode leaves the disk once a later one is watched.
+    #[serde(default = "default_true")]
+    pub delete_watched: bool,
+}
+
+impl Default for RollingSettings {
+    fn default() -> Self {
+        RollingSettings {
+            big: true,
+            ahead: default_ahead(),
+            over: default_over(),
+            delete_watched: true,
+        }
+    }
+}
+
+fn default_ahead() -> u32 {
+    12
+}
+
+fn default_over() -> u32 {
+    30
+}
+
+/// Where a rolling download stands, carried on each of its torrents.
+/// Positions count episodes in the roll's order from 1.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct RollView {
+    pub id: u64,
+    pub ahead: u32,
+    /// The next episode to watch.
+    pub next: u64,
+    /// The last episode the window reaches.
+    pub through: u64,
+    pub total: u64,
+    /// Episodes watched since the roll began.
+    pub watched: u64,
+    pub delete_watched: bool,
 }
 
 fn existing_mode() -> TorrentMode {
