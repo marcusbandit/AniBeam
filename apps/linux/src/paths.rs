@@ -52,7 +52,7 @@ impl ShellPaths {
                     runtime_dir,
                     builtin_themes,
                     bundled_mpv_conf_override,
-                    mpv_config_home: mac_config_home(),
+                    mpv_config_home: mpv_config_home(),
                 })
             }
         }
@@ -70,6 +70,7 @@ pub fn share_dir() -> PathBuf {
     if let Some(dir) = std::env::current_exe()
         .ok()
         .and_then(|exe| Some(exe.parent()?.to_path_buf()))
+        .filter(|dir| dir.join("themes").is_dir())
     {
         return dir;
     }
@@ -133,7 +134,7 @@ fn beside_bin(prefix: Option<&std::path::Path>) -> Option<PathBuf> {
 
 /// `$XDG_CONFIG_HOME`, else `~/.config`, on a Mac; `%APPDATA%` on Windows; `None` elsewhere,
 /// where the core's own config directory already sits in it.
-fn mac_config_home() -> Option<PathBuf> {
+fn mpv_config_home() -> Option<PathBuf> {
     if cfg!(windows) {
         return std::env::var_os("APPDATA").map(PathBuf::from);
     }

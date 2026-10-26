@@ -54,4 +54,5 @@ Filename: "{app}\anibeam.exe"; Description: "{cm:LaunchProgram,AniBeam}"; Flags:
 
 [UninstallRun]
 ; The managed qBittorrent outlives the app on purpose; it has to stop before its files go.
-Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM qbittorrent-nox.exe"; Flags: runhidden; RunOnceId: "StopQbittorrent"
+; Only the copy in this folder: a qbittorrent-nox of the user's own is left running.
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -NonInteractive -Command ""Get-Process qbittorrent-nox -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -like '{app}\*' }} | Stop-Process -Force"""; Flags: runhidden; RunOnceId: "StopQbittorrent"

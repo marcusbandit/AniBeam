@@ -86,7 +86,7 @@ impl Linker {
 
 fn trim(path: &str) -> &str {
     let t = path.trim();
-    let t = t.trim_end_matches(std::path::is_separator);
+    let t = crate::paths::trim_separators(t);
     if t.is_empty() && path.trim().starts_with('/') {
         "/"
     } else {

@@ -61,6 +61,19 @@ impl CorePaths {
     }
 }
 
+/// `path` without its trailing separators, except that a Windows drive root keeps its
+/// own: `D:\` alone is the drive, `D:` is that drive's current directory.
+pub(crate) fn trim_separators(path: &str) -> &str {
+    let trimmed = path.trim_end_matches(std::path::is_separator);
+    let b = trimmed.as_bytes();
+    if cfg!(windows) && b.len() == 2 && b[1] == b':' && b[0].is_ascii_alphabetic() && path.len() > 2
+    {
+        &path[..3]
+    } else {
+        trimmed
+    }
+}
+
 /// Path containment: a path is under a root when it is the root or sits
 /// below it. String prefixes are not enough, or `/lib2` would count as
 /// inside `/lib`. The rule the scan reconciles with and the import
@@ -81,7 +94,7 @@ pub(crate) fn under(path: &str, root: &str) -> bool {
 /// stays itself. Every path a source or an import writes goes through
 /// this, so the two always agree about what one path is.
 pub(crate) fn normalise(path: &str) -> String {
-    let trimmed = path.trim().trim_end_matches(std::path::is_separator);
+    let trimmed = trim_separators(path.trim());
     if trimmed.is_empty() {
         "/".to_string()
     } else {
@@ -98,6 +111,15 @@ mod tests {
         assert!(under("/lib", "/lib"));
         assert!(!under("/lib2/Show", "/lib"));
         assert!(under("/lib/Show", "/lib/"));
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn a_drive_root_keeps_its_separator() {
+        assert_eq!(normalise("D:\\"), "D:\\");
+        assert_eq!(normalise("D:/"), "D:/");
+        assert_eq!(normalise("D:\\Anime\\"), "D:\\Anime");
+        assert!(under("D:\\Anime\\Show", "D:\\"));
     }
 
     #[test]

@@ -32,7 +32,7 @@ fn refuse(path: &str, why: &str) -> CoreError {
 }
 
 fn clean(path: &str) -> PathBuf {
-    PathBuf::from(path.trim().trim_end_matches(std::path::is_separator))
+    PathBuf::from(crate::paths::trim_separators(path.trim()))
 }
 
 fn has_parent_step(p: &Path) -> bool {

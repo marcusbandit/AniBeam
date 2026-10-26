@@ -42,12 +42,14 @@ fn is_script(program: &str) -> bool {
 }
 
 /// A shell line, as an endpoint's start command is written: `sh -c`, or on
-/// Windows `cmd /C`.
+/// Windows `cmd /S /C "<line>"`, the form in which cmd strips exactly the outer
+/// quotes and keeps every quote inside the line.
 pub(crate) fn shell(line: &str) -> Command {
     #[cfg(windows)]
     {
         let mut cmd = Command::new("cmd");
-        cmd.arg("/C").raw_arg(line).creation_flags(NO_WINDOW);
+        cmd.raw_arg(format!("/S /C \"{line}\""))
+            .creation_flags(NO_WINDOW);
         cmd
     }
     #[cfg(not(windows))]

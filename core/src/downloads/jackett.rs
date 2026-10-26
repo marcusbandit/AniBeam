@@ -122,13 +122,33 @@ fn program(command: &str) -> String {
         .to_string()
 }
 
-/// Whether cmd can start `program`: a cmd builtin, a file that exists, or a name on PATH
-/// with one of PATHEXT's extensions.
+/// The program a cmd line starts: the quoted first word whole, else the first word.
 #[cfg(windows)]
-fn on_path(program: &str) -> bool {
-    const BUILTINS: [&str; 6] = ["start", "call", "echo", "cd", "set", "exit"];
-    let program = program.trim_matches('"');
-    if BUILTINS.contains(&program.to_ascii_lowercase().as_str()) || Path::new(program).is_file() {
+fn cmd_program(line: &str) -> &str {
+    let line = line.trim_start();
+    match line.strip_prefix('"') {
+        Some(rest) => rest.split('"').next().unwrap_or(rest),
+        None => line.split_whitespace().next().unwrap_or(line),
+    }
+}
+
+/// False only when cmd surely cannot start the line's program: a bare name that is no
+/// builtin and is on no PATH directory under any PATHEXT extension, or a path to nothing.
+/// Anything less sure runs, and its exit code speaks for it.
+#[cfg(windows)]
+fn on_path(line: &str) -> bool {
+    const BUILTINS: [&str; 16] = [
+        "start", "call", "echo", "cd", "chdir", "set", "exit", "pushd", "popd", "if", "for",
+        "title", "type", "rem", "ver", "timeout",
+    ];
+    let program = cmd_program(line);
+    // App Execution Aliases (WindowsApps\python.exe and the like) are reparse points that
+    // is_file() cannot read, so presence is all that is asked.
+    let present = |p: &Path| std::fs::symlink_metadata(p).is_ok();
+    if program.contains(['\\', '/', ':']) {
+        return present(Path::new(program));
+    }
+    if BUILTINS.contains(&program.to_ascii_lowercase().as_str()) {
         return true;
     }
     let exts = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into());
@@ -136,7 +156,7 @@ fn on_path(program: &str) -> bool {
     let path = std::env::var_os("PATH").unwrap_or_default();
     std::env::split_paths(&path).any(|dir| {
         exts.iter()
-            .any(|ext| dir.join(format!("{program}{ext}")).is_file())
+            .any(|ext| present(&dir.join(format!("{program}{ext}"))))
     })
 }
 
@@ -158,7 +178,7 @@ pub async fn start(
     // cmd says "not recognized" in the machine's own language and exits 1, so on Windows
     // the program is looked up before the line runs.
     #[cfg(windows)]
-    if !on_path(&program(command)) {
+    if !on_path(command) {
         return Err(StartFailure::Missing(program(command)));
     }
     if let Some(dir) = log.parent() {

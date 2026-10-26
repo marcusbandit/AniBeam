@@ -25,11 +25,13 @@ unsafe extern "system" {
     fn CloseHandle(handle: Handle) -> i32;
 }
 
-/// POWER_REQUEST_CONTEXT_VERSION, POWER_REQUEST_CONTEXT_SIMPLE_STRING and
-/// PowerRequestDisplayRequired, from minwinbase.h and winnt.h.
+/// POWER_REQUEST_CONTEXT_VERSION, POWER_REQUEST_CONTEXT_SIMPLE_STRING,
+/// PowerRequestDisplayRequired and PowerRequestSystemRequired, from minwinbase.h and
+/// winnt.h. Both kinds are held, as mpv holds both: the screen stays on and the machine
+/// does not sleep under it.
 const CONTEXT_VERSION: u32 = 0;
 const SIMPLE_STRING: u32 = 1;
-const DISPLAY_REQUIRED: i32 = 0;
+const KINDS: [i32; 2] = [0, 1];
 const INVALID_HANDLE: isize = -1;
 
 /// The request handle, as an address so the hold can cross threads.
@@ -61,10 +63,15 @@ impl Backend {
                 eprintln!("anibeam: idle inhibit: PowerCreateRequest failed");
                 return None;
             }
-            if PowerSetRequest(request, DISPLAY_REQUIRED) == 0 {
-                eprintln!("anibeam: idle inhibit: PowerSetRequest failed");
-                CloseHandle(request);
-                return None;
+            for kind in KINDS {
+                if PowerSetRequest(request, kind) == 0 {
+                    eprintln!("anibeam: idle inhibit: PowerSetRequest({kind}) failed");
+                    for set in KINDS.into_iter().take_while(|k| *k != kind) {
+                        PowerClearRequest(request, set);
+                    }
+                    CloseHandle(request);
+                    return None;
+                }
             }
             Some(Hold(request as isize))
         }
@@ -75,7 +82,9 @@ impl Backend {
         // closed once, since the hold is consumed.
         unsafe {
             let request = hold.0 as Handle;
-            PowerClearRequest(request, DISPLAY_REQUIRED);
+            for kind in KINDS {
+                PowerClearRequest(request, kind);
+            }
             CloseHandle(request);
         }
     }
