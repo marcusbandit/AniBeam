@@ -10,6 +10,11 @@ The app shows this file in What's new, newest version first. Keep it short.
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
+## 2.1.1 · 2026-10-26
+
+### Fixed
+- Numbered specials and OVAs keep their own episode numbers
+
 ## 2.1.0 · 2026-10-25
 
 ### New
