@@ -37,7 +37,18 @@ fn stage(dir: &Path) -> String {
     .unwrap();
     fs::create_dir_all(lib.join("Movies")).unwrap();
     fs::write(lib.join("Movies").join("Perfect Blue (1997).mkv"), b"x").unwrap();
-    FIXTURE.replace("/mnt/media/anime", lib.to_str().unwrap())
+    // The paths as this platform writes them, escaped for JSON: on Windows a backslash
+    // between every element, as an export made there would carry.
+    let quoted = serde_json::to_string(lib.to_str().unwrap()).unwrap();
+    let root = &quoted[1..quoted.len() - 1];
+    let sep = if cfg!(windows) { "\\\\" } else { "/" };
+    FIXTURE
+        .replace(
+            "/mnt/media/anime/Movies/",
+            &format!("{root}{sep}Movies{sep}"),
+        )
+        .replace("/mnt/media/anime/", &format!("{root}{sep}"))
+        .replace("/mnt/media/anime", root)
 }
 
 fn write_document(dir: &Path, name: &str, text: &str) -> String {
