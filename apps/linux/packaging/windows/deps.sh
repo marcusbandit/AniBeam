@@ -11,7 +11,8 @@
 #                way its own Windows CI builds the GUI one, with the GUI off: OpenSSL and zlib
 #                static from vcpkg, boost headers, libtorrent static.
 set -euo pipefail
-# Git Bash rewrites anything that looks like a path, /nologo and /def:x included.
+# Git Bash rewrites anything that looks like a path, /nologo and /def:x included. Its tar
+# reads C:/... as a remote host, hence --force-local below.
 export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'
 
 MPV_RELEASE=20261021
@@ -89,13 +90,13 @@ echo "== boost $BOOST_VERSION headers"
 boost_tar="boost_${BOOST_VERSION//./_}"
 curl -fsSL --retry 3 -o "$work/boost.tar.gz" \
   "https://archives.boost.io/release/$BOOST_VERSION/source/$boost_tar.tar.gz"
-tar -xzf "$work/boost.tar.gz" -C "$work"
+tar --force-local -xzf "$work/boost.tar.gz" -C "$work"
 boost="$work/$boost_tar"
 
 echo "== libtorrent-rasterbar $LIBTORRENT_VERSION"
 fetch "https://github.com/arvidn/libtorrent/releases/download/v$LIBTORRENT_VERSION/libtorrent-rasterbar-$LIBTORRENT_VERSION.tar.gz" \
   "$LIBTORRENT_SHA256" "$work/libtorrent.tar.gz"
-tar -xzf "$work/libtorrent.tar.gz" -C "$work"
+tar --force-local -xzf "$work/libtorrent.tar.gz" -C "$work"
 cmake -S "$work/libtorrent-rasterbar-$LIBTORRENT_VERSION" -B "$work/libtorrent-build" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_CXX_STANDARD=20 \
@@ -112,7 +113,7 @@ cmake --install "$work/libtorrent-build"
 echo "== qBittorrent $QBT_VERSION (nox)"
 fetch "https://github.com/qbittorrent/qBittorrent/archive/refs/tags/release-$QBT_VERSION.tar.gz" \
   "$QBT_SHA256" "$work/qbittorrent.tar.gz"
-tar -xzf "$work/qbittorrent.tar.gz" -C "$work"
+tar --force-local -xzf "$work/qbittorrent.tar.gz" -C "$work"
 cmake -S "$work/qBittorrent-release-$QBT_VERSION" -B "$work/qbt-build" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_PREFIX_PATH="$qt" \
