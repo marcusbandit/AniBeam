@@ -733,6 +733,7 @@ fn complete(core: &Core, s: &Session) -> Result<(), CoreError> {
     if s.is_extra {
         return Ok(());
     }
+    crate::downloads::rolling::nudge(core);
     let images_dir = core.paths.images_dir();
     let cards = core
         .store

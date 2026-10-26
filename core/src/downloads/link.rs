@@ -421,6 +421,7 @@ mod tests {
             group: String::new(),
             resolution: String::new(),
             provider: String::new(),
+            roll: None,
         };
         assert_eq!(l.find_torrent(&t), Some(4));
         t.save_path = "/mnt/media/Anime/Frieren".into();

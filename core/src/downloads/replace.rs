@@ -1356,6 +1356,7 @@ mod tests {
                 },
             ],
             cancel: Vec::new(),
+            rolling: None,
         };
         let got = prepare(&store, &items, &options).unwrap();
         assert_eq!(got.len(), 2, "item 2 asks for nothing");

@@ -349,6 +349,11 @@ Item {
                 maxRows: 4
                 tipFor: function(i, code) { var e = line.eps[i]; return "Episode " + e.n + ": " + (e.skip ? "skipped" : e.p >= 1 ? "done" : Math.floor(e.p * 100) + "%") }
             }
+            RollControls {
+                width: parent.width
+                // A group shows the roll of whichever member belongs to one
+                roll: (line.t.grouped ? (line.t.members.filter(function(m) { return !!m.roll })[0] || {}).roll : line.t.roll) || null
+            }
             EpisodeCubes {
                 visible: !line.done && line.eps.length <= 1
                 width: parent.width

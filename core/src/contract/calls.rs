@@ -361,6 +361,21 @@ pub enum Call {
         hashes: Vec<String>,
         action: TorrentAction,
     },
+    /// Changes a rolling download: how many episodes it keeps ahead,
+    /// whether watched ones leave the disk, or `on: false` to stop rolling
+    /// and fetch everything. Replies `Ok`; the torrents read anew after.
+    SetRoll {
+        id: u64,
+        ahead: Option<u32>,
+        on: Option<bool>,
+        delete_watched: Option<bool>,
+    },
+    /// Fetches `count` more episodes of a rolling download now, past its
+    /// window; watching carries on from there. Replies `Ok`.
+    RollMore {
+        id: u64,
+        count: u32,
+    },
     /// Saves the downloads settings. The two secrets have three answers
     /// each: `None` keeps what is stored, `Some("")` removes it, anything
     /// else replaces it. A running sidecar is stopped, since its

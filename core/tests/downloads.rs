@@ -32,6 +32,7 @@ fn settings(anirss_command: &str) -> DownloadSettings {
         saved_clients: Vec::new(),
         active_client: String::new(),
         prune_finished_feeds: true,
+        rolling: Default::default(),
     }
 }
 
@@ -1566,6 +1567,7 @@ fn a_replacing_download_is_set_in_order_and_trashes_the_old_file_only_when_the_n
                     episodes: vec![2],
                 }],
                 cancel: Vec::new(),
+                rolling: None,
             },
         },
     );

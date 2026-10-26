@@ -925,6 +925,13 @@ impl Core {
             Call::ControlTorrents { hashes, action } => Ok(Reply::Started {
                 job: downloads::control(self, hashes, action)?,
             }),
+            Call::SetRoll {
+                id,
+                ahead,
+                on,
+                delete_watched,
+            } => downloads::rolling::set(self, id, ahead, on, delete_watched),
+            Call::RollMore { id, count } => downloads::rolling::roll_more(self, id, count),
             Call::SetDownloadSettings {
                 settings,
                 anirss_token,

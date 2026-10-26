@@ -10,6 +10,14 @@ The app shows this file in What's new, newest version first. Keep it short.
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
+## 2.3.0 · 2026-10-26
+
+### New
+- Long shows download a few episodes at a time, 12 ahead by default
+- Each episode you finish starts the next; older watched ones leave the disk
+- Get more episodes now, or all of them, from a rolling download
+- Rolling download settings in Settings, Downloads
+
 ## 2.2.0 · 2026-10-26
 
 ### New

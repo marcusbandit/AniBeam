@@ -40,6 +40,7 @@ fn remote(prune: bool) -> DownloadSettings {
         saved_clients: Vec::new(),
         active_client: String::new(),
         prune_finished_feeds: prune,
+        rolling: Default::default(),
     }
 }
 
