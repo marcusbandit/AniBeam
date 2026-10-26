@@ -29,8 +29,10 @@ VCPKG="${VCPKG_INSTALLATION_ROOT:-C:/vcpkg}"
 TRIPLET=x64-windows-static-md-release
 
 mkdir -p "$1"
-prefix="$(cygpath -m "$(cd "$1" && pwd)")"
-work="$(cygpath -m "$(mktemp -d)")"
+prefix="$(cygpath -m -l "$(cd "$1" && pwd)")"
+# The long form: the runner's temp is C:/Users/RUNNER~1/..., and CMake then fails to match
+# a file's OUTPUT_LOCATION to its glob, so qBittorrent's .qm files land in the wrong place.
+work="$(cygpath -m -l "$(mktemp -d)")"
 mkdir -p "$prefix/bin" "$prefix/lib" "$prefix/include"
 qt="$(cygpath -m "${QT_ROOT_DIR:?QT_ROOT_DIR names the Qt install-qt-action set up}")"
 
@@ -124,9 +126,18 @@ cmake -S "$work/qBittorrent-release-$QBT_VERSION" -B "$work/qbt-build" -G Ninja 
   -DLibtorrentRasterbar_DIR="$work/libtorrent/lib/cmake/LibtorrentRasterbar" \
   -DMSVC_RUNTIME_DYNAMIC=ON \
   -DGUI=OFF -DWEBUI=ON -DSTACKTRACE=OFF -DTESTING=OFF
-# The Web UI's .qm files come from their own target first, as in qBittorrent's Windows CI;
-# a plain build asks for them and has no rule to make them.
-cmake --build "$work/qbt-build" --target qbt_update_translations
+# The .qm files the two .qrc lists name are made here with lrelease, at the paths the build
+# reads them from. CMake's own rule for them puts them elsewhere on Windows, and the build
+# then stops on "webui_uk.qm ... missing and no known rule to make it".
+qbt_src="$work/qBittorrent-release-$QBT_VERSION"
+for pair in "src/lang:src/lang" "src/webui/www/translations:src/webui/www/translations"; do
+  from="$qbt_src/${pair%%:*}" to="$work/qbt-build/${pair##*:}"
+  mkdir -p "$to"
+  for ts in "$from"/*.ts; do
+    name="$(basename "$ts" .ts)"
+    "$qt/bin/lrelease.exe" -removeidentical -silent "$ts" -qm "$to/$name.qm"
+  done
+done
 cmake --build "$work/qbt-build"
 cp "$work/qbt-build/qbittorrent-nox.exe" "$prefix/bin/"
 
