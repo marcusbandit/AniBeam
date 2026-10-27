@@ -145,34 +145,39 @@ pull request. The phone's `build.sh` refuses an APK whose newest heading is not 
 
 ## Releases
 
-People get stable builds only, and main keeps moving while one is checked. Two channels:
+People get stable builds only, and main keeps moving while one is checked. Two pre-releases
+carry the builds in between (`.github/workflows/preview.yml`):
 
-- **Preview** is main. Every merge that touches the app rebuilds the Mac, Linux and Windows
-  apps onto one pre-release, `preview`, replacing the last build's files
-  (`.github/workflows/preview.yml`). It is one release that changes, never a new one, so
-  nobody watching the repo hears about it, and the app's update notice ignores it. A phone
-  build for testing goes there too, `gh release upload preview AniBeam-2.4.0.apk --clobber`,
-  instead of a new `android-v*` pre-release.
-- **Stable** comes from a release branch. Nothing else is published as a release.
+- **`preview`** is main. Every merge that touches the app rebuilds the Mac, Linux and
+  Windows apps onto it, replacing the last build's files.
+- **`candidate`** is the release branch being checked. Every push to a `release/*` branch
+  rebuilds onto it the same way.
+
+Each is one release whose files change, never a new release, so nobody watching the repo
+hears about a build, and the app's update notice ignores both. A phone build for testing
+goes on the matching one under one fixed name instead of a new `android-v*` pre-release:
+`cp AniBeam-2.1.2.apk AniBeam-phone.apk && gh release upload preview AniBeam-phone.apk --clobber`.
 
 Shipping a version:
 
 1. When main has a batch worth shipping, cut the branch from it:
-   `git push origin main:release/2.4`. In the same step, a PR on main bumps the workspace
-   version to the next one (2.5.0) with a new `CHANGELOG.md` heading, so what merges next
-   is noted under the version it will ship in.
-2. Testers run the branch's build. Right after the cut that is the Preview; once the
-   branch has its own commits, Run workflow on `linux.yml`, `macos.yml` or `windows.yml`
-   from the Actions tab with the branch picked, and the build is on that run.
-3. A bug found on the branch is fixed on main first, through the usual PR, then
-   cherry-picked onto the branch with `git cherry-pick -x` in a PR against `release/2.4`.
-   Its patch note moves under the branch's own heading there.
-4. When the branch is good, tag it there: `git tag v2.4.0 origin/release/2.4 && git push
-   origin v2.4.0`. `release.yml` refuses a tag no release branch holds, builds every
-   platform and leaves a draft; read it and press Publish. The phone's `android-v2.4.0`
-   is tagged on the same branch and published by hand.
+   `git push origin main:release/2.4`. If that push starts no Candidate build, run the
+   Preview workflow on the branch from the Actions tab. In the same step, a PR on main
+   bumps the workspace version to the next one (2.5.0) with a new `CHANGELOG.md` heading,
+   so what merges next is noted under the version it will ship in.
+2. Testers run `candidate`.
+3. A bug found there is fixed on main first, through the usual PR, then cherry-picked onto
+   the branch with `git cherry-pick -x` in a PR against `release/2.4`. Its patch note
+   moves under the branch's own heading there.
+4. When the candidate is good, tag the branch: `git tag v2.4.0 origin/release/2.4 && git
+   push origin v2.4.0`. `release.yml` refuses a tag that is not on its own branch
+   (`v2.4.x` on `release/2.4`), builds every platform and leaves a draft; read it and
+   press Publish. The phone ships from the same branch under its own number,
+   `android-v2.1.2` for example, published by hand.
 5. A fix for a version that has shipped goes the same way and ships as 2.4.1 from the
    same branch.
 
 The branch stays as the record of what shipped; it is never merged back, since everything
-on it came from main.
+on it came from main. Builds name themselves after the newest stable tag their history
+holds, so a main build after a cherry-picked release still reads as the version before it
+plus commits; the app's own version comes from `Cargo.toml` either way.

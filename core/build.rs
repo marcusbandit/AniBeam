@@ -15,8 +15,16 @@ fn main() {
     watch_git();
     rerun_when_head_moves();
     let fallback = std::env::var("CARGO_PKG_VERSION").unwrap_or_default();
+    // Each app describes itself from its own tags only: the desktop's v2.3.0, the phone's
+    // android-v2.1.1. Any other tag (the preview release's) never names a version.
+    let android = std::env::var("CARGO_CFG_TARGET_OS").is_ok_and(|os| os == "android");
+    let (pattern, prefix) = if android {
+        ("android-v[0-9]*", "android-v")
+    } else {
+        ("v[0-9]*", "v")
+    };
     let describe = Command::new("git")
-        .args(["describe", "--tags", "--dirty"])
+        .args(["describe", "--tags", "--match", pattern, "--dirty"])
         .output()
         .ok()
         .filter(|o| o.status.success())
@@ -27,7 +35,7 @@ fn main() {
     // becomes 2.0.0.r14.g1a2b3c4.dirty, so the binary and pacman agree.
     let version = describe
         .map(|d| {
-            let d = d.strip_prefix('v').unwrap_or(&d).to_string();
+            let d = d.strip_prefix(prefix).unwrap_or(&d).to_string();
             let d = d.replace("-dirty", ".dirty");
             let d = match d.find("-g") {
                 Some(i) => {
