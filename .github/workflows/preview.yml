@@ -1,0 +1,79 @@
+name: Preview
+
+# Every merge to main that touches the app builds the Mac, Linux and Windows apps and puts
+# them on one pre-release, `preview`, in place of the last build's files. It is the same
+# release every time, so a merge sends nobody a notification, and the app's update notice
+# ignores pre-releases, so only someone who goes looking runs a preview. Stable versions
+# come from release branches through release.yml; CONTRIBUTING.md, under Releases, has the
+# whole line. A phone APK put on Preview by hand stays when the desktop files are replaced.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'core/**'
+      - 'host-api/**'
+      - 'apps/linux/**'
+      - 'apps/cli/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/preview.yml'
+  workflow_dispatch:
+
+# A newer merge makes the build in flight stale; only the newest one gets published.
+concurrency:
+  group: preview
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    uses: ./.github/workflows/macos.yml
+    secrets: inherit
+
+  linux:
+    uses: ./.github/workflows/linux.yml
+    secrets: inherit
+
+  windows:
+    uses: ./.github/workflows/windows.yml
+    secrets: inherit
+
+  publish:
+    needs: [macos, linux, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: anibeam-*
+          merge-multiple: true
+          path: dist
+
+      - name: Replace the Preview build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -la dist
+          git tag -f preview "$GITHUB_SHA"
+          git push -f origin refs/tags/preview
+          cat > notes.md <<EOF
+          Built from main at ${GITHUB_SHA::7} on $(date -u +%Y-%m-%d). A preview is what is being worked on next: newer than the last stable release, and not yet checked the way a release is. It is replaced by every merge to main.
+
+          Stable releases: https://github.com/$GITHUB_REPOSITORY/releases/latest
+          EOF
+          if gh release view preview --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release edit preview --repo "$GITHUB_REPOSITORY" --prerelease --latest=false \
+              --title "AniBeam Preview" --notes-file notes.md
+          else
+            gh release create preview --repo "$GITHUB_REPOSITORY" --prerelease --latest=false \
+              --verify-tag --title "AniBeam Preview" --notes-file notes.md
+          fi
+          gh release view preview --repo "$GITHUB_REPOSITORY" --json assets \
+            --jq '.assets[].name | select(endswith(".apk") | not)' |
+            while read -r name; do
+              gh release delete-asset preview "$name" --repo "$GITHUB_REPOSITORY" --yes
+            done
+          gh release upload preview dist/* --repo "$GITHUB_REPOSITORY" --clobber

@@ -2,6 +2,9 @@ name: Release
 
 # A version tag builds the Mac dmg, the Linux AppImage and the Windows installer and zip, and
 # leaves a draft release with all of them on it:  git tag v2.1.0 && git push origin v2.1.0
+# Stable versions only come from a release branch (release/2.1), so a tag that no release
+# branch holds stops before anything builds. What main has is on the Preview pre-release
+# (preview.yml). CONTRIBUTING.md, under Releases, has the whole line.
 # The draft waits for a person to read it and press Publish. The AUR package follows the
 # published tag by hand: apps/linux/packaging/aur/publish.sh 2.1.0
 # The Electron line is frozen and no longer ships; its last zip is on v2.0.0.
@@ -13,15 +16,34 @@ permissions:
   contents: write
 
 jobs:
+  line:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: The tag is on a release branch
+        run: |
+          branches="$(git branch -r --contains "$GITHUB_SHA" --list 'origin/release/*')"
+          if [ -z "$branches" ]; then
+            echo "::error::$GITHUB_REF_NAME is not on a release/* branch. Stable versions are tagged on their release branch; see CONTRIBUTING.md, Releases."
+            exit 1
+          fi
+          echo "$GITHUB_REF_NAME is on: $branches"
+
   macos:
+    needs: line
     uses: ./.github/workflows/macos.yml
     secrets: inherit
 
   linux:
+    needs: line
     uses: ./.github/workflows/linux.yml
     secrets: inherit
 
   windows:
+    needs: line
     uses: ./.github/workflows/windows.yml
     secrets: inherit
 

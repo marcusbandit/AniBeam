@@ -142,3 +142,37 @@ pull request. The phone's `build.sh` refuses an APK whose newest heading is not 
 - A visible change has a capture in the PR body, taken against a sandbox root.
 - A change someone can notice has its line in the app's `CHANGELOG.md`.
 - A new word for something in the domain has its entry in `CONTEXT.md`.
+
+## Releases
+
+People get stable builds only, and main keeps moving while one is checked. Two channels:
+
+- **Preview** is main. Every merge that touches the app rebuilds the Mac, Linux and Windows
+  apps onto one pre-release, `preview`, replacing the last build's files
+  (`.github/workflows/preview.yml`). It is one release that changes, never a new one, so
+  nobody watching the repo hears about it, and the app's update notice ignores it. A phone
+  build for testing goes there too, `gh release upload preview AniBeam-2.4.0.apk --clobber`,
+  instead of a new `android-v*` pre-release.
+- **Stable** comes from a release branch. Nothing else is published as a release.
+
+Shipping a version:
+
+1. When main has a batch worth shipping, cut the branch from it:
+   `git push origin main:release/2.4`. In the same step, a PR on main bumps the workspace
+   version to the next one (2.5.0) with a new `CHANGELOG.md` heading, so what merges next
+   is noted under the version it will ship in.
+2. Testers run the branch's build. Right after the cut that is the Preview; once the
+   branch has its own commits, Run workflow on `linux.yml`, `macos.yml` or `windows.yml`
+   from the Actions tab with the branch picked, and the build is on that run.
+3. A bug found on the branch is fixed on main first, through the usual PR, then
+   cherry-picked onto the branch with `git cherry-pick -x` in a PR against `release/2.4`.
+   Its patch note moves under the branch's own heading there.
+4. When the branch is good, tag it there: `git tag v2.4.0 origin/release/2.4 && git push
+   origin v2.4.0`. `release.yml` refuses a tag no release branch holds, builds every
+   platform and leaves a draft; read it and press Publish. The phone's `android-v2.4.0`
+   is tagged on the same branch and published by hand.
+5. A fix for a version that has shipped goes the same way and ships as 2.4.1 from the
+   same branch.
+
+The branch stays as the record of what shipped; it is never merged back, since everything
+on it came from main.
