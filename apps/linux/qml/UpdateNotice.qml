@@ -53,7 +53,7 @@ Frost {
         Button {
             objectName: "update-download"
             anchors.verticalCenter: parent.verticalCenter
-            text: "Download"; icon: "download"; small: true
+            text: "Download"; icon: "download"; primary: true; small: true
             onClicked: { root.shown = false; frame.openLink(root.url) }
         }
         Button {
