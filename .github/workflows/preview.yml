@@ -1,0 +1,95 @@
+name: Preview
+
+# The builds between stable releases, on two pre-releases that never multiply: a merge to main
+# rebuilds the Mac, Linux and Windows apps onto `preview`, and a push to a release branch
+# rebuilds them onto `candidate`, what that release will be. Each is one release whose files
+# are replaced, so a build notifies nobody, and the app's update notice ignores pre-releases,
+# so only someone who goes looking runs one. Their tags are made once and never moved (a
+# moved tag breaks `git fetch --tags` in every clone); the notes name the commit each build
+# came from. Stable versions are tagged on a release branch and drafted by release.yml.
+# CONTRIBUTING.md, under Releases, has the whole line. A phone APK put up by hand stays when
+# the desktop files are replaced.
+on:
+  push:
+    branches: [main, 'release/**']
+    paths:
+      - 'core/**'
+      - 'host-api/**'
+      - 'apps/linux/**'
+      - 'apps/cli/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/preview.yml'
+      - '.github/workflows/linux.yml'
+      - '.github/workflows/macos.yml'
+      - '.github/workflows/windows.yml'
+  workflow_dispatch:
+
+# One build per branch at a time. A merge while one runs waits rather than cancelling it, and
+# only the newest waiting merge builds next, so a busy day still publishes.
+concurrency:
+  group: preview-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    uses: ./.github/workflows/macos.yml
+    secrets: inherit
+
+  linux:
+    uses: ./.github/workflows/linux.yml
+    secrets: inherit
+
+  windows:
+    uses: ./.github/workflows/windows.yml
+    secrets: inherit
+
+  publish:
+    needs: [macos, linux, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: anibeam-*
+          merge-multiple: true
+          path: dist
+
+      - name: Replace the build on its pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          ls -la dist
+          case "$BRANCH" in
+            main)      channel=preview;   title="AniBeam Preview" ;;
+            release/*) channel=candidate; title="AniBeam release candidate" ;;
+            *) echo "::error::Previews come from main or a release branch, not $BRANCH"; exit 1 ;;
+          esac
+          if [ "$channel" = preview ]; then
+            about="A preview is what is being worked on next: newer than the last stable release, and not yet checked the way a release is. Every merge to main replaces it."
+          else
+            about="A release candidate is what the next stable release will be, built from $BRANCH for testing before it ships. Every push to a release branch replaces it."
+          fi
+          cat > notes.md <<EOF
+          Built from $BRANCH at ${GITHUB_SHA::7} on $(date -u +%Y-%m-%d). $about
+
+          Stable releases: https://github.com/$GH_REPO/releases/latest
+          EOF
+          if gh release view "$channel" > /dev/null 2>&1; then
+            gh release edit "$channel" --prerelease --latest=false --title "$title" --notes-file notes.md
+          else
+            gh release create "$channel" --target "$GITHUB_SHA" --prerelease --latest=false \
+              --title "$title" --notes-file notes.md
+          fi
+          # The new files go up first, then the last build's other desktop files go, so a
+          # failure part way leaves the old build or both, never neither.
+          gh release upload "$channel" dist/* --clobber
+          keep="$(cd dist && ls)"
+          gh release view "$channel" --json assets --jq '.assets[].name | select(endswith(".apk") | not)' |
+            while read -r name; do
+              grep -qxF "$name" <<<"$keep" || gh release delete-asset "$channel" "$name" --yes
+            done
