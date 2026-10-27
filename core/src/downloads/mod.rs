@@ -24,6 +24,7 @@ pub mod prune;
 pub mod qbt;
 pub mod replace;
 pub mod rewire;
+pub mod rolling;
 pub mod settings;
 pub mod trash;
 
@@ -1460,14 +1461,26 @@ pub fn download_with(
         return Err(CoreError::invalid("items", "nothing selected to download"));
     }
     let owner = core.owner()?;
-    let followups = replace::prepare(&owner.store, &items, &options)?;
+    // What rolls is held back before anything else is asked of it, so a
+    // held episode gets no followup that would wait days for its torrent
+    let roll_settings = owner.store.read(settings::load_stored)?.rolling;
+    let plan = rolling::plan(
+        &items,
+        &options,
+        &roll_settings,
+        name.as_deref(),
+        crate::time::now_secs(),
+    );
+    let followups = replace::prepare(&owner.store, &plan.now, &options)?;
     Ok(owner
         .jobs
         .clone()
         .start(JobKind::Download, move |_| async move {
             let client = ensure_client(&owner).await?;
-            let result = client.download(&items, name.as_deref()).await?;
-            let extra = replace::describe(&options, &followups);
+            let result = client.download(&plan.now, name.as_deref()).await?;
+            let mut extra = replace::describe(&options, &followups);
+            extra.push_str(&rolling::describe(&plan));
+            rolling::after_add(&owner, plan.rolls, &plan.now, &result.hashes).await;
             if options != DownloadOptions::default() || !followups.is_empty() {
                 match qbt_client(&owner).await {
                     Ok(qbt) => replace::after_add(&owner, &qbt, &items, &options, followups).await,
@@ -1826,6 +1839,7 @@ pub fn list_torrents(core: &Core) -> Result<Reply, CoreError> {
             let transfer = client.transfer().await?;
             if owner.downloads.unattended_allowed() {
                 replace::tick(&owner, &client, &torrents).await;
+                rolling::tick(&owner, &client, &torrents).await;
             }
             Ok::<_, CoreError>((torrents, transfer))
         }
@@ -1834,6 +1848,7 @@ pub fn list_torrents(core: &Core) -> Result<Reply, CoreError> {
             Ok((mut torrents, transfer)) => {
                 let mut shows = link_torrents(&owner, &mut torrents);
                 replace::annotate(&owner, &mut torrents);
+                rolling::annotate(&owner, &mut torrents);
                 let downloading = downloading_of(&torrents);
                 let moved: Vec<u64> = {
                     let mut st = owner.downloads.state();

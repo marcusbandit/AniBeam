@@ -18,7 +18,7 @@ deps="${DEPS_PREFIX:?DEPS_PREFIX names the prefix deps.sh built into}"
 min_macos="${MACOSX_DEPLOYMENT_TARGET:-15.0}"
 
 # The PKGBUILD's pkgver rule: v2.0.0 -> 2.0.0, v2.0.0-21-gabc1234 -> 2.0.0.r21.gabc1234.
-describe="$(git -C "$repo" describe --tags --dirty 2>/dev/null || echo v0.0.0)"
+describe="$(git -C "$repo" describe --tags --match 'v*' --dirty 2>/dev/null || echo v0.0.0)"
 pkgver="$(sed -E 's/^v//; s/-([0-9]+)-g/.r\1.g/; s/-dirty$/.dirty/' <<<"$describe")"
 short="${pkgver%%.r*}"
 short="${short%.dirty}"

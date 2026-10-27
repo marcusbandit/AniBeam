@@ -256,9 +256,18 @@ Item {
     property bool replaceOn: false
     // Fetch the new torrents in order, as qBittorrent's option does
     property bool sequential: false
+    // Roll a long pick a window of episodes at a time: null follows the settings, which roll
+    // anything over their count by themselves; a batch whose count is not known yet is
+    // judged by the core once the client lists its files
+    property var rollChoice: null
+    property var rollSettings: null
+    readonly property var rollDefaults: rollSettings || ({ big: true, ahead: 12, over: 30, delete_watched: true })
+    readonly property bool rollAuto: rollDefaults.big !== false && planList.length > rollDefaults.over
+    readonly property bool rolling: rollChoice === null ? rollAuto : rollChoice
+    Component.onCompleted: { var r = Door.getDownloads(); if (!r.error && r.reply.status.settings.rolling) rollSettings = r.reply.status.settings.rolling }
     // Get was clicked with a download of this show to cancel: waiting for a yes
     property bool confirming: false
-    function clearPicks() { picks = ({}); chosen = ""; replaceOn = false; confirming = false }
+    function clearPicks() { picks = ({}); chosen = ""; replaceOn = false; confirming = false; rollChoice = null }
     onActiveChanged: clearPicks()
     onShowChanged: { clearPicks(); sequential = false; follow = !!show && !!show.airing }
     // When the action went through, the picks are spent
@@ -403,7 +412,7 @@ Item {
             }
             for (var key in by) replace.push({ item: Number(key), episodes: by[key] })
         }
-        return { sequential: sequential, provider: active, series: inLibrary ? show.seriesId : null, replace: replace, cancel: replacing ? cancelHashes() : [] }
+        return { sequential: sequential, provider: active, series: inLibrary ? show.seriesId : null, replace: replace, cancel: replacing ? cancelHashes() : [], rolling: replacing ? false : rollChoice }
     }
     // Get: a download that cancels another asks first
     function go() {
@@ -873,6 +882,15 @@ Item {
                             : "Off: the client fetches pieces in whatever order the swarm offers them."
                     }
                     OptionRow {
+                        objectName: "get-rolling"
+                        visible: !root.replacing
+                        title: "Rolling download"
+                        checked: root.rolling
+                        onToggled: function(on) { root.rollChoice = on }
+                        tip: root.rolling ? "On: " + root.rollDefaults.ahead + " episodes download now, and each one you finish starts the next" + (root.rollDefaults.delete_watched !== false ? ". Watched episodes leave the disk." : ".")
+                            : "Off: every picked episode downloads at once."
+                    }
+                    OptionRow {
                         objectName: "get-follow"
                         title: "Subscribe for new episodes"
                         checked: root.follow
@@ -1056,6 +1074,7 @@ Item {
                             role: "figure"; font.pointSize: theme.typeLarge; color: theme.textDim
                         }
                     }
+                    RollControls { width: parent.width; roll: card.t.roll || null }
                 }
                 Column {
                     id: controls

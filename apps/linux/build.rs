@@ -118,6 +118,7 @@ fn main() {
             .qml_file("qml/RemoveSheet.qml")
             .qml_file("qml/StartSourceSheet.qml")
             .qml_file("qml/TorrentRow.qml")
+            .qml_file("qml/RollControls.qml")
             .qml_file("qml/SettingsDataTab.qml"),
     )
     .qt_module("Quick")
