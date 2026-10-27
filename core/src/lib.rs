@@ -34,6 +34,7 @@ pub(crate) mod sync;
 pub mod time;
 pub mod trackers;
 pub mod transfer;
+pub mod update;
 
 pub use contract::*;
 pub use core::Core;

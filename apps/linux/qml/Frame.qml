@@ -372,6 +372,12 @@ FocusScope {
         Menu { id: menu }
         RemoveSheet { id: removeSheet }
         WhatsNew { id: whatsNew }
+        UpdateNotice {
+            id: updateNotice
+            covered: frame.fullWindow || whatsNew.visible
+            anchors.right: parent.right; anchors.rightMargin: theme.space(4)
+            anchors.bottom: parent.bottom; anchors.bottomMargin: rail.footHeight + theme.space(4)
+        }
         Frost {
             id: tip
             visible: false
@@ -392,15 +398,17 @@ FocusScope {
     }
     // What's new: once the first page is up, so the page taking focus as it loads does not
     // take the keys from the sheet. Never in a capture run, which draws what it was asked to;
-    // a drive opens it with frame.openWhatsNew().
+    // a drive opens it with frame.openWhatsNew(). The check for a newer release goes out
+    // at the same moment, under the same rule; a drive shows it with updatePanel.show().
     property bool notesStarted: false
     function startNotes() {
         if (notesStarted) return
         notesStarted = true
-        if (Shell.shoot === "" && Shell.driveOut === "") whatsNew.start()
+        if (Shell.shoot === "" && Shell.driveOut === "") { whatsNew.start(); Shell.checkForUpdate() }
     }
     function openWhatsNew() { whatsNew.open() }
     readonly property alias notesPanel: whatsNew
+    readonly property alias updatePanel: updateNotice
 
     function openMenu(x, y, items) { menu.openAt(x, y, items) }
     function closeMenu() { menu.close() }
