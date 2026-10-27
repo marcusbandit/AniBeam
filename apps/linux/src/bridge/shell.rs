@@ -203,6 +203,13 @@ impl qobject::Shell {
 
 impl qobject::Shell {
     pub fn check_for_update(&self) {
+        // A build the system's package manager installed (the AUR package, under /usr) is
+        // updated by that package manager, not by a download.
+        if cfg!(target_os = "linux")
+            && std::env::current_exe().is_ok_and(|exe| exe.starts_with("/usr"))
+        {
+            return;
+        }
         let shell = self.qt_thread();
         crate::runtime::runtime().spawn(async move {
             let http = match anibeam_core::net::ReqwestHttp::new(std::time::Duration::from_secs(15))

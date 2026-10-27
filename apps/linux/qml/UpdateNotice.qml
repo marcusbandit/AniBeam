@@ -2,6 +2,8 @@
 // version and a Download button that opens the release page in the browser. The frame asks
 // Shell once as the app starts and Shell answers through updateAvailable. Later hides it
 // until a newer version than this one comes out; the version passed over lives in shell.conf.
+// It steps aside while the player has the window or a sheet is open (`covered`), and comes
+// back once they close.
 import QtQuick
 import QtCore
 import com.marcusrosado.AniBeam
@@ -9,10 +11,12 @@ import com.marcusrosado.AniBeam
 Frost {
     id: root
     objectName: "update-notice"
-    visible: false
+    visible: shown && !covered
     radius: theme.radiusTile
     width: row.implicitWidth + theme.space(6); height: theme.controlHeight + theme.space(2)
 
+    property bool shown: false
+    property bool covered: false
     property string version: ""
     property string url: ""
 
@@ -33,15 +37,14 @@ Frost {
         if (version === kept.skipped) return
         root.version = version
         root.url = url
-        visible = true
+        shown = true
     }
-    function later() { kept.skipped = root.version; visible = false }
+    function later() { kept.skipped = root.version; shown = false }
 
     Row {
         id: row
         anchors.centerIn: parent
         spacing: theme.space(3)
-        Icon { anchors.verticalCenter: parent.verticalCenter; glyph: "download"; color: theme.accent; size: theme.space(4.5) }
         Label {
             anchors.verticalCenter: parent.verticalCenter
             role: "ui"
@@ -50,13 +53,13 @@ Frost {
         Button {
             objectName: "update-download"
             anchors.verticalCenter: parent.verticalCenter
-            text: "Download"; primary: true; small: true
-            onClicked: Shell.openUrl(root.url)
+            text: "Download"; icon: "download"; small: true
+            onClicked: { root.shown = false; frame.openLink(root.url) }
         }
         Button {
             objectName: "update-later"
             anchors.verticalCenter: parent.verticalCenter
-            text: "Later"; flat: true; small: true
+            text: "Later"; icon: "clock"; small: true
             onClicked: root.later()
         }
     }
