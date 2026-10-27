@@ -18,6 +18,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Each episode you finish starts the next; older watched ones leave the disk
 - Get more episodes now, or all of them, from a rolling download
 - Rolling download settings in Settings, Downloads
+- A notice says when a new version is out, with a button to download it
 
 ## 2.2.0 · 2026-10-26
 

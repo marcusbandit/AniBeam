@@ -5,7 +5,7 @@
 //! The url of shell.conf, in the config directory, rides along for the few things QML keeps
 //! for itself (the library's tracker nudge, once dismissed, and the versions What's new has
 //! shown), so a --root run keeps them inside its sandbox too. What's new reads the built-in
-//! CHANGELOG.md through here.
+//! CHANGELOG.md through here, and the check for a newer release starts here.
 //!
 //! It is also where the session bus starts, because this object exists exactly once and
 //! exists as soon as the engine loads Main.qml. Its thread handle is what the
@@ -48,6 +48,9 @@ pub mod qobject {
         /// MPRIS Quit. The window closes itself; nothing here ends the process.
         #[qsignal]
         fn quit_requested(self: Pin<&mut Self>);
+        /// A desktop release newer than this build is out: its version and its page.
+        #[qsignal]
+        fn update_available(self: Pin<&mut Self>, version: QString, url: QString);
         /// Raises `window` (the QML Window) with the xdg-activation token.
         #[qinvokable]
         unsafe fn raise_window(self: &Self, window: *mut QObject, token: &QString);
@@ -99,6 +102,10 @@ pub mod qobject {
         /// it opens by itself, what to keep now and once it closes, and what it shows.
         #[qinvokable]
         fn whats_new(self: &Self, seen: &QString, from: &QString) -> QJsonObject;
+        /// Asks GitHub once whether a newer desktop release is out; updateAvailable says so.
+        /// No answer, or no newer release, says nothing.
+        #[qinvokable]
+        fn check_for_update(self: &Self);
     }
 
     impl cxx_qt::Threading for Shell {}
@@ -191,6 +198,30 @@ impl qobject::Shell {
             "view": changelog::whats_new(&changelog::parse(NOTES), current, &seen, used),
         });
         crate::json::to_qjson_object(&state)
+    }
+}
+
+impl qobject::Shell {
+    pub fn check_for_update(&self) {
+        let shell = self.qt_thread();
+        crate::runtime::runtime().spawn(async move {
+            let http = match anibeam_core::net::ReqwestHttp::new(std::time::Duration::from_secs(15))
+            {
+                Ok(http) => http,
+                Err(e) => return eprintln!("anibeam: update check: {e:?}"),
+            };
+            let update = match anibeam_core::update::check(&http, env!("CARGO_PKG_VERSION")).await {
+                Ok(Some(update)) => update,
+                Ok(None) => return,
+                Err(e) => return eprintln!("anibeam: update check: {e:?}"),
+            };
+            let _ = shell.queue(move |shell| {
+                shell.update_available(
+                    QString::from(update.version.as_str()),
+                    QString::from(update.url.as_str()),
+                )
+            });
+        });
     }
 }
 

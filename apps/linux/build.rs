@@ -48,6 +48,7 @@ fn main() {
             .qml_file("qml/Tooltip.qml")
             .qml_file("qml/InlineConfirm.qml")
             .qml_file("qml/WhatsNew.qml")
+            .qml_file("qml/UpdateNotice.qml")
             .qml_file("qml/EmptyState.qml")
             .qml_file("qml/SectionHeader.qml")
             .qml_file("qml/PagePlaceholder.qml")
