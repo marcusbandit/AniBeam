@@ -1,7 +1,7 @@
 name: Release
 
-# A version tag builds the Mac dmg and the Linux AppImage and leaves a draft release with
-# both on it:  git tag v2.1.0 && git push origin v2.1.0
+# A version tag builds the Mac dmg, the Linux AppImage and the Windows installer and zip, and
+# leaves a draft release with all of them on it:  git tag v2.1.0 && git push origin v2.1.0
 # The draft waits for a person to read it and press Publish. The AUR package follows the
 # published tag by hand: apps/linux/packaging/aur/publish.sh 2.1.0
 # The Electron line is frozen and no longer ships; its last zip is on v2.0.0.
@@ -21,8 +21,12 @@ jobs:
     uses: ./.github/workflows/linux.yml
     secrets: inherit
 
+  windows:
+    uses: ./.github/workflows/windows.yml
+    secrets: inherit
+
   draft:
-    needs: [macos, linux]
+    needs: [macos, linux, windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

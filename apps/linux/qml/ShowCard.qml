@@ -71,7 +71,7 @@ Item {
                 id: posterImage
                 visible: false
                 anchors.fill: parent
-                source: "file://" + root.poster
+                source: Fmt.fileUrl(root.poster)
                 sourceSize: theme.posterDecodeSize
                 fillMode: Image.PreserveAspectCrop
                 smooth: true

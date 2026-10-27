@@ -61,12 +61,32 @@ impl CorePaths {
     }
 }
 
+/// `path` without its trailing separators, except that a Windows drive root keeps its
+/// own: `D:\` alone is the drive, `D:` is that drive's current directory.
+pub(crate) fn trim_separators(path: &str) -> &str {
+    let trimmed = path.trim_end_matches(std::path::is_separator);
+    let b = trimmed.as_bytes();
+    if cfg!(windows) && b.len() == 2 && b[1] == b':' && b[0].is_ascii_alphabetic() && path.len() > 2
+    {
+        &path[..3]
+    } else {
+        trimmed
+    }
+}
+
 /// Path containment: a path is under a root when it is the root or sits
 /// below it. String prefixes are not enough, or `/lib2` would count as
 /// inside `/lib`. The rule the scan reconciles with and the import
 /// attaches a series with.
 pub(crate) fn under(path: &str, root: &str) -> bool {
-    path == root || path.starts_with(&format!("{}/", root.trim_end_matches('/')))
+    if path == root {
+        return true;
+    }
+    // Windows takes `\` and `/` alike, and one path can carry both.
+    let root = root.trim_end_matches(std::path::is_separator);
+    path.strip_prefix(root)
+        .and_then(|rest| rest.chars().next())
+        .is_some_and(std::path::is_separator)
 }
 
 /// A trailing separator is not part of a path's identity, so it never
@@ -74,7 +94,7 @@ pub(crate) fn under(path: &str, root: &str) -> bool {
 /// stays itself. Every path a source or an import writes goes through
 /// this, so the two always agree about what one path is.
 pub(crate) fn normalise(path: &str) -> String {
-    let trimmed = path.trim().trim_end_matches('/');
+    let trimmed = trim_separators(path.trim());
     if trimmed.is_empty() {
         "/".to_string()
     } else {
@@ -94,6 +114,15 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
+    fn a_drive_root_keeps_its_separator() {
+        assert_eq!(normalise("D:\\"), "D:\\");
+        assert_eq!(normalise("D:/"), "D:/");
+        assert_eq!(normalise("D:\\Anime\\"), "D:\\Anime");
+        assert!(under("D:\\Anime\\Show", "D:\\"));
+    }
+
+    #[test]
     fn a_trailing_separator_is_not_part_of_a_path() {
         assert_eq!(normalise("/lib/"), "/lib");
         assert_eq!(normalise("/lib"), "/lib");
@@ -101,7 +130,9 @@ mod tests {
         assert_eq!(normalise("  /lib/anime/  "), "/lib/anime");
     }
 
+    // Windows adds a data, config or cache element after the app's name.
     #[test]
+    #[cfg(unix)]
     fn xdg_paths_end_in_anibeam() {
         let p = CorePaths::xdg().unwrap();
         for dir in [&p.data_dir, &p.config_dir, &p.cache_dir] {

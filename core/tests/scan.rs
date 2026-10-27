@@ -58,6 +58,7 @@ fn first_scan(c: &events::Collector) -> u64 {
 
 /// How many `SourceChanged` events the collector has seen. A pass over a
 /// source that did not change its availability emits none.
+#[cfg(unix)]
 fn source_changes(c: &events::Collector) -> usize {
     c.bodies()
         .iter()
@@ -513,6 +514,7 @@ fn an_unavailable_source_is_kept_and_untouched() {
 /// missing on the strength of it. Now the source is unavailable for the
 /// pass and its series are left exactly where they were.
 #[test]
+#[cfg(unix)]
 fn an_unreadable_root_is_unavailable_and_marks_nothing_missing() {
     use std::os::unix::fs::PermissionsExt;
 

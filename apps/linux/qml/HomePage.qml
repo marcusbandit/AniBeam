@@ -297,7 +297,7 @@ Item {
                 id: entryPoster
                 visible: false
                 width: entryThumb.width; height: entryThumb.height
-                source: entry.item.poster ? "file://" + entry.item.poster : ""
+                source: entry.item.poster ? Fmt.fileUrl(entry.item.poster) : ""
                 sourceSize: theme.posterDecodeSize
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
@@ -508,7 +508,7 @@ Item {
             readonly property real pad: theme.space(8)
             // The band's colour: the poster's tone over a dark base, so white ink holds in
             // both modes; the ink accent is the tone lifted toward white
-            PosterTone { id: toneOf; source: hero.c && hero.c.poster ? "file://" + hero.c.poster : "" }
+            PosterTone { id: toneOf; source: hero.c && hero.c.poster ? Fmt.fileUrl(hero.c.poster) : "" }
             readonly property color tone: toneOf.tone
             readonly property color base: theme.bandBase(tone, 0.5)
             readonly property color inkAccent: theme.bandAccent(tone, base)
@@ -542,7 +542,7 @@ Item {
                     Image {
                         id: art; visible: false
                         width: parent.width; height: parent.height
-                        source: hero.hasArt ? "file://" + hero.d.banner : ""
+                        source: hero.hasArt ? Fmt.fileUrl(hero.d.banner) : ""
                         fillMode: Image.PreserveAspectCrop; asynchronous: true
                     }
                 }
@@ -574,7 +574,7 @@ Item {
                 Image {
                     id: heroPosterImage; visible: false
                     anchors.fill: parent
-                    source: hero.c && hero.c.poster ? "file://" + hero.c.poster : ""
+                    source: hero.c && hero.c.poster ? Fmt.fileUrl(hero.c.poster) : ""
                     sourceSize: Qt.size(theme.posterDecodeSize.width * 2, theme.posterDecodeSize.height * 2)
                     fillMode: Image.PreserveAspectCrop; asynchronous: true
                 }

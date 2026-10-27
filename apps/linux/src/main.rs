@@ -1,3 +1,6 @@
+// A release build on Windows is a GUI program: no console window opens beside it.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod args;
 mod bridge;
 mod dbus;
@@ -12,6 +15,8 @@ mod player_config;
 mod read_cache;
 mod runtime;
 mod theme;
+#[cfg(windows)]
+mod winpower;
 
 use cxx_qt_lib::{QGuiApplication, QQmlApplicationEngine, QString, QUrl};
 

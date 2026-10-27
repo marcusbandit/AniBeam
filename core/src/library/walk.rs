@@ -759,7 +759,7 @@ mod tests {
             eps.sort_by(|a, b| a.partial_cmp(b).unwrap());
             assert_eq!(eps, (1..=12).map(|n| n as f64).collect::<Vec<_>>());
             assert_ne!(Path::new(&s.path), show.as_path());
-            assert!(s.path.starts_with(&format!("{}/", show.display())));
+            assert!(Path::new(&s.path).starts_with(&show));
         }
         let by_name: std::collections::HashMap<&str, &ScannedSeries> =
             series.iter().map(|s| (s.name.as_str(), *s)).collect();
@@ -897,7 +897,7 @@ mod tests {
                 .unwrap_or_else(|| panic!("missing {name}"));
             assert_eq!(s.files.len(), eps);
             assert_eq!(s.season_hint, season);
-            assert!(s.path.starts_with(&format!("{}/", release.display())));
+            assert!(Path::new(&s.path).starts_with(&release));
         }
         for name in [
             "Kami Nomi zo Shiru Sekai",
@@ -978,7 +978,8 @@ mod tests {
             vec![Sidecar {
                 path: tmp
                     .path()
-                    .join("Movies/Perfect Blue (1997).en.srt")
+                    .join("Movies")
+                    .join("Perfect Blue (1997).en.srt")
                     .to_string_lossy()
                     .into_owned(),
                 language: Some("en".into()),

@@ -10,9 +10,10 @@ The app shows this file in What's new, newest version first. Keep it short.
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
-## 2.3.0 · 2026-10-26
+## 2.3.0 · 2026-10-27
 
 ### New
+- AniBeam runs on Windows: an installer, or a zip to run from anywhere
 - Long shows download a few episodes at a time, 12 ahead by default
 - Each episode you finish starts the next; older watched ones leave the disk
 - Get more episodes now, or all of them, from a rolling download

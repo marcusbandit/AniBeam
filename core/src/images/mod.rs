@@ -454,7 +454,13 @@ impl ImageCache {
             let Ok(relative) = entry.path().strip_prefix(&self.dir) else {
                 continue;
             };
-            if keep.contains(relative.to_string_lossy().as_ref()) {
+            // Rows name files as "ab/<hash>.jpg"; Windows walks them as "ab\<hash>.jpg".
+            let relative = relative
+                .components()
+                .map(|c| c.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/");
+            if keep.contains(&relative) {
                 continue;
             }
             match std::fs::remove_file(entry.path()) {

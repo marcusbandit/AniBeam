@@ -16,6 +16,10 @@
 #include <QtGui/QImageReader>
 #include <QtGui/QCursor>
 #include <QtCore/QProcess>
+#ifdef Q_OS_WIN
+#include <QtCore/QDir>
+#include <QtGui/QDesktopServices>
+#endif
 #include <QtCore/QUrl>
 #include <QtCore/QFileInfo>
 #include <QtCore/QMutex>
@@ -246,6 +250,12 @@ bool open_url(const QString &url)
     if (parsed.isLocalFile())
         target = parsed.toLocalFile();
     return QProcess::startDetached(QStringLiteral("/usr/bin/open"), {target});
+#elif defined(Q_OS_WIN)
+    // A drive path (C:\ or C:/) reads as a URL with a one-letter scheme, so it is caught
+    // first; the shell then picks the handler, Explorer for a folder.
+    if (QDir::isAbsolutePath(target) && QUrl(target).scheme().size() <= 1)
+        target = QUrl::fromLocalFile(target).toString();
+    return QDesktopServices::openUrl(QUrl(target));
 #else
     return QProcess::startDetached(QStringLiteral("xdg-open"), {target});
 #endif

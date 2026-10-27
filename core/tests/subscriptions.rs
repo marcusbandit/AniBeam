@@ -9,7 +9,9 @@
 //! is missing from `PATH`. Redirecting `HOME` keeps that prepend pointing
 //! at a directory that does not exist, so the fake is what gets found, and
 //! the "missing" case stays missing regardless of what is installed on
-//! the machine running the test.
+//! the machine running the test. The fake is a shell script, so the file
+//! is Unix only.
+#![cfg(unix)]
 
 mod common;
 

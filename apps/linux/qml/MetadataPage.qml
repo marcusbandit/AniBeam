@@ -518,7 +518,7 @@ Item {
                 id: art
                 visible: false
                 width: poster.width; height: poster.height
-                source: tile.card.poster ? "file://" + tile.card.poster : ""
+                source: tile.card.poster ? Fmt.fileUrl(tile.card.poster) : ""
                 sourceSize: Qt.size(Math.ceil(poster.width * theme.devicePixelRatio), Math.ceil(poster.height * theme.devicePixelRatio))
                 fillMode: Image.PreserveAspectCrop
                 smooth: true

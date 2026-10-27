@@ -115,7 +115,7 @@ SettingsTab {
                     SourceRow {
                         required property var modelData
                         source: modelData
-                        onOpen: frame.openLink("file://" + modelData.path)
+                        onOpen: frame.openLink(Fmt.fileUrl(modelData.path))
                         onRescan: { var r = Door.scan(modelData.id); frame.toast(r.error ? r.error.message : "Rescan started") }
                         onRemove: confirming = true
                         onRemoveAccepted: { var r = Door.removeSource(modelData.id); if (r.error) frame.toast(r.error.message) }
@@ -289,6 +289,6 @@ SettingsTab {
     FolderDialog {
         id: folderDialog
         title: "Add a folder"
-        onAccepted: { var r = Door.addSource(decodeURIComponent(String(selectedFolder).replace("file://", ""))); frame.toast(r.error ? r.error.message : "Folder added, scanning") }
+        onAccepted: { var r = Door.addSource(Fmt.localPath(String(selectedFolder))); frame.toast(r.error ? r.error.message : "Folder added, scanning") }
     }
 }

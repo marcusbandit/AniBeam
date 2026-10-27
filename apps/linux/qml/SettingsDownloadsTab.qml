@@ -226,7 +226,7 @@ SettingsTab {
             }
             Note { visible: tab.endpoints.length === 0; text: tab.anirss && tab.anirss.state === "Ready" ? "anirss has no endpoints configured." : "Connect to anirss to read them." }
             SettingRow { label: "anirss's config"; helper: (tab.anirss && tab.anirss.config_path ? tab.anirss.config_path : "~/.config/anirss/config.toml") + " holds the endpoints, the save folders, the tags and the best-fit rules."; hairline: false
-                Button { text: "Open"; icon: "external-link"; flat: true; enabled: !!(tab.anirss && tab.anirss.config_path); onClicked: frame.openLink("file://" + tab.anirss.config_path) } }
+                Button { text: "Open"; icon: "external-link"; flat: true; enabled: !!(tab.anirss && tab.anirss.config_path); onClicked: frame.openLink(Fmt.fileUrl(tab.anirss.config_path)) } }
         }
     }
     Component {

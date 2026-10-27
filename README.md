@@ -5,7 +5,7 @@
 AniBeam browses, plays and tracks a local anime library. It scans the folders you point it
 at, matches each series against AniList (TVmaze for what AniList does not carry), plays
 video in the window through libmpv, and syncs watch progress with AniList and MyAnimeList.
-It runs on Linux and on Apple silicon Macs: a Qt 6 shell over a Rust core. The Electron app
+It runs on Linux, Windows and Apple silicon Macs: a Qt 6 shell over a Rust core. The Electron app
 it replaced was retired in October 2026; the `v2.0.0` tag holds its source.
 
 ## Getting started
@@ -35,6 +35,16 @@ Or by hand:
 Either way, open AniBeam once. macOS stops it, because the build is not notarized: go to
 System Settings > Privacy & Security, scroll to the AniBeam line and click Open Anyway.
 From a terminal, `xattr -dr com.apple.quarantine /Applications/AniBeam.app` does the same.
+
+**Windows** (64-bit, Windows 10 or later)
+
+1. Download `AniBeam-<version>-windows-x64-setup.exe` from [Releases](https://github.com/marcusbandit/AniBeam/releases).
+2. Run it. It installs for you alone, with no administrator prompt, and adds AniBeam to the
+   Start menu.
+
+The installer is not signed, so SmartScreen may say "Windows protected your PC": click More
+info, then Run anyway. `AniBeam-<version>-windows-x64.zip` is the same app without an
+installer; unzip it anywhere and run `anibeam.exe`.
 
 **Arch Linux**
 
@@ -99,6 +109,8 @@ Save.
 ### When something is off
 
 - **macOS says AniBeam "cannot be opened"**: that is the Open Anyway step in 1.
+- **Windows says it protected your PC**: that is SmartScreen on an unsigned installer. Click
+  More info, then Run anyway.
 - **The AppImage does not start and mentions FUSE**: install `libfuse2` (`libfuse2t64` on
   Ubuntu 24.04), or run it with `--appimage-extract-and-run`.
 - **Downloads says qBittorrent did not answer**: open Settings > Downloads > Torrent client
@@ -110,7 +122,9 @@ Save.
   tokens in the login keychain. On Linux in `~/.local/share/anibeam` and
   `~/.config/anibeam`, tracker tokens in the Secret Service keyring (GNOME Keyring, KWallet)
   or, without one, in a file only you can read. "Use my mpv.conf" reads
-  `~/.config/mpv/mpv.conf` on both.
+  `~/.config/mpv/mpv.conf` on both. On Windows in `%LOCALAPPDATA%\anibeam` and
+  `%APPDATA%\anibeam`, tracker tokens in the Credential Manager, and "Use my mpv.conf"
+  reads `%APPDATA%\mpv\mpv.conf`.
 
 ## Share over Tailscale
 
@@ -167,6 +181,8 @@ register.
 
 On a Mac, `apps/linux/packaging/macos/deps.sh` builds libmpv and MpvQt, and `bundle.sh`
 turns the binary into `AniBeam.app` and a dmg. `.github/workflows/macos.yml` runs both.
+On Windows, `apps/linux/packaging/windows/deps.sh` and `bundle.sh` do the same for the
+installer and the zip, and `.github/workflows/windows.yml` runs them.
 
 ## Development
 
@@ -201,8 +217,8 @@ anibeam-cli list --tab all --sort alpha --direction asc
 
 ## Releasing
 
-Push a version tag. `.github/workflows/release.yml` builds the Mac dmg and the Linux
-AppImage, runs both smoke tests, and leaves a draft release with the files and install
+Push a version tag. `.github/workflows/release.yml` builds the Mac dmg, the Linux
+AppImage and the Windows installer and zip, runs the three smoke tests, and leaves a draft release with the files and install
 notes on it. Read the draft, then press Publish.
 
 ```bash

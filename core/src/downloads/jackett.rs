@@ -18,8 +18,6 @@ use std::path::Path;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
-use tokio::process::Command;
-
 use crate::net::{Http, HttpRequest, Method};
 
 /// How long a command with no ready URL to wait for is given to fail
@@ -124,6 +122,44 @@ fn program(command: &str) -> String {
         .to_string()
 }
 
+/// The program a cmd line starts: the quoted first word whole, else the first word.
+#[cfg(windows)]
+fn cmd_program(line: &str) -> &str {
+    let line = line.trim_start();
+    match line.strip_prefix('"') {
+        Some(rest) => rest.split('"').next().unwrap_or(rest),
+        None => line.split_whitespace().next().unwrap_or(line),
+    }
+}
+
+/// False only when cmd surely cannot start the line's program: a bare name that is no
+/// builtin and is on no PATH directory under any PATHEXT extension, or a path to nothing.
+/// Anything less sure runs, and its exit code speaks for it.
+#[cfg(windows)]
+fn on_path(line: &str) -> bool {
+    const BUILTINS: [&str; 16] = [
+        "start", "call", "echo", "cd", "chdir", "set", "exit", "pushd", "popd", "if", "for",
+        "title", "type", "rem", "ver", "timeout",
+    ];
+    let program = cmd_program(line);
+    // App Execution Aliases (WindowsApps\python.exe and the like) are reparse points that
+    // is_file() cannot read, so presence is all that is asked.
+    let present = |p: &Path| std::fs::symlink_metadata(p).is_ok();
+    if program.contains(['\\', '/', ':']) {
+        return present(Path::new(program));
+    }
+    if BUILTINS.contains(&program.to_ascii_lowercase().as_str()) {
+        return true;
+    }
+    let exts = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into());
+    let exts: Vec<&str> = std::iter::once("").chain(exts.split(';')).collect();
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    std::env::split_paths(&path).any(|dir| {
+        exts.iter()
+            .any(|ext| present(&dir.join(format!("{program}{ext}"))))
+    })
+}
+
 /// Runs `command` and waits until `ready` answers. A service that already
 /// answers is left alone and the command never runs. Output goes to `log`.
 /// With an empty `ready` there is nothing to wait for: the command counts
@@ -139,6 +175,12 @@ pub async fn start(
     if !ready.is_empty() && answers(http, ready).await {
         return Ok(());
     }
+    // cmd says "not recognized" in the machine's own language and exits 1, so on Windows
+    // the program is looked up before the line runs.
+    #[cfg(windows)]
+    if !on_path(command) {
+        return Err(StartFailure::Missing(program(command)));
+    }
     if let Some(dir) = log.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
@@ -146,10 +188,8 @@ pub async fn start(
     let err = out
         .try_clone()
         .map_err(|e| StartFailure::Failed(e.to_string()))?;
-    let mut cmd = Command::new("sh");
-    cmd.arg("-c")
-        .arg(command)
-        .stdin(Stdio::null())
+    let mut cmd = crate::process::shell(command);
+    cmd.stdin(Stdio::null())
         .stdout(out)
         .stderr(err)
         .kill_on_drop(false);
@@ -165,7 +205,8 @@ pub async fn start(
     let mut exited_clean = false;
     loop {
         if !exited_clean && let Some(status) = child.try_wait().ok().flatten() {
-            if status.code() == Some(127) {
+            // 127 from sh, 9009 from cmd: the command is not there.
+            if matches!(status.code(), Some(127 | 9009)) {
                 return Err(StartFailure::Missing(program(command)));
             }
             if !status.success() {
@@ -278,11 +319,20 @@ mod tests {
         http.push(200, "ok");
         run(&http, "echo starting", READY, &dir).await.unwrap();
         assert_eq!(http.requests().len(), 4);
-        assert!(
+        // The fake answers on its own schedule, so the echo can land just after the
+        // start returns; give the child a moment rather than racing it.
+        let logged = || {
             std::fs::read_to_string(log(&dir))
                 .unwrap()
                 .contains("starting")
-        );
+        };
+        for _ in 0..50 {
+            if logged() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert!(logged());
     }
 
     #[tokio::test]
@@ -300,6 +350,8 @@ mod tests {
         assert!(message.starts_with("Jackett is not installed"));
     }
 
+    // sh syntax.
+    #[cfg(unix)]
     #[tokio::test]
     async fn a_command_that_fails_reports_the_last_line_it_wrote() {
         let dir = tempfile::tempdir().unwrap();

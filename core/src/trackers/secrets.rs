@@ -18,6 +18,7 @@ use std::any::Any;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ffi::OsString;
 use std::io::Write;
+#[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -292,12 +293,15 @@ fn order(hint: Option<StoreKind>) -> [StoreKind; 2] {
     }
 }
 
-/// The machine's keyring: the Secret Service over D-Bus, or on a Mac the
-/// login keychain. `None` when there is none to reach.
+/// The machine's keyring: the Secret Service over D-Bus, on a Mac the
+/// login keychain, on Windows the Credential Manager. `None` when there is
+/// none to reach.
 fn open_keyring() -> Option<Arc<CredentialStore>> {
     #[cfg(target_os = "macos")]
     let opened = apple_native_keyring_store::keychain::Store::new();
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    let opened = windows_native_keyring_store::Store::new();
+    #[cfg(not(any(target_os = "macos", windows)))]
     let opened = zbus_secret_service_keyring_store::Store::new();
     match opened {
         Ok(store) => {
@@ -414,19 +418,20 @@ impl FileStore {
             std::fs::create_dir_all(parent).map_err(platform)?;
         }
         let tmp = self.tmp_path();
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(&tmp)
-            .map_err(platform)?;
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        // Windows has no mode bits; the file sits in the user's own profile,
+        // which only they can read.
+        #[cfg(unix)]
+        options.mode(0o600);
+        let mut file = options.open(&tmp).map_err(platform)?;
         file.write_all(text.as_bytes()).map_err(platform)?;
         file.sync_all().map_err(platform)?;
         drop(file);
         // `mode` above only applies when the open created the file, and a
         // crashed write can leave one behind with a wider mode, so say it
         // again before the rename carries it over the real file.
+        #[cfg(unix)]
         std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600)).map_err(platform)?;
         std::fs::rename(&tmp, &self.path).map_err(platform)?;
         Ok(())
@@ -537,6 +542,7 @@ impl CredentialApi for FileCredential {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
     use std::sync::atomic::AtomicUsize;
 
@@ -666,6 +672,7 @@ mod tests {
                 .unwrap(),
             Some(("tok".into(), StoreKind::File))
         );
+        #[cfg(unix)]
         assert_eq!(
             std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
             0o600

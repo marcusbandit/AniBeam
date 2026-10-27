@@ -1707,7 +1707,7 @@ pub fn remove_show(
                 }
                 sources = all_sources;
             }
-            let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+            let home = std::env::home_dir();
             let targets = if takes_files {
                 trash::targets(&candidates, &sources, home.as_deref())?
             } else {

@@ -258,13 +258,22 @@ pub fn old_to_trash(old: &[String], written: &[String]) -> Vec<String> {
 /// and inode on disk (a symlinked library source, a hard link). A path that
 /// cannot be read on disk is judged by its text alone.
 fn same_file(a: &str, b: &str) -> bool {
-    use std::os::unix::fs::MetadataExt;
     let tidy = |p: &str| PathBuf::from(p).components().collect::<PathBuf>();
     if tidy(a) == tidy(b) {
         return true;
     }
-    match (std::fs::metadata(a), std::fs::metadata(b)) {
-        (Ok(x), Ok(y)) => x.dev() == y.dev() && x.ino() == y.ino(),
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        match (std::fs::metadata(a), std::fs::metadata(b)) {
+            (Ok(x), Ok(y)) => x.dev() == y.dev() && x.ino() == y.ino(),
+            _ => false,
+        }
+    }
+    // Windows: a symlink resolves to the same real path; hard links do not.
+    #[cfg(not(unix))]
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(x), Ok(y)) => x == y,
         _ => false,
     }
 }
@@ -693,7 +702,7 @@ async fn cancel_whole(
     t: &Torrent,
 ) -> Result<String, CoreError> {
     let sources = core.store.read(library_sources)?;
-    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let home = std::env::home_dir();
     let targets = trash::targets(
         &[trash::Candidate::Torrent {
             content: t.content_path.clone(),
@@ -840,7 +849,7 @@ async fn replace_episode(
         .iter()
         .map(|p| trash::Candidate::Series { path: p.clone() })
         .collect();
-    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let home = std::env::home_dir();
     let targets = trash::targets(&cands, &sources, home.as_deref())?;
     if targets.is_empty() {
         return Ok(());
@@ -1133,6 +1142,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn the_new_file_is_never_old_whatever_path_reaches_it() {
         let dir = tempfile::tempdir().unwrap();
         let real = dir.path().join("media");

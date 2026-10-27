@@ -2,6 +2,7 @@
 // full-bleed, the title on the rising scrim at its foot, an Available or AniList tag top
 // left, the list-status square bottom right. Hover draws the 1 px accent inner outline.
 import QtQuick
+import com.marcusrosado.AniBeam
 Item {
     id: root
     property var rec: ({})
@@ -15,7 +16,7 @@ Item {
     Rectangle { anchors.fill: parent; color: theme.tile; border.color: theme.line; border.width: 1 }
     Image {
         anchors.fill: parent
-        source: rec.poster ? "file://" + rec.poster : ""
+        source: rec.poster ? Fmt.fileUrl(rec.poster) : ""
         fillMode: Image.PreserveAspectCrop; asynchronous: true; smooth: true
         sourceSize: theme.posterDecodeSize
     }

@@ -81,7 +81,7 @@ Item {
         }
         InlineConfirm {
             visible: root.confirming
-            question: "Remove " + (root.source.path || "").split("/").pop() + ", " + Fmt.plural(root.source.series_count || 0, "series", "series") + " and their history?"
+            question: "Remove " + (root.source.path || "").split(/[\\/]/).pop() + ", " + Fmt.plural(root.source.series_count || 0, "series", "series") + " and their history?"
             onAccepted: root.removeAccepted()
             onKept: root.confirming = false
         }

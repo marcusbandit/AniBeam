@@ -57,8 +57,9 @@ fn start(core: &Core, name: &str) -> u64 {
 /// An anirss config with a plain nyaa endpoint and a 1337x one that has a
 /// `start`, and the XDG config home pointed at it.
 fn on_demand_config(dir: &Path, start: Option<&str>) {
+    // A literal string: a Windows path's backslashes are not TOML escapes there
     let start = start
-        .map(|s| format!("start = \"{s}\"\n"))
+        .map(|s| format!("start = '{s}'\n"))
         .unwrap_or_default();
     let anirss = dir.join("anirss");
     std::fs::create_dir_all(&anirss).unwrap();

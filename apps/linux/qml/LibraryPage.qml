@@ -532,6 +532,6 @@ Item {
         id: importDialog
         title: "Import an AniBeam export"
         nameFilters: ["AniBeam export (*.json)", "All files (*)"]
-        onAccepted: { var r = Door.importLibrary(decodeURIComponent(String(selectedFile).replace("file://", ""))); if (r.error) frame.toast(r.error.message); else frame.toast("Import started") }
+        onAccepted: { var r = Door.importLibrary(Fmt.localPath(String(selectedFile))); if (r.error) frame.toast(r.error.message); else frame.toast("Import started") }
     }
 }

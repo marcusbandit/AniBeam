@@ -384,7 +384,7 @@ pub fn anirss_config_qbt(path: &Path) -> Option<(String, String)> {
 pub fn anirss_config_path() -> Option<PathBuf> {
     let base = match std::env::var("XDG_CONFIG_HOME") {
         Ok(d) if !d.is_empty() => PathBuf::from(d),
-        _ => PathBuf::from(std::env::var("HOME").ok()?).join(".config"),
+        _ => std::env::home_dir()?.join(".config"),
     };
     Some(base.join("anirss").join("config.toml"))
 }
@@ -395,9 +395,7 @@ pub fn anirss_config_path() -> Option<PathBuf> {
 pub fn anirss_saved_password() -> Option<String> {
     let base = match std::env::var("XDG_STATE_HOME") {
         Ok(d) if !d.is_empty() => PathBuf::from(d),
-        _ => PathBuf::from(std::env::var("HOME").ok()?)
-            .join(".local")
-            .join("state"),
+        _ => std::env::home_dir()?.join(".local").join("state"),
     };
     let text = std::fs::read_to_string(base.join("anirss").join("qbt.pass")).ok()?;
     let pw = text.trim_end_matches(['\n', '\r']).to_string();

@@ -499,7 +499,7 @@ Item {
                     id: posterImage
                     visible: false
                     anchors.fill: parent
-                    source: !root.show || !root.show.poster ? "" : String(root.show.poster).indexOf("://") > 0 ? root.show.poster : "file://" + root.show.poster
+                    source: !root.show || !root.show.poster ? "" : String(root.show.poster).indexOf("://") > 0 ? root.show.poster : Fmt.fileUrl(root.show.poster)
                     sourceSize: theme.posterDecodeSize
                     fillMode: Image.PreserveAspectCrop
                     asynchronous: true
