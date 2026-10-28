@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use std::time::{Duration, Instant};
 
+use crate::airing_now;
 use crate::contract::*;
 use crate::downloads;
 use crate::events::{EventBus, Subscription};
@@ -828,6 +829,18 @@ impl Core {
             // AniList request. The page asks for a refresh on its own.
             Call::ListWatching => watching::list_call(self),
             Call::RefreshWatching { force } => watching::refresh_call(self, force),
+            // Airing now reads its own tables, like Watching: the list call
+            // answers off the cache and the page asks for a refresh itself.
+            Call::ListAiringNow { season } => airing_now::list_call(self, season),
+            Call::RefreshAiringNow { season, force } => {
+                airing_now::refresh_call(self, season, force)
+            }
+            Call::SetNotInterested {
+                anilist_id,
+                not_interested,
+            } => airing_now::set_not_interested(self, anilist_id, not_interested),
+            Call::ListNotInterested => airing_now::list_not_interested(self),
+            Call::PlanToWatch { anilist_id } => airing_now::plan_to_watch(self, anilist_id),
             // The graph is drawn off the tables as they stand, and the
             // crawl behind it fills in whatever the walk found missing.
             Call::GetFranchiseGraph { series } => {

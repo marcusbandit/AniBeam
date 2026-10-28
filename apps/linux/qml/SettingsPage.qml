@@ -60,7 +60,13 @@ FocusScope {
         width: page.width
         height: page.height - y
         sourceComponent: [libraryTab, appearanceTab, playbackTab, downloadsTab, dataTab][page.tab]
-        onLoaded: { item.contentY = frame.settingsScroll[page.tab] || 0 }
+        onLoaded: {
+            item.contentY = frame.settingsScroll[page.tab] || 0
+            // `focus` in the props names a section to bring into view (Airing now's link to
+            // its not interested list), once the tab has laid out
+            if (page.props.focus && item.focusSection) focusLater.restart()
+        }
+        Timer { id: focusLater; interval: 150; onTriggered: if (content.item && content.item.focusSection) content.item.focusSection(page.props.focus) }
         Connections { target: content.item; function onContentYChanged() { var s = frame.settingsScroll.slice(); s[page.tab] = content.item.contentY; frame.settingsScroll = s } }
     }
     Component { id: libraryTab; SettingsLibraryTab {} }

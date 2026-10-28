@@ -56,14 +56,17 @@ const IMAGE_EXTENSIONS: [&str; 6] = ["jpg", "jpeg", "png", "gif", "webp", "avif"
 
 /// Every url whose image the library would draw if it had it. A TVmaze
 /// show is drawn only by the series matched to it, so a show every series
-/// has moved off references nothing.
+/// has moved off references nothing. Airing now's cards and the shows
+/// marked not interested draw theirs too.
 const REFERENCED_SQL: &str =
     "SELECT cover_url AS url FROM anilist_media WHERE cover_url IS NOT NULL
      UNION SELECT banner_url FROM anilist_media WHERE banner_url IS NOT NULL
      UNION SELECT value ->> 'image_url' FROM anilist_media, json_each(anilist_media.characters)
            WHERE value ->> 'image_url' IS NOT NULL
      UNION SELECT t.poster_url FROM tvmaze_shows t JOIN series s ON s.tvmaze_id = t.id WHERE t.poster_url IS NOT NULL
-     UNION SELECT t.background_url FROM tvmaze_shows t JOIN series s ON s.tvmaze_id = t.id WHERE t.background_url IS NOT NULL";
+     UNION SELECT t.background_url FROM tvmaze_shows t JOIN series s ON s.tvmaze_id = t.id WHERE t.background_url IS NOT NULL
+     UNION SELECT cover_url FROM season_shows WHERE cover_url IS NOT NULL
+     UNION SELECT cover_url FROM not_interested WHERE cover_url IS NOT NULL";
 
 /// The urls of a series the library actually owns. These are never evicted
 /// by the cap: losing them is the one loss a user would see at once.

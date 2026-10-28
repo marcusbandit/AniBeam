@@ -50,14 +50,19 @@ Item {
     property real tileHeight: 0
     property real plateHeight: 0
     property bool live: true
+    // Airing now's Not interested (#202): a small x at the top right on hover or focus, and
+    // Delete from the keyboard. The page says what it does; the card only asks
+    property bool dismissible: false
     signal opened()
     signal played()
+    signal dismissed()
     // A stop for the page's arrow keys (GridKeys), and a Tab stop after the page's controls
     readonly property bool gridStop: true
     activeFocusOnTab: true
     Keys.onReturnPressed: root.opened()
     Keys.onEnterPressed: root.opened()
     Keys.onSpacePressed: root.played()
+    Keys.onDeletePressed: if (root.dismissible) root.dismissed()
 
     readonly property real pad: theme.space(hero ? 5 : 3)
     readonly property real radius: theme.radiusTile
@@ -280,7 +285,7 @@ Item {
         text: root.epBadge
     }
     Row {
-        x: root.width - width - root.pad * 0.8; y: root.pad * 0.8
+        x: root.width - width - root.pad * 0.8 - (dismiss.visible ? dismiss.width + theme.space(1) : 0); y: root.pad * 0.8
         spacing: theme.space(1)
         // An episode out and not seen: the one tag in the accent. A series put aside says so
         // instead, since one on hold has an episode waiting almost by definition
@@ -436,5 +441,28 @@ Item {
         color: "transparent"
         border.width: 2
         border.color: theme.focusRing
+    }
+
+    // ---- Not interested: above the tile's own click, so it takes its own
+    Rectangle {
+        id: dismiss
+        objectName: "tile-dismiss-" + (root.item.id === undefined ? "" : root.item.id)
+        visible: root.dismissible && (hoverer.hovered || root.activeFocus)
+        x: root.width - width - root.pad * 0.8; y: root.pad * 0.8
+        width: Math.round(root.pillHeight + theme.space(1.5)); height: width
+        radius: theme.radiusSm
+        antialiasing: true
+        color: dismissArea.containsMouse ? Qt.rgba(8 / 255, 9 / 255, 11 / 255, 0.85) : Qt.rgba(8 / 255, 9 / 255, 11 / 255, 0.62)
+        border.color: dismissArea.containsMouse ? theme.accentOnPoster : Qt.rgba(1, 1, 1, 0.14)
+        border.width: 1
+        Icon { anchors.centerIn: parent; glyph: "x"; size: Math.round(parent.width * 0.62); color: theme.onPoster }
+        MouseArea {
+            id: dismissArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.dismissed()
+        }
+        Tooltip { text: "Not interested" }
     }
 }

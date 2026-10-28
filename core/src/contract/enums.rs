@@ -334,6 +334,14 @@ impl Direction {
     }
 }
 
+/// Which shows Airing now lists: everything on air today, whatever season
+/// it started in, or the season after the current one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
+pub enum SeasonPick {
+    Now,
+    Next,
+}
+
 /// Recently released, coming soon; exports as `recent` | `upcoming`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
 pub enum FeedSort {
@@ -614,6 +622,8 @@ pub enum JobKind {
     Score,
     RefreshProgress,
     RefreshWatching,
+    /// Airing now's read of one season from AniList.
+    RefreshAiringNow,
     /// The sweep that moves Watching entries left untouched to On hold.
     OnHold,
     /// One series' entries to a list status, as a play does to a series on
@@ -644,7 +654,9 @@ impl JobKind {
         match self {
             Scan | Subscriptions => Stage::Library,
             AutoMatch | Search | ResolveLink | ApplyMatch | Refresh | RefreshAll
-            | RefreshAiring | RefreshImdb | ClearImages | FillImages => Stage::Metadata,
+            | RefreshAiring | RefreshImdb | ClearImages | FillImages | RefreshAiringNow => {
+                Stage::Metadata
+            }
             ConnectTracker | Mark | SetProgress | Score | RefreshProgress | RefreshWatching
             | OnHold | SetStatus => Stage::Trackers,
             Crawl => Stage::Franchise,
@@ -667,6 +679,7 @@ impl JobKind {
                 | Crawl
                 | RefreshProgress
                 | RefreshWatching
+                | RefreshAiringNow
                 | OnHold
                 | FillImages
                 | Subscriptions
@@ -698,6 +711,7 @@ impl JobKind {
             Score => "Score",
             RefreshProgress => "RefreshProgress",
             RefreshWatching => "RefreshWatching",
+            RefreshAiringNow => "RefreshAiringNow",
             OnHold => "OnHold",
             SetStatus => "SetStatus",
             Crawl => "Crawl",
@@ -740,6 +754,7 @@ impl JobKind {
             "Score" => Some(Score),
             "RefreshProgress" => Some(RefreshProgress),
             "RefreshWatching" => Some(RefreshWatching),
+            "RefreshAiringNow" => Some(RefreshAiringNow),
             "OnHold" => Some(OnHold),
             "SetStatus" => Some(SetStatus),
             "Crawl" => Some(Crawl),

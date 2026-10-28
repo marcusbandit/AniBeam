@@ -2,8 +2,8 @@
 // shows), Folders sized to its sources, and the recent scans growing into the rest of
 // the column, as many as it holds; beside them Trackers (with On hold under the accounts
 // while one is connected), the metadata providers in the order matching tries them, the
-// library options at their own height, and the series on disk, most files first, filling
-// the rest.
+// library options at their own height, the shows marked not interested on Airing now, and
+// the series on disk, most files first, filling the rest.
 import QtQuick
 import QtQuick.Dialogs
 import com.marcusrosado.AniBeam
@@ -48,7 +48,22 @@ SettingsTab {
         var r = Door.setPreferences(p)
         if (r.error) frame.toast(r.error.message)
     }
-    Component.onCompleted: { reload(); reloadHost() }
+    // Airing now's not interested marks (#202), newest first, each with a way back
+    property var notInterested: []
+    function reloadNotInterested() { var r = Door.listNotInterested(); if (!r.error) notInterested = r.reply.shows }
+    function showAgain(id) {
+        var r = Door.setNotInterested(id, false)
+        if (r.error) { frame.toast(r.error.message); return }
+        reloadNotInterested()
+    }
+    Component.onCompleted: { reload(); reloadHost(); reloadNotInterested() }
+    // The page's `focus` prop: scroll a named section into view
+    property Item notInterestedItem: null
+    function focusSection(name) {
+        if (name !== "not-interested" || !notInterestedItem) return
+        var y = notInterestedItem.mapToItem(tab.contentItem, 0, 0).y - theme.space(4)
+        tab.contentY = Math.max(0, Math.min(y, tab.contentHeight - tab.height))
+    }
     // On hold is a list on a tracker, so its two rows show only while one is connected
     readonly property bool tracked: !!(Door.trackers.anilist && Door.trackers.anilist.connected) || !!(Door.trackers.mal && Door.trackers.mal.connected)
     function setOnHold(on) {
@@ -96,7 +111,7 @@ SettingsTab {
     SettingsPair {
         split: 3 / 5
         leftPanels: [ statStones, foldersPanel, scansPanel ]
-        rightPanels: [ trackersPanel, providersPanel, optionsPanel, sharePanel, diskPanel ]
+        rightPanels: [ trackersPanel, providersPanel, optionsPanel, notInterestedPanel, sharePanel, diskPanel ]
     }
     Component {
         id: statStones
@@ -223,6 +238,44 @@ SettingsTab {
                 Button { text: "Open"; icon: "download"; onClicked: frame.go("downloads") } }
             SettingRow { label: "Metadata"; helper: "Every series, the record it is matched to, and its files on disk."
                 Button { text: "Open"; icon: "database"; onClicked: frame.go("metadata") } }
+        }
+    }
+    Component {
+        id: notInterestedPanel
+        Panel {
+            objectName: "settings-not-interested"
+            Component.onCompleted: tab.notInterestedItem = this
+            title: "Not interested"; icon: "eye-off"
+            helper: tab.notInterested.length ? "Shows you marked on Airing now. Each one stays off that page until you show it again."
+                                             : "Shows you mark not interested on Airing now land here, each with a way back."
+            Column {
+                width: parent.width
+                Repeater {
+                    model: tab.notInterested
+                    Item {
+                        id: niRow
+                        required property var modelData
+                        objectName: "not-interested-" + modelData.anilist_id
+                        width: parent ? parent.width : 0
+                        height: theme.space(11)
+                        Label {
+                            anchors.left: parent.left; anchors.right: again.left; anchors.rightMargin: theme.space(4)
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: niRow.modelData.title
+                            role: "ui"
+                            elide: Text.ElideRight
+                        }
+                        Button {
+                            id: again
+                            objectName: "not-interested-again-" + niRow.modelData.anilist_id
+                            anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                            text: "Show again"; icon: "eye"; flat: true; small: true
+                            onClicked: tab.showAgain(niRow.modelData.anilist_id)
+                        }
+                        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: theme.line; opacity: 0.5 }
+                    }
+                }
+            }
         }
     }
     // The phone app's door: the core serves a read-only copy of the library, the

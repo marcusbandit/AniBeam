@@ -1395,6 +1395,8 @@ Item {
         if (props.query) { search.text = props.query; Qt.callLater(page.runSearch) }
         // A series page's Get episodes (#169): straight to that show's view
         if (props.series !== undefined && props.series !== null) page.openSeries(props.series)
+        // Airing now's Get episodes (#202) for a show the library does not have: its view
+        else if (props.hit) page.openGet(page.showFromHit(props.hit))
     }
     function openSeries(id) {
         var r = Door.getSeries(id)

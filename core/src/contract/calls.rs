@@ -136,6 +136,32 @@ pub enum Call {
     RefreshWatching {
         force: bool,
     },
+    // Airing now
+    /// The season as last read, at once, and the id of a refresh already
+    /// running. Reads only; `RefreshAiringNow` goes to AniList.
+    ListAiringNow {
+        season: SeasonPick,
+    },
+    /// Starts the read of a season from AniList when the cached one is older
+    /// than half an hour, or always with `force`. `Started` with the job
+    /// (the running one if any), or `Ok` when the cache is fresh. The job
+    /// ends in `AiringNowRefreshed`.
+    RefreshAiringNow {
+        season: SeasonPick,
+        force: bool,
+    },
+    /// Marks one AniList entry not interested, or takes the mark back. One
+    /// entry and nothing related to it. `Ok`.
+    SetNotInterested {
+        anilist_id: u64,
+        not_interested: bool,
+    },
+    ListNotInterested,
+    /// Puts a show on Airing now on Planning, on every connected tracker
+    /// that does not list it yet. `Started` with the job.
+    PlanToWatch {
+        anilist_id: u64,
+    },
     // Franchise
     GetFranchiseGraph {
         series: u64,
@@ -599,6 +625,13 @@ pub enum Reply {
     Watching {
         list: WatchingList,
         refreshing: Option<u64>,
+    },
+    AiringNow {
+        now: AiringNow,
+        refreshing: Option<u64>,
+    },
+    NotInterested {
+        shows: Vec<NotInterestedShow>,
     },
     Graph {
         layout: Option<FranchiseLayout>,

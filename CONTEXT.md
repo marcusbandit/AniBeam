@@ -122,6 +122,14 @@ _Avoid_: classification, label, parse
 The user saying what a file's reading should be when its name read wrong. It is stored by the file's path, so it outlives every scan, and the file's history follows it to its new key. The series page offers one by itself when it sees a likely misreading, and applying one can file it as a GitHub issue, triaged first by Claude Code or Codex when one is installed.
 _Avoid_: override, correction, remap, manual match
 
+**Airing now**:
+Every show AniList has on air, not only the library's, read whole from AniList and kept apart from the library's own tables, so a show only browsed never reaches the franchise graph or the image fill. Its other pick is the next season by name. Along the top sits Out now, the episodes out in the last two days, newest first.
+_Avoid_: seasonal, schedule, calendar, discover
+
+**Not interested**:
+The user saying one AniList entry should stay off Airing now. It covers that entry and nothing related to it, so the next season of the same show is a new entry and appears again. Settings, Library lists every one with a way back.
+_Avoid_: hidden, ignored, blocked, dismissed
+
 ### Look
 
 **Token**:
