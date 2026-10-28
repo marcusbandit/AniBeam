@@ -20,8 +20,8 @@ use anibeam_core::events::Subscription;
 use anibeam_core::{
     Call, Chapter, CloseReason, CoreError, Direction, DownloadOptions, DownloadSettings, Event,
     EventBody, EventListener, FeedSort, JobPhase, Level, MatchTarget, MetadataFilter, Preferences,
-    Provider, RefineOp, Release, Sort, SubscriptionsResult, SubtitleChoice, SubtitleDefaults, Tab,
-    TorrentAction, TrackRef, Tracker,
+    Provider, RefineOp, Release, SeasonPick, Sort, SubscriptionsResult, SubtitleChoice,
+    SubtitleDefaults, Tab, TorrentAction, TrackRef, Tracker,
 };
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::{QJsonArray, QJsonObject, QString};
@@ -179,6 +179,21 @@ pub mod qobject {
         /// not connected; the job ends in `watchingRefreshed`.
         #[qinvokable]
         fn refresh_watching(self: &Door, force: bool) -> QJsonObject;
+        // Airing now (#202)
+        /// The season as last read: `{ now: { season, label, shows, aired,
+        /// not_interested, fetched_at }, refreshing }`. `season` is "Now" or "Next".
+        #[qinvokable]
+        fn list_airing_now(self: &Door, season: &QString) -> QJsonObject;
+        /// Reads the season from AniList when the cache is over half an hour old, or
+        /// always with `force`; the job ends in `airingNowRefreshed`.
+        #[qinvokable]
+        fn refresh_airing_now(self: &Door, season: &QString, force: bool) -> QJsonObject;
+        #[qinvokable]
+        fn set_not_interested(self: &Door, anilist_id: f64, not_interested: bool) -> QJsonObject;
+        #[qinvokable]
+        fn list_not_interested(self: &Door) -> QJsonObject;
+        #[qinvokable]
+        fn plan_to_watch(self: &Door, anilist_id: f64) -> QJsonObject;
         // Franchise
         #[qinvokable]
         fn get_franchise_graph(self: &Door, series: f64) -> QJsonObject;
@@ -448,6 +463,8 @@ pub mod qobject {
         fn progress_refreshed(self: Pin<&mut Door>, tracker: QString);
         #[qsignal]
         fn watching_refreshed(self: Pin<&mut Door>, list: QJsonObject);
+        #[qsignal]
+        fn airing_now_refreshed(self: Pin<&mut Door>, season: QString);
         #[qsignal]
         fn graph_changed(self: Pin<&mut Door>, root: f64);
         #[qsignal]
@@ -1042,6 +1059,7 @@ impl qobject::Door {
             }
             EventBody::ProgressRefreshed { .. } => self.as_mut().progress_refreshed(s("tracker")),
             EventBody::WatchingRefreshed { .. } => self.as_mut().watching_refreshed(obj("list")),
+            EventBody::AiringNowRefreshed { .. } => self.as_mut().airing_now_refreshed(s("season")),
             EventBody::GraphChanged { .. } => self.as_mut().graph_changed(n("root")),
             EventBody::CrawlFinished { .. } => {
                 self.as_mut().crawl_finished(n("fetched"), n("deferred"))
@@ -1378,6 +1396,32 @@ impl qobject::Door {
     }
     pub fn refresh_watching(&self, force: bool) -> QJsonObject {
         self.dispatch(Ok(Call::RefreshWatching { force }))
+    }
+    // Airing now
+    pub fn list_airing_now(&self, season: &QString) -> QJsonObject {
+        self.dispatch(
+            parse_enum::<SeasonPick>("season", season).map(|season| Call::ListAiringNow { season }),
+        )
+    }
+    pub fn refresh_airing_now(&self, season: &QString, force: bool) -> QJsonObject {
+        self.dispatch(
+            parse_enum::<SeasonPick>("season", season)
+                .map(|season| Call::RefreshAiringNow { season, force }),
+        )
+    }
+    pub fn set_not_interested(&self, anilist_id: f64, not_interested: bool) -> QJsonObject {
+        self.dispatch(Ok(Call::SetNotInterested {
+            anilist_id: id(anilist_id),
+            not_interested,
+        }))
+    }
+    pub fn list_not_interested(&self) -> QJsonObject {
+        self.dispatch(Ok(Call::ListNotInterested))
+    }
+    pub fn plan_to_watch(&self, anilist_id: f64) -> QJsonObject {
+        self.dispatch(Ok(Call::PlanToWatch {
+            anilist_id: id(anilist_id),
+        }))
     }
     // Franchise
     pub fn get_franchise_graph(&self, series: f64) -> QJsonObject {

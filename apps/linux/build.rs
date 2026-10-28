@@ -67,6 +67,7 @@ fn main() {
             .qml_file("qml/StoneFact.qml")
             .qml_file("qml/FeedPage.qml")
             .qml_file("qml/WatchingPage.qml")
+            .qml_file("qml/AiringPage.qml")
             .qml_file("qml/MetadataPage.qml")
             .qml_file("qml/MatchPanel.qml")
             .qml_file("qml/FixSheet.qml")

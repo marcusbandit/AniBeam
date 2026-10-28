@@ -81,7 +81,7 @@ FocusScope {
 
     // Pages by name; a page task swaps its placeholder for the real file
     readonly property var pages: ({
-        home: "HomePage.qml", library: "LibraryPage.qml", feed: "FeedPage.qml", watching: "WatchingPage.qml", metadata: "MetadataPage.qml",
+        home: "HomePage.qml", library: "LibraryPage.qml", airing: "AiringPage.qml", feed: "FeedPage.qml", watching: "WatchingPage.qml", metadata: "MetadataPage.qml",
         downloads: "DownloadsPage.qml", settings: "SettingsPage.qml", series: "SeriesPage.qml", player: "PlayerPage.qml"
     })
 

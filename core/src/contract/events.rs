@@ -117,6 +117,10 @@ pub enum EventBody {
     WatchingRefreshed {
         list: WatchingList,
     },
+    /// A season of Airing now was read afresh; `ListAiringNow` has it.
+    AiringNowRefreshed {
+        season: SeasonPick,
+    },
     GraphChanged {
         root: u64,
     },

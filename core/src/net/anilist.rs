@@ -330,6 +330,46 @@ pub const WATCHING_LIST_QUERY: &str = r"query ($userId: Int) {
           }
         }";
 
+/// One page of the Airing now page (#202): every anime on air, or one
+/// season's, most popular first. The one query serves both: `status` alone
+/// for what is on air today, whatever season it started in, and `season`
+/// with `seasonYear` for a season. A filter not in use must be left out of
+/// the variables, never sent as null: AniList reads a null `season` as "has
+/// no season". TV, TV shorts and web series only, since a film or an OVA
+/// has no episodes coming out.
+pub const SEASON_PAGE_QUERY: &str = r"query ($page: Int, $status: MediaStatus, $season: MediaSeason, $seasonYear: Int) {
+      Page(page: $page, perPage: 50) {
+        pageInfo { hasNextPage }
+        media(type: ANIME, status: $status, season: $season, seasonYear: $seasonYear, isAdult: false, format_in: [TV, TV_SHORT, ONA], sort: POPULARITY_DESC) {
+          id
+          idMal
+          siteUrl
+          format
+          episodes
+          averageScore
+          title { romaji english native }
+          coverImage { large }
+          nextAiringEpisode { episode airingAt }
+        }
+      }
+    }";
+
+/// Every episode that went out between two moments, newest first: the
+/// strip along the top of Airing now. The media rides along so the strip
+/// can name a show that has just finished and is no longer releasing, and
+/// can leave out what the season query leaves out.
+pub const AIRED_PAGE_QUERY: &str = r"query ($page: Int, $from: Int, $to: Int) {
+      Page(page: $page, perPage: 50) {
+        pageInfo { hasNextPage }
+        airingSchedules(airingAt_greater: $from, airingAt_lesser: $to, sort: TIME_DESC) {
+          episode
+          airingAt
+          mediaId
+          media { idMal isAdult format title { romaji english native } }
+        }
+      }
+    }";
+
 /// AniList's schema marks a good many things nullable that read as
 /// required: a tag's spoiler flags, a relation's type, a studio edge's
 /// `isMain`, and every list and edge object on a series page. A bare field

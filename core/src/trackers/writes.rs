@@ -879,7 +879,7 @@ fn mal_failure(response: &HttpResponse) -> CoreError {
 
 /// The account's `synced_at` and the entry's progress, in one transaction:
 /// two tables move together or neither does.
-async fn record_progress(
+pub(crate) async fn record_progress(
     core: &Arc<Core>,
     t: Tracker,
     media_id: u64,

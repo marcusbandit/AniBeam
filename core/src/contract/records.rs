@@ -482,6 +482,62 @@ pub struct WatchingList {
     pub fetched_at: Option<SystemTime>,
 }
 
+/// One show on Airing now. `owned` is the library series that carries it,
+/// `list_status` its entry on a connected tracker, AniList first.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct AiringShow {
+    pub anilist_id: u64,
+    pub mal_id: Option<u64>,
+    pub title: String,
+    pub romaji: Option<String>,
+    pub english: Option<String>,
+    pub native: Option<String>,
+    pub poster: Option<String>,
+    pub format: Option<String>,
+    pub episodes: Option<u32>,
+    /// AniList's 0 to 100, as it came.
+    pub average_score: Option<u32>,
+    pub site_url: Option<String>,
+    pub next_airing: Option<Airing>,
+    /// The newest episode out in the last two days, if one is.
+    pub latest: Option<AiredEpisode>,
+    pub owned: Option<u64>,
+    pub list_status: Option<ListStatus>,
+}
+
+/// One episode that went out: the strip along the top of Airing now.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct AiredEpisode {
+    pub anilist_id: u64,
+    pub title: String,
+    pub episode: u32,
+    pub at: SystemTime,
+}
+
+/// Airing now as the page draws it: the shows, most popular first, with
+/// every one marked not interested left out, and the episodes out in the
+/// last two days, newest first.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct AiringNow {
+    pub season: SeasonPick,
+    /// "Airing now", or the season by name: "Winter 2027".
+    pub label: String,
+    pub shows: Vec<AiringShow>,
+    pub aired: Vec<AiredEpisode>,
+    /// How many of the season's shows are marked not interested.
+    pub not_interested: u32,
+    pub fetched_at: Option<SystemTime>,
+}
+
+/// A show marked not interested, as Settings lists it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct NotInterestedShow {
+    pub anilist_id: u64,
+    pub title: String,
+    pub poster: Option<String>,
+    pub marked_at: SystemTime,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct GraphNode {
     pub anilist_id: u64,

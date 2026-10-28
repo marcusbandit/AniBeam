@@ -19,6 +19,9 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Get more episodes now, or all of them, from a rolling download
 - Rolling download settings in Settings, Downloads
 - A notice says when a new version is out, with a button to download it
+- Airing now: every show on air, and each episode as it comes out
+- Mark a show not interested and it stays off Airing now
+- Plan to watch or get episodes straight from Airing now
 
 ### Fixed
 - This week cards keep the airing time inside the card

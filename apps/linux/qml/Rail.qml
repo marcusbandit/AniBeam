@@ -1,5 +1,5 @@
-// The sidebar: one flat column a step up from the ground. The brand at the top, then the two
-// places the app is for, Home and Library, each a glyph over its name. The rest of the app
+// The sidebar: one flat column a step up from the ground. The brand at the top, then the
+// places the app is for, Home, Library and Airing, each a glyph over its name. The rest of the app
 // (Feed, Watching, Metadata, Downloads, Settings) is a quiet stack of round glyph buttons near the
 // foot, named by their tips, and the foot itself holds the title-language switch and the
 // version, which opens What's new. The active place takes the soft accent; nothing else is lit.
@@ -8,7 +8,7 @@ import com.marcusrosado.AniBeam
 
 Item {
     id: root
-    // Indexes into Nav.railPages: home, library, feed, watching, metadata, downloads, settings
+    // Indexes into Nav.railPages: home, library, airing, feed, watching, metadata, downloads, settings
     property int active: 0
     // Complete subscriptions waiting to be cleared: a red count on Downloads
     property int downloadsBadge: 0
@@ -16,12 +16,13 @@ Item {
     signal versionClicked()
 
     readonly property var primary: [
-        { index: 0, text: "Home", icon: "house" }, { index: 1, text: "Library", icon: "layers" }
+        { index: 0, text: "Home", icon: "house" }, { index: 1, text: "Library", icon: "layers" },
+        { index: 2, text: "Airing", icon: "radio" }
     ]
     readonly property var secondary: [
-        { index: 2, text: "Feed", icon: "rss" }, { index: 3, text: "Watching", icon: "eye" },
-        { index: 4, text: "Metadata", icon: "database" }, { index: 5, text: "Downloads", icon: "download" },
-        { index: 6, text: "Settings", icon: "settings" }
+        { index: 3, text: "Feed", icon: "rss" }, { index: 4, text: "Watching", icon: "eye" },
+        { index: 5, text: "Metadata", icon: "database" }, { index: 6, text: "Downloads", icon: "download" },
+        { index: 7, text: "Settings", icon: "settings" }
     ]
     readonly property real pad: theme.space(2)
     readonly property real itemWidth: Math.max(theme.space(18), labels.implicitWidth + pad * 2, lang.implicitWidth + pad)
@@ -125,7 +126,7 @@ Item {
                 }
                 MouseArea { id: mm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.picked(minor.modelData.index) }
                 Tooltip { text: minor.badge > 0 ? minor.modelData.text + ": " + minor.badge + (minor.badge === 1 ? " subscription is" : " subscriptions are") + " complete" : minor.modelData.text }
-                readonly property int badge: modelData.index === 5 ? root.downloadsBadge : 0
+                readonly property int badge: modelData.text === "Downloads" ? root.downloadsBadge : 0
                 // The badge: red, its count in it, over the glyph's top right
                 Rectangle {
                     objectName: "rail-downloads-badge"
