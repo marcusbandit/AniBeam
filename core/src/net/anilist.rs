@@ -355,7 +355,9 @@ pub const SEASON_PAGE_QUERY: &str = r"query ($page: Int, $status: MediaStatus, $
     }";
 
 /// Every episode that went out between two moments, newest first: the
-/// strip along the top of Airing now.
+/// strip along the top of Airing now. The media rides along so the strip
+/// can name a show that has just finished and is no longer releasing, and
+/// can leave out what the season query leaves out.
 pub const AIRED_PAGE_QUERY: &str = r"query ($page: Int, $from: Int, $to: Int) {
       Page(page: $page, perPage: 50) {
         pageInfo { hasNextPage }
@@ -363,6 +365,7 @@ pub const AIRED_PAGE_QUERY: &str = r"query ($page: Int, $from: Int, $to: Int) {
           episode
           airingAt
           mediaId
+          media { idMal isAdult format title { romaji english native } }
         }
       }
     }";

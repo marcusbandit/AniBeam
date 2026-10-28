@@ -679,7 +679,6 @@ impl JobKind {
                 | Crawl
                 | RefreshProgress
                 | RefreshWatching
-                | RefreshAiringNow
                 | OnHold
                 | FillImages
                 | Subscriptions

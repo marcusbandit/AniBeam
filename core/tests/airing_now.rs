@@ -49,8 +49,9 @@ fn show(id: u64, romaji: &str, next: Option<(u32, i64)>) -> serde_json::Value {
 }
 
 /// Three shows on air over two pages, most popular first, and a strip of
-/// three episodes: two from shows on the page, one from a show that is not
-/// (a film, say), which the strip must leave out.
+/// four episodes: two from shows on the page, the finale of a show that has
+/// just finished and so is not on it, which the strip keeps, and a film,
+/// which the strip leaves out the way the season query does.
 fn queue_now(http: &FakeHttp, now: i64) {
     http.push_json(
         200,
@@ -70,9 +71,14 @@ fn queue_now(http: &FakeHttp, now: i64) {
     http.push_json(
         200,
         serde_json::json!({ "data": { "Page": { "pageInfo": { "hasNextPage": false }, "airingSchedules": [
-            { "episode": 7, "airingAt": now - 3_600, "mediaId": 154587 },
-            { "episode": 5, "airingAt": now - 7_200, "mediaId": 171018 },
-            { "episode": 1, "airingAt": now - 9_000, "mediaId": 99999 },
+            { "episode": 7, "airingAt": now - 3_600, "mediaId": 154587,
+              "media": { "idMal": 155587, "isAdult": false, "format": "TV", "title": { "romaji": "Sousou no Frieren" } } },
+            { "episode": 5, "airingAt": now - 7_200, "mediaId": 171018,
+              "media": { "idMal": 172018, "isAdult": false, "format": "TV", "title": { "romaji": "Dandadan" } } },
+            { "episode": 12, "airingAt": now - 8_000, "mediaId": 300,
+              "media": { "idMal": 1300, "isAdult": false, "format": "TV", "title": { "romaji": "Just Finished" } } },
+            { "episode": 1, "airingAt": now - 9_000, "mediaId": 99999,
+              "media": { "isAdult": false, "format": "MOVIE", "title": { "romaji": "A Film" } } },
         ] } } }),
     );
     for id in [235, 154587, 171018] {
@@ -136,13 +142,15 @@ fn the_page_reads_the_cache_and_a_refresh_reads_every_show_on_air() {
     assert_eq!(frieren.owned, None);
     assert_eq!(frieren.list_status, None);
 
-    // Newest first, and the show not on the page is not in the strip.
+    // Newest first: a finale stays though its show is no longer on air,
+    // and the film is left out.
     let strip: Vec<(u64, u32)> = now_page
         .aired
         .iter()
         .map(|a| (a.anilist_id, a.episode))
         .collect();
-    assert_eq!(strip, vec![(154587, 7), (171018, 5)]);
+    assert_eq!(strip, vec![(154587, 7), (171018, 5), (300, 12)]);
+    assert_eq!(now_page.aired[2].title, "Just Finished");
     assert_eq!(now_page.aired[0].title, "Sousou no Frieren");
 
     // Fresh: no second read unless forced.
@@ -273,6 +281,48 @@ fn a_show_reads_owned_and_listed_and_a_hidden_series_is_left_out() {
     assert_eq!(ids(&page), vec![154587, 171018]);
     assert_eq!(page.shows[0].owned, Some(frieren));
     assert_eq!(page.shows[1].list_status, Some(ListStatus::Planning));
+
+    // A series matched by its MAL id alone and hidden hides the show too,
+    // from the cards, the strip and every tracker write.
+    let dandadan =
+        fixtures::insert_series(&core, src, SeriesKind::Show, "/lib/Dandadan", "Dandadan");
+    fixtures::match_series(&core, dandadan, None, Some(172018));
+    core.call(Call::SetHidden {
+        series: dandadan,
+        hidden: true,
+    })
+    .unwrap();
+    let (page, _) = airing(&core, SeasonPick::Now);
+    assert_eq!(ids(&page), vec![154587]);
+    assert!(page.aired.iter().all(|a| a.anilist_id != 171018));
+    let err = core
+        .call(Call::PlanToWatch { anilist_id: 171018 })
+        .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            CoreError::Refused {
+                reason: Refusal::Hidden
+            }
+        ),
+        "{err:?}"
+    );
+}
+
+#[test]
+fn each_season_reads_once_at_a_time_and_beside_the_other() {
+    let now = anibeam_core::time::now_secs();
+    let http = FakeHttp::new();
+    queue_now(&http, now);
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    let first = refresh(&core, SeasonPick::Now, true).unwrap();
+    let again = refresh(&core, SeasonPick::Now, true).unwrap();
+    let next = refresh(&core, SeasonPick::Next, true).unwrap();
+    assert_eq!(again, first, "a second ask joins the read under way");
+    assert_ne!(next, first, "the other season reads beside it");
+    assert_eq!(airing(&core, SeasonPick::Next).1, Some(next));
+    common::wait_job(&c, first);
+    common::wait_job(&c, next);
 }
 
 #[test]
@@ -358,4 +408,59 @@ fn plan_to_watch_needs_a_tracker_and_never_moves_a_listed_show() {
     let (page, _) = airing(&core, SeasonPick::Now);
     let frieren = page.shows.iter().find(|s| s.anilist_id == 154587).unwrap();
     assert_eq!(frieren.list_status, Some(ListStatus::Planning));
+
+    // Put on the list on AniList since the cache was read: left as it is,
+    // and the cache takes it so the card says so.
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "MediaList": { "status": "CURRENT", "progress": 3, "updatedAt": 99,
+            "media": { "status": "RELEASING", "episodes": 12, "nextAiringEpisode": null } } } }),
+    );
+    let Reply::Started { job } = core.call(Call::PlanToWatch { anilist_id: 171018 }).unwrap()
+    else {
+        panic!()
+    };
+    let done = common::wait_job(&c, job);
+    assert!(
+        done.message.contains("already on AniList as Watching"),
+        "{}",
+        done.message
+    );
+    assert!(
+        !format!("{:?}", http.requests().last().unwrap().body).contains("SaveMediaListEntry"),
+        "nothing is written"
+    );
+    let (page, _) = airing(&core, SeasonPick::Now);
+    let dandadan = page.shows.iter().find(|s| s.anilist_id == 171018).unwrap();
+    assert_eq!(dandadan.list_status, Some(ListStatus::Watching));
+}
+
+#[test]
+fn a_mal_only_account_and_a_show_with_no_mal_id_is_refused_not_ok() {
+    let http = FakeHttp::new();
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "Page": { "pageInfo": { "hasNextPage": false }, "media": [
+            { "id": 600, "title": { "romaji": "No MAL id" }, "format": "ONA" },
+        ] } } }),
+    );
+    http.push_json(
+        200,
+        serde_json::json!({ "data": { "Page": { "pageInfo": { "hasNextPage": false }, "airingSchedules": [] } } }),
+    );
+    let (_dir, core, c) = common::open_core_with_http(http.clone());
+    common::wait_job(&c, refresh(&core, SeasonPick::Now, true).unwrap());
+    fixtures::connect_tracker(&core, Tracker::Mal, 7, "mal-token");
+    let err = core
+        .call(Call::PlanToWatch { anilist_id: 600 })
+        .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            CoreError::Refused {
+                reason: Refusal::NoMatch
+            }
+        ),
+        "{err:?}"
+    );
 }

@@ -34,6 +34,8 @@ Item {
     property int filter: 0
     property var listed: null
     property bool refreshing: false
+    // The season read this page waits on: events of the other season's read are not its own
+    property int refreshJob: -1
     property bool loadFailed: false
     property real nowMs: Date.now()
     // The show just marked, while its Undo is up: { id, title }
@@ -129,7 +131,7 @@ Item {
         page.loadFailed = false
         page.nowMs = Date.now()
         page.listed = r.reply.now
-        if (r.reply.refreshing !== null && r.reply.refreshing !== undefined) page.refreshing = true
+        if (r.reply.refreshing !== null && r.reply.refreshing !== undefined) { page.refreshing = true; page.refreshJob = r.reply.refreshing }
         page.armDue()
     }
     // To AniList: `force` from Refresh, else only when the cached read is stale
@@ -138,12 +140,14 @@ Item {
         refreshAsked++
         var r = Door.refreshAiringNow(page.season, force === true)
         if (r.error) { page.loadFailed = !page.listed || page.listed.shows.length === 0; frame.toast(r.error.message); return }
-        if (r.reply && r.reply.job !== undefined) page.refreshing = true
+        if (r.reply && r.reply.job !== undefined) { page.refreshing = true; page.refreshJob = r.reply.job }
     }
     function pickSeason(s) {
         if (s === page.season) return
         page.season = s
         page.allOut = false
+        page.refreshing = false
+        page.refreshJob = -1
         page.listed = null
         page.reload()
         page.refresh(false)
@@ -210,17 +214,20 @@ Item {
     Connections {
         target: Door
         function onAiringNowRefreshed(season) {
-            if (season === page.season) { page.refreshing = false; page.loadFailed = false; page.reload() }
-            // Another season's read held the one this page asked for: ask again now it is done
-            else if (page.refreshing) page.refresh(false)
+            if (season !== page.season) return
+            page.refreshing = false
+            page.refreshJob = -1
+            page.loadFailed = false
+            page.reload()
         }
         function onJobFailed(job, kind, error) {
-            if (kind !== "RefreshAiringNow") return
+            if (job !== page.refreshJob) return
             page.refreshing = false
+            page.refreshJob = -1
             page.loadFailed = !page.listed || page.listed.shows.length === 0
             frame.toast(error && error.message ? error.message : "AniList could not be reached")
         }
-        function onJobCancelled(job, kind) { if (kind === "RefreshAiringNow") page.refreshing = false }
+        function onJobCancelled(job, kind) { if (job === page.refreshJob) { page.refreshing = false; page.refreshJob = -1 } }
         // Plan to watch lands, a download makes a show the library's: the cache read says so
         function onJobFinished(job, kind, ok) { if (kind === "SetStatus" || kind === "Scan") debounce.restart() }
         function onTrackersChanged() { debounce.restart() }
@@ -347,7 +354,11 @@ Item {
                         border.color: pill.activeFocus ? theme.focusRing : theme.line
                         border.width: 1
                         activeFocusOnTab: true
-                        Keys.onReturnPressed: if (pill.show) page.openActions(pill.show, pill)
+                        function open() {
+                            if (pill.show) page.openActions(pill.show, pill)
+                            else frame.openLink("https://anilist.co/anime/" + pill.modelData.anilist_id)
+                        }
+                        Keys.onReturnPressed: pill.open()
                         Row {
                             id: pillRow
                             anchors.centerIn: parent
@@ -367,7 +378,7 @@ Item {
                             Label { anchors.verticalCenter: parent.verticalCenter; text: Fmt.episodeName("", pill.modelData.episode); role: "ledger"; color: theme.textDim }
                             Label { anchors.verticalCenter: parent.verticalCenter; text: page.ago(pill.modelData.at); role: "ledger"; color: theme.textFaint }
                         }
-                        MouseArea { id: pm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: if (pill.show) page.openActions(pill.show, pill) }
+                        MouseArea { id: pm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: pill.open() }
                     }
                 }
                 Button {

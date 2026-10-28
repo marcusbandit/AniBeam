@@ -30,11 +30,17 @@ CREATE TABLE season_fetches (
     fetched_at    INTEGER NOT NULL
 );
 
--- Episodes that came out in the last two days, newest first on the page.
+-- Episodes that came out in the last two days, newest first on the page. Each
+-- row names its show itself: a show whose last episode just aired is no longer
+-- releasing, so no 'NOW' row carries it, and its finale still belongs here.
 CREATE TABLE season_aired (
     anilist_id    INTEGER NOT NULL,
     episode       INTEGER NOT NULL,
     aired_at      INTEGER NOT NULL,
+    mal_id        INTEGER,
+    title_romaji  TEXT,
+    title_english TEXT,
+    title_native  TEXT,
     PRIMARY KEY (anilist_id, episode)
 );
 

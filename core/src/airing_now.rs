@@ -109,28 +109,29 @@ const SHOWS_SQL: &str = "SELECT s.anilist_id, s.mal_id, s.title_romaji, s.title_
      LEFT JOIN images i ON i.url = s.cover_url
      WHERE s.season = ?1
        AND NOT EXISTS (SELECT 1 FROM not_interested n WHERE n.anilist_id = s.anilist_id)
-       AND NOT EXISTS (SELECT 1 FROM series h WHERE h.anilist_id = s.anilist_id AND h.hidden = 1)
+       AND NOT EXISTS (SELECT 1 FROM series h WHERE h.hidden = 1
+                       AND (h.anilist_id = s.anilist_id OR (s.mal_id IS NOT NULL AND h.mal_id = s.mal_id)))
      ORDER BY s.rank";
 
 /// Every episode out in the window, from the schedule AniList sent and from
 /// each show's next episode whose moment has passed since: the strip stays
-/// current between refreshes without asking again. On air means the `NOW`
-/// rows whichever pick is showing.
-const AIRED_SQL: &str = "SELECT anilist_id, episode, aired_at FROM (
-        SELECT anilist_id, episode, aired_at FROM season_aired
-        UNION
-        SELECT anilist_id, next_episode, next_at FROM season_shows
+/// current between refreshes without asking again. Each row brings its own
+/// names, so a show that has just finished, and is no longer on air, keeps
+/// its last episode here. A row from the schedule sorts ahead of the same
+/// episode from a next-episode guess.
+const AIRED_SQL: &str = "SELECT anilist_id, episode, aired_at, title_romaji, title_english, title_native FROM (
+        SELECT anilist_id, episode, aired_at, mal_id, title_romaji, title_english, title_native, 0 AS guess
+          FROM season_aired
+        UNION ALL
+        SELECT anilist_id, next_episode, next_at, mal_id, title_romaji, title_english, title_native, 1
+          FROM season_shows
          WHERE season = 'NOW' AND next_episode IS NOT NULL AND next_at IS NOT NULL
-     )
+     ) a
      WHERE aired_at > ?1 AND aired_at <= ?2
-       AND anilist_id IN (SELECT anilist_id FROM season_shows WHERE season = 'NOW')
-       AND anilist_id NOT IN (SELECT anilist_id FROM not_interested)
-       AND anilist_id NOT IN (SELECT anilist_id FROM series WHERE hidden = 1 AND anilist_id IS NOT NULL)
-     ORDER BY aired_at DESC, anilist_id, episode DESC";
-
-/// Titles for the strip, off the `NOW` rows.
-const TITLES_SQL: &str = "SELECT title_romaji, title_english, title_native FROM season_shows
-     WHERE season = 'NOW' AND anilist_id = ?1";
+       AND NOT EXISTS (SELECT 1 FROM not_interested n WHERE n.anilist_id = a.anilist_id)
+       AND NOT EXISTS (SELECT 1 FROM series h WHERE h.hidden = 1
+                       AND (h.anilist_id = a.anilist_id OR (a.mal_id IS NOT NULL AND h.mal_id = a.mal_id)))
+     ORDER BY aired_at DESC, anilist_id, episode DESC, guess";
 
 fn fallback_title(anilist_id: u64) -> String {
     format!("AniList {anilist_id}")
@@ -151,40 +152,28 @@ pub fn list(
         let mut seen: HashSet<(u64, u32)> = HashSet::new();
         let mut stmt = conn.prepare(AIRED_SQL)?;
         let rows = stmt.query_map(params![now - AIRED_WINDOW_SECS, now], |r| {
-            Ok((
-                r.get::<_, i64>(0)? as u64,
-                r.get::<_, i64>(1)? as u32,
-                r.get::<_, i64>(2)?,
-            ))
-        })?;
-        let mut titles_stmt = conn.prepare(TITLES_SQL)?;
-        for row in rows {
-            let (anilist_id, episode, at) = row?;
-            if !seen.insert((anilist_id, episode)) {
-                continue;
-            }
-            let names = titles_stmt
-                .query_row(params![anilist_id as i64], |r| {
-                    Ok((
-                        r.get::<_, Option<String>>(0)?,
-                        r.get::<_, Option<String>>(1)?,
-                        r.get::<_, Option<String>>(2)?,
-                    ))
-                })
-                .optional()?
-                .unwrap_or_default();
-            aired.push(AiredEpisode {
+            let anilist_id = r.get::<_, i64>(0)? as u64;
+            let romaji: Option<String> = r.get(3)?;
+            let english: Option<String> = r.get(4)?;
+            let native: Option<String> = r.get(5)?;
+            Ok(AiredEpisode {
                 anilist_id,
                 title: titles::resolve(
                     lang,
-                    names.0.as_deref(),
-                    names.1.as_deref(),
-                    names.2.as_deref(),
+                    romaji.as_deref(),
+                    english.as_deref(),
+                    native.as_deref(),
                     &fallback_title(anilist_id),
                 ),
-                episode,
-                at: time::from_secs(at),
-            });
+                episode: r.get::<_, i64>(1)? as u32,
+                at: time::from_secs(r.get(2)?),
+            })
+        })?;
+        for row in rows {
+            let episode = row?;
+            if seen.insert((episode.anilist_id, episode.episode)) {
+                aired.push(episode);
+            }
         }
     }
 
@@ -275,22 +264,24 @@ pub fn list_call(core: &Core, pick: SeasonPick) -> Result<Reply, CoreError> {
     let listed = core.store.read(|c| list(c, &images_dir, pick, now))?;
     Ok(Reply::AiringNow {
         now: listed,
-        refreshing: running(core),
+        refreshing: running(core, pick),
     })
 }
 
-fn running(core: &Core) -> Option<u64> {
+/// This season's read while it is still running.
+fn running(core: &Core, pick: SeasonPick) -> Option<u64> {
+    let id = *core.airing_reads.lock().unwrap().get(&pick)?;
     core.jobs
         .list()
         .into_iter()
-        .find(|j| j.kind == JobKind::RefreshAiringNow)
-        .map(|j| j.id)
+        .any(|j| j.id == id)
+        .then_some(id)
 }
 
 /// The `RefreshAiringNow` call: the job when the season is stale (or was
-/// never read) or `force` says so, `Ok` when it is fresh. One read runs at
-/// a time; a second call gets the running one's id, and its event names
-/// the season it read.
+/// never read) or `force` says so, `Ok` when it is fresh. One read runs per
+/// season: a second ask for a season being read joins that read, and the
+/// other season's read runs beside it. Its event names the season.
 pub fn refresh_call(core: &Core, pick: SeasonPick, force: bool) -> Result<Reply, CoreError> {
     let now = time::now_secs();
     let key = season_of(pick, now).key;
@@ -307,6 +298,12 @@ pub fn refresh_call(core: &Core, pick: SeasonPick, force: bool) -> Result<Reply,
     if fresh && !force {
         return Ok(Reply::Ok);
     }
+    let mut reads = core.airing_reads.lock().unwrap();
+    if let Some(id) = reads.get(&pick).copied()
+        && core.jobs.list().into_iter().any(|j| j.id == id)
+    {
+        return Ok(Reply::Started { job: id });
+    }
     let owner = core.owner()?;
     let job = core
         .jobs
@@ -314,6 +311,7 @@ pub fn refresh_call(core: &Core, pick: SeasonPick, force: bool) -> Result<Reply,
         .start(JobKind::RefreshAiringNow, move |_| async move {
             refresh(owner, pick).await
         });
+    reads.insert(pick, job);
     Ok(Reply::Started { job })
 }
 
@@ -343,18 +341,29 @@ pub struct SeasonRow {
     pub next: Option<(u32, i64)>,
 }
 
+/// One episode out, as the schedule listed it, with its show's names.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct AiredRow {
+    pub anilist_id: u64,
+    pub episode: u32,
+    pub at: i64,
+    pub mal_id: Option<u64>,
+    pub title_romaji: Option<String>,
+    pub title_english: Option<String>,
+    pub title_native: Option<String>,
+}
+
+/// The formats the season query asks for. The schedule has no such filter,
+/// so its rows are held to the same list here.
+const FORMATS: [&str; 3] = ["TV", "TV_SHORT", "ONA"];
+
 async fn refresh(core: Arc<Core>, pick: SeasonPick) -> Result<Finished, CoreError> {
     let now = time::now_secs();
     let season = season_of(pick, now);
     let shows = fetch_shows(&core, &season).await?;
     // The strip belongs to what is on air, so only that read asks for it.
     let aired = if pick == SeasonPick::Now {
-        let ids: HashSet<u64> = shows.iter().map(|s| s.anilist_id).collect();
-        fetch_aired(&core, now)
-            .await?
-            .into_iter()
-            .filter(|(id, _, _)| ids.contains(id))
-            .collect()
+        fetch_aired(&core, now).await?
     } else {
         Vec::new()
     };
@@ -402,8 +411,8 @@ async fn fetch_shows(core: &Arc<Core>, season: &Season) -> Result<Vec<SeasonRow>
 }
 
 /// The episodes out in the window, newest first.
-async fn fetch_aired(core: &Arc<Core>, now: i64) -> Result<Vec<(u64, u32, i64)>, CoreError> {
-    let mut out: Vec<(u64, u32, i64)> = Vec::new();
+async fn fetch_aired(core: &Arc<Core>, now: i64) -> Result<Vec<AiredRow>, CoreError> {
+    let mut out: Vec<AiredRow> = Vec::new();
     for page in 1..=MAX_PAGES {
         let data = core
             .anilist
@@ -476,18 +485,32 @@ pub fn parse_shows(data: &serde_json::Value) -> Vec<SeasonRow> {
         .collect()
 }
 
-/// One page of `AIRED_PAGE_QUERY`, as (show, episode, moment).
-pub fn parse_aired(data: &serde_json::Value) -> Vec<(u64, u32, i64)> {
+/// One page of `AIRED_PAGE_QUERY`. An adult show, or one in a format the
+/// season query leaves out, is left out here too.
+pub fn parse_aired(data: &serde_json::Value) -> Vec<AiredRow> {
     data["Page"]["airingSchedules"]
         .as_array()
         .into_iter()
         .flatten()
         .filter_map(|a| {
-            Some((
-                a["mediaId"].as_u64()?,
-                as_u32(a["episode"].as_u64())?,
-                a["airingAt"].as_i64()?,
-            ))
+            let media = &a["media"];
+            if media["isAdult"].as_bool() == Some(true) {
+                return None;
+            }
+            if let Some(format) = media["format"].as_str()
+                && !FORMATS.contains(&format)
+            {
+                return None;
+            }
+            Some(AiredRow {
+                anilist_id: a["mediaId"].as_u64()?,
+                episode: as_u32(a["episode"].as_u64())?,
+                at: a["airingAt"].as_i64()?,
+                mal_id: media["idMal"].as_u64(),
+                title_romaji: text(&media["title"]["romaji"]),
+                title_english: text(&media["title"]["english"]),
+                title_native: text(&media["title"]["native"]),
+            })
         })
         .collect()
 }
@@ -508,7 +531,7 @@ fn write(
     key: &str,
     next_key: &str,
     shows: &[SeasonRow],
-    aired: &[(u64, u32, i64)],
+    aired: &[AiredRow],
     now: i64,
 ) -> Result<(), CoreError> {
     tx.execute("DELETE FROM season_shows WHERE season = ?1", params![key])?;
@@ -548,11 +571,22 @@ fn write(
         params![now - AIRED_WINDOW_SECS],
     )?;
     let mut aired_insert = tx.prepare(
-        "INSERT INTO season_aired (anilist_id, episode, aired_at) VALUES (?1, ?2, ?3)
-         ON CONFLICT(anilist_id, episode) DO UPDATE SET aired_at = excluded.aired_at",
+        "INSERT INTO season_aired (anilist_id, episode, aired_at, mal_id, title_romaji, title_english, title_native)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+         ON CONFLICT(anilist_id, episode) DO UPDATE SET aired_at = excluded.aired_at,
+            mal_id = excluded.mal_id, title_romaji = excluded.title_romaji,
+            title_english = excluded.title_english, title_native = excluded.title_native",
     )?;
-    for (id, episode, at) in aired {
-        aired_insert.execute(params![*id as i64, i64::from(*episode), at])?;
+    for a in aired {
+        aired_insert.execute(params![
+            a.anilist_id as i64,
+            i64::from(a.episode),
+            a.at,
+            a.mal_id.map(|id| id as i64),
+            a.title_romaji,
+            a.title_english,
+            a.title_native,
+        ])?;
     }
     tx.execute(
         "INSERT INTO season_fetches (season, fetched_at) VALUES (?1, ?2)
@@ -643,9 +677,12 @@ pub fn list_not_interested(core: &Core) -> Result<Reply, CoreError> {
 /// The `PlanToWatch` call: Planning on every connected tracker that does
 /// not list the show yet. A show already on a list keeps its status there,
 /// whatever it is; this never moves an entry. `Ok` when every connected
-/// tracker lists it already, `NotConnected` when none is connected.
+/// tracker lists it already. Refused when the library hides the show, the
+/// rule every tracker write keeps, or when no connected tracker has an id
+/// for it (a MAL-only account and a show AniList gives no MAL id), and
+/// `NotConnected` when no tracker is connected at all.
 pub fn plan_to_watch(core: &Core, anilist_id: u64) -> Result<Reply, CoreError> {
-    let (targets, connected, title) = core.store.read(|c| {
+    let (targets, title) = core.store.read(|c| {
         let lang = prefs::load_preferences(c)?.title_language;
         let found = c
             .query_row(
@@ -674,12 +711,22 @@ pub fn plan_to_watch(core: &Core, anilist_id: u64) -> Result<Reply, CoreError> {
             found.3.as_deref(),
             &fallback_title(anilist_id),
         );
-        let mut targets: Vec<(Tracker, u64, Option<u64>)> = Vec::new();
-        let mut connected = false;
-        for (t, id) in [
+        let ids = [
             (Tracker::Anilist, Some(anilist_id)),
             (Tracker::Mal, found.0),
-        ] {
+        ];
+        for (t, id) in ids {
+            if let Some(id) = id
+                && writes::is_hidden(c, t, id)?
+            {
+                return Err(CoreError::Refused {
+                    reason: Refusal::Hidden,
+                });
+            }
+        }
+        let mut targets: Vec<(Tracker, u64, Option<u64>)> = Vec::new();
+        let (mut connected, mut listed) = (false, false);
+        for (t, id) in ids {
             let Some(row) = accounts::load_row(c, t)? else {
                 continue;
             };
@@ -688,22 +735,29 @@ pub fn plan_to_watch(core: &Core, anilist_id: u64) -> Result<Reply, CoreError> {
             }
             connected = true;
             let Some(id) = id else { continue };
-            let listed: bool = c.query_row(
+            let on_list: bool = c.query_row(
                 "SELECT EXISTS (SELECT 1 FROM tracker_entries WHERE tracker = ?1 AND media_id = ?2)",
                 params![t.as_str(), id as i64],
                 |r| r.get(0),
             )?;
-            if !listed {
+            if on_list {
+                listed = true;
+            } else {
                 targets.push((t, id, row.user_id));
             }
         }
-        Ok((targets, connected, title))
+        if !connected {
+            return Err(CoreError::NotConnected {
+                tracker: Tracker::Anilist,
+            });
+        }
+        if targets.is_empty() && !listed {
+            return Err(CoreError::Refused {
+                reason: Refusal::NoMatch,
+            });
+        }
+        Ok((targets, title))
     })?;
-    if !connected {
-        return Err(CoreError::NotConnected {
-            tracker: Tracker::Anilist,
-        });
-    }
     if targets.is_empty() {
         return Ok(Reply::Ok);
     }
@@ -717,8 +771,21 @@ pub fn plan_to_watch(core: &Core, anilist_id: u64) -> Result<Reply, CoreError> {
     Ok(Reply::Started { job })
 }
 
+/// A status as a sentence says it.
+fn status_words(status: ListStatus) -> &'static str {
+    match status {
+        ListStatus::Watching => "Watching",
+        ListStatus::Repeating => "Rewatching",
+        ListStatus::Planning => "Planning",
+        ListStatus::Completed => "Completed",
+        ListStatus::Paused => "On hold",
+        ListStatus::Dropped => "Dropped",
+    }
+}
+
 /// The SetStatus job behind `PlanToWatch`. Each tracker is read live first:
-/// an entry made somewhere else since the list was read is left as it is.
+/// an entry made somewhere else since the list was read is left as it is
+/// there, and the cache takes it, so the card says where the show stands.
 async fn plan(
     core: Arc<Core>,
     ctx: Arc<JobCtx>,
@@ -726,6 +793,7 @@ async fn plan(
     targets: Vec<(Tracker, u64, Option<u64>)>,
 ) -> Result<Finished, CoreError> {
     let mut planned: Vec<Tracker> = Vec::new();
+    let mut found: Vec<(Tracker, ListStatus)> = Vec::new();
     let mut failure: Option<String> = None;
     for (t, media_id, user_id) in targets {
         ctx.checkpoint()?;
@@ -734,75 +802,58 @@ async fn plan(
                 .await?
                 .ok_or_else(|| accounts::tracker_error(t, NO_TOKEN))?;
             let live = writes::read_live(&core, t, media_id, user_id, &token).await?;
-            if live.is_some_and(|l| l.status.is_some()) {
-                return Ok::<bool, CoreError>(false);
+            if let Some(live) = live
+                && let Some(status) = live.status
+            {
+                writes::record_progress(&core, t, media_id, live.progress, status, live.updated_at)
+                    .await?;
+                return Ok::<Option<ListStatus>, CoreError>(Some(status));
             }
             let stamp =
                 writes::send_status(&core, t, media_id, &token, ListStatus::Planning).await?;
-            let now = time::now_secs();
-            core.store
-                .write_async(move |c| record_planned(c, t, media_id, stamp, now))
-                .await?;
-            Ok(true)
+            writes::record_progress(&core, t, media_id, 0, ListStatus::Planning, stamp).await?;
+            Ok(None)
         };
         match attempt.await {
-            Ok(true) => planned.push(t),
-            Ok(false) => {}
+            Ok(None) => planned.push(t),
+            Ok(Some(status)) => found.push((t, status)),
             Err(e) => {
                 failure.get_or_insert_with(|| writes::sanitize_error(t, &e));
             }
         }
     }
-    Ok(match (planned.is_empty(), failure) {
-        (false, _) => Finished {
+    let labels = |ts: &[Tracker]| {
+        ts.iter()
+            .map(|t| t.label())
+            .collect::<Vec<_>>()
+            .join(" and ")
+    };
+    Ok(match (planned.is_empty(), found.first(), failure) {
+        (false, _, _) => Finished {
+            level: Level::Info,
+            message: format!("{title} is on Planning on {}", labels(&planned)),
+            body: EventBody::Notice,
+        },
+        (true, Some((t, status)), _) => Finished {
             level: Level::Info,
             message: format!(
-                "{title} is on Planning on {}",
-                planned
-                    .iter()
-                    .map(|t| t.label())
-                    .collect::<Vec<_>>()
-                    .join(" and ")
+                "{title} is already on {} as {}",
+                t.label(),
+                status_words(*status)
             ),
             body: EventBody::Notice,
         },
-        (true, Some(why)) => Finished {
+        (true, None, Some(why)) => Finished {
             level: Level::Warn,
             message: format!("{title} could not go on Planning: {why}"),
             body: EventBody::Notice,
         },
-        (true, None) => Finished {
+        (true, None, None) => Finished {
             level: Level::Debug,
-            message: format!("{title} was already on a list"),
+            message: format!("{title} needed no change"),
             body: EventBody::Notice,
         },
     })
-}
-
-/// The new entry in the cache, so the card reads Planning at once.
-fn record_planned(
-    conn: &Connection,
-    t: Tracker,
-    media_id: u64,
-    stamp: Option<i64>,
-    now: i64,
-) -> Result<(), CoreError> {
-    conn.execute(
-        "INSERT INTO tracker_entries (tracker, media_id, status, progress, score, repeat, updated_at, fetched_at)
-         VALUES (?1, ?2, ?3, 0, NULL, 0, ?4, ?5)
-         ON CONFLICT(tracker, media_id) DO UPDATE SET
-            status = excluded.status,
-            updated_at = COALESCE(excluded.updated_at, tracker_entries.updated_at),
-            fetched_at = excluded.fetched_at",
-        params![
-            t.as_str(),
-            media_id as i64,
-            ListStatus::Planning.as_str(),
-            stamp,
-            now
-        ],
-    )?;
-    Ok(())
 }
 
 #[cfg(test)]
@@ -864,10 +915,20 @@ mod tests {
     #[test]
     fn an_aired_row_missing_a_field_is_skipped() {
         let data = serde_json::json!({ "Page": { "airingSchedules": [
-            { "mediaId": 1, "episode": 5, "airingAt": 90 },
+            { "mediaId": 1, "episode": 5, "airingAt": 90,
+              "media": { "idMal": 11, "isAdult": false, "format": "TV", "title": { "romaji": "A" } } },
             { "mediaId": 2, "airingAt": 80 },
+            { "mediaId": 3, "episode": 1, "airingAt": 70, "media": { "isAdult": true, "format": "ONA" } },
+            { "mediaId": 4, "episode": 1, "airingAt": 60, "media": { "isAdult": false, "format": "MUSIC" } },
         ] } });
-        assert_eq!(parse_aired(&data), vec![(1, 5, 90)]);
+        let rows = parse_aired(&data);
+        assert_eq!(rows.len(), 1, "{rows:?}");
+        assert_eq!(
+            (rows[0].anilist_id, rows[0].episode, rows[0].at),
+            (1, 5, 90)
+        );
+        assert_eq!(rows[0].mal_id, Some(11));
+        assert_eq!(rows[0].title_romaji.as_deref(), Some("A"));
         assert!(!has_next(&data));
     }
 }

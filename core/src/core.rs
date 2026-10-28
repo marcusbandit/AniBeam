@@ -65,6 +65,9 @@ pub struct Core {
     /// catch-up scan finishes, and `shutdown` takes it out if it never
     /// does. Dropping the handle unsubscribes.
     launch: Mutex<Option<Arc<Subscription>>>,
+    /// Airing now's read in flight per season, so a second ask for the same
+    /// season joins it and the other season's read runs beside it.
+    pub(crate) airing_reads: Mutex<HashMap<SeasonPick, u64>>,
     /// Taken out and shut down exactly once, in `shutdown`. `None` after
     /// that: a plain `tokio::runtime::Runtime` panics if dropped from
     /// inside its own worker threads, so ownership lives behind a mutex
@@ -256,6 +259,7 @@ impl Core {
             library: LibraryState::default(),
             watcher: Mutex::new(None),
             launch: Mutex::new(None),
+            airing_reads: Mutex::new(HashMap::new()),
             runtime: Mutex::new(Some(runtime)),
             handle,
             secrets,
