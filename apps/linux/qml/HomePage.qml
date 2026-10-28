@@ -319,10 +319,14 @@ Item {
                 elide: Text.ElideRight
                 lineHeight: 0.95
             }
-            // What lands: "Episode 4 at 17:30", today with the time left after it
-            Row {
+            // What lands: "Episode 4 at 17:30", today with the time left after it. A narrow
+            // card wraps the time onto its own line rather than past the edge
+            Flow {
+                width: parent.width
                 spacing: theme.space(1.5)
                 Label {
+                    width: Math.min(implicitWidth, parent.width)
+                    elide: Text.ElideRight
                     text: entry.next ? (entry.next.season && entry.next.season !== 1 ? "S" + entry.next.season + " " : "") + Fmt.episodeSpan(entry.next.episode, entry.next.through || 0) : "No date yet"
                     role: "ui"
                     font.weight: 600
@@ -330,6 +334,8 @@ Item {
                 }
                 Label {
                     visible: !!entry.next
+                    width: Math.min(implicitWidth, parent.width)
+                    elide: Text.ElideRight
                     text: entry.next ? (entry.next.predicted ? "predicted, " : "at ") + Qt.formatTime(new Date(entry.next.at * 1000), "HH:mm") + (entry.today ? ", in " + page.shortCountdown(entry.next.at - page.nowMs / 1000) : "") : ""
                     role: "ui"
                     color: theme.accent
@@ -337,10 +343,18 @@ Item {
             }
             // What is here: the episodes on disk, then how many of them are still to watch
             Row {
+                width: parent.width
                 spacing: theme.space(1.5)
-                Label { text: page.diskText(entry.item); role: "ledger"; color: theme.textDim }
+                Label {
+                    id: onDisk
+                    width: Math.min(implicitWidth, parent.width)
+                    elide: Text.ElideRight
+                    text: page.diskText(entry.item); role: "ledger"; color: theme.textDim
+                }
                 Label {
                     visible: (entry.item.episodes_on_disk || 0) > 0 && entry.toWatch >= 0
+                    width: Math.max(0, parent.width - onDisk.width - parent.spacing)
+                    elide: Text.ElideRight
                     text: "\u00b7 " + (entry.toWatch > 0 ? entry.toWatch + " to watch" : "all watched")
                     role: "ledger"
                     font.weight: entry.toWatch > 0 ? 650 : 400

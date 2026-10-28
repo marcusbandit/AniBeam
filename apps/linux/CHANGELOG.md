@@ -20,6 +20,9 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Rolling download settings in Settings, Downloads
 - A notice says when a new version is out, with a button to download it
 
+### Fixed
+- This week cards keep the airing time inside the card
+
 ## 2.2.0 · 2026-10-26
 
 ### New
