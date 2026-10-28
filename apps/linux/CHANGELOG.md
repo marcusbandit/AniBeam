@@ -10,6 +10,11 @@ The app shows this file in What's new, newest version first. Keep it short.
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
+## 2.2.1 · 2026-10-28
+
+### Fixed
+- This week cards keep the airing time inside the card
+
 ## 2.2.0 · 2026-10-26
 
 ### New
