@@ -28,6 +28,8 @@ std::atomic<anibeam_np_command> command_cb{nullptr};
 NSMutableArray<NSArray *> *targets = nil;
 // The dictionary last given to the centre, so a seek or a jump rewrites one key of it.
 NSMutableDictionary<NSString *, id> *published = nil;
+// The poster URL last sent and what came of it, nil when it would not load, so a missing
+// or broken file is read once rather than at every publish.
 NSString *art_source = nil;
 MPMediaItemArtwork *artwork = nil;
 
@@ -90,6 +92,8 @@ void release_keys() {
     for (NSArray *pair in targets) [(MPRemoteCommand *)pair[0] removeTarget:pair[1]];
     targets = nil;
     published = nil;
+    art_source = nil;
+    artwork = nil;
     if (trace()) std::fprintf(stderr, "anibeam: now playing: released\n");
 }
 
@@ -109,13 +113,14 @@ NSImage *fit(NSImage *image, CGSize bounds) {
 }
 
 // The page sends the poster as a file:// URL. A missing or unreadable file is no artwork;
-// a loaded one is kept for as long as the URL stays the same.
+// either answer is kept for as long as the URL stays the same.
 MPMediaItemArtwork *artwork_for(const char *url) {
     NSString *u = url && *url ? [NSString stringWithUTF8String:url] : nil;
-    if (artwork && [u isEqualToString:art_source]) return artwork;
+    if (!u) return nil;
+    if ([u isEqualToString:art_source]) return artwork;
     art_source = u;
     artwork = nil;
-    NSURL *file = u ? [NSURL URLWithString:u] : nil;
+    NSURL *file = [NSURL URLWithString:u];
     NSImage *image = file ? [[NSImage alloc] initWithContentsOfURL:file] : nil;
     if (!image || image.size.width <= 0 || image.size.height <= 0) return nil;
     artwork = [[MPMediaItemArtwork alloc] initWithBoundsSize:image.size
@@ -136,7 +141,7 @@ extern "C" void anibeam_np_set_command(anibeam_np_command cb) { command_cb.store
 
 extern "C" void anibeam_np_publish(int32_t status, const char *title, const char *artist,
                                    const char *art_url, double duration, double elapsed,
-                                   bool can_next, bool can_prev) {
+                                   double rate, bool can_next, bool can_prev) {
     if (status != 1 && status != 2) {
         release_keys();
         return;
@@ -154,7 +159,7 @@ extern "C" void anibeam_np_publish(int32_t status, const char *title, const char
     info[MPMediaItemPropertyPlaybackDuration] = @(duration);
     info[MPNowPlayingInfoPropertyMediaType] = @(MPNowPlayingInfoMediaTypeVideo);
     info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = @(elapsed);
-    info[MPNowPlayingInfoPropertyPlaybackRate] = @(playing ? 1.0 : 0.0);
+    info[MPNowPlayingInfoPropertyPlaybackRate] = @(rate);
     info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = @1.0;
     MPMediaItemArtwork *art = artwork_for(art_url);
     if (art) info[MPMediaItemPropertyArtwork] = art;
@@ -164,8 +169,8 @@ extern "C" void anibeam_np_publish(int32_t status, const char *title, const char
     center.nowPlayingInfo = [info copy];
     center.playbackState = playing ? MPNowPlayingPlaybackStatePlaying : MPNowPlayingPlaybackStatePaused;
     if (trace())
-        std::fprintf(stderr, "anibeam: now playing: %s \"%s\" at %.1f of %.1f s, art %s\n",
-                     playing ? "playing" : "paused", title ? title : "", elapsed, duration,
+        std::fprintf(stderr, "anibeam: now playing: %s \"%s\" at %.1f of %.1f s, rate %g, art %s\n",
+                     playing ? "playing" : "paused", title ? title : "", elapsed, duration, rate,
                      art ? "yes" : "no");
 }
 

@@ -19,9 +19,14 @@ pub struct State {
     pub art_url: Option<String>,
     pub length_secs: f64,
     pub position_secs: f64,
+    /// 0 to 1. Only MPRIS reads it: the Mac's Now Playing has no volume.
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     pub volume: f64,
     pub can_next: bool,
     pub can_prev: bool,
+    /// mpv's speed. Only the Mac reads it: MPRIS reports a fixed Rate of 1.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    pub rate: f64,
 }
 
 impl Default for State {
@@ -36,6 +41,7 @@ impl Default for State {
             volume: 1.0,
             can_next: false,
             can_prev: false,
+            rate: 1.0,
         }
     }
 }
@@ -58,6 +64,31 @@ pub fn carry_position(prev: &State, next: &mut State) {
     } else if next.position_secs == 0.0 {
         next.position_secs = prev.position_secs;
     }
+}
+
+/// How far a frame may sit from Now Playing's own clock before the clock is corrected.
+/// Frames come 25 to 60 times a second, so a late one is hundredths off; 2 s is the player
+/// page's own line between playing on and a jump (PlayerPage.qml's onTimePosChanged).
+#[cfg(any(target_os = "macos", test))]
+pub const DRIFT_SECS: f64 = 2.0;
+
+/// The rate Now Playing's clock runs at: the speed while playing, still otherwise.
+#[cfg(any(target_os = "macos", test))]
+pub fn clock_rate(state: &State) -> f64 {
+    if state.status == PlaybackStatus::Playing {
+        state.rate
+    } else {
+        0.0
+    }
+}
+
+/// Whether a frame says Now Playing's clock is wrong. The system runs that clock itself,
+/// from the last elapsed time it was given at the rate given with it, so `since` seconds
+/// on it reads `written + since * rate`. A frame further off than that is a jump no seek
+/// announced (the resume point, which lands after the page has published 0) or a stall.
+#[cfg(any(target_os = "macos", test))]
+pub fn drifted(written: f64, rate: f64, since: f64, frame: f64) -> bool {
+    (frame - (written + since * rate)).abs() > DRIFT_SECS
 }
 
 /// One command for the page to act on, queued on the Qt thread, so it is safe from any
@@ -109,6 +140,50 @@ mod tests {
         };
         carry_position(&prev, &mut seeked);
         assert_eq!(seeked.position_secs, 5.0, "a position that was sent wins");
+    }
+
+    #[test]
+    fn a_frame_where_the_clock_says_writes_nothing() {
+        assert!(!drifted(10.0, 1.0, 5.0, 15.04));
+        assert!(!drifted(10.0, 1.0, 5.0, 13.5), "inside the threshold");
+    }
+
+    #[test]
+    fn a_frame_past_the_threshold_corrects_the_clock() {
+        assert!(drifted(10.0, 1.0, 5.0, 12.5), "a stall falls behind it");
+        assert!(drifted(10.0, 1.0, 5.0, 40.0), "a jump runs ahead of it");
+    }
+
+    #[test]
+    fn a_paused_clock_stands_still() {
+        let paused = State {
+            status: PlaybackStatus::Paused,
+            rate: 1.5,
+            ..State::default()
+        };
+        assert_eq!(clock_rate(&paused), 0.0);
+        assert!(drifted(30.0, 0.0, 5.0, 35.0), "a frame that moves is news");
+        assert!(!drifted(30.0, 0.0, 5.0, 30.04), "a frame step is not");
+    }
+
+    #[test]
+    fn the_clock_runs_at_the_speed() {
+        let playing = State {
+            status: PlaybackStatus::Playing,
+            rate: 1.5,
+            ..State::default()
+        };
+        assert_eq!(clock_rate(&playing), 1.5);
+        assert!(!drifted(10.0, 1.5, 4.0, 16.0), "1.5x for 4 s is 6 s on");
+        assert!(
+            drifted(10.0, 1.0, 8.0, 22.0),
+            "a clock told 1x falls behind 1.5x"
+        );
+    }
+
+    #[test]
+    fn the_resume_point_corrects_a_publish_of_zero() {
+        assert!(drifted(0.0, 1.0, 0.05, 60.0));
     }
 
     #[test]

@@ -98,7 +98,7 @@ FocusScope {
         // The page going away is the one release keepAwake cannot see
         Player.setKeepAwake(false)
         // The page is the only thing that ever publishes; leaving it leaves nothing playing.
-        Player.mprisUpdate("Stopped", "", "", "", 0, false, false)
+        Player.mprisUpdate("Stopped", "", "", "", 0, false, false, 1)
     }
     property bool closed: false
     function close(reason) {
@@ -567,9 +567,10 @@ FocusScope {
         var show = seriesTitles.romaji || seriesTitles.english || seriesTitles.folder || session.series_title
         var lines = Player.nowPlaying(show, episodeNumberOf(), session.episode_title || "", session.is_extra ? session.episode_title || session.code : "")
         Player.mprisUpdate(paused ? "Paused" : "Playing", lines[0], lines[1], session.artwork ? Player.artUrl(session.artwork) : "",
-                           duration, !!session.next && !session.is_extra, !!session.prev && !session.is_extra)
+                           duration, !!session.next && !session.is_extra, !!session.prev && !session.is_extra, speed)
     }
     onDurationChanged: publishNowPlaying()
+    onSpeedChanged: publishNowPlaying()
     onSessionChanged: publishNowPlaying()
     Connections {
         target: Player

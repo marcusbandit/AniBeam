@@ -96,7 +96,7 @@ pub mod qobject {
 
         /// What the player page publishes to MPRIS, or on the Mac to Now Playing. Nothing
         /// here reaches the core; each writes the state the desktop's media controls read
-        /// and, for the first two, signals what changed.
+        /// and, for the first two, signals what changed. `rate` is mpv's speed.
         #[qinvokable]
         fn mpris_update(
             self: &Player,
@@ -107,6 +107,7 @@ pub mod qobject {
             length_secs: f64,
             can_next: bool,
             can_prev: bool,
+            rate: f64,
         );
         #[qinvokable]
         fn mpris_position(self: &Player, secs: f64);
@@ -399,6 +400,7 @@ impl qobject::Player {
         length_secs: f64,
         can_next: bool,
         can_prev: bool,
+        rate: f64,
     ) {
         Self::guard("mprisUpdate", || {
             let Some(h) = crate::media::handle() else {
@@ -423,6 +425,11 @@ impl qobject::Player {
                 volume: self.volume() / 100.0,
                 can_next,
                 can_prev,
+                rate: if rate.is_finite() && rate > 0.0 {
+                    rate
+                } else {
+                    1.0
+                },
             });
         })
     }
