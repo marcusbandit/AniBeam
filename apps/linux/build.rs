@@ -252,6 +252,26 @@ fn main() {
         "assets/icons/wrench.svg",
         "assets/icons/x.svg",
     ]);
+    // The Mac's Now Playing and media keys are Objective-C++ (cpp/nowplaying.mm), a library
+    // of its own because ARC is a flag for a whole build: on cxx-qt's it would reach every
+    // .cpp too. clang takes the language from the extension. The cc::Build is cloned from
+    // cxx-qt's, still untouched here, which is how this script reaches the cc crate with no
+    // dependency of its own.
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+        println!("cargo:rerun-if-changed=cpp/nowplaying.mm");
+        // SAFETY: only copies cxx-qt's cc::Build; the original is left as it was.
+        builder = unsafe {
+            builder.cc_builder(|cc| {
+                cc.clone()
+                    .file("cpp/nowplaying.mm")
+                    .flag("-fobjc-arc")
+                    .compile("anibeam_nowplaying");
+            })
+        };
+        for framework in ["MediaPlayer", "AppKit", "Foundation"] {
+            println!("cargo:rustc-link-lib=framework={framework}");
+        }
+    }
     // include_dir() copies a directory's headers into the build rather than adding a -I, and
     // skips names with no extension (MpvQt/MpvAbstractItem), so a prefix the compiler does
     // not search already goes in as a real -I.
