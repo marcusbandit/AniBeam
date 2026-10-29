@@ -35,6 +35,7 @@ fn app_path(sandboxed: bool) -> String {
 
 /// What follows org.mpris.MediaPlayer2. in the media player's name. Lowercase, because
 /// that half of the name is the binary's, and the sandbox adds its element the same way.
+#[cfg(any(not(target_os = "macos"), test))]
 fn mpris_suffix(sandboxed: bool) -> String {
     match sandboxed {
         true => format!("anibeam.{}", SANDBOX.to_lowercase()),
@@ -53,6 +54,7 @@ pub fn bus_name() -> String {
 pub fn object_path() -> String {
     app_path(sandboxed())
 }
+#[cfg(not(target_os = "macos"))]
 pub fn mpris_bus_suffix() -> String {
     mpris_suffix(sandboxed())
 }
@@ -188,6 +190,26 @@ pub async fn serve(conn: &zbus::Connection, shell: CxxQtThread<Shell>) -> zbus::
         .await?;
     conn.request_name(bus_name()).await?;
     Ok(())
+}
+
+/// The Mac's hand-off. With no MPRIS to share a connection with, it opens its own and holds
+/// it for the life of the process. A Mac has a session bus only when one was installed
+/// (Homebrew's dbus); without one a second launch cannot raise this one: one line on
+/// stderr says so.
+#[cfg(target_os = "macos")]
+pub async fn start(shell: CxxQtThread<Shell>) {
+    static CONNECTION: std::sync::OnceLock<zbus::Connection> = std::sync::OnceLock::new();
+    let conn = match zbus::Connection::session().await {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("anibeam: no session bus, so a second launch cannot raise this one: {e}");
+            return;
+        }
+    };
+    if let Err(e) = serve(&conn, shell).await {
+        eprintln!("anibeam: could not own {}: {e}", bus_name());
+    }
+    CONNECTION.set(conn).ok();
 }
 
 #[cfg(test)]

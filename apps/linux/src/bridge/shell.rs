@@ -236,13 +236,18 @@ impl cxx_qt::Initialize for qobject::Shell {
     fn initialize(self: Pin<&mut Self>) {
         // The bus name and MPRIS start once the Shell exists, which is once the engine
         // loads. A run whose --root lets it start beside a real one, a --shoot, finds both
-        // names taken and says so; it draws its page either way.
+        // names taken and says so; it draws its page either way. The Mac starts the bus
+        // name alone: its Now Playing starts with the page's first publish, on this thread,
+        // which is the one MediaPlayer wants and never the runtime's (macnp.rs).
         let shell = self.qt_thread();
+        #[cfg(not(target_os = "macos"))]
         crate::runtime::runtime().spawn(async move {
             if let Some(h) = crate::dbus::mpris::start(shell).await {
                 crate::dbus::mpris::install(h)
             }
         });
+        #[cfg(target_os = "macos")]
+        crate::runtime::runtime().spawn(crate::dbus::instance::start(shell));
     }
 }
 

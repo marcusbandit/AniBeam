@@ -9,6 +9,9 @@ mod inhibit;
 #[cfg(target_os = "macos")]
 mod iokit;
 mod json;
+#[cfg(target_os = "macos")]
+mod macnp;
+mod media;
 mod nowplaying;
 mod paths;
 mod player_config;

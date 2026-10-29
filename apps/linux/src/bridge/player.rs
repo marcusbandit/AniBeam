@@ -10,8 +10,8 @@ use cxx_qt_lib::{QJsonArray, QJsonObject, QJsonValue, QString, QStringList};
 use mpris_server::PlaybackStatus;
 use serde_json::Value;
 
-use crate::dbus::mpris::State;
 use crate::inhibit::Inhibitor;
+use crate::media::State;
 use crate::player_config::{self, PlayerSettings};
 
 #[cxx_qt::bridge]
@@ -94,9 +94,9 @@ pub mod qobject {
         #[qinvokable]
         fn art_url(self: &Player, path: &QString) -> QString;
 
-        /// What the player page publishes to MPRIS. Nothing here reaches the core; each
-        /// writes the state the D-Bus interface answers from and, for the first two,
-        /// signals what changed.
+        /// What the player page publishes to MPRIS, or on the Mac to Now Playing. Nothing
+        /// here reaches the core; each writes the state the desktop's media controls read
+        /// and, for the first two, signals what changed. `rate` is mpv's speed.
         #[qinvokable]
         fn mpris_update(
             self: &Player,
@@ -107,6 +107,7 @@ pub mod qobject {
             length_secs: f64,
             can_next: bool,
             can_prev: bool,
+            rate: f64,
         );
         #[qinvokable]
         fn mpris_position(self: &Player, secs: f64);
@@ -118,9 +119,9 @@ pub mod qobject {
         #[qinvokable]
         fn set_keep_awake(self: &Player, on: bool);
 
-        /// One MPRIS command for the page to act on: `next`, `previous`, `play`, `pause`,
-        /// `playPause`, `stop`, `seek` (value: the offset in seconds), `setPosition`
-        /// (value: seconds) and `setVolume` (value: 0 to 100).
+        /// One MPRIS or Mac remote command for the page to act on: `next`, `previous`,
+        /// `play`, `pause`, `playPause`, `stop`, `seek` (value: the offset in seconds),
+        /// `setPosition` (value: seconds) and `setVolume` (value: 0 to 100).
         #[qsignal]
         fn mpris_command(self: Pin<&mut Player>, name: QString, value: f64);
 
@@ -138,7 +139,7 @@ pub mod qobject {
     impl cxx_qt::Initialize for Player {}
 }
 
-/// The Qt thread handle an MPRIS command is queued on. The singleton is constructed once,
+/// The Qt thread handle a media command is queued on. The singleton is constructed once,
 /// by the QML engine, and lives for the life of the engine, so one slot is enough.
 static THREAD: OnceLock<CxxQtThread<qobject::Player>> = OnceLock::new();
 
@@ -399,9 +400,10 @@ impl qobject::Player {
         length_secs: f64,
         can_next: bool,
         can_prev: bool,
+        rate: f64,
     ) {
         Self::guard("mprisUpdate", || {
-            let Some(h) = crate::dbus::mpris::handle() else {
+            let Some(h) = crate::media::handle() else {
                 return;
             };
             let status = match status.to_string().as_str() {
@@ -423,19 +425,24 @@ impl qobject::Player {
                 volume: self.volume() / 100.0,
                 can_next,
                 can_prev,
+                rate: if rate.is_finite() && rate > 0.0 {
+                    rate
+                } else {
+                    1.0
+                },
             });
         })
     }
     pub fn mpris_position(&self, secs: f64) {
         Self::guard("mprisPosition", || {
-            if let Some(h) = crate::dbus::mpris::handle() {
+            if let Some(h) = crate::media::handle() {
                 h.position(secs)
             }
         })
     }
     pub fn mpris_seeked(&self, secs: f64) {
         Self::guard("mprisSeeked", || {
-            if let Some(h) = crate::dbus::mpris::handle() {
+            if let Some(h) = crate::media::handle() {
                 h.seeked(secs)
             }
         })

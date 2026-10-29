@@ -22,6 +22,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Airing now: every show on air, and each episode as it comes out
 - Mark a show not interested and it stays off Airing now
 - Plan to watch or get episodes straight from Airing now
+- Media keys and Control Centre play, pause and skip on the Mac
 
 ### Fixed
 - This week cards keep the airing time inside the card
