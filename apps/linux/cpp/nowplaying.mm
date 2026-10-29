@@ -26,6 +26,8 @@ std::atomic<anibeam_np_command> command_cb{nullptr};
 // [command, token] pairs: removeTarget: takes both, and holding the token is what keeps a
 // target alive, as addTargetWithHandler: asks. nil while nothing plays.
 NSMutableArray<NSArray *> *targets = nil;
+// The same for the 15 s skips, which come and go on their own (see offer_skips).
+NSMutableArray<NSArray *> *skips = nil;
 // The dictionary last given to the centre, so a seek or a jump rewrites one key of it.
 NSMutableDictionary<NSString *, id> *published = nil;
 // The poster URL last sent and what came of it, nil when it would not load, so a missing
@@ -46,21 +48,55 @@ void relay(const char *name, double value) {
     if (anibeam_np_command cb = command_cb.load()) cb(name, value);
 }
 
-void add(MPRemoteCommand *command, void (^act)(MPRemoteCommandEvent *)) {
+void add(NSMutableArray<NSArray *> *into, MPRemoteCommand *command,
+         void (^act)(MPRemoteCommandEvent *)) {
     command.enabled = YES;
     id token = [command addTargetWithHandler:^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent *event) {
         act(event);
         return MPRemoteCommandHandlerStatusSuccess;
     }];
-    if (token) [targets addObject:@[command, token]];
+    if (token) [into addObject:@[command, token]];
 }
+
+void add(MPRemoteCommand *command, void (^act)(MPRemoteCommandEvent *)) { add(targets, command, act); }
 
 void add(MPRemoteCommand *command, const char *name) {
     add(command, ^(MPRemoteCommandEvent *) { relay(name, 0); });
 }
 
-// The video player's set, in the names the page already takes from MPRIS. Skips are 15 s,
-// the spec's default, since AniBeam has no seek preference.
+void remove_all(NSArray<NSArray *> *pairs) {
+    for (NSArray *pair in pairs) [(MPRemoteCommand *)pair[0] removeTarget:pair[1]];
+}
+
+// Control Centre draws the 15 s skips in place of previous and next whenever they are on,
+// so they are offered only to an episode with no neighbour either way, and an episode that
+// has one gets previous and next, as MPRIS gives it on Linux. Their targets come off as well
+// as `enabled`: a command that still has a target can be drawn dimmed in that slot, and with
+// none the system has nothing to offer. Skips are 15 s, the spec's default, since AniBeam has
+// no seek preference.
+void offer_skips(bool on) {
+    if (on == (skips != nil)) return;
+    MPRemoteCommandCenter *rc = MPRemoteCommandCenter.sharedCommandCenter;
+    if (!on) {
+        remove_all(skips);
+        skips = nil;
+        rc.skipForwardCommand.enabled = NO;
+        rc.skipBackwardCommand.enabled = NO;
+        return;
+    }
+    skips = [NSMutableArray array];
+    rc.skipForwardCommand.preferredIntervals = @[ @15 ];
+    rc.skipBackwardCommand.preferredIntervals = @[ @15 ];
+    add(skips, rc.skipForwardCommand, ^(MPRemoteCommandEvent *e) {
+        relay("seek", ((MPSkipIntervalCommandEvent *)e).interval);
+    });
+    add(skips, rc.skipBackwardCommand, ^(MPRemoteCommandEvent *e) {
+        relay("seek", -((MPSkipIntervalCommandEvent *)e).interval);
+    });
+}
+
+// The video player's set, in the names the page already takes from MPRIS. The skips follow
+// the episode, see offer_skips.
 void hold_keys() {
     if (targets) return;
     targets = [NSMutableArray array];
@@ -71,14 +107,6 @@ void hold_keys() {
     add(rc.stopCommand, "stop");
     add(rc.nextTrackCommand, "next");
     add(rc.previousTrackCommand, "previous");
-    rc.skipForwardCommand.preferredIntervals = @[ @15 ];
-    rc.skipBackwardCommand.preferredIntervals = @[ @15 ];
-    add(rc.skipForwardCommand, ^(MPRemoteCommandEvent *e) {
-        relay("seek", ((MPSkipIntervalCommandEvent *)e).interval);
-    });
-    add(rc.skipBackwardCommand, ^(MPRemoteCommandEvent *e) {
-        relay("seek", -((MPSkipIntervalCommandEvent *)e).interval);
-    });
     add(rc.changePlaybackPositionCommand, ^(MPRemoteCommandEvent *e) {
         relay("setPosition", ((MPChangePlaybackPositionCommandEvent *)e).positionTime);
     });
@@ -89,8 +117,9 @@ void release_keys() {
     MPNowPlayingInfoCenter *center = MPNowPlayingInfoCenter.defaultCenter;
     center.playbackState = MPNowPlayingPlaybackStateStopped;
     center.nowPlayingInfo = nil;
-    for (NSArray *pair in targets) [(MPRemoteCommand *)pair[0] removeTarget:pair[1]];
+    remove_all(targets);
     targets = nil;
+    offer_skips(false);
     published = nil;
     art_source = nil;
     artwork = nil;
@@ -151,6 +180,8 @@ extern "C" void anibeam_np_publish(int32_t status, const char *title, const char
     MPRemoteCommandCenter *rc = MPRemoteCommandCenter.sharedCommandCenter;
     rc.nextTrackCommand.enabled = can_next;
     rc.previousTrackCommand.enabled = can_prev;
+    bool skipping = !can_next && !can_prev;
+    offer_skips(skipping);
     rc.changePlaybackPositionCommand.enabled = duration > 0;
 
     NSMutableDictionary<NSString *, id> *info = [NSMutableDictionary dictionary];
@@ -169,9 +200,9 @@ extern "C" void anibeam_np_publish(int32_t status, const char *title, const char
     center.nowPlayingInfo = [info copy];
     center.playbackState = playing ? MPNowPlayingPlaybackStatePlaying : MPNowPlayingPlaybackStatePaused;
     if (trace())
-        std::fprintf(stderr, "anibeam: now playing: %s \"%s\" at %.1f of %.1f s, rate %g, art %s\n",
+        std::fprintf(stderr, "anibeam: now playing: %s \"%s\" at %.1f of %.1f s, rate %g, art %s, skips %s\n",
                      playing ? "playing" : "paused", title ? title : "", elapsed, duration, rate,
-                     art ? "yes" : "no");
+                     art ? "yes" : "no", skipping ? "yes" : "no");
 }
 
 extern "C" void anibeam_np_elapsed(double elapsed) {

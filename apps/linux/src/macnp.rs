@@ -14,7 +14,7 @@ use std::time::Instant;
 
 use mpris_server::PlaybackStatus;
 
-use crate::media::{State, carry_position, clock_rate, drifted};
+use crate::media::{Clock, Frame, State, carry_position, clock_rate};
 
 // The frameworks cpp/nowplaying.mm calls, one block each as src/iokit.rs links its own.
 #[link(name = "MediaPlayer", kind = "framework")]
@@ -59,25 +59,6 @@ extern "C" fn command(name: *const c_char, value: f64) {
     }
 }
 
-/// Now Playing's clock as the system keeps it: the elapsed time last written, when, and
-/// the rate written with it.
-#[derive(Clone, Copy)]
-struct Clock {
-    elapsed: f64,
-    at: Instant,
-    rate: f64,
-}
-
-impl Clock {
-    fn set(elapsed: f64, rate: f64) -> Self {
-        Clock {
-            elapsed,
-            at: Instant::now(),
-            rate,
-        }
-    }
-}
-
 struct Inner {
     state: State,
     clock: Clock,
@@ -96,7 +77,7 @@ impl Handle {
         if let Ok(mut i) = self.inner.lock() {
             carry_position(&i.state, &mut next);
             i.state = next.clone();
-            i.clock = Clock::set(next.position_secs, rate);
+            i.clock = Clock::set(next.position_secs, rate, Instant::now());
         }
         let status = match next.status {
             PlaybackStatus::Stopped => 0,
@@ -123,28 +104,28 @@ impl Handle {
         }
     }
     /// Kept for the next publish, and written only when it leaves the clock the system
-    /// runs by itself: a frame where that clock says is not news to it.
+    /// runs by itself: a frame where that clock says is not news to it. A frame from before
+    /// a seek that has yet to land is dropped, so the old place never flickers back.
     pub fn position(&self, secs: f64) {
         let write = self.inner.lock().is_ok_and(|mut i| {
-            i.state.position_secs = secs;
-            let c = i.clock;
-            let off = drifted(c.elapsed, c.rate, c.at.elapsed().as_secs_f64(), secs);
-            if off {
-                i.clock = Clock::set(secs, c.rate);
+            let frame = i.clock.frame(secs, Instant::now());
+            if frame != Frame::Stale {
+                i.state.position_secs = secs;
             }
-            off
+            frame == Frame::Written
         });
         if write {
             // SAFETY: on the Qt thread, as for update.
             unsafe { anibeam_np_elapsed(secs) }
         }
     }
-    /// A seek is the jump the clock cannot see, so it is written at once.
+    /// A seek is the jump the clock cannot see, so it is written at once, and frames from
+    /// before it are ignored until one lands near it (see `Clock::seeked`).
     pub fn seeked(&self, secs: f64) {
         if let Ok(mut i) = self.inner.lock() {
             i.state.position_secs = secs;
             let rate = clock_rate(&i.state);
-            i.clock = Clock::set(secs, rate);
+            i.clock = Clock::seeked(secs, rate, Instant::now());
         }
         // SAFETY: on the Qt thread, as for update.
         unsafe { anibeam_np_elapsed(secs) }
@@ -163,7 +144,7 @@ pub fn handle() -> Option<&'static Handle> {
         Handle {
             inner: Mutex::new(Inner {
                 state: State::default(),
-                clock: Clock::set(0.0, 0.0),
+                clock: Clock::set(0.0, 0.0, Instant::now()),
             }),
         }
     }))

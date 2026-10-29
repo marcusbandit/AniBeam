@@ -3,6 +3,9 @@
 //! the Mac (`macnp`). The page calls the Player singleton's `mpris*` invokables, they call
 //! `handle()`, and a command from either backend comes back to the page as one Qt signal.
 
+#[cfg(any(target_os = "macos", test))]
+use std::time::Instant;
+
 use cxx_qt_lib::QString;
 use mpris_server::PlaybackStatus;
 
@@ -89,6 +92,77 @@ pub fn clock_rate(state: &State) -> f64 {
 #[cfg(any(target_os = "macos", test))]
 pub fn drifted(written: f64, rate: f64, since: f64, frame: f64) -> bool {
     (frame - (written + since * rate)).abs() > DRIFT_SECS
+}
+
+/// How long after a seek a frame from before it may still arrive. The page tells mpv to
+/// seek and announces the target at once, so the one or two frames mpv had already sent
+/// from the old place land after it; they come within a few frame times, and a seek over a
+/// slow share lands within a few hundred milliseconds. A second covers both and still lets
+/// a seek that really landed elsewhere be corrected without a visible wait.
+#[cfg(any(target_os = "macos", test))]
+pub const SETTLE_SECS: f64 = 1.0;
+
+/// Now Playing's clock as the system keeps it: the elapsed time last written, when, and
+/// the rate written with it, and whether a seek written to it has yet to land.
+#[cfg(any(target_os = "macos", test))]
+#[derive(Clone, Copy, Debug)]
+pub struct Clock {
+    elapsed: f64,
+    at: Instant,
+    rate: f64,
+    settling: bool,
+}
+
+/// What one frame does to the clock.
+#[cfg(any(target_os = "macos", test))]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Frame {
+    /// From before a seek that has not landed yet: neither kept nor written.
+    Stale,
+    /// Where the clock says: kept for the next publish, not news to the system.
+    Kept,
+    /// Off the clock: kept, and the elapsed time is written.
+    Written,
+}
+
+#[cfg(any(target_os = "macos", test))]
+impl Clock {
+    /// A publish, or a frame that corrected the clock. Either ends a settling seek.
+    pub fn set(elapsed: f64, rate: f64, at: Instant) -> Self {
+        Clock {
+            elapsed,
+            at,
+            rate,
+            settling: false,
+        }
+    }
+
+    /// A seek, whose target is the clock until a frame lands near it or `SETTLE_SECS`
+    /// pass, whichever comes first.
+    pub fn seeked(elapsed: f64, rate: f64, at: Instant) -> Self {
+        Clock {
+            settling: true,
+            ..Clock::set(elapsed, rate, at)
+        }
+    }
+
+    /// The frame at `secs`, observed at `now`.
+    pub fn frame(&mut self, secs: f64, now: Instant) -> Frame {
+        let since = now.saturating_duration_since(self.at).as_secs_f64();
+        let off = drifted(self.elapsed, self.rate, since, secs);
+        if self.settling {
+            if off && since < SETTLE_SECS {
+                return Frame::Stale;
+            }
+            self.settling = false;
+        }
+        if off {
+            *self = Clock::set(secs, self.rate, now);
+            Frame::Written
+        } else {
+            Frame::Kept
+        }
+    }
 }
 
 /// One command for the page to act on, queued on the Qt thread, so it is safe from any
@@ -184,6 +258,56 @@ mod tests {
     #[test]
     fn the_resume_point_corrects_a_publish_of_zero() {
         assert!(drifted(0.0, 1.0, 0.05, 60.0));
+    }
+
+    fn after(t0: Instant, secs: f64) -> Instant {
+        t0 + std::time::Duration::from_secs_f64(secs)
+    }
+
+    #[test]
+    fn a_stale_frame_inside_the_settle_window_is_ignored() {
+        let t0 = Instant::now();
+        let mut clock = Clock::seeked(90.0, 1.0, t0);
+        assert_eq!(clock.frame(63.1, after(t0, 0.05)), Frame::Stale);
+        assert_eq!(clock.frame(63.14, after(t0, 0.09)), Frame::Stale);
+        assert_eq!(clock.elapsed, 90.0, "the seek target stands");
+    }
+
+    #[test]
+    fn a_landed_frame_ends_the_settle_window() {
+        let t0 = Instant::now();
+        let mut clock = Clock::seeked(90.0, 1.0, t0);
+        assert_eq!(clock.frame(90.1, after(t0, 0.1)), Frame::Kept);
+        assert!(!clock.settling);
+        assert_eq!(
+            clock.frame(63.2, after(t0, 0.2)),
+            Frame::Written,
+            "once landed, a jump is news again"
+        );
+    }
+
+    #[test]
+    fn a_far_frame_after_the_settle_window_is_written() {
+        let t0 = Instant::now();
+        let mut clock = Clock::seeked(90.0, 1.0, t0);
+        assert_eq!(clock.frame(63.1, after(t0, 0.5)), Frame::Stale);
+        assert_eq!(
+            clock.frame(64.5, after(t0, SETTLE_SECS + 0.5)),
+            Frame::Written,
+            "a seek that landed elsewhere is corrected"
+        );
+        assert!(!clock.settling);
+        assert_eq!(clock.elapsed, 64.5);
+    }
+
+    #[test]
+    fn a_publish_clears_the_settle_window() {
+        let t0 = Instant::now();
+        let clock = Clock::seeked(90.0, 1.0, t0);
+        assert!(clock.settling);
+        let mut clock = Clock::set(63.0, clock.rate, after(t0, 0.1));
+        assert!(!clock.settling);
+        assert_eq!(clock.frame(40.0, after(t0, 0.2)), Frame::Written);
     }
 
     #[test]
