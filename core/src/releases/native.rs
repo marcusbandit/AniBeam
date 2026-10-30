@@ -163,19 +163,23 @@ impl Native {
             if errors.len() == 1 {
                 return Err(errors.remove(0));
             }
-            let message = errors
-                .iter()
-                .map(|e| e.to_string())
-                .collect::<Vec<_>>()
-                .join("; ");
-            let code = match errors.remove(0) {
-                CoreError::Service { code, .. } => code,
-                _ => "unreachable".into(),
-            };
-            return Err(CoreError::Service {
-                service: active.name.clone(),
-                code,
-                message,
+            let rest = errors.drain(1..).map(|e| e.to_string()).collect::<Vec<_>>();
+            return Err(match errors.remove(0) {
+                // The active endpoint's own message leads, so its name is not said twice.
+                CoreError::Service {
+                    service,
+                    code,
+                    message,
+                } => CoreError::Service {
+                    service,
+                    code,
+                    message: [message]
+                        .into_iter()
+                        .chain(rest)
+                        .collect::<Vec<_>>()
+                        .join("; "),
+                },
+                other => other,
             });
         }
         Ok(Found {
@@ -330,6 +334,9 @@ mod tests {
             ],
         );
         let err = native.search("show", None, true).await.unwrap_err();
+        let text = err.to_string();
+        assert_eq!(text.matches("first").count(), 1, "{text}");
+        assert!(text.contains("second"), "{text}");
         assert_eq!(code_of(err), ("first".into(), "unreadable".into()));
     }
 
