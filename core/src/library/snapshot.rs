@@ -607,19 +607,23 @@ impl Snapshot {
     }
 
     /// A count the person set by hand (#239) stands in for the record's own,
-    /// so nothing past it is predicted, until the schedule or a file names an
-    /// episode past it: then what really happened wins and the record's own
+    /// so nothing past it is predicted, until an episode past it airs or a
+    /// file of one lands: then what really happened wins and the record's own
     /// count, or none, is read as before.
     fn apply_episodes_set(&mut self) {
+        let now = crate::time::to_secs(self.now);
         let mut totals: Vec<(usize, u32)> = Vec::new();
         for (i, row) in self.series.iter().enumerate() {
             let Some(set) = row.episodes_set else {
                 continue;
             };
             let season = self.card_season(row);
-            let scheduled = self
+            // Only what really came out proves the count wrong: a date the
+            // schedule names ahead is a plan, and plans run long
+            let aired = self
                 .airing_of(row)
                 .iter()
+                .filter(|a| a.aired_at.is_some_and(|at| at <= now))
                 .map(|a| a.number)
                 .max()
                 .unwrap_or(0);
@@ -630,7 +634,7 @@ impl Snapshot {
                 .map(|f| f.number.floor() as u32)
                 .max()
                 .unwrap_or(0);
-            if scheduled.max(on_disk) <= set {
+            if aired.max(on_disk) <= set {
                 totals.push((i, set));
             }
         }
