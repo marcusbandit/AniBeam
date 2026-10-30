@@ -369,7 +369,7 @@ fn check_with(def: &Definition, http: bool) -> Result<(), String> {
     let has_query = def.url.contains("{query}");
     match def.kind.as_str() {
         "nyaa" if has_query => return Err(format!("{}: nyaa adds the query itself", def.id)),
-        "rss" | "tosho" if !has_query => {
+        "rss" | "tosho" | "tsukihime" if !has_query => {
             return Err(format!("{}: the address needs {{query}}", def.id));
         }
         _ => {}

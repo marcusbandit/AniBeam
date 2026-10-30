@@ -31,7 +31,7 @@ struct Entry {
 }
 
 /// A size as nyaa writes it: `1.4 GiB`.
-fn size_text(bytes: u64) -> String {
+pub(super) fn size_text(bytes: u64) -> String {
     let units = ["B", "KiB", "MiB", "GiB", "TiB"];
     let mut v = bytes as f64;
     let mut u = 0;

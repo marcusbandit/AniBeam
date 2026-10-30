@@ -16,8 +16,9 @@ use crate::contract::{CoreError, Release, SubscriptionSpec};
 use crate::net::{BoxFuture, Http};
 
 /// anirss `endpoints.VALID_KINDS`.
-/// `tosho` is AniBeam's own: AnimeTosho's JSON feed (tosho.rs).
-pub const VALID_KINDS: [&str; 3] = ["nyaa", "rss", "tosho"];
+/// `tosho` and `tsukihime` are AniBeam's own: AnimeTosho's JSON feed (tosho.rs) and
+/// TsukiHime's JSON search API (tsukihime.rs).
+pub const VALID_KINDS: [&str; 4] = ["nyaa", "rss", "tosho", "tsukihime"];
 
 /// Splits a query into fields, keeping `-"quoted phrase"` and `"quoted"` intact
 /// (anirss `endpoints.FIELD_RE`, shared with refine's positional-insert logic).
@@ -64,10 +65,10 @@ pub fn validate(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
             format!("{name:?}: missing `url`"),
         ));
     }
-    if kind == "rss" && !url.contains("{query}") {
+    if matches!(kind, "rss" | "tsukihime") && !url.contains("{query}") {
         return Err(CoreError::invalid(
             "endpoint url",
-            format!("{name:?}: rss url must contain a {{query}} placeholder"),
+            format!("{name:?}: {kind} url must contain a {{query}} placeholder"),
         ));
     }
     Ok(())
@@ -415,6 +416,10 @@ pub async fn fetch_items(
             super::tosho::fetch(http, &search_url(ep, &positive), &ep.name, timeout).await?;
         return Ok(filter_excluded(items, &excluded));
     }
+    if ep.kind == "tsukihime" {
+        // TsukiHime's search takes `-tag` itself, so the query goes through whole.
+        return super::tsukihime::fetch(http, &search_url(ep, query), &ep.name, timeout).await;
+    }
     let (positive, excluded) = split_exclusions(query);
     let (positive, quality) = erai_split(ep, &positive);
     let items = fetch::fetch_rss(http, &search_url(ep, &positive), &ep.name, timeout).await?;
@@ -570,6 +575,12 @@ pub(crate) mod tests {
         )
         .unwrap();
         validate(" a.b_c-1 ", " rss ", " https://x/?q={query} ").unwrap();
+        validate(
+            "tsukihime",
+            "tsukihime",
+            "https://api.tsukihime.org/v1/search/torrents?q={query}&limit=100",
+        )
+        .unwrap();
     }
 
     #[test]
@@ -578,6 +589,7 @@ pub(crate) mod tests {
             ("", "nyaa", "https://x/"),          // no name
             ("a", "html", "https://x/"),         // bad kind
             ("a", "rss", "https://x/rss"),       // no {query}
+            ("a", "tsukihime", "https://x/s"),   // no {query}
             ("a", "nyaa", ""),                   // no url
             ("bad name)", "nyaa", "https://x/"), // bad name characters
         ] {

@@ -589,6 +589,64 @@ fn an_endpoint_the_repo_stops_offering_stays_installed() {
 }
 
 #[test]
+fn a_tsukihime_endpoint_searches_its_json_api_with_the_query_whole() {
+    let http = FakeHttp::new();
+    let body =
+        std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/tsukihime.json"))
+            .unwrap();
+    http.push_for("api.tsukihime.org", 200, body);
+    let (dir, core, _) = common::open_core_with_http(http.clone());
+    let path = dir.path().join("repo.json");
+    let url = path.to_string_lossy().into_owned();
+    write_repo(
+        &path,
+        &key(1),
+        1,
+        vec![json!({
+            "id": "tsukihime", "name": "TsukiHime", "version": 1, "kind": "tsukihime",
+            "url": "https://api.tsukihime.org/v1/search/torrents?q={query}&limit=100",
+        })],
+    );
+    trust(&core, &url);
+    core.call(Call::InstallEndpoint {
+        repo: url,
+        id: "tsukihime".into(),
+        credentials: vec![],
+    })
+    .unwrap();
+
+    let Reply::PhoneSearch { search } = core
+        .call(Call::PhoneSearch {
+            query: "Frieren -HEVC".into(),
+            endpoint: Some("tsukihime".into()),
+            fallback: false,
+        })
+        .unwrap()
+    else {
+        panic!()
+    };
+    let sent: Vec<String> = http.requests().into_iter().map(|r| r.url).collect();
+    assert_eq!(
+        sent,
+        ["https://api.tsukihime.org/v1/search/torrents?q=Frieren+-HEVC&limit=100"],
+        "the exclusion goes to the API, not split off"
+    );
+    assert_eq!(search.endpoint, "tsukihime");
+    // Auto resolution narrows to 1080p, which takes the 720p release off; the 1080p adult
+    // release in the reply never arrives at all.
+    assert_eq!(search.auto_resolution.as_deref(), Some("1080p"));
+    let links: Vec<&str> = search.items.iter().map(|i| i.link.as_str()).collect();
+    assert_eq!(links.len(), 1, "{links:?}");
+    assert!(
+        links[0].starts_with("magnet:?xt=urn:btih:05bd3a45348e1338117e89cf1e25fd76b7a30de3&dn="),
+        "{}",
+        links[0]
+    );
+    assert_eq!(search.items[0].page, "");
+    assert_eq!(search.items[0].source, "tsukihime");
+}
+
+#[test]
 fn a_missing_repo_file_says_so() {
     let (dir, core, _) = common::open_core();
     let e = core

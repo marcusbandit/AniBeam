@@ -18,13 +18,14 @@ pub mod rules;
 pub mod stats;
 pub mod titles;
 pub mod tosho;
+pub mod tsukihime;
 
 /// A search endpoint (anirss `endpoints.Endpoint`, without the on-demand start and stop
 /// commands, which the core keeps elsewhere).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Endpoint {
     pub name: String,
-    /// `nyaa` or `rss`.
+    /// One of `endpoints::VALID_KINDS`.
     pub kind: String,
     pub url: String,
     /// nyaa only.
