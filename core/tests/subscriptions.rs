@@ -7,9 +7,11 @@
 //! prefixes, in front of a child's `PATH`, and the machine running this may
 //! have a real anirss in any of them. The test switches that off, so the
 //! fake is what gets found and the "missing" case stays missing whatever is
-//! installed. `HOME` is pointed at a throwaway directory as well, so nothing
-//! else the core reads under it touches the real one. The fake is a shell
-//! script, so the file is Unix only.
+//! installed. `ANIBEAM_ANIRSS`, which a bundled build sets to its own
+//! anirss and which wins over `PATH`, is cleared for the same reason.
+//! `HOME` is pointed at a throwaway directory as well, so nothing else the
+//! core reads under it touches the real one. The fake is a shell script, so
+//! the file is Unix only.
 #![cfg(unix)]
 
 mod common;
@@ -59,11 +61,13 @@ fn subscriptions_through_a_fake_anirss() {
     let anirss_path = bin.path().join("anirss");
     let original_path = std::env::var("PATH").unwrap_or_default();
     let original_home = std::env::var("HOME").ok();
+    let original_bundled = std::env::var_os("ANIBEAM_ANIRSS");
 
     // Every edit is process-wide for the rest of this test binary's one
     // test, which is the point of keeping every case in this one function.
-    anibeam_core::downloads::anirss::leave_child_path_alone();
+    anibeam_core::downloads::anirss::set_child_path_extras(false);
     unsafe {
+        std::env::remove_var("ANIBEAM_ANIRSS");
         std::env::set_var("HOME", home.path());
         // The fake's directory goes first, and with the core adding nothing
         // in front of it, it is the first anirss the OS finds.
@@ -145,5 +149,9 @@ fn subscriptions_through_a_fake_anirss() {
             None => std::env::remove_var("HOME"),
         }
         std::env::set_var("PATH", &original_path);
+        if let Some(value) = &original_bundled {
+            std::env::set_var("ANIBEAM_ANIRSS", value);
+        }
     }
+    anibeam_core::downloads::anirss::set_child_path_extras(true);
 }
