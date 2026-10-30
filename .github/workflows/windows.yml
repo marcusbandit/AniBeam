@@ -121,9 +121,38 @@ jobs:
       - name: Bundle
         run: apps/linux/packaging/windows/bundle.sh dist
 
+      # From BtbN's GitHub builds, not Chocolatey: the Chocolatey feed answers 504 often enough
+      # to break the smoke test, and choco exits 0 having installed nothing (#234). Cached, so a
+      # run only downloads when the cache is cold, and the step fails here when ffmpeg is absent.
+      - name: Restore ffmpeg
+        id: ffmpeg
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/ffmpeg
+          key: windows-ffmpeg-n9.0-win64-gpl
+
+      - name: Download ffmpeg
+        if: steps.ffmpeg.outputs.cache-hit != 'true'
+        run: |
+          base=https://github.com/BtbN/FFmpeg-Builds/releases/download/latest
+          for asset in ffmpeg-n9.0-latest-win64-gpl-9.0.zip ffmpeg-master-latest-win64-gpl.zip; do
+            curl -fsSL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/ffmpeg.zip" "$base/$asset" && break
+          done
+          unzip -q "$RUNNER_TEMP/ffmpeg.zip" -d "$RUNNER_TEMP/ffmpeg-x"
+          mkdir -p "$RUNNER_TEMP/ffmpeg"
+          mv "$RUNNER_TEMP"/ffmpeg-x/*/bin/* "$RUNNER_TEMP/ffmpeg/"
+
+      - name: Save ffmpeg
+        if: steps.ffmpeg.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/ffmpeg
+          key: windows-ffmpeg-n9.0-win64-gpl
+
       - name: ffmpeg for the smoke library
-        shell: pwsh
-        run: choco install ffmpeg -y --no-progress
+        run: |
+          echo "$(cygpath -w "$RUNNER_TEMP/ffmpeg")" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/ffmpeg/ffmpeg.exe" -hide_banner -version | head -1
 
       # The Qt and deps directories leave PATH first, so a DLL the bundle forgot fails here.
       - name: Smoke test
