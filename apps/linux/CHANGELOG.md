@@ -31,9 +31,12 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Downloaded shows how much of the disk is watched and how much is not
 - Delete watched clears every watched episode, or every finished show you saw
 - Right-click a show on Gaps or Downloaded to delete it
-- Deleting episodes also removes their torrent once all its files are gone
+- Deleting episodes removes their torrent too, so they can be downloaded again
+- Ctrl-click a release group or one of its episodes to pick all it has missing
+- Get says it is sending to your torrent client the moment you click it
 
 ### Fixed
+- A download's speed and time left no longer run under its Stop button
 - This week cards keep the airing time inside the card
 - On disk marks only the release you have, not every release of that episode
 - An episode that aired earlier today stays on Today and says if it landed

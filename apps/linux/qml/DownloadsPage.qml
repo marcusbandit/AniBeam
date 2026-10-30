@@ -201,7 +201,7 @@ Item {
             frame.toast(finished ? "No finished show is watched all the way through" : "Nothing watched is on disk")
             return
         }
-        var torrentWords = " A torrent whose files all go leaves " + page.clientName + " too."
+        var torrentWords = " Their torrents leave " + page.clientName + " too, so they can be downloaded again."
         frame.askRemoval(anchor, finished ? {
             heading: "Delete " + Fmt.plural(page.finishedCards.length, "finished show", "finished shows") + ", " + Fmt.bytes(page.finishedBytes) + "?",
             base: page.someTitles(page.finishedCards) + ". Only shows the provider says have finished, every episode watched; a show still airing, or whose end is a guess, stays. Every file of them goes to the trash, extras too." + torrentWords,
@@ -434,16 +434,30 @@ Item {
             page.getResults = m
         }
     }
+    // Get says it is sending the moment it is clicked; the call goes out a frame later, so
+    // the button has turned before anything waits on the client
     function getAndFollow(plan) {
         page.getLine = ""
         page.getError = ""
-        page.pendingFollow = plan.follow ? plan : null
-        if (plan.items.length) {
-            var r = Door.downloadReleasesWith(plan.items, plan.name, plan.options || {})
-            if (r.error) { page.getError = page.errorWords(r.error); return }
-            page.getJob = r.reply.job
-            page.getActing = true
-        } else if (plan.follow) page.follow(plan)
+        page.getActing = true
+        sendTimer.plan = plan
+        sendTimer.restart()
+    }
+    Timer {
+        id: sendTimer
+        property var plan: null
+        interval: 20
+        onTriggered: {
+            var plan = sendTimer.plan
+            sendTimer.plan = null
+            page.pendingFollow = plan.follow ? plan : null
+            if (plan.items.length) {
+                var r = Door.downloadReleasesWith(plan.items, plan.name, plan.options || {})
+                if (r.error) { page.getActing = false; page.getError = page.errorWords(r.error); return }
+                page.getJob = r.reply.job
+            } else if (plan.follow) page.follow(plan)
+            else page.getActing = false
+        }
     }
     function follow(plan) {
         page.pendingFollow = null
@@ -2186,6 +2200,7 @@ Item {
                 active: page.getActive
                 sourceOn: function(name) { var m = frame.downloadsSources; return page.sourceOn(name) }
                 acting: page.getActing
+                clientName: page.activeClientName
                 actionLine: page.getLine
                 actionError: page.getError
                 nowMs: page.nowMs
