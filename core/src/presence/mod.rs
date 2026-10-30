@@ -37,9 +37,10 @@ pub const FIELD_MAX: usize = 128;
 /// The art uploaded to the Discord application, shown when there is no
 /// poster or Discord will not take a poster's URL.
 pub const FALLBACK_ART: &str = "anibeam";
-/// How far, in seconds, the position may drift from Discord's clock before
-/// the clock is sent again. Past it is a seek; under it is tick jitter.
-const SEEK_SLACK: u64 = 10;
+/// How far, in seconds, the position may move off the wall clock between two
+/// ticks before Discord's clock is sent again. Past it is a seek; under it
+/// is tick jitter, or a speed other than 1x, which never adds up to a jump.
+const SEEK_SLACK: f64 = 10.0;
 /// How long a shutdown or a test's flush waits for the worker.
 const FLUSH_WAIT: Duration = Duration::from_secs(5);
 
@@ -168,6 +169,10 @@ pub(crate) struct State {
     owner: Option<u64>,
     /// The clock's start as last sent: now less the position.
     start: u64,
+    /// The last playing tick's position and the time it came, which the
+    /// next tick measures a seek against. None from a pause, close or
+    /// switch off until playback shows again.
+    last: Option<(f64, u64)>,
     paused: bool,
     shown: bool,
     /// Bumped on every transition, so a pause timer that fires after one
@@ -219,9 +224,7 @@ pub(crate) fn decide(s: &mut State, input: Input, now: u64) -> Vec<Action> {
             }
             s.enabled = true;
             match playing {
-                Some((session, activity, position)) => {
-                    play(s, session, activity, clock(now, position))
-                }
+                Some((session, activity, position)) => play(s, session, activity, now, position),
                 None => Vec::new(),
             }
         }
@@ -244,22 +247,36 @@ pub(crate) fn decide(s: &mut State, input: Input, now: u64) -> Vec<Action> {
             if !s.enabled {
                 return Vec::new();
             }
-            let start = clock(now, position);
             if s.owner != Some(session) {
                 // A session that has not played yet shows nothing.
                 return if paused {
                     Vec::new()
                 } else {
-                    play(s, session, activity, start)
+                    play(s, session, activity, now, position)
                 };
             }
             match (paused, s.paused) {
-                // An ordinary tick keeps pace with the clock; one that has
-                // drifted past the slack is a seek, and moves it.
+                // An ordinary tick moves the position about as far as the
+                // time since the last, or steadily more or less at another
+                // speed; one that jumps past the slack is a seek, and moves
+                // the clock. Discord's clock runs at wall speed whatever
+                // the player's, which is near enough to leave alone. A
+                // position that is no number tells nothing either way.
                 (false, false) if s.shown => {
-                    if start.abs_diff(s.start) <= SEEK_SLACK {
+                    if !position.is_finite() {
                         return Vec::new();
                     }
+                    let here = seconds(position);
+                    let seek = s.last.is_some_and(|(there, then)| {
+                        let moved = here - there;
+                        let passed = now as f64 - then as f64;
+                        (moved - passed).abs() > SEEK_SLACK
+                    });
+                    s.last = Some((here, now));
+                    if !seek {
+                        return Vec::new();
+                    }
+                    let start = clock(now, position);
                     s.start = start;
                     vec![Action::Set(Activity {
                         start: Some(start),
@@ -267,10 +284,11 @@ pub(crate) fn decide(s: &mut State, input: Input, now: u64) -> Vec<Action> {
                     })]
                 }
                 // A resume, or playing again after a long pause cleared it.
-                (false, _) => play(s, session, activity, start),
+                (false, _) => play(s, session, activity, now, position),
                 (true, true) => Vec::new(),
                 (true, false) => {
                     s.paused = true;
+                    s.last = None;
                     s.generation += 1;
                     vec![
                         Action::Set(Activity {
@@ -309,6 +327,7 @@ pub(crate) fn decide(s: &mut State, input: Input, now: u64) -> Vec<Action> {
             }
             let shown = s.shown;
             s.owner = None;
+            s.last = None;
             s.paused = false;
             s.shown = false;
             s.generation += 1;
@@ -321,10 +340,13 @@ pub(crate) fn decide(s: &mut State, input: Input, now: u64) -> Vec<Action> {
     }
 }
 
-/// A session showing as playing, its clock reading from `start`.
-fn play(s: &mut State, session: u64, activity: &Activity, start: u64) -> Vec<Action> {
+/// A session showing as playing, its clock reading from `position`, and the
+/// tick that starts the seek check afresh.
+fn play(s: &mut State, session: u64, activity: &Activity, now: u64, position: f64) -> Vec<Action> {
+    let start = clock(now, position);
     s.owner = Some(session);
     s.start = start;
+    s.last = Some((seconds(position), now));
     s.paused = false;
     s.shown = true;
     s.generation += 1;
@@ -338,12 +360,17 @@ fn play(s: &mut State, session: u64, activity: &Activity, start: u64) -> Vec<Act
 /// begun had it played straight through to here, so paused time never
 /// counts. A position that is no number counts from now.
 fn clock(now: u64, position: f64) -> u64 {
-    let into = if position.is_finite() && position > 0.0 {
-        position as u64
+    now.saturating_sub(seconds(position) as u64)
+}
+
+/// Seconds into the file. A position that is no number, or before the
+/// start, reads as the start.
+fn seconds(position: f64) -> f64 {
+    if position.is_finite() && position > 0.0 {
+        position
     } else {
-        0
-    };
-    now.saturating_sub(into)
+        0.0
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1056,6 +1083,8 @@ mod tests {
             decide(&mut s, tick(1, &a, 600.0, false), 11_800),
             vec![Action::Set(started(&a, 11_800 - 600))]
         );
+        // The pause is no seek to the tick after the resume.
+        assert!(decide(&mut s, tick(1, &a, 601.0, false), 11_801).is_empty());
         // Switched on mid-episode, the clock reads the position too.
         let mut s = State::default();
         assert_eq!(
@@ -1098,12 +1127,72 @@ mod tests {
                 .is_empty()
             );
         }
-        // A player that runs a little slow or fast, up to the slack.
+        // Ticks that come late or report a little ahead or behind, up to
+        // the slack between one tick and the next.
         assert!(decide(&mut s, tick(1, &a, 75.0, false), 1_070).is_empty());
-        assert!(decide(&mut s, tick(1, &a, 70.0, false), 1_080).is_empty());
+        assert!(decide(&mut s, tick(1, &a, 79.0, false), 1_080).is_empty());
         assert_eq!(s.start, 1_000);
-        // A position that is no number counts from now, which is no seek.
-        assert!(decide(&mut s, tick(1, &a, f64::NAN, false), 1_005).is_empty());
+        // A position that is no number is no seek, and the tick after it
+        // still measures from the last real one.
+        assert!(decide(&mut s, tick(1, &a, f64::NAN, false), 1_081).is_empty());
+        assert!(decide(&mut s, tick(1, &a, 81.0, false), 1_082).is_empty());
+    }
+
+    /// Plays from `at` for `ticks` seconds of wall time at `speed`, and
+    /// asserts that no tick sends anything.
+    fn steady(s: &mut State, a: &Activity, at: u64, from: f64, speed: f64, ticks: u64) {
+        for i in 1..=ticks {
+            let position = from + speed * i as f64;
+            assert!(
+                decide(s, tick(1, a, position, false), at + i).is_empty(),
+                "tick {i} at {speed}x sent"
+            );
+        }
+    }
+
+    #[test]
+    fn a_steady_double_speed_sends_nothing() {
+        let a = bebop();
+        let mut s = on();
+        decide(&mut s, tick(1, &a, 0.0, false), 1_000);
+        // Twelve minutes of wall time is the whole episode at 2x.
+        steady(&mut s, &a, 1_000, 0.0, 2.0, 720);
+    }
+
+    #[test]
+    fn a_steady_half_speed_sends_nothing() {
+        let a = bebop();
+        let mut s = on();
+        decide(&mut s, tick(1, &a, 0.0, false), 1_000);
+        steady(&mut s, &a, 1_000, 0.0, 0.5, 2_880);
+    }
+
+    #[test]
+    fn a_seek_at_1x_resends_once() {
+        let a = bebop();
+        let mut s = on();
+        decide(&mut s, tick(1, &a, 0.0, false), 1_000);
+        steady(&mut s, &a, 1_000, 0.0, 1.0, 100);
+        // Ninety seconds forward.
+        assert_eq!(
+            decide(&mut s, tick(1, &a, 191.0, false), 1_101),
+            vec![Action::Set(started(&a, 1_101 - 191))]
+        );
+        steady(&mut s, &a, 1_101, 191.0, 1.0, 300);
+    }
+
+    #[test]
+    fn a_seek_at_double_speed_resends_once() {
+        let a = bebop();
+        let mut s = on();
+        decide(&mut s, tick(1, &a, 0.0, false), 1_000);
+        steady(&mut s, &a, 1_000, 0.0, 2.0, 100);
+        // Ninety seconds forward, on top of the two a tick moves at 2x.
+        assert_eq!(
+            decide(&mut s, tick(1, &a, 292.0, false), 1_101),
+            vec![Action::Set(started(&a, 1_101 - 292))]
+        );
+        steady(&mut s, &a, 1_101, 292.0, 2.0, 300);
     }
 
     #[test]
