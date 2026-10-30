@@ -10,6 +10,11 @@ The app shows this file in What's new, newest version first. Keep it short.
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
+## 2.3.1 · 2026-10-30
+
+### Fixed
+- Episodes you get for a show you have are saved straight into its folder
+
 ## 2.3.0 · 2026-10-27
 
 ### New
