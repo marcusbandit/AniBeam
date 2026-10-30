@@ -193,12 +193,13 @@ impl Definition {
 pub const HOST_KEY: &str = "host";
 
 /// Whether `value` may stand in for `{host}`: a host or host:port and nothing that could
-/// carry a path, a login or another placeholder.
+/// carry a path, a login or another placeholder. No bracketed IPv6 literal, which `host_of`
+/// cannot read.
 pub fn bare_host(value: &str) -> bool {
     !value.is_empty()
-        && !value
-            .chars()
-            .any(|c| c.is_whitespace() || matches!(c, '/' | '@' | '?' | '#' | '{' | '}' | '\\'))
+        && !value.chars().any(|c| {
+            c.is_whitespace() || matches!(c, '/' | '@' | '?' | '#' | '{' | '}' | '\\' | '[' | ']')
+        })
 }
 
 /// The authority of an http(s) address as written, between `://` and the path.
@@ -339,7 +340,7 @@ fn placeholders(url: &str) -> Vec<&str> {
 
 /// A definition this core can run safely: a known kind, an https address on a real host,
 /// and placeholders that are exactly `{query}` and its own `auth` keys. A torznab one may
-/// also be plain http and name the person's own server as `{host}`.
+/// also name the person's own server as `{host}`, and only then be plain http.
 pub fn check(def: &Definition) -> Result<(), String> {
     check_with(def, false)
 }
@@ -363,10 +364,10 @@ fn check_with(def: &Definition, http: bool) -> Result<(), String> {
     if !VALID_KINDS.contains(&def.kind.as_str()) {
         return Err(format!("{}: unknown kind {:?}", def.id, def.kind));
     }
-    // A torznab search goes to the person's own Prowlarr or Jackett, which on the home
-    // network is plain http.
+    // A torznab search to the person's own Prowlarr or Jackett may be plain http, as it often
+    // is on the home network. Only there: a key never goes in the clear to a host a repo named.
     let torznab = def.kind == "torznab";
-    let http = http || torznab;
+    let http = http || (torznab && def.host_is_placeholder());
     let scheme_ok = def.url.starts_with("https://") || (http && def.url.starts_with("http://"));
     if !scheme_ok || def.host().is_empty() {
         return Err(format!(
@@ -674,9 +675,9 @@ pub(crate) mod tests {
         assert!(check_custom(&rss).is_err());
         // `{host}` as only part of the authority.
         for url in [
-            "http://{host}:9117/api?apikey={apikey}&q={query}",
-            "http://{host}.example/api?apikey={apikey}&q={query}",
-            "http://me@{host}/api?apikey={apikey}&q={query}",
+            "https://{host}:9117/api?apikey={apikey}&q={query}",
+            "https://{host}.example/api?apikey={apikey}&q={query}",
+            "https://me@{host}/api?apikey={apikey}&q={query}",
         ] {
             let mut d = jackett();
             d.url = url.into();
@@ -687,7 +688,7 @@ pub(crate) mod tests {
         }
         // Another key as the authority.
         let mut d = jackett();
-        d.url = "http://{apikey}/api?q={query}&h={host}".into();
+        d.url = "https://{apikey}/api?q={query}&h={host}".into();
         assert!(check(&d).unwrap_err().contains("placeholder in the host"));
         // A secret host field.
         let mut d = jackett();
@@ -696,12 +697,17 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn plain_http_is_for_torznab_and_custom_endpoints_only() {
+    fn plain_http_is_for_a_torznab_own_host_and_custom_endpoints_only() {
         assert_eq!(check(&jackett()), Ok(()));
+        // A torznab repo definition naming its host still needs https.
         let mut d = jackett();
         d.url = "http://idx.example/api?apikey={apikey}&q={query}".into();
         d.auth = vec![field("apikey", true)];
-        assert_eq!(check(&d), Ok(()));
+        assert!(check(&d).unwrap_err().contains("must start with https://"));
+        assert_eq!(check_custom(&d), Ok(()));
+        let mut https = d.clone();
+        https.url = https.url.replacen("http://", "https://", 1);
+        assert_eq!(check(&https), Ok(()));
         d.kind = "rss".into();
         assert!(check(&d).is_err());
         assert_eq!(check_custom(&d), Ok(()));
@@ -709,12 +715,7 @@ pub(crate) mod tests {
 
     #[test]
     fn bare_host_takes_a_host_or_host_and_port_only() {
-        for ok in [
-            "192.168.1.10:9696",
-            "localhost",
-            "jackett.lan:9117",
-            "[::1]:9696",
-        ] {
+        for ok in ["192.168.1.10:9696", "localhost", "jackett.lan:9117"] {
             assert!(bare_host(ok), "{ok}");
         }
         for bad in [
@@ -728,6 +729,7 @@ pub(crate) mod tests {
             "a b",
             " a",
             "a\t",
+            "[::1]:9696",
         ] {
             assert!(!bare_host(bad), "{bad:?}");
         }

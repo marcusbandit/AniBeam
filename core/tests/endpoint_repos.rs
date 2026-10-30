@@ -212,6 +212,30 @@ fn an_installed_endpoint_takes_the_place_of_a_source_with_its_name() {
 }
 
 #[test]
+fn a_saved_torznab_source_needs_its_query() {
+    let (_dir, core, _) = common::open_core();
+    let saved = |kind: &str, url: &str| anibeam_core::PhoneSource {
+        name: "prowlarr".into(),
+        kind: kind.into(),
+        url: url.into(),
+        enabled: true,
+    };
+    let err = core
+        .call(Call::SetPhoneSources {
+            sources: vec![saved("torznab", "http://10.0.0.2:9696/1/api?t=search")],
+        })
+        .unwrap_err();
+    assert!(err.to_string().contains("{query}"), "{err}");
+    core.call(Call::SetPhoneSources {
+        sources: vec![saved(
+            "torznab",
+            "http://10.0.0.2:9696/1/api?t=search&q={query}",
+        )],
+    })
+    .unwrap();
+}
+
+#[test]
 fn erai_needs_its_token_and_the_token_never_reaches_the_database() {
     let (dir, core, _) = common::open_core();
     trust(&core, &fixture("general.json"));
