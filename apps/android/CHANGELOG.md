@@ -10,6 +10,11 @@ The app shows this file in What's new, newest version first. Keep it short.
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
+## 2.1.2 · 2026-10-30
+
+### Fixed
+- The connection check keeps home-network names off public DNS
+
 ## 2.1.1 · 2026-10-26
 
 ### Fixed
