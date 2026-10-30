@@ -52,6 +52,12 @@ Item {
     // The band's tone, read off the poster; kept as a string for old readers of `tone`
     readonly property string tone: String(toneOf.tone)
 
+    // The episode count set by hand (#239); null clears it
+    function setEpisodeCount(n) {
+        var r = Door.call("SetEpisodeCount", { series: page.props.id, count: n })
+        if (r && r.error) frame.toast(frame.errorText(r.error))
+        else frame.toast(n === null ? "Episode count cleared" : "Set to " + n + " episodes")
+    }
     function contextItems() {
         return [
             { text: "Rescan show", icon: "refresh-cw", action: page.rescan },
@@ -642,6 +648,82 @@ Item {
                         role: "ledger"
                         font.weight: 600; font.variableAxes: ({ "wdth": 88, "wght": 600 })
                         color: page.downloadInk
+                    }
+                }
+                // The episode count set by hand (#239): offered while the record names no count
+                // or a guess is out, so a predicted episode past the real end can be stopped.
+                // A count the schedule or a file went past says it gave way.
+                Row {
+                    id: countRow
+                    objectName: "episode-count"
+                    property bool editing: false
+                    readonly property var set: card.episodes_set === undefined ? null : card.episodes_set
+                    readonly property bool gaveWay: set !== null && card.episodes_set_applied !== true
+                    readonly property bool tvmaze: !!card.match_info && card.match_info.provider === "Tvmaze"
+                    // A set count always shows, so it can be cleared once the show is over
+                    visible: !page.isMovie && (set !== null || (!tvmaze && card.status === "Releasing"
+                             && (card.total_is_estimate || !card.total_episodes || (!!card.next_airing && card.next_airing.predicted))))
+                    spacing: theme.space(2)
+                    function save(text) {
+                        var t = String(text).trim()
+                        var n = /^\d{1,4}$/.test(t) ? parseInt(t, 10) : 0
+                        if (!(n > 0)) { frame.toast("Type the number of episodes, such as 13"); return }
+                        countRow.editing = false
+                        page.setEpisodeCount(n)
+                    }
+                    Label {
+                        visible: !countRow.editing && countRow.set !== null
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: countRow.set === null ? "" : countRow.gaveWay
+                              ? "You set " + countRow.set + " episodes; that no longer applies"
+                              : "Ends at episode " + countRow.set + ", set by you"
+                        role: "ledger"
+                        color: page.inkDim
+                    }
+                    Button {
+                        visible: !countRow.editing
+                        objectName: "episode-count-set"
+                        small: true; flat: true
+                        tint: page.inkAccent
+                        icon: "pencil"
+                        text: countRow.set === null ? "Set episode count" : "Change"
+                        onClicked: { countRow.editing = true; countField.text = countRow.set === null ? "" : String(countRow.set); Qt.callLater(countField.focusInput) }
+                    }
+                    Button {
+                        visible: !countRow.editing && countRow.set !== null
+                        small: true; flat: true
+                        text: "Clear"
+                        onClicked: page.setEpisodeCount(null)
+                    }
+                    Field {
+                        id: countField
+                        objectName: "episode-count-field"
+                        visible: countRow.editing
+                        width: theme.space(22)
+                        mono: true
+                        placeholder: "13"
+                        Keys.onEscapePressed: countRow.editing = false
+                    }
+                    Button {
+                        visible: countRow.editing
+                        objectName: "episode-count-save"
+                        small: true; primary: true
+                        tint: page.inkAccent
+                        text: "Save"
+                        onClicked: countRow.save(countField.text)
+                    }
+                    Button {
+                        visible: countRow.editing
+                        small: true; flat: true
+                        text: "Cancel"
+                        onClicked: countRow.editing = false
+                    }
+                    Label {
+                        visible: countRow.editing
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Nothing past it is predicted. A real episode past it wins."
+                        role: "ledger"
+                        color: page.inkDim
                     }
                 }
                 Item { width: 1; height: theme.space(1.5) }

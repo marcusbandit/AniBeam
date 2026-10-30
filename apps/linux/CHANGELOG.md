@@ -23,6 +23,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Mark a show not interested and it stays off Airing now
 - Plan to watch or get episodes straight from Airing now
 - Media keys and Control Centre play, pause and skip on the Mac
+- Set how many episodes a show has, and nothing past it is predicted
 - Release lists show a Rip column: WEB-DL, WEBRip, BluRay and the rest
 - This week shows nine days, two back and six ahead, every day even when empty
 - Right-click a card to delete its watched episodes or all of them, to the trash

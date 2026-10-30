@@ -41,6 +41,10 @@ pub struct SeriesRow {
     pub tvmaze_id: Option<u64>,
     pub confirmed: bool,
     pub track_choice: Option<String>,
+    /// The episode count the person set by hand (#239), in force or not.
+    pub episodes_set: Option<u32>,
+    /// Whether that count is in force (`apply_episodes_set`).
+    pub episodes_set_applied: bool,
     /// The record behind the match: the AniList media, or for a TVmaze
     /// match the show, read into the same shape so every reader draws
     /// either without asking which it is.
@@ -337,6 +341,7 @@ impl Snapshot {
         snap.load_airing(conn, scope.map(|_| anilist_ids.as_slice()))?;
         snap.load_tv_episodes(conn, scope.map(|_| show_ids.as_slice()))?;
         snap.fill_tvmaze_totals();
+        snap.apply_episodes_set();
         snap.load_tracker_entries(conn, scope.map(|_| media_ids.as_slice()))?;
         snap.load_history(conn, scoped_series)?;
         snap.load_graph_seeds(conn, scope.map(|_| anilist_ids.as_slice()))?;
@@ -363,7 +368,7 @@ impl Snapshot {
                     m.cover_url, m.banner_url, ip.path, ib.path,
                     s.tvmaze_id, t.id, t.name, t.status, t.premiered, t.rating, t.genres, t.network, t.summary,
                     t.url, t.poster_url, t.background_url, m.season, m.start_date, m.duration,
-                    t.average_runtime
+                    t.average_runtime, s.episodes_set
              FROM series s
              LEFT JOIN anilist_media m ON m.id = s.anilist_id
              LEFT JOIN tvmaze_shows t ON t.id = s.tvmaze_id AND s.provider = 'tvmaze'
@@ -435,6 +440,11 @@ impl Snapshot {
                 tvmaze_id: r.get::<_, Option<i64>>(34)?.map(|v| v as u64),
                 confirmed: r.get::<_, i64>(13)? != 0,
                 track_choice: r.get(14)?,
+                episodes_set: r
+                    .get::<_, Option<i64>>(50)?
+                    .and_then(|v| u32::try_from(v).ok())
+                    .filter(|n| *n > 0),
+                episodes_set_applied: false,
                 media,
                 poster_path: local(r.get(32)?),
                 banner_path: local(r.get(33)?),
@@ -595,6 +605,56 @@ impl Snapshot {
         for (i, n) in totals {
             if let Some(m) = self.series[i].media.as_mut() {
                 m.episodes = Some(n);
+            }
+        }
+    }
+
+    /// A count the person set by hand (#239) stands in while the record names
+    /// none of its own, so nothing past it is predicted or scheduled, until an
+    /// episode past it airs or a file of one lands: then what really happened
+    /// wins and the series reads as before. A record that publishes its own
+    /// count always wins. TVmaze shows are left alone: their counts are per
+    /// season and a hand-set one has no season to belong to.
+    fn apply_episodes_set(&mut self) {
+        let now = crate::time::to_secs(self.now);
+        let mut applied: Vec<(usize, u32)> = Vec::new();
+        for (i, row) in self.series.iter().enumerate() {
+            let Some(set) = row.episodes_set else {
+                continue;
+            };
+            let own = row.media.as_ref().map(|m| m.episodes);
+            if row.provider == Some(Provider::Tvmaze) || own != Some(None) {
+                continue;
+            }
+            // Only what really came out proves the count wrong: a date the
+            // schedule names ahead is a plan, and plans run long
+            let aired = self
+                .airing_of(row)
+                .iter()
+                .filter(|a| a.aired_at.is_some_and(|at| at <= now))
+                .map(|a| a.number)
+                .max()
+                .unwrap_or(0);
+            let on_disk = self
+                .files_of(row.id)
+                .iter()
+                .filter(|f| f.is_episode && f.number >= 1.0 && f.number.fract() == 0.0)
+                .map(|f| f.number as u32)
+                .max()
+                .unwrap_or(0);
+            if aired.max(on_disk) <= set {
+                applied.push((i, set));
+            }
+        }
+        for (i, n) in applied {
+            let row = &mut self.series[i];
+            row.episodes_set_applied = true;
+            if let Some(m) = row.media.as_mut() {
+                m.episodes = Some(n);
+            }
+            // Nothing past the count is scheduled either
+            if let Some(list) = row.anilist_id.and_then(|id| self.airing.get_mut(&id)) {
+                list.retain(|a| a.number <= n);
             }
         }
     }

@@ -87,6 +87,15 @@ pub struct SeriesCard {
     pub extras_on_disk: u64,
     pub total_episodes: Option<u32>,
     pub total_is_estimate: bool,
+    /// The episode count the person set by hand (#239), whether or not it
+    /// is in force: `total_episodes` follows it until the schedule or a
+    /// file goes past it.
+    #[serde(default)]
+    pub episodes_set: Option<u32>,
+    /// Whether `episodes_set` is in force: false once an episode past it
+    /// aired or landed, or while the record names a count of its own.
+    #[serde(default)]
+    pub episodes_set_applied: bool,
     pub code: Option<String>,
     pub watched: Option<u32>,
     pub watched_state: WatchedState,
