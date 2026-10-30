@@ -562,6 +562,7 @@ pub(crate) mod tests {
             assert!(check_custom(&d).is_err(), "{kind}");
             d.url = "https://feed.example/json?q={query}".into();
             assert!(check(&d).is_ok(), "{kind}");
+            assert!(check_custom(&d).is_ok(), "{kind}");
         }
     }
 
