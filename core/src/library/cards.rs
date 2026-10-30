@@ -410,6 +410,42 @@ pub fn next_up(
     episodes.first().map(|(f, _, _)| *f)
 }
 
+/// The schedule around now, three days back to eight ahead, soonest first:
+/// what Home's week lays on its days (#236). Episodes sharing one instant are
+/// one drop, the first carrying the last as `through`. `here` holds the
+/// episode numbers of the drop's season on disk, plus the tracker's progress.
+pub(super) fn week_airings(
+    airing: &[AiringRow],
+    season: Option<u32>,
+    here: &BTreeSet<u32>,
+    watched: Option<u32>,
+    now: i64,
+) -> Vec<WeekDrop> {
+    let mut near: Vec<(i64, u32)> = airing
+        .iter()
+        .filter_map(|a| a.aired_at.map(|at| (at, a.number)))
+        .filter(|(at, _)| *at >= now - 3 * DAY && *at < now + 8 * DAY)
+        .collect();
+    near.sort_unstable();
+    let landed = |n: u32| here.contains(&n) || watched.is_some_and(|w| w >= n);
+    let mut out: Vec<WeekDrop> = Vec::new();
+    for (at, number) in near {
+        if let Some(last) = out.last_mut().filter(|l| time::to_secs(l.at) == at) {
+            last.through = Some(number);
+            last.here = last.here && landed(number);
+            continue;
+        }
+        out.push(WeekDrop {
+            episode: number,
+            through: None,
+            season,
+            at: time::from_secs(at),
+            here: landed(number),
+        });
+    }
+    out
+}
+
 /// Whether `a` comes after `b` in (season, number) order.
 fn after(a: (u32, f64), b: (u32, f64)) -> bool {
     a.0 > b.0 || (a.0 == b.0 && a.1 > b.1)
@@ -602,6 +638,23 @@ impl Snapshot {
                     predicted: true,
                     through: None,
                 }),
+            },
+            week_airings: {
+                // Only the card's own season's files count for a TVmaze match
+                let season = self.card_season(row);
+                let here: BTreeSet<u32> = episodes
+                    .iter()
+                    .filter(|f| season.is_none_or(|s| f.season.unwrap_or(1) == s))
+                    .filter(|f| f.number >= 1.0 && f.number.fract() == 0.0)
+                    .map(|f| f.number as u32)
+                    .collect();
+                week_airings(
+                    airing,
+                    season,
+                    &here,
+                    watched.filter(|_| season.is_none()),
+                    now,
+                )
             },
             last_viewed_at: self.views.get(&row.id).map(|(_, at)| time::from_secs(*at)),
             added_at: time::from_secs(row.added_at),
@@ -977,6 +1030,7 @@ mod tests {
             my_score: None,
             list_status: None,
             next_airing: None,
+            week_airings: Vec::new(),
             last_viewed_at: None,
             latest_activity_at: UNIX_EPOCH,
             added_at: UNIX_EPOCH,
@@ -1258,5 +1312,31 @@ mod tests {
         let sched = dated(&[(1, T0), (2, T0 + WEEK), (3, T0 + 2 * WEEK)]);
         let got = upcoming(&sched, 2, Some(12), Some(AiringStatus::Hiatus), now);
         assert_eq!(got, vec![(3, T0 + 2 * WEEK, false)]);
+    }
+
+    #[test]
+    fn the_week_keeps_what_aired_today_and_folds_a_drop() {
+        // Aired four days back (out), this morning, two at once tomorrow, nine days on (out)
+        let rows = dated(&[
+            (1, T0 - 4 * DAY),
+            (2, T0 - 3 * 3600),
+            (3, T0 + DAY),
+            (4, T0 + DAY),
+            (5, T0 + 9 * DAY),
+        ]);
+        let here: BTreeSet<u32> = [1, 2, 3].into_iter().collect();
+        let got = week_airings(&rows, None, &here, None, T0);
+        let short: Vec<(u32, i64, Option<u32>, bool)> = got
+            .iter()
+            .map(|a| (a.episode, time::to_secs(a.at), a.through, a.here))
+            .collect();
+        assert_eq!(
+            short,
+            vec![
+                (2, T0 - 3 * 3600, None, true),
+                // 3 is here, 4 is not: the drop is not whole yet
+                (3, T0 + DAY, Some(4), false)
+            ]
+        );
     }
 }

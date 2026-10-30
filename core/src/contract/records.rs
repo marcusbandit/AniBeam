@@ -30,6 +30,18 @@ pub struct MatchInfo {
     pub confirmed: bool,
 }
 
+/// One drop on Home's week (#236): an episode, or several released at once
+/// (`through`), when it airs or aired, and whether every episode of it is
+/// here: a file of that season on disk, or watched already on the tracker.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
+pub struct WeekDrop {
+    pub episode: u32,
+    pub through: Option<u32>,
+    pub season: Option<u32>,
+    pub at: SystemTime,
+    pub here: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, uniffi::Record)]
 pub struct Strip {
     pub watched: f64,
@@ -93,6 +105,12 @@ pub struct SeriesCard {
     pub my_score: Option<f64>,
     pub list_status: Option<ListStatus>,
     pub next_airing: Option<Airing>,
+    /// Every episode the schedule puts from three days back to eight days
+    /// ahead, aired or not, soonest first, a drop of several at once as one
+    /// entry: the week on Home keeps what already aired today on its day
+    /// and says whether it landed (#236).
+    #[serde(default)]
+    pub week_airings: Vec<WeekDrop>,
     pub last_viewed_at: Option<SystemTime>,
     pub latest_activity_at: SystemTime,
     /// When the folder was first seen by a scan: when the person decided
