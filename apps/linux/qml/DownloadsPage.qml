@@ -447,7 +447,7 @@ Item {
         var best = {}
         for (var i = 0; i < items.length; i++) {
             var f = facts[i]
-            if (!f || f.batch || f.on_disk || f.episode === null || f.episode === undefined) continue
+            if (!f || f.batch || f.on_disk || f.other_on_disk || f.episode === null || f.episode === undefined) continue
             var k = String(f.episode), seeds = items[i].seeders
             if (seeds === null || seeds === undefined) { var e = extras[items[i].link]; seeds = e && e.seeders !== null && e.seeders !== undefined ? e.seeders : -1 }
             if (!(k in best) || seeds > best[k].seeds) best[k] = { i: i, seeds: seeds }
@@ -457,6 +457,7 @@ Item {
         return out
     }
     readonly property int onDiskCount: { var n = 0; for (var i = 0; i < facts.length; i++) if (facts[i] && facts[i].on_disk) n++; return n }
+    readonly property int otherOnDiskCount: { var n = 0; for (var i = 0; i < facts.length; i++) if (facts[i] && facts[i].other_on_disk) n++; return n }
 
     // ---- The lists
     readonly property var rules: frame.downloadsRules
@@ -1896,7 +1897,10 @@ Item {
                     }
                     Label {
                         width: parent.width
-                        text: page.onDiskCount > 0 ? Fmt.plural(page.onDiskCount, "release here is", "releases here are") + " for episodes you already have, marked On disk." : "None of these releases is for an episode you already have."
+                        text: page.onDiskCount + page.otherOnDiskCount === 0 ? "None of these releases is for an episode you already have."
+                              : [page.onDiskCount > 0 ? Fmt.plural(page.onDiskCount, "release here is", "releases here are") + " the file you have, marked On disk" : "",
+                                 page.otherOnDiskCount > 0 ? Fmt.plural(page.otherOnDiskCount, "release is", "releases are") + " for an episode you have from another release" : ""]
+                                .filter(function(t) { return t }).join("; ") + "."
                         role: "ui"
                         font.pointSize: theme.typeSmall
                         color: theme.textFaint
