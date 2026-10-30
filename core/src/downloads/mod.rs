@@ -1188,9 +1188,9 @@ pub(crate) fn annotate(
 /// what anirss drops (when each release was posted, a torznab feed's
 /// counts). The address is the subscription preview's (anirss's
 /// `/subscriptions/preview`, or the core's own, gives the feed a search on
-/// this query reads), and the read is cheap: nyaa and Erai answer at once
-/// and Jackett serves a repeat query from its cache. Not a job; a failure
-/// is a debug line and the page shows no dates.
+/// this query reads), and the read is cheap: a plain RSS endpoint answers
+/// at once and Jackett serves a repeat query from its cache. Not a job; a
+/// failure is a debug line and the page shows no dates.
 fn enrich(
     core: &Arc<Core>,
     backend: DownloadsBackend,

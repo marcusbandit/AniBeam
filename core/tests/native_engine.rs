@@ -99,13 +99,13 @@ fn the_native_engine_round_trips_through_the_settings() {
 
 const FEED_URL: &str = "https://feed.example/rss?q={query}";
 
-/// Two posters, two episodes each, every one at 1080p and with its counts,
-/// so nothing is fetched for seeders.
+/// Two posters, two episodes each, every one at 1080p and with its counts
+/// as torznab attributes, so nothing is fetched for seeders.
 const TITLES: [&str; 4] = [
-    "[SubsPlease] Sousou no Frieren - 01 (1080p) [ABCDEF12].mkv",
-    "[SubsPlease] Sousou no Frieren - 02 (1080p) [ABCDEF13].mkv",
-    "[Erai-raws] Sousou no Frieren - 01 [1080p][Multiple Subtitle]",
-    "[Erai-raws] Sousou no Frieren - 02 [1080p][Multiple Subtitle]",
+    "[Group] Show - 01 (1080p) [ABCDEF12].mkv",
+    "[Group] Show - 02 (1080p) [ABCDEF13].mkv",
+    "[Other] Show - 01 [1080p][Multiple Subtitle]",
+    "[Other] Show - 02 [1080p][Multiple Subtitle]",
 ];
 
 fn link(n: usize) -> String {
@@ -119,15 +119,17 @@ fn feed() -> String {
         .map(|(n, t)| {
             format!(
                 "<item><title>{t}</title><link>{}</link>\
-                 <nyaa:seeders>{}</nyaa:seeders><nyaa:leechers>1</nyaa:leechers>\
-                 <nyaa:size>1.4 GiB</nyaa:size></item>",
+                 <torznab:attr name=\"seeders\" value=\"{}\"/>\
+                 <torznab:attr name=\"peers\" value=\"{}\"/>\
+                 <torznab:attr name=\"size\" value=\"1503238553\"/></item>",
                 link(n).replace('&', "&amp;"),
-                10 + n
+                10 + n,
+                11 + n
             )
         })
         .collect();
     format!(
-        "<?xml version=\"1.0\"?><rss version=\"2.0\" xmlns:nyaa=\"https://nyaa.si/xmlns/nyaa\">\
+        "<?xml version=\"1.0\"?><rss version=\"2.0\" xmlns:torznab=\"http://torznab.com/schemas/2015/feed\">\
          <channel><title>feed</title>{items}</channel></rss>"
     )
 }
@@ -188,11 +190,11 @@ fn only_the_feed(http: &FakeHttp) {
 fn the_native_engine_searches_refines_and_previews_without_anirss() {
     let (_dir, core, c, http) = native_core();
 
-    let found = search(&core, &c, "Frieren");
+    let found = search(&core, &c, "Show");
     assert_eq!(found.endpoint, "feed");
     assert_eq!(titles(&found.items), TITLES);
-    assert_eq!(found.query, "Frieren 1080p");
-    assert_eq!(found.fetched_query, "Frieren");
+    assert_eq!(found.query, "Show 1080p");
+    assert_eq!(found.fetched_query, "Show");
     assert_eq!(found.auto_resolution.as_deref(), Some("1080p"));
     assert!(found.client_side);
     assert!(!found.fell_back);
@@ -201,7 +203,7 @@ fn the_native_engine_searches_refines_and_previews_without_anirss() {
     assert_eq!(found.facts.len(), 4);
     assert_eq!(found.facts[1].episode, Some(2.0));
     assert!(
-        http.requests()[0].url.contains("q=Frieren"),
+        http.requests()[0].url.contains("q=Show"),
         "{:?}",
         http.requests()[0].url
     );
@@ -213,7 +215,7 @@ fn the_native_engine_searches_refines_and_previews_without_anirss() {
             endpoint: found.endpoint.clone(),
             items: found.items.clone(),
             op: RefineOp::Tokens {
-                tokens: vec!["[SubsPlease]".into()],
+                tokens: vec!["[Group]".into()],
             },
         },
     );
@@ -259,8 +261,8 @@ fn an_endpoint_the_core_does_not_hold_is_refused_on_the_native_engine() {
     let job = started(
         &core,
         Call::SearchReleases {
-            query: "Frieren".into(),
-            endpoint: Some("1337x".into()),
+            query: "Show".into(),
+            endpoint: Some("elsewhere".into()),
         },
     );
     let done = common::wait_job(&c, job);
@@ -296,7 +298,7 @@ fn release_json(n: usize) -> Value {
 #[test]
 fn the_same_feed_gives_the_same_releases_and_groups_on_either_engine() {
     let (_ndir, ncore, nc, _nhttp) = native_core();
-    let native = search(&ncore, &nc, "Frieren");
+    let native = search(&ncore, &nc, "Show");
 
     let http = FakeHttp::new();
     let (_adir, acore, ac) = common::open_core_with_http(http.clone());
@@ -306,7 +308,7 @@ fn the_same_feed_gives_the_same_releases_and_groups_on_either_engine() {
         "/search",
         200,
         json!({
-            "query": "Frieren",
+            "query": "Show",
             "endpoint": "feed",
             "fell_back": false,
             "tried": [{"endpoint": "feed", "status": "ok", "count": 4, "error": null}],
@@ -318,22 +320,22 @@ fn the_same_feed_gives_the_same_releases_and_groups_on_either_engine() {
         "/refine/analyze",
         200,
         json!({
-            "query": "Frieren 1080p",
+            "query": "Show 1080p",
             "client_side": true,
             "auto_resolution": {"applied": true, "token": "1080p"},
             "items": items,
             "groups": [
-                {"label": "[Erai-raws]+Multiple+Subtitle",
-                 "tokens": ["[Erai-raws]", "Multiple", "Subtitle"],
-                 "member_count": 2, "has_poster": true, "members": [2, 3]},
-                {"label": "[SubsPlease]", "tokens": ["[SubsPlease]"],
-                 "member_count": 2, "has_poster": true, "members": [0, 1]}
+                {"label": "[Group]", "tokens": ["[Group]"],
+                 "member_count": 2, "has_poster": true, "members": [0, 1]},
+                {"label": "[Other]+Multiple+Subtitle",
+                 "tokens": ["[Other]", "Multiple", "Subtitle"],
+                 "member_count": 2, "has_poster": true, "members": [2, 3]}
             ],
             "best_fit": {"available": false, "query": "", "item": null, "profile": []}
         })
         .to_string(),
     );
-    let anirss = search(&acore, &ac, "Frieren");
+    let anirss = search(&acore, &ac, "Show");
     assert!(
         http.requests()[0].url.starts_with("http://anirss.test/"),
         "{:?}",
