@@ -86,10 +86,13 @@ static PARENS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s*\(.*?\)\s*").u
 static DOT_YEAR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\.[0-9]{4}\.").unwrap());
 static PURE_NUMBER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^([0-9]+)$").unwrap());
 /// One episode named in a folder: `S01E11`, or `Show - 11` the way an anime
-/// release names it. A range (`01-12`) or a season alone is no episode.
+/// release names it. A range (`S01E01-E12`, `01-12`) or a season alone is
+/// no episode. Group 1 is the title before the marker.
 static ONE_EPISODE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\bS[0-9]{1,2}E[0-9]{1,4}\b(?:[^-]|$)|\s-\s[0-9]{1,4}(?:v[0-9])?(?:\s|$|\[|\()")
-        .unwrap()
+    Regex::new(
+        r"(?i)^(.*?)(?:\bS[0-9]{1,2}E[0-9]{1,4}(?:$|[^-0-9]|-(?:$|[^E0-9]|E[^0-9]))|\s-\s[0-9]{1,4}(?:v[0-9])?(?:\s|$|\[|\())",
+    )
+    .unwrap()
 });
 
 fn first_number(patterns: &[Regex], s: &str) -> Option<u32> {
@@ -324,20 +327,39 @@ enum Shape {
     Passthrough(PathBuf),
 }
 
-/// A torrent's folder around one episode: `Show.S01E11.1080p-GRP/` holding
-/// that one video and nothing else that plays. A show's folder fills with
-/// these when single-episode torrents each bring their own folder, and they
-/// are episodes of it, never shows of their own.
-fn is_episode_folder(state: &mut WalkState, dir: &Path) -> bool {
+/// The show a torrent's folder around one episode belongs to, as a key:
+/// `Show.S01E11.1080p-GRP/` holding that one video and nothing else that
+/// plays. A show's folder fills with these when
+/// single-episode torrents each bring their own folder, and they are
+/// episodes of it, never shows of their own.
+fn episode_folder_show(state: &mut WalkState, dir: &Path) -> Option<String> {
     let name = dir
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    if !ONE_EPISODE.is_match(&name) {
-        return false;
-    }
+    let title = ONE_EPISODE.captures(&name)?.get(1)?.as_str();
+    let title = BRACKETS.replace_all(title, " ");
+    let key: String = title
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect();
     let l = state.list(dir);
-    l.videos.len() == 1 && !l.dirs.iter().any(|d| has_videos_shallow(state, d))
+    let only_one = l.videos.len() == 1 && !l.dirs.iter().any(|d| has_videos_shallow(state, d));
+    only_one.then_some(key)
+}
+
+/// Every video-bearing subfolder is an episode folder of one same show.
+fn all_episode_folders(state: &mut WalkState, dirs: &[PathBuf]) -> bool {
+    let mut show: Option<String> = None;
+    for d in dirs {
+        match (episode_folder_show(state, d), &show) {
+            (None, _) => return false,
+            (Some(k), Some(s)) if &k != s => return false,
+            (Some(k), _) => show = Some(k),
+        }
+    }
+    show.is_some()
 }
 
 fn classify_folder(state: &mut WalkState, loose_videos: usize, dirs: &[PathBuf]) -> Shape {
@@ -346,7 +368,7 @@ fn classify_folder(state: &mut WalkState, loose_videos: usize, dirs: &[PathBuf])
         .filter(|d| has_videos_shallow(state, d))
         .cloned()
         .collect();
-    if !video_bearing.is_empty() && video_bearing.iter().all(|d| is_episode_folder(state, d)) {
+    if all_episode_folders(state, &video_bearing) {
         return Shape::Series;
     }
     if video_bearing.len() >= 2 {
@@ -865,6 +887,32 @@ mod tests {
             (results[0].kind, results[0].files.len()),
             (SeriesKind::Show, 11)
         );
+    }
+
+    #[test]
+    fn episode_folders_of_two_shows_stay_two_shows() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dl = tmp.path().join("Downloads");
+        touch(&dl.join("Foo.S01E03-GRP").join("Foo.S01E03-GRP.mkv"));
+        touch(&dl.join("Bar.S02E07-GRP").join("Bar.S02E07-GRP.mkv"));
+        assert_eq!(scan_source(tmp.path()).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn a_group_tag_after_the_episode_still_reads_as_one_episode() {
+        let tmp = tempfile::tempdir().unwrap();
+        let show = tmp.path().join("Show");
+        for ep in 1..=2 {
+            let rip = format!("Show.S01E{ep:02}-ELiTE");
+            touch(&show.join(&rip).join(format!("{rip}.mkv")));
+        }
+        let results = scan_source(tmp.path()).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].path, show.to_string_lossy());
+        // A range is a pack, not one episode
+        assert!(!ONE_EPISODE.is_match("Show.S01E01-E12.1080p"));
+        assert!(!ONE_EPISODE.is_match("[Grp] Show - 01-12 [1080p]"));
+        assert!(!ONE_EPISODE.is_match("Show.S01.1080p"));
     }
 
     #[test]
