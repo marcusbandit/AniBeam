@@ -2032,6 +2032,104 @@ fn writing_of(torrents: &[Torrent]) -> std::collections::HashSet<std::path::Path
     out
 }
 
+/// After episode files went to the trash (#266): each torrent whose files all went leaves
+/// the client too, so it is not left behind under Files missing. Its data is never asked
+/// for, since what went is in the trash already. Only a client on this machine, whose paths
+/// are the library's own; with no client set up, or one that does not answer, nothing
+/// happens and nothing is said.
+pub fn drop_emptied_torrents(core: &Core, gone: Vec<std::path::PathBuf>) {
+    if gone.is_empty() {
+        return;
+    }
+    let Ok(owner) = core.owner() else { return };
+    core.handle.spawn(async move {
+        let Ok(s) = load_settings(&owner).await else {
+            return;
+        };
+        if !settings::files_here(&s) {
+            return;
+        }
+        let Ok(client) = qbt_client(&owner).await else {
+            return;
+        };
+        let Ok(torrents) = client.torrents().await else {
+            return;
+        };
+        let gone: Vec<std::path::PathBuf> = gone.iter().map(|p| gone_key(p)).collect();
+        let hashes: Vec<String> = torrents
+            .iter()
+            .filter(|t| emptied(&t.content_path, &gone))
+            .map(|t| t.hash.to_ascii_lowercase())
+            .collect();
+        if hashes.is_empty() {
+            return;
+        }
+        match client.delete(&hashes, false).await {
+            Ok(()) => {
+                owner.bus.info(
+                    Stage::Downloads,
+                    format!(
+                        "{} removed from the torrent client: {} files were deleted",
+                        plural(hashes.len() as u64, "torrent", "torrents"),
+                        if hashes.len() == 1 { "its" } else { "their" }
+                    ),
+                    EventBody::Notice,
+                );
+                let _ = list_torrents(&owner);
+            }
+            Err(e) => {
+                owner.bus.warn(
+                    Stage::Downloads,
+                    format!("The torrents of the deleted files stay in the client: {e}"),
+                    EventBody::Notice,
+                );
+            }
+        }
+    });
+}
+
+/// A trashed path as one key: its folder resolved on disk (the file itself is gone), so a
+/// symlinked library source still meets the client's own path.
+fn gone_key(p: &std::path::Path) -> std::path::PathBuf {
+    match (
+        p.parent().and_then(|d| std::fs::canonicalize(d).ok()),
+        p.file_name(),
+    ) {
+        (Some(dir), Some(name)) => dir.join(name),
+        _ => p.components().collect(),
+    }
+}
+
+/// Whether a torrent's content went with `gone`: it is one of the paths, or a folder that
+/// held one of them and has no video left anywhere under it.
+fn emptied(content: &str, gone: &[std::path::PathBuf]) -> bool {
+    if content.trim().is_empty() {
+        return false;
+    }
+    let c = path_key(content);
+    if gone.contains(&c) {
+        return true;
+    }
+    if !gone.iter().any(|g| g.starts_with(&c) && *g != c) {
+        return false;
+    }
+    !holds_video(&c)
+}
+
+fn holds_video(dir: &std::path::Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    entries.flatten().any(|e| {
+        let p = e.path();
+        match e.file_type() {
+            Ok(t) if t.is_dir() => holds_video(&p),
+            Ok(_) => crate::library::walk::is_video(&e.file_name().to_string_lossy()),
+            Err(_) => false,
+        }
+    })
+}
+
 /// Whether a torrent is still writing this file.
 pub fn is_writing(core: &Core, path: &str) -> bool {
     let st = core.downloads.state();

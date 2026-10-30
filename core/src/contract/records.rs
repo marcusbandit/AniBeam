@@ -96,6 +96,22 @@ pub struct SeriesCard {
     /// aired or landed, or while the record names a count of its own.
     #[serde(default)]
     pub episodes_set_applied: bool,
+    /// The bytes every file of the series takes on disk, extras included (#266).
+    #[serde(default)]
+    pub bytes_on_disk: u64,
+    /// The bytes of the files whose episode is watched: within the tracker's
+    /// progress or played to the end here. An extra is never watched.
+    #[serde(default)]
+    pub watched_bytes: u64,
+    /// The watched episodes with a file here, two releases of one counted once.
+    #[serde(default)]
+    pub watched_on_disk: u64,
+    /// Confirmed done with (#266): the provider says Finished, the episode
+    /// count is the provider's own rather than a guess or one set by hand,
+    /// and every episode of it is watched (or the tracker says Completed).
+    /// A film: Finished and watched. What Delete watched shows takes.
+    #[serde(default)]
+    pub finished_watched: bool,
     pub code: Option<String>,
     pub watched: Option<u32>,
     pub watched_state: WatchedState,
