@@ -6,6 +6,7 @@
 use std::sync::Arc;
 
 use crate::contract::*;
+use crate::core::Core;
 use crate::net::Http;
 
 use super::{BestfitConfig, Endpoint, bestfit, endpoints, refinement, stats};
@@ -50,6 +51,7 @@ pub struct Analysis {
     pub auto_resolution: Option<String>,
 }
 
+#[derive(Clone)]
 pub struct Native {
     pub http: Arc<dyn Http>,
     pub endpoints: Vec<Endpoint>,
@@ -67,6 +69,26 @@ impl Native {
             endpoints,
             bestfit,
         }
+    }
+
+    /// The core's endpoints, each host held to the pace its repo definition asks for:
+    /// `first` in its order, then every enabled installed endpoint (`repos::runnable`, the
+    /// repos' and the ones added by hand) that `first` does not already name. The phone
+    /// passes the sources it searches; the desktop passes none.
+    ///
+    /// The desktop's list is the core's own, not anirss's `config.toml`: whether it should
+    /// match anirss's endpoints before the native engine is the default is the owner's call
+    /// (#119, decision B).
+    pub fn for_core(core: &Core, first: Vec<Endpoint>) -> Native {
+        let installed = crate::repos::runnable(core);
+        let http = crate::repos::paced_http(core, &installed);
+        let mut endpoints = first;
+        for r in installed {
+            if !endpoints.iter().any(|e| e.name == r.endpoint.name) {
+                endpoints.push(r.endpoint);
+            }
+        }
+        Native::new(http, endpoints)
     }
 
     /// The endpoint by name, else the first (anirss `endpoint`).

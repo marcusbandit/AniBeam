@@ -35,6 +35,7 @@ fn settings(anirss_command: &str) -> DownloadSettings {
         active_client: String::new(),
         prune_finished_feeds: true,
         rolling: Default::default(),
+        engine: Default::default(),
     }
 }
 

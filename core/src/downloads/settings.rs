@@ -359,6 +359,7 @@ pub fn defaults() -> DownloadSettings {
         active_client: String::new(),
         prune_finished_feeds: true,
         rolling: RollingSettings::default(),
+        engine: DownloadsEngine::Anirss,
     }
 }
 
