@@ -220,7 +220,7 @@ fn a_phone_source_that_searches_by_address_needs_the_query() {
         url: url.into(),
         enabled: true,
     };
-    for kind in ["tosho", "rss", "tsukihime"] {
+    for kind in ["tosho", "rss"] {
         let err = core
             .call(Call::SetPhoneSources {
                 sources: vec![source(kind, "https://feed.example/json")],
@@ -640,12 +640,13 @@ fn an_endpoint_the_repo_stops_offering_stays_installed() {
 }
 
 #[test]
-fn a_tsukihime_endpoint_searches_its_json_api_with_the_query_whole() {
+fn a_json_endpoint_searches_through_the_map_its_definition_supplies() {
     let http = FakeHttp::new();
-    let body =
-        std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/tsukihime.json"))
-            .unwrap();
-    http.push_for("api.tsukihime.org", 200, body);
+    let body = std::fs::read(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/json-search.json"),
+    )
+    .unwrap();
+    http.push_for("search.example.org", 200, body);
     let (dir, core, _) = common::open_core_with_http(http.clone());
     let path = dir.path().join("repo.json");
     let url = path.to_string_lossy().into_owned();
@@ -654,22 +655,27 @@ fn a_tsukihime_endpoint_searches_its_json_api_with_the_query_whole() {
         &key(1),
         1,
         vec![json!({
-            "id": "tsukihime", "name": "TsukiHime", "version": 1, "kind": "tsukihime",
-            "url": "https://api.tsukihime.org/v1/search/torrents?q={query}&limit=100",
+            "id": "example-json", "name": "Example search", "version": 1, "kind": "json",
+            "url": "https://search.example.org/api?q={query}&limit=50",
+            "json": {
+                "items": "data.hits", "title": "label", "hash": "torrent.infohash",
+                "size": "torrent.bytes", "page": "https://example.org/view/{ref.post}",
+                "skip": "flags.hidden", "error": "status.failed",
+            },
         })],
     );
     trust(&core, &url);
     core.call(Call::InstallEndpoint {
         repo: url,
-        id: "tsukihime".into(),
+        id: "example-json".into(),
         credentials: vec![],
     })
     .unwrap();
 
     let Reply::PhoneSearch { search } = core
         .call(Call::PhoneSearch {
-            query: "Frieren -HEVC".into(),
-            endpoint: Some("tsukihime".into()),
+            query: "Show -HEVC".into(),
+            endpoint: Some("example-json".into()),
             fallback: false,
         })
         .unwrap()
@@ -679,22 +685,68 @@ fn a_tsukihime_endpoint_searches_its_json_api_with_the_query_whole() {
     let sent: Vec<String> = http.requests().into_iter().map(|r| r.url).collect();
     assert_eq!(
         sent,
-        ["https://api.tsukihime.org/v1/search/torrents?q=Frieren+-HEVC&limit=100"],
-        "the exclusion goes to the API, not split off"
+        ["https://search.example.org/api?q=Show&limit=50"],
+        "the exclusion is applied here, not sent"
     );
-    assert_eq!(search.endpoint, "tsukihime");
-    // Auto resolution narrows to 1080p, which takes the 720p release off; the 1080p adult
-    // release in the reply never arrives at all.
+    assert_eq!(search.endpoint, "example-json");
+    // Auto resolution narrows to 1080p, which takes the 720p release off; the HEVC one is
+    // excluded, and the hidden and hashless ones never arrive at all.
     assert_eq!(search.auto_resolution.as_deref(), Some("1080p"));
-    let links: Vec<&str> = search.items.iter().map(|i| i.link.as_str()).collect();
-    assert_eq!(links.len(), 1, "{links:?}");
+    let titles: Vec<&str> = search.items.iter().map(|i| i.title.as_str()).collect();
+    assert_eq!(titles, ["[Group] Show - 01 (1080p)"]);
     assert!(
-        links[0].starts_with("magnet:?xt=urn:btih:05bd3a45348e1338117e89cf1e25fd76b7a30de3&dn="),
+        search.items[0]
+            .link
+            .starts_with("magnet:?xt=urn:btih:00112233445566778899aabbccddeeff00112233&dn="),
         "{}",
-        links[0]
+        search.items[0].link
     );
     assert_eq!(search.items[0].page, "");
-    assert_eq!(search.items[0].source, "tsukihime");
+    assert_eq!(search.items[0].source, "example-json");
+}
+
+#[test]
+fn a_json_endpoint_without_its_map_is_left_out_of_the_repo() {
+    let (dir, core, _) = common::open_core();
+    let path = dir.path().join("repo.json");
+    let url = path.to_string_lossy().into_owned();
+    write_repo(
+        &path,
+        &key(1),
+        1,
+        vec![json!({
+            "id": "example-json", "name": "Example search", "version": 1, "kind": "json",
+            "url": "https://search.example.org/api?q={query}",
+        })],
+    );
+    trust(&core, &url);
+    assert!(
+        core.call(Call::InstallEndpoint {
+            repo: url,
+            id: "example-json".into(),
+            credentials: vec![],
+        })
+        .is_err()
+    );
+}
+
+#[test]
+fn a_phone_source_of_the_json_kind_is_refused() {
+    let (_dir, core, _) = common::open_core();
+    let err = core
+        .call(Call::SetPhoneSources {
+            sources: vec![anibeam_core::PhoneSource {
+                name: "feed".into(),
+                kind: "json".into(),
+                url: "https://search.example.org/api?q={query}".into(),
+                enabled: true,
+            }],
+        })
+        .unwrap_err();
+    assert!(
+        matches!(&err, CoreError::Invalid { message, .. } if message.contains("endpoint repo")),
+        "{err:?}"
+    );
 }
 
 #[test]

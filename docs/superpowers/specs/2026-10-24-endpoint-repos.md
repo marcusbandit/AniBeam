@@ -151,6 +151,54 @@ with no JSON canonicalisation between jq and serde. Decoded, it is the index:
 - `min_core` hides the endpoint from a core too old for its kind or fields.
 - `category` and `filter` are for `nyaa` only, as in `releases::Endpoint`.
 
+### The `json` kind
+
+A `json` endpoint is a search API that answers in JSON, giving per result a title,
+an info-hash or a link, a size and maybe a page. The kind knows no field names;
+the definition maps them in a `json` object, which this kind requires and every
+other kind refuses:
+
+```json
+{
+  "id": "example-json",
+  "name": "Example search",
+  "version": 1,
+  "kind": "json",
+  "url": "https://search.example.org/api?q={query}&limit=50",
+  "json": {
+    "items": "data.hits",
+    "title": "label",
+    "hash": "torrent.infohash",
+    "link": "torrent.url",
+    "size": "torrent.bytes",
+    "page": "https://example.org/view/{ref.post}",
+    "skip": "flags.hidden",
+    "error": "status.failed"
+  }
+}
+```
+
+- Every path is object keys joined by dots, with no array indexing. `items` is
+  read from the reply and is empty when the reply itself is the results array;
+  `error` is read from the reply's top; the rest from each result.
+- `items` and `title` are required, and so is one of `hash` and `link`.
+- `hash` becomes `magnet:?xt=urn:btih:<hash>&dn=<title>` only when it is 40 hex
+  or 32 base32 characters. `link` is a ready `magnet:` or `https://` link, used
+  when there is no usable hash. A result with neither is left out.
+- `size` is bytes, as a number.
+- `page` is an `https://` template with a literal host and `{path}` placeholders
+  in its path or query only. It is filled, each value percent-encoded, only when
+  every placeholder's value is present and not null, empty, zero or false;
+  otherwise the result has no page.
+- `skip` drops a result whose value there is set: this is how a definition
+  leaves out results its site flags, such as adult ones.
+- A set value at `error` makes the reply an error, with the value as the message
+  when it is a non-empty string and a generic one otherwise.
+- The query's `-word` exclusions are applied after the fetch rather than sent,
+  since the kind cannot know which search syntax a site takes.
+- A `json` source cannot be added by hand or saved as a phone source: its map
+  only comes from a repo.
+
 ## Trust
 
 - Adding a repo fetches `index.json` and `index.json.sig` and checks the

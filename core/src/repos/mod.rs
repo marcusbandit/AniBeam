@@ -869,6 +869,7 @@ pub fn add_custom(
         category: None,
         filter: None,
         min_core: None,
+        json: None,
     };
     index::check_custom(&def).map_err(|e| CoreError::invalid("endpoint", e))?;
     let installed = core.store.read(read_installed)?;
@@ -912,7 +913,7 @@ pub fn add_custom(
 
 // The desktop's anirss ------------------------------------------------------------------
 
-/// The kinds anirss itself can search; `tosho` and `tsukihime` are AniBeam's own.
+/// The kinds anirss itself can search; every other kind is AniBeam's own.
 const ANIRSS_KINDS: [&str; 2] = ["nyaa", "rss"];
 
 /// The first anirss with the endpoint API (`POST` and `DELETE /endpoints`).
@@ -982,7 +983,7 @@ fn hash_of(spec: &serde_json::Value) -> String {
 /// wrote are ever changed or removed; one anirss already had from its config stays as it was.
 /// anirss keeps the address as it is given, so a credential lands in its config.toml, the way
 /// a hand-written one does today; the secret store stays the record AniBeam reads. A kind
-/// anirss cannot search (`tosho`, `tsukihime`) stays out, and an anirss older than 0.6 is left alone.
+/// anirss cannot search (`tosho`) stays out, and an anirss older than 0.6 is left alone.
 /// `have` is anirss's list as just read; true when anirss was changed and its list needs
 /// reading again.
 pub(crate) async fn sync_anirss(
@@ -1062,7 +1063,7 @@ pub fn runnable(core: &Core) -> Vec<Runnable> {
     let secrets = core.secrets();
     let mut out: Vec<Runnable> = Vec::new();
     for row in rows.into_iter().filter(|r| r.enabled) {
-        if !crate::releases::endpoints::VALID_KINDS.contains(&row.def.kind.as_str()) {
+        if !crate::releases::endpoints::is_kind(&row.def.kind) {
             continue;
         }
         // Two repos offering the same id: the first installed wins the name.
@@ -1084,6 +1085,7 @@ pub fn runnable(core: &Core) -> Vec<Runnable> {
         if let Some(f) = &row.def.filter {
             endpoint.filter = f.clone();
         }
+        endpoint.json = row.def.json.clone();
         out.push(Runnable {
             endpoint,
             shown_url: row.def.url.clone(),

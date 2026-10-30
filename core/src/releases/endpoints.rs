@@ -16,17 +16,32 @@ use crate::contract::{CoreError, Release, SubscriptionSpec};
 use crate::net::{BoxFuture, Http};
 
 /// anirss `endpoints.VALID_KINDS`.
-/// `tosho` and `tsukihime` are AniBeam's own: AnimeTosho's JSON feed (tosho.rs) and
-/// TsukiHime's JSON search API (tsukihime.rs).
-pub const VALID_KINDS: [&str; 4] = ["nyaa", "rss", "tosho", "tsukihime"];
+/// `tosho` is AniBeam's own: AnimeTosho's JSON feed (tosho.rs).
+pub const VALID_KINDS: [&str; 3] = ["nyaa", "rss", "tosho"];
+
+/// AniBeam's kind for any JSON search API, read through the field map its repo definition
+/// supplies (json.rs). Not in `VALID_KINDS`, which a hand-added endpoint may name.
+pub const JSON_KIND: &str = "json";
+
+/// Whether the core can run an endpoint of `kind`.
+pub fn is_kind(kind: &str) -> bool {
+    kind == JSON_KIND || VALID_KINDS.contains(&kind)
+}
 
 /// Whether an endpoint of `kind` searches by putting the query into its address at
-/// `{query}`. nyaa builds its own search; rss, tosho and tsukihime have only the address, so
-/// without the placeholder every search would fetch the same fixed page (#248). Every check
-/// of an endpoint or a phone source asks this.
+/// `{query}`. nyaa builds its own search; rss and tosho have only the address, so without
+/// the placeholder every search would fetch the same fixed page (#248). Every check of an
+/// endpoint or a phone source asks this. A json endpoint has only the address too.
 pub fn needs_query(kind: &str) -> bool {
-    matches!(kind, "rss" | "tosho" | "tsukihime")
+    if kind == JSON_KIND {
+        return true;
+    }
+    matches!(kind, "rss" | "tosho")
 }
+
+/// Why a json source cannot be added by hand: its field map only comes from a definition.
+pub const JSON_NEEDS_REPO: &str =
+    "a JSON search source comes from an endpoint repo whose definition maps its fields";
 
 /// Splits a query into fields, keeping `-"quoted phrase"` and `"quoted"` intact
 /// (anirss `endpoints.FIELD_RE`, shared with refine's positional-insert logic).
@@ -56,6 +71,12 @@ pub fn validate(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
         return Err(CoreError::invalid(
             "endpoint name",
             format!("{name:?}: use only letters, digits, '.', '_', '-'"),
+        ));
+    }
+    if kind == JSON_KIND {
+        return Err(CoreError::invalid(
+            "endpoint kind",
+            format!("{name:?}: {JSON_NEEDS_REPO}"),
         ));
     }
     if !VALID_KINDS.contains(&kind) {
@@ -424,9 +445,20 @@ pub async fn fetch_items(
             super::tosho::fetch(http, &search_url(ep, &positive), &ep.name, timeout).await?;
         return Ok(filter_excluded(items, &excluded));
     }
-    if ep.kind == "tsukihime" {
-        // TsukiHime's search takes `-tag` itself, so the query goes through whole.
-        return super::tsukihime::fetch(http, &search_url(ep, query), &ep.name, timeout).await;
+    if ep.kind == JSON_KIND {
+        // Which search syntax an API takes is the site's business, so exclusions are applied
+        // here rather than sent.
+        let Some(map) = &ep.json else {
+            return Err(CoreError::Service {
+                service: ep.name.clone(),
+                code: "unmapped".into(),
+                message: JSON_NEEDS_REPO.into(),
+            });
+        };
+        let (positive, excluded) = split_exclusions(query);
+        let items =
+            super::json::fetch(http, &search_url(ep, &positive), map, &ep.name, timeout).await?;
+        return Ok(filter_excluded(items, &excluded));
     }
     let (positive, excluded) = split_exclusions(query);
     let (positive, quality) = erai_split(ep, &positive);
@@ -583,12 +615,15 @@ pub(crate) mod tests {
         )
         .unwrap();
         validate(" a.b_c-1 ", " rss ", " https://x/?q={query} ").unwrap();
-        validate(
-            "tsukihime",
-            "tsukihime",
-            "https://api.tsukihime.org/v1/search/torrents?q={query}&limit=100",
-        )
-        .unwrap();
+    }
+
+    #[test]
+    fn validate_refuses_a_hand_added_json_source() {
+        let err = validate("a", "json", "https://search.example.org/api?q={query}").unwrap_err();
+        assert!(
+            matches!(&err, CoreError::Invalid { message, .. } if message.contains("endpoint repo")),
+            "{err:?}"
+        );
     }
 
     #[test]
@@ -597,7 +632,6 @@ pub(crate) mod tests {
             ("", "nyaa", "https://x/"),          // no name
             ("a", "html", "https://x/"),         // bad kind
             ("a", "rss", "https://x/rss"),       // no {query}
-            ("a", "tsukihime", "https://x/s"),   // no {query}
             ("a", "tosho", "https://x/json"),    // no {query}
             ("a", "nyaa", ""),                   // no url
             ("bad name)", "nyaa", "https://x/"), // bad name characters

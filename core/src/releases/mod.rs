@@ -12,20 +12,20 @@ pub mod endpoints;
 pub mod erai;
 pub mod fetch;
 pub mod grid;
+pub mod json;
 pub mod native;
 pub mod refinement;
 pub mod rules;
 pub mod stats;
 pub mod titles;
 pub mod tosho;
-pub mod tsukihime;
 
 /// A search endpoint (anirss `endpoints.Endpoint`, without the on-demand start and stop
 /// commands, which the core keeps elsewhere).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Endpoint {
     pub name: String,
-    /// One of `endpoints::VALID_KINDS`.
+    /// One of `endpoints::VALID_KINDS`, or `json`.
     pub kind: String,
     pub url: String,
     /// nyaa only.
@@ -34,6 +34,8 @@ pub struct Endpoint {
     pub filter: String,
     /// Seconds a fetch may take.
     pub timeout: f64,
+    /// `json` only: where its replies keep each field, from the repo definition.
+    pub json: Option<crate::repos::index::JsonMap>,
 }
 
 impl Endpoint {
@@ -45,6 +47,7 @@ impl Endpoint {
             category: "1_0".to_string(),
             filter: "0".to_string(),
             timeout: 10.0,
+            json: None,
         }
     }
 
