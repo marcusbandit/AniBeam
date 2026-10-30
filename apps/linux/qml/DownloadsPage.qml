@@ -158,16 +158,6 @@ Item {
         target: Door
         function onSeriesChanged() { libDebounce.restart() }
         function onSeriesRemoved() { libDebounce.restart() }
-        function onCallDone(token, reply) {
-            if (token !== page.deleteWatchedToken) return
-            page.deleteWatchedToken = -1
-            if (reply.error) { frame.toast(frame.errorText(reply.error)); return }
-            var d = reply.reply || {}
-            frame.toast(d.episodes > 0 || d.series > 0
-                ? Fmt.plural(d.episodes, "episode", "episodes") + ", " + Fmt.bytes(d.bytes) + ", moved to the trash"
-                : "Nothing to delete")
-            page.loadLibrary()
-        }
     }
     readonly property var diskById: { var m = {}; for (var i = 0; i < diskCards.length; i++) m[diskCards[i].id] = diskCards[i]; return m }
     // The library series a torrent group is of, when it has files here
@@ -192,7 +182,6 @@ Item {
 
     // ---- Delete watched (#266): every watched episode, or every show confirmed done with,
     // picked from a menu at the button and confirmed in the removal sheet
-    property real deleteWatchedToken: -1
     function askDeleteWatched(anchor) {
         var p = anchor.mapToItem(frame, 0, anchor.height + theme.space(1))
         frame.openMenu(p.x, p.y, [
@@ -221,9 +210,7 @@ Item {
             heading: "Delete " + Fmt.plural(page.watchedEpisodes, "watched episode", "watched episodes") + ", " + Fmt.bytes(page.watchedBytes) + "?",
             base: "Every episode you have watched, in every show. Episodes not watched yet and extras stay. The files and their subtitles go to the trash, so you can get them back from there." + torrentWords,
             rule: false, torrentCount: 0, canFiles: false, confirmText: "Move to trash"
-        }, function() {
-            page.deleteWatchedToken = Door.callAsync("DeleteWatched", { finished_shows: finished })
-        })
+        }, function() { frame.deleteWatched(finished) })
     }
 
     // ---- Right-click on a torrent group (#266): the frame adds the series' deletes when
@@ -2502,9 +2489,9 @@ Item {
                     objectName: "downloads-delete-watched"
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    text: page.deleteWatchedToken >= 0 ? "Deleting" : "Delete watched"
+                    text: frame.deleteWatchedToken >= 0 ? "Deleting" : "Delete watched"
                     icon: "trash-2"
-                    enabled: page.deleteWatchedToken < 0 && page.watchedBytes > 0
+                    enabled: frame.deleteWatchedToken < 0 && page.watchedBytes > 0
                     onClicked: page.askDeleteWatched(deleteWatched)
                 }
             }
@@ -2742,8 +2729,10 @@ Item {
         onHoveredChanged: {
             var it = parent, g = parent.modelData
             page.hoverOn(it, g, hovered)
+            // Leaving always clears, even when a reload has dropped the group's series since
             var c = page.cardOfGroup(g)
-            if (c) frame.hoverCard(it, c, hovered)
+            if (!hovered) frame.hoverCard(it, null, false)
+            else if (c) frame.hoverCard(it, c, true)
         }
         Component.onDestruction: { page.hoverOn(parent, null, false); frame.hoverCard(parent, null, false) }
     }
@@ -2779,7 +2768,7 @@ Item {
                     actionText: "Delete"
                     actionIcon: "trash-2"
                     onOpened: frame.go("series", { id: modelData.id }, modelData.title)
-                    onAction: function(anchor) { frame.askDeleteFiles(anchor, modelData, false) }
+                    onAction: function(anchor) { frame.askDeleteFiles(anchor, modelData, false, true) }
                     HoverHandler { onHoveredChanged: frame.hoverCard(diskCard, diskCard.modelData, hovered) }
                     Component.onDestruction: frame.hoverCard(diskCard, null, false)
                 }
@@ -2804,7 +2793,7 @@ Item {
                     actionText: "Delete"
                     actionIcon: "trash-2"
                     onOpened: frame.go("series", { id: modelData.id }, modelData.title)
-                    onAction: function(anchor) { frame.askDeleteFiles(anchor, modelData, false) }
+                    onAction: function(anchor) { frame.askDeleteFiles(anchor, modelData, false, true) }
                     HoverHandler { onHoveredChanged: frame.hoverCard(diskRow, diskRow.modelData, hovered) }
                     Component.onDestruction: frame.hoverCard(diskRow, null, false)
                 }

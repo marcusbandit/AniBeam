@@ -25,6 +25,41 @@ pub const UNKNOWN_TAIL: f64 = 0.15;
 /// The most cubes a row draws: past this a count says more than a row.
 pub const CUBES_MAX: u32 = 400;
 
+/// What decides whether a file of one series is watched (#266), the way the series page
+/// marks its episodes: within the tracker's progress, or played to the end here. The
+/// tracker's progress counts one season, so it only applies to a folder holding one, and
+/// never past the provider's own count. A film once watched in either. An extra never is.
+pub(crate) struct Watched<'a> {
+    done: HashSet<&'a str>,
+    progress: Option<u32>,
+    film: bool,
+    total: Option<u32>,
+    one_season: bool,
+}
+
+impl Watched<'_> {
+    /// Whether the tracker's progress covers episode `n`.
+    fn tracked(&self, n: f64) -> bool {
+        self.one_season
+            && n >= 1.0
+            && self.progress.is_some_and(|w| n <= f64::from(w))
+            && self.total.is_none_or(|t| n <= f64::from(t))
+    }
+
+    pub(crate) fn file(&self, f: &FileRow) -> bool {
+        if !f.is_episode {
+            return false;
+        }
+        if self.done.contains(f.episode_key.as_str()) {
+            return true;
+        }
+        if self.film {
+            return self.progress.is_some_and(|w| w >= 1);
+        }
+        self.tracked(f.number)
+    }
+}
+
 /// A series' share of the disk (#266).
 pub(crate) struct Usage {
     pub bytes: u64,
@@ -512,70 +547,71 @@ impl Snapshot {
             .max(tracked.unwrap_or(0))
     }
 
-    /// Whether a file of `row` counts as watched (#266), the way the series page marks its
-    /// episodes: within the tracker's progress, or played to the end here. A film once
-    /// watched in either. An extra never is.
-    pub(crate) fn file_watched(&self, row: &SeriesRow, f: &FileRow) -> bool {
-        let done = self
-            .completed
-            .get(&row.id)
-            .is_some_and(|rows| rows.iter().any(|(k, _)| *k == f.episode_key));
-        let progress = self.tracker(row).map(|e| e.progress);
-        if row.kind == SeriesKind::Movie {
-            return done || progress.is_some_and(|w| w >= 1);
+    /// What decides whether a file of `row` is watched (#266), read once per series.
+    pub(crate) fn watched_of(&self, row: &SeriesRow) -> Watched<'_> {
+        let files = self.files_of(row.id);
+        let seasons: BTreeSet<u32> = files
+            .iter()
+            .filter(|f| f.is_episode)
+            .map(|f| f.season.unwrap_or(1))
+            .collect();
+        let media = row.media.as_ref();
+        Watched {
+            done: self
+                .completed
+                .get(&row.id)
+                .map(|rows| rows.iter().map(|(k, _)| k.as_str()).collect())
+                .unwrap_or_default(),
+            progress: self.tracker(row).map(|e| e.progress),
+            film: row.kind == SeriesKind::Movie,
+            total: media.and_then(|m| m.episodes).filter(|t| *t > 0),
+            one_season: seasons.len() <= 1,
         }
-        f.is_episode
-            && (done || (f.number >= 1.0 && progress.is_some_and(|w| f.number <= f64::from(w))))
     }
 
     /// What a series takes on disk, how much of it is watched, and whether it is confirmed
     /// done with (`SeriesCard::finished_watched`).
     pub(crate) fn usage_of(&self, row: &SeriesRow) -> Usage {
         let files = self.files_of(row.id);
-        let bytes = files.iter().map(|f| f.size).sum();
-        let watched: Vec<&FileRow> = files.iter().filter(|f| self.file_watched(row, f)).collect();
+        let w = self.watched_of(row);
+        let watched: Vec<&FileRow> = files.iter().filter(|f| w.file(f)).collect();
         let mut keys: Vec<&str> = watched.iter().map(|f| f.episode_key.as_str()).collect();
         keys.sort_unstable();
         keys.dedup();
         Usage {
-            bytes,
+            bytes: files.iter().map(|f| f.size).sum(),
             watched_bytes: watched.iter().map(|f| f.size).sum(),
             watched_episodes: keys.len() as u64,
-            finished: !files.is_empty() && self.finished_watched(row),
+            finished: !files.is_empty() && self.finished_watched(row, &w),
         }
     }
 
     /// Confirmed done with: the provider says Finished, and every episode of the provider's
-    /// own count is watched, or the tracker says Completed. A guessed or hand-set count never
-    /// counts, nor does a show still airing, on hiatus or with no status at all.
-    fn finished_watched(&self, row: &SeriesRow) -> bool {
-        let media = row.media.as_ref();
-        let finished = media
+    /// own count is watched. A guessed or hand-set count never counts, nor does a show still
+    /// airing, on hiatus or with no status at all.
+    pub(crate) fn finished_watched(&self, row: &SeriesRow, w: &Watched) -> bool {
+        let finished = row
+            .media
+            .as_ref()
             .and_then(|m| m.status.as_deref())
             .and_then(AiringStatus::from_provider)
             == Some(AiringStatus::Finished);
         if !finished {
             return false;
         }
-        let entry = self.tracker(row);
-        if entry.and_then(|e| e.status) == Some(ListStatus::Completed) {
-            return true;
-        }
         let files = self.files_of(row.id);
-        if row.kind == SeriesKind::Movie {
-            return files.iter().any(|f| self.file_watched(row, f));
+        if w.film {
+            return files.iter().any(|f| w.file(f));
         }
-        let Some(total) = media.and_then(|m| m.episodes).filter(|t| *t > 0) else {
+        let Some(total) = w.total else {
             return false;
         };
-        let progress = entry.map_or(0, |e| e.progress);
         let watched_here: HashSet<u32> = files
             .iter()
-            .filter(|f| f.is_episode && f.number >= 1.0 && f.number.fract() == 0.0)
-            .filter(|f| self.file_watched(row, f))
+            .filter(|f| f.number >= 1.0 && f.number.fract() == 0.0 && w.file(f))
             .map(|f| f.number as u32)
             .collect();
-        (1..=total).all(|n| n <= progress || watched_here.contains(&n))
+        (1..=total).all(|n| w.tracked(f64::from(n)) || watched_here.contains(&n))
     }
 
     pub fn card(&self, id: u64) -> Option<SeriesCard> {

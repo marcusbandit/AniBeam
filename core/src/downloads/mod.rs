@@ -2056,9 +2056,11 @@ pub fn drop_emptied_torrents(core: &Core, gone: Vec<std::path::PathBuf>) {
             return;
         };
         let gone: Vec<std::path::PathBuf> = gone.iter().map(|p| gone_key(p)).collect();
+        // A torrent still downloading is left alone: what it has not written yet is not
+        // on disk as video, which would read as emptied
         let hashes: Vec<String> = torrents
             .iter()
-            .filter(|t| emptied(&t.content_path, &gone))
+            .filter(|t| t.progress >= 1.0 && emptied(&t.content_path, &gone))
             .map(|t| t.hash.to_ascii_lowercase())
             .collect();
         if hashes.is_empty() {
@@ -2106,7 +2108,10 @@ fn emptied(content: &str, gone: &[std::path::PathBuf]) -> bool {
     if content.trim().is_empty() {
         return false;
     }
-    let c = path_key(content);
+    // A content path that still exists resolves on disk; a deleted file resolves through
+    // its folder, the same way the gone paths did
+    let c = std::fs::canonicalize(content.trim())
+        .unwrap_or_else(|_| gone_key(std::path::Path::new(content.trim())));
     if gone.contains(&c) {
         return true;
     }

@@ -125,7 +125,7 @@ pub fn delete_episodes(core: &Core, series: u64, files: Vec<u64>) -> Result<Repl
     // A trash that fails part way has still moved what it moved: the library is read again
     // either way, and the failure is reported after.
     let moved = crate::downloads::trash::move_to_trash(&targets);
-    crate::downloads::drop_emptied_torrents(core, targets.clone());
+    crate::downloads::drop_emptied_torrents(core, gone(&targets));
     if moved.is_ok() {
         core.bus.info(
             Stage::Library,
@@ -147,6 +147,12 @@ pub fn delete_episodes(core: &Core, series: u64, files: Vec<u64>) -> Result<Repl
     scan
 }
 
+/// What of `targets` is really gone: a trash that failed part way leaves the rest, and a
+/// torrent of a file still here stays in the client.
+fn gone(targets: &[PathBuf]) -> Vec<PathBuf> {
+    targets.iter().filter(|p| !p.exists()).cloned().collect()
+}
+
 /// One series' share of a Delete watched: its id, its file rows, and their bytes.
 type Picked = (u64, Vec<(u64, Option<Row>)>, u64);
 
@@ -163,17 +169,16 @@ pub fn delete_watched(core: &Core, finished_shows: bool) -> Result<Reply, CoreEr
         let mut picked: Vec<Picked> = Vec::new();
         for row in &snap.series {
             // A series whose folder is gone has nothing left to delete
-            if row.missing || (finished_shows && !snap.usage_of(row).finished) {
+            let w = snap.watched_of(row);
+            if row.missing || (finished_shows && !snap.finished_watched(row, &w)) {
                 continue;
             }
             let mut rows = Vec::new();
             let mut bytes = 0;
             for f in snap.files_of(row.id) {
-                let take = if finished_shows {
-                    true
-                } else {
-                    snap.file_watched(row, f)
-                };
+                // A finished show takes its extras too; a file of another season or past the
+                // count, which nothing says was watched, stays either way
+                let take = w.file(f) || (finished_shows && !f.is_episode);
                 // Gone already (an earlier delete the rescan has not caught up with) is not
                 // counted as going now
                 if !take
@@ -226,7 +231,7 @@ pub fn delete_watched(core: &Core, finished_shows: bool) -> Result<Reply, CoreEr
         });
     }
     let moved = crate::downloads::trash::move_to_trash(&targets);
-    crate::downloads::drop_emptied_torrents(core, targets.clone());
+    crate::downloads::drop_emptied_torrents(core, gone(&targets));
     if moved.is_ok() {
         let what = if finished_shows {
             format!(

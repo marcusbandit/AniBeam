@@ -121,6 +121,36 @@ fn usage_counts_watched_files_and_only_a_confirmed_end_is_finished() {
     );
 }
 
+/// Tracker progress counts one season: a folder that also holds a second season's files,
+/// numbered from 1 again, does not get them marked watched by the first season's progress.
+#[test]
+fn progress_does_not_mark_another_seasons_files_watched() {
+    let (dir, core, _c) = common::open_core();
+    let lib = dir.path().join("lib");
+    let src = fixtures::insert_source(&core, &lib.to_string_lossy());
+    let id = show(&core, src, &lib, "Two", 5, "FINISHED", Some(2), 2, Some(2));
+    for n in 1..=2u32 {
+        let p = lib.join("Two").join(format!("Two S02E{n:02}.mkv"));
+        std::fs::write(&p, vec![0u8; 100]).unwrap();
+        let f = fixtures::insert_file(
+            &core,
+            id,
+            &p.to_string_lossy(),
+            f64::from(n),
+            Some(2),
+            "episode",
+            0,
+        );
+        set_size(&core, f, 100);
+    }
+    // Played to the end here still counts, whichever season
+    fixtures::insert_completed(&core, id, "1", 0);
+    let c = card(&core, id);
+    assert_eq!(c.bytes_on_disk, 400);
+    assert!(c.watched_bytes < 400, "the second season is not watched");
+    assert!(!c.finished_watched);
+}
+
 #[test]
 fn delete_watched_takes_watched_episodes_or_finished_shows_only() {
     let (dir, core, _c) = common::open_core();
