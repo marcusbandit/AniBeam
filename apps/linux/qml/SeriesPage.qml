@@ -658,12 +658,15 @@ Item {
                     objectName: "episode-count"
                     property bool editing: false
                     readonly property var set: card.episodes_set === undefined ? null : card.episodes_set
-                    readonly property bool gaveWay: set !== null && (card.total_episodes !== set || card.total_is_estimate)
-                    visible: !page.isMovie && card.status === "Releasing" && (set !== null || card.total_is_estimate || !card.total_episodes
-                                                                           || (!!card.next_airing && card.next_airing.predicted))
+                    readonly property bool gaveWay: set !== null && card.episodes_set_applied !== true
+                    readonly property bool tvmaze: !!card.match_info && card.match_info.provider === "Tvmaze"
+                    // A set count always shows, so it can be cleared once the show is over
+                    visible: !page.isMovie && (set !== null || (!tvmaze && card.status === "Releasing"
+                             && (card.total_is_estimate || !card.total_episodes || (!!card.next_airing && card.next_airing.predicted))))
                     spacing: theme.space(2)
                     function save(text) {
-                        var n = parseInt(String(text).trim(), 10)
+                        var t = String(text).trim()
+                        var n = /^\d{1,4}$/.test(t) ? parseInt(t, 10) : 0
                         if (!(n > 0)) { frame.toast("Type the number of episodes, such as 13"); return }
                         countRow.editing = false
                         page.setEpisodeCount(n)
@@ -672,7 +675,7 @@ Item {
                         visible: !countRow.editing && countRow.set !== null
                         anchors.verticalCenter: parent.verticalCenter
                         text: countRow.set === null ? "" : countRow.gaveWay
-                              ? "You set " + countRow.set + " episodes; more came out, so that no longer applies"
+                              ? "You set " + countRow.set + " episodes; that no longer applies"
                               : "Ends at episode " + countRow.set + ", set by you"
                         role: "ledger"
                         color: page.inkDim

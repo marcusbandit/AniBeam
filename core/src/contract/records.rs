@@ -92,6 +92,10 @@ pub struct SeriesCard {
     /// file goes past it.
     #[serde(default)]
     pub episodes_set: Option<u32>,
+    /// Whether `episodes_set` is in force: false once an episode past it
+    /// aired or landed, or while the record names a count of its own.
+    #[serde(default)]
+    pub episodes_set_applied: bool,
     pub code: Option<String>,
     pub watched: Option<u32>,
     pub watched_state: WatchedState,

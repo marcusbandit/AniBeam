@@ -573,6 +573,7 @@ mod tests {
             total_episodes: None,
             total_is_estimate: false,
             episodes_set: None,
+            episodes_set_applied: false,
             code: None,
             watched: None,
             watched_state: WatchedState::Unknown,
