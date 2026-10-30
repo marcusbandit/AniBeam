@@ -96,6 +96,8 @@ pub struct FileRow {
     pub sidecars: Vec<Sidecar>,
     /// Read this way by the user's quick fix (#170), not by its name.
     pub fixed: bool,
+    /// The file's size in bytes, as the last scan found it.
+    pub size: u64,
 }
 
 pub struct AiringRow {
@@ -474,7 +476,7 @@ impl Snapshot {
         };
         let sql = format!(
             "SELECT id, series_id, path, mtime, kind, number, season, extra_kind, extra_index, label, episode_key, sidecars,
-                    EXISTS (SELECT 1 FROM file_fixes x WHERE x.path = files.path)
+                    EXISTS (SELECT 1 FROM file_fixes x WHERE x.path = files.path), size
              FROM files{where_sql}
              ORDER BY series_id, season, number, path"
         );
@@ -499,6 +501,7 @@ impl Snapshot {
                 episode_key: r.get(10)?,
                 sidecars: sidecars_of(&r.get::<_, String>(11)?),
                 fixed: r.get(12)?,
+                size: r.get::<_, i64>(13)?.max(0) as u64,
             })
         })?;
         for row in rows {

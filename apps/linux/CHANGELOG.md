@@ -29,8 +29,16 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Release lists show a Rip column: WEB-DL, WEBRip, BluRay and the rest
 - This week shows nine days, two back and six ahead, every day even when empty
 - Right-click a card to delete its watched episodes or all of them, to the trash
+- Downloaded lists every show on disk, not only what the torrent client holds
+- Downloaded shows how much of the disk is watched and how much is not
+- Delete watched clears every watched episode, or every finished show you saw
+- Right-click a show on Gaps or Downloaded to delete it
+- Deleting episodes removes their torrent too, so they can be downloaded again
+- Ctrl-click a release group or one of its episodes to pick all it has missing
+- Get says it is sending to your torrent client the moment you click it
 
 ### Fixed
+- A download's speed and time left no longer run under its Stop button
 - This week cards keep the airing time inside the card
 - On disk marks only the release you have, not every release of that episode
 - An episode that aired earlier today stays on Today and says if it landed

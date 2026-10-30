@@ -1487,7 +1487,10 @@ pub fn download_with(
         .clone()
         .start(JobKind::Download, move |_| async move {
             let client = ensure_client(&owner).await?;
-            let result = client.download(&plan.now, name.as_deref()).await?;
+            let result = client
+                .download(&plan.now, name.as_deref(), home.as_deref())
+                .await?;
+            // An anirss older than save_path put them under its own root
             move_home(&owner, &plan.now, &result, home.as_deref());
             let mut extra = replace::describe(&options, &followups);
             extra.push_str(&rolling::describe(&plan));
@@ -1511,30 +1514,40 @@ pub fn download_with(
         }))
 }
 
-/// The folder of the library show a download is for. anirss saves under
-/// its own root plus the show's name, which is another folder whenever the
-/// show lives in a different source: the episodes would scan in as a show
-/// of their own beside it.
+/// The folder of the library show a download is for, which the torrents
+/// are saved straight into: the show is already on disk, so its episodes go
+/// where it is, never under anirss's root as a second folder. None when the
+/// download is for no library show, the folder is gone, or the client keeps
+/// its files on another machine, whose paths are its own.
 fn show_folder(core: &Core, series: Option<u64>) -> Result<Option<String>, CoreError> {
     let Some(id) = series else { return Ok(None) };
-    core.store.read(|c| {
-        Ok(c.query_row(
-            "SELECT path FROM series WHERE id = ?1 AND kind = 'show' AND missing_since IS NULL",
-            [id as i64],
-            |r| r.get::<_, String>(0),
-        )
-        .ok())
-    })
+    let (path, s) = core.store.read(|c| {
+        let path = c
+            .query_row(
+                "SELECT path FROM series WHERE id = ?1 AND kind = 'show' AND missing_since IS NULL",
+                [id as i64],
+                |r| r.get::<_, String>(0),
+            )
+            .ok();
+        Ok((path, settings::load_stored(c)?))
+    })?;
+    Ok(path.filter(|p| settings::files_here(&s) && still_there(Some(p)).is_some()))
 }
 
-/// Moves new single-episode torrents into their show's folder when anirss
-/// put them elsewhere. Waits for qBittorrent to list them first, since a
-/// move asked for a hash it does not hold yet is dropped without a word,
-/// and moves only those still where anirss put them, so a torrent the
-/// client already had for another show stays put. A batch stays where it
-/// landed: moved in beside loose episodes it would make them read as
-/// films. Only when this machine sees both folders, so a client on
-/// another host, which names its paths its own way, is left alone.
+/// A show folder anirss will take as save_path: still on disk, and a name
+/// with no control characters, which anirss refuses.
+pub(crate) fn still_there(path: Option<&str>) -> Option<&str> {
+    path.filter(|p| !p.chars().any(char::is_control) && std::path::Path::new(p).is_dir())
+}
+
+/// Moves new single-episode torrents into their show's folder when an
+/// anirss that predates save_path put them under its own root. Waits for
+/// qBittorrent to list them first, since a move asked for a hash it does
+/// not hold yet is dropped without a word, and moves only those still where
+/// anirss put them, so a torrent the client already had for another show
+/// stays put. A batch stays where it landed: moved in beside loose episodes
+/// it would make them read as films. Only when this machine sees both
+/// folders, so a client on another host is left alone.
 pub(crate) fn move_home(
     core: &Arc<Core>,
     items: &[Release],
@@ -2123,6 +2136,114 @@ fn writing_of(torrents: &[Torrent]) -> std::collections::HashSet<std::path::Path
         }
     }
     out
+}
+
+/// After episode files went to the trash (#266): each torrent that held one of them leaves
+/// the client too, so the same release can be downloaded again (the client refuses a torrent
+/// it already has) and nothing is left behind under Files missing. A season pack goes when
+/// any of its episodes does; the files of it still on disk stay where they are, since a
+/// torrent's data is never asked for. A torrent still downloading is left alone. Only a
+/// client on this machine, whose paths are the library's own; with no client set up, or one
+/// that does not answer, nothing happens and nothing is said.
+pub fn drop_torrents_of(core: &Core, gone: Vec<std::path::PathBuf>) {
+    if gone.is_empty() {
+        return;
+    }
+    let Ok(owner) = core.owner() else { return };
+    core.handle.spawn(async move {
+        let Ok(s) = load_settings(&owner).await else {
+            return;
+        };
+        if !settings::files_here(&s) {
+            return;
+        }
+        let Ok(client) = qbt_client(&owner).await else {
+            return;
+        };
+        let Ok(torrents) = client.torrents().await else {
+            return;
+        };
+        let gone: Vec<std::path::PathBuf> = gone.iter().map(|p| gone_key(p)).collect();
+        let mut hashes: Vec<String> = Vec::new();
+        for t in torrents.iter().filter(|t| t.progress >= 1.0) {
+            let held = match held(&t.content_path, &gone) {
+                Held::Yes => true,
+                Held::No => false,
+                // A folder a deleted file sat under: the torrent's own file list says
+                // whether it was one of them, so a torrent saved straight into a shared
+                // folder is not taken for every file deleted there
+                Held::Maybe => match client.files(&t.hash).await {
+                    Ok(files) => files.iter().any(|f| {
+                        gone.contains(&gone_key(&std::path::Path::new(&t.save_path).join(&f.name)))
+                    }),
+                    Err(_) => false,
+                },
+            };
+            if held {
+                hashes.push(t.hash.to_ascii_lowercase());
+            }
+        }
+        if hashes.is_empty() {
+            return;
+        }
+        match client.delete(&hashes, false).await {
+            Ok(()) => {
+                owner.bus.info(
+                    Stage::Downloads,
+                    format!(
+                        "{} of the deleted files removed from the torrent client",
+                        plural(hashes.len() as u64, "torrent", "torrents")
+                    ),
+                    EventBody::Notice,
+                );
+                let _ = list_torrents(&owner);
+            }
+            Err(e) => {
+                owner.bus.warn(
+                    Stage::Downloads,
+                    format!("The torrents of the deleted files stay in the client: {e}"),
+                    EventBody::Notice,
+                );
+            }
+        }
+    });
+}
+
+/// A trashed path as one key: its folder resolved on disk (the file itself is gone), so a
+/// symlinked library source still meets the client's own path.
+fn gone_key(p: &std::path::Path) -> std::path::PathBuf {
+    match (
+        p.parent().and_then(|d| std::fs::canonicalize(d).ok()),
+        p.file_name(),
+    ) {
+        (Some(dir), Some(name)) => dir.join(name),
+        _ => p.components().collect(),
+    }
+}
+
+enum Held {
+    Yes,
+    No,
+    Maybe,
+}
+
+/// Whether a torrent's content held one of `gone`: it is one of the paths, or a folder one
+/// of them sat under, which only the torrent's file list can settle.
+fn held(content: &str, gone: &[std::path::PathBuf]) -> Held {
+    if content.trim().is_empty() {
+        return Held::No;
+    }
+    // A content path that still exists resolves on disk; a deleted file resolves through
+    // its folder, the same way the gone paths did
+    let c = std::fs::canonicalize(content.trim())
+        .unwrap_or_else(|_| gone_key(std::path::Path::new(content.trim())));
+    if gone.contains(&c) {
+        Held::Yes
+    } else if gone.iter().any(|g| g.starts_with(&c)) {
+        Held::Maybe
+    } else {
+        Held::No
+    }
 }
 
 /// Whether a torrent is still writing this file.
@@ -2951,6 +3072,27 @@ mod tests {
             describe(&status, Some("anirss exited")),
             "anirss is not available: anirss exited; qBittorrent v5.2.4 connected"
         );
+    }
+
+    #[test]
+    fn a_torrent_held_a_deleted_file_when_it_is_the_file_or_a_folder_above_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let show = dir.path().join("Show");
+        std::fs::create_dir_all(&show).unwrap();
+        let root = std::fs::canonicalize(dir.path()).unwrap();
+        let gone = vec![root.join("Show/01.mkv")];
+        let ep = show.join("01.mkv");
+        assert!(matches!(held(&ep.to_string_lossy(), &gone), Held::Yes));
+        assert!(matches!(held(&show.to_string_lossy(), &gone), Held::Maybe));
+        assert!(matches!(
+            held(&dir.path().to_string_lossy(), &gone),
+            Held::Maybe
+        ));
+        assert!(matches!(
+            held(&show.join("02.mkv").to_string_lossy(), &gone),
+            Held::No
+        ));
+        assert!(matches!(held("", &gone), Held::No));
     }
 
     #[test]
