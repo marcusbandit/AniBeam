@@ -652,9 +652,9 @@ pub(crate) mod tests {
     /// A Jackett search through the person's own server.
     fn jackett() -> Definition {
         let mut d: Definition = serde_json::from_value(def(
-            "x1337",
+            "indexer",
             "torznab",
-            "http://{host}/api/v2.0/indexers/1337x/results/torznab/api?apikey={apikey}&t=search&q={query}",
+            "http://{host}/api/v2.0/indexers/example/results/torznab/api?apikey={apikey}&t=search&q={query}",
         ))
         .unwrap();
         d.auth = vec![field("host", false), field("apikey", true)];
@@ -755,7 +755,7 @@ pub(crate) mod tests {
         let url = fill("10.0.0.2:9117").unwrap();
         assert_eq!(
             url,
-            "http://10.0.0.2:9117/api/v2.0/indexers/1337x/results/torznab/api?apikey=k%2F1&t=search&q={query}"
+            "http://10.0.0.2:9117/api/v2.0/indexers/example/results/torznab/api?apikey=k%2F1&t=search&q={query}"
         );
         assert_eq!(host_of(&url), "10.0.0.2");
         assert_eq!(fill("evil.example/x"), None);

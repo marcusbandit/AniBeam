@@ -921,8 +921,9 @@ pub fn add_custom(
 
 // The desktop's anirss ------------------------------------------------------------------
 
-/// The kinds anirss itself can search; `tosho` is AniBeam's own. anirss reads a torznab
-/// feed through its `rss` kind, so `torznab` goes over as that (`spec_of`).
+/// The kinds anirss itself can search; `tosho` is AniBeam's own.
+/// anirss reads a torznab feed through its `rss` kind, so `torznab` goes over as that
+/// (`spec_of`).
 const ANIRSS_KINDS: [&str; 3] = ["nyaa", "rss", "torznab"];
 
 /// The first anirss with the endpoint API (`POST` and `DELETE /endpoints`).
@@ -1239,17 +1240,18 @@ mod tests {
     #[test]
     fn a_torznab_endpoint_goes_to_anirss_as_rss() {
         let url = "http://10.0.0.2:9696/1/api?t=search&q={query}&apikey=k";
-        let spec = spec_of(&crate::releases::Endpoint::new("x1337", "torznab", url));
+        let spec = spec_of(&crate::releases::Endpoint::new("indexer", "torznab", url));
         assert_eq!(
             spec,
-            serde_json::json!({"name": "x1337", "kind": "rss", "url": url})
+            serde_json::json!({"name": "indexer", "kind": "rss", "url": url})
         );
-        let nyaa = spec_of(&crate::releases::Endpoint::new(
+        // Every other kind goes over as itself.
+        let other = spec_of(&crate::releases::Endpoint::new(
+            "example",
             "nyaa",
-            "nyaa",
-            "https://nyaa.si/",
+            "https://example.org/",
         ));
-        assert_eq!(nyaa["kind"], "nyaa");
+        assert_eq!(other["kind"], "nyaa");
     }
 
     #[test]

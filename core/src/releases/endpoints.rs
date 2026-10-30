@@ -16,14 +16,16 @@ use crate::contract::{CoreError, Release, SubscriptionSpec};
 use crate::net::{BoxFuture, Http};
 
 /// anirss `endpoints.VALID_KINDS`.
-/// `tosho` is AniBeam's own: AnimeTosho's JSON feed (tosho.rs). `torznab` is a Prowlarr or
-/// Jackett search, read as RSS; it may name the person's own server as `{host}`.
+/// `tosho` is AniBeam's own: AnimeTosho's JSON feed (tosho.rs).
+/// `torznab` is a Prowlarr or Jackett search, read as RSS; it may name the person's own
+/// server as `{host}`.
 pub const VALID_KINDS: [&str; 4] = ["nyaa", "rss", "tosho", "torznab"];
 
 /// Whether an endpoint of `kind` searches by putting the query into its address at
-/// `{query}`. nyaa builds its own search; rss, tosho and torznab have only the address, so
-/// without the placeholder every search would fetch the same fixed page (#248). Every check
-/// of an endpoint or a phone source asks this.
+/// `{query}`. nyaa builds its own search; rss and tosho have only the address, so without
+/// the placeholder every search would fetch the same fixed page (#248). Every check of an
+/// endpoint or a phone source asks this.
+/// A torznab search is only an address too.
 pub fn needs_query(kind: &str) -> bool {
     matches!(kind, "rss" | "tosho" | "torznab")
 }
@@ -425,7 +427,7 @@ pub async fn fetch_items(
         return Ok(filter_excluded(items, &excluded));
     }
     if ep.kind == "torznab" {
-        // Prowlarr and Jackett do not take `-tag` either, and are never erai.
+        // Prowlarr and Jackett do not take `-tag` either, and keep every quality term.
         let (positive, excluded) = split_exclusions(query);
         let items = fetch::fetch_rss(http, &search_url(ep, &positive), &ep.name, timeout).await?;
         return Ok(filter_excluded(items, &excluded));
@@ -744,7 +746,7 @@ pub(crate) mod tests {
         let http = FakeHttp::new();
         http.push(200, feed(&[("Show 05 HEVC", "l1"), ("Show 05 AVC", "l2")]));
         let ep = Endpoint::new(
-            "x1337",
+            "indexer",
             "torznab",
             "http://10.0.0.2:9696/1/api?t=search&q={query}&apikey=k",
         );

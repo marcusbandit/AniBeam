@@ -238,7 +238,7 @@ mod tests {
 
     #[test]
     fn the_connect_step_takes_the_address_port() {
-        assert_eq!(port_of("https://nyaa.si/?q={query}"), 443);
+        assert_eq!(port_of("https://example.org/?q={query}"), 443);
         assert_eq!(port_of("http://jackett.lan/api?q={query}"), 80);
         assert_eq!(port_of("http://192.168.1.10:9696/1/api?q={query}"), 9696);
         assert_eq!(port_of("https://me:pw@idx.example:8443/api"), 8443);

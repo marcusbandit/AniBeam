@@ -810,9 +810,9 @@ fn a_torznab_endpoint_searches_the_host_it_was_given() {
     http.push_for(
         "10.0.0.2:9696",
         200,
-        r#"<?xml version="1.0"?><rss version="2.0" xmlns:torznab="http://torznab.com/schemas/2015/feed"><channel><title>1337x</title>
-<item><title>[SubsPlease] Sousou no Frieren - 01 (1080p)</title><link>magnet:?xt=urn:btih:aaa</link><torznab:attr name="seeders" value="42"/></item>
-<item><title>[Erai-raws] Sousou no Frieren - 02 [1080p]</title><link>magnet:?xt=urn:btih:bbb</link><torznab:attr name="seeders" value="7"/></item>
+        r#"<?xml version="1.0"?><rss version="2.0" xmlns:torznab="http://torznab.com/schemas/2015/feed"><channel><title>Example</title>
+<item><title>[Group] Show - 01 (1080p)</title><link>magnet:?xt=urn:btih:aaa</link><torznab:attr name="seeders" value="42"/></item>
+<item><title>[Other] Show - 02 [1080p]</title><link>magnet:?xt=urn:btih:bbb</link><torznab:attr name="seeders" value="7"/></item>
 </channel></rss>"#,
     );
     let (dir, core, _) = common::open_core_with_http(http.clone());
@@ -823,7 +823,7 @@ fn a_torznab_endpoint_searches_the_host_it_was_given() {
         &key(1),
         1,
         vec![json!({
-            "id": "x1337", "name": "1337x", "version": 1, "kind": "torznab",
+            "id": "indexer", "name": "Indexer", "version": 1, "kind": "torznab",
             "url": "http://{host}/1/api?t=search&q={query}&apikey={apikey}",
             "auth": [
                 {"key": "host", "label": "Prowlarr address", "secret": false},
@@ -848,7 +848,7 @@ fn a_torznab_endpoint_searches_the_host_it_was_given() {
     let e = core
         .call(Call::InstallEndpoint {
             repo: url.clone(),
-            id: "x1337".into(),
+            id: "indexer".into(),
             credentials: credentials("evil.example/x"),
         })
         .unwrap_err();
@@ -856,13 +856,13 @@ fn a_torznab_endpoint_searches_the_host_it_was_given() {
 
     catalog(core.call(Call::InstallEndpoint {
         repo: url,
-        id: "x1337".into(),
+        id: "indexer".into(),
         credentials: credentials(" 10.0.0.2:9696 "),
     }));
     let Reply::PhoneSearch { search } = core
         .call(Call::PhoneSearch {
-            query: "Frieren".into(),
-            endpoint: Some("x1337".into()),
+            query: "Show".into(),
+            endpoint: Some("indexer".into()),
             fallback: false,
         })
         .unwrap()
@@ -877,7 +877,7 @@ fn a_torznab_endpoint_searches_the_host_it_was_given() {
         .collect();
     assert_eq!(
         sent,
-        ["http://10.0.0.2:9696/1/api?t=search&q=Frieren&apikey=k3y"]
+        ["http://10.0.0.2:9696/1/api?t=search&q=Show&apikey=k3y"]
     );
     let mut seen: Vec<(String, Option<i64>)> = search
         .items
@@ -888,14 +888,8 @@ fn a_torznab_endpoint_searches_the_host_it_was_given() {
     assert_eq!(
         seen,
         [
-            (
-                "[Erai-raws] Sousou no Frieren - 02 [1080p]".to_string(),
-                Some(7)
-            ),
-            (
-                "[SubsPlease] Sousou no Frieren - 01 (1080p)".to_string(),
-                Some(42)
-            ),
+            ("[Group] Show - 01 (1080p)".to_string(), Some(42)),
+            ("[Other] Show - 02 [1080p]".to_string(), Some(7)),
         ]
     );
 }
