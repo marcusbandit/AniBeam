@@ -7,7 +7,7 @@ here="$(cd "$(dirname "$0")/.." && pwd)"
 name="$1"; shift
 out="$here/captures"; mkdir -p "$out"
 root="${ANIBEAM_ROOT:-$out/root}"; mkdir -p "$root"
-# The build goes into the shared target dir (target-dir.sh) and is copied to this checkout's own
+# The build goes into this checkout's target dir (target-dir.sh) and is copied to its
 # target/debug/anibeam-staged, which is what runs. ANIBEAM_NO_BUILD=1 skips the build and reuses
 # this checkout's last staged build: parallel reviewers capture without queueing on the cargo lock.
 source "$(dirname "$0")/target-dir.sh"
