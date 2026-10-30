@@ -20,6 +20,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Deleting episodes removes their torrent too, so they can be downloaded again
 - Ctrl-click a release group or one of its episodes to pick all it has missing
 - Get says it is sending to your torrent client the moment you click it
+- The player's controls set subtitle and audio delay; a and A shift the audio
 
 ### Fixed
 - A download's speed and time left no longer run under its Stop button

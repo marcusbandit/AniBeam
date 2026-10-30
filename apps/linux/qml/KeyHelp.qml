@@ -29,7 +29,8 @@ Item {
             ["Up / Down", "Volume up or down by 5"],
             ["M", "Mute"],
             ["C", "Subtitles off and back"],
-            ["z / Z", "Subtitle delay 100 ms earlier or later"]
+            ["z / Z", "Subtitle delay 100 ms earlier or later"],
+            ["a / A", "Audio delay 100 ms earlier or later"]
         ] },
         { name: "Navigation", keys: [
             ["N / P", "Next or previous episode"],
