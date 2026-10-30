@@ -200,10 +200,12 @@ Item {
         id: hoverer
         cursorShape: Qt.PointingHandCursor
         onHoveredChanged: {
+            frame.hoverCard(root, root.item, hovered)
             if (hovered && root.folderName !== "") { tipIntent.interval = frame.tipWarm() ? 1 : 600; tipIntent.restart() }
             else { tipIntent.stop(); frame.releaseTip(root) }
         }
     }
+    Component.onDestruction: frame.hoverCard(root, null, false)
     Timer { id: tipIntent; interval: 600; onTriggered: frame.showTip(titleText, root.folderName, root) }
     onFolderNameChanged: if (hoverer.hovered && folderName === "") frame.hideTip()
 

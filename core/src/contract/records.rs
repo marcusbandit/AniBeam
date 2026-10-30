@@ -93,6 +93,12 @@ pub struct SeriesCard {
     pub my_score: Option<f64>,
     pub list_status: Option<ListStatus>,
     pub next_airing: Option<Airing>,
+    /// Every episode the schedule puts from three days back to eight days
+    /// ahead, aired or not, soonest first, a drop of several at once as one
+    /// entry: the week on Home keeps what already aired today on its day
+    /// and says whether it landed (#236).
+    #[serde(default)]
+    pub week_airings: Vec<Airing>,
     pub last_viewed_at: Option<SystemTime>,
     pub latest_activity_at: SystemTime,
     /// When the folder was first seen by a scan: when the person decided

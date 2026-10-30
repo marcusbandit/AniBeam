@@ -127,32 +127,84 @@ Item {
         for (var i = 0; i < airingRows.length; i++) m[airingRows[i].id] = true
         return m
     }
-    // The week: today and the six days after it, each holding the airing series whose next
-    // episode lands that day (soonest first); what airs later or carries no date is Later.
+    // The week (#236): nine day rows, two days back, today and six ahead, every one shown
+    // even when nothing is on it. Each row holds the episodes the schedule puts on that day,
+    // the ones that already aired included, so this morning's episode stays on Today and
+    // says whether it landed. A predicted next episode is placed by its guess; a series with
+    // nothing in the nine days and no date at all is "No date yet".
     readonly property var week: {
         var now = new Date(nowMs)
         var start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000
         var days = []
-        for (var i = 0; i < 7; i++) {
-            var d = new Date((start + i * 86400) * 1000)
-            days.push({ label: i === 0 ? "Today" : i === 1 ? "Tomorrow" : Qt.formatDate(d, "dddd"), date: Qt.formatDate(d, "d MMM"), today: i === 0, cards: [] })
+        for (var i = -2; i < 7; i++) {
+            var d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i)
+            days.push({ label: i === 0 ? "Today" : i === 1 ? "Tomorrow" : i === -1 ? "Yesterday" : Qt.formatDate(d, "dddd"),
+                        date: Qt.formatDate(d, "d MMM"), today: i === 0, past: i < 0,
+                        from: d.getTime() / 1000, cards: [] })
+        }
+        var end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7).getTime() / 1000
+        function dayOf(at) {
+            for (var k = days.length - 1; k >= 0; k--) if (at >= days[k].from) return at < end ? k : -1
+            return -1
         }
         var later = []
-        var rows = airingRows.slice().sort(function(a, b) {
-            var na = a.next_airing ? a.next_airing.at : 1e12, nb = b.next_airing ? b.next_airing.at : 1e12
-            return na - nb
-        })
-        for (var r = 0; r < rows.length; r++) {
-            var c = rows[r]
-            var at = c.next_airing ? c.next_airing.at : 0
-            var k = at > 0 ? Math.floor((at - start) / 86400) : -1
-            if (k >= 0 && k < 7) days[k].cards.push(c); else later.push(c)
+        for (var r = 0; r < airingRows.length; r++) {
+            var c = airingRows[r]
+            var drops = (c.week_airings || []).slice()
+            var n = c.next_airing
+            if (n && n.predicted && !drops.some(function(a) { return a.episode === n.episode })) drops.push(n)
+            var placed = false
+            for (var j = 0; j < drops.length; j++) {
+                var k = dayOf(drops[j].at)
+                if (k < 0) continue
+                days[k].cards.push({ card: c, drop: drops[j] })
+                placed = true
+            }
+            if (!placed && !(n && n.at < end)) later.push({ card: c, drop: null })
         }
-        if (later.length) days.push({ label: "No date yet", date: "", today: false, cards: later, later: true })
+        for (var q = 0; q < days.length; q++) days[q].cards.sort(function(a, b) { return a.drop.at - b.drop.at })
+        if (later.length) days.push({ label: "No date yet", date: "", today: false, past: false, cards: later, later: true })
         return days
+    }
+    // Where an episode that is due stands: "future" until its time, then "here" with its file
+    // on disk (or watched already), "downloading" while a torrent writes it, and "late" when
+    // it is out and nothing has arrived, or a predicted one that is not out yet
+    function dropState(c, drop) {
+        if (!drop) return "none"
+        if (drop.at * 1000 > page.nowMs) return "future"
+        var last = drop.through || drop.episode
+        var here = c.episodes_here || []
+        var have = true
+        for (var e = drop.episode; e <= last; e++)
+            if (here.indexOf(e) < 0 && !(c.watched !== null && c.watched !== undefined && c.watched >= e)) have = false
+        if (have) return "here"
+        if ((c.downloading || []).some(function(d) { return d.number >= drop.episode && d.number <= last })) return "downloading"
+        return drop.predicted ? "overdue" : "late"
+    }
+    // The time and the standing as words: "at 17:30, in 3h 12m", "aired 09:00, here",
+    // "aired 09:00, late: not downloaded yet", "expected 17:30, late: not out yet"
+    function dropText(drop, state, today) {
+        if (!drop) return ""
+        var t = Qt.formatTime(new Date(drop.at * 1000), "HH:mm")
+        if (state === "future")
+            return (drop.predicted ? "predicted, " : "at ") + t + (today ? ", in " + page.shortCountdown(drop.at - page.nowMs / 1000) : "")
+        if (state === "here") return "aired " + t + ", here"
+        if (state === "downloading") return "aired " + t + ", downloading"
+        if (state === "overdue") return "expected " + t + ", late: not out yet"
+        return "aired " + t + ", late: not downloaded yet"
+    }
+    readonly property int lateCount: {
+        var n = 0
+        for (var i = 0; i < week.length; i++)
+            for (var k = 0; k < week[i].cards.length; k++) {
+                var s = page.dropState(week[i].cards[k].card, week[i].cards[k].drop)
+                if (s === "late" || s === "overdue") n++
+            }
+        return n
     }
     readonly property int airingWaiting: airingRows.filter(function(c) { return page.behindOf(c) > 0 }).length
     readonly property string weekFact: {
+        if (lateCount > 0) return Fmt.plural(lateCount, "episode is", "episodes are") + " late"
         if (airingWaiting > 0) return Fmt.plural(airingWaiting, "series has", "series have") + " a new episode out"
         var now = nowMs / 1000, next = null
         for (var i = 0; i < airingRows.length; i++) {
@@ -266,14 +318,19 @@ Item {
         return Math.min(n, Math.max(0, top - c.watched))
     }
 
-    // ---- One series in the week: the poster as a thumbnail, the title, which episode
-    // lands and at what time, and what is on disk with how much of it is still to watch
+    // ---- One episode in the week: the poster as a thumbnail, the title, which episode and
+    // at what time, where it stands (coming, here, downloading, late), and what is on disk
+    // with how much of it is still to watch
     component WeekEntry: Rectangle {
         id: entry
         property var item: ({})
+        property var drop: null
         property bool today: false
         readonly property bool gridStop: true
-        readonly property var next: item.next_airing && item.next_airing.at * 1000 > page.nowMs ? item.next_airing : null
+        readonly property var next: drop
+        readonly property string state: page.dropState(item, drop)
+        readonly property bool late: state === "late" || state === "overdue"
+        Component.onDestruction: frame.hoverCard(entry, null, false)
         readonly property int toWatch: page.toWatchOf(item)
         activeFocusOnTab: true
         Keys.onReturnPressed: page.openSeries(item)
@@ -283,7 +340,7 @@ Item {
         radius: theme.radiusTile
         color: em.containsMouse ? theme.raised : theme.tile
         border.width: 1
-        border.color: entry.activeFocus ? theme.accent : em.containsMouse ? theme.lineStrong : "transparent"
+        border.color: entry.activeFocus ? theme.accent : em.containsMouse ? theme.lineStrong : entry.late ? theme.red : "transparent"
         scale: em.pressed ? 0.98 : 1
 
         Corner {
@@ -336,9 +393,10 @@ Item {
                     visible: !!entry.next
                     width: Math.min(implicitWidth, parent.width)
                     elide: Text.ElideRight
-                    text: entry.next ? (entry.next.predicted ? "predicted, " : "at ") + Qt.formatTime(new Date(entry.next.at * 1000), "HH:mm") + (entry.today ? ", in " + page.shortCountdown(entry.next.at - page.nowMs / 1000) : "") : ""
+                    text: page.dropText(entry.next, entry.state, entry.today)
                     role: "ui"
-                    color: theme.accent
+                    font.weight: entry.late ? 650 : 400
+                    color: entry.late ? theme.red : entry.state === "here" ? theme.textDim : theme.accent
                 }
             }
             // What is here: the episodes on disk, then how many of them are still to watch
@@ -368,6 +426,7 @@ Item {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: { entry.forceActiveFocus(); page.openSeries(entry.item) }
+            onContainsMouseChanged: frame.hoverCard(entry, entry.item, containsMouse)
         }
     }
 
@@ -711,8 +770,8 @@ Item {
         }
         Item { width: 1; height: page.downloadedList.length ? theme.space(4) : 0 }
 
-        // ---- The week: one row per day that has an episode landing, today always first
-        // (and marked); each series says which episode lands at what time and what of it is
+        // ---- The week: nine rows, two days back to six ahead, today marked; each episode
+        // says when it airs or aired, whether it landed or is late, and what of the series is
         // already on disk. The series without a date yet close the list
         Column {
             objectName: "home-week"
@@ -722,7 +781,7 @@ Item {
             readonly property real labelWidth: theme.space(30)
             Heading { text: "This week"; fact: page.weekFact }
             Repeater {
-                model: page.week.filter(function(d) { return d.today || d.cards.length > 0 })
+                model: page.week
                 Item {
                     id: day
                     required property var modelData
@@ -747,7 +806,7 @@ Item {
                             text: day.modelData.label
                             role: "title"
                             font.pointSize: theme.typeNormal
-                            color: day.modelData.today ? theme.accent : theme.text
+                            color: day.modelData.today ? theme.accent : day.modelData.past ? theme.textDim : theme.text
                         }
                         Label {
                             text: day.modelData.date
@@ -757,7 +816,7 @@ Item {
                         }
                         Label {
                             visible: !day.hasCards
-                            text: "Nothing lands today"
+                            text: day.modelData.past ? "Nothing aired" : day.modelData.today ? "Nothing today" : "Nothing yet"
                             role: "ledger"
                             color: theme.textFaint
                         }
@@ -772,8 +831,9 @@ Item {
                             model: day.modelData.cards
                             WeekEntry {
                                 required property var modelData
-                                objectName: "week-card-" + modelData.id
-                                item: modelData
+                                objectName: "week-card-" + modelData.card.id
+                                item: modelData.card
+                                drop: modelData.drop
                                 today: day.modelData.today
                                 width: Math.floor((dayCards.width - dayCards.spacing * (dayCards.cols - 1)) / dayCards.cols)
                             }

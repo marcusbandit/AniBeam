@@ -410,6 +410,33 @@ pub fn next_up(
     episodes.first().map(|(f, _, _)| *f)
 }
 
+/// The schedule around now, three days back to eight ahead, soonest first:
+/// what Home's week lays on its days (#236). Episodes sharing one instant are
+/// one drop, the first carrying the last as `through`.
+pub(super) fn week_airings(airing: &[AiringRow], season: Option<u32>, now: i64) -> Vec<Airing> {
+    let mut near: Vec<(i64, u32)> = airing
+        .iter()
+        .filter_map(|a| a.aired_at.map(|at| (at, a.number)))
+        .filter(|(at, _)| *at >= now - 3 * DAY && *at < now + 8 * DAY)
+        .collect();
+    near.sort_unstable();
+    let mut out: Vec<Airing> = Vec::new();
+    for (at, number) in near {
+        if let Some(last) = out.last_mut().filter(|l| time::to_secs(l.at) == at) {
+            last.through = Some(number);
+            continue;
+        }
+        out.push(Airing {
+            episode: number,
+            at: time::from_secs(at),
+            season,
+            predicted: false,
+            through: None,
+        });
+    }
+    out
+}
+
 /// Whether `a` comes after `b` in (season, number) order.
 fn after(a: (u32, f64), b: (u32, f64)) -> bool {
     a.0 > b.0 || (a.0 == b.0 && a.1 > b.1)
@@ -603,6 +630,7 @@ impl Snapshot {
                     through: None,
                 }),
             },
+            week_airings: week_airings(airing, self.card_season(row), now),
             last_viewed_at: self.views.get(&row.id).map(|(_, at)| time::from_secs(*at)),
             added_at: time::from_secs(row.added_at),
             downloaded_at: files.iter().map(|f| f.mtime).max().map(time::from_secs),
@@ -977,6 +1005,7 @@ mod tests {
             my_score: None,
             list_status: None,
             next_airing: None,
+            week_airings: Vec::new(),
             last_viewed_at: None,
             latest_activity_at: UNIX_EPOCH,
             added_at: UNIX_EPOCH,
@@ -1258,5 +1287,26 @@ mod tests {
         let sched = dated(&[(1, T0), (2, T0 + WEEK), (3, T0 + 2 * WEEK)]);
         let got = upcoming(&sched, 2, Some(12), Some(AiringStatus::Hiatus), now);
         assert_eq!(got, vec![(3, T0 + 2 * WEEK, false)]);
+    }
+
+    #[test]
+    fn the_week_keeps_what_aired_today_and_folds_a_drop() {
+        // Aired four days back (out), this morning, two at once tomorrow, nine days on (out)
+        let rows = dated(&[
+            (1, T0 - 4 * DAY),
+            (2, T0 - 3 * 3600),
+            (3, T0 + DAY),
+            (4, T0 + DAY),
+            (5, T0 + 9 * DAY),
+        ]);
+        let got = week_airings(&rows, None, T0);
+        let short: Vec<(u32, i64, Option<u32>)> = got
+            .iter()
+            .map(|a| (a.episode, time::to_secs(a.at), a.through))
+            .collect();
+        assert_eq!(
+            short,
+            vec![(2, T0 - 3 * 3600, None), (3, T0 + DAY, Some(4))]
+        );
     }
 }
