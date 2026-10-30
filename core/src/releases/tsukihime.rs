@@ -44,6 +44,18 @@ impl Entry {
     }
 }
 
+/// Whether `btih` is an info-hash: 40 hex digits or 32 base32 ones, in either case. Anything
+/// else is left out rather than put in a magnet, where it could add parameters of its own.
+fn is_hash(btih: &str) -> bool {
+    match btih.len() {
+        40 => btih.bytes().all(|b| b.is_ascii_hexdigit()),
+        32 => btih
+            .bytes()
+            .all(|b| b.is_ascii_alphabetic() || (b'2'..=b'7').contains(&b)),
+        _ => false,
+    }
+}
+
 /// The magnet for an info-hash, named after the torrent.
 fn magnet(btih: &str, name: &str) -> String {
     format!(
@@ -52,8 +64,8 @@ fn magnet(btih: &str, name: &str) -> String {
     )
 }
 
-/// The reply's results as releases. Adult results are left out: a general search should not
-/// surface them, and whether a source is nsfw is its definition's call. Counts stay unknown,
+/// The reply's results as releases. Adult results are always left out, whatever the source's
+/// definition says, since a general search should not surface them. Counts stay unknown,
 /// since the API has none.
 pub fn parse(body: &[u8], source: &str) -> Result<Vec<Release>, String> {
     let answer: Answer =
@@ -70,7 +82,7 @@ pub fn parse(body: &[u8], source: &str) -> Result<Vec<Release>, String> {
         .filter(|e| !e.adult())
         .filter_map(|e| {
             let btih = e.btih.trim();
-            if btih.is_empty() {
+            if !is_hash(btih) {
                 return None;
             }
             Some(Release {
@@ -167,7 +179,7 @@ mod tests {
     fn adult_results_are_left_out() {
         let items = parse(&fixture(), "tsukihime").unwrap();
         assert!(items.iter().all(|i| !i.title.contains("Adult Release")));
-        let one = br#"{"error":false,"results":[{"name":"x","btih":"ab","is_adult":true}]}"#;
+        let one = br#"{"error":false,"results":[{"name":"x","btih":"00112233445566778899aabbccddeeff00112233","is_adult":true}]}"#;
         assert!(parse(one, "t").unwrap().is_empty());
     }
 
@@ -183,6 +195,31 @@ mod tests {
             parse(none, "t").unwrap().is_empty(),
             "a result without a hash is left out"
         );
+    }
+
+    #[test]
+    fn only_a_hex_or_base32_hash_reaches_the_magnet() {
+        let one = |btih: &str| {
+            let body =
+                serde_json::json!({"error": false, "results": [{"name": "x", "btih": btih}]});
+            parse(body.to_string().as_bytes(), "t").unwrap()
+        };
+        let hex = one("05BD3A45348E1338117E89CF1E25FD76B7A30DE3");
+        assert_eq!(hex.len(), 1);
+        assert!(
+            hex[0]
+                .link
+                .starts_with("magnet:?xt=urn:btih:05BD3A45348E1338117E89CF1E25FD76B7A30DE3&dn=")
+        );
+        assert_eq!(one("AW6TURJURYJTQEL6RHHR4JP5O23KGDPD").len(), 1);
+        assert_eq!(one("aw6turjuryjtqel6rhhr4jp5o23kgdpd").len(), 1);
+        assert!(
+            one("05bd3a45348e1338117e89cf1e25fd76b7a30de3&tr=http://x").is_empty(),
+            "an injected parameter leaves the result out"
+        );
+        assert!(one("abc&tr=http://x").is_empty());
+        assert!(one("05bd3a45348e1338117e89cf1e25fd76b7a30dzz").is_empty());
+        assert!(one("AW6TURJURYJTQEL6RHHR4JP5O23KGDP1").is_empty());
     }
 
     #[test]

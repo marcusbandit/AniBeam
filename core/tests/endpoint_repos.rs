@@ -212,6 +212,32 @@ fn an_installed_endpoint_takes_the_place_of_a_source_with_its_name() {
 }
 
 #[test]
+fn a_saved_search_source_needs_query_in_its_address() {
+    let (_dir, core, _) = common::open_core();
+    let save = |kind: &str, url: &str| {
+        core.call(Call::SetPhoneSources {
+            sources: vec![anibeam_core::PhoneSource {
+                name: "s".into(),
+                kind: kind.into(),
+                url: url.into(),
+                enabled: true,
+            }],
+        })
+    };
+    for kind in ["rss", "tsukihime"] {
+        assert!(
+            matches!(
+                save(kind, "https://example.org/search"),
+                Err(CoreError::Invalid { .. })
+            ),
+            "{kind} without {{query}} is refused"
+        );
+        save(kind, "https://example.org/search?q={query}").unwrap();
+    }
+    save("tosho", "https://animetosho.org/feed/json").unwrap();
+}
+
+#[test]
 fn erai_needs_its_token_and_the_token_never_reaches_the_database() {
     let (dir, core, _) = common::open_core();
     trust(&core, &fixture("general.json"));

@@ -912,7 +912,7 @@ pub fn add_custom(
 
 // The desktop's anirss ------------------------------------------------------------------
 
-/// The kinds anirss itself can search; `tosho` is AniBeam's own.
+/// The kinds anirss itself can search; `tosho` and `tsukihime` are AniBeam's own.
 const ANIRSS_KINDS: [&str; 2] = ["nyaa", "rss"];
 
 /// The first anirss with the endpoint API (`POST` and `DELETE /endpoints`).
@@ -982,7 +982,7 @@ fn hash_of(spec: &serde_json::Value) -> String {
 /// wrote are ever changed or removed; one anirss already had from its config stays as it was.
 /// anirss keeps the address as it is given, so a credential lands in its config.toml, the way
 /// a hand-written one does today; the secret store stays the record AniBeam reads. A kind
-/// anirss cannot search (`tosho`) stays out, and an anirss older than 0.6 is left alone.
+/// anirss cannot search (`tosho`, `tsukihime`) stays out, and an anirss older than 0.6 is left alone.
 /// `have` is anirss's list as just read; true when anirss was changed and its list needs
 /// reading again.
 pub(crate) async fn sync_anirss(
