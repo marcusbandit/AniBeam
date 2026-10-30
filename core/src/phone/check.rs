@@ -68,21 +68,6 @@ async fn tcp(ip: IpAddr) -> (bool, String, u64) {
     }
 }
 
-/// A name or address that only means something on this network: an IP literal, a private,
-/// loopback or link-local address, a single-label name, or a home-network suffix. Public
-/// resolvers have no answer for these, and asking one sends the name off the network.
-fn is_private(name: &str) -> bool {
-    let name = name.trim_end_matches('.').to_lowercase();
-    let bare = name.trim_start_matches('[').trim_end_matches(']');
-    if bare.parse::<IpAddr>().is_ok() {
-        return true;
-    }
-    !name.contains('.')
-        || [".lan", ".local", ".home.arpa", ".internal", ".localhost"]
-            .iter()
-            .any(|suffix| name.ends_with(suffix))
-}
-
 async fn host(core: &Core, doh: &crate::net::doh::Doh, name: &str, url: &str) -> Vec<NetCheck> {
     let mut out = Vec::new();
     let mut ips: Vec<IpAddr> = Vec::new();
@@ -119,15 +104,13 @@ async fn host(core: &Core, doh: &crate::net::doh::Doh, name: &str, url: &str) ->
         )),
     }
 
-    let start = Instant::now();
-    if is_private(name) {
-        out.push(line(
-            format!("{name}: DNS over HTTPS"),
-            true,
-            "skipped, private host".into(),
-            0,
-        ));
+    let doh_line = format!("{name}: DNS over HTTPS");
+    if name.parse::<IpAddr>().is_ok() {
+        out.push(line(doh_line, true, "skipped, an address".into(), 0));
+    } else if crate::net::doh::is_home_name(name) {
+        out.push(line(doh_line, true, "skipped, home-network name".into(), 0));
     } else {
+        let start = Instant::now();
         match doh.lookup(name).await {
             Some(found) => {
                 let shown = found
@@ -135,12 +118,7 @@ async fn host(core: &Core, doh: &crate::net::doh::Doh, name: &str, url: &str) ->
                     .map(ToString::to_string)
                     .collect::<Vec<_>>()
                     .join(", ");
-                out.push(line(
-                    format!("{name}: DNS over HTTPS"),
-                    true,
-                    shown,
-                    ms(start),
-                ));
+                out.push(line(doh_line, true, shown, ms(start)));
                 for ip in found {
                     if !ips.contains(&ip) {
                         ips.push(ip);
@@ -148,7 +126,7 @@ async fn host(core: &Core, doh: &crate::net::doh::Doh, name: &str, url: &str) ->
                 }
             }
             None => out.push(line(
-                format!("{name}: DNS over HTTPS"),
+                doh_line,
                 false,
                 "no resolver answered".into(),
                 ms(start),
@@ -225,43 +203,4 @@ pub async fn run(core: &Core) -> Vec<NetCheck> {
         out.extend(t.await.unwrap_or_default());
     }
     out
-}
-
-#[cfg(test)]
-mod tests {
-    use super::is_private;
-
-    #[test]
-    fn home_network_names_and_addresses_are_private() {
-        for name in [
-            "prowlarr.lan",
-            "jackett.local",
-            "nas.home.arpa",
-            "box.internal",
-            "prowlarr",
-            "localhost",
-            "192.168.1.20",
-            "10.0.0.5",
-            "172.16.4.1",
-            "169.254.3.3",
-            "127.0.0.1",
-            "[fd00::1]",
-            "fe80::1",
-            "NAS.LAN.",
-        ] {
-            assert!(is_private(name), "{name} should be private");
-        }
-    }
-
-    #[test]
-    fn public_names_are_not_private() {
-        for name in [
-            "nyaa.si",
-            "example.com",
-            "one.one.one.one",
-            "lan.example.com",
-        ] {
-            assert!(!is_private(name), "{name} should be public");
-        }
-    }
 }
