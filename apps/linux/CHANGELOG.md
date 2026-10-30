@@ -23,9 +23,13 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Mark a show not interested and it stays off Airing now
 - Plan to watch or get episodes straight from Airing now
 - Media keys and Control Centre play, pause and skip on the Mac
+- This week shows nine days, two back and six ahead, every day even when empty
+- Right-click a card to delete its watched episodes or all of them, to the trash
 
 ### Fixed
 - This week cards keep the airing time inside the card
+- An episode that aired earlier today stays on Today and says if it landed
+- An episode that aired with no file yet says it is late
 
 ## 2.2.0 · 2026-10-26
 

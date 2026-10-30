@@ -46,7 +46,7 @@ Corner {
     readonly property real cardHeight: probe.implicitHeight
     readonly property real naturalHeight: pane.pad * 2 + body.height + foot.height + cardHeight + body.spacing * 2
     implicitHeight: Math.max(naturalHeight, targetHeight)
-    Card { id: probe; visible: false; live: false; item: pane.fallback; posterWidth: theme.posterWidth }
+    Card { id: probe; visible: false; live: false; offersDelete: false; item: pane.fallback; posterWidth: theme.posterWidth }
 
     Column {
         id: body
@@ -134,6 +134,7 @@ Corner {
                     item: pane.samples.length ? pane.samples[index % pane.samples.length] : pane.fallback
                     posterWidth: theme.posterWidth
                     nowMs: pane.nowMs
+                    offersDelete: false
                 }
             }
         }

@@ -586,6 +586,7 @@ mod tests {
             my_score: None,
             list_status: None,
             next_airing: None,
+            week_airings: Vec::new(),
             last_viewed_at: None,
             latest_activity_at: time::now(),
             added_at: time::now(),
