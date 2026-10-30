@@ -308,10 +308,13 @@ impl AnirssClient {
         })
     }
 
+    /// Adds the releases under anirss's root plus `name`, or straight into
+    /// `save_path` when given: the folder of a show already in the library.
     pub async fn download(
         &self,
         items: &[Release],
         name: Option<&str>,
+        save_path: Option<&str>,
     ) -> Result<AddedTorrents, CoreError> {
         let items: Vec<Release> = items
             .iter()
@@ -323,6 +326,9 @@ impl AnirssClient {
         let mut body = json!({ "items": items });
         if let Some(n) = name.map(str::trim).filter(|n| !n.is_empty()) {
             body["name"] = Value::String(n.to_string());
+        }
+        if let Some(p) = save_path {
+            body["save_path"] = Value::String(p.to_string());
         }
         let v = self.post("/downloads", body, Some(STEP_TIMEOUT)).await?;
         Ok(added(&v))

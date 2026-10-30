@@ -100,8 +100,8 @@ pub struct Roll {
     /// the held singles added later included.
     #[serde(default)]
     pub sequential: bool,
-    /// The library show's folder, for the held singles added later to
-    /// move into (`downloads::move_home`).
+    /// The library show's folder, which the held singles added later are
+    /// saved into (`downloads::show_folder`).
     #[serde(default)]
     pub home: Option<String>,
     pub parts: Vec<Part>,
@@ -980,7 +980,14 @@ async fn step(
             .map(|&p| roll.parts[p].release.clone())
             .collect();
         match super::ensure_client(core).await {
-            Ok(anirss) => match anirss.download(&items, roll.name.as_deref()).await {
+            Ok(anirss) => match anirss
+                .download(
+                    &items,
+                    roll.name.as_deref(),
+                    super::still_there(roll.home.as_deref()),
+                )
+                .await
+            {
                 Ok(added) => {
                     for &p in &m.add {
                         roll.parts[p].added = true;

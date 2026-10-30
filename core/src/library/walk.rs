@@ -368,7 +368,10 @@ fn classify_folder(state: &mut WalkState, loose_videos: usize, dirs: &[PathBuf])
         .filter(|d| has_videos_shallow(state, d))
         .cloned()
         .collect();
-    if all_episode_folders(state, &video_bearing) {
+    // Episodes loose in the folder make it the show itself: a pack or a
+    // season folder saved in beside them belongs to it, and reading the
+    // folder as a wrapper would turn every loose episode into a film
+    if all_episode_folders(state, &video_bearing) || loose_videos >= 2 {
         return Shape::Series;
     }
     if video_bearing.len() >= 2 {
@@ -913,6 +916,28 @@ mod tests {
         assert!(!ONE_EPISODE.is_match("Show.S01E01-E12.1080p"));
         assert!(!ONE_EPISODE.is_match("[Grp] Show - 01-12 [1080p]"));
         assert!(!ONE_EPISODE.is_match("Show.S01.1080p"));
+    }
+
+    #[test]
+    fn a_pack_saved_beside_loose_episodes_joins_the_show() {
+        let tmp = tempfile::tempdir().unwrap();
+        let show = tmp.path().join("Loose Show");
+        for ep in 1..=9 {
+            touch(&show.join(format!("Loose.Show.S01E{ep:02}.1080p.mkv")));
+        }
+        for ep in 10..=13 {
+            touch(
+                &show
+                    .join("Loose.Show.S01.1080p-GRP")
+                    .join(format!("Loose.Show.S01E{ep}.mkv")),
+            );
+        }
+        let results = scan_source(tmp.path()).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(
+            (results[0].kind, results[0].files.len()),
+            (SeriesKind::Show, 13)
+        );
     }
 
     #[test]

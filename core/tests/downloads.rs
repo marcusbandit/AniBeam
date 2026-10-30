@@ -1643,6 +1643,78 @@ fn a_replacing_download_is_set_in_order_and_trashes_the_old_file_only_when_the_n
     assert_eq!(toggles, 1, "still the one toggle");
 }
 
+/// Getting episodes for a show already in the library saves them straight
+/// into its folder, wherever it is; a download for no show leaves the
+/// folder to anirss.
+#[test]
+fn episodes_for_a_library_show_are_saved_into_its_folder() {
+    let http = FakeHttp::new();
+    let (dir, core, c) = common::open_core_with_http(http.clone());
+    isolate_xdg(dir.path());
+    save(&core, remote(), Some("tok"), Some("pw"));
+
+    let lib = dir.path().join("TV");
+    let show = lib.join("Avatar Seven Havens");
+    std::fs::create_dir_all(&show).unwrap();
+    std::fs::write(show.join("Avatar.Seven.Havens.S01E01.1080p.mkv"), b"x").unwrap();
+    core.call(Call::AddSource {
+        path: lib.to_string_lossy().into_owned(),
+    })
+    .unwrap();
+    common::wait_for(
+        &c,
+        |e| matches!(e.body, EventBody::ScanFinished { .. }),
+        Duration::from_secs(10),
+    );
+
+    let mut item = release(11, Value::Null);
+    item.title = "Avatar.Seven.Havens.S01E11.1080p.x265-ELiTE".to_string();
+    let get = |series: Option<u64>| {
+        http.push_for(
+            "/downloads",
+            200,
+            json!({"count": 1, "save_path": "/x", "hashes": []}).to_string(),
+        );
+        let job = started(
+            &core,
+            Call::DownloadReleasesWith {
+                items: vec![item.clone()],
+                name: Some("Avatar Seven Havens".to_string()),
+                options: DownloadOptions {
+                    series,
+                    rolling: Some(false),
+                    ..Default::default()
+                },
+            },
+        );
+        common::wait_job(&c, job);
+        let posts: Vec<_> = http
+            .requests()
+            .into_iter()
+            .filter(|r| r.url.ends_with("/downloads"))
+            .collect();
+        let body: Value = serde_json::from_str(&form_of(posts.last().unwrap())).unwrap();
+        body
+    };
+    let body = get(Some(1));
+    assert_eq!(body["save_path"], json!(show.to_string_lossy()));
+    let body = get(None);
+    assert!(body.get("save_path").is_none(), "{body}");
+    // A client on another machine names its paths its own way
+    save(
+        &core,
+        DownloadSettings {
+            torrent_url: "http://seedbox.example:8080".to_string(),
+            ..remote()
+        },
+        Some("tok"),
+        Some("pw"),
+    );
+    let body = get(Some(1));
+    assert!(body.get("save_path").is_none(), "{body}");
+    core.shutdown();
+}
+
 /// Deleting an episode takes the torrent that held it out of the client (#266), so the same
 /// release can be got again: a season pack whose folder held it goes, its data kept; a
 /// torrent saved straight into the library folder goes only when its own file list names
