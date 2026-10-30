@@ -212,6 +212,57 @@ fn an_installed_endpoint_takes_the_place_of_a_source_with_its_name() {
 }
 
 #[test]
+fn a_phone_source_that_searches_by_address_needs_the_query() {
+    let (_dir, core, _) = common::open_core();
+    let source = |kind: &str, url: &str| anibeam_core::PhoneSource {
+        name: "feed".into(),
+        kind: kind.into(),
+        url: url.into(),
+        enabled: true,
+    };
+    for kind in ["tosho", "rss"] {
+        let err = core
+            .call(Call::SetPhoneSources {
+                sources: vec![source(kind, "https://feed.example/json")],
+            })
+            .unwrap_err();
+        assert!(
+            matches!(&err, CoreError::Invalid { message, .. } if message.contains("{query}")),
+            "{kind}: {err:?}"
+        );
+        core.call(Call::SetPhoneSources {
+            sources: vec![source(kind, "https://feed.example/json?q={query}")],
+        })
+        .unwrap();
+    }
+}
+
+#[test]
+fn a_tosho_source_saved_without_the_query_does_not_block_removing_others() {
+    let (dir, core, _) = common::open_core();
+    let source = |name: &str, kind: &str, url: &str| anibeam_core::PhoneSource {
+        name: name.into(),
+        kind: kind.into(),
+        url: url.into(),
+        enabled: true,
+    };
+    let old = source("old", "tosho", "https://feed.example/json");
+    let nyaa = source("nyaa", "nyaa", "https://nyaa.si/");
+    // Saved before the rule covered tosho.
+    let config = anibeam_core::CorePaths::under(dir.path()).config_dir;
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(
+        std::path::Path::new(&config).join("phone-sources.json"),
+        serde_json::to_vec(&[&old, &nyaa]).unwrap(),
+    )
+    .unwrap();
+    core.call(Call::SetPhoneSources {
+        sources: vec![old.clone()],
+    })
+    .unwrap();
+}
+
+#[test]
 fn erai_needs_its_token_and_the_token_never_reaches_the_database() {
     let (dir, core, _) = common::open_core();
     trust(&core, &fixture("general.json"));
