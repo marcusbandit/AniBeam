@@ -235,6 +235,23 @@ pub fn parse_rss(data: &str, endpoint_name: &str) -> Result<Vec<Release>, CoreEr
         code: "unreadable".to_string(),
         message: format!("bad feed: {e}"),
     })?;
+    // Jackett and Prowlarr answer a bad key or a broken indexer with a whole document of
+    // `<error code="100" description="Invalid API Key"/>` instead of a feed.
+    let root = doc.root_element();
+    if root.tag_name().name() == "error" {
+        let message = match root.attribute("description").map(str::trim) {
+            Some(d) if !d.is_empty() => d.to_string(),
+            _ => format!(
+                "the indexer answered error {}",
+                root.attribute("code").unwrap_or("?")
+            ),
+        };
+        return Err(CoreError::Service {
+            service: endpoint_name.to_string(),
+            code: "refused".to_string(),
+            message,
+        });
+    }
     let n = Some(NYAA_NS);
     let mut out = Vec::new();
     for entry in doc.descendants().filter(|d| {
@@ -648,6 +665,30 @@ mod tests {
         match parse_rss("<not-xml", "anirena").unwrap_err() {
             CoreError::Service { service, code, .. } => {
                 assert_eq!((service.as_str(), code.as_str()), ("anirena", "unreadable"));
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_rss_torznab_error_document_is_an_error() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?><error code="100" description="Invalid API Key"/>"#;
+        match parse_rss(xml, "jackett").unwrap_err() {
+            CoreError::Service {
+                service,
+                code,
+                message,
+            } => {
+                assert_eq!(
+                    (service.as_str(), code.as_str(), message.as_str()),
+                    ("jackett", "refused", "Invalid API Key")
+                );
+            }
+            other => panic!("{other:?}"),
+        }
+        match parse_rss(r#"<error code="900"/>"#, "jackett").unwrap_err() {
+            CoreError::Service { message, .. } => {
+                assert_eq!(message, "the indexer answered error 900");
             }
             other => panic!("{other:?}"),
         }

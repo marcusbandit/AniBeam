@@ -26,17 +26,21 @@ const ALWAYS: [(&str, &str); 2] = [
 /// The hosts a search on this phone goes to, one each, with the site's front page to fetch.
 fn searched_hosts(core: &Core) -> Vec<(String, String)> {
     let mut out: Vec<(String, String)> = Vec::new();
-    for s in super::search_sources(core) {
-        let host = crate::repos::index::host_of(&s.url);
+    // The runnable addresses, not the shown ones: a torznab source's `{host}` is filled there.
+    for (_, e) in super::searched(core) {
+        let host = crate::repos::index::host_of(&e.url);
         if host.is_empty() || out.iter().any(|(h, _)| *h == host) {
             continue;
         }
-        let scheme = if s.url.starts_with("http://") {
+        let scheme = if e.url.starts_with("http://") {
             "http"
         } else {
             "https"
         };
-        out.push((host.clone(), format!("{scheme}://{host}/")));
+        // The port stays (a Prowlarr listens on 9696); a login in the address never goes out.
+        let authority = crate::repos::index::authority_of(&e.url);
+        let authority = authority.rsplit_once('@').map_or(authority, |(_, a)| a);
+        out.push((host.clone(), format!("{scheme}://{authority}/")));
     }
     out
 }

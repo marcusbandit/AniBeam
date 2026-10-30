@@ -532,7 +532,7 @@ pub fn refresh(core: &Core) -> Result<Reply, CoreError> {
 }
 
 /// Checks the person's values against an endpoint's fields: one for each, none left empty,
-/// nothing that is not a field.
+/// nothing that is not a field, and a bare host for `{host}`.
 fn credentials_for(
     def: &Definition,
     given: &[EndpointCredential],
@@ -561,6 +561,15 @@ fn credentials_for(
                 ));
             }
             continue;
+        }
+        if field.key == index::HOST_KEY && def.host_is_placeholder() && !index::bare_host(&value) {
+            return Err(CoreError::invalid(
+                "credentials",
+                format!(
+                    "{}: the {} is a host or host:port only, like 192.168.1.10:9696",
+                    def.name, field.label
+                ),
+            ));
         }
         out.push((field.key.clone(), value));
     }
@@ -912,8 +921,9 @@ pub fn add_custom(
 
 // The desktop's anirss ------------------------------------------------------------------
 
-/// The kinds anirss itself can search; `tosho` is AniBeam's own.
-const ANIRSS_KINDS: [&str; 2] = ["nyaa", "rss"];
+/// The kinds anirss itself can search; `tosho` is AniBeam's own. anirss reads a torznab
+/// feed through its `rss` kind, so `torznab` goes over as that (`spec_of`).
+const ANIRSS_KINDS: [&str; 3] = ["nyaa", "rss", "torznab"];
 
 /// The first anirss with the endpoint API (`POST` and `DELETE /endpoints`).
 const ANIRSS_ENDPOINT_API: (u64, u64, u64) = (0, 6, 0);
@@ -961,7 +971,9 @@ fn desktop_note(core: &Core, def: &Definition, synced: &Synced) -> Option<String
 }
 
 fn spec_of(e: &crate::releases::Endpoint) -> serde_json::Value {
-    let mut spec = serde_json::json!({"name": e.name, "kind": e.kind, "url": e.url});
+    // anirss has no torznab kind; its rss kind reads the torznab attributes.
+    let kind = if e.kind == "torznab" { "rss" } else { &e.kind };
+    let mut spec = serde_json::json!({"name": e.name, "kind": kind, "url": e.url});
     if e.kind == "nyaa" {
         spec["category"] = e.category.clone().into();
         spec["filter"] = e.filter.clone().into();
@@ -1087,7 +1099,8 @@ pub fn runnable(core: &Core) -> Vec<Runnable> {
         out.push(Runnable {
             endpoint,
             shown_url: row.def.url.clone(),
-            host: row.def.host(),
+            // The filled address's host: a torznab `{host}` is the person's own server.
+            host: index::host_of(&url),
             per_minute: row.def.rate.map(|r| r.per_minute),
         });
     }
@@ -1221,6 +1234,22 @@ mod tests {
         );
         assert_eq!(http.requests().len(), 2);
         core.shutdown();
+    }
+
+    #[test]
+    fn a_torznab_endpoint_goes_to_anirss_as_rss() {
+        let url = "http://10.0.0.2:9696/1/api?t=search&q={query}&apikey=k";
+        let spec = spec_of(&crate::releases::Endpoint::new("x1337", "torznab", url));
+        assert_eq!(
+            spec,
+            serde_json::json!({"name": "x1337", "kind": "rss", "url": url})
+        );
+        let nyaa = spec_of(&crate::releases::Endpoint::new(
+            "nyaa",
+            "nyaa",
+            "https://nyaa.si/",
+        ));
+        assert_eq!(nyaa["kind"], "nyaa");
     }
 
     #[test]

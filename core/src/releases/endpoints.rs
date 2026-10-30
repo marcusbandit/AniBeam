@@ -16,8 +16,9 @@ use crate::contract::{CoreError, Release, SubscriptionSpec};
 use crate::net::{BoxFuture, Http};
 
 /// anirss `endpoints.VALID_KINDS`.
-/// `tosho` is AniBeam's own: AnimeTosho's JSON feed (tosho.rs).
-pub const VALID_KINDS: [&str; 3] = ["nyaa", "rss", "tosho"];
+/// `tosho` is AniBeam's own: AnimeTosho's JSON feed (tosho.rs). `torznab` is a Prowlarr or
+/// Jackett search, read as RSS; it may name the person's own server as `{host}`.
+pub const VALID_KINDS: [&str; 4] = ["nyaa", "rss", "tosho", "torznab"];
 
 /// Splits a query into fields, keeping `-"quoted phrase"` and `"quoted"` intact
 /// (anirss `endpoints.FIELD_RE`, shared with refine's positional-insert logic).
@@ -64,10 +65,10 @@ pub fn validate(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
             format!("{name:?}: missing `url`"),
         ));
     }
-    if kind == "rss" && !url.contains("{query}") {
+    if matches!(kind, "rss" | "torznab") && !url.contains("{query}") {
         return Err(CoreError::invalid(
             "endpoint url",
-            format!("{name:?}: rss url must contain a {{query}} placeholder"),
+            format!("{name:?}: {kind} url must contain a {{query}} placeholder"),
         ));
     }
     Ok(())
@@ -415,6 +416,12 @@ pub async fn fetch_items(
             super::tosho::fetch(http, &search_url(ep, &positive), &ep.name, timeout).await?;
         return Ok(filter_excluded(items, &excluded));
     }
+    if ep.kind == "torznab" {
+        // Prowlarr and Jackett do not take `-tag` either, and are never erai.
+        let (positive, excluded) = split_exclusions(query);
+        let items = fetch::fetch_rss(http, &search_url(ep, &positive), &ep.name, timeout).await?;
+        return Ok(filter_excluded(items, &excluded));
+    }
     let (positive, excluded) = split_exclusions(query);
     let (positive, quality) = erai_split(ep, &positive);
     let items = fetch::fetch_rss(http, &search_url(ep, &positive), &ep.name, timeout).await?;
@@ -578,6 +585,7 @@ pub(crate) mod tests {
             ("", "nyaa", "https://x/"),          // no name
             ("a", "html", "https://x/"),         // bad kind
             ("a", "rss", "https://x/rss"),       // no {query}
+            ("a", "torznab", "http://x/api"),    // no {query}
             ("a", "nyaa", ""),                   // no url
             ("bad name)", "nyaa", "https://x/"), // bad name characters
         ] {
@@ -720,6 +728,26 @@ pub(crate) mod tests {
         let url = &http.requests()[0].url;
         assert!(!url.contains("HEVC"), "{url}");
         assert_eq!(url, "https://www.anirena.com/rss?q=show&adult=1");
+    }
+
+    #[tokio::test]
+    async fn fetch_items_torznab_kind_applies_exclusions() {
+        let http = FakeHttp::new();
+        http.push(200, feed(&[("Show 05 HEVC", "l1"), ("Show 05 AVC", "l2")]));
+        let ep = Endpoint::new(
+            "x1337",
+            "torznab",
+            "http://10.0.0.2:9696/1/api?t=search&q={query}&apikey=k",
+        );
+        let items = fetch_items(http.as_ref(), &ep, "show -HEVC").await.unwrap();
+        assert_eq!(
+            items.iter().map(|i| i.link.as_str()).collect::<Vec<_>>(),
+            ["l2"]
+        );
+        assert_eq!(
+            http.requests()[0].url,
+            "http://10.0.0.2:9696/1/api?t=search&q=show&apikey=k"
+        );
     }
 
     #[tokio::test]
