@@ -1,13 +1,15 @@
 use std::path::Path;
 use std::process::Command;
 
-/// The tracker credentials a build bundles. Electron's Vite read them out of the
-/// workspace's `.env.local`; Cargo has no such convention, so this does the same read
-/// itself and hands each one to `option_env!` in `trackers/accounts.rs`.
-const CREDENTIALS: [&str; 3] = [
+/// The tracker credentials a build bundles, and its Discord application id. Electron's
+/// Vite read them out of the workspace's `.env.local`; Cargo has no such convention, so
+/// this does the same read itself and hands each one to `option_env!` in
+/// `trackers/accounts.rs` and `presence/mod.rs`.
+const CREDENTIALS: [&str; 4] = [
     "ANIBEAM_ANILIST_CLIENT_ID",
     "ANIBEAM_MAL_CLIENT_ID",
     "ANIBEAM_MAL_CLIENT_SECRET",
+    "ANIBEAM_DISCORD_CLIENT_ID",
 ];
 
 fn main() {

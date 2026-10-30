@@ -779,6 +779,8 @@ async fn import_preferences(
                 // The export format predates On hold too.
                 on_hold_auto: current.on_hold_auto,
                 on_hold_days: current.on_hold_days,
+                // Telling Discord what plays is this machine's business too.
+                discord_presence: current.discord_presence,
             };
             prefs::save_preferences(tx, &preferences)?;
             if let Some(auto_skip) = &entry.auto_skip {
