@@ -509,28 +509,47 @@ FocusScope {
         return out
     }
     property var deleteCalls: ({})   // token -> what the toast names
-    function askDeleteFiles(anchor, c, watchedOnly) {
+    // `whole` (Downloads' On disk, #266) takes the extras too, so the series leaves the disk
+    function askDeleteFiles(anchor, c, watchedOnly, whole) {
         var r = Door.getSeries(c.id)
         if (r.error || !r.reply.detail) { frame.toast(r.error ? frame.errorText(r.error) : "That series is gone"); return }
         // An episode a torrent is still writing is not offered
         var files = (r.reply.detail.episodes || [])
             .filter(function(e) { return (e.downloading === undefined || e.downloading === null) && (!watchedOnly || e.watched) })
             .map(function(e) { return e.file })
-        if (!files.length) { frame.toast("No watched episodes of " + c.title + " on disk"); return }
+        var extras = whole ? (r.reply.detail.extras || []).map(function(x) { return x.file }) : []
+        if (!files.length && !extras.length) { frame.toast((watchedOnly ? "No watched episodes of " : "Nothing of ") + c.title + " on disk"); return }
         var noun = seriesNoun(c), which = watchedOnly ? "watched " : ""
-        var words = Fmt.plural(files.length, which + noun[0], which + noun[1])
+        var words = files.length ? Fmt.plural(files.length, which + noun[0], which + noun[1]) : ""
+        if (extras.length) words += (words ? " and " : "") + Fmt.plural(extras.length, "extra", "extras")
+        files = files.concat(extras)
         removeSheet.openAt(anchor, {
             heading: "Delete " + words + " of " + c.title + "?",
-            base: "The files and their subtitles go to the trash, so you can get them back from there.",
+            base: "The files and their subtitles go to the trash, so you can get them back from there. Their torrents leave the torrent client, so they can be downloaded again.",
             rule: false, torrentCount: 0, canFiles: false, confirmText: "Move to trash"
         }, function() {
             var t = Door.callAsync("DeleteEpisodes", { series: c.id, files: files })
             var m = Object.assign({}, frame.deleteCalls); m[t] = words + " of " + c.title; frame.deleteCalls = m
         })
     }
+    // Delete watched across the library (#266): the frame keeps the reply, so its toast still
+    // comes when the page has gone, and one runs at a time
+    property real deleteWatchedToken: -1
+    function deleteWatched(finished) {
+        if (frame.deleteWatchedToken >= 0) return
+        frame.deleteWatchedToken = Door.callAsync("DeleteWatched", { finished_shows: finished })
+    }
     Connections {
         target: Door
         function onCallDone(token, reply) {
+            if (token === frame.deleteWatchedToken) {
+                frame.deleteWatchedToken = -1
+                var d = reply.reply || {}
+                frame.toast(reply.error ? frame.errorText(reply.error)
+                    : d.episodes > 0 || d.series > 0 ? Fmt.plural(d.episodes, "episode", "episodes") + ", " + Fmt.bytes(d.bytes) + ", moved to the trash"
+                    : "Nothing to delete")
+                return
+            }
             var words = frame.deleteCalls[token]
             if (words === undefined) return
             var m = Object.assign({}, frame.deleteCalls); delete m[token]; frame.deleteCalls = m

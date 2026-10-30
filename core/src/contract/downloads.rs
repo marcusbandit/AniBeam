@@ -283,7 +283,8 @@ pub struct RemovePlan {
 /// What the core reads off a release beyond anirss's fields, index for
 /// index with the items it came with. `episode` is None for a batch and
 /// for a title naming none; `on_disk` is true when the library series the
-/// search names already has that episode.
+/// search names has that episode from this very release, `other_on_disk`
+/// when it has the episode from another one.
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize, uniffi::Record)]
 pub struct ReleaseFacts {
     pub episode: Option<f64>,
@@ -298,7 +299,16 @@ pub struct ReleaseFacts {
     pub group: String,
     pub resolution: String,
     pub size_bytes: Option<u64>,
+    /// Where the video came from as the title names it: "WEB-DL", "WEBRip",
+    /// "WEB", "BluRay", "BDRip", "HDTV", "DVD"; empty when it names none.
+    #[serde(default)]
+    pub rip: String,
+    /// True only when the file on disk for this episode is this release:
+    /// the same name, or the same group, resolution, rip and version (#237).
     pub on_disk: bool,
+    /// The episode is on disk, but from another release than this one.
+    #[serde(default)]
+    pub other_on_disk: bool,
 }
 
 /// A subscription's rule as qBittorrent holds it now, and what it takes:

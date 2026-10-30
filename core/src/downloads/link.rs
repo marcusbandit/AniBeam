@@ -232,11 +232,10 @@ pub fn series_for_query(conn: &Connection, query: &str) -> Result<Option<u64>, C
     Ok(best.map(|(_, id)| id))
 }
 
-/// The (season, number) of every episode file a series has on disk.
-pub type EpisodeFiles = Vec<(Option<u32>, f64)>;
+/// An episode file of the series: its season, number and name on disk.
+pub type EpisodeFiles = Vec<(Option<u32>, f64, String)>;
 
-/// One series as a `ShowLink`, with the (season, number) of every episode
-/// file on disk beside it.
+/// One series as a `ShowLink`, with every episode file on disk beside it.
 pub fn show_with_numbers(
     conn: &Connection,
     images_dir: &Path,
@@ -253,23 +252,28 @@ pub fn show_with_numbers(
         .map(|f| {
             f.iter()
                 .filter(|f| f.is_episode)
-                .map(|f| (f.season, f.number))
+                .map(|f| (f.season, f.number, f.path.clone()))
                 .collect()
         })
         .unwrap_or_default();
-    let numbers: Vec<f64> = files.iter().map(|(_, n)| *n).collect();
+    let numbers: Vec<f64> = files.iter().map(|(_, n, _)| *n).collect();
     Ok(Some((show_of(&card, &numbers), files)))
 }
 
-/// Whether a release's episode is among the files: the number alike, and
-/// the season too when both name one.
-pub fn has_episode(files: &[(Option<u32>, f64)], season: Option<u32>, number: f64) -> bool {
-    files.iter().any(|(s, n)| {
-        (*n - number).abs() < 1e-9
+/// The files that are a release's episode: the number alike, and the season
+/// too when both name one.
+pub fn episode_files<'a>(
+    files: &'a [(Option<u32>, f64, String)],
+    season: Option<u32>,
+    number: f64,
+) -> impl Iterator<Item = &'a str> + 'a {
+    files.iter().filter_map(move |(s, n, path)| {
+        ((*n - number).abs() < 1e-9
             && match (season, s) {
                 (Some(a), Some(b)) => a == *b,
                 _ => true,
-            }
+            })
+        .then_some(path.as_str())
     })
 }
 
@@ -525,12 +529,12 @@ mod tests {
     }
 
     #[test]
-    fn has_episode_respects_a_season_only_when_both_name_one() {
-        let files = vec![(None, 1.0), (Some(2), 3.0)];
-        assert!(has_episode(&files, None, 1.0));
-        assert!(has_episode(&files, Some(1), 1.0));
-        assert!(has_episode(&files, Some(2), 3.0));
-        assert!(!has_episode(&files, Some(1), 3.0));
-        assert!(!has_episode(&files, None, 2.0));
+    fn episode_files_respect_a_season_only_when_both_name_one() {
+        let files = vec![(None, 1.0, String::new()), (Some(2), 3.0, String::new())];
+        assert!(episode_files(&files, None, 1.0).next().is_some());
+        assert!(episode_files(&files, Some(1), 1.0).next().is_some());
+        assert!(episode_files(&files, Some(2), 3.0).next().is_some());
+        assert!(!episode_files(&files, Some(1), 3.0).next().is_some());
+        assert!(!episode_files(&files, None, 2.0).next().is_some());
     }
 }

@@ -20,6 +20,14 @@ use crate::net::{BoxFuture, Http};
 /// Jackett search, read as RSS; it may name the person's own server as `{host}`.
 pub const VALID_KINDS: [&str; 4] = ["nyaa", "rss", "tosho", "torznab"];
 
+/// Whether an endpoint of `kind` searches by putting the query into its address at
+/// `{query}`. nyaa builds its own search; rss, tosho and torznab have only the address, so
+/// without the placeholder every search would fetch the same fixed page (#248). Every check
+/// of an endpoint or a phone source asks this.
+pub fn needs_query(kind: &str) -> bool {
+    matches!(kind, "rss" | "tosho" | "torznab")
+}
+
 /// Splits a query into fields, keeping `-"quoted phrase"` and `"quoted"` intact
 /// (anirss `endpoints.FIELD_RE`, shared with refine's positional-insert logic).
 pub static FIELD_RE: LazyLock<Regex> =
@@ -65,7 +73,7 @@ pub fn validate(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
             format!("{name:?}: missing `url`"),
         ));
     }
-    if matches!(kind, "rss" | "torznab") && !url.contains("{query}") {
+    if needs_query(kind) && !url.contains("{query}") {
         return Err(CoreError::invalid(
             "endpoint url",
             format!("{name:?}: {kind} url must contain a {{query}} placeholder"),
@@ -586,6 +594,7 @@ pub(crate) mod tests {
             ("a", "html", "https://x/"),         // bad kind
             ("a", "rss", "https://x/rss"),       // no {query}
             ("a", "torznab", "http://x/api"),    // no {query}
+            ("a", "tosho", "https://x/json"),    // no {query}
             ("a", "nyaa", ""),                   // no url
             ("bad name)", "nyaa", "https://x/"), // bad name characters
         ] {

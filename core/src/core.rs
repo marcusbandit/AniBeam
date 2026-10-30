@@ -636,6 +636,9 @@ impl Core {
             Call::DeleteEpisodes { series, files } => {
                 crate::library::delete::delete_episodes(self, series, files)
             }
+            Call::DeleteWatched { finished_shows } => {
+                crate::library::delete::delete_watched(self, finished_shows)
+            }
             Call::FixFiles { series, fixes } => {
                 crate::library::fixes::fix_files(self, series, fixes)
             }
@@ -672,6 +675,9 @@ impl Core {
             }
             Call::GetSeries { series } => reads::get_series(self, series),
             Call::SetHidden { series, hidden } => reads::set_hidden(self, series, hidden),
+            Call::SetEpisodeCount { series, count } => {
+                reads::set_episode_count(self, series, count)
+            }
             Call::ListMetadata {
                 filter,
                 query,

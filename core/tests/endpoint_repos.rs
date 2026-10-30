@@ -212,25 +212,52 @@ fn an_installed_endpoint_takes_the_place_of_a_source_with_its_name() {
 }
 
 #[test]
-fn a_saved_torznab_source_needs_its_query() {
+fn a_phone_source_that_searches_by_address_needs_the_query() {
     let (_dir, core, _) = common::open_core();
-    let saved = |kind: &str, url: &str| anibeam_core::PhoneSource {
-        name: "prowlarr".into(),
+    let source = |kind: &str, url: &str| anibeam_core::PhoneSource {
+        name: "feed".into(),
         kind: kind.into(),
         url: url.into(),
         enabled: true,
     };
-    let err = core
-        .call(Call::SetPhoneSources {
-            sources: vec![saved("torznab", "http://10.0.0.2:9696/1/api?t=search")],
+    for kind in ["tosho", "rss", "torznab"] {
+        let err = core
+            .call(Call::SetPhoneSources {
+                sources: vec![source(kind, "https://feed.example/json")],
+            })
+            .unwrap_err();
+        assert!(
+            matches!(&err, CoreError::Invalid { message, .. } if message.contains("{query}")),
+            "{kind}: {err:?}"
+        );
+        core.call(Call::SetPhoneSources {
+            sources: vec![source(kind, "https://feed.example/json?q={query}")],
         })
-        .unwrap_err();
-    assert!(err.to_string().contains("{query}"), "{err}");
+        .unwrap();
+    }
+}
+
+#[test]
+fn a_tosho_source_saved_without_the_query_does_not_block_removing_others() {
+    let (dir, core, _) = common::open_core();
+    let source = |name: &str, kind: &str, url: &str| anibeam_core::PhoneSource {
+        name: name.into(),
+        kind: kind.into(),
+        url: url.into(),
+        enabled: true,
+    };
+    let old = source("old", "tosho", "https://feed.example/json");
+    let nyaa = source("nyaa", "nyaa", "https://nyaa.si/");
+    // Saved before the rule covered tosho.
+    let config = anibeam_core::CorePaths::under(dir.path()).config_dir;
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(
+        std::path::Path::new(&config).join("phone-sources.json"),
+        serde_json::to_vec(&[&old, &nyaa]).unwrap(),
+    )
+    .unwrap();
     core.call(Call::SetPhoneSources {
-        sources: vec![saved(
-            "torznab",
-            "http://10.0.0.2:9696/1/api?t=search&q={query}",
-        )],
+        sources: vec![old.clone()],
     })
     .unwrap();
 }

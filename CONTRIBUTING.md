@@ -84,7 +84,7 @@ moved.
 Good:
 
 - `fix(shell): the wheel scrolls like a browser`
-- `feat(downloads): a provider switch with 1337x`
+- `feat(downloads): a provider switch on the search bar`
 - `perf(shell): one drive run captures several pages`
 
 Not:
@@ -136,12 +136,34 @@ Not:
 pull request. The phone's `build.sh` refuses an APK whose newest heading is not its
 `versionName`.
 
+## Sources
+
+AniBeam ships no download sources, and this repo takes no PR that adds one. Nothing in
+the app points at a site: no address, no host, no default, no onboarding link, and no code,
+test or fixture that names one. A PR that adds a site gets closed, however well it is built.
+
+What the core does hold is endpoint kinds. A kind is a type of input the core knows how to
+read and handle well: an RSS feed, a torznab API, a JSON search API, a feed that needs a key.
+It is named for that shape, never for a site, and it knows nothing about which sites use it.
+A new kind is welcome when no existing one can read a source; open an issue for it first.
+
+The site itself comes from an endpoint repo the user attaches by URL
+(`docs/superpowers/specs/2026-10-24-endpoint-repos.md` has the format). Its definition says
+which kind to use and where to point it, and installing it is what tells the app how to handle
+that site. A new source goes in one of two places:
+
+- A PR to [`marcusbandit/anibeam-endpoints`](https://github.com/marcusbandit/anibeam-endpoints),
+  the owner's own repo. Its README says how to write a definition.
+- A repo of your own, signed with your own key, that anyone can add in AniBeam beside or
+  instead of the owner's.
+
 ## Before you open it
 
 - The test, clippy and fmt commands in the README's Development section pass.
 - A visible change has a capture in the PR body, taken against a sandbox root.
 - A change someone can notice has its line in the app's `CHANGELOG.md`.
 - A new word for something in the domain has its entry in `CONTEXT.md`.
+- Nothing in the diff names a download site. See Sources.
 
 ## Releases
 

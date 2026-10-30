@@ -418,12 +418,11 @@ fn check_with(def: &Definition, http: bool) -> Result<(), String> {
         return Err(format!("{}: a placeholder in the host", def.id));
     }
     let has_query = def.url.contains("{query}");
-    match def.kind.as_str() {
-        "nyaa" if has_query => return Err(format!("{}: nyaa adds the query itself", def.id)),
-        "rss" | "tosho" | "torznab" if !has_query => {
-            return Err(format!("{}: the address needs {{query}}", def.id));
-        }
-        _ => {}
+    if def.kind == "nyaa" && has_query {
+        return Err(format!("{}: nyaa adds the query itself", def.id));
+    }
+    if crate::releases::endpoints::needs_query(&def.kind) && !has_query {
+        return Err(format!("{}: the address needs {{query}}", def.id));
     }
     if let Some(front) = &def.front
         && (front.is_empty() || front.contains(['/', ':', '{', '@']))
@@ -603,6 +602,19 @@ pub(crate) mod tests {
         assert!(check(&d).is_err());
         d.url = "https://{token}.example/feed?s={query}".into();
         assert!(check(&d).is_err());
+    }
+
+    #[test]
+    fn a_tosho_or_rss_address_needs_the_query() {
+        for kind in ["tosho", "rss"] {
+            let mut d: Definition =
+                serde_json::from_value(def("t", kind, "https://feed.example/json")).unwrap();
+            assert!(check(&d).is_err(), "{kind}");
+            assert!(check_custom(&d).is_err(), "{kind}");
+            d.url = "https://feed.example/json?q={query}".into();
+            assert!(check(&d).is_ok(), "{kind}");
+            assert!(check_custom(&d).is_ok(), "{kind}");
+        }
     }
 
     #[test]

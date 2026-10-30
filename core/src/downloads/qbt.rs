@@ -243,6 +243,17 @@ impl QbtClient {
         self.call("torrents/filePrio", Some(form)).await.map(|_| ())
     }
 
+    /// Moves the torrents, and what they wrote, into `location`.
+    pub async fn set_location(&self, hashes: &[String], location: &str) -> Result<(), CoreError> {
+        let form = vec![
+            ("hashes".to_string(), hashes.join("|")),
+            ("location".to_string(), location.to_string()),
+        ];
+        self.call("torrents/setLocation", Some(form))
+            .await
+            .map(|_| ())
+    }
+
     /// Has the client check the torrents' data against their hashes again.
     pub async fn recheck(&self, hashes: &[String]) -> Result<(), CoreError> {
         let form = vec![("hashes".to_string(), hashes.join("|"))];
