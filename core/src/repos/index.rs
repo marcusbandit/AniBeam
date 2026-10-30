@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::contract::{CoreError, EndpointField};
-use crate::releases::endpoints::{JSON_KIND, is_kind};
+use crate::releases::endpoints::VALID_KINDS;
 
 /// The envelope's `format`.
 pub const FORMAT: &str = "anibeam-endpoint-repo";
@@ -360,7 +360,7 @@ fn check_with(def: &Definition, http: bool) -> Result<(), String> {
     if def.name.trim().is_empty() {
         return Err(format!("{}: no name", def.id));
     }
-    if !is_kind(&def.kind) {
+    if !VALID_KINDS.contains(&def.kind.as_str()) {
         return Err(format!("{}: unknown kind {:?}", def.id, def.kind));
     }
     let scheme_ok = def.url.starts_with("https://") || (http && def.url.starts_with("http://"));
@@ -412,7 +412,7 @@ fn check_with(def: &Definition, http: bool) -> Result<(), String> {
     if def.rate.is_some_and(|r| r.per_minute == 0) {
         return Err(format!("{}: a rate of zero", def.id));
     }
-    match (&def.json, def.kind == JSON_KIND) {
+    match (&def.json, def.kind == "json") {
         (None, true) => return Err(format!("{}: a json endpoint needs its `json` map", def.id)),
         (Some(_), false) => {
             return Err(format!(

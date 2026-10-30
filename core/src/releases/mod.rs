@@ -25,7 +25,7 @@ pub mod tosho;
 #[derive(Clone, Debug, PartialEq)]
 pub struct Endpoint {
     pub name: String,
-    /// One of `endpoints::VALID_KINDS`, or `json`.
+    /// One of `endpoints::VALID_KINDS`.
     pub kind: String,
     pub url: String,
     /// nyaa only.

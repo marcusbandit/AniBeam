@@ -1063,7 +1063,7 @@ pub fn runnable(core: &Core) -> Vec<Runnable> {
     let secrets = core.secrets();
     let mut out: Vec<Runnable> = Vec::new();
     for row in rows.into_iter().filter(|r| r.enabled) {
-        if !crate::releases::endpoints::is_kind(&row.def.kind) {
+        if !crate::releases::endpoints::VALID_KINDS.contains(&row.def.kind.as_str()) {
             continue;
         }
         // Two repos offering the same id: the first installed wins the name.

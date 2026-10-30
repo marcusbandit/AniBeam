@@ -57,7 +57,7 @@ pub fn set_sources(core: &Core, sources: Vec<PhoneSource>) -> Result<Reply, Core
                 ),
             ));
         }
-        if s.kind == crate::releases::endpoints::JSON_KIND {
+        if s.kind == "json" {
             return Err(CoreError::invalid(
                 "sources",
                 format!(

@@ -16,27 +16,16 @@ use crate::contract::{CoreError, Release, SubscriptionSpec};
 use crate::net::{BoxFuture, Http};
 
 /// anirss `endpoints.VALID_KINDS`.
-/// `tosho` is AniBeam's own: AnimeTosho's JSON feed (tosho.rs).
-pub const VALID_KINDS: [&str; 3] = ["nyaa", "rss", "tosho"];
-
-/// AniBeam's kind for any JSON search API, read through the field map its repo definition
-/// supplies (json.rs). Not in `VALID_KINDS`, which a hand-added endpoint may name.
-pub const JSON_KIND: &str = "json";
-
-/// Whether the core can run an endpoint of `kind`.
-pub fn is_kind(kind: &str) -> bool {
-    kind == JSON_KIND || VALID_KINDS.contains(&kind)
-}
+/// `tosho` is AniBeam's own: AnimeTosho's JSON feed (tosho.rs). So is `json`: any JSON
+/// search API, read through the field map its repo definition supplies (json.rs).
+pub const VALID_KINDS: [&str; 4] = ["json", "nyaa", "rss", "tosho"];
 
 /// Whether an endpoint of `kind` searches by putting the query into its address at
 /// `{query}`. nyaa builds its own search; rss and tosho have only the address, so without
 /// the placeholder every search would fetch the same fixed page (#248). Every check of an
 /// endpoint or a phone source asks this. A json endpoint has only the address too.
 pub fn needs_query(kind: &str) -> bool {
-    if kind == JSON_KIND {
-        return true;
-    }
-    matches!(kind, "rss" | "tosho")
+    matches!(kind, "json" | "rss" | "tosho")
 }
 
 /// Why a json source cannot be added by hand: its field map only comes from a definition.
@@ -73,7 +62,7 @@ pub fn validate(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
             format!("{name:?}: use only letters, digits, '.', '_', '-'"),
         ));
     }
-    if kind == JSON_KIND {
+    if kind == "json" {
         return Err(CoreError::invalid(
             "endpoint kind",
             format!("{name:?}: {JSON_NEEDS_REPO}"),
@@ -84,7 +73,12 @@ pub fn validate(name: &str, kind: &str, url: &str) -> Result<(), CoreError> {
             "endpoint kind",
             format!(
                 "{name:?}: unknown kind {kind:?} (valid: {})",
-                VALID_KINDS.join(", ")
+                VALID_KINDS
+                    .iter()
+                    .filter(|k| **k != "json")
+                    .copied()
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ),
         ));
     }
@@ -445,7 +439,7 @@ pub async fn fetch_items(
             super::tosho::fetch(http, &search_url(ep, &positive), &ep.name, timeout).await?;
         return Ok(filter_excluded(items, &excluded));
     }
-    if ep.kind == JSON_KIND {
+    if ep.kind == "json" {
         // Which search syntax an API takes is the site's business, so exclusions are applied
         // here rather than sent.
         let Some(map) = &ep.json else {
