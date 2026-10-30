@@ -57,6 +57,7 @@ Item {
         if (key === "title") return root.clean(root.items[i].title).toLowerCase()
         if (key === "group") { var g = root.facts[i]; return g && g.group ? String(g.group).toLowerCase() : null }
         if (key === "resolution") { var r = root.facts[i]; var n = r && r.resolution ? parseInt(r.resolution) : NaN; return isNaN(n) ? null : n }
+        if (key === "rip") { var p = root.facts[i]; return p && p.rip ? String(p.rip).toLowerCase() : null }
         if (key === "episode") { var f = root.facts[i]; return f && f.episode !== null && f.episode !== undefined ? f.episode : null }
         if (key === "size") return root.bytes(i)
         if (key === "released") return root.published(i)
@@ -103,17 +104,19 @@ Item {
     readonly property real wCheck: theme.space(9)
     readonly property real wGroup: theme.space(20)
     readonly property real wRes: theme.space(14)
+    readonly property real wRip: theme.space(17)
     readonly property real wEp: theme.space(13)
     readonly property real wSize: theme.space(19)
     readonly property real wSeed: theme.space(17)
     readonly property real wLeech: wide ? theme.space(17) : 0
     readonly property real wDl: wide ? theme.space(19) : 0
     readonly property real wDate: theme.space(26)
-    readonly property real wTitle: Math.max(theme.space(40), width - wCheck - wGroup - wRes - wEp - wSize - wSeed - wLeech - wDl - wDate)
+    readonly property real wTitle: Math.max(theme.space(40), width - wCheck - wGroup - wRes - wRip - wEp - wSize - wSeed - wLeech - wDl - wDate)
     readonly property real rowHeight: theme.space(14)
     readonly property var columns: [
         { key: "group", text: "Group", w: wGroup, left: true },
         { key: "resolution", text: "Res", w: wRes },
+        { key: "rip", text: "Rip", w: wRip },
         { key: "episode", text: "Ep", w: wEp },
         { key: "size", text: "Size", w: wSize },
         { key: "seeders", text: "Seeders", w: wSeed },
@@ -194,6 +197,7 @@ Item {
                     Row {
                         spacing: theme.space(1.25)
                         Tag { visible: row.fact.on_disk === true; text: "On disk"; dot: theme.accent }
+                        Tag { visible: row.fact.other_on_disk === true; text: "Other release on disk"; dot: theme.textFaint }
                         Tag { visible: row.fact.batch === true; text: row.fact.season ? "Season " + row.fact.season + " batch" : "Batch"; dot: theme.orange }
                         Tag { visible: !!row.item.infomkv; text: row.item.infomkv || "" }
                         Label {
@@ -225,6 +229,7 @@ Item {
                         }
                     }
                     Cell { width: root.wRes; ink: theme.textDim; text: row.fact.resolution || "" }
+                    Cell { width: root.wRip; ink: theme.textDim; text: row.fact.rip || "" }
                     Cell {
                         width: root.wEp
                         text: row.fact.episode !== null && row.fact.episode !== undefined
