@@ -1124,7 +1124,7 @@ pub(crate) fn annotate(
                 if let Some(n) = f.episode {
                     let mut paths = link::episode_files(&files, f.season, n).peekable();
                     let any = paths.peek().is_some();
-                    f.on_disk = paths.any(|p| facts::same_release(&item.title, p));
+                    f.on_disk = paths.any(|p| facts::same_release(&item.title, f, p));
                     f.other_on_disk = any && !f.on_disk;
                 }
             }

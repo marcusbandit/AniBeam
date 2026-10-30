@@ -52,7 +52,8 @@ static RIP: LazyLock<Regex> = LazyLock::new(|| {
 /// A version after the episode number: ` - 03v2`, `S01E03v2`
 static VERSION: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)(?:\bS\d{1,2}\s?E|\s-\s)\d{1,4}(?:\.\d)?v(\d)\b").unwrap());
-/// The CRC32 a fansub group tags its file with: `[80977B2B]`
+/// The CRC32 a fansub group tags its file with: `[80977B2B]`. An all-digit tag
+/// is read as a date (`[20241005]`), not a CRC.
 static CRC: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[([0-9A-Fa-f]{8})\]").unwrap());
 static SIZE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)^\s*([\d.,]+)\s*(B|KB|KIB|MB|MIB|GB|GIB|TB|TIB)\s*$").unwrap()
@@ -61,7 +62,7 @@ static SIZE: LazyLock<Regex> = LazyLock::new(|| {
 /// The facts of a bare name, a file's or a torrent's, read as a release
 /// title is; a path counts by its last part.
 pub fn read_name(name: &str) -> ReleaseFacts {
-    let base = name.rsplit('/').next().unwrap_or(name);
+    let base = name.rsplit(['/', '\\']).next().unwrap_or(name);
     read(&Release {
         title: base.to_string(),
         link: String::new(),
@@ -140,8 +141,10 @@ pub fn read(item: &Release) -> ReleaseFacts {
 }
 
 /// The rip a title names, in its usual spelling; empty when none.
+/// The last one counts: a show's own name comes first and can hold the word
+/// (`The Web Detective`), the release tags come after it.
 pub fn rip(title: &str) -> String {
-    let Some(c) = RIP.captures(title) else {
+    let Some(c) = RIP.captures_iter(title).last() else {
         return String::new();
     };
     let word: String = c[1]
@@ -185,29 +188,29 @@ fn plain(name: &str) -> String {
         .join(" ")
 }
 
-/// Whether the file `file` is the release `title` (#237): the same name, or,
-/// when a torrent named itself apart from its file, the same group, and the
-/// same resolution, rip and version wherever both name one. Two CRC tags
-/// that differ settle it the other way. A release or a file naming no group
-/// is only ever its own name.
-pub fn same_release(title: &str, file: &str) -> bool {
+/// Whether the file `file` is the release `title` (#237), `facts` being what
+/// was read off that release: the same name, or, when a torrent named itself
+/// apart from its file, the same group, resolution, rip and version, each
+/// named by both or by neither. Two CRC tags settle it either way. A release
+/// naming no group is only ever its own name.
+pub fn same_release(title: &str, facts: &ReleaseFacts, file: &str) -> bool {
     if plain(title) == plain(file) {
         return true;
     }
     let crc = |s: &str| {
         CRC.captures_iter(s)
-            .last()
             .map(|c| c[1].to_ascii_uppercase())
+            .filter(|c| c.chars().any(|ch| ch.is_ascii_alphabetic()))
+            .last()
     };
     if let (Some(a), Some(b)) = (crc(title), crc(file)) {
         return a == b;
     }
-    let (r, f) = (read_name(title), read_name(file));
-    let agree = |a: &str, b: &str| a.is_empty() || b.is_empty() || a.eq_ignore_ascii_case(b);
-    !r.group.is_empty()
-        && r.group.eq_ignore_ascii_case(&f.group)
-        && agree(&r.resolution, &f.resolution)
-        && agree(&r.rip, &f.rip)
+    let f = read_name(file);
+    !facts.group.is_empty()
+        && facts.group.eq_ignore_ascii_case(&f.group)
+        && facts.resolution.eq_ignore_ascii_case(&f.resolution)
+        && facts.rip == f.rip
         && version(title) == version(file)
 }
 
@@ -366,29 +369,39 @@ mod tests {
         let file = "/lib/Show/[SubsPlease] Show - 05 (1080p) [ABCD1234].mkv";
         assert!(same_release(
             "[SubsPlease] Show - 05 (1080p) [ABCD1234].mkv",
+            &read_name("[SubsPlease] Show - 05 (1080p) [ABCD1234].mkv"),
             file
         ));
         // The same group and resolution, named apart: still this release
-        assert!(same_release("[SubsPlease] Show - 05 (1080p)", file));
+        assert!(same_release(
+            "[SubsPlease] Show - 05 (1080p)",
+            &read_name("[SubsPlease] Show - 05 (1080p)"),
+            file
+        ));
         // Another group, another resolution, another version: not it
         assert!(!same_release(
             "[Erai-raws] Show - 05 [1080p CR WEB-DL AVC AAC]",
+            &read_name("[Erai-raws] Show - 05 [1080p CR WEB-DL AVC AAC]"),
             file
         ));
         assert!(!same_release(
             "[SubsPlease] Show - 05 (720p) [EEEE0000].mkv",
+            &read_name("[SubsPlease] Show - 05 (720p) [EEEE0000].mkv"),
             file
         ));
         assert!(!same_release(
             "[SubsPlease] Show - 05v2 (1080p) [FFFF0000].mkv",
+            &read_name("[SubsPlease] Show - 05v2 (1080p) [FFFF0000].mkv"),
             file
         ));
         assert!(same_release(
             "Show.S01E05.1080p.WEB.h264-ETHEL",
+            &read_name("Show.S01E05.1080p.WEB.h264-ETHEL"),
             "Show S01E05 1080p WEB h264-ETHEL.mkv"
         ));
         assert!(!same_release(
             "Show S01E05 1080p WEBRip x265-Other",
+            &read_name("Show S01E05 1080p WEBRip x265-Other"),
             "Show S01E05 1080p WEB h264-ETHEL.mkv"
         ));
     }
@@ -416,7 +429,29 @@ mod tests {
             ),
         ];
         for (title, here) in listed {
-            assert_eq!(same_release(title, file), here, "{title}");
+            assert_eq!(
+                same_release(title, &read_name(title), file),
+                here,
+                "{title}"
+            );
         }
+    }
+
+    #[test]
+    fn a_release_naming_less_than_the_file_is_not_it() {
+        let file = "[SubsPlease] Show - 05 (720p) [ABCD1234].mkv";
+        let bare = "[SubsPlease] Show - 05";
+        assert!(!same_release(bare, &read_name(bare), file));
+        // A date tag is no CRC: the group and the rest decide
+        let dated = "[SubsPlease] Show - 05 (720p) [20241005]";
+        assert!(same_release(dated, &read_name(dated), file));
+        assert_eq!(
+            rip("[Group] The Web Detective - 03 [1080p BluRay]"),
+            "BluRay"
+        );
+        assert_eq!(
+            read_name("C:\\Anime\\Show\\[SubsPlease] Show - 05 (1080p).mkv").group,
+            "SubsPlease"
+        );
     }
 }

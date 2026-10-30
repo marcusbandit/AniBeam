@@ -232,12 +232,10 @@ pub fn series_for_query(conn: &Connection, query: &str) -> Result<Option<u64>, C
     Ok(best.map(|(_, id)| id))
 }
 
-/// The (season, number) of every episode file a series has on disk.
 /// An episode file of the series: its season, number and name on disk.
 pub type EpisodeFiles = Vec<(Option<u32>, f64, String)>;
 
-/// One series as a `ShowLink`, with the (season, number) of every episode
-/// file on disk beside it.
+/// One series as a `ShowLink`, with every episode file on disk beside it.
 pub fn show_with_numbers(
     conn: &Connection,
     images_dir: &Path,
@@ -277,11 +275,6 @@ pub fn episode_files<'a>(
             })
         .then_some(path.as_str())
     })
-}
-
-/// Whether a release's episode is among the files, whatever release it came from.
-pub fn has_episode(files: &[(Option<u32>, f64, String)], season: Option<u32>, number: f64) -> bool {
-    episode_files(files, season, number).next().is_some()
 }
 
 /// The named series as the page draws them, by id. One scoped snapshot
@@ -536,12 +529,12 @@ mod tests {
     }
 
     #[test]
-    fn has_episode_respects_a_season_only_when_both_name_one() {
+    fn episode_files_respect_a_season_only_when_both_name_one() {
         let files = vec![(None, 1.0, String::new()), (Some(2), 3.0, String::new())];
-        assert!(has_episode(&files, None, 1.0));
-        assert!(has_episode(&files, Some(1), 1.0));
-        assert!(has_episode(&files, Some(2), 3.0));
-        assert!(!has_episode(&files, Some(1), 3.0));
-        assert!(!has_episode(&files, None, 2.0));
+        assert!(episode_files(&files, None, 1.0).next().is_some());
+        assert!(episode_files(&files, Some(1), 1.0).next().is_some());
+        assert!(episode_files(&files, Some(2), 3.0).next().is_some());
+        assert!(!episode_files(&files, Some(1), 3.0).next().is_some());
+        assert!(!episode_files(&files, None, 2.0).next().is_some());
     }
 }

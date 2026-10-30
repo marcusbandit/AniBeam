@@ -476,7 +476,7 @@ pub fn subscribe(
         let had: Vec<String> = now
             .iter()
             .zip(&facts)
-            .filter(|(_, f)| f.on_disk)
+            .filter(|(_, f)| f.on_disk || f.other_on_disk)
             .map(|(i, _)| i.link.clone())
             .collect();
         if !had.is_empty() {
