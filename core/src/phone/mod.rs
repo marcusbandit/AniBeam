@@ -54,7 +54,7 @@ pub fn set_sources(core: &Core, sources: Vec<PhoneSource>) -> Result<Reply, Core
                 ),
             ));
         }
-        if s.kind == "rss" && !s.url.contains("{query}") {
+        if crate::releases::endpoints::needs_query(&s.kind) && !s.url.contains("{query}") {
             return Err(CoreError::invalid(
                 "sources",
                 format!(

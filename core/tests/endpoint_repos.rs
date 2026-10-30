@@ -212,6 +212,24 @@ fn an_installed_endpoint_takes_the_place_of_a_source_with_its_name() {
 }
 
 #[test]
+fn a_phone_source_that_searches_by_address_needs_the_query() {
+    let (_dir, core, _) = common::open_core();
+    for kind in ["tosho", "rss"] {
+        let err = core
+            .call(Call::SetPhoneSources {
+                sources: vec![anibeam_core::PhoneSource {
+                    name: "feed".into(),
+                    kind: kind.into(),
+                    url: "https://feed.example/json".into(),
+                    enabled: true,
+                }],
+            })
+            .unwrap_err();
+        assert!(matches!(err, CoreError::Invalid { .. }), "{kind}: {err:?}");
+    }
+}
+
+#[test]
 fn erai_needs_its_token_and_the_token_never_reaches_the_database() {
     let (dir, core, _) = common::open_core();
     trust(&core, &fixture("general.json"));
