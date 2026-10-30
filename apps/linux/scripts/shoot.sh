@@ -9,7 +9,7 @@ out="$here/captures"; mkdir -p "$out"
 root="${ANIBEAM_ROOT:-$out/root}"; mkdir -p "$root"
 # The build goes into this checkout's target dir (target-dir.sh) and is copied to its
 # target/debug/anibeam-staged, which is what runs. ANIBEAM_NO_BUILD=1 skips the build and reuses
-# this checkout's last staged build: parallel reviewers capture without queueing on the cargo lock.
+# this checkout's last staged build, so parallel captures in one checkout skip the rebuild.
 source "$(dirname "$0")/target-dir.sh"
 # ANIBEAM_QML_DIR=<dir> (debug builds) loads the QML from disk. A relative dir is made
 # absolute against the caller's directory; Qt's compile cache for it stays in the sandbox

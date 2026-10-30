@@ -7,14 +7,20 @@
 #    fresh worktree pays one cold build for that.
 # 2. anibeam_stage builds (unless ANIBEAM_NO_BUILD is set) and copies the debug binary to
 #    <checkout>/target/debug/anibeam-staged, then sets ANIBEAM_BIN to that copy. A capture runs
-#    the staged copy, the build this script made, which is what ANIBEAM_NO_BUILD=1 reuses. With
-#    an outside CARGO_TARGET_DIR shared by several checkouts, debug/anibeam is whichever linked
-#    last, so the copy also keeps a capture on its own build.
+#    the staged copy, the build this script made, which is what ANIBEAM_NO_BUILD=1 reuses.
+#
+# A CARGO_TARGET_DIR outside this checkout gets a warning: if another checkout builds there too,
+# #250 is back, and staging does not help, since the build itself links the stale core.
 #
 # The build and the copy share one lock, so another capture script cannot link between them.
 # Release builds (bench.sh, the launcher) are not touched.
 _ab_checkout="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$_ab_checkout/target}"
+case "$CARGO_TARGET_DIR" in
+  "$_ab_checkout"/*) ;;
+  *) echo "target-dir.sh: CARGO_TARGET_DIR=$CARGO_TARGET_DIR is outside this checkout;" \
+       "never share it with another checkout (#250)" >&2 ;;
+esac
 
 anibeam_stage() {
   local staged="$_ab_checkout/target/debug/anibeam-staged"
