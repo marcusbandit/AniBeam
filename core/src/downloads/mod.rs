@@ -2032,12 +2032,14 @@ fn writing_of(torrents: &[Torrent]) -> std::collections::HashSet<std::path::Path
     out
 }
 
-/// After episode files went to the trash (#266): each torrent whose files all went leaves
-/// the client too, so it is not left behind under Files missing. Its data is never asked
-/// for, since what went is in the trash already. Only a client on this machine, whose paths
-/// are the library's own; with no client set up, or one that does not answer, nothing
-/// happens and nothing is said.
-pub fn drop_emptied_torrents(core: &Core, gone: Vec<std::path::PathBuf>) {
+/// After episode files went to the trash (#266): each torrent that held one of them leaves
+/// the client too, so the same release can be downloaded again (the client refuses a torrent
+/// it already has) and nothing is left behind under Files missing. A season pack goes when
+/// any of its episodes does; the files of it still on disk stay where they are, since a
+/// torrent's data is never asked for. A torrent still downloading is left alone. Only a
+/// client on this machine, whose paths are the library's own; with no client set up, or one
+/// that does not answer, nothing happens and nothing is said.
+pub fn drop_torrents_of(core: &Core, gone: Vec<std::path::PathBuf>) {
     if gone.is_empty() {
         return;
     }
@@ -2056,13 +2058,25 @@ pub fn drop_emptied_torrents(core: &Core, gone: Vec<std::path::PathBuf>) {
             return;
         };
         let gone: Vec<std::path::PathBuf> = gone.iter().map(|p| gone_key(p)).collect();
-        // A torrent still downloading is left alone: what it has not written yet is not
-        // on disk as video, which would read as emptied
-        let hashes: Vec<String> = torrents
-            .iter()
-            .filter(|t| t.progress >= 1.0 && emptied(&t.content_path, &gone))
-            .map(|t| t.hash.to_ascii_lowercase())
-            .collect();
+        let mut hashes: Vec<String> = Vec::new();
+        for t in torrents.iter().filter(|t| t.progress >= 1.0) {
+            let held = match held(&t.content_path, &gone) {
+                Held::Yes => true,
+                Held::No => false,
+                // A folder a deleted file sat under: the torrent's own file list says
+                // whether it was one of them, so a torrent saved straight into a shared
+                // folder is not taken for every file deleted there
+                Held::Maybe => match client.files(&t.hash).await {
+                    Ok(files) => files.iter().any(|f| {
+                        gone.contains(&gone_key(&std::path::Path::new(&t.save_path).join(&f.name)))
+                    }),
+                    Err(_) => false,
+                },
+            };
+            if held {
+                hashes.push(t.hash.to_ascii_lowercase());
+            }
+        }
         if hashes.is_empty() {
             return;
         }
@@ -2071,9 +2085,8 @@ pub fn drop_emptied_torrents(core: &Core, gone: Vec<std::path::PathBuf>) {
                 owner.bus.info(
                     Stage::Downloads,
                     format!(
-                        "{} removed from the torrent client: {} files were deleted",
-                        plural(hashes.len() as u64, "torrent", "torrents"),
-                        if hashes.len() == 1 { "its" } else { "their" }
+                        "{} of the deleted files removed from the torrent client",
+                        plural(hashes.len() as u64, "torrent", "torrents")
                     ),
                     EventBody::Notice,
                 );
@@ -2102,37 +2115,29 @@ fn gone_key(p: &std::path::Path) -> std::path::PathBuf {
     }
 }
 
-/// Whether a torrent's content went with `gone`: it is one of the paths, or a folder that
-/// held one of them and has no video left anywhere under it.
-fn emptied(content: &str, gone: &[std::path::PathBuf]) -> bool {
+enum Held {
+    Yes,
+    No,
+    Maybe,
+}
+
+/// Whether a torrent's content held one of `gone`: it is one of the paths, or a folder one
+/// of them sat under, which only the torrent's file list can settle.
+fn held(content: &str, gone: &[std::path::PathBuf]) -> Held {
     if content.trim().is_empty() {
-        return false;
+        return Held::No;
     }
     // A content path that still exists resolves on disk; a deleted file resolves through
     // its folder, the same way the gone paths did
     let c = std::fs::canonicalize(content.trim())
         .unwrap_or_else(|_| gone_key(std::path::Path::new(content.trim())));
     if gone.contains(&c) {
-        return true;
+        Held::Yes
+    } else if gone.iter().any(|g| g.starts_with(&c)) {
+        Held::Maybe
+    } else {
+        Held::No
     }
-    if !gone.iter().any(|g| g.starts_with(&c) && *g != c) {
-        return false;
-    }
-    !holds_video(&c)
-}
-
-fn holds_video(dir: &std::path::Path) -> bool {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return false;
-    };
-    entries.flatten().any(|e| {
-        let p = e.path();
-        match e.file_type() {
-            Ok(t) if t.is_dir() => holds_video(&p),
-            Ok(_) => crate::library::walk::is_video(&e.file_name().to_string_lossy()),
-            Err(_) => false,
-        }
-    })
 }
 
 /// Whether a torrent is still writing this file.
@@ -2961,6 +2966,27 @@ mod tests {
             describe(&status, Some("anirss exited")),
             "anirss is not available: anirss exited; qBittorrent v5.2.4 connected"
         );
+    }
+
+    #[test]
+    fn a_torrent_held_a_deleted_file_when_it_is_the_file_or_a_folder_above_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let show = dir.path().join("Show");
+        std::fs::create_dir_all(&show).unwrap();
+        let root = std::fs::canonicalize(dir.path()).unwrap();
+        let gone = vec![root.join("Show/01.mkv")];
+        let ep = show.join("01.mkv");
+        assert!(matches!(held(&ep.to_string_lossy(), &gone), Held::Yes));
+        assert!(matches!(held(&show.to_string_lossy(), &gone), Held::Maybe));
+        assert!(matches!(
+            held(&dir.path().to_string_lossy(), &gone),
+            Held::Maybe
+        ));
+        assert!(matches!(
+            held(&show.join("02.mkv").to_string_lossy(), &gone),
+            Held::No
+        ));
+        assert!(matches!(held("", &gone), Held::No));
     }
 
     #[test]

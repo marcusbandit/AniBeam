@@ -525,7 +525,7 @@ FocusScope {
         files = files.concat(extras)
         removeSheet.openAt(anchor, {
             heading: "Delete " + words + " of " + c.title + "?",
-            base: "The files and their subtitles go to the trash, so you can get them back from there.",
+            base: "The files and their subtitles go to the trash, so you can get them back from there. Their torrents leave the torrent client, so they can be downloaded again.",
             rule: false, torrentCount: 0, canFiles: false, confirmText: "Move to trash"
         }, function() {
             var t = Door.callAsync("DeleteEpisodes", { series: c.id, files: files })

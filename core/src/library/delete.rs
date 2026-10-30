@@ -1,7 +1,7 @@
 //! Deleting episodes (#158): the files of chosen episodes, with their subtitle sidecars, out
 //! of the library. On a desktop they go to the trash, where they can be put back; a phone has
 //! no trash and deletes them (`downloads::trash`). The series is scanned again at once, so its
-//! page and cubes follow without waiting on the watcher. A torrent whose files all went
+//! page and cubes follow without waiting on the watcher. A torrent that held one of the files
 //! leaves the client with them (#266), and Delete watched does the same across the whole
 //! library at once.
 
@@ -125,7 +125,7 @@ pub fn delete_episodes(core: &Core, series: u64, files: Vec<u64>) -> Result<Repl
     // A trash that fails part way has still moved what it moved: the library is read again
     // either way, and the failure is reported after.
     let moved = crate::downloads::trash::move_to_trash(&targets);
-    crate::downloads::drop_emptied_torrents(core, gone(&targets));
+    crate::downloads::drop_torrents_of(core, gone(&targets));
     if moved.is_ok() {
         core.bus.info(
             Stage::Library,
@@ -231,7 +231,7 @@ pub fn delete_watched(core: &Core, finished_shows: bool) -> Result<Reply, CoreEr
         });
     }
     let moved = crate::downloads::trash::move_to_trash(&targets);
-    crate::downloads::drop_emptied_torrents(core, gone(&targets));
+    crate::downloads::drop_torrents_of(core, gone(&targets));
     if moved.is_ok() {
         let what = if finished_shows {
             format!(

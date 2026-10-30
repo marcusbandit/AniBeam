@@ -351,8 +351,8 @@ pub enum Call {
     },
     /// Deletes across the whole library (#266), as `DeleteEpisodes` does: every
     /// watched episode's file, or with `finished_shows` every file of each show
-    /// confirmed done with (`SeriesCard::finished_watched`). A torrent whose files
-    /// all went leaves the client. Replies `Deleted` with what went.
+    /// confirmed done with (`SeriesCard::finished_watched`). A torrent that held
+    /// one of the files leaves the client. Replies `Deleted` with what went.
     DeleteWatched {
         finished_shows: bool,
     },
