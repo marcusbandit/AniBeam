@@ -157,6 +157,7 @@ mod tests {
             extras_on_disk: 0,
             total_episodes: total,
             total_is_estimate: false,
+            episodes_set: None,
             code: None,
             watched,
             watched_state: WatchedState::Unknown,

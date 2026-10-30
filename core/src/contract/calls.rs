@@ -59,6 +59,13 @@ pub enum Call {
         series: u64,
         hidden: bool,
     },
+    /// Sets how many episodes a series has, by hand (#239), or clears it with
+    /// None. Nothing past it is predicted until the schedule or a file goes
+    /// past it. Ends in `SeriesChanged`.
+    SetEpisodeCount {
+        series: u64,
+        count: Option<u32>,
+    },
     ListFeed {
         sort: FeedSort,
     },

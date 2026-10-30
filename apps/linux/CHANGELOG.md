@@ -23,6 +23,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Mark a show not interested and it stays off Airing now
 - Plan to watch or get episodes straight from Airing now
 - Media keys and Control Centre play, pause and skip on the Mac
+- Set how many episodes a show has, and nothing past it is predicted
 
 ### Fixed
 - This week cards keep the airing time inside the card

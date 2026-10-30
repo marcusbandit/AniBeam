@@ -41,6 +41,8 @@ pub struct SeriesRow {
     pub tvmaze_id: Option<u64>,
     pub confirmed: bool,
     pub track_choice: Option<String>,
+    /// The episode count the person set by hand (#239), in force or not.
+    pub episodes_set: Option<u32>,
     /// The record behind the match: the AniList media, or for a TVmaze
     /// match the show, read into the same shape so every reader draws
     /// either without asking which it is.
@@ -337,6 +339,7 @@ impl Snapshot {
         snap.load_airing(conn, scope.map(|_| anilist_ids.as_slice()))?;
         snap.load_tv_episodes(conn, scope.map(|_| show_ids.as_slice()))?;
         snap.fill_tvmaze_totals();
+        snap.apply_episodes_set();
         snap.load_tracker_entries(conn, scope.map(|_| media_ids.as_slice()))?;
         snap.load_history(conn, scoped_series)?;
         snap.load_graph_seeds(conn, scope.map(|_| anilist_ids.as_slice()))?;
@@ -363,7 +366,7 @@ impl Snapshot {
                     m.cover_url, m.banner_url, ip.path, ib.path,
                     s.tvmaze_id, t.id, t.name, t.status, t.premiered, t.rating, t.genres, t.network, t.summary,
                     t.url, t.poster_url, t.background_url, m.season, m.start_date, m.duration,
-                    t.average_runtime
+                    t.average_runtime, s.episodes_set
              FROM series s
              LEFT JOIN anilist_media m ON m.id = s.anilist_id
              LEFT JOIN tvmaze_shows t ON t.id = s.tvmaze_id AND s.provider = 'tvmaze'
@@ -435,6 +438,10 @@ impl Snapshot {
                 tvmaze_id: r.get::<_, Option<i64>>(34)?.map(|v| v as u64),
                 confirmed: r.get::<_, i64>(13)? != 0,
                 track_choice: r.get(14)?,
+                episodes_set: r
+                    .get::<_, Option<i64>>(50)?
+                    .and_then(|v| u32::try_from(v).ok())
+                    .filter(|n| *n > 0),
                 media,
                 poster_path: local(r.get(32)?),
                 banner_path: local(r.get(33)?),
@@ -590,6 +597,41 @@ impl Snapshot {
                 if n > 0 {
                     totals.push((i, n));
                 }
+            }
+        }
+        for (i, n) in totals {
+            if let Some(m) = self.series[i].media.as_mut() {
+                m.episodes = Some(n);
+            }
+        }
+    }
+
+    /// A count the person set by hand (#239) stands in for the record's own,
+    /// so nothing past it is predicted, until the schedule or a file names an
+    /// episode past it: then what really happened wins and the record's own
+    /// count, or none, is read as before.
+    fn apply_episodes_set(&mut self) {
+        let mut totals: Vec<(usize, u32)> = Vec::new();
+        for (i, row) in self.series.iter().enumerate() {
+            let Some(set) = row.episodes_set else {
+                continue;
+            };
+            let season = self.card_season(row);
+            let scheduled = self
+                .airing_of(row)
+                .iter()
+                .map(|a| a.number)
+                .max()
+                .unwrap_or(0);
+            let on_disk = self
+                .files_of(row.id)
+                .iter()
+                .filter(|f| f.is_episode && season.is_none_or(|s| f.season.unwrap_or(1) == s))
+                .map(|f| f.number.floor() as u32)
+                .max()
+                .unwrap_or(0);
+            if scheduled.max(on_disk) <= set {
+                totals.push((i, set));
             }
         }
         for (i, n) in totals {
