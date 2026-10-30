@@ -981,7 +981,11 @@ async fn step(
             .collect();
         match super::ensure_client(core).await {
             Ok(anirss) => match anirss
-                .download(&items, roll.name.as_deref(), roll.home.as_deref())
+                .download(
+                    &items,
+                    roll.name.as_deref(),
+                    super::still_there(roll.home.as_deref()),
+                )
                 .await
             {
                 Ok(added) => {

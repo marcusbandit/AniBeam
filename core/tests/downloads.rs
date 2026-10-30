@@ -1700,5 +1700,17 @@ fn episodes_for_a_library_show_are_saved_into_its_folder() {
     assert_eq!(body["save_path"], json!(show.to_string_lossy()));
     let body = get(None);
     assert!(body.get("save_path").is_none(), "{body}");
+    // A client on another machine names its paths its own way
+    save(
+        &core,
+        DownloadSettings {
+            torrent_url: "http://seedbox.example:8080".to_string(),
+            ..remote()
+        },
+        Some("tok"),
+        Some("pw"),
+    );
+    let body = get(Some(1));
+    assert!(body.get("save_path").is_none(), "{body}");
     core.shutdown();
 }

@@ -1531,7 +1531,13 @@ fn show_folder(core: &Core, series: Option<u64>) -> Result<Option<String>, CoreE
             .ok();
         Ok((path, settings::load_stored(c)?))
     })?;
-    Ok(path.filter(|p| settings::files_here(&s) && std::path::Path::new(p).is_dir()))
+    Ok(path.filter(|p| settings::files_here(&s) && still_there(Some(p)).is_some()))
+}
+
+/// A show folder anirss will take as save_path: still on disk, and a name
+/// with no control characters, which anirss refuses.
+pub(crate) fn still_there(path: Option<&str>) -> Option<&str> {
+    path.filter(|p| !p.chars().any(char::is_control) && std::path::Path::new(p).is_dir())
 }
 
 /// Moves new single-episode torrents into their show's folder when an
