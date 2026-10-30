@@ -72,7 +72,9 @@ impl Install {
         let Ok(exe) = std::env::current_exe() else {
             return Install::Source;
         };
-        let appimage = std::env::var_os("APPIMAGE").map(PathBuf::from);
+        let appimage = std::env::var_os("APPIMAGE")
+            .map(PathBuf::from)
+            .zip(std::env::var_os("APPDIR").map(PathBuf::from));
         match Install::classify(&exe, appimage, Os::current()) {
             Install::Package { .. } => Install::Package {
                 package: pacman_owner(&exe),
@@ -82,12 +84,16 @@ impl Install {
     }
 
     /// The install a binary at `exe` is, on `os`. The AppImage runtime names its file in
-    /// `$APPIMAGE`. On Windows the setup leaves its uninstaller beside the binary and the
+    /// `$APPIMAGE` and its mount in `$APPDIR`, passed here as the pair; both are inherited
+    /// by everything an AppImage starts, so they count only for a binary inside that
+    /// mount. On Windows the setup leaves its uninstaller beside the binary and the
     /// portable zip a `qml` folder; a binary with neither is a `cargo` build.
-    pub fn classify(exe: &Path, appimage: Option<PathBuf>, os: Os) -> Install {
+    pub fn classify(exe: &Path, appimage: Option<(PathBuf, PathBuf)>, os: Os) -> Install {
         match os {
             Os::Linux => {
-                if let Some(path) = appimage.filter(|p| p.is_absolute()) {
+                if let Some((path, _)) =
+                    appimage.filter(|(path, appdir)| path.is_absolute() && exe.starts_with(appdir))
+                {
                     return Install::AppImage { path };
                 }
                 if exe.starts_with("/usr") || exe.starts_with("/opt") {
@@ -510,12 +516,13 @@ impl Prepared {
             }),
             Prepared::MacApp { bundle, staged } => {
                 // The old .app is moved aside rather than removed first, so a swap that
-                // fails halfway puts it back.
+                // fails halfway puts it back, and a restart opens whichever is in place.
                 let script = format!(
                     r#"{WAIT_SH}
 old="$3.old"; rm -rf "$old"
-mv "$2" "$old" || exit 1
-if mv "$3" "$2"; then rm -rf "$old"; else mv "$old" "$2"; exit 1; fi
+if mv "$2" "$old"; then
+  if mv "$3" "$2"; then rm -rf "$old"; else mv "$old" "$2"; fi
+fi
 if [ "$4" = reopen ]; then app="$2"; shift 4; exec open "$app" --args "$@"; fi"#
                 );
                 Some(Helper {
@@ -550,8 +557,9 @@ if [ "$4" = reopen ]; then app="$2"; shift 4; exec open "$app" --args "$@"; fi"#
             Prepared::WindowsPortable { zip, exe, work } => {
                 let dir = exe.parent().unwrap_or(Path::new("."));
                 let unpacked = work.join("unpacked");
-                // A failed unpack stops before the folder is touched; the new version, or
-                // the old one, opens either way.
+                // A failed unpack stops before the folder is touched. The folders the
+                // setup clears are moved aside rather than removed, and a copy that fails
+                // puts them back. The new version, or the old one, opens either way.
                 let mut script = format!(
                     "$ErrorActionPreference = 'Stop'\n\
                      Wait-Process -Id {pid} -ErrorAction SilentlyContinue\n\
@@ -559,8 +567,15 @@ if [ "$4" = reopen ]; then app="$2"; shift 4; exec open "$app" --args "$@"; fi"#
                      Get-Process qbittorrent-nox -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -like ({dir} + '\\*') }} | Stop-Process -Force\n\
                      Remove-Item -LiteralPath {unpacked} -Recurse -Force -ErrorAction SilentlyContinue\n\
                      Expand-Archive -LiteralPath {zip} -DestinationPath {unpacked} -Force\n\
-                     Remove-Item -LiteralPath (Join-Path {dir} 'qml'),(Join-Path {dir} 'anirss') -Recurse -Force -ErrorAction SilentlyContinue\n\
+                     $old = Join-Path {work} 'old'\n\
+                     New-Item -ItemType Directory -Path $old -Force | Out-Null\n\
+                     foreach ($d in 'qml','anirss') {{ $p = Join-Path {dir} $d; if (Test-Path -LiteralPath $p) {{ Move-Item -LiteralPath $p -Destination $old }} }}\n\
+                     try {{\n\
                      Get-ChildItem -LiteralPath (Join-Path {unpacked} 'AniBeam') | Copy-Item -Destination {dir} -Recurse -Force\n\
+                     }} catch {{\n\
+                     foreach ($d in 'qml','anirss') {{ $o = Join-Path $old $d; if (Test-Path -LiteralPath $o) {{ Remove-Item -LiteralPath (Join-Path {dir} $d) -Recurse -Force -ErrorAction SilentlyContinue; Move-Item -LiteralPath $o -Destination {dir} }} }}\n\
+                     throw\n\
+                     }}\n\
                      Remove-Item -LiteralPath {work} -Recurse -Force -ErrorAction SilentlyContinue\n\
                      }} finally {{",
                     dir = ps(dir),
@@ -675,11 +690,22 @@ mod tests {
     #[test]
     fn linux_tells_an_appimage_a_package_and_a_build_apart() {
         let exe = Path::new("/tmp/.mount_AniBeaXYZ/usr/bin/anibeam");
+        let runtime = || {
+            Some((
+                PathBuf::from("/home/a/AniBeam.AppImage"),
+                PathBuf::from("/tmp/.mount_AniBeaXYZ"),
+            ))
+        };
         assert_eq!(
-            Install::classify(exe, Some("/home/a/AniBeam.AppImage".into()), Os::Linux),
+            Install::classify(exe, runtime(), Os::Linux),
             Install::AppImage {
                 path: "/home/a/AniBeam.AppImage".into()
             }
+        );
+        // Started from a terminal inside some AppImage: its variables are not ours
+        assert_eq!(
+            Install::classify(Path::new("/usr/bin/anibeam"), runtime(), Os::Linux),
+            Install::Package { package: None }
         );
         assert_eq!(
             Install::classify(Path::new("/usr/bin/anibeam"), None, Os::Linux),
@@ -845,6 +871,18 @@ mod tests {
             .status()
             .unwrap();
         assert!(status.success());
+        assert!(bundle.join("new").is_dir());
+        // A swap that cannot happen leaves the app that was there
+        let gone = Prepared::MacApp {
+            bundle: bundle.clone(),
+            staged: dir.path().join(".missing.update"),
+        }
+        .helper(u32::MAX >> 2, false, &[])
+        .unwrap();
+        std::process::Command::new(&gone.program)
+            .args(&gone.args)
+            .status()
+            .unwrap();
         assert!(bundle.join("new").is_dir());
         assert!(!staged.exists());
         assert!(!dir.path().join(".AniBeam.app.update.old").exists());

@@ -13,8 +13,8 @@
 //! org.freedesktop.Application interface and MPRIS's Raise and Quit queue their work on.
 
 use core::pin::Pin;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
 
 use anibeam_core::update::Update;
 use anibeam_core::update::install::{self, Install, Prepared};
@@ -135,10 +135,11 @@ pub mod qobject {
         /// newer build, says nothing.
         #[qinvokable]
         fn check_for_update(self: &Self, track: &QString);
-        /// Downloads and readies the update updateAvailable last offered with `install`.
+        /// Downloads and readies `version`, an update updateAvailable offered with
+        /// `install`. updateFailed answers when it cannot.
         #[qinvokable]
-        fn install_update(self: &Self);
-        /// The next exit opens the readied update; QML quits the app after asking.
+        fn install_update(self: &Self, version: &QString);
+        /// The next exit opens the readied update; QML quits the app right after.
         #[qinvokable]
         fn restart_for_update(self: &Self);
     }
@@ -249,9 +250,12 @@ impl qobject::Shell {
     }
 }
 
-/// The update the last check offered and the install it was offered for, what
-/// installUpdate left ready, and whether the exit opens it.
-static OFFERED: Mutex<Option<(Install, Update)>> = Mutex::new(None);
+/// How this copy was installed, read once, off the async workers since it may ask pacman.
+/// Then every update a check offered, by version, so installUpdate takes the one the
+/// notice shows even when a check for a track since left answers later; what installUpdate
+/// left ready; and whether the exit opens it.
+static INSTALL: OnceLock<Install> = OnceLock::new();
+static OFFERED: Mutex<Vec<Update>> = Mutex::new(Vec::new());
 static PREPARED: Mutex<Option<Prepared>> = Mutex::new(None);
 static INSTALLING: AtomicBool = AtomicBool::new(false);
 static RESTART: AtomicBool = AtomicBool::new(false);
@@ -288,7 +292,15 @@ impl qobject::Shell {
                 Ok(http) => http,
                 Err(e) => return eprintln!("anibeam: update check: {e:?}"),
             };
-            let install = Install::detect();
+            let install = match INSTALL.get() {
+                Some(install) => install.clone(),
+                None => {
+                    let found = tokio::task::spawn_blocking(Install::detect)
+                        .await
+                        .unwrap_or(Install::Source);
+                    INSTALL.get_or_init(|| found).clone()
+                }
+            };
             let offer = |version: &str, url: &str, how: &'static str, command: String| {
                 let (version, url) = (QString::from(version), QString::from(url));
                 let _ = shell.queue(move |shell| {
@@ -307,12 +319,19 @@ impl qobject::Shell {
             if let Install::Package { package } = &install {
                 let Some(package) = package else { return };
                 match anibeam_core::update::check_aur(&http, package, &current).await {
-                    Ok(Some(version)) => offer(
-                        &version,
-                        &format!("https://aur.archlinux.org/packages/{package}"),
-                        "command",
-                        install::aur_command(package),
-                    ),
+                    Ok(Some(version)) => {
+                        let name = package.clone();
+                        let command =
+                            tokio::task::spawn_blocking(move || install::aur_command(&name))
+                                .await
+                                .unwrap_or_default();
+                        offer(
+                            &version,
+                            &format!("https://aur.archlinux.org/packages/{package}"),
+                            "command",
+                            command,
+                        )
+                    }
                     Ok(None) => {}
                     Err(e) => eprintln!("anibeam: update check: {e:?}"),
                 }
@@ -330,23 +349,31 @@ impl qobject::Shell {
             } else {
                 "page"
             };
-            offer(&update.version, &update.url, how, String::new());
             if let Ok(mut offered) = OFFERED.lock() {
-                *offered = Some((install, update));
+                offered.retain(|u| u.version != update.version);
+                offered.push(update.clone());
             }
+            offer(&update.version, &update.url, how, String::new());
         });
     }
 
-    pub fn install_update(&self) {
-        let Some((install, update)) = OFFERED.lock().ok().and_then(|o| o.clone()) else {
-            return;
+    pub fn install_update(&self, version: &QString) {
+        let version = version.to_string();
+        let found = OFFERED
+            .lock()
+            .ok()
+            .and_then(|o| o.iter().find(|u| u.version == version).cloned());
+        let (Some(install), Some(update)) = (INSTALL.get().cloned(), found) else {
+            return self.fail(format!("AniBeam {version} is no longer on offer"));
         };
+        // A second click while one runs is the same download
         if INSTALLING.swap(true, Ordering::SeqCst) {
             return;
         }
         let shell = self.qt_thread();
         crate::runtime::runtime().spawn(async move {
-            let work = std::env::temp_dir().join("anibeam-update");
+            // This process's own, so another instance or a sandbox run never empties it
+            let work = std::env::temp_dir().join(format!("anibeam-update-{}", std::process::id()));
             let tell = shell.clone();
             let progress = move |got: u64, total: u64| {
                 let fraction = got as f64 / total.max(1) as f64;
@@ -367,6 +394,12 @@ impl qobject::Shell {
                 }
             }
         });
+    }
+
+    fn fail(&self, message: String) {
+        let _ = self
+            .qt_thread()
+            .queue(move |shell| shell.update_failed(QString::from(&message)));
     }
 
     pub fn restart_for_update(&self) {

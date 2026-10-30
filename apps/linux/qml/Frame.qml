@@ -375,7 +375,7 @@ FocusScope {
         WhatsNew { id: whatsNew }
         UpdateNotice {
             id: updateNotice
-            covered: frame.fullWindow || whatsNew.visible
+            covered: frame.fullWindow || whatsNew.visible || removeSheet.visible || connectSheet.visible
             anchors.right: parent.right; anchors.rightMargin: theme.space(4)
             anchors.bottom: parent.bottom; anchors.bottomMargin: rail.footHeight + theme.space(4)
         }

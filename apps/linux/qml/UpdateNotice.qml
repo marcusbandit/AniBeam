@@ -2,8 +2,8 @@
 // frame asks once as the app starts (check()), Settings asks again when the track changes,
 // and Shell answers through updateAvailable with how this copy takes the update:
 // - install: Update downloads it here, with the progress along the island's foot, and the
-//   app restarts into it once it is ready. A download that finishes while the player has
-//   the window waits for a Restart click instead, so nothing stops mid-episode.
+//   app restarts into it once it is ready. A download that finishes while the player, a sheet
+//   or What's new has the window waits for a Restart click instead.
 // - command: a package manager owns this copy (the AUR), so the island shows the command
 //   that updates it and a Copy button. Shell only says so once the AUR has the version.
 // - source: a build from a checkout, which only a pull and a rebuild moves on.
@@ -70,6 +70,8 @@ Frost {
             if (track === root.track && !root.busy) root.show(version, url, how, command)
         }
         function onUpdateProgress(fraction) { root.progress = fraction }
+        // Restarts at once unless the player, a sheet or What's new has the window; then
+        // Restart waits for a click
         function onUpdateReady() {
             root.phase = "ready"
             if (!root.covered) root.restart()
@@ -95,7 +97,7 @@ Frost {
     function install() {
         root.progress = 0
         root.phase = "downloading"
-        Shell.installUpdate()
+        Shell.installUpdate(root.version)
     }
     function restart() {
         Shell.restartForUpdate()

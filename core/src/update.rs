@@ -222,7 +222,8 @@ pub async fn check_aur(
     let res = http
         .send(HttpRequest {
             method: Method::Get,
-            url: format!("{AUR_INFO}{package}"),
+            // Names are [a-z0-9@._+-]; a raw + would read as a space
+            url: format!("{AUR_INFO}{}", package.replace('+', "%2B")),
             headers: Vec::new(),
             body: None,
             timeout: None,
