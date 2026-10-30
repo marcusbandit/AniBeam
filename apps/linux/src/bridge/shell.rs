@@ -32,6 +32,8 @@ pub mod qobject {
         #[qml_singleton]
         #[qproperty(QString, version)]
         #[qproperty(QString, release)]
+        #[qproperty(QString, build)]
+        #[qproperty(QString, own_track)]
         #[qproperty(QString, shoot)]
         #[qproperty(QString, page)]
         #[qproperty(QString, props)]
@@ -102,10 +104,11 @@ pub mod qobject {
         /// it opens by itself, what to keep now and once it closes, and what it shows.
         #[qinvokable]
         fn whats_new(self: &Self, seen: &QString, from: &QString) -> QJsonObject;
-        /// Asks GitHub once whether a newer desktop release is out; updateAvailable says so.
-        /// No answer, or no newer release, says nothing.
+        /// Asks GitHub whether a newer desktop build is out on `track` (`stable` or
+        /// `nightly`, empty for this build's own); updateAvailable says so. No answer, or no
+        /// newer build, says nothing.
         #[qinvokable]
-        fn check_for_update(self: &Self);
+        fn check_for_update(self: &Self, track: &QString);
     }
 
     impl cxx_qt::Threading for Shell {}
@@ -115,6 +118,8 @@ pub mod qobject {
 pub struct ShellRust {
     version: QString,
     release: QString,
+    build: QString,
+    own_track: QString,
     shoot: QString,
     page: QString,
     props: QString,
@@ -147,6 +152,14 @@ impl Default for ShellRust {
             version: QString::from(anibeam_core::VERSION),
             // The rail and About show the version number alone, never the commit.
             release: QString::from(env!("CARGO_PKG_VERSION")),
+            // The whole name a shipped build carries, 2.4.0-nightly.20261030.12, for About.
+            build: QString::from(anibeam_core::RELEASE),
+            own_track: QString::from(
+                match anibeam_core::update::Track::of(anibeam_core::RELEASE) {
+                    anibeam_core::update::Track::Nightly => "nightly",
+                    anibeam_core::update::Track::Stable => "stable",
+                },
+            ),
             shoot: QString::from(a.shoot.as_deref().unwrap_or("")),
             page: QString::from(a.page.as_deref().unwrap_or("home")),
             props: QString::from(a.props.as_deref().unwrap_or("")),
@@ -202,7 +215,8 @@ impl qobject::Shell {
 }
 
 impl qobject::Shell {
-    pub fn check_for_update(&self) {
+    pub fn check_for_update(&self, track: &QString) {
+        use anibeam_core::update::Track;
         // A build the system's package manager installed (the AUR package, under /usr) is
         // updated by that package manager, not by a download.
         if cfg!(target_os = "linux")
@@ -210,6 +224,7 @@ impl qobject::Shell {
         {
             return;
         }
+        let track = Track::parse(&track.to_string()).unwrap_or(Track::of(anibeam_core::RELEASE));
         let shell = self.qt_thread();
         crate::runtime::runtime().spawn(async move {
             let http = match anibeam_core::net::ReqwestHttp::new(std::time::Duration::from_secs(15))
@@ -217,11 +232,12 @@ impl qobject::Shell {
                 Ok(http) => http,
                 Err(e) => return eprintln!("anibeam: update check: {e:?}"),
             };
-            let update = match anibeam_core::update::check(&http, env!("CARGO_PKG_VERSION")).await {
-                Ok(Some(update)) => update,
-                Ok(None) => return,
-                Err(e) => return eprintln!("anibeam: update check: {e:?}"),
-            };
+            let update =
+                match anibeam_core::update::check(&http, anibeam_core::RELEASE, track).await {
+                    Ok(Some(update)) => update,
+                    Ok(None) => return,
+                    Err(e) => return eprintln!("anibeam: update check: {e:?}"),
+                };
             let _ = shell.queue(move |shell| {
                 shell.update_available(
                     QString::from(update.version.as_str()),

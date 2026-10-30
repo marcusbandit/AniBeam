@@ -1,0 +1,156 @@
+name: PR build
+
+# Installers for a pull request, so someone can try a branch before it merges. Put the
+# `test build` label on the PR: every platform builds the PR's head as 2.5.0-pr.280.3 (the
+# workspace version, the PR and this workflow's run number), the files go on the one
+# `pr-builds` pre-release under that name, and a comment on the PR links them. A new push
+# while the label is on builds again and replaces them; closing the PR or taking the label
+# off removes them. A test build is never offered as an update, and is offered the stable
+# release it was tested for once that ships. A fork's PR builds, but its files stay on the
+# workflow run, since its token cannot write releases.
+on:
+  pull_request:
+    types: [labeled, unlabeled, synchronize, reopened, closed]
+
+concurrency:
+  group: pr-build-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  LABEL: test build
+  PR: ${{ github.event.pull_request.number }}
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.gate.outputs.build }}
+      remove: ${{ steps.gate.outputs.remove }}
+      version: ${{ steps.gate.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Build, remove or neither
+        id: gate
+        env:
+          ACTION: ${{ github.event.action }}
+          CHANGED: ${{ github.event.label.name }}
+          LABELLED: ${{ contains(github.event.pull_request.labels.*.name, 'test build') }}
+        run: |
+          build=false
+          remove=false
+          case "$ACTION" in
+            labeled) [ "$CHANGED" = "$LABEL" ] && build=true ;;
+            unlabeled) [ "$CHANGED" = "$LABEL" ] && remove=true ;;
+            synchronize|reopened) [ "$LABELLED" = true ] && build=true ;;
+            closed) [ "$LABELLED" = true ] && remove=true ;;
+          esac
+          base="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n1)"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "remove=$remove" >> "$GITHUB_OUTPUT"
+          echo "version=$base-pr.$PR.$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "build=$build remove=$remove"
+
+  macos:
+    needs: gate
+    if: needs.gate.outputs.build == 'true'
+    uses: ./.github/workflows/macos.yml
+    secrets: inherit
+    with:
+      ref: ${{ github.event.pull_request.head.sha }}
+      version: ${{ needs.gate.outputs.version }}
+
+  linux:
+    needs: gate
+    if: needs.gate.outputs.build == 'true'
+    uses: ./.github/workflows/linux.yml
+    secrets: inherit
+    with:
+      ref: ${{ github.event.pull_request.head.sha }}
+      version: ${{ needs.gate.outputs.version }}
+
+  windows:
+    needs: gate
+    if: needs.gate.outputs.build == 'true'
+    uses: ./.github/workflows/windows.yml
+    secrets: inherit
+    with:
+      ref: ${{ github.event.pull_request.head.sha }}
+      version: ${{ needs.gate.outputs.version }}
+
+  publish:
+    needs: [gate, macos, linux, windows]
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ needs.gate.outputs.version }}
+      SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: anibeam-*
+          merge-multiple: true
+          path: dist
+
+      - name: Replace this PR's files on pr-builds
+        run: |
+          ls -la dist
+          if ! gh release view pr-builds > /dev/null 2>&1; then
+            gh release create pr-builds --target "${{ github.event.repository.default_branch }}" \
+              --prerelease --latest=false --title "AniBeam pull request builds" \
+              --notes "Test builds of open pull requests, one set of files per PR, named AniBeam-<version>-pr.<PR>.<run>. Each PR's comment links its own. Never offered as an update."
+          fi
+          gh release upload pr-builds dist/* --clobber
+          gh release view pr-builds --json assets --jq '.assets[].name' |
+            grep -F -- "-pr.$PR." | grep -vF -- "$VERSION" |
+            while read -r name; do gh release delete-asset pr-builds "$name" --yes; done
+
+      - name: Link them on the PR
+        run: |
+          base="https://github.com/$GH_REPO/releases/download/pr-builds"
+          {
+            echo "<!-- pr-build -->"
+            echo "**Test build $VERSION** of ${SHA::7}. Every new push builds again while the \`$LABEL\` label is on."
+            echo
+            for f in dist/*; do
+              name="$(basename "$f")"
+              echo "- [$name]($base/$name)"
+            done
+            echo
+            echo "The files go away when the PR closes or the label comes off."
+          } > comment.md
+          id="$(gh api "repos/$GH_REPO/issues/$PR/comments" --paginate \
+            --jq '.[] | select(.body | startswith("<!-- pr-build -->")) | .id' | head -n 1)"
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GH_REPO/issues/comments/$id" -F body=@comment.md > /dev/null
+          else
+            gh pr comment "$PR" --body-file comment.md
+          fi
+
+  remove:
+    needs: gate
+    if: needs.gate.outputs.remove == 'true' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Remove this PR's files
+        run: |
+          gh release view pr-builds --json assets --jq '.assets[].name' 2> /dev/null |
+            grep -F -- "-pr.$PR." |
+            while read -r name; do gh release delete-asset pr-builds "$name" --yes; done
+          id="$(gh api "repos/$GH_REPO/issues/$PR/comments" --paginate \
+            --jq '.[] | select(.body | startswith("<!-- pr-build -->")) | .id' | head -n 1)"
+          if [ -n "$id" ]; then
+            printf '<!-- pr-build -->\nThe test build was removed. Put the `%s` label back on to build again.\n' "$LABEL" > comment.md
+            gh api -X PATCH "repos/$GH_REPO/issues/comments/$id" -F body=@comment.md > /dev/null
+          fi

@@ -1,7 +1,9 @@
-// A newer desktop release is out: one quiet island over the page's bottom right corner, the
+// A newer desktop build is out: one quiet island over the page's bottom right corner, the
 // version and a Download button that opens the release page in the browser. The frame asks
-// Shell once as the app starts and Shell answers through updateAvailable. Later hides it
-// until a newer version than this one comes out; the version passed over lives in shell.conf.
+// once as the app starts (check()), Settings asks again when the track changes, and Shell
+// answers through updateAvailable. The track is Stable or Nightly, and until someone picks
+// one it is the running build's own. Later hides it until a newer version than this one
+// comes out; the version passed over and the track picked live in shell.conf.
 // It steps aside while the player has the window or a sheet is open (`covered`), and comes
 // back once they close.
 import QtQuick
@@ -26,6 +28,17 @@ Frost {
         category: "update"
         // The newest version the notice was put away for
         property string skipped: ""
+        // stable or nightly, empty to follow the running build
+        property string track: ""
+    }
+
+    // The track updates come from, as Settings shows it
+    readonly property string track: kept.track !== "" ? kept.track : Shell.ownTrack
+    function check() { Shell.checkForUpdate(track) }
+    function setTrack(t) {
+        kept.track = t === Shell.ownTrack ? "" : t
+        shown = false
+        check()
     }
 
     Connections {

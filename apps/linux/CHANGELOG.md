@@ -13,6 +13,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 ## 2.4.0 · 2026-10-30
 
 ### New
+- Pick Stable or Nightly updates in Settings, under Data
 - Downloaded lists every show on disk, not only what the torrent client holds
 - Downloaded shows how much of the disk is watched and how much is not
 - Delete watched clears every watched episode, or every finished show you saw

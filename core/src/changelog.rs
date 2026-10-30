@@ -96,6 +96,9 @@ pub fn lint(text: &str, version: &str) -> Vec<String> {
         }
     };
     let mut heading_at = 0;
+    // The newest version may have no sections yet: main moves to it the moment the last
+    // one ships, before anything is written under it.
+    let mut headings = 0;
     for (n, line) in read(text) {
         match line {
             Line::Title => {}
@@ -105,9 +108,10 @@ pub fn lint(text: &str, version: &str) -> Vec<String> {
                 exact,
             } => {
                 close(&mut problems, open.take());
-                if above.is_some() && kinds.is_empty() {
+                if headings > 1 && kinds.is_empty() {
                     problems.push(format!("line {heading_at}: a version with no sections"));
                 }
+                headings += 1;
                 heading_at = n;
                 kinds.clear();
                 if !exact {
@@ -191,7 +195,7 @@ pub fn lint(text: &str, version: &str) -> Vec<String> {
     close(&mut problems, open);
     match above {
         None => problems.push("no version heading".to_string()),
-        Some(_) if kinds.is_empty() => {
+        Some(_) if headings > 1 && kinds.is_empty() => {
             problems.push(format!("line {heading_at}: a version with no sections"))
         }
         Some(_) => {}
@@ -546,6 +550,17 @@ wraps onto a second line
         assert!(has("line 7: a section with no lines"), "{problems:?}");
         assert!(has("line 8: \"2026-02-30\" is not a day"), "{problems:?}");
         assert!(has("line 11: New comes before Fixed"), "{problems:?}");
+    }
+
+    #[test]
+    fn only_the_newest_version_may_be_empty() {
+        let just_begun = "## 2.1.0 · 2026-10-30\n## 2.0.8 · 2026-10-24\n### Fixed\n- One\n";
+        assert_eq!(lint(just_begun, "2.1.0"), Vec::<String>::new());
+        let hollow = "## 2.1.0 · 2026-10-30\n### New\n- One\n## 2.0.8 · 2026-10-24\n";
+        assert_eq!(
+            lint(hollow, "2.1.0"),
+            ["line 4: a version with no sections"]
+        );
     }
 
     #[test]

@@ -1,58 +1,131 @@
 name: Release
 
-# A version tag builds the Mac dmg, the Linux AppImage and the Windows installer and zip, and
-# leaves a draft release with all of them on it:  git tag v2.1.0 && git push origin v2.1.0
-# Stable versions only come from their own release branch (v2.1.0 and v2.1.1 from
-# release/2.1), so a tag anywhere else stops before anything builds. Builds between releases
-# are on the preview and candidate pre-releases (preview.yml). CONTRIBUTING.md, under Releases, has the whole line.
-# The draft waits for a person to read it and press Publish. The AUR package follows the
-# published tag by hand: apps/linux/packaging/aur/publish.sh 2.1.0
-# The Electron line is frozen and no longer ships; its last zip is on v2.0.0.
+# Ships a stable version, two ways:
+#
+# - Promote (Run workflow on main): the newest nightly's commit becomes the next stable
+#   version, so what ships is a build nightly users have already run. The version is that
+#   nightly's own, 2.5.0 out of 2.5.0-nightly.20261102.40; Run workflow can name an older
+#   nightly instead. Once it is out, main moves to the next minor version (2.6.0) with a new
+#   heading in apps/linux/CHANGELOG.md, committed straight to main by this workflow.
+# - Hotfix (a tag push): a version that has shipped needs a fix. Cut release/2.5 from v2.5.0,
+#   cherry-pick the fix onto it in a PR, then git tag v2.5.1 origin/release/2.5 and push it.
+#   A tag that is not on its own release branch stops before anything builds.
+#
+# Either way every platform is built, the release starts as a draft, and it goes public as
+# the latest release only once every file is on it, so the app's update notice never finds
+# a version without its download. The AUR package and the brew cask follow by hand:
+# apps/linux/packaging/aur/publish.sh 2.5.0 and apps/linux/packaging/brew/bump.sh 2.5.0.
+# CONTRIBUTING.md, under Releases, has the whole line.
 on:
+  workflow_dispatch:
+    inputs:
+      nightly:
+        description: The nightly to promote, v2.5.0-nightly.20261102.40; empty for the newest
+        type: string
+        default: ''
   push:
-    tags: ['v*']
+    tags: ['v*', '!v*-*']
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 permissions:
   contents: write
 
 jobs:
-  line:
+  resolve:
     runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+      version: ${{ steps.resolve.outputs.version }}
+      kind: ${{ steps.resolve.outputs.kind }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: The tag is on its own release branch
+      - name: What ships
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NIGHTLY: ${{ inputs.nightly }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          branch="release/${version%.*}"
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" "origin/$branch" 2> /dev/null; then
-            echo "::error::$GITHUB_REF_NAME is not on $branch. Stable versions are tagged on their own release branch; see CONTRIBUTING.md, Releases."
-            exit 1
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            if [ "$GITHUB_REF" != refs/heads/main ]; then
+              echo "::error::A stable version is promoted from main. A fix for a shipped version is a tag on its release branch; see CONTRIBUTING.md, Releases."
+              exit 1
+            fi
+            tag="$NIGHTLY"
+            if [ -z "$tag" ]; then
+              tag="$(gh release list --limit 100 --exclude-drafts --json tagName,createdAt \
+                --jq '[.[] | select(.tagName | test("^v[0-9.]+-nightly\\."))] | sort_by(.createdAt) | last // empty | .tagName')"
+            fi
+            if ! [[ "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-nightly\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::No nightly to promote (got '$tag'). Run the Nightly workflow first."
+              exit 1
+            fi
+            version="${BASH_REMATCH[1]}"
+            sha="$(git rev-list -n 1 "$tag")"
+            if git rev-parse -q --verify "refs/tags/v$version" > /dev/null; then
+              echo "::error::v$version is out already. Main moves to the next version after a release; check Cargo.toml on main."
+              exit 1
+            fi
+            # What's new shows the newest heading's lines, so a version with none has nothing
+            # to say to the people it reaches.
+            if ! git show "$sha:apps/linux/CHANGELOG.md" |
+              awk '/^## /{n++} n==1 && /^### /{found=1} n==2{exit} END{exit !found}'; then
+              echo "::error::apps/linux/CHANGELOG.md has no lines under $version at $tag."
+              exit 1
+            fi
+            echo "Promoting $tag (${sha::7}) to v$version"
+            kind=promote
+          else
+            version="${GITHUB_REF_NAME#v}"
+            branch="release/${version%.*}"
+            sha="$GITHUB_SHA"
+            if ! git merge-base --is-ancestor "$sha" "origin/$branch" 2> /dev/null; then
+              echo "::error::$GITHUB_REF_NAME is not on $branch. A tag ships a fix from its own release branch; a new version is promoted from a nightly. See CONTRIBUTING.md, Releases."
+              exit 1
+            fi
+            echo "Shipping the fix $GITHUB_REF_NAME from $branch"
+            kind=hotfix
           fi
-          echo "$GITHUB_REF_NAME is on $branch"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "kind=$kind" >> "$GITHUB_OUTPUT"
 
   macos:
-    needs: line
+    needs: resolve
     uses: ./.github/workflows/macos.yml
     secrets: inherit
+    with:
+      ref: ${{ needs.resolve.outputs.sha }}
+      version: ${{ needs.resolve.outputs.version }}
 
   linux:
-    needs: line
+    needs: resolve
     uses: ./.github/workflows/linux.yml
     secrets: inherit
+    with:
+      ref: ${{ needs.resolve.outputs.sha }}
+      version: ${{ needs.resolve.outputs.version }}
 
   windows:
-    needs: line
+    needs: resolve
     uses: ./.github/workflows/windows.yml
     secrets: inherit
+    with:
+      ref: ${{ needs.resolve.outputs.sha }}
+      version: ${{ needs.resolve.outputs.version }}
 
-  draft:
-    needs: [macos, linux, windows]
+  publish:
+    needs: [resolve, macos, linux, windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
 
       - uses: actions/download-artifact@v4
         with:
@@ -60,13 +133,57 @@ jobs:
           merge-multiple: true
           path: dist
 
-      - name: Draft the release
+      - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          SHA: ${{ needs.resolve.outputs.sha }}
+          KIND: ${{ needs.resolve.outputs.kind }}
         run: |
           ls -la dist
-          version="${TAG#v}"
-          sed "s/@VERSION@/$version/g" .github/release-notes.md > notes.md
-          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
-            --title "AniBeam $version" --notes-file notes.md --generate-notes
+          tag="v$VERSION"
+          sed "s/@VERSION@/$VERSION/g" .github/release-notes.md > notes.md
+          previous="$(gh release list --limit 100 --exclude-drafts --exclude-pre-releases --json tagName,createdAt \
+            --jq '[.[] | select(.tagName | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))] | sort_by(.createdAt) | .[].tagName' |
+            grep -vxF "$tag" | tail -n 1 || true)"
+          start=()
+          if [ -n "$previous" ]; then start=(--notes-start-tag "$previous"); fi
+          where=(--target "$SHA")
+          if [ "$KIND" = hotfix ]; then where=(--verify-tag); fi
+          gh release create "$tag" dist/* --draft "${where[@]}" \
+            --title "AniBeam $VERSION" --notes-file notes.md --generate-notes "${start[@]}"
+          gh release edit "$tag" --draft=false --latest
+
+  next:
+    needs: [resolve, publish]
+    if: needs.resolve.outputs.kind == 'promote'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Main moves to the next version
+        env:
+          SHIPPED: ${{ needs.resolve.outputs.version }}
+        run: |
+          current="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n1)"
+          if [ "$current" != "$SHIPPED" ]; then
+            echo "Main is $current already, not $SHIPPED; nothing to move."
+            exit 0
+          fi
+          IFS=. read -r major minor _ <<<"$SHIPPED"
+          next="$major.$((minor + 1)).0"
+          sed -i "0,/^version = \"$SHIPPED\"$/s//version = \"$next\"/" Cargo.toml
+          # The workspace's own packages in the lock carry its version too.
+          for pkg in anibeam anibeam-cli anibeam-core anibeam-host-api; do
+            sed -i "/^name = \"$pkg\"$/{n;s/^version = \"$SHIPPED\"$/version = \"$next\"/}" Cargo.lock
+          done
+          # A heading for the new version above the one that shipped; its lines come with
+          # the pull requests that follow.
+          sed -i "0,/^## /s//## $next · $(date -u +%Y-%m-%d)\n\n## /" apps/linux/CHANGELOG.md
+          git diff --stat
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore(release): main is $next now that $SHIPPED shipped"
+          git push origin HEAD:main

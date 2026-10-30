@@ -405,7 +405,7 @@ FocusScope {
     function startNotes() {
         if (notesStarted) return
         notesStarted = true
-        if (Shell.shoot === "" && Shell.driveOut === "") { whatsNew.start(); Shell.checkForUpdate() }
+        if (Shell.shoot === "" && Shell.driveOut === "") { whatsNew.start(); updateNotice.check() }
     }
     function openWhatsNew() { whatsNew.open() }
     readonly property alias notesPanel: whatsNew
