@@ -495,28 +495,29 @@ FocusScope {
         if (on) { hoverSeriesItem = item; hoverSeries = data }
         else if (hoverSeriesItem === item) { hoverSeriesItem = null; hoverSeries = null }
     }
+    // The menu rows come off the card alone; the files are read only once a row is picked
+    function seriesNoun(c) { return c.kind === "Movie" ? ["film", "films"] : ["episode", "episodes"] }
     function seriesDeleteItems() {
         var c = hoverSeries, anchor = hoverSeriesItem
         if (!c || !c.path || !(c.episodes_on_disk > 0)) return []
-        var r = Door.getSeries(c.id)
-        if (r.error || !r.reply.detail) return []
-        var eps = r.reply.detail.episodes || []
-        var idle = eps.filter(function(e) { return e.downloading === undefined || e.downloading === null })
-        var watched = idle.filter(function(e) { return e.watched }).map(function(e) { return e.file })
-        var all = idle.map(function(e) { return e.file })
-        var noun = c.kind === "Movie" ? ["film", "films"] : ["episode", "episodes"]
+        var noun = seriesNoun(c), n = c.episodes_on_disk
         var out = []
-        if (watched.length && watched.length < all.length)
-            out.push({ text: "Delete " + Fmt.plural(watched.length, "watched " + noun[0], "watched " + noun[1]), icon: "trash-2",
-                       action: function() { frame.askDeleteFiles(anchor, c, watched, "watched ") } })
-        if (all.length)
-            out.push({ text: all.length === 1 ? "Delete the " + noun[0] : "Delete all " + all.length + " " + noun[1], icon: "trash-2",
-                       action: function() { frame.askDeleteFiles(anchor, c, all, "") } })
+        if ((c.watched || 0) > 0 && c.kind !== "Movie")
+            out.push({ text: "Delete watched " + noun[1], icon: "trash-2", action: function() { frame.askDeleteFiles(anchor, c, true) } })
+        out.push({ text: n === 1 ? "Delete the " + noun[0] : "Delete all " + n + " " + noun[1], icon: "trash-2",
+                   action: function() { frame.askDeleteFiles(anchor, c, false) } })
         return out
     }
     property var deleteCalls: ({})   // token -> what the toast names
-    function askDeleteFiles(anchor, c, files, which) {
-        var noun = c.kind === "Movie" ? ["film", "films"] : ["episode", "episodes"]
+    function askDeleteFiles(anchor, c, watchedOnly) {
+        var r = Door.getSeries(c.id)
+        if (r.error || !r.reply.detail) { frame.toast(r.error ? frame.errorText(r.error) : "That series is gone"); return }
+        // An episode a torrent is still writing is not offered
+        var files = (r.reply.detail.episodes || [])
+            .filter(function(e) { return (e.downloading === undefined || e.downloading === null) && (!watchedOnly || e.watched) })
+            .map(function(e) { return e.file })
+        if (!files.length) { frame.toast("No watched episodes of " + c.title + " on disk"); return }
+        var noun = seriesNoun(c), which = watchedOnly ? "watched " : ""
         var words = Fmt.plural(files.length, which + noun[0], which + noun[1])
         removeSheet.openAt(anchor, {
             heading: "Delete " + words + " of " + c.title + "?",

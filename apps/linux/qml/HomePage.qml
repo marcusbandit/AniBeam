@@ -132,8 +132,13 @@ Item {
     // the ones that already aired included, so this morning's episode stays on Today and
     // says whether it landed. A predicted next episode is placed by its guess; a series with
     // nothing in the nine days and no date at all is "No date yet".
+    // The calendar day the week is built for: it changes once a day, not on every tick of
+    // nowMs, so the rows and their entries are rebuilt only when the day turns. The day turning
+    // reloads too, so each card's window of the schedule moves with it.
+    readonly property string dayKey: Qt.formatDate(new Date(nowMs), "yyyy-MM-dd")
+    onDayKeyChanged: if (shelf.length) reload()
     readonly property var week: {
-        var now = new Date(nowMs)
+        var now = new Date(dayKey + "T00:00:00")
         var start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000
         var days = []
         for (var i = -2; i < 7; i++) {
@@ -151,8 +156,11 @@ Item {
         for (var r = 0; r < airingRows.length; r++) {
             var c = airingRows[r]
             var drops = (c.week_airings || []).slice()
+            // The next episode the schedule window does not hold: a predicted one, or a TVmaze
+            // show's next season, which is not the card's season
             var n = c.next_airing
-            if (n && n.predicted && !drops.some(function(a) { return a.episode === n.episode })) drops.push(n)
+            if (n && !drops.some(function(a) { return a.episode === n.episode && (a.season || 1) === (n.season || 1) }))
+                drops.push({ episode: n.episode, through: n.through, season: n.season, at: n.at, predicted: n.predicted, here: false })
             var placed = false
             for (var j = 0; j < drops.length; j++) {
                 var k = dayOf(drops[j].at)
@@ -160,24 +168,21 @@ Item {
                 days[k].cards.push({ card: c, drop: drops[j] })
                 placed = true
             }
-            if (!placed && !(n && n.at < end)) later.push({ card: c, drop: null })
+            if (!placed) later.push({ card: c, drop: null })
         }
         for (var q = 0; q < days.length; q++) days[q].cards.sort(function(a, b) { return a.drop.at - b.drop.at })
         if (later.length) days.push({ label: "No date yet", date: "", today: false, past: false, cards: later, later: true })
         return days
     }
     // Where an episode that is due stands: "future" until its time, then "here" with its file
-    // on disk (or watched already), "downloading" while a torrent writes it, and "late" when
-    // it is out and nothing has arrived, or a predicted one that is not out yet
-    function dropState(c, drop) {
+    // of that season on disk or watched already (the core says), "downloading" while a torrent
+    // writes it, and "late" when it is out and nothing has arrived, or a predicted one that is
+    // not out yet
+    function dropState(c, drop, nowMs) {
         if (!drop) return "none"
-        if (drop.at * 1000 > page.nowMs) return "future"
+        if (drop.at * 1000 > nowMs) return "future"
+        if (drop.here) return "here"
         var last = drop.through || drop.episode
-        var here = c.episodes_here || []
-        var have = true
-        for (var e = drop.episode; e <= last; e++)
-            if (here.indexOf(e) < 0 && !(c.watched !== null && c.watched !== undefined && c.watched >= e)) have = false
-        if (have) return "here"
         if ((c.downloading || []).some(function(d) { return d.number >= drop.episode && d.number <= last })) return "downloading"
         return drop.predicted ? "overdue" : "late"
     }
@@ -197,7 +202,7 @@ Item {
         var n = 0
         for (var i = 0; i < week.length; i++)
             for (var k = 0; k < week[i].cards.length; k++) {
-                var s = page.dropState(week[i].cards[k].card, week[i].cards[k].drop)
+                var s = page.dropState(week[i].cards[k].card, week[i].cards[k].drop, nowMs)
                 if (s === "late" || s === "overdue") n++
             }
         return n
@@ -328,8 +333,8 @@ Item {
         property bool today: false
         readonly property bool gridStop: true
         readonly property var next: drop
-        readonly property string state: page.dropState(item, drop)
-        readonly property bool late: state === "late" || state === "overdue"
+        readonly property string standing: page.dropState(item, drop, page.nowMs)
+        readonly property bool late: standing === "late" || standing === "overdue"
         Component.onDestruction: frame.hoverCard(entry, null, false)
         readonly property int toWatch: page.toWatchOf(item)
         activeFocusOnTab: true
@@ -393,10 +398,10 @@ Item {
                     visible: !!entry.next
                     width: Math.min(implicitWidth, parent.width)
                     elide: Text.ElideRight
-                    text: page.dropText(entry.next, entry.state, entry.today)
+                    text: page.dropText(entry.next, entry.standing, entry.today)
                     role: "ui"
                     font.weight: entry.late ? 650 : 400
-                    color: entry.late ? theme.red : entry.state === "here" ? theme.textDim : theme.accent
+                    color: entry.late ? theme.red : entry.standing === "here" ? theme.textDim : theme.accent
                 }
             }
             // What is here: the episodes on disk, then how many of them are still to watch
@@ -831,7 +836,7 @@ Item {
                             model: day.modelData.cards
                             WeekEntry {
                                 required property var modelData
-                                objectName: "week-card-" + modelData.card.id
+                                objectName: "week-card-" + modelData.card.id + (modelData.drop ? "-" + (modelData.drop.season ? modelData.drop.season + "x" : "") + modelData.drop.episode : "")
                                 item: modelData.card
                                 drop: modelData.drop
                                 today: day.modelData.today
