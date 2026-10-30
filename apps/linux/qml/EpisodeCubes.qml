@@ -39,9 +39,9 @@ Item {
     // The row makes room for it above the cubes.
     property int badgeIndex: -1
     property string badgeText: ""
-    signal cubeClicked(int index)
+    signal cubeClicked(int index, int modifiers)
     // A folded cube's click: the first and last episode index it stands for
-    signal rangeClicked(int first, int last)
+    signal rangeClicked(int first, int last, int modifiers)
 
     readonly property var list: typeof codes === "string" ? codes.split("") : (codes || [])
     readonly property int count: list.length
@@ -187,9 +187,9 @@ Item {
                     hoverEnabled: enabled
                     cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                     onContainsMouseChanged: if (containsMouse) root.hoverCell = cube.index; else if (root.hoverCell === cube.index) root.hoverCell = -1
-                    onClicked: {
-                        if (root.fold === 1) root.cubeClicked(cube.index)
-                        else root.rangeClicked(cube.index * root.fold, Math.min(root.count, (cube.index + 1) * root.fold) - 1)
+                    onClicked: function(mouse) {
+                        if (root.fold === 1) root.cubeClicked(cube.index, mouse.modifiers)
+                        else root.rangeClicked(cube.index * root.fold, Math.min(root.count, (cube.index + 1) * root.fold) - 1, mouse.modifiers)
                     }
                 }
                 // The hover reaches half the gap each way, so neighbouring cubes meet and a
