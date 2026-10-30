@@ -13,6 +13,7 @@
 
 use std::collections::VecDeque;
 use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -803,7 +804,7 @@ fn random_token() -> String {
 /// `None` when nothing needs changing. The subscriptions call uses it too.
 pub(crate) fn child_path() -> Option<String> {
     // Windows apps get the user's whole PATH; there is nothing to add.
-    if cfg!(windows) {
+    if cfg!(windows) || !EXTRA_DIRS.load(Ordering::Relaxed) {
         return None;
     }
     let home = std::env::var("HOME").ok()?;
@@ -815,6 +816,19 @@ pub(crate) fn child_path() -> Option<String> {
         ]);
     }
     with_dirs(&std::env::var("PATH").unwrap_or_default(), &wanted)
+}
+
+/// Whether `child_path` may add directories at all. Only a test turns it
+/// off.
+static EXTRA_DIRS: AtomicBool = AtomicBool::new(true);
+
+/// Stop `child_path` adding any directory for the rest of the process, so a
+/// child sees exactly the `PATH` the test set and a fake `anirss` on it is
+/// the one that runs, whatever the machine has in `~/.local/bin` or
+/// Homebrew's prefixes. Not part of the contract and not exported.
+#[doc(hidden)]
+pub fn leave_child_path_alone() {
+    EXTRA_DIRS.store(false, Ordering::Relaxed);
 }
 
 /// `path` with each of `dirs` it lacks put in front, in order; `None` when
