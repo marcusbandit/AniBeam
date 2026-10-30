@@ -121,7 +121,7 @@ impl Native {
             order.extend(self.endpoints.iter().filter(|e| e.name != active.name));
         }
         let mut tried = Vec::new();
-        let mut errors = Vec::new();
+        let mut errors: Vec<CoreError> = Vec::new();
         for (i, ep) in order.iter().enumerate() {
             match endpoints::fetch_items(self.http.as_ref(), ep, query).await {
                 Err(e) => {
@@ -131,7 +131,7 @@ impl Native {
                         count: 0,
                         error: Some(e.to_string()),
                     });
-                    errors.push(e.to_string());
+                    errors.push(e);
                 }
                 Ok(mut items) => {
                     tried.push(EndpointTry {
@@ -157,10 +157,25 @@ impl Native {
             }
         }
         if errors.len() == order.len() {
+            // One endpoint searched: its error as it came. Several: the active endpoint's
+            // code, since that is the one the user picked and can act on (a bad key is
+            // `refused`, not `unreachable`), with every endpoint's message joined.
+            if errors.len() == 1 {
+                return Err(errors.remove(0));
+            }
+            let message = errors
+                .iter()
+                .map(|e| e.to_string())
+                .collect::<Vec<_>>()
+                .join("; ");
+            let code = match errors.remove(0) {
+                CoreError::Service { code, .. } => code,
+                _ => "unreachable".into(),
+            };
             return Err(CoreError::Service {
                 service: active.name.clone(),
-                code: "unreachable".into(),
-                message: errors.join("; "),
+                code,
+                message,
             });
         }
         Ok(Found {
@@ -281,6 +296,42 @@ pub fn mask(url: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::net::FakeHttp;
+
+    fn code_of(err: CoreError) -> (String, String) {
+        match err {
+            CoreError::Service { service, code, .. } => (service, code),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn one_endpoint_that_fails_keeps_its_own_code() {
+        let http = FakeHttp::new();
+        http.push(401, "no");
+        let native = Native::new(
+            http,
+            vec![Endpoint::new("feed", "rss", "https://x/?q={query}")],
+        );
+        let err = native.search("show", None, false).await.unwrap_err();
+        assert_eq!(code_of(err), ("feed".into(), "http_401".into()));
+    }
+
+    #[tokio::test]
+    async fn every_endpoint_failing_keeps_the_active_endpoints_code() {
+        let http = FakeHttp::new();
+        http.push_for("https://a/", 200, "not a feed <");
+        http.push_for("https://b/", 503, "busy");
+        let native = Native::new(
+            http,
+            vec![
+                Endpoint::new("first", "rss", "https://a/?q={query}"),
+                Endpoint::new("second", "rss", "https://b/?q={query}"),
+            ],
+        );
+        let err = native.search("show", None, true).await.unwrap_err();
+        assert_eq!(code_of(err), ("first".into(), "unreadable".into()));
+    }
 
     #[test]
     fn a_key_in_a_feed_address_is_masked() {
