@@ -53,6 +53,8 @@ Item {
     // Airing now's Not interested (#202): a small x at the top right on hover or focus, and
     // Delete from the keyboard. The page says what it does; the card only asks
     property bool dismissible: false
+    // Right-click offers deleting the series' files; off for a sample card that stands for none
+    property bool offersDelete: true
     signal opened()
     signal played()
     signal dismissed()
@@ -200,10 +202,12 @@ Item {
         id: hoverer
         cursorShape: Qt.PointingHandCursor
         onHoveredChanged: {
+            if (root.offersDelete) frame.hoverCard(root, root.item, hovered)
             if (hovered && root.folderName !== "") { tipIntent.interval = frame.tipWarm() ? 1 : 600; tipIntent.restart() }
             else { tipIntent.stop(); frame.releaseTip(root) }
         }
     }
+    Component.onDestruction: frame.hoverCard(root, null, false)
     Timer { id: tipIntent; interval: 600; onTriggered: frame.showTip(titleText, root.folderName, root) }
     onFolderNameChanged: if (hoverer.hovered && folderName === "") frame.hideTip()
 

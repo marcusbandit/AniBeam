@@ -172,6 +172,7 @@ mod tests {
             my_score: my,
             list_status: status,
             next_airing: None,
+            week_airings: Vec::new(),
             last_viewed_at: viewed.map(|s| UNIX_EPOCH + std::time::Duration::from_secs(s)),
             latest_activity_at: UNIX_EPOCH,
             added_at: UNIX_EPOCH,

@@ -175,6 +175,7 @@ FocusScope {
                 var p = mapToItem(frame, m.x, m.y)
                 var items = [{ text: "Back", icon: "arrow-left", action: nav.back }]
                 if (page.item && page.item.contextItems) items = items.concat(page.item.contextItems())
+                items = items.concat(frame.seriesDeleteItems())
                 frame.openMenu(p.x, p.y, items)
             }
         }
@@ -483,6 +484,59 @@ FocusScope {
     // ---- The removal sheet: every removal on the downloads page asks through it
     readonly property bool removalOpen: removeSheet.visible
     function askRemoval(anchor, spec, done) { removeSheet.openAt(anchor, spec, done) }
+
+    // ---- Deleting a series' files from its card (#236). A card or a week row under the
+    // pointer names itself here, and the right-click menu then offers its watched episodes
+    // or all of them, to the trash, through the removal sheet. Only a library series with
+    // files on disk offers it.
+    property var hoverSeries: null
+    property Item hoverSeriesItem: null
+    function hoverCard(item, data, on) {
+        if (on) { hoverSeriesItem = item; hoverSeries = data }
+        else if (hoverSeriesItem === item) { hoverSeriesItem = null; hoverSeries = null }
+    }
+    // The menu rows come off the card alone; the files are read only once a row is picked
+    function seriesNoun(c) { return c.kind === "Movie" ? ["film", "films"] : ["episode", "episodes"] }
+    function seriesDeleteItems() {
+        var c = hoverSeries, anchor = hoverSeriesItem
+        if (!c || !c.path || !(c.episodes_on_disk > 0)) return []
+        var noun = seriesNoun(c), n = c.episodes_on_disk
+        var out = []
+        if ((c.watched || 0) > 0 && c.kind !== "Movie")
+            out.push({ text: "Delete watched " + noun[1], icon: "trash-2", action: function() { frame.askDeleteFiles(anchor, c, true) } })
+        out.push({ text: n === 1 ? "Delete the " + noun[0] : "Delete all " + n + " " + noun[1], icon: "trash-2",
+                   action: function() { frame.askDeleteFiles(anchor, c, false) } })
+        return out
+    }
+    property var deleteCalls: ({})   // token -> what the toast names
+    function askDeleteFiles(anchor, c, watchedOnly) {
+        var r = Door.getSeries(c.id)
+        if (r.error || !r.reply.detail) { frame.toast(r.error ? frame.errorText(r.error) : "That series is gone"); return }
+        // An episode a torrent is still writing is not offered
+        var files = (r.reply.detail.episodes || [])
+            .filter(function(e) { return (e.downloading === undefined || e.downloading === null) && (!watchedOnly || e.watched) })
+            .map(function(e) { return e.file })
+        if (!files.length) { frame.toast("No watched episodes of " + c.title + " on disk"); return }
+        var noun = seriesNoun(c), which = watchedOnly ? "watched " : ""
+        var words = Fmt.plural(files.length, which + noun[0], which + noun[1])
+        removeSheet.openAt(anchor, {
+            heading: "Delete " + words + " of " + c.title + "?",
+            base: "The files and their subtitles go to the trash, so you can get them back from there.",
+            rule: false, torrentCount: 0, canFiles: false, confirmText: "Move to trash"
+        }, function() {
+            var t = Door.callAsync("DeleteEpisodes", { series: c.id, files: files })
+            var m = Object.assign({}, frame.deleteCalls); m[t] = words + " of " + c.title; frame.deleteCalls = m
+        })
+    }
+    Connections {
+        target: Door
+        function onCallDone(token, reply) {
+            var words = frame.deleteCalls[token]
+            if (words === undefined) return
+            var m = Object.assign({}, frame.deleteCalls); delete m[token]; frame.deleteCalls = m
+            frame.toast(reply.error ? frame.errorText(reply.error) : words + " moved to the trash")
+        }
+    }
 
     // ---- Quick fixes (#170). The frame sends them and takes the reply, so what follows a fix
     // (the toast, a ticked issue) still happens after the sheet or the page has gone. token ->
