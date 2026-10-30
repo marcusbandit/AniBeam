@@ -58,7 +58,7 @@ dependencies = [
 
 [[package]]
 name = "anibeam"
-version = "2.3.0"
+version = "2.4.0"
 dependencies = [
  "anibeam-core",
  "cxx",
@@ -81,7 +81,7 @@ dependencies = [
 
 [[package]]
 name = "anibeam-cli"
-version = "2.3.0"
+version = "2.4.0"
 dependencies = [
  "anibeam-core",
  "clap",
@@ -90,7 +90,7 @@ dependencies = [
 
 [[package]]
 name = "anibeam-core"
-version = "2.3.0"
+version = "2.4.0"
 dependencies = [
  "anibeam-host-api",
  "apple-native-keyring-store",
@@ -138,7 +138,7 @@ dependencies = [
 
 [[package]]
 name = "anibeam-host-api"
-version = "2.3.0"
+version = "2.4.0"
 dependencies = [
  "serde",
  "serde_json",

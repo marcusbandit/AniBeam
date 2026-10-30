@@ -26,6 +26,7 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   QT_VERSION: '6.11.3'
+  FFMPEG_ASSET: ffmpeg-n9.0-latest-win64-gpl-9.0.zip
   # The project's own AniList and MAL app registrations, so a release signs in with one
   # click. Empty on a fork's pull request, whose build then asks for a client ID instead.
   ANIBEAM_ANILIST_CLIENT_ID: ${{ secrets.ANIBEAM_ANILIST_CLIENT_ID }}
@@ -95,6 +96,42 @@ jobs:
           path: ${{ runner.temp }}/anibeam-deps
           key: ${{ steps.depkey.outputs.key }}
 
+      # ffmpeg for the smoke library, from BtbN's GitHub builds rather than Chocolatey: the
+      # Chocolatey feed answers 504 often enough to break the smoke test, and choco exits 0
+      # having installed nothing (#234). Fetched before the build so a failure costs seconds.
+      - name: Restore ffmpeg
+        id: ffmpeg
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/ffmpeg
+          key: windows-${{ env.FFMPEG_ASSET }}
+
+      - name: Download ffmpeg
+        if: steps.ffmpeg.outputs.cache-hit != 'true'
+        run: |
+          base=https://github.com/BtbN/FFmpeg-Builds/releases/download/latest
+          cd "$RUNNER_TEMP"
+          curl -fsSL --retry 5 -o "$FFMPEG_ASSET" "$base/$FFMPEG_ASSET"
+          curl -fsSL --retry 5 -o checksums.sha256 "$base/checksums.sha256"
+          grep " $FFMPEG_ASSET\$" checksums.sha256 | sha256sum -c -
+          unzip -q "$FFMPEG_ASSET" -d ffmpeg-x
+          mkdir -p ffmpeg
+          mv ffmpeg-x/*/bin/* ffmpeg/
+          test -x ffmpeg/ffmpeg.exe
+
+      - name: Save ffmpeg
+        if: steps.ffmpeg.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/ffmpeg
+          key: windows-${{ env.FFMPEG_ASSET }}
+
+      - name: ffmpeg on PATH
+        run: |
+          echo "$(cygpath -w "$RUNNER_TEMP/ffmpeg")" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/ffmpeg/ffmpeg.exe" -hide_banner -version > "$RUNNER_TEMP/ffmpeg-version.txt"
+          sed -n 1p "$RUNNER_TEMP/ffmpeg-version.txt"
+
       - name: Rust toolchain
         run: |
           rustup toolchain install stable --profile minimal
@@ -120,10 +157,6 @@ jobs:
 
       - name: Bundle
         run: apps/linux/packaging/windows/bundle.sh dist
-
-      - name: ffmpeg for the smoke library
-        shell: pwsh
-        run: choco install ffmpeg -y --no-progress
 
       # The Qt and deps directories leave PATH first, so a DLL the bundle forgot fails here.
       - name: Smoke test

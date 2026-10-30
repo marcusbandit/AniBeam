@@ -295,6 +295,38 @@ pub fn set_hidden(core: &Core, series: u64, hidden: bool) -> Result<Reply, CoreE
     Ok(Reply::Ok)
 }
 
+/// Sets or clears the episode count the person gave a series (#239).
+pub fn set_episode_count(core: &Core, series: u64, count: Option<u32>) -> Result<Reply, CoreError> {
+    let count = count.filter(|n| *n > 0);
+    let changed = core.store.write(move |c| {
+        Ok(c.execute(
+            "UPDATE series SET episodes_set = ?1 WHERE id = ?2",
+            params![count.map(i64::from), series as i64],
+        )?)
+    })?;
+    if changed == 0 {
+        return Err(CoreError::NotFound {
+            what: Entity::Series,
+            id: series,
+        });
+    }
+    let images_dir = core.paths.images_dir();
+    let cards = core
+        .store
+        .read(|c| cards::cards_for(c, &images_dir, &[series]))?;
+    let title = cards.first().map_or_else(String::new, |c| c.title.clone());
+    let what = match count {
+        Some(n) => format!("{title} set to {n} episodes"),
+        None => format!("{title}'s episode count cleared"),
+    };
+    core.bus.info(
+        Stage::Library,
+        what,
+        EventBody::SeriesChanged { series: cards },
+    );
+    Ok(Reply::Ok)
+}
+
 /// The metadata table. The counts are over the visible set, so they answer
 /// "how many of what you can see", and only this call reveals hidden rows.
 pub fn list_metadata(

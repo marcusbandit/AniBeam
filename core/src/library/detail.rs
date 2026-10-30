@@ -588,6 +588,7 @@ mod tests {
             episode_key: name.to_string(),
             sidecars: Vec::new(),
             fixed: false,
+            size: 0,
         }
     }
 

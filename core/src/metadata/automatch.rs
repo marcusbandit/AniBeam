@@ -469,7 +469,7 @@ pub fn clear_match(core: &Core, series: u64) -> Result<Reply, CoreError> {
         Ok(c.execute(
             "UPDATE series SET provider = NULL, anilist_id = NULL, mal_id = NULL, tmdb_id = NULL, tmdb_kind = NULL,
                     tvmaze_id = NULL, confirmed = 0, matched_at = NULL,
-                    attempted_at = COALESCE(attempted_at, ?2), attempt_version = NULL
+                    attempted_at = COALESCE(attempted_at, ?2), attempt_version = NULL, episodes_set = NULL
              WHERE id = ?1",
             params![series as i64, now],
         )?)

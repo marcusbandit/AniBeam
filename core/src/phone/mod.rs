@@ -41,6 +41,9 @@ pub fn sources(core: &Core) -> Vec<PhoneSource> {
 }
 
 pub fn set_sources(core: &Core, sources: Vec<PhoneSource>) -> Result<Reply, CoreError> {
+    // A row saved before the {query} rule covered tosho (#248) stays as it is, so the phone
+    // can still remove the other sources around it.
+    let saved = self::sources(core);
     for s in &sources {
         if s.name.trim().is_empty() {
             return Err(CoreError::invalid("sources", "a source needs a name"));
@@ -54,7 +57,10 @@ pub fn set_sources(core: &Core, sources: Vec<PhoneSource>) -> Result<Reply, Core
                 ),
             ));
         }
-        if matches!(s.kind.as_str(), "rss" | "tsukihime") && !s.url.contains("{query}") {
+        if crate::releases::endpoints::needs_query(&s.kind)
+            && !s.url.contains("{query}")
+            && !saved.contains(s)
+        {
             return Err(CoreError::invalid(
                 "sources",
                 format!(
@@ -476,7 +482,7 @@ pub fn subscribe(
         let had: Vec<String> = now
             .iter()
             .zip(&facts)
-            .filter(|(_, f)| f.on_disk)
+            .filter(|(_, f)| f.on_disk || f.other_on_disk)
             .map(|(i, _)| i.link.clone())
             .collect();
         if !had.is_empty() {

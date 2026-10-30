@@ -13,6 +13,7 @@
 
 use std::collections::VecDeque;
 use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -307,10 +308,13 @@ impl AnirssClient {
         })
     }
 
+    /// Adds the releases under anirss's root plus `name`, or straight into
+    /// `save_path` when given: the folder of a show already in the library.
     pub async fn download(
         &self,
         items: &[Release],
         name: Option<&str>,
+        save_path: Option<&str>,
     ) -> Result<AddedTorrents, CoreError> {
         let items: Vec<Release> = items
             .iter()
@@ -322,6 +326,9 @@ impl AnirssClient {
         let mut body = json!({ "items": items });
         if let Some(n) = name.map(str::trim).filter(|n| !n.is_empty()) {
             body["name"] = Value::String(n.to_string());
+        }
+        if let Some(p) = save_path {
+            body["save_path"] = Value::String(p.to_string());
         }
         let v = self.post("/downloads", body, Some(STEP_TIMEOUT)).await?;
         Ok(added(&v))
@@ -800,10 +807,12 @@ fn random_token() -> String {
 /// launch from a `.desktop` entry with a sparse `PATH` still finds a
 /// user-installed anirss. A Mac app opened from Finder gets launchd's
 /// `/usr/bin:/bin:/usr/sbin:/sbin`, so there Homebrew's two prefixes join it.
-/// `None` when nothing needs changing. The subscriptions call uses it too.
+/// `None` when nothing needs changing, or when a test switched the extra
+/// directories off with `set_child_path_extras`. The subscriptions call
+/// uses it too.
 pub(crate) fn child_path() -> Option<String> {
     // Windows apps get the user's whole PATH; there is nothing to add.
-    if cfg!(windows) {
+    if cfg!(windows) || !EXTRA_DIRS.load(Ordering::Relaxed) {
         return None;
     }
     let home = std::env::var("HOME").ok()?;
@@ -815,6 +824,21 @@ pub(crate) fn child_path() -> Option<String> {
         ]);
     }
     with_dirs(&std::env::var("PATH").unwrap_or_default(), &wanted)
+}
+
+/// Whether `child_path` may add directories at all. Only a test turns it
+/// off.
+static EXTRA_DIRS: AtomicBool = AtomicBool::new(true);
+
+/// With `false`, `child_path` adds no directory until it is called again
+/// with `true`, so a child sees exactly the `PATH` a test set and a fake
+/// `anirss` on it is the one that runs, whatever the machine has in
+/// `~/.local/bin` or Homebrew's prefixes. Process-wide. Not part of the
+/// contract: public only so the integration tests can reach it, and no
+/// shell may call it.
+#[doc(hidden)]
+pub fn set_child_path_extras(on: bool) {
+    EXTRA_DIRS.store(on, Ordering::Relaxed);
 }
 
 /// `path` with each of `dirs` it lacks put in front, in order; `None` when
