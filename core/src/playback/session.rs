@@ -116,6 +116,11 @@ impl Sessions {
         self.lock().get(&id).cloned()
     }
 
+    /// Whether the session is still open: `close` takes it out first.
+    pub(crate) fn is_open(&self, id: u64) -> bool {
+        self.lock().contains_key(&id)
+    }
+
     /// The newest session that has ticked and was not paused at its last
     /// tick: what is playing, if anything is.
     pub(crate) fn playing(&self) -> Option<Session> {
@@ -621,7 +626,7 @@ pub fn tick(core: &Core, session: u64, position: f64, paused: bool) -> Result<()
         s.paused = paused;
         (s.clone(), fired)
     };
-    crate::presence::tick(core, s.id, &s.presence, paused);
+    crate::presence::tick(core, s.id, &s.presence, position, paused);
     apply(core, &s, &fired)
 }
 

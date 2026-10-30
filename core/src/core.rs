@@ -340,6 +340,20 @@ impl Core {
         self.presence.set_pause_clear(wait);
     }
 
+    /// Feeds Discord presence one tick of `session` directly, as a tick
+    /// that lost the race with its session's close would arrive. Not part
+    /// of the contract.
+    #[doc(hidden)]
+    pub fn presence_tick(
+        &self,
+        session: u64,
+        activity: &crate::presence::Activity,
+        position: f64,
+        paused: bool,
+    ) {
+        crate::presence::tick(self, session, activity, position, paused);
+    }
+
     /// Returns once every Discord presence send asked for so far has been
     /// handled. Not part of the contract.
     #[doc(hidden)]

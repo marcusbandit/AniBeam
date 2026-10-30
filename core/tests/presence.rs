@@ -19,12 +19,35 @@ enum Sent {
 }
 
 /// Records what the worker asks of it. `fail` makes every connect fail,
-/// `reject_posters` refuses any activity that carries a poster URL.
+/// `reject_posters` refuses any activity that carries a poster URL, and a
+/// `gate` holds every send until it opens.
 #[derive(Clone, Default)]
 struct Fake {
     log: Arc<(Mutex<Vec<Sent>>, Condvar)>,
     fail: bool,
     reject_posters: bool,
+    gate: Option<Gate>,
+}
+
+/// A Discord that has stopped reading: sends wait until it opens.
+#[derive(Clone, Default)]
+struct Gate(Arc<(Mutex<bool>, Condvar)>);
+
+impl Gate {
+    fn open(&self) {
+        let (open, cv) = &*self.0;
+        *open.lock().unwrap() = true;
+        cv.notify_all();
+    }
+
+    fn pass(&self) {
+        let (open, cv) = &*self.0;
+        let guard = open.lock().unwrap();
+        let (_guard, timeout) = cv
+            .wait_timeout_while(guard, Duration::from_secs(10), |open| !*open)
+            .unwrap();
+        assert!(!timeout.timed_out(), "the gate never opened");
+    }
 }
 
 impl Fake {
@@ -61,6 +84,9 @@ impl Transport for Fake {
     }
 
     fn send(&mut self, activity: Option<&Activity>) -> Result<(), SendError> {
+        if let Some(gate) = &self.gate {
+            gate.pass();
+        }
         if self.reject_posters && activity.is_some_and(|a| a.poster.is_some()) {
             return Err(SendError::Rejected("large_image".to_string()));
         }
@@ -195,15 +221,25 @@ fn a_session_sets_on_play_stops_the_clock_on_pause_and_clears_on_close() {
     let start = a.start.expect("a playing activity counts up");
     assert!(start > 0);
 
+    // Each flushed, since the worker skips a state that a newer one
+    // replaced before it looked.
     tick(&core, s, 4.0, true);
+    core.presence_flush();
+    let before = anibeam_core::time::now_secs() as u64;
     tick(&core, s, 4.0, false);
+    let after = anibeam_core::time::now_secs() as u64;
+    core.presence_flush();
     close(&core, s);
     core.presence_flush();
     let sent = fake.sent();
     let all = sets(&sent);
     assert_eq!(all.len(), 3);
     assert_eq!(all[1].start, None, "paused, so no clock");
-    assert_eq!(all[2].start, Some(start), "the clock keeps its first start");
+    let resumed = all[2].start.expect("playing again counts up");
+    assert!(
+        (before - 4..=after - 4).contains(&resumed),
+        "the clock reads the position, not the time since the first play"
+    );
     assert_eq!(sent.last(), Some(&Sent::Clear));
     assert_eq!(presence_reply(&core), (true, true));
 }
@@ -241,6 +277,7 @@ fn a_stale_close_leaves_the_next_episode_alone() {
 
     let first = open(&core, lib.ep1);
     tick(&core, first, 1.0, false);
+    core.presence_flush();
     let second = open(&core, lib.ep2);
     tick(&core, second, 1.0, false);
     close(&core, first);
@@ -249,6 +286,95 @@ fn a_stale_close_leaves_the_next_episode_alone() {
     assert!(!sent.contains(&Sent::Clear), "{sent:#?}");
     assert_eq!(sets(&sent).len(), 2);
     assert_eq!(sets(&sent)[0].state.as_deref(), Some("EP 1"));
+}
+
+#[test]
+fn a_tick_that_comes_after_its_close_shows_nothing() {
+    let (_dir, core, _c) = common::open_core();
+    let lib = library(&core);
+    let fake = Fake::default();
+    core.set_presence_transport(Box::new(fake.clone()));
+    switch(&core, true);
+
+    let first = open(&core, lib.ep1);
+    tick(&core, first, 1.0, false);
+    core.presence_flush();
+    close(&core, first);
+    core.presence_flush();
+    let closed = fake.sent();
+    assert_eq!(closed.last(), Some(&Sent::Clear));
+
+    // The tick lost the race with the close: its session is gone.
+    let late = Activity::describe("Bebop", "EP 1", None, false, false, None);
+    core.presence_tick(first, &late, 2.0, false);
+    core.presence_flush();
+    assert_eq!(fake.sent(), closed);
+
+    let second = open(&core, lib.ep2);
+    tick(&core, second, 1.0, false);
+    core.presence_flush();
+    let sent = fake.sent();
+    let Some(Sent::Set(a)) = sent.last() else {
+        panic!("{sent:#?}")
+    };
+    assert_eq!(a.state.as_deref(), Some("EP 2 - Stray Dog Strut"));
+}
+
+#[test]
+fn a_stalled_worker_comes_back_to_the_newest_state_alone() {
+    let (_dir, core, _c) = common::open_core();
+    let lib = library(&core);
+    let gate = Gate::default();
+    let fake = Fake {
+        gate: Some(gate.clone()),
+        ..Fake::default()
+    };
+    core.set_presence_transport(Box::new(fake.clone()));
+    switch(&core, true);
+
+    let s = open(&core, lib.ep2);
+    tick(&core, s, 1.0, false);
+    // Connected, so the worker is on its way into a send that holds.
+    fake.wait(|sent| sent.contains(&Sent::Connect));
+    // Forty transitions, more than any queue had room for, and none of
+    // these ticks waits on the stuck worker. The last one pauses.
+    for i in 0..40 {
+        tick(&core, s, 2.0 + f64::from(i), i % 2 == 1);
+    }
+    gate.open();
+    core.presence_flush();
+    let sent = fake.sent();
+    assert_eq!(sent.len(), 3, "{sent:#?}");
+    let all = sets(&sent);
+    assert!(all[0].start.is_some());
+    assert_eq!(all[1].start, None, "only the paused state came after");
+}
+
+#[test]
+fn a_clear_during_a_stall_is_applied_once_it_unblocks() {
+    let (_dir, core, _c) = common::open_core();
+    let lib = library(&core);
+    let gate = Gate::default();
+    let fake = Fake {
+        gate: Some(gate.clone()),
+        ..Fake::default()
+    };
+    core.set_presence_transport(Box::new(fake.clone()));
+    switch(&core, true);
+
+    let s = open(&core, lib.ep2);
+    tick(&core, s, 1.0, false);
+    fake.wait(|sent| sent.contains(&Sent::Connect));
+    for i in 0..30 {
+        tick(&core, s, 2.0 + f64::from(i), i % 2 == 0);
+    }
+    close(&core, s);
+    gate.open();
+    core.presence_flush();
+    let sent = fake.sent();
+    assert_eq!(sent.len(), 3, "{sent:#?}");
+    assert!(matches!(sent[1], Sent::Set(_)));
+    assert_eq!(sent[2], Sent::Clear);
 }
 
 #[test]
@@ -319,6 +445,7 @@ fn a_discord_that_is_not_there_is_tried_once_and_never_panics() {
     let s = open(&core, lib.ep2);
     for i in 0..20 {
         tick(&core, s, f64::from(i), i % 2 == 1);
+        core.presence_flush();
     }
     close(&core, s);
     core.presence_flush();
@@ -339,6 +466,7 @@ fn a_refused_poster_falls_back_to_the_apps_art() {
     switch(&core, true);
     let s = open(&core, lib.ep2);
     tick(&core, s, 1.0, false);
+    core.presence_flush();
     tick(&core, s, 2.0, true);
     core.presence_flush();
     let sent = fake.sent();

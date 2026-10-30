@@ -6,17 +6,18 @@
 //! nothing, since a file that never plays is not being watched; the first
 //! playing tick shows it, a pause shows it without the clock and arms a
 //! one-shot timer that clears it if the pause outlasts `PAUSE_CLEAR`, and the
-//! close of the session that owns it clears it. Only transitions send
-//! anything, and `decide` is the pure rule over them. Sends go through a
-//! bounded queue to one worker thread that owns the connection, so a tick
-//! never waits on a socket.
+//! close of the session that owns it clears it. Only transitions and seeks
+//! send anything, and `decide` is the pure rule over them. Discord's clock
+//! reads the position in the episode, not the time since it was opened.
+//! Sends set a desired state that one worker thread, the owner of the
+//! connection, converges to, so a tick never waits on a socket and nothing
+//! the worker must do is lost to a burst.
 
 pub mod discord;
 
 use std::io;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TrySendError};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, LockResult, Mutex};
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
@@ -36,8 +37,9 @@ pub const FIELD_MAX: usize = 128;
 /// The art uploaded to the Discord application, shown when there is no
 /// poster or Discord will not take a poster's URL.
 pub const FALLBACK_ART: &str = "anibeam";
-/// Room for a burst of transitions; past it a send is dropped, never waited on.
-const QUEUE: usize = 16;
+/// How far, in seconds, the position may drift from Discord's clock before
+/// the clock is sent again. Past it is a seek; under it is tick jitter.
+const SEEK_SLACK: u64 = 10;
 /// How long a shutdown or a test's flush waits for the worker.
 const FLUSH_WAIT: Duration = Duration::from_secs(5);
 
@@ -57,8 +59,9 @@ pub struct Activity {
     /// The poster's remote URL, when the series has one.
     pub poster: Option<String>,
     pub large_text: String,
-    /// Unix seconds playback started, which Discord counts up from. None
-    /// while paused, so the clock stops.
+    /// Unix seconds Discord counts up from: now less the position, so the
+    /// clock reads how far into the episode playback is. None while paused,
+    /// so the clock stops.
     pub start: Option<u64>,
 }
 
@@ -123,6 +126,11 @@ fn truncate(s: &str) -> String {
     out
 }
 
+/// A lock's guard back from a condvar wait, poisoned or not, as `recover`.
+fn unpoison<T>(r: LockResult<T>) -> T {
+    r.unwrap_or_else(|e| e.into_inner())
+}
+
 /// Why a send did not land.
 #[derive(Debug)]
 pub enum SendError {
@@ -158,6 +166,7 @@ pub(crate) struct State {
     /// The session whose activity Discord shows, or showed before a long
     /// pause cleared it.
     owner: Option<u64>,
+    /// The clock's start as last sent: now less the position.
     start: u64,
     paused: bool,
     shown: bool,
@@ -167,12 +176,15 @@ pub(crate) struct State {
 }
 
 pub(crate) enum Input<'a> {
-    /// The switch went on, with the session playing right now, if any.
-    Enable(Option<(u64, &'a Activity)>),
+    /// The switch went on, with the session playing right now and its
+    /// position, if any.
+    Enable(Option<(u64, &'a Activity, f64)>),
     Disable,
     Tick {
         session: u64,
         activity: &'a Activity,
+        /// Seconds into the file.
+        position: f64,
         paused: bool,
     },
     /// A pause timer armed at `generation` ran out.
@@ -207,7 +219,9 @@ pub(crate) fn decide(s: &mut State, input: Input, now: u64) -> Vec<Action> {
             }
             s.enabled = true;
             match playing {
-                Some((session, activity)) => play(s, session, activity, now),
+                Some((session, activity, position)) => {
+                    play(s, session, activity, clock(now, position))
+                }
                 None => Vec::new(),
             }
         }
@@ -224,30 +238,36 @@ pub(crate) fn decide(s: &mut State, input: Input, now: u64) -> Vec<Action> {
         Input::Tick {
             session,
             activity,
+            position,
             paused,
         } => {
             if !s.enabled {
                 return Vec::new();
             }
+            let start = clock(now, position);
             if s.owner != Some(session) {
                 // A session that has not played yet shows nothing.
                 return if paused {
                     Vec::new()
                 } else {
-                    play(s, session, activity, now)
+                    play(s, session, activity, start)
                 };
             }
             match (paused, s.paused) {
-                (false, false) if s.shown => Vec::new(),
-                (false, _) => {
-                    s.paused = false;
-                    s.shown = true;
-                    s.generation += 1;
+                // An ordinary tick keeps pace with the clock; one that has
+                // drifted past the slack is a seek, and moves it.
+                (false, false) if s.shown => {
+                    if start.abs_diff(s.start) <= SEEK_SLACK {
+                        return Vec::new();
+                    }
+                    s.start = start;
                     vec![Action::Set(Activity {
-                        start: Some(s.start),
+                        start: Some(start),
                         ..activity.clone()
                     })]
                 }
+                // A resume, or playing again after a long pause cleared it.
+                (false, _) => play(s, session, activity, start),
                 (true, true) => Vec::new(),
                 (true, false) => {
                     s.paused = true;
@@ -301,17 +321,29 @@ pub(crate) fn decide(s: &mut State, input: Input, now: u64) -> Vec<Action> {
     }
 }
 
-/// A session taking the activity over, its clock starting now.
-fn play(s: &mut State, session: u64, activity: &Activity, now: u64) -> Vec<Action> {
+/// A session showing as playing, its clock reading from `start`.
+fn play(s: &mut State, session: u64, activity: &Activity, start: u64) -> Vec<Action> {
     s.owner = Some(session);
-    s.start = now;
+    s.start = start;
     s.paused = false;
     s.shown = true;
     s.generation += 1;
     vec![Action::Set(Activity {
-        start: Some(now),
+        start: Some(start),
         ..activity.clone()
     })]
+}
+
+/// The clock's start for a position: the moment the episode would have
+/// begun had it played straight through to here, so paused time never
+/// counts. A position that is no number counts from now.
+fn clock(now: u64, position: f64) -> u64 {
+    let into = if position.is_finite() && position > 0.0 {
+        position as u64
+    } else {
+        0
+    };
+    now.saturating_sub(into)
 }
 
 // ---------------------------------------------------------------------------
@@ -331,19 +363,56 @@ pub struct Presence {
 #[derive(Default)]
 struct Inner {
     state: State,
-    worker: Option<SyncSender<Msg>>,
+    worker: Option<Arc<Mailbox>>,
     /// A test's stand-in, taken by the worker when it starts.
     injected: Option<Box<dyn Transport>>,
     /// A stand-in was given, which makes presence available without an id.
     fake: bool,
 }
 
-enum Msg {
-    Set(Activity),
-    Clear,
-    Disconnect,
-    Flush(SyncSender<()>),
-    Quit(SyncSender<()>),
+/// What the worker is to bring Discord to. A send overwrites it rather than
+/// queueing behind the last, so a worker stuck on a socket comes back to
+/// the newest state alone, and a clear can never be dropped.
+#[derive(Default)]
+struct Desired {
+    /// What Discord should show; `None` clears it.
+    want: Option<Activity>,
+    /// Let the connection go before showing `want`. It stays set until the
+    /// worker has done it, so a show that follows cannot hide it.
+    disconnect: bool,
+    quit: bool,
+    /// Bumped on every change.
+    version: u64,
+    /// The newest version the worker has handled.
+    done: u64,
+    /// The worker has quit.
+    stopped: bool,
+}
+
+/// The one place the core and the worker meet. The core only ever holds
+/// its lock for a write, never across anything the worker does.
+#[derive(Default)]
+struct Mailbox {
+    desired: Mutex<Desired>,
+    /// Wakes the worker when the desired state changes.
+    changed: Condvar,
+    /// Wakes a flush or a shutdown when the worker catches up.
+    handled: Condvar,
+}
+
+impl Mailbox {
+    fn post(&self, change: impl FnOnce(&mut Desired)) {
+        let mut d = recover(&self.desired);
+        change(&mut d);
+        d.version += 1;
+        self.changed.notify_one();
+    }
+
+    /// Waits up to `wait` for `until` to stop holding.
+    fn wait_while(&self, wait: Duration, until: impl FnMut(&mut Desired) -> bool) {
+        let d = recover(&self.desired);
+        let _ = self.handled.wait_timeout_while(d, wait, until);
+    }
 }
 
 impl Presence {
@@ -383,27 +452,46 @@ impl Presence {
     pub fn flush(&self) {
         let worker = recover(&self.inner).worker.clone();
         if let Some(worker) = worker {
-            let (tx, rx) = mpsc::sync_channel(1);
-            if worker.send(Msg::Flush(tx)).is_ok() {
-                let _ = rx.recv_timeout(FLUSH_WAIT);
-            }
+            let target = recover(&worker.desired).version;
+            worker.wait_while(FLUSH_WAIT, |d| d.done < target && !d.stopped);
+        }
+    }
+}
+
+impl Drop for Presence {
+    /// A core dropped without a shutdown still ends the worker.
+    fn drop(&mut self) {
+        if let Some(worker) = recover(&self.inner).worker.take() {
+            worker.post(|d| d.quit = true);
         }
     }
 }
 
 /// One tick of a session, after the sessions lock is let go.
-pub(crate) fn tick(core: &Core, session: u64, activity: &Activity, paused: bool) {
+pub(crate) fn tick(core: &Core, session: u64, activity: &Activity, position: f64, paused: bool) {
     if !core.presence.enabled.load(Ordering::Relaxed) {
         return;
     }
-    feed(
-        core,
+    let mut inner = recover(&core.presence.inner);
+    // A tick runs after the sessions lock is let go, so its session's close
+    // can come in between. `close` takes the session out of the map before
+    // it reaches presence, and this looks in the map under the presence
+    // lock: a tick that lost that race finds its session gone and shows
+    // nothing, and one that won is decided before the close, which clears.
+    if !core.sessions.is_open(session) {
+        return;
+    }
+    let actions = decide(
+        &mut inner.state,
         Input::Tick {
             session,
             activity,
+            position,
             paused,
         },
+        crate::time::now_secs() as u64,
     );
+    run(core, &inner, actions);
 }
 
 pub(crate) fn close(core: &Core, session: u64) {
@@ -431,13 +519,19 @@ pub(crate) fn set_enabled(core: &Core, on: bool) {
     if on && !p.available() {
         return;
     }
-    // Read before the presence lock is taken: a tick holds the sessions
-    // lock and then takes this one, never the other way round.
+    // Read before the presence lock is taken: presence takes the sessions
+    // lock inside its own, never the other way round.
     let playing = on.then(|| core.sessions.playing()).flatten();
     let mut inner = recover(&p.inner);
+    // Checked again under the presence lock, as a tick is.
+    let playing = playing.filter(|s| core.sessions.is_open(s.id));
     p.enabled.store(on, Ordering::Relaxed);
     let input = match &playing {
-        Some(s) => Input::Enable(Some((s.id, &s.presence))),
+        Some(s) => Input::Enable(Some((
+            s.id,
+            &s.presence,
+            s.last_position.unwrap_or_default(),
+        ))),
         None if on => Input::Enable(None),
         None => Input::Disable,
     };
@@ -463,10 +557,8 @@ pub(crate) fn shutdown(core: &Core) {
         inner.worker.take()
     };
     if let Some(worker) = worker {
-        let (tx, rx) = mpsc::sync_channel(1);
-        if worker.try_send(Msg::Quit(tx)).is_ok() {
-            let _ = rx.recv_timeout(Duration::from_secs(1));
-        }
+        worker.post(|d| d.quit = true);
+        worker.wait_while(Duration::from_secs(1), |d| !d.stopped);
     }
 }
 
@@ -478,13 +570,17 @@ fn feed(core: &Core, input: Input) {
 
 /// Carries the actions out under the presence lock, so two callers' sends
 /// reach the worker in the order their decisions were made. Nothing here
-/// blocks: the queue is `try_send` and the timer is a spawned task.
+/// blocks: a send only overwrites the desired state, and the timer is a
+/// spawned task.
 fn run(core: &Core, inner: &Inner, actions: Vec<Action>) {
     for action in actions {
-        let msg = match action {
-            Action::Set(activity) => Msg::Set(activity),
-            Action::Clear => Msg::Clear,
-            Action::Disconnect => Msg::Disconnect,
+        let change: Box<dyn FnOnce(&mut Desired)> = match action {
+            Action::Set(activity) => Box::new(move |d| d.want = Some(activity)),
+            Action::Clear => Box::new(|d| d.want = None),
+            Action::Disconnect => Box::new(|d| {
+                d.want = None;
+                d.disconnect = true;
+            }),
             Action::Arm {
                 session,
                 generation,
@@ -493,11 +589,8 @@ fn run(core: &Core, inner: &Inner, actions: Vec<Action>) {
                 continue;
             }
         };
-        let Some(worker) = &inner.worker else {
-            continue;
-        };
-        if let Err(TrySendError::Full(_)) = worker.try_send(msg) {
-            tracing::debug!("discord presence queue full, a send was dropped");
+        if let Some(worker) = &inner.worker {
+            worker.post(change);
         }
     }
 }
@@ -539,8 +632,8 @@ fn spawn(
     client_id: String,
     connected: Arc<AtomicBool>,
     bus: Arc<EventBus>,
-) -> Option<SyncSender<Msg>> {
-    let (tx, rx) = mpsc::sync_channel(QUEUE);
+) -> Option<Arc<Mailbox>> {
+    let mailbox = Arc::new(Mailbox::default());
     let mut worker = Worker {
         transport,
         client_id,
@@ -551,11 +644,12 @@ fn spawn(
         last_attempt: None,
         posters: true,
     };
+    let theirs = mailbox.clone();
     let spawned = std::thread::Builder::new()
         .name("anibeam-discord".to_string())
-        .spawn(move || worker.run(rx));
+        .spawn(move || worker.run(&theirs));
     match spawned {
-        Ok(_) => Some(tx),
+        Ok(_) => Some(mailbox),
         Err(e) => {
             tracing::warn!("the Discord presence thread did not start: {e}");
             None
@@ -579,45 +673,77 @@ struct Worker {
     posters: bool,
 }
 
+/// What the worker does next.
+enum Step {
+    /// The desired state changed: show `want`, letting the connection go
+    /// first if asked.
+    Apply {
+        want: Option<Activity>,
+        disconnect: bool,
+        version: u64,
+    },
+    /// Time to try reaching Discord again.
+    Retry,
+    Quit,
+}
+
 impl Worker {
-    fn run(&mut self, rx: Receiver<Msg>) {
+    fn run(&mut self, mailbox: &Mailbox) {
+        let mut seen = 0;
         loop {
-            let msg = if self.dirty && self.want.is_some() && !self.is_connected() {
-                let since = self.last_attempt.map_or(RETRY, |t| t.elapsed());
-                match rx.recv_timeout(RETRY.saturating_sub(since)) {
-                    Ok(msg) => Some(msg),
-                    Err(RecvTimeoutError::Timeout) => None,
-                    Err(RecvTimeoutError::Disconnected) => break,
-                }
-            } else {
-                match rx.recv() {
-                    Ok(msg) => Some(msg),
-                    Err(_) => break,
-                }
-            };
-            match msg {
-                None => self.deliver(),
-                Some(Msg::Set(activity)) => {
-                    self.want = Some(activity);
-                    self.dirty = true;
-                    self.deliver();
-                }
-                Some(Msg::Clear) => {
-                    self.want = None;
+            match self.next(mailbox, seen) {
+                Step::Apply {
+                    want,
+                    disconnect,
+                    version,
+                } => {
+                    seen = version;
+                    if disconnect {
+                        self.disconnect();
+                    }
                     // Nothing shows on a connection that is not there.
-                    self.dirty = self.is_connected();
+                    self.dirty = want.is_some() || self.is_connected();
+                    self.want = want;
                     self.deliver();
+                    recover(&mailbox.desired).done = version;
+                    mailbox.handled.notify_all();
                 }
-                Some(Msg::Disconnect) => self.disconnect(),
-                Some(Msg::Flush(done)) => {
-                    let _ = done.send(());
-                }
-                Some(Msg::Quit(done)) => {
+                Step::Retry => self.deliver(),
+                Step::Quit => {
                     self.disconnect();
-                    let _ = done.send(());
-                    break;
+                    recover(&mailbox.desired).stopped = true;
+                    mailbox.handled.notify_all();
+                    return;
                 }
             }
+        }
+    }
+
+    /// Waits for the desired state to move past `seen`, or, while there is
+    /// something to show and no Discord to show it, for the next retry.
+    fn next(&self, mailbox: &Mailbox, seen: u64) -> Step {
+        let mut d = recover(&mailbox.desired);
+        loop {
+            if d.quit {
+                return Step::Quit;
+            }
+            if d.version != seen {
+                return Step::Apply {
+                    want: d.want.clone(),
+                    disconnect: std::mem::take(&mut d.disconnect),
+                    version: d.version,
+                };
+            }
+            d = if self.dirty && self.want.is_some() && !self.is_connected() {
+                let since = self.last_attempt.map_or(RETRY, |t| t.elapsed());
+                let wait = RETRY.saturating_sub(since);
+                if wait.is_zero() {
+                    return Step::Retry;
+                }
+                unpoison(mailbox.changed.wait_timeout(d, wait)).0
+            } else {
+                unpoison(mailbox.changed.wait(d))
+            };
         }
     }
 
@@ -725,10 +851,11 @@ mod tests {
         }
     }
 
-    fn tick<'a>(session: u64, activity: &'a Activity, paused: bool) -> Input<'a> {
+    fn tick<'a>(session: u64, activity: &'a Activity, position: f64, paused: bool) -> Input<'a> {
         Input::Tick {
             session,
             activity,
+            position,
             paused,
         }
     }
@@ -744,8 +871,8 @@ mod tests {
     fn off_gives_nothing() {
         let a = bebop();
         let mut s = State::default();
-        assert!(decide(&mut s, tick(1, &a, false), 10).is_empty());
-        assert!(decide(&mut s, tick(1, &a, true), 11).is_empty());
+        assert!(decide(&mut s, tick(1, &a, 0.0, false), 10).is_empty());
+        assert!(decide(&mut s, tick(1, &a, 1.0, true), 11).is_empty());
         assert!(decide(&mut s, Input::Close { session: 1 }, 12).is_empty());
         assert!(decide(&mut s, Input::Disable, 13).is_empty());
     }
@@ -755,26 +882,26 @@ mod tests {
         let a = bebop();
         let mut s = on();
         assert_eq!(
-            decide(&mut s, tick(1, &a, false), 100),
+            decide(&mut s, tick(1, &a, 0.0, false), 100),
             vec![Action::Set(started(&a, 100))]
         );
-        assert!(decide(&mut s, tick(1, &a, false), 101).is_empty());
-        assert!(decide(&mut s, tick(1, &a, false), 102).is_empty());
+        assert!(decide(&mut s, tick(1, &a, 1.0, false), 101).is_empty());
+        assert!(decide(&mut s, tick(1, &a, 2.0, false), 102).is_empty());
     }
 
     #[test]
     fn a_session_that_opens_paused_shows_nothing() {
         let a = bebop();
         let mut s = on();
-        assert!(decide(&mut s, tick(1, &a, true), 100).is_empty());
+        assert!(decide(&mut s, tick(1, &a, 0.0, true), 100).is_empty());
     }
 
     #[test]
     fn a_pause_stops_the_clock_and_arms_rather_than_clears() {
         let a = bebop();
         let mut s = on();
-        decide(&mut s, tick(1, &a, false), 100);
-        let actions = decide(&mut s, tick(1, &a, true), 150);
+        decide(&mut s, tick(1, &a, 0.0, false), 100);
+        let actions = decide(&mut s, tick(1, &a, 50.0, true), 150);
         let generation = s.generation;
         assert_eq!(
             actions,
@@ -788,11 +915,12 @@ mod tests {
         );
         assert!(!actions.contains(&Action::Clear));
         // A second paused tick is no transition.
-        assert!(decide(&mut s, tick(1, &a, true), 151).is_empty());
-        // Playing again keeps the first start.
+        assert!(decide(&mut s, tick(1, &a, 50.0, true), 151).is_empty());
+        // Playing again counts from the position, so the pause is not on
+        // the clock.
         assert_eq!(
-            decide(&mut s, tick(1, &a, false), 200),
-            vec![Action::Set(started(&a, 100))]
+            decide(&mut s, tick(1, &a, 50.0, false), 200),
+            vec![Action::Set(started(&a, 150))]
         );
     }
 
@@ -800,8 +928,8 @@ mod tests {
     fn the_timer_clears_only_when_nothing_moved_since() {
         let a = bebop();
         let mut s = on();
-        decide(&mut s, tick(1, &a, false), 100);
-        decide(&mut s, tick(1, &a, true), 110);
+        decide(&mut s, tick(1, &a, 0.0, false), 100);
+        decide(&mut s, tick(1, &a, 10.0, true), 110);
         let armed = s.generation;
         assert_eq!(
             decide(
@@ -826,11 +954,11 @@ mod tests {
             )
             .is_empty()
         );
-        assert!(decide(&mut s, tick(1, &a, true), 412).is_empty());
-        // Playing again shows it again.
+        assert!(decide(&mut s, tick(1, &a, 10.0, true), 412).is_empty());
+        // Playing again shows it again, counting from the position.
         assert_eq!(
-            decide(&mut s, tick(1, &a, false), 500),
-            vec![Action::Set(started(&a, 100))]
+            decide(&mut s, tick(1, &a, 10.0, false), 500),
+            vec![Action::Set(started(&a, 490))]
         );
     }
 
@@ -838,10 +966,10 @@ mod tests {
     fn a_playing_tick_before_the_timer_fires_cancels_it() {
         let a = bebop();
         let mut s = on();
-        decide(&mut s, tick(1, &a, false), 100);
-        decide(&mut s, tick(1, &a, true), 110);
+        decide(&mut s, tick(1, &a, 0.0, false), 100);
+        decide(&mut s, tick(1, &a, 10.0, true), 110);
         let armed = s.generation;
-        decide(&mut s, tick(1, &a, false), 120);
+        decide(&mut s, tick(1, &a, 10.0, false), 120);
         assert!(
             decide(
                 &mut s,
@@ -863,10 +991,10 @@ mod tests {
             ..bebop()
         };
         let mut s = on();
-        decide(&mut s, tick(1, &a, false), 100);
+        decide(&mut s, tick(1, &a, 0.0, false), 100);
         // The next episode took over before the old close arrived.
         assert_eq!(
-            decide(&mut s, tick(2, &b, false), 200),
+            decide(&mut s, tick(2, &b, 0.0, false), 200),
             vec![Action::Set(started(&b, 200))]
         );
         assert!(decide(&mut s, Input::Close { session: 1 }, 201).is_empty());
@@ -882,8 +1010,8 @@ mod tests {
     fn a_close_after_a_long_pause_cleared_sends_nothing_more() {
         let a = bebop();
         let mut s = on();
-        decide(&mut s, tick(1, &a, false), 100);
-        decide(&mut s, tick(1, &a, true), 110);
+        decide(&mut s, tick(1, &a, 0.0, false), 100);
+        decide(&mut s, tick(1, &a, 10.0, true), 110);
         let armed = s.generation;
         decide(
             &mut s,
@@ -901,7 +1029,7 @@ mod tests {
         let a = bebop();
         let mut s = State::default();
         assert_eq!(
-            decide(&mut s, Input::Enable(Some((4, &a))), 100),
+            decide(&mut s, Input::Enable(Some((4, &a, 0.0))), 100),
             vec![Action::Set(started(&a, 100))]
         );
         assert!(decide(&mut s, Input::Enable(None), 101).is_empty());
@@ -909,12 +1037,73 @@ mod tests {
             decide(&mut s, Input::Disable, 102),
             vec![Action::Disconnect]
         );
-        assert!(decide(&mut s, tick(4, &a, false), 103).is_empty());
+        assert!(decide(&mut s, tick(4, &a, 3.0, false), 103).is_empty());
         assert!(decide(&mut s, Input::Enable(None), 104).is_empty());
         assert_eq!(
-            decide(&mut s, tick(4, &a, false), 105),
-            vec![Action::Set(started(&a, 105))]
+            decide(&mut s, tick(4, &a, 5.0, false), 105),
+            vec![Action::Set(started(&a, 100))]
         );
+    }
+
+    #[test]
+    fn a_resume_after_a_pause_counts_from_the_position() {
+        let a = bebop();
+        let mut s = on();
+        // Ten minutes in, a twenty minute pause, then play on.
+        decide(&mut s, tick(1, &a, 0.0, false), 10_000);
+        decide(&mut s, tick(1, &a, 600.0, true), 10_600);
+        assert_eq!(
+            decide(&mut s, tick(1, &a, 600.0, false), 11_800),
+            vec![Action::Set(started(&a, 11_800 - 600))]
+        );
+        // Switched on mid-episode, the clock reads the position too.
+        let mut s = State::default();
+        assert_eq!(
+            decide(&mut s, Input::Enable(Some((2, &a, 90.5))), 5_000),
+            vec![Action::Set(started(&a, 5_000 - 90))]
+        );
+    }
+
+    #[test]
+    fn a_seek_past_the_slack_moves_the_clock() {
+        let a = bebop();
+        let mut s = on();
+        decide(&mut s, tick(1, &a, 0.0, false), 1_000);
+        assert!(decide(&mut s, tick(1, &a, 10.0, false), 1_010).is_empty());
+        // Forward five minutes.
+        assert_eq!(
+            decide(&mut s, tick(1, &a, 311.0, false), 1_011),
+            vec![Action::Set(started(&a, 700))]
+        );
+        assert!(decide(&mut s, tick(1, &a, 312.0, false), 1_012).is_empty());
+        // And back to the start.
+        assert_eq!(
+            decide(&mut s, tick(1, &a, 1.0, false), 1_013),
+            vec![Action::Set(started(&a, 1_012))]
+        );
+    }
+
+    #[test]
+    fn ordinary_ticks_and_jitter_send_nothing() {
+        let a = bebop();
+        let mut s = on();
+        decide(&mut s, tick(1, &a, 0.0, false), 1_000);
+        for i in 1..=60 {
+            assert!(
+                decide(
+                    &mut s,
+                    tick(1, &a, f64::from(i) + 0.4, false),
+                    1_000 + i as u64
+                )
+                .is_empty()
+            );
+        }
+        // A player that runs a little slow or fast, up to the slack.
+        assert!(decide(&mut s, tick(1, &a, 75.0, false), 1_070).is_empty());
+        assert!(decide(&mut s, tick(1, &a, 70.0, false), 1_080).is_empty());
+        assert_eq!(s.start, 1_000);
+        // A position that is no number counts from now, which is no seek.
+        assert!(decide(&mut s, tick(1, &a, f64::NAN, false), 1_005).is_empty());
     }
 
     #[test]
