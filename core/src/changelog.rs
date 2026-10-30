@@ -96,6 +96,9 @@ pub fn lint(text: &str, version: &str) -> Vec<String> {
         }
     };
     let mut heading_at = 0;
+    // The newest version may have no sections yet: main moves to it the moment the last
+    // one ships, before anything is written under it.
+    let mut headings = 0;
     for (n, line) in read(text) {
         match line {
             Line::Title => {}
@@ -105,9 +108,10 @@ pub fn lint(text: &str, version: &str) -> Vec<String> {
                 exact,
             } => {
                 close(&mut problems, open.take());
-                if above.is_some() && kinds.is_empty() {
+                if headings > 1 && kinds.is_empty() {
                     problems.push(format!("line {heading_at}: a version with no sections"));
                 }
+                headings += 1;
                 heading_at = n;
                 kinds.clear();
                 if !exact {
@@ -191,7 +195,7 @@ pub fn lint(text: &str, version: &str) -> Vec<String> {
     close(&mut problems, open);
     match above {
         None => problems.push("no version heading".to_string()),
-        Some(_) if kinds.is_empty() => {
+        Some(_) if headings > 1 && kinds.is_empty() => {
             problems.push(format!("line {heading_at}: a version with no sections"))
         }
         Some(_) => {}
@@ -210,10 +214,12 @@ pub fn newer(a: &str, b: &str) -> bool {
 }
 
 /// The app version in one the core logged as it started: `2.1.0` out of `2.1.0`,
-/// `2.1.0.r6.gf1d3824` or `2.1.0.dirty`. None when it does not start with three numbers,
-/// as a build described from one of the phone's tags (`android.v2.0.4`) does not.
+/// `2.1.0.r6.gf1d3824` or `2.1.0.dirty`, and `2.1.0` out of a nightly's
+/// `2.1.0-nightly.20261030.12`. None when it does not start with three numbers, as a build
+/// described from one of the phone's tags (`android.v2.0.4`) does not.
 pub fn version_of(logged: &str) -> Option<String> {
-    let mut numbers = logged.splitn(4, '.');
+    let base = logged.split('-').next()?;
+    let mut numbers = base.splitn(4, '.');
     let version = format!(
         "{}.{}.{}",
         numbers.next()?,
@@ -427,16 +433,31 @@ fn heading(text: &str) -> Line {
 }
 
 fn parts(v: &str) -> Option<[u64; 3]> {
-    let mut numbers = v.split('.');
-    let mut out = [0; 3];
+    digits::<3>(v)
+}
+
+/// Exactly `N` dot-separated whole numbers: `digits::<3>("2.1.0")`. The update check reads
+/// a nightly's day and run with it too.
+pub(crate) fn digits<const N: usize>(s: &str) -> Option<[u64; N]> {
+    let mut parts = s.split('.');
+    let mut out = [0; N];
     for slot in &mut out {
-        let n = numbers.next()?;
+        let n = parts.next()?;
         if n.is_empty() || !n.bytes().all(|b| b.is_ascii_digit()) {
             return None;
         }
         *slot = n.parse().ok()?;
     }
-    numbers.next().is_none().then_some(out)
+    parts.next().is_none().then_some(out)
+}
+
+/// Whether `version` has anything to show: main moves to a new version before a line is
+/// written under it, and notes with nothing in them never open What's new by themselves.
+pub fn has_lines(notes: &[Notes], version: &str) -> bool {
+    notes
+        .iter()
+        .find(|n| n.version == version)
+        .is_some_and(|n| n.sections.iter().any(|s| !s.lines.is_empty()))
 }
 
 fn day_parts(date: &str) -> Option<(i32, u32, u32)> {
@@ -549,6 +570,17 @@ wraps onto a second line
     }
 
     #[test]
+    fn only_the_newest_version_may_be_empty() {
+        let just_begun = "## 2.1.0 · 2026-10-30\n## 2.0.8 · 2026-10-24\n### Fixed\n- One\n";
+        assert_eq!(lint(just_begun, "2.1.0"), Vec::<String>::new());
+        let hollow = "## 2.1.0 · 2026-10-30\n### New\n- One\n## 2.0.8 · 2026-10-24\n";
+        assert_eq!(
+            lint(hollow, "2.1.0"),
+            ["line 4: a version with no sections"]
+        );
+    }
+
+    #[test]
     fn lint_refuses_long_dashes_and_an_empty_file() {
         assert!(
             lint(
@@ -575,6 +607,11 @@ wraps onto a second line
         assert_eq!(version_of("2.1.0").as_deref(), Some("2.1.0"));
         assert_eq!(version_of("2.1.0.r6.gf1d3824").as_deref(), Some("2.1.0"));
         assert_eq!(version_of("2.1.0.dirty").as_deref(), Some("2.1.0"));
+        assert_eq!(
+            version_of("2.1.0-nightly.20261030.12").as_deref(),
+            Some("2.1.0")
+        );
+        assert_eq!(version_of("2.1.0-pr.280.3").as_deref(), Some("2.1.0"));
         assert_eq!(version_of("android.v2.0.4"), None);
         assert_eq!(version_of("2.1"), None);
     }
