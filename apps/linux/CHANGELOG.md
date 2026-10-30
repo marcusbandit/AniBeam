@@ -33,6 +33,7 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - On disk marks only the release you have, not every release of that episode
 - An episode that aired earlier today stays on Today and says if it landed
 - An episode that aired with no file yet says it is late
+- Episodes you get for a show land in its folder and join it, not new shows
 
 ## 2.2.0 · 2026-10-26
 

@@ -100,6 +100,10 @@ pub struct Roll {
     /// the held singles added later included.
     #[serde(default)]
     pub sequential: bool,
+    /// The library show's folder, for the held singles added later to
+    /// move into (`downloads::move_home`).
+    #[serde(default)]
+    pub home: Option<String>,
     pub parts: Vec<Part>,
 }
 
@@ -193,6 +197,7 @@ pub fn plan(
         until: None,
         released: false,
         sequential: options.sequential,
+        home: None,
         parts,
     };
     let (singles, others): (Vec<usize>, Vec<usize>) =
@@ -988,6 +993,7 @@ async fn step(
                         .map(|(_, p)| p)
                         .collect();
                     take_hashes(&mut parts, &added.hashes);
+                    super::move_home(core, &items, &added, roll.home.as_deref());
                     acted.push(format!(
                         "added {}",
                         plural(m.add.len(), "episode", "episodes")
@@ -1288,6 +1294,7 @@ mod tests {
             until: None,
             released: false,
             sequential: false,
+            home: None,
             parts: vec![Part {
                 release: release("[G] Show (01-170) [Batch]"),
                 hash: "aa".into(),

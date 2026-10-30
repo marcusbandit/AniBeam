@@ -1477,12 +1477,18 @@ pub fn download_with(
         crate::time::now_secs(),
     );
     let followups = replace::prepare(&owner.store, &plan.now, &options)?;
+    let home = show_folder(&owner, options.series)?;
+    let mut plan = plan;
+    for roll in &mut plan.rolls {
+        roll.home = home.clone();
+    }
     Ok(owner
         .jobs
         .clone()
         .start(JobKind::Download, move |_| async move {
             let client = ensure_client(&owner).await?;
             let result = client.download(&plan.now, name.as_deref()).await?;
+            move_home(&owner, &plan.now, &result, home.as_deref());
             let mut extra = replace::describe(&options, &followups);
             extra.push_str(&rolling::describe(&plan));
             rolling::after_add(&owner, plan.rolls, &plan.now, &result.hashes).await;
@@ -1503,6 +1509,93 @@ pub fn download_with(
                 body: EventBody::TorrentsAdded { result },
             })
         }))
+}
+
+/// The folder of the library show a download is for. anirss saves under
+/// its own root plus the show's name, which is another folder whenever the
+/// show lives in a different source: the episodes would scan in as a show
+/// of their own beside it.
+fn show_folder(core: &Core, series: Option<u64>) -> Result<Option<String>, CoreError> {
+    let Some(id) = series else { return Ok(None) };
+    core.store.read(|c| {
+        Ok(c.query_row(
+            "SELECT path FROM series WHERE id = ?1 AND kind = 'show' AND missing_since IS NULL",
+            [id as i64],
+            |r| r.get::<_, String>(0),
+        )
+        .ok())
+    })
+}
+
+/// Moves new single-episode torrents into their show's folder when anirss
+/// put them elsewhere. Waits for qBittorrent to list them first, since a
+/// move asked for a hash it does not hold yet is dropped without a word,
+/// and moves only those still where anirss put them, so a torrent the
+/// client already had for another show stays put. A batch stays where it
+/// landed: moved in beside loose episodes it would make them read as
+/// films. Only when this machine sees both folders, so a client on
+/// another host, which names its paths its own way, is left alone.
+pub(crate) fn move_home(
+    core: &Arc<Core>,
+    items: &[Release],
+    added: &AddedTorrents,
+    home: Option<&str>,
+) {
+    let Some(home) = home.map(|h| h.trim_end_matches(['/', '\\']).to_string()) else {
+        return;
+    };
+    let saved = added.save_path.trim_end_matches(['/', '\\']).to_string();
+    if saved == home || added.hashes.len() != items.len() {
+        return;
+    }
+    let local = std::path::Path::new(&saved)
+        .parent()
+        .is_some_and(|base| base.is_dir());
+    if !local || !std::path::Path::new(&home).is_dir() {
+        return;
+    }
+    let hashes: Vec<String> = items
+        .iter()
+        .zip(&added.hashes)
+        .filter(|(r, _)| {
+            let f = facts::read(r);
+            !f.batch && f.episode.is_some()
+        })
+        .map(|(_, h)| h.to_lowercase())
+        .collect();
+    if hashes.is_empty() {
+        return;
+    }
+    let core = core.clone();
+    let handle = core.handle.clone();
+    handle.spawn(async move {
+        for _ in 0..60 {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            let Ok(qbt) = qbt_client(&core).await else {
+                continue;
+            };
+            let Ok(listed) = qbt.torrents_named(&hashes).await else {
+                continue;
+            };
+            if listed.len() < hashes.len() {
+                continue;
+            }
+            let here: Vec<String> = listed
+                .iter()
+                .filter(|t| t.save_path.trim_end_matches(['/', '\\']) == saved)
+                .map(|t| t.hash.clone())
+                .collect();
+            if here.is_empty() {
+                return;
+            }
+            match qbt.set_location(&here, &home).await {
+                Ok(()) => tracing::info!("moved {} into {home}", here.len()),
+                Err(e) => tracing::warn!("download not moved into {home}: {e}"),
+            }
+            return;
+        }
+        tracing::warn!("download not moved into {home}: the client never listed it");
+    });
 }
 
 pub fn movie(core: &Core, link: String) -> Result<u64, CoreError> {
