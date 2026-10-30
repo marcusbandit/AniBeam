@@ -1487,7 +1487,10 @@ pub fn download_with(
         .clone()
         .start(JobKind::Download, move |_| async move {
             let client = ensure_client(&owner).await?;
-            let result = client.download(&plan.now, name.as_deref()).await?;
+            let result = client
+                .download(&plan.now, name.as_deref(), home.as_deref())
+                .await?;
+            // An anirss older than save_path put them under its own root
             move_home(&owner, &plan.now, &result, home.as_deref());
             let mut extra = replace::describe(&options, &followups);
             extra.push_str(&rolling::describe(&plan));
@@ -1511,30 +1514,40 @@ pub fn download_with(
         }))
 }
 
-/// The folder of the library show a download is for. anirss saves under
-/// its own root plus the show's name, which is another folder whenever the
-/// show lives in a different source: the episodes would scan in as a show
-/// of their own beside it.
+/// The folder of the library show a download is for, which the torrents
+/// are saved straight into: the show is already on disk, so its episodes go
+/// where it is, never under anirss's root as a second folder. None when the
+/// download is for no library show, the folder is gone, or the client keeps
+/// its files on another machine, whose paths are its own.
 fn show_folder(core: &Core, series: Option<u64>) -> Result<Option<String>, CoreError> {
     let Some(id) = series else { return Ok(None) };
-    core.store.read(|c| {
-        Ok(c.query_row(
-            "SELECT path FROM series WHERE id = ?1 AND kind = 'show' AND missing_since IS NULL",
-            [id as i64],
-            |r| r.get::<_, String>(0),
-        )
-        .ok())
-    })
+    let (path, s) = core.store.read(|c| {
+        let path = c
+            .query_row(
+                "SELECT path FROM series WHERE id = ?1 AND kind = 'show' AND missing_since IS NULL",
+                [id as i64],
+                |r| r.get::<_, String>(0),
+            )
+            .ok();
+        Ok((path, settings::load_stored(c)?))
+    })?;
+    Ok(path.filter(|p| settings::files_here(&s) && still_there(Some(p)).is_some()))
 }
 
-/// Moves new single-episode torrents into their show's folder when anirss
-/// put them elsewhere. Waits for qBittorrent to list them first, since a
-/// move asked for a hash it does not hold yet is dropped without a word,
-/// and moves only those still where anirss put them, so a torrent the
-/// client already had for another show stays put. A batch stays where it
-/// landed: moved in beside loose episodes it would make them read as
-/// films. Only when this machine sees both folders, so a client on
-/// another host, which names its paths its own way, is left alone.
+/// A show folder anirss will take as save_path: still on disk, and a name
+/// with no control characters, which anirss refuses.
+pub(crate) fn still_there(path: Option<&str>) -> Option<&str> {
+    path.filter(|p| !p.chars().any(char::is_control) && std::path::Path::new(p).is_dir())
+}
+
+/// Moves new single-episode torrents into their show's folder when an
+/// anirss that predates save_path put them under its own root. Waits for
+/// qBittorrent to list them first, since a move asked for a hash it does
+/// not hold yet is dropped without a word, and moves only those still where
+/// anirss put them, so a torrent the client already had for another show
+/// stays put. A batch stays where it landed: moved in beside loose episodes
+/// it would make them read as films. Only when this machine sees both
+/// folders, so a client on another host is left alone.
 pub(crate) fn move_home(
     core: &Arc<Core>,
     items: &[Release],
