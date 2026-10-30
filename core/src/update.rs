@@ -1,6 +1,7 @@
 //! Whether a newer desktop build is out. One request to GitHub's releases for the repo, read
-//! once as the shell starts and again when the person switches track; the shell shows the
-//! answer and the release page is where the download is.
+//! once as the shell starts and again when the person switches track. The answer carries the
+//! release's files, and `install` is how this copy takes one of them. A copy the AUR
+//! installed asks the AUR instead (`check_aur`), since pacman is what updates it.
 //!
 //! A desktop build is tagged `v2.4.0` when stable and `v2.4.0-nightly.20261030.12` when
 //! nightly; the phone's `android-v*` tags never count here, and neither does a draft or a
@@ -12,6 +13,8 @@ use serde::Deserialize;
 use crate::changelog::digits;
 use crate::contract::CoreError;
 use crate::net::{Http, HttpRequest, Method};
+
+pub mod install;
 
 const RELEASES: &str = "https://api.github.com/repos/marcusbandit/AniBeam/releases?per_page=100";
 
@@ -42,11 +45,25 @@ impl Track {
     }
 }
 
-/// A desktop release newer than the running build: its version and its page on GitHub.
+/// A desktop release newer than the running build: its version, its page on GitHub and the
+/// files attached to it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Update {
     pub version: String,
     pub url: String,
+    pub assets: Vec<Asset>,
+}
+
+/// One file on a release, as GitHub lists it. `digest` is `sha256:<hex>`; releases made
+/// before GitHub started keeping one have none.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+pub struct Asset {
+    pub name: String,
+    #[serde(rename = "browser_download_url")]
+    pub url: String,
+    pub size: u64,
+    #[serde(default)]
+    pub digest: Option<String>,
 }
 
 /// A version as builds name themselves: `2.4.0`, `2.4.0-nightly.20261030.12` or
@@ -100,6 +117,8 @@ struct Release {
     html_url: String,
     #[serde(default)]
     draft: bool,
+    #[serde(default)]
+    assets: Vec<Asset>,
 }
 
 /// The newest release on `track` in `releases`, GitHub's list as it sends it, when it is
@@ -129,6 +148,7 @@ pub fn newest(releases: &[u8], current: &str, track: Track) -> Result<Option<Upd
                 Update {
                     version: name.to_string(),
                     url: r.html_url,
+                    assets: r.assets,
                 },
             ));
         }
@@ -159,6 +179,60 @@ pub async fn check(
         )));
     }
     newest(&res.body, current, track)
+}
+
+const AUR_INFO: &str = "https://aur.archlinux.org/rpc/v5/info?arg[]=";
+
+/// The version `package` has on the AUR when it is newer than `current`, read from the
+/// AUR's RPC answer. The AUR's `2.4.0-1` is the release `2.4.0`; a `-git` package's
+/// `r123.abc` names no release and is never offered.
+pub fn aur_newer(info: &[u8], current: &str) -> Result<Option<String>, CoreError> {
+    #[derive(Deserialize)]
+    struct Info {
+        results: Vec<Package>,
+    }
+    #[derive(Deserialize)]
+    struct Package {
+        #[serde(rename = "Version")]
+        version: String,
+    }
+    let info: Info =
+        serde_json::from_slice(info).map_err(|e| CoreError::internal(format!("aur: {e}")))?;
+    let Some(package) = info.results.into_iter().next() else {
+        return Ok(None);
+    };
+    let version = package
+        .version
+        .rsplit_once(':')
+        .map_or(package.version.as_str(), |(_, v)| v);
+    let version = version.rsplit_once('-').map_or(version, |(v, _)| v);
+    let Some(theirs) = Version::parse(version) else {
+        return Ok(None);
+    };
+    let newer = Version::parse(current).is_none_or(|run| theirs > run);
+    Ok(newer.then(|| version.to_string()))
+}
+
+/// Asks the AUR what version `package` is at. A failure is the caller's to drop.
+pub async fn check_aur(
+    http: &dyn Http,
+    package: &str,
+    current: &str,
+) -> Result<Option<String>, CoreError> {
+    let res = http
+        .send(HttpRequest {
+            method: Method::Get,
+            url: format!("{AUR_INFO}{package}"),
+            headers: Vec::new(),
+            body: None,
+            timeout: None,
+        })
+        .await
+        .map_err(|e| CoreError::internal(format!("aur: {}", e.message)))?;
+    if !res.is_success() {
+        return Err(CoreError::internal(format!("aur: HTTP {}", res.status)));
+    }
+    aur_newer(&res.body, current)
 }
 
 #[cfg(test)]
@@ -236,6 +310,49 @@ mod tests {
         assert_eq!(Track::of("2.3.1.r5.gabc1234"), Track::Stable);
         assert_eq!(Track::parse("nightly"), Some(Track::Nightly));
         assert_eq!(Track::parse(""), None);
+    }
+
+    #[test]
+    fn the_update_carries_its_release_files() {
+        let list = serde_json::json!([{
+            "tag_name": "v2.5.0", "html_url": "u250",
+            "assets": [{ "name": "AniBeam-2.5.0-x86_64.AppImage", "size": 9,
+                         "browser_download_url": "https://dl/a", "digest": "sha256:ab" }]
+        }])
+        .to_string();
+        let u = newest(list.as_bytes(), "2.4.0", Track::Stable)
+            .unwrap()
+            .unwrap();
+        assert_eq!(u.assets.len(), 1);
+        assert_eq!(u.assets[0].url, "https://dl/a");
+        assert_eq!(u.assets[0].digest.as_deref(), Some("sha256:ab"));
+    }
+
+    #[test]
+    fn the_aur_is_asked_for_a_newer_release_only() {
+        let info = |v: &str| {
+            serde_json::json!({ "resultcount": 1, "results": [{ "Name": "anibeam", "Version": v }] })
+                .to_string()
+                .into_bytes()
+        };
+        assert_eq!(
+            aur_newer(&info("2.4.0-1"), "2.3.1").unwrap().as_deref(),
+            Some("2.4.0")
+        );
+        assert_eq!(
+            aur_newer(&info("1:2.4.0-2"), "2.3.1").unwrap().as_deref(),
+            Some("2.4.0")
+        );
+        assert_eq!(aur_newer(&info("2.3.1-1"), "2.3.1").unwrap(), None);
+        assert_eq!(
+            aur_newer(&info("2.4.0-1"), "2.4.0-nightly.20261102.40")
+                .unwrap()
+                .as_deref(),
+            Some("2.4.0")
+        );
+        assert_eq!(aur_newer(&info("r120.abc1234-1"), "2.3.1").unwrap(), None);
+        let none = br#"{"resultcount":0,"results":[]}"#;
+        assert_eq!(aur_newer(none, "2.3.1").unwrap(), None);
     }
 
     #[test]
