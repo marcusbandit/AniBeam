@@ -636,6 +636,9 @@ impl Core {
             Call::DeleteEpisodes { series, files } => {
                 crate::library::delete::delete_episodes(self, series, files)
             }
+            Call::DeleteWatched { finished_shows } => {
+                crate::library::delete::delete_watched(self, finished_shows)
+            }
             Call::FixFiles { series, fixes } => {
                 crate::library::fixes::fix_files(self, series, fixes)
             }
