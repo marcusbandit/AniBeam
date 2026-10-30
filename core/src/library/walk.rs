@@ -85,6 +85,12 @@ static ORDINAL_SEASON: LazyLock<Regex> =
 static PARENS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s*\(.*?\)\s*").unwrap());
 static DOT_YEAR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\.[0-9]{4}\.").unwrap());
 static PURE_NUMBER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^([0-9]+)$").unwrap());
+/// One episode named in a folder: `S01E11`, or `Show - 11` the way an anime
+/// release names it. A range (`01-12`) or a season alone is no episode.
+static ONE_EPISODE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\bS[0-9]{1,2}E[0-9]{1,4}\b(?:[^-]|$)|\s-\s[0-9]{1,4}(?:v[0-9])?(?:\s|$|\[|\()")
+        .unwrap()
+});
 
 fn first_number(patterns: &[Regex], s: &str) -> Option<u32> {
     patterns
@@ -318,12 +324,31 @@ enum Shape {
     Passthrough(PathBuf),
 }
 
+/// A torrent's folder around one episode: `Show.S01E11.1080p-GRP/` holding
+/// that one video and nothing else that plays. A show's folder fills with
+/// these when single-episode torrents each bring their own folder, and they
+/// are episodes of it, never shows of their own.
+fn is_episode_folder(state: &mut WalkState, dir: &Path) -> bool {
+    let name = dir
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    if !ONE_EPISODE.is_match(&name) {
+        return false;
+    }
+    let l = state.list(dir);
+    l.videos.len() == 1 && !l.dirs.iter().any(|d| has_videos_shallow(state, d))
+}
+
 fn classify_folder(state: &mut WalkState, loose_videos: usize, dirs: &[PathBuf]) -> Shape {
     let video_bearing: Vec<PathBuf> = dirs
         .iter()
         .filter(|d| has_videos_shallow(state, d))
         .cloned()
         .collect();
+    if !video_bearing.is_empty() && video_bearing.iter().all(|d| is_episode_folder(state, d)) {
+        return Shape::Series;
+    }
     if video_bearing.len() >= 2 {
         return Shape::Wrapper(video_bearing);
     }
@@ -792,6 +817,72 @@ mod tests {
         assert_eq!(results[0].kind, SeriesKind::Show);
         assert_eq!(results[0].files.len(), 3);
         assert_eq!(results[0].name, "My Show");
+    }
+
+    #[test]
+    fn single_episode_torrent_folders_are_episodes_of_the_show() {
+        let tmp = tempfile::tempdir().unwrap();
+        let show = tmp.path().join("Avatar Seven Havens");
+        for ep in 10..=13 {
+            let rip = format!("Avatar.Seven.Havens.S01E{ep}.1080p.x265-ELiTE");
+            touch(&show.join(&rip).join(format!("{rip}.mkv")));
+        }
+        let results = scan_source(tmp.path()).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].kind, SeriesKind::Show);
+        assert_eq!(results[0].name, "Avatar Seven Havens");
+        assert_eq!(results[0].path, show.to_string_lossy());
+        assert_eq!(results[0].files.len(), 4);
+        // One alone is still an episode of the show, not a passthrough
+        let one = tempfile::tempdir().unwrap();
+        let show = one.path().join("Solo Show");
+        touch(
+            &show
+                .join("[Grp] Solo Show - 05 [1080p]")
+                .join("[Grp] Solo Show - 05 [1080p].mkv"),
+        );
+        let results = scan_source(one.path()).unwrap();
+        assert_eq!(
+            (results.len(), results[0].path.as_str()),
+            (1, &*show.to_string_lossy())
+        );
+    }
+
+    #[test]
+    fn episode_folders_beside_loose_episodes_join_them() {
+        let tmp = tempfile::tempdir().unwrap();
+        let show = tmp.path().join("Mixed Show");
+        for ep in 1..=9 {
+            touch(&show.join(format!("Mixed.Show.S01E{ep:02}.1080p.WEB-DL.mkv")));
+        }
+        for ep in 10..=11 {
+            let rip = format!("Mixed.Show.S01E{ep}.1080p.x265-ELiTE");
+            touch(&show.join(&rip).join(format!("{rip}.mkv")));
+        }
+        let results = scan_source(tmp.path()).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(
+            (results[0].kind, results[0].files.len()),
+            (SeriesKind::Show, 11)
+        );
+    }
+
+    #[test]
+    fn season_packs_and_batches_are_not_episode_folders() {
+        let tmp = tempfile::tempdir().unwrap();
+        let show = tmp.path().join("Pack Show");
+        touch(
+            &show
+                .join("Pack.Show.S01.1080p")
+                .join("Pack.Show.S01E01.mkv"),
+        );
+        touch(
+            &show
+                .join("Pack.Show.S02.1080p")
+                .join("Pack.Show.S02E01.mkv"),
+        );
+        let results = scan_source(tmp.path()).unwrap();
+        assert_eq!(results.len(), 2);
     }
 
     #[test]

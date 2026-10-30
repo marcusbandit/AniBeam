@@ -1477,12 +1477,14 @@ pub fn download_with(
         crate::time::now_secs(),
     );
     let followups = replace::prepare(&owner.store, &plan.now, &options)?;
+    let home = show_folder(&owner, options.series)?;
     Ok(owner
         .jobs
         .clone()
         .start(JobKind::Download, move |_| async move {
             let client = ensure_client(&owner).await?;
-            let result = client.download(&plan.now, name.as_deref()).await?;
+            let mut result = client.download(&plan.now, name.as_deref()).await?;
+            move_home(&owner, &mut result, home.as_deref()).await;
             let mut extra = replace::describe(&options, &followups);
             extra.push_str(&rolling::describe(&plan));
             rolling::after_add(&owner, plan.rolls, &plan.now, &result.hashes).await;
@@ -1503,6 +1505,47 @@ pub fn download_with(
                 body: EventBody::TorrentsAdded { result },
             })
         }))
+}
+
+/// The folder of the library show a download is for. anirss saves under
+/// its own root plus the show's name, which is another folder whenever the
+/// show lives in a different source: the episodes would scan in as a show
+/// of their own beside it.
+fn show_folder(core: &Core, series: Option<u64>) -> Result<Option<String>, CoreError> {
+    let Some(id) = series else { return Ok(None) };
+    core.store.read(|c| {
+        Ok(c.query_row(
+            "SELECT path FROM series WHERE id = ?1 AND kind = 'show' AND missing_since IS NULL",
+            [id as i64],
+            |r| r.get::<_, String>(0),
+        )
+        .ok())
+    })
+}
+
+/// Moves new torrents into their show's folder when anirss put them
+/// elsewhere. Only when this machine sees both folders, so a client on
+/// another host, which names its paths its own way, is left alone.
+async fn move_home(core: &Arc<Core>, result: &mut AddedTorrents, home: Option<&str>) {
+    let Some(home) = home else { return };
+    let saved = result.save_path.trim_end_matches(['/', '\\']);
+    if result.hashes.is_empty() || saved == home.trim_end_matches(['/', '\\']) {
+        return;
+    }
+    let local = std::path::Path::new(saved)
+        .parent()
+        .is_some_and(|base| base.is_dir());
+    if !local || !std::path::Path::new(home).is_dir() {
+        return;
+    }
+    let moved = match qbt_client(core).await {
+        Ok(qbt) => qbt.set_location(&result.hashes, home).await,
+        Err(e) => Err(e),
+    };
+    match moved {
+        Ok(()) => result.save_path = home.to_string(),
+        Err(e) => tracing::warn!("download not moved into {home}: {e}"),
+    }
 }
 
 pub fn movie(core: &Core, link: String) -> Result<u64, CoreError> {
