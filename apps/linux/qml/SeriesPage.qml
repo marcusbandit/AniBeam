@@ -58,6 +58,17 @@ Item {
         if (r && r.error) frame.toast(frame.errorText(r.error))
         else frame.toast(n === null ? "Episode count cleared" : "Set to " + n + " episodes")
     }
+    // Fixes (#283): every way to correct what the page shows, in one menu
+    function fixItems() {
+        var items = []
+        if (page.filesHere > 0)
+            items.push({ text: "Fix files", icon: "pencil", action: function() { page.openFix(page.detail ? page.detail.suggested_fix : null, false) } })
+        if (countRow.offered)
+            items.push({ text: countRow.set === null ? "Set episode count" : "Change episode count", icon: "list-video", action: countRow.edit })
+        items.push({ text: page.matched ? "Change match" : "Find a match", icon: "link", action: function() { matchPanel.openFor(page.props.id, page.title, card.match_info) } })
+        items.push({ text: "Rescan", icon: "refresh-cw", action: page.rescan })
+        return items
+    }
     function contextItems() {
         return [
             { text: "Rescan show", icon: "refresh-cw", action: page.rescan },
@@ -650,20 +661,23 @@ Item {
                         color: page.downloadInk
                     }
                 }
-                // The episode count set by hand (#239): offered while the record names no count
-                // or a guess is out, so a predicted episode past the real end can be stopped.
-                // A count the schedule or a file went past says it gave way.
+                // The episode count set by hand (#239): Fixes offers it while the record names no
+                // count or a guess is out, so a predicted episode past the real end can be stopped.
+                // A TVmaze show's count is its current season's (#283). The row shows while it is
+                // being typed or a count is set, and a count the schedule or a file went past says
+                // it gave way.
                 Row {
                     id: countRow
                     objectName: "episode-count"
                     property bool editing: false
                     readonly property var set: card.episodes_set === undefined ? null : card.episodes_set
                     readonly property bool gaveWay: set !== null && card.episodes_set_applied !== true
-                    readonly property bool tvmaze: !!card.match_info && card.match_info.provider === "Tvmaze"
-                    // A set count always shows, so it can be cleared once the show is over
-                    visible: !page.isMovie && (set !== null || (!tvmaze && card.status === "Releasing"
+                    // A set count is always offered, so it can be cleared once the show is over
+                    readonly property bool offered: !page.isMovie && (set !== null || (card.status === "Releasing"
                              && (card.total_is_estimate || !card.total_episodes || (!!card.next_airing && card.next_airing.predicted))))
+                    visible: editing || set !== null
                     spacing: theme.space(2)
+                    function edit() { editing = true; countField.text = set === null ? "" : String(set); Qt.callLater(countField.focusInput) }
                     function save(text) {
                         var t = String(text).trim()
                         var n = /^\d{1,4}$/.test(t) ? parseInt(t, 10) : 0
@@ -686,8 +700,8 @@ Item {
                         small: true; flat: true
                         tint: page.inkAccent
                         icon: "pencil"
-                        text: countRow.set === null ? "Set episode count" : "Change"
-                        onClicked: { countRow.editing = true; countField.text = countRow.set === null ? "" : String(countRow.set); Qt.callLater(countField.focusInput) }
+                        text: "Change"
+                        onClicked: countRow.edit()
                     }
                     Button {
                         visible: !countRow.editing && countRow.set !== null
@@ -776,7 +790,7 @@ Item {
                 }
                 // The quiet row: your score (rate, on a tracker), the average score, the IMDb
                 // score with its votes on hover, the list status and rewatches, then hide, the
-                // record's site, rescan
+                // record's site, and Fixes
                 Flow {
                     width: parent.width
                     spacing: theme.space(2)
@@ -810,14 +824,13 @@ Item {
                     }
                     Button { objectName: "series-site"; visible: !!(page.detail && page.detail.site_url); small: true; ghost: true; text: page.siteName; icon: "external-link"; onClicked: frame.openLink(page.detail.site_url) }
                     Button {
-                        objectName: "series-fix"
-                        visible: page.filesHere > 0
+                        id: fixesButton
+                        objectName: "series-fixes"
                         small: true; ghost: true
-                        text: "Fix files"; icon: "wrench"
-                        onClicked: page.openFix(page.detail ? page.detail.suggested_fix : null, false)
-                        Tooltip { text: "Say what a file really is when its name read wrong" }
+                        text: "Fixes"; icon: "wrench"
+                        onClicked: { var p = mapToItem(frame, 0, height + theme.space(1)); frame.openMenu(p.x, p.y, page.fixItems()) }
+                        Tooltip { text: "Fix files, the episode count, the match, or rescan" }
                     }
-                    Button { small: true; ghost: true; text: "Rescan"; icon: "refresh-cw"; onClicked: page.rescan() }
                 }
             }
         }

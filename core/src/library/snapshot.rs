@@ -616,19 +616,22 @@ impl Snapshot {
     /// none of its own, so nothing past it is predicted or scheduled, until an
     /// episode past it airs or a file of one lands: then what really happened
     /// wins and the series reads as before. A record that publishes its own
-    /// count always wins. TVmaze shows are left alone: their counts are per
-    /// season and a hand-set one has no season to belong to.
+    /// count always wins. A TVmaze match numbers within a season, so there the
+    /// count is the length of the card's season (#283), and the folder's total
+    /// is the seasons on disk before it plus that.
     fn apply_episodes_set(&mut self) {
         let now = crate::time::to_secs(self.now);
-        let mut applied: Vec<(usize, u32)> = Vec::new();
+        // (row, count, folder total, the TVmaze season the count belongs to)
+        let mut applied: Vec<(usize, u32, u32, Option<u32>)> = Vec::new();
         for (i, row) in self.series.iter().enumerate() {
             let Some(set) = row.episodes_set else {
                 continue;
             };
             let own = row.media.as_ref().map(|m| m.episodes);
-            if row.provider == Some(Provider::Tvmaze) || own != Some(None) {
+            if own != Some(None) {
                 continue;
             }
+            let season = self.card_season(row);
             // Only what really came out proves the count wrong: a date the
             // schedule names ahead is a plan, and plans run long
             let aired = self
@@ -642,23 +645,50 @@ impl Snapshot {
                 .files_of(row.id)
                 .iter()
                 .filter(|f| f.is_episode && f.number >= 1.0 && f.number.fract() == 0.0)
+                .filter(|f| season.is_none_or(|s| f.season.unwrap_or(1) == s))
                 .map(|f| f.number as u32)
                 .max()
                 .unwrap_or(0);
             if aired.max(on_disk) <= set {
-                applied.push((i, set));
+                let before: u32 = season.map_or(0, |s| {
+                    self.seasons_on_disk(row)
+                        .into_iter()
+                        .filter(|x| *x < s)
+                        .filter_map(|x| self.tv_season(row, x))
+                        .map(|eps| eps.len() as u32)
+                        .sum()
+                });
+                applied.push((i, set, before + set, season));
             }
         }
-        for (i, n) in applied {
+        for (i, set, total, season) in applied {
             let row = &mut self.series[i];
             row.episodes_set_applied = true;
             if let Some(m) = row.media.as_mut() {
-                m.episodes = Some(n);
+                m.episodes = Some(total);
             }
             // Nothing past the count is scheduled either
-            if let Some(list) = row.anilist_id.and_then(|id| self.airing.get_mut(&id)) {
-                list.retain(|a| a.number <= n);
+            let list = match season {
+                Some(s) => row
+                    .tvmaze_id
+                    .and_then(|id| self.tv_seasons.get_mut(&id))
+                    .and_then(|seasons| seasons.get_mut(&s)),
+                None => row.anilist_id.and_then(|id| self.airing.get_mut(&id)),
+            };
+            if let Some(list) = list {
+                list.retain(|a| a.number <= set);
             }
+        }
+    }
+
+    /// The count the card's own episode numbers run to, what guesses and
+    /// the upcoming list stop at: the record's total, except a TVmaze match
+    /// with a count set by hand, which counts within its season (#283).
+    pub(crate) fn season_total(&self, row: &SeriesRow, total: Option<u32>) -> Option<u32> {
+        if row.provider == Some(Provider::Tvmaze) && row.episodes_set_applied {
+            row.episodes_set
+        } else {
+            total
         }
     }
 

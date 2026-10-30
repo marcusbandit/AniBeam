@@ -743,8 +743,15 @@ impl Snapshot {
                 }),
                 None => predict_next(
                     airing,
-                    self.released_of(row, &episodes, total, latest_aired, None, watched),
-                    total,
+                    self.released_of(
+                        row,
+                        &episodes,
+                        self.season_total(row, total),
+                        latest_aired,
+                        None,
+                        watched,
+                    ),
+                    self.season_total(row, total),
                     status,
                     now,
                 )

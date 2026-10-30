@@ -1387,3 +1387,72 @@ fn a_summary_decodes_every_entity_and_strips_only_real_tags() {
     assert_eq!(plain_summary("&amp;lt;b&amp;gt;"), "&lt;b&gt;");
     assert_eq!(plain_summary("&lt;b&gt;bold&lt;/b&gt;"), "<b>bold</b>");
 }
+
+fn set_count(core: &Core, series: u64, count: Option<u32>) {
+    core.call(Call::SetEpisodeCount { series, count }).unwrap();
+}
+
+/// A running show whose record lists no episode past the thirteenth, all
+/// thirteen out and on disk: the next is a guess until a count set by hand
+/// says the season ends there (#283).
+#[test]
+fn a_set_count_ends_a_running_tvmaze_season() {
+    let (_dir, core, _c) = common::open_core();
+    let now = time::now_secs();
+    let s1: Vec<i64> = (0..13).map(|i| now - (13 - i) * 7 * DAY + DAY).collect();
+    insert_show(&core, 903, "Running", &[(1, s1)]);
+    let files: Vec<(u32, u32)> = (1..=13).map(|n| (1, n)).collect();
+    let series = tv_series(&core, 903, &files);
+
+    let c = card(&core, series);
+    let next = c.next_airing.as_ref().expect("a guess");
+    assert!(next.predicted);
+    assert_eq!(next.episode, 14);
+    assert!(c.total_is_estimate);
+
+    set_count(&core, series, Some(13));
+    let d = detail(&core, series);
+    assert!(d.card.episodes_set_applied);
+    assert_eq!(d.card.next_airing, None);
+    assert_eq!(
+        (d.card.total_episodes, d.card.total_is_estimate),
+        (Some(13), false)
+    );
+    assert!(d.upcoming.is_empty(), "{:#?}", d.upcoming);
+
+    set_count(&core, series, None);
+    assert_eq!(card(&core, series).next_airing.map(|a| a.episode), Some(14));
+    core.shutdown();
+}
+
+/// The count belongs to the season the card is about: season 2 set to
+/// eleven drops the twelfth from the schedule, and the folder's total is
+/// season 1 plus those eleven. A count below what already aired gives way.
+#[test]
+fn a_tvmaze_count_belongs_to_the_card_season() {
+    let (_dir, core, _c) = common::open_core();
+    let now = time::now_secs();
+    let mut s2: Vec<i64> = (0..11).map(|i| now - (11 - i) * DAY).collect();
+    s2.push(now + 7 * DAY);
+    insert_show(&core, 904, "Running", &[(1, long_ago(10)), (2, s2)]);
+    let mut files: Vec<(u32, u32)> = (1..=10).map(|n| (1, n)).collect();
+    files.extend((1..=3).map(|n| (2, n)));
+    let series = tv_series(&core, 904, &files);
+
+    set_count(&core, series, Some(11));
+    let d = detail(&core, series);
+    assert!(d.card.episodes_set_applied);
+    assert_eq!(d.card.next_airing, None);
+    assert_eq!(d.card.total_episodes, Some(21));
+    assert!(d.upcoming.is_empty(), "{:#?}", d.upcoming);
+
+    set_count(&core, series, Some(2));
+    let c = card(&core, series);
+    assert!(!c.episodes_set_applied);
+    let next = c.next_airing.expect("the schedule is back");
+    assert_eq!(
+        (next.season, next.episode, next.predicted),
+        (Some(2), 12, false)
+    );
+    core.shutdown();
+}
