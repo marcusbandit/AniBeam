@@ -23,9 +23,11 @@ The rules in full: CONTRIBUTING.md, under Patch notes.
 - Mark a show not interested and it stays off Airing now
 - Plan to watch or get episodes straight from Airing now
 - Media keys and Control Centre play, pause and skip on the Mac
+- Release lists show a Rip column: WEB-DL, WEBRip, BluRay and the rest
 
 ### Fixed
 - This week cards keep the airing time inside the card
+- On disk marks only the release you have, not every release of that episode
 
 ## 2.2.0 · 2026-10-26
 

@@ -1118,9 +1118,14 @@ pub(crate) fn annotate(
         });
     match found {
         Ok(Some((show, files))) => {
-            for f in &mut facts {
+            // On disk means this very release is the file (#237); the episode
+            // from another release is only other_on_disk
+            for (f, item) in facts.iter_mut().zip(items) {
                 if let Some(n) = f.episode {
-                    f.on_disk = link::has_episode(&files, f.season, n);
+                    let mut paths = link::episode_files(&files, f.season, n).peekable();
+                    let any = paths.peek().is_some();
+                    f.on_disk = paths.any(|p| facts::same_release(&item.title, p));
+                    f.other_on_disk = any && !f.on_disk;
                 }
             }
             (facts, Some(show))

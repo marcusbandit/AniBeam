@@ -45,6 +45,15 @@ static BATCH_WORD: LazyLock<Regex> = LazyLock::new(|| {
 /// A season with no episode after it: `S01 1080p`, `S02.1080p`
 static SEASON_PACK: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)\bS(\d{1,2})(?:[\s._\[(]|$)").unwrap());
+/// Where the video came from: `WEB-DL`, `WEBRip`, `WEB`, `BluRay`, `BDRip`, `HDTV`, `DVD`
+static RIP: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)(?:^|[^a-z0-9])(web[-. ]?dl|web[-. ]?rip|web|blu[-. ]?ray|bd[-. ]?rip|bd|hdtv|dvd[-. ]?rip|dvd)(?:$|[^a-z0-9])").unwrap()
+});
+/// A version after the episode number: ` - 03v2`, `S01E03v2`
+static VERSION: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)(?:\bS\d{1,2}\s?E|\s-\s)\d{1,4}(?:\.\d)?v(\d)\b").unwrap());
+/// The CRC32 a fansub group tags its file with: `[80977B2B]`
+static CRC: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[([0-9A-Fa-f]{8})\]").unwrap());
 static SIZE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)^\s*([\d.,]+)\s*(B|KB|KIB|MB|MIB|GB|GIB|TB|TIB)\s*$").unwrap()
 });
@@ -124,8 +133,82 @@ pub fn read(item: &Release) -> ReleaseFacts {
         group,
         resolution,
         size_bytes: size_bytes(&item.size),
+        rip: rip(title),
         on_disk: false,
+        other_on_disk: false,
     }
+}
+
+/// The rip a title names, in its usual spelling; empty when none.
+pub fn rip(title: &str) -> String {
+    let Some(c) = RIP.captures(title) else {
+        return String::new();
+    };
+    let word: String = c[1]
+        .to_ascii_lowercase()
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .collect();
+    match word.as_str() {
+        "webdl" => "WEB-DL",
+        "webrip" => "WEBRip",
+        "web" => "WEB",
+        "bluray" | "bd" => "BluRay",
+        "bdrip" => "BDRip",
+        "hdtv" => "HDTV",
+        "dvdrip" => "DVDRip",
+        _ => "DVD",
+    }
+    .to_string()
+}
+
+/// The release's version of its episode: 2 for ` - 03v2`, 1 when it names none.
+pub fn version(title: &str) -> u32 {
+    VERSION
+        .captures(title)
+        .and_then(|c| c[1].parse().ok())
+        .unwrap_or(1)
+}
+
+/// A name as compared: no folders, no video extension, lower case, and dots,
+/// underscores and runs of spaces as one space.
+fn plain(name: &str) -> String {
+    let base = name.rsplit(['/', '\\']).next().unwrap_or(name);
+    let lower = base.to_lowercase();
+    let stem = [".mkv", ".mp4", ".avi", ".webm", ".m4v", ".ts"]
+        .iter()
+        .find_map(|e| lower.strip_suffix(e))
+        .unwrap_or(&lower);
+    stem.replace(['.', '_'], " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Whether the file `file` is the release `title` (#237): the same name, or,
+/// when a torrent named itself apart from its file, the same group, and the
+/// same resolution, rip and version wherever both name one. Two CRC tags
+/// that differ settle it the other way. A release or a file naming no group
+/// is only ever its own name.
+pub fn same_release(title: &str, file: &str) -> bool {
+    if plain(title) == plain(file) {
+        return true;
+    }
+    let crc = |s: &str| {
+        CRC.captures_iter(s)
+            .last()
+            .map(|c| c[1].to_ascii_uppercase())
+    };
+    if let (Some(a), Some(b)) = (crc(title), crc(file)) {
+        return a == b;
+    }
+    let (r, f) = (read_name(title), read_name(file));
+    let agree = |a: &str, b: &str| a.is_empty() || b.is_empty() || a.eq_ignore_ascii_case(b);
+    !r.group.is_empty()
+        && r.group.eq_ignore_ascii_case(&f.group)
+        && agree(&r.resolution, &f.resolution)
+        && agree(&r.rip, &f.rip)
+        && version(title) == version(file)
 }
 
 /// A range of episodes, not a year span or a resolution pair.
@@ -264,5 +347,76 @@ mod tests {
         assert_eq!(size_bytes("12 B"), Some(12));
         assert_eq!(size_bytes(""), None);
         assert_eq!(size_bytes("big"), None);
+    }
+
+    #[test]
+    fn rips_read_in_their_usual_spelling() {
+        assert_eq!(
+            rip("[Erai-raws] Show - 28 [1080p CR WEB-DL AVC AAC]"),
+            "WEB-DL"
+        );
+        assert_eq!(rip("Show S01E03 1080p WEBRip x265-Group"), "WEBRip");
+        assert_eq!(rip("Show.S01E03.1080p.WEB.h264-ETHEL"), "WEB");
+        assert_eq!(rip("[Group] Show - 01 (BD 1080p)"), "BluRay");
+        assert_eq!(rip("[SubsPlease] Show - 01 (1080p) [ABCD1234].mkv"), "");
+    }
+
+    #[test]
+    fn only_the_same_release_is_the_file_on_disk() {
+        let file = "/lib/Show/[SubsPlease] Show - 05 (1080p) [ABCD1234].mkv";
+        assert!(same_release(
+            "[SubsPlease] Show - 05 (1080p) [ABCD1234].mkv",
+            file
+        ));
+        // The same group and resolution, named apart: still this release
+        assert!(same_release("[SubsPlease] Show - 05 (1080p)", file));
+        // Another group, another resolution, another version: not it
+        assert!(!same_release(
+            "[Erai-raws] Show - 05 [1080p CR WEB-DL AVC AAC]",
+            file
+        ));
+        assert!(!same_release(
+            "[SubsPlease] Show - 05 (720p) [EEEE0000].mkv",
+            file
+        ));
+        assert!(!same_release(
+            "[SubsPlease] Show - 05v2 (1080p) [FFFF0000].mkv",
+            file
+        ));
+        assert!(same_release(
+            "Show.S01E05.1080p.WEB.h264-ETHEL",
+            "Show S01E05 1080p WEB h264-ETHEL.mkv"
+        ));
+        assert!(!same_release(
+            "Show S01E05 1080p WEBRip x265-Other",
+            "Show S01E05 1080p WEB h264-ETHEL.mkv"
+        ));
+    }
+
+    #[test]
+    fn erai_releases_of_one_episode_are_told_apart() {
+        // The owner's file, and what nyaa listed for that episode (#237)
+        let file = "/a/[Erai-raws] Katainaka no Ossan Kensei ni Naru II - 06 [1080p AMZN WEB-DL AVC EAC3][MultiSub][80977B2B].mkv";
+        let listed = [
+            (
+                "[Erai-raws] Katainaka no Ossan, Kensei ni Naru II - 06 [1080p AMZN WEBRip HEVC EAC3][MultiSub][C781A1C2]",
+                false,
+            ),
+            (
+                "[Erai-raws] Katainaka no Ossan, Kensei ni Naru II - 06 [540p AMZN WEB-DL AVC EAC3][MultiSub][8B85B88D]",
+                false,
+            ),
+            (
+                "[Erai-raws] Katainaka no Ossan, Kensei ni Naru II - 06 [720p AMZN WEB-DL AVC EAC3][MultiSub][19163F35]",
+                false,
+            ),
+            (
+                "[Erai-raws] Katainaka no Ossan, Kensei ni Naru II - 06 [1080p AMZN WEB-DL AVC EAC3][MultiSub][80977B2B]",
+                true,
+            ),
+        ];
+        for (title, here) in listed {
+            assert_eq!(same_release(title, file), here, "{title}");
+        }
     }
 }

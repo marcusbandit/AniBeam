@@ -447,7 +447,7 @@ Item {
         var best = {}
         for (var i = 0; i < items.length; i++) {
             var f = facts[i]
-            if (!f || f.batch || f.on_disk || f.episode === null || f.episode === undefined) continue
+            if (!f || f.batch || f.on_disk || f.other_on_disk || f.episode === null || f.episode === undefined) continue
             var k = String(f.episode), seeds = items[i].seeders
             if (seeds === null || seeds === undefined) { var e = extras[items[i].link]; seeds = e && e.seeders !== null && e.seeders !== undefined ? e.seeders : -1 }
             if (!(k in best) || seeds > best[k].seeds) best[k] = { i: i, seeds: seeds }
