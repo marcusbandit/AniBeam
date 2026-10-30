@@ -214,10 +214,12 @@ pub fn newer(a: &str, b: &str) -> bool {
 }
 
 /// The app version in one the core logged as it started: `2.1.0` out of `2.1.0`,
-/// `2.1.0.r6.gf1d3824` or `2.1.0.dirty`. None when it does not start with three numbers,
-/// as a build described from one of the phone's tags (`android.v2.0.4`) does not.
+/// `2.1.0.r6.gf1d3824` or `2.1.0.dirty`, and `2.1.0` out of a nightly's
+/// `2.1.0-nightly.20261030.12`. None when it does not start with three numbers, as a build
+/// described from one of the phone's tags (`android.v2.0.4`) does not.
 pub fn version_of(logged: &str) -> Option<String> {
-    let mut numbers = logged.splitn(4, '.');
+    let base = logged.split('-').next()?;
+    let mut numbers = base.splitn(4, '.');
     let version = format!(
         "{}.{}.{}",
         numbers.next()?,
@@ -431,16 +433,31 @@ fn heading(text: &str) -> Line {
 }
 
 fn parts(v: &str) -> Option<[u64; 3]> {
-    let mut numbers = v.split('.');
-    let mut out = [0; 3];
+    digits::<3>(v)
+}
+
+/// Exactly `N` dot-separated whole numbers: `digits::<3>("2.1.0")`. The update check reads
+/// a nightly's day and run with it too.
+pub(crate) fn digits<const N: usize>(s: &str) -> Option<[u64; N]> {
+    let mut parts = s.split('.');
+    let mut out = [0; N];
     for slot in &mut out {
-        let n = numbers.next()?;
+        let n = parts.next()?;
         if n.is_empty() || !n.bytes().all(|b| b.is_ascii_digit()) {
             return None;
         }
         *slot = n.parse().ok()?;
     }
-    numbers.next().is_none().then_some(out)
+    parts.next().is_none().then_some(out)
+}
+
+/// Whether `version` has anything to show: main moves to a new version before a line is
+/// written under it, and notes with nothing in them never open What's new by themselves.
+pub fn has_lines(notes: &[Notes], version: &str) -> bool {
+    notes
+        .iter()
+        .find(|n| n.version == version)
+        .is_some_and(|n| n.sections.iter().any(|s| !s.lines.is_empty()))
 }
 
 fn day_parts(date: &str) -> Option<(i32, u32, u32)> {
@@ -590,6 +607,11 @@ wraps onto a second line
         assert_eq!(version_of("2.1.0").as_deref(), Some("2.1.0"));
         assert_eq!(version_of("2.1.0.r6.gf1d3824").as_deref(), Some("2.1.0"));
         assert_eq!(version_of("2.1.0.dirty").as_deref(), Some("2.1.0"));
+        assert_eq!(
+            version_of("2.1.0-nightly.20261030.12").as_deref(),
+            Some("2.1.0")
+        );
+        assert_eq!(version_of("2.1.0-pr.280.3").as_deref(), Some("2.1.0"));
         assert_eq!(version_of("android.v2.0.4"), None);
         assert_eq!(version_of("2.1"), None);
     }

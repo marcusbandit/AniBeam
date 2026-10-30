@@ -2,8 +2,8 @@
 // version and a Download button that opens the release page in the browser. The frame asks
 // once as the app starts (check()), Settings asks again when the track changes, and Shell
 // answers through updateAvailable. The track is Stable or Nightly, and until someone picks
-// one it is the running build's own. Later hides it until a newer version than this one
-// comes out; the version passed over and the track picked live in shell.conf.
+// one it is the running build's own; a nightly's sticks. Later hides it until a newer
+// version than this one comes out; the version passed over and the track live in shell.conf.
 // It steps aside while the player has the window or a sheet is open (`covered`), and comes
 // back once they close.
 import QtQuick
@@ -34,16 +34,22 @@ Frost {
 
     // The track updates come from, as Settings shows it
     readonly property string track: kept.track !== "" ? kept.track : Shell.ownTrack
-    function check() { Shell.checkForUpdate(track) }
+    function check() {
+        // A nightly keeps its track once picked by default, so the stable release it leads
+        // to does not quietly move it to Stable when installed
+        if (kept.track === "" && Shell.ownTrack === "nightly") kept.track = "nightly"
+        Shell.checkForUpdate(track)
+    }
     function setTrack(t) {
-        kept.track = t === Shell.ownTrack ? "" : t
+        kept.track = t
         shown = false
         check()
     }
 
     Connections {
         target: Shell
-        function onUpdateAvailable(version, url) { root.show(version, url) }
+        // An answer for a track since switched away from is dropped
+        function onUpdateAvailable(version, url, track) { if (track === root.track) root.show(version, url) }
     }
 
     function show(version, url) {

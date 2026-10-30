@@ -143,16 +143,25 @@ jobs:
           ls -la dist
           tag="v$VERSION"
           sed "s/@VERSION@/$VERSION/g" .github/release-notes.md > notes.md
-          previous="$(gh release list --limit 100 --exclude-drafts --exclude-pre-releases --json tagName,createdAt \
-            --jq '[.[] | select(.tagName | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))] | sort_by(.createdAt) | .[].tagName' |
-            grep -vxF "$tag" | tail -n 1 || true)"
+          # Stable versions in version order, this one among them: the notes start at the one
+          # just below it (2.4.0 for a 2.4.1 hotfix, even once 2.5.0 is out), and it is the
+          # Latest release only when nothing above it has shipped.
+          stable="$( {
+            gh release list --limit 100 --exclude-drafts --exclude-pre-releases --json tagName \
+              --jq '.[].tagName | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))'
+            echo "$tag"
+          } | sort -uV)"
+          previous="$(grep -B1 -xF "$tag" <<<"$stable" | grep -vxF "$tag" || true)"
+          latest=true
+          if [ "$(tail -n 1 <<<"$stable")" != "$tag" ]; then latest=false; fi
+          echo "previous=${previous:-none} latest=$latest"
           start=()
           if [ -n "$previous" ]; then start=(--notes-start-tag "$previous"); fi
           where=(--target "$SHA")
           if [ "$KIND" = hotfix ]; then where=(--verify-tag); fi
           gh release create "$tag" dist/* --draft "${where[@]}" \
             --title "AniBeam $VERSION" --notes-file notes.md --generate-notes "${start[@]}"
-          gh release edit "$tag" --draft=false --latest
+          gh release edit "$tag" --draft=false --latest="$latest"
 
   next:
     needs: [resolve, publish]

@@ -50,9 +50,9 @@ pub mod qobject {
         /// MPRIS Quit. The window closes itself; nothing here ends the process.
         #[qsignal]
         fn quit_requested(self: Pin<&mut Self>);
-        /// A desktop release newer than this build is out: its version and its page.
+        /// A desktop build newer than this one is out on `track`: its version and its page.
         #[qsignal]
-        fn update_available(self: Pin<&mut Self>, version: QString, url: QString);
+        fn update_available(self: Pin<&mut Self>, version: QString, url: QString, track: QString);
         /// Raises `window` (the QML Window) with the xdg-activation token.
         #[qinvokable]
         unsafe fn raise_window(self: &Self, window: *mut QObject, token: &QString);
@@ -204,11 +204,14 @@ impl qobject::Shell {
             seen.version = version;
         }
         let used = earlier.started;
+        let notes = changelog::parse(NOTES);
         let state = serde_json::json!({
-            "due": seen.due(current, used),
+            // A version main has only just moved to has no lines yet; opening it would mark
+            // it read before its notes are written.
+            "due": seen.due(current, used) && changelog::has_lines(&notes, current),
             "started": seen.started(current, used),
             "closed": seen.closed(current),
-            "view": changelog::whats_new(&changelog::parse(NOTES), current, &seen, used),
+            "view": changelog::whats_new(&notes, current, &seen, used),
         });
         crate::json::to_qjson_object(&state)
     }
@@ -225,6 +228,10 @@ impl qobject::Shell {
             return;
         }
         let track = Track::parse(&track.to_string()).unwrap_or(Track::of(anibeam_core::RELEASE));
+        let asked = match track {
+            Track::Nightly => "nightly",
+            Track::Stable => "stable",
+        };
         let shell = self.qt_thread();
         crate::runtime::runtime().spawn(async move {
             let http = match anibeam_core::net::ReqwestHttp::new(std::time::Duration::from_secs(15))
@@ -242,6 +249,7 @@ impl qobject::Shell {
                 shell.update_available(
                     QString::from(update.version.as_str()),
                     QString::from(update.url.as_str()),
+                    QString::from(asked),
                 )
             });
         });

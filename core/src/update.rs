@@ -9,6 +9,7 @@
 
 use serde::Deserialize;
 
+use crate::changelog::digits;
 use crate::contract::CoreError;
 use crate::net::{Http, HttpRequest, Method};
 
@@ -91,19 +92,6 @@ impl Version {
             }
         }
     }
-}
-
-fn digits<const N: usize>(s: &str) -> Option<[u64; N]> {
-    let mut parts = s.split('.');
-    let mut out = [0; N];
-    for slot in &mut out {
-        let n = parts.next()?;
-        if n.is_empty() || !n.bytes().all(|b| b.is_ascii_digit()) {
-            return None;
-        }
-        *slot = n.parse().ok()?;
-    }
-    parts.next().is_none().then_some(out)
 }
 
 #[derive(Deserialize)]
