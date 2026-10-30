@@ -84,7 +84,7 @@ moved.
 Good:
 
 - `fix(shell): the wheel scrolls like a browser`
-- `feat(downloads): a provider switch with 1337x`
+- `feat(downloads): a provider switch on the search bar`
 - `perf(shell): one drive run captures several pages`
 
 Not:
