@@ -139,20 +139,23 @@ pull request. The phone's `build.sh` refuses an APK whose newest heading is not 
 ## Sources
 
 AniBeam ships no download sources, and this repo takes no PR that adds one. Nothing in
-the app points at a site: no address, no default, no onboarding link, and no endpoint kind
-written for one site's API. A PR that adds a site gets closed, however well it is built.
+the app points at a site: no address, no host, no default, no onboarding link, and no code,
+test or fixture that names one. A PR that adds a site gets closed, however well it is built.
 
-Every source reaches the app through an endpoint repo the user adds by URL
-(`docs/superpowers/specs/2026-10-24-endpoint-repos.md` has the format). A new one goes in
-one of two places:
+What the core does hold is endpoint kinds. A kind is a type of input the core knows how to
+read and handle well: an RSS feed, a torznab API, a JSON search API, a feed that needs a key.
+It is named for that shape, never for a site, and it knows nothing about which sites use it.
+A new kind is welcome when no existing one can read a source; open an issue for it first.
+
+The site itself comes from an endpoint repo the user attaches by URL
+(`docs/superpowers/specs/2026-10-24-endpoint-repos.md` has the format). Its definition says
+which kind to use and where to point it, and installing it is what tells the app how to handle
+that site. A new source goes in one of two places:
 
 - A PR to [`marcusbandit/anibeam-endpoints`](https://github.com/marcusbandit/anibeam-endpoints),
   the owner's own repo. Its README says how to write a definition.
 - A repo of your own, signed with your own key, that anyone can add in AniBeam beside or
   instead of the owner's.
-
-If a site cannot be described by the kinds the core already has, open an issue first. Do not
-write a kind for it.
 
 ## Before you open it
 
