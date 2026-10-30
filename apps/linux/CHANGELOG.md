@@ -10,6 +10,8 @@ The app shows this file in What's new, newest version first. Keep it short.
 The rules in full: CONTRIBUTING.md, under Patch notes.
 -->
 
+## 2.4.0 · 2026-10-30
+
 ## 2.3.0 · 2026-10-27
 
 ### New
