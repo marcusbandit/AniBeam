@@ -21,7 +21,7 @@ exception for "code that runs in a virtual machine or an interpreter".
 So AniBeam copies Mihon's repository model and drops its extension model. A Mihon
 extension is an APK with Kotlin in it. An AniBeam endpoint in a repo is a JSON
 definition the core already knows how to run. The core holds every kind of
-endpoint as Rust (`nyaa`, `rss`, `tosho`, later `torznab`), and a new kind ships
+endpoint as Rust (`nyaa`, `rss`, `tosho`, `torznab`), and a new kind ships
 in an app update, through Play, like any other change.
 
 ## How Mihon does it, for reference
@@ -151,6 +151,32 @@ with no JSON canonicalisation between jq and serde. Decoded, it is the index:
 - `min_core` hides the endpoint from a core too old for its kind or fields.
 - `category` and `filter` are for `nyaa` only, as in `releases::Endpoint`.
 
+### The torznab kind
+
+`torznab` (#148) searches the person's own Prowlarr or Jackett. Its feed is RSS
+with `torznab:attr` seeders, and an `<error description="..."/>` answer becomes
+the endpoint's error, its text cut to 200 characters with control characters
+dropped, since a feed wrote it.
+
+- A torznab definition may name its host as `{host}`, and only as the whole
+  authority (`http://{host}/1/api?t=search&q={query}&apikey={apikey}`): never
+  in another kind, never as part of a host, after a login or beside a port. The
+  `{host}` field must not be secret, so the person always sees where the key
+  goes, and another `auth` key can never stand in the host.
+- The value for `{host}` is a host name or IPv4 address with an optional port,
+  and nothing else: no path, login, query, fragment, placeholder, whitespace,
+  brackets or IPv6 literal. It is checked when it is given and again each time a
+  stored value fills the address for a search.
+- Only a `{host}` definition may be plain http, as a Prowlarr on the home
+  network often is; a host the repo names needs https. On plain http the value
+  must be on the home network: a private (RFC 1918), loopback, link-local or
+  carrier-grade NAT (100.64.0.0/10) IPv4 address, or a name that is a single
+  label or ends in `.local`, `.lan`, `.home.arpa`, `.internal` or `.ts.net`. A
+  name must be plain ASCII and a single label must not be a number the client
+  would read as an IPv4 address. Anything else is refused, with a message to use
+  a home-network address or a server with an https address, so a key never
+  crosses the internet in the clear.
+
 ## Trust
 
 - Adding a repo fetches `index.json` and `index.json.sig` and checks the
@@ -173,9 +199,9 @@ with no JSON canonicalisation between jq and serde. Decoded, it is the index:
   the list. No intervals, the same rule as the library watcher.
 - An installed endpoint with a higher `version` in the index is shown as having
   an update. Updating keeps the stored credentials only when the `auth` keys are
-  unchanged and the hosts of `url` and `front` are unchanged. A new key, or a
-  credential that would now go to a different host, asks the user again and
-  shows the new host.
+  unchanged and the scheme and the hosts of `url` and `front` are unchanged. A
+  new key, a credential that would now go to a different host, or a move from
+  https to http asks the user again and shows the new host.
 - An endpoint removed from the index stays installed and is marked as no longer
   offered. The user removes it.
 
